@@ -207,26 +207,53 @@ Search the conversation history for content that may have been compacted or clea
 | `query` | string | yes | Search term to look for in conversation history. Case-insensitive keyword matching. |
 | `max_results` | number | no | Maximum number of results to return. Defaults to 20. Maximum 50. |
 
-### WorkspaceAttribution
+### WorktreeList
 
-Read-only provenance for integration benches: maps a file (optionally a line
-range) in the **assembled** bench tree back to the source it came from — the
-contributing member worktree, the source branch, a recorded conflict
-resolution, several plausible owners (ambiguous), or unknown. Answers "which
-worktree owns the fix for this build failure" with evidence instead of a guess.
+List every worktree registered for the repository containing the current directory, including this one. Each entry carries its branch, source branch, title, landed status, and (when resolvable) its current HEAD commit and how many commits it holds that have not yet reached its source branch. Read-only: every git query runs in the calling conversation's own directory, never inside another worktree's checkout — cross-worktree data is read through the shared git object store by referencing a sibling's branch name, not by visiting its directory.
 
-Only meaningful when the session's working directory is inside a registered
-bench; outside one it returns a typed error. Available in plan mode (it writes
-nothing). Returns JSON: an overall outcome, every candidate owner with its
-pinned range and worktree path, per-candidate reasons, and warnings for
-degraded inputs (dirty or stale members, git errors) rather than silent
-omission.
+No parameters.
+
+### WorktreeCommits
+
+Show the commit log for one worktree's branch (a sibling worktree of the same repository, or this one). Reads through the shared git object store from the calling conversation's own directory. Use before starting work to check whether a sibling worktree has already built what you are about to build.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `file` | string | yes | Path of the file in the bench, absolute or bench-relative. |
-| `line` | number | no | 1-based start line to attribute. Whole file when absent. |
-| `endLine` | number | no | 1-based end line (inclusive). Requires `line`. |
+| `worktree` | string | no | Branch name or worktree path to inspect. Defaults to this conversation's own worktree when omitted. |
+| `limit` | integer | no | Maximum number of commits to return. Defaults to 20, capped at 100. |
+| `path` | string | no | Optional file or directory path to scope the log to. |
+
+### WorktreeDiff
+
+Show a diff for one worktree's branch (a sibling worktree of the same repository, or this one): either one specific commit, or everything the branch has done since it diverged from its source branch. Reads through the shared git object store from the calling conversation's own directory. Large diffs are truncated (stated in the result via `truncated`) after a `stat` summary that always survives.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `worktree` | string | no | Branch name or worktree path to inspect. Defaults to this conversation's own worktree when omitted. |
+| `commit` | string | no | Show exactly this commit sha. When omitted, shows everything the branch has done since diverging from its source (or from `against`). |
+| `against` | string | no | Comparison ref for the cumulative diff. Ignored when `commit` is set. Defaults to the worktree's recorded source branch. |
+| `path` | string | no | Optional file or directory path to scope the diff to. |
+
+## Client tools
+
+A session's owning client can declare tools of its own at `start_session`
+(`EngineConfig.toolGate.clientTools`). They join the session's tool list beside
+MCP and extension tools; when the model calls one, the engine emits
+`engine_tool_gate_request` (kind `tool`) and the client answers with the result
+(`tool_gate_response`). This is the third tool provision path beside MCP
+servers and extensions — see the protocol reference
+([client commands](../protocol/client-commands.md#tool_gate_response)).
+
+Ion's desktop uses this path to provide three read-only bench tools
+(`WorkspaceAttribution`, `BenchMemberFile`, `BenchResolutionHistory`) for
+conversations rooted in an integration bench — see
+[ADR-024](../architecture/adr/024-integration-workspace.md). They are desktop
+surface, not engine tools: a consumer without Ion's bench never sees them.
+This is a different concern from the generic `WorktreeList`/`WorktreeCommits`/
+`WorktreeDiff` tools above, which are engine-core because every consumer with
+parallel scoped agents needs them and would build them identically — see
+[ADR-025](../architecture/adr/025-client-tool-gate.md) for the ownership split
+between generic worktree mechanism (engine) and the bench product (desktop).
 
 ## Optional Tools
 
