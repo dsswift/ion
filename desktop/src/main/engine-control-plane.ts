@@ -10,10 +10,14 @@ import { sendPromptWithRecovery, bridgeSendAdapter } from './engine-control-plan
 import { buildHealthReport, anyTabRunning } from './engine-control-plane-status'
 import { performUnifiedInterrupt } from './engine-control-plane-interrupt'
 import * as historyReads from './engine-control-plane-history'
-import { readSettings, SETTINGS_DEFAULTS } from './settings-store'
+import { resolveSessionThinkingConfig } from './settings-store'
+import { resolveClaudeCompat } from './engine-control-plane-config'
+import { toolGateSessionConfig } from './tool-gate-responder'
+import { benchClientWorkspaceContext } from './integration/bench-prompt-context'
 import { resolveAtvPermission } from './atv-state-cache'
 import type {
   EngineConfig,
+  ThinkingConfig,
   EngineEvent,
   RunOptions,
   TabStatus,
@@ -259,7 +263,7 @@ export class EngineControlPlane extends EventEmitter {
       extensions?: string[]
       model?: string
       maxTokens?: number
-      thinking?: { enabled: boolean; budgetTokens?: number }
+      thinking?: ThinkingConfig
     },
   ): Promise<{ ok: boolean; error?: string }> {
     this.ensureTab(tabId)
@@ -292,13 +296,20 @@ export class EngineControlPlane extends EventEmitter {
       sessionId: opts.conversationId || tab.conversationId || undefined,
       model: opts.model,
       maxTokens: opts.maxTokens,
-      thinking: opts.thinking,
-      claudeCompat: (() => {
-        try { return readSettings().enableClaudeCompat ?? SETTINGS_DEFAULTS.enableClaudeCompat }
-        catch { return SETTINGS_DEFAULTS.enableClaudeCompat }
-      })(),
+      // Session thinking default. Resolved HERE rather than threaded from the
+      // caller so every start site gets it — the relocate, cwd-reconcile, and
+      // eager-restore paths all call ensureSession without a thinking opinion,
+      // and a caller-threaded value would silently omit it on those three. An
+      // explicit opts.thinking still wins for a caller that has one.
+      thinking: opts.thinking ?? resolveSessionThinkingConfig(),
+      claudeCompat: resolveClaudeCompat(),
+      // Client tool gate: bench containment policy + bench client tools. Declared
+      // on every session because bench involvement can begin mid-session; policy
+      // resolves the workspace fresh per call.
+      toolGate: toolGateSessionConfig(),
+      clientWorkspaceContext: benchClientWorkspaceContext(opts.workingDirectory) ?? undefined,
     }
-    log('ensure_session: starting', { tab_id: tabId, session_id: config.sessionId ?? 'new', dir: config.workingDirectory })
+    log('ensure_session: starting', { tab_id: tabId, session_id: config.sessionId ?? 'new', dir: config.workingDirectory, client_ws_ctx: config.clientWorkspaceContext?.kind ?? 'none' })
     const result = await this.bridge.startSession(tabId, config)
     if (!result.ok) {
       error('ensure_session: startSession failed', { tab_id: tabId, error: result.error })
@@ -356,11 +367,13 @@ export class EngineControlPlane extends EventEmitter {
       workingDirectory: options.projectPath,
       sessionId: options.sessionId || tab.conversationId || undefined,
       maxTokens: options.maxTokens,
-      thinking: options.thinking,
-      claudeCompat: (() => {
-        try { return readSettings().enableClaudeCompat ?? SETTINGS_DEFAULTS.enableClaudeCompat }
-        catch { return SETTINGS_DEFAULTS.enableClaudeCompat }
-      })(),
+      // Same resolution as ensureSession: this config is what the send path
+      // hands ensureSession, so it must carry the session default too or a
+      // first-prompt start would omit what a later relocate would include.
+      thinking: options.thinking ?? resolveSessionThinkingConfig(),
+      claudeCompat: resolveClaudeCompat(),
+      // Same gate declaration as ensureSession so this start path has bench rules.
+      toolGate: toolGateSessionConfig(),
     }
 
     // When the engine is remote, verify the working directory exists on the

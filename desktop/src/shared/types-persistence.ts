@@ -1,4 +1,4 @@
-import type { TerminalInstance, WorktreeInfo, Attachment } from './types-session'
+import type { TerminalInstance, WorktreeInfo, Attachment, ThinkingEffort } from './types-session'
 import type { ConversationRef } from './types-engine'
 
 // ─── Schema version constants ───
@@ -93,6 +93,18 @@ export interface PersistedConversationInstance {
   modelOverride?: string | null
   sessionModel?: string | null
   permissionMode?: 'auto' | 'plan'
+  /**
+   * Per-conversation extended-thinking effort. Omitted when `'off'` (the
+   * default), mirroring the `permissionMode !== 'auto'` conditional-write
+   * idiom — absent on load restores to `'off'`.
+   *
+   * Persisted because the level is a deliberate per-conversation choice with
+   * a direct cost consequence: without this, raising a long-running
+   * conversation to `high` silently reverted to `off` on the next desktop
+   * restart, and a conversation deliberately left on `high` could not survive
+   * a restart either.
+   */
+  thinkingEffort?: ThinkingEffort
   permissionDenied?: { tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> } | null
   /**
    * @deprecated Pre-ledger session chain. Read on load and migrated into
@@ -193,7 +205,7 @@ export interface PersistedTab {
   /** Input-locked conversation (auto-generated conflict fix). See TabState.inputLocked. */
   inputLocked?: boolean
   /** Explicit tab lifecycle role. See TabState.tabRole. Absent = null (default). */
-  tabRole?: 'bench-conversation' | 'conflict-auto-fix'
+  tabRole?: 'bench-conversation' | 'conflict-auto-fix' | 'verification-analysis'
   /**
    * Unified conversation state for this tab (the post-migration shape). When
    * present, the loader reads conversation instances from here and IGNORES the

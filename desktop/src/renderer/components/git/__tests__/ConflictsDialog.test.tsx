@@ -142,6 +142,33 @@ describe('ConflictsDialog', () => {
     expect((host.querySelector('[data-testid="conflict-continue"]') as HTMLButtonElement).disabled).toBe(false)
   })
 
+  it('a failed Continue re-probes op state instead of leaving the stale "all resolved" banner up', async () => {
+    // A multi-commit rebase step that already cleared: the dialog opens
+    // showing zero conflicted files and an enabled Continue.
+    gitOpState.mockResolvedValueOnce(opState([]))
+    await render()
+    expect(host.textContent).toContain('All conflicts are resolved')
+    expect((host.querySelector('[data-testid="conflict-continue"]') as HTMLButtonElement).disabled).toBe(false)
+
+    // Continue commits that step, then git walks forward and stops on a
+    // BRAND NEW conflict further down the rebase todo.
+    gitRebaseContinue.mockResolvedValue({ ok: false, error: 'could not apply 7c1940505...' })
+    gitOpState.mockResolvedValueOnce(opState([{ path: 'WorktreeRowMenu.tsx', shape: 'both modified' }]))
+
+    await act(async () => {
+      (host.querySelector('[data-testid="conflict-continue"]') as HTMLButtonElement).click()
+    })
+
+    expect(gitRebaseContinue).toHaveBeenCalledWith(DIR)
+    // The failure message stays up...
+    expect(host.textContent).toContain('could not apply 7c1940505')
+    // ...and the dialog shows the REAL current conflict, not the stale empty
+    // list from the step that just finished.
+    expect(host.querySelector('[data-testid="conflict-row-WorktreeRowMenu.tsx"]')).not.toBeNull()
+    expect(host.textContent).not.toContain('All conflicts are resolved')
+    expect((host.querySelector('[data-testid="conflict-continue"]') as HTMLButtonElement).disabled).toBe(true)
+  })
+
   it('AI Assisted routes through the forwarded store action and closes', async () => {
     gitOpState.mockResolvedValue(opState([{ path: 'shared.txt', shape: 'both modified' }]))
     const onClose = vi.fn()

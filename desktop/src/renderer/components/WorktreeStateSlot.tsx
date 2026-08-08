@@ -28,6 +28,8 @@ export interface WorktreeStateSlotProps {
   onUpdatePin?(): void
   /** Show the bench's conflict detail for this member. */
   onShowBenchConflict?(): void
+  /** Show the bench's verification-failure detail (this member is a suspect). */
+  onShowVerificationFailure?(): void
 }
 
 /** Shared shape for the glyph-only buttons, so they cannot drift apart. */
@@ -82,6 +84,19 @@ export function WorktreeStateSlot(props: WorktreeStateSlotProps): React.JSX.Elem
         </Tooltip>
       )
     }
+
+    case 'bench-verification':
+      return (
+        <Tooltip text="This contribution merged, but the assembly failed project verification. Click for detail.">
+          <button
+            data-testid={`worktree-bench-verification-${branchName}`}
+            onClick={(e) => { e.stopPropagation(); props.onShowVerificationFailure?.() }}
+            style={iconButtonStyle(colors.warningFg)}
+          >
+            <Warning size={11} />
+          </button>
+        </Tooltip>
+      )
 
     case 'provision-failed':
       return (

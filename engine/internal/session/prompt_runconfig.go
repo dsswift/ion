@@ -109,7 +109,7 @@ func (m *Manager) buildRunConfig(
 		runCfg.SecurityCfg = m.config.Security
 	}
 
-	// Workspace containment: the engine's baseline worktree/bench rules
+	// Workspace containment: the engine's baseline worktree rules
 	// (internal/workspaces), enabled by default and disabled only by an
 	// explicit SecurityConfig.WorkspaceContainment=false. Threaded per-run
 	// like the permission engine so the tool loop's check is nil-safe. One
@@ -123,6 +123,12 @@ func (m *Manager) buildRunConfig(
 	if secCfg.WorkspaceContainmentEnabled() {
 		runCfg.WorkspaceChecker = m.workspaceChecker()
 	}
+
+	// Client tool gate: wired only for sessions whose EngineConfig.ToolGate
+	// opted in (see session/tool_gate.go). Runs in the tool loop after the
+	// permission engine and workspace containment, before sandbox wrapping
+	// and extension tool_call hooks.
+	m.wireToolGate(s, key, runCfg)
 
 	// G07/D-009: Enterprise tool restrictions apply to EVERY session
 	// unconditionally — enterprise policy is not an extension concern, so
@@ -225,6 +231,10 @@ func (m *Manager) buildRunConfig(
 	}
 
 	m.wireExternalTools(s, key, extGroup, mcpConns, runCfg)
+	// Client-declared tools (EngineConfig.ToolGate.ClientTools) join the tool
+	// list after MCP and extension tools so their router wrap sees the full
+	// prior routing chain. See wireClientTools in session/tool_gate.go.
+	m.wireClientTools(s, key, runCfg)
 	// Pass extGroup to the spawner so it can fire agent_start / agent_end on
 	// the parent extension host. When the caller opted out of extensions
 	// (skipExtensions), pass nil so the spawner's own guard short-circuits

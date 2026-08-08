@@ -58,11 +58,21 @@ vi.mock('../../preferences', () => ({
   getEffectiveTabGroups: () => [],
 }))
 
+// The convert gate subscribes to `conversationPanes` to answer "is this tab
+// busy?", so the mocked store has to serve it through the selector like the
+// real one does. `panes` is reassigned per test.
+let panes: Map<string, unknown>
+
 vi.mock('../../stores/sessionStore', () => ({
   useSessionStore: Object.assign(
-    (selector: (state: { moveTabToGroup: () => void; toggleTabGroupPin: () => void }) => unknown) => selector({
+    (selector: (state: {
+      moveTabToGroup: () => void
+      toggleTabGroupPin: () => void
+      conversationPanes: Map<string, unknown>
+    }) => unknown) => selector({
       moveTabToGroup: () => {},
       toggleTabGroupPin: () => {},
+      conversationPanes: panes,
     }),
     { getState: () => ({ convertToWorktree: mocks.convertToWorktree }) },
   ),
@@ -77,13 +87,22 @@ vi.mock('../../rendererLogger', () => ({
 
 import { TabContextMenu } from '../TabStripTabContextMenu'
 
-const tab = {
+const baseTab = {
   id: 'tab-1',
   workingDirectory: '/repo',
   worktree: null,
-} as TabState
+  status: 'idle',
+  bashExecuting: false,
+} as unknown as TabState
 
-function renderMenu() {
+/** A pane whose single instance carries the given status fields / agents. */
+function paneWith(inst: Record<string, unknown>) {
+  return new Map<string, unknown>([
+    ['tab-1', { instances: [{ id: 'main', statusFields: { state: 'idle' }, agentStates: [], ...inst }] }],
+  ])
+}
+
+function renderMenu(over: Partial<TabState> = {}) {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
@@ -91,7 +110,7 @@ function renderMenu() {
     root.render(
       <TabContextMenu
         anchor={{ x: 10, y: 10 }}
-        tab={tab}
+        tab={{ ...baseTab, ...over }}
         onNewTabInDir={() => {}}
         onFinishWork={() => {}}
         onClose={() => {}}
@@ -117,6 +136,7 @@ beforeEach(() => {
   document.body.appendChild(portalTarget)
   mocks.convertToWorktree.mockClear()
   mocks.rWarn.mockClear()
+  panes = new Map()
   gitChanges = vi.fn()
   window.ion = {
     gitIsRepo: vi.fn().mockResolvedValue({ isRepo: true }),
@@ -192,6 +212,127 @@ describe('TabContextMenu convert to worktree', () => {
       'convert-to-worktree dirtiness probe failed; allowing conversion',
       expect.objectContaining({ tab_id: 'tab-1' }),
     )
+
+    act(() => { root.unmount() })
+    container.remove()
+  })
+})
+
+/**
+ * Converting relocates the tab, and relocation restarts the engine session
+ * (setTabWorkingDirectory -> relocateTabSession -> restartTabEntry ->
+ * stopSession). Converting a busy tab therefore aborts its in-flight run, so
+ * the row has to refuse while work is outstanding.
+ *
+ * This arm is independent of the dirtiness arm above and neither subsumes the
+ * other: a running agent that has not yet written a file leaves the checkout
+ * clean, so the dirtiness probe alone reports the row as available while
+ * conversion is still destructive. Every case below therefore uses a CLEAN
+ * repository — that is precisely the combination the dirtiness gate misses.
+ */
+describe('TabContextMenu convert to worktree — busy tab', () => {
+  it('blocks conversion while the orchestrator is running', async () => {
+    gitChanges.mockResolvedValue({ files: [] })
+    const { container, root } = renderMenu({ status: 'running' })
+
+    await settle()
+
+    const button = convertButton()
+    expect(button?.textContent).toBe('Convert to worktree (tab is busy)')
+    expect(button?.disabled).toBe(true)
+
+    act(() => { root.unmount() })
+    container.remove()
+  })
+
+  it('blocks conversion while the tab is connecting', async () => {
+    gitChanges.mockResolvedValue({ files: [] })
+    const { container, root } = renderMenu({ status: 'connecting' })
+
+    await settle()
+
+    expect(convertButton()?.disabled).toBe(true)
+
+    act(() => { root.unmount() })
+    container.remove()
+  })
+
+  it('blocks conversion while a user bash command is executing', async () => {
+    gitChanges.mockResolvedValue({ files: [] })
+    const { container, root } = renderMenu({ bashExecuting: true })
+
+    await settle()
+
+    expect(convertButton()?.disabled).toBe(true)
+
+    act(() => { root.unmount() })
+    container.remove()
+  })
+
+  it('blocks conversion when an instance runs though the tab reads idle', async () => {
+    // The case a tab.status-only guard misses.
+    gitChanges.mockResolvedValue({ files: [] })
+    panes = paneWith({ statusFields: { state: 'running' } })
+    const { container, root } = renderMenu()
+
+    await settle()
+
+    const button = convertButton()
+    expect(button?.textContent).toBe('Convert to worktree (tab is busy)')
+    expect(button?.disabled).toBe(true)
+
+    act(() => { root.unmount() })
+    container.remove()
+  })
+
+  it('blocks conversion while a dispatched background agent is running', async () => {
+    gitChanges.mockResolvedValue({ files: [] })
+    panes = paneWith({ agentStates: [{ status: 'running' }] })
+    const { container, root } = renderMenu()
+
+    await settle()
+
+    expect(convertButton()?.disabled).toBe(true)
+
+    act(() => { root.unmount() })
+    container.remove()
+  })
+
+  it('blocks conversion while a background shell is outstanding', async () => {
+    gitChanges.mockResolvedValue({ files: [] })
+    panes = paneWith({ statusFields: { state: 'idle', backgroundShells: 1 } })
+    const { container, root } = renderMenu()
+
+    await settle()
+
+    expect(convertButton()?.disabled).toBe(true)
+
+    act(() => { root.unmount() })
+    container.remove()
+  })
+
+  it('names busy rather than dirt when the tab is both', async () => {
+    // Busy outranks: it is the more urgent reason and the one the operator can
+    // act on immediately (interrupt, or wait for idle).
+    gitChanges.mockResolvedValue({ files: [{ path: 'changed.ts' }] })
+    const { container, root } = renderMenu({ status: 'running' })
+
+    await settle()
+
+    expect(convertButton()?.textContent).toBe('Convert to worktree (tab is busy)')
+
+    act(() => { root.unmount() })
+    container.remove()
+  })
+
+  it('does not dispatch the action when the busy row is clicked', async () => {
+    gitChanges.mockResolvedValue({ files: [] })
+    const { container, root } = renderMenu({ status: 'running' })
+
+    await settle()
+
+    act(() => { convertButton()!.click() })
+    expect(mocks.convertToWorktree).not.toHaveBeenCalled()
 
     act(() => { root.unmount() })
     container.remove()

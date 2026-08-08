@@ -247,6 +247,25 @@ type EngineRuntimeConfig struct {
 	// continuation nudge. Pointer so engine.json can fully omit the block
 	// and inherit the built-in defaults. See types.EarlyStopDefaults().
 	EarlyStopContinue *EarlyStopContinueConfig `json:"earlyStopContinue,omitempty"`
+	// Thinking is the engine-wide DEFAULT extended-thinking configuration —
+	// the lowest layer of a three-layer precedence chain:
+	//
+	//	engine.json default  (this field, weakest)
+	//	  ← EngineConfig.Thinking   (per-session, set at start_session)
+	//	    ← send_prompt.thinkingEffort (per-prompt, strongest)
+	//
+	// Applied in Manager.applyConfigDefaults ONLY when the run has no
+	// thinking configuration from either stronger layer, exactly as
+	// DefaultModel / MaxTurns / MaxBudgetUsd resolve. A client that sends
+	// the explicit "off" sentinel on a prompt clears thinking for that run
+	// and this default does not resurrect it.
+	//
+	// Pointer so engine.json can omit the block entirely (nil = the engine
+	// emits no thinking directive unless a caller asks for one, which is
+	// the historical behavior). Per-model capability still governs: a model
+	// that declares no thinkingMode receives no directive regardless of
+	// this value — see providers.resolveThinking.
+	Thinking *ThinkingConfig `json:"thinking,omitempty"`
 	// Webhooks configures the inbound HTTP webhook listener that
 	// extensions register routes against. Pointer so engine.json can
 	// omit the block; the listener is OFF by default and auto-enables
@@ -410,6 +429,14 @@ type LoggingConfig struct {
 	// exceeds this size, the oldest lines are dropped and an ERROR is logged.
 	// Zero means use the compiled default (50 MB).
 	EgressSpoolMaxBytes int64 `json:"egressSpoolMaxBytes,omitempty"`
+
+	// EgressBufferMaxRecords caps the in-memory staging buffer of records
+	// awaiting their first flush. When the sink is unreachable the durable
+	// overflow path is the on-disk spool (EgressSpoolMaxBytes), so this cap
+	// exists to stop a dead sink from growing the engine's heap instead:
+	// overflow evicts oldest-first and is reported at ERROR on the next flush.
+	// Zero means use the compiled default (50000 records, ~17 MB).
+	EgressBufferMaxRecords int `json:"egressBufferMaxRecords,omitempty"`
 
 	// EgressManagedByClient suppresses the engine's OWN egress forwarder while
 	// leaving every other egress field (EgressTargets, EgressEndpoint,
@@ -678,8 +705,7 @@ type SecurityConfig struct {
 
 	// WorkspaceContainment controls the engine's baseline workspace rules:
 	// a conversation whose cwd is a registered worktree may not write into
-	// the base repository it was cut from or into a sibling worktree, and an
-	// integration bench refuses file writes and git history commands (see
+	// the base repository it was cut from or into a sibling worktree (see
 	// internal/workspaces). Nil/absent means ENABLED — the containment is
 	// safety mechanism, not an opt-in feature, so it is on by default and a
 	// consumer that genuinely wants raw behavior sets false explicitly.

@@ -32,8 +32,15 @@ Start a new engine session.
 | `workingDirectory` | string   | yes      | Working directory for the session    |
 | `sessionId`        | string   | no       | Resume an existing session           |
 | `maxTokens`        | number   | no       | Max output tokens per response       |
-| `thinking`         | object   | no       | Extended thinking config (`enabled`, `budgetTokens`) |
+| `thinking`         | object   | no       | Extended thinking config (`enabled`, `effort`, `budgetTokens`, `streamDeltas`, `persist`). A per-session default that overrides the engine-wide [`thinking` block in `engine.json`](../configuration/engine-json.md#thinking) and is itself overridden by a per-prompt `thinkingEffort`. |
 | `systemHint`       | string   | no       | Additional system prompt content     |
+| `workspaceWatchIgnore` | string[] | no   | Replace the engine's default watcher ignore globs |
+| `claudeCompat`     | boolean  | no       | Enable Claude Code compatibility (e.g. `~/.claude/skills/`) |
+| `forceNewConversation` | boolean | no    | Mint a new conversation even when the key has a stored binding |
+| `parentConversationId` | string | no     | Record descent from a prior conversation on a fresh file |
+| `pinned`           | boolean  | no       | Exempt this session from the orphaned-session reaper |
+| `clientWorkspaceContext` | object | no    | Client-supplied workspace context for the session. Overridden per-prompt by `send_prompt.clientWorkspaceContext`. Fields: `kind` (string), `cwd` (string), `bench` (object, structured bench facts), `data` (object, generic consumer data), `text` (string, prose for system prompt). |
+| `toolGate`         | object   | no       | Opt-in client tool gate: `{enabled, tools?, timeoutMs?, timeoutDecision?, clientTools?, clientToolTimeoutMs?}`. `clientTools` declares tools the client executes over the wire — the third tool provision path beside MCP servers and extensions. See [tool_gate_response](#tool_gate_response). |
 
 ```json
 {"cmd":"start_session","key":"abc-123","config":{"profileId":"default","extensions":["~/.ion/extensions/my-ext"],"workingDirectory":"/home/user/project"},"requestId":"r1"}
@@ -64,7 +71,7 @@ Send a user message to an active session.
 | `planModePrompt`            | string   | no       | Custom system prompt for plan mode. When non-empty, the engine uses this string verbatim instead of building the default from `buildPlanModePrompt`. On the codex backend it is sent as the plan collaboration mode's `developer_instructions` (a generic engine default applies when empty). See [Plan mode prose overrides](../sessions/lifecycle.md#plan-mode-prose-overrides) and [Plan mode on delegated-CLI backends](../sessions/lifecycle.md#plan-mode-on-delegated-cli-backends). |
 | `planModeReentry`           | boolean  | no       | When `true`, prepends re-entry guidance (read the existing plan before making changes). Set by the session manager when plan mode is re-enabled on a session that has a prior plan file. |
 | `implementationPhase`       | boolean  | no       | Suppresses the `EnterPlanMode` sentinel-tool injection. Set on the "implement" half of a plan-then-implement flow so the model cannot re-propose plan-mode entry. See ADR-004. |
-| `thinkingEffort`            | string   | no       | Per-prompt extended-thinking effort for this run: `"low"`, `"medium"`, or `"high"`. `""` or `"off"` means no thinking directive for this prompt, overriding any session default to off. A live per-conversation control — a client changes the level and it takes effect on the very next prompt with no session restart (mirrors `implementationPhase`). The engine maps a non-empty value onto `RunOptions.Thinking`; the provider then resolves the per-model mechanism (Anthropic adaptive `effort`, OpenAI `reasoning_effort`, Gemini `thinkingConfig`). A model that declares no thinking mechanism receives no directive. See the [model capability fields](../configuration/models.md#providersidmodelsname) (`thinkingMode` / `thinkingEfforts`) a client uses to decide whether to offer this control. |
+| `thinkingEffort`            | string   | no       | Per-prompt extended-thinking effort for this run: `"low"`, `"medium"`, `"high"`, `"xhigh"`, or `"max"` (ascending), or `"adaptive"` to request reasoning while letting a self-regulating model choose its own depth. A live per-conversation control — a client changes the level and it takes effect on the very next prompt with no session restart (mirrors `implementationPhase`). **Three distinct states.** A level sets thinking for the run. The literal `"off"` **clears** it, beating both the session default and the engine-wide [`engine.json` default](../configuration/engine-json.md#thinking). An **absent** field means "no opinion" and inherits whichever default is configured — so a client that wants thinking off must send `"off"` rather than omitting the field, or it will inherit the default. The engine maps a level onto `RunOptions.Thinking`; the provider then resolves the per-model mechanism (Anthropic adaptive `effort`, OpenAI `reasoning_effort`, Gemini `thinkingConfig`). A model that declares no thinking mechanism receives no directive. See the [model capability fields](../configuration/models.md#providersidmodelsname) (`thinkingMode` / `thinkingEfforts`) a client uses to decide whether to offer this control. |
 | `enterPlanModeDescription`  | string   | no       | Harness-supplied description prose for the `EnterPlanMode` sentinel tool. When non-empty, the engine forwards it verbatim as the tool description. Empty falls back to the engine's one-line neutral default. Per [ADR-004](../architecture/adr/004-enter-plan-mode-prose-in-harness.md). |
 | `planModeSparseReminder`    | string   | no       | Harness-supplied text for the per-turn plan-mode sparse reminder. When non-empty, the engine injects this verbatim instead of building the reminder from the plan file. Empty inherits the engine default (`buildPlanModeSparseReminder`). See [Plan mode prose overrides](../sessions/lifecycle.md#plan-mode-prose-overrides). |
 | `bashAllowlistAdditionsForThisPrompt` | string[] | no | Per-prompt additions to the plan-mode Bash command allowlist. The engine unions these with the session-scoped allowlist (`set_plan_mode.planModeAllowedBashCommands`) when building the run-time tool list, then drops them at run end — the session allowlist is never mutated. Intended carrier: slash commands whose YAML frontmatter declares additional bash permissions for one turn (e.g. `/ion--review-changes` needing `gh pr diff`). See § [`set_plan_mode` → Configuration layers](#set_plan_mode) for the three-layer composition model. |
@@ -73,6 +80,7 @@ Send a user message to an active session.
 | `compactEnabled`            | boolean  | no       | Gate for proactive compaction on this prompt. `false` disables proactive compaction; reactive compaction still fires on provider errors. |
 | `compactSummaryEnabled`     | boolean  | no       | Whether LLM-based summarization is used during compaction for this prompt. |
 | `compactMemoryEnabled`      | boolean  | no       | Whether the background session memory summarizer is active for this prompt. |
+| `clientWorkspaceContext`    | object   | no       | Per-prompt workspace context override. Takes precedence over the session-level `EngineConfig.clientWorkspaceContext`. Fields: `kind` (string), `cwd` (string), `bench` (object, structured bench facts), `data` (object, generic consumer data), `text` (string, prose for system prompt). The engine routes `bench` to `PromptContext.Bench` and `data` to `PromptContext.Client` for hook payloads. |
 | `resolveSlash`              | boolean  | no       | When `true`, signals that `text` is a slash-command invocation (`/name args`) the engine should resolve and expand rather than treat as plain content. The engine looks the command up across the conventional roots in precedence order — `{workingDir}/.ion/commands`, `~/.ion/commands`, `{workingDir}/.ion/skills/<name>/SKILL.md`, `~/.ion/skills/<name>/SKILL.md`, then (only when Claude compatibility is enabled) `{workingDir}/.claude/commands`, `~/.claude/commands`, `~/.claude/skills/<name>/SKILL.md` — substitutes `$ARGUMENTS`, feeds the **expanded** body to the model (SKILL.md bodies are prefixed with their base directory so relative companion files resolve), and persists the **raw** invocation as the displayed user turn. Default `false`; existing clients sending `/`-prefixed content as ordinary text are unaffected because they do not set this flag. |
 
 ```json
@@ -373,6 +381,37 @@ Respond to a permission request from the engine. Fire-and-forget.
 
 ```json
 {"cmd":"permission_response","key":"abc-123","questionId":"q1","optionId":"allow_once"}
+```
+
+---
+
+### tool_gate_response
+
+Answer an `engine_tool_gate_request` event (the opt-in client tool gate — see `EngineConfig.toolGate` in [start_session](#start_session)). Fire-and-forget. This is a machine decision made by client code, not a human prompt.
+
+The request's `gateKind` selects which fields apply:
+
+- **`"policy"`** (or absent) — the engine asks whether a gated tool call may execute. Reply with `gateDecision` (and `gateReason` for a deny). A `gateDecision` of anything other than `"deny"` — including absent — resolves to allow: an unrecognized decision must not invent a refusal.
+- **`"tool"`** — the model called one of the session's declared `clientTools`; the client executes it and replies with the result in `gateContent` (`gateIsError` marks a failure).
+
+The blocked call waits until this response arrives or the session's declared timeout applies its fallback (`timeoutDecision` for policy; a tool error for client tools). A late response is logged and dropped.
+
+| Field           | Type                   | Required | Description                                                            |
+|-----------------|------------------------|----------|------------------------------------------------------------------------|
+| `cmd`           | `"tool_gate_response"` | yes      | Command discriminator                                                  |
+| `key`           | string                 | yes      | Session key                                                            |
+| `gateRequestId` | string                 | yes      | Correlator echoed from the `engine_tool_gate_request` event            |
+| `gateDecision`  | string                 | no       | Policy kind: `"allow"` or `"deny"`; anything else (or absent) resolves to allow |
+| `gateReason`    | string                 | no       | Policy kind: model-facing message a deny carries into the tool result  |
+| `gateContent`   | string                 | no       | Tool kind: the executed tool's result text                             |
+| `gateIsError`   | boolean                | no       | Tool kind: marks `gateContent` as a failure result                     |
+
+```json
+{"cmd":"tool_gate_response","key":"abc-123","gateRequestId":"tool-gate-1730000000000-1","gateDecision":"deny","gateReason":"Refused: this path is frozen during release week."}
+```
+
+```json
+{"cmd":"tool_gate_response","key":"abc-123","gateRequestId":"tool-gate-1730000000000-2","gateContent":"contents of src/x.go at pinned sha 89abcde","gateIsError":false}
 ```
 
 ---
@@ -957,7 +996,7 @@ Clear the provider CLI's stored credential and re-probe so the provider reflects
 
 Resolve a tier name from [`~/.ion/models.json`](../configuration/models.md#tiers) to the model it is configured for, plus that tier's fallback chain.
 
-The engine owns that file's semantics, so consumers ask rather than parsing it themselves. This matters most for a consumer that *gates a feature* on a tier existing: resolution is a pass-through for an unrecognised name (an undefined `standard` resolves to the literal string `"standard"`, which then fails to route at dispatch time), so the resolved value alone cannot distinguish "configured" from "unknown". The `configured` flag is that distinction.
+The engine owns that file's semantics, so consumers ask rather than parsing it themselves. This matters most for a consumer that *gates a feature* on a tier existing: resolution is a pass-through for an unrecognised name. When no provider resolves that name, a run falls back to its configured default model and emits `engine_model_fallback`; the resolved value alone still cannot distinguish "configured" from "unknown". The `configured` flag is that distinction.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -979,6 +1018,49 @@ The engine owns that file's semantics, so consumers ask rather than parsing it t
 | `configured` | `false` when no such tier is defined. Treat `model` as meaningless in that case and refuse the gated operation, rather than dispatching a run that cannot route |
 
 The command is rejected at parse time when `text` is absent or empty: the tier name is the entire request.
+
+---
+
+### list_model_tiers
+
+Return a complete snapshot of configured model tiers. Each entry normalizes both supported `models.json` forms into `{ name, model, fallbacks }`; `fallbacks` is always a list.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"list_model_tiers"` | yes | Command discriminator |
+| `requestId` | string | no | Correlates with ServerResult |
+
+**Response:** `ServerResult` with `data: { tiers: Array<{ name: string, model: string, fallbacks: string[] }> }`. The requester also receives `engine_model_tiers`; it is a complete snapshot, so consumers replace local state rather than merge it.
+
+---
+
+### set_model_tier
+
+Create or replace one tier. Names are normalized to lowercase. A tier with no fallbacks persists in compact string form; a tier with fallbacks persists as `{ "model": "...", "fallbacks": [...] }`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"set_model_tier"` | yes | Command discriminator |
+| `text` | string | yes | Tier name |
+| `model` | string | yes | Primary model |
+| `fallbacks` | string[] | no | Ordered fallback models |
+| `requestId` | string | no | Correlates with ServerResult |
+
+Successful writes broadcast a complete `engine_model_tiers` snapshot to every connected client.
+
+---
+
+### remove_model_tier
+
+Remove one configured tier.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"remove_model_tier"` | yes | Command discriminator |
+| `text` | string | yes | Tier name |
+| `requestId` | string | no | Correlates with ServerResult |
+
+Successful removals broadcast a complete `engine_model_tiers` snapshot to every connected client. Removing an unknown tier returns an error.
 
 ---
 

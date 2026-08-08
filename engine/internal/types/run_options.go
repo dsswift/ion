@@ -83,16 +83,28 @@ type RunOptions struct {
 	// this field. Each entry is a structured server spec (see
 	// backend.ToolServer.McpServerSpec). Additive/omitempty; not part of the
 	// cross-language contract manifest (engine-internal RunOptions field).
-	CliMcpServers  []map[string]interface{} `json:"cliMcpServers,omitempty"`
-	MaxTokens      int                      `json:"maxTokens,omitempty"`
-	Thinking       *ThinkingConfig          `json:"thinking,omitempty"`
-	MaxRetries     int                      `json:"maxRetries,omitempty"`
-	FallbackChain  []string                 `json:"fallbackChain,omitempty"`
-	Persistent     bool                     `json:"persistent,omitempty"`
-	PlanMode       bool                     `json:"planMode,omitempty"`
-	PlanModeTools  []string                 `json:"planModeTools,omitempty"`
-	PlanFilePath   string                   `json:"planFilePath,omitempty"`
-	PlanModePrompt string                   `json:"planModePrompt,omitempty"`
+	CliMcpServers []map[string]interface{} `json:"cliMcpServers,omitempty"`
+	MaxTokens     int                      `json:"maxTokens,omitempty"`
+	Thinking      *ThinkingConfig          `json:"thinking,omitempty"`
+	// ThinkingCleared records that a caller EXPLICITLY turned thinking off
+	// for this run (the per-prompt "off" sentinel), as distinct from simply
+	// not having expressed an opinion. Both states leave Thinking nil, so
+	// without this flag the engine-wide engine.json default would resurrect
+	// thinking on precisely the runs a client just disabled it for.
+	//
+	// Set only by the per-prompt override arm in session.buildRunOptions and
+	// read only by session.applyConfigDefaults. Engine-internal: RunOptions
+	// is not part of the cross-language contract manifest, so this field is
+	// invisible to wire consumers, who express the same intent by sending
+	// thinkingEffort:"off".
+	ThinkingCleared bool     `json:"thinkingCleared,omitempty"`
+	MaxRetries      int      `json:"maxRetries,omitempty"`
+	FallbackChain   []string `json:"fallbackChain,omitempty"`
+	Persistent      bool     `json:"persistent,omitempty"`
+	PlanMode        bool     `json:"planMode,omitempty"`
+	PlanModeTools   []string `json:"planModeTools,omitempty"`
+	PlanFilePath    string   `json:"planFilePath,omitempty"`
+	PlanModePrompt  string   `json:"planModePrompt,omitempty"`
 	// PlanModeSparseReminder is the harness-supplied text for the sparse
 	// plan-mode reminder injected periodically during plan-mode runs.
 	// Empty (the default) means the engine builds the reminder via

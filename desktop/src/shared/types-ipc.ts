@@ -178,6 +178,8 @@ export const IPC = {
   // pair that lets a conversation outlive its worktree.
   GIT_WORKTREE_LAND: 'ion:git-worktree-land',
   GIT_WORKTREE_SYNC: 'ion:git-worktree-sync',
+  // Bulk sync: every worktree of a repo, sequentially, with rerere replay.
+  GIT_WORKTREE_SYNC_ALL: 'ion:git-worktree-sync-all',
   GIT_WORKTREE_RETIRE: 'ion:git-worktree-retire',
   // Read-only blast-radius preview for a retire: which bench directories would
   // this retire remove? Asked BEFORE the retire, so the caller can refuse when
@@ -199,6 +201,9 @@ export const IPC = {
   GIT_WORKTREE_SEED_TITLE: 'ion:git-worktree-seed-title',
   GIT_WORKTREE_SET_TITLE: 'ion:git-worktree-set-title',
   GIT_WORKTREE_REGISTRATION: 'ion:git-worktree-registration',
+  // Set or clear the operator's workflow stage on a worktree (registry-scoped;
+  // see shared/types-git.ts WorkStage).
+  GIT_WORKTREE_SET_STAGE: 'ion:git-worktree-set-stage',
   // Re-run provisioning for a worktree whose dependency state the operator
   // believes is wrong. Same code path as creation.
   GIT_WORKTREE_REPROVISION: 'ion:git-worktree-reprovision',
@@ -208,11 +213,11 @@ export const IPC = {
   // Integration workspace (the bench): read the workspace list, mutate the
   // member set, and assemble. Assembly is always operator-triggered.
   BENCH_LIST: 'ion:bench-list',
+  BENCH_RESOLVE_PATH: 'ion:bench-resolve-path',
   BENCH_ENSURE: 'ion:bench-ensure',
   BENCH_ADD_MEMBER: 'ion:bench-add-member',
   BENCH_REMOVE_MEMBER: 'ion:bench-remove-member',
   BENCH_SET_ENABLED: 'ion:bench-set-enabled',
-  BENCH_SET_REVIEW: 'ion:bench-set-review',
   BENCH_SET_ORDER: 'ion:bench-set-order',
   BENCH_UPDATE_MEMBER: 'ion:bench-update-member',
   BENCH_UPDATE_ALL: 'ion:bench-update-all',
@@ -224,6 +229,11 @@ export const IPC = {
   BENCH_RERERE_COUNT: 'ion:bench-rerere-count',
   BENCH_RERERE_FORGET: 'ion:bench-rerere-forget',
   BENCH_RERERE_DISCARD_ALL: 'ion:bench-rerere-discard-all',
+  // Bench-verification recovery: materialise the failing tree for the
+  // AI-assisted analysis conversation, and the targeted discard-and-reassemble
+  // verb the recovery dialog offers.
+  BENCH_PREPARE_VERIFICATION_ANALYSIS: 'ion:bench-prepare-verification-analysis',
+  BENCH_DISCARD_VERIFICATION_RECORDINGS: 'ion:bench-discard-verification-recordings',
 
   // Filesystem operations
   FS_READ_DIR: 'ion:fs-read-dir',
@@ -325,6 +335,10 @@ export const IPC = {
   // Model & provider management
   LIST_MODELS: 'ion:list-models',
   MODEL_TIER_RESOLVE: 'ion:model-tier-resolve',
+  LIST_MODEL_TIERS: 'ion:list-model-tiers',
+  SET_MODEL_TIER: 'ion:set-model-tier',
+  REMOVE_MODEL_TIER: 'ion:remove-model-tier',
+  MODEL_TIERS_UPDATED: 'ion:model-tiers-updated',
   STORE_CREDENTIAL: 'ion:store-credential',
   REFRESH_MODELS: 'ion:refresh-models',
 

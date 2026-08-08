@@ -7,7 +7,7 @@ import type { ProjectedRendererTab } from '../../../shared/remote-projection-typ
  * desktop refuses to close on Cmd+W — killing the engine session and orphaning
  * running agents or outstanding background bash commands.
  *
- * These pin the wire-shape equivalent of the renderer's `evaluateCloseGuard`:
+ * These pin the wire-shape equivalent of the renderer's `evaluateSessionBusyGuard`:
  * same rule, same three signals (orchestrator running, running agents,
  * outstanding shells), read from the snapshot instead of conversationPanes.
  */

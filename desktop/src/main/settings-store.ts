@@ -5,6 +5,9 @@ import { log as _log, warn as _warn } from './logger'
 import { atomicWriteFileSync } from './utils/atomicWrite'
 import { encryptSensitiveSettings, decryptSensitiveSettings } from './utils/secretStore'
 import { expandHome } from './git/ignore-paths'
+import type { ThinkingConfig } from '../shared/types-engine'
+import type { ThinkingEffort } from '../shared/types-session'
+import { isThinkingEffort } from '../shared/thinking-options'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -63,14 +66,10 @@ export const SETTINGS_DEFAULTS = {
   // refreshes on focus, tab switch, and manual refresh. Supports ~ and $HOME
   // expansion. Default excludes ~/.ion (high-write log/conversation storage).
   gitWatcherIgnoredDirectories: ['~/.ion'] as string[],
-  // Global gate for extended thinking / reasoning. Default OFF — Ion is
-  // API-billed, where thinking tokens bill as output tokens at full rate and
-  // can multiply a turn's cost several-fold. When OFF, no prompt carries a
-  // thinking directive and the per-conversation thinking control is hidden on
-  // both clients. When ON, the per-conversation control appears and the
-  // selected effort rides on each prompt. See StatusBarThinkingPicker.tsx and
-  // the engine's resolveThinking helper.
-  thinkingEnabled: false,
+  // Per-conversation thinking effort default. 'high' is the desktop's
+  // opinionated default; users can override in Settings. Per-conversation
+  // changes live on the instance (StatusBarThinkingPicker).
+  defaultThinkingEffort: 'high' as ThinkingEffort,
   // Agent Team Visualizer (desktop-only window; none of these keys are iOS
   // projectable). atvSeeds maps an extension scope (engineProfileId, or
   // 'local' for plain tabs) to a user-chosen office seed string.
@@ -171,16 +170,57 @@ export function shouldStreamThinkingToRemote(): boolean {
 }
 
 /**
- * Resolve the global `thinkingEnabled` gate from settings.json. Defaults to
- * `false` (thinking OFF) when the key is absent or not a boolean — matching
- * SETTINGS_DEFAULTS. This is the hard gate: when false the renderer hides the
- * per-conversation thinking control and never sends `thinkingEffort` on a
- * prompt. Not hot-path (read at prompt-submit time, not per-delta), so no
- * cache is needed.
+ * Resolve the user's default per-conversation thinking effort from
+ * settings.json. This is the level a NEW conversation starts at; the user can
+ * still change any individual conversation with the status-bar picker.
+ *
+ * Defaults to 'high' when absent or not one of the four valid levels, matching
+ * SETTINGS_DEFAULTS. 'high' is the desktop's opinionated default.
  */
-export function shouldEnableThinking(): boolean {
+export function readDefaultThinkingEffort(): ThinkingEffort {
   const raw = readSettings()
-  return raw.thinkingEnabled === true
+  const v = raw.defaultThinkingEffort
+  // 'adaptive' is deliberately NOT accepted here: this preference seeds
+  // effort-based models, and adaptive models derive their own default from
+  // capability metadata (see defaultEffortForMode). A hand-edited 'adaptive'
+  // would otherwise be sent to a model that cannot use it.
+  if (isThinkingEffort(v) && v !== 'adaptive') return v
+  return 'high'
+}
+
+/**
+ * Resolve the per-session thinking config the desktop hands the engine on
+ * `start_session` (`EngineConfig.thinking`).
+ *
+ * Returns `undefined` when the global gate is off, which is deliberate rather
+ * than a `{enabled:false}` block: an omitted field leaves the engine's own
+ * `engine.json` default in play for anything that is not this desktop's
+ * conversation, whereas the per-prompt `thinkingEffort` the renderer sends on
+ * every submit is what actually decides each run. The session default exists
+ * so a run dispatched WITHOUT a per-prompt effort — an extension's
+ * `ctx.sendPrompt`, a scheduled job, a resumed session's first engine-side
+ * turn — still reflects the user's setting instead of silently falling back
+ * to the host-wide default.
+ *
+ * `streamDeltas` is deliberately left UNSET so the engine's default-ON
+ * emission stands. It is tempting to wire it to the `streamThinkingToRemote`
+ * preference, but the two gate different hops: `streamDeltas` suppresses the
+ * engine's per-token emission on the engine socket itself
+ * (`runloop_stream.go`), which is the feed the desktop's OWN thinking display
+ * renders from, whereas `streamThinkingToRemote` drops the delta only at the
+ * desktop→iOS forward path (`event-wiring.ts`). Wiring them together would
+ * mean a user trimming phone bandwidth silently loses live thinking on their
+ * desktop.
+ */
+export function resolveSessionThinkingConfig(): ThinkingConfig | undefined {
+  const effort = readDefaultThinkingEffort()
+  if (effort === 'off') {
+    log('thinking config: enabled but default level off, omitting session default')
+    return undefined
+  }
+  const cfg: ThinkingConfig = { enabled: true, effort }
+  log('thinking config: resolved session default', { reason: effort })
+  return cfg
 }
 
 /**

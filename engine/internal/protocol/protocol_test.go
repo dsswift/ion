@@ -58,6 +58,16 @@ func TestParseClientCommand_ValidCommands(t *testing.T) {
 			cmd:  "dialog_response",
 		},
 		{
+			name: "tool_gate_response deny with reason",
+			line: `{"cmd":"tool_gate_response","key":"s1","gateRequestId":"tool-gate-1-1","gateDecision":"deny","gateReason":"bench edit refused"}`,
+			cmd:  "tool_gate_response",
+		},
+		{
+			name: "tool_gate_response allow without decision",
+			line: `{"cmd":"tool_gate_response","key":"s1","gateRequestId":"tool-gate-1-2"}`,
+			cmd:  "tool_gate_response",
+		},
+		{
 			name: "command",
 			line: `{"cmd":"command","key":"s1","command":"status","args":"--verbose"}`,
 			cmd:  "command",
@@ -211,6 +221,14 @@ func TestParseClientCommand_MissingRequired(t *testing.T) {
 			line: `{"cmd":"abort"}`,
 		},
 		{
+			name: "tool_gate_response missing gateRequestId",
+			line: `{"cmd":"tool_gate_response","key":"s1","gateDecision":"deny"}`,
+		},
+		{
+			name: "tool_gate_response missing key",
+			line: `{"cmd":"tool_gate_response","gateRequestId":"tool-gate-1-3"}`,
+		},
+		{
 			name: "abort_agent missing key",
 			line: `{"cmd":"abort_agent","agentName":"coder"}`,
 		},
@@ -354,6 +372,91 @@ func TestParseClientCommand_SetPlanModeValues(t *testing.T) {
 	}
 	if len(result.AllowedTools) != 2 || result.AllowedTools[0] != "read" || result.AllowedTools[1] != "write" {
 		t.Errorf("allowedTools = %v, want [read write]", result.AllowedTools)
+	}
+}
+
+// TestParseClientCommand_ThinkingEffortValues pins the three-state decode of
+// send_prompt's thinkingEffort field. The distinction between "off" and an
+// absent field is load-bearing: the session layer treats "off" as an explicit
+// CLEAR (overriding any engine.json or session default) and an absent field as
+// "no opinion — inherit the default". A decoder that collapsed the two would
+// make the clear arm unreachable, so a conversation with thinking switched off
+// would silently inherit a configured default.
+//
+// Revert proof: a decoder change that dropped "off" fails the second case.
+func TestParseClientCommand_ThinkingEffortValues(t *testing.T) {
+	cases := []struct {
+		name string
+		line string
+		want string
+	}{
+		{"level is carried verbatim", `{"cmd":"send_prompt","key":"s1","text":"hi","thinkingEffort":"high"}`, "high"},
+		{"off sentinel survives decode", `{"cmd":"send_prompt","key":"s1","text":"hi","thinkingEffort":"off"}`, "off"},
+		{"absent decodes to empty", `{"cmd":"send_prompt","key":"s1","text":"hi"}`, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := ParseClientCommand(tc.line)
+			if result == nil {
+				t.Fatal("expected non-nil result")
+			}
+			if result.ThinkingEffort != tc.want {
+				t.Errorf("thinkingEffort = %q, want %q", result.ThinkingEffort, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseClientCommand_SendPromptWithClientWorkspaceContext(t *testing.T) {
+	line := `{"cmd":"send_prompt","key":"s1","text":"hello","clientWorkspaceContext":{"kind":"bench","cwd":"/bench/project","bench":{"benchPath":"/bench/project","members":["a","b"]},"data":{"extra":"info"},"text":"bench prose"}}`
+	result := ParseClientCommand(line)
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if result.ClientWorkspaceContext == nil {
+		t.Fatal("expected clientWorkspaceContext parsed")
+	}
+	ctx := result.ClientWorkspaceContext
+	if ctx.Kind != "bench" {
+		t.Errorf("kind = %q, want %q", ctx.Kind, "bench")
+	}
+	if ctx.Cwd != "/bench/project" {
+		t.Errorf("cwd = %q, want %q", ctx.Cwd, "/bench/project")
+	}
+	if ctx.Bench == nil {
+		t.Fatal("expected bench field parsed")
+	}
+	if _, ok := ctx.Bench["benchPath"]; !ok {
+		t.Error("expected bench to contain 'benchPath' key")
+	}
+	if ctx.Data == nil {
+		t.Fatal("expected data field parsed")
+	}
+	if ctx.Text != "bench prose" {
+		t.Errorf("text = %q, want %q", ctx.Text, "bench prose")
+	}
+}
+
+func TestClientWorkspaceContext_JSONRoundTrip(t *testing.T) {
+	line := `{"kind":"bench","cwd":"/bench/project","bench":{"benchPath":"/bench/project"},"data":{"extra":"val"},"text":"prose"}`
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(line), &raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := raw["bench"]; !ok {
+		t.Error("bench field must be present in JSON")
+	}
+	if _, ok := raw["data"]; !ok {
+		t.Error("data field must be present in JSON")
+	}
+
+	lineNoBench := `{"kind":"worktree","cwd":"/wt/project"}`
+	var raw2 map[string]any
+	if err := json.Unmarshal([]byte(lineNoBench), &raw2); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := raw2["bench"]; ok {
+		t.Error("bench field must be absent when not set (omitempty)")
 	}
 }
 
@@ -690,6 +793,31 @@ func TestParseClientCommand_ResolveModelTierMissingName(t *testing.T) {
 	raw := `{"cmd":"resolve_model_tier","requestId":"r6"}`
 	if cmd := ParseClientCommand(raw); cmd != nil {
 		t.Errorf("expected nil for resolve_model_tier without a tier name, got %+v", cmd)
+	}
+}
+
+func TestParseClientCommand_ModelTierAdministration(t *testing.T) {
+	set := ParseClientCommand(`{"cmd":"set_model_tier","text":"standard","model":"claude-sonnet-4-6","fallbacks":["claude-haiku-4-5"]}`)
+	if set == nil || set.Model != "claude-sonnet-4-6" || len(set.Fallbacks) != 1 {
+		t.Fatalf("set_model_tier parse = %+v", set)
+	}
+	if cmd := ParseClientCommand(`{"cmd":"list_model_tiers"}`); cmd == nil {
+		t.Fatal("list_model_tiers must accept an empty payload")
+	}
+	if cmd := ParseClientCommand(`{"cmd":"remove_model_tier","text":"standard"}`); cmd == nil {
+		t.Fatal("remove_model_tier must accept a tier name")
+	}
+}
+
+func TestParseClientCommand_SetModelTierRejectsInvalidFallbacks(t *testing.T) {
+	for _, raw := range []string{
+		`{"cmd":"set_model_tier","text":"standard","model":"claude-sonnet-4-6","fallbacks":"not-an-array"}`,
+		`{"cmd":"set_model_tier","text":"standard","model":"claude-sonnet-4-6","fallbacks":[1]}`,
+		`{"cmd":"set_model_tier","text":"standard"}`,
+	} {
+		if cmd := ParseClientCommand(raw); cmd != nil {
+			t.Errorf("invalid set_model_tier parsed: %+v", cmd)
+		}
 	}
 }
 

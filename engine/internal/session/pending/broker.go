@@ -24,15 +24,28 @@ type EarlyStopReply struct {
 	ContinueMessage      string
 }
 
-// Broker manages pending permission, dialog, elicitation, and early-stop
-// request maps. Each map type uses a buffered channel so callers can block
-// until the response arrives.
+// ToolGateReply carries a client's answer to an engine_tool_gate_request
+// event. For a "policy" request, Decision is "allow" or "deny" and Reason is
+// the model-facing message a deny carries into the tool result. For a "tool"
+// request (a client-declared tool call), Content carries the tool result text
+// and IsError marks it as a failure.
+type ToolGateReply struct {
+	Decision string
+	Reason   string
+	Content  string
+	IsError  bool
+}
+
+// Broker manages pending permission, dialog, elicitation, early-stop, and
+// tool-gate request maps. Each map type uses a buffered channel so callers can
+// block until the response arrives.
 type Broker struct {
 	mu          sync.RWMutex
 	permissions map[string]chan string
 	dialogs     map[string]chan interface{}
 	elicits     map[string]chan ElicitReply
 	earlyStops  map[string]chan EarlyStopReply
+	toolGates   map[string]chan ToolGateReply
 }
 
 // New creates a ready-to-use Broker.
@@ -42,6 +55,7 @@ func New() *Broker {
 		dialogs:     make(map[string]chan interface{}),
 		elicits:     make(map[string]chan ElicitReply),
 		earlyStops:  make(map[string]chan EarlyStopReply),
+		toolGates:   make(map[string]chan ToolGateReply),
 	}
 }
 
@@ -183,4 +197,41 @@ func (b *Broker) UnregisterEarlyStop(id string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	delete(b.earlyStops, id)
+}
+
+// --- Tool gates ---
+
+// RegisterToolGate creates a channel for an in-flight tool-gate request.
+// Returns the channel the tool loop blocks on.
+func (b *Broker) RegisterToolGate(id string) chan ToolGateReply {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	ch := make(chan ToolGateReply, 1)
+	b.toolGates[id] = ch
+	return ch
+}
+
+// ResolveToolGate sends the client's decision to the waiting channel.
+// Non-blocking: if nobody is listening the send is dropped. Returns true
+// when a pending entry existed (a timed-out caller may have moved on but
+// the entry has not yet been unregistered).
+func (b *Broker) ResolveToolGate(id string, reply ToolGateReply) bool {
+	b.mu.RLock()
+	ch, ok := b.toolGates[id]
+	b.mu.RUnlock()
+	if !ok {
+		return false
+	}
+	select {
+	case ch <- reply:
+	default:
+	}
+	return true
+}
+
+// UnregisterToolGate removes a pending tool-gate entry.
+func (b *Broker) UnregisterToolGate(id string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	delete(b.toolGates, id)
 }

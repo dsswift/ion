@@ -11,6 +11,7 @@ import { repositoryManager } from '../git/repositoryManager'
 import { log as _log, warn as _warn } from '../logger'
 import { loadWorkspaces, findWorkspace } from './bench-store'
 import { resolveContribution } from './bench-contribution'
+import { resetBenchToTree } from './bench-assemble-support'
 import {
   currentRererePaths,
   forgetRererePaths,
@@ -62,7 +63,7 @@ export async function prepareConflictResolution(
       source_branch: sourceBranch,
     })
     try {
-      await runGit(ws.benchPath, ['switch', '-C', ws.benchBranch, ws.sourceBranch, '--discard-changes'])
+      await resetBenchToTree(ws.benchPath, ws.benchBranch, ws.sourceBranch)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       warn('resolve-once: could not reset bench branch', { bench_path: ws.benchPath, error: msg })
@@ -123,9 +124,13 @@ export async function prepareConflictResolution(
           })
           const forgotten = await forgetRererePaths(ws.benchPath, rererePaths)
           if (!forgotten.ok) {
+            // `noContext` cannot fire here (this runs mid-merge, on the way to
+            // the failed merge attempt above), but the union has no default arm.
             return {
               ok: false,
-              error: `Could not forget invalid conflict recording for ${forgotten.path}: ${forgotten.error}`,
+              error: 'error' in forgotten
+                ? `Could not forget invalid conflict recording for ${forgotten.path}: ${forgotten.error}`
+                : 'Could not forget invalid conflict recording: no merge in progress to forget within.',
             }
           }
           if (forgotten.forgottenPaths.length === 0) {

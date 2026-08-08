@@ -61,6 +61,16 @@ export interface WorktreeListItem {
    * history.
    */
   landed: boolean
+  /**
+   * The active conversation is standing in this worktree.
+   *
+   * Exactly one row can carry it (or none, when the active conversation is in a
+   * bench, the main clone, or an unrelated directory). Derived HERE rather than
+   * in a component because every worktree surface — the overlay panel, the ATV
+   * mirror, the wire projection — decorates through this one function, and a
+   * second local computation is precisely the drift this module exists to stop.
+   */
+  active: boolean
 }
 
 /**
@@ -104,6 +114,19 @@ export function buildWorktreeList(
   entries: readonly WorktreeInventoryEntry[],
   workspaces: readonly IntegrationWorkspace[],
   activeBench: string | null,
+  /**
+   * Directory the ACTIVE conversation is working in, or null/undefined when
+   * there is none. Matched against each worktree's own path to mark one row.
+   *
+   * A directory, not a worktree path, because the caller cannot always know
+   * which it has: a conversation created through the worktree flow carries
+   * `tab.worktree.worktreePath`, one opened directly in the directory carries
+   * only `workingDirectory`, and both are genuinely standing in the worktree.
+   * Matching on the path means either resolves correctly, and a bench or
+   * unrelated directory matches nothing — which is the right answer, since the
+   * bench has its own bar.
+   */
+  activeDirectory?: string | null,
 ): WorktreeListResult {
   const workspace = activeBench
     ? workspaces.find((w) => w.sourceBranch === activeBench)
@@ -145,6 +168,12 @@ export function buildWorktreeList(
       // the two conditions above already exclude it. Nothing needs enrollment
       // to say so.
       landed: !!entry.landedAt && entry.unlandedCommitCount === 0,
+      // Exact path equality, never a prefix test: a worktree whose name merely
+      // begins with another's (`ion-a3372546` vs `ion-a33725460`) would
+      // highlight the wrong row, and a nested subdirectory of a worktree is
+      // still that worktree — but the callers pass a checkout root, so equality
+      // is both sufficient and unambiguous.
+      active: !!activeDirectory && entry.worktreePath === activeDirectory,
     }
   })
 

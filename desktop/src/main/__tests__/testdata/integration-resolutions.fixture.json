@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "repoPath": "/Users/dev/source/project",
+      "sourceBranch": "josh",
+      "benchBranch": "ion/bench/josh",
+      "path": "desktop/src/renderer/components/WorktreeRowMenu.tsx",
+      "memberBranch": "wt/ion-1880ac99",
+      "collidedWith": ["wt/ion-351c7dd4", "wt/ion-02bf4294"],
+      "baseSha": "a3dd841dbb4c9f5e6072f1a2b3c4d5e6f7081920",
+      "memberPinnedSha": "be617bb2c1d4e5f60718293a4b5c6d7e8f901234",
+      "resolvedSha": "7b4d5e4f6a8b9c0d1e2f3a4b5c6d7e8f90123456",
+      "resolvedAt": 1785759167866,
+      "verified": true,
+      "rationale": "Kept HEAD's refactored structure (the buildWorktreeRowActions factory plus the extracted WorktreeRowMenuDialogs and WorktreeRenameEditor components) and layered ion-1880ac99's useAnchoredPopover and zoomViewport additions on top. The two sides are the same file taken in different directions: HEAD extracted the dialogs, 1880ac99 added measured placement. Neither supersedes the other, so both survive."
+    },
+    {
+      "repoPath": "/Users/dev/source/project",
+      "sourceBranch": "josh",
+      "benchBranch": "ion/bench/josh",
+      "path": "desktop/src/renderer/components/TabStripShared.ts",
+      "memberBranch": "wt/ion-02804dd4",
+      "collidedWith": [],
+      "baseSha": "a3dd841dbb4c9f5e6072f1a2b3c4d5e6f7081920",
+      "memberPinnedSha": "b0461489e7f6a5b4c3d2e1f009182736455463728",
+      "resolvedSha": "c1d2e3f405162738495a6b7c8d9e0f1122334455",
+      "resolvedAt": 1785757765562,
+      "verified": false,
+      "rationale": "Took the incoming status fold verbatim; the base change was a comment reflow with no behavioural content. Verification did not run for this bench, so this resolution is recorded unverified."
+    }
+  ]
+}

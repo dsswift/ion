@@ -150,20 +150,23 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
   // dedicated Models picker for those.
   // ═══════════════════════════════════════════════════════════════════
   {
-    // Global gate for extended thinking / reasoning. Default OFF (Ion is
-    // API-billed; thinking tokens bill at output rates and can multiply a
-    // turn's cost). When ON, a per-conversation thinking control appears in
-    // the status bar on both clients (off/low/medium/high), isolated per
-    // conversation/subtab, applied live on the next prompt. When OFF, the
-    // control is hidden and no prompt carries a thinking directive. Read by
-    // the renderer at prompt-submit time (shouldEnableThinking in
-    // settings-store.ts).
-    key: 'thinkingEnabled',
-    type: 'boolean',
+    // Level a NEW conversation's thinking control starts at. 'high' is the
+    // desktop's opinionated default; each conversation can still be changed
+    // individually from the status bar.
+    key: 'defaultThinkingEffort',
+    type: 'enum',
     group: 'ai',
-    label: 'Enable extended thinking',
-    description: 'Let models reason before answering. When on, each conversation gets an off/low/medium/high thinking control in its status bar. Thinking improves hard multi-step tasks but bills reasoning as output tokens, so it adds cost. Off by default.',
-    defaultValue: false,
+    label: 'Default thinking level',
+    description: 'The reasoning level new conversations start at on models that take an explicit level. Models with adaptive reasoning (Claude) choose their own depth and start on Adaptive. Each conversation can still be changed from its status bar.',
+    defaultValue: 'high',
+    choices: [
+      { value: 'off', label: 'Off' },
+      { value: 'low', label: 'Low' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'high', label: 'High' },
+      { value: 'xhigh', label: 'Extra High' },
+      { value: 'max', label: 'Max' },
+    ],
   },
   {
     key: 'planModelSplitEnabled',

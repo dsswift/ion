@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/types'
+import { legacyReviewToStage } from '../shared/types-git'
 import { atvApi } from './atv-api'
 import type { NormalizedEvent, EnrichedError, GitEvent } from '../shared/types'
 import type { IonAPI } from './ionapi'
@@ -220,18 +221,30 @@ const api: IonAPI = {
   gitWorktreeRebase: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_REBASE, { worktreePath, sourceBranch }),
   gitWorktreeLand: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_LAND, args),
   gitWorktreeSync: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_SYNC, { worktreePath, sourceBranch }),
+  gitWorktreeSyncAll: (repoPath) => ipcRenderer.invoke(IPC.GIT_WORKTREE_SYNC_ALL, { repoPath }),
   gitWorktreeBaseStatus: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_BASE_STATUS, { worktreePath, sourceBranch }),
   gitWorktreeInventory: (repoPath) => ipcRenderer.invoke(IPC.GIT_WORKTREE_INVENTORY, { repoPath }),
   gitWorktreeSeedTitle: (worktreePath, title) =>
     ipcRenderer.invoke(IPC.GIT_WORKTREE_SEED_TITLE, { worktreePath, title }),
   gitWorktreeSetTitle: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_SET_TITLE, args),
+  gitWorktreeSetStage: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_SET_STAGE, args),
+  // Deprecated shim over gitWorktreeSetStage — see the ionapi.ts declaration
+  // for the removal condition. The verdict→stage mapping is the shared
+  // legacyReviewToStage table, the same one the workspaces-file load
+  // migration uses, so the two cannot drift. `sourceBranch` is ignored:
+  // stages are worktree-scoped.
+  benchSetReview: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_SET_STAGE, {
+    worktreePath: args.worktreePath,
+    repoPath: args.repoPath,
+    stage: legacyReviewToStage(args.review) ?? null,
+  }),
   benchList: (repoPath) => ipcRenderer.invoke(IPC.BENCH_LIST, { repoPath }),
+  benchResolvePath: (directory) => ipcRenderer.invoke(IPC.BENCH_RESOLVE_PATH, { directory }),
   benchEnsure: (repoPath, sourceBranch) => ipcRenderer.invoke(IPC.BENCH_ENSURE, { repoPath, sourceBranch }),
   benchAddMember: (args) => ipcRenderer.invoke(IPC.BENCH_ADD_MEMBER, args),
   benchRemoveMember: (args) => ipcRenderer.invoke(IPC.BENCH_REMOVE_MEMBER, args),
   benchSetEnabled: (args) => ipcRenderer.invoke(IPC.BENCH_SET_ENABLED, args),
   gitWorktreeRegistration: (worktreePath) => ipcRenderer.invoke(IPC.GIT_WORKTREE_REGISTRATION, { worktreePath }),
-  benchSetReview: (args) => ipcRenderer.invoke(IPC.BENCH_SET_REVIEW, args),
   benchSetOrder: (args) => ipcRenderer.invoke(IPC.BENCH_SET_ORDER, args),
   benchUpdateMember: (args) => ipcRenderer.invoke(IPC.BENCH_UPDATE_MEMBER, args),
   benchUpdateAll: (repoPath, sourceBranch) => ipcRenderer.invoke(IPC.BENCH_UPDATE_ALL, { repoPath, sourceBranch }),
@@ -240,6 +253,10 @@ const api: IonAPI = {
   benchRerereCount: (directory) => ipcRenderer.invoke(IPC.BENCH_RERERE_COUNT, { directory }),
   benchRerereForget: (directory, paths) => ipcRenderer.invoke(IPC.BENCH_RERERE_FORGET, { directory, paths }),
   benchRerereDiscardAll: (directory) => ipcRenderer.invoke(IPC.BENCH_RERERE_DISCARD_ALL, { directory }),
+  benchPrepareVerificationAnalysis: (repoPath, sourceBranch) =>
+    ipcRenderer.invoke(IPC.BENCH_PREPARE_VERIFICATION_ANALYSIS, { repoPath, sourceBranch }),
+  benchDiscardVerificationRecordings: (repoPath, sourceBranch, branchNames) =>
+    ipcRenderer.invoke(IPC.BENCH_DISCARD_VERIFICATION_RECORDINGS, { repoPath, sourceBranch, branchNames }),
   benchRefreshStaleness: (repoPath, sourceBranch) => ipcRenderer.invoke(IPC.BENCH_REFRESH_STALENESS, { repoPath, sourceBranch }),
   gitWorktreeAppraise: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_APPRAISE, { worktreePath, sourceBranch }),
   gitWorktreeRetire: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_RETIRE, args),
@@ -311,6 +328,13 @@ const api: IonAPI = {
   // ─── Model & provider management ───
   listModels: () => ipcRenderer.invoke(IPC.LIST_MODELS),
   resolveModelTier: (tier: string) => ipcRenderer.invoke(IPC.MODEL_TIER_RESOLVE, { tier }),
+  listModelTiers: () => ipcRenderer.invoke(IPC.LIST_MODEL_TIERS),
+  setModelTier: (tier) => ipcRenderer.invoke(IPC.SET_MODEL_TIER, tier),
+  removeModelTier: (name) => ipcRenderer.invoke(IPC.REMOVE_MODEL_TIER, { name }),
+  onModelTiersUpdated: (callback) => {
+    ipcRenderer.on(IPC.MODEL_TIERS_UPDATED, callback)
+    return () => ipcRenderer.removeListener(IPC.MODEL_TIERS_UPDATED, callback)
+  },
   storeCredential: (provider, credential) => ipcRenderer.invoke(IPC.STORE_CREDENTIAL, { provider, credential }),
   refreshModels: (provider) => ipcRenderer.invoke(IPC.REFRESH_MODELS, { provider }),
 

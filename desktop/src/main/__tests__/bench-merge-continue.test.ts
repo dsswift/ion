@@ -12,6 +12,8 @@ vi.mock('../integration/bench-resolution-validation', () => ({
   forgetRererePaths: vi.fn(),
   validateBenchResolution: vi.fn(),
 }))
+vi.mock('../integration/bench-resolution-journal', () => ({ recordResolution: vi.fn() }))
+vi.mock('../integration/bench-store', () => ({ loadWorkspaces: vi.fn(() => []) }))
 
 import { runGit } from '../git-runner'
 import { probeOperationState } from '../git/operation-state'
@@ -21,6 +23,8 @@ import {
   validateBenchResolution,
 } from '../integration/bench-resolution-validation'
 import { runBenchVerify } from '../integration/bench-verify'
+import { recordResolution } from '../integration/bench-resolution-journal'
+import { loadWorkspaces } from '../integration/bench-store'
 import { continueBenchMerge } from '../integration/bench-merge-continue'
 
 const mockedRunGit = vi.mocked(runGit)
@@ -29,6 +33,8 @@ const mockedPaths = vi.mocked(currentRererePaths)
 const mockedForget = vi.mocked(forgetRererePaths)
 const mockedValidate = vi.mocked(validateBenchResolution)
 const mockedVerify = vi.mocked(runBenchVerify)
+const mockedRecord = vi.mocked(recordResolution)
+const mockedWorkspaces = vi.mocked(loadWorkspaces)
 
 function arrangeRecovery(postHeadFails: boolean): void {
   let headReads = 0
@@ -52,7 +58,8 @@ function arrangeRecovery(postHeadFails: boolean): void {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockedVerify.mockResolvedValue({ ran: false, ok: true, output: '' })
+  mockedVerify.mockResolvedValue({ ran: false, ok: true, output: '', command: '' })
+  mockedWorkspaces.mockReturnValue([])
 })
 
 describe('continueBenchMerge postcondition recovery injection', () => {
@@ -75,7 +82,7 @@ describe('continueBenchMerge postcondition recovery injection', () => {
     mockedProbe
       .mockResolvedValueOnce({ conflictedPaths: [] })
       .mockResolvedValue({ state: 'merging', conflictedPaths: ['shared.txt'] })
-    mockedVerify.mockResolvedValue({ ran: true, ok: false, output: 'syntax error' })
+    mockedVerify.mockResolvedValue({ ran: true, ok: false, output: 'syntax error', command: 'test-verify' })
 
     const result = await continueBenchMerge('/bench')
 
@@ -117,5 +124,135 @@ describe('continueBenchMerge postcondition recovery injection', () => {
     expect(result.error).toMatch(/conflict.*recoverable/i)
     expect(mockedForget).toHaveBeenCalledTimes(1)
     expect(mockedValidate).toHaveBeenLastCalledWith('/bench', 'postcommit-recovery-proof')
+  })
+})
+
+/**
+ * The journal records only PROVEN resolutions.
+ *
+ * Placement is the whole assertion set here. Everything upstream of the
+ * verification gate is unproven, and every failure above it rolls the merge back
+ * through `restoreConflict` — so an entry written earlier would describe history
+ * that no longer exists, and a later reader would consult a decision that was
+ * discarded. Move the `recordResolution` call above the gate and the
+ * rolled-back cases below go red.
+ */
+describe('continueBenchMerge — resolution journal', () => {
+  const bench = {
+    repoPath: '/repo',
+    sourceBranch: 'josh',
+    benchPath: '/bench',
+    benchBranch: 'ion/bench/josh',
+    baseSha: 'base123',
+    lastBuiltAt: 0,
+    members: [
+      {
+        worktreePath: '/wt/a', branchName: 'wt/a', enabled: true,
+        pin: 'current' as const, merge: 'merged' as const,
+        pinnedSha: 'target', pinnedTreeHash: 't', pinnedBaseSha: 'base123', currentTreeHash: 't',
+      },
+      {
+        worktreePath: '/wt/b', branchName: 'wt/b', enabled: true,
+        pin: 'current' as const, merge: 'merged' as const,
+        pinnedSha: 'other', pinnedTreeHash: 't2', pinnedBaseSha: 'base123', currentTreeHash: 't2',
+      },
+    ],
+  }
+
+  function arrangeSuccess(): void {
+    let headReads = 0
+    mockedRunGit.mockImplementation((_directory, args) => {
+      if (args[0] === 'rev-parse' && args[1] === 'HEAD') {
+        headReads++
+        return Promise.resolve(headReads === 1 ? 'old-head\n' : 'new-head\n')
+      }
+      if (args[0] === 'rev-parse' && args[1] === '--git-path') return Promise.resolve(args[2])
+      // The other member's pinned range touches the resolved path.
+      if (args[0] === 'diff' && args.includes('--name-only') && args.includes('other')) {
+        return Promise.resolve('shared.txt\n')
+      }
+      return Promise.resolve('')
+    })
+    mockedPaths.mockResolvedValue({ ok: true, paths: ['shared.txt'] })
+    mockedValidate.mockResolvedValue({ ok: true, unmergedPaths: [] })
+    mockedProbe.mockResolvedValue({ conflictedPaths: [] })
+  }
+
+  it('records one entry per resolved path after a proven-good continue', async () => {
+    mockedWorkspaces.mockReturnValue([bench] as never)
+    arrangeSuccess()
+
+    const result = await continueBenchMerge('/bench')
+
+    expect(result.ok).toBe(true)
+    expect(mockedRecord).toHaveBeenCalledTimes(1)
+    expect(mockedRecord.mock.calls[0][0]).toMatchObject({
+      repoPath: '/repo',
+      sourceBranch: 'josh',
+      path: 'shared.txt',
+      // Attributed from MERGE_HEAD, not from "who last touched the file".
+      memberBranch: 'wt/a',
+      memberPinnedSha: 'target',
+      resolvedSha: 'new-head',
+    })
+  })
+
+  it('names the counterpart members whose pinned ranges touch the path', async () => {
+    mockedWorkspaces.mockReturnValue([bench] as never)
+    arrangeSuccess()
+
+    await continueBenchMerge('/bench')
+
+    expect(mockedRecord.mock.calls[0][0].collidedWith).toEqual(['wt/b'])
+  })
+
+  it('records NOTHING when project verification fails and the merge rolls back', async () => {
+    mockedWorkspaces.mockReturnValue([bench] as never)
+    let headReads = 0
+    mockedRunGit.mockImplementation((_directory, args) => {
+      if (args[0] === 'rev-parse' && args[1] === 'HEAD') {
+        headReads++
+        return Promise.resolve(headReads === 1 ? 'old-head\n' : headReads === 2 ? 'new-head\n' : 'old-head\n')
+      }
+      if (args[0] === 'rev-parse' && args[1] === '--git-path') return Promise.resolve(args[2])
+      if (args[0] === 'merge' && args.includes('--no-ff')) return Promise.reject(new Error('conflict'))
+      return Promise.resolve('')
+    })
+    mockedPaths.mockResolvedValue({ ok: true, paths: ['shared.txt'] })
+    mockedForget.mockResolvedValue({ ok: true, forgottenPaths: ['shared.txt'] })
+    mockedValidate
+      .mockResolvedValueOnce({ ok: true, unmergedPaths: [] })
+      .mockResolvedValue({ ok: false, unmergedPaths: ['shared.txt'] })
+    mockedProbe
+      .mockResolvedValueOnce({ conflictedPaths: [] })
+      .mockResolvedValue({ state: 'merging', conflictedPaths: ['shared.txt'] })
+    mockedVerify.mockResolvedValue({ ran: true, ok: false, output: 'build failed', command: 'test-verify' })
+
+    const result = await continueBenchMerge('/bench')
+
+    expect(result.ok).toBe(false)
+    expect(mockedRecord).not.toHaveBeenCalled()
+  })
+
+  it('records nothing when the directory is not a registered bench', async () => {
+    mockedWorkspaces.mockReturnValue([])
+    arrangeSuccess()
+
+    const result = await continueBenchMerge('/bench')
+
+    expect(result.ok).toBe(true)
+    expect(mockedRecord).not.toHaveBeenCalled()
+  })
+
+  it('marks the entry verified only when verification actually ran and passed', async () => {
+    mockedWorkspaces.mockReturnValue([bench] as never)
+    arrangeSuccess()
+    mockedVerify.mockResolvedValue({ ran: false, ok: true, output: '', command: '' })
+
+    await continueBenchMerge('/bench')
+
+    // `ran: false` is "no project verification declared", which is NOT proof the
+    // resolution builds — recording it as verified would overstate the evidence.
+    expect(mockedRecord.mock.calls[0][0].verified).toBe(false)
   })
 })

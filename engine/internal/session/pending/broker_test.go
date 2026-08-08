@@ -251,3 +251,51 @@ func TestBroker_EarlyStopUnregisterStopsDelivery(t *testing.T) {
 		// Expected path.
 	}
 }
+
+// TestBroker_ToolGateRoundTrip pins the tool-gate register/resolve path: a
+// deny with a reason reaches the waiting tool loop.
+func TestBroker_ToolGateRoundTrip(t *testing.T) {
+	b := New()
+	ch := b.RegisterToolGate("tg-1")
+
+	go func() {
+		time.Sleep(time.Millisecond)
+		b.ResolveToolGate("tg-1", ToolGateReply{Decision: "deny", Reason: "policy"})
+	}()
+
+	select {
+	case v := <-ch:
+		if v.Decision != "deny" || v.Reason != "policy" {
+			t.Errorf("expected (deny, policy), got (%q, %q)", v.Decision, v.Reason)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timeout")
+	}
+}
+
+// TestBroker_ToolGateResolveUnknownReturnsFalse pins the stale-response
+// signal: resolving an unknown gate ID reports false so the caller can log
+// the drop.
+func TestBroker_ToolGateResolveUnknownReturnsFalse(t *testing.T) {
+	b := New()
+	if b.ResolveToolGate("missing", ToolGateReply{Decision: "deny"}) {
+		t.Error("expected false for unknown tool-gate ID")
+	}
+}
+
+// TestBroker_ToolGateUnregisterStopsDelivery defends the timeout race: a late
+// response after the tool loop unregistered is silently dropped.
+func TestBroker_ToolGateUnregisterStopsDelivery(t *testing.T) {
+	b := New()
+	ch := b.RegisterToolGate("tg-unreg")
+	b.UnregisterToolGate("tg-unreg")
+
+	b.ResolveToolGate("tg-unreg", ToolGateReply{Decision: "deny", Reason: "late"})
+
+	select {
+	case v := <-ch:
+		t.Errorf("expected no delivery after unregister, got %+v", v)
+	case <-time.After(20 * time.Millisecond):
+		// Expected path.
+	}
+}

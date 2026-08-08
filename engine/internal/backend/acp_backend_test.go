@@ -3,6 +3,7 @@ package backend
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -26,6 +27,11 @@ type fakeAcpAgent struct {
 	// modes, when set, is advertised on session/new (agents like cursor
 	// advertise plan/architect session modes; grok advertises none).
 	modes *acp.SessionModeState
+
+	// beforeSessionNewReply lets a test recreate process-close state changes at
+	// the exact boundary after a session request has reached the agent but before
+	// its successful reply unblocks the backend.
+	beforeSessionNewReply func()
 
 	mu       sync.Mutex
 	seen     map[string]json.RawMessage
@@ -62,6 +68,9 @@ func (a *fakeAcpAgent) handle(id json.RawMessage, method string) {
 	case acp.MethodInitialize:
 		a.reply(id, acp.InitializeResult{ProtocolVersion: 1, AgentCapabilities: acp.AgentCapabilities{LoadSession: true}, AuthMethods: []acp.AuthMethod{{ID: "cached_token", Name: "Cached"}}})
 	case acp.MethodSessionNew:
+		if a.beforeSessionNewReply != nil {
+			a.beforeSessionNewReply()
+		}
 		a.reply(id, acp.SessionResult{SessionID: "sess_1", Modes: a.modes})
 	case acp.MethodSessionPrompt:
 		// Defer the response so the test can stream updates first.
@@ -112,23 +121,31 @@ func (a *fakeAcpAgent) sawMethod(method string) bool {
 
 func newTestAcpBackend(t *testing.T) (*AcpBackend, chan *fakeAcpAgent) {
 	t.Helper()
-	return wireFakeAcpAgent(t, NewGrokBackend(), nil)
+	return wireFakeAcpAgent(t, NewGrokBackend(), nil, nil)
 }
 
 // newTestCursorBackend wires a cursor backend to a fake agent advertising the
 // given session modes on session/new.
 func newTestCursorBackend(t *testing.T, modes *acp.SessionModeState) (*AcpBackend, chan *fakeAcpAgent) {
 	t.Helper()
-	return wireFakeAcpAgent(t, NewCursorBackend(), modes)
+	return wireFakeAcpAgent(t, NewCursorBackend(), modes, nil)
 }
 
-func wireFakeAcpAgent(t *testing.T, b *AcpBackend, modes *acp.SessionModeState) (*AcpBackend, chan *fakeAcpAgent) {
+func wireFakeAcpAgent(
+	t *testing.T,
+	b *AcpBackend,
+	modes *acp.SessionModeState,
+	beforeSessionNewReply func(),
+) (*AcpBackend, chan *fakeAcpAgent) {
 	t.Helper()
 	agentCh := make(chan *fakeAcpAgent, 1)
 	b.launch = func(spec acpSpec, h acp.Handlers) (*acp.Client, func(), error) {
 		inR, inW := io.Pipe()
 		outR, outW := io.Pipe()
-		agent := &fakeAcpAgent{toClient: outW, fromClient: bufio.NewReader(inR), seen: map[string]json.RawMessage{}, modes: modes}
+		agent := &fakeAcpAgent{
+			toClient: outW, fromClient: bufio.NewReader(inR), seen: map[string]json.RawMessage{},
+			modes: modes, beforeSessionNewReply: beforeSessionNewReply,
+		}
 		client := acp.NewClient(inW, outR, spec.kind, h)
 		go agent.serve()
 		agentCh <- agent
@@ -436,6 +453,43 @@ func TestAcpBackend_CursorStickyPlanModeReset(t *testing.T) {
 	}
 	agent.completePrompt("end_turn")
 	acpWaitFor(t, func() bool { return r.exitCount() == 1 }, "exit")
+}
+
+func TestAcpBackend_LauncherWithoutClientFailsCleanly(t *testing.T) {
+	b := NewGrokBackend()
+	b.launch = func(acpSpec, acp.Handlers) (*acp.Client, func(), error) {
+		return nil, nil, nil
+	}
+
+	client, _, err := b.ensureStarted()
+	if err == nil || !strings.Contains(err.Error(), "launcher returned no client") {
+		t.Fatalf("ensureStarted error = %v, want missing-client error", err)
+	}
+	if client != nil {
+		t.Fatal("ensureStarted returned a client for an invalid launcher result")
+	}
+}
+
+func TestAcpBackend_ProcessCloseBetweenSessionAndModelKeepsStableClient(t *testing.T) {
+	b := NewGrokBackend()
+	b, agentCh := wireFakeAcpAgent(t, b, nil, func() {
+		// Recreate the CI race: session/new is already in flight on this client,
+		// then process-close handling clears shared backend state before the
+		// successful reply unblocks runPrompt's model-setup step.
+		b.onProcessClosed(errors.New("simulated close during session setup"))
+	})
+	r := newAcpRecorder()
+	r.attach(b)
+
+	agent := startAcp(t, b, agentCh, "req-close-race", types.RunOptions{
+		Model: "grok-code", Prompt: "race", ProjectPath: "/repo",
+	})
+	acpWaitFor(t, func() bool { return agent.sawMethod(acp.MethodSessionPrompt) }, "session/prompt after shared client reset")
+	agent.completePrompt("end_turn")
+	acpWaitFor(t, func() bool { return r.exitCount() == 1 }, "clean exit after shared client reset")
+	if c := r.lastExitCode(); c == nil || *c != 0 {
+		t.Fatalf("expected clean exit 0, got %v", c)
+	}
 }
 
 func TestAcpBackend_HappyPath(t *testing.T) {

@@ -6,6 +6,7 @@ import type { RendererSnapshotCache } from '../shared/remote-projection-types'
 import { EngineBridge } from './engine-bridge'
 import { EngineControlPlane } from './engine-control-plane'
 import { wireEarlyStopPolicy } from './early-stop-policy'
+import { wireToolGateResponder } from './tool-gate-responder'
 import { PairingManager } from './remote/pairing'
 import { RelayDiscovery } from './remote/discovery'
 
@@ -28,6 +29,14 @@ export const sessionPlane = new EngineControlPlane(engineBridge)
 // connection. See desktop/src/main/early-stop-policy.ts for the
 // architectural rationale.
 wireEarlyStopPolicy(sessionPlane as unknown as Parameters<typeof wireEarlyStopPolicy>[0], engineBridge)
+
+// Wire the tool-gate responder: the desktop's half of the engine's client
+// tool gate. Answers engine_tool_gate_request events — bench containment
+// policy (allow/deny) and the three bench client tools (attribution,
+// member-file, resolution-history). The engine keeps the generic worktree
+// isolation; the bench rules belong to the client that owns the bench.
+// See desktop/src/main/tool-gate-responder.ts.
+wireToolGateResponder(engineBridge)
 export const pairingManager = new PairingManager()
 export const relayDiscovery = new RelayDiscovery()
 

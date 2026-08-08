@@ -4,12 +4,13 @@ import { serializeTerminalBuffer } from '../components/TerminalInstance'
 import type { State, StoreSet, StoreGet } from './session-store-types'
 import type { ResourceItem } from '../../shared/types-engine'
 import { markResourcesRead } from './slices/resource-slice'
-import { makeLocalTab, initialModelOverride } from './session-store-helpers'
+import { makeLocalTab, initialModelOverride, initialThinkingEffort } from './session-store-helpers'
 import { makeMainPane } from './conversation-instance'
 import { parseSessionKey } from '../../shared/session-key'
 import { createTabSlice } from './slices/tab-slice'
 import { createCloseIntentSlice } from './slices/close-intent-slice'
 import { createResumeSlice } from './slices/resume-slice'
+import { createForkSlice } from './slices/resume-slice-fork'
 import { createExpandSlice } from './slices/expand-slice'
 import { createTerminalSlice } from './slices/terminal-slice'
 import { createFileExplorerSlice } from './slices/file-explorer-slice'
@@ -17,7 +18,9 @@ import { createFileEditorSlice } from './slices/file-editor-slice'
 import { createDirectorySlice } from './slices/directory-slice'
 import { createWorktreeSlice } from './slices/worktree-slice'
 import { createWorktreeInventorySlice } from './slices/worktree-inventory-slice'
+import { createWorktreePipelineSlice } from './slices/worktree-pipeline-slice'
 import { createBenchSlice } from './slices/bench-slice'
+import { createBenchVerificationSlice } from './slices/bench-verification-slice'
 import { createGitConflictSlice } from './slices/git-conflict-slice'
 import { createAttachmentsSlice } from './slices/attachments-slice'
 import { createPermissionsSlice } from './slices/permissions-slice'
@@ -39,7 +42,7 @@ const initialTab = makeLocalTab()
 // every tab — normal or engine — owns at least one ConversationInstance in
 // conversationPanes from creation, so no consumer ever sees a missing pane.
 const initialEnginePanes = new Map<string, ConversationPane>([
-  [initialTab.id, makeMainPane({ modelOverride: initialModelOverride() })],
+  [initialTab.id, makeMainPane({ modelOverride: initialModelOverride(), thinkingEffort: initialThinkingEffort(initialModelOverride()) })],
 ])
 
 const initialState = {
@@ -74,6 +77,7 @@ const initialState = {
   benchSourceTips: new Map(),
   benchRetired: new Map(),
   gitConflictAlerts: new Map(),
+  worktreePipeline: null,
   engineWorkingMessages: new Map(),
   engineNotifications: new Map(),
   engineDialogs: new Map(),
@@ -100,6 +104,7 @@ export const useSessionStore = create<State>((set, get) => {
     ...createTabSlice(_set, _get),
     ...createCloseIntentSlice(_set, _get),
     ...createResumeSlice(_set, _get),
+    ...createForkSlice(_set, _get),
     ...createExpandSlice(_set, _get),
     ...createTerminalSlice(_set, _get),
     ...createFileExplorerSlice(_set, _get),
@@ -107,7 +112,9 @@ export const useSessionStore = create<State>((set, get) => {
     ...createDirectorySlice(_set, _get),
     ...createWorktreeSlice(_set, _get),
     ...createWorktreeInventorySlice(_set, _get),
+    ...createWorktreePipelineSlice(_set, _get),
     ...createBenchSlice(_set, _get),
+    ...createBenchVerificationSlice(_set, _get),
     ...createGitConflictSlice(_set, _get),
     ...createAttachmentsSlice(_set, _get),
     ...createPermissionsSlice(_set, _get),

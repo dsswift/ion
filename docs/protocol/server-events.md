@@ -543,6 +543,25 @@ A permission request from the engine (engine-level, separate from the LLM provid
 | `permToolInput`       | object          | Tool input parameters              |
 | `permOptions`         | PermissionOpt[] | Available response options         |
 
+#### engine_tool_gate_request
+
+Emitted only for sessions whose `EngineConfig.toolGate` opted in (the client tool gate). The blocked call waits until a matching `tool_gate_response` command arrives or the session's declared timeout applies its fallback. Deliberately a separate event from `engine_permission_request`: that event is a human ask that clients surface in approval UI, while this one is answered programmatically by the session's owning client.
+
+Two kinds, distinguished by `gateKind`:
+
+- **`"policy"`** (or absent) — asks whether a gated engine tool call may execute. Fires after the engine's own checks (permission engine, workspace containment) and before extension `tool_call` hooks — a call the engine refuses never reaches the gate, and a call the gate denies never reaches extension processing.
+- **`"tool"`** — the model called one of the session's declared `clientTools`; the client executes it and answers with the result.
+
+| Field           | Type   | Description                                                     |
+|-----------------|--------|------------------------------------------------------------------|
+| `type`          | `"engine_tool_gate_request"` | Event type                        |
+| `gateRequestId` | string | Opaque correlator. Echo it in the `tool_gate_response` command. |
+| `gateKind`      | string | `"policy"` (or absent) or `"tool"`                              |
+| `gateToolName`  | string | Tool name                                                       |
+| `gateToolInput` | object | Tool input parameters                                           |
+| `gateCwd`       | string | Working directory the tool call would execute in                |
+| `gateSiblingTools` | string[] | Names of the other tool calls in the same model turn (turn-mates run concurrently), so a policy can evaluate turn isolation |
+
 #### engine_elicitation_request
 
 Emitted when an extension calls `ctx.elicit()` (TypeScript SDK) or `ctx.Elicit()` (Go SDK). The engine blocks the extension's call and waits for a matching `elicitation_response` client command. Clients present the schema-driven prompt to the user and reply via `elicitation_response`. The engine forwards the reply to the waiting extension so its `ctx.elicit()` Promise resolves.

@@ -9,17 +9,20 @@
 import React, { useCallback, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
+import { CaretDown, ArrowSquareOut } from '@phosphor-icons/react'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
 import { useOutsideDismiss } from '../hooks/useOutsideDismiss'
 import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
-import { zoomViewport } from '../viewport-zoom'
+import { zoomRect, zoomViewport } from '../viewport-zoom'
 import { buildWorktreeRowActions } from './worktreeRowActions'
 import { findMembership } from '../../shared/worktree-list'
 import { buildWorktreeMenuItems } from './WorktreeRowMenu.items'
 import { WorktreeRowMenuDialogs, WorktreeRenameEditor } from './WorktreeRowMenuDialogs'
+import { WorktreeRowGoToTabSubmenu } from './WorktreeRowGoToTabSubmenu'
+import { collectAllDirConversations } from '../../shared/worktree-conversations'
 import { rError, rWarn } from '../rendererLogger'
 import type { WorktreeInventoryEntry } from '../../shared/types'
 
@@ -40,11 +43,8 @@ export function WorktreeRowMenu({
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
   const benchWorkspaces = useSessionStore((s) => s.benchWorkspaces.get(repoPath))
+  const tabs = useSessionStore((s) => s.tabs)
   const [confirmRetire, setConfirmRetire] = useState<string | null>(null)
-  // Inline rename state. The generated title is a good default, not an
-  // authority — the operator must be able to correct one that missed.
-  const [renaming, setRenaming] = useState(false)
-  const [draftTitle, setDraftTitle] = useState(entry.title ?? entry.label)
   // A land refusal (diverged branch, conflict) is actionable and must be shown,
   // not swallowed into the log while the menu closes as if it had worked.
   const [landError, setLandError] = useState<string | null>(null)
@@ -53,6 +53,21 @@ export function WorktreeRowMenu({
   const [retireOutcome, setRetireOutcome] = useState<string | null>(null)
   const strategy = usePreferencesStore((s) => s.worktreeCompletionStrategy)
   const [busy, setBusy] = useState(false)
+  // Inline rename state. The generated title is a good default, not an
+  // authority — the operator must be able to correct one that missed. The
+  // commit itself is `doRename` from the verb factory below.
+  const [renaming, setRenaming] = useState(false)
+  const [draftTitle, setDraftTitle] = useState(entry.title ?? entry.label)
+  // "Go to tab" hover submenu. ALL-INCLUSIVE list (see collectAllDirConversations'
+  // doc-comment) so an in-progress conflict-auto-fix conversation is reachable
+  // here even though it is invisible to the row's own "open ×N" hint.
+  const [goToTabSubmenu, setGoToTabSubmenu] = useState<{ x: number; y: number } | null>(null)
+  const [goToTabParentRect, setGoToTabParentRect] = useState<{ left: number; right: number; top: number; bottom: number } | null>(null)
+  const goToTabItemRef = useRef<HTMLButtonElement>(null)
+  // The submenu's own root, so `useOutsideDismiss` below can treat a click
+  // inside it as "inside the menu" — see the ref's doc-comment on
+  // WorktreeRowGoToTabSubmenu for why this is required, not optional.
+  const goToTabSubmenuRef = useRef<HTMLDivElement>(null)
 
   // Dismissal goes through the shared hook so the retire/land confirm dialogs
   // this menu raises are exempt from click-outside. A local handler here is what
@@ -68,7 +83,12 @@ export function WorktreeRowMenu({
     if (busy) return
     onClose()
   }, [busy, onClose])
-  useOutsideDismiss([ref], dismiss)
+  // `goToTabSubmenuRef` is registered here for the identical reason the
+  // ConfirmDialog exemption exists above: the submenu is a portal SIBLING of
+  // `ref`, not a descendant, so without it a click inside the submenu read as
+  // "outside this menu" and unmounted the whole tree (submenu included)
+  // before the submenu's own onClick could run `selectTab`.
+  useOutsideDismiss([ref, goToTabSubmenuRef], dismiss)
 
   // Already a member of any bench for this repo? Enrolling twice is refused by
   // the store, but the menu should say so rather than offering a dead action.
@@ -79,6 +99,13 @@ export function WorktreeRowMenu({
   // finder so the menu, the row, and the wire projection agree about which
   // bench a worktree belongs to.
   const enrolled = findMembership(benchWorkspaces ?? [], entry.worktreePath)
+
+  // Every conversation open in this worktree, ALL-INCLUSIVE — the same
+  // navigation-only collector the row's click-cycle now uses (see
+  // collectAllDirConversations' doc-comment). Feeds the "Go to tab" submenu
+  // below, which must be able to reach a conflict-auto-fix conversation the
+  // row's own display hint hides.
+  const goToTabConversations = collectAllDirConversations(tabs, entry.worktreePath)
 
   // The verbs live in a co-located factory so this file stays under the
   // 600-line cap. The split is behavioural-neutral: same handlers, same
@@ -122,7 +149,6 @@ export function WorktreeRowMenu({
         void useSessionStore.getState()
           .newWorktreeConversation(entry.worktreePath)
           .catch((err) => rError('worktree.menu', 'new conversation failed', { error: String(err) }))
-        onClose()
       },
       onBeginRename: () => {
         setDraftTitle(entry.title ?? '')
@@ -131,12 +157,10 @@ export function WorktreeRowMenu({
       onAddToBench: () => {
         void doAddToBench().catch((err) => rError('worktree.menu', 'add to bench threw', { error: String(err) }))
       },
-      onSetReview: (verdict) => {
-        if (!enrolled) return
+      onSetStage: (stage) => {
         void useSessionStore.getState()
-          .benchSetReview(repoPath, enrolled.sourceBranch, entry.worktreePath, verdict)
-          .catch((err) => rError('worktree.menu', 'set review failed', { error: String(err) }))
-        onClose()
+          .setWorktreeStage(repoPath, entry.worktreePath, stage)
+          .catch((err) => rError('worktree.menu', 'set stage failed', { error: String(err) }))
       },
       onMoveInBench: moveInBench,
       onSync: () => {
@@ -265,7 +289,53 @@ export function WorktreeRowMenu({
             )}
           </button>
         ))}
+        {/* "Go to tab" — a hover-opens submenu, same pattern as the tab
+            strip's "Move to group" (TabStripMoveToGroupSubmenu.tsx). Only
+            shown when something is actually open here; the list is
+            ALL-INCLUSIVE (collectAllDirConversations) so a conflict-auto-fix
+            conversation that moved groups is still reachable from its own
+            worktree. Absent while renaming, same as every other item. */}
+        {!renaming && goToTabConversations.length > 0 && (
+          <button
+            ref={goToTabItemRef}
+            data-testid="worktree-menu-go-to-tab"
+            onMouseEnter={() => {
+              if (goToTabItemRef.current) {
+                const rect = zoomRect(goToTabItemRef.current.getBoundingClientRect())
+                setGoToTabSubmenu({ x: rect.right, y: rect.top })
+                setGoToTabParentRect({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom })
+              }
+            }}
+            onClick={() => {
+              if (goToTabItemRef.current) {
+                const rect = zoomRect(goToTabItemRef.current.getBoundingClientRect())
+                setGoToTabSubmenu((prev) => prev ? null : { x: rect.right, y: rect.top })
+                setGoToTabParentRect((prev) => prev ? null : { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom })
+              }
+            }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, width: '100%',
+              padding: '4px 10px', background: 'transparent', border: 'none',
+              fontSize: 11, textAlign: 'left', color: colors.textPrimary, cursor: 'pointer',
+            }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+          >
+            <ArrowSquareOut size={12} color={colors.textSecondary} />
+            <span>Go to tab</span>
+            <CaretDown size={10} color={colors.textTertiary} style={{ marginLeft: 'auto', transform: 'rotate(-90deg)' }} />
+          </button>
+        )}
       </motion.div>
+      )}
+
+      {goToTabSubmenu && (
+        <WorktreeRowGoToTabSubmenu
+          anchor={goToTabSubmenu}
+          conversations={goToTabConversations}
+          parentRect={goToTabParentRect ?? undefined}
+          containerRef={goToTabSubmenuRef}
+          onClose={() => { setGoToTabSubmenu(null); setGoToTabParentRect(null); onClose() }}
+        />
       )}
 
       <WorktreeRowMenuDialogs

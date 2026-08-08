@@ -17,7 +17,6 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/conversation"
-	"github.com/dsswift/ion/engine/internal/modelconfig"
 	"github.com/dsswift/ion/engine/internal/plugins"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/providers"
@@ -49,7 +48,7 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "send_prompt":
 		var overrides *session.PromptOverrides
 		resolvedExts := cmd.ResolveExtensions()
-		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" || len(cmd.Attachments) > 0 || cmd.ImplementationPhase || cmd.ThinkingEffort != "" || cmd.EnterPlanModeDescription != "" || cmd.PlanModeSparseReminder != "" || cmd.PlanFilePath != "" || len(cmd.BashAllowlistAdditionsForThisPrompt) > 0 || cmd.CompactTargetPercent > 0 || cmd.CompactMicroKeepTurns > 0 || cmd.CompactEnabled != nil || cmd.CompactSummaryEnabled != nil || cmd.CompactMemoryEnabled != nil || cmd.ResolveSlash {
+		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" || len(cmd.Attachments) > 0 || cmd.ImplementationPhase || cmd.ThinkingEffort != "" || cmd.EnterPlanModeDescription != "" || cmd.PlanModeSparseReminder != "" || cmd.PlanFilePath != "" || len(cmd.BashAllowlistAdditionsForThisPrompt) > 0 || cmd.CompactTargetPercent > 0 || cmd.CompactMicroKeepTurns > 0 || cmd.CompactEnabled != nil || cmd.CompactSummaryEnabled != nil || cmd.CompactMemoryEnabled != nil || cmd.ResolveSlash || cmd.ClientWorkspaceContext != nil {
 			overrides = &session.PromptOverrides{
 				Model:                    cmd.Model,
 				MaxTurns:                 cmd.MaxTurns,
@@ -76,6 +75,7 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 				CompactSummaryEnabled:               cmd.CompactSummaryEnabled,
 				CompactMemoryEnabled:                cmd.CompactMemoryEnabled,
 				ResolveSlash:                        cmd.ResolveSlash,
+				ClientWorkspaceContext:              cmd.ClientWorkspaceContext,
 			}
 		}
 		err := s.manager.SendPrompt(cmd.Key, cmd.Text, overrides)
@@ -218,6 +218,15 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		// Fire-and-forget: no response sent (matches dialog_response pattern).
 		s.manager.SendPermissionResponse(cmd.Key, cmd.QuestionID, cmd.OptionID)
 
+	case "tool_gate_response":
+		// Fire-and-forget: no response sent. Resolves a pending client
+		// tool-gate request (engine_tool_gate_request) so the blocked tool
+		// call proceeds with the client's decision (policy kind) or result
+		// (tool kind). The tool loop has its own bounded timeout with a
+		// client-declared fallback, so a missing or late response is
+		// non-fatal — it is logged and dropped.
+		s.manager.HandleToolGateResponse(cmd.Key, cmd.GateRequestID, cmd.GateDecision, cmd.GateReason, cmd.GateContent, cmd.GateIsError)
+
 	case "elicitation_response":
 		// Fire-and-forget: no response sent. Resolves a pending elicitation
 		// raised by ion.elicit() / ctx.Elicit() so the extension Promise resolves.
@@ -328,34 +337,16 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		s.dispatchListModels(conn, cmd)
 
 	case "resolve_model_tier":
-		// Map a tier name (cmd.Text) from ~/.ion/models.json to its configured
-		// model + fallback chain. `configured` distinguishes "the user defined
-		// this tier" from ResolveTierChain's pass-through behavior, which
-		// returns an unrecognized name as-is — a consumer gating a feature on
-		// a tier existing needs that distinction, not the echo.
-		tierName := cmd.Text
-		model, fallbacks := modelconfig.ResolveTierChain(tierName)
-		configured := model != tierName
-		// A tier with no fallbacks yields a nil slice, which marshals to JSON
-		// `null` — so a consumer reading `data.fallbacks.length` would fault on
-		// the common case (a plain-string tier). Normalize to an empty array so
-		// the field is always a list, which is what the documented shape
-		// (`fallbacks: string[]`) promises.
-		if fallbacks == nil {
-			fallbacks = []string{}
-		}
-		utils.LogWithFields(utils.LevelInfo, "server", "resolve_model_tier", map[string]any{
-			"tier":       tierName,
-			"model":      model,
-			"configured": configured,
-			"fallbacks":  len(fallbacks),
-		})
-		s.sendResult(conn, cmd, nil, map[string]interface{}{
-			"tier":       tierName,
-			"model":      model,
-			"fallbacks":  fallbacks,
-			"configured": configured,
-		})
+		s.dispatchResolveModelTier(conn, cmd)
+
+	case "list_model_tiers":
+		s.dispatchListModelTiers(conn, cmd)
+
+	case "set_model_tier":
+		s.dispatchSetModelTier(conn, cmd)
+
+	case "remove_model_tier":
+		s.dispatchRemoveModelTier(conn, cmd)
 
 	case "get_host_info":
 		s.sendResult(conn, cmd, nil, computeHostInfo())

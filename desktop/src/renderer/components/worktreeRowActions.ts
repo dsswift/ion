@@ -124,7 +124,7 @@ export function buildWorktreeRowActions(deps: WorktreeRowActionsDeps): WorktreeR
    * A retire deletes the directory, so every conversation living there is closed
    * by it — and a conversation that is running, has dispatched background
    * agents, or has outstanding background commands cannot be closed (see
-   * tab-close-guard.ts, which has no `force` on purpose). That is not something
+   * session-busy-guard.ts, which has no `force` on purpose). That is not something
    * to confirm past: the operator is told which conversations are active and
    * decides for themselves whether to interrupt or wait. So this arm raises the
    * acknowledge-only outcome dialog and never offers the Retire button at all.

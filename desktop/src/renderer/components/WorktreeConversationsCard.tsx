@@ -50,8 +50,13 @@ export interface WorktreeConversationsCardProps {
  * A status is rendered as a dot in the same vocabulary the tab strip uses:
  * running is the only state worth a colour here, because it is the only one
  * that changes what clicking through will find.
+ *
+ * Exported so `WorktreeRowGoToTabSubmenu` (the row menu's "Go to tab" list)
+ * renders the identical dot vocabulary rather than a second, drifting copy of
+ * this cascade — the two are the only surfaces that render a conversation
+ * list with a status dot per row.
  */
-function statusColor(status: string, colors: ReturnType<typeof useColors>): string {
+export function statusColor(status: string, colors: ReturnType<typeof useColors>): string {
   if (status === 'running' || status === 'connecting') return colors.accent
   if (status === 'error') return colors.dangerFg
   return colors.textTertiary

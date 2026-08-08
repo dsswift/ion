@@ -131,6 +131,82 @@ describe('preferences-persist round-trip — structural', () => {
   })
 })
 
+describe('loadPersistedSettings — defaultThinkingEffort validation', () => {
+  // The structural suite above proves every SETTINGS_DEFAULTS key is hydrated.
+  // It does NOT prove any key's VALUE survives validation, and that gap is
+  // exactly how a defect shipped: `defaultThinkingEffort` was validated against
+  // a hand-written four-value inline list (low/medium/high/off). When the
+  // thinking ladder gained `xhigh` and `max`, two of the three validators were
+  // moved to the shared `isThinkingEffort` guard and this one was missed. The
+  // Settings picker offered all six levels, so choosing `max` wrote correctly to
+  // settings.json — then the next launch failed the value, loaded `high`, and
+  // the following save wrote `high` back to disk, destroying the choice.
+  //
+  // Worse, the two readers of the same key diverged: this renderer validator
+  // said `high` while main/settings-store.ts `readDefaultThinkingEffort` said
+  // `xhigh`, so EngineConfig.thinking.effort disagreed with what every new
+  // conversation was seeded with.
+  //
+  // Revert proof: restore the inline four-value list and the xhigh/max cases
+  // below go red (both resolve to 'high'). The adaptive/garbage cases pass
+  // either way by design — they pin that the fix did not WIDEN validation.
+  let originalIon: unknown
+  let originalDocument: unknown
+
+  beforeEach(() => {
+    originalIon = (globalThis as { window?: { ion?: unknown } }).window?.ion
+    originalDocument = (globalThis as { document?: unknown }).document
+    ;(globalThis as { document?: unknown }).document = {
+      documentElement: { style: {}, classList: { toggle: () => {}, add: () => {}, remove: () => {} } },
+    }
+  })
+
+  afterEach(() => {
+    ;(globalThis as { window?: { ion?: unknown } }).window = { ion: originalIon } as Window & typeof globalThis
+    ;(globalThis as { document?: unknown }).document = originalDocument
+  })
+
+  /** Hydrate from a disk payload carrying just this key; return the emitted patch. */
+  async function hydrate(diskValue: unknown): Promise<Record<string, unknown>> {
+    ;(globalThis as { window?: { ion?: unknown } }).window = {
+      ion: { loadSettings: () => Promise.resolve({ defaultThinkingEffort: diskValue }) },
+    } as unknown as Window & typeof globalThis
+
+    const setStateMock = vi.fn()
+    loadPersistedSettings(
+      setStateMock,
+      () => ({ _systemIsDark: false } as unknown as PreferencesState),
+      vi.fn(),
+    )
+    await new Promise((resolve) => setImmediate(resolve))
+    return setStateMock.mock.calls[0][0] as Record<string, unknown>
+  }
+
+  // THE regression. `xhigh` and `max` are real rungs the Settings picker offers.
+  it.each(['xhigh', 'max'])('preserves the extended rung %s', async (level) => {
+    const patch = await hydrate(level)
+    expect(patch.defaultThinkingEffort).toBe(level)
+  })
+
+  it.each(['off', 'low', 'medium', 'high'])('preserves the base level %s', async (level) => {
+    const patch = await hydrate(level)
+    expect(patch.defaultThinkingEffort).toBe(level)
+  })
+
+  // 'adaptive' is a valid ThinkingEffort but NOT a valid value for this
+  // preference: it seeds effort-based models, and adaptive models derive their
+  // default from capability metadata. Mirrors readDefaultThinkingEffort.
+  it("rejects 'adaptive' — this preference seeds effort-based models only", async () => {
+    const patch = await hydrate('adaptive')
+    expect(patch.defaultThinkingEffort).toBe('high')
+  })
+
+  it.each([['garbage'], [42], [null], [undefined]])('defaults to high for the invalid value %s', async (bad) => {
+    const patch = await hydrate(bad)
+    expect(patch.defaultThinkingEffort).toBe('high')
+  })
+})
+
 describe('loadPersistedSettings applies forced-scheme theme by id on startup', () => {
   let originalIon: unknown
   let originalDocument: unknown
@@ -207,6 +283,33 @@ describe('loadPersistedSettings applies forced-scheme theme by id on startup', (
 
     expect(applyThemeMock).toHaveBeenCalledWith('ion-light')
     expect(setStateMock).toHaveBeenCalledWith(expect.objectContaining({ selectedTheme: 'ion-light' }))
+  })
+})
+
+describe('loadPersistedSettings — AI-assisted prompt override validation', () => {
+  it('keeps known non-empty workflow prompts and drops unknown or malformed entries', async () => {
+    const originalIon = (globalThis as { window?: { ion?: unknown } }).window?.ion
+    ;(globalThis as { window?: { ion?: unknown } }).window = {
+      ion: { loadSettings: () => Promise.resolve({
+        aiAssistPromptOverrides: {
+          'rebase-resolution': 'custom {{directory}}',
+          'merge-resolution': '   ',
+          unknown: 'must drop',
+          'cherry-pick-resolution': 42,
+        },
+      }) },
+    } as unknown as Window & typeof globalThis
+    ;(globalThis as { document?: unknown }).document = {
+      documentElement: { style: {}, classList: { toggle: () => {}, add: () => {}, remove: () => {} } },
+    }
+    const setStateMock = vi.fn()
+    loadPersistedSettings(setStateMock, () => ({ _systemIsDark: false } as unknown as PreferencesState), vi.fn())
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(setStateMock.mock.calls[0][0].aiAssistPromptOverrides).toEqual({
+      'rebase-resolution': 'custom {{directory}}',
+    })
+    ;(globalThis as { window?: { ion?: unknown } }).window = { ion: originalIon } as Window & typeof globalThis
   })
 })
 

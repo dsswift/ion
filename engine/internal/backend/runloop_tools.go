@@ -54,6 +54,7 @@ func (b *ApiBackend) executeTools(
 	permReqFn := hooks.OnPermissionRequest
 	permDenyFn := hooks.OnPermissionDenied
 	permClassifyFn := hooks.OnPermissionClassify
+	gateFn := hooks.OnToolGate
 
 	// Inject session-scoped agent spawner into context for Agent tool.
 	// A nil spawner means the Agent tool will return "Agent tool not
@@ -104,24 +105,6 @@ func (b *ApiBackend) executeTools(
 		gCtx = tools.WithHistorySearcher(gCtx, func(query string, maxResults int) []conversation.HistoryMatch {
 			return conversation.SearchMessages(conv, query, maxResults)
 		})
-	}
-
-	var turnWorkspaceRefusals map[int]*workspaces.Refusal
-	if wsChecker != nil && len(toolUseBlocks) > 1 {
-		for i, block := range toolUseBlocks {
-			driver := wsChecker.ClassifyMergeDriver(block.Name, block.Input, cwd)
-			if driver.Driver != workspaces.MergeDriverContinue {
-				continue
-			}
-			if turnWorkspaceRefusals == nil {
-				turnWorkspaceRefusals = make(map[int]*workspaces.Refusal)
-			}
-			turnWorkspaceRefusals[i] = &workspaces.Refusal{
-				Kind:   workspaces.RefusalBenchHistory,
-				Target: driver.BenchPath,
-				Reason: "Refused: run `git merge --continue` in a turn with no sibling tool calls. Tool calls in one response run concurrently, so merge completion must wait for a separate turn after all resolution, validation, and staging calls finish.",
-			}
-		}
 	}
 
 	for i, block := range toolUseBlocks {
@@ -204,14 +187,19 @@ func (b *ApiBackend) executeTools(
 				}
 			}
 
-			if refusal := turnWorkspaceRefusals[i]; refusal != nil {
-				b.recordWorkspaceRefusal(gCtx, run, block, cwd, refusal, permDenyFn, telem, results, i)
-				return nil
-			}
-
 			// Workspace containment (beside the permission check, before hooks
 			// and execution). See checkWorkspaceContainment for the policy.
 			if done := b.checkWorkspaceContainment(gCtx, run, wsChecker, block, cwd, permDenyFn, telem, results, i); done {
+				return nil
+			}
+
+			// Client tool gate (opt-in per session via EngineConfig.ToolGate).
+			// After the engine's own checks — a call they refuse never pays
+			// the client round-trip — and before sandbox wrapping and the
+			// extension tool_call hook, so the session owner's refusal
+			// preempts extension processing. Sibling names let the client
+			// evaluate turn-isolation policies. See checkToolGate.
+			if done := b.checkToolGate(gCtx, run, gateFn, block, cwd, siblingToolNames(toolUseBlocks, i), permDenyFn, telem, results, i); done {
 				return nil
 			}
 
@@ -632,6 +620,12 @@ func (b *ApiBackend) executeTools(
 				}
 			}
 
+			// Worktree attachment check: a Bash command in a registered
+			// worktree may have left HEAD detached or an operation mid-flight
+			// (the conflicted-rebase case). Report it in the result the model
+			// reads next, while the context to fix it is still live.
+			b.noteWorktreeAttachment(run, wsChecker, block.Name, cwd, results, i)
+
 			// Append a warning when Write replaced existing plan content.
 			// This nudges the LLM to use Edit for future modifications.
 			if planWriteOverwrite && !results[i].IsError {
@@ -759,30 +753,12 @@ func (b *ApiBackend) executeTools(
 				}
 			}
 
-			// Emit tool_result event. When the tool returned vision images,
-			// save each image's bytes to the conversation's images/ directory
-			// and carry the FILE PATH (never base64) on both the
-			// ToolResultEvent.Images field and a per-image ImageContentEvent.
-			// The engine is a pass-through for images — it saves and forwards,
-			// never generates.
-			var resultImages []types.ToolResultImage
-			if len(results[i].Images) > 0 {
-				resultImages = b.saveToolResultImages(run, block.ID, results[i].Images)
-			}
-			b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
-				ToolID:  block.ID,
+			// Publish the finished result (see runloop_tool_result.go).
+			b.emitToolResult(run, block.ID, &toolResultPayload{
 				Content: results[i].Content,
 				IsError: results[i].IsError,
-				Images:  resultImages,
-			}})
-			for _, img := range resultImages {
-				b.emit(run, types.NormalizedEvent{Data: &types.ImageContentEvent{
-					Path:      img.Path,
-					MediaType: img.MediaType,
-					Source:    "tool",
-					ToolID:    block.ID,
-				}})
-			}
+				Images:  results[i].Images,
+			})
 
 			return nil
 		})

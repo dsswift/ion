@@ -22,11 +22,12 @@ export interface RemoteTabState {
   permissionMode: 'auto' | 'plan'
   /**
    * Per-conversation extended-thinking effort (bare conversation / active
-   * instance). 'low' | 'medium' | 'high' when set; omitted when off. iOS
+   * instance). 'adaptive' | 'low' | 'medium' | 'high' when set; omitted when
+   * off. 'adaptive' means the model self-regulates depth. iOS
    * renders the per-conversation thinking control from this. Mirrors
    * TabState.thinkingEffort / ConversationInstance.thinkingEffort.
    */
-  thinkingEffort?: 'low' | 'medium' | 'high'
+  thinkingEffort?: 'adaptive' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   permissionQueue: PermissionRequest[]
   /**
    * Live extension elicitations (ctx.elicit) awaiting a user decision on the
@@ -114,7 +115,7 @@ export interface RemoteTabState {
    *  policy: iOS does not switch on it — it rides the snapshot so the main
    *  process can resolve the bench singleton and exclude auto-fix tabs from
    *  the openConversations projection. Absent = default (null). */
-  tabRole?: 'bench-conversation' | 'conflict-auto-fix'
+  tabRole?: 'bench-conversation' | 'conflict-auto-fix' | 'verification-analysis'
   /** True when the conversation hosts an engine extension. Wire field consumed
    *  by iOS (RemoteTabState.swift). Not a backend flag. */
   hasEngineExtension?: boolean
@@ -131,7 +132,7 @@ export interface RemoteTabState {
     backgroundShellCount?: number
     modelFallback?: { requestedModel: string; fallbackModel: string }
     conversationIds?: string[]
-    thinkingEffort?: 'low' | 'medium' | 'high'
+    thinkingEffort?: 'adaptive' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
     dispatchTelemetry?: DispatchTelemetryEntry[]
   }>
   activeConversationInstanceId?: string | null

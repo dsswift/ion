@@ -9,20 +9,19 @@ import (
 // Process-wide workspace checker.
 //
 // ── Why one per process, not one per Manager or session ─────────────────────
-// The checker reads the two workspace records under the ONE Ion home this
+// The checker reads the workspace record under the ONE Ion home this
 // process serves, and its cache is mtime-validated on every read. So sharing
 // it is both safe — a worktree registered mid-session is visible to the very
 // next tool call in every session — and what keeps the cost at a single stat
 // per gated call instead of a cold re-parse per session.
 //
 // ── Why the accessor lives here and not in the session package ──────────────
-// Containment is not the only consumer any more. Workspace CONTEXT and
-// read-only ATTRIBUTION read the same two records, and they are reached from
-// the tool registry and the prompt path, not from a Manager method. A
-// singleton owned by one consumer forces every other consumer either to
+// Containment is not the only consumer. Workspace CONTEXT reads the same
+// record, and it is reached from the prompt path, not from a Manager method.
+// A singleton owned by one consumer forces every other consumer either to
 // construct a second checker (a second cache, a second set of stats, and two
 // views that can disagree within one tool call) or to reach through that
-// consumer for no reason. Ownership belongs with the records.
+// consumer for no reason. Ownership belongs with the record.
 //
 // ── Why the override is a first-class seam, not a test-only hack ─────────────
 // A package-level singleton is process state, and process state shared across

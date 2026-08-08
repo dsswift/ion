@@ -46,7 +46,6 @@ import { runGit } from '../git-runner'
 import { repositoryManager } from '../git/repositoryManager'
 import { log as _log, warn as _warn } from '../logger'
 import { markWorktreeLanded } from './inventory'
-import { invalidateWorktreeInventoryCache } from './inventory-cache'
 import type { LandResult } from '../../shared/types'
 
 const TAG = 'worktree.land'
@@ -97,12 +96,6 @@ export async function findWorktreeForBranch(repoPath: string, branch: string): P
     warn('worktree list probe failed', { repo_path: repoPath, branch, error: String(err) })
     throw err
   }
-}
-
-/** True when the given working tree has uncommitted changes. */
-export async function isDirty(directory: string): Promise<boolean> {
-  const status = await runGit(directory, ['status', '--porcelain'])
-  return status.trim().length > 0
 }
 
 /**
@@ -157,69 +150,11 @@ export interface LandOptions {
   requireFastForward?: boolean
 }
 
-/**
- * Rebase a worktree onto the current tip of its source branch.
- *
- * Exposed on its own (the "Sync from source" verb) and reused as the optional
- * first step of a land. This is the resolution for BASE staleness: the feature
- * branch has moved on — because another worktree landed, a teammate pushed, or
- * the operator committed to it directly — and this worktree is developing
- * against stale code.
- *
- * A dirty worktree is REFUSED before git is asked to rebase. git would refuse
- * anyway ("cannot rebase: You have unstaged changes"), so the operator's work
- * is never at risk either way — but the raw git error is not actionable, and a
- * preflight lets the caller say what to do about it. The uncommitted work is
- * left exactly as it was.
- */
-export async function syncWorktreeFromSource(
-  worktreePath: string,
-  sourceBranch: string,
-): Promise<{ ok: boolean; error?: string; hasConflicts?: boolean; refusedDirty?: boolean }> {
-  log('sync: starting', { worktree_path: worktreePath, source_branch: sourceBranch })
-
-  // Preflight: refuse a dirty tree with an actionable message rather than
-  // letting git emit its own. Nothing is modified on this path.
-  try {
-    if (await isDirty(worktreePath)) {
-      warn('sync: refused, worktree has uncommitted changes', { worktree_path: worktreePath })
-      return {
-        ok: false,
-        refusedDirty: true,
-        error:
-          'This worktree has uncommitted changes, so it cannot be synced. ' +
-          'Commit or stash them, then sync again. Your changes have not been touched.',
-      }
-    }
-  } catch (err) {
-    warn('sync: status probe failed', { worktree_path: worktreePath, error: String(err) })
-    return { ok: false, error: `Could not read worktree status: ${String(err)}` }
-  }
-
-  try {
-    await runGit(worktreePath, ['rebase', sourceBranch])
-    // The rebase moved this worktree's HEAD; a cached crawl would keep showing
-    // the pre-sync badge for a TTL after the operator just cleared it.
-    invalidateWorktreeInventoryCache('worktree synced')
-    log('sync: done', { worktree_path: worktreePath, source_branch: sourceBranch })
-    return { ok: true }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    // Precise conflict detection, not a message match — see hasMergeConflict.
-    const hasConflicts = await hasMergeConflict(worktreePath)
-    warn('sync: failed', { worktree_path: worktreePath, source_branch: sourceBranch, has_conflicts: hasConflicts, error: msg })
-    if (hasConflicts) {
-      return {
-        ok: false,
-        hasConflicts: true,
-        error:
-          `Syncing from ${sourceBranch} hit a conflict. Resolve it in ${worktreePath} ` +
-          '(git rebase --continue), or run git rebase --abort to return to where you were.',
-      }
-    }
-    return { ok: false, error: msg }
-  }
-}
+// The sync verb cluster (syncWorktreeFromSource, completeRebaseIfReplayed)
+// lives in sync.ts; re-exported here so the many existing importers of the
+// integration module keep one stable path for the whole lifecycle API.
+import { syncWorktreeFromSource, isDirty } from './sync'
+export { syncWorktreeFromSource, completeRebaseIfReplayed, isDirty } from './sync'
 
 /**
  * Land a worktree's branch into its source branch.
@@ -298,8 +233,13 @@ export async function landWorktreeUnqueued(opts: LandOptions): Promise<LandResul
       // The only moment this is knowable. See the `landedAt` field comment:
       // after the fact, a landed worktree and one that never committed are
       // indistinguishable to git.
-      markWorktreeLanded(worktreePath)
-      return { ok: true, mode: 'ref-advance', sha }
+      const landWarning = markWorktreeLanded(worktreePath)
+        ? undefined
+        : 'Land succeeded but the registry could not be updated.'
+      if (landWarning) {
+        warn('land: ref advanced but registry persist failed', { worktree_path: worktreePath })
+      }
+      return { ok: true, mode: 'ref-advance', sha, warning: landWarning }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       // git refuses a non-fast-forward ref update itself. That is the honest
@@ -356,8 +296,13 @@ export async function landWorktreeUnqueued(opts: LandOptions): Promise<LandResul
       no_ff: !!noFf,
       require_fast_forward: !!requireFastForward,
     })
-    markWorktreeLanded(worktreePath)
-    return { ok: true, mode: requireFastForward ? 'fast-forward' : 'merge', sha }
+    const mergeWarning = markWorktreeLanded(worktreePath)
+      ? undefined
+      : 'Land succeeded but the registry could not be updated.'
+    if (mergeWarning) {
+      warn('land: merged but registry persist failed', { worktree_path: worktreePath })
+    }
+    return { ok: true, mode: requireFastForward ? 'fast-forward' : 'merge', sha, warning: mergeWarning }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     // Ask git whether this is actually a conflict rather than pattern-matching

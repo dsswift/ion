@@ -2,7 +2,7 @@
  * Close guard for the remote (iOS) close path.
  *
  * The desktop hard-blocks Cmd+W while a tab has work in flight —
- * `evaluateCloseGuard` in the renderer store (tab-close-guard.ts) refuses the
+ * `evaluateSessionBusyGuard` in the renderer store (session-busy-guard.ts) refuses the
  * close when the orchestrator is running, a dispatched agent is running, or a
  * background bash command is outstanding. Closing anyway kills the engine
  * session and orphans that work.
@@ -27,7 +27,7 @@
  * unknown-tab rule below already handles correctly.
  *
  * Kept pure and separate from handlers/tabs.ts so it is unit-testable without
- * an Electron window, matching how tab-close-guard.ts is tested on the
+ * an Electron window, matching how session-busy-guard.ts is tested on the
  * renderer side.
  */
 
@@ -87,7 +87,7 @@ export function evaluateRemoteCloseGuard(
   }
 }
 
-/** Single-line refusal for the log, mirroring formatCloseGuardRefusal. */
+/** Single-line refusal for the log, mirroring formatSessionBusyRefusal. */
 export function formatRemoteCloseGuardRefusal(
   tabId: string,
   result: RemoteCloseGuardResult,

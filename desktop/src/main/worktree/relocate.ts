@@ -136,7 +136,11 @@ export async function retireWorktree(opts: RetireOptions): Promise<WorktreeMoveR
       log('retire: branch delete skipped (worktree already removed)', { branch: branchName, error: String(err) })
     }
 
-    unregisterWorktree(worktreePath)
+    let registryWarning: string | undefined
+    if (!unregisterWorktree(worktreePath)) {
+      registryWarning = 'Worktree removed but registry persist failed.'
+      warn('retire: worktree removed but registry persist failed', { worktree_path: worktreePath })
+    }
 
     // Drop the worktree from every bench that held it, and remove any bench
     // left empty. A member whose worktree is gone can never be updated,
@@ -171,7 +175,10 @@ export async function retireWorktree(opts: RetireOptions): Promise<WorktreeMoveR
       recovery_ref: recoveryRef ?? '',
       pruned_benches: prunedBenches.length,
     })
-    return { ok: true, workingDirectory: repoPath, recoveryRef, prunedBenchPaths: prunedBenches }
+    return {
+      ok: true, workingDirectory: repoPath, recoveryRef,
+      prunedBenchPaths: prunedBenches, warning: registryWarning,
+    }
   })
 }
 
@@ -215,15 +222,27 @@ export async function reattachWorktree(opts: ReattachOptions): Promise<WorktreeM
       const worktree: WorktreeInfo = { worktreePath, branchName, sourceBranch, repoPath }
       // A re-attached worktree must be indistinguishable from an originally
       // created one, so it registers its source branch the same way — and
-      // carries the conversation's name the same way.
-      registerWorktree({ worktreePath, repoPath, branchName, sourceBranch, title })
+      // carries the conversation's name the same way. The base (fresh HEAD ==
+      // the source tip just checked out) rides along for the sync verb's
+      // precise rebase; failing to read it degrades to the plain fallback.
+      let baseSha: string | undefined
+      try {
+        baseSha = (await runGit(worktreePath, ['rev-parse', 'HEAD'])).trim()
+      } catch (err) {
+        warn('reattach: could not resolve base sha', { worktree_path: worktreePath, error: String(err) })
+      }
+      let registryWarning: string | undefined
+      if (!registerWorktree({ worktreePath, repoPath, branchName, sourceBranch, title, baseSha })) {
+        registryWarning = 'Worktree created but registry persist failed.'
+        warn('reattach: worktree created but registry persist failed', { worktree_path: worktreePath })
+      }
       log('reattach: created', {
         worktree_path: worktreePath,
         branch: branchName,
         source_branch: sourceBranch,
         title: title ?? '',
       })
-      return { ok: true, workingDirectory: worktreePath, worktree }
+      return { ok: true, workingDirectory: worktreePath, worktree, warning: registryWarning }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       warn('reattach: failed', { repo_path: repoPath, source_branch: sourceBranch, error: msg })

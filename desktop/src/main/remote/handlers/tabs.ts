@@ -14,6 +14,7 @@ import { decideLoad, recordLoadResponse } from './load-conversation-gate'
 import { resolveDiscoveryWorkingDir } from '../../ipc-validation'
 import { lookupClientMsgId, clearClientMsgIdsForTab } from '../client-msg-id-map'
 import type { RemoteCommand, RemoteEvent } from '../protocol'
+import { isThinkingEffort } from '../../../shared/thinking-options'
 
 export { handlePrompt, handleCancel } from './tabs-prompt'
 // Tab creation (and its desktop_tab_created echo) lives in tabs-create-echo.ts;
@@ -226,7 +227,10 @@ export async function handleSetPermissionMode(cmd: Extract<RemoteCommand, { type
  */
 export async function handleSetThinkingEffort(cmd: Extract<RemoteCommand, { type: 'desktop_set_thinking_effort' }>): Promise<void> {
   const effort = cmd.effort
-  if (effort !== 'off' && effort !== 'low' && effort !== 'medium' && effort !== 'high') {
+  // Validated against the shared ladder rather than an inline list: an inline
+  // list silently rejected 'adaptive' after it was added to the type, dropping
+  // the command with only a log line to show for it.
+  if (!isThinkingEffort(effort)) {
     log('set_thinking_effort: invalid effort', { effort })
     return
   }
@@ -380,51 +384,5 @@ export async function handleDiscoverCommands(cmd: Extract<RemoteCommand, { type:
   } catch (err) {
     log('discover_commands error', { error: (err as Error).message })
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_discover_commands_response', directory, commands: [] })
-  }
-}
-
-export async function handleSetTabModel(cmd: Extract<RemoteCommand, { type: 'desktop_set_tab_model' }>): Promise<void> {
-  try {
-    const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    const escapedModel = cmd.model.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    await state.mainWindow?.webContents.executeJavaScript(`
-      (function() {
-        var store = window.__Ion_SESSION_STORE__;
-        if (!store) return;
-        store.getState().setTabModel('${escapedTab}', '${escapedModel}');
-      })()
-    `)
-  } catch (err) {
-    log('set_tab_model error: ' + (err as Error).message)
-  }
-}
-
-export async function handleSetPreferredModel(cmd: Extract<RemoteCommand, { type: 'desktop_set_preferred_model' }>): Promise<void> {
-  try {
-    const escapedModel = cmd.model.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    await state.mainWindow?.webContents.executeJavaScript(`
-      (function() {
-        var prefs = window.__Ion_PREFS_STORE__;
-        if (!prefs) return;
-        prefs.getState().setPreferredModel('${escapedModel}');
-      })()
-    `)
-  } catch (err) {
-    log('set_preferred_model error: ' + (err as Error).message)
-  }
-}
-
-export async function handleSetEngineDefaultModel(cmd: Extract<RemoteCommand, { type: 'desktop_set_engine_default_model' }>): Promise<void> {
-  try {
-    const escapedModel = cmd.model.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    await state.mainWindow?.webContents.executeJavaScript(`
-      (function() {
-        var prefs = window.__Ion_PREFS_STORE__;
-        if (!prefs) return;
-        prefs.getState().setEngineDefaultModel('${escapedModel}');
-      })()
-    `)
-  } catch (err) {
-    log('set_engine_default_model error: ' + (err as Error).message)
   }
 }

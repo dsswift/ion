@@ -98,6 +98,27 @@ describe('loadSkeletonMessages', () => {
     expect(h.inst().historyHydrated).toBe(true)
   })
 
+  it('hydrates explicit unhydrated state even when cached count is stale at zero', async () => {
+    mockLoadChainHistory.mockResolvedValue([
+      { role: 'user', content: 'persisted prompt' },
+      { role: 'assistant', content: 'persisted answer' },
+    ])
+    // Real historical files can survive while a prior bad persistence cycle
+    // wrote messageCount: 0. Explicit historyHydrated:false is authoritative;
+    // cached count must not suppress disk hydration.
+    const h = makeHarness({ messages: [], messageCount: 0, historyHydrated: false })
+
+    await h.load()
+
+    expect(mockLoadChainHistory).toHaveBeenCalledWith(['conv-old', 'conv-1'])
+    expect(h.inst().messages.map((m) => m.content)).toEqual(['persisted prompt', 'persisted answer'])
+    expect(h.inst().historyHydrated).toBe(true)
+
+    mockLoadChainHistory.mockClear()
+    await h.load()
+    expect(mockLoadChainHistory).not.toHaveBeenCalled()
+  })
+
   it('REGRESSION: a poisoned skeleton (live messages landed first) still loads full history', async () => {
     mockLoadChainHistory.mockResolvedValue([
       { role: 'user', content: 'old turn 1' },
@@ -193,8 +214,9 @@ describe('needsHistoryHydration', () => {
     expect(needsHistoryHydration({ ...base, historyHydrated: false, messages: [], messageCount: 9 })).toBe(true)
     // The bug case: unhydrated pane with live messages still needs hydration.
     expect(needsHistoryHydration({ ...base, historyHydrated: false, messages: [liveMsg('a', 'x')], messageCount: 1 })).toBe(true)
-    // Unhydrated but genuinely empty conversation: nothing to load.
-    expect(needsHistoryHydration({ ...base, historyHydrated: false, messages: [], messageCount: 0 })).toBe(false)
+    // Explicit false is authoritative even when cached messageCount is stale at
+    // zero; loader decides whether durable history is truly empty.
+    expect(needsHistoryHydration({ ...base, historyHydrated: false, messages: [], messageCount: 0 })).toBe(true)
     // Legacy (undefined marker): original heuristic.
     expect(needsHistoryHydration({ ...base, messages: [], messageCount: 3 })).toBe(true)
     expect(needsHistoryHydration({ ...base, messages: [liveMsg('a', 'x')], messageCount: 1 })).toBe(false)

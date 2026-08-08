@@ -41,7 +41,9 @@
 		A1B2C3D4E5F60001000021AA /* SessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000022AA /* SessionViewModel.swift */; };
 		A1B2C3D4E5F60001000023AA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000024AA /* Assets.xcassets */; };
 		A1B2C3D4E5F600010004AB01 /* WorktreeWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010003AB01 /* WorktreeWireTests.swift */; };
+		A1B2C3D4E5F600010004AB02 /* WorktreeWireCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010003AB02 /* WorktreeWireCommandTests.swift */; };
 		F3B1C2D3E4F5061728394A01 /* BenchNavigationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3B1C2D3E4F5061728394A02 /* BenchNavigationTests.swift */; };
+		F3B1C2D3E4F5061728394B01 /* WorktreeRowSelectConversationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3B1C2D3E4F5061728394B02 /* WorktreeRowSelectConversationTests.swift */; };
 		A1B2C3D4E5F600010004AB77 /* WorktreeOpResultWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010003AB77 /* WorktreeOpResultWireTests.swift */; };
 		A1B2C3D4E5F600010004AC91 /* WorktreeCloseWarningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010003AC91 /* WorktreeCloseWarningTests.swift */; };
 		A1B2C3D4E5F60001000027AA /* E2ECryptoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */; };
@@ -189,6 +191,7 @@
 		TYPEKEY00000000000000003A /* NormalizedEventTypeKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TYPEKEY00000000000000004A /* NormalizedEventTypeKeyTests.swift */; };
 		A1B2C3D4E5F60001000301AA /* GitTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000300AA /* GitTypes.swift */; };
 		A1B2C3D4E5F6000100049A01 /* WorktreeTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A01 /* WorktreeTypes.swift */; };
+		C0DE57A6E00000000000A001 /* WorkStage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE57A6E00000000000F001 /* WorkStage.swift */; };
 		A1B2C3D4E5F6000100049A02 /* NormalizedEvent+Worktree.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A02 /* NormalizedEvent+Worktree.swift */; };
 		A1B2C3D4E5F60001000303AA /* NormalizedEvent+Git.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000302AA /* NormalizedEvent+Git.swift */; };
 		A1B2C3D4E5F6000100049A05 /* WorktreeListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A05 /* WorktreeListView.swift */; };
@@ -468,7 +471,9 @@
 		A1B2C3D4E5F60001000022AA /* SessionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionViewModel.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000024AA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010003AB01 /* WorktreeWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeWireTests.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010003AB02 /* WorktreeWireCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeWireCommandTests.swift"; sourceTree = "<group>"; };
 		F3B1C2D3E4F5061728394A02 /* BenchNavigationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchNavigationTests.swift; sourceTree = "<group>"; };
+		F3B1C2D3E4F5061728394B02 /* WorktreeRowSelectConversationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeRowSelectConversationTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010003AB77 /* WorktreeOpResultWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeOpResultWireTests.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010003AC91 /* WorktreeCloseWarningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeCloseWarningTests.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2ECryptoTests.swift; sourceTree = "<group>"; };
@@ -619,6 +624,7 @@
 		TYPEKEY00000000000000004A /* NormalizedEventTypeKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventTypeKeyTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000300AA /* GitTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitTypes.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100039A01 /* WorktreeTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeTypes.swift"; sourceTree = "<group>"; };
+		C0DE57A6E00000000000F001 /* WorkStage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorkStage.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100039A02 /* NormalizedEvent+Worktree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Worktree.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000302AA /* NormalizedEvent+Git.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Git.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100039A05 /* WorktreeListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeListView.swift"; sourceTree = "<group>"; };
@@ -928,6 +934,7 @@
 				CTXBDPAY0000000000002 /* ContextBreakdownPayload.swift */,
 				A1B2C3D4E5F60001D70007AA /* DesktopSettingsModel.swift */,
 				A1B2C3D4E5F6000100039A01 /* WorktreeTypes.swift */,
+				C0DE57A6E00000000000F001 /* WorkStage.swift */,
 				A1B2C3D4E5F6000100039A02 /* NormalizedEvent+Worktree.swift */,
 				A1B2C3D4E5F60001000302AA /* NormalizedEvent+Git.swift */,
 				A1B2C3D4E5F60001000402AA /* NormalizedEvent+Files.swift */,
@@ -1252,7 +1259,9 @@
 				A1B2C3D4E5F600010009F4AA /* PendingCreateTests.swift */,
 				PLANCARDGATETEST00000002 /* PlanCardGateTests.swift */,
 				A1B2C3D4E5F600010003AB01 /* WorktreeWireTests.swift */,
+				A1B2C3D4E5F600010003AB02 /* WorktreeWireCommandTests.swift */,
 				F3B1C2D3E4F5061728394A02 /* BenchNavigationTests.swift */,
+				F3B1C2D3E4F5061728394B02 /* WorktreeRowSelectConversationTests.swift */,
 				A1B2C3D4E5F600010003AB77 /* WorktreeOpResultWireTests.swift */,
 				A1B2C3D4E5F600010003AC91 /* WorktreeCloseWarningTests.swift */,
 				A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */,
@@ -1665,6 +1674,7 @@
 				A1B2C3D4E5F60001DA0006AA /* DesktopSettingsListRecordEditor.swift in Sources */,
 				A1B2C3D4E5F60001DB0006AA /* DesktopSettingsPrimitiveListEditor.swift in Sources */,
 				A1B2C3D4E5F6000100049A01 /* WorktreeTypes.swift in Sources */,
+				C0DE57A6E00000000000A001 /* WorkStage.swift in Sources */,
 				A1B2C3D4E5F6000100049A02 /* NormalizedEvent+Worktree.swift in Sources */,
 				A1B2C3D4E5F60001000303AA /* NormalizedEvent+Git.swift in Sources */,
 				A1B2C3D4E5F60001000301AA /* GitTypes.swift in Sources */,
@@ -1902,7 +1912,9 @@
 				A1B2C3D4E5F600010009F3AA /* PendingCreateTests.swift in Sources */,
 				PLANCARDGATETEST00000001 /* PlanCardGateTests.swift in Sources */,
 				A1B2C3D4E5F600010004AB01 /* WorktreeWireTests.swift in Sources */,
+				A1B2C3D4E5F600010004AB02 /* WorktreeWireCommandTests.swift in Sources */,
 				F3B1C2D3E4F5061728394A01 /* BenchNavigationTests.swift in Sources */,
+				F3B1C2D3E4F5061728394B01 /* WorktreeRowSelectConversationTests.swift in Sources */,
 				A1B2C3D4E5F600010004AB77 /* WorktreeOpResultWireTests.swift in Sources */,
 				A1B2C3D4E5F600010004AC91 /* WorktreeCloseWarningTests.swift in Sources */,
 				A1B2C3D4E5F60001000027AA /* E2ECryptoTests.swift in Sources */,

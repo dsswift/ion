@@ -46,6 +46,9 @@ type ClientCommand struct {
 	Source             string              `json:"source,omitempty"`
 	Provider           string              `json:"provider,omitempty"`
 	Credential         string              `json:"credential,omitempty"`
+	// set_model_tier: ordered fallback model identifiers. Empty explicitly
+	// replaces a prior fallback chain with none.
+	Fallbacks []string `json:"fallbacks,omitempty"`
 
 	// elicitation_response: client reply to an engine_elicitation_request event.
 	ElicitRequestID string                 `json:"elicitRequestId,omitempty"`
@@ -63,6 +66,21 @@ type ClientCommand struct {
 	EarlyStopOverrideBudget       int    `json:"earlyStopOverrideBudget,omitempty"`
 	EarlyStopOverrideThresholdPct int    `json:"earlyStopOverrideThresholdPct,omitempty"`
 	EarlyStopContinueMessage      string `json:"earlyStopContinueMessage,omitempty"`
+
+	// tool_gate_response: client reply to an engine_tool_gate_request event
+	// (the opt-in client tool gate — see types.ToolGateConfig). For a
+	// "policy" request, GateDecision is "allow" or "deny" (anything else
+	// resolves to allow, because an unrecognized decision must not invent a
+	// refusal) and GateReason is the model-facing message a deny carries into
+	// the tool result. For a "tool" request (a client-declared tool call),
+	// GateContent carries the tool result text and GateIsError marks it as a
+	// failure. A late reply (after the gate's declared timeout applied the
+	// declared fallback) is logged and dropped.
+	GateRequestID string `json:"gateRequestId,omitempty"`
+	GateDecision  string `json:"gateDecision,omitempty"`
+	GateReason    string `json:"gateReason,omitempty"`
+	GateContent   string `json:"gateContent,omitempty"`
+	GateIsError   bool   `json:"gateIsError,omitempty"`
 
 	// oidc_begin_login: which grant flow to start. "pkce" (default when
 	// empty) runs the interactive authorization-code + PKCE flow — the
@@ -234,6 +252,12 @@ type ClientCommand struct {
 	// trivial check it already does to drive slash-command autocomplete).
 	ResolveSlash bool `json:"resolveSlash,omitempty"`
 
+	// ClientWorkspaceContext is a per-prompt client-supplied workspace
+	// descriptor that overrides both the session-level EngineConfig value
+	// and the engine's own worktree-registry-derived context for this
+	// prompt. Nil means "use session-level or engine-derived context."
+	ClientWorkspaceContext *types.ClientWorkspaceContext `json:"clientWorkspaceContext,omitempty"`
+
 	// Compaction overrides — per-prompt tuning of context compaction behavior.
 	CompactTargetPercent  float64 `json:"compactTargetPercent,omitempty"`
 	CompactMicroKeepTurns int     `json:"compactMicroKeepTurns,omitempty"`
@@ -300,6 +324,7 @@ var validCommands = map[string]bool{
 	"generate_title":               true,
 	"elicitation_response":         true,
 	"early_stop_decision_response": true,
+	"tool_gate_response":           true,
 	"health":                       true,
 	"reconcile_state":              true,
 	// query_session_status: on-demand counterpart to reconcile_state that
@@ -315,6 +340,9 @@ var validCommands = map[string]bool{
 	// features on this (e.g. "requires a standard tier") instead of parsing
 	// models.json themselves — the engine owns the file's semantics.
 	"resolve_model_tier": true,
+	"list_model_tiers":   true,
+	"set_model_tier":     true,
+	"remove_model_tier":  true,
 	"store_credential":   true,
 	"refresh_models":     true,
 	// provider_login / provider_login_cancel / provider_logout: delegated-CLI
@@ -349,7 +377,7 @@ var validCommands = map[string]bool{
 	// shipping its own logs) authenticates without owning the grant:
 	// the engine keeps the refresh token; clients pull ephemeral access
 	// tokens on demand.
-	"oidc_token":     true,
+	"oidc_token": true,
 	// mcp_list / mcp_add / mcp_remove / mcp_login / mcp_logout: MCP server
 	// administration. The engine owns the mechanism — engine.json CRUD, OAuth
 	// metadata discovery, dynamic client registration, the PKCE exchange, and
@@ -530,6 +558,11 @@ func hasArray(raw map[string]json.RawMessage, field string) bool {
 }
 
 // hasObject checks that raw[field] exists and is a JSON object.
+func hasField(raw map[string]json.RawMessage, field string) bool {
+	_, ok := raw[field]
+	return ok
+}
+
 func hasObject(raw map[string]json.RawMessage, field string) bool {
 	v, ok := raw[field]
 	if !ok {
@@ -587,6 +620,11 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		// Only key + earlyStopRequestId are required. All response fields
 		// are optional; an empty response is a valid "no opinion" reply.
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "earlyStopRequestId")
+	case "tool_gate_response":
+		// gateDecision is deliberately not required: an absent or
+		// unrecognized decision resolves to allow at the session layer, and
+		// requiring it here would turn a permissive reply into a dropped one.
+		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "gateRequestId")
 	case "reconcile_state":
 		return hasNonEmptyString(raw, "key")
 	case "query_session_status":
@@ -597,6 +635,14 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return true
 	case "resolve_model_tier":
 		// The tier name rides in `text`.
+		return hasNonEmptyString(raw, "text")
+	case "list_model_tiers":
+		return true
+	case "set_model_tier":
+		// Name rides in text; model and fallbacks retain their established
+		// model-selection field names. Fallbacks must be an array when present.
+		return hasNonEmptyString(raw, "text") && hasNonEmptyString(raw, "model") && (!hasField(raw, "fallbacks") || hasArray(raw, "fallbacks"))
+	case "remove_model_tier":
 		return hasNonEmptyString(raw, "text")
 	case "store_credential":
 		return hasNonEmptyString(raw, "provider") && hasString(raw, "credential")

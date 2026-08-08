@@ -78,6 +78,24 @@ describe('openWorktreeConversation', () => {
     expect(state.tabs).toHaveLength(1)
   })
 
+  // The row-click cycle must reach a conflict-auto-fix conversation, not just
+  // operator-started ones. Before this, the click was wired to
+  // collectDirConversations (operator-only), so an auto-fix tab was invisible
+  // to the rotation and this case fell through to newWorktreeConversation,
+  // stacking a second conversation beside the fix in progress rather than
+  // focusing it.
+  it('focuses an open conflict-auto-fix conversation rather than creating a new one', async () => {
+    const { state, slice } = harness({
+      tabs: [{ id: 'auto-fix', workingDirectory: WT_A, tabRole: 'conflict-auto-fix' }],
+    })
+
+    const id = await slice.openWorktreeConversation!(WT_A)
+
+    expect(id).toBe('auto-fix')
+    expect(state.selectTab).toHaveBeenCalledWith('auto-fix')
+    expect(state.createTabInDirectory).not.toHaveBeenCalled()
+  })
+
   it('creates a conversation when none is open on that worktree', async () => {
     const { state, slice } = harness({ tabs: [{ id: 'tab-other', workingDirectory: WT_B }] })
     await slice.refreshWorktreeInventory!(REPO)

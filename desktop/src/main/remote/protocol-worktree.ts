@@ -8,6 +8,7 @@
  * the `desktop_` prefix. The wire is lockstep — these types ship to
  * RemoteCommand.swift and NormalizedEvent.swift in the same change.
  */
+import type { WorkStage } from '../../shared/types-git'
 
 /**
  * One conversation open inside a worktree or bench directory.
@@ -62,6 +63,13 @@ export interface RemoteWorktree {
    */
   landedAt?: number
   /**
+   * The operator's workflow stage, or absent when none is set. Registry-scoped
+   * on the desktop (it describes the worktree's lifecycle, not one bench pin),
+   * so it exists for unenrolled worktrees too. Vocabulary + the single
+   * automatic transition: shared/types-git.ts `WORK_STAGES`.
+   */
+  stage?: WorkStage
+  /**
    * Where this worktree is in the dependency-provisioning lifecycle. Absent when
    * Ion has no record — a worktree created before provisioning existed, or one
    * whose record did not survive a desktop restart. Absent means "unknown", not
@@ -103,7 +111,7 @@ export interface RemoteWorktree {
 }
 
 /**
- * One worktree's bench membership, as iOS sees it. Mirrors WorktreeMembership.
+ * One worktree's bench membership, as iOS sees it.
  *
  * Carries NO worktree fields. This used to be a whole `RemoteBenchMember` that
  * re-sent `worktreePath`, `branchName`, `label`, and a `title` the desktop had
@@ -121,8 +129,6 @@ export interface RemoteMembership {
   enabled: boolean
   pin: 'empty' | 'current' | 'behind' | 'absorbed' | 'gone'
   merge: 'unbuilt' | 'merged' | 'conflicted' | 'skipped'
-  /** Operator verdict on the current pin. Absent means unreviewed. */
-  review?: 'good' | 'issue'
   /** Short sha of the contribution currently integrated. */
   pinnedSha: string
   /** 1-based merge position, so a client can show the bench as an ordered stack. */
@@ -160,6 +166,30 @@ export interface RemoteBench {
   lastAssembly?: 'assembled' | 'failed'
   /** Operator-facing reason when `lastAssembly` is `failed`. */
   lastAssemblyError?: string
+  /**
+   * Which gate produced the failure. `'conflict'` means a member's pinned
+   * contribution would not merge (see the member's own `conflictPaths` /
+   * `conflictsWith`). `'verification'` means every merge succeeded but the
+   * project's own verify command rejected the resulting tree — no member
+   * reports `conflicted`. `'obstructed'` means the merge failed without ever
+   * producing an unmerged index entry — a structural signal (a genuine
+   * conflict always produces at least one), not a per-member fact — so no
+   * member reports `conflicted` here either; `lastAssemblyError` carries
+   * git's own error text. Absent on a record written before this split, or on
+   * a failure this split does not yet classify; clients must render that as
+   * unclassified, never default it to `'conflict'`.
+   */
+  lastAssemblyFailure?: 'conflict' | 'verification' | 'obstructed'
+  /**
+   * Evidence for a `'verification'` failure. Absent otherwise. Read-only on
+   * iOS — the three recovery verbs (dismiss, discard-and-reassemble, analyse)
+   * are desktop-only, same posture as conflict resolution and recording purge.
+   */
+  lastAssemblyVerification?: {
+    command: string
+    outputTail: string
+    replayedBranches: string[]
+  }
   /** True when the feature branch has moved past the bench's base. */
   baseDrifted: boolean
   /** Conversations open in the bench directory, in tab order. */
@@ -211,6 +241,15 @@ export type RemoteWorktreeCommand =
       newConversation?: boolean
     }
   | { type: 'desktop_worktree_sync'; worktreePath: string; sourceBranch: string; repoPath: string }
+  /**
+   * Bulk sync: every managed worktree of the repo, sequentially, with rerere
+   * replay between them (main/worktree/sync-all.ts). The MECHANICAL pass only:
+   * the desktop's AI escalation (agents resolving leftover conflicts) is
+   * desktop-only, same precedent as conflict resolution itself — see the
+   * `operationState` comment above. iOS still benefits fully from the free
+   * half: precise rebases plus replay of every recorded resolution.
+   */
+  | { type: 'desktop_worktree_sync_all'; repoPath: string }
   | { type: 'desktop_worktree_land'; repoPath: string; worktreePath: string; worktreeBranch: string; sourceBranch: string }
   | { type: 'desktop_bench_open_conversation'; repoPath: string; sourceBranch: string }
   /**
@@ -224,7 +263,13 @@ export type RemoteWorktreeCommand =
   | { type: 'desktop_bench_update_member'; repoPath: string; sourceBranch: string; worktreePath: string }
   | { type: 'desktop_bench_update_all'; repoPath: string; sourceBranch: string }
   | { type: 'desktop_bench_set_enabled'; repoPath: string; sourceBranch: string; worktreePath: string; enabled: boolean }
-  | { type: 'desktop_bench_set_review'; repoPath: string; sourceBranch: string; worktreePath: string; review: 'good' | 'issue' | null }
+  /**
+   * Set or clear the operator's workflow stage on a worktree. Worktree-scoped
+   * (no sourceBranch): the stage lives in the desktop's worktree registry, not
+   * on a bench member, so it applies to unenrolled worktrees too. `null`
+   * clears — selecting the active stage in a picker un-sets it.
+   */
+  | { type: 'desktop_worktree_set_stage'; repoPath: string; worktreePath: string; stage: WorkStage | null }
   | { type: 'desktop_bench_reorder_member'; repoPath: string; sourceBranch: string; worktreePath: string; toIndex: number }
   | { type: 'desktop_bench_add_member'; repoPath: string; sourceBranch: string; worktreePath: string; branchName: string }
   | { type: 'desktop_bench_remove_member'; repoPath: string; sourceBranch: string; worktreePath: string }
@@ -236,7 +281,7 @@ export type RemoteWorktreeEvent =
       type: 'desktop_worktree_op_result'
       ok: boolean
       /** Which verb this answers, so iOS can attribute the toast. */
-      operation: 'sync' | 'land' | 'assemble' | 'update' | 'update_all'
+      operation: 'sync' | 'land' | 'assemble' | 'update' | 'update_all' | 'sync_all'
       error?: string
       /** Distinguishes a refusal the operator can fix from a hard failure. */
       refusedDirty?: boolean
@@ -246,4 +291,9 @@ export type RemoteWorktreeEvent =
        * operation SUCCEEDED; the warning says the next assembly will conflict.
        */
       warning?: string
+      /**
+       * Per-worktree counts for `sync_all`, pre-worded by the desktop so every
+       * client renders the same sentence. Absent on the single-target verbs.
+       */
+      summary?: string
     }

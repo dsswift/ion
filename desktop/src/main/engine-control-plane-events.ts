@@ -20,6 +20,7 @@ import { handleDispatchEvent } from './engine-control-plane-dispatch'
 import { handleExtensionEvent } from './engine-control-plane-extension'
 import { handleStreamSignalEvent } from './engine-control-plane-stream'
 import { conversationExists } from './session-meta'
+import { toolGateSessionConfig } from './tool-gate-responder'
 import { mark, Activity } from './watchdog'
 import { recordClientMsgId } from './remote/client-msg-id-map'
 
@@ -411,7 +412,7 @@ function handleStatusEvent(
           const priorConfig = ctx.bridge.getSessionConfig(tabId)
           const resumeConfig: EngineConfig = priorConfig
             ? { ...priorConfig, sessionId: tab.conversationId, forceNewConversation: false }
-            : { profileId: 'default', extensions: [], workingDirectory: '', sessionId: tab.conversationId }
+            : { profileId: 'default', extensions: [], workingDirectory: '', sessionId: tab.conversationId, toolGate: toolGateSessionConfig() }
           warn(
             `engine_status: tabId=${tabId} engine sessionId=${event.fields.sessionId} diverges from tracked conversationId=${tab.conversationId} — driving resume to restore original conversation (dir=${resumeConfig.workingDirectory || 'none'} model=${resumeConfig.model ?? 'default'} extensions=${resumeConfig.extensions.length})`,
           )

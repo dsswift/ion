@@ -7,6 +7,7 @@ import { bootstrapPreferences } from './preferences-bootstrap'
 import { parseChord } from './shortcuts/chord'
 import { SHORTCUT_CATALOG } from './shortcuts/shortcut-catalog'
 import { deriveEnterpriseThemePolicy } from '../shared/enterprise-theme-policy'
+import { normalizePreferencesModels } from './preferences-model-normalization'
 import { rWarn } from './rendererLogger'
 export type { PreferencesState } from './preferences-types'
 export { getEffectiveTabGroups } from './preferences-persist'
@@ -83,6 +84,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   planningGroupId: saved.planningGroupId,
   autoGroupMovement: saved.autoGroupMovement,
   commitCommand: saved.commitCommand,
+  aiAssistPromptOverrides: saved.aiAssistPromptOverrides,
   gitChangesTreeView: saved.gitChangesTreeView,
   quickTools: saved.quickTools,
   uiZoom: saved.uiZoom,
@@ -92,7 +94,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   lanServerPort: saved.lanServerPort,
   pairedDevices: saved.pairedDevices,
   streamThinkingToRemote: saved.streamThinkingToRemote,
-  thinkingEnabled: saved.thinkingEnabled,
+  defaultThinkingEffort: saved.defaultThinkingEffort,
   remoteDisplay: saved.remoteDisplay,
   engineDefaultModel: saved.engineDefaultModel,
   engineProfiles: saved.engineProfiles,
@@ -405,6 +407,14 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     set({ commitCommand: cmd })
     saveSettings(getAllSettings(get))
   },
+  setAiAssistPromptOverride: (workflowId, prompt) => {
+    const next = { ...get().aiAssistPromptOverrides }
+    const normalized = prompt?.trim()
+    if (normalized) next[workflowId] = prompt!
+    else delete next[workflowId]
+    set({ aiAssistPromptOverrides: next })
+    saveSettings(getAllSettings(get))
+  },
   setGitChangesTreeView: (enabled) => {
     set({ gitChangesTreeView: enabled })
     saveSettings(getAllSettings(get))
@@ -457,8 +467,8 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     set({ streamThinkingToRemote: enabled })
     saveSettings(getAllSettings(get))
   },
-  setThinkingEnabled: (enabled) => {
-    set({ thinkingEnabled: enabled })
+  setDefaultThinkingEffort: (effort) => {
+    set({ defaultThinkingEffort: effort })
     saveSettings(getAllSettings(get))
   },
   addPairedDevice: (device) => {
@@ -524,6 +534,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     set({ implementModeModel: model })
     saveSettings(getAllSettings(get))
   },
+  normalizeModelPreferences: (models) => normalizePreferencesModels(set, get, models),
   setGitWatcherIgnoredDirectories: (dirs) => {
     set({ gitWatcherIgnoredDirectories: dirs })
     saveSettings(getAllSettings(get))

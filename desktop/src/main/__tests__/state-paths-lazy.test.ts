@@ -42,7 +42,10 @@ function code(rel: string): string {
 
 const STATE_MODULES = [
   'integration/bench-store.ts',
-  'worktree/inventory.ts',
+  // The registry split moved the on-disk state paths out of inventory.ts;
+  // registry.ts is where homedir() is resolved now, so it is what must stay
+  // lazy. inventory.ts re-exports the resolver and holds no paths itself.
+  'worktree/registry.ts',
 ]
 
 describe('state paths resolve lazily', () => {

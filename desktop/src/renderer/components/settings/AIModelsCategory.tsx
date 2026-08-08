@@ -7,11 +7,12 @@ import { SettingToggle } from './SettingToggle'
 import { EngineCategory } from './EngineCategory'
 import { ProvidersCategory } from './ProvidersCategory'
 import { BashAllowlistEditor } from './BashAllowlistEditor'
-import { getModelDisplayLabel } from '../../stores/model-labels'
+import { ModelTiersSection } from './ModelTiersSection'
 import { useAllowedModels } from '../../stores/use-allowed-models'
 import { useModelStore } from '../../stores/model-store'
 import { getProviderDisplayName } from '../../../shared/types-models'
 import { rWarn } from '../../rendererLogger'
+import { thinkingEffortLabel } from '../../../shared/thinking-options'
 
 export function AIModelsCategory() {
   const colors = useColors()
@@ -27,8 +28,8 @@ export function AIModelsCategory() {
   const setImplementModeModel = usePreferencesStore((s) => s.setImplementModeModel)
   const showImplementClearContext = usePreferencesStore((s) => s.showImplementClearContext)
   const setShowImplementClearContext = usePreferencesStore((s) => s.setShowImplementClearContext)
-  const thinkingEnabled = usePreferencesStore((s) => s.thinkingEnabled)
-  const setThinkingEnabled = usePreferencesStore((s) => s.setThinkingEnabled)
+  const defaultThinkingEffort = usePreferencesStore((s) => s.defaultThinkingEffort)
+  const setDefaultThinkingEffort = usePreferencesStore((s) => s.setDefaultThinkingEffort)
   // The plan-mode Bash allowlist is ENGINE POLICY, stored in engine.json
   // (limits.planModeAllowedBashCommands) — not a desktop preference. We read
   // it from / write it to engine.json via IPC rather than the preferences
@@ -135,7 +136,7 @@ export function AIModelsCategory() {
             {Array.from(grouped.entries()).map(([providerId, models]) => (
               <optgroup key={providerId} label={getProviderDisplayName(providerId, providers)}>
                 {models.map((m) => (
-                  <option key={m.id} value={m.id}>{getModelDisplayLabel(m.id)}</option>
+                  <option key={m.id} value={m.id}>{m.id}</option>
                 ))}
               </optgroup>
             ))}
@@ -169,7 +170,7 @@ export function AIModelsCategory() {
             {Array.from(grouped.entries()).map(([providerId, models]) => (
               <optgroup key={providerId} label={getProviderDisplayName(providerId, providers)}>
                 {models.map((m) => (
-                  <option key={m.id} value={m.id}>{getModelDisplayLabel(m.id)}</option>
+                  <option key={m.id} value={m.id}>{m.id}</option>
                 ))}
               </optgroup>
             ))}
@@ -195,14 +196,45 @@ export function AIModelsCategory() {
         )}
       </SettingSection>
 
+      <ModelTiersSection />
+
       <SettingHeading>Extended Thinking</SettingHeading>
 
-      <SettingToggle
-        label="Enable extended thinking"
-        description="Let models reason before answering. When on, each conversation gets an Off/Low/Medium/High thinking control in its status bar (per conversation, applied on the next prompt). Thinking improves hard multi-step tasks but bills reasoning as output tokens, so it adds cost. Off by default. Only models that support reasoning show the control."
-        checked={thinkingEnabled}
-        onChange={setThinkingEnabled}
-      />
+      <SettingSection
+        label="Default thinking level"
+        description="The reasoning level new conversations start at on models that take an explicit level. Models with adaptive reasoning (Claude) choose their own depth and start on Adaptive. Each conversation can still be changed from its status bar; only models that support reasoning show the control."
+      >
+        <div
+          style={{
+            display: 'flex',
+            background: colors.surfacePrimary,
+            border: `1px solid ${colors.containerBorder}`,
+            borderRadius: 8,
+            overflow: 'hidden',
+          }}
+        >
+          {(['off', 'low', 'medium', 'high', 'xhigh', 'max'] as const).map((level) => (
+            <button
+              key={level}
+              onClick={() => setDefaultThinkingEffort(level)}
+              style={{
+                flex: 1,
+                padding: '7px 0',
+                background: defaultThinkingEffort === level ? colors.accent : 'transparent',
+                color: defaultThinkingEffort === level ? colors.textOnAccent : colors.textSecondary,
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 13,
+                fontWeight: defaultThinkingEffort === level ? 600 : 400,
+                textTransform: 'capitalize',
+                transition: 'background 0.15s, color 0.15s',
+              }}
+            >
+              {thinkingEffortLabel(level)}
+            </button>
+          ))}
+        </div>
+      </SettingSection>
 
       <SettingHeading>Plan & Implement Models</SettingHeading>
 
@@ -236,7 +268,7 @@ export function AIModelsCategory() {
                 {Array.from(grouped.entries()).map(([providerId, models]) => (
                   <optgroup key={providerId} label={getProviderDisplayName(providerId, providers)}>
                     {models.map((m) => (
-                      <option key={m.id} value={m.id}>{getModelDisplayLabel(m.id)}</option>
+                      <option key={m.id} value={m.id}>{m.id}</option>
                     ))}
                   </optgroup>
                 ))}
@@ -276,7 +308,7 @@ export function AIModelsCategory() {
                 {Array.from(grouped.entries()).map(([providerId, models]) => (
                   <optgroup key={providerId} label={getProviderDisplayName(providerId, providers)}>
                     {models.map((m) => (
-                      <option key={m.id} value={m.id}>{getModelDisplayLabel(m.id)}</option>
+                      <option key={m.id} value={m.id}>{m.id}</option>
                     ))}
                   </optgroup>
                 ))}

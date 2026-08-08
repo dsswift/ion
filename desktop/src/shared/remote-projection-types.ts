@@ -63,7 +63,7 @@ export interface ProjectedConversationInstance {
   backgroundShellCount?: number
   modelFallback?: { requestedModel: string; fallbackModel: string }
   conversationIds?: string[]
-  thinkingEffort?: 'low' | 'medium' | 'high'
+  thinkingEffort?: 'adaptive' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   dispatchTelemetry?: import('./types-engine').DispatchTelemetryEntry[]
 }
 
@@ -100,7 +100,7 @@ export interface ProjectedRendererTab {
   /** Input-locked conversation (auto-generated conflict fix). See TabState.inputLocked. */
   inputLocked?: boolean
   /** Explicit tab lifecycle role. See TabState.tabRole. */
-  tabRole?: 'bench-conversation' | 'conflict-auto-fix'
+  tabRole?: 'bench-conversation' | 'conflict-auto-fix' | 'verification-analysis'
   hasEngineExtension?: boolean
   engineProfileId: string | null
   conversationInstances?: ProjectedConversationInstance[]

@@ -93,7 +93,49 @@ type EngineConfig struct {
 	// short-lived CLI prompts) should leave it false so the leak-prevention
 	// reaper continues to protect them.
 	Pinned bool `json:"pinned,omitempty"`
+
+	// ToolGate is the client's opt-in declaration that it wants to be
+	// consulted (engine_tool_gate_request / tool_gate_response) before tool
+	// calls execute in this session. Nil means no gating — the default for
+	// every consumer that does not ask. See types/tool_gate.go.
+	ToolGate *ToolGateConfig `json:"toolGate,omitempty"`
+
+	// ClientWorkspaceContext is a client-supplied workspace descriptor that
+	// the engine routes through system_inject and context_inject hooks in
+	// place of its own worktree-registry-derived context. Nil means the
+	// engine derives context from its own registry (unchanged default).
+	// A per-prompt override on ClientCommand takes precedence over this
+	// session-level value.
+	ClientWorkspaceContext *ClientWorkspaceContext `json:"clientWorkspaceContext,omitempty"`
 }
+
+// Per-prompt thinking-effort sentinels carried on
+// ClientCommand.ThinkingEffort / PromptOverrides.ThinkingEffort.
+//
+// These are WIRE values a client sends, not fields on ThinkingConfig. The
+// engine maps them onto a ThinkingConfig in session.buildRunOptions:
+//
+//	"off"      → no thinking directive (clears any default)
+//	"adaptive" → ThinkingConfig{Enabled:true} with NO Effort, so a
+//	             self-regulating model picks its own depth
+//	<level>    → ThinkingConfig{Enabled:true, Effort:<level>}
+//
+// The level ladder is "low" < "medium" < "high" < "xhigh" < "max". The engine
+// does NOT hardcode which levels exist per model: a level is accepted only when
+// the model advertises it in ThinkingEfforts (see providers.resolveThinking),
+// so a provider or gateway can introduce a new rung by declaring it. The
+// constants below name only the two non-level sentinels, which carry engine
+// semantics rather than being passed through to a provider.
+//
+// ThinkingEffortAdaptive exists because pinning an explicit effort on a model
+// whose ThinkingMode is "adaptive" overrides the model's own per-turn judgment
+// on EVERY turn, including trivial ones. That is a latency regression rather
+// than a quality win, so a client needs a way to say "reason, but decide the
+// depth yourself" that is distinct from both "off" and a pinned level.
+const (
+	ThinkingEffortOff      = "off"
+	ThinkingEffortAdaptive = "adaptive"
+)
 
 // ThinkingConfig controls extended thinking for API-backend runs.
 type ThinkingConfig struct {
@@ -104,8 +146,10 @@ type ThinkingConfig struct {
 	// Gemini `thinkingConfig` budget mapped from the level). Precedence with
 	// the legacy BudgetTokens field:
 	//   - Enabled && Effort != "" ⇒ effort-based resolution (preferred path).
-	//   - Enabled && Effort == "" ⇒ legacy budget path (back-compat only; used
-	//     for older models whose capability mode is "budget").
+	//   - Enabled && Effort == "" ⇒ adaptive/legacy path: an "adaptive" model
+	//     self-regulates depth (no output_config emitted), and a "budget"
+	//     model falls back to BudgetTokens. This is the shape a client
+	//     requests with thinkingEffort:"adaptive".
 	//   - !Enabled ⇒ no thinking directive emitted, regardless of other fields.
 	// The provider body-builders translate (mode, effort, budget) via the
 	// shared resolveThinking helper; see engine/internal/providers.

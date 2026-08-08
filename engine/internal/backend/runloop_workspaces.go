@@ -3,7 +3,7 @@ package backend
 // Workspace-containment enforcement in the tool loop.
 //
 // Split from runloop_tools.go (file-size cap) at the policy seam: this is the
-// engine's deterministic baseline for worktree/bench containment
+// engine's deterministic baseline for worktree containment
 // (internal/workspaces), checked beside the permission engine — before hooks,
 // before execution — so a refusal holds regardless of which extensions are
 // loaded. A refusal short-circuits exactly like a permission deny: the typed
@@ -95,6 +95,51 @@ func (b *ApiBackend) recordWorkspaceRefusal(
 		Content: results[i].Content,
 		IsError: true,
 	}})
+}
+
+// noteWorktreeAttachment inspects the worktree's HEAD after a Bash command ran
+// and appends a warning to the tool result when the command left the checkout
+// detached or an operation mid-flight.
+//
+// This is the enforcement half of worktree containment. The pre-execution check
+// refuses only the handful of operations that change WHICH branch a worktree
+// holds; every history verb (rebase, reset, stash, amend, push) is allowed
+// because the operator's /align and /squash workflows are built from them. What
+// must not happen is the END STATE those verbs can leave behind — a conflicted
+// rebase that stops with HEAD detached and nobody notices. So the state is read
+// directly, after the fact, and reported into the result the model reads next.
+//
+// Appended to the result rather than raised as an error: the command itself
+// usually succeeded, and a mid-rebase pause is a legitimate step of an amend
+// sequence. Flipping IsError would make the model treat its own correct step as
+// a failure. The notice is advisory and actionable; it never runs a recovery
+// command, because re-attaching HEAD automatically could discard a half-done
+// rebase the operator intends to finish by hand.
+func (b *ApiBackend) noteWorktreeAttachment(
+	run *activeRun,
+	checker *workspaces.Checker,
+	toolName string,
+	cwd string,
+	results []conversation.ToolResultEntry,
+	i int,
+) {
+	if checker == nil || (toolName != "Bash" && toolName != "bash") {
+		return
+	}
+	attachment := checker.InspectAttachment(cwd)
+	if attachment == nil {
+		return
+	}
+
+	utils.LogWithFields(utils.LevelWarn, "workspaces", "worktree attachment warning appended to tool result", map[string]any{
+		"tool":            toolName,
+		"worktree_path":   attachment.WorktreePath,
+		"detached":        attachment.Detached,
+		"operation":       attachment.Operation,
+		"expected_branch": attachment.ExpectedBranch,
+		"run_id":          run.requestID,
+	})
+	results[i].Content += attachment.Notice()
 }
 
 // checkAndWrapSandbox validates a Bash command against the sandbox config and

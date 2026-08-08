@@ -46,11 +46,22 @@ func TestFormatForPrompt_Nil(t *testing.T) {
 	}
 }
 
+// Worktree identity and the branch-attachment invariant belong to the
+// workspaces package's prompt surface (WorktreeContext.format), not here: two
+// sections stating the same invariant in two vocabularies shipped on every
+// dispatch, which is the duplication this assertion guards against.
+func TestFormatForPrompt_CarriesNoWorktreeSection(t *testing.T) {
+	result := FormatForPrompt(&GitContext{IsRepo: true, Branch: "main", Status: "M f.go"})
+	for _, absent := range []string{"Worktree Safety", "Managed worktree", "HEAD attached"} {
+		if strings.Contains(result, absent) {
+			t.Errorf("git context must not restate worktree safety (%q): %q", absent, result)
+		}
+	}
+}
 func TestFormatForPrompt_Populated(t *testing.T) {
 	ctx := &GitContext{
 		IsRepo:        true,
 		Branch:        "main",
-		UserName:      "testuser",
 		Status:        "M file.go",
 		RecentCommits: "abc1234 some commit",
 	}
@@ -61,8 +72,8 @@ func TestFormatForPrompt_Populated(t *testing.T) {
 	if !strings.Contains(result, "Branch: main") {
 		t.Error("expected output to contain branch info")
 	}
-	if !strings.Contains(result, "User: testuser") {
-		t.Error("expected output to contain user info")
+	if strings.Contains(result, "User:") {
+		t.Error("prompt must not expose local Git user identity")
 	}
 	if !strings.Contains(result, "M file.go") {
 		t.Error("expected output to contain status")

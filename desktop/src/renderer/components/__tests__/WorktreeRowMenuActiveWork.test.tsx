@@ -47,9 +47,12 @@ const mocks = vi.hoisted(() => ({
 // mock — vi.mock replaces the module wholesale, so the first unstubbed import
 // throws at render and every test in the file fails at once.
 vi.mock('@phosphor-icons/react', () => ({
-  ArrowLineDown: () => null, ArrowsClockwise: () => null, Bug: () => null,
-  ChatCircle: () => null, Check: () => null, Flask: () => null,
-  FolderOpen: () => null, Package: () => null, PencilSimple: () => null, Trash: () => null,
+  ArrowLineDown: () => null, ArrowSquareOut: () => null,
+  ArrowsClockwise: () => null, Bug: () => null, CaretDown: () => null,
+  ChatCircle: () => null, Check: () => null, CircleDashed: () => null,
+  Compass: () => null, Flask: () => null, FolderOpen: () => null,
+  GitMerge: () => null, Hammer: () => null, Package: () => null,
+  PencilSimple: () => null, RocketLaunch: () => null, Trash: () => null,
 }))
 
 vi.mock('framer-motion', () => ({
@@ -78,8 +81,8 @@ vi.mock('../../preferences', () => ({
 
 vi.mock('../../stores/sessionStore', () => ({
   useSessionStore: Object.assign(
-    (selector: (s: { benchWorkspaces: Map<string, never> }) => unknown) =>
-      selector({ benchWorkspaces: new Map<string, never>() }),
+    (selector: (s: { benchWorkspaces: Map<string, never>; tabs: unknown[] }) => unknown) =>
+      selector({ benchWorkspaces: new Map<string, never>(), tabs: mocks.storeTabs }),
     {
       getState: () => ({
         retireWorktree: mocks.retireWorktree,

@@ -63,6 +63,7 @@ vi.mock('../session-store-helpers', () => ({
   })),
   initialModelOverride: vi.fn(() => null),
   initialPermissionMode: vi.fn(() => 'auto' as const),
+  initialThinkingEffort: vi.fn(() => 'off' as const),
   nextMsgId: vi.fn(() => `msg-${Math.random()}`),
   playNotificationIfHidden: vi.fn(async () => {}),
   cancelDoneGroupMove: vi.fn(() => false),

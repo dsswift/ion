@@ -1773,7 +1773,7 @@ export interface ContextLoadInfo {
 export interface ContextInjectInfo {
   workingDirectory: string
   discoveredPaths: string[]
-  /** Structured registry-backed workspace facts, when cwd is a worktree or bench. */
+  /** Structured registry-backed workspace facts, when cwd is a registered worktree. */
   workspace?: WorkspacePromptContext
 }
 
@@ -1782,6 +1782,7 @@ export interface WorkspacePromptContext {
   cwd: string
   worktree?: Record<string, unknown>
   bench?: Record<string, unknown>
+  client?: Record<string, unknown>
 }
 
 /** Return value from a `context_inject` handler. */

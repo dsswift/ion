@@ -28,6 +28,8 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { atomicWriteFileSync } from '../utils/atomicWrite'
 import { log as _log, warn as _warn } from '../logger'
+import { setWorktreeStage, lookupWorktreeStage } from '../worktree/registry'
+import { legacyReviewToStage } from '../../shared/types-git'
 import type { IntegrationWorkspace, IntegrationMember, PinState, MergeOutcome } from '../../shared/types'
 
 const TAG = 'bench.store'
@@ -103,11 +105,31 @@ export function loadWorkspaces(): IntegrationWorkspace[] {
     const list = Array.isArray(parsed.workspaces) ? parsed.workspaces : []
     const normalized = list.map(normalizeWorkspace).filter((w): w is IntegrationWorkspace => w !== null)
     log('workspaces loaded', { count: normalized.length, dropped: list.length - normalized.length })
+    // A file written before work stages existed carries per-member `review`
+    // verdicts. normalizeMember migrated each into the registry above; persist
+    // the stripped shape NOW so the migration is one-time — leaving the key on
+    // disk would resurrect the verdict on every load, including after the
+    // operator deliberately clears the stage it became.
+    if (hasLegacyReviewKey(list)) {
+      log('stripping migrated legacy review verdicts from the workspaces file', { path: file })
+      saveWorkspaces(normalized)
+    }
     return normalized
   } catch (err) {
     warn('workspaces file unreadable, starting empty', { path: file, error: String(err) })
     return []
   }
+}
+
+/** True when any persisted member still carries the pre-stage `review` key. */
+function hasLegacyReviewKey(raw: unknown[]): boolean {
+  return raw.some((w) => {
+    if (!w || typeof w !== 'object') return false
+    const members = (w as { members?: unknown }).members
+    return Array.isArray(members) && members.some(
+      (m) => !!m && typeof m === 'object' && 'review' in (m as object),
+    )
+  })
 }
 
 /** Persist the full workspace list atomically. */
@@ -215,6 +237,33 @@ function normalizeWorkspace(raw: unknown): IntegrationWorkspace | null {
     // Absent on records written before atomic assembly: UNKNOWN, never failed.
     lastAssembly: w.lastAssembly === 'assembled' || w.lastAssembly === 'failed' ? w.lastAssembly : undefined,
     lastAssemblyError: typeof w.lastAssemblyError === 'string' && w.lastAssemblyError ? w.lastAssemblyError : undefined,
+    lastAssemblyFailure: w.lastAssemblyFailure === 'conflict' || w.lastAssemblyFailure === 'verification'
+      || w.lastAssemblyFailure === 'obstructed'
+      ? w.lastAssemblyFailure
+      : undefined,
+    lastAssemblyVerification: normalizeVerification(w.lastAssemblyVerification),
+  }
+}
+
+/**
+ * Coerce a persisted verification-evidence record, dropping it entirely when
+ * the shape is not recognisable. A hand-edited or partially-written record
+ * must not surface a dialog with a missing command or a `replayedBranches`
+ * that is not actually an array of strings.
+ */
+function normalizeVerification(
+  raw: unknown,
+): IntegrationWorkspace['lastAssemblyVerification'] {
+  if (!raw || typeof raw !== 'object') return undefined
+  const v = raw as Partial<NonNullable<IntegrationWorkspace['lastAssemblyVerification']>>
+  if (typeof v.command !== 'string' || !v.command) return undefined
+  if (typeof v.outputTail !== 'string') return undefined
+  if (!Array.isArray(v.replayedBranches)) return undefined
+  return {
+    command: v.command,
+    outputTail: v.outputTail,
+    replayedBranches: v.replayedBranches.filter((b): b is string => typeof b === 'string'),
+    diagnosticTreeAt: typeof v.diagnosticTreeAt === 'number' ? v.diagnosticTreeAt : undefined,
   }
 }
 
@@ -230,6 +279,42 @@ type PersistedMember = Partial<IntegrationMember> & {
   status?: unknown
   /** Dropped on write: the worktree owns its own display name. */
   label?: unknown
+  /**
+   * Legacy per-pin review verdict (`good` | `issue`), replaced by the
+   * registry-scoped `stage` (shared/types-git.ts `WorkStage`). Read once for
+   * migration below, never written back — `saveWorkspaces` persists the new
+   * shape with no `review` key.
+   */
+  review?: unknown
+}
+
+/**
+ * Migrate a legacy member `review` verdict into the worktree registry's stage.
+ *
+ * `good` meant "reviewed, the feature works" → `verified`. `issue` meant
+ * "this contribution has a bug" → `bug`. A stage the operator has already set
+ * is never overwritten: the registry is the live system and the verdict is the
+ * historical one. Runs at load, so a file written by an older build migrates
+ * on its first read and the verdict key disappears on the next persist.
+ */
+function migrateLegacyReview(worktreePath: string, review: unknown): void {
+  // The verdict→stage table lives beside WORK_STAGES (legacyReviewToStage) so
+  // this migration and the deprecated benchSetReview preload shim cannot
+  // drift. `null` is a cleared verdict — nothing to migrate.
+  const stage = legacyReviewToStage(review)
+  if (!stage) return
+  if (lookupWorktreeStage(worktreePath)) {
+    log('legacy review verdict ignored: worktree already has a stage', {
+      worktree_path: worktreePath, legacy_review: String(review),
+    })
+    return
+  }
+  if (!setWorktreeStage(worktreePath, stage)) {
+    warn('legacy stage migration persist failed', { worktree_path: worktreePath, stage })
+  }
+  log('migrated legacy review verdict to a work stage', {
+    worktree_path: worktreePath, legacy_review: String(review), stage,
+  })
 }
 
 /**
@@ -290,13 +375,16 @@ function normalizeMember(raw: unknown): IntegrationMember | null {
 
   const axes = resolveAxes(m, { enabled, pinnedSha, pinnedTreeHash, pinnedBaseSha, currentTreeHash })
 
+  // A record written before stages existed may still carry a review verdict;
+  // fold it into the registry once and drop the key from the member shape.
+  migrateLegacyReview(m.worktreePath, m.review)
+
   return {
     worktreePath: m.worktreePath,
     branchName: m.branchName,
     enabled,
     pin: axes.pin,
     merge: axes.merge,
-    review: m.review === 'good' || m.review === 'issue' ? m.review : undefined,
     pinnedSha,
     pinnedTreeHash,
     pinnedBaseSha,

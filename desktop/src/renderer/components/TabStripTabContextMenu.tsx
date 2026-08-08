@@ -16,7 +16,8 @@ import { zoomRect, zoomViewport } from '../viewport-zoom'
 import { ContextMenuItem } from './ContextMenuItem'
 import { MoveToGroupSubmenu } from './TabStripMoveToGroupSubmenu'
 import { ConfirmDialog } from './git/ConfirmDialog'
-import { rDebug, rInfo, rError, rWarn } from '../rendererLogger'
+import { useConvertToWorktreeGate } from './useConvertToWorktreeGate'
+import { rDebug, rInfo, rError } from '../rendererLogger'
 
 interface TabContextMenuProps {
   anchor: { x: number; y: number }
@@ -84,49 +85,9 @@ export function TabContextMenu({
   const [pendingMoveAll, setPendingMoveAll] = useState<{ groupId: string; label: string } | null>(null)
 
   const showMoveAll = groupTabs && groupTabs.length > 1
-  const [isGitRepo, setIsGitRepo] = useState(false)
-  const [uncommitted, setUncommitted] = useState<boolean | 'checking'>('checking')
-
-  useEffect(() => {
-    let cancelled = false
-    if (!tab.workingDirectory || tab.worktree) {
-      setIsGitRepo(false)
-      return () => { cancelled = true }
-    }
-
-    setUncommitted('checking')
-    void window.ion.gitIsRepo(tab.workingDirectory).then(({ isRepo }) => {
-      if (cancelled) return
-      setIsGitRepo(isRepo)
-      if (!isRepo) {
-        setUncommitted(false)
-        return
-      }
-      return window.ion.gitChanges(tab.workingDirectory).then((result) => {
-        if (!cancelled) setUncommitted(result.files.length > 0)
-      }).catch((err) => {
-        if (!cancelled) {
-          rWarn('tab-context-menu', 'convert-to-worktree dirtiness probe failed; allowing conversion', {
-            tab_id: tab.id,
-            working_directory: tab.workingDirectory,
-            error: String(err),
-          })
-          setUncommitted(false)
-        }
-      })
-    }).catch((err) => {
-      if (!cancelled) {
-        rWarn('tab-context-menu', 'git repository probe failed; hiding convert-to-worktree action', {
-          tab_id: tab.id,
-          working_directory: tab.workingDirectory,
-          error: String(err),
-        })
-        setIsGitRepo(false)
-      }
-    })
-
-    return () => { cancelled = true }
-  }, [tab.id, tab.workingDirectory, tab.worktree])
+  // Visibility, enablement, and label for the convert row. Both refusal
+  // reasons (tab busy, checkout dirty) are composed inside the hook.
+  const convert = useConvertToWorktreeGate(tab)
 
   useEffect(() => {
     if (showNewGroupInput) newGroupInputRef.current?.focus()
@@ -143,9 +104,10 @@ export function TabContextMenu({
   // measures the menu after mount and flips it upward when the
   // anchor is near the bottom edge. Items that conditionally render
   // (worktree-only "Finish work", manual-mode rows, "Move all to
-  // group", git-detection and dirtiness-gated "Convert to worktree", and the inline
-  // "showNewGroupInput") all change the rendered height — include
-  // every one in `deps` so the hook re-measures on each transition.
+  // group", the gated "Convert to worktree" — whose visibility AND
+  // label both vary with git-detection and dirtiness/busy state — and
+  // the inline "showNewGroupInput") all change the rendered height —
+  // include every one in `deps` so the hook re-measures on each transition.
   const pos = useAnchoredPopover(anchor, {
     prefer: 'below',
     deps: [
@@ -154,8 +116,8 @@ export function TabContextMenu({
       !!onForkTab,
       !!tab.workingDirectory,
       !!tab.worktree,
-      isGitRepo,
-      uncommitted,
+      convert.show,
+      convert.label,
       tabGroupMode,
       showMoveAll,
       // Submenu state toggles aren't expected to change outer
@@ -222,13 +184,13 @@ export function TabContextMenu({
           <span>New tab in directory</span>
         </ContextMenuItem>
       )}
-      {!tab.worktree && isGitRepo && (
+      {convert.show && (
         <ContextMenuItem
-          disabled={uncommitted !== false}
+          disabled={convert.disabled}
           onClick={() => { void useSessionStore.getState().convertToWorktree(tab.id).catch((err) => rError('tabs', 'convert to worktree failed', { error: String(err) })); window.dispatchEvent(new CustomEvent('ion:close-group-pickers')); onClose() }}
         >
-          <GitBranch size={14} color={uncommitted !== false ? colors.textTertiary : colors.textSecondary} />
-          <span>{uncommitted === 'checking' ? 'Convert to worktree (checking...)' : uncommitted ? 'Convert to worktree (uncommitted changes)' : 'Convert to worktree'}</span>
+          <GitBranch size={14} color={convert.disabled ? colors.textTertiary : colors.textSecondary} />
+          <span>{convert.label}</span>
         </ContextMenuItem>
       )}
       {tab.worktree && (

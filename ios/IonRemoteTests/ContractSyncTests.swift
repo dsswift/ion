@@ -1090,6 +1090,23 @@ final class ContractSyncTests: XCTestCase {
         )
     }
 
+    /// Pins that the engine_tool_gate_request fields are present in the Go
+    /// EngineEvent manifest. iOS does not decode the event — the tool gate is
+    /// answered programmatically by the session's owning client (the desktop
+    /// main process), never surfaced in device UI — but the fields are wire
+    /// contract for gating consumers, so their removal must be caught at PR
+    /// time like any other engine-wire break.
+    func testEngineToolGateFieldsInManifest() throws {
+        let manifest = try loadManifest()
+        let goEventFields = Set(manifest.engineEvent)
+        let gateFields: Set<String> = ["gateRequestId", "gateKind", "gateToolName", "gateToolInput", "gateCwd", "gateSiblingTools"]
+        let missing = gateFields.subtracting(goEventFields)
+        XCTAssert(
+            missing.isEmpty,
+            "EngineEvent manifest is missing tool-gate fields (engine_tool_gate_request): \(missing.sorted())"
+        )
+    }
+
     // MARK: - context_breakdown normalized-event field coverage
 
     /// Pins that every field the Go engine declares on the context_breakdown

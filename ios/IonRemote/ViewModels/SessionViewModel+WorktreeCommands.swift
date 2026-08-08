@@ -159,6 +159,16 @@ extension SessionViewModel {
              intent: .userInitiated)
     }
 
+    /// Sync every worktree of the repo — the desktop's bulk mechanical pass
+    /// (sequential rebases with recorded-resolution replay between them). The
+    /// outcome arrives as a `sync_all` op result whose `summary` the toast
+    /// shows verbatim.
+    func syncAllWorktrees(repoPath: String) {
+        benchBusy = true
+        DiagnosticLog.log("sync-all requested", tag: "worktree", fields: ["repo": repoPath])
+        send(.worktreeSyncAll(repoPath: repoPath), intent: .userInitiated)
+    }
+
     /// Land a worktree into its source branch.
     func landWorktree(_ worktree: RemoteWorktree, repoPath: String) {
         guard let sourceBranch = worktree.sourceBranch else {
@@ -197,10 +207,9 @@ extension SessionViewModel {
              intent: .userInitiated)
     }
 
-    /// Record or clear a verdict on a member's current pin. `nil` clears it.
-    func setBenchMemberReview(repoPath: String, sourceBranch: String, worktreePath: String, review: String?) {
-        send(.benchSetReview(repoPath: repoPath, sourceBranch: sourceBranch,
-                             worktreePath: worktreePath, review: review),
+    /// Set or clear the operator's workflow stage on a worktree. `nil` clears.
+    func setWorktreeStage(repoPath: String, worktreePath: String, stage: String?) {
+        send(.worktreeSetStage(repoPath: repoPath, worktreePath: worktreePath, stage: stage),
              intent: .userInitiated)
     }
 
@@ -258,14 +267,25 @@ extension SessionViewModel {
                 gitToast = GitToast(message: warning, isError: true)
                 DiagnosticLog.log("pin update predicts a collision", tag: "worktree", level: .warn,
                                   fields: ["operation": result.operation.rawValue, "warning": warning])
+            } else if let summary = result.summary, !summary.isEmpty {
+                // sync_all pre-words its per-worktree counts on the desktop so
+                // every client says the same sentence. Conflicts surviving the
+                // pass are real news even on ok:true, so they tint the toast.
+                gitToast = GitToast(message: summary, isError: result.hasConflicts == true)
+                DiagnosticLog.log("sync-all finished", tag: "worktree",
+                                  fields: ["summary": summary,
+                                           "has_conflicts": String(result.hasConflicts ?? false)])
             } else {
                 gitToast = GitToast(message: Self.successMessage(for: result.operation), isError: false)
             }
             return
         }
         // A refusal the operator can fix reads differently from a hard failure,
-        // and the recovery differs too -- so do not collapse them.
-        let message = result.error ?? "\(Self.successMessage(for: result.operation)) failed."
+        // and the recovery differs too -- so do not collapse them. sync_all's
+        // failure carries its summary when one exists (partial outcomes are
+        // more useful than a bare "failed").
+        let message = result.error ?? result.summary
+            ?? "\(Self.successMessage(for: result.operation)) failed."
         gitToast = GitToast(message: message, isError: true)
         DiagnosticLog.log("worktree operation failed", tag: "worktree", level: .warn,
                           fields: [
@@ -283,6 +303,7 @@ extension SessionViewModel {
         case .assemble: return "Bench assembled."
         case .update: return "Member updated and bench assembled."
         case .updateAll: return "All stale members updated and bench assembled."
+        case .syncAll: return "All worktrees synced."
         }
     }
 }

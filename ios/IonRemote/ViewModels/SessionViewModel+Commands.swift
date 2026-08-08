@@ -238,17 +238,12 @@ extension SessionViewModel {
         send(.setPermissionMode(tabId: tabId, mode: mode), intent: .userInitiated)
     }
 
-    /// Whether the desktop's global "Enable extended thinking" setting is on.
-    /// Reads the projectable `thinkingEnabled` value from the latest desktop
-    /// settings snapshot; defaults to false until a snapshot arrives.
-    var thinkingGloballyEnabled: Bool {
-        (desktopSettings?.currentValue(for: "thinkingEnabled")?.value as? Bool) ?? false
-    }
-
     /// Set the per-conversation extended-thinking effort. Optimistically
     /// updates the active conversation instance, then sends the
     /// desktop_set_thinking_effort command so the next prompt from either
-    /// client carries the level. effort is "off"|"low"|"medium"|"high".
+    /// client carries the level. effort is
+    /// "off"|"adaptive"|"low"|"medium"|"high" — "adaptive" requests reasoning
+    /// while letting a self-regulating model choose its own depth.
     ///
     /// WI-002 (#259): every tab — plain or extension-hosted — stores its
     /// control fields on the single ConversationInstanceInfo (post-#256

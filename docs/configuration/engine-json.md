@@ -159,6 +159,39 @@ Harness engineers running the engine outside the Ion desktop are encouraged to c
 
 **Sub-agents are off by default.** Runs dispatched through the Agent tool have `IsSubagent=true` and the engine skips the feature for them automatically — sub-agents are summoned with a tight remit and should not be poked to keep working. Harness extensions can still force-on per dispatch via `RunOptions.EarlyStopEnabled = &true`.
 
+## thinking
+
+Engine-wide **default** for extended thinking (reasoning). Sets the baseline reasoning behavior for every run on the machine, so an operator can express "reason at medium by default" without every client having to ask for it on each prompt.
+
+This block is the **weakest** of three resolution layers. Each stronger layer overrides it:
+
+1. This block (`engine.json` — host-level default).
+2. `EngineConfig.thinking` on [`start_session`](../protocol/client-commands.md#start_session) — a per-session default supplied by the client.
+3. `thinkingEffort` on [`send_prompt`](../protocol/client-commands.md#send_prompt) — the per-prompt live control.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Whether runs carry a thinking directive by default. When false the engine emits none, which is the behavior when the block is omitted entirely. |
+| `effort` | string | `""` | Cross-provider reasoning level, ascending: `"low"`, `"medium"`, `"high"`, `"xhigh"`, `"max"`. The forward-compatible control the provider landscape has converged on; the engine maps it to each provider's mechanism (Anthropic adaptive `effort`, OpenAI `reasoning_effort`, Gemini `thinkingConfig` budget). A level is only sent when the target model advertises it in `thinkingEfforts` — the engine defers to the model's declaration rather than hardcoding a ladder per model. |
+| `budgetTokens` | int | `0` | Legacy explicit thinking-token budget, used only by models whose capability mode is `budget` and only when `effort` is empty. Prefer `effort`. |
+| `streamDeltas` | bool (nullable) | `true` | Whether per-token `engine_thinking_delta` events reach the wire. Block-boundary events always emit, so turning this off keeps the liveness signal and the block summary. |
+| `persist` | bool (nullable) | `true` | Whether reasoning **text** is retained in conversation history for later display. Never affects provider re-submission — reasoning is always stripped before being sent back to the model. |
+
+```json
+{
+  "thinking": {
+    "enabled": true,
+    "effort": "medium"
+  }
+}
+```
+
+**Per-model capability still governs.** A model that declares no `thinkingMode` receives no thinking directive regardless of this block — the engine never forces reasoning onto a model that has not opted in. Declare `thinkingMode` and `thinkingEfforts` in [models.json](models.md#providersidmodelsname) to opt a model in.
+
+**Turning thinking off for one conversation.** A client sends `thinkingEffort: "off"` on `send_prompt`. That is an explicit clear and it beats this default — the engine distinguishes the literal `"off"` (clear thinking for this run) from an absent field (no opinion, inherit the default). A client that omitted the field instead of sending `"off"` would silently inherit whatever is configured here.
+
+**Cost note.** Reasoning tokens bill at output-token rates. Enabling a default here applies it to every run on the machine, including sub-agent dispatches, so the cost multiplies across a fan-out. This is why the engine ships with the block absent.
+
 ## workspaceWatchIgnore
 
 Override the engine's default ignore-glob list for the `workspace_file_changed` hook's recursive filesystem watcher. The watcher is rooted at the session `workingDirectory` and fires the hook for every non-ignored create / modify / delete event under the tree. The ignore list runs before fsnotify descriptors are attached, so ignored subtrees (e.g. `node_modules/**`) never consume inotify capacity in the first place.
@@ -445,7 +478,7 @@ Context window compaction controls how the engine manages conversation length. T
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `redactSecrets` | bool | `false` | When enabled, the engine scans tool output for secrets and redacts them before returning to the model. |
-| `workspaceContainment` | bool | enabled when absent | Baseline worktree/bench containment, checked in the tool loop: a conversation whose working directory is a registered worktree may not write into the base repository it was cut from or into a sibling worktree, and an integration bench refuses file writes and git history commands. Absent or `null` means enabled — this is a safety default, so only an explicit `false` disables it. |
+| `workspaceContainment` | bool | enabled when absent | Baseline worktree containment, checked in the tool loop: a conversation whose working directory is a registered worktree may not write into the base repository it was cut from or into a sibling worktree, and operations that would change which branch the worktree holds (or remove the checkout) are refused. Bench rules are client policy delivered through the tool gate, not part of this setting. Absent or `null` means enabled — this is a safety default, so only an explicit `false` disables it. |
 
 ## relay
 
@@ -501,7 +534,7 @@ Engine-wide limits for the filesystem-watch and session-lifecycle subsystems. Om
 |-------|------|---------|-------------|
 | `sessionReapGraceMs` | int64 | `300000` (5 min) | How long a session whose last owning client connection has disconnected is kept alive before the engine reaps it (full teardown, releasing its workspace watcher). A client that reconnects and re-addresses the same session key within this window cancels the reap, so a transient socket flap or a desktop relaunch never tears down a live session. Raise it if your clients reconnect slowly; lower it to bound file-descriptor growth more aggressively. |
 | `maxWatchedDirs` | int | `50000` | Cap on the number of directories a single workspace watcher attaches a descriptor to. When reached, the watcher keeps working for the directories it did attach and stops descending. Raise it for genuinely huge monorepos; lower it to keep a tighter bound on per-watcher descriptors. |
-| `promptContext` | bool | enabled when absent | Generic workspace context in the prompt: when the session's working directory is a registered worktree or integration bench, the engine injects the workspace facts (bench/source/base identity, ordered enabled members with exact pinned ranges and worktree paths) so the model can attribute assembled content and route fixes to the owning worktree. Independent of `security.workspaceContainment` — containment refuses writes regardless of whether the context prose is delivered. A session-level override (`EngineConfig`) takes precedence over this engine-wide default; extensions can replace or suppress the prose via `system_inject` with kind `workspace_context`. Explicit `false` disables. |
+| `promptContext` | bool | enabled when absent | Workspace context in the prompt. The engine resolves context from three sources in precedence order: per-prompt `ClientWorkspaceContext` > session-level `EngineConfig.ClientWorkspaceContext` > engine worktree registry. Worktree facts (checkout, base repo, branch, siblings) come from the registry; bench and generic client data come from the client-supplied `ClientWorkspaceContext` (with structured bench facts in the `bench` field, generic data in `data`, and prose in `text`). Independent of `security.workspaceContainment` -- containment refuses writes regardless of whether the context prose is delivered. Extensions can replace or suppress the prose via `system_inject` with kind `workspace_context`. Explicit `false` disables. |
 
 Same merge semantics as other config fields: higher-priority layers override lower ones. Zero means "use the compiled default."
 

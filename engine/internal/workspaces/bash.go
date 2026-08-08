@@ -5,29 +5,118 @@ import (
 	"strings"
 )
 
+// gitOperation is one parsed Git subcommand. Arguments exclude global Git
+// options and the subcommand itself, so policy never mistakes a commit message
+// or shell token for a destructive flag.
+type gitOperation struct {
+	Subcommand string
+	Arguments  []string
+}
+
+// WorktreeIdentityChange reports whether this operation changes what the
+// worktree IS — which branch it holds, or whether it exists at all.
+//
+// The list is deliberately tiny. An earlier revision refused every verb that
+// could theoretically detach HEAD (rebase, reset, stash, cherry-pick, amend,
+// push, branch -f), which broke the operator's own workflows: `/align` amends a
+// branch-local commit through `git stash` + `git rebase -i` + `git commit
+// --amend` + `git rebase --continue`, `/squash` rebuilds from `git reset --soft
+// {base}` behind a `git branch -f backup--<branch>` safety net, and
+// `/create-pr` pushes. Those are the sanctioned mechanisms, not accidents.
+//
+// The invariant that was actually violated is an END STATE — HEAD left detached
+// mid-rebase — not the use of any particular verb. That is enforced after
+// execution by InspectAttachment, which is what makes this list safe to keep
+// narrow. Here we refuse only what no in-worktree workflow legitimately does:
+// deliberately detaching HEAD, switching the checkout to another branch, or
+// removing the worktree out from under the conversation living in it.
+func (o gitOperation) WorktreeIdentityChange() (string, bool) {
+	switch o.Subcommand {
+	case "checkout":
+		// `--detach` is unambiguous intent to leave the assigned branch.
+		// `-b`/`-B` create a branch AND move the checkout onto it.
+		//
+		// A bare `git checkout <token>` is NOT refused: it is ambiguous
+		// between a ref and a pathspec, and the file-restore form (including
+		// restoring a DELETED file, where the path no longer exists to probe)
+		// is ordinary work. Guessing wrong there refuses real work in the
+		// operator's own worktree, so the detach outcome is left to the
+		// post-execution attachment check instead.
+		if containsAny(o.Arguments, "--detach") {
+			return "checkout --detach", true
+		}
+		if containsShortFlag(o.Arguments, 'b', 'B') {
+			return "checkout -b", true
+		}
+		return "", false
+	case "switch":
+		// `switch` has no pathspec form — every invocation that names
+		// something moves the checkout. `--continue`/`--abort` drive an
+		// in-progress switch and are how one is unwound, so they pass.
+		if containsAny(o.Arguments, "--continue", "--abort") {
+			return "", false
+		}
+		if containsAny(o.Arguments, "--detach") {
+			return "switch --detach", true
+		}
+		if len(o.Arguments) == 0 {
+			return "", false
+		}
+		return "switch", true
+	case "worktree":
+		// `add` and `list` are fine — `/align` PR mode cuts a dedicated
+		// worktree for PR fixes. `remove`/`move`/`prune` can delete or
+		// relocate the directory this conversation is living in.
+		for _, argument := range o.Arguments {
+			switch argument {
+			case "remove", "move", "prune":
+				return "worktree " + argument, true
+			}
+		}
+		return "", false
+	default:
+		return "", false
+	}
+}
+
+func containsAny(values []string, want ...string) bool {
+	for _, value := range values {
+		for _, candidate := range want {
+			if value == candidate || strings.HasPrefix(value, candidate+"=") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func containsShortFlag(values []string, flags ...rune) bool {
+	for _, value := range values {
+		if !strings.HasPrefix(value, "-") || strings.HasPrefix(value, "--") {
+			continue
+		}
+		for _, flag := range flags {
+			if strings.ContainsRune(value[1:], flag) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // bashSegment is one shell segment (between && / || / ; / | / newline) with
-// the directory it can be PROVEN to operate in and the git subcommands it
+// the directory it can be PROVEN to operate in and the Git subcommands it
 // invokes. Dir is empty when the segment runs in the session cwd.
 type bashSegment struct {
 	// Dir is the literal working directory the segment operates in: the last
 	// literal cd/pushd destination seen so far, or a per-invocation
 	// `git -C <dir>` / `--work-tree=<dir>` target. Empty = session cwd.
 	Dir string
-	// GitSubcommands are the git verbs the segment invokes, in order.
+	// GitSubcommands are the Git verbs the segment invokes, in order.
 	GitSubcommands []string
-	// MergeDriver is "continue" or "abort" when this segment drives an
-	// existing merge. Empty for every other command.
-	MergeDriver string
-	// MergeDriverExact is true only when complete Bash command matches safe
-	// merge-driver grammar parsed by parseExactMergeDriver. Detection of a
-	// driver attempt remains separate so malformed calls receive an actionable
-	// exact-call refusal instead of falling through to generic bench history.
-	MergeDriverExact bool
-	// MergeDriverOnly is true when every `git merge` in the segment is a
-	// `--continue` or `--abort` — the verbs that drive an existing merge
-	// rather than create one. A segment mixing a driver verb with a fresh
-	// merge is not driver-only.
-	MergeDriverOnly bool
+	// GitOperations retain each invocation's subcommand and arguments so policy
+	// can distinguish destructive forms such as `restore --staged` from reads.
+	GitOperations []gitOperation
 }
 
 // bashDestinations is the resolution result for one command string.
@@ -65,7 +154,7 @@ func resolveBashDestinations(command, cwd string) bashDestinations {
 		if len(tokens) == 0 {
 			continue
 		}
-		seg := bashSegment{MergeDriverOnly: true}
+		seg := bashSegment{}
 		// Carry the directory forward from the previous segment: `cd /x &&
 		// git commit` commits in /x, and the cd's effect persists across
 		// segment boundaries within one command string.
@@ -148,167 +237,27 @@ func resolveBashDestinations(command, cwd string) bashDestinations {
 				continue
 			}
 			seg.GitSubcommands = append(seg.GitSubcommands, sub)
-			if sub == "merge" {
-				rest := tokens[j+1:]
-				driver := false
-				for _, t := range rest {
-					t = strings.TrimRight(t, ")}")
-					switch t {
-					case "--continue":
-						driver = true
-						seg.MergeDriver = "continue"
-					case "--abort":
-						driver = true
-						seg.MergeDriver = "abort"
-					case "--quit":
-						driver = true
-					}
-					if driver {
-						break
-					}
-				}
-				if !driver {
-					seg.MergeDriverOnly = false
-				}
-			}
+			op := gitOperation{Subcommand: sub, Arguments: append([]string(nil), tokens[j+1:]...)}
+			seg.GitOperations = append(seg.GitOperations, op)
 			// A per-invocation `git -C <dir>` names where THIS invocation
 			// runs without changing the segment's cd state: judge it as its
 			// own segment so the destination is not lost.
 			if gitDir != "" && gitDir != seg.Dir {
 				out.Segments = append(out.Segments, bashSegment{
-					Dir:             gitDir,
-					GitSubcommands:  []string{sub},
-					MergeDriver:     seg.MergeDriver,
-					MergeDriverOnly: seg.MergeDriverOnly,
+					Dir:            gitDir,
+					GitSubcommands: []string{sub},
+					GitOperations:  []gitOperation{op},
 				})
 				// Remove it from the ambient segment: it was judged above.
 				seg.GitSubcommands = seg.GitSubcommands[:len(seg.GitSubcommands)-1]
+				seg.GitOperations = seg.GitOperations[:len(seg.GitOperations)-1]
 			}
 			i = j
 		}
 
 		out.Segments = append(out.Segments, seg)
 	}
-	if !hasMergeDriverAttempt(out.Segments) {
-		if driver := detectQuotedMergeDriverAttempt(command); driver != "" {
-			out.Segments = append(out.Segments, bashSegment{
-				MergeDriver:     driver,
-				MergeDriverOnly: true,
-			})
-		}
-	}
-	for i := range out.Segments {
-		if out.Segments[i].MergeDriver != "" {
-			driver, exact := parseExactMergeDriver(command)
-			out.Segments[i].MergeDriverExact = exact && string(driver) == out.Segments[i].MergeDriver
-		}
-	}
 	return out
-}
-
-func hasMergeDriverAttempt(segments []bashSegment) bool {
-	for _, segment := range segments {
-		if segment.MergeDriver != "" {
-			return true
-		}
-	}
-	return false
-}
-
-func detectQuotedMergeDriverAttempt(command string) string {
-	for _, marker := range []struct {
-		needle string
-		driver string
-	}{
-		{needle: "--continue", driver: "continue"},
-		{needle: "--abort", driver: "abort"},
-	} {
-		if strings.Contains(command, marker.needle) && strings.Contains(command, "merge") {
-			return marker.driver
-		}
-	}
-	return ""
-}
-
-// parseExactMergeDriver accepts only one simple shell command containing a git
-// executable, recognized git global options, `merge`, and exactly one driver
-// argument. Shell syntax is rejected before token parsing so quoting cannot hide
-// command substitution, redirection, backgrounding, grouping, or control flow.
-func parseExactMergeDriver(command string) (MergeDriver, bool) {
-	if strings.TrimSpace(command) == "" || containsUnsafeMergeDriverShell(command) {
-		return "", false
-	}
-	tokens := tokenizeShell(command)
-	if len(tokens) < 3 || !isGitExecutable(tokens[0]) {
-		return "", false
-	}
-
-	j := 1
-	for j < len(tokens) && strings.HasPrefix(tokens[j], "-") {
-		option := tokens[j]
-		if eq := strings.IndexByte(option, '='); eq > 0 {
-			if !valueTakingGitGlobals[option[:eq]] || eq == len(option)-1 {
-				return "", false
-			}
-			j++
-			continue
-		}
-		if valueTakingGitGlobals[option] {
-			if j+1 >= len(tokens) {
-				return "", false
-			}
-			j += 2
-			continue
-		}
-		// Git supports these value-free global options before its subcommand.
-		switch option {
-		case "--bare", "--no-pager", "--paginate", "-p", "--no-replace-objects", "--literal-pathspecs", "--glob-pathspecs", "--noglob-pathspecs", "--icase-pathspecs", "--no-optional-locks", "--no-advice":
-			j++
-		default:
-			return "", false
-		}
-	}
-	if j >= len(tokens) || tokens[j] != "merge" || len(tokens) != j+2 {
-		return "", false
-	}
-	switch tokens[j+1] {
-	case "--continue":
-		return MergeDriverContinue, true
-	case "--abort":
-		return MergeDriverAbort, true
-	default:
-		return "", false
-	}
-}
-
-func containsUnsafeMergeDriverShell(command string) bool {
-	var quote byte
-	for i := 0; i < len(command); i++ {
-		ch := command[i]
-		if quote == '\'' {
-			if ch == '\'' {
-				quote = 0
-			}
-			continue
-		}
-		if quote == '"' {
-			if ch == '"' {
-				quote = 0
-				continue
-			}
-			if ch == '$' || ch == '`' || ch == '\\' {
-				return true
-			}
-			continue
-		}
-		switch ch {
-		case '\'', '"':
-			quote = ch
-		case '$', '`', '\\', '&', '|', ';', '<', '>', '(', ')', '{', '}', '\n', '\r':
-			return true
-		}
-	}
-	return quote != 0
 }
 
 func effectiveDir(segDir, cwd string) string {
@@ -355,8 +304,8 @@ func isGitExecutable(tok string) bool {
 // splitShellSegments splits a command on shell operators that create command
 // boundaries (&&, ||, &, ;, |, newline), respecting single and double quotes.
 // Parentheses and braces are retained in segments: recognizing their complete
-// shell grammar safely requires a full parser, while operators inside them still
-// expose compound merge-driver calls conservatively.
+// shell grammar safely requires a full parser, while operators inside them
+// still expose the compound command's destinations conservatively.
 func splitShellSegments(command string) []string {
 	var segments []string
 	var cur strings.Builder

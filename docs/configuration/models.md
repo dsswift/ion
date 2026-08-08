@@ -36,9 +36,13 @@ You need a `models.json` entry when:
 ```jsonc
 {
   "tiers": {
-    // Optional. Map a tier name to a concrete model identifier.
-    // Resolved every time the engine asks for a tier.
-    "<tier-name>": "<model-name>"
+    // Optional. A tier can be a bare model identifier with no fallback:
+    "<tier-name>": "<model-name>",
+    // Or object form with an ordered fallback chain used after overloads:
+    "<tier-with-fallbacks>": {
+      "model": "<model-name>",
+      "fallbacks": ["<fallback-model>"]
+    }
   },
   "providers": {
     "<provider-id>": {
@@ -69,7 +73,11 @@ You need a `models.json` entry when:
 
 ### `tiers`
 
-A flat map of tier name to concrete model identifier. Tier names are case-insensitive at lookup time. Out of the box the engine ships no default tiers, so any tier name you reference must exist in this section or it will pass through unchanged and fail to route.
+A flat map of tier name to a concrete model identifier or an object containing a primary `model` plus ordered `fallbacks`. Tier names are case-insensitive at lookup time. Fallback entries must be non-empty, distinct, and different from the primary model. On overload, the engine attempts each fallback in order after the primary model. Out of the box the engine ships no default tiers. An undefined tier passes through unchanged; when no provider can resolve that name, the engine falls back to `defaultModel` and emits `engine_model_fallback`.
+
+Desktop users can edit tiers, their primary model, and ordered fallback chains from **Settings → AI & Models → Model Tiers**. Wire-protocol consumers can use `list_model_tiers`, `set_model_tier`, and `remove_model_tier`; these are the supported administrative surface, so consumers do not need to reimplement `models.json` semantics.
+
+Desktop also keeps a managed **Workbench Sync** row (`workbench-sync`) for its AI-assisted rebase, merge, cherry-pick, and bench-verification workflows. When that row has no primary model, Desktop logs the decision and uses the configured `standard` tier. If neither tier is configured, the assisted workflow refuses before creating a conversation and points back to Model Tiers. This fallback is Desktop product policy; the engine remains opinionless and defines no default tier mappings.
 
 ```json
 {
@@ -102,7 +110,7 @@ Register a model under a specific provider. Each entry sets the routing target p
 | `supportsThinking` | bool | false | Model exposes a reasoning/thinking channel. |
 | `supportsImages` | bool | false | Model accepts image inputs. |
 | `thinkingMode` | string | `""` | Reasoning mechanism the model uses on the wire. One of `adaptive` (Anthropic adaptive thinking + effort), `budget` (Anthropic legacy `type:"enabled"` + `budget_tokens`), `reasoning_effort` (OpenAI / OpenAI-compatible `reasoning_effort`), `gemini` (Google Gemini `thinkingConfig`), or `none`/`""` (no reasoning). Empty ⇒ the engine emits **no** thinking directive for this model, even when a prompt requests one — declare this field to opt a model in. |
-| `thinkingEfforts` | string[] | `[]` | Effort levels the model accepts, e.g. `["low","medium","high"]`. Clients use this with `thinkingMode` to show or hide the per-conversation thinking control honestly; empty ⇒ the control is hidden for this model. Surfaced on the `list_models` `ModelEntry` wire shape so both desktop and iOS gate the control identically. |
+| `thinkingEfforts` | string[] | `[]` | Effort levels the model accepts, drawn from the ascending ladder `low` < `medium` < `high` < `xhigh` < `max`, e.g. `["low","medium","high"]`. The engine sends a level only when it appears here, so declaring a new rung is how a provider or gateway opts a model into it. Clients use this with `thinkingMode` to show or hide the per-conversation thinking control honestly; empty ⇒ the control is hidden for this model. Surfaced on the `list_models` `ModelEntry` wire shape so both desktop and iOS gate the control identically. |
 | `tokenizer` | string | `""` | tiktoken encoding name for local token counting (e.g. `cl100k_base`, `o200k_base`). Empty ⇒ the engine falls back to a character-based estimate. |
 | `modelKind` | string | `""` | API shape the model uses. `image` routes the run through the image-generation endpoint (single prompt in, image out, no conversation history or tools). Empty ⇒ `chat`. |
 | `dialect` | string | `""` | Wire protocol the engine speaks for this model when it is served by a gateway. See [Dialect routing](#dialect-routing) below. Empty ⇒ the provider's own protocol applies. |

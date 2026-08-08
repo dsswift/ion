@@ -51,6 +51,7 @@ const mocks = vi.hoisted(() => {
   const broadcastMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const clearConversationFileMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.(undefined) ?? function () { return Promise.resolve() }
   const getTabStatusMock = (globalThis as any).vi?.fn?.()?.mockReturnValue?.({ conversationId: null }) ?? function () { return { conversationId: null } }
+  const benchClientWorkspaceContextMock = (globalThis as any).vi?.fn?.()?.mockReturnValue?.(null) ?? function () { return null }
   return {
     bridgeListeners,
     sendCommandMock,
@@ -62,6 +63,7 @@ const mocks = vi.hoisted(() => {
     broadcastMock,
     clearConversationFileMock,
     getTabStatusMock,
+    benchClientWorkspaceContextMock,
   }
 })
 
@@ -74,6 +76,7 @@ mocks.executeJsMock = vi.fn().mockResolvedValue(null)
 mocks.broadcastMock = vi.fn()
 mocks.clearConversationFileMock = vi.fn().mockResolvedValue(undefined)
 mocks.getTabStatusMock = vi.fn().mockReturnValue({ conversationId: null })
+mocks.benchClientWorkspaceContextMock = vi.fn().mockReturnValue(null)
 
 vi.mock('../state', () => {
   const mockEngineBridge = {
@@ -122,6 +125,12 @@ vi.mock('../remote/attachment-encoder', () => ({
   encodeAttachments: (text: string, _atts: any[]) => ({ encoded: [], rewrittenText: text }),
 }))
 
+vi.mock('../integration/bench-prompt-context', () => ({
+  benchClientWorkspaceContext: (...args: any[]) => mocks.benchClientWorkspaceContextMock(...args),
+  benchPromptContext: () => '',
+  BENCH_CONTEXT_MARKER: '<!-- bench-context -->',
+}))
+
 import { processIncomingPrompt } from '../prompt-pipeline'
 import { _resetAwaitersForTests } from '../command-await'
 import { TURN_GROUPING_GUIDANCE } from '../turn-grouping-guidance'
@@ -136,6 +145,7 @@ beforeEach(() => {
   mocks.broadcastMock.mockReset()
   mocks.clearConversationFileMock.mockReset().mockResolvedValue(undefined)
   mocks.getTabStatusMock.mockReset().mockReturnValue({ conversationId: null })
+  mocks.benchClientWorkspaceContextMock.mockReset().mockReturnValue(null)
   mocks.bridgeListeners.clear()
   _resetAwaitersForTests()
 })
@@ -216,5 +226,109 @@ describe('processIncomingPrompt — harness system-prompt addenda (turn-grouping
     })
     expect(mocks.submitPromptMock).toHaveBeenCalledTimes(1)
     expect(opts.appendSystemPrompt).toBe(TURN_GROUPING_GUIDANCE)
+  })
+})
+
+describe('processIncomingPrompt — clientWorkspaceContext injection', () => {
+  const BENCH_CTX = {
+    kind: 'bench',
+    cwd: '/ion/integration/ion-josh',
+    bench: { path: '/ion/integration/ion-josh', branch: 'josh', members: [] },
+    text: '<!-- bench-context -->',
+  }
+
+  it('sets clientWorkspaceContext on RunOptions when benchClientWorkspaceContext returns non-null', async () => {
+    mocks.benchClientWorkspaceContextMock.mockReturnValue(BENCH_CTX)
+    await processIncomingPrompt({
+      tabId: 'tab-1',
+      text: 'hello',
+      reqId: 'req-wsc-1',
+      source: 'desktop',
+      hasExtensions: true,
+      instanceId: 'inst-x',
+      projectPath: '/ion/integration/ion-josh',
+      runOptions: { prompt: 'hello', projectPath: '/ion/integration/ion-josh', extensions: ['ext-a'] },
+    })
+    expect(mocks.submitPromptMock).toHaveBeenCalledTimes(1)
+    const opts = mocks.submitPromptMock.mock.calls[0][2]
+    expect(opts.clientWorkspaceContext).toEqual(BENCH_CTX)
+    expect(mocks.benchClientWorkspaceContextMock).toHaveBeenCalledWith('/ion/integration/ion-josh')
+  })
+
+  it('does not overwrite a preexisting clientWorkspaceContext on RunOptions', async () => {
+    const preexisting = { kind: 'custom', cwd: '/custom', text: 'pre' }
+    mocks.benchClientWorkspaceContextMock.mockReturnValue(BENCH_CTX)
+    await processIncomingPrompt({
+      tabId: 'tab-1',
+      text: 'hello',
+      reqId: 'req-wsc-2',
+      source: 'desktop',
+      hasExtensions: true,
+      instanceId: 'inst-x',
+      projectPath: '/ion/integration/ion-josh',
+      runOptions: {
+        prompt: 'hello', projectPath: '/ion/integration/ion-josh',
+        extensions: ['ext-a'], clientWorkspaceContext: preexisting as any,
+      },
+    })
+    expect(mocks.submitPromptMock).toHaveBeenCalledTimes(1)
+    const opts = mocks.submitPromptMock.mock.calls[0][2]
+    expect(opts.clientWorkspaceContext).toEqual(preexisting)
+    expect(mocks.benchClientWorkspaceContextMock).not.toHaveBeenCalled()
+  })
+
+  it('omits clientWorkspaceContext for non-bench directories', async () => {
+    mocks.benchClientWorkspaceContextMock.mockReturnValue(null)
+    await processIncomingPrompt({
+      tabId: 'tab-1',
+      text: 'hello',
+      reqId: 'req-wsc-3',
+      source: 'desktop',
+      hasExtensions: true,
+      instanceId: 'inst-x',
+      projectPath: '/plain/project',
+      runOptions: { prompt: 'hello', projectPath: '/plain/project', extensions: ['ext-a'] },
+    })
+    expect(mocks.submitPromptMock).toHaveBeenCalledTimes(1)
+    const opts = mocks.submitPromptMock.mock.calls[0][2]
+    expect(opts.clientWorkspaceContext).toBeUndefined()
+  })
+
+  it('is idempotent on remote bounce — context set once, not duplicated', async () => {
+    mocks.benchClientWorkspaceContextMock.mockReturnValue(BENCH_CTX)
+    // First pass: desktop source sets the context.
+    await processIncomingPrompt({
+      tabId: 'tab-1',
+      text: 'hello',
+      reqId: 'req-wsc-4a',
+      source: 'desktop',
+      hasExtensions: true,
+      instanceId: 'inst-x',
+      projectPath: '/ion/integration/ion-josh',
+      runOptions: { prompt: 'hello', projectPath: '/ion/integration/ion-josh', extensions: ['ext-a'] },
+    })
+    const firstOpts = mocks.submitPromptMock.mock.calls[0][2]
+    expect(firstOpts.clientWorkspaceContext).toEqual(BENCH_CTX)
+    // The guard is: if clientWorkspaceContext is already set, do not call
+    // benchClientWorkspaceContext again. Simulate the second pass by passing
+    // RunOptions that already carry the context (as the bounce would).
+    mocks.submitPromptMock.mockReset().mockResolvedValue(undefined)
+    mocks.benchClientWorkspaceContextMock.mockReset().mockReturnValue(BENCH_CTX)
+    await processIncomingPrompt({
+      tabId: 'tab-1',
+      text: 'hello',
+      reqId: 'req-wsc-4b',
+      source: 'desktop',
+      hasExtensions: true,
+      instanceId: 'inst-x',
+      projectPath: '/ion/integration/ion-josh',
+      runOptions: {
+        prompt: 'hello', projectPath: '/ion/integration/ion-josh',
+        extensions: ['ext-a'], clientWorkspaceContext: BENCH_CTX as any,
+      },
+    })
+    expect(mocks.benchClientWorkspaceContextMock).not.toHaveBeenCalled()
+    const secondOpts = mocks.submitPromptMock.mock.calls[0][2]
+    expect(secondOpts.clientWorkspaceContext).toEqual(BENCH_CTX)
   })
 })

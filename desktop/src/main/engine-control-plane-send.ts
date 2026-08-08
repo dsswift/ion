@@ -22,7 +22,7 @@
  * the request size for no benefit. This mirrors the behaviour the inline
  * version had before extraction.
  */
-import type { EngineConfig, RunOptions } from '../shared/types'
+import type { EngineConfig, RunOptions, ThinkingConfig } from '../shared/types'
 import type { TabEntry } from './engine-control-plane-events'
 import type { EngineBridge } from './engine-bridge'
 
@@ -56,6 +56,7 @@ export function bridgeSendAdapter(bridge: EngineBridge) {
       undefined,
       opts.thinkingEffort,
       opts.resolveSlash,
+      opts.clientWorkspaceContext,
     )
 }
 
@@ -79,7 +80,7 @@ export interface SendDeps {
       extensions?: string[]
       model?: string
       maxTokens?: number
-      thinking?: { enabled: boolean; budgetTokens?: number }
+      thinking?: ThinkingConfig
     },
   ) => Promise<SendResult>
   warn: (msg: string, fields?: Record<string, unknown>) => void

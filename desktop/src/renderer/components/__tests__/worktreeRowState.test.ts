@@ -64,6 +64,33 @@ describe('resolveRowState — one rung at a time', () => {
     expect(state).toEqual({ kind: 'bench-conflict', paths: ['x.ts'], conflictsWith: ['wt/b'] })
   })
 
+  it('shows a verification suspect above provisioning and freshness, but below an outright conflict', () => {
+    const suspectOnly = resolveRowState({
+      entry: entry({ provisionState: 'failed', needsSync: true }),
+      membership: member(),
+      verificationSuspect: { command: 'npm run typecheck' },
+    })
+    expect(suspectOnly).toEqual({ kind: 'bench-verification', command: 'npm run typecheck' })
+
+    // A member absent from the tree entirely still outranks a suspect: the
+    // conflict glyph wins when both facts are true of the same row.
+    const bothTrue = resolveRowState({
+      entry: entry(),
+      membership: member({ merge: 'conflicted', conflictPaths: ['x.ts'] }),
+      verificationSuspect: { command: 'npm run typecheck' },
+    })
+    expect(bothTrue.kind).toBe('bench-conflict')
+  })
+
+  it('carries "verify suspect" in the words when a higher-severity glyph is shown', () => {
+    const words = resolveRowWords({
+      entry: entry({ operationState: 'rebasing' }),
+      membership: member(),
+      verificationSuspect: { command: 'npm run typecheck' },
+    })
+    expect(words).toContain('verify suspect')
+  })
+
   it('shows failed provisioning above a stale base', () => {
     const state = resolveRowState({
       entry: entry({ provisionState: 'failed', provisionError: 'npm ci failed', needsSync: true }),
@@ -109,17 +136,17 @@ describe('resolveRowState — one rung at a time', () => {
       .toEqual({ kind: 'needs-sync', blocked: false, syncing: true })
   })
 
-  it('never puts a review verdict in the slot, whatever the verdict', () => {
-    // Verdicts used to occupy two rungs here, from when this slot was the only
-    // place one could appear. The verdict BUTTONS on line 2 are always visible
-    // and already show the state they set, so a gutter copy marked every
-    // reviewed row twice -- two glyphs for one fact, which is what made a list
-    // of reviewed rows hard to scan.
-    for (const review of ['good', 'issue'] as const) {
-      expect(resolveRowState({ entry: entry(), membership: member({ review }) }).kind)
+  it('never puts a work stage in the slot, whatever the stage', () => {
+    // Operator markers used to occupy two rungs here, from when this slot was
+    // the only place one could appear. The stage CHIP on line 2 is always
+    // visible and already shows the state it sets, so a gutter copy would mark
+    // every staged row twice -- two glyphs for one fact, which is what made a
+    // list of reviewed rows hard to scan under the old verdict pair.
+    for (const stage of ['verified', 'bug'] as const) {
+      expect(resolveRowState({ entry: entry({ stage }), membership: member() }).kind)
         .toBe('none')
       // And it does not displace a real signal either.
-      expect(resolveRowState({ entry: entry({ needsSync: true }), membership: member({ review }) }).kind)
+      expect(resolveRowState({ entry: entry({ needsSync: true, stage }), membership: member() }).kind)
         .toBe('needs-sync')
     }
   })

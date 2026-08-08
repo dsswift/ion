@@ -16,13 +16,7 @@ import (
 // used to smuggle a mutating tool into plan mode. Omitting Skill disabled the
 // entire skill system precisely in the mode where codebase-investigation skills
 // are most useful, and the model silently fell back to raw Grep/Read sweeps.
-//
-// WorkspaceAttribution is in the set because it is strictly read-only: it maps
-// assembled bench content back to the contributing member worktrees (git blame
-// and reachability over already-committed state) and writes nothing. Plan-mode
-// investigation of a bench build failure is exactly where attribution is
-// needed most.
-var defaultPlanModeTools = []string{"Read", "Grep", "Glob", "Agent", "WebFetch", "WebSearch", "Skill", "WorkspaceAttribution"}
+var defaultPlanModeTools = []string{"Read", "Grep", "Glob", "Agent", "WebFetch", "WebSearch", "Skill"}
 
 // planModeReminderInterval is the number of turns between sparse plan-mode
 // reminder injections. The first reminder fires on turn 2 (first post-entry

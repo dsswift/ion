@@ -43,6 +43,9 @@ func TestRegistryGetTool(t *testing.T) {
 		{"ListMcpResources", true},
 		{"ReadMcpResource", true},
 		{"SearchHistory", true},
+		{"WorktreeList", true},
+		{"WorktreeCommits", true},
+		{"WorktreeDiff", true},
 		{"NonExistent", false},
 	}
 
@@ -61,7 +64,7 @@ func TestRegistryGetTool(t *testing.T) {
 
 func TestGetAllTools(t *testing.T) {
 	all := GetAllTools()
-	for _, name := range []string{"Read", "Write", "Edit", "Bash", WorkspaceAttributionName} {
+	for _, name := range []string{"Read", "Write", "Edit", "Bash", "SearchHistory", "WorktreeList", "WorktreeCommits", "WorktreeDiff"} {
 		if GetTool(name) == nil {
 			t.Errorf("expected built-in tool %q", name)
 		}

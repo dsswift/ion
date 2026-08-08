@@ -16,10 +16,15 @@ package utils
 // On each flush tick the spool is drained first (FIFO) before the live buffer
 // is sent. The spool cap (EgressSpoolMaxBytes, default 50 MB) trims the oldest
 // lines when exceeded. Exponential backoff (base 5 s, cap 5 min) prevents
-// hot-looping against a dead sink.
+// hot-looping against a dead sink. The spool file mechanics themselves live in
+// log_egress_spool.go, which documents the bounded-memory invariant they obey.
+//
+// Two caps, two jobs: the spool cap bounds DISK, the buffer cap
+// (EgressBufferMaxRecords) bounds HEAP. A sink that fails indefinitely must
+// grow neither — records move from the buffer to the spool on every failed
+// flush, and the spool trims oldest-first from there.
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -51,6 +56,14 @@ const defaultEgressChunkSize = 500
 // link while still guaranteeing the flush goroutine can't block indefinitely.
 // Configurable via LoggingConfig.EgressRequestTimeoutMs.
 const defaultEgressRequestTimeoutMs = 5 * 60 * 1000
+
+// defaultEgressBufferMaxRecords caps the in-memory staging buffer. At the
+// ~350-byte average record size this is ~17 MB of heap — enough to absorb a
+// multi-minute sink outage at a high log rate, small enough that a permanently
+// dead sink cannot grow the engine's heap without limit. Overflow evicts
+// oldest-first, mirroring the spool cap; the durable overflow path is the
+// on-disk spool, not RAM. Configurable via LoggingConfig.EgressBufferMaxRecords.
+const defaultEgressBufferMaxRecords = 50_000
 
 // egressRecord is the structured payload shipped to downstream egress targets.
 // It mirrors the canonical log schema (docs/observability/log-schema.md) so
@@ -134,9 +147,27 @@ type EgressForwarder struct {
 	// Caller-supplied fields take precedence — ambient only fills absent keys.
 	ambientFields map[string]any
 
+	// bufferMax caps how many records may sit in the in-memory buffer. The
+	// buffer is a staging area, not storage: the durable overflow path is the
+	// on-disk spool, which is bounded by spoolMaxB. Without this cap a sink
+	// that fails every flush grows the buffer without limit for as long as the
+	// engine keeps logging — the heap becomes the unbounded queue that the
+	// spool cap exists to prevent. Zero means the compiled default.
+	bufferMax int
+
+	// spoolMu serializes every read/write/rewrite of the spool file. The flush
+	// goroutine and a batch-size-triggered Flush on a logging goroutine can
+	// both enter the spool path concurrently; without this they double-ship
+	// records and clobber each other's rewrite.
+	spoolMu sync.Mutex
+
 	mu         sync.Mutex
 	buffer     []egressRecord
 	loggedErrs map[string]bool // dedup flush-error log lines (mirrors Collector)
+	// bufferDropped counts records evicted from the in-memory buffer because
+	// it hit bufferMax. Reported from the flush path, never from enqueue:
+	// logging inside enqueue would re-enter ship → enqueue and recurse.
+	bufferDropped int64
 
 	// Backoff state for sink failures.
 	backoffUntil time.Time
@@ -223,6 +254,7 @@ func newEgressForwarder(cfg types.LoggingConfig) *EgressForwarder {
 		shipOwn:       shipSourcesContain(sources, "engine"),
 		spoolPath:     spoolPath,
 		spoolMaxB:     spoolMax,
+		bufferMax:     cfg.EgressBufferMaxRecords,
 		httpClient:    &http.Client{Timeout: time.Duration(requestTimeoutMs) * time.Millisecond},
 		buffer:        make([]egressRecord, 0, 64),
 		loggedErrs:    make(map[string]bool),
@@ -286,6 +318,15 @@ func (f *EgressForwarder) enqueue(rec egressRecord) {
 	}
 	f.mu.Lock()
 	f.buffer = append(f.buffer, rec)
+	// Evict oldest on overflow (same drop-oldest policy as the spool cap).
+	// The eviction is not logged here: Error() routes back through logAtFull →
+	// ship → enqueue, and an overflowing buffer would recurse forever. The
+	// count is reported from the flush path instead.
+	if max := f.bufferMaxRecords(); len(f.buffer) > max {
+		excess := len(f.buffer) - max
+		f.buffer = f.buffer[excess:]
+		f.bufferDropped += int64(excess)
+	}
 	batchSize := f.cfg.EgressBatchSize
 	shouldFlush := batchSize > 0 && len(f.buffer) >= batchSize
 	f.mu.Unlock()
@@ -294,6 +335,41 @@ func (f *EgressForwarder) enqueue(rec egressRecord) {
 		if err := f.Flush(); err != nil {
 			f.logFlushError(err)
 		}
+	}
+}
+
+// bufferMaxRecords resolves the in-memory buffer cap (configured or default).
+func (f *EgressForwarder) bufferMaxRecords() int {
+	if f.bufferMax > 0 {
+		return f.bufferMax
+	}
+	return defaultEgressBufferMaxRecords
+}
+
+// takeBuffer atomically removes and returns every buffered record.
+func (f *EgressForwarder) takeBuffer() []egressRecord {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.buffer) == 0 {
+		return nil
+	}
+	records := make([]egressRecord, len(f.buffer))
+	copy(records, f.buffer)
+	f.buffer = f.buffer[:0]
+	return records
+}
+
+// reportBufferDrops logs and clears the pending buffer-overflow count. Called
+// from the flush path, never from enqueue — see EgressForwarder.bufferDropped.
+func (f *EgressForwarder) reportBufferDrops() {
+	f.mu.Lock()
+	dropped := f.bufferDropped
+	f.bufferDropped = 0
+	f.mu.Unlock()
+	if dropped > 0 {
+		Error("log_egress", fmt.Sprintf(
+			"egress buffer overflow: dropped %d oldest records (cap=%d); sink has been failing long enough to fill the in-memory buffer",
+			dropped, f.bufferMaxRecords()))
 	}
 }
 
@@ -378,23 +454,27 @@ func (f *EgressForwarder) Flush() error {
 		return nil
 	}
 
+	f.reportBufferDrops()
+
 	// Drain the spool before the live buffer (FIFO delivery order).
 	if err := f.drainSpool(); err != nil {
-		// Spool drain failed → advance backoff and return; live buffer untouched.
+		// Spool drain failed → the sink is down. Move the live buffer to the
+		// spool anyway: the spool is bounded by EgressSpoolMaxBytes, the
+		// in-memory buffer is bounded only by bufferMax and costs heap. Leaving
+		// records buffered here on every failed drain is what let a dead sink
+		// convert an outage into unbounded memory growth.
+		if records := f.takeBuffer(); len(records) > 0 {
+			f.appendToSpool(records)
+		}
 		f.advanceBackoff()
 		return err
 	}
 
 	// Now flush the live buffer.
-	f.mu.Lock()
-	if len(f.buffer) == 0 {
-		f.mu.Unlock()
+	records := f.takeBuffer()
+	if len(records) == 0 {
 		return nil
 	}
-	records := make([]egressRecord, len(f.buffer))
-	copy(records, f.buffer)
-	f.buffer = f.buffer[:0]
-	f.mu.Unlock()
 
 	if lastErr := f.exportRecords(records); lastErr != nil {
 		// Sink failed: spool the records so they are not lost.
@@ -436,185 +516,6 @@ func (f *EgressForwarder) flushLoop() {
 			return
 		}
 	}
-}
-
-// ---------------------------------------------------------------------------
-// Spool helpers
-// ---------------------------------------------------------------------------
-
-// appendToSpool writes records to the on-disk spool. If the spool would exceed
-// spoolMaxB after appending, the oldest lines are trimmed.
-func (f *EgressForwarder) appendToSpool(records []egressRecord) {
-	lines := make([]string, 0, len(records))
-	for _, r := range records {
-		b, err := json.Marshal(r)
-		if err != nil {
-			continue
-		}
-		lines = append(lines, string(b))
-	}
-	if len(lines) == 0 {
-		return
-	}
-	batch := strings.Join(lines, "\n") + "\n"
-
-	file, err := os.OpenFile(f.spoolPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		Error("log_egress", fmt.Sprintf("spool open failed: %v", err))
-		return
-	}
-	if _, err := file.WriteString(batch); err != nil {
-		if closeErr := file.Close(); closeErr != nil {
-			Error("log_egress", fmt.Sprintf("spool file close (on write error) failed: %v", closeErr))
-		}
-		Error("log_egress", fmt.Sprintf("spool write failed: %v", err))
-		return
-	}
-	if closeErr := file.Close(); closeErr != nil {
-		Error("log_egress", fmt.Sprintf("spool file close failed: %v", closeErr))
-	}
-
-	// Trim to cap after appending (oldest-first).
-	if err := f.trimSpoolToCap(f.spoolMaxB); err != nil {
-		Error("log_egress", fmt.Sprintf("spool trim failed: %v", err))
-	}
-}
-
-// drainSpool reads all spooled records and ships them to the configured
-// targets in chunks, removing shipped records from the spool as each chunk
-// lands. Chunking prevents oversized POST bodies from being rejected by
-// intermediate proxies: a 22k-record spool would serialize to ~18 MB of
-// OTLP JSON, but 500-record chunks stay under 200 KB each.
-//
-// On success the spool file is removed. On partial failure (some chunks
-// shipped before the first error) the spool is rewritten to contain only
-// the unshipped tail, preserving FIFO order. Returns the first target error.
-func (f *EgressForwarder) drainSpool() error {
-	info, err := os.Stat(f.spoolPath)
-	if os.IsNotExist(err) || (err == nil && info.Size() == 0) {
-		return nil
-	}
-	if err != nil {
-		return nil // can't stat — skip silently
-	}
-
-	data, err := os.ReadFile(f.spoolPath)
-	if err != nil {
-		return nil // can't read — skip
-	}
-
-	var records []egressRecord
-	sc := bufio.NewScanner(strings.NewReader(string(data)))
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" {
-			continue
-		}
-		var r egressRecord
-		if json.Unmarshal([]byte(line), &r) == nil {
-			records = append(records, r)
-		}
-	}
-
-	if len(records) == 0 {
-		os.Remove(f.spoolPath) //nolint:errcheck // best-effort cleanup
-		return nil
-	}
-
-	chunkSize := f.cfg.EgressChunkSize
-	if chunkSize <= 0 {
-		chunkSize = defaultEgressChunkSize
-	}
-
-	shipped := 0
-	for shipped < len(records) {
-		end := shipped + chunkSize
-		if end > len(records) {
-			end = len(records)
-		}
-		chunk := records[shipped:end]
-
-		if err := f.exportRecords(chunk); err != nil {
-			// Some chunks may have already landed. Drop those from the spool
-			// so they are not re-shipped on the next drain attempt. Failure
-			// here is logged but not returned — the records are already
-			// delivered; at worst a re-send is harmless double-delivery.
-			if shipped > 0 {
-				if rewriteErr := f.rewriteSpoolDropFirst(shipped); rewriteErr != nil {
-					Error("log_egress", fmt.Sprintf("spool partial-drain rewrite failed (double-delivery possible): %v", rewriteErr))
-				}
-			}
-			return err
-		}
-
-		Debug("log_egress", fmt.Sprintf("spool chunk shipped: %d records (offset %d)", len(chunk), shipped))
-		shipped += len(chunk)
-	}
-
-	os.Remove(f.spoolPath) //nolint:errcheck // best-effort cleanup
-	Log("log_egress", fmt.Sprintf("spool drained: %d records shipped", shipped))
-	return nil
-}
-
-// rewriteSpoolDropFirst rewrites the spool file, discarding the first n parsed
-// records (i.e., those already successfully shipped). If n covers all records
-// the file is deleted. Called only after a partial drain where some chunks
-// landed before the first failure; the goal is idempotency, not perfection —
-// if the rewrite itself fails the worst case is harmless double-delivery.
-func (f *EgressForwarder) rewriteSpoolDropFirst(n int) error {
-	data, err := os.ReadFile(f.spoolPath)
-	if err != nil {
-		return fmt.Errorf("rewrite spool read: %w", err)
-	}
-
-	// Collect all non-empty lines as raw JSON to avoid a re-marshal round-trip
-	// that could alter numeric types (the spool already stores canonical JSON).
-	var lines []string
-	sc := bufio.NewScanner(strings.NewReader(string(data)))
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line != "" {
-			lines = append(lines, line)
-		}
-	}
-
-	if n >= len(lines) {
-		// All records shipped — delete the file.
-		os.Remove(f.spoolPath) //nolint:errcheck // best-effort cleanup
-		return nil
-	}
-
-	remaining := strings.Join(lines[n:], "\n") + "\n"
-	return os.WriteFile(f.spoolPath, []byte(remaining), 0o644)
-}
-
-// trimSpoolToCap ensures the spool file is at most maxBytes bytes by removing
-// lines from the start (FIFO: oldest-first).
-func (f *EgressForwarder) trimSpoolToCap(maxBytes int64) error {
-	info, err := os.Stat(f.spoolPath)
-	if os.IsNotExist(err) || err != nil {
-		return nil
-	}
-	if info.Size() <= maxBytes {
-		return nil
-	}
-
-	data, err := os.ReadFile(f.spoolPath)
-	if err != nil {
-		return err
-	}
-	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
-	// Drop lines from the front until the content fits.
-	dropped := 0
-	for int64(len(strings.Join(lines, "\n")+"\n")) > maxBytes && len(lines) > 0 {
-		lines = lines[1:]
-		dropped++
-	}
-	if dropped > 0 {
-		Error("log_egress", fmt.Sprintf("spool cap exceeded: dropped %d oldest records (cap=%d bytes)", dropped, maxBytes))
-	}
-	newContent := strings.Join(lines, "\n") + "\n"
-	return os.WriteFile(f.spoolPath, []byte(newContent), 0o644)
 }
 
 // advanceBackoff doubles the backoff delay (base 5 s, cap 5 min).

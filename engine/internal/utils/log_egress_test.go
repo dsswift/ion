@@ -75,6 +75,7 @@ func newTestForwarder(t *testing.T, srv *httptest.Server, dir string, cfg ...typ
 		shipOwn:    true, // tests exercise the engine's own-record path
 		spoolPath:  spoolForDir(dir),
 		spoolMaxB:  c.EgressSpoolMaxBytes,
+		bufferMax:  c.EgressBufferMaxRecords,
 		httpClient: http.DefaultClient, // tests use the default client (no special timeout needed)
 		buffer:     make([]egressRecord, 0, 64),
 		loggedErrs: make(map[string]bool),

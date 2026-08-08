@@ -1,7 +1,7 @@
 import type { TabState } from '../../../shared/types'
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet } from '../session-store-types'
-import { makeLocalTab, nextMsgId, initialModelOverride, initialPermissionMode } from '../session-store-helpers'
+import { makeLocalTab, nextMsgId, initialModelOverride, initialPermissionMode, initialThinkingEffort } from '../session-store-helpers'
 import { makeMainPane } from '../conversation-instance'
 import { formatSessionStartDivider } from '../../../shared/clear-divider'
 import { rError } from '../../rendererLogger'
@@ -159,7 +159,7 @@ export function createConversationTabAction(set: StoreSet, get: StoreGet) {
     // tabs start with the user's default permission mode.
     const initMode: 'auto' | 'plan' = isEngine ? (profile?.defaultMode ?? 'auto') : initialPermissionMode()
     const pane = makeMainPane(
-      { modelOverride: initialModel, messages: [startDivider], messageCount: 1, permissionMode: initMode },
+      { modelOverride: initialModel, messages: [startDivider], messageCount: 1, permissionMode: initMode, thinkingEffort: initialThinkingEffort(initialModel) },
       'main',
     )
 

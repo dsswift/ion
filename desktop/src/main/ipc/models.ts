@@ -2,8 +2,10 @@ import { ipcMain, BrowserWindow } from 'electron'
 import { IPC } from '../../shared/types'
 import { log as _log, debug as _debug } from '../logger'
 import { engineBridge, modelCache, enterprisePolicyCache } from '../state'
+import { broadcast } from '../broadcast'
 import { getModelDisplayLabel, getProviderDisplayName } from '../../shared/types-models'
 import type { ModelEntry, ProviderEntry } from '../../shared/types-models'
+import type { ModelTier } from '../../shared/types-model-tiers'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -66,7 +68,55 @@ export async function refreshModelCache(): Promise<void> {
   }
 }
 
+function isModelTier(value: unknown): value is ModelTier {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const tier = value as Record<string, unknown>
+  return typeof tier.name === 'string' && tier.name.trim() !== ''
+    && typeof tier.model === 'string' && tier.model.trim() !== ''
+    && Array.isArray(tier.fallbacks) && tier.fallbacks.every((fallback) => typeof fallback === 'string')
+}
+
+function isTierNamePayload(value: unknown): value is { name: string } {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+    && typeof (value as Record<string, unknown>).name === 'string'
+    && (value as Record<string, string>).name.trim() !== ''
+}
+
 export function registerModelsIpc(): void {
+  ipcMain.handle(IPC.LIST_MODEL_TIERS, async () => {
+    debug('IPC LIST_MODEL_TIERS')
+    try {
+      return await engineBridge.listModelTiers()
+    } catch (err) {
+      log('model_tiers: list failed', { error: (err as Error).message })
+      throw err
+    }
+  })
+
+  ipcMain.handle(IPC.SET_MODEL_TIER, async (_e, payload: unknown) => {
+    if (!isModelTier(payload)) {
+      log('model_tiers: set rejected malformed payload')
+      return { ok: false, error: 'set_model_tier requires name, model, and string fallbacks' }
+    }
+    const tier = payload
+    debug('IPC SET_MODEL_TIER', { tier: tier.name, model: tier.model, fallbackCount: tier.fallbacks.length })
+    const result = await engineBridge.setModelTier(tier)
+    if (!result.ok) log('model_tiers: set failed', { tier: tier.name, error: result.error ?? 'unknown' })
+    return result
+  })
+
+  ipcMain.handle(IPC.REMOVE_MODEL_TIER, async (_e, payload: unknown) => {
+    if (!isTierNamePayload(payload)) {
+      log('model_tiers: remove rejected malformed payload')
+      return { ok: false, error: 'remove_model_tier requires a tier name' }
+    }
+    const { name } = payload
+    debug('IPC REMOVE_MODEL_TIER', { tier: name })
+    const result = await engineBridge.removeModelTier(name)
+    if (!result.ok) log('model_tiers: remove failed', { tier: name, error: result.error ?? 'unknown' })
+    return result
+  })
+
   ipcMain.handle(IPC.MODEL_TIER_RESOLVE, async (_e, { tier }: { tier: string }) => {
     debug('IPC MODEL_TIER_RESOLVE', { tier })
     try {
@@ -110,6 +160,12 @@ export function registerModelsIpc(): void {
       setTimeout(() => { void refreshModelCache() }, 1000)
     }
     return result
+  })
+
+  engineBridge.on('event', (_key: string, event: { type?: string; modelTiers?: ModelTier[] }) => {
+    if (event.type !== 'engine_model_tiers') return
+    log('model_tiers: snapshot received', { count: event.modelTiers?.length ?? 0 })
+    broadcast(IPC.MODEL_TIERS_UPDATED)
   })
 
   // Auto-fetch models when engine reconnects

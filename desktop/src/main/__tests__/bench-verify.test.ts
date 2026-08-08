@@ -23,6 +23,7 @@ describe('runBenchVerify', () => {
       ran: false,
       ok: true,
       output: '',
+      command: '',
     })
     expect(mockedRun).not.toHaveBeenCalled()
   })
@@ -35,6 +36,7 @@ describe('runBenchVerify', () => {
       ran: true,
       ok: false,
       output: 'failed',
+      command: 'npm test',
     })
     expect(mockedRun).toHaveBeenCalledWith('npm test', '/bench', 4567)
   })
@@ -56,6 +58,7 @@ describe('runBenchVerify', () => {
       ran: true,
       ok: true,
       output: 'ok',
+      command: 'make verify',
     })
     expect(mockedRun).toHaveBeenCalledWith('make verify', '/bench', undefined)
   })

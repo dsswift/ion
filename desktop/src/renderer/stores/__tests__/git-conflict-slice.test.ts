@@ -20,8 +20,9 @@ vi.mock('../../rendererLogger', () => ({
 // ReferenceError silently reduced the whole file to "no tests" rather than
 // failing a single assertion. Same mock, same reason, as
 // worktree-inventory-slice.test.ts.
+const preferenceState = { aiGeneratedTitles: false, aiAssistPromptOverrides: {} as Record<string, string> }
 vi.mock('../../preferences', () => ({
-  usePreferencesStore: { getState: () => ({ aiGeneratedTitles: false }) },
+  usePreferencesStore: { getState: () => preferenceState },
 }))
 
 const applyPermissionModeForTab = vi.fn()
@@ -29,7 +30,8 @@ vi.mock('../slices/tab-slice-permission-mode', () => ({
   applyPermissionModeForTab: (...args: unknown[]) => applyPermissionModeForTab(...args),
 }))
 
-import { createGitConflictSlice, conflictAssistPrompt, CONFLICT_ASSIST_PROMPT, CONFLICT_ASSIST_TIER } from '../slices/git-conflict-slice'
+import { createGitConflictSlice, conflictAssistPrompt, CONFLICT_ASSIST_PROMPT } from '../slices/git-conflict-slice'
+import { CONFLICT_ASSIST_TIER } from '../../../shared/types-model-tiers'
 import { createWorktreeInventorySlice } from '../slices/worktree-inventory-slice'
 import type { State, GitConflictAlert } from '../session-store-types'
 
@@ -45,6 +47,9 @@ function harness(extra: Record<string, unknown> = {}): Harness {
   let state: Record<string, unknown> = {
     gitConflictAlerts: new Map<string, GitConflictAlert>(),
     worktreeInventory: new Map(),
+    // The assist resolves bench-ness from these records, so every harness needs
+    // them present — empty means "no bench", the worktree-rebase case.
+    benchWorkspaces: new Map(),
     tabs: [],
     activeTabId: null,
     ...extra,
@@ -73,6 +78,7 @@ function harness(extra: Record<string, unknown> = {}): Harness {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  preferenceState.aiAssistPromptOverrides = {}
 })
 
 describe('a failed sync records a visible alert', () => {
@@ -219,6 +225,55 @@ describe('openConflictAssist', () => {
     }
   }
 
+  it('uses only the configured workbench tier when available', async () => {
+    const resolveModelTier = vi.fn(async (tier: string) => ({
+      tier, model: 'prov/fast', fallbacks: [], configured: tier === 'workbench-sync',
+    }))
+    ;(globalThis as unknown as { window: Record<string, unknown> }).window = { ion: { resolveModelTier } }
+    const h = harness({
+      submit: vi.fn(), setTabModel: vi.fn(),
+      createTabInDirectory: vi.fn().mockResolvedValue('tab-new'), tabs: [],
+    })
+
+    await h.slice.openConflictAssist!(WT)
+
+    expect(resolveModelTier).toHaveBeenCalledTimes(1)
+    expect(resolveModelTier).toHaveBeenCalledWith('workbench-sync')
+  })
+
+  it('falls back to standard when workbench tier is absent', async () => {
+    const resolveModelTier = vi.fn(async (tier: string) => ({
+      tier, model: tier === 'standard' ? 'prov/standard' : tier,
+      fallbacks: [], configured: tier === 'standard',
+    }))
+    ;(globalThis as unknown as { window: Record<string, unknown> }).window = { ion: { resolveModelTier } }
+    const setTabModel = vi.fn()
+    const h = harness({
+      submit: vi.fn(), setTabModel,
+      createTabInDirectory: vi.fn().mockResolvedValue('tab-new'), tabs: [],
+    })
+
+    await h.slice.openConflictAssist!(WT)
+
+    expect(resolveModelTier.mock.calls.map(([tier]) => tier)).toEqual(['workbench-sync', 'standard'])
+    expect(setTabModel).toHaveBeenCalledWith('tab-new', 'prov/standard')
+  })
+
+  it('uses an independent prompt override for the live operation', async () => {
+    preferenceState.aiAssistPromptOverrides = { 'rebase-resolution': 'custom resolve {{directory}}' }
+    ionWith()
+    const submit = vi.fn()
+    const h = harness({
+      submit, setTabModel: vi.fn(),
+      createTabInDirectory: vi.fn().mockResolvedValue('tab-new'), tabs: [],
+    })
+
+    await h.slice.openConflictAssist!(WT)
+
+    expect(submit).toHaveBeenCalledWith('tab-new', `custom resolve ${WT}`, { source: 'machine' })
+    preferenceState.aiAssistPromptOverrides = {}
+  })
+
   it('creates a conversation in the directory and submits the exact prompt', async () => {
     ionWith()
     const submit = vi.fn()
@@ -230,9 +285,9 @@ describe('openConflictAssist', () => {
 
     expect(tabId).toBe('tab-new')
     expect(createTabInDirectory).toHaveBeenCalledWith(WT, false, true)
-    const prompt = conflictAssistPrompt(null)
+    const prompt = conflictAssistPrompt(null, false, WT)
     expect(submit).toHaveBeenCalledWith('tab-new', prompt, { source: 'machine' })
-    expect(CONFLICT_ASSIST_PROMPT).toBe(prompt)
+    expect(CONFLICT_ASSIST_PROMPT).toBe(conflictAssistPrompt(null))
     expect(prompt).toContain('currently in-progress rebase')
     expect(prompt).toContain('Do not abort the rebase')
     expect(prompt).toContain('separate standalone call containing only git rebase --continue')
@@ -262,7 +317,7 @@ describe('openConflictAssist', () => {
     // The existing conversation is untouched: not focused, nothing submitted.
     expect(selectTab).not.toHaveBeenCalled()
     expect(submit).not.toHaveBeenCalledWith('tab-existing', CONFLICT_ASSIST_PROMPT)
-    expect(submit).toHaveBeenCalledWith('tab-fresh', CONFLICT_ASSIST_PROMPT, { source: 'machine' })
+    expect(submit).toHaveBeenCalledWith('tab-fresh', conflictAssistPrompt(null, false, WT), { source: 'machine' })
   })
 
   it('refuses with a remediation message when the standard tier is not configured', async () => {
@@ -274,7 +329,7 @@ describe('openConflictAssist', () => {
     const createTabInDirectory = vi.fn()
     const h = harness({ submit, createTabInDirectory, tabs: [], activeTabId: null })
 
-    await expect(h.slice.openConflictAssist!(WT)).rejects.toThrow(/standard.*models\.json/s)
+    await expect(h.slice.openConflictAssist!(WT)).rejects.toThrow(/workbench-sync.*standard.*Settings/s)
     expect(createTabInDirectory).not.toHaveBeenCalled()
     expect(submit).not.toHaveBeenCalled()
   })
@@ -293,7 +348,7 @@ describe('openConflictAssist', () => {
 
     await h.slice.openConflictAssist!(WT)
 
-    const mergePrompt = conflictAssistPrompt('merging')
+    const mergePrompt = conflictAssistPrompt('merging', false, WT)
     expect(submit).toHaveBeenCalledWith('tab-new', mergePrompt, { source: 'machine' })
     expect(mergePrompt).toContain('currently in-progress merge')
     expect(mergePrompt).toContain('git merge --continue')
@@ -333,7 +388,7 @@ describe('openConflictAssist', () => {
     // Order pinned: at submit time the tab was ALREADY locked and role-tagged.
     expect(lockedAtSubmit).toBe(true)
     expect(roleAtSubmit).toBe('conflict-auto-fix')
-    expect(submit).toHaveBeenCalledWith('tab-new', CONFLICT_ASSIST_PROMPT, { source: 'machine' })
+    expect(submit).toHaveBeenCalledWith('tab-new', conflictAssistPrompt(null, false, WT), { source: 'machine' })
   })
 
   it('pins the tier model on the fresh conversation', async () => {
@@ -429,5 +484,93 @@ describe('a failed land records a visible alert', () => {
     // sense: a conflict has an operation to resolve, a refusal never started.
     expect(h.alerts().get(HOLDER)!.kind).toBe('conflict')
     expect(h.alerts().get(WT)!.kind).toBe('refusal')
+  })
+})
+
+/**
+ * The bench arm of the assist prompt.
+ *
+ * The tools exist and are offered only in a bench, so the prompt names them only
+ * there. Worth stating rather than trusting discovery: the measured failure was
+ * an agent that HAD attribution, used it once, and then read one file out of
+ * eight sibling worktrees by hand anyway.
+ */
+describe('conflictAssistPrompt — bench arm', () => {
+  it('names all three bench tools when the conflict is in a bench', () => {
+    const prompt = conflictAssistPrompt('merging', true)
+    for (const tool of ['BenchResolutionHistory', 'BenchMemberFile', 'WorkspaceAttribution']) {
+      expect(prompt).toContain(tool)
+    }
+  })
+
+  it('tells the model to consult history BEFORE reasoning about the merge', () => {
+    // Order is the point: consulting prior decisions after resolving is the
+    // expensive path this exists to remove.
+    const prompt = conflictAssistPrompt('merging', true)
+    expect(prompt).toMatch(/Before reasoning about the merge, call BenchResolutionHistory/)
+  })
+
+  it('warns against reading a member worktree directly, and says why', () => {
+    const prompt = conflictAssistPrompt('merging', true)
+    expect(prompt).toContain('rather than opening a member worktree directly')
+    expect(prompt).toContain('work done since its pin')
+  })
+
+  it('names no bench tool for a worktree rebase, which is not offered them', () => {
+    const prompt = conflictAssistPrompt('rebasing', false)
+    for (const tool of ['BenchResolutionHistory', 'BenchMemberFile', 'WorkspaceAttribution']) {
+      expect(prompt).not.toContain(tool)
+    }
+  })
+
+  it('defaults to the non-bench wording, so an un-updated caller cannot mislead', () => {
+    expect(conflictAssistPrompt('rebasing')).toBe(conflictAssistPrompt('rebasing', false))
+  })
+
+  it('keeps every hard constraint in both arms', () => {
+    // Each was added for a recorded defect: an aborted operation, a --continue
+    // bundled with other work, a resolution left merely staged.
+    for (const prompt of [conflictAssistPrompt('merging', true), conflictAssistPrompt('merging', false)]) {
+      expect(prompt).toContain('Do not abort the merge')
+      expect(prompt).toContain('Do not combine continue with')
+      expect(prompt).toContain('standalone call containing only git merge --continue')
+      expect(prompt).toContain('no unmerged paths')
+    }
+  })
+})
+
+describe('openConflictAssist — resolves bench-ness from the records', () => {
+  it('sends the bench prompt when the directory is a registered bench', async () => {
+    const submit = vi.fn()
+    const h = harness({
+      submit,
+      setTabModel: vi.fn(),
+      createTabInDirectory: vi.fn(async () => 'tab-new'),
+      tabs: [{ id: 'tab-new', inputLocked: false }],
+      benchWorkspaces: new Map([['/repo', [{ benchPath: '/bench/josh', sourceBranch: 'josh' }]]]),
+    })
+    ;(globalThis as unknown as { window: { ion: Record<string, unknown> } }).window.ion.gitOpState =
+      vi.fn(async () => ({ ok: true, state: 'merging' }))
+
+    await h.slice.openConflictAssist!('/bench/josh')
+
+    expect(submit.mock.calls[0][1]).toContain('BenchResolutionHistory')
+  })
+
+  it('sends the plain prompt for a worktree, even mid-merge', async () => {
+    const submit = vi.fn()
+    const h = harness({
+      submit,
+      setTabModel: vi.fn(),
+      createTabInDirectory: vi.fn(async () => 'tab-new'),
+      tabs: [{ id: 'tab-new', inputLocked: false }],
+      benchWorkspaces: new Map([['/repo', [{ benchPath: '/bench/josh', sourceBranch: 'josh' }]]]),
+    })
+    ;(globalThis as unknown as { window: { ion: Record<string, unknown> } }).window.ion.gitOpState =
+      vi.fn(async () => ({ ok: true, state: 'merging' }))
+
+    await h.slice.openConflictAssist!('/wt/mine')
+
+    expect(submit.mock.calls[0][1]).not.toContain('BenchResolutionHistory')
   })
 })

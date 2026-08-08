@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   collectDirConversations,
+  collectAllDirConversations,
   pickBenchConversation,
   type DirConversationSource,
 } from '../worktree-conversations'
@@ -63,6 +64,11 @@ describe('pickBenchConversation', () => {
     expect(pickBenchConversation(tabs, BENCH)).toBeNull()
   })
 
+  it('never adopts a verification-analysis tab', () => {
+    const tabs = [tab({ id: 'verify', tabRole: 'verification-analysis' })]
+    expect(pickBenchConversation(tabs, BENCH)).toBeNull()
+  })
+
   it('prefers the role-tagged slot over an adoptable legacy tab', () => {
     const tabs = [
       tab({ id: 'legacy' }),
@@ -88,5 +94,38 @@ describe('collectDirConversations role exclusion', () => {
     ]
     const out = collectDirConversations(tabs, BENCH)
     expect(out.map((c) => c.tabId)).toEqual(['talk', 'plain'])
+  })
+
+  it('excludes verification-analysis conversations from the operator list', () => {
+    const tabs = [
+      tab({ id: 'talk', tabRole: 'bench-conversation' }),
+      tab({ id: 'verify', tabRole: 'verification-analysis' }),
+      tab({ id: 'plain' }),
+    ]
+    const out = collectDirConversations(tabs, BENCH)
+    expect(out.map((c) => c.tabId)).toEqual(['talk', 'plain'])
+  })
+})
+
+describe('collectAllDirConversations — the navigation-only, role-inclusive twin', () => {
+  it('includes machine-driven conversations that collectDirConversations excludes', () => {
+    const tabs = [
+      tab({ id: 'talk', tabRole: 'bench-conversation' }),
+      tab({ id: 'fix', tabRole: 'conflict-auto-fix' }),
+      tab({ id: 'verify', tabRole: 'verification-analysis' }),
+      tab({ id: 'plain' }),
+      tab({ id: 'shell', isTerminalOnly: true }),
+    ]
+    const out = collectAllDirConversations(tabs, BENCH)
+    expect(out.map((c) => c.tabId)).toEqual(['talk', 'fix', 'verify', 'plain'])
+  })
+
+  it('still skips terminal-only tabs — a shell is never a conversation, regardless of role', () => {
+    const tabs = [tab({ id: 'shell', isTerminalOnly: true })]
+    expect(collectAllDirConversations(tabs, BENCH)).toEqual([])
+  })
+
+  it('returns an empty array for an empty directory path', () => {
+    expect(collectAllDirConversations([tab({ id: 'a', workingDirectory: '' })], '')).toEqual([])
   })
 })

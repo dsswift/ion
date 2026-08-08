@@ -31,6 +31,8 @@ export interface HarnessTab {
   workingDirectory: string
   isTerminalOnly?: boolean
   customTitle?: string | null
+  /** Worktree metadata, when the tab was created through the worktree flow. */
+  worktree?: { worktreePath: string; repoPath: string } | null
 }
 
 export const storeState = {
@@ -39,13 +41,17 @@ export const storeState = {
   benchSourceTips: new Map<string, unknown>(),
   benchRetired: new Map<string, unknown>(),
   tabs: [] as HarnessTab[],
+  // Which conversation is focused. The section resolves the worktree it stands
+  // in from this, so one row can render the "you are here" rail.
+  activeTabId: null as string | null,
   // `getTabStatusColor` (reached through `activityFor` -> `getGroupStatusColor`)
   // reads `conversationPanes` off the store directly for the waiting-state and
   // permission-queue folds. An empty Map is the "no instances yet" state and
   // keeps the helper on its idle path.
   conversationPanes: new Map<string, unknown>(),
-  refreshWorktreeInventory: vi.fn(),
-  refreshBench: vi.fn(),
+  refreshWorktreeInventory: vi.fn(async () => {}),
+  refreshBench: vi.fn(async () => {}),
+  refreshWorkspaceViews: vi.fn(async () => {}),
   openWorktreeConversation: vi.fn(),
   openBenchConversation: vi.fn(),
   openBenchTerminal: vi.fn(),
@@ -54,6 +60,9 @@ export const storeState = {
   benchAddMember: vi.fn(),
   benchRemoveMember: vi.fn(),
   benchSetEnabled: vi.fn(),
+  setWorktreeStage: vi.fn(),
+  // Deprecated shim (see worktree-inventory-slice.ts); mocked so sibling-branch
+  // test files that still exercise it keep passing in the assembled bench.
   benchSetReview: vi.fn(),
   benchSetOrder: vi.fn(),
   benchUpdateMember: vi.fn(),
@@ -61,6 +70,9 @@ export const storeState = {
   benchAssemble: vi.fn(),
   benchResolveConflict: vi.fn(async () => null),
   clearBenchRetired: vi.fn(),
+  // Called by WorktreeRowGoToTabSubmenu (the bench bar's and the row menu's
+  // "Go to tab" pickers) via useSessionStore.getState().selectTab.
+  selectTab: vi.fn(),
 }
 
 /** The store mock every WorktreeListSection test file installs. */
@@ -141,6 +153,7 @@ export function mountHarness(
       storeState.benchSourceTips = new Map()
       storeState.benchRetired = new Map()
       storeState.tabs = []
+      storeState.activeTabId = null
       host = document.createElement('div')
       document.body.appendChild(host)
       root = createRoot(host)

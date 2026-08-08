@@ -1,4 +1,5 @@
 import type { ImageAttachmentPayload } from '../shared/types'
+import type { ClientWorkspaceContext } from '../shared/types-engine'
 
 /**
  * Sibling helper for EngineBridge.sendPrompt — the prompt-message
@@ -22,8 +23,11 @@ export interface SendPromptArgs {
   implementationPhase?: boolean
   /**
    * Per-prompt extended-thinking effort (live per-conversation control).
-   * 'off'/undefined → no thinking directive. Mapped onto the wire
-   * `thinkingEffort` field, which the engine turns into RunOptions.Thinking.
+   * Three meaningful states: a level ('low'/'medium'/'high') sets thinking
+   * for the run, the literal 'off' CLEARS it (overriding any engine.json or
+   * session default), and `undefined` means "no opinion — inherit the
+   * configured default". Mapped onto the wire `thinkingEffort` field, which
+   * the engine turns into RunOptions.Thinking.
    */
   thinkingEffort?: string
   enterPlanModeDescription?: string
@@ -39,6 +43,7 @@ export interface SendPromptArgs {
    * `resolveSlash` field).
    */
   resolveSlash?: boolean
+  clientWorkspaceContext?: ClientWorkspaceContext
 }
 
 /**
@@ -65,10 +70,17 @@ export function buildSendPromptMessage(args: SendPromptArgs): Record<string, unk
   // is omitempty, so this round-trips cleanly. See ADR-003 framing in
   // the plan-mode docs for why structured flags beat prompt prose.
   if (args.implementationPhase) msg.implementationPhase = true
-  // Per-prompt thinking effort. Only attach a meaningful, non-"off" level so
-  // the engine's omitempty ThinkingEffort round-trips cleanly and "off"/absent
-  // both mean "no thinking this prompt".
-  if (args.thinkingEffort && args.thinkingEffort !== 'off') msg.thinkingEffort = args.thinkingEffort
+  // Per-prompt thinking effort. Three distinct wire states, all meaningful:
+  //   - "low"/"medium"/"high" → set thinking for this run
+  //   - "off"                 → CLEAR thinking, overriding any engine.json or
+  //                             session default (the engine's `eff == "off"`
+  //                             arm sets RunOptions.Thinking = nil)
+  //   - absent                → no opinion; inherit the configured default
+  // The sentinel is forwarded rather than dropped: collapsing "off" into
+  // absence would make a conversation with thinking switched off inherit a
+  // configured default. ClientCommand.ThinkingEffort is omitempty on the Go
+  // side, so an absent field still round-trips as "no opinion".
+  if (args.thinkingEffort) msg.thinkingEffort = args.thinkingEffort
   // Harness-supplied EnterPlanMode tool description (ADR-004). The
   // engine's RunOptions.EnterPlanModeDescription field is omitempty —
   // only send when non-empty so the wire format stays minimal. The
@@ -98,6 +110,7 @@ export function buildSendPromptMessage(args: SendPromptArgs): Record<string, unk
   // the engine's omitempty `resolveSlash` field round-trips cleanly and an
   // absent value means "plain message" (unchanged behavior).
   if (args.resolveSlash) msg.resolveSlash = true
+  if (args.clientWorkspaceContext) msg.clientWorkspaceContext = args.clientWorkspaceContext
   return msg
 }
 
@@ -115,5 +128,5 @@ export function buildSendPromptLogLine(args: SendPromptArgs): string {
   const descLen = args.enterPlanModeDescription?.length ?? 0
   const reminderLen = args.planModeSparseReminder?.length ?? 0
   const bashAddCount = args.bashAllowlistAdditionsForThisPrompt?.length ?? 0
-  return `sendPrompt: key=${args.key} len=${args.text.length} model=${args.model ?? 'default'} hasSysPrompt=${!!args.appendSystemPrompt} images=${attCount} implementationPhase=${args.implementationPhase ?? false} enterPlanModeDescLen=${descLen} planModeSparseReminderLen=${reminderLen} planFilePath=${args.planFilePath ?? 'none'} bashAdditions=${bashAddCount} resolveSlash=${args.resolveSlash ?? false}`
+  return `sendPrompt: key=${args.key} len=${args.text.length} model=${args.model ?? 'default'} hasSysPrompt=${!!args.appendSystemPrompt} images=${attCount} implementationPhase=${args.implementationPhase ?? false} enterPlanModeDescLen=${descLen} planModeSparseReminderLen=${reminderLen} planFilePath=${args.planFilePath ?? 'none'} bashAdditions=${bashAddCount} resolveSlash=${args.resolveSlash ?? false} clientWsCtx=${args.clientWorkspaceContext?.kind ?? 'none'}`
 }

@@ -12,7 +12,7 @@
  * under the 600-line cap.
  *
  * ── The ordering rule this file exists to enforce ────────────────────────────
- * `closeTab` REFUSES a busy tab (`evaluateCloseGuard`) and there is
+ * `closeTab` REFUSES a busy tab (`evaluateSessionBusyGuard`) and there is
  * deliberately no `force` — forcing would SIGTERM dispatched sub-agents and
  * kill long builds, which is the footgun the guard exists to prevent. So a
  * bulk close cannot be the safety mechanism: it would run its refusals AFTER
@@ -32,7 +32,7 @@ import {
   occupantTitle,
   type ActiveOccupant,
 } from '../../../shared/worktree-occupants'
-import { evaluateCloseGuard, describeCloseGuardReason, formatCloseGuardRefusal } from './tab-close-guard'
+import { evaluateSessionBusyGuard, describeSessionBusyReason, formatSessionBusyRefusal } from './session-busy-guard'
 import { setTabWorkingDirectory } from './tab-working-directory'
 
 const TAG = 'worktree.occupants'
@@ -46,7 +46,7 @@ export interface RetireBlockers {
 /**
  * Every tab in `dirPaths` that `closeTab` would refuse to close.
  *
- * A terminal-only tab has no `conversationPane`, so `evaluateCloseGuard`
+ * A terminal-only tab has no `conversationPane`, so `evaluateSessionBusyGuard`
  * returns `blocked: false` for it and a terminal can never block a retire. That
  * is correct: a shell has no orchestrator, no dispatched agents, and no
  * outstanding tool calls to protect — it is closed, not waited on.
@@ -55,16 +55,16 @@ export function findActiveOccupants(get: StoreGet, dirPaths: readonly string[]):
   const occupants = collectOccupantsAcross(get().tabs, dirPaths)
   const active: ActiveOccupant[] = []
   for (const tab of occupants) {
-    const guard = evaluateCloseGuard(get().conversationPanes.get(tab.id))
+    const guard = evaluateSessionBusyGuard(get().conversationPanes.get(tab.id))
     if (!guard.blocked) continue
     active.push({
       tabId: tab.id,
       title: occupantTitle(tab),
-      reason: describeCloseGuardReason(guard),
+      reason: describeSessionBusyReason(guard),
     })
     rDebug(TAG, 'occupant is active', {
       tab_id: tab.id.slice(0, 8),
-      reason: formatCloseGuardRefusal(tab.id, guard),
+      reason: formatSessionBusyRefusal(tab.id, guard, 'close the tab'),
     })
   }
   return active

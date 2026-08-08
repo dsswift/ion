@@ -100,6 +100,12 @@ type PromptOverrides struct {
 	// to the expanded body, and persists the raw invocation as the display turn.
 	ResolveSlash bool
 
+	// ClientWorkspaceContext is a per-prompt client-supplied workspace
+	// descriptor. When non-nil, the engine uses it instead of its own
+	// worktree-registry-derived context for this prompt. Overrides the
+	// session-level EngineConfig value. See types.ClientWorkspaceContext.
+	ClientWorkspaceContext *types.ClientWorkspaceContext
+
 	// InjectionKind classifies an engine-side injected prompt so the
 	// persisted conversation entry carries the semantic type. "agent_completion"
 	// marks a machine-to-machine dispatch callback (a child agent's result
@@ -368,7 +374,15 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	}
 
 	injectContextFiles(s, &opts)
-	workspaceContext := m.injectWorkspaceContext(s, key, &opts)
+	// Resolve client-supplied workspace context with precedence:
+	// per-prompt (overrides) > session-level (EngineConfig) > nil (engine-derived).
+	var clientWsCtx *types.ClientWorkspaceContext
+	if overrides != nil && overrides.ClientWorkspaceContext != nil {
+		clientWsCtx = overrides.ClientWorkspaceContext
+	} else if s.config.ClientWorkspaceContext != nil {
+		clientWsCtx = s.config.ClientWorkspaceContext
+	}
+	workspaceContext := m.injectWorkspaceContext(s, key, &opts, clientWsCtx)
 	m.injectExtensionContext(s, key, &opts, workspaceContext)
 	injectGitContext(s, &opts)
 	injectPluginContext(s, &opts)

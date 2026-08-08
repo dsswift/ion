@@ -225,6 +225,34 @@ Two ways out, both in that dialog:
 Excluding the conflicted member also works — that is the explicit,
 partial-on-purpose subset the exclude toggle exists for.
 
+#### The second conflict on the same file is not a cold start
+
+`git rerere` replays a resolution whose **conflict text** matches, which covers
+the same collision recurring across assemblies. It cannot help when the same
+*file* conflicts against a **different member**: the hunks differ, so nothing
+matches, and historically each of those resolutions started from nothing. On a
+busy bench that is the common case, not the edge one — five of six merges in one
+recorded hour collided on a single file.
+
+So Ion also records **why** each resolution went the way it did, and hands it to
+whoever hits the same file next:
+
+- Completing a bench merge writes a journal entry (path, the member being merged,
+  the members it collided with, and the resolver's own rationale) once the
+  resolution has passed its postconditions and the project's `bench.verify`.
+- A later failed assembly attaches the matching entries to the conflicted
+  member's record, so the dialog reporting the conflict already carries the prior
+  reasoning.
+- A conversation resolving in a bench can query it directly with
+  **`BenchResolutionHistory`**, and read any member's pinned version of a file
+  with **`BenchMemberFile`** instead of opening sibling worktrees by hand.
+
+The journal is **advisory**. Nothing replays it — `rerere` remains the only
+mechanism that applies a recorded resolution, because a recording keyed by
+conflict text is verifiable and a paragraph of prose is not. Entries whose base
+has left the source branch's history are dropped, since they describe a
+reconciliation against code that no longer exists.
+
 ### Testing in the bench
 
 **Open terminal** gives you a shell in the bench — build, run development
@@ -413,6 +441,7 @@ the Re-provision verb.
 | `~/.ion/integration/<repo>-<slug>/` | Bench worktrees. | Recreated on the next assembly. |
 | `~/.ion/integration-workspaces.json` | Member sets and pins. | Loses the member set only, never code. |
 | `~/.ion/worktree-registry.json` | Which branch each worktree was cut from. | Land/sync fall back to "source unknown". |
+| `~/.ion/integration-resolutions.json` | Why past bench conflicts were resolved the way they were. | Loses the reasoning only; `rerere` recordings and code are untouched. |
 | `refs/ion/discarded/…` | Work preserved before a forced discard. | Recover with a normal checkout. |
 
 ## Where the controls are
@@ -443,6 +472,27 @@ indicators; the dot used to try to be both, in green, which said "success" about
 a worktree full of unsaved work. Clicking a row opens its
 conversation, or cycles when several are open; **right-click** anywhere on the
 row for its menu, where **New conversation here** creates an additional one.
+
+The row hosting the **active conversation** carries an accent rail down its
+leading edge — "you are here". Any conversation in the worktree counts, so a
+worktree with four open conversations is marked whichever one you are in. It is a
+rail rather than a background tint because background is already spoken for twice
+in this row (hover, and the drag drop-target), and the hover card heading says it
+in words as well, since colour must never be the only carrier.
+
+Line 2 of each row leads with the **worktree ID** — the directory name under
+`~/.ion/worktrees/`, which is also the suffix of the branch (`wt/<id>`) — before
+the last commit subject, in monospace. That is the token the worktree panel and
+the tab strip have in common: a conversation's title is renamed by its first
+prompt and a worktree carries its own label, so without the ID the two surfaces
+share no visible string to correlate. The same ID appears on the iOS row.
+
+These three surfaces are deliberately complementary rather than redundant. The
+tab strip says which *tab* is focused and how work is grouped; the workspace
+indicator says which conversations are live or waiting across every group; the
+worktree panel says which *checkout* you are standing in and what git thinks of
+it. The activity dot appearing in two of them is one shared fold rendered twice,
+not two opinions — which is why it cannot drift.
 
 The gutter deliberately carries no conversation button and no `⋯` button. The
 first duplicated the row click while wearing the same glyph as the bench bar's

@@ -139,6 +139,12 @@ enum RemoteCommand: Codable, Sendable {
     /// and the owner-window routing behind it.
     case worktreeOpenConversation(worktreePath: String, newConversation: Bool)
     case worktreeSync(worktreePath: String, sourceBranch: String, repoPath: String)
+    /// Bulk sync: every managed worktree of the repo, run by the desktop
+    /// sequentially with rerere replay between rebases. The mechanical pass
+    /// only — the desktop's AI escalation never runs from this command (same
+    /// desktop-only precedent as conflict resolution). The outcome arrives as
+    /// a `sync_all` op result carrying a pre-worded `summary`.
+    case worktreeSyncAll(repoPath: String)
     case worktreeLand(repoPath: String, worktreePath: String, worktreeBranch: String, sourceBranch: String)
     case benchOpenConversation(repoPath: String, sourceBranch: String)
     /// Open (or focus) the bench's ONE dedicated terminal tab. Distinct from
@@ -150,9 +156,11 @@ enum RemoteCommand: Codable, Sendable {
     case benchUpdateMember(repoPath: String, sourceBranch: String, worktreePath: String)
     case benchUpdateAll(repoPath: String, sourceBranch: String)
     case benchSetEnabled(repoPath: String, sourceBranch: String, worktreePath: String, enabled: Bool)
-    /// Record or clear the operator's verdict on a member's current pin. A nil
-    /// review clears it, so re-selecting an active verdict un-sets it.
-    case benchSetReview(repoPath: String, sourceBranch: String, worktreePath: String, review: String?)
+    /// Set or clear the operator's workflow stage on a worktree. Worktree-scoped
+    /// (no sourceBranch): the stage lives in the desktop's worktree registry,
+    /// not on a bench member, so it applies to unenrolled worktrees too. A nil
+    /// stage clears, so re-selecting the active stage un-sets it.
+    case worktreeSetStage(repoPath: String, worktreePath: String, stage: String?)
     /// Move a member in the merge order. Order is array position on the desktop,
     /// so this is an index rather than a stored rank.
     case benchReorderMember(repoPath: String, sourceBranch: String, worktreePath: String, toIndex: Int)
@@ -316,6 +324,7 @@ enum RemoteCommand: Codable, Sendable {
         case worktreeRefresh = "desktop_worktree_refresh"
         case worktreeOpenConversation = "desktop_worktree_open_conversation"
         case worktreeSync = "desktop_worktree_sync"
+        case worktreeSyncAll = "desktop_worktree_sync_all"
         case worktreeLand = "desktop_worktree_land"
         case benchOpenConversation = "desktop_bench_open_conversation"
         case benchOpenTerminal = "desktop_bench_open_terminal"
@@ -323,7 +332,7 @@ enum RemoteCommand: Codable, Sendable {
         case benchUpdateMember = "desktop_bench_update_member"
         case benchUpdateAll = "desktop_bench_update_all"
         case benchSetEnabled = "desktop_bench_set_enabled"
-        case benchSetReview = "desktop_bench_set_review"
+        case worktreeSetStage = "desktop_worktree_set_stage"
         case benchReorderMember = "desktop_bench_reorder_member"
         case benchAddMember = "desktop_bench_add_member"
         case benchRemoveMember = "desktop_bench_remove_member"
@@ -375,7 +384,7 @@ enum RemoteCommand: Codable, Sendable {
         // checked against the full enum above before adding.
         case oldPath, newPath
         case attachments, dataUrl, name, correlationId, orderedIds, implementationPhase
-        case enabled, systemPrompt, review, toIndex, newConversation
+        case enabled, systemPrompt, stage, toIndex, newConversation
         case logs, pairingId, nextSeq
         case sourceTabId, targetTabId
         case customName, customIcon, updatedAt

@@ -699,6 +699,37 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 		}
 	}
 
+	// Thinking: merge field-by-field so a layer can override a single
+	// sub-field (e.g. just `effort`) without nuking the others. Mirrors the
+	// EarlyStopContinue treatment above.
+	//
+	// Enabled is a plain bool, so it cannot distinguish "absent" from
+	// "explicitly false" the way the pointer-bools can. It is therefore
+	// carried whenever the source declares the block at all — a layer that
+	// writes `"thinking": {"enabled": false}` is expressing intent to
+	// disable, and that must beat a weaker layer that enabled it.
+	// StreamDeltas and Persist are pointer-bools and carry only when set.
+	if src.Thinking != nil {
+		if dst.Thinking == nil {
+			cp := *src.Thinking
+			dst.Thinking = &cp
+		} else {
+			dst.Thinking.Enabled = src.Thinking.Enabled
+			if src.Thinking.Effort != "" {
+				dst.Thinking.Effort = src.Thinking.Effort
+			}
+			if src.Thinking.BudgetTokens != 0 {
+				dst.Thinking.BudgetTokens = src.Thinking.BudgetTokens
+			}
+			if src.Thinking.StreamDeltas != nil {
+				dst.Thinking.StreamDeltas = src.Thinking.StreamDeltas
+			}
+			if src.Thinking.Persist != nil {
+				dst.Thinking.Persist = src.Thinking.Persist
+			}
+		}
+	}
+
 	// Timeouts: merge non-zero fields
 	if src.Timeouts != nil {
 		dst.Timeouts = types.MergeTimeouts(dst.Timeouts, src.Timeouts)

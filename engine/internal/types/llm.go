@@ -320,7 +320,8 @@ type ModelInfo struct {
 	//   "none" / ""        — no reasoning support
 	// The shared resolveThinking helper reads this to pick the body shape.
 	ThinkingMode string `json:"thinkingMode,omitempty"`
-	// ThinkingEfforts is the set of effort levels this model accepts, e.g.
+	// ThinkingEfforts is the set of effort levels this model accepts, drawn
+	// from the ladder low < medium < high < xhigh < max, e.g.
 	// ["low","medium","high"]. Clients use it to show/gray the per-conversation
 	// thinking control honestly. Empty ⇒ thinking control hidden for this model.
 	ThinkingEfforts []string `json:"thinkingEfforts,omitempty"`

@@ -93,7 +93,9 @@ func registerBuiltinTools() {
 	RegisterTool(ListMcpResourcesTool())
 	RegisterTool(ReadMcpResourceTool())
 	RegisterTool(SearchHistoryTool())
-	RegisterTool(WorkspaceAttributionTool())
+	RegisterTool(WorktreeListTool())
+	RegisterTool(WorktreeCommitsTool())
+	RegisterTool(WorktreeDiffTool())
 	// ExitPlanMode is NOT registered globally. It is injected by api_backend
 	// only when PlanMode is active, and intercepted there before execution.
 }

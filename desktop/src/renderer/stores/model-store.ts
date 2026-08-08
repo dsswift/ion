@@ -44,13 +44,24 @@ export const useModelStore = create<ModelStoreState>((set, get) => ({
     set({ loading: true })
     try {
       const result = await window.ion.listModels()
+      const models = result.models || []
       set({
-        models: result.models || [],
+        models,
         providers: result.providers || [],
         lastFetched: Date.now(),
         loading: false,
       })
-    } catch {
+      // Preferences bootstrap owns renderer-only document side effects. Import
+      // it only after live model metadata arrives so model-label helpers remain
+      // usable in Node test environments and other non-renderer consumers.
+      try {
+        const { usePreferencesStore } = await import('../preferences')
+        usePreferencesStore.getState().normalizeModelPreferences(models)
+      } catch (err) {
+        rDebug('model-store', 'normalize model preferences failed', { error: String(err) })
+      }
+    } catch (err) {
+      rDebug('model-store', 'fetchModels failed', { error: String(err) })
       set({ loading: false })
     }
   },

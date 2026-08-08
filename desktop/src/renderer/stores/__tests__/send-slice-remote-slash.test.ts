@@ -56,7 +56,6 @@ vi.mock('../../preferences', () => ({
       tabGroups: [
         { id: 'group-default', label: 'Default', isDefault: true, order: 0 },
       ],
-      thinkingEnabled: false,
     })),
   },
 }))

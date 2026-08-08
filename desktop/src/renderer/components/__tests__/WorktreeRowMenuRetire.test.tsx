@@ -77,8 +77,8 @@ vi.mock('../../preferences', () => ({
 
 vi.mock('../../stores/sessionStore', () => ({
   useSessionStore: Object.assign(
-    (selector: (s: { benchWorkspaces: Map<string, never> }) => unknown) =>
-      selector({ benchWorkspaces: new Map<string, never>() }),
+    (selector: (s: { benchWorkspaces: Map<string, never>; tabs: never[] }) => unknown) =>
+      selector({ benchWorkspaces: new Map<string, never>(), tabs: [] }),
     {
       getState: () => ({
         retireWorktree: mocks.retireWorktree,

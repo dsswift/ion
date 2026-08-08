@@ -173,9 +173,21 @@ When it runs:
 - **Replay time** — only when at least one member merged from a recorded
   resolution. A purely clean-merge assembly contains exactly what the members
   committed, so Ion introduced nothing to distrust and no build cost is paid.
-  On failure the replayed recordings are forgotten, the bench is wiped to its
-  atomic-failure state, and the assembly is reported failed with a reason
-  naming replay poison.
+  On failure the recordings are **retained**, not forgotten — an assembly
+  cannot attribute the failure to one specific replayed recording, and
+  forgetting all of them would discard every recording the bench holds to
+  punish one poisoned resolution. The bench is wiped to its atomic-failure
+  state and the assembly is reported failed, classified `verification`
+  (distinct from a merge `conflict`), with the verify command, its output,
+  and the suspect branch names attached as evidence. The desktop's
+  bench-verification recovery dialog offers the operator's consented
+  alternative: discard the recordings for the named suspects and reassemble,
+  or open an AI-assisted analysis conversation that rebuilds the failing tree
+  and returns a verdict (a poisoned recording to discard and re-resolve, or a
+  genuine cross-member incompatibility to fix upstream in the owning
+  worktree — never in the bench). See
+  [ADR-024](../architecture/adr/024-integration-workspace.md) § "The
+  bench-verification recovery dialog, and AI-assisted analysis".
 
 Fail-open: a missing or malformed `bench` block means no verification, logged
 with the reason — a project without the block behaves exactly as before.

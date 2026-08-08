@@ -4,7 +4,7 @@
  * ── Why this is a pure function and not inline JSX ──────────────────────────
  * The row has ONE state slot in its fixed-width gutter, and a worktree can be
  * several things at once: mid-rebase, behind its bench pin, failing to
- * provision, reviewed-with-an-issue. Something has to choose. Keeping that
+ * provision, staged with an open issue. Something has to choose. Keeping that
  * choice inline would make it untestable except by rendering, and would let the
  * ordering drift every time a branch is added.
  *
@@ -33,6 +33,15 @@ export type RowStateIndicator =
   | { kind: 'operation-conflict'; operation: string; conflictedCount: number }
   /** The bench could not merge this member's pinned contribution. */
   | { kind: 'bench-conflict'; paths: string[]; conflictsWith: string[] }
+  /**
+   * This member's merge came from a REPLAYED recording in an assembly that
+   * then failed project verification. The member IS in the failed tree (its
+   * merge succeeded) -- it is a suspect, not an exclusion, which is what
+   * separates this from `bench-conflict` and keeps it a lower rung: a
+   * contribution absent from the tree outranks one merely suspected of
+   * poisoning it.
+   */
+  | { kind: 'bench-verification'; command: string }
   /** Dependency provisioning failed; the worktree cannot build. */
   | { kind: 'provision-failed'; reason?: string }
   /** The worktree has committed past what the bench holds. Click updates the pin. */
@@ -48,6 +57,14 @@ export interface RowStateInput {
   entry: WorktreeInventoryEntry
   membership?: IntegrationMember
   syncing?: boolean
+  /**
+   * Set when the bench's last assembly failed VERIFICATION and this row's
+   * member is named in `replayedBranches` — i.e. this worktree's merge is a
+   * suspect. Absent for every other row, and absent when the last failure was
+   * a plain merge conflict (that case is already covered by `membership.merge
+   * === 'conflicted'`, which ranks above this).
+   */
+  verificationSuspect?: { command: string }
 }
 
 /**
@@ -59,17 +76,21 @@ export interface RowStateInput {
  *    numbers are conservative defaults and the only useful act is Resolve.
  * 2. A bench merge conflict. The contribution is not in the build at all, which
  *    outranks any question of freshness.
- * 3. Failed provisioning. A worktree that cannot build is not waiting on a sync.
- * 4. A moved base. Ranked ABOVE the pin because syncing rewrites the worktree's
+ * 3. A bench VERIFICATION suspect. The contribution IS in the failed tree —
+ *    its merge succeeded — so it ranks below an outright conflict but still
+ *    above every freshness/provisioning question, because the whole bench is
+ *    empty until this is resolved.
+ * 4. Failed provisioning. A worktree that cannot build is not waiting on a sync.
+ * 5. A moved base. Ranked ABOVE the pin because syncing rewrites the worktree's
  *    commits, so any pin taken first is immediately stale -- see the note at the
  *    branch itself. Disabled, not hidden, when the worktree is dirty.
- * 5. A behind pin. The bench holds older content than the worktree.
- * 6. Provisioning in flight. Transient and self-resolving.
+ * 6. A behind pin. The bench holds older content than the worktree.
+ * 7. Provisioning in flight. Transient and self-resolving.
  *
- * Review verdicts are NOT in this chain. They used to occupy rungs 4 and 7, from
- * when the only place a verdict could appear was this slot -- but the verdict
- * BUTTONS on line 2 are always visible and already show the state they set, so a
- * gutter copy meant every reviewed row carried the same mark twice. Two glyphs
+ * Work stages are NOT in this chain. Their verdict-pair predecessors used to
+ * occupy rungs 4 and 7, from when the only place a marker could appear was this
+ * slot -- but the stage CHIP on line 2 is always visible and already shows the
+ * state it sets, so a gutter copy would mark every staged row twice. Two glyphs
  * per row for one fact is what makes a list hard to scan.
  */
 export function resolveRowState(input: RowStateInput): RowStateIndicator {
@@ -89,6 +110,10 @@ export function resolveRowState(input: RowStateInput): RowStateIndicator {
       paths: membership.conflictPaths ?? [],
       conflictsWith: membership.conflictsWith ?? [],
     }
+  }
+
+  if (input.verificationSuspect) {
+    return { kind: 'bench-verification', command: input.verificationSuspect.command }
   }
 
   if (entry.provisionState === 'failed') {
@@ -143,6 +168,7 @@ export function resolveRowWords(input: RowStateInput): string[] {
   // this" and "this worktree is mid-rebase" are different problems with
   // different fixes.
   if (membership?.merge === 'conflicted' && shown.kind !== 'bench-conflict') words.push('bench conflict')
+  if (input.verificationSuspect && shown.kind !== 'bench-verification') words.push('verify suspect')
   if (entry.provisionState === 'failed' && shown.kind !== 'provision-failed') words.push('setup failed')
 
   // The exclusion fact has no slot of its own -- the enrollment control already

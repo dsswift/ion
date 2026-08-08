@@ -15,6 +15,7 @@ import { ipcMain } from 'electron'
 import { IPC } from '../../shared/types'
 import { log as _log, warn as _warn } from '../logger'
 import { landWorktree, syncWorktreeFromSource } from '../worktree/integrate'
+import { syncAllWorktrees } from '../worktree/sync-all'
 import { retireWorktree, reattachWorktree } from '../worktree/relocate'
 import { appraiseBase } from '../worktree/base-staleness'
 import { lookupWorktreeRegistration } from '../worktree/inventory'
@@ -59,8 +60,22 @@ export function registerWorktreeLifecycleIpc(): void {
           error: result.error ?? '',
         })
       } else {
-        log('sync ok', { worktree_path: worktreePath, source_branch: sourceBranch })
+        log('sync ok', { worktree_path: worktreePath, source_branch: sourceBranch, replayed: !!result.replayed })
       }
+      return result
+    },
+  )
+
+  // The bulk pass. One request/response for the whole board: the caller gets
+  // the per-worktree outcome list, which is what the pipeline's confirm gate
+  // and the progress UI render. Sequencing and rerere cascade live in
+  // main/worktree/sync-all.ts.
+  ipcMain.handle(
+    IPC.GIT_WORKTREE_SYNC_ALL,
+    async (_event, { repoPath }: { repoPath: string }) => {
+      log('sync-all request', { repo_path: repoPath })
+      const result = await syncAllWorktrees(repoPath)
+      log('sync-all done', { repo_path: repoPath, ...result.summary })
       return result
     },
   )

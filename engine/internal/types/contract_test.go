@@ -123,6 +123,8 @@ func buildManifest() contractManifest {
 		"ProviderEntry":       reflect.TypeOf(ProviderEntry{}),
 		"ProviderCliStatus":   reflect.TypeOf(ProviderCliStatus{}),
 		"ProviderLoginUpdate": reflect.TypeOf(ProviderLoginUpdate{}),
+		// ModelTierEntry is carried in engine_model_tiers snapshots.
+		"ModelTierEntry": reflect.TypeOf(ModelTierEntry{}),
 		// MCP server administration. Carried inside engine_mcp_servers events
 		// as a complete snapshot, so cross-language mirrors must track every
 		// field a consumer renders (connection vs. authorization state are
@@ -159,6 +161,10 @@ func buildManifest() contractManifest {
 		// (feature 0011 / D-020, issue #308), carried inside the
 		// get_enterprise_policy blob. Tracked so Go↔TS drift is caught by CI.
 		"ExtensionAllowlistEntry": reflect.TypeOf(ExtensionAllowlistEntry{}),
+		// Client-supplied workspace descriptor carried on EngineConfig and
+		// per-prompt ClientCommand. Tracked so cross-language mirrors stay
+		// in sync with the engine's hook-dispatch payload shape.
+		"ClientWorkspaceContext": reflect.TypeOf(ClientWorkspaceContext{}),
 	}
 	for name, typ := range shared {
 		m.SharedTypes[name] = jsonFieldNames(typ)

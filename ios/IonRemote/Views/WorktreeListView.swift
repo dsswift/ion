@@ -58,7 +58,36 @@ struct WorktreeListView: View {
             // WHOLE assembly and the bench is wiped empty. The footer must say
             // so — an operator who opens a bench terminal and finds nothing
             // must have been told why here.
-            if bench.lastAssembly == "failed" {
+            //
+            // A verification failure is a DIFFERENT fact: every merge succeeded
+            // (including any replayed rerere resolution), and the project's own
+            // verify command rejected the resulting tree. There is no member to
+            // point at, so the footer names the command and its output instead
+            // of the generic conflict wording.
+            if bench.lastAssembly == "failed" && bench.lastAssemblyFailure == "verification" {
+                let evidence = bench.lastAssemblyVerification
+                Text("Project verification rejected the assembled tree.")
+                    .foregroundStyle(.orange)
+                if let command = evidence?.command, !command.isEmpty {
+                    Text(command)
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                if let output = evidence?.outputTail, !output.isEmpty {
+                    Text(output)
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(4)
+                }
+                if let replayed = evidence?.replayedBranches, !replayed.isEmpty {
+                    Text("Suspects: \(replayed.joined(separator: ", "))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Text("Resolution (discard recordings, or AI-assisted analysis) is desktop-only.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else if bench.lastAssembly == "failed" {
                 Text(bench.lastAssemblyError
                      ?? "The last assembly failed. The bench is empty until the conflict is resolved.")
                     .foregroundStyle(.red)
@@ -94,7 +123,14 @@ struct WorktreeListView: View {
                         }
                         // "assembly failed" outranks the age: the age line implies a
                         // usable bench and a failed assembly left an EMPTY one.
-                        if bench.lastAssembly == "failed" {
+                        // Distinct wording for a verification failure -- an operator
+                        // reading "assembly failed" would go looking for a conflict
+                        // that does not exist here.
+                        if bench.lastAssembly == "failed" && bench.lastAssemblyFailure == "verification" {
+                            Text("verification failed")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                        } else if bench.lastAssembly == "failed" {
                             Text("assembly failed")
                                 .font(.caption2)
                                 .foregroundStyle(.red)
@@ -202,6 +238,22 @@ struct WorktreeListView: View {
     @ViewBuilder
     private var worktreeSection: some View {
         Section {
+            // The bulk verb, shown only when it has something to do — mirrors
+            // the desktop's Sync-all placement above the rows it acts on. iOS
+            // triggers the desktop's MECHANICAL pass only (sequential rebases
+            // + recorded-resolution replay); the AI escalation is desktop-only
+            // and its confirm gate lives there.
+            if actionableSyncCount > 0 {
+                Button {
+                    viewModel.syncAllWorktrees(repoPath: repoPath)
+                    Haptic.medium()
+                } label: {
+                    Label("Sync all · \(actionableSyncCount)", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .disabled(viewModel.benchBusy)
+            }
             if (state?.worktrees ?? []).isEmpty {
                 Text("No worktrees for this project.")
                     .font(.caption)
@@ -229,13 +281,13 @@ struct WorktreeListView: View {
                                 repoPath: repoPath, sourceBranch: m.sourceBranch,
                                 worktreePath: wt.worktreePath)
                         },
-                        onSetReview: { review in
-                            guard let m = wt.membership else { return }
-                            viewModel.setBenchMemberReview(
-                                repoPath: repoPath, sourceBranch: m.sourceBranch,
-                                worktreePath: wt.worktreePath, review: review?.rawValue)
+                        onSetStage: { stage in
+                            viewModel.setWorktreeStage(
+                                repoPath: repoPath,
+                                worktreePath: wt.worktreePath, stage: stage?.rawValue)
                         },
-                        onNewConversation: { viewModel.newWorktreeConversation(worktreePath: wt.worktreePath) })
+                        onNewConversation: { viewModel.newWorktreeConversation(worktreePath: wt.worktreePath) },
+                        onSelectConversation: { viewModel.navigateToTab($0) })
                 }
             }
         } header: {
@@ -269,6 +321,14 @@ struct WorktreeListView: View {
     /// Worktrees whose work is done, for the section footer.
     private var landedCount: Int {
         (state?.worktrees ?? []).filter(\.isLanded).count
+    }
+
+    /// Rows the bulk sync pass could act on: base-stale or stuck mid-operation.
+    /// Dirty-but-stale rows count too — the pass reports them as skipped, which
+    /// is itself the answer ("why didn't it sync? dirty"). Same predicate as
+    /// the desktop's WorktreePipelinePanel, so the verb appears in lockstep.
+    private var actionableSyncCount: Int {
+        (state?.worktrees ?? []).filter { $0.needsSync || $0.operationState != nil }.count
     }
 
     /// Enroll into the bench for this worktree's own source branch, or remove it

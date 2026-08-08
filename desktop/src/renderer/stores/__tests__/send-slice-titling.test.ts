@@ -59,7 +59,6 @@ vi.mock('../../preferences', () => ({
       planModeModel: null,
       engineProfiles: [],
       engineDefaultModel: null,
-      thinkingEnabled: false,
       tabGroups: [],
     })),
   },
@@ -184,7 +183,6 @@ function defaultPrefs(overrides: Record<string, unknown> = {}) {
     planModeModel: null,
     engineProfiles: [],
     engineDefaultModel: null,
-    thinkingEnabled: false,
     tabGroups: [],
     ...overrides,
   }

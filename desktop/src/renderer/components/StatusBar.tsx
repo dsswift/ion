@@ -154,9 +154,8 @@ export function StatusBar() {
 
         <PermissionModePicker />
 
-        {/* Per-conversation extended-thinking control. Self-hides when the
-            global thinkingEnabled setting is off or the model doesn't support
-            reasoning. */}
+        {/* Per-conversation extended-thinking control. Self-hides when
+            the model doesn't support reasoning. */}
         <ThinkingPicker />
 
         <span style={{ color: colors.textMuted, fontSize: 10 }}>|</span>

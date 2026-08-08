@@ -6,7 +6,8 @@
  * list)`. Nothing is ever merged INTO an existing bench incrementally. Every
  * assembly throws the branch away and recreates it:
  *
- *     git switch -C ion/bench/<slug> <sourceBranch> --discard-changes
+ *     git reset --hard <sourceBranch>
+ *     git clean -fd
  *     git merge --no-ff -m "ion-bench: <label> (<branch>@<sha7>)" <pinnedSha>   # per member, in order
  *
  * Consequences that make this cheap to own:
@@ -31,12 +32,16 @@
  * range is recorded at pin time — see resolveContribution below.
  *
  * ── Never `git clean -x` ────────────────────────────────────────────────────
- * `switch -C ... --discard-changes` resets tracked files and LEAVES ignored
+ * `reset --hard` resets tracked files and LEAVES ignored
  * build output (node_modules, dist, Go caches) in place. That single decision
  * is what makes an assembly cost an incremental build instead of a cold one,
- * and it is the reason the feature is usable at all. Do not add a clean step.
- * The atomic-failure wipe below keeps the same property: it moves the branch to
- * an empty-TREE commit, which removes tracked files only.
+ * and it is the reason the feature is usable at all. `resetBenchToTree`
+ * (bench-assemble-support.ts) additionally runs `clean -fd` (never `-x`) to
+ * remove untracked, non-ignored leftovers a prior merge/abort can strand at a
+ * path the next merge wants to write — ignored build output is untouched
+ * either way. The atomic-failure wipe below keeps the same property: it moves
+ * the branch to an empty-TREE commit (tracked files only) and cleans the
+ * same way.
  *
  * ── Assembly is atomic; conflicts fail the whole thing ──────────────────────
  * A member whose pinned contribution will not merge fails the ENTIRE assembly.
@@ -60,129 +65,21 @@
  * `resolveBenchConflict` + the ConflictsDialog), which leaves a real merge in
  * progress in the bench for the operator to resolve.
  */
-import { existsSync, mkdirSync } from 'fs'
 import { runGit } from '../git-runner'
 import { repositoryManager } from '../git/repositoryManager'
 import { log as _log, warn as _warn } from '../logger'
-import { integrationRoot } from './bench-store'
 import { benchMergeInProgress } from './bench-guard'
+import { unmergedPaths } from '../git/operation-state'
 import { resolveContribution, isLandedIntoSource } from './bench-contribution'
 import { ensureRerereEnabled, tryReplayResolution } from './bench-assembly-rerere'
-import { forgetRererePaths } from './bench-resolution-validation'
 import { runBenchVerify } from './bench-verify'
-import { parseWorktreeList } from '../worktree/integrate'
+import { resolutionsFor } from './bench-resolution-journal'
+import { ensureBenchWorktree, describeConflict, wipeBenchToEmpty, resetBenchToTree, classifyMergeFailure } from './bench-assemble-support'
 import type { IntegrationWorkspace, IntegrationMember, BenchAssembleResult } from '../../shared/types'
 
 const TAG = 'bench.assemble'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
 function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, msg, fields) }
-
-/**
- * Ensure the bench worktree exists and is registered with git.
- *
- * Self-healing: a bench directory deleted outside Ion is simply recreated on
- * the next assembly, because the durable state is the member set, not the tree.
- */
-async function ensureBenchWorktree(ws: IntegrationWorkspace): Promise<void> {
-  const listed = parseWorktreeList(await runGit(ws.repoPath, ['worktree', 'list', '--porcelain']))
-  const registered = listed.some((w) => w.path === ws.benchPath)
-
-  if (registered && existsSync(ws.benchPath)) {
-    log('bench worktree present', { bench_path: ws.benchPath })
-    return
-  }
-
-  if (registered && !existsSync(ws.benchPath)) {
-    // Registered but the directory is gone (deleted outside Ion). Prune the
-    // stale registration so the add below succeeds.
-    log('bench worktree registered but missing on disk, pruning', { bench_path: ws.benchPath })
-    await runGit(ws.repoPath, ['worktree', 'prune'])
-  }
-
-  mkdirSync(integrationRoot(), { recursive: true })
-  log('creating bench worktree', { bench_path: ws.benchPath, bench_branch: ws.benchBranch, source_branch: ws.sourceBranch })
-  await runGit(ws.repoPath, ['worktree', 'add', '-B', ws.benchBranch, ws.benchPath, ws.sourceBranch])
-}
-
-/**
- * Files left unmerged by a failed merge, and which earlier members touched them.
- *
- * ── Attribution asks about the RANGE, never the tip commit ──────────────────
- * The collision question is "does this member's CONTRIBUTION touch these
- * paths?", and a contribution is `pinnedBaseSha..pinnedSha` — the same range
- * the merge itself applies. This used to read `git show <pinnedSha>` (the tip
- * commit's file list), which is wrong for any member with more than one
- * commit: the live defect was a collider whose tip touched only a docs file
- * while an earlier commit in its range touched the conflicting path, so
- * attribution came back empty and the UI could name no counterpart. Same
- * mechanism and rationale as the engine's workspace-containment attribution.
- *
- * `pinnedBaseSha` can be empty on a legacy record; the bench's build base is
- * the honest fallback — every merged range is applied on top of it.
- */
-async function describeConflict(
-  benchPath: string,
-  mergedSoFar: IntegrationMember[],
-  buildBaseSha: string,
-): Promise<{ paths: string[]; conflictsWith: string[] }> {
-  let paths: string[] = []
-  try {
-    const raw = await runGit(benchPath, ['diff', '--name-only', '--diff-filter=U'])
-    paths = raw.split('\n').map((p) => p.trim()).filter(Boolean)
-  } catch (err) {
-    warn('could not list conflicting paths', { bench_path: benchPath, error: String(err) })
-  }
-
-  // Attribute the collision: which already-merged members' ranges touch these
-  // files? Per-member try/catch so one unreadable range cannot lose the whole
-  // attribution — the conflict report still fires, just with fewer names.
-  const conflictsWith: string[] = []
-  for (const prior of mergedSoFar) {
-    try {
-      const base = prior.pinnedBaseSha || buildBaseSha
-      const touched = await runGit(benchPath, ['diff', '--name-only', base, prior.pinnedSha])
-      const touchedSet = new Set(touched.split('\n').map((p) => p.trim()).filter(Boolean))
-      if (paths.some((p) => touchedSet.has(p))) conflictsWith.push(prior.branchName)
-    } catch (err) {
-      log('conflict attribution skipped for member', { branch: prior.branchName, error: String(err) })
-    }
-  }
-  return { paths, conflictsWith }
-}
-
-/**
- * Wipe the bench to an empty tree after a failed assembly.
- *
- * The branch is pointed at a commit whose TREE is empty — created with the
- * well-known empty-tree object — and the working tree is reset to it. Tracked
- * files vanish; ignored build output (node_modules, caches) survives exactly
- * as it does across a normal assembly, so the next successful assembly still
- * builds incrementally. A terminal or conversation opened in the bench finds
- * nothing to falsely test, which is the whole point of atomicity: the bench
- * presents the enrolled combination or nothing.
- */
-async function wipeBenchToEmpty(ws: IntegrationWorkspace, reason: string): Promise<void> {
-  try {
-    // The canonical empty tree exists in every repo; hash-object makes the
-    // dependency explicit rather than hardcoding the well-known sha.
-    const emptyTree = (await runGit(ws.benchPath, ['hash-object', '-t', 'tree', '/dev/null'])).trim()
-    const commit = (await runGit(ws.benchPath, [
-      'commit-tree', emptyTree, '-m', `ion-bench: assembly failed — ${reason}`,
-    ])).trim()
-    await runGit(ws.benchPath, ['switch', '-C', ws.benchBranch, commit, '--discard-changes'])
-    log('bench wiped to empty tree after failed assembly', {
-      bench_path: ws.benchPath,
-      bench_branch: ws.benchBranch,
-      reason,
-    })
-  } catch (err) {
-    // The wipe failing leaves the bench at the last merged state, which is the
-    // partial bench atomicity exists to prevent — loud, not fatal: the failure
-    // record still marks the assembly failed, so no UI claims success.
-    warn('could not wipe bench after failed assembly', { bench_path: ws.benchPath, error: String(err) })
-  }
-}
-
 
 /**
  * Assemble the bench from the workspace's pinned member contributions.
@@ -230,12 +127,43 @@ export async function assembleBenchUnqueued(ws: IntegrationWorkspace): Promise<B
   // machinery error. Refuse first, with the actionable reason. This is a
   // typed refusal (like dirty-bench), not a failure: finish or abort the
   // resolution, then assemble.
+  //
+  // ── ...unless nothing is left to resolve ──────────────────────────────────
+  // A merge can be open with ZERO unmerged paths: every conflict was resolved
+  // and staged (by the operator, the AI assist, or rerere.autoUpdate) but
+  // `merge --continue` was never run — the dialog closed, the assist tab was
+  // dismissed, or the desktop restarted. That state needs no human decision;
+  // the only remaining act is mechanical, and it is also the act that RECORDS
+  // the resolution into rerere. Refusing here was the live defect: the
+  // operator pressed Assemble repeatedly against a silent typed refusal while
+  // the bar showed a stale "assembly failed". Complete the merge and proceed.
   if (benchMergeInProgress(ws.benchPath)) {
-    log('assemble: refused, resolution merge in progress', { bench_path: ws.benchPath })
-    return {
-      ok: false,
-      refusal: 'resolution-in-progress',
-      error: 'A conflict resolution is in progress in the bench. Complete it (Continue) or abort it, then assemble.',
+    const unmerged = await unmergedPaths(ws.benchPath)
+    if (unmerged.length > 0) {
+      log('assemble: refused, resolution merge in progress', {
+        bench_path: ws.benchPath,
+        unmerged_paths: unmerged.length,
+      })
+      return {
+        ok: false,
+        refusal: 'resolution-in-progress',
+        error: 'A conflict resolution is in progress in the bench. Complete it (Continue) or abort it, then assemble.',
+      }
+    }
+    try {
+      await runGit(ws.benchPath, ['-c', 'core.editor=true', 'merge', '--continue'])
+      log('assemble: completed a fully-resolved open merge before assembling', {
+        bench_path: ws.benchPath,
+        note: 'resolution recorded by rerere; assembly proceeds',
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      warn('assemble: could not complete the open resolution merge', { bench_path: ws.benchPath, error: msg })
+      return {
+        ok: false,
+        refusal: 'resolution-in-progress',
+        error: `The bench has an open merge that could not be completed automatically: ${msg}`,
+      }
     }
   }
 
@@ -245,9 +173,12 @@ export async function assembleBenchUnqueued(ws: IntegrationWorkspace): Promise<B
 
   // Reset the bench to the source tip. `--discard-changes` resets TRACKED
   // files only; ignored build output survives, which is what keeps the
-  // following build incremental. Deliberately no `clean -x`.
+  // following build incremental. `resetBenchToTree` additionally runs
+  // `clean -fd` (never `-x`) to remove untracked, non-ignored leftovers a
+  // prior merge/abort can strand — see its doc comment in
+  // bench-assemble-support.ts.
   try {
-    await runGit(ws.benchPath, ['switch', '-C', ws.benchBranch, ws.sourceBranch, '--discard-changes'])
+    await resetBenchToTree(ws.benchPath, ws.benchBranch, ws.sourceBranch)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     warn('assemble: could not reset bench branch', { bench_path: ws.benchPath, bench_branch: ws.benchBranch, error: msg })
@@ -412,12 +343,15 @@ export async function assembleBenchUnqueued(ws: IntegrationWorkspace): Promise<B
       // assembly fails: members merged before this point are NOT in the bench
       // after the wipe, so their merge axis says `unbuilt`, not `merged` —
       // claiming `merged` would describe a tree that no longer exists.
-      const { paths, conflictsWith } = await describeConflict(ws.benchPath, merged, baseSha)
+      const { paths, conflictsWith } = await describeConflict(
+        ws.benchPath, merged, baseSha, member, ws.sourceBranch,
+      )
       warn('assemble: member conflicted, assembly failed', {
         branch: member.branchName,
         sha: member.pinnedSha.slice(0, 7),
         conflict_paths: paths.length,
         conflicts_with: conflictsWith.join(','),
+        failure_kind: paths.length > 0 ? 'conflict' : 'obstructed',
         error: msg,
       })
       try {
@@ -429,19 +363,50 @@ export async function assembleBenchUnqueued(ws: IntegrationWorkspace): Promise<B
       const reason = `${member.branchName}@${member.pinnedSha.slice(0, 7)} conflicted`
       await wipeBenchToEmpty(ws, reason)
 
-      const failureError = paths.length > 0
-        ? `${member.branchName} conflicts on ${paths.length} file${paths.length === 1 ? '' : 's'}${conflictsWith.length > 0 ? ` with ${conflictsWith.join(', ')}` : ''}. The bench is empty until this is resolved.`
-        : `${member.branchName} could not be merged. The bench is empty until this is resolved.`
+      // ── Conflict vs. obstruction ──────────────────────────────────────────
+      // See classifyMergeFailure's doc comment (bench-assemble-support.ts)
+      // for why `paths.length === 0` is a structural signal, not a guess.
+      const { failureKind, failureError } = classifyMergeFailure(member.branchName, paths, conflictsWith, msg)
 
       // Every member that is not THE conflicted one reports `unbuilt`: after
       // the wipe none of their content is in the bench, whatever happened
       // before the conflict. Pin facts are untouched — a conflicted member
       // that has also moved on keeps reporting `behind`, which is what tells
       // the operator whether Update is worth trying before resolving.
+      // Prior decisions about these exact paths, so the surface that reports the
+      // conflict also carries the context for resolving it. The same file
+      // colliding once per member is the common case (rerere cannot help: its key
+      // is the conflict text, which differs per member), and each of those
+      // resolutions otherwise starts from nothing.
+      const priorResolutions = paths.length > 0
+        ? resolutionsFor(ws.repoPath, ws.sourceBranch, paths).map((r) => ({
+          path: r.path,
+          memberBranch: r.memberBranch,
+          collidedWith: r.collidedWith,
+          resolvedAt: r.resolvedAt,
+          verified: r.verified,
+          rationale: r.rationale,
+        }))
+        : []
+      if (priorResolutions.length > 0) {
+        log('assemble: conflict has prior recorded resolutions', {
+          branch: member.branchName,
+          conflict_paths: paths.length,
+          prior_resolutions: priorResolutions.length,
+        })
+      }
+
       const failedMembers = ws.members.map((m): IntegrationMember => (
         m.worktreePath === member.worktreePath
-          ? { ...m, merge: 'conflicted', conflictPaths: paths, conflictsWith, mergeResolution: undefined }
-          : { ...m, merge: m.enabled ? 'unbuilt' : 'skipped', conflictPaths: undefined, conflictsWith: undefined, mergeResolution: undefined }
+          ? {
+            ...m,
+            merge: 'conflicted',
+            conflictPaths: paths,
+            conflictsWith,
+            mergeResolution: undefined,
+            priorResolutions: priorResolutions.length > 0 ? priorResolutions : undefined,
+          }
+          : { ...m, merge: m.enabled ? 'unbuilt' : 'skipped', conflictPaths: undefined, conflictsWith: undefined, mergeResolution: undefined, priorResolutions: undefined }
       ))
 
       const failed: IntegrationWorkspace = {
@@ -451,6 +416,8 @@ export async function assembleBenchUnqueued(ws: IntegrationWorkspace): Promise<B
         lastBuiltAt: Date.now(),
         lastAssembly: 'failed',
         lastAssemblyError: failureError,
+        lastAssemblyFailure: failureKind,
+        lastAssemblyVerification: undefined,
       }
       log('assemble: failed atomically', {
         bench_path: ws.benchPath,
@@ -468,19 +435,36 @@ export async function assembleBenchUnqueued(ws: IntegrationWorkspace): Promise<B
   if (replayedRererePaths.size > 0) {
     const verification = await runBenchVerify(ws.repoPath, ws.benchPath)
     if (verification.ran && !verification.ok) {
-      const replayPaths = [...replayedRererePaths]
-      const forgotten = await forgetRererePaths(ws.benchPath, replayPaths)
-      const reason = 'recorded conflict resolution failed project verification'
+      // ── Recordings are RETAINED, not forgotten ──────────────────────────
+      // The earlier version called `forgetRererePaths` here and reported the
+      // recordings "discarded" — but every merge in this loop is already
+      // committed, so no MERGE_HEAD exists for `git rerere forget` to work
+      // against. It silently forgot nothing while claiming it had (the live
+      // defect this replaced). Deciding WHICH of the replayed recordings is
+      // actually poisoned also is not this function's call: forgetting all of
+      // them would discard every recording this assembly replayed to punish
+      // one bad one, and Ion has no way to attribute the verify failure to a
+      // specific recording without parsing project-specific build output it is
+      // deliberately agnostic about. So recordings survive this failure, the
+      // bench is wiped exactly as a conflict failure wipes it, and the
+      // decision to discard becomes the operator's explicit, consented act
+      // (the bench-verification recovery dialog) rather than an automatic one
+      // that never actually worked.
+      const replayedBranches = updatedMembers
+        .filter((m) => replayedRererePaths.has(m.branchName) || m.mergeResolution === 'replayed')
+        .map((m) => m.branchName)
+      const outputTail = verification.output.slice(-1200)
       warn('assemble: replayed resolution failed project verification', {
         bench_path: ws.benchPath,
-        replayed_paths: replayPaths,
-        forgotten_paths: forgotten.forgottenPaths,
-        forget_ok: forgotten.ok,
-        forget_error: forgotten.ok ? undefined : forgotten.error,
-        output_tail: verification.output.slice(-1200),
+        replayed_paths: [...replayedRererePaths],
+        replayed_branches: replayedBranches,
+        command: verification.command,
+        output_tail: outputTail,
+        note: 'recordings retained; operator resolves via the verification-failure dialog',
       })
+      const reason = 'recorded conflict resolution failed project verification'
       await wipeBenchToEmpty(ws, reason)
-      const failureError = 'A recorded conflict resolution failed project verification and was discarded. The bench is empty until the conflict is resolved again.'
+      const failureError = 'A recorded conflict resolution failed project verification. The bench is empty until this is resolved.'
       const failed: IntegrationWorkspace = {
         ...ws,
         members: updatedMembers.map((member) => ({
@@ -494,6 +478,12 @@ export async function assembleBenchUnqueued(ws: IntegrationWorkspace): Promise<B
         lastBuiltAt: Date.now(),
         lastAssembly: 'failed',
         lastAssemblyError: failureError,
+        lastAssemblyFailure: 'verification',
+        lastAssemblyVerification: {
+          command: verification.command,
+          outputTail,
+          replayedBranches,
+        },
       }
       return { ok: true, workspace: failed, retired }
     }
@@ -519,6 +509,8 @@ export async function assembleBenchUnqueued(ws: IntegrationWorkspace): Promise<B
     lastBuiltAt: Date.now(),
     lastAssembly: 'assembled',
     lastAssemblyError: undefined,
+    lastAssemblyFailure: undefined,
+    lastAssemblyVerification: undefined,
   }
 
   log('assemble: done', {

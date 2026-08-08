@@ -216,16 +216,33 @@ func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) 
 		if overrides.ImplementationPhase {
 			opts.ImplementationPhase = true
 		}
-		// Per-prompt thinking effort (live per-conversation control). A
-		// non-empty, non-"off" level sets RunOptions.Thinking for this run;
-		// "off"/"" explicitly clears it so the prompt carries no thinking
-		// directive even if a session default existed. This is the single
-		// place the per-prompt effort lands on the run; the provider
-		// body-builders resolve the per-model mechanism downstream.
-		if eff := overrides.ThinkingEffort; eff != "" && eff != "off" {
+		// Per-prompt thinking effort (live per-conversation control). Four
+		// meaningful values:
+		//   "low"/"medium"/"high" — set thinking AND pin the depth
+		//   "adaptive"            — enable thinking, DO NOT pin depth: the
+		//                           model self-regulates (Anthropic adaptive
+		//                           models). Resolves to Effort:"" so the
+		//                           provider omits output_config/effort.
+		//   "off"                 — clear thinking entirely
+		// This is the single place the per-prompt effort lands on the run; the
+		// provider body-builders resolve the per-model mechanism downstream.
+		//
+		// "adaptive" exists because pinning effort:"high" on a self-regulating
+		// model overrides its own judgment on EVERY turn, including turns that
+		// need no reasoning — which is a large latency regression, not a
+		// quality win. The engine carries the distinction; the client decides
+		// which value to send.
+		//
+		// ThinkingCleared distinguishes a deliberate "off" from "no opinion"
+		// — both leave Thinking nil, and applyConfigDefaults must not apply the
+		// engine-wide default over an explicit off.
+		if eff := overrides.ThinkingEffort; eff == types.ThinkingEffortAdaptive {
+			opts.Thinking = &types.ThinkingConfig{Enabled: true}
+		} else if eff != "" && eff != "off" {
 			opts.Thinking = &types.ThinkingConfig{Enabled: true, Effort: eff}
 		} else if eff == "off" {
 			opts.Thinking = nil
+			opts.ThinkingCleared = true
 		}
 		// Forward the harness-supplied EnterPlanMode tool description.
 		// Empty string means "fall back to engine default" — runloop_setup
@@ -294,6 +311,27 @@ func (m *Manager) applyConfigDefaults(opts *types.RunOptions) {
 	}
 	if opts.MaxBudgetUsd <= 0 && m.config.Limits.MaxBudgetUsd != nil {
 		opts.MaxBudgetUsd = *m.config.Limits.MaxBudgetUsd
+	}
+	// Engine-wide thinking default — the weakest layer of the precedence
+	// chain (engine.json ← session config ← per-prompt effort). A nil
+	// opts.Thinking here means neither stronger layer expressed an opinion:
+	// buildRunOptions copies the session default, and the per-prompt "off"
+	// sentinel sets nil only after explicitly clearing it. Those two cases
+	// are indistinguishable at this point BY DESIGN — "off" means "no
+	// thinking on this run", and re-applying the engine default would
+	// resurrect exactly what the client just turned off.
+	//
+	// That is why the desktop sends the literal "off" rather than omitting
+	// the field: the override arm runs before this and an omitted field
+	// would arrive here as the same nil, silently inheriting the default.
+	// buildRunOptions runs first, so a copy of the config value is safe to
+	// share only if never mutated downstream — take a defensive copy.
+	if opts.Thinking == nil && m.config.Thinking != nil && !opts.ThinkingCleared {
+		cp := *m.config.Thinking
+		opts.Thinking = &cp
+		utils.LogWithFields(utils.LevelInfo, "session", "applied engine.json thinking default", map[string]any{
+			"enabled": cp.Enabled, "reason": cp.Effort, "count": cp.BudgetTokens,
+		})
 	}
 	if m.config.Compaction != nil {
 		cc := m.config.Compaction
@@ -439,18 +477,37 @@ func injectContextFiles(s *engineSession, opts *types.RunOptions) {
 	}
 }
 
-// injectWorkspaceContext delivers registry-backed workspace facts through both
-// context hooks and model context. Hooks may replace or suppress generic prose.
-func (m *Manager) injectWorkspaceContext(s *engineSession, key string, opts *types.RunOptions) *workspaces.PromptContext {
+// injectWorkspaceContext delivers workspace facts through both context hooks
+// and model context. When clientCtx is non-nil the engine uses the client-
+// supplied descriptor instead of its own worktree-registry lookup; otherwise
+// the engine derives context from its registry (unchanged default). Hooks
+// may replace or suppress the generic prose in either case.
+func (m *Manager) injectWorkspaceContext(s *engineSession, key string, opts *types.RunOptions, clientCtx *types.ClientWorkspaceContext) *workspaces.PromptContext {
 	if m.config != nil && !m.config.GetWorkspace().PromptContextEnabled() {
 		utils.LogWithFields(utils.LevelInfo, "session.workspace_context", "workspace prompt context suppressed by config", map[string]any{"key": key})
 		return nil
 	}
-	workspace := workspaces.SharedChecker().PromptContextFor(s.config.WorkingDirectory)
-	if workspace.Empty() {
-		return nil
+
+	var workspace workspaces.PromptContext
+	var text string
+
+	if clientCtx != nil {
+		workspace = workspaces.PromptContext{
+			Kind:   workspaces.ContextKind(clientCtx.Kind),
+			Cwd:    clientCtx.Cwd,
+			Bench:  clientCtx.Bench,
+			Client: clientCtx.Data,
+		}
+		text = clientCtx.Text
+		utils.LogWithFields(utils.LevelInfo, "session.workspace_context", "using client-supplied workspace context", map[string]any{"key": key, "kind": clientCtx.Kind, "cwd": clientCtx.Cwd, "has_text": text != "", "has_bench": len(clientCtx.Bench) > 0, "has_data": len(clientCtx.Data) > 0})
+	} else {
+		workspace = workspaces.SharedChecker().PromptContextFor(s.config.WorkingDirectory)
+		if workspace.Empty() {
+			return nil
+		}
+		text = workspace.Format()
 	}
-	text := workspace.Format()
+
 	if s.extGroup != nil && !s.extGroup.IsEmpty() {
 		ctx := m.newExtContext(s, key)
 		var suppress bool

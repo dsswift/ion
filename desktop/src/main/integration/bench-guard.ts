@@ -6,7 +6,8 @@
  * A bench worktree is REASSEMBLABLE. Every assembly recreates its branch from
  * scratch (`bench-assemble.ts`):
  *
- *     git switch -C ion/bench/<slug> <sourceBranch> --discard-changes
+ *     git reset --hard <sourceBranch>
+ *     git clean -fd
  *     git merge --no-ff <pinnedSha>   # per member, in order
  *
  * So a commit made in a bench is destroyed by the next assembly, and a push
@@ -28,7 +29,7 @@
  * Reading, building, testing, staging, and patch-applying all stay open. The
  * bench exists to build and test a combination of in-flight work; over-blocking
  * would defeat its only purpose. Index and working-tree operations are already
- * reset by `--discard-changes` on the next assembly, so they lose nothing that
+ * reset by `reset --hard` on the next assembly, so they lose nothing that
  * was not already transient.
  *
  * See docs/architecture/adr/024-integration-workspace.md § "The bench refuses

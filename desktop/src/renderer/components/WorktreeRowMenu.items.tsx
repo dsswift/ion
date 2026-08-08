@@ -9,8 +9,10 @@
  * list can be reasoned about (and tested) without mounting a portal.
  */
 import React from 'react'
-import { ArrowLineDown, ArrowsClockwise, Bug, ChatCircle, Check, Flask, FolderOpen, Package, PencilSimple, Trash } from '@phosphor-icons/react'
+import { ArrowLineDown, ArrowsClockwise, ChatCircle, Flask, FolderOpen, Package, PencilSimple, Trash, XCircle } from '@phosphor-icons/react'
 import { describeLandStrategy } from '../../shared/worktree-land-strategy'
+import { workStageIcon, workStageColor } from './WorktreeStageSlot'
+import { WORK_STAGES, type WorkStage } from '../../shared/types-git'
 import type { ColorPalette } from '../theme/palette-dark'
 import type { IntegrationMember, WorktreeInventoryEntry } from '../../shared/types'
 import type { WorktreeCompletionStrategy } from '../../shared/types'
@@ -41,7 +43,7 @@ export interface WorktreeMenuActions {
   onNewConversation(): void
   onBeginRename(): void
   onAddToBench(): void
-  onSetReview(verdict: 'good' | 'issue' | null): void
+  onSetStage(stage: WorkStage | null): void
   onMoveInBench(toIndex: number): void
   onSync(): void
   onLand(): void
@@ -128,22 +130,31 @@ export function buildWorktreeMenuItems(input: WorktreeMenuItemsInput): WorktreeM
       hint: !entry.sourceBranch ? 'Source branch unknown' : '',
       run: actions.onAddToBench,
     },
-    // Review verdicts. These live in the row's state slot only when nothing more
-    // urgent needs it, so the menu is where they are always reachable -- and
-    // where a verdict can be cleared by selecting the one already set.
+    // Workflow stages. The gutter chip is the fast path; the menu is where the
+    // stages are always reachable by keyboard, named in full, and clearable
+    // explicitly. Selecting the active stage clears it, same as the strip —
+    // plus a dedicated Clear entry when a stage is set, because "remove the
+    // marker" should not require knowing the toggle convention.
+    ...WORK_STAGES.map((s) => {
+      const isActive = entry.stage === s.id
+      return {
+        label: isActive ? `Stage: ${s.label} ✓` : `Stage: ${s.label}`,
+        icon: (
+          <span style={{ display: 'inline-flex', color: isActive ? workStageColor(s.id, colors) : colors.textSecondary }}>
+            {workStageIcon(s.id, 12, isActive)}
+          </span>
+        ),
+        run: () => { actions.onSetStage(isActive ? null : s.id) },
+      }
+    }),
+    ...(entry.stage ? [{
+      label: 'Clear stage',
+      icon: <XCircle size={12} color={colors.textSecondary} />,
+      run: () => { actions.onSetStage(null) },
+    }] : []),
+    // Keyboard-reachable reorder. Dragging the rail is the direct gesture, but
+    // a drag is not available to every operator or every input device.
     ...(enrolled ? [
-      {
-        label: enrolled.membership.review === 'good' ? 'Clear reviewed good' : 'Mark reviewed good',
-        icon: <Check size={12} color={enrolled.membership.review === 'good' ? colors.worktreeGreen : colors.textSecondary} />,
-        run: () => { actions.onSetReview(enrolled.membership.review === 'good' ? null : 'good') },
-      },
-      {
-        label: enrolled.membership.review === 'issue' ? 'Clear review issue' : 'Mark review issue',
-        icon: <Bug size={12} color={enrolled.membership.review === 'issue' ? colors.dangerFg : colors.textSecondary} />,
-        run: () => { actions.onSetReview(enrolled.membership.review === 'issue' ? null : 'issue') },
-      },
-      // Keyboard-reachable reorder. Dragging the rail is the direct gesture, but
-      // a drag is not available to every operator or every input device.
       {
         label: 'Move earlier in the merge',
         icon: <ArrowLineDown size={12} color={colors.textSecondary} style={{ transform: 'rotate(180deg)' }} />,

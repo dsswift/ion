@@ -407,12 +407,11 @@ func (p *openaiProvider) buildRequestBody(opts types.LlmStreamOptions) map[strin
 		body["tools"] = tools
 	}
 
-	// Reasoning effort — resolve the per-model level via the shared capability
-	// resolver instead of a hardcoded "high". Only models declared with
-	// ThinkingMode=="reasoning_effort" produce a directive; everything else
-	// (and a disabled/unsupported config) omits the field.
-	if res := resolveThinking(opts.Model, opts.Thinking); res.Mode == "reasoning_effort" && res.Effort != "" {
-		body["reasoning_effort"] = res.Effort
+	// Reasoning effort. The decision (including the gateway-misdeclaration
+	// guard and why it is scoped to a declared openai-chat dialect) lives in
+	// openai_reasoning_effort.go.
+	if effort, ok := resolveReasoningEffortForChat(p.id, opts); ok {
+		body["reasoning_effort"] = effort
 	}
 
 	// Temperature: forward when the caller set it (pointer non-nil). A

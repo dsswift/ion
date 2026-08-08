@@ -434,6 +434,10 @@ extension RemoteCommand {
                 sourceBranch: try container.decode(String.self, forKey: .sourceBranch),
                 repoPath: try container.decode(String.self, forKey: .repoPath))
 
+        case .worktreeSyncAll:
+            self = .worktreeSyncAll(
+                repoPath: try container.decode(String.self, forKey: .repoPath))
+
         case .worktreeLand:
             self = .worktreeLand(
                 repoPath: try container.decode(String.self, forKey: .repoPath),
@@ -474,13 +478,12 @@ extension RemoteCommand {
                 worktreePath: try container.decode(String.self, forKey: .worktreePath),
                 enabled: try container.decode(Bool.self, forKey: .enabled))
 
-        case .benchSetReview:
-            self = .benchSetReview(
+        case .worktreeSetStage:
+            self = .worktreeSetStage(
                 repoPath: try container.decode(String.self, forKey: .repoPath),
-                sourceBranch: try container.decode(String.self, forKey: .sourceBranch),
                 worktreePath: try container.decode(String.self, forKey: .worktreePath),
-                // decodeIfPresent, because an explicit null CLEARS the verdict.
-                review: try container.decodeIfPresent(String.self, forKey: .review))
+                // decodeIfPresent, because an explicit null CLEARS the stage.
+                stage: try container.decodeIfPresent(String.self, forKey: .stage))
 
         case .benchReorderMember:
             self = .benchReorderMember(

@@ -6,11 +6,26 @@ import type { UsageData } from './types-events'
 // ─── Thinking ───
 
 /**
- * Per-conversation extended-thinking effort. 'off' = no thinking directive;
- * other levels map to the engine's effort dial (resolved per-model). Stored
- * per-tab and per-instance, applied live on the next prompt.
+ * Per-conversation extended-thinking effort.
+ *
+ *   'adaptive'            — request thinking but let the model choose its own
+ *                           depth per turn. The default for models whose
+ *                           `thinkingMode` is `adaptive` (Anthropic). The
+ *                           engine sends the thinking directive with NO effort,
+ *                           so the model self-regulates.
+ *   'low' | 'medium' | 'high' — pin the depth. On an adaptive model this
+ *                           overrides the model's own judgment on every turn,
+ *                           which is a deliberate choice, not a default.
+ *   'off'                 — no thinking directive at all.
+ *
+ * Which values a model actually offers is driven by its capability metadata:
+ * adaptive models show `Adaptive` in place of `Off` (they reason regardless,
+ * so "off" would be a lie), effort-based models show `Off`. See
+ * `thinkingOptionsForMode` in `shared/thinking-options.ts`.
+ *
+ * Stored per-instance, applied live on the next prompt.
  */
-export type ThinkingEffort = 'off' | 'low' | 'medium' | 'high'
+export type ThinkingEffort = 'off' | 'adaptive' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 // ─── Tab Grouping ───
 
@@ -198,11 +213,12 @@ export interface TabState {
   /**
    * When true, the operator cannot type into this conversation. Set on the
    * auto-generated conflict-resolution conversations (the AI Assisted rebase /
-   * merge fixes): their entire instruction is the one machine-sent prompt, and
-   * a follow-up message would graft an open-ended conversation onto a tab
-   * whose working directory — often an integration bench — is not where
-   * development work belongs. The fix conversation stays readable and
-   * abortable; it just refuses new prompts.
+   * merge fixes) and on the bench-verification analysis conversation: their
+   * entire instruction is the one machine-sent prompt, and a follow-up message
+   * would graft an open-ended conversation onto a tab whose working directory
+   * — often an integration bench — is not where development work belongs. The
+   * fix/analysis conversation stays readable and abortable; it just refuses
+   * new prompts.
    */
   inputLocked: boolean
   /**
@@ -216,12 +232,16 @@ export interface TabState {
    *   bench (the singleton slot). Focused, never duplicated, by every open
    *   entry point (desktop git panel, ATV, iOS).
    * - `'conflict-auto-fix'`: an ephemeral, input-locked machine conversation
-   *   created by the conflict assist. Closes itself only on a typed `normal`
-   *   completion; every failure shape is retained for diagnosis.
+   *   created by the conflict assist, or by the bench-verification analysis
+   *   flow (which uses the same role deliberately: locked input, exclusion
+   *   from the operator-conversation count, and self-close on a clean
+   *   completion all apply identically to an analysis-only conversation).
+   *   Closes itself only on a typed `normal` completion; every failure shape
+   *   is retained for diagnosis.
    * - `null`/absent: every other tab (default). Terminal identity stays
    *   derived via `isTerminalOnly` + `pickDirTerminal`, not a role.
    */
-  tabRole?: 'bench-conversation' | 'conflict-auto-fix' | null
+  tabRole?: 'bench-conversation' | 'conflict-auto-fix' | 'verification-analysis' | null
   /**
    * Engine profile ID used for this tab (references EngineProfile.id).
    * Non-null/non-empty means the tab has extensions loaded (derived via
@@ -413,8 +433,8 @@ export interface RunOptions {
   source?: 'desktop' | 'remote'
   /** Max output tokens per LLM turn */
   maxTokens?: number
-  /** Extended thinking config */
-  thinking?: { enabled: boolean; budgetTokens?: number }
+  /** Extended thinking config (per-session default). See ThinkingConfig. */
+  thinking?: import('./types-engine').ThinkingConfig
   /** Extension entry points for engine tabs (resolved from engine profile) */
   extensions?: string[]
   /**
@@ -436,7 +456,7 @@ export interface RunOptions {
   /**
    * Per-prompt extended-thinking effort for this CLI/conversation prompt.
    * 'off'/undefined → no thinking directive. Threaded to send_prompt as
-   * `thinkingEffort`; read from the tab's level, gated by thinkingEnabled.
+   * `thinkingEffort`; read from the conversation instance's level.
    */
   thinkingEffort?: string
   /**
@@ -512,6 +532,13 @@ export interface RunOptions {
    * wire only when truthy (mirrors the engine's omitempty `resolveSlash`).
    */
   resolveSlash?: boolean
+  /**
+   * Client-supplied workspace descriptor for this prompt. When set, the
+   * engine uses this instead of its own worktree-registry-derived context.
+   * Per-prompt override: takes precedence over the session-level
+   * EngineConfig.clientWorkspaceContext value.
+   */
+  clientWorkspaceContext?: import('./types-engine').ClientWorkspaceContext
 }
 
 /** Pre-encoded image bytes that ride alongside a user prompt. */
@@ -697,7 +724,8 @@ export type {
   GitCommit, GitRef, GitCommitDetail, GitCommitFile, GitGraphData,
   GitConflictKind, GitChangedFile, GitChangesData, GitBranchInfo,
   LandMode, LandResult, WorktreeMoveResult, WorktreeInventoryEntry, WorktreeAppraisalWire,
-  WorktreeProvisionState, GitOperationState,
+  WorktreeProvisionState, GitOperationState, WorkStage, WorkStageDescriptor,
+  SyncAllResult, SyncAllWorktreeOutcome,
   EnrollmentState, PinState, MergeOutcome,
   IntegrationMember, IntegrationWorkspace, BenchAssembleResult,
 } from './types-git'

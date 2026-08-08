@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import { CaretDown } from '@phosphor-icons/react'
 import { useShallow } from 'zustand/shallow'
 import { useSessionStore } from '../stores/sessionStore'
-import { getModelDisplayLabel } from '../stores/model-labels'
+import { resolveModelDisplayLabel } from '../../shared/model-identity'
 import { useAllowedModels } from '../stores/use-allowed-models'
 import { useModelStore } from '../stores/model-store'
 import { ModelPickerPopover } from './ModelPickerPopover'
@@ -74,8 +74,9 @@ export function ModelPicker() {
   useViewportClamp(popoverRef, open)
   const [pos, setPos] = useState({ bottom: 0, left: 0 })
 
+  const allModels = useModelStore((s) => s.models)
   const fetchModels = useModelStore((s) => s.fetchModels)
-  const hasModels = useModelStore((s) => s.models.length > 0)
+  const hasModels = allModels.length > 0
   const lastFetched = useModelStore((s) => s.lastFetched)
 
   // Busy-gating: on conversation tabs we use the tab-level status; on
@@ -138,14 +139,14 @@ export function ModelPicker() {
     || fallbackModel.id
 
   const activeLabel = (() => {
-    if (tab?.modelOverride) return getModelDisplayLabel(tab.modelOverride)
-    if (harnessGoverned && engineDefaultModel) return getModelDisplayLabel(engineDefaultModel)
-    if (preferredModel) return getModelDisplayLabel(preferredModel)
+    if (tab?.modelOverride) return resolveModelDisplayLabel(tab.modelOverride, allModels)
+    if (harnessGoverned && engineDefaultModel) return resolveModelDisplayLabel(engineDefaultModel, allModels)
+    if (preferredModel) return resolveModelDisplayLabel(preferredModel, allModels)
     // Echo the model the engine reports it is actually running (governed
     // conversations) or the tab's last session model — both live as data and
     // are simply absent for an ungoverned plain tab that hasn't run yet.
-    if (engineStatus?.model) return getModelDisplayLabel(engineStatus.model)
-    if (tab?.sessionModel) return getModelDisplayLabel(tab.sessionModel)
+    if (engineStatus?.model) return resolveModelDisplayLabel(engineStatus.model, allModels)
+    if (tab?.sessionModel) return resolveModelDisplayLabel(tab.sessionModel, allModels)
     return fallbackModel.label
   })()
 
@@ -154,7 +155,7 @@ export function ModelPicker() {
   // signal (engineStatus.model) — null for a plain conversation, so the
   // parenthetical self-hides; no tab-type fork.
   const actualModel = engineStatus?.model
-  const actualLabel = actualModel ? getModelDisplayLabel(actualModel) : null
+  const actualLabel = actualModel ? resolveModelDisplayLabel(actualModel, allModels) : null
   const modelDiffers = !!actualModel && actualLabel !== activeLabel
 
   const handleSelect = (modelId: string) => {
@@ -177,7 +178,7 @@ export function ModelPicker() {
         style={{ color: colors.textTertiary }}
         title="Model is set by your organization"
       >
-        {getModelDisplayLabel(allowedModels[0].id)}
+        {resolveModelDisplayLabel(allowedModels[0].id, allModels)}
       </span>
     )
   }

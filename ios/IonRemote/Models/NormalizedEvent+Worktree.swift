@@ -28,6 +28,7 @@ extension RemoteEvent {
             let refusedDirty = try container.decodeIfPresent(Bool.self, forKey: .refusedDirty)
             let hasConflicts = try container.decodeIfPresent(Bool.self, forKey: .hasConflicts)
             let warning = try container.decodeIfPresent(String.self, forKey: .warning)
+            let summary = try container.decodeIfPresent(String.self, forKey: .summary)
             return .worktreeOpResult(result: RemoteWorktreeOpResult(
                 ok: ok,
                 // An unrecognised operation from a newer desktop degrades to
@@ -37,7 +38,8 @@ extension RemoteEvent {
                 error: error,
                 refusedDirty: refusedDirty,
                 hasConflicts: hasConflicts,
-                warning: warning))
+                warning: warning,
+                summary: summary))
 
         default:
             return nil
@@ -61,6 +63,7 @@ extension RemoteEvent {
             try container.encodeIfPresent(result.refusedDirty, forKey: .refusedDirty)
             try container.encodeIfPresent(result.hasConflicts, forKey: .hasConflicts)
             try container.encodeIfPresent(result.warning, forKey: .warning)
+            try container.encodeIfPresent(result.summary, forKey: .summary)
             return true
 
         default:

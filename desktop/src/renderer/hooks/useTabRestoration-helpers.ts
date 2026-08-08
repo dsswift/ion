@@ -2,7 +2,7 @@ import type { ConversationPane, StatusFields } from '../../shared/types-engine'
 import type { PersistedTab, PersistedConversationInstance } from '../../shared/types-persistence'
 import { migrateTabToUnified } from '../../main/tab-migration-unify'
 import { activeInstance, needsHistoryHydration } from '../stores/conversation-instance'
-import { rInfo } from '../rendererLogger'
+import { rDebug, rInfo, rWarn } from '../rendererLogger'
 
 /**
  * Pure helpers extracted from useTabRestoration.ts to keep that hook under the
@@ -256,6 +256,64 @@ export function resolveBootActiveTabId(
     if (entry) return entry.tabId
   }
   return null
+}
+
+/**
+ * Populate repo-scoped worktree and bench caches before restored UI becomes
+ * visible. Worktree tabs carry their owner directly; bench tabs deliberately do
+ * not, so main resolves their directory against persisted workspace records.
+ * Ordinary directories have no workspace cache to hydrate and remain untouched.
+ */
+export async function hydrateBootWorkspace(
+  tab: Pick<PersistedTab, 'workingDirectory' | 'worktree'> | undefined,
+  refreshWorkspaceViews: (repoPath: string) => Promise<void>,
+  resolveBenchPath: (directory: string) => Promise<{ workspace: { repoPath: string; sourceBranch: string } | null }>,
+): Promise<void> {
+  if (!tab?.workingDirectory) {
+    rDebug('restore', 'boot workspace hydration skipped: no active directory')
+    return
+  }
+
+  let repoPath = tab.worktree?.repoPath ?? null
+  let source = repoPath ? 'worktree' : 'directory'
+  if (!repoPath) {
+    try {
+      const { workspace } = await resolveBenchPath(tab.workingDirectory)
+      repoPath = workspace?.repoPath ?? null
+      source = workspace ? 'bench' : 'directory'
+      if (workspace) {
+        rInfo('restore', 'resolved boot-active bench workspace', {
+          directory: tab.workingDirectory,
+          repo_path: workspace.repoPath,
+          source_branch: workspace.sourceBranch,
+        })
+      }
+    } catch (err) {
+      rWarn('restore', 'boot bench resolution failed', {
+        directory: tab.workingDirectory,
+        error: String(err),
+      })
+      return
+    }
+  }
+
+  if (!repoPath) {
+    rDebug('restore', 'boot workspace hydration skipped: directory has no workspace identity', {
+      directory: tab.workingDirectory,
+    })
+    return
+  }
+
+  rInfo('restore', 'hydrating boot-active workspace views', {
+    directory: tab.workingDirectory,
+    repo_path: repoPath,
+    identity_source: source,
+  })
+  await refreshWorkspaceViews(repoPath)
+  rInfo('restore', 'hydrated boot-active workspace views', {
+    repo_path: repoPath,
+    identity_source: source,
+  })
 }
 
 /**

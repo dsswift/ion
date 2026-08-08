@@ -175,30 +175,44 @@ export function trimSpoolToCap(maxBytes: number): void {
   }
   if (size <= maxBytes) return
 
-  let content: string
+  let content: Buffer
   try {
-    content = readFileSync(SPOOL_PATH, 'utf-8')
+    content = readFileSync(SPOOL_PATH)
   } catch {
     return
   }
 
-  const lines = content.split('\n').filter((l) => l.trim().length > 0)
-  let dropped = 0
-  let newContent = lines.join('\n') + '\n'
-  while (Buffer.byteLength(newContent, 'utf-8') > maxBytes && lines.length > 0) {
-    lines.shift()
-    dropped++
-    newContent = lines.join('\n') + '\n'
-  }
-  if (dropped > 0) {
-    err('spool cap exceeded: oldest records dropped', {
-      dropped,
-      cap_bytes: maxBytes,
-    })
-    try {
-      writeFileSync(SPOOL_PATH, newContent, 'utf-8')
-    } catch (e) {
-      err('spool trim write failed', { error: e instanceof Error ? e.message : String(e) })
+  // Keep the last maxBytes bytes, realigned forward to the next record
+  // boundary so the survivor is still valid NDJSON. This is a single pass:
+  // find one offset, slice once, write once.
+  //
+  // The previous implementation re-joined the whole surviving array on every
+  // dropped line (`lines.shift(); newContent = lines.join('\n')`), which is
+  // O(n²) in the spool size — and `shift()` is itself O(n). The engine's
+  // identical loop is what took a 1.37 GB spool (grown while an OTLP sink
+  // returned 401) and pinned a core at 100% with a 9.5 GB heap for as long as
+  // the process lived, so the engine never reached its socket bind. The cap
+  // that was supposed to prevent an oversized spool could not be enforced
+  // precisely when the spool was oversized.
+  let start = content.length - maxBytes
+  const nextBoundary = content.indexOf(0x0a /* \n */, start)
+  start = nextBoundary === -1 ? content.length : nextBoundary + 1
+
+  const kept = content.subarray(start)
+  err('spool cap exceeded: oldest records dropped', {
+    dropped_bytes: start,
+    kept_bytes: kept.length,
+    cap_bytes: maxBytes,
+    was_bytes: size,
+  })
+
+  try {
+    if (kept.length === 0) {
+      unlinkSync(SPOOL_PATH)
+    } else {
+      writeFileSync(SPOOL_PATH, kept)
     }
+  } catch (e) {
+    err('spool trim write failed', { error: e instanceof Error ? e.message : String(e) })
   }
 }

@@ -297,10 +297,22 @@ existing SIEM, OTLP collector, or log pipeline needs no Alloy, no Loki, and no f
 | `egressBatchSize` | Records buffered before an automatic flush; zero means the periodic ticker is the only trigger |
 | `egressFlushIntervalMs` | Flush cadence; zero defaults to 5000 ms |
 | `egressOtel` | OTLP HTTP logs endpoint config for the `otel` target (same `OtelConfig` shape as telemetry) |
+| `egressChunkSize` | Maximum records per POST when draining the disk spool; zero uses the compiled default |
+| `egressSpoolMaxBytes` | Disk cap for the undeliverable-batch spool; zero uses the compiled default. Over cap, oldest records are dropped |
+| `egressBufferMaxRecords` | Heap cap for the in-memory staging buffer; zero uses the compiled default. Over cap, oldest records are dropped and the loss is logged at ERROR |
 
 Egress is additive: the local JSONL file is always written regardless of egress config. The
 forwarder buffers off the hot logging path and flushes on batch size, on the periodic ticker, and
 on engine shutdown.
+
+**A sink outage is bounded on both sides.** When a target is unreachable or rejects the batch
+(including a persistent `401` from an expired ingest credential), undelivered records go to the disk
+spool and the forwarder backs off exponentially. Two independent caps keep an indefinite outage from
+consuming the machine: `egressSpoolMaxBytes` bounds what the spool costs on **disk**, and
+`egressBufferMaxRecords` bounds what the staging buffer costs in **heap**. Both drop oldest-first
+and log the loss, so a dead sink degrades to a bounded window of recent logs rather than unbounded
+growth. Ion never blocks or drops a *local* log line because egress is failing — the JSONL file is
+written first, always.
 
 #### OTLP is the canonical egress
 

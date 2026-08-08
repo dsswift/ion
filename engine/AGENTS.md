@@ -131,7 +131,7 @@ Client --[Unix socket, NDJSON]--> Server
 | `internal/titling` | Conversation auto-titling |
 | `internal/watcher` | File/directory watcher for context includes |
 | `internal/webhooks` | Inbound webhook route registration and dispatch |
-| `internal/workspaces` | Workspace containment — worktree/bench write rules checked in the tool loop |
+| `internal/workspaces` | Workspace containment (worktree isolation rules checked in the tool loop) and the read-only cross-worktree query tools (WorktreeList, WorktreeCommits, WorktreeDiff) |
 
 `internal/` boundary is compiler-enforced. Outside consumers (desktop, ios, relay) can only reach the wire protocol.
 
@@ -190,7 +190,7 @@ No SDK dependencies. Adding a provider: extend the OpenAI-compatible factory or 
 
 ## Tools
 
-Core: Read, Write, Edit, Bash, Grep, Glob, Agent, WebFetch, WebSearch, NotebookEdit, LSP, Skill, ListMcpResources, ReadMcpResource.
+Core: Read, Write, Edit, Bash, Grep, Glob, Agent, WebFetch, WebSearch, NotebookEdit, LSP, Skill, ListMcpResources, ReadMcpResource, SearchHistory, WorktreeList, WorktreeCommits, WorktreeDiff.
 Optional (harness opt-in): TaskCreate, TaskList, TaskGet, TaskStop.
 
 ## Hooks

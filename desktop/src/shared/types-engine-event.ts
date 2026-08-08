@@ -103,6 +103,14 @@ export type EngineEvent =
   | { type: 'engine_dead'; exitCode: number | null; signal: string | null; stderrTail: string[] }
   | { type: 'engine_error'; message: string; errorCode?: string; errorCategory?: string; retryable?: boolean; retryAfterMs?: number; httpStatus?: number; stderrTail?: string[] }
   | { type: 'engine_permission_request'; questionId: string; permToolName: string; permToolDescription?: string; permToolInput?: Record<string, unknown>; permOptions: Array<{ id: string; label: string; kind?: string }> }
+  // engine_tool_gate_request — the opt-in client tool gate (EngineConfig.toolGate).
+  // Answered programmatically with a tool_gate_response command, never surfaced
+  // in human permission UI. gateKind 'policy' (or absent) asks allow/deny for a
+  // gated engine tool call; gateKind 'tool' asks the client to EXECUTE one of
+  // its declared clientTools and answer with gateContent/gateIsError.
+  // gateSiblingTools names the other tool calls in the same model turn so a
+  // policy can evaluate turn isolation.
+  | { type: 'engine_tool_gate_request'; gateRequestId: string; gateKind?: 'policy' | 'tool'; gateToolName: string; gateToolInput?: Record<string, unknown>; gateCwd?: string; gateSiblingTools?: string[] }
   | { type: 'engine_plan_mode_changed'; planModeEnabled: boolean; planFilePath?: string; planSlug?: string }
   // engine_oidc_login_url — delivered to the client that issued
   // oidc_begin_login. Interactive PKCE carries oidcAuthorizationUrl (open
@@ -243,6 +251,8 @@ export type EngineEvent =
   // rather than as a live RemoteEvent. See CLAUDE.md §
   // "The typed-event corollary" for the broader rule.
   | { type: 'engine_model_fallback'; fallbackRequestedModel: string; fallbackModel: string; fallbackReason: string }
+  // engine_model_tiers is a complete snapshot. Consumers replace, never merge.
+  | { type: 'engine_model_tiers'; modelTiers: import('./types-model-tiers').ModelTier[] }
   // engine_capability_unsupported — workflow signal emitted when a requested
   // feature (e.g. plan mode) is not supported by the backend that would serve
   // the run; the engine declined the prompt cleanly instead of dispatching a

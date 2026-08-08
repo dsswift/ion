@@ -2,13 +2,13 @@ import type { TabState } from '../../../shared/types'
 import { usePreferencesStore } from '../../preferences'
 import { destroyTerminalInstance } from '../../components/TerminalPanel'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
-import { makeLocalTab, isReusableBlankConversationTab, initialModelOverride, initialPermissionMode } from '../session-store-helpers'
+import { makeLocalTab, isReusableBlankConversationTab, initialModelOverride, initialPermissionMode, initialThinkingEffort } from '../session-store-helpers'
 import { makeMainPane, commitInstance, activeInstance, instanceMessageCount, needsHistoryHydration } from '../conversation-instance'
 import { cleanupTabDeltas } from './engine-event-slice'
 import { applySetThinkingEffort } from './tab-slice-thinking'
 import { applyPermissionModeForTab } from './tab-slice-permission-mode'
 import { createConversationTabAction } from './engine-slice-create'
-import { evaluateCloseGuard, formatCloseGuardRefusal } from './tab-close-guard'
+import { evaluateSessionBusyGuard, formatSessionBusyRefusal } from './session-busy-guard'
 import { forgetTabContentTracking } from '../tab-content-tracking'
 import { pickNextActiveTab } from './tab-slice-next-active'
 import { resolveWorktreeForNewTab } from './tab-slice-worktree-resolve'
@@ -109,7 +109,7 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
         // Seed the single-instance `main` pane so message/draft/model state has
         // a home from creation (2A invariant). Carry the plan-model split
         // override onto the instance since modelOverride no longer lives on the tab.
-        conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({ modelOverride: initialModelOverride(), permissionMode: initialPermissionMode() })),
+        conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({ modelOverride: initialModelOverride(), permissionMode: initialPermissionMode(), thinkingEffort: initialThinkingEffort(initialModelOverride()) })),
         activeTabId: tab.id,
         tallViewTabId: usePreferencesStore.getState().defaultTallConversation ? tab.id : null,
         terminalTallTabId: null,
@@ -235,13 +235,14 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const closingTab = get().tabs.find((t) => t.id === tabId)
       // Action-layer guard: hard-block close while the orchestrator or any
       // dispatched background agent is still running. TAB-TYPE-AGNOSTIC — see
-      // evaluateCloseGuard in tab-close-guard.ts for the full rationale (plain
-      // conversations can dispatch sub-agents too, so this is not engine-only).
+      // evaluateSessionBusyGuard in session-busy-guard.ts for the full rationale
+      // (plain conversations can dispatch sub-agents too, so this is not
+      // engine-only).
       if (closingTab) {
         const pane = get().conversationPanes.get(tabId)
-        const guard = evaluateCloseGuard(pane)
+        const guard = evaluateSessionBusyGuard(pane)
         if (guard.blocked) {
-          rWarn('tab.close', 'close blocked by guard', { tab_id: tabId, reason: formatCloseGuardRefusal(tabId, guard) })
+          rWarn('tab.close', 'close blocked by guard', { tab_id: tabId, reason: formatSessionBusyRefusal(tabId, guard, 'close the tab') })
           return
         }
       }
@@ -362,7 +363,7 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
             tabs: [newTab],
             activeTabId: newTab.id,
             gitPanelOpen: false,
-            conversationPanes: new Map(get().conversationPanes).set(newTab.id, makeMainPane({ modelOverride: initialModelOverride() })),
+            conversationPanes: new Map(get().conversationPanes).set(newTab.id, makeMainPane({ modelOverride: initialModelOverride(), thinkingEffort: initialThinkingEffort(initialModelOverride()) })),
           })
           return
         }

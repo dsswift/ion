@@ -9,6 +9,8 @@ import {
   forgetRererePaths,
   validateBenchResolution,
 } from './bench-resolution-validation'
+import { loadWorkspaces } from './bench-store'
+import { recordResolution } from './bench-resolution-journal'
 
 const TAG = 'bench.merge.continue'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
@@ -21,6 +23,14 @@ interface RecoveryState {
   mergeHead: string
   mergeMessage: string
   rererePaths: string[]
+  /**
+   * The paths that were unmerged when this merge was still open.
+   *
+   * Captured here because this is the only moment they are readable: once
+   * `--continue` commits, the index has no unmerged entries and the resolved
+   * paths are indistinguishable from any other file in the merge commit.
+   */
+  conflictedPaths: string[]
 }
 
 async function readGitStateFile(directory: string, name: string): Promise<string> {
@@ -43,6 +53,11 @@ async function captureRecoveryState(directory: string): Promise<RecoveryState | 
       mergeHead: mergeHead.trim(),
       mergeMessage,
       rererePaths: rerere.paths,
+      // The same set: `currentRererePaths` returns rerere-status ∪ staged merge
+      // paths, which IS the resolved conflict surface at this instant. Named
+      // separately because the two are used for different purposes downstream
+      // (recovery targets vs. what the journal records).
+      conflictedPaths: rerere.paths,
     }
   } catch (err) {
     return { ok: false, error: `Could not capture merge recovery state: ${String(err)}` }
@@ -110,11 +125,12 @@ async function restoreConflict(directory: string, state: RecoveryState): Promise
   }
   const forgotten = await forgetRererePaths(directory, replayPaths.paths)
   if (!forgotten.ok) {
-    return recoveryFailure(
-      directory,
-      state,
-      `invalid conflict recording for ${forgotten.path} could not be forgotten: ${forgotten.error}`,
-    )
+    // `noContext` cannot fire here (the merge was just recreated above, so
+    // MERGE_HEAD is present), but the union has no fallthrough default.
+    const detail = 'error' in forgotten
+      ? `invalid conflict recording for ${forgotten.path} could not be forgotten: ${forgotten.error}`
+      : 'no merge in progress to forget within'
+    return recoveryFailure(directory, state, detail)
   }
   if (forgotten.forgottenPaths.length === 0) {
     return recoveryFailure(directory, state, 'no invalid rerere recording was forgotten')
@@ -215,5 +231,97 @@ export async function continueBenchMerge(directory: string): Promise<ContinueRes
   log('bench merge continue completed with valid postconditions', {
     directory, pre_head: captured.head, post_head: postHead,
   })
+
+  // Journal the resolution HERE and nowhere earlier.
+  //
+  // This is the one point where a bench resolution is proven good: the merge
+  // committed, HEAD advanced, the delta passed `--check`, and project
+  // verification passed. Everything before it is unproven, and every failure
+  // above rolls the merge back through `restoreConflict` — so a resolution
+  // recorded earlier could describe history that no longer exists.
+  await journalResolution(directory, captured, postHead, verification.ran && verification.ok)
+
   return { ok: true }
+}
+
+/**
+ * Record the completed resolution in the bench journal.
+ *
+ * Resolves the workspace from the bench DIRECTORY, because that is all the
+ * merge-continue path is given — and the directory is a stable identity
+ * (`benchPathFor` is unique per repo+branch), so no id needs threading through
+ * the IPC layer to get here.
+ *
+ * Attribution of the member being merged and its counterparts comes from the
+ * merge itself: `MERGE_HEAD` is the pinned contribution git was merging, so the
+ * member is whichever enrolled member carries that sha, and the counterparts are
+ * the earlier enabled members whose pinned ranges also touch the resolved paths.
+ * That is the same range-based question `describeConflict` asks during assembly,
+ * for the same reason: "who last touched this file" is confidently wrong exactly
+ * when several members changed it.
+ *
+ * Never throws. The merge is already committed and verified by the time this
+ * runs; failing it to report a missing hint would trade real work for context.
+ */
+async function journalResolution(
+  directory: string,
+  state: RecoveryState,
+  resolvedSha: string,
+  verified: boolean,
+): Promise<void> {
+  try {
+    const ws = loadWorkspaces().find((w) => w.benchPath === directory)
+    if (!ws) {
+      log('resolution not journalled: directory is not a registered bench', { directory })
+      return
+    }
+    if (state.conflictedPaths.length === 0) {
+      log('resolution not journalled: no resolved paths captured', { directory })
+      return
+    }
+
+    const enabled = ws.members.filter((m) => m.enabled && m.pinnedSha)
+    const merged = enabled.find((m) => m.pinnedSha === state.mergeHead)
+    const memberBranch = merged?.branchName ?? state.mergeHead.slice(0, 7)
+
+    // One entry per resolved path: the journal is queried BY path, since the
+    // next conflict is on a file rather than on a member.
+    for (const path of state.conflictedPaths) {
+      const collidedWith: string[] = []
+      for (const other of enabled) {
+        if (other.worktreePath === merged?.worktreePath) continue
+        const base = other.pinnedBaseSha || ws.baseSha
+        if (!base) continue
+        try {
+          const touched = await runGit(directory, ['diff', '--name-only', base, other.pinnedSha, '--', path])
+          if (touched.trim()) collidedWith.push(other.branchName)
+        } catch (err) {
+          // Best-effort colour on an otherwise-correct entry.
+          log('collision attribution skipped for member', {
+            branch: other.branchName, path, error: String(err),
+          })
+        }
+      }
+
+      recordResolution({
+        repoPath: ws.repoPath,
+        sourceBranch: ws.sourceBranch,
+        benchBranch: ws.benchBranch,
+        path,
+        memberBranch,
+        collidedWith,
+        baseSha: ws.baseSha,
+        memberPinnedSha: state.mergeHead,
+        resolvedSha,
+        resolvedAt: Date.now(),
+        verified,
+        // The resolver records this separately (see the journal module); an
+        // entry written here carries the mechanical facts and an empty
+        // rationale rather than a fabricated one.
+        rationale: '',
+      })
+    }
+  } catch (err) {
+    warn('could not journal bench resolution; merge stands', { directory, error: String(err) })
+  }
 }

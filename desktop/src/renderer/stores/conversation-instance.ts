@@ -31,7 +31,7 @@
 
 import { MAIN_INSTANCE_ID } from '../../shared/session-key'
 import type { ConversationRef, ConversationInstance, ConversationPane, StatusFields } from '../../shared/types-engine'
-import type { Message as _Message } from '../../shared/types-session'
+import type { Message as _Message, ThinkingEffort } from '../../shared/types-session'
 
 /** A fully-typed instance row as stored in `ConversationPane.instances`. */
 export type Instance = ConversationRef & ConversationInstance
@@ -156,7 +156,7 @@ export function effectivePermissionMode(
 export function effectiveThinkingEffort(
   tab: { id: string },
   conversationPanes: Map<string, ConversationPane>,
-): string {
+): ThinkingEffort {
   return activeInstance(conversationPanes, tab.id)?.thinkingEffort ?? 'off'
 }
 
@@ -176,18 +176,20 @@ export function instanceMessageCount(inst: ConversationInstance | null | undefin
  * Does this instance still need its on-disk scrollback loaded?
  *
  * The precise signal is `historyHydrated` (set `false` by skeleton-creation
- * sites, `true` by `loadSkeletonMessages` on completion). When it is `false`,
- * hydration is needed even if `messages` is non-empty — live streamed events
- * append to skeleton panes before the user ever opens them, and an emptiness
- * check would silently skip the history load (showing only the live tail).
- * `undefined` means the pane came from a path that predates the marker;
- * those keep the legacy empty-messages+messageCount heuristic so their
+ * sites, `true` by `loadSkeletonMessages` on completion). `false` is an
+ * authoritative "not loaded" marker set by restore paths. It always requests
+ * one hydration attempt, even when persisted messageCount is zero:
+ * messageCount is a derived cache and can be stale while conversationId still
+ * points at real durable history.
+ *
+ * `undefined` means the pane came from a path that predates the marker; those
+ * keep the legacy empty-messages+positive-messageCount heuristic so their
  * behavior is unchanged.
  */
 export function needsHistoryHydration(inst: ConversationInstance | null | undefined): boolean {
   if (!inst) return false
   if (inst.historyHydrated === true) return false
-  if (inst.historyHydrated === false) return instanceMessageCount(inst) > 0
+  if (inst.historyHydrated === false) return true
   return inst.messages.length === 0 && (inst.messageCount ?? 0) > 0
 }
 
