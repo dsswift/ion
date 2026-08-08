@@ -60,7 +60,8 @@ export const useModelStore = create<ModelStoreState>((set, get) => ({
       } catch (err) {
         rDebug('model-store', 'normalize model preferences failed', { error: String(err) })
       }
-    } catch {
+    } catch (err) {
+      rDebug('model-store', 'fetchModels failed', { error: String(err) })
       set({ loading: false })
     }
   },
