@@ -149,7 +149,6 @@ export function HistoryPicker() {
     // Add the directory to recent base directories so it appears in the new-tab picker
     if (session.projectPath) {
       usePreferencesStore.getState().addRecentBaseDirectory(session.projectPath)
-      usePreferencesStore.getState().incrementDirectoryUsage(session.projectPath)
     }
   }
 

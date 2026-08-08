@@ -46,7 +46,6 @@ const prefState = {
   planModelSplitEnabled: false,
   planModeModel: null,
   addRecentBaseDirectory: vi.fn(),
-  incrementDirectoryUsage: vi.fn(),
   defaultTallConversation: false,
   engineProfiles: [] as unknown[],
   engineDefaultModel: null,

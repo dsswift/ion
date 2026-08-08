@@ -131,6 +131,63 @@ describe('preferences-persist round-trip — structural', () => {
   })
 })
 
+describe('loadPersistedSettings — ephemeral workspace migration', () => {
+  let originalIon: unknown
+  let originalDocument: unknown
+
+  beforeEach(() => {
+    originalIon = (globalThis as { window?: { ion?: unknown } }).window?.ion
+    originalDocument = (globalThis as { document?: unknown }).document
+    ;(globalThis as { document?: unknown }).document = {
+      documentElement: { style: {} as Record<string, string> },
+    }
+  })
+
+  afterEach(() => {
+    ;(globalThis as { window?: { ion?: unknown } }).window = { ion: originalIon } as Window & typeof globalThis
+    ;(globalThis as { document?: unknown }).document = originalDocument
+  })
+
+  it('removes legacy worktree and bench recents plus usage counters before saving', async () => {
+      const saveSettings = vi.fn(() => Promise.resolve())
+      ;(globalThis as { window?: { ion?: unknown } }).window = {
+        ion: {
+          loadSettings: () => Promise.resolve({
+            recentBaseDirectories: [
+              '/Volumes/projects/alpha',
+              '/Users/example/.ion/worktrees/project-a3f1',
+              '/Users/example/.ion/integration/project-main',
+            ],
+            directoryUsageCounts: {
+              '/Volumes/projects/alpha': 2,
+              '/Users/example/.ion/worktrees/project-a3f1': 9,
+              '/Users/example/.ion/integration/project-main': 4,
+            },
+          }),
+          saveSettings,
+        },
+      } as unknown as Window & typeof globalThis
+
+      const setState = vi.fn()
+      loadPersistedSettings(
+        setState,
+        () => ({ ...SETTINGS_DEFAULTS, ...setState.mock.calls.at(-1)?.[0] } as PreferencesState),
+        vi.fn(),
+      )
+      await new Promise((resolve) => setImmediate(resolve))
+
+      const patch = setState.mock.calls[0][0] as Record<string, unknown>
+      expect(patch.recentBaseDirectories).toEqual(['/Volumes/projects/alpha'])
+      expect(patch.directoryUsageCounts).toEqual({ '/Volumes/projects/alpha': 2 })
+      expect(saveSettings).toHaveBeenCalledOnce()
+    expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+      recentBaseDirectories: ['/Volumes/projects/alpha'],
+      directoryUsageCounts: { '/Volumes/projects/alpha': 2 },
+    }))
+  })
+})
+
+
 describe('loadPersistedSettings — defaultThinkingEffort validation', () => {
   // The structural suite above proves every SETTINGS_DEFAULTS key is hydrated.
   // It does NOT prove any key's VALUE survives validation, and that gap is

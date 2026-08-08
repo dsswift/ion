@@ -8,7 +8,8 @@ import { parseChord } from './shortcuts/chord'
 import { SHORTCUT_CATALOG } from './shortcuts/shortcut-catalog'
 import { deriveEnterpriseThemePolicy } from '../shared/enterprise-theme-policy'
 import { normalizePreferencesModels } from './preferences-model-normalization'
-import { rWarn } from './rendererLogger'
+import { rInfo, rWarn } from './rendererLogger'
+import { isEphemeralWorkspaceDirectory } from '../shared/recent-directories'
 export type { PreferencesState } from './preferences-types'
 export { getEffectiveTabGroups } from './preferences-persist'
 
@@ -168,9 +169,14 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     saveSettings(getAllSettings(get))
   },
   addRecentBaseDirectory: (dir) => {
+    if (isEphemeralWorkspaceDirectory(dir)) {
+      rInfo('preferences', 'ephemeral workspace excluded from recent directories', { directory: dir })
+      return
+    }
     const current = get().recentBaseDirectories.filter((d) => d !== dir)
     const updated = [dir, ...current].slice(0, 12)
-    set({ recentBaseDirectories: updated })
+    const counts = { ...get().directoryUsageCounts, [dir]: (get().directoryUsageCounts[dir] || 0) + 1 }
+    set({ recentBaseDirectories: updated, directoryUsageCounts: counts })
     saveSettings(getAllSettings(get))
   },
   removeRecentBaseDirectory: (dir) => {
@@ -178,12 +184,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     const counts = { ...get().directoryUsageCounts }
     delete counts[dir]
     set({ recentBaseDirectories: updated, directoryUsageCounts: counts })
-    saveSettings(getAllSettings(get))
-  },
-  incrementDirectoryUsage: (dir) => {
-    const counts = { ...get().directoryUsageCounts }
-    counts[dir] = (counts[dir] || 0) + 1
-    set({ directoryUsageCounts: counts })
     saveSettings(getAllSettings(get))
   },
   setDefaultPermissionMode: (mode) => {

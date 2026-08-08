@@ -34,7 +34,6 @@ const mockPrefs = {
   tabGroups: [] as any[],
   defaultTallConversation: false,
   addRecentBaseDirectory: vi.fn(),
-  incrementDirectoryUsage: vi.fn(),
   setWorktreeBranchDefault: vi.fn(),
 }
 

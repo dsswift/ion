@@ -5,6 +5,7 @@ import { getRemoteTabStates } from './snapshot'
 import { reconcileGitWatchedDirectories } from './git-watcher-bridge'
 import { log as _log, debug as _debug, error as _error } from '../logger'
 import type { RemoteTabState } from './protocol'
+import { recentLocalDirectories } from '../../shared/recent-directories'
 
 function log(msg: string, fields?: Record<string, unknown>): void { _log('snapshot-polling', msg, fields) }
 function debug(msg: string, fields?: Record<string, unknown>): void { _debug('snapshot-polling', msg, fields) }
@@ -166,7 +167,8 @@ export function noteSnapshotSentToDevices(event: Record<string, unknown>, device
 export async function buildSnapshotEvent(): Promise<{ event: Record<string, unknown>; tabs: RemoteTabState[] }> {
   const { tabs, resourceManifest } = await getRemoteTabStates()
   const settings = readSettings()
-  const recentDirectories: string[] = Array.isArray(settings.recentBaseDirectories) ? settings.recentBaseDirectories : []
+  const persistedRecentDirectories: string[] = Array.isArray(settings.recentBaseDirectories) ? settings.recentBaseDirectories : []
+  const recentDirectories = recentLocalDirectories(persistedRecentDirectories)
   const tabGroupMode = settings.tabGroupMode || 'off'
   const tabGroups = Array.isArray(settings.tabGroups) ? settings.tabGroups.map((g: any) => ({ id: g.id, label: g.label, isDefault: g.isDefault, order: g.order })) : []
   const event: Record<string, unknown> = {

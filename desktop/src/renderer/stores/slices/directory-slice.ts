@@ -37,7 +37,6 @@ export function createDirectorySlice(set: StoreSet, get: StoreGet): Partial<Stat
 
     setBaseDirectory: (dir) => {
       usePreferencesStore.getState().addRecentBaseDirectory(dir)
-      usePreferencesStore.getState().incrementDirectoryUsage(dir)
       const { activeTabId } = get()
       const s = get()
       const tab = s.tabs.find((t) => t.id === activeTabId)

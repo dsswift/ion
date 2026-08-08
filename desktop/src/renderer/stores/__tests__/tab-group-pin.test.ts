@@ -72,7 +72,7 @@ vi.mock('../session-store-helpers', () => ({
 
 // Preferences store: supply enough to satisfy the auto-move guard.
 // `createTabInDirectory` also calls `addRecentBaseDirectory` and
-// `incrementDirectoryUsage` on the prefs store; both are no-ops here. The
+// directory usage via `addRecentBaseDirectory`; it is a no-op here. The
 // `tabGroups` list is needed by the new `pinToGroupId` describe block so
 // the default-group lookup resolves to a concrete id when the caller does
 // NOT supply pinToGroupId — that's the negative-control case in the test
@@ -90,7 +90,6 @@ vi.mock('../../preferences', () => ({
       planModelSplitEnabled: false,
       planModeModel: null,
       addRecentBaseDirectory: vi.fn(),
-      incrementDirectoryUsage: vi.fn(),
       defaultTallConversation: false,
       tabGroups: [
         { id: 'group-default', label: 'Default', isDefault: true, order: 0 },

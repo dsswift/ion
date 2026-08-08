@@ -11,6 +11,7 @@ import { startTabSnapshotPolling, stopTabSnapshotPolling } from './snapshot-poll
 import { getRemoteTabStates } from './snapshot'
 import { startGitWatcherBridge, stopGitWatcherBridge } from './git-watcher-bridge'
 import { focusState } from '../git/focus-state'
+import { recentLocalDirectories } from '../../shared/recent-directories'
 import { probeRelayAuthConfig, composeOidcScope } from './relay-auth'
 import {
   clearResolvedRelayAuth,
@@ -257,7 +258,8 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
 
       try {
         const peerSettings = readSettings()
-        const peerRecentDirs: string[] = Array.isArray(peerSettings.recentBaseDirectories) ? peerSettings.recentBaseDirectories : []
+        const persistedPeerRecentDirs: string[] = Array.isArray(peerSettings.recentBaseDirectories) ? peerSettings.recentBaseDirectories : []
+        const peerRecentDirs = recentLocalDirectories(persistedPeerRecentDirs)
         const tabGroupMode = peerSettings.tabGroupMode || 'off'
         const tabGroups = Array.isArray(peerSettings.tabGroups) ? peerSettings.tabGroups.map((g: any) => ({ id: g.id, label: g.label, isDefault: g.isDefault, order: g.order })) : []
         state.remoteTransport?.send({

@@ -209,6 +209,22 @@ describe('sendSync — single snapshot sender with force semantics', () => {
     expect(toA).toHaveLength(0) // A just got it via sendSync — must NOT re-receive
   })
 
+  it('excludes ephemeral workspaces from recent directory projection', async () => {
+    mockReadSettings.mockReturnValue({
+      ...FIXED_SETTINGS,
+      recentBaseDirectories: [
+        '/tmp',
+        '/Users/example/.ion/worktrees/project-a3f1',
+        '/Users/example/.ion/integration/project-main',
+      ],
+    })
+
+    await sendSync(collector, [])
+
+    const snap = collected.find((event) => event.type === 'desktop_snapshot')
+    expect(snap.recentDirectories).toEqual(['/tmp'])
+  })
+
   it('includes tabs and settings fields in the sent event', async () => {
     await sendSync(collector, [])
     const snap = collected.find((e) => e.type === 'desktop_snapshot')
