@@ -13,6 +13,25 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.64.0](https://github.com/dsswift/ion/compare/engine-v1.63.2...engine-v1.64.0) (2026-08-08)
+
+### Features
+
+* **engine:** default thinking effort in engine.json ([8af4a97](https://github.com/dsswift/ion/commit/8af4a97b1360e8c3deb0212ee95af17fb43c5a5b))
+* **engine:** extend the thinking ladder with xhigh and max ([ea4980e](https://github.com/dsswift/ion/commit/ea4980e7053e2df9224a382bfcc9556542b57dd6))
+* **engine:** add model tier administration ([a9aac3a](https://github.com/dsswift/ion/commit/a9aac3a613d296029a8701c2134ceca5b6c8beb5))
+* **engine:** add client tool gate ([18b51af](https://github.com/dsswift/ion/commit/18b51af7a665a7b857f67ef78714433bfbb0eb7c))
+* **engine:** harden worktree context and branch safety ([3e45c41](https://github.com/dsswift/ion/commit/3e45c417fc580c53deb617e5ca10780e387062d8))
+* **engine:** add cross-worktree query tools ([6b9fb82](https://github.com/dsswift/ion/commit/6b9fb82ed722b5f7fd95168e2ee42821eb5d199e))
+
+### Bug Fixes
+
+* **engine:** drop reasoning_effort for misdeclared chat dialects ([f29b4f0](https://github.com/dsswift/ion/commit/f29b4f09fb35948112e8e9c62c92d5f836e1cde2))
+* **engine:** let adaptive models choose their own reasoning depth ([d57eb2f](https://github.com/dsswift/ion/commit/d57eb2fae3172578172a88720647cc837eb672dc))
+* **engine:** bound egress spool trim and buffer memory ([405b50c](https://github.com/dsswift/ion/commit/405b50cb3bfa433638357b567477796515722821))
+* **engine:** align worktree v3 engine delivery ([db4c465](https://github.com/dsswift/ion/commit/db4c46504e3441eebc169adce58b853007ede3d8))
+* **engine:** retain acp client across process close ([67ac437](https://github.com/dsswift/ion/commit/67ac4372ef95ab0758e2e51d20abd77c2ef51143))
+
 ## [1.63.2](https://github.com/dsswift/ion/compare/engine-v1.63.1...engine-v1.63.2) (2026-08-06)
 
 ### Bug Fixes

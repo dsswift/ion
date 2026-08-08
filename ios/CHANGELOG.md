@@ -10,6 +10,22 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.58.0](https://github.com/dsswift/ion/compare/ios-v1.57.1...ios-v1.58.0) (2026-08-08)
+
+### Features
+
+* **ios:** offer xhigh and max in the thinking menu ([eef12d0](https://github.com/dsswift/ion/commit/eef12d038ae57ab9fe71bcac39f1cebf097e4d21))
+* **ios:** improve worktree conversation navigation ([4de39b8](https://github.com/dsswift/ion/commit/4de39b8738120b3c530b6df8099f6495b6e7a08c))
+* **ios:** mirror client tool gate contracts ([7e399d4](https://github.com/dsswift/ion/commit/7e399d4ef13f2352317637a540857c4cc775de04))
+* **ios:** add sync-all worktree controls ([9ce8a93](https://github.com/dsswift/ion/commit/9ce8a9368710d3a1b55a7833522922f64be5715d))
+* **ios:** show bench verification failures ([df3eb52](https://github.com/dsswift/ion/commit/df3eb52f99a4d99f442e8b1bc40771fa3c1e91ef))
+* **ios:** add worktree workflow stages ([2c775ae](https://github.com/dsswift/ion/commit/2c775ae526d35bc827f165edeb5d0f9427dba351))
+
+### Bug Fixes
+
+* **ios:** adaptive thinking entry and stale-effort repair ([6565dca](https://github.com/dsswift/ion/commit/6565dca053947aa8ed88a84038a20a5d5ea8ffb1))
+* **ios:** align worktree v3 ios delivery ([4c49258](https://github.com/dsswift/ion/commit/4c49258d4bfe5c15e8c8ff7f98a024bc9cc7a6d8))
+
 ## [1.57.1](https://github.com/dsswift/ion/compare/ios-v1.57.0...ios-v1.57.1) (2026-08-06)
 
 ### Bug Fixes

@@ -10,6 +10,37 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.77.0](https://github.com/dsswift/ion/compare/desktop-v1.76.1...desktop-v1.77.0) (2026-08-08)
+
+### Features
+
+* **desktop:** default thinking level preference ([f301c06](https://github.com/dsswift/ion/commit/f301c06895603daf5515babc8b522d3ad9f65dc9))
+* **desktop:** remove thinkingEnabled gate, thinking is GA ([4677c62](https://github.com/dsswift/ion/commit/4677c62b1a2cc3f53f8b9892f42da2357dd66b8a))
+* **desktop:** offer xhigh and max in the thinking controls ([31d3eb7](https://github.com/dsswift/ion/commit/31d3eb7689215789f53e94a1f178b91b6fa0f7b4))
+* **desktop:** add model tier editor ([96561ff](https://github.com/dsswift/ion/commit/96561ffef3e24dc8df7c55d4f0c4f0422870a117))
+* **desktop:** improve worktree panel navigation ([0ea7190](https://github.com/dsswift/ion/commit/0ea71906107519f157e572500344d3bfffcbb117))
+* **desktop:** add bench tool gate and resolution journal ([8c136cf](https://github.com/dsswift/ion/commit/8c136cf2a47dbddddae2017a2c301bd3c32c7e3f))
+* **desktop:** add precise worktree sync recovery ([bf5d93c](https://github.com/dsswift/ion/commit/bf5d93c64f76258c544c532e9775244fcb0a5d11))
+* **desktop:** add sync-all worktree pipeline ([e044719](https://github.com/dsswift/ion/commit/e044719a300cde46bd8702b0a50a9e45d8073051))
+* **desktop:** recover bench assembly verification failures ([05e863c](https://github.com/dsswift/ion/commit/05e863c60542dd80ed0c108e16c7efa676e6f34e))
+* **desktop:** add worktree workflow stages ([9b5ad81](https://github.com/dsswift/ion/commit/9b5ad814671cfefb129a5b4d5d545769a224eaae))
+* **desktop:** configure assisted workbench flows ([fefd68c](https://github.com/dsswift/ion/commit/fefd68c5e0678022db56fce8a7ac8bd433f53910))
+
+### Bug Fixes
+
+* **desktop:** refuse worktree conversion while a tab is busy ([b66f3bc](https://github.com/dsswift/ion/commit/b66f3bcd6b3c9f131ca96b70368eea65cd6f8a0f))
+* **desktop:** converge the worktree row menu verb extraction ([9e959ac](https://github.com/dsswift/ion/commit/9e959ac4ec6bd7491b94f3374ceb574363dacbdc))
+* **desktop:** send the explicit off sentinel for thinking ([87990e2](https://github.com/dsswift/ion/commit/87990e291bac1dc9485c86405175d9cf82c7b35e))
+* **desktop:** persist per-conversation thinking effort ([b8d12bb](https://github.com/dsswift/ion/commit/b8d12bbf7afb8ae7813e110f3725418e980a4cca))
+* **desktop:** wire the session thinking config ([16ff1d9](https://github.com/dsswift/ion/commit/16ff1d91bb09153c3114948587a988861a35117c))
+* **desktop:** repair a stale thinking effort against the model ([8ae4cf6](https://github.com/dsswift/ion/commit/8ae4cf67842a9a10c75748771273f38764007527))
+* **desktop:** bound egress spool trim and buffer memory ([8622d19](https://github.com/dsswift/ion/commit/8622d19e2a2cb56cfc51877afff49b8e6d71ef96))
+* **desktop:** align worktree v3 desktop delivery ([ed5eb05](https://github.com/dsswift/ion/commit/ed5eb05fad774c793af863d38e6a34af760f91e2))
+* **desktop:** repair linux parity regressions ([32d5a74](https://github.com/dsswift/ion/commit/32d5a742bd09182f8af7feaa1f02f232ef09bf7c))
+* **desktop:** log failed model fetches ([3630f8a](https://github.com/dsswift/ion/commit/3630f8acf6d99235680971c698a5b9f0fdfb3133))
+* **desktop:** preserve bench build output ([b2484f7](https://github.com/dsswift/ion/commit/b2484f7ab84f7cfd18610bde969bb8e8028658fd))
+* **deps:** update vulnerable yaml parser ([2b2b114](https://github.com/dsswift/ion/commit/2b2b114a3c6398c368d29c834605795ea36cce75))
+
 ## [1.76.1](https://github.com/dsswift/ion/compare/desktop-v1.76.0...desktop-v1.76.1) (2026-08-06)
 
 ### Bug Fixes
