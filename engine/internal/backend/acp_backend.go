@@ -210,7 +210,7 @@ func (b *AcpBackend) emitPlanModeUnsupported(requestID, sessionID string) {
 
 // runPrompt ensures the agent+session, then runs one blocking prompt.
 func (b *AcpBackend) runPrompt(requestID string, options types.RunOptions) {
-	loadCapable, err := b.ensureStarted()
+	client, loadCapable, err := b.ensureStarted()
 	if err != nil {
 		b.emitError(requestID, fmt.Errorf("%s start failed: %w", b.spec.kind, err))
 		b.emitExit(requestID, intPtr(1), nil, "")
@@ -218,7 +218,7 @@ func (b *AcpBackend) runPrompt(requestID string, options types.RunOptions) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	sessionID, modes, err := b.openSession(ctx, options, loadCapable)
+	sessionID, modes, err := b.openSession(ctx, client, options, loadCapable)
 	if err != nil {
 		cancel()
 		b.emitError(requestID, fmt.Errorf("%s session setup: %w", b.spec.kind, err))
@@ -239,6 +239,10 @@ func (b *AcpBackend) runPrompt(requestID string, options types.RunOptions) {
 		}
 	}
 
+	// Keep the client returned by ensureStarted for this run. Process closure
+	// clears b.client so the next run relaunches, but this in-flight run must keep
+	// a non-nil reference long enough for the closed transport to return an error.
+	// Re-reading b.client here raced onProcessClosed and could dereference nil.
 	run := &acpRun{
 		requestID:    requestID,
 		sessionID:    sessionID,
@@ -251,7 +255,6 @@ func (b *AcpBackend) runPrompt(requestID string, options types.RunOptions) {
 	b.mu.Lock()
 	b.runs[requestID] = run
 	b.sessionToRun[sessionID] = requestID
-	client := b.client
 	b.mu.Unlock()
 
 	if options.Model != "" {
@@ -347,10 +350,7 @@ func (b *AcpBackend) finishPlanRun(run *acpRun) {
 
 // openSession loads the resumable ACP session when possible, else opens a new
 // one. Returns the session id and any advertised session-mode state.
-func (b *AcpBackend) openSession(ctx context.Context, options types.RunOptions, loadCapable bool) (string, *acp.SessionModeState, error) {
-	b.mu.Lock()
-	client := b.client
-	b.mu.Unlock()
+func (b *AcpBackend) openSession(ctx context.Context, client *acp.Client, options types.RunOptions, loadCapable bool) (string, *acp.SessionModeState, error) {
 	if options.CliResumeSessionID != "" && loadCapable {
 		if res, err := client.SessionLoad(ctx, options.CliResumeSessionID, options.ProjectPath, options.CliMcpServers); err == nil {
 			return options.CliResumeSessionID, res.Modes, nil
@@ -468,12 +468,16 @@ func (b *AcpBackend) emitError(runID string, err error) {
 
 // ensureStarted lazily spawns and initializes the ACP agent. Returns whether
 // the agent advertises session/load support.
-func (b *AcpBackend) ensureStarted() (bool, error) {
+func (b *AcpBackend) ensureStarted() (*acp.Client, bool, error) {
 	b.mu.Lock()
 	if b.started {
+		client := b.client
 		lc := b.loadCapable
 		b.mu.Unlock()
-		return lc, nil
+		if client == nil {
+			return nil, false, fmt.Errorf("%s agent marked started without a client", b.spec.kind)
+		}
+		return client, lc, nil
 	}
 	b.mu.Unlock()
 
@@ -485,14 +489,20 @@ func (b *AcpBackend) ensureStarted() (bool, error) {
 	}
 	client, kill, err := b.launch(b.spec, handlers)
 	if err != nil {
-		return false, err
+		return nil, false, err
+	}
+	if client == nil {
+		if kill != nil {
+			kill()
+		}
+		return nil, false, fmt.Errorf("%s launcher returned no client", b.spec.kind)
 	}
 	init, err := client.Initialize(context.Background(), acp.ClientInfo{Name: "ion-engine", Version: "1"})
 	if err != nil {
 		if kill != nil {
 			kill()
 		}
-		return false, fmt.Errorf("%s initialize: %w", b.spec.kind, err)
+		return nil, false, fmt.Errorf("%s initialize: %w", b.spec.kind, err)
 	}
 	// Authenticate with the spec's method when the agent offers auth methods.
 	// Best-effort: an already-authenticated agent accepts the cached method;
@@ -512,7 +522,7 @@ func (b *AcpBackend) ensureStarted() (bool, error) {
 	lc := b.loadCapable
 	b.mu.Unlock()
 	utils.LogWithFields(utils.LevelInfo, "backend.acp", "agent started", map[string]any{"kind": b.spec.kind, "load_session": lc})
-	return lc, nil
+	return client, lc, nil
 }
 
 // onProcessClosed fails active runs when the agent dies and resets the backend.
