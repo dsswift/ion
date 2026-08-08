@@ -50,7 +50,7 @@ export async function ensureBenchWorktree(ws: IntegrationWorkspace): Promise<voi
  * Reset the bench branch to a target tree, then remove any untracked file
  * that is NOT covered by .gitignore.
  *
- * `--discard-changes` resets tracked paths only (deliberately — ignored build
+ * `git reset --hard` resets tracked paths only (deliberately — ignored build
  * output like `node_modules/` must survive so an assembly stays incremental).
  * But a merge or rerere replay can leave a genuinely untracked, non-ignored
  * file behind when git's own abort logic refuses to delete a path it detects
@@ -77,8 +77,12 @@ export async function ensureBenchWorktree(ws: IntegrationWorkspace): Promise<voi
  * hold untracked scratch content; see `git/untracked-obstruction.ts` for the
  * precise, git-named-paths mechanism that surface needs instead.
  */
-export async function resetBenchToTree(benchPath: string, benchBranch: string, target: string): Promise<void> {
-  await runGit(benchPath, ['switch', '-C', benchBranch, target, '--discard-changes'])
+export async function resetBenchToTree(benchPath: string, _benchBranch: string, target: string): Promise<void> {
+  // The bench worktree remains on its dedicated branch for its lifetime. A hard
+  // reset moves that branch and its tracked tree to the requested source tip
+  // without `switch --discard-changes`, which removes ignored build artifacts
+  // on Linux. Follow with clean -fd to remove only non-ignored obstructions.
+  await runGit(benchPath, ['reset', '--hard', target])
   await runGit(benchPath, ['clean', '-fd'])
 }
 
@@ -168,9 +172,9 @@ export async function wipeBenchToEmpty(ws: IntegrationWorkspace, reason: string)
     const commit = (await runGit(ws.benchPath, [
       'commit-tree', emptyTree, '-m', `ion-bench: assembly failed — ${reason}`,
     ])).trim()
-    await runGit(ws.benchPath, ['switch', '-C', ws.benchBranch, commit, '--discard-changes'])
+    await runGit(ws.benchPath, ['reset', '--hard', commit])
     // Same untracked-leftover hazard the reset step guards against (see
-    // resetBenchToTree's doc comment): `--discard-changes` only clears
+    // resetBenchToTree's doc comment): `reset --hard` only clears
     // TRACKED files, so an untracked leftover from the failed merge/abort
     // this wipe is responding to would otherwise survive into the "empty"
     // bench and go on to block the next assembly's reset in turn.

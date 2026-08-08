@@ -6,7 +6,8 @@
  * list)`. Nothing is ever merged INTO an existing bench incrementally. Every
  * assembly throws the branch away and recreates it:
  *
- *     git switch -C ion/bench/<slug> <sourceBranch> --discard-changes
+ *     git reset --hard <sourceBranch>
+ *     git clean -fd
  *     git merge --no-ff -m "ion-bench: <label> (<branch>@<sha7>)" <pinnedSha>   # per member, in order
  *
  * Consequences that make this cheap to own:
@@ -31,7 +32,7 @@
  * range is recorded at pin time — see resolveContribution below.
  *
  * ── Never `git clean -x` ────────────────────────────────────────────────────
- * `switch -C ... --discard-changes` resets tracked files and LEAVES ignored
+ * `reset --hard` resets tracked files and LEAVES ignored
  * build output (node_modules, dist, Go caches) in place. That single decision
  * is what makes an assembly cost an incremental build instead of a cold one,
  * and it is the reason the feature is usable at all. `resetBenchToTree`

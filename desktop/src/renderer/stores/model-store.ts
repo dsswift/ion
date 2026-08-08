@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import type { ModelEntry, ProviderEntry } from '../../shared/types-models'
 import { rDebug } from '../rendererLogger'
-import { usePreferencesStore } from '../preferences'
 
 /** Live state of an in-flight delegated-CLI login, keyed by provider id. */
 export interface ProviderLoginState {
@@ -52,7 +51,15 @@ export const useModelStore = create<ModelStoreState>((set, get) => ({
         lastFetched: Date.now(),
         loading: false,
       })
-      usePreferencesStore.getState().normalizeModelPreferences(models)
+      // Preferences bootstrap owns renderer-only document side effects. Import
+      // it only after live model metadata arrives so model-label helpers remain
+      // usable in Node test environments and other non-renderer consumers.
+      try {
+        const { usePreferencesStore } = await import('../preferences')
+        usePreferencesStore.getState().normalizeModelPreferences(models)
+      } catch (err) {
+        rDebug('model-store', 'normalize model preferences failed', { error: String(err) })
+      }
     } catch {
       set({ loading: false })
     }
