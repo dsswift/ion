@@ -62,10 +62,10 @@ export async function ensureBenchWorktree(ws: IntegrationWorkspace): Promise<voi
  * permanently failing on a git error it never even surfaced (the merge fails
  * with ZERO unmerged paths, since it never reached conflict state at all).
  *
- * `git clean -fd` (no `-x`) removes exactly that class of file — untracked
- * and not ignored — while leaving every ignored path (node_modules, dist, Go
- * build caches) untouched, so incremental builds keep working exactly as
- * before. This is NOT `git clean -x`; ignored build output is never touched.
+ * Untracked, non-ignored leftovers are cleaned while the source tree's
+ * `.gitignore` still governs them, then the empty-tree reset removes tracked
+ * paths. Cleaning after that reset would see no `.gitignore` and delete
+ * incremental build output along with genuine obstructions.
  *
  * Unconditional and unscoped is SAFE here specifically because the bench is
  * disposable by design (see bench-assemble.ts's module header: "the bench is
@@ -157,10 +157,11 @@ export async function describeConflict(
  * Wipe the bench to an empty tree after a failed assembly.
  *
  * The branch is pointed at a commit whose TREE is empty — created with the
- * well-known empty-tree object — and the working tree is reset to it. Tracked
- * files vanish; ignored build output (node_modules, caches) survives exactly
- * as it does across a normal assembly, so the next successful assembly still
- * builds incrementally. A terminal or conversation opened in the bench finds
+ * well-known empty-tree object. First, non-ignored leftovers are cleaned while
+ * the source tree's `.gitignore` still protects build output; then the working
+ * tree is reset to the empty commit. Tracked files vanish while ignored build
+ * output (node_modules, caches) survives exactly as it does across a normal
+ * assembly, so the next successful assembly still builds incrementally. A terminal or conversation opened in the bench finds
  * nothing to falsely test, which is the whole point of atomicity: the bench
  * presents the enrolled combination or nothing.
  */
@@ -172,13 +173,11 @@ export async function wipeBenchToEmpty(ws: IntegrationWorkspace, reason: string)
     const commit = (await runGit(ws.benchPath, [
       'commit-tree', emptyTree, '-m', `ion-bench: assembly failed — ${reason}`,
     ])).trim()
-    await runGit(ws.benchPath, ['reset', '--hard', commit])
-    // Same untracked-leftover hazard the reset step guards against (see
-    // resetBenchToTree's doc comment): `reset --hard` only clears
-    // TRACKED files, so an untracked leftover from the failed merge/abort
-    // this wipe is responding to would otherwise survive into the "empty"
-    // bench and go on to block the next assembly's reset in turn.
+    // Clean while the source tree's .gitignore still protects incremental
+    // output. The empty tree removes .gitignore, so cleaning after reset would
+    // mistake node_modules and caches for disposable untracked obstructions.
     await runGit(ws.benchPath, ['clean', '-fd'])
+    await runGit(ws.benchPath, ['reset', '--hard', commit])
     log('bench wiped to empty tree after failed assembly', {
       bench_path: ws.benchPath,
       bench_branch: ws.benchBranch,

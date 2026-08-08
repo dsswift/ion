@@ -26,6 +26,7 @@ import { assembleBench } from '../integration/bench-assemble'
 import { forgetRecordingsForBranches } from '../integration/bench-recording-recovery'
 import { captureContribution } from '../integration/bench-snapshot'
 import { makeWorkspace, makeMember } from '../integration/bench-store'
+import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
 import type { IntegrationWorkspace, IntegrationMember } from '../../shared/types'
 
 function git(cwd: string, ...args: string[]): string {
@@ -177,4 +178,4 @@ describe('forgetRecordingsForBranches', () => {
     expect(execFileSync('cat', [join(ws.benchPath, 'node_modules', '.probe')], { encoding: 'utf-8' }))
       .toBe('expensive build output\n')
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
