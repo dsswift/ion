@@ -123,6 +123,11 @@ enum RemoteEvent: Sendable {
     /// message is already part of the conversation. See the Go-side
     /// SteerInjectedEvent and the TS engine_steer_injected variant.
     case engineSteerInjected(tabId: String, instanceId: String?, messageLength: Int)
+    /// ctx.steerSelf found no owning run to steer and delivered its message as
+    /// a fresh prompt instead. The delivery is distinct from engineSteerInjected:
+    /// no run-loop checkpoint drained it. Clients may render the same
+    /// confirmation without mutating any live-steer pending-bubble state.
+    case engineSteerDegraded(tabId: String, instanceId: String?, messageLength: Int)
     /// An extension injected a prompt via ctx.sendPrompt (dispatch-completion
     /// delivery, check-ins, revives): the engine started a run on a user turn
     /// no client submitted, so no client did an optimistic insert. Clients
@@ -546,6 +551,7 @@ enum RemoteEvent: Sendable {
         case engineToolStalled = "desktop_tool_stalled"
         case engineRunStalled = "desktop_run_stalled"
         case engineSteerInjected = "desktop_steer_injected"
+        case engineSteerDegraded = "desktop_steer_degraded"
         case enginePromptInjected = "desktop_prompt_injected"
         // Extended-thinking events (issue #158). The desktop forwards the
         // engine's thinking_block_start / thinking_delta / thinking_block_end
@@ -705,6 +711,10 @@ enum RemoteEvent: Sendable {
         // engine_steer_injected — mid-turn steer drain confirmation.
         // Mirrors EngineEvent.SteerMessageLength's JSON tag.
         case steerMessageLength
+        // engine_steer_degraded — ctx.steerSelf accepted a fresh prompt
+        // because no owning run was live. Mirrors EngineEvent's dedicated
+        // SteerDegradedMessageLength JSON tag.
+        case steerDegradedMessageLength
         // engine_prompt_injected — extension-injected prompt (the run's user
         // turn no client submitted). Mirror EngineEvent.InjectedPrompt /
         // InjectedPromptOrigin JSON tags.

@@ -78,6 +78,12 @@ extension RemoteEvent {
             let messageLength = try container.decode(Int.self, forKey: .steerMessageLength)
             return .engineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength)
 
+        case .engineSteerDegraded:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            let messageLength = try container.decode(Int.self, forKey: .steerDegradedMessageLength)
+            return .engineSteerDegraded(tabId: tabId, instanceId: instanceId, messageLength: messageLength)
+
         case .enginePromptInjected:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)

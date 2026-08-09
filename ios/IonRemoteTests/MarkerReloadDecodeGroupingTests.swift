@@ -161,6 +161,7 @@ final class MarkerReloadDecodeGroupingTests: XCTestCase {
         XCTAssertEqual(msg.role, .system)
         XCTAssertEqual(msg.content, "──")
         XCTAssertEqual(msg.markerKind, "steer")
+        XCTAssertEqual(msg.markerMessageLength, 42)
         // Steer carries no plan path.
         XCTAssertNil(msg.planFilePath)
 

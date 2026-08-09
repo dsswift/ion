@@ -129,6 +129,8 @@ extension DiagnosticLog {
             log("EVENT: engineRunStalled tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") stalledFor=\(Int(stalledDuration))s lastActivity=\(lastActivity ?? "nil")", tag: "session", level: .info)
         case .engineSteerInjected(let tabId, let instId, let messageLength):
             log("EVENT: engineSteerInjected tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") messageLength=\(messageLength)", tag: "session", level: .info)
+        case .engineSteerDegraded(let tabId, let instId, let messageLength):
+            log("EVENT: engineSteerDegraded tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") messageLength=\(messageLength)", tag: "session", level: .info)
 
         case .enginePromptInjected(let tabId, let instId, let prompt, let origin, let kind, let machineAuthored):
             log("EVENT: enginePromptInjected tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") len=\(prompt.count) origin=\(origin ?? "") kind=\(kind ?? "") machineAuthored=\(machineAuthored ?? false)", tag: "session", level: .info)

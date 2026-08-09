@@ -121,6 +121,12 @@ extension SessionViewModel {
         // hand-copied kind lists that had drifted: this one filtered two kinds
         // while the live filter filtered three, so a slash_command injection was
         // hidden while streaming and then appeared on history reload.
+        //
+        // A degraded self-steer needs no case here either. Its turn carries
+        // whatever kind the caller supplied — `checkin` for a heartbeat — and is
+        // judged by that classification like any other. The steer MARKER the
+        // engine persists beside it arrives as its own row and becomes the
+        // divider, matching the live `engine_steer_injected` event.
         let filtered = newMessages.filter { !InjectionPolicy.suppresses($0) }
         let incoming = deduplicateMessages(filtered)
         let incomingIds = Set(incoming.map { $0.id })

@@ -231,7 +231,15 @@ extension SessionViewModel {
         case .engineSteerInjected(let tabId, let instanceId, let messageLength):
             handleEngineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength)
 
+        case .engineSteerDegraded(let tabId, let instanceId, let messageLength):
+            handleEngineSteerDegraded(tabId: tabId, instanceId: instanceId, messageLength: messageLength)
+
         case .enginePromptInjected(let tabId, let instanceId, let prompt, _, let kind, let machineAuthored):
+            // A degraded self-steer needs no case here: the engine emits
+            // `engine_steer_degraded` alongside this event, so the divider is
+            // appended by that handler. This arm only decides whether the TURN
+            // renders, and a machine-authored one does not.
+            //
             // A machine-to-machine injection is not a turn the user authored —
             // a dispatch callback, a background command's result, a scheduled
             // check-in, or the expanded body of a slash command whose display

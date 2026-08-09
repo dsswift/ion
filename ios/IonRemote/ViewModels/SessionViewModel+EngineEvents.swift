@@ -116,30 +116,9 @@ extension SessionViewModel {
 
     @MainActor
     func handleEngineSteerInjected(tabId: String, instanceId: String?, messageLength: Int) {
-        // Engine drained a mid-turn steer into the conversation. Mirror
-        // the desktop's "Steer applied" divider so the user sees
-        // confirmation across both clients. messageLength is included so
-        // the user can tell a short nudge from a long steer at a glance.
-        // The engine may emit this multiple times per turn (between
-        // turns, before end_turn exit, after tool results); each capture
-        // produces its own divider so the count is visible.
-        let time = Date()
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h:mm a"
-        let timeStr = formatter.string(from: time)
-        let content = "── Steer applied at \(timeStr) · \(messageLength) chars ──"
+        // A live run-loop drain resolves the oldest optimistic pending steer,
+        // then appends its divider at the actual application point.
         let dividerId = UUID().uuidString
-        // Pair the divider with the optimistic bubble this steer resolves so
-        // the grouping pass can relocate the bubble out of its send position
-        // and re-emit it directly after the divider — the point where the
-        // steer actually took effect. Resolution is FIFO against the oldest
-        // still-pending bubble: the engine's steer channel drains in order and
-        // emits one steer_injected per message, so one event resolves exactly
-        // ONE bubble. Desktop parity: the steer_injected arm in event-slice.ts.
-        //
-        // Routed by instanceId the same way appendLiveMessage routes the
-        // divider below, so the bubble and its divider always land on the
-        // same instance.
         let resolvePendingSteer: (inout [Message]) -> Void = { msgs in
             if let idx = msgs.firstIndex(where: { $0.steerPending }) {
                 msgs[idx].steerPending = false
@@ -152,8 +131,25 @@ extension SessionViewModel {
         } else {
             mutateConversationMessages(tabId: tabId) { resolvePendingSteer(&$0) }
         }
-        var msg = Message(id: dividerId, role: .system, content: content, timestamp: time.timeIntervalSince1970 * 1000)
-        // RC-11: steer dividers appear mid-run; preserve in the live tail.
+        appendSteerDivider(tabId: tabId, instanceId: instanceId, messageLength: messageLength, dividerId: dividerId)
+    }
+
+    @MainActor
+    func handleEngineSteerDegraded(tabId: String, instanceId: String?, messageLength: Int) {
+        // No owning run was live, so there is no pending live steer to resolve.
+        // Appending through the shared builder preserves the exact divider shape
+        // without mutating unrelated optimistic user input.
+        appendSteerDivider(tabId: tabId, instanceId: instanceId, messageLength: messageLength, dividerId: UUID().uuidString)
+    }
+
+    @MainActor
+    private func appendSteerDivider(tabId: String, instanceId: String?, messageLength: Int, dividerId: String) {
+        let time = Date()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        let content = "── Steer applied at \(formatter.string(from: time)) · \(messageLength) chars ──"
+        let msg = Message(id: dividerId, role: .system, content: content, timestamp: time.timeIntervalSince1970 * 1000)
+        // Steer dividers appear while a run may still be live; preserve in tail.
         appendLiveMessage(tabId: tabId, instanceId: instanceId, msg)
     }
 

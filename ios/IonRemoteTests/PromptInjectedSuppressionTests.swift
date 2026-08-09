@@ -48,6 +48,61 @@ final class PromptInjectedSuppressionTests: XCTestCase {
             "agent_completion is a machine-to-machine dispatch callback and must not render as a user message")
     }
 
+    /// The reported defect: an ion-dev idle check-in reached the transcript as a
+    /// user message. It arrives via ctx.steerSelf, which degrades to a fresh
+    /// prompt when no run is live; that fallback used to be unclassified
+    /// (kind=""), so every suppression check fell through.
+    ///
+    /// Now it carries the caller's kind and is suppressed as the machine turn it
+    /// is. The divider for it does not come from this event — the engine emits
+    /// `engine_steer_degraded` alongside — so this pins only that the TURN never
+    /// renders as a user bubble.
+    func testDegradedSelfSteerTurnIsSuppressed() {
+        let vm = SessionViewModel()
+        seedTab(vm, id: "t")
+        let checkIn = "[SYSTEM] Dispatch check-in\n\nYou have been idle for ~10 minutes."
+        vm.handleEvent(.enginePromptInjected(
+            tabId: "t", instanceId: nil, prompt: checkIn, origin: "ion-dev",
+            kind: "checkin", machineAuthored: true))
+
+        XCTAssertTrue(vm.conversationMessages("t").isEmpty,
+            "a degraded self-steer must never render as a user message — that is the reported bug")
+    }
+
+    /// The divider half, from the event the engine emits on the degraded arm.
+    /// Together with the test above this pins the full rendering: one divider,
+    /// zero user bubbles.
+    func testDegradedSelfSteerDividerDoesNotResolvePendingLiveSteer() {
+        let vm = SessionViewModel()
+        seedTab(vm, id: "t")
+        var pending = Message(id: "pending", role: .user, content: "user steer", timestamp: 1)
+        pending.steerPending = true
+        vm.setConversationMessages(tabId: "t", [pending])
+
+        vm.handleEvent(.engineSteerDegraded(tabId: "t", instanceId: nil, messageLength: 42))
+
+        let msgs = vm.conversationMessages("t")
+        XCTAssertEqual(msgs.count, 2, "the degraded delivery adds exactly one divider")
+        XCTAssertTrue(msgs[0].steerPending, "degraded delivery must not resolve unrelated live pending steer state")
+        XCTAssertFalse(msgs[0].steerApplied)
+        XCTAssertEqual(msgs[1].role, .system)
+        XCTAssertTrue(msgs[1].content.contains("Steer applied"), "got: \(msgs[1].content)")
+    }
+
+    /// The desktop and iOS must agree on which kinds are machine-to-machine.
+    /// A kind suppressed on one client and rendered on the other is the parity
+    /// defect this whole class exists to prevent.
+    func testBackgroundTaskCompletionKindIsSuppressed() {
+        let vm = SessionViewModel()
+        seedTab(vm, id: "t")
+        vm.handleEvent(.enginePromptInjected(
+            tabId: "t", instanceId: nil,
+            prompt: "Background command bash-1 (failed).\nExit code: 7",
+            origin: "", kind: "background_task_completion", machineAuthored: true))
+        XCTAssertTrue(vm.conversationMessages("t").isEmpty,
+            "background_task_completion reports an exit code to the model and must not render as a user message")
+    }
+
     func testEmptyKindRendersAsUserTurn() {
         let vm = SessionViewModel()
         seedTab(vm, id: "t")
