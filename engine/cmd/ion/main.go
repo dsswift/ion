@@ -48,6 +48,8 @@ func main() {
 		cmdInstallAssets()
 	case "plugin":
 		cmdPlugin(positional)
+	case "auth":
+		cmdAuth(positional, flags)
 	case "mcp":
 		cmdMcp(positional, flags, listFlags)
 	case "version":
@@ -81,6 +83,7 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "  record --output          Record session to NDJSON")
 	fmt.Fprintln(os.Stderr, "  rpc                      JSON-RPC over stdin/stdout")
 	fmt.Fprintln(os.Stderr, "  upgrade                  Upgrade to latest release")
+	fmt.Fprintln(os.Stderr, "  auth verify              Verify configured workload identity")
 	fmt.Fprintln(os.Stderr, "  mcp <sub>                Manage MCP servers (add|list|remove|login|logout)")
 	fmt.Fprintln(os.Stderr, "  install-assets           Install the extension SDK to ~/.ion")
 	fmt.Fprintln(os.Stderr, "  plugin install <owner/repo>  Install a plugin")

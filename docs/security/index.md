@@ -44,5 +44,5 @@ A minimal local setup might use no security features at all. A managed enterpris
 - [Permissions](permissions.md) -- permission modes, rules, and evaluation order
 - [Dangerous patterns](dangerous-patterns.md) -- risky command detection and customization
 - [Sandbox](sandbox.md) -- OS-level process isolation
-- [Secret redaction](secret-redaction.md) -- credential stripping from tool output
+- [Machine identity](../deployment/machine-identity.md) -- engine-owned OAuth, cloud metadata, federation, and AWS SigV4 credentials for headless workloads
 - [Audit logging](audit.md) -- permission decision records

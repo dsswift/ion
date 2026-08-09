@@ -2,35 +2,41 @@ package auth
 
 import "sync"
 
-// Package-level operator identity registry.
-//
-// The IdentityManager is constructed once at serve startup (from
-// auth.identityProvider in engine.json) and consumed across subsystems that
-// cannot all be reached by constructor injection without threading the
-// manager through every layer: the extension SDK's pre-authenticated HTTP
-// surface, per-server MCP token forwarding, and authenticated log egress.
-// This mirrors the established package-level injection pattern used for
-// cross-cutting engine singletons (providers.SetProviderKey,
-// titling.SetAuthResolver).
-
+// Package-level credential registries. Bearer and AWS providers are separate
+// because AWS credentials authorize a signature operation, not bearer export.
 var (
-	operatorMu sync.RWMutex
-	operator   *IdentityManager
+	providerMu    sync.RWMutex
+	tokenProvider TokenProvider
+	awsProvider   AWSCredentialsProvider
 )
 
-// SetOperator installs the process-wide operator identity manager. Call
-// once at serve startup; nil clears it (used by tests).
-func SetOperator(m *IdentityManager) {
-	operatorMu.Lock()
-	operator = m
-	operatorMu.Unlock()
+func SetTokenProvider(provider TokenProvider) {
+	providerMu.Lock()
+	tokenProvider = provider
+	providerMu.Unlock()
+}
+func CurrentTokenProvider() TokenProvider {
+	providerMu.RLock()
+	defer providerMu.RUnlock()
+	return tokenProvider
+}
+func SetAWSCredentialsProvider(provider AWSCredentialsProvider) {
+	providerMu.Lock()
+	awsProvider = provider
+	providerMu.Unlock()
+}
+func CurrentAWSCredentialsProvider() AWSCredentialsProvider {
+	providerMu.RLock()
+	defer providerMu.RUnlock()
+	return awsProvider
 }
 
-// Operator returns the process-wide operator identity manager, or nil when
-// no identity provider is configured. Callers must nil-check and surface a
-// clear "no operator identity configured" error to their consumer.
-func Operator() *IdentityManager {
-	operatorMu.RLock()
-	defer operatorMu.RUnlock()
-	return operator
+// Internal compatibility aliases for existing tests and callers.
+func SetOperator(manager *IdentityManager) {
+	if manager == nil {
+		SetTokenProvider(nil)
+		return
+	}
+	SetTokenProvider(manager)
 }
+func Operator() TokenProvider { return CurrentTokenProvider() }

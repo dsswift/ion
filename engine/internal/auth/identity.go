@@ -46,9 +46,6 @@ type TokenProvider interface {
 	// audience/resource. Empty audience falls back to the provider's
 	// configured default.
 	GetTokenWithAudience(ctx context.Context, scope, audience string) (string, error)
-	// Identity returns the signed-in operator's identity claims, or nil
-	// when no operator is signed in.
-	Identity() *OperatorIdentity
 }
 
 // OperatorIdentity carries the identity claims of the signed-in operator,
@@ -100,6 +97,11 @@ type IdentityManager struct {
 	fs       *FileStore
 
 	refreshThreshold time.Duration
+
+	// refreshMu serializes the full stored-refresh-token transaction. Providers
+	// may rotate a refresh token on every use; concurrent scoped requests must
+	// not both spend the same old token and strand the durable identity.
+	refreshMu sync.Mutex
 
 	mu sync.Mutex
 	// scopeCache holds minted access tokens keyed by scope+audience.
@@ -471,6 +473,18 @@ func (m *IdentityManager) GetTokenWithAudience(ctx context.Context, scope, audie
 
 	m.mu.Lock()
 	cached, ok := m.scopeCache[key]
+	m.mu.Unlock()
+	if ok && m.tokenFresh(cached) {
+		return cached.AccessToken, nil
+	}
+
+	// Serialize load → refresh → rotation persistence → cache publication.
+	// Re-check after acquiring the lock because another waiter may have minted
+	// this exact resource while this goroutine was blocked.
+	m.refreshMu.Lock()
+	defer m.refreshMu.Unlock()
+	m.mu.Lock()
+	cached, ok = m.scopeCache[key]
 	m.mu.Unlock()
 	if ok && m.tokenFresh(cached) {
 		return cached.AccessToken, nil

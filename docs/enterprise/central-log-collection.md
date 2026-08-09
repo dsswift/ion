@@ -189,7 +189,7 @@ share and `logging.egressClientShipSources` the managing client's — each an ar
 `engine` / `desktop` / `ios` / `telemetry`. The engine has its own file tailer, so a
 deployment can equally make the **engine** the sole collection point (headless hosts always
 work this way), split the sources between surfaces, or keep the legacy desktop-ships-all
-model. Both forwarders authenticate with the engine-owned operator token: the engine mints
+model. Both forwarders authenticate with the engine-owned identity provider: operator installations mint from the durable operator grant, while headless hosts mint from configured machine bearer credentials. The engine mints
 per flush (`logging.egressTokenScope`); the client pulls ephemeral tokens over the wire
 (`oidc_token`). The desktop's OTLP output
 is byte-shape identical to the engine's for the same record (see the

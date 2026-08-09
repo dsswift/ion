@@ -256,9 +256,8 @@ function buildContext(ctxData: any): IonContext {
       }
     },
     // Pre-authenticated outbound HTTP. Each verb funnels into the single
-    // ext/http_request RPC; the engine mints the operator token for the
-    // declared scope and injects the Authorization header. The token never
-    // reaches this process.
+    // ext/http_request RPC; the engine applies bearer or SigV4 authentication.
+    // Raw credentials never reach this process.
     http: (() => {
       const doRequest = async (
         method: string,
@@ -270,6 +269,8 @@ function buildContext(ctxData: any): IonContext {
           url,
           scope: opts?.scope || '',
           audience: opts?.audience || '',
+          awsService: opts?.awsService || '',
+          awsRegion: opts?.awsRegion || '',
           headers: opts?.headers || undefined,
           body: opts?.body || '',
           timeoutMs: opts?.timeoutMs || 0,

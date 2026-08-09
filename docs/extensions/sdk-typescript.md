@@ -258,7 +258,7 @@ if (res.status === 200) {
 }
 ```
 
-**Operator-token injection.** The request is made *as the signed-in operator*: the engine mints an access token for the scope the extension declares (from the operator's OIDC grant) and sets it as the `Authorization` header. The raw token never crosses into extension code — the request options carry no credential, and the response carries only `status`, `headers`, and `body`. Any `Authorization` header you supply in `opts.headers` is reserved and overwritten by the engine-minted token. The call fails with a clear error when no operator identity is configured or the operator is signed out.
+**Engine-owned identity injection.** The request uses the configured operator or machine identity. OAuth/OIDC sources inject a bearer token for the declared `scope`/`audience`; AWS workload sources sign the request with SigV4 when `awsService` and `awsRegion` are supplied. Raw credentials never cross into extension code — request options carry no credential, and responses carry only `status`, `headers`, and `body`. Any extension-supplied `Authorization` header is overwritten. The call fails clearly when no compatible provider is configured. See [Machine identity](../deployment/machine-identity.md).
 
 **SSRF / private-network policy.** By default the request is rejected if the target host resolves to a private or reserved address (`blocked: private/reserved address ...`). An operator-installed extension that legitimately needs to reach an intranet API sets `allowPrivateNetwork: true` to opt this single request out of the guard. Only `http` and `https` targets are allowed; other schemes are rejected.
 
@@ -266,6 +266,8 @@ if (res.status === 200) {
 interface IonHttpRequestOptions {
   scope?: string                       // downstream token scope (e.g. 'api://<app-id>/Billing.Read')
   audience?: string                    // explicit token audience/resource (Auth0, RFC 8707)
+  awsService?: string                   // selects AWS SigV4 instead of bearer auth
+  awsRegion?: string                    // required SigV4 credential-scope region
   headers?: Record<string, string>     // Authorization is reserved and overwritten
   body?: string                        // request body, sent verbatim
   timeoutMs?: number                   // request deadline (default 30000)
@@ -333,7 +335,7 @@ transaction: the prompt, the engine's turns and tool calls, your API, and its de
 Application Insights the trace-id becomes the `operation_Id`, so the end-to-end transaction view
 works with no mapping.
 
-This composes with `ctx.http` above: the engine authenticates the call as the signed-in operator
+This composes with `ctx.http` above: the engine authenticates the call using the configured operator or machine identity
 while the `traceparent` you set carries the correlation, so an extension gets authenticated,
 traced egress without handling a token or minting a trace identity of its own.
 

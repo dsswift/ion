@@ -845,7 +845,7 @@ Request the current operator identity snapshot. Requires a configured identity p
 
 ### oidc_token
 
-Mint a short-lived access token for the requested scope and return it in the result payload — **requester-only delivery, never broadcast**. This is the seam that lets a trusted local client authenticate downstream calls without owning the grant: the refresh token never leaves the engine; clients pull ephemeral access tokens on demand. Requires a configured identity provider and a signed-in operator.
+Mint a short-lived access token for the requested scope and return it in the result payload — **requester-only delivery, never broadcast**. This trusted-client seam resolves through either a signed-in operator grant or the configured machine bearer provider. Durable grants and machine credentials remain inside the engine. Interactive login/identity commands above remain operator-only; the existing `oidc_token` command name is retained for wire compatibility.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|

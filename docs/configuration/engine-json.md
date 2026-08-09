@@ -337,6 +337,7 @@ Authentication and credential management.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
+| `identityProvider` | string | `""` | Key in `oauth` used for operator or machine identity brokering. |
 | `oauth` | object | `{}` | Map of provider ID to OAuth configuration. |
 | `secureStore` | object | `null` | Credential storage backend configuration. |
 | `cacheTtlMs` | int64 | `0` | How long to cache resolved credentials (milliseconds). |
@@ -352,6 +353,33 @@ Authentication and credential management.
 | `scopes` | string[] | Requested scopes. |
 | `usePkce` | bool | Enable PKCE. |
 | `redirectUri` | string | Redirect URI. |
+
+| `issuerUrl` | string | OIDC issuer used to discover endpoints. Explicit endpoint fields win. |
+| `audience` | string | Default token audience/resource. |
+| `audienceParameter` | string | `"audience"` (default) or RFC 8707 `"resource"`. |
+| `machineIdentity` | object | Optional non-interactive identity source. Presence switches this selected provider from operator login to machine identity. See [Machine identity](../deployment/machine-identity.md). |
+
+### Machine identity fields
+
+| Field | Type | Description |
+|---|---|---|
+| `source` | string | `client_secret`, `certificate`, `federated_assertion`, `azure_managed_identity`, `gcp_managed_identity`, `aws`, or `credential_process`. |
+| `clientSecretEnv` | string | Client-secret environment variable, captured and removed before subprocess launch. |
+| `clientSecretFile` | string | Client-secret file path; mutually exclusive with `clientSecretEnv`. |
+| `certificatePath` | string | PEM X.509 certificate path. May also contain its private key. |
+| `certificateKeyPath` | string | Optional separate PEM private-key path. |
+| `federatedTokenFile` | string | Rotating projected assertion path. |
+| `azure.clientId` | string | Optional user-assigned Azure identity client ID. |
+| `gcp.serviceAccount` | string | GCP attached service account; defaults to `default`. |
+| `gcp.tokenType` | string | `access_token` (default) or `id_token`. |
+| `aws.kind` | string | Explicit AWS source: `imds`, `ecs`, `eks`, `irsa`, or `env`. |
+| `aws.roleArn` | string | IRSA role ARN; falls back to `AWS_ROLE_ARN`. |
+| `aws.region` | string | STS/signing region. |
+| `aws.stsEndpoint` | string | Optional STS endpoint override. |
+| `credentialProcess.command` | string[] | Absolute executable path followed by arguments. No shell expansion. |
+| `credentialProcess.timeoutMs` | int64 | Bounded helper deadline. |
+
+Machine credentials stay engine-owned. OAuth access tokens and AWS temporary credentials are cached only in memory. Managed/federated sources persist no secret.
 
 ### Secure store fields
 

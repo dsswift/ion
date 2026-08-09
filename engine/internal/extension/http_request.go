@@ -4,12 +4,11 @@
 // surfaces: the Go Context.HTTPRequest field (third-party Go harnesses) and
 // the ext/http_request JSON-RPC method (the TypeScript SDK's ctx.http.*).
 //
-// The engine performs the request and injects the signed-in operator's
-// bearer token for the scope the extension declares. The raw token never
-// crosses into extension code: the request params carry no token, and the
-// response carries only status/headers/body. This is the safe-wrapper
-// contract — extensions get "make this call as the operator," not "hand me
-// the operator's credential."
+// The engine performs the request and injects the configured identity's
+// bearer token or AWS SigV4 signature. Raw credentials never
+// crosses into extension code: request params carry no token and response
+// carries only status/headers/body. This safe-wrapper contract gives
+// extensions an authenticated call, never a credential.
 package extension
 
 import (
@@ -46,12 +45,16 @@ type OperatorHTTPRequestParams struct {
 	// the resource in the scope string. Empty uses the provider's
 	// configured default audience.
 	Audience string `json:"audience,omitempty"`
+	// AwsService opts this request into AWS Signature V4. AwsRegion is required
+	// with it. Empty AwsService uses configured OAuth bearer authentication.
+	AwsService string `json:"awsService,omitempty"`
+	AwsRegion  string `json:"awsRegion,omitempty"`
 	// Method is the HTTP method; defaults to GET.
 	Method string `json:"method,omitempty"`
 	// URL is the absolute http(s) target.
 	URL string `json:"url"`
 	// Headers are extension-supplied request headers. Authorization is
-	// reserved: the engine overwrites it with the minted operator token.
+	// reserved: engine-owned authentication always overwrites it.
 	Headers map[string]string `json:"headers,omitempty"`
 	// Body is the request body (sent for methods that carry one).
 	Body string `json:"body,omitempty"`
@@ -75,14 +78,9 @@ type OperatorHTTPResponse struct {
 	Body    string            `json:"body"`
 }
 
-// DoOperatorHTTPRequest validates the request, mints the operator token for
-// the declared scope, performs the call, and returns the bounded response.
+// DoOperatorHTTPRequest validates and performs an engine-authenticated request
+// while preserving its published Go API name.
 func DoOperatorHTTPRequest(ctx context.Context, params OperatorHTTPRequestParams) (*OperatorHTTPResponse, error) {
-	op := auth.Operator()
-	if op == nil {
-		return nil, fmt.Errorf("no operator identity configured (set auth.identityProvider in engine.json)")
-	}
-
 	if params.URL == "" {
 		return nil, fmt.Errorf("url is required")
 	}
@@ -126,28 +124,47 @@ func DoOperatorHTTPRequest(ctx context.Context, params OperatorHTTPRequestParams
 		req.Header.Set(k, v)
 	}
 
-	// Mint the token for the declared scope and inject it. This always
-	// overwrites any extension-supplied Authorization header: carrying
-	// credentials is the wrapper's job, never the extension's.
-	token, err := op.GetTokenWithAudience(reqCtx, params.Scope, params.Audience)
-	if err != nil {
-		utils.LogWithFields(utils.LevelError, "extension.http", "operator token mint failed", map[string]any{
-			"scope":    params.Scope,
-			"audience": params.Audience,
-			"url":      params.URL,
-			"error":    err.Error(),
-		})
-		return nil, fmt.Errorf("operator token for scope %q: %w", params.Scope, err)
+	// Authentication stays inside the engine. A request selects exactly one
+	// strategy: SigV4 when awsService is set, otherwise the configured bearer
+	// provider. Both overwrite any extension-supplied Authorization header.
+	bodyBytes := []byte(params.Body)
+	var authenticator auth.RequestAuthenticator
+	if params.AwsService != "" {
+		authenticator = auth.SigV4Authenticator{
+			Provider: auth.CurrentAWSCredentialsProvider(), Service: params.AwsService, Region: params.AwsRegion,
+		}
+	} else {
+		authenticator = auth.BearerAuthenticator{
+			Provider: auth.CurrentTokenProvider(), Scope: params.Scope, Audience: params.Audience,
+		}
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	// Remove extension-provided Authorization before either strategy runs. For
+	// SigV4, leaving it present would include the attacker-controlled value in
+	// SignedHeaders and then overwrite it with the signature, producing a request
+	// AWS can never verify.
+	req.Header.Del("Authorization")
+	if err := authenticator.Authenticate(reqCtx, req, bodyBytes); err != nil {
+		utils.LogWithFields(utils.LevelError, "extension.http", "request authentication failed", map[string]any{
+			"scope": params.Scope, "audience": params.Audience, "aws_service": params.AwsService,
+			"aws_region": params.AwsRegion, "url": params.URL, "error": err.Error(),
+		})
+		return nil, fmt.Errorf("authenticate request: %w", err)
+	}
 
-	utils.LogWithFields(utils.LevelInfo, "extension.http", "operator http request", map[string]any{
+	utils.LogWithFields(utils.LevelInfo, "extension.http", "authenticated http request", map[string]any{
 		"method": method,
 		"url":    params.URL,
 		"scope":  params.Scope,
 	})
 
-	resp, err := network.GetHTTPClient().Do(req)
+	requestTransport := network.GetHTTPTransport().Clone()
+	requestClient := &http.Client{
+		Transport: requestTransport,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	resp, err := requestClient.Do(req)
 	if err != nil {
 		if reqCtx.Err() != nil {
 			return nil, fmt.Errorf("request timed out after %s", timeout)

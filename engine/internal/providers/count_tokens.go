@@ -242,7 +242,7 @@ func (p *bedrockProvider) CountTokens(ctx context.Context, req CountTokensReques
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	if err := p.signV4(httpReq, raw); err != nil {
+	if err := p.signRequest(ctx, httpReq, raw); err != nil {
 		return 0, NewProviderError(ErrAuth, fmt.Sprintf("AWS signing failed: %v", err), 0, false)
 	}
 

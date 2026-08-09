@@ -218,23 +218,25 @@ func Connect(name string, config types.McpServerConfig) (*Connection, error) {
 		}
 	}
 
-	// Operator-token forwarding (config.forwardUserToken): resolve the
-	// signed-in operator's bearer token for this server's declared scope.
-	// The closure defers resolution to request time so long-lived
-	// connections ride the identity manager's cache + silent refresh
-	// instead of pinning a connect-time token.
-	var userToken func() (string, error)
-	if config.ForwardUserToken {
+	// Brokered identity-token forwarding. Generic fields take precedence; the
+	// published user-token names remain permanent compatibility aliases.
+	var identityToken func() (string, error)
+	if config.ForwardIdentityToken || config.ForwardUserToken {
 		scope := config.UserTokenScope
 		audience := config.UserTokenAudience
-		userToken = func() (string, error) {
-			op := auth.Operator()
-			if op == nil {
-				return "", fmt.Errorf("forwardUserToken configured but no operator identity is available (set auth.identityProvider in engine.json and sign in)")
+		if config.ForwardIdentityToken {
+			scope = config.IdentityTokenScope
+			audience = config.IdentityTokenAudience
+		}
+		identityToken = func() (string, error) {
+			provider := auth.CurrentTokenProvider()
+			if provider == nil {
+				return "", fmt.Errorf("identity-token forwarding configured but no bearer provider is available (set auth.identityProvider in engine.json)")
 			}
-			return op.GetTokenWithAudience(context.Background(), scope, audience)
+			return provider.GetTokenWithAudience(context.Background(), scope, audience)
 		}
 	}
+	userToken := identityToken
 
 	switch config.Type {
 	case "stdio", "":
