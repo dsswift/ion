@@ -178,7 +178,7 @@ describe('auto-fix close refreshes the worktree surfaces it changed', () => {
     expect(refreshWorkspaceViews).toHaveBeenCalledWith('/repo')
   })
 
-  it('resolves the repo from the bench record when the fix ran in a bench', () => {
+  it('resolves the repo from the bench record when the fix ran in a bench', async () => {
     // A bench auto-fix runs IN the bench directory, which is not a repo root and
     // carries no worktree metadata — the bench record is the only source.
     const refreshWorkspaceViews = vi.fn(async () => {})
@@ -189,7 +189,26 @@ describe('auto-fix close refreshes the worktree surfaces it changed', () => {
       refreshWorkspaceViews,
     })
     maybeCloseAutoFixTab('fix-tab', evidence(), get as never)
-    vi.advanceTimersByTime(1500)
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(refreshWorkspaceViews).toHaveBeenCalledWith('/repo')
+  })
+
+  it('reconciles a successful bench auto-fix before refreshing its row', async () => {
+    const benchReconcileResolution = vi.fn(async () => ({ reconciled: true }))
+    ;(globalThis as unknown as { window: { ion: { benchReconcileResolution: typeof benchReconcileResolution } } })
+      .window = { ion: { benchReconcileResolution } }
+    const refreshWorkspaceViews = vi.fn(async () => {})
+    const get = makeState({
+      workingDirectory: '/ion/integration/ion-josh',
+      worktreeRepoPath: null,
+      benchWorkspaces: new Map([['/repo', [{ benchPath: '/ion/integration/ion-josh' }]]]),
+      refreshWorkspaceViews,
+    })
+    maybeCloseAutoFixTab('fix-tab', evidence(), get as never)
+    await vi.advanceTimersByTimeAsync(1500)
+
+    expect((window.ion.benchReconcileResolution as ReturnType<typeof vi.fn>))
+      .toHaveBeenCalledWith('/ion/integration/ion-josh')
     expect(refreshWorkspaceViews).toHaveBeenCalledWith('/repo')
   })
 

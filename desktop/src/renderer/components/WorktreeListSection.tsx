@@ -263,9 +263,8 @@ export function WorktreeListSection({
   }, [active, repoPath, run])
 
   return (
-    // `flex: 1` so the scroll viewport is the pane body rather than the content
-    // height, and `overflowX: hidden` so no row can reintroduce sideways scroll.
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflowX: 'hidden', overflowY: 'auto' }}>
+    // Bench state and controls stay visible. Rows use dedicated viewport below.
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
       {active && (
         <BenchBar
           workspaces={benches}
@@ -315,6 +314,7 @@ export function WorktreeListSection({
         />
       )}
 
+      <div data-testid="worktree-list-scroll" style={{ flex: 1, minHeight: 0, overflowX: 'hidden', overflowY: 'auto' }}>
       {/* The sync-all verb + pipeline banner. Below the bench bar (the bench
           is the headline of the section) and above the rows it acts on. */}
       <WorktreePipelinePanel
@@ -450,6 +450,7 @@ export function WorktreeListSection({
         <Plus size={10} />
         <span>New worktree</span>
       </button>
+      </div>
 
       {discardCount !== null && active && (
         <ConfirmDialog

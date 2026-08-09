@@ -281,6 +281,8 @@ export interface IonAPI extends AtvApi {
     repoPath: string, sourceBranch: string, branchNames: string[],
   ): Promise<BenchAssembleResult & { forgottenCount?: number }>
   benchRefreshStaleness(repoPath: string, sourceBranch: string): Promise<{ workspace: IntegrationWorkspace | null }>
+  /** Clear a member's resolved conflict verdict after a proven bench merge. */
+  benchReconcileResolution(directory: string): Promise<{ reconciled: boolean }>
   /** Base staleness: has the feature branch moved ahead of this worktree? */
   gitWorktreeBaseStatus(worktreePath: string, sourceBranch: string): Promise<{ behindCount: number; behindSubjects: string[]; needsSync: boolean; hasUncommittedChanges: boolean; appraisalFailed?: boolean }>
   gitWorktreeRetire(args: { repoPath: string; worktreePath: string; branchName: string; force?: boolean }): Promise<WorktreeMoveResult>

@@ -10,6 +10,7 @@ import {
   validateBenchResolution,
 } from './bench-resolution-validation'
 import { loadWorkspaces } from './bench-store'
+import { clearResolvedBenchConflict } from './bench-resolution-completion'
 import { recordResolution } from './bench-resolution-journal'
 
 const TAG = 'bench.merge.continue'
@@ -240,6 +241,7 @@ export async function continueBenchMerge(directory: string): Promise<ContinueRes
   // above rolls the merge back through `restoreConflict` — so a resolution
   // recorded earlier could describe history that no longer exists.
   await journalResolution(directory, captured, postHead, verification.ran && verification.ok)
+  clearResolvedBenchConflict(directory, captured.mergeHead)
 
   return { ok: true }
 }

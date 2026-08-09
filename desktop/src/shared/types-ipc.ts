@@ -223,6 +223,9 @@ export const IPC = {
   BENCH_UPDATE_ALL: 'ion:bench-update-all',
   BENCH_ASSEMBLE: 'ion:bench-assemble',
   BENCH_REFRESH_STALENESS: 'ion:bench-refresh-staleness',
+  // Reconcile a proven AI-assisted resolve-once merge with its persisted row
+  // verdict. Readiness refresh then projects corrected state without assembly.
+  BENCH_RECONCILE_RESOLUTION: 'ion:bench-reconcile-resolution',
   // Resolve-once: re-create the failed assembly merge and leave it in
   // progress so the ConflictsDialog can resolve it (and rerere record it).
   BENCH_RESOLVE_CONFLICT: 'ion:bench-resolve-conflict',
