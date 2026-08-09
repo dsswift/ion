@@ -40,6 +40,18 @@ func (a *sessionAccessor) ExtensionName() string    { return a.s.extensionName }
 func (a *sessionAccessor) ExtensionVersion() string { return a.s.extensionVersion }
 func (a *sessionAccessor) WorkingDirectory() string { return a.s.config.WorkingDirectory }
 
+// CurrentModel reports the model of the run in flight, or the conversation's
+// last model when idle; empty when the session has never run.
+//
+// Read WITHOUT taking m.mu, matching every sibling accessor above. This is not
+// an oversight: NewExtContext is routinely called from paths that already hold
+// m.mu (SendPrompt holds it across injectExtensionContext), and m.mu is a
+// plain, non-reentrant RWMutex, so acquiring it here self-deadlocks the prompt
+// path. s.lastModel is a single word written under m.mu and read here for
+// context metadata; a torn read is not possible and a stale read is the same
+// benign race every other field on this accessor already accepts.
+func (a *sessionAccessor) CurrentModel() string { return a.s.lastModel }
+
 func (a *sessionAccessor) Emit(ev types.EngineEvent) { a.m.emit(a.key, ev) }
 
 func (a *sessionAccessor) SendAbort() { a.m.SendAbort(a.key) }

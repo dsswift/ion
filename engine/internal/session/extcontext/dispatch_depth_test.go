@@ -34,6 +34,7 @@ func (a *depthTestAccessor) TraceID() string          { return "" }
 func (a *depthTestAccessor) ExtensionName() string    { return "" }
 func (a *depthTestAccessor) ExtensionVersion() string { return "" }
 func (a *depthTestAccessor) WorkingDirectory() string { return "/tmp" }
+func (a *depthTestAccessor) CurrentModel() string     { return "" }
 func (a *depthTestAccessor) Emit(ev types.EngineEvent) {
 	a.mu.Lock()
 	a.events = append(a.events, ev)

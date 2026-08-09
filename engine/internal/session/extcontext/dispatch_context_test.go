@@ -33,6 +33,7 @@ func (a *dispatchContextTestAccessor) ConversationID() string    { return "conv-
 func (a *dispatchContextTestAccessor) RunID() string             { return "" }
 func (a *dispatchContextTestAccessor) TraceID() string           { return "" }
 func (a *dispatchContextTestAccessor) WorkingDirectory() string  { return "/tmp" }
+func (a *dispatchContextTestAccessor) CurrentModel() string      { return "" }
 func (a *dispatchContextTestAccessor) Emit(ev types.EngineEvent) {}
 func (a *dispatchContextTestAccessor) SendAbort()                {}
 func (a *dispatchContextTestAccessor) RootContext() context.Context {

@@ -32,6 +32,7 @@ func (a *eligibilityTestAccessor) ConversationID() string                   { re
 func (a *eligibilityTestAccessor) RunID() string                            { return "" }
 func (a *eligibilityTestAccessor) TraceID() string                          { return "" }
 func (a *eligibilityTestAccessor) WorkingDirectory() string                 { return "/tmp" }
+func (a *eligibilityTestAccessor) CurrentModel() string                     { return "" }
 func (a *eligibilityTestAccessor) Emit(_ types.EngineEvent)                 {}
 func (a *eligibilityTestAccessor) SendAbort()                               {}
 func (a *eligibilityTestAccessor) RootContext() context.Context             { return context.Background() }
@@ -39,9 +40,9 @@ func (a *eligibilityTestAccessor) SendPrompt(_, _ string, _ []string) error { re
 func (a *eligibilityTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error {
 	return nil
 }
-func (a *eligibilityTestAccessor) SteerSelfMainLoop(_ string) bool { return false }
+func (a *eligibilityTestAccessor) SteerSelfMainLoop(_ string) bool            { return false }
 func (a *eligibilityTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
-func (a *eligibilityTestAccessor) ParkSelfMainLoop() bool          { return false }
+func (a *eligibilityTestAccessor) ParkSelfMainLoop() bool                     { return false }
 func (a *eligibilityTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }

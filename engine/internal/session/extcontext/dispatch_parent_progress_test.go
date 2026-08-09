@@ -55,6 +55,7 @@ func (a *bumpCountingAccessor) ConversationID() string                   { retur
 func (a *bumpCountingAccessor) RunID() string                            { return "" }
 func (a *bumpCountingAccessor) TraceID() string                          { return "" }
 func (a *bumpCountingAccessor) WorkingDirectory() string                 { return "/tmp" }
+func (a *bumpCountingAccessor) CurrentModel() string                     { return "" }
 func (a *bumpCountingAccessor) Emit(_ types.EngineEvent)                 {}
 func (a *bumpCountingAccessor) SendAbort()                               {}
 func (a *bumpCountingAccessor) SendPrompt(_, _ string, _ []string) error { return nil }

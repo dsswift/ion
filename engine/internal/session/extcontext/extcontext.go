@@ -10,6 +10,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
+	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/resource"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -37,6 +38,7 @@ type SessionAccessor interface {
 	// ExtensionName to attribute dispatch.agent spans with "extension_version".
 	ExtensionVersion() string
 	WorkingDirectory() string
+	CurrentModel() string
 	Emit(ev types.EngineEvent)
 	SendAbort()
 
@@ -458,6 +460,10 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 		},
 	}
 
+	if model := sa.CurrentModel(); model != "" {
+		ctx.Model = modelRefFor(model)
+	}
+
 	// Wire process lifecycle management.
 	if reg := sa.ProcRegistry(); reg != nil {
 		ctx.RegisterProcess = func(name string, pid int, task string) error {
@@ -669,6 +675,16 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 	ctx.DiscoverAgents = BuildDiscoverAgentsFunc(sa)
 
 	return ctx
+}
+
+// modelRefFor builds the model metadata exposed to extension hooks. Unknown
+// models retain their ID with a zero context window, matching session behavior.
+func modelRefFor(model string) *extension.ModelRef {
+	ref := &extension.ModelRef{ID: model}
+	if info := providers.GetModelInfo(model); info != nil {
+		ref.ContextWindow = info.ContextWindow
+	}
+	return ref
 }
 
 // steerSelfWithKind is the shared body behind ctx.SteerSelf and

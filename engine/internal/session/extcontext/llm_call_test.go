@@ -41,6 +41,7 @@ func (a *llmCallTestAccessor) ConversationID() string   { return "" }
 func (a *llmCallTestAccessor) RunID() string            { return "" }
 func (a *llmCallTestAccessor) TraceID() string          { return "" }
 func (a *llmCallTestAccessor) WorkingDirectory() string { return "/tmp" }
+func (a *llmCallTestAccessor) CurrentModel() string     { return "" }
 func (a *llmCallTestAccessor) Emit(ev types.EngineEvent) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -63,7 +64,7 @@ func (a *llmCallTestAccessor) RootContext() context.Context {
 func (a *llmCallTestAccessor) SendPrompt(_, _ string, _ []string) error                   { return nil }
 func (a *llmCallTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error { return nil }
 func (a *llmCallTestAccessor) SteerSelfMainLoop(_ string) bool                            { return false }
-func (a *llmCallTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
+func (a *llmCallTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool                 { return false }
 func (a *llmCallTestAccessor) ParkSelfMainLoop() bool                                     { return false }
 func (a *llmCallTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil

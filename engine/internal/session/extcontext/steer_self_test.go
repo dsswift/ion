@@ -42,6 +42,7 @@ func (a *steerSelfAccessor) ConversationID() string       { return "conv-steer" 
 func (a *steerSelfAccessor) RunID() string                { return "" }
 func (a *steerSelfAccessor) TraceID() string              { return "" }
 func (a *steerSelfAccessor) WorkingDirectory() string     { return "/tmp" }
+func (a *steerSelfAccessor) CurrentModel() string         { return "" }
 func (a *steerSelfAccessor) Emit(ev types.EngineEvent)    {}
 func (a *steerSelfAccessor) SendAbort()                   {}
 func (a *steerSelfAccessor) RootContext() context.Context { return context.Background() }

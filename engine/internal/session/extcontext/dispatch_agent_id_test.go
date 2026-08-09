@@ -87,6 +87,7 @@ func (a *idTestAccessor) ConversationID() string                                
 func (a *idTestAccessor) RunID() string                                              { return "" }
 func (a *idTestAccessor) TraceID() string                                            { return "" }
 func (a *idTestAccessor) WorkingDirectory() string                                   { return "/tmp" }
+func (a *idTestAccessor) CurrentModel() string                                       { return "" }
 func (a *idTestAccessor) SendAbort()                                                 {}
 func (a *idTestAccessor) SendPrompt(_, _ string, _ []string) error                   { return nil }
 func (a *idTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error { return nil }

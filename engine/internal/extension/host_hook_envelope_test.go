@@ -143,3 +143,30 @@ func TestBuildHookEnvelope_BaseFieldsAndPayloadMerge(t *testing.T) {
 		t.Errorf("_payload = %v, want bare-string", got)
 	}
 }
+
+// TestBuildHookEnvelope_Model pins model metadata in the hook context. Hooks
+// receive both selected model ID and context window when available, while
+// model-free contexts omit the map rather than sending an empty shape.
+func TestBuildHookEnvelope_Model(t *testing.T) {
+	h := NewHost()
+
+	withModel := h.buildHookEnvelope(&Context{
+		Model: &ModelRef{ID: "test-model", ContextWindow: 131072},
+	}, nil)
+	model, present := withModel["_ctx"].(map[string]interface{})["model"].(map[string]interface{})
+	if !present {
+		t.Fatal("model map absent, want populated model metadata")
+	}
+	if got := model["id"]; got != "test-model" {
+		t.Errorf("model.id = %v, want test-model", got)
+	}
+	if got := model["contextWindow"]; got != 131072 {
+		t.Errorf("model.contextWindow = %v, want 131072", got)
+	}
+
+	withoutModel := h.buildHookEnvelope(&Context{}, nil)
+	withoutModelCtx := withoutModel["_ctx"].(map[string]interface{})
+	if _, present := withoutModelCtx["model"]; present {
+		t.Errorf("model = %v, want omitted", withoutModelCtx["model"])
+	}
+}

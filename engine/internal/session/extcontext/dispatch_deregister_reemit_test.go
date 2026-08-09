@@ -116,6 +116,7 @@ func (a *dispatchCountSpyAccessor) ConversationID() string   { return "" }
 func (a *dispatchCountSpyAccessor) RunID() string            { return "" }
 func (a *dispatchCountSpyAccessor) TraceID() string          { return "" }
 func (a *dispatchCountSpyAccessor) WorkingDirectory() string { return "/tmp" }
+func (a *dispatchCountSpyAccessor) CurrentModel() string     { return "" }
 func (a *dispatchCountSpyAccessor) Emit(ev types.EngineEvent) {
 	a.mu.Lock()
 	a.emitted = append(a.emitted, ev)

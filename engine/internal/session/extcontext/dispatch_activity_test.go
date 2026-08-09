@@ -108,6 +108,7 @@ func (a *activityRecordingAccessor) ConversationID() string                   { 
 func (a *activityRecordingAccessor) RunID() string                            { return "" }
 func (a *activityRecordingAccessor) TraceID() string                          { return "" }
 func (a *activityRecordingAccessor) WorkingDirectory() string                 { return "/tmp" }
+func (a *activityRecordingAccessor) CurrentModel() string                     { return "" }
 func (a *activityRecordingAccessor) SendAbort()                               {}
 func (a *activityRecordingAccessor) SendPrompt(_, _ string, _ []string) error { return nil }
 func (a *activityRecordingAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error {
