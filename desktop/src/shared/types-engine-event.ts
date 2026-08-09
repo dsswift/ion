@@ -186,6 +186,8 @@ export type EngineEvent =
   // already part of the conversation. See
   // engine/internal/types/normalized_event.go (SteerInjectedEvent).
   | { type: 'engine_steer_injected'; steerMessageLength: number }
+  // No owning run was live, so ctx.steerSelf delivered a fresh prompt instead.
+  | { type: 'engine_steer_degraded'; steerDegradedMessageLength: number }
   | { type: 'engine_prompt_injected'; injectedPrompt: string; injectedPromptOrigin?: string; injectedPromptKind?: string; injectedPromptMachineAuthored?: boolean }
   // engine_run_stalled — advisory event emitted by the run-progress watchdog
   // when a run records no forward progress for longer than the configured

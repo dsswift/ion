@@ -321,6 +321,10 @@ export type RemoteEvent =
   | { type: 'desktop_tool_start'; tabId: string; instanceId?: string | null; toolName: string; toolId: string }
   | { type: 'desktop_tool_end'; tabId: string; instanceId?: string | null; toolId: string; result?: string; isError?: boolean }
   | { type: 'desktop_tool_stalled'; tabId: string; instanceId?: string | null; toolId: string; toolName: string; elapsed: number }
+  // A live run-loop checkpoint drained this steer before its next LLM call.
+  | { type: 'desktop_steer_injected'; tabId: string; instanceId?: string | null; steerMessageLength: number }
+  // No owning run was live, so ctx.steerSelf delivered a fresh prompt instead.
+  | { type: 'desktop_steer_degraded'; tabId: string; instanceId?: string | null; steerDegradedMessageLength: number }
   // desktop_prompt_injected: forwarded verbatim from engine_prompt_injected
   // by the generic engine-event forwarder in event-wiring.ts (engineToWireType
   // strips the engine_ prefix). An extension injected a prompt via

@@ -185,6 +185,9 @@ export type NormalizedEvent =
   | { type: 'compacting'; active: boolean; summary?: string; messagesBefore?: number; messagesAfter?: number; clearedBlocks?: number; strategy?: string; microOnly?: boolean }
   | { type: 'tool_stalled'; toolId: string; toolName: string; elapsed: number }
   | { type: 'steer_injected'; messageLength: number }
+  // ctx.steerSelf accepted a fresh prompt because no owning run was live.
+  // Distinct from steer_injected, which proves a live run-loop drain.
+  | { type: 'steer_degraded'; messageLength: number }
   // Extension-injected prompt (engine ctx.sendPrompt): no client submitted
   // this turn, so no client did an optimistic insert — the renderer appends
   // it as a user message. The text is also persisted as the run's user turn,

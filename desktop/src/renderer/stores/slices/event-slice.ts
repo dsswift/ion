@@ -248,6 +248,23 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               break
             }
 
+            case 'steer_degraded': {
+              // ctx.steerSelf delivered a fresh prompt because no owning run
+              // was live. Render the same confirmation divider as a live steer,
+              // but do NOT resolve an optimistic pending bubble: no live run
+              // owned one and mutating it would pair unrelated user input.
+              messages = [
+                ...messages,
+                {
+                  id: nextMsgId(),
+                  role: 'system' as const,
+                  content: formatSteerAppliedDivider(new Date(), event.messageLength),
+                  timestamp: Date.now(),
+                },
+              ]
+              break
+            }
+
             case 'prompt_injected':
               // Extension-injected prompt (engine ctx.sendPrompt — dispatch
               // completion delivery, check-ins, revives): no client submitted
@@ -263,6 +280,11 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               // mapper so live and reload CANNOT disagree. This used to be
               // three hardcoded kind strings here and two in the mapper —
               // they had already drifted apart. See shared/injection-policy.ts.
+              //
+              // A degraded self-steer needs no special case here: the engine
+              // emits `steer_injected` alongside this event, so the divider is
+              // appended by that arm above. This arm only decides whether the
+              // TURN renders, and a machine-authored one does not.
               if (!suppressesInjection({
                 machineAuthored: event.machineAuthored,
                 injectionKind: event.kind,
