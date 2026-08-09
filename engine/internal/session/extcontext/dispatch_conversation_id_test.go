@@ -539,3 +539,4 @@ func TestConcurrentSameMillisDispatchesGetDistinctConversationIDs(t *testing.T) 
 		t.Errorf("conversationIds has %d distinct values, want 2 — same-millisecond dispatches collided: %v", len(seen), ids)
 	}
 }
+func (a *convIDRecordingAccessor) DispatchRegistry() *DispatchRegistry { return nil }

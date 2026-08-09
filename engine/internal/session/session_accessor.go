@@ -11,6 +11,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/permissions"
 	"github.com/dsswift/ion/engine/internal/plugins"
 	"github.com/dsswift/ion/engine/internal/resource"
+	"github.com/dsswift/ion/engine/internal/session/extcontext"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -217,6 +218,13 @@ func (a *sessionAccessor) EmitDispatchCountStatus(reason string) {
 // (dispatch_rehydrate.go). Best-effort by contract; see the interface doc.
 func (a *sessionAccessor) PersistDispatchRegistered(agentID, agentName, displayName, task, model, parentDispatchID string, depth int) {
 	a.m.persistDispatchRegistered(a.key, a.s.conversationID, agentID, agentName, displayName, task, model, parentDispatchID, depth)
+}
+
+// DispatchRegistry returns the session's dispatch registry so context builders
+// that do not already hold one in scope (extension-tool dispatch, the LLM-call
+// hook context) can pass it to NewExtContext instead of silently omitting it.
+func (a *sessionAccessor) DispatchRegistry() *extcontext.DispatchRegistry {
+	return a.s.dispatchRegistry
 }
 
 func (a *sessionAccessor) EngineConfig() *types.EngineRuntimeConfig { return a.m.config }

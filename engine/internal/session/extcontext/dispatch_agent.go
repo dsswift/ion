@@ -186,7 +186,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		// roster row flips to running.
 		if extGroup := sa.ExtGroup(); extGroup != nil && !extGroup.IsEmpty() {
 			utils.LogWithFields(utils.LevelInfo, "server", "firing agent_start", map[string]any{"key": key, "model": agentName, "run_id": agentID})
-			startCtx := NewExtContext(sa)
+			startCtx := NewExtContext(sa, registry)
 			extGroup.FireAgentStart(startCtx, extension.AgentInfo{
 				Name: agentName,
 				Task: opts.Task,
@@ -268,10 +268,9 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 								return nil
 							}
 						}
-						tcCtx := NewExtContext(sa, ExtContextOpts{
+						tcCtx := NewExtContext(sa, registry, ExtContextOpts{
 							Depth:      childDepth,
 							DispatchId: agentID,
-							Registry:   registry,
 							SuspendFn:  suspendFn,
 						})
 						result, _ := childExtHost.FireToolCall(tcCtx, extension.ToolCallInfo{ //nolint:errcheck // best-effort; failure not actionable here
@@ -886,19 +885,27 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			// activity emitter's coalesce timer now that the child is done.
 			activity.Close()
 
-			// Cleanup child extension.
-			if childExtHost != nil {
-				childExtHost.Dispose()
-			}
-
-			// NOTE: deregistration is deliberately deferred until AFTER the
-			// terminal agent-state transition below. Deregister removes the
-			// dispatch from ActiveIDs; if it ran here (before the slot is marked
-			// terminal), a concurrent run-exit sweep in the gap would delete the
-			// still-"running" slot and the terminal UpdateStateByID would land
-			// nowhere. Marking the slot terminal first (a terminal slot is never
-			// swept) closes that window. See the Deregister block after
-			// EmitAgentSnapshot("dispatch_end").
+			// NOTE: BOTH the child-extension dispose and the registry
+			// deregistration are deliberately deferred until AFTER the terminal
+			// agent-state transition below.
+			//
+			// Deregister removes the dispatch from ActiveIDs; if it ran here
+			// (before the slot is marked terminal), a concurrent run-exit sweep
+			// in the gap would delete the still-"running" slot and the terminal
+			// UpdateStateByID would land nowhere. Marking the slot terminal
+			// first (a terminal slot is never swept) closes that window. See the
+			// Deregister block after EmitAgentSnapshot("dispatch_end").
+			//
+			// Dispose is subject to the same constraint for a less obvious
+			// reason: it is SLOW on the failure path. disposeInternal kills the
+			// subprocess and then waits for it to be reaped, capped by a 2s
+			// safety net that real extensions hit routinely. Running it here
+			// held the dispatch in "running" for those 2 seconds with the child
+			// already finished — a wide, easily-lost race against any run-exit
+			// sweep, paid on every single completion. The child process is
+			// already dead by the time we get here; reaping it is cleanup, not a
+			// precondition for reporting the outcome, so it now runs after the
+			// terminal transition, Deregister, and the callbacks.
 
 			// Build the result. An engine-initiated cancel that was not a
 			// recall (childExitCancelled — e.g. the run-progress watchdog's
@@ -1023,7 +1030,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			// Fire agent_end on the parent extension group.
 			if extGroup := sa.ExtGroup(); extGroup != nil && !extGroup.IsEmpty() {
 				utils.LogWithFields(utils.LevelInfo, "server", "firing agent_end", map[string]any{"key": key, "model": agentName, "run_id": agentID, "exit_code": exitCode})
-				endCtx := NewExtContext(sa)
+				endCtx := NewExtContext(sa, registry)
 				extGroup.FireAgentEnd(endCtx, extension.AgentInfo{
 					Name: agentName,
 					Task: opts.Task,
@@ -1051,6 +1058,19 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			})
 
 			utils.LogWithFields(utils.LevelInfo, "server", "dispatch complete", map[string]any{"model": opts.Name, "exit_code": exitCode, "elapsed": elapsed, "total_cost": totalCost, "tool_count": toolCount, "session_id": key})
+
+			// Cleanup the child extension subprocess. Last, deliberately: see
+			// the NOTE above the result construction. Dispose kills the child
+			// host and waits on the reap (bounded at 2s), and every millisecond
+			// of that wait used to sit between the child finishing and its slot
+			// being marked terminal, which is exactly the window a run-exit
+			// sweep can orphan the slot in. Everything a consumer observes —
+			// terminal agent state, Deregister, agent_end, dispatch_end — has
+			// already happened by this point, so a slow reap now delays nothing
+			// but its own cleanup.
+			if childExtHost != nil {
+				childExtHost.Dispose()
+			}
 
 			return result
 		}

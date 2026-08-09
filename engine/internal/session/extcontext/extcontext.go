@@ -13,6 +13,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/resource"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // SessionAccessor abstracts the session fields and manager operations that
@@ -125,6 +126,12 @@ type SessionAccessor interface {
 	// Best-effort: failures are logged, never propagated (a dispatch must
 	// not fail because its durability record could not be written).
 	PersistDispatchRegistered(agentID, agentName, displayName, task, model, parentDispatchID string, depth int)
+	// DispatchRegistry returns the session's dispatch registry. Required by
+	// the context paths that build an extension.Context without already
+	// holding one in scope (extension-tool dispatch, the LLM-call hook
+	// context). Never returns nil for a live session; a test accessor may.
+	DispatchRegistry() *DispatchRegistry
+
 	EngineConfig() *types.EngineRuntimeConfig
 
 	// ClaudeCompat reports the parent session's Claude-compatibility setting.
@@ -272,9 +279,12 @@ type SessionAccessor interface {
 
 // ExtContextOpts holds optional configuration for NewExtContext. All fields
 // default to zero values, which produce a root-level (depth 0) context.
+//
+// The DispatchRegistry is deliberately NOT a member here: it is a required
+// positional parameter of NewExtContext. It used to be an optional field, and
+// omitting it silently produced a context whose DispatchAgent could not
+// register anything — see the NewExtContext doc comment for what that cost.
 type ExtContextOpts struct {
-	// Registry enables background dispatch and recall support.
-	Registry *DispatchRegistry
 	// Depth is the dispatch depth of the agent that will own this context.
 	// 0 for the orchestrator (root), 1 for a direct dispatch, etc.
 	Depth int
@@ -289,28 +299,48 @@ type ExtContextOpts struct {
 }
 
 // NewExtContext builds a fully-populated extension.Context by delegating all
-// callbacks to the provided SessionAccessor. The optional DispatchRegistry
-// enables background dispatch and recall support; pass nil to disable.
+// callbacks to the provided SessionAccessor.
 //
-// The variadic argument accepts either a *DispatchRegistry (backward-compat)
-// or an ExtContextOpts struct. When opts are provided, the context's
-// DispatchAgent closure is depth-aware: it binds the given depth and dispatch
-// ID so child dispatches inherit depth+1 and cannot forge their ancestry.
-func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
-	var registry *DispatchRegistry
+// registry is REQUIRED and positional. It backs ctx.DispatchAgent's ability to
+// reserve, register, deregister, and revive dispatches; a nil registry yields a
+// context whose dispatch calls silently no-op every one of those steps, because
+// each is `if registry != nil` guarded on the dispatch path.
+//
+// It is positional rather than an ExtContextOpts field on purpose. It was
+// optional, and three call sites simply left it out — the two agent_start /
+// agent_end contexts and the before_provider_request context. Those contexts
+// get pushed onto the host's ctxStack for the duration of a blocking hook RPC,
+// and ctxStack.Current() returns top-of-stack, so any concurrent
+// ext/dispatch_agent RPC arriving inside that window resolved against the
+// registry-less context. The dispatch then never reserved its ID, so
+// handleRunExit's sweep deleted its still-running agent-state slot and every
+// later UpdateStateByID landed nowhere: the agent rendered as permanently
+// running, its parent was never revived, and the orchestrator sat idle with the
+// work finished and undelivered. Making the parameter positional turns that
+// omission into a compile error.
+//
+// When opts are provided, the context's DispatchAgent closure is depth-aware:
+// it binds the given depth and dispatch ID so child dispatches inherit depth+1
+// and cannot forge their ancestry.
+func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtContextOpts) *extension.Context {
 	var depth int
 	var dispatchId string
 	var suspendFn func(awaitingDispatchIDs []string) error
-	for _, arg := range args {
-		switch v := arg.(type) {
-		case *DispatchRegistry:
-			registry = v
-		case ExtContextOpts:
-			registry = v.Registry
-			depth = v.Depth
-			dispatchId = v.DispatchId
-			suspendFn = v.SuspendFn
-		}
+	for _, o := range opts {
+		depth = o.Depth
+		dispatchId = o.DispatchId
+		suspendFn = o.SuspendFn
+	}
+
+	// A nil registry is an invariant violation, not a supported mode: it
+	// disables dispatch reservation, deregistration, and child-completion
+	// revival while leaving every call site silently successful. Log at ERROR
+	// so the condition is greppable rather than inferred from a downstream
+	// "no slot found" storm. Mirrors the ctxStack.Push session guard.
+	if registry == nil {
+		utils.LogWithFields(utils.LevelError, "session.extcontext", "newextcontext: nil dispatch registry (dispatch reserve/deregister/revive will silently no-op on this context)", map[string]any{
+			"session_id": sa.SessionKey(), "count": depth, "run_id": dispatchId,
+		})
 	}
 
 	// At depth 0 there is no dispatched run to suspend, but the ROOT session

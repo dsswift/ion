@@ -15,9 +15,29 @@ import (
 // the old atomic pointer). On ClaudeCodeBackend, the ToolServer may invoke
 // multiple tool handlers concurrently while hooks fire on other
 // goroutines. Each pushes its own Context; Current() returns the most
-// recently pushed (top of stack). All contexts for the same session
-// are functionally equivalent (same DispatchAgent, Emit, etc.), so
-// "top of stack" is always a valid context for nested ext/* RPCs.
+// recently pushed (top of stack).
+//
+// "Top of stack" is a valid answer for a nested ext/* RPC only because every
+// Context pushed on one Host is interchangeable in the fields those RPCs read.
+// That holds by construction, and it is narrower than it looks — it is worth
+// stating precisely, because a violation is silent:
+//
+//   - Same session: guarded in Push below.
+//   - Same dispatch identity (Depth / DispatchId): every context reaching a
+//     ROOT host is built by Manager.newExtContext* with no ExtContextOpts, so
+//     it is always depth 0 with an empty DispatchId. Every context carrying a
+//     depth > 0 targets a DISPATCHED CHILD's host, and each dispatched child
+//     gets its own extension.NewHost() (loadChildExtension) and therefore its
+//     own ctxStack. So one host never mixes depths.
+//   - Same DispatchRegistry: this one was NOT always true. The registry used to
+//     be an optional NewExtContext argument, and the agent_start / agent_end /
+//     before_provider_request contexts omitted it. Those get pushed here for
+//     the duration of a blocking hook RPC, so a concurrent ext/dispatch_agent
+//     resolved against a registry-less context and its dispatch silently
+//     skipped reserve/register — the sweep then deleted its live agent-state
+//     slot and the orchestrator was never revived. The registry is now a
+//     required positional parameter of NewExtContext, which makes that state
+//     unrepresentable rather than merely unlikely.
 //
 // Extracted from host.go per the engine/AGENTS.md "same-package
 // multi-file is the idiom" rule and the precedent of host_async.go,
@@ -32,12 +52,11 @@ type ctxStack struct {
 // Push adds a context to the top of the stack.
 //
 // Invariant guard: every Context pushed on a given Host's stack must
-// belong to the same engine session. The documented "all contexts for
-// the same session are functionally equivalent" assumption is what
-// makes Current() (top-of-stack) a valid choice for nested ext/* RPCs;
-// if a different session's ctx ever lands on the stack, Current()
-// could hand a nested RPC the wrong session's DispatchAgent / Emit and
-// silently route work to the wrong session.
+// belong to the same engine session. The interchangeability argument in
+// the type comment above is what makes Current() (top-of-stack) a valid
+// choice for nested ext/* RPCs; if a different session's ctx ever lands
+// on the stack, Current() could hand a nested RPC the wrong session's
+// DispatchAgent / Emit and silently route work to the wrong session.
 //
 // Today this cannot happen: every push site routes through
 // m.newExtContext(s, key) with one session per Host. The guard fires

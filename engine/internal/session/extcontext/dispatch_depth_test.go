@@ -593,3 +593,4 @@ func TestForegroundDispatch_RegisteredDuringRun(t *testing.T) {
 		t.Error("expected engine_dispatch_end for fg-agent")
 	}
 }
+func (a *depthTestAccessor) DispatchRegistry() *DispatchRegistry { return nil }

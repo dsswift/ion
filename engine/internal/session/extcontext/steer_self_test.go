@@ -156,7 +156,7 @@ func (a *steerSelfAccessor) kindSnapshot() (steerKinds, sendKinds []string) {
 // WITHOUT falling back to SendPrompt.
 func TestSteerSelf_Depth0_LiveRun_Steers(t *testing.T) {
 	acc := &steerSelfAccessor{mainLoopLive: true}
-	ctx := NewExtContext(acc, ExtContextOpts{Registry: NewDispatchRegistry(), Depth: 0})
+	ctx := NewExtContext(acc, NewDispatchRegistry(), ExtContextOpts{Depth: 0})
 
 	if ctx.SteerSelf == nil {
 		t.Fatal("ctx.SteerSelf was not wired")
@@ -186,7 +186,7 @@ func TestSteerSelf_Depth0_LiveRun_Steers(t *testing.T) {
 // steer-vs-send decision.
 func TestSteerSelf_Depth0_Idle_Sends(t *testing.T) {
 	acc := &steerSelfAccessor{mainLoopLive: false}
-	ctx := NewExtContext(acc, ExtContextOpts{Registry: NewDispatchRegistry(), Depth: 0})
+	ctx := NewExtContext(acc, NewDispatchRegistry(), ExtContextOpts{Depth: 0})
 
 	res, err := ctx.SteerSelf("idle message")
 	if err != nil {
@@ -218,8 +218,7 @@ func TestSteerSelf_DepthN_LiveChildRun_Steers(t *testing.T) {
 	registry.SetChildRunID("dispatch-self-abc", "sess-dispatch-self-abc")
 
 	acc := &steerSelfAccessor{mainLoopLive: true} // would steer main loop if depth-0 path taken
-	ctx := NewExtContext(acc, ExtContextOpts{
-		Registry:   registry,
+	ctx := NewExtContext(acc, registry, ExtContextOpts{
 		Depth:      1,
 		DispatchId: "dispatch-self-abc",
 	})
@@ -258,8 +257,7 @@ func TestSteerSelf_DepthN_IdleChildRun_Sends(t *testing.T) {
 	registry.SetChildRunID("dispatch-self-xyz", "sess-dispatch-self-xyz")
 
 	acc := &steerSelfAccessor{}
-	ctx := NewExtContext(acc, ExtContextOpts{
-		Registry:   registry,
+	ctx := NewExtContext(acc, registry, ExtContextOpts{
 		Depth:      1,
 		DispatchId: "dispatch-self-xyz",
 	})
@@ -277,6 +275,7 @@ func TestSteerSelf_DepthN_IdleChildRun_Sends(t *testing.T) {
 		t.Errorf("SendPrompt calls = %v, want one with the message (idle child fallback)", sendCalls)
 	}
 }
+func (a *steerSelfAccessor) DispatchRegistry() *DispatchRegistry { return nil }
 
 // ─── Injection-kind threading (the reported defect) ───
 //
@@ -294,7 +293,7 @@ func TestSteerSelf_DepthN_IdleChildRun_Sends(t *testing.T) {
 // as a checkin-kind injection, not as an unclassified user turn.
 func TestSteerSelfWithKind_Depth0_Idle_CarriesKindToSendPrompt(t *testing.T) {
 	acc := &steerSelfAccessor{mainLoopLive: false}
-	ctx := NewExtContext(acc, ExtContextOpts{Registry: NewDispatchRegistry(), Depth: 0})
+	ctx := NewExtContext(acc, NewDispatchRegistry(), ExtContextOpts{Depth: 0})
 
 	if ctx.SteerSelfWithKind == nil {
 		t.Fatal("ctx.SteerSelfWithKind was not wired")
@@ -323,7 +322,7 @@ func TestSteerSelfWithKind_Depth0_Idle_CarriesKindToSendPrompt(t *testing.T) {
 // or drainSteer persists it as a plain user turn.
 func TestSteerSelfWithKind_Depth0_LiveRun_CarriesKindToSteer(t *testing.T) {
 	acc := &steerSelfAccessor{mainLoopLive: true}
-	ctx := NewExtContext(acc, ExtContextOpts{Registry: NewDispatchRegistry(), Depth: 0})
+	ctx := NewExtContext(acc, NewDispatchRegistry(), ExtContextOpts{Depth: 0})
 
 	res, err := ctx.SteerSelfWithKind("[Agent done] result", string(types.InjectionKindAgentCompletion))
 	if err != nil {
@@ -352,8 +351,7 @@ func TestSteerSelfWithKind_DepthN_IdleChild_CarriesKindToSendPrompt(t *testing.T
 	registry.SetChildRunID("dispatch-kind-1", "sess-dispatch-kind-1")
 
 	acc := &steerSelfAccessor{}
-	ctx := NewExtContext(acc, ExtContextOpts{
-		Registry:   registry,
+	ctx := NewExtContext(acc, registry, ExtContextOpts{
 		Depth:      1,
 		DispatchId: "dispatch-kind-1",
 	})
@@ -377,8 +375,7 @@ func TestSteerSelfWithKind_DepthN_LiveChild_CarriesKindToRegistry(t *testing.T) 
 	registry.SetChildRunID("dispatch-kind-2", "sess-dispatch-kind-2")
 
 	acc := &steerSelfAccessor{}
-	ctx := NewExtContext(acc, ExtContextOpts{
-		Registry:   registry,
+	ctx := NewExtContext(acc, registry, ExtContextOpts{
 		Depth:      1,
 		DispatchId: "dispatch-kind-2",
 	})
@@ -399,7 +396,7 @@ func TestSteerSelfWithKind_DepthN_LiveChild_CarriesKindToRegistry(t *testing.T) 
 // caller that opts in by naming a kind gets one.
 func TestSteerSelf_KindlessAliasStaysUnclassified(t *testing.T) {
 	acc := &steerSelfAccessor{mainLoopLive: false}
-	ctx := NewExtContext(acc, ExtContextOpts{Registry: NewDispatchRegistry(), Depth: 0})
+	ctx := NewExtContext(acc, NewDispatchRegistry(), ExtContextOpts{Depth: 0})
 
 	if _, err := ctx.SteerSelf("an ordinary turn"); err != nil {
 		t.Fatalf("SteerSelf returned error: %v", err)

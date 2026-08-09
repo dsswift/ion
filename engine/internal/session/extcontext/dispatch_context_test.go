@@ -67,8 +67,9 @@ func (a *dispatchContextTestAccessor) NewChildBackend() backend.RunBackend      
 func (a *dispatchContextTestAccessor) AllocatePlanFilePath(_ string) string {
 	return "/tmp/.ion/plans/plan.md"
 }
-func (a *dispatchContextTestAccessor) BumpParentProgress()              {}
-func (a *dispatchContextTestAccessor) EmitDispatchCountStatus(_ string) {}
+func (a *dispatchContextTestAccessor) BumpParentProgress()                 {}
+func (a *dispatchContextTestAccessor) EmitDispatchCountStatus(_ string)    {}
+func (a *dispatchContextTestAccessor) DispatchRegistry() *DispatchRegistry { return nil }
 func (a *dispatchContextTestAccessor) EngineConfig() *types.EngineRuntimeConfig {
 	return a.engineConfig
 }

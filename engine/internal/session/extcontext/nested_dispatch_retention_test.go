@@ -114,7 +114,7 @@ func TestNestedDispatchRetention_IDKeyPreservesWhenNameAbsent(t *testing.T) {
 	idStore := agents.NewRegistry()
 	idStore.AppendState(types.AgentStateUpdate{Name: "engine-dev", ID: depth2ID, Status: "running"})
 	idStore.ClearRunningStatesExceptIDsOrNames(
-		map[string]bool{depth2ID: true}, // ID live
+		map[string]bool{depth2ID: true},   // ID live
 		map[string]bool{"dev-lead": true}, // name absent
 	)
 	if !rawHasID(idStore, depth2ID) {

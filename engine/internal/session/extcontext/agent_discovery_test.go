@@ -62,6 +62,7 @@ func (a *agentDiscoveryTestAccessor) AllocatePlanFilePath(_ string) string {
 }
 func (a *agentDiscoveryTestAccessor) BumpParentProgress()                      {}
 func (a *agentDiscoveryTestAccessor) EmitDispatchCountStatus(_ string)         {}
+func (a *agentDiscoveryTestAccessor) DispatchRegistry() *DispatchRegistry      { return nil }
 func (a *agentDiscoveryTestAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }
 func (a *agentDiscoveryTestAccessor) ClaudeCompat() bool                       { return false }
 func (a *agentDiscoveryTestAccessor) GetDispatchContextDefaults() *extension.ContextPolicy {

@@ -712,3 +712,4 @@ func (d *lifecycleChildBackend) StartRun(requestID string, _ types.RunOptions) {
 		}
 	}()
 }
+func (a *idTestAccessor) DispatchRegistry() *DispatchRegistry { return nil }

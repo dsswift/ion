@@ -85,6 +85,7 @@ func (a *llmCallTestAccessor) NewChildBackend() backend.RunBackend              
 func (a *llmCallTestAccessor) AllocatePlanFilePath(_ string) string                 { return "/tmp/.ion/plans/plan.md" }
 func (a *llmCallTestAccessor) BumpParentProgress()                                  {}
 func (a *llmCallTestAccessor) EmitDispatchCountStatus(_ string)                     {}
+func (a *llmCallTestAccessor) DispatchRegistry() *DispatchRegistry                  { return nil }
 func (a *llmCallTestAccessor) EngineConfig() *types.EngineRuntimeConfig             { return nil }
 func (a *llmCallTestAccessor) ClaudeCompat() bool                                   { return false }
 func (a *llmCallTestAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }

@@ -327,4 +327,5 @@ func TestBackgroundDispatchAgentEndAlwaysFires(t *testing.T) {
 
 type fakePanicErr struct{ msg string }
 
-func (e *fakePanicErr) Error() string { return e.msg }
+func (e *fakePanicErr) Error() string                            { return e.msg }
+func (a *panicTestAccessor) DispatchRegistry() *DispatchRegistry { return nil }

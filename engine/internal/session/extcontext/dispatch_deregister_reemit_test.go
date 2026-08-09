@@ -312,3 +312,4 @@ func TestDeregisterFinalStatusCarriesZeroBgCount(t *testing.T) {
 			"the stale bgCount from handleRunExit was not corrected by Deregister re-emit", count)
 	}
 }
+func (a *dispatchCountSpyAccessor) DispatchRegistry() *DispatchRegistry { return nil }

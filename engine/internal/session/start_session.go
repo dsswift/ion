@@ -676,6 +676,20 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 				Outcome:   string(outcome),
 			}, nil
 		})
+
+		// Persistent self-steer for ext/steer_self. This one carries the
+		// primary traffic rather than an idle-session edge case: a harness
+		// calls ctx.steerSelf from a background dispatch's terminal callback,
+		// which runs on the dispatch goroutine after the parent run already
+		// exited, so the ctxStack is empty and the ctx arm cannot match.
+		//
+		// The resolution mirrors ctx.SteerSelf's depth-0 arm exactly (see
+		// extcontext.NewExtContext): steer the live main run when there is
+		// one, otherwise deliver as a fresh prompt on the idle session. Both
+		// outcomes are "delivered" from the caller's perspective — the
+		// distinction is only whether the message was injected mid-run
+		// ("steered") or started a new run ("sent").
+		host.SetPersistentSteerSelf(m.persistentSteerSelf(s, key))
 	}
 
 	m.mu.Lock()

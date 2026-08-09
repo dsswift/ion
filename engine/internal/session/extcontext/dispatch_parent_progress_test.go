@@ -220,3 +220,4 @@ func TestDispatchChildActivityBumpsParentProgress(t *testing.T) {
 		t.Errorf("BumpParentProgress fired %d times, want >= %d (one per genuine child event) — parent-liveness wiring missing or regressed", got, childEvents)
 	}
 }
+func (a *bumpCountingAccessor) DispatchRegistry() *DispatchRegistry { return nil }

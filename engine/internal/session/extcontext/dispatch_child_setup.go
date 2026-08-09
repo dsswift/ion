@@ -81,10 +81,9 @@ func loadChildExtension(sa SessionAccessor, registry *DispatchRegistry, opts *ex
 	})
 
 	// Fire session_start on child extension.
-	childCtx := NewExtContext(sa, ExtContextOpts{
+	childCtx := NewExtContext(sa, registry, ExtContextOpts{
 		Depth:      childDepth,
 		DispatchId: childDispatchId,
-		Registry:   registry,
 	})
 	if err := childExtHost.FireSessionStart(childCtx); err != nil {
 		// session_start failure means the child extension's init hook never
@@ -93,10 +92,9 @@ func loadChildExtension(sa SessionAccessor, registry *DispatchRegistry, opts *ex
 	}
 
 	// Wire before_agent_start for system prompt.
-	basCtx := NewExtContext(sa, ExtContextOpts{
+	basCtx := NewExtContext(sa, registry, ExtContextOpts{
 		Depth:      childDepth,
 		DispatchId: childDispatchId,
-		Registry:   registry,
 	})
 	extSysPrompt, _, err := childExtHost.FireBeforeAgentStart(basCtx, extension.AgentInfo{
 		Name: opts.Name,
@@ -179,10 +177,9 @@ func wireChildExtensionTools(
 			// facility); an Elicit reached through a child tool waits under
 			// session lifecycle only, the same as hook-path elicits.
 			_ = ctx
-			extCtx := NewExtContext(capturedSA, ExtContextOpts{
+			extCtx := NewExtContext(capturedSA, capturedRegistry, ExtContextOpts{
 				Depth:      capturedDepth,
 				DispatchId: capturedDispatchId,
-				Registry:   capturedRegistry,
 			})
 			result, err := tool.Execute(input, extCtx)
 			if err != nil {

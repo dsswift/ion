@@ -88,7 +88,7 @@ func recoverBackgroundDispatchPanic(
 	//    runChild's normal-completion FireAgentEnd call exactly.
 	if extGroup := sa.ExtGroup(); extGroup != nil && !extGroup.IsEmpty() {
 		utils.LogWithFields(utils.LevelInfo, "server", "firing agent_end (panic) status=1", map[string]any{"session_id": key, "agent_name": agentName, "run_id": agentID})
-		endCtx := NewExtContext(sa)
+		endCtx := NewExtContext(sa, registry)
 		extGroup.FireAgentEnd(endCtx, extension.AgentInfo{
 			Name: agentName,
 			Task: opts.Task,

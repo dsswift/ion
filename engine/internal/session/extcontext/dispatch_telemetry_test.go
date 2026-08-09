@@ -178,7 +178,7 @@ func TestDispatchTelemetry_PanicPathCarriesDispatchId(t *testing.T) {
 		testAgentID,
 		"panic-agent",
 		"test panic value",
-		2,              // childDepth
+		2, // childDepth
 		testParentID,
 	)
 

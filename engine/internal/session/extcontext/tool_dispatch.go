@@ -96,7 +96,12 @@ func CallToolFromExtension(ctx context.Context, sa SessionAccessor, toolName str
 	if eg := sa.ExtGroup(); eg != nil {
 		for _, tool := range eg.Tools() {
 			if tool.Name == toolName {
-				ctx := NewExtContext(sa)
+				// The registry must be threaded through: a tool handler is the
+				// most common origin of ctx.dispatchAgent, and Execute pushes
+				// this context onto the host's ctxStack for the duration of the
+				// call, where a concurrent ext/dispatch_agent RPC may resolve
+				// against it.
+				ctx := NewExtContext(sa, sa.DispatchRegistry())
 				result, err := tool.Execute(input, ctx)
 				if err != nil {
 					return "", true, err

@@ -108,6 +108,13 @@ type Host struct {
 	// by notifMu.
 	persistentSteerByName func(name, message string) (SteerDispatchResult, error)
 
+	// persistentSteerSelf preserves the message's injection classification while
+	// delivering it to a root session after its run exited. `kind` is optional
+	// for backward-compatible callers, but a non-empty kind must reach both the
+	// live-steer and fresh-prompt arms so machine-authored completions never
+	// reappear as user turns.
+	persistentSteerSelf func(message, kind string) (SteerDispatchResult, error)
+
 	// Rate limit for parse-failure WARNs so a misbehaving extension that
 	// floods stdout with non-JSON cannot bury other log signal. Holds a
 	// nanosecond timestamp of the last logged parse error.
@@ -161,11 +168,26 @@ type Host struct {
 	// onDeath so the death handler can read actual exit codes.
 	exitDone chan struct{}
 
+	// waitClaimed is set by whichever path takes ownership of the single
+	// permitted cmd.Wait call — captureExitStatus (launched by readLoop on
+	// subprocess EOF) or disposeInternal. os/exec documents Wait as
+	// single-call, so the winner reaps and the loser waits on exitDone.
+	//
+	// Without this claim, dispose could only ever wait: it nils h.cmd while
+	// taking h.mu, so a captureExitStatus that had not yet read h.cmd found
+	// nil, returned early, and closed exitDone without reaping. That is
+	// harmless (the wait still ends), but when readLoop never observed EOF
+	// there was no captureExitStatus at all, nothing closed exitDone, and
+	// dispose burned its full 2s safety-net timeout on every teardown while
+	// leaving the process unreaped. The claim lets dispose detect that case
+	// and do the Wait itself.
+	waitClaimed atomic.Bool
+
 	// stderrBuf captures the last N lines of subprocess stderr so they
 	// can be surfaced in engine_extension_died and engine_error events.
 	// Written by the stderr reader goroutine, read by StderrTail.
-	stderrMu      sync.Mutex
-	stderrBuf     []string
+	stderrMu  sync.Mutex
+	stderrBuf []string
 	// stderrDrainWg tracks the stderr-drain goroutine launched in
 	// launchStderrDrain. WaitStderrDrain blocks until the goroutine has
 	// finished draining, ensuring the ring buffer is fully populated
@@ -298,6 +320,16 @@ func (h *Host) SetPersistentSteerByName(fn func(name, message string) (SteerDisp
 	h.notifMu.Lock()
 	defer h.notifMu.Unlock()
 	h.persistentSteerByName = fn
+}
+
+// SetPersistentSteerSelf sets the kind-aware fallback self-steer function used
+// when no run context is active. The terminal callback path has an empty
+// ctxStack by construction, so this preserves the caller's injection kind on
+// the primary completion-delivery path.
+func (h *Host) SetPersistentSteerSelf(fn func(message, kind string) (SteerDispatchResult, error)) {
+	h.notifMu.Lock()
+	defer h.notifMu.Unlock()
+	h.persistentSteerSelf = fn
 }
 
 // NewHost creates a new extension host with an empty SDK.

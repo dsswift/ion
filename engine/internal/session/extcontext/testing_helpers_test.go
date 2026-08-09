@@ -61,6 +61,7 @@ func (noopSA) ProcRegistry() *extension.ProcessRegistry                         
 func (noopSA) NewChildBackend() backend.RunBackend                                 { return nil }
 func (noopSA) BumpParentProgress()                                                 {}
 func (noopSA) EmitDispatchCountStatus(_ string)                                    {}
+func (noopSA) DispatchRegistry() *DispatchRegistry                                 { return nil }
 func (noopSA) EngineConfig() *types.EngineRuntimeConfig                            { return nil }
 func (noopSA) ClaudeCompat() bool                                                  { return false }
 func (noopSA) GetDispatchContextDefaults() *extension.ContextPolicy                { return nil }

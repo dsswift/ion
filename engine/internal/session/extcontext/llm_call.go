@@ -135,10 +135,13 @@ func BuildLLMCallFunc(sa SessionAccessor) func(extension.LLMCallOpts) (*extensio
 						utils.LogWithFields(utils.LevelError, "session.llm_call", "before_provider_request handler panicked ( )", map[string]any{"session_key": sa.SessionKey(), "r": r})
 					}
 				}()
-				// FireBeforeProviderRequest builds its own ctx per host;
-				// we pass NewExtContext(sa) the same way other call sites
-				// do (mirrors dispatch_agent.go's per-fire ctx construction).
-				eg.FireBeforeProviderRequest(NewExtContext(sa), info)
+				// FireBeforeProviderRequest builds its own ctx per host; we
+				// pass the session registry the same way other call sites do
+				// (mirrors dispatch_agent.go's per-fire ctx construction). The
+				// registry is not optional: this ctx is pushed onto the host's
+				// ctxStack for the duration of the hook RPC, so a concurrent
+				// ext/dispatch_agent may resolve against it.
+				eg.FireBeforeProviderRequest(NewExtContext(sa, sa.DispatchRegistry()), info)
 			}()
 		} else {
 			utils.LogWithFields(utils.LevelDebug, "session.llm_call", "no extension group / empty group; skipping before_provider_request ()", map[string]any{"session_key": sa.SessionKey()})

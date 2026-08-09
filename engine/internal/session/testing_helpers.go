@@ -20,10 +20,12 @@ func (m *Manager) TestNewExtContext(key string) *extension.Context {
 }
 
 // TestNewExtContextWithOpts builds a depth-aware extension Context for the
-// given session key. The caller controls the dispatch depth, dispatch ID, and
-// registry via ExtContextOpts. This is the integration-test entry point for
-// simulating a dispatched agent's own context (depth > 0) so the agent can
-// dispatch children at depth+1. Exported for integration tests only.
+// given session key. The caller controls the dispatch depth and dispatch ID via
+// ExtContextOpts; the registry is always the session's own (it is a required
+// positional argument to NewExtContext, not an overridable option). This is the
+// integration-test entry point for simulating a dispatched agent's own context
+// (depth > 0) so the agent can dispatch children at depth+1. Exported for
+// integration tests only.
 func (m *Manager) TestNewExtContextWithOpts(key string, opts extcontext.ExtContextOpts) *extension.Context {
 	m.mu.RLock()
 	s, ok := m.sessions[key]
@@ -31,10 +33,7 @@ func (m *Manager) TestNewExtContextWithOpts(key string, opts extcontext.ExtConte
 	if !ok {
 		return nil
 	}
-	if opts.Registry == nil {
-		opts.Registry = s.dispatchRegistry
-	}
-	return extcontext.NewExtContext(&sessionAccessor{m: m, s: s, key: key}, opts)
+	return extcontext.NewExtContext(&sessionAccessor{m: m, s: s, key: key}, s.dispatchRegistry, opts)
 }
 
 // TestSetExtGroup wires an ExtensionGroup onto an existing session.

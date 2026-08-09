@@ -322,3 +322,4 @@ func assertActivityShape(t *testing.T, acts []types.EngineEvent, convID string) 
 		}
 	}
 }
+func (a *activityRecordingAccessor) DispatchRegistry() *DispatchRegistry { return nil }

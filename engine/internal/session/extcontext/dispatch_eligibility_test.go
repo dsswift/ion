@@ -62,9 +62,10 @@ func (a *eligibilityTestAccessor) NewChildBackend() backend.RunBackend      { re
 func (a *eligibilityTestAccessor) AllocatePlanFilePath(_ string) string {
 	return "/tmp/.ion/plans/plan.md"
 }
-func (a *eligibilityTestAccessor) BumpParentProgress()              {}
-func (a *eligibilityTestAccessor) EmitDispatchCountStatus(_ string) {}
-func (a *eligibilityTestAccessor) ResolveTier(_ string) string      { return "" }
+func (a *eligibilityTestAccessor) BumpParentProgress()                 {}
+func (a *eligibilityTestAccessor) EmitDispatchCountStatus(_ string)    {}
+func (a *eligibilityTestAccessor) DispatchRegistry() *DispatchRegistry { return nil }
+func (a *eligibilityTestAccessor) ResolveTier(_ string) string         { return "" }
 func (a *eligibilityTestAccessor) PermissionCheck(_ string, _ map[string]interface{}) (string, string) {
 	return "", ""
 }

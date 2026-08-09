@@ -489,6 +489,11 @@ func (h *Host) captureExitStatus() {
 			close(ch)
 		}
 	}()
+	// Claim the single permitted cmd.Wait. If dispose already claimed it,
+	// it owns the reap; closing exitDone above still releases any waiter.
+	if !h.waitClaimed.CompareAndSwap(false, true) {
+		return
+	}
 	h.mu.Lock()
 	cmd := h.cmd
 	h.mu.Unlock()

@@ -47,11 +47,11 @@ func TestDispatchRegistryThreading_Depth2Registration(t *testing.T) {
 	registry.RegisterWithID(
 		depth1AgentID,
 		depth1Name,
-		func() {},             // cancel noop
+		func() {},               // cancel noop
 		backend.NewApiBackend(), // child backend placeholder
 		"session-root",
-		"",    // parentID: root has no parent dispatch
-		1,     // depth
+		"", // parentID: root has no parent dispatch
+		1,  // depth
 	)
 
 	// Simulate a depth-2 background dispatch registering — this is what the

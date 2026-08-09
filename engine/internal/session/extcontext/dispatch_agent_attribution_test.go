@@ -114,3 +114,4 @@ func TestDispatchAgentStampsNestingAttribution(t *testing.T) {
 		})
 	}
 }
+func (a *attributionAccessor) DispatchRegistry() *DispatchRegistry { return nil }

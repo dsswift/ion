@@ -15,8 +15,8 @@ import (
 func TestNewExtContext_DispatchIdentity(t *testing.T) {
 	acc := &steerSelfAccessor{}
 
-	// Root shape: no opts (backward-compat variadic path).
-	root := NewExtContext(acc)
+	// Root shape: no opts.
+	root := NewExtContext(acc, NewDispatchRegistry())
 	if root.Depth != 0 {
 		t.Errorf("root Depth = %d, want 0", root.Depth)
 	}
@@ -25,7 +25,7 @@ func TestNewExtContext_DispatchIdentity(t *testing.T) {
 	}
 
 	// Child shape: opts carry the dispatch ancestry.
-	child := NewExtContext(acc, ExtContextOpts{Depth: 1, DispatchId: "dispatch-xyz"})
+	child := NewExtContext(acc, NewDispatchRegistry(), ExtContextOpts{Depth: 1, DispatchId: "dispatch-xyz"})
 	if child.Depth != 1 {
 		t.Errorf("child Depth = %d, want 1", child.Depth)
 	}
