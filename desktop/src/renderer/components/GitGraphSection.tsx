@@ -13,7 +13,8 @@ import { usePreferencesStore } from '../preferences'
 import { computeGraphLayout } from '../utils/gitGraphLayout'
 import { FloatingPanel } from './FloatingPanel'
 import { DiffPane } from './git/DiffPane'
-import { useRepoBranch } from '../stores/git'
+import { useRepoState } from '../stores/git'
+import { useGitGraphFocus } from './git/useGitGraphFocus'
 import type { GitCommit, GitCommitDetail, GitCommitFile } from '../../shared/types'
 import { BranchPicker } from './GitBranchPicker'
 import { CommitPopup } from './GitCommitPopup'
@@ -42,7 +43,10 @@ export function GitGraphSection({
   const [commits, setCommits] = useState<GitCommit[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [loading, setLoading] = useState(false)
-  const branch = useRepoBranch(directory)
+  const [loadedGraphKey, setLoadedGraphKey] = useState<string | null>(null)
+  const repoState = useRepoState(directory)
+  const branch = repoState?.branch ?? ''
+  const headSha = repoState?.head.sha ?? null
   const [fetchingAction, setFetchingAction] = useState<string | null>(null)
   const [pushConfirm, setPushConfirm] = useState(false)
   const [rebaseError, setRebaseError] = useState<string | null>(null)
@@ -50,14 +54,29 @@ export function GitGraphSection({
   const strategy = usePreferencesStore((s) => s.worktreeCompletionStrategy)
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const [graphFilters, setGraphFilters] = useState<GraphFilters>(EMPTY_FILTERS)
+  const graphKey = useMemo(() => JSON.stringify({ directory, filters: graphFilters }), [directory, graphFilters])
   const [rebaseTarget, setRebaseTarget] = useState<{ onto: string; commits: RebaseCommit[] } | null>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const commitsRef = useRef<GitCommit[]>([])
+  const graphRequestRef = useRef(0)
+  const freshLoadingRequestRef = useRef<number | null>(null)
+  const appendLoadingRef = useRef(false)
   commitsRef.current = commits
 
   const loadGraph = useCallback(async (append = false) => {
+    // A new directory/filter load supersedes every earlier response. Graph IPC
+    // can complete out of order while tabs change, so accepting stale pages
+    // would focus the new conversation against another checkout's history.
+    if (append && (appendLoadingRef.current || freshLoadingRequestRef.current !== null)) return
+    const request = append ? graphRequestRef.current : graphRequestRef.current + 1
+    if (!append) {
+      graphRequestRef.current = request
+      freshLoadingRequestRef.current = request
+      setLoadedGraphKey(null)
+    }
+    if (append) appendLoadingRef.current = true
     setLoading(true)
     try {
       const skip = append ? commitsRef.current.length : 0
@@ -72,16 +91,29 @@ export function GitGraphSection({
           dateBefore: graphFilters.dateBefore || undefined,
         },
       )
+      if (request !== graphRequestRef.current) return
       if (result.isGitRepo) {
         const newCommits = append ? [...commitsRef.current, ...result.commits] : result.commits
         setCommits(newCommits)
         setTotalCount(result.totalCount)
+        setLoadedGraphKey(graphKey)
+      } else if (!append) {
+        setCommits([])
+        setTotalCount(0)
+        setLoadedGraphKey(graphKey)
       }
     } catch (err) {
-      rError('git', 'gitGraph load failed', { error: String(err) })
+      if (request === graphRequestRef.current) {
+        rError('git', 'gitGraph load failed', { directory, error: String(err) })
+      }
+    } finally {
+      if (append) appendLoadingRef.current = false
+      if (!append && freshLoadingRequestRef.current === request) freshLoadingRequestRef.current = null
+      if (request === graphRequestRef.current) {
+        setLoading(false)
+      }
     }
-    setLoading(false)
-  }, [directory, graphFilters])
+  }, [directory, graphFilters, graphKey])
 
   useEffect(() => {
     // Reset commits when directory or filters change, then load fresh
@@ -157,6 +189,18 @@ export function GitGraphSection({
     [decoratedCommits, lanePalette],
   )
 
+  const focusRequest = useGitGraphFocus({
+    activeTabId,
+    directory,
+    branch,
+    headSha,
+    filters: graphFilters,
+    commits,
+    totalCount,
+    graphLoaded: loadedGraphKey === graphKey,
+    loading,
+    loadNextPage: useCallback(() => loadGraph(true), [loadGraph]),
+  })
 
   // ─── Commit hover popup ───
   const popoverLayer = usePopoverLayer()
@@ -468,6 +512,7 @@ export function GitGraphSection({
           commitDetail={expandedDetail}
           commitFiles={commitFiles}
           scrollRef={scrollRef}
+          focusRequest={focusRequest}
           onHover={handleRowHover}
           onLeave={handleRowLeave}
           onContextMenu={handleContextMenu}
