@@ -38,6 +38,12 @@ func (a *agentDiscoveryTestAccessor) SendPrompt(_, _ string, _ []string) error {
 func (a *agentDiscoveryTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error {
 	return nil
 }
+
+// Degraded-steer delivery is not what this test exercises; it delegates so
+// the fake satisfies SessionAccessor and behaves like the kind-aware send.
+func (a *agentDiscoveryTestAccessor) SendPromptDegradedSteer(text string, model string, bash []string, kind string) error {
+	return a.SendPromptWithKind(text, model, bash, kind)
+}
 func (a *agentDiscoveryTestAccessor) SteerSelfMainLoop(_ string) bool            { return false }
 func (a *agentDiscoveryTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
 func (a *agentDiscoveryTestAccessor) ParkSelfMainLoop() bool                     { return false }

@@ -48,6 +48,12 @@ func (a *depthTestAccessor) SendPrompt(text string, model string, bash []string)
 func (a *depthTestAccessor) SendPromptWithKind(text string, _ string, _ []string, _ string) error {
 	return nil
 }
+
+// Degraded-steer delivery is not what this test exercises; it delegates so
+// the fake satisfies SessionAccessor and behaves like the kind-aware send.
+func (a *depthTestAccessor) SendPromptDegradedSteer(text string, model string, bash []string, kind string) error {
+	return a.SendPromptWithKind(text, model, bash, kind)
+}
 func (a *depthTestAccessor) SteerSelfMainLoop(message string) bool      { return false }
 func (a *depthTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
 func (a *depthTestAccessor) ParkSelfMainLoop() bool                     { return false }

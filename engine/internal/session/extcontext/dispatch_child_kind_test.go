@@ -48,6 +48,12 @@ func (a *kindRecordingAccessor) SendPromptWithKind(text string, _ string, _ []st
 	return nil
 }
 
+// Degraded-steer delivery is not what this test exercises; it delegates so
+// the fake satisfies SessionAccessor and behaves like the kind-aware send.
+func (a *kindRecordingAccessor) SendPromptDegradedSteer(text string, model string, bash []string, kind string) error {
+	return a.SendPromptWithKind(text, model, bash, kind)
+}
+
 func (a *kindRecordingAccessor) snapshot() (texts, kinds []string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()

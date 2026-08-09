@@ -289,6 +289,12 @@ func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) 
 		if overrides.InjectionKind != "" {
 			opts.InjectionKind = overrides.InjectionKind
 		}
+		// A steer that could not reach a live run: the backend persists the
+		// steer marker so the degraded path leaves the same trace the live
+		// path does.
+		if overrides.SteerDegraded {
+			opts.SteerDegraded = true
+		}
 	}
 
 	if s.config.SystemHint != "" {

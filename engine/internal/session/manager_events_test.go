@@ -768,6 +768,11 @@ func TestTranslateToEngineEvent_AllTypes(t *testing.T) {
 			input:    types.NormalizedEvent{Data: &types.SteerInjectedEvent{MessageLength: 17}},
 			wantType: "engine_steer_injected",
 		},
+		{
+			name:     "steer_degraded",
+			input:    types.NormalizedEvent{Data: &types.SteerDegradedEvent{MessageLength: 17}},
+			wantType: "engine_steer_degraded",
+		},
 	}
 
 	for _, tt := range tests {
@@ -1272,5 +1277,24 @@ func TestHandleNormalizedEvent_ThinkingBlockEnd(t *testing.T) {
 	}
 	if !evs[0].event.ThinkingRedacted {
 		t.Errorf("expected ThinkingRedacted true")
+	}
+}
+
+// TestTranslateToEngineEvent_SteerDegraded pins the semantic peer of the live
+// steer-drain translation. A degraded fallback is accepted as a fresh prompt,
+// never drained by an active run, and must therefore not reuse the established
+// engine_steer_injected contract.
+func TestTranslateToEngineEvent_SteerDegraded(t *testing.T) {
+	result := translateToEngineEvent(types.NormalizedEvent{
+		Data: &types.SteerDegradedEvent{MessageLength: 42},
+	}, 0)
+	if result.Type != "engine_steer_degraded" {
+		t.Fatalf("expected engine_steer_degraded, got %q", result.Type)
+	}
+	if result.SteerDegradedMessageLength != 42 {
+		t.Errorf("degraded message length = %d, want 42", result.SteerDegradedMessageLength)
+	}
+	if result.SteerMessageLength != 0 {
+		t.Errorf("live steer message length = %d, want 0", result.SteerMessageLength)
 	}
 }

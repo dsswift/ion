@@ -42,6 +42,9 @@ func (noopSA) SendAbort()                                                       
 func (noopSA) RootContext() context.Context                                      { return context.Background() }
 func (noopSA) SendPrompt(_ string, _ string, _ []string) error                   { return nil }
 func (noopSA) SendPromptWithKind(_ string, _ string, _ []string, _ string) error { return nil }
+func (noopSA) SendPromptDegradedSteer(_ string, _ string, _ []string, _ string) error {
+	return nil
+}
 func (noopSA) SteerSelfMainLoop(_ string) bool                                   { return false }
 func (noopSA) SteerSelfMainLoopWithKind(_, _ string) bool                        { return false }
 func (noopSA) ParkSelfMainLoop() bool                                            { return false }

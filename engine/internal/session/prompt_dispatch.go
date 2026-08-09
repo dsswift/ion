@@ -114,6 +114,13 @@ type PromptOverrides struct {
 	// MessageData.InjectionKind via appendInboundUserMessage so consumers
 	// can classify the turn on historical reload.
 	InjectionKind string
+
+	// SteerDegraded marks a prompt that began as a ctx.steerSelf delivery and
+	// became a fresh prompt because the owning run was not live. Forwarded onto
+	// RunOptions.SteerDegraded so the backend persists the same steer marker
+	// drainSteer writes for the live-run path. Orthogonal to InjectionKind —
+	// see the RunOptions field comment.
+	SteerDegraded bool
 }
 
 // SendPrompt dispatches a prompt to the session's backend run.

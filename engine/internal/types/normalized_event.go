@@ -89,6 +89,8 @@ func (e *NormalizedEvent) UnmarshalJSON(data []byte) error {
 		target = &ToolStalledEvent{}
 	case EventSteerInjected:
 		target = &SteerInjectedEvent{}
+	case EventSteerDegraded:
+		target = &SteerDegradedEvent{}
 	case EventPromptInjected:
 		target = &PromptInjectedEvent{}
 	case EventModelFallback:

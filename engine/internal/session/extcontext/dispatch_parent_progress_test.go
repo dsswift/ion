@@ -62,6 +62,12 @@ func (a *bumpCountingAccessor) SendPrompt(_, _ string, _ []string) error { retur
 func (a *bumpCountingAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error {
 	return nil
 }
+
+// Degraded-steer delivery is not what this test exercises; it delegates so
+// the fake satisfies SessionAccessor and behaves like the kind-aware send.
+func (a *bumpCountingAccessor) SendPromptDegradedSteer(text string, model string, bash []string, kind string) error {
+	return a.SendPromptWithKind(text, model, bash, kind)
+}
 func (a *bumpCountingAccessor) SteerSelfMainLoop(_ string) bool            { return false }
 func (a *bumpCountingAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
 func (a *bumpCountingAccessor) ParkSelfMainLoop() bool                     { return false }

@@ -1141,7 +1141,13 @@ export interface IonContext {
    * - If the owning run is live, the message is steered onto it and surfaces
    *   at the next run-loop checkpoint (mid-turn). Outcome: `'steered'`.
    * - If the owning run is idle, the message is sent as a fresh prompt via the
-   *   normal prompt path. Outcome: `'sent'`.
+   *   normal prompt path. Outcome: `'sent'`. The engine emits additive
+   *   `engine_steer_degraded` and persists a steer marker on this arm.
+   *
+   * `engine_steer_injected` remains exclusive to a live run-loop checkpoint
+   * draining a steer before the next LLM call. Consumers that render delivery
+   * confirmation can render both events similarly, but their distinct types
+   * preserve whether a live run actually consumed the message.
    *
    * Use this to bubble an asynchronous dispatch's completion back to the
    * dispatching agent without polling: a busy parent is steered immediately

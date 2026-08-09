@@ -965,6 +965,43 @@ Emitted when an extension injects a prompt via `ctx.sendPrompt` (dispatch-comple
 | `type` | `"engine_prompt_injected"` | Event type |
 | `injectedPrompt` | string | The injected prompt text, verbatim |
 | `injectedPromptOrigin` | string | Hosting extension's name (optional; empty when the session has no extension identity) |
+| `injectedPromptKind` | string | Semantic classification of the injection (optional; empty means an unclassified extension-initiated turn). See the vocabulary below. |
+
+`injectedPromptKind` tells a consumer what *kind* of turn arrived, so a machine-to-machine signal is not mistaken for something the operator typed. `injectedPromptMachineAuthored` is the engine's own derivation from that kind, and it is the field a consumer should branch on: reading it means a kind added to the engine classifies correctly with no client change, whereas matching kind strings requires editing every client. The engine classifies and stops there — it attaches no rendering opinion, and a consumer may render, suppress, dim, or ignore any kind.
+
+The kinds are enumerated in `engine/internal/types/injection_kind.go`, which is the source of truth:
+
+| Kind | Machine-authored | Meaning |
+|------|------------------|---------|
+| `agent_completion` | yes | A dispatch callback — a completed child agent's result routed back to its parent. |
+| `background_task_completion` | yes | A finished background bash command's result, routed back to wake a parked session ([ADR-023](../architecture/adr/023-root-session-park-and-wake.md)). |
+| `slash_command` | yes | The expanded body of a slash command whose display turn is persisted separately as the raw invocation. The body is redundant with that display turn. |
+| `checkin` | yes | A scheduled heartbeat delivered to a session that went idle with work still running — a harness asking its own orchestrator to inspect outstanding dispatches. |
+| `revive` | yes | A harness re-entering its own loop after an external signal. Distinct from `agent_completion` so a consumer can tell "here is a child's result" from "keep going". |
+| `steer` | **no** | A steer message injected mid-turn onto a live run. The common case is a human typing into a running turn, which is as user-authored as a turn gets; the kind records *how* the turn arrived, not that it should be hidden. A machine-originated steer passes its own kind instead. |
+
+An empty kind means the injection is a genuine extension-initiated turn with no special classification, and is never machine-authored: silently hiding content the engine could not identify is worse than showing a turn a consumer did not expect. Consumers must treat an unrecognized kind as unclassified rather than failing to decode — the vocabulary grows additively.
+
+**A degraded self-steer has no kind of its own.** When `ctx.steerSelf` finds no live run it delivers a fresh prompt instead, carrying whatever kind the caller supplied. The engine emits additive `engine_steer_degraded` and persists a steer marker on that path. `engine_steer_injected` remains exclusive to a message a live run-loop checkpoint drained; consumers that need to distinguish the two must use their distinct event types. Both carry only message length, and the persisted marker lets history reload replay the confirmation.
+
+#### engine_steer_injected
+
+A live run-loop checkpoint drained a steer message into the conversation before the next LLM call. This event is emitted only for that live-drain path; it does not describe a steer accepted as a fresh prompt after the owning run became idle.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_steer_injected"` | Event type |
+| `steerMessageLength` | integer | Character count of the drained message |
+
+#### engine_steer_degraded
+
+`ctx.steerSelf` found no live owning run to drain, so the engine accepted the steer message as a fresh prompt. This additive event is distinct from `engine_steer_injected`: no run-loop checkpoint consumed the message. The engine persists a steer marker on both paths so a history reload can replay the delivery confirmation.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_steer_degraded"` | Event type |
+| `steerDegradedMessageLength` | integer | Character count of the accepted fresh-prompt message |
+
 
 #### engine_intercept
 

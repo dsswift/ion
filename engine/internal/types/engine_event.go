@@ -137,6 +137,11 @@ type EngineEvent struct {
 	// SteerInjectedEvent for the underlying normalized variant.
 	SteerMessageLength int `json:"steerMessageLength,omitempty"`
 
+	// engine_steer_degraded — character count of a ctx.steerSelf delivery
+	// accepted as a fresh prompt because no owning run was live. Distinct from
+	// SteerMessageLength: no run-loop steer channel drained this message.
+	SteerDegradedMessageLength int `json:"steerDegradedMessageLength,omitempty"`
+
 	// engine_prompt_injected — an extension injected a prompt via
 	// ctx.sendPrompt and a run started on it; no client submitted this
 	// turn, so live clients must render it from this event (the text is

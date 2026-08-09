@@ -81,7 +81,33 @@ func (a *sessionAccessor) SendPrompt(text string, model string, bashAllowlistAdd
 // session that is waiting for a bare revive (no pending children) so the
 // dispatch's LLM run restarts with the new conversation context.
 func (a *sessionAccessor) SendPromptWithKind(text string, model string, bashAllowlistAdditions []string, kind string) error {
+	return a.sendPromptWithKindOpts(text, model, bashAllowlistAdditions, kind, false)
+}
+
+// SendPromptDegradedSteer is the steerSelf-fallback variant of
+// SendPromptWithKind. Identical delivery, plus RunOptions.SteerDegraded so the
+// backend persists the steer marker drainSteer writes on the live-run path —
+// the two delivery paths then leave the same trace in the transcript.
+//
+// Separate from the kind: a degraded delivery can carry any kind (or none, when
+// a human steers an idle run), so the two facts cannot share one field.
+func (a *sessionAccessor) SendPromptDegradedSteer(text string, model string, bashAllowlistAdditions []string, kind string) error {
+	return a.sendPromptWithKindOpts(text, model, bashAllowlistAdditions, kind, true)
+}
+
+func (a *sessionAccessor) sendPromptWithKindOpts(text string, model string, bashAllowlistAdditions []string, kind string, steerDegraded bool) error {
 	overrides := buildPromptOverrides(model, bashAllowlistAdditions, kind)
+	if steerDegraded {
+		// buildPromptOverrides returns nil when every field is a zero value; a
+		// degraded steer with no model and no kind still needs the carrier.
+		if overrides == nil {
+			overrides = &PromptOverrides{}
+		}
+		overrides.SteerDegraded = true
+		utils.LogWithFields(utils.LevelInfo, "session", "sessionaccessor.sendprompt: degraded steer, marker will be persisted", map[string]any{
+			"key": a.key, "count": len(text), "injection_kind": kind,
+		})
+	}
 	if len(bashAllowlistAdditions) > 0 {
 		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sessionaccessor.sendprompt: threading bash-allowlist additions for this prompt", map[string]any{"key": a.key, "count": len(bashAllowlistAdditions), "bash_allowlist_additions": bashAllowlistAdditions})
 	}
@@ -95,6 +121,18 @@ func (a *sessionAccessor) SendPromptWithKind(text string, model string, bashAllo
 	// surface the injected turn to live clients. Client wire prompts never
 	// route through this accessor. See emitPromptInjected.
 	a.m.emitPromptInjected(a.key, text, injectedKind)
+
+	// A degraded steer emits its own typed signal. SteerInjectedEvent remains
+	// exclusive to a live run-loop drain; collapsing the two would tell an
+	// external consumer a non-existent run consumed this message mid-turn.
+	if steerDegraded {
+		a.m.emit(a.key, translateToEngineEvent(types.NormalizedEvent{
+			Data: &types.SteerDegradedEvent{MessageLength: len(text)},
+		}, 0))
+		utils.LogWithFields(utils.LevelInfo, "session", "sessionaccessor.sendprompt: emitted steer_degraded for fallback delivery", map[string]any{
+			"key": a.key, "count": len(text), "injection_kind": injectedKind,
+		})
+	}
 
 	// Signal any suspended dispatch on this session so its LLM run revives
 	// with the new conversation context. The new user turn is already

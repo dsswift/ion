@@ -50,6 +50,12 @@ func (p *panicTestAccessor) SendAbort()                                         
 func (p *panicTestAccessor) RootContext() context.Context                               { return context.Background() }
 func (p *panicTestAccessor) SendPrompt(_, _ string, _ []string) error                   { return nil }
 func (p *panicTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error { return nil }
+
+// Degraded-steer delivery is not what this test exercises; it delegates so
+// the fake satisfies SessionAccessor and behaves like the kind-aware send.
+func (p *panicTestAccessor) SendPromptDegradedSteer(text string, model string, bash []string, kind string) error {
+	return p.SendPromptWithKind(text, model, bash, kind)
+}
 func (p *panicTestAccessor) SteerSelfMainLoop(_ string) bool                            { return false }
 func (p *panicTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool                 { return false }
 func (p *panicTestAccessor) ParkSelfMainLoop() bool                                     { return false }

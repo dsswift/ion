@@ -166,6 +166,9 @@
       "tools",
       "version"
     ],
+    "steer_degraded": [
+      "messageLength"
+    ],
     "steer_injected": [
       "messageLength"
     ],
@@ -406,6 +409,7 @@
     "signal",
     "source",
     "stderrTail",
+    "steerDegradedMessageLength",
     "steerMessageLength",
     "strategy",
     "summary",

@@ -59,7 +59,6 @@ type SessionAccessor interface {
 	// should use SendPrompt; this method exists so the ext/send_prompt
 	// active-hook path can pass Kind without changing SendPrompt's signature.
 	SendPromptWithKind(text string, model string, bashAllowlistAdditions []string, kind string) error
-
 	// SteerSelfMainLoop attempts to steer the session's OWN main run loop
 	// (the depth-0 / orchestrator run) by injecting message onto its steer
 	// channel. Returns true when the steer reached a live run; false when
@@ -275,6 +274,21 @@ type SessionAccessor interface {
 	// on each turn by the dispatch path to produce per-turn plugin reinforcement
 	// messages. Returns nil when no plugins have UserPromptSubmit hooks.
 	PluginTurnMessages(prompt string) []types.LlmMessage
+}
+
+// degradedSteerPromptSender is an optional SessionAccessor refinement.
+// sessionAccessor implements it so no-owning-run delivery persists a marker and
+// emits engine_steer_degraded. Existing minimal accessors remain source
+// compatible and use the ordinary classified prompt fallback.
+type degradedSteerPromptSender interface {
+	SendPromptDegradedSteer(text string, model string, bashAllowlistAdditions []string, kind string) error
+}
+
+func sendDegradedSteerPrompt(sa SessionAccessor, message, kind string) error {
+	if sender, ok := sa.(degradedSteerPromptSender); ok {
+		return sender.SendPromptDegradedSteer(message, "", nil, kind)
+	}
+	return sa.SendPromptWithKind(message, "", nil, kind)
 }
 
 // ExtContextOpts holds optional configuration for NewExtContext. All fields
@@ -714,10 +728,21 @@ func steerSelfWithKind(
 		if outcome == SteerOutcomeDelivered {
 			return extension.SteerDispatchResult{Delivered: true, Outcome: "steered"}, nil
 		}
-		// Child run not live (no_run / not_found / channel_full) — fall
-		// back to a fresh prompt on the owning session so the completion
-		// is never silently dropped.
-		if err := sa.SendPromptWithKind(message, "", nil, kind); err != nil {
+		// A full channel proves the child run IS live; it simply could not
+		// accept another buffered steer. Preserve that fact: the session prompt
+		// fallback keeps the message from dropping, but is not a degraded
+		// no-owning-run delivery and must not emit SteerDegradedEvent.
+		if outcome == SteerOutcomeChannelFull {
+			if err := sa.SendPromptWithKind(message, "", nil, kind); err != nil {
+				return extension.SteerDispatchResult{Delivered: false, Outcome: string(outcome)}, err
+			}
+			return extension.SteerDispatchResult{Delivered: true, Outcome: "sent"}, nil
+		}
+
+		// no_run / not_found: no child run owns the context, so the fresh prompt
+		// is a genuinely degraded steer delivery and receives its distinct signal
+		// plus the persisted marker.
+		if err := sendDegradedSteerPrompt(sa, message, kind); err != nil {
 			return extension.SteerDispatchResult{Delivered: false, Outcome: string(outcome)}, err
 		}
 		return extension.SteerDispatchResult{Delivered: true, Outcome: "sent"}, nil
@@ -727,7 +752,7 @@ func steerSelfWithKind(
 	if sa.SteerSelfMainLoopWithKind(message, kind) {
 		return extension.SteerDispatchResult{Delivered: true, Outcome: "steered"}, nil
 	}
-	if err := sa.SendPromptWithKind(message, "", nil, kind); err != nil {
+	if err := sendDegradedSteerPrompt(sa, message, kind); err != nil {
 		return extension.SteerDispatchResult{Delivered: false, Outcome: "sent"}, err
 	}
 	return extension.SteerDispatchResult{Delivered: true, Outcome: "sent"}, nil

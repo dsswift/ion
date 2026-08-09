@@ -91,6 +91,12 @@ func (a *idTestAccessor) CurrentModel() string                                  
 func (a *idTestAccessor) SendAbort()                                                 {}
 func (a *idTestAccessor) SendPrompt(_, _ string, _ []string) error                   { return nil }
 func (a *idTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error { return nil }
+
+// Degraded-steer delivery is not what this test exercises; it delegates so
+// the fake satisfies SessionAccessor and behaves like the kind-aware send.
+func (a *idTestAccessor) SendPromptDegradedSteer(text string, model string, bash []string, kind string) error {
+	return a.SendPromptWithKind(text, model, bash, kind)
+}
 func (a *idTestAccessor) SteerSelfMainLoop(_ string) bool                            { return false }
 func (a *idTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool                 { return false }
 func (a *idTestAccessor) ParkSelfMainLoop() bool                                     { return false }

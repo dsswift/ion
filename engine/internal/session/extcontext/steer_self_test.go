@@ -33,6 +33,11 @@ type steerSelfAccessor struct {
 	// Kinds observed on each path, index-aligned with the calls above.
 	steerMainLoopKinds []string
 	sendPromptKinds    []string
+
+	// sendPromptDegraded records, per send and index-aligned with
+	// sendPromptCalls, whether it arrived through the degraded-steer entry
+	// point (SendPromptDegradedSteer) rather than the plain kind-aware send.
+	sendPromptDegraded []bool
 }
 
 func (a *steerSelfAccessor) SessionKey() string           { return "steer-self-test" }
@@ -52,11 +57,28 @@ func (a *steerSelfAccessor) SendPrompt(text string, model string, bash []string)
 }
 
 func (a *steerSelfAccessor) SendPromptWithKind(text string, model string, bash []string, kind string) error {
+	return a.recordSend(text, kind, false)
+}
+
+func (a *steerSelfAccessor) SendPromptDegradedSteer(text string, model string, bash []string, kind string) error {
+	return a.recordSend(text, kind, true)
+}
+
+func (a *steerSelfAccessor) recordSend(text, kind string, degraded bool) error {
 	a.mu.Lock()
 	a.sendPromptCalls = append(a.sendPromptCalls, text)
 	a.sendPromptKinds = append(a.sendPromptKinds, kind)
+	a.sendPromptDegraded = append(a.sendPromptDegraded, degraded)
 	a.mu.Unlock()
 	return nil
+}
+
+// degradedSends reports, per recorded send and in call order, whether it came
+// through the degraded-steer entry point.
+func (a *steerSelfAccessor) degradedSends() []bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]bool(nil), a.sendPromptDegraded...)
 }
 
 func (a *steerSelfAccessor) SteerSelfMainLoop(message string) bool {
@@ -409,5 +431,99 @@ func TestSteerSelf_KindlessAliasStaysUnclassified(t *testing.T) {
 	}
 	if len(sendKinds) != 1 || sendKinds[0] != "" {
 		t.Errorf("kindless SteerSelf produced send kinds %v, want one empty", sendKinds)
+	}
+}
+
+// TestSteerSelf_DegradedDeliveryIsMarkedDegraded pins that both fallback arms
+// route through SendPromptDegradedSteer rather than the plain kind-aware send.
+//
+// The flag is what makes the backend persist the steer marker that drainSteer
+// writes on the live-run path. Without it a degraded machine turn is suppressed
+// with no trace, and an operator sees a tool sweep begin with nothing in the
+// transcript explaining why.
+//
+// Revert-red: point either arm back at SendPromptWithKind and the recorded flag
+// flips to false.
+func TestSteerSelf_DegradedDeliveryIsMarkedDegraded(t *testing.T) {
+	t.Run("depth 0, idle main loop", func(t *testing.T) {
+		acc := &steerSelfAccessor{mainLoopLive: false}
+		ctx := NewExtContext(acc, NewDispatchRegistry(), ExtContextOpts{Depth: 0})
+
+		if _, err := ctx.SteerSelf("[SYSTEM] Dispatch check-in"); err != nil {
+			t.Fatalf("SteerSelf returned error: %v", err)
+		}
+
+		degraded := acc.degradedSends()
+		if len(degraded) != 1 {
+			t.Fatalf("expected exactly one send on the idle fallback, got %d", len(degraded))
+		}
+		if !degraded[0] {
+			t.Error("the depth-0 fallback must deliver as a degraded steer so the marker is persisted")
+		}
+	})
+
+	t.Run("depth N, idle child run", func(t *testing.T) {
+		registry := NewDispatchRegistry()
+		child := &mockSteerableBackend{result: backend.SteerResultNoRun}
+		registry.RegisterWithID("dispatch-degraded-1", "depth1-agent", func() {}, child, "sess", "", 1)
+		registry.SetChildRunID("dispatch-degraded-1", "sess-dispatch-degraded-1")
+
+		acc := &steerSelfAccessor{}
+		ctx := NewExtContext(acc, registry, ExtContextOpts{
+			Depth:      1,
+			DispatchId: "dispatch-degraded-1",
+		})
+
+		if _, err := ctx.SteerSelf("late completion"); err != nil {
+			t.Fatalf("SteerSelf returned error: %v", err)
+		}
+
+		degraded := acc.degradedSends()
+		if len(degraded) != 1 {
+			t.Fatalf("expected exactly one send on the idle child fallback, got %d", len(degraded))
+		}
+		if !degraded[0] {
+			t.Error("the depth-N fallback must deliver as a degraded steer so the marker is persisted")
+		}
+	})
+}
+
+// A channel-full child is still live. Its fresh-prompt fallback prevents a
+// drop, but must not claim ctx.steerSelf found no owning run.
+func TestSteerSelf_DepthN_ChannelFullIsNotDegraded(t *testing.T) {
+	registry := NewDispatchRegistry()
+	child := &mockSteerableBackend{result: backend.SteerResultChannelFull}
+	registry.RegisterWithID("dispatch-full-1", "depth1-agent", func() {}, child, "sess", "", 1)
+	registry.SetChildRunID("dispatch-full-1", "sess-dispatch-full-1")
+
+	acc := &steerSelfAccessor{}
+	ctx := NewExtContext(acc, registry, ExtContextOpts{Depth: 1, DispatchId: "dispatch-full-1"})
+	if _, err := ctx.SteerSelf("queued steer overflow"); err != nil {
+		t.Fatalf("SteerSelf returned error: %v", err)
+	}
+
+	degraded := acc.degradedSends()
+	if len(degraded) != 1 {
+		t.Fatalf("expected one fallback send, got %d", len(degraded))
+	}
+	if degraded[0] {
+		t.Error("channel_full proves a live child run; fallback must not be marked degraded")
+	}
+}
+
+// A steer that REACHED a live run must not be marked degraded: drainSteer
+// already persists the marker on that path, and a second one would double the
+// divider. Together with the test above this pins that the flag tracks the
+// degradation specifically, not steerSelf in general.
+func TestSteerSelf_LiveDeliveryIsNotMarkedDegraded(t *testing.T) {
+	acc := &steerSelfAccessor{mainLoopLive: true}
+	ctx := NewExtContext(acc, NewDispatchRegistry(), ExtContextOpts{Depth: 0})
+
+	if _, err := ctx.SteerSelf("mid-turn steer"); err != nil {
+		t.Fatalf("SteerSelf returned error: %v", err)
+	}
+
+	if degraded := acc.degradedSends(); len(degraded) != 0 {
+		t.Errorf("a live steer must not inject a prompt at all, got %d sends", len(degraded))
 	}
 }

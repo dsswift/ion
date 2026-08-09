@@ -53,6 +53,20 @@ type SteerInjectedEvent struct {
 
 func (SteerInjectedEvent) eventType() string { return EventSteerInjected }
 
+// SteerDegradedEvent is emitted when ctx.steerSelf could not find a live
+// owning run to steer and delivered its message as a fresh prompt instead.
+//
+// This is deliberately distinct from SteerInjectedEvent. That event proves a
+// live run-loop checkpoint drained a message before its next LLM call; this
+// one proves no such run existed. Both carry only a length, so clients can
+// acknowledge delivery without echoing internal prompt content.
+type SteerDegradedEvent struct {
+	// MessageLength is the character count of the delivered steer message.
+	MessageLength int `json:"messageLength"`
+}
+
+func (SteerDegradedEvent) eventType() string { return EventSteerDegraded }
+
 // PromptInjectedEvent is emitted when an ENGINE-SIDE actor (an extension via
 // ctx.sendPrompt) starts a run whose user prompt no client submitted. Without
 // it, live clients watch the model respond to a turn they cannot see — the

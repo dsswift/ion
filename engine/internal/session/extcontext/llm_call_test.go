@@ -63,6 +63,12 @@ func (a *llmCallTestAccessor) RootContext() context.Context {
 }
 func (a *llmCallTestAccessor) SendPrompt(_, _ string, _ []string) error                   { return nil }
 func (a *llmCallTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error { return nil }
+
+// Degraded-steer delivery is not what this test exercises; it delegates so
+// the fake satisfies SessionAccessor and behaves like the kind-aware send.
+func (a *llmCallTestAccessor) SendPromptDegradedSteer(text string, model string, bash []string, kind string) error {
+	return a.SendPromptWithKind(text, model, bash, kind)
+}
 func (a *llmCallTestAccessor) SteerSelfMainLoop(_ string) bool                            { return false }
 func (a *llmCallTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool                 { return false }
 func (a *llmCallTestAccessor) ParkSelfMainLoop() bool                                     { return false }

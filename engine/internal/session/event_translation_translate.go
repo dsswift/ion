@@ -307,6 +307,12 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 		// to be echoed back over the wire.
 		return types.EngineEvent{Type: "engine_steer_injected", SteerMessageLength: e.MessageLength}
 
+	case *types.SteerDegradedEvent:
+		// The no-live-run peer of SteerInjectedEvent. The message became a
+		// fresh prompt, so it did not pass through a run-loop drain; preserve
+		// that semantic distinction for external consumers.
+		return types.EngineEvent{Type: "engine_steer_degraded", SteerDegradedMessageLength: e.MessageLength}
+
 	case *types.PromptInjectedEvent:
 		// Engine-initiated prompt (extension ctx.sendPrompt): the run's user
 		// turn was not submitted by any consumer — the full text crosses the
