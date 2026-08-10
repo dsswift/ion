@@ -140,6 +140,8 @@ The graph is a starting point, not the authority. It tells you *where* to look; 
 
 Once a graph exists the hooks keep it current — `post-commit` for your own commits, `post-checkout` for branch switches, and Ion's own `post-merge` / `post-rewrite` for pulls, rebases, and amends (`scripts/graphify-rebuild.sh`). They re-extract changed files incrementally, AST-only, in a detached process, and write files without ever staging or committing them. Every one of them exits cleanly when graphify is absent, so a contributor without it sees no failures. Set `GRAPHIFY_SKIP_HOOK=1` to skip one rebuild.
 
+A provisioned worktree links its `graphify-out/graph.json` to its primary checkout, while keeping query cache files local. Query it normally from the worktree. Never run `graphify update` or `make graph` there: graph mutation belongs only in the primary checkout. `make graph-refresh` is a compatibility no-op that creates or validates the primary graph link for worktrees provisioned from an older manifest; it never refreshes a graph there.
+
 Because the rebuild is detached, it finishes a few seconds *after* the commit that triggered it closes. The graph is therefore always a moment behind. That is by design and requires no action.
 
 **To rebuild from scratch, run `make graph`.** It moves the existing graph aside, re-extracts, and restores the old one if extraction fails — no manual `rm -rf` needed, and a failed rebuild never leaves the clone with no graph. (`make graph-refresh` re-extracts incrementally into the existing one; `make graph-ensure` is the bootstrap-only build-if-absent path.) All three are cheap and offline: extraction is pure local tree-sitter (`graphify . --code-only`, skipping the docs/PDFs/images that would need an LLM backend), then `graphify cluster-only . --no-viz --no-label` partitions communities and writes `GRAPH_REPORT.md`. No API key, nothing leaves the machine. Reach for a rebuild to purge nodes that repeated incremental updates have left stale.
@@ -906,7 +908,7 @@ builds. Ion materialises what the project declares in the committed
 `.ion/worktree.json`: each `seed` entry is cloned (copy-on-write), built with its
 own command, or copied, and the project's `setup` command runs afterward. A clone
 is a separate inode sharing blocks, so an install inside a worktree stays
-independent of the main clone — Ion never symlinks a shared dependency directory.
+independent of the main clone — Ion never symlinks a shared mutable dependency directory. A manifest can explicitly link a primary-owned read-mostly file such as a knowledge graph; that file is not a dependency tree and worktrees never build it.
 No manifest means no provisioning. Ion refuses to seed any path git does not
 ignore, so provisioning can never dirty `git status`. Reference:
 [`docs/configuration/worktree-json.md`](docs/configuration/worktree-json.md).

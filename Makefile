@@ -368,19 +368,14 @@ bootstrap:
 # A missing graphify install is a notice, never a failure: the graph is an
 # optional developer convenience and bootstrap must not break over it.
 #
-# Skipped entirely in a linked worktree. The graphify hooks (post-commit,
-# post-checkout, and scripts/graphify-rebuild.sh) all deliberately no-op outside
-# the primary checkout, so a graph built here would be born unmaintained — and
-# building it costs a full tree-sitter extraction of the whole repo on every
-# worktree creation. Worktree provisioning seeds `graphify-out` from the primary
-# checkout instead (.ion/worktree.json), which is near-instant on a
-# copy-on-write filesystem. An explicit `make graph-refresh` still works here.
-#
-# Detection matches the guard the hooks already use: a linked worktree's
-# --git-dir is .git/worktrees/<name> while --git-common-dir is the shared .git.
+# Linked worktrees query a primary-owned graph.json link. Hooks skip them, and
+# graph-ensure remains a successful bootstrap no-op. graph-refresh is an
+# idempotent compatibility bridge for older manifests: it creates or validates
+# the link but never rebuilds. graph refuses in a linked worktree.
 graph-ensure:
-	@if [ "$$(cd "$$(git rev-parse --git-dir 2>/dev/null)" 2>/dev/null && pwd)" != "$$(cd "$$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd)" ]; then \
-		echo "▶ graphify: linked worktree — skipping graph build (provisioning seeds it; 'make graph-refresh' forces one)"; \
+	@guard="$$(bash scripts/graphify-worktree-guard.sh)" || exit $$?; \
+	if [ "$${guard%% *}" = "worktree" ]; then \
+		echo "▶ graphify: linked worktree — skipping graph build (primary graph is provisioned for queries)"; \
 	elif [ -f graphify-out/graph.json ]; then \
 		echo "▶ graphify: graph already present, skipping build (use 'make graph-refresh' or 'make graph')"; \
 	elif ! command -v graphify >/dev/null 2>&1; then \
@@ -408,7 +403,21 @@ graph-ensure:
 # same watch-rebuild code the git hooks use, which takes the per-repo flock —
 # so a refresh racing a hook rebuild cannot lose an update.
 graph-refresh:
-	@if ! command -v graphify >/dev/null 2>&1; then \
+	@guard="$$(bash scripts/graphify-worktree-guard.sh)" || exit $$?; \
+	if [ "$${guard%% *}" = "worktree" ]; then \
+		primary="$${guard#* }/graphify-out/graph.json"; local="graphify-out/graph.json"; \
+		if [ ! -f "$$primary" ]; then \
+			echo "▶ graphify: primary checkout has no graph; worktree link remains absent"; \
+		elif [ -L "$$local" ] && [ "$$(readlink "$$local")" = "$$primary" ]; then \
+			echo "▶ graphify: primary graph link already present"; \
+		elif [ -e "$$local" ] || [ -L "$$local" ]; then \
+			echo "Refused: $$local exists but is not the primary graph link; refusing to replace local data." >&2; \
+			exit 1; \
+		else \
+			mkdir -p graphify-out; ln -s "$$primary" "$$local"; \
+			echo "▶ graphify: linked primary graph for worktree queries"; \
+		fi; \
+	elif ! command -v graphify >/dev/null 2>&1; then \
 		echo "⚠️  graphify not on PATH — nothing to refresh."; \
 	elif [ ! -f graphify-out/graph.json ]; then \
 		echo "▶ graphify: no graph yet — building instead"; \
@@ -427,7 +436,11 @@ graph-refresh:
 # disk, interrupted run) leaves the clone with no graph at all — strictly
 # worse than the stale one it had, and a full re-extraction is not cheap.
 graph:
-	@if ! command -v graphify >/dev/null 2>&1; then \
+	@guard="$$(bash scripts/graphify-worktree-guard.sh)" || exit $$?; \
+	if [ "$${guard%% *}" = "worktree" ]; then \
+		echo "Refused: graph rebuild belongs in primary checkout $${guard#* }. This worktree reads its provisioned graph.json link." >&2; \
+		exit 1; \
+	elif ! command -v graphify >/dev/null 2>&1; then \
 		echo "⚠️  graphify not on PATH — nothing to rebuild."; \
 	else \
 		echo "▶ graphify: rebuilding from scratch"; \

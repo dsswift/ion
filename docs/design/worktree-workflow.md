@@ -366,7 +366,7 @@ landing, and even after **Land & retire** deletes the branch.
 | Provisioning shows a warning badge | A `build` or `setup` command failed. | Read the reason in the tooltip, fix it, then Re-provision. |
 | Provisioning is slow every time | No copy-on-write between your repo and the worktree root — different volumes, or a filesystem without reflink (NTFS, ext4). | Expected. Put the worktree root on the same volume as the repo to get the fast path. |
 | A seeded path shows in `git status` | It cannot: Ion refuses to seed any path git does not ignore. | If you see this, the path came from something other than provisioning. |
-| The graph is missing in a worktree | `make bootstrap` deliberately skips the graph build in a worktree. | Provisioning seeds it; `make graph-refresh` forces one. |
+| The graph is missing in a worktree | Primary checkout has no graph, or worktree predates linked-file provisioning. | Re-provision after building the graph in the primary checkout. Worktrees query the primary `graph.json`; `make graph-refresh` creates or validates its link for older manifests, while `make graph` refuses there. |
 
 ## Provisioning — a new worktree arrives ready to build
 

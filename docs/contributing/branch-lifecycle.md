@@ -77,6 +77,8 @@ If you *do* use graphify, understanding one thing prevents all confusion: **it i
 
 Refreshes are automatic across every path that changes history: your own commits (`post-commit`), branch switches (`post-checkout`), and pulls, rebases, and amends (Ion's own `post-merge` / `post-rewrite`, via `scripts/graphify-rebuild.sh`). You should never need to refresh by hand.
 
+The primary checkout owns graph mutation. Provisioned worktrees link its `graph.json` for queries and retain local query stamps; `make graph` refuses in worktrees. `make graph-refresh` only creates or validates the primary graph link for compatibility; it never refreshes there.
+
 | Command | When |
 |---|---|
 | `make bootstrap` | Once per clone. Builds the graph if graphify is installed. |

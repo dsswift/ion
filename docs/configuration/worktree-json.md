@@ -69,6 +69,7 @@ has to put them there.
 | `build` | string | no | Command that rebuilds this directory from scratch. Used when no copy-on-write clone is available, and to reconcile staleness. |
 | `cwd` | string | no | Repo-relative directory to run `build` in. Defaults to the repo root. |
 | `staleWhen` | string[] | no | Files whose content decides whether the seeded directory is still valid — normally lockfiles. |
+| `link` | boolean | no | Explicitly link one regular, primary-owned source file. Cannot be combined with `build`, `cwd`, or non-empty `staleWhen`. |
 
 ## How Ion materialises a seed entry
 
@@ -119,9 +120,27 @@ A reflink shares physical blocks but is a separate file. The first write to
 either side duplicates the affected blocks, so `npm install` inside a cloned
 worktree affects nothing else and costs only its real delta.
 
-Ion never symlinks a shared dependency directory. A symlink is one directory with
-two names, so an install in any worktree would mutate the main clone and every
-sibling.
+Ion never symlinks a shared mutable dependency directory. A symlink is one
+directory with two names, so an install in any worktree would mutate the main
+clone and every sibling.
+
+### Explicit linked files
+
+A project can opt a **regular file** into primary-owned sharing with `link: true`.
+This is not a ladder fallback: clone/build/copy remain independent directory
+strategies. The source must exist and be a regular file; `build`, `cwd`, and
+non-empty `staleWhen` are invalid on a linked entry. Ion creates parent
+directories in the worktree, then creates an absolute file symlink. It never
+replaces an existing real file or wrong link. Missing sources skip cleanly, so
+optional caches stay optional.
+
+```json
+{ "path": "graphify-out/graph.json", "link": true }
+```
+
+This lets worktrees read the primary checkout's maintained graph while their
+`graphify-out/cache/` query stamps stay local. Only the primary checkout may
+rebuild the graph; `make graph` refuses in a worktree. `make graph-refresh` only creates or validates the primary graph link for compatibility and never rebuilds there.
 
 ## Rules
 
