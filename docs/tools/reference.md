@@ -107,8 +107,9 @@ Launch a new agent to handle complex, multi-step tasks autonomously.
 | `prompt` | string | yes | The task for the agent to perform |
 | `description` | string | no | Short description of what the agent will do |
 | `model` | string | no | Model override for the child agent. Invalid values warn and fall back to the session default. |
+| `wait_for_completion` | boolean | no | Block until terminal child output. Default `false`: return a dispatch ID immediately and receive automatic completion delivery. |
 
-Spawns a child session via the session-scoped `AgentSpawner`. The child agent has its own context and tool access. Returns the agent's final output.
+Spawns a child session via the session-scoped `AgentSpawner`. Default dispatch is asynchronous: parent may continue working or end its turn, and engine injects classified child completion when it finishes. Use `wait_for_completion: true` only when current turn needs terminal output.
 
 ### WebFetch
 

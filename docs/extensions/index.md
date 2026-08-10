@@ -58,7 +58,7 @@ TypeScript files are bundled automatically using esbuild before execution. The b
 
 If your extension declares npm dependencies via `package.json`, the engine runs `npm install --omit=dev` automatically before transpilation. Native modules (keytar, better-sqlite3, ...) need to be declared in [`extension.json`](extension-json.md) so esbuild leaves them external; the engine sets `NODE_PATH` so the runtime `import` resolves the user-installed copy.
 
-For languages other than TypeScript/JavaScript, compile to a binary named `main` in the extension directory. The engine will execute it directly. See [Building extensions in any language](sdk-raw.md) for the wire protocol details.
+For languages other than TypeScript/JavaScript, compile to a binary named `main` in the extension directory and make it executable. The engine runs it directly, with no transpile step and no Node runtime. Go has a first-class SDK — see [Go SDK](sdk-go.md); for any other language, [Building extensions in any language](sdk-raw.md) documents the wire protocol.
 
 ## Communication protocol
 
@@ -73,5 +73,6 @@ See [JSON-RPC Protocol](json-rpc-protocol.md) for the full wire format specifica
 - [JSON-RPC Protocol](json-rpc-protocol.md) -- wire format reference
 - [`extension.json` Reference](extension-json.md) -- per-extension manifest (native deps, name, engine version)
 - [TypeScript SDK](sdk-typescript.md) -- API reference for the TypeScript SDK (includes agent discovery)
-- [Go SDK](sdk-go.md) -- API reference for the Go SDK
+- [Go SDK](sdk-go.md) -- build a compiled single-binary extension in Go
 - [Raw Protocol](sdk-raw.md) -- build extensions in any language
+- [Engine-Internal Extension SDK](sdk-engine-internal.md) -- the in-process registry inside the engine

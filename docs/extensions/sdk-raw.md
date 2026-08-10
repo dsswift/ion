@@ -17,7 +17,7 @@ Your extension binary must:
 3. Handle the `init` method and respond with tool/command registrations
 4. Handle `hook/*`, `tool/*`, and `command/*` methods
 5. Be named `main` and placed in the extension directory
-6. Be executable (`chmod +x main`)
+6. Be executable (`chmod +x main`) — the engine requires the executable bit and refuses a `main` without it
 
 Write debug output to stderr. Never write non-JSON to stdout.
 
@@ -244,7 +244,7 @@ Response:
 {"jsonrpc":"2.0","id":100002,"result":{"found":true}}
 ```
 
-The `found` field is `true` when a running background dispatch was found and recalled, `false` otherwise.
+The `found` field is `true` when a running asynchronous dispatch was found and recalled, `false` otherwise.
 
 ### ext/task_suspend
 
@@ -296,13 +296,13 @@ Your extension needs to handle both incoming requests (from engine) and incoming
 
 ## Dispatch lifecycle notifications
 
-When a background dispatch is active (started with `ext/dispatch_agent` and `background: true`), the engine sends lifecycle notifications *to* the extension on stdin. These are JSON-RPC notifications (no `id` field) that your extension receives:
+When an asynchronous dispatch is active (default for `ext/dispatch_agent`; `waitForCompletion: true` is explicit foreground opt-in), engine sends lifecycle notifications *to* extension stdin. Notifications are observational: engine automatic parent delivery does not depend on handlers.
 
 | Method | When | Payload |
 |--------|------|---------|
-| `dispatch_complete` | Background agent finished successfully | `{name, output, exitCode, elapsed, cost, inputTokens, outputTokens, sessionId}` |
-| `dispatch_error` | Background agent failed | `{name, message, exitCode, elapsed}` |
-| `dispatch_recall` | Background agent was recalled | `{name, reason, elapsed, toolCount}` |
+| `dispatch_complete` | Asynchronous dispatch finished successfully | `{name, output, exitCode, elapsed, cost, inputTokens, outputTokens, sessionId}` |
+| `dispatch_error` | Asynchronous dispatch failed | `{name, message, exitCode, elapsed}` |
+| `dispatch_recall` | Asynchronous dispatch was recalled | `{name, reason, elapsed, toolCount}` |
 | `dispatch_tool_start` | Tool invocation began in child | `{name, toolName, toolId}` |
 | `dispatch_tool_end` | Tool completed in child | `{name, toolName, toolId, content}` |
 | `dispatch_tool_error` | Tool errored in child | `{name, toolName, toolId, content}` |
@@ -350,7 +350,7 @@ The `workspace` object in hook payloads has this shape:
 
 ## Compiled binary extensions
 
-For compiled languages (Go, Rust, C, etc.), build a static binary named `main`:
+For compiled languages, build a binary named `main`:
 
 ```bash
 # Go
@@ -363,7 +363,20 @@ cargo build --release && cp target/release/my-ext main
 gcc -o main extension.c
 ```
 
-Place the binary in the extension directory. The engine executes it directly without any runtime dependency.
+Place the binary in the extension directory. The engine executes it directly, with no runtime dependency.
+
+Two details of entry-point resolution matter here:
+
+- **Script entry points win.** The engine probes `extension.ts`, `index.ts`, `extension.js`, `index.js`, `extension.mjs`, and `index.mjs` before it looks for `main`. A directory holding both a script and a compiled binary is a source tree with its build output beside it, and the script is the authored entry point.
+- **The executable bit is required.** A `main` without it does not resolve; the engine fails at load naming the candidates it probed, rather than at spawn with a bare permission denial.
+
+**In Go, do not implement this protocol by hand.** The [Go SDK](sdk-go.md) is a dependency-free module that handles the framing, the hook dispatch, the context surface, and the init handshake:
+
+```bash
+go get github.com/dsswift/ion/sdk/go
+```
+
+This page remains the reference for every other language, and for anyone who wants to know exactly what the SDKs put on the wire.
 
 ## Resources, Notifications, and Cross-Session Messaging
 

@@ -121,3 +121,4 @@ Users can now type `/hello world` to trigger the command directly.
 - [Tools Registration](tools-registration.md) -- tool definition schema and invocation flow
 - [Commands Registration](commands-registration.md) -- slash command patterns
 - [TypeScript SDK Reference](sdk-typescript.md) -- full API documentation
+- [Go SDK](sdk-go.md) -- build the same thing as a compiled single binary, with no Node runtime

@@ -11,7 +11,25 @@
 
 Engine, desktop, and iOS each have their own `AGENTS.md` with subsystem-specific rules.
 
-SDK edits have a source-of-truth split (repo source vs. build-overwritten installed copy) — moved to [`engine/AGENTS.md`](engine/AGENTS.md) § "Extension SDK source location". Read it before changing any file under `engine/extensions/sdk/ion-sdk/` or touching `~/.ion/extensions/sdk/`.
+## Extension SDK source location
+
+The TypeScript SDK that extensions import lives in **two places**:
+
+| Location | Role |
+|----------|------|
+| `engine/extensions/sdk/ion-sdk/` | **Source of truth.** Edit here. |
+| `~/.ion/extensions/sdk/ion-sdk/` | **Installed copy.** Overwritten at build time. Never edit. |
+
+The **Go SDK** at `sdk/go/` (module `github.com/dsswift/ion/sdk/go`) has no such split: it is consumed by `go get`, never copied anywhere, and `install-assets` does not touch it. Edit it in place.
+
+The two SDKs are held in parity by tests, not convention — `sdk/go/parity_test.go` and `desktop/src/shared/__tests__/sdk-surface-sync.test.ts` both read generated goldens, so a hook or context method added to one SDK and not the other fails CI. After an engine-side hook change, regenerate:
+
+```bash
+cd engine && go test ./internal/extension/ -run TestSDKContractManifest -update
+cd sdk/go && go test -run TestGoSDKSurfaceManifest -update
+```
+
+The build process copies the repo source to the installed location. Any edit made only to `~/.ion/extensions/sdk/` will be lost on the next build. **Always edit `engine/extensions/sdk/ion-sdk/`** for SDK changes (types, runtime, or any other SDK file). The installed copy at `~/.ion/` is read-only from the agent's perspective.
 ## File-size caps (CI hard-fails above)
 
 | Language | Cap |
@@ -214,6 +232,7 @@ The following gates are **slow** — Docker container spin-up, full-network vuln
 | `desktop` | `desktop/` |
 | `relay` | `relay/` |
 | `ios` | `ios/` |
+| `sdk` | `sdk/` (the public Go extension SDK module) |
 | `docs` | `docs/` |
 | `repo` | root files or cross-cutting changes |
 | `ci` | `.github/` workflows and CI config |

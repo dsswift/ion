@@ -58,9 +58,9 @@ below: **CLOSEABLE** (engine-side wiring, no fighting the CLI) or **GATED**
 | Built-in tools (Read/Write/Edit/Bash/Grep/Glob/Web…) | ✅ | ✅ | ✅ | ✅ | ✅ | Each CLI ships its own equivalents; the model always has a file/shell/search tool set. |
 | Vendor's own MCP servers | ✅ | ✅ | ✅ | ✅ | ✅ | Each CLI loads MCP from **its own** config, independent of Ion. |
 | **Ion extension tools** | ✅ | ✅ | ❌ | ✅ | ✅ | `wireToolServer` exposes extension tools to the subprocess over MCP: claude-code via `--mcp-config`, grok/cursor via ACP `session/new` mcpServers. **codex is excluded** — its shared app-server takes MCP only at process-spawn time, not per session (see ledger). |
-| **`ion_agent` (subagent dispatch)** | ✅ | ✅ | ❌ | ✅ | ✅ | `wireAgentToolServer` registers `ion_agent` on claude-code and grok/cursor (not codex). The model-called `ion_agent` handler now routes through the **same depth-0 dispatch** as the API Agent tool (`buildRootAgentSpawner`): registry registration, `engine_agent_state` (appears in the panel), telemetry, and the child's own tools (next row). Foreground/synchronous, matching the tool's result contract. |
+| **`ion_agent` (subagent dispatch)** | ✅ | ✅ | ❌ | ✅ | ✅ | `wireAgentToolServer` registers `ion_agent` on claude-code and grok/cursor (not codex). Model-called `ion_agent` routes through depth-0 dispatch with registry state, telemetry, and child tools. It returns an asynchronous dispatch stub by default; `wait_for_completion` is explicit blocking opt-in. |
 | **Dispatched child gets ion tools** (extension tools + `ion_agent` for grandchildren) | ✅ | ✅ | ❌ | ✅ | ✅ | A CLI-routed dispatched child drops its `RunConfig`, so it used to be tool-orphaned. `BuildDelegatedChildToolServer` now gives each CLI child a per-child tool server sourced from its `RunConfig` — extension tools via the child's `McpToolRouter`, `ion_agent` via its `AgentSpawner` (grandchildren at depth+1). codex excluded (same shared-app-server gate). |
-| Background / suspend-revive dispatch | ✅ | ❌ | ❌ | ❌ | ❌ | A CLI tool call is synchronous request→response; the CLI's model cannot go idle mid-tool-call and be revived. |
+| Background / suspend-revive dispatch | ✅ | ✅ | ❌ | ✅ | ✅ | `ion_agent` returns a stub immediately. API parents consume completion at run-loop checkpoints; CLI parents receive automatic fresh-run delivery after their current tool/turn exits. ACP lacks live steering but still receives idle delivery. |
 | AskUserQuestion | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | The CLI's own elicitation is used; the engine's `ChildElicitFn` symmetrization is ApiBackend-only. |
 
 ## Permissions & governance
@@ -117,7 +117,7 @@ remaining closeable set:
 
 | # | Gap | Affected | Priority | Status / Approach |
 | ---|---|---|---|---|
-| C2 | Model-called `ion_agent` was a bare shim (no panel, tool-orphaned child) | claude-code, grok, cursor | **high** | **DONE.** `buildAgentToolHandler` now routes through `buildRootAgentSpawner` — the same depth-0 dispatch as the API Agent tool — so the child registers in the dispatch registry, emits `engine_agent_state` (appears in the panel), gets its own tool server, and can dispatch grandchildren. (The dispatch is foreground/synchronous by the tool's result contract; that is inherent, not a gap.) |
+| C2 | Model-called `ion_agent` was a bare shim (no panel, tool-orphaned child) | claude-code, grok, cursor | **high** | **DONE.** `buildAgentToolHandler` routes through `buildRootAgentSpawner`, giving child registry state, agent snapshots, telemetry, and child tools. Dispatch is asynchronous by default; explicit `wait_for_completion` preserves a bounded foreground result when needed. |
 | C3 | Tool-call / file-change observation hooks don't fire on CLI | all CLIs | medium | Bridge tool-result and file-mutation observations from the subprocess stream into `OnFileChanged` / an observe-only tool hook. Observation only — not interception. |
 | C5 | `OnBeforePrompt` bridged only for claude-code | codex, grok, cursor | medium | Generalize `fireBeforePromptCli` (already wired for claude-code) to rewrite `opts.Prompt`/`AppendSystemPrompt` before dispatch on the other CLIs. |
 | C6 | `OnInitialMessages` (plugin UserPromptSubmit) not applied on CLI | all CLIs | low | Prepend the per-turn `<system-reminder>` injection to the CLI prompt at dispatch, same shape as C5. |
@@ -135,7 +135,7 @@ remaining closeable set:
 | Per-turn / per-tool telemetry spans | all CLIs | The turn loop runs inside the subprocess; only the run-level boundary is observable. |
 | Early-stop mid-loop continuation | all CLIs | The CLI decides when to stop and cannot be made to resume between its own turns from outside. |
 | Mid-turn steering on ACP | grok, cursor | The ACP protocol exposes no steer channel. |
-| Background / suspend-revive dispatch | all CLIs | A CLI tool call is synchronous request→response; the model cannot go idle mid-call and be revived. Synchronous (blocking) dispatch is the ceiling. |
+| Background / suspend-revive dispatch | API, claude-code, grok, cursor | API consumes child completion at a run-loop checkpoint. CLI tool requests return a stub; completion queues a new root prompt after active turn exit. Codex remains gated because it cannot receive per-session `ion_agent` MCP. |
 
 ## The parity goal
 

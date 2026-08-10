@@ -305,7 +305,7 @@ parent-id the callee sees:
 ```typescript
 import { randomBytes } from 'node:crypto'
 
-ion.on('before_tool_call', async (ctx, info) => {
+ion.on('tool_call', async (ctx, info) => {
   if (!ctx.traceId) return  // no run in flight: nothing to correlate to
 
   const spanId = randomBytes(8).toString('hex')
@@ -396,7 +396,7 @@ await ctx.suspend()
 
 It throws at depth 0 when there is no active run to park, or no outstanding **notifying** background commands to park on (`notify_on_complete: true` — a fire-and-forget command is not something the session waits for). Parking with nothing to wait for would strand the session, so the engine refuses rather than hanging. Passing `awaitingDispatchIds` at depth 0 also throws: those are child dispatches, which only exist inside a dispatched run.
 
-**`dispatchAgent(opts)`** -- dispatch an engine-native agent. In the default (foreground) mode, blocks until the agent completes and returns a `DispatchAgentResult`.
+**`dispatchAgent(opts)`** -- dispatch an engine-native agent asynchronously by default. The promise resolves with a `DispatchAgentResult` stub carrying `dispatchId`; engine returns terminal result automatically to dispatch owner. Pass `waitForCompletion: true` only when extension must block for final output.
 
 ```typescript
 const result = await ctx.dispatchAgent({
@@ -406,16 +406,13 @@ const result = await ctx.dispatchAgent({
   systemPrompt: 'You are a research agent. Be thorough.',
   projectPath: ctx.cwd
 })
-// { name: 'researcher', output: '...', exitCode: 0, elapsed: 8.3, cost: 0.012, ... }
+// { name: 'researcher', dispatchId: '...', ... }
 ```
 
-Pass `background: true` to run the agent asynchronously. The promise resolves immediately with a stub result; the terminal outcome is delivered via `onComplete`, `onError`, or `onRecall` callbacks:
-
-```typescript
+Default dispatch is asynchronous. `background: true` remains accepted but is no longer required; `background: false` does not select foreground. Pass `waitForCompletion: true` only when final child output is required synchronously. Terminal lifecycle callbacks apply to asynchronous dispatches:
 await ctx.dispatchAgent({
   name: 'code-reviewer',
   task: 'Review the latest changes',
-  background: true,
   onComplete: (result) => {
     ctx.emit({ type: 'engine_notify', message: `Review done: ${result.output}`, level: 'info' })
   },
@@ -428,7 +425,7 @@ await ctx.dispatchAgent({
 })
 ```
 
-**Park-on-children (default) vs `detached`.** A background dispatch holds its *dispatching* agent open by default: when the dispatcher's run ends its turn while this child is still running, the engine parks the dispatcher (status `suspended`, visible in `listDispatchState`) and revives it when the child completes — so the dispatcher consumes the child's result and finishes its own work instead of reporting completion with work still in flight. Pass `detached: true` for genuine fire-and-forget: the parent's run completes at its turn boundary regardless of this child.
+**Park-on-children (default) vs `detached`.** An asynchronous dispatch holds its *dispatching* agent open by default: when the dispatcher's run ends its turn while this child is still running, the engine parks the dispatcher (status `suspended`, visible in `listDispatchState`) and revives it when the child completes — so the dispatcher consumes the child's result and finishes its own work instead of reporting completion with work still in flight. Pass `detached: true` for genuine fire-and-forget: the parent's run completes at its turn boundary regardless of this child.
 
 **Sub-agent governance.** `allowedSubAgents` is the set of agent names the *dispatched* agent may dispatch in turn (the engine enforces membership on its nested dispatches). `subAgentPolicy` selects the enforcement mode: unset keeps the historic semantics (enforced only when the list is non-empty), `'allowlist'` enforces even an **empty** list (an empty list denies all nested dispatch — how a harness declares a leaf agent), and `'unrestricted'` opts out. The engine's self-dispatch rail applies in every mode.
 
@@ -436,13 +433,12 @@ await ctx.dispatchAgent({
 await ctx.dispatchAgent({
   name: 'ios-dev',            // a leaf specialist
   task: 'Fix the rig assembly',
-  background: true,
   allowedSubAgents: [],       // no children...
   subAgentPolicy: 'allowlist' // ...and the empty list is ENFORCED: it may dispatch nothing
 })
 ```
 
-Lifecycle callbacks provide real-time visibility into a dispatched agent's progress. They fire for both foreground and background dispatches:
+Lifecycle callbacks provide real-time visibility into a dispatched agent's progress. They are observational; engine automatic owner delivery does not depend on them:
 
 - **`onToolStart(info)`** — a tool invocation began in the child session
 - **`onToolEnd(info)`** — a tool completed successfully
@@ -454,14 +450,13 @@ Lifecycle callbacks provide real-time visibility into a dispatched agent's progr
 await ctx.dispatchAgent({
   name: 'implementer',
   task: 'Build the feature',
-  background: true,
   onToolStart: (info) => log.debug(`tool started: ${info.toolName}`),
   onUsage: (info) => log.debug(`tokens: ${info.cumulativeInputTokens}+${info.cumulativeOutputTokens}`),
   onComplete: (result) => log.info(`done in ${result.elapsed}s, cost $${result.cost}`),
 })
 ```
 
-**`recallAgent(name, opts?)`** -- terminate a running background dispatch by agent name. Returns `true` if a dispatch was found and recalled, `false` otherwise. The recalled agent's `onRecall` callback fires with the provided reason. Has no effect on foreground dispatches.
+**`recallAgent(name, opts?)`** -- terminate a running asynchronous dispatch by agent name. Returns `true` if a dispatch was found and recalled, `false` otherwise. The recalled agent's `onRecall` callback fires with the provided reason. Has no effect on foreground dispatches.
 
 ```typescript
 const found = await ctx.recallAgent('code-reviewer', { reason: 'user requested' })
@@ -727,16 +722,17 @@ interface DispatchAgentOpts {
   planMode?: boolean        // start child in plan mode
   planFilePath?: string     // override plan file path (default: engine allocates one)
   planModeTools?: string[]  // override allowed tools during plan mode
-  background?: boolean      // run async; return stub result immediately
-  onComplete?: (result: DispatchAgentResult) => void   // background: success
-  onError?: (err: DispatchError) => void               // background: failure
-  onRecall?: (info: RecallInfo) => void                 // background: cancelled
-  onToolStart?: (info: DispatchToolStartInfo) => void   // tool invocation began in child
-  onToolEnd?: (info: DispatchToolEndInfo) => void       // tool completed in child
-  onToolError?: (info: DispatchToolErrorInfo) => void   // tool errored in child
-  onUsage?: (info: DispatchUsageInfo) => void           // token/cost usage update
-  onTextDelta?: (info: DispatchTextDeltaInfo) => void   // streaming text chunks from child
-  onPlanProposal?: (info: DispatchPlanProposalInfo) => void  // child proposed a plan
+  waitForCompletion?: boolean // explicit foreground opt-in; default is async
+  background?: boolean      // deprecated compatibility input; does not select foreground
+  onComplete?: (result: DispatchAgentResult) => void // asynchronous success
+  onError?: (err: DispatchError) => void             // asynchronous failure
+  onRecall?: (info: RecallInfo) => void               // asynchronous cancellation
+  onToolStart?: (info: DispatchToolStartInfo) => void // tool invocation began in child
+  onToolEnd?: (info: DispatchToolEndInfo) => void     // tool completed in child
+  onToolError?: (info: DispatchToolErrorInfo) => void // tool errored in child
+  onUsage?: (info: DispatchUsageInfo) => void         // token/cost usage update
+  onTextDelta?: (info: DispatchTextDeltaInfo) => void // streaming text chunks from child
+  onPlanProposal?: (info: DispatchPlanProposalInfo) => void // child proposed a plan
 }
 ```
 
@@ -744,16 +740,17 @@ interface DispatchAgentOpts {
 
 ```typescript
 interface DispatchAgentResult {
-  name: string        // agent name
-  output: string      // agent's final output text
-  exitCode: number    // 0 = success
-  elapsed: number     // wall time in seconds
-  cost: number        // USD cost
+  name: string        // agent name; populated on terminal results
+  output: string      // terminal output; empty on an asynchronous stub
+  exitCode: number    // terminal 0 = success; stub is zero-valued
+  elapsed: number     // terminal wall time in seconds
+  cost: number        // terminal USD cost
   inputTokens: number
   outputTokens: number
+  dispatchId?: string // immediate asynchronous-stub identifier; steer/recall target
   sessionId?: string  // child session ID (for resume)
-  planFilePath?: string  // plan file written by child (when planMode was true)
-  planExited?: boolean   // true when child called ExitPlanMode
+  planFilePath?: string // plan file written by child (when planMode was true)
+  planExited?: boolean  // true when child called ExitPlanMode
 }
 ```
 
@@ -991,7 +988,38 @@ ion.on('session_message', (ctx, info) => {
 
 ## Intercept
 
-The intercept API emits an `engine_intercept` event on a target session's stream. The TypeScript SDK does not yet expose a convenience method for `ctx.intercept`; use the raw JSON-RPC method `ext/intercept` directly. See the [raw protocol docs](sdk-raw.md#extintercept) for the request shape.
+`ctx.intercept` emits an `engine_intercept` event on a session's stream. The engine routes the event and stamps the calling extension's name as the source, so an extension cannot attribute an intercept to another one.
+
+```typescript
+await ctx.intercept({
+  level: 'redirect',
+  title: 'Build is broken on main',
+  message: 'Stop and fix the build before continuing.',
+})
+```
+
+| Field              | Type   | Notes                                                                    |
+|--------------------|--------|--------------------------------------------------------------------------|
+| `level`            | string | Client hint: `banner` is informational, `redirect` is urgent. The engine does not branch on it. |
+| `title`            | string | Short headline. Required.                                                 |
+| `message`          | string | Body text. At `redirect` level a client may inject it as a user prompt.   |
+| `targetSessionKey` | string | Which session receives the event. Omit to emit on the caller's own.       |
+| `metadata`         | object | Opaque map forwarded to clients unchanged.                                |
+
+What a client does with an intercept is that client's policy. The engine emits the typed event once and stops there.
+
+## Session memory
+
+`ctx.getSessionMemory` and `ctx.setSessionMemory` read and replace the conversation's `.memory.md`. This is conversation-scoped state the engine persists alongside the transcript, not cross-session memory — the engine deliberately does not own that.
+
+`setSessionMemory` overwrites. Read first if you mean to append:
+
+```typescript
+const existing = await ctx.getSessionMemory()
+await ctx.setSessionMemory(`${existing}\n\n- deploy target is staging`)
+```
+
+`getSessionMemory` returns an empty string when the conversation has no memory yet, or when the extension is running outside a session (a schedule or webhook firing).
 
 ## Cross-Instance Dedup (runOnce)
 
