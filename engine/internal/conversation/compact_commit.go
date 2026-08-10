@@ -47,8 +47,11 @@ func CommitCompaction(conv *Conversation, cut TokenBudgetCut, data CompactionDat
 	firstKeptID := ""
 	firstKeptIdx := -1
 	for i := range retained {
-		if retained[i].EntryID == "" { // transient: intentionally not persisted
-			continue
+		if retained[i].EntryID == "" {
+			if retained[i].Transient {
+				continue
+			}
+			return "", fmt.Errorf("commit compaction: retained message at index %d has no entry identity", cut.CutIndex+i)
 		}
 		idx, ok := entryIndex[retained[i].EntryID]
 		if !ok {
@@ -81,7 +84,13 @@ func CommitCompaction(conv *Conversation, cut TokenBudgetCut, data CompactionDat
 		active[entry.ID] = true
 	}
 	for i := range retained {
-		if retained[i].EntryID != "" && !active[retained[i].EntryID] {
+		if retained[i].Transient {
+			continue
+		}
+		if retained[i].EntryID == "" {
+			return "", fmt.Errorf("commit compaction: retained message at index %d has no entry identity", cut.CutIndex+i)
+		}
+		if !active[retained[i].EntryID] {
 			return "", fmt.Errorf("commit compaction: retained entry %q is not on active path", retained[i].EntryID)
 		}
 	}

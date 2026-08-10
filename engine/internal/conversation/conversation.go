@@ -123,14 +123,17 @@ type MessageData struct {
 // SessionMessage on historical reload. All enriched fields are additive
 // (omitempty): legacy entries that lack them reload with zero values.
 type CompactionData struct {
-	Summary          string `json:"summary"`
-	FirstKeptEntryID string `json:"firstKeptEntryId"`
-	TokensBefore     int    `json:"tokensBefore"`
-	MessagesBefore   int    `json:"messagesBefore,omitempty"`
-	MessagesAfter    int    `json:"messagesAfter,omitempty"`
-	ClearedBlocks    int    `json:"clearedBlocks,omitempty"`
-	Strategy         string `json:"strategy,omitempty"`
-	MicroOnly        bool   `json:"microOnly,omitempty"`
+	Summary            string   `json:"summary"`
+	FirstKeptEntryID   string   `json:"firstKeptEntryId"`
+	TokensBefore       int      `json:"tokensBefore"`
+	MessagesSummarized int      `json:"messagesSummarized,omitempty"`
+	MessagesBefore     int      `json:"messagesBefore,omitempty"`
+	MessagesAfter      int      `json:"messagesAfter,omitempty"`
+	ClearedBlocks      int      `json:"clearedBlocks,omitempty"`
+	Strategy           string   `json:"strategy,omitempty"`
+	MicroOnly          bool     `json:"microOnly,omitempty"`
+	FactCount          int      `json:"factCount,omitempty"`
+	RecentFiles        []string `json:"recentFiles,omitempty"`
 }
 
 // LabelData holds a label annotation on an entry.
@@ -558,11 +561,10 @@ func AddTransientUserMessage(conv *Conversation, content string) {
 	blocks := []types.LlmContentBlock{textBlock(content)}
 	conv.lock()
 	defer conv.unlock()
-	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: blocks})
+	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: blocks, Transient: true})
 }
 
 // AddContextInjectionMessage appends a read-triggered nested-context injection
-// as a typed context_injection block (see BuildContextInjectionMessage). The
 // block carries the rendered "# Context from <path>" body the model sees plus
 // the structured ContextPaths the dedup seeder reads back.
 //
@@ -574,6 +576,7 @@ func AddTransientUserMessage(conv *Conversation, content string) {
 // seeder recovers it on the next session.
 func AddContextInjectionMessage(conv *Conversation, paths []string, renderedText string, transient bool) {
 	msg := BuildContextInjectionMessage(paths, renderedText)
+	msg.Transient = transient
 	conv.lock()
 	defer conv.unlock()
 	conv.Messages = append(conv.Messages, msg)

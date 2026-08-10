@@ -386,10 +386,8 @@ func TestPerformCompact_UserRealCompactionStillRecords(t *testing.T) {
 	// exceed that.
 	bigBody := strings.Repeat("lorem ipsum dolor sit amet ", 400)
 	for i := 0; i < 80; i++ {
-		conv.Messages = append(conv.Messages,
-			types.LlmMessage{Role: "user", Content: []types.LlmContentBlock{{Type: "text", Text: bigBody}}},
-			types.LlmMessage{Role: "assistant", Content: []types.LlmContentBlock{{Type: "text", Text: bigBody}}},
-		)
+		conversation.AddUserMessage(conv, bigBody)
+		conversation.AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: bigBody}}, types.LlmUsage{})
 	}
 	// Force tokens above the limit by setting Usage on the last assistant message.
 	for i := len(conv.Messages) - 1; i >= 0; i-- {
@@ -399,8 +397,6 @@ func TestPerformCompact_UserRealCompactionStillRecords(t *testing.T) {
 			break
 		}
 	}
-	// Seed one tree entry so conv.Entries is non-nil (AppendEntry path is taken).
-	conversation.AppendEntry(conv, conversation.EntryMessage, conversation.MessageData{Role: "user"})
 	entriesBefore := len(conv.Entries)
 
 	run := &activeRun{requestID: "user-real", conv: conv}
