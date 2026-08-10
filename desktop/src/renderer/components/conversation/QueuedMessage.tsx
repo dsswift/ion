@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { PencilSimple } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { parseSlashCommand } from './slash-pill'
+import { UserMarkdown } from './UserMarkdown'
 
 /** Queued user message (waiting for previous turn to finish). */
 export const QueuedMessage = React.memo(function QueuedMessage({ content, onEdit }: { content: string; onEdit?: () => void }) {
@@ -62,7 +63,11 @@ export const QueuedMessage = React.memo(function QueuedMessage({ content, onEdit
             {slashParsed.args}
           </span>
         ) : (
-          content
+          // Through the same renderer the sent bubble uses. Rendering raw
+          // `content` here made a queued message's formatting change the moment
+          // the turn flushed: newlines and indentation collapsed on the way in,
+          // then the identical string came back through markdown.
+          <UserMarkdown content={content} />
         )}
       </div>
     </motion.div>

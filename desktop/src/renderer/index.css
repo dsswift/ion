@@ -205,6 +205,11 @@ input::placeholder {
 .prose-cloud-user {
   color: inherit;
 }
+/* Paragraph separation is reconstructed from source block positions. Default
+   prose margins would add spacing the operator did not type. */
+.prose-cloud-user p {
+  margin: 0;
+}
 .prose-cloud-user code {
   background: var(--ion-bubble-code-bg);
   color: inherit;
@@ -226,6 +231,17 @@ input::placeholder {
 }
 .prose-cloud-user th {
   background: var(--ion-bubble-th-bg);
+}
+
+/* ─── Verbatim user whitespace ───
+   User messages render markdown but keep the whitespace the operator typed.
+   The rule is scoped to elements the remarkPreserveUserWhitespace plugin marked
+   — NEVER the shared .prose-cloud container. remark-rehype emits structural
+   newline text nodes between block elements (between sibling <p>s, between
+   <li>s, throughout a <table>, and after every <br>); pre-wrap on the container
+   would render each of those as a visible blank line. */
+.prose-cloud [data-ion-verbatim="true"] {
+  white-space: pre-wrap;
 }
 
 /* ─── Pulsing dot animation ─── */
