@@ -9,25 +9,58 @@
     "engine": {
       "component": "engine",
       "changelog-path": "CHANGELOG.md",
-      "extra-files": [{"type": "generic", "path": "VERSION"}]
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "VERSION"
+        }
+      ]
     },
     "desktop": {
       "component": "desktop",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        {"type": "generic", "path": "VERSION"},
-        {"type": "json", "path": "package.json", "jsonpath": "$.version"}
+        {
+          "type": "generic",
+          "path": "VERSION"
+        },
+        {
+          "type": "json",
+          "path": "package.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "relay": {
       "component": "relay",
       "changelog-path": "CHANGELOG.md",
-      "extra-files": [{"type": "generic", "path": "VERSION"}]
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "VERSION"
+        }
+      ]
     },
     "ios": {
       "component": "ios",
       "changelog-path": "CHANGELOG.md",
-      "extra-files": [{"type": "generic", "path": "VERSION"}]
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "VERSION"
+        }
+      ]
+    },
+    "sdk/go": {
+      "component": "sdk/go",
+      "tag-separator": "/",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "VERSION"
+        }
+      ]
     }
   }
 }

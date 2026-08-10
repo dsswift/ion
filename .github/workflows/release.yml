@@ -9,6 +9,7 @@ on:
       - 'desktop/**'
       - 'relay/**'
       - 'ios/**'
+      - 'sdk/**'
       - 'release-please-*.json'
   workflow_dispatch:
     inputs:
@@ -87,19 +88,23 @@ jobs:
           # README install commands point at /releases/latest/download/ion-...
           # so engine must be the release marked "latest". Mark every non-engine
           # release in this run as non-latest, then mark engine as latest.
-          ENGINE_VERSION=""
-          while IFS=$'\t' read -r component version; do
-            [ -z "$component" ] && continue
-            TAG="${component}-v${version}"
+          # The tag comes from the release report, not from string assembly.
+          # tag-separator is per-package config — sdk/go releases as
+          # "sdk/go/vX.Y.Z" because the Go module proxy resolves a nested
+          # module only against that exact form — so a rebuilt
+          # "${component}-v${version}" would be wrong for it.
+          ENGINE_TAG=""
+          while IFS=$'\t' read -r component tag; do
+            [ -z "$tag" ] && continue
             if [ "$component" = "engine" ]; then
-              ENGINE_VERSION="$version"
+              ENGINE_TAG="$tag"
             else
-              gh release edit "$TAG" --latest=false
+              gh release edit "$tag" --latest=false
             fi
-          done < <(echo "$RELEASE_REPORT" | jq -r '.releases[] | "\(.component)\t\(.new_version)"')
+          done < <(echo "$RELEASE_REPORT" | jq -r '.releases[] | "\(.component)\t\(.tag_name)"')
 
-          if [ -n "$ENGINE_VERSION" ]; then
-            gh release edit "engine-v${ENGINE_VERSION}" --latest
+          if [ -n "$ENGINE_TAG" ]; then
+            gh release edit "$ENGINE_TAG" --latest
           fi
 
   build:

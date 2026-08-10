@@ -1,4 +1,4 @@
-.PHONY: default desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test test test-all test-linux test-linux-engine test-linux-engine-summary test-linux-desktop clean check-file-sizes check-contracts check-status-writers check-atv-parity check-logging check-swiftlint check-dashboards claude-symlinks bootstrap graph graph-ensure graph-refresh hooks lint-desktop
+.PHONY: default desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test sdk-test test test-all test-linux test-linux-engine test-linux-engine-summary test-linux-desktop clean check-file-sizes check-contracts check-status-writers check-atv-parity check-logging check-swiftlint check-dashboards claude-symlinks bootstrap graph graph-ensure graph-refresh hooks lint-desktop
 
 # Homebrew installs node/npm under /opt/homebrew/bin on Apple Silicon.
 # Make runs recipes with /bin/sh which only has /usr/bin:/bin in PATH,
@@ -69,6 +69,12 @@ ios-test:
 engine-test:
 	@cd engine && go test -race ./...
 
+# The Go SDK module. Its parity tests read the engine's generated contract
+# manifest and its own surface manifest, so they run from a full checkout —
+# this is the target that fails when the two SDKs drift apart.
+sdk-test:
+	@cd sdk/go && go test -race ./...
+
 desktop-test:
 	@cd desktop && npm test
 
@@ -82,7 +88,7 @@ test:
 # Run every test surface end-to-end before merging. Stops at the first
 # failure so you don't waste minutes on a downstream failure that's really
 # caused by an earlier component.
-test-all: check-file-sizes check-contracts check-status-writers check-atv-parity check-logging check-swiftlint check-dashboards engine-test desktop-test ios-test
+test-all: check-file-sizes check-contracts check-status-writers check-atv-parity check-logging check-swiftlint check-dashboards engine-test sdk-test desktop-test ios-test
 	@echo "✅ test-all: all surfaces green"
 
 # ---------------------------------------------------------------------------
@@ -197,7 +203,12 @@ test-linux-engine:
 		                      GOPATH=/home/ionci/go GOCACHE=/home/ionci/gocache \
 		                      go test ./internal/types/ -run TestContractManifest && \
 		                      GOPATH=/home/ionci/go GOCACHE=/home/ionci/gocache \
-		                      go test -race -tags integration ./tests/integration/...'"
+		                      go test ./internal/extension/ -run TestSDKContractManifest && \
+		                      GOPATH=/home/ionci/go GOCACHE=/home/ionci/gocache \
+		                      go test -race -tags integration ./tests/integration/... && \
+		                      cd /src/sdk/go && \
+		                      GOPATH=/home/ionci/go GOCACHE=/home/ionci/gocache \
+		                      go test -race ./...'"
 
 # test-linux-engine-summary runs the same suite as test-linux-engine but pipes
 # output through grep so only pass/fail lines reach the terminal. Total output
@@ -270,6 +281,7 @@ check-atv-parity:
 # validate against it via their own test suites (npm test / xcodebuild test).
 check-contracts:
 	@cd engine && go test ./internal/types/ -run TestContractManifest
+	@cd engine && go test ./internal/extension/ -run TestSDKContractManifest
 
 # ADR-019 logging-standards enforcement gate.
 # Scans emitter call sites for interpolated messages, console.* in the renderer,
