@@ -13,22 +13,6 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// handleScheduleRPC dispatches schedule-related ext/* RPCs. Returns true
-// when the method was handled, false when it should fall through to the
-// main switch.
-func (h *Host) handleScheduleRPC(method string, id int64, raw []byte) bool {
-	switch method {
-	case "ext/fire_schedule":
-		h.handleFireSchedule(id, raw)
-		return true
-	case "ext/get_schedule_status":
-		h.handleGetScheduleStatus(id, raw)
-		return true
-	default:
-		return false
-	}
-}
-
 func (h *Host) handleFireSchedule(id int64, raw []byte) {
 	var req struct {
 		Params struct {
@@ -58,7 +42,7 @@ func (h *Host) handleFireSchedule(id int64, raw []byte) {
 		return
 	}
 
-	utils.LogWithFields(utils.LevelDebug, "extension", "ext/fire_schedule: fired", map[string]any{"model": h.name, "run_id": req.Params.ID})
+	utils.LogWithFields(utils.LevelDebug, "extension", "ext/fire_schedule: fired", map[string]any{"model": h.name_(), "run_id": req.Params.ID})
 	h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
 }
 
@@ -98,6 +82,6 @@ func (h *Host) handleGetScheduleStatus(id int64, raw []byte) {
 		return
 	}
 
-	utils.LogWithFields(utils.LevelDebug, "extension", "ext/get_schedule_status: returning entries", map[string]any{"model": h.name, "count": len(entries)})
+	utils.LogWithFields(utils.LevelDebug, "extension", "ext/get_schedule_status: returning entries", map[string]any{"model": h.name_(), "count": len(entries)})
 	h.sendResponse(id, data, nil)
 }

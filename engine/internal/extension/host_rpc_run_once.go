@@ -6,21 +6,6 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// handleRunOnceRPC returns true when method is a run_once RPC and dispatches
-// it. Called from handleExtRequest before the main switch so that host_rpc.go
-// stays under its 800-line cap.
-func (h *Host) handleRunOnceRPC(method string, id int64, raw []byte) bool {
-	switch method {
-	case "ext/run_once_check":
-		h.handleRunOnceCheck(id, raw)
-		return true
-	case "ext/run_once_complete":
-		h.handleRunOnceComplete(id, raw)
-		return true
-	}
-	return false
-}
-
 func (h *Host) handleRunOnceCheck(id int64, raw []byte) {
 	var req struct {
 		Params struct {

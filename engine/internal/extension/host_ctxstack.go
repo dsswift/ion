@@ -72,7 +72,7 @@ func (cs *ctxStack) Push(ctx *Context) {
 	defer cs.mu.Unlock()
 	if n := len(cs.stack); n > 0 && cs.stack[n-1] != nil && ctx != nil {
 		if cs.stack[n-1].SessionKey != ctx.SessionKey && cs.stack[n-1].SessionKey != "" && ctx.SessionKey != "" {
-		utils.LogWithFields(utils.LevelError, "extension", "ctx stack invariant violated pushing ctx for different session", map[string]any{
+			utils.LogWithFields(utils.LevelError, "extension", "ctx stack invariant violated pushing ctx for different session", map[string]any{
 				"session_id": ctx.SessionKey, "reason": cs.stack[n-1].SessionKey, "count": n,
 			})
 		}

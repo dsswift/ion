@@ -58,8 +58,16 @@ type Host struct {
 	// Temp files created by TS transpilation, cleaned up on Dispose.
 	tempFiles []string
 
-	// Extension name returned from init handshake (or manifest/directory fallback).
-	name string
+	// Extension name returned from init handshake (or manifest/directory
+	// fallback).
+	//
+	// Guarded by nameMu because the readLoop reads it concurrently with the
+	// handshake that writes it: an extension that logs at module scope emits
+	// a `log` notification before its init response lands, and the notification
+	// handler stamps that line with the extension name. Read with name_() and
+	// write with setName(); never touch the field directly.
+	nameMu sync.RWMutex
+	name   string
 
 	// version is the extension version read from extension.json at load time.
 	// Empty when the manifest is absent or carries no version field.
@@ -69,6 +77,12 @@ type Host struct {
 	// Bidirectional RPC: context stack for extension-initiated requests.
 	// Supports concurrent tool/hook/async-fire contexts on ClaudeCodeBackend.
 	ctxStack ctxStack
+
+	// forwarders records which result category each register*Forwarder
+	// helper installed, so the declared hook registry can be checked
+	// against the forwarders that actually run. See
+	// hook_forwarder_audit.go.
+	forwarders forwarderAudit
 
 	// notifMu guards the callbacks the readLoop reads when dispatching
 	// extension-initiated notifications (ext/emit, ext/send_message). Kept
@@ -359,7 +373,24 @@ func (h *Host) SetRPCTimeout(d time.Duration) {
 
 // Name returns the extension's name as reported by the init handshake.
 func (h *Host) Name() string {
+	return h.name_()
+}
+
+// name_ reads the extension name under the lock. Named with a trailing
+// underscore because the field it guards is called name; every internal read
+// goes through here rather than touching the field, so a notification arriving
+// mid-handshake cannot race the write.
+func (h *Host) name_() string {
+	h.nameMu.RLock()
+	defer h.nameMu.RUnlock()
 	return h.name
+}
+
+// setName writes the extension name under the lock.
+func (h *Host) setName(name string) {
+	h.nameMu.Lock()
+	h.name = name
+	h.nameMu.Unlock()
 }
 
 // Version returns the extension's version as read from extension.json at load
@@ -384,7 +415,7 @@ func (h *Host) CtxStackDepthForTest() int {
 // Intended for unit tests in other packages that need hosts with
 // specific names for grouping/coordination testing.
 func (h *Host) SetNameForTest(name string) {
-	h.name = name
+	h.setName(name)
 }
 
 // SetVersionForTest sets the host's version without loading an extension.

@@ -1,0 +1,746 @@
+{
+  "hooks": {
+    "agent_end": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "isRoot",
+        "name",
+        "task"
+      ],
+      "result": "none"
+    },
+    "agent_start": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "isRoot",
+        "name",
+        "task"
+      ],
+      "result": "none"
+    },
+    "agent_tool_call": {
+      "payloadKind": "none",
+      "result": "perToolCall"
+    },
+    "agent_tool_result": {
+      "payloadKind": "none",
+      "result": "none"
+    },
+    "background_task_completed": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "command",
+        "elapsed_ms",
+        "exit_code",
+        "output_path",
+        "remaining_task_ids",
+        "session_key",
+        "status",
+        "tail",
+        "task_id"
+      ],
+      "result": "none"
+    },
+    "bash_tool_call": {
+      "payloadKind": "none",
+      "result": "perToolCall"
+    },
+    "bash_tool_result": {
+      "payloadKind": "none",
+      "result": "none"
+    },
+    "before_agent_start": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "isRoot",
+        "name",
+        "task"
+      ],
+      "result": "structured",
+      "resultFields": [
+        "agentName",
+        "systemPrompt"
+      ]
+    },
+    "before_early_stop_decision": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "budget",
+        "continuationCount",
+        "cumulativeOutputTokens",
+        "isSubagent",
+        "lastContinuationDelta",
+        "maxContinuations",
+        "model",
+        "runId",
+        "stopReason",
+        "thresholdPct",
+        "turnNumber",
+        "wouldContinue"
+      ],
+      "result": "structured",
+      "resultFields": [
+        "continueMessage",
+        "forceContinue",
+        "overrideBudget",
+        "overrideThresholdPct"
+      ]
+    },
+    "before_plan_mode_auto_exit": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "assistantText",
+        "emittedTools",
+        "planFilePath",
+        "runId",
+        "sessionId",
+        "stopReason"
+      ],
+      "result": "structured",
+      "resultFields": [
+        "planFilePath",
+        "reason",
+        "suppress"
+      ]
+    },
+    "before_plan_mode_enter": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "source"
+      ],
+      "result": "structured",
+      "resultFields": [
+        "allow",
+        "reason"
+      ]
+    },
+    "before_plan_mode_exit": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "planFilePath",
+        "source"
+      ],
+      "result": "structured",
+      "resultFields": [
+        "allow",
+        "reason"
+      ]
+    },
+    "before_prompt": {
+      "payloadKind": "string",
+      "result": "structured",
+      "resultFields": [
+        "prompt",
+        "systemPrompt"
+      ]
+    },
+    "before_provider_request": {
+      "payloadKind": "none",
+      "result": "none"
+    },
+    "capability_discover": {
+      "payloadKind": "none",
+      "result": "string"
+    },
+    "capability_invoke": {
+      "payloadKind": "none",
+      "result": "string"
+    },
+    "capability_match": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "capabilities",
+        "input"
+      ],
+      "result": "string"
+    },
+    "compact_summary_request": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "messageCount",
+        "messages",
+        "strategy"
+      ],
+      "result": "structured",
+      "resultFields": [
+        "summary"
+      ]
+    },
+    "context": {
+      "payloadKind": "none",
+      "result": "string"
+    },
+    "context_discover": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "path",
+        "source"
+      ],
+      "result": "bool"
+    },
+    "context_inject": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "discoveredPaths",
+        "workingDirectory",
+        "workspace"
+      ],
+      "result": "string"
+    },
+    "context_load": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "content",
+        "path",
+        "source"
+      ],
+      "result": "rejection"
+    },
+    "dispatch_lost": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "agent_name",
+        "child_conversation_id",
+        "depth",
+        "dispatch_id",
+        "parent_dispatch_id",
+        "task"
+      ],
+      "result": "none"
+    },
+    "early_stop_continued": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "budget",
+        "continuationCount",
+        "cumulativeOutputTokens",
+        "injectedText",
+        "pct",
+        "runId",
+        "turnNumber"
+      ],
+      "result": "none"
+    },
+    "edit_tool_call": {
+      "payloadKind": "none",
+      "result": "perToolCall"
+    },
+    "edit_tool_result": {
+      "payloadKind": "none",
+      "result": "none"
+    },
+    "elicitation_request": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "mode",
+        "request_id",
+        "schema",
+        "url"
+      ],
+      "result": "content"
+    },
+    "elicitation_result": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "cancelled",
+        "request_id",
+        "response"
+      ],
+      "result": "none"
+    },
+    "extension_respawned": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "attemptNumber",
+        "prevExitCode",
+        "prevSignal"
+      ],
+      "result": "none"
+    },
+    "file_changed": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "action",
+        "path"
+      ],
+      "result": "none"
+    },
+    "glob_tool_call": {
+      "payloadKind": "none",
+      "result": "perToolCall"
+    },
+    "glob_tool_result": {
+      "payloadKind": "none",
+      "result": "none"
+    },
+    "grep_tool_call": {
+      "payloadKind": "none",
+      "result": "perToolCall"
+    },
+    "grep_tool_result": {
+      "payloadKind": "none",
+      "result": "none"
+    },
+    "input": {
+      "payloadKind": "string",
+      "result": "string"
+    },
+    "instruction_load": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "content",
+        "path",
+        "source"
+      ],
+      "result": "rejection"
+    },
+    "message_end": {
+      "payloadKind": "none",
+      "result": "none"
+    },
+    "message_start": {
+      "payloadKind": "none",
+      "result": "none"
+    },
+    "message_update": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "content",
+        "role"
+      ],
+      "result": "content"
+    },
+    "model_select": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "availableModels",
+        "prompt",
+        "requestedModel"
+      ],
+      "result": "string"
+    },
+    "on_error": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "category",
+        "errorCode",
+        "httpStatus",
+        "message",
+        "retryAfterMs",
+        "retryable"
+      ],
+      "result": "none"
+    },
+    "peer_extension_died": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "attemptNumber",
+        "exitCode",
+        "name",
+        "signal"
+      ],
+      "result": "none"
+    },
+    "peer_extension_respawned": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "attemptNumber",
+        "exitCode",
+        "name",
+        "signal"
+      ],
+      "result": "none"
+    },
+    "permission_classify": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "input",
+        "tool_name"
+      ],
+      "result": "string"
+    },
+    "permission_denied": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "input",
+        "reason",
+        "tool_name"
+      ],
+      "result": "none"
+    },
+    "permission_request": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "decision",
+        "input",
+        "rule_name",
+        "tier",
+        "tool_name"
+      ],
+      "result": "none"
+    },
+    "plan_mode_prompt": {
+      "payloadKind": "string",
+      "result": "string"
+    },
+    "read_tool_call": {
+      "payloadKind": "none",
+      "result": "perToolCall"
+    },
+    "read_tool_result": {
+      "payloadKind": "none",
+      "result": "none"
+    },
+    "schedule_deregistered": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "decl",
+        "id",
+        "kind",
+        "origin"
+      ],
+      "result": "none"
+    },
+    "schedule_missed": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "hadMarker",
+        "id",
+        "kind",
+        "missedSlotUtc",
+        "ranWithinScope"
+      ],
+      "result": "none"
+    },
+    "schedule_registered": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "decl",
+        "id",
+        "kind",
+        "origin"
+      ],
+      "result": "asyncVeto"
+    },
+    "session_before_compact": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "facts",
+        "messagesAfter",
+        "messagesBefore",
+        "microCompactKeep",
+        "sessionMemory",
+        "strategy",
+        "targetTokens",
+        "tokenLimit",
+        "tokensAfter",
+        "tokensBefore"
+      ],
+      "result": "bool"
+    },
+    "session_before_fork": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "forkMessageIndex",
+        "newSessionKey",
+        "sourceSessionKey"
+      ],
+      "result": "bool"
+    },
+    "session_before_switch": {
+      "payloadKind": "none",
+      "result": "none"
+    },
+    "session_compact": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "facts",
+        "messagesAfter",
+        "messagesBefore",
+        "microCompactKeep",
+        "sessionMemory",
+        "strategy",
+        "targetTokens",
+        "tokenLimit",
+        "tokensAfter",
+        "tokensBefore"
+      ],
+      "result": "none"
+    },
+    "session_end": {
+      "payloadKind": "none",
+      "result": "none"
+    },
+    "session_fork": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "forkMessageIndex",
+        "newSessionKey",
+        "sourceSessionKey"
+      ],
+      "result": "none"
+    },
+    "session_message": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "kind",
+        "payload",
+        "senderSessionKey"
+      ],
+      "result": "none"
+    },
+    "session_start": {
+      "payloadKind": "none",
+      "result": "none"
+    },
+    "slash_command_resolved": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "args",
+        "command",
+        "expandedBody",
+        "frontmatter",
+        "source"
+      ],
+      "result": "string"
+    },
+    "system_inject": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "defaultText",
+        "kind",
+        "maxTurns",
+        "turn",
+        "workspace"
+      ],
+      "result": "string"
+    },
+    "task_completed": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "extra",
+        "name",
+        "status",
+        "task_id"
+      ],
+      "result": "none"
+    },
+    "task_created": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "extra",
+        "name",
+        "status",
+        "task_id"
+      ],
+      "result": "none"
+    },
+    "tool_call": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "input",
+        "toolId",
+        "toolName"
+      ],
+      "result": "block"
+    },
+    "tool_end": {
+      "payloadKind": "none",
+      "result": "none"
+    },
+    "tool_result": {
+      "payloadKind": "none",
+      "result": "content"
+    },
+    "tool_start": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "toolId",
+        "toolName"
+      ],
+      "result": "none"
+    },
+    "turn_aborted": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "reason"
+      ],
+      "result": "none"
+    },
+    "turn_end": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "turnNumber"
+      ],
+      "result": "none"
+    },
+    "turn_start": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "turnNumber"
+      ],
+      "result": "none"
+    },
+    "user_bash": {
+      "payloadKind": "string",
+      "result": "none"
+    },
+    "webhook_deregistered": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "decl",
+        "id",
+        "kind",
+        "origin"
+      ],
+      "result": "none"
+    },
+    "webhook_registered": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "decl",
+        "id",
+        "kind",
+        "origin"
+      ],
+      "result": "asyncVeto"
+    },
+    "workspace_file_changed": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "action",
+        "path",
+        "relPath"
+      ],
+      "result": "none"
+    },
+    "write_tool_call": {
+      "payloadKind": "none",
+      "result": "perToolCall"
+    },
+    "write_tool_result": {
+      "payloadKind": "none",
+      "result": "none"
+    }
+  },
+  "extRequests": [
+    "ext/answer_dispatch_question",
+    "ext/call_tool",
+    "ext/clean_stale_processes",
+    "ext/declare_resource",
+    "ext/deregister_agent_spec",
+    "ext/deregister_process",
+    "ext/deregister_schedule",
+    "ext/deregister_webhook",
+    "ext/discover_agents",
+    "ext/dispatch_agent",
+    "ext/elicit",
+    "ext/fire_schedule",
+    "ext/get_context_usage",
+    "ext/get_plan_mode",
+    "ext/get_schedule_status",
+    "ext/get_session_memory",
+    "ext/http_request",
+    "ext/intercept",
+    "ext/list_dispatch_state",
+    "ext/list_processes",
+    "ext/list_sessions",
+    "ext/llm_call",
+    "ext/notify",
+    "ext/publish_resource",
+    "ext/recall_agent",
+    "ext/register_agent_spec",
+    "ext/register_process",
+    "ext/register_schedule",
+    "ext/register_webhook",
+    "ext/run_once_check",
+    "ext/run_once_complete",
+    "ext/sandbox_wrap",
+    "ext/search_history",
+    "ext/send_prompt",
+    "ext/send_to_session",
+    "ext/set_dispatch_context_defaults",
+    "ext/set_plan_mode",
+    "ext/set_session_memory",
+    "ext/steer_dispatch",
+    "ext/steer_dispatch_by_name",
+    "ext/steer_self",
+    "ext/suppress_tool",
+    "ext/task_suspend",
+    "ext/terminate_process",
+    "ext/walk_context_files"
+  ],
+  "extNotifications": [
+    "ext/emit",
+    "ext/llm_call_cancel",
+    "ext/send_message",
+    "log"
+  ],
+  "initResult": [
+    "commands",
+    "name",
+    "resources",
+    "schedules",
+    "tools",
+    "webhooks"
+  ],
+  "wireConstants": {
+    "ctxKey": "_ctx",
+    "extRequestIdBase": 100000,
+    "payloadWrapperKey": "_payload"
+  },
+  "contextEnvelope": {
+    "kind": "object",
+    "fields": {
+      "config": {
+        "kind": "object",
+        "fields": {
+          "extensionDir": {
+            "kind": "string"
+          },
+          "mcpConfigPath": {
+            "kind": "string"
+          },
+          "model": {
+            "kind": "string"
+          },
+          "workingDirectory": {
+            "kind": "string"
+          }
+        }
+      },
+      "conversationId": {
+        "kind": "string"
+      },
+      "cwd": {
+        "kind": "string"
+      },
+      "depth": {
+        "kind": "number"
+      },
+      "dispatchId": {
+        "kind": "string"
+      },
+      "model": {
+        "kind": "object",
+        "fields": {
+          "contextWindow": {
+            "kind": "number"
+          },
+          "id": {
+            "kind": "string"
+          }
+        }
+      },
+      "runId": {
+        "kind": "string"
+      },
+      "sessionKey": {
+        "kind": "string"
+      },
+      "traceId": {
+        "kind": "string"
+      }
+    }
+  }
+}

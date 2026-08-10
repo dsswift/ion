@@ -6,8 +6,6 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-
-
 // the subprocess via JSON-RPC. Grouped by return-type semantics.
 func (h *Host) registerHookForwarders() {
 	// No-op hooks: fire and forget, ignore result.
@@ -32,6 +30,14 @@ func (h *Host) registerHookForwarders() {
 		// Extension lifecycle hooks (observational; engine fires after auto-respawn).
 		HookExtensionRespawned, HookTurnAborted,
 		HookPeerExtensionDied, HookPeerExtensionRespawned,
+		// Dispatch loss (observational; fires during rehydration at session
+		// start for a dispatch the engine could not recover). Forwarded for
+		// the same reason as the lifecycle hooks above: docs/hooks/reference.md
+		// documents it as the seam a HARNESS uses to redispatch, harvest the
+		// child's partial transcript, or notify its orchestrator — and a
+		// harness is a subprocess, so an in-process-only firing would never
+		// reach the consumer the hook exists for.
+		HookDispatchLost,
 		// Async-trigger deregistration hooks (observation-only;
 		// veto would let one extension trap another's resources).
 		HookWebhookDeregistered, HookScheduleDeregistered,
@@ -109,19 +115,23 @@ func (h *Host) registerHookForwarders() {
 // registerNoOpForwarder registers a handler that forwards the hook to the
 // subprocess and ignores any result.
 func (h *Host) registerNoOpForwarder(hook string) {
+	h.noteForwarder(hook, hookResultNone)
 	h.sdk.On(hook, func(ctx *Context, payload interface{}) (interface{}, error) {
 		raw, err := h.callHook("hook/"+hook, ctx, payload)
 		if err != nil {
 			logHookErr(hook, err)
-				var stack string
-				if he, ok := err.(*hookError); ok {
-					stack = he.Stack
-				}
-				emitHookError(ctx, hook, err, stack)
+			var stack string
+			if he, ok := err.(*hookError); ok {
+				stack = he.Stack
+			}
+			emitHookError(ctx, hook, err, stack)
 		}
 		if len(raw) > 0 {
-			n := len(raw); if n > 2000 { n = 2000 }
-				utils.LogWithFields(utils.LevelInfo, "extension", "hook/ raw response", map[string]any{"hook": hook, "string": string(raw[:n])})
+			n := len(raw)
+			if n > 2000 {
+				n = 2000
+			}
+			utils.LogWithFields(utils.LevelInfo, "extension", "hook/ raw response", map[string]any{"hook": hook, "string": string(raw[:n])})
 		}
 		emitHookEvents(ctx, raw)
 		return nil, nil
@@ -133,6 +143,7 @@ func (h *Host) registerNoOpForwarder(hook string) {
 // `{"value": "..."}` shape (used when the handler also emits events) and
 // a bare JSON string return — the SDK only wraps when events accumulate.
 func (h *Host) registerStringForwarder(hook string) {
+	h.noteForwarder(hook, hookResultString)
 	h.sdk.On(hook, func(ctx *Context, payload interface{}) (interface{}, error) {
 		raw, err := h.callHook("hook/"+hook, ctx, payload)
 		if err != nil {
@@ -169,6 +180,7 @@ func (h *Host) registerStringForwarder(hook string) {
 // that parses {"systemPrompt": "string", "agentName": "string"} and returns
 // a BeforeAgentStartResult.
 func (h *Host) registerBeforeAgentStartForwarder() {
+	h.noteForwarder(HookBeforeAgentStart, hookResultStructured)
 	h.sdk.On(HookBeforeAgentStart, func(ctx *Context, payload interface{}) (interface{}, error) {
 		raw, err := h.callHook("hook/"+HookBeforeAgentStart, ctx, payload)
 		if err != nil {
@@ -204,6 +216,7 @@ func (h *Host) registerBeforeAgentStartForwarder() {
 //   - {"systemPrompt": "..."}         -> BeforePromptResult
 //   - {"prompt": "...", "systemPrompt": "..."} -> BeforePromptResult with both
 func (h *Host) registerBeforePromptForwarder() {
+	h.noteForwarder(HookBeforePrompt, hookResultStructured)
 	h.sdk.On(HookBeforePrompt, func(ctx *Context, payload interface{}) (interface{}, error) {
 		raw, err := h.callHook("hook/"+HookBeforePrompt, ctx, payload)
 		if err != nil {
@@ -241,15 +254,16 @@ func (h *Host) registerBeforePromptForwarder() {
 // registerBlockForwarder registers a handler for tool_call that parses
 // {"block": bool, "reason": "string"} and returns a *ToolCallResult.
 func (h *Host) registerBlockForwarder(hook string) {
+	h.noteForwarder(hook, hookResultBlock)
 	h.sdk.On(hook, func(ctx *Context, payload interface{}) (interface{}, error) {
 		raw, err := h.callHook("hook/"+hook, ctx, payload)
 		if err != nil {
 			logHookErr(hook, err)
-				var stack string
-				if he, ok := err.(*hookError); ok {
-					stack = he.Stack
-				}
-				emitHookError(ctx, hook, err, stack)
+			var stack string
+			if he, ok := err.(*hookError); ok {
+				stack = he.Stack
+			}
+			emitHookError(ctx, hook, err, stack)
 			return nil, nil
 		}
 		emitHookEvents(ctx, raw)
@@ -277,15 +291,16 @@ func (h *Host) registerBlockForwarder(hook string) {
 // registerPerToolCallForwarder registers a handler for per-tool call hooks
 // that parses {"block": bool, "reason": "string", "mutate": {...}}.
 func (h *Host) registerPerToolCallForwarder(hook string) {
+	h.noteForwarder(hook, hookResultPerToolCall)
 	h.sdk.On(hook, func(ctx *Context, payload interface{}) (interface{}, error) {
 		raw, err := h.callHook("hook/"+hook, ctx, payload)
 		if err != nil {
 			logHookErr(hook, err)
-				var stack string
-				if he, ok := err.(*hookError); ok {
-					stack = he.Stack
-				}
-				emitHookError(ctx, hook, err, stack)
+			var stack string
+			if he, ok := err.(*hookError); ok {
+				stack = he.Stack
+			}
+			emitHookError(ctx, hook, err, stack)
 			return nil, nil
 		}
 		emitHookEvents(ctx, raw)
@@ -315,15 +330,16 @@ func (h *Host) registerPerToolCallForwarder(hook string) {
 // registerBoolForwarder registers a handler that parses the result as a bool.
 // Returns true to cancel the operation.
 func (h *Host) registerBoolForwarder(hook string) {
+	h.noteForwarder(hook, hookResultBool)
 	h.sdk.On(hook, func(ctx *Context, payload interface{}) (interface{}, error) {
 		raw, err := h.callHook("hook/"+hook, ctx, payload)
 		if err != nil {
 			logHookErr(hook, err)
-				var stack string
-				if he, ok := err.(*hookError); ok {
-					stack = he.Stack
-				}
-				emitHookError(ctx, hook, err, stack)
+			var stack string
+			if he, ok := err.(*hookError); ok {
+				stack = he.Stack
+			}
+			emitHookError(ctx, hook, err, stack)
 			return nil, nil
 		}
 		emitHookEvents(ctx, raw)
@@ -345,15 +361,16 @@ func (h *Host) registerBoolForwarder(hook string) {
 // registerRejectionForwarder registers a handler for context_load and
 // instruction_load that parses {"content": "string", "reject": bool}.
 func (h *Host) registerRejectionForwarder(hook string) {
+	h.noteForwarder(hook, hookResultRejection)
 	h.sdk.On(hook, func(ctx *Context, payload interface{}) (interface{}, error) {
 		raw, err := h.callHook("hook/"+hook, ctx, payload)
 		if err != nil {
 			logHookErr(hook, err)
-				var stack string
-				if he, ok := err.(*hookError); ok {
-					stack = he.Stack
-				}
-				emitHookError(ctx, hook, err, stack)
+			var stack string
+			if he, ok := err.(*hookError); ok {
+				stack = he.Stack
+			}
+			emitHookError(ctx, hook, err, stack)
 			return nil, nil
 		}
 		emitHookEvents(ctx, raw)
@@ -381,15 +398,16 @@ func (h *Host) registerRejectionForwarder(hook string) {
 // registerContentForwarder registers a handler that forwards the hook and
 // returns the raw result as a map for content-type hooks.
 func (h *Host) registerContentForwarder(hook string) {
+	h.noteForwarder(hook, hookResultContent)
 	h.sdk.On(hook, func(ctx *Context, payload interface{}) (interface{}, error) {
 		raw, err := h.callHook("hook/"+hook, ctx, payload)
 		if err != nil {
 			logHookErr(hook, err)
-				var stack string
-				if he, ok := err.(*hookError); ok {
-					stack = he.Stack
-				}
-				emitHookError(ctx, hook, err, stack)
+			var stack string
+			if he, ok := err.(*hookError); ok {
+				stack = he.Stack
+			}
+			emitHookError(ctx, hook, err, stack)
 			return nil, nil
 		}
 		emitHookEvents(ctx, raw)
@@ -409,6 +427,7 @@ func (h *Host) registerContentForwarder(hook string) {
 // before_plan_mode_enter that parses {"allow": bool, "reason": "string"}.
 // Nil Allow (field absent or null) means "no opinion; use default (allow)".
 func (h *Host) registerBeforePlanModeEnterForwarder() {
+	h.noteForwarder(HookBeforePlanModeEnter, hookResultStructured)
 	h.sdk.On(HookBeforePlanModeEnter, func(ctx *Context, payload interface{}) (interface{}, error) {
 		raw, err := h.callHook("hook/"+HookBeforePlanModeEnter, ctx, payload)
 		if err != nil {
@@ -438,6 +457,7 @@ func (h *Host) registerBeforePlanModeEnterForwarder() {
 // before_plan_mode_exit that parses {"allow": bool, "reason": "string"}.
 // Nil Allow (field absent or null) means "no opinion; use default (allow)".
 func (h *Host) registerBeforePlanModeExitForwarder() {
+	h.noteForwarder(HookBeforePlanModeExit, hookResultStructured)
 	h.sdk.On(HookBeforePlanModeExit, func(ctx *Context, payload interface{}) (interface{}, error) {
 		raw, err := h.callHook("hook/"+HookBeforePlanModeExit, ctx, payload)
 		if err != nil {
@@ -473,6 +493,7 @@ func (h *Host) registerBeforePlanModeExitForwarder() {
 // method (FireBeforePlanModeAutoExit) resolves multi-handler conflicts
 // per-field via last-writer-wins.
 func (h *Host) registerBeforePlanModeAutoExitForwarder() {
+	h.noteForwarder(HookBeforePlanModeAutoExit, hookResultStructured)
 	h.sdk.On(HookBeforePlanModeAutoExit, func(ctx *Context, payload interface{}) (interface{}, error) {
 		raw, err := h.callHook("hook/"+HookBeforePlanModeAutoExit, ctx, payload)
 		if err != nil {

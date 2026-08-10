@@ -95,7 +95,7 @@ func (h *Host) SetSessionKey(key string) {
 	h.async.mu.Lock()
 	defer h.async.mu.Unlock()
 	h.async.sessionKey = key
-	utils.LogWithFields(utils.LevelDebug, "extension", "host.setsessionkey", map[string]any{"model": h.name, "key": key})
+	utils.LogWithFields(utils.LevelDebug, "extension", "host.setsessionkey", map[string]any{"model": h.name_(), "key": key})
 }
 
 // SessionKey returns the engine session key this host is bound to, or
@@ -113,10 +113,10 @@ func (h *Host) SessionKey() string {
 // SetOnLifecycleHook wires the callback that fires the async-trigger
 // lifecycle hooks (webhook_registered etc.). The session manager
 // installs this with a closure that:
-//   1. Builds an async ctx for this host's session.
-//   2. Calls the SDK's FireXxx wrapper, which iterates every
-//      extension's registered hook handlers and resolves the veto.
-//   3. Returns the resolved error (nil = allow, non-nil = block).
+//  1. Builds an async ctx for this host's session.
+//  2. Calls the SDK's FireXxx wrapper, which iterates every
+//     extension's registered hook handlers and resolves the veto.
+//  3. Returns the resolved error (nil = allow, non-nil = block).
 //
 // The registry calls back through this to wire its veto pipeline. Nil
 // is allowed and disables lifecycle hooks for this host (only useful
@@ -186,7 +186,7 @@ func (h *Host) DeregisterWebhookDecl(path string) bool {
 		// Deregistration is observation-only, but a hook error should still be
 		// visible rather than silently dropped.
 		if err := h.fireLifecycleHook(HookWebhookDeregistered, info); err != nil {
-			utils.LogWithFields(utils.LevelDebug, "extension", "webhook deregistered hook error", map[string]any{"extension": h.name, "id": info.ID, "error": err.Error()})
+			utils.LogWithFields(utils.LevelDebug, "extension", "webhook deregistered hook error", map[string]any{"extension": h.name_(), "id": info.ID, "error": err.Error()})
 		}
 	}
 	return h.asyncRegistry().Deregister(asyncreg.KindWebhook, path, notify)
@@ -223,7 +223,7 @@ func (h *Host) DeregisterScheduleDecl(id string) bool {
 			Decl:   decl,
 		}
 		if err := h.fireLifecycleHook(HookScheduleDeregistered, info); err != nil {
-			utils.LogWithFields(utils.LevelDebug, "extension", "schedule deregistered hook error", map[string]any{"extension": h.name, "id": info.ID, "error": err.Error()})
+			utils.LogWithFields(utils.LevelDebug, "extension", "schedule deregistered hook error", map[string]any{"extension": h.name_(), "id": info.ID, "error": err.Error()})
 		}
 	}
 	return h.asyncRegistry().Deregister(asyncreg.KindSchedule, id, notify)
@@ -291,7 +291,7 @@ func (h *Host) ResetAsyncRegistrations() int {
 			Decl:   decl,
 		}
 		if err := h.fireLifecycleHook(HookWebhookDeregistered, info); err != nil {
-			utils.LogWithFields(utils.LevelDebug, "extension", "webhook deregistered hook error", map[string]any{"extension": h.name, "id": info.ID, "error": err.Error()})
+			utils.LogWithFields(utils.LevelDebug, "extension", "webhook deregistered hook error", map[string]any{"extension": h.name_(), "id": info.ID, "error": err.Error()})
 		}
 	}
 	notifySchedule := func(_ asyncreg.Kind, decl asyncreg.Declaration, o asyncreg.Origin) {
@@ -302,12 +302,12 @@ func (h *Host) ResetAsyncRegistrations() int {
 			Decl:   decl,
 		}
 		if err := h.fireLifecycleHook(HookScheduleDeregistered, info); err != nil {
-			utils.LogWithFields(utils.LevelDebug, "extension", "schedule deregistered hook error", map[string]any{"extension": h.name, "id": info.ID, "error": err.Error()})
+			utils.LogWithFields(utils.LevelDebug, "extension", "schedule deregistered hook error", map[string]any{"extension": h.name_(), "id": info.ID, "error": err.Error()})
 		}
 	}
 	w := reg.Reset(asyncreg.KindWebhook, notifyWebhook)
 	s := reg.Reset(asyncreg.KindSchedule, notifySchedule)
-	utils.LogWithFields(utils.LevelInfo, "extension", "resetasyncregistrations", map[string]any{"model": h.name, "w": w, "s": s})
+	utils.LogWithFields(utils.LevelInfo, "extension", "resetasyncregistrations", map[string]any{"model": h.name_(), "w": w, "s": s})
 	return w + s
 }
 
@@ -356,7 +356,7 @@ func (h *Host) CommitPendingAsyncDecls() []error {
 			continue
 		}
 	}
-	utils.LogWithFields(utils.LevelInfo, "extension", "commit pending async decls", map[string]any{"model": h.name, "count": len(webhooks), "max": len(schedules), "error": len(errs)})
+	utils.LogWithFields(utils.LevelInfo, "extension", "commit pending async decls", map[string]any{"model": h.name_(), "count": len(webhooks), "max": len(schedules), "error": len(errs)})
 	return errs
 }
 

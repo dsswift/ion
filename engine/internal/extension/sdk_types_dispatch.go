@@ -159,23 +159,34 @@ type DispatchAgentOpts struct {
 	// Not serialized -- set via the host when dispatching from an extension.
 	OnEvent func(ev types.EngineEvent) `json:"-"`
 
-	// --- Background dispatch (Phase 1) ---
+	// --- Dispatch execution mode ---
 
-	// Background, when true, causes the dispatch to return a stub result
-	// immediately and run the child session in a goroutine. The terminal
-	// outcome is delivered via OnComplete, OnError, or OnRecall.
+	// WaitForCompletion is the only foreground opt-in. When true, DispatchAgent
+	// blocks until the child reaches a terminal state and returns its output.
+	// When false (including omitted), DispatchAgent returns a dispatch stub
+	// immediately and the engine delivers the terminal result to its owner.
+	//
+	// This is intentionally the inverse of the historic default. A dispatcher
+	// must never become unsteerable merely because it delegated work.
+	WaitForCompletion bool `json:"waitForCompletion,omitempty"`
+
+	// Background is retained only so older extension JSON continues decoding.
+	// It no longer selects execution mode: false and an omitted value are both
+	// asynchronous. Set WaitForCompletion true for the explicit blocking mode.
+	// Deprecated: use WaitForCompletion.
 	Background bool `json:"background,omitempty"`
 
-	// OnComplete fires when a background dispatch finishes successfully
-	// (exit code 0). Not called for foreground dispatches.
+	// OnComplete fires when an asynchronous dispatch finishes successfully
+	// (exit code 0). It is observational: the engine delivers the same terminal
+	// result to the dispatch owner whether or not this callback is registered.
 	OnComplete func(result DispatchAgentResult) `json:"-"`
 
-	// OnError fires when a background dispatch finishes with an error
-	// (non-zero exit code or child error). Not called for foreground dispatches.
+	// OnError fires when an asynchronous dispatch finishes with an error
+	// (non-zero exit code or child error). Observational only.
 	OnError func(err DispatchError) `json:"-"`
 
-	// OnRecall fires when a background dispatch is cancelled via RecallAgent.
-	// Not called for foreground dispatches.
+	// OnRecall fires when an asynchronous dispatch is cancelled via RecallAgent.
+	// Observational only.
 	OnRecall func(info RecallInfo) `json:"-"`
 
 	// --- Lifecycle event callbacks (Phase 2) ---

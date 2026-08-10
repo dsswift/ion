@@ -35,6 +35,25 @@ func (h *Host) transpileTS(tsPath string, manifest *Manifest) (string, error) {
 	if _, err := os.Stat(gitignore); os.IsNotExist(err) {
 		_ = os.WriteFile(gitignore, []byte("*\n"), 0644) //nolint:errcheck // best-effort .gitignore for build artifacts; comment above documents intent
 	}
+	// Reap bundles orphaned by previous engine lifetimes before writing
+	// another. Dispose deletes the bundles a host created, but Dispose only
+	// runs on a graceful teardown — and the daemon is routinely killed rather
+	// than shut down (`launchctl kickstart -k` on every desktop upgrade that
+	// ships a new binary, a crash, a machine restart). Bundles from a killed
+	// lifetime are orphaned permanently, and nothing else ever looks at them.
+	//
+	// Without a sweep the directory grows without bound for as long as the
+	// extension exists. Measured on a live installation: 10,348 bundles /
+	// 12 GB for one extension, 14 GB across three, over roughly three months.
+	// Each bundle is ~1.2 MB and every extension load writes a new one, so a
+	// dispatch-heavy session adds dozens per minute.
+	//
+	// The sweep lives on the transpile path rather than on a timer or at
+	// daemon startup because this is the one function that creates the
+	// garbage: a reaper attached to the writer cannot drift out of sync with
+	// it, and it needs no lifecycle wiring of its own.
+	reapStaleBundles(buildDir)
+
 	// Output as .mjs so Node treats the bundle as ESM regardless of any
 	// package.json `type` field nearby. ESM is required for top-level
 	// `await` in extension code, which Node 20 supports natively.
@@ -204,7 +223,7 @@ func (h *Host) parseInitResult(raw json.RawMessage) {
 	}
 
 	if result.Name != "" {
-		h.name = result.Name
+		h.setName(result.Name)
 	}
 
 	for _, t := range result.Tools {
@@ -226,9 +245,9 @@ func (h *Host) parseInitResult(raw json.RawMessage) {
 				// When present, read + base64-encode each image into
 				// ToolResult.Images. Falls through to the text path below when the
 				// response carries no images array.
-				if result, ok := parseToolResultWithImages(raw, h.name); ok {
+				if result, ok := parseToolResultWithImages(raw, h.name_()); ok {
 					utils.LogWithFields(utils.LevelInfo, "extension", "tool returned structured image result", map[string]any{
-						"tag":    h.name,
+						"tag":    h.name_(),
 						"tool":   toolName,
 						"images": len(result.Images),
 					})
@@ -272,12 +291,12 @@ func (h *Host) parseInitResult(raw json.RawMessage) {
 		h.pendingInitWebhooks = append([]WebhookRoute(nil), result.Webhooks...)
 		h.pendingInitSchedules = append([]ScheduleJob(nil), result.Schedules...)
 		h.async.mu.Unlock()
-		utils.LogWithFields(utils.LevelInfo, "extension", "queued init async decls", map[string]any{"model": h.name, "count": len(result.Webhooks), "max": len(result.Schedules)})
+		utils.LogWithFields(utils.LevelInfo, "extension", "queued init async decls", map[string]any{"model": h.name_(), "count": len(result.Webhooks), "max": len(result.Schedules)})
 	}
 
 	// Stash resource declarations for session wiring.
 	if len(result.Resources) > 0 {
 		h.pendingInitResources = append([]types.ResourceDeclaration(nil), result.Resources...)
-		utils.LogWithFields(utils.LevelInfo, "extension", "queued init resource decls", map[string]any{"model": h.name, "count": len(result.Resources)})
+		utils.LogWithFields(utils.LevelInfo, "extension", "queued init resource decls", map[string]any{"model": h.name_(), "count": len(result.Resources)})
 	}
 }
