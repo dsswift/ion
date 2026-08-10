@@ -114,6 +114,57 @@ func TestNavigateTree(t *testing.T) {
 	}
 }
 
+func TestBuildContextPathWithClearBoundary(t *testing.T) {
+	conv := CreateConversation("clear-context", "", "test-model")
+
+	AddUserMessage(conv, "before clear")
+	AddAssistantMessage(conv,
+		[]types.LlmContentBlock{{Type: "text", Text: "before answer"}},
+		types.LlmUsage{InputTokens: 800, OutputTokens: 40})
+	beforeAssistantID := conv.Entries[len(conv.Entries)-1].ID
+
+	// /clear preserves the tree but resets the LLM-visible message slice. Its
+	// marker must remain a reconstruction boundary after later turns make the
+	// non-nil saveSplit path rebuild from Entries.
+	conv.Messages = nil
+	AppendEntry(conv, EntryMessage, MessageData{Role: "user", Content: "/clear", DisplayOnly: true})
+	AppendEntry(conv, EntryCleared, ClearedData{})
+	AddUserMessageWithInvocation(conv, "expanded /squash instructions", SlashInvocation{
+		Command: "/squash",
+		Source:  "ion",
+	})
+	AddAssistantMessage(conv,
+		[]types.LlmContentBlock{{Type: "text", Text: "post-clear answer"}},
+		types.LlmUsage{InputTokens: 123, OutputTokens: 20})
+
+	postClear := BuildContextPath(conv)
+	if len(postClear) != 2 {
+		t.Fatalf("post-clear context has %d messages, want only new user + assistant: %+v", len(postClear), postClear)
+	}
+	if got := contentToBlocks(postClear[0].Content); len(got) != 1 || got[0].Text != "expanded /squash instructions" {
+		t.Errorf("post-clear user content = %#v, want slash expansion only", postClear[0].Content)
+	}
+	if got := contentToBlocks(postClear[1].Content); len(got) != 1 || got[0].Text != "post-clear answer" {
+		t.Errorf("post-clear assistant content = %#v, want post-clear answer only", postClear[1].Content)
+	}
+	if postClear[1].Usage == nil || postClear[1].Usage.InputTokens != 123 {
+		t.Errorf("post-clear assistant usage = %#v, want InputTokens=123", postClear[1].Usage)
+	}
+
+	// A branch to a historical point must still expose that historical path. The
+	// clear boundary applies only when it is present on the selected leaf path.
+	if _, err := Branch(conv, beforeAssistantID); err != nil {
+		t.Fatalf("Branch to pre-clear assistant: %v", err)
+	}
+	historical := BuildContextPath(conv)
+	if len(historical) != 2 {
+		t.Fatalf("historical branch has %d messages, want pre-clear user + assistant", len(historical))
+	}
+	if got := contentToBlocks(historical[0].Content); len(got) != 1 || got[0].Text != "before clear" {
+		t.Errorf("historical user content = %#v, want pre-clear user", historical[0].Content)
+	}
+}
+
 func TestBuildContextPathWithCompaction(t *testing.T) {
 	conv := CreateConversation("compact-ctx", "", "claude-3")
 
