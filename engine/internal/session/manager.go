@@ -74,6 +74,16 @@ type Manager struct {
 	heartbeatDone     chan struct{}
 	heartbeatStopOnce sync.Once
 	heartbeatInterval time.Duration
+	// heartbeatKick wakes the heartbeat goroutine when the interval changes so
+	// the new value applies to the wait already in progress. Buffered depth 1:
+	// coalescing repeated changes into one wake is correct, since the
+	// goroutine re-reads the current interval when it wakes.
+	heartbeatKick chan struct{}
+
+	// lockWatch reports holds of m.mu that outlast the stall threshold, with
+	// a goroutine dump naming the holder. Detection only — see
+	// lock_watchdog.go for why the engine must never force-release the lock.
+	lockWatch *lockWatchdog
 
 	// Async-trigger subsystems. Lazily allocated on first
 	// ensureAsyncSubsystems call. Shared across every session managed
@@ -190,6 +200,7 @@ func NewManager(b backend.RunBackend) *Manager {
 		globalBroker:      resource.NewBroker(),
 		heartbeatStop:     make(chan struct{}),
 		heartbeatDone:     make(chan struct{}),
+		heartbeatKick:     make(chan struct{}, 1),
 		heartbeatInterval: DefaultSessionStatusHeartbeatInterval,
 		runOnce:           newRunOnceRegistry(),
 	}
@@ -207,6 +218,15 @@ func NewManager(b backend.RunBackend) *Manager {
 	// so SetHeartbeatInterval calls before the first tick take effect.
 	// See manager_heartbeat.go.
 	go m.runStatusHeartbeat()
+
+	// Watch m.mu for holds long enough to have stalled the whole engine. The
+	// probe takes the read side: it is enough to detect a stuck writer, and it
+	// never delays a healthy dispatch. See lock_watchdog.go.
+	m.lockWatch = newLockWatchdog("session_manager", func() {
+		m.mu.RLock()
+		m.mu.RUnlock() //nolint:staticcheck // probe: acquire-and-release is the whole point
+	})
+	m.lockWatch.start()
 
 	return m
 }
@@ -547,6 +567,10 @@ func (m *Manager) Shutdown() {
 		close(m.heartbeatStop)
 	})
 	<-m.heartbeatDone
+
+	if m.lockWatch != nil {
+		m.lockWatch.stop()
+	}
 
 	m.StopAll() //nolint:errcheck // best-effort stop; not-found is benign
 	m.asyncMu.Lock()
