@@ -15,7 +15,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs'
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, lstatSync, readFileSync, readlinkSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -43,7 +43,7 @@ beforeEach(() => {
   git(repo, ['init', '-q'])
   git(repo, ['config', 'user.email', 'dev@example.com'])
   git(repo, ['config', 'user.name', 'Dev'])
-  writeFileSync(join(repo, '.gitignore'), 'node_modules/\nbuild-cache/\n')
+  writeFileSync(join(repo, '.gitignore'), 'node_modules/\nbuild-cache/\ngraphify-out/\n')
   writeFileSync(join(repo, 'package-lock.json'), '{"v":1}')
   git(repo, ['add', '-A'])
   git(repo, ['commit', '-qm', 'init'])
@@ -94,6 +94,74 @@ describe('the check-ignore guard — the regression pin', () => {
 
     expect(['clone', 'copy']).toContain(result.strategy)
     expect(existsSync(join(worktree, 'node_modules', 'pkg', 'index.js'))).toBe(true)
+  })
+})
+
+
+describe('linked file seeds', () => {
+  it('links a primary-owned graph file while keeping query state local', async () => {
+    const source = join(repo, 'graphify-out', 'graph.json')
+    mkdirSync(join(repo, 'graphify-out'), { recursive: true })
+    writeFileSync(source, '{"nodes":[]}')
+
+    const result = await seedEntry(repo, worktree, { path: 'graphify-out/graph.json', link: true })
+
+    const dest = join(worktree, 'graphify-out', 'graph.json')
+    expect(result.strategy).toBe('link')
+    expect(lstatSync(dest).isSymbolicLink()).toBe(true)
+    expect(readlinkSync(dest)).toBe(source)
+    mkdirSync(join(worktree, 'graphify-out', 'cache'), { recursive: true })
+    writeFileSync(join(worktree, 'graphify-out', 'cache', 'last_query_stamp'), 'now')
+    expect(existsSync(join(repo, 'graphify-out', 'cache', 'last_query_stamp'))).toBe(false)
+    expect(git(repo, ['status', '--porcelain']).trim()).toBe('')
+    rmSync(worktree, { recursive: true, force: true })
+    expect(readFileSync(source, 'utf-8')).toBe('{"nodes":[]}')
+  })
+
+  it('skips a missing optional linked source file', async () => {
+    const result = await seedEntry(repo, worktree, { path: 'graphify-out/graph.json', link: true })
+    expect(result.strategy).toBe('skipped')
+    expect(result.reason).toContain('absent')
+  })
+
+  it('is idempotent only for the expected primary link', async () => {
+    const source = join(repo, 'graphify-out', 'graph.json')
+    mkdirSync(join(repo, 'graphify-out'), { recursive: true })
+    writeFileSync(source, '{}')
+    await seedEntry(repo, worktree, { path: 'graphify-out/graph.json', link: true })
+
+    const result = await seedEntry(repo, worktree, { path: 'graphify-out/graph.json', link: true })
+    expect(result.strategy).toBe('skipped')
+    expect(result.reason).toContain('already linked')
+  })
+
+  it('does not replace a real destination', async () => {
+    const source = join(repo, 'graphify-out', 'graph.json')
+    const dest = join(worktree, 'graphify-out', 'graph.json')
+    mkdirSync(join(repo, 'graphify-out'), { recursive: true })
+    mkdirSync(join(worktree, 'graphify-out'), { recursive: true })
+    writeFileSync(source, '{}')
+    writeFileSync(dest, 'local graph')
+
+    const result = await seedEntry(repo, worktree, { path: 'graphify-out/graph.json', link: true })
+    expect(result.strategy).toBe('failed')
+    expect(readFileSync(dest, 'utf-8')).toBe('local graph')
+  })
+
+  it('does not replace a link to a different source', async () => {
+    const source = join(repo, 'graphify-out', 'graph.json')
+    const wrongSource = join(repo, 'graphify-out', 'other.json')
+    const dest = join(worktree, 'graphify-out', 'graph.json')
+    mkdirSync(join(repo, 'graphify-out'), { recursive: true })
+    mkdirSync(join(worktree, 'graphify-out'), { recursive: true })
+    writeFileSync(source, '{}')
+    writeFileSync(wrongSource, 'other')
+    const { symlinkSync } = await import('fs')
+    symlinkSync(wrongSource, dest)
+
+    const result = await seedEntry(repo, worktree, { path: 'graphify-out/graph.json', link: true })
+    expect(result.strategy).toBe('failed')
+    expect(readlinkSync(dest)).toBe(wrongSource)
   })
 })
 

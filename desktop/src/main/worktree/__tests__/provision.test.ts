@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs'
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, lstatSync, readFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -49,7 +49,7 @@ beforeEach(() => {
   git(repo, ['init', '-q'])
   git(repo, ['config', 'user.email', 'dev@example.com'])
   git(repo, ['config', 'user.name', 'Dev'])
-  writeFileSync(join(repo, '.gitignore'), 'node_modules/\ncache/\n')
+  writeFileSync(join(repo, '.gitignore'), 'node_modules/\ncache/\ngraphify-out/\n')
   git(repo, ['add', '-A'])
   git(repo, ['commit', '-qm', 'init'])
 })
@@ -100,6 +100,21 @@ describe('provisionWorktree — sequencing', () => {
 
     expect(seen[0]).toBe('seeding')
     expect(seen[seen.length - 1]).toBe('ready')
+  })
+})
+
+
+describe('provisionWorktree — linked file seed', () => {
+  it('settles a linked graph file without staleness reconciliation', async () => {
+    mkdirSync(join(repo, 'graphify-out'), { recursive: true })
+    writeFileSync(join(repo, 'graphify-out', 'graph.json'), '{}')
+    writeManifest({ version: 1, worktree: { seed: [{ path: 'graphify-out/graph.json', link: true }] } })
+
+    const outcome = await provisionWorktree(repo, worktree)
+
+    expect(outcome.state).toBe('ready')
+    expect(outcome.results[0].strategy).toBe('link')
+    expect(lstatSync(join(worktree, 'graphify-out', 'graph.json')).isSymbolicLink()).toBe(true)
   })
 })
 
