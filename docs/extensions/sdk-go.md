@@ -155,6 +155,44 @@ sdk.RegisterTool(ion.ToolDef{
 
 Set `PlanModeSafe` only on tools that mutate nothing. Anything that writes must not carry it.
 
+### ToolResult
+
+`ToolResult` has three fields:
+
+```go
+type ToolResult struct {
+    Content      string        `json:"content"`
+    IsError      bool          `json:"isError,omitempty"`
+    ContentItems []ToolContent `json:"contentItems,omitempty"`
+}
+```
+
+`Content` is text-only output. `ContentItems` carries ordered typed content when a tool returns non-text items (embedded resources, base64 blobs, images). It is present only when the tool produced typed content; for text-only results it is omitted. Consumers that only need text can keep reading `Content` alone.
+
+Each `ToolContent` item has a `Type` discriminator (`"text"`, `"image"`, `"resource"`) and type-specific fields:
+
+```go
+type ToolContent struct {
+    Type        string            `json:"type"`
+    Text        string            `json:"text,omitempty"`
+    Data        string            `json:"data,omitempty"`         // base64 image data
+    MimeType    string            `json:"mimeType,omitempty"`
+    Resource    *EmbeddedResource `json:"resource,omitempty"`     // type "resource"
+    URI         string            `json:"uri,omitempty"`
+    Name        string            `json:"name,omitempty"`
+    Annotations *ToolAnnotations  `json:"annotations,omitempty"`
+}
+
+type EmbeddedResource struct {
+    URI      string `json:"uri,omitempty"`
+    MimeType string `json:"mimeType,omitempty"`
+    Text     string `json:"text,omitempty"`
+    Blob     string `json:"blob,omitempty"`   // base64 binary data
+}
+```
+
+`CallTool` on `Context` returns a `*ToolResult` with same fields. When calling MCP tools that return embedded resources, use `ContentItems` to access typed data. Treat `Blob` as opaque in-memory base64; engine does not log, emit, or persist blob bytes by default.
+
 Commands take the raw argument string:
 
 ```go

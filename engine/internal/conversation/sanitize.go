@@ -41,6 +41,13 @@ func SanitizeMessages(messages []types.LlmMessage) []types.LlmMessage {
 		}
 		var filtered []types.LlmContentBlock
 		for _, b := range blocks {
+			// Ephemeral MCP vision input exists for exactly one provider request.
+			// Keep it for this call, but never let an accidental later reuse send
+			// it again after the runloop has completed.
+			if b.Ephemeral {
+				filtered = append(filtered, b)
+				continue
+			}
 			// Thinking blocks (readable or redacted) are stripped before
 			// re-submission: Anthropic rejects re-submitted "thinking" blocks,
 			// and the engine's posture is to never replay reasoning to the

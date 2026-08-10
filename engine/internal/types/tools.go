@@ -15,5 +15,12 @@ type ToolDef struct {
 type ToolResult struct {
 	Content string         `json:"content"`
 	IsError bool           `json:"isError,omitempty"`
-	Images  []*ImageSource `json:"images,omitempty"` // optional vision images returned alongside text
+	Images  []*ImageSource `json:"images,omitempty"` // durable vision images returned alongside text
+	// ContentItems preserves ordered typed MCP content for extension consumers.
+	// It is never rendered or decoded by the engine.
+	ContentItems []ToolContent `json:"contentItems,omitempty"`
+	// EphemeralImages feed this turn's provider request only. json:"-" ensures
+	// MCP bytes never enter extension RPC, events, telemetry, or conversation
+	// persistence by default.
+	EphemeralImages []*ImageSource `json:"-"`
 }

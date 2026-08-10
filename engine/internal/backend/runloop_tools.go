@@ -582,10 +582,11 @@ func (b *ApiBackend) executeTools(
 				emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "tool_error", err.Error())
 			} else {
 				results[i] = conversation.ToolResultEntry{
-					ToolUseID: block.ID,
-					Content:   toolResult.Content,
-					IsError:   toolResult.IsError,
-					Images:    toolResult.Images,
+					ToolUseID:       block.ID,
+					Content:         toolResult.Content,
+					IsError:         toolResult.IsError,
+					Images:          toolResult.Images,
+					EphemeralImages: toolResult.EphemeralImages,
 				}
 				// A tool that returns IsError=true with no Go-level error is the
 				// dominant real-failure path: Bash non-zero exit, Edit

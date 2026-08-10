@@ -7,6 +7,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/tools"
+	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -20,11 +21,10 @@ import (
 // are NOT fired — they would re-enter the calling extension and create
 // surprising recursion.
 //
-// Returns (content, isError, err). A non-nil err is reserved for unknown
-// tool names so the SDK can surface a Promise rejection on what is almost
-// always a programming error. Tool-internal failures resolve as
-// (errorMessage, true, nil).
-func CallToolFromExtension(ctx context.Context, sa SessionAccessor, toolName string, input map[string]interface{}) (string, bool, error) {
+// Returns (result, error). A non-nil error is reserved for unknown tool names
+// so SDK callers surface a Promise rejection on what is almost always a
+// programming error. Tool-internal failures return a ToolResult with IsError.
+func CallToolFromExtension(ctx context.Context, sa SessionAccessor, toolName string, input map[string]interface{}) (*types.ToolResult, error) {
 	if input == nil {
 		input = map[string]interface{}{}
 	}
@@ -38,16 +38,16 @@ func CallToolFromExtension(ctx context.Context, sa SessionAccessor, toolName str
 		if reason == "" {
 			reason = "denied by policy"
 		}
-		return fmt.Sprintf("Permission denied: %s", reason), true, nil
+		return &types.ToolResult{Content: fmt.Sprintf("Permission denied: %s", reason), IsError: true}, nil
 	case "ask":
-		return fmt.Sprintf(
+		return &types.ToolResult{Content: fmt.Sprintf(
 			"Permission requires user approval (rule: %s); extension calls cannot block on elicitation. Configure an explicit allow rule for %q in your permission policy.",
 			reason, toolName,
-		), true, nil
+		), IsError: true}, nil
 	case "":
 		// No permission engine configured; allow.
 	default:
-		return fmt.Sprintf("Permission engine returned unknown decision: %q", decision), true, nil
+		return &types.ToolResult{Content: fmt.Sprintf("Permission engine returned unknown decision: %q", decision), IsError: true}, nil
 	}
 
 	cwd := sa.WorkingDirectory()
@@ -56,12 +56,12 @@ func CallToolFromExtension(ctx context.Context, sa SessionAccessor, toolName str
 	if tools.GetTool(toolName) != nil {
 		toolResult, err := tools.ExecuteTool(ctx, toolName, input, cwd)
 		if err != nil {
-			return "", true, err
+			return nil, err
 		}
 		if toolResult == nil {
-			return "", false, nil
+			return &types.ToolResult{}, nil
 		}
-		return toolResult.Content, toolResult.IsError, nil
+		return toolResult, nil
 	}
 
 	// 2. MCP-registered tools (mcp__server__tool prefix).
@@ -69,27 +69,27 @@ func CallToolFromExtension(ctx context.Context, sa SessionAccessor, toolName str
 		mcpConns := sa.McpConnections()
 		parts := strings.SplitN(toolName, "__", 3)
 		if len(parts) != 3 {
-			return fmt.Sprintf("Invalid MCP tool name: %s", toolName), true, nil
+			return &types.ToolResult{Content: fmt.Sprintf("Invalid MCP tool name: %s", toolName), IsError: true}, nil
 		}
 		serverName := parts[1]
 		innerName := parts[2]
 		for _, conn := range mcpConns {
 			if conn.Name() == serverName {
 				callCtx, callCancel := context.WithTimeout(ctx, mcp.DefaultCallTimeout)
-				content, err := conn.CallTool(callCtx, innerName, input)
+				mcpResult, err := conn.CallToolResult(callCtx, innerName, input)
 				callCancel()
 				if err != nil {
 					// Log at the call site so an MCP tool failure — which server,
 					// which tool — is visible from the logs alone, not only via
 					// the error bubbling up to an opaque caller.
 					utils.LogWithFields(utils.LevelError, "extcontext", "mcp tool call failed", map[string]any{"serverName": serverName, "toolName": innerName, "error": utils.ErrStr(err)})
-					return "", true, err
+					return nil, err
 				}
-				return content, false, nil
+				return mcpResult.ToToolResult(serverName, innerName), nil
 			}
 		}
 		utils.LogWithFields(utils.LevelWarn, "extcontext", "mcp server not connected", map[string]any{"serverName": serverName, "toolName": innerName})
-		return fmt.Sprintf("MCP server %q not connected", serverName), true, nil
+		return &types.ToolResult{Content: fmt.Sprintf("MCP server %q not connected", serverName), IsError: true}, nil
 	}
 
 	// 3. Extension-registered tools (any host in the loaded group).
@@ -104,16 +104,16 @@ func CallToolFromExtension(ctx context.Context, sa SessionAccessor, toolName str
 				ctx := NewExtContext(sa, sa.DispatchRegistry())
 				result, err := tool.Execute(input, ctx)
 				if err != nil {
-					return "", true, err
+					return nil, err
 				}
 				if result == nil {
-					return "", false, nil
+					return &types.ToolResult{}, nil
 				}
-				return result.Content, result.IsError, nil
+				return result, nil
 			}
 		}
 	}
 
 	// 4. Unknown — programming error in the calling extension.
-	return "", true, fmt.Errorf("unknown tool: %s", toolName)
+	return nil, fmt.Errorf("unknown tool: %s", toolName)
 }

@@ -390,7 +390,17 @@ Dispatch a tool call from extension code through the same registry the LLM uses 
   "id": 100007,
   "result": {
     "content": "...file contents...",
-    "isError": false
+    "isError": false,
+    "contentItems": [
+      {
+        "type": "resource",
+        "resource": {
+          "uri": "attachment://example",
+          "mimeType": "application/octet-stream",
+          "blob": "<base64>"
+        }
+      }
+    ]
   }
 }
 ```
@@ -399,9 +409,9 @@ Dispatch a tool call from extension code through the same registry the LLM uses 
 
 `timeout` is optional. When set (in milliseconds), it overrides the default MCP/tool call timeout for this single invocation. Use this for long-running tools where you know the call will exceed the default timeout. Omit or set to `0` to use the default.
 
-The result mirrors what an LLM-issued tool call would receive. Permission `deny` decisions resolve with `{ content, isError: true }` describing the rule that fired. `ask` decisions auto-deny with the same shape -- extension calls cannot block on user elicitation, so the harness must configure an explicit allow rule for the specific tool to permit it from extension code.
+The result mirrors what LLM-issued tool call receives. `content` and `isError` remain compatible text fields. Optional `contentItems` preserves ordered typed MCP content, including embedded-resource URI, MIME type, text, and base64 blob fields. Blob bytes remain opaque to engine and are never logged, telemetered, emitted, or persisted by default.
 
-The engine returns a JSON-RPC error (`-32000`) only when the named tool is not registered. Tool-internal failures (file not found, command failed, etc.) resolve with `isError: true` and a content string describing the failure.
+Permission `deny` decisions resolve with `{ content, isError: true }` describing rule that fired. `ask` decisions auto-deny with same shape -- extension calls cannot block on user elicitation, so harness must configure explicit allow rule for specific tool to permit it from extension code.
 
 The per-tool hooks (`bash_tool_call`, etc.) and `permission_request` are **not** fired on these calls. Both would re-enter the calling extension and create surprising recursion. Audit log entries from the permission engine still fire.
 

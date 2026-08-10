@@ -59,6 +59,8 @@ import type {
   SteerDispatchResult,
   SteerSelfOpts,
   ToolDef,
+  ToolResult,
+  ToolContent,
   WalkContextFilesOpts,
 } from './types'
 
@@ -248,11 +250,15 @@ function buildContext(ctxData: any): IonContext {
     async setDispatchContextDefaults(policy: ContextPolicy): Promise<void> {
       await request('ext/set_dispatch_context_defaults', policy)
     },
-    async callTool(name: string, input: Record<string, unknown>) {
+    async callTool(name: string, input: Record<string, unknown>): Promise<ToolResult> {
       const result = await request('ext/call_tool', { name, input: input || {} })
+      const contentItems: ToolResult['contentItems'] = Array.isArray(result?.contentItems)
+        ? result.contentItems.filter((item: unknown): item is ToolContent => item !== null && typeof item === 'object')
+        : undefined
       return {
         content: typeof result?.content === 'string' ? result.content : '',
         isError: !!result?.isError,
+        ...(contentItems && contentItems.length > 0 ? { contentItems } : {}),
       }
     },
     // Pre-authenticated outbound HTTP. Each verb funnels into the single

@@ -112,7 +112,7 @@ func (t *httpTransport) Send(msg json.RawMessage) error {
 			utils.LogWithFields(utils.LevelError, "mcp.http", "token refresh after rejection failed", map[string]any{
 				"url": t.baseURL, "error": refreshErr.Error(),
 			})
-			return fmt.Errorf("HTTP error (status %d): %s", status, string(body))
+			return fmt.Errorf("HTTP error (status %d, bodyBytes=%d)", status, len(body))
 		}
 		status, body, contentType, _, err = t.doRequest(msg)
 		if err != nil {
@@ -126,7 +126,7 @@ func (t *httpTransport) Send(msg json.RawMessage) error {
 	}
 
 	if status >= 400 {
-		return fmt.Errorf("HTTP error (status %d): %s", status, string(body))
+		return fmt.Errorf("HTTP error (status %d, bodyBytes=%d)", status, len(body))
 	}
 
 	// A StreamableHTTP server answers with EITHER a bare JSON object or an SSE
@@ -141,7 +141,7 @@ func (t *httpTransport) Send(msg json.RawMessage) error {
 		// which would present as an unexplained timeout.
 		utils.LogWithFields(utils.LevelWarn, "mcp.http", "response body carried no decodable JSON-RPC frame", map[string]any{
 			"contentType": contentType,
-			"bodyPrefix":  truncateForLog(body, 200),
+			"bodyBytes":   len(body),
 		})
 	}
 	for _, frame := range frames {
@@ -267,15 +267,6 @@ func decodeHTTPResponseFrames(contentType string, body []byte) []json.RawMessage
 		frames = append(frames, json.RawMessage(payload))
 	}
 	return frames
-}
-
-// truncateForLog bounds a body prefix so a diagnostic log line cannot dump a
-// multi-megabyte response into engine.jsonl.
-func truncateForLog(body []byte, max int) string {
-	if len(body) <= max {
-		return string(body)
-	}
-	return string(body[:max]) + "…"
 }
 
 func (t *httpTransport) Receive() (json.RawMessage, error) {

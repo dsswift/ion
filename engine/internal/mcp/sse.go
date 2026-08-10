@@ -186,8 +186,11 @@ func (t *sseTransport) Send(msg json.RawMessage) error {
 	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // resource close
 
 	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read of error-response body
-		return fmt.Errorf("SSE send error (status %d): %s", resp.StatusCode, string(body))
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			utils.LogWithFields(utils.LevelWarn, "mcp.sse", "error response body read failed", map[string]any{"serverName": t.serverName, "error": readErr.Error()})
+		}
+		return fmt.Errorf("SSE send error (status %d, bodyBytes=%d)", resp.StatusCode, len(body))
 	}
 
 	// Some MCP servers return inline JSON-RPC responses in the POST body

@@ -599,7 +599,7 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 // wireExternalTools attaches MCP and extension-registered tools to the run config.
 func (m *Manager) wireExternalTools(s *engineSession, key string, extGroup *extension.ExtensionGroup, mcpConns []*mcp.Connection, runCfg *backend.RunConfig) {
 	var combinedToolDefs []types.LlmToolDef
-	var mcpRouter func(string, map[string]interface{}) (string, bool, error)
+	var mcpRouter func(context.Context, string, map[string]interface{}) (*types.ToolResult, error)
 
 	if len(mcpConns) > 0 {
 		for _, conn := range mcpConns {
@@ -611,31 +611,28 @@ func (m *Manager) wireExternalTools(s *engineSession, key string, extGroup *exte
 				})
 			}
 		}
-		mcpRouter = func(fullName string, input map[string]interface{}) (string, bool, error) {
+		mcpRouter = func(parent context.Context, fullName string, input map[string]interface{}) (*types.ToolResult, error) {
 			parts := strings.SplitN(fullName, "__", 3)
 			if len(parts) != 3 {
-				return "", true, fmt.Errorf("invalid MCP tool name: %s", fullName)
+				return nil, fmt.Errorf("invalid MCP tool name: %s", fullName)
 			}
 			serverName := parts[1]
 			toolName := parts[2]
 			for _, conn := range mcpConns {
 				if conn.Name() == serverName {
 					mcpTimeout := m.mcpCallTimeout()
-					callCtx, callCancel := context.WithTimeout(context.Background(), mcpTimeout)
-					content, err := conn.CallTool(callCtx, toolName, input)
+					callCtx, callCancel := context.WithTimeout(parent, mcpTimeout)
+					mcpResult, err := conn.CallToolResult(callCtx, toolName, input)
 					callCancel()
 					if err != nil {
-						// Log at the call site so an MCP tool failure inside the
-						// agent loop — which server, which tool — is visible from
-						// logs alone, not only via the returned error.
 						utils.LogWithFields(utils.LevelError, "session", "mcp tool call failed", map[string]any{"serverName": serverName, "toolName": toolName, "conversation_id": key, "error": utils.ErrStr(err)})
-						return "", true, err
+						return nil, err
 					}
-					return content, false, nil
+					return mcpResult.ToToolResult(serverName, toolName), nil
 				}
 			}
 			utils.LogWithFields(utils.LevelWarn, "session", "mcp server not connected", map[string]any{"serverName": serverName, "toolName": toolName, "conversation_id": key})
-			return "", true, fmt.Errorf("MCP server %q not connected", serverName)
+			return nil, fmt.Errorf("MCP server %q not connected", serverName)
 		}
 	}
 
@@ -663,14 +660,7 @@ func (m *Manager) wireExternalTools(s *engineSession, key string, extGroup *exte
 	runCfg.ExternalTools = combinedToolDefs
 	runCfg.McpToolRouter = func(ctx context.Context, name string, input map[string]interface{}) (*types.ToolResult, error) {
 		if mcpRouter != nil && strings.HasPrefix(name, "mcp__") {
-			content, isErr, err := mcpRouter(name, input)
-			if err != nil {
-				return nil, err
-			}
-			// MCP connections return text content only today; wrap it in a
-			// ToolResult so the router surface is uniform. Images arrive via
-			// the extension path below.
-			return &types.ToolResult{Content: content, IsError: isErr}, nil
+			return mcpRouter(ctx, name, input)
 		}
 		if capturedExtGroup != nil {
 			for _, tool := range capturedExtGroup.Tools() {

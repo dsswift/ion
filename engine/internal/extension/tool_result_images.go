@@ -19,8 +19,10 @@ import (
 //
 //	{ content: "...", images: [{ path: "/abs/path.png", mediaType: "image/png" }] }
 type extToolResponse struct {
-	Content string             `json:"content"`
-	Images  []extToolImageSpec `json:"images"`
+	Content      string              `json:"content"`
+	IsError      bool                `json:"isError,omitempty"`
+	Images       []extToolImageSpec  `json:"images"`
+	ContentItems []types.ToolContent `json:"contentItems"`
 }
 
 // extToolImageSpec is one entry in an extension tool response's images array.
@@ -48,9 +50,10 @@ func parseToolResultWithImages(raw []byte, tag string) (*types.ToolResult, bool)
 	// committing to the typed decode so non-object responses (bare strings,
 	// arrays, numbers) fall through untouched.
 	var probe struct {
-		Images json.RawMessage `json:"images"`
+		Images       json.RawMessage `json:"images"`
+		ContentItems json.RawMessage `json:"contentItems"`
 	}
-	if err := json.Unmarshal(raw, &probe); err != nil || len(probe.Images) == 0 {
+	if err := json.Unmarshal(raw, &probe); err != nil || (len(probe.Images) == 0 && len(probe.ContentItems) == 0) {
 		utils.LogWithFields(utils.LevelDebug, "extension", "tool result has no images array; using text path", map[string]any{
 			"tag": tag,
 		})
@@ -65,14 +68,19 @@ func parseToolResultWithImages(raw []byte, tag string) (*types.ToolResult, bool)
 		})
 		return nil, false
 	}
-	if len(resp.Images) == 0 {
-		utils.LogWithFields(utils.LevelDebug, "extension", "tool result images array empty; using text path", map[string]any{
+	if len(resp.Images) == 0 && len(resp.ContentItems) == 0 {
+		utils.LogWithFields(utils.LevelDebug, "extension", "tool result has no typed content; using text path", map[string]any{
 			"tag": tag,
 		})
 		return nil, false
 	}
 
-	result := &types.ToolResult{Content: resp.Content}
+	result := &types.ToolResult{
+		Content:         resp.Content,
+		IsError:         resp.IsError,
+		ContentItems:    resp.ContentItems,
+		EphemeralImages: types.ToolContentEphemeralImages(resp.ContentItems),
+	}
 	for _, spec := range resp.Images {
 		if spec.Path == "" {
 			utils.LogWithFields(utils.LevelError, "extension", "tool result image entry missing path; skipping", map[string]any{

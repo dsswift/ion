@@ -4,7 +4,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -114,4 +116,128 @@ func TestExecuteToolsMcpImagesSurviveAndEmit(t *testing.T) {
 	if len(data) != 5 {
 		t.Errorf("saved image bytes = %d, want 5", len(data))
 	}
+}
+
+// TestMcpEphemeralImagesReachOneProviderTurn pins full MCP image lifecycle:
+// router output becomes first follow-up provider input, never becomes a durable
+// event or image file, then disappears before the next provider request and
+// conversation save. Reverting the EphemeralImages assignment in executeTools
+// fails first-request assertion; removing run-loop cleanup fails second-request
+// assertion.
+func TestMcpEphemeralImagesReachOneProviderTurn(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	t.Setenv("ION_DATA_DIR", tmpHome)
+
+	const payload = "AAECAw=="
+	mock := setupTestProvider([][]types.LlmStreamEvent{
+		toolUseResponse("mcp__charts__render", "mcp-image-tool", map[string]any{}, 10, 5),
+		toolUseResponse("mcp__charts__follow_up", "mcp-follow-up-tool", map[string]any{}, 10, 5),
+		textResponse("done", 10, 5),
+	})
+
+	b := NewApiBackend()
+	collector := collectEvents(b, "mcp-ephemeral-image")
+	b.StartRunWithConfig("mcp-ephemeral-image", types.RunOptions{
+		Prompt:           "render then continue",
+		ProjectPath:      tmpHome,
+		Model:            testModel,
+		ConversationID:   "mcp-ephemeral-image-conversation",
+		EarlyStopEnabled: testEarlyStopDisabled(),
+	}, &RunConfig{
+		McpToolRouter: func(_ context.Context, name string, _ map[string]interface{}) (*types.ToolResult, error) {
+			if name == "mcp__charts__render" {
+				return &types.ToolResult{
+					Content: "chart rendered",
+					EphemeralImages: []*types.ImageSource{{
+						Type: "base64", MediaType: "image/png", Data: payload,
+					}},
+				}, nil
+			}
+			return &types.ToolResult{Content: "follow-up complete"}, nil
+		},
+	})
+
+	if !waitForExit(collector, 5*time.Second) {
+		t.Fatal("timed out waiting for MCP image run")
+	}
+
+	mock.mu.Lock()
+	requests := append([]types.LlmStreamOptions(nil), mock.requests...)
+	mock.mu.Unlock()
+	if len(requests) != 3 {
+		t.Fatalf("provider requests = %d, want 3", len(requests))
+	}
+	if !streamOptionsContainImage(requests[1], payload) {
+		t.Fatal("first provider request after MCP tool did not receive ephemeral image")
+	}
+	if streamOptionsContainImage(requests[2], payload) {
+		t.Fatal("ephemeral MCP image replayed into later provider request")
+	}
+
+	collector.mu.Lock()
+	for _, event := range collector.normalized {
+		switch data := event.Data.(type) {
+		case *types.ToolResultEvent:
+			if len(data.Images) != 0 {
+				collector.mu.Unlock()
+				t.Fatalf("ephemeral MCP image emitted as durable tool image: %#v", data.Images)
+			}
+		case *types.ImageContentEvent:
+			collector.mu.Unlock()
+			t.Fatalf("ephemeral MCP image emitted as image content event: %#v", data)
+		}
+	}
+	collector.mu.Unlock()
+
+	conv, err := conversation.Load("mcp-ephemeral-image-conversation", "")
+	if err != nil {
+		t.Fatalf("load persisted conversation: %v", err)
+	}
+	for _, message := range conv.Messages {
+		blocks, ok := message.Content.([]types.LlmContentBlock)
+		if !ok {
+			continue
+		}
+		for _, block := range blocks {
+			if block.Source != nil && block.Source.Data == payload {
+				t.Fatal("ephemeral MCP image persisted in conversation history")
+			}
+		}
+	}
+
+	conversationDir := conversation.DefaultConversationsDir()
+	if err := filepath.Walk(conversationDir, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if info.IsDir() {
+			return nil
+		}
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		if strings.Contains(string(data), payload) {
+			t.Fatalf("ephemeral MCP image persisted in %s", path)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("scan conversation persistence: %v", err)
+	}
+}
+
+func streamOptionsContainImage(opts types.LlmStreamOptions, payload string) bool {
+	for _, message := range opts.Messages {
+		blocks, ok := message.Content.([]types.LlmContentBlock)
+		if !ok {
+			continue
+		}
+		for _, block := range blocks {
+			if block.Type == "image" && block.Source != nil && block.Source.Data == payload {
+				return true
+			}
+		}
+	}
+	return false
 }

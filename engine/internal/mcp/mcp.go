@@ -457,44 +457,37 @@ func (c *Connection) markDead(err error) {
 	})
 }
 
-// CallTool invokes a tool on the MCP server and returns the text result.
+// CallTool invokes an MCP tool and returns its text convenience result. It is
+// retained for internal callers that only consume text; use CallToolResult when
+// typed content such as embedded resources must survive the boundary.
 func (c *Connection) CallTool(ctx context.Context, toolName string, params map[string]interface{}) (string, error) {
+	result, err := c.CallToolResult(ctx, toolName, params)
+	if err != nil {
+		return "", err
+	}
+	if result.IsError {
+		return "", fmt.Errorf("tool error: %s", result.Text())
+	}
+	return result.Text(), nil
+}
+
+// CallToolResult invokes an MCP tool and preserves every returned content item.
+func (c *Connection) CallToolResult(ctx context.Context, toolName string, params map[string]interface{}) (*ToolCallResult, error) {
 	resp, err := c.call(ctx, "tools/call", map[string]any{
 		"name":      toolName,
 		"arguments": params,
 	})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	var result struct {
-		Content []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		} `json:"content"`
-		IsError bool `json:"isError"`
+	result, err := parseToolCallResult(resp)
+	if err != nil {
+		// Raw MCP responses can contain arbitrary blobs. Never include one in an
+		// error, log, telemetry event, or conversation record.
+		return nil, fmt.Errorf("unexpected tool response format: %w", err)
 	}
-	if err := json.Unmarshal(resp, &result); err != nil {
-		return "", fmt.Errorf("unexpected tool response format: %w (raw: %.200s)", err, resp)
-	}
-
-	if result.IsError {
-		var parts []string
-		for _, c := range result.Content {
-			if c.Text != "" {
-				parts = append(parts, c.Text)
-			}
-		}
-		return "", fmt.Errorf("tool error: %s", strings.Join(parts, "\n"))
-	}
-
-	var parts []string
-	for _, c := range result.Content {
-		if c.Text != "" {
-			parts = append(parts, c.Text)
-		}
-	}
-	return strings.Join(parts, "\n"), nil
+	return result, nil
 }
 
 // Tools returns the list of tools available on this connection.

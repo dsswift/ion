@@ -75,14 +75,47 @@ func NewEvent(eventType string, fields map[string]any) EngineEvent {
 	return EngineEvent{Type: eventType, Fields: fields}
 }
 
+// ToolContent is an ordered typed item returned by a tool. It mirrors MCP
+// content, including base64 blob data that callers may explicitly decode.
+type ToolContent struct {
+	Type        string            `json:"type"`
+	Text        string            `json:"text,omitempty"`
+	Data        string            `json:"data,omitempty"`
+	MimeType    string            `json:"mimeType,omitempty"`
+	Resource    *EmbeddedResource `json:"resource,omitempty"`
+	URI         string            `json:"uri,omitempty"`
+	Name        string            `json:"name,omitempty"`
+	Title       string            `json:"title,omitempty"`
+	Description string            `json:"description,omitempty"`
+	Size        int64             `json:"size,omitempty"`
+	Annotations *ToolAnnotations  `json:"annotations,omitempty"`
+	Unknown     json.RawMessage   `json:"unknown,omitempty"`
+}
+
+// ToolAnnotations preserves MCP delivery hints without imposing engine policy.
+type ToolAnnotations struct {
+	Audience     []string `json:"audience,omitempty"`
+	Priority     *float64 `json:"priority,omitempty"`
+	LastModified string   `json:"lastModified,omitempty"`
+}
+
+// EmbeddedResource is a text or base64 resource embedded in tool output.
+type EmbeddedResource struct {
+	URI      string `json:"uri,omitempty"`
+	MimeType string `json:"mimeType,omitempty"`
+	Text     string `json:"text,omitempty"`
+	Blob     string `json:"blob,omitempty"`
+}
+
 // ToolResult is what a tool returns to the model.
 type ToolResult struct {
-	// Content is the tool's output as the model will see it.
+	// Content is the tool's text output as the model will see it.
 	Content string `json:"content"`
-	// IsError marks the result as a failure. The model still sees Content —
-	// this is how a tool reports a problem the model should react to, as
-	// distinct from an extension malfunction.
+	// IsError marks the result as a failure.
 	IsError bool `json:"isError,omitempty"`
+	// ContentItems is optional typed MCP content. Existing consumers can keep
+	// reading Content alone; blob bytes remain base64 until explicitly decoded.
+	ContentItems []ToolContent `json:"contentItems,omitempty"`
 }
 
 // ToolDef declares a tool the extension provides to the model.

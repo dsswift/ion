@@ -86,7 +86,7 @@ interface ToolDef {
   description: string // shown to the LLM to decide when to use the tool
   parameters: any     // JSON Schema object describing the input
   planModeSafe?: boolean // if true, tool is available during plan mode
-  execute: (params: any, ctx: IonContext) => Promise<{ content: string; isError?: boolean }>
+  execute: (params: any, ctx: IonContext) => Promise<ToolResult>
 }
 ```
 
@@ -115,22 +115,34 @@ type ToolDefinition struct {
 
 ## Response format
 
-Tools return an object with two fields:
+Tools return a `ToolResult`:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `content` | string | yes | Text content returned to the LLM |
 | `isError` | boolean | no | If true, the LLM sees this as an error result |
+| `contentItems` | ToolContent[] | no | Ordered typed content items (embedded resources, images, blobs). Present only when the tool produces non-text content. |
 
 ```typescript
-// Success
+// Success (text only)
 return { content: 'Created issue PROJ-123' }
 
 // Error
 return { content: 'Authentication failed: invalid token', isError: true }
+
+// With typed content items
+return {
+  content: 'resource returned',
+  contentItems: [
+    { type: 'resource', resource: { uri: 'attachment://example', mimeType: 'application/octet-stream', blob: '<base64>' } },
+    { type: 'text', text: 'resource returned' },
+  ],
+}
 ```
 
 When `isError` is true, the LLM typically acknowledges the error and may retry with different parameters or ask the user for help. The engine does not treat tool errors as fatal.
+
+`contentItems` is populated automatically when MCP tool returns non-text content. Extension-defined tools can return `contentItems` to provide typed data alongside text summary. Treat blob values as opaque in-memory data, never log or emit them.
 
 ## Parameter schema
 

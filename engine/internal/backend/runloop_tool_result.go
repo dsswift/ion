@@ -27,6 +27,8 @@ func (b *ApiBackend) emitToolResult(
 	toolID string,
 	result *toolResultPayload,
 ) {
+	// Only durable tool images become files and path-bearing events. MCP content
+	// images are model input for this turn, never an engine artifact.
 	var resultImages []types.ToolResultImage
 	if len(result.Images) > 0 {
 		resultImages = b.saveToolResultImages(run, toolID, result.Images)

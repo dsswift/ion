@@ -824,6 +824,42 @@ export interface IonHttp {
   delete(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
 }
 
+export interface EmbeddedResource {
+  uri?: string
+  mimeType?: string
+  text?: string
+  blob?: string
+}
+
+export interface ToolAnnotations {
+  audience?: string[]
+  priority?: number
+  lastModified?: string
+}
+
+/** One ordered typed item from an MCP tool result. Binary data stays base64. */
+export interface ToolContent {
+  type: string
+  text?: string
+  data?: string
+  mimeType?: string
+  resource?: EmbeddedResource
+  uri?: string
+  name?: string
+  title?: string
+  description?: string
+  size?: number
+  annotations?: ToolAnnotations
+  unknown?: unknown
+}
+
+/** Result from `ctx.callTool` or an extension tool handler. */
+export interface ToolResult {
+  content: string
+  isError?: boolean
+  contentItems?: ToolContent[]
+}
+
 export interface IonContext {
   /**
    * Identifier of the engine session that fired this hook (the same key
@@ -968,7 +1004,7 @@ export interface IonContext {
   callTool(
     name: string,
     input: Record<string, unknown>,
-  ): Promise<{ content: string; isError?: boolean }>
+  ): Promise<ToolResult>
 
   /**
    * Pre-authenticated outbound HTTP using the configured operator or machine
@@ -1665,7 +1701,7 @@ export interface ToolDef {
   description: string
   parameters: any // JSON Schema
   planModeSafe?: boolean
-  execute: (params: any, ctx: IonContext) => Promise<{ content: string; isError?: boolean }>
+  execute: (params: any, ctx: IonContext) => Promise<ToolResult>
 }
 
 export interface CommandDef {
