@@ -252,7 +252,7 @@ export function wireEngineBridgeEvents(): void {
             push: true, pushTitle: event.pushTitle, pushBody: event.pushBody,
           },
           true,
-          { title: event.pushTitle || event.notifyTitle, body: event.pushBody || event.notifyBody },
+          { title: event.pushTitle || event.notifyTitle, body: event.pushBody || event.notifyBody, tabId: tabIdPush },
         )
         log('engine_notification: forwarded push to remote', { tab_id: tabIdPush, title: event.pushTitle || event.notifyTitle })
       }
@@ -461,7 +461,7 @@ export function wireEngineBridgeEvents(): void {
             toolName: denial.toolName,
             toolInput: denial.toolInput,
             options: [],
-          }, true, { title: 'Ion needs your attention', body: pushBody })
+          }, true, { title: 'Ion needs your attention', body: pushBody, tabId })
         }
       }
       // `engine_status` reports a state transition. Engine-view events

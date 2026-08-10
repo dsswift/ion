@@ -172,6 +172,21 @@ describe('event-wiring: engine_notification', () => {
     expect(pushMeta?.body).toBe('Something happened')
   })
 
+  it('includes tabId in pushMeta for APNs deep-link routing', () => {
+    emit('tab1:inst1', {
+      type: 'engine_notification',
+      push: true,
+      pushTitle: 'Alert',
+      pushBody: 'Body',
+      notifyKind: 'info',
+      notifyTitle: 'Alert',
+      notifyBody: 'Body',
+    })
+
+    const [_event, _pushFlag, pushMeta] = mockSend.mock.calls[0]
+    expect(pushMeta?.tabId).toBe('tab1')
+  })
+
   it('does not send to remoteTransport when there is no remote transport', () => {
     mockState.remoteTransport = null as any
 
@@ -189,5 +204,39 @@ describe('event-wiring: engine_notification', () => {
 
     // Restore for other tests
     mockState.remoteTransport = { send: mockSend } as any
+  })
+})
+
+describe('event-wiring: permission denial push includes tabId', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    wireEngineBridgeEvents()
+  })
+
+  function emit(key: string, event: any) {
+    if (!capturedHandler.fn) throw new Error('handler not captured')
+    capturedHandler.fn(key, event)
+  }
+
+  it('includes tabId in pushMeta when forwarding permission denial', () => {
+    emit('tab42:inst7', {
+      type: 'engine_status',
+      fields: {
+        permissionDenials: [{
+          toolName: 'AskUserQuestion',
+          toolUseId: 'tu-1',
+          toolInput: { question: 'proceed?' },
+        }],
+      },
+    })
+
+    const permCalls = mockSend.mock.calls.filter(
+      (args: any[]) => args[0]?.type === 'desktop_permission_request',
+    )
+    expect(permCalls.length).toBe(1)
+    const [sentEvent, pushFlag, pushMeta] = permCalls[0]
+    expect(pushFlag).toBe(true)
+    expect(sentEvent.tabId).toBe('tab42')
+    expect(pushMeta?.tabId).toBe('tab42')
   })
 })

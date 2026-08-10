@@ -57,6 +57,7 @@ export interface WireMessage {
   push?: boolean           // hint to relay: send APNs push if peer is disconnected
   pushTitle?: string       // notification title (used by relay when push=true)
   pushBody?: string        // notification body (used by relay when push=true)
+  pushTabId?: string       // tab ID for deep-link routing (used by relay when push=true)
   nonce?: string           // base64 12-byte nonce (present when encrypted)
   ciphertext?: string      // base64 encrypted payload (replaces `payload` when encrypted)
   deviceId?: string        // identifies the sending device (set by transport)
@@ -105,6 +106,14 @@ export interface PairedDevice {
    */
   customName?: string | null
   customIcon?: string | null
+  relayOidcAccountUsername?: string
+  relayOidcAccountName?: string
+  relayOidcSubject?: string
+  relayOidcTenantId?: string
+  relayOidcSignedInAt?: string
+  relayOidcAccessStatus?: string
+  relayOidcAccessReason?: string
+  relayOidcReportedAt?: string
 }
 
 // ─── Transport state ───

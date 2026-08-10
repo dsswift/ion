@@ -135,6 +135,7 @@ export interface SendQueueItem {
   push: boolean
   pushTitle?: string
   pushBody?: string
+  pushTabId?: string
   enqueuedAt: number
   lane: Lane
   /**
@@ -183,7 +184,7 @@ export interface SendCtx {
    */
   cryptoHost?: {
     usingWorker: boolean
-    submit: (plaintext: string, eventType: string, devices: { deviceId: string; seq: number }[], opts: { push: boolean; pushTitle?: string; pushBody?: string; epoch?: number }, enqueuedAt?: number) => boolean
+    submit: (plaintext: string, eventType: string, devices: { deviceId: string; seq: number }[], opts: { push: boolean; pushTitle?: string; pushBody?: string; pushTabId?: string; epoch?: number }, enqueuedAt?: number) => boolean
   }
 }
 
@@ -216,10 +217,10 @@ export function enqueueSend(
   ctx: SendCtx,
   event: RemoteEvent,
   push: boolean,
-  pushMeta?: { title?: string; body?: string },
+  pushMeta?: { title?: string; body?: string; tabId?: string },
 ): void {
   if (!applyBackpressure(ctx, event.type)) return
-  ctx.sendQueue.push({ event, push, pushTitle: pushMeta?.title, pushBody: pushMeta?.body, enqueuedAt: Date.now(), lane: laneForEventType(event.type) })
+  ctx.sendQueue.push({ event, push, pushTitle: pushMeta?.title, pushBody: pushMeta?.body, pushTabId: pushMeta?.tabId, enqueuedAt: Date.now(), lane: laneForEventType(event.type) })
   drainSendQueue(ctx)
 }
 
@@ -239,10 +240,10 @@ export function enqueueSendToDevice(
   deviceId: string,
   event: RemoteEvent,
   push: boolean,
-  pushMeta?: { title?: string; body?: string },
+  pushMeta?: { title?: string; body?: string; tabId?: string },
 ): void {
   if (!applyBackpressure(ctx, event.type)) return
-  ctx.sendQueue.push({ event, push, pushTitle: pushMeta?.title, pushBody: pushMeta?.body, enqueuedAt: Date.now(), lane: laneForEventType(event.type), targetDeviceId: deviceId })
+  ctx.sendQueue.push({ event, push, pushTitle: pushMeta?.title, pushBody: pushMeta?.body, pushTabId: pushMeta?.tabId, enqueuedAt: Date.now(), lane: laneForEventType(event.type), targetDeviceId: deviceId })
   drainSendQueue(ctx)
 }
 
@@ -304,7 +305,7 @@ export function drainSendQueue(ctx: SendCtx): void {
     mark(Activity.RelaySend)
     const idx = nextSendIndex(ctx.sendQueue, Date.now())
     const item = ctx.sendQueue[idx]
-    sendToAll(ctx, item.event, item.push, item.pushTitle, item.pushBody, item.enqueuedAt, item.targetDeviceId)
+    sendToAll(ctx, item.event, item.push, item.pushTitle, item.pushBody, item.pushTabId, item.enqueuedAt, item.targetDeviceId)
     ctx.sendQueue.splice(idx, 1)
   }
 }
@@ -364,7 +365,7 @@ export function sendDirect(
   }
   mark(Activity.RelayCompress)
   const wire = compressPayload(plaintext)
-  const msg = buildDeviceFrame(deviceId, secret, plaintext, wire, event.type, nextSeq, push, undefined, undefined, Date.now(), epoch)
+  const msg = buildDeviceFrame(deviceId, secret, plaintext, wire, event.type, nextSeq, push, undefined, undefined, undefined, Date.now(), epoch)
   if (!msg) return
   if (!frameWithinWireCap(msg, event.type, deviceId)) return
   retransmit.record(deviceId, msg)
@@ -377,6 +378,7 @@ export function sendToAll(
   push: boolean,
   pushTitle?: string,
   pushBody?: string,
+  pushTabId?: string,
   enqueuedAt?: number,
   targetDeviceId?: string,
 ): boolean {
@@ -422,13 +424,13 @@ export function sendToAll(
   if (ctx.cryptoHost?.usingWorker) {
     const devices = recipientIds.map((deviceId) => ({ deviceId, seq: ctx.nextSeq(deviceId) }))
     if (devices.length === 0) return false
-    const submitted = ctx.cryptoHost.submit(plaintext, eventType, devices, { push, pushTitle, pushBody, epoch: ctx.epoch }, enqueuedAt)
+    const submitted = ctx.cryptoHost.submit(plaintext, eventType, devices, { push, pushTitle, pushBody, pushTabId, epoch: ctx.epoch }, enqueuedAt)
     if (submitted) return true
     // Worker died between the check and the post: fall through to the sync
     // path — but the seqs above are already allocated. Build with THOSE seqs
     // via the pure pipeline so the wire stream stays contiguous.
     mark(Activity.RelayCompress)
-    const { results } = buildFramesForEvent(plaintext, devices, ctx.deviceSecrets, { push, pushTitle, pushBody, epoch: ctx.epoch })
+    const { results } = buildFramesForEvent(plaintext, devices, ctx.deviceSecrets, { push, pushTitle, pushBody, pushTabId, epoch: ctx.epoch })
     let sent = false
     for (const r of results) {
       if (!r.frame) continue
@@ -451,7 +453,7 @@ export function sendToAll(
     const secret = ctx.deviceSecrets.get(deviceId)
     if (!secret) continue
     // buildDeviceFrame marks its own relay_encrypt sub-stage.
-    const msg = buildDeviceFrame(deviceId, secret, plaintext, wire, eventType, ctx.nextSeq, push, pushTitle, pushBody, enqueuedAt, ctx.epoch)
+    const msg = buildDeviceFrame(deviceId, secret, plaintext, wire, eventType, ctx.nextSeq, push, pushTitle, pushBody, pushTabId, enqueuedAt, ctx.epoch)
     if (!msg) continue // encrypt failed — skip this device
 
     // Authoritative frame-size backstop, on the SERIALIZED frame — the JSON

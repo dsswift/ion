@@ -29,6 +29,7 @@ export interface PipelineOpts {
   push: boolean
   pushTitle?: string
   pushBody?: string
+  pushTabId?: string
   /** Outbound-seq epoch (generation id); see WireMessage.epoch. */
   epoch?: number
 }
@@ -76,6 +77,7 @@ export function buildFrameCore(
   ;(msg as any).push = opts.push || undefined
   ;(msg as any).pushTitle = opts.push ? opts.pushTitle : undefined
   ;(msg as any).pushBody = opts.push ? opts.pushBody : undefined
+  ;(msg as any).pushTabId = opts.push ? opts.pushTabId : undefined
   return { frame: msg }
 }
 

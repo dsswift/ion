@@ -41,7 +41,7 @@ describe('buildDeviceFrame — per-frame send logging', () => {
 
   it('accepts precompressed wire + eventType and returns a WireMessage', () => {
     const enqueuedAt = Date.now() - 50 // simulated 50ms queue dwell
-    const msg = buildDeviceFrame(deviceId, secret, plaintext, wire, eventType, nextSeq, false, undefined, undefined, enqueuedAt)
+    const msg = buildDeviceFrame(deviceId, secret, plaintext, wire, eventType, nextSeq, false, undefined, undefined, undefined, enqueuedAt)
     expect(msg).not.toBeNull()
   })
 
@@ -55,7 +55,7 @@ describe('buildDeviceFrame — per-frame send logging', () => {
 
   it('queue_dwell_ms is computable from enqueuedAt', () => {
     const enqueuedAt = Date.now() - 100 // 100ms ago
-    const msg = buildDeviceFrame(deviceId, secret, plaintext, wire, eventType, nextSeq, false, undefined, undefined, enqueuedAt)
+    const msg = buildDeviceFrame(deviceId, secret, plaintext, wire, eventType, nextSeq, false, undefined, undefined, undefined, enqueuedAt)
     expect(msg).not.toBeNull()
     const sendTs: number = (msg as any).ts
     const dwell = sendTs - enqueuedAt
@@ -68,6 +68,11 @@ describe('buildDeviceFrame — per-frame send logging', () => {
     expect((msg as any).seq).toBeGreaterThan(0)
   })
 
+  it('retains push tab id in the relay envelope', () => {
+    const msg = buildDeviceFrame(deviceId, secret, plaintext, wire, eventType, nextSeq, true, 'Title', 'Body', 'tab-push')
+    expect((msg as any).pushTabId).toBe('tab-push')
+  })
+
   it('emits the per-frame send line at DEBUG with the passed eventType', async () => {
     // buildDeviceFrame logs via debug() (DEBUG) — at 135k lines/hour at INFO this
     // single call dominated desktop log volume (~88%). Demoted to DEBUG so the line
@@ -76,7 +81,7 @@ describe('buildDeviceFrame — per-frame send logging', () => {
     // event_type comes from the eventType argument, not a re-parse of plaintext.
     const { debug: debugSpy } = vi.mocked(await import('../../logger'))
     debugSpy.mockClear()
-    buildDeviceFrame(deviceId, secret, plaintext, wire, eventType, nextSeq, false, undefined, undefined, Date.now() - 5)
+    buildDeviceFrame(deviceId, secret, plaintext, wire, eventType, nextSeq, false, undefined, undefined, undefined, Date.now() - 5)
     expect(debugSpy).toHaveBeenCalledWith(
       'transport-frame',
       expect.stringContaining('seq='),
