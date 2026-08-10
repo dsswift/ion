@@ -56,8 +56,8 @@ func TestRespawn_StaticDeclsRestoredDynamicDecsLost(t *testing.T) {
 	if len(host.Webhooks()) != 1 {
 		t.Fatalf("expected 1 static webhook pre-respawn, got %d", len(host.Webhooks()))
 	}
-	if len(host.Schedules()) != 1 {
-		t.Fatalf("expected 1 static schedule pre-respawn, got %d", len(host.Schedules()))
+	if len(host.Schedules()) != 2 {
+		t.Fatalf("expected 2 static schedules pre-respawn (async-canary-slow-handler + async-canary-tick), got %d", len(host.Schedules()))
 	}
 
 	// Add dynamic registrations.
@@ -72,8 +72,8 @@ func TestRespawn_StaticDeclsRestoredDynamicDecsLost(t *testing.T) {
 	if len(host.Webhooks()) != 2 {
 		t.Fatalf("expected 2 webhooks after dynamic, got %d: %+v", len(host.Webhooks()), host.Webhooks())
 	}
-	if len(host.Schedules()) != 2 {
-		t.Fatalf("expected 2 schedules after dynamic, got %d: %+v", len(host.Schedules()), host.Schedules())
+	if len(host.Schedules()) != 3 {
+		t.Fatalf("expected 3 schedules after dynamic (2 static + 1 dynamic), got %d: %+v", len(host.Schedules()), host.Schedules())
 	}
 
 	// Kill the subprocess.
@@ -120,11 +120,17 @@ func TestRespawn_StaticDeclsRestoredDynamicDecsLost(t *testing.T) {
 		t.Errorf("post-respawn webhook = %q, want /test/hello", webhooks[0].Path)
 	}
 	schedules := host.Schedules()
-	if len(schedules) != 1 {
-		t.Fatalf("post-respawn schedule count = %d, want 1 (only static)", len(schedules))
+	if len(schedules) != 2 {
+		t.Fatalf("post-respawn schedule count = %d, want 2 (static only: async-canary-slow-handler + async-canary-tick)", len(schedules))
 	}
-	if schedules[0].JobID != "async-canary-tick" {
-		t.Errorf("post-respawn schedule = %q, want async-canary-tick", schedules[0].JobID)
+	foundTick := false
+	for _, s := range schedules {
+		if s.JobID == "async-canary-tick" {
+			foundTick = true
+		}
+	}
+	if !foundTick {
+		t.Errorf("post-respawn schedules missing async-canary-tick: %+v", schedules)
 	}
 
 	// Sanity: the dynamic path is genuinely gone from the registry,

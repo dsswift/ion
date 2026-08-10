@@ -85,14 +85,28 @@ func TestAsyncCanary_StaticInitRegistrations(t *testing.T) {
 	}
 
 	schedules := host.Schedules()
-	if len(schedules) != 1 {
-		t.Fatalf("expected 1 schedule, got %d", len(schedules))
+	if len(schedules) != 2 {
+		t.Fatalf("expected 2 schedules (async-canary-slow-handler + async-canary-tick), got %d: %+v", len(schedules), schedules)
 	}
-	if schedules[0].JobID != "async-canary-tick" {
-		t.Fatalf("schedule id = %q, want async-canary-tick", schedules[0].JobID)
+	// Verify both expected schedule IDs are present (order-independent).
+	foundTick := false
+	foundSlow := false
+	for _, s := range schedules {
+		if s.JobID == "async-canary-tick" {
+			foundTick = true
+			if s.Kind != extension.ScheduleInterval {
+				t.Errorf("async-canary-tick kind = %q, want interval", s.Kind)
+			}
+		}
+		if s.JobID == "async-canary-slow-handler" {
+			foundSlow = true
+		}
 	}
-	if schedules[0].Kind != extension.ScheduleInterval {
-		t.Fatalf("schedule kind = %q, want interval", schedules[0].Kind)
+	if !foundTick {
+		t.Fatalf("async-canary-tick not in schedules: %+v", schedules)
+	}
+	if !foundSlow {
+		t.Fatalf("async-canary-slow-handler not in schedules: %+v", schedules)
 	}
 }
 
@@ -114,8 +128,8 @@ func TestAsyncCanary_LifecycleHooksFireAtInit(t *testing.T) {
 	if errs := host.CommitPendingAsyncDecls(); len(errs) != 0 {
 		t.Fatalf("commit errors: %v", errs)
 	}
-	if len(seen) != 2 {
-		t.Fatalf("expected 2 lifecycle fires, got %d: %+v", len(seen), seen)
+	if len(seen) != 3 {
+		t.Fatalf("expected 3 lifecycle fires (1 webhook + 2 schedules), got %d: %+v", len(seen), seen)
 	}
 	for _, info := range seen {
 		if info.Origin != string(asyncreg.OriginInit) {
