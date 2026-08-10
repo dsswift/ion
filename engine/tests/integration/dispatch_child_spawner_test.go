@@ -74,7 +74,8 @@ func TestDispatchChildSpawner_RunloopPath(t *testing.T) {
 	mp.SetResponse(helpers.ToolCallResponse("Agent", "agent_tool_001", map[string]interface{}{
 		"prompt": "grandchild-task",
 		"name":   "grandchild-agent",
-		"model":  "mock-model",
+		"model":               "mock-model",
+		"wait_for_completion": true,
 	}))
 
 	// Call 2: depth-2 grandchild's run. Returns text so it completes cleanly.
@@ -206,13 +207,15 @@ func TestDispatchChildSpawner_DepthCapStillHolds(t *testing.T) {
 	// Call 1 (depth-1 child, first turn): Agent tool call to spawn depth-2.
 	mp.SetResponse(helpers.ToolCallResponse("Agent", "agent_tool_d1", map[string]interface{}{
 		"prompt": "depth2-task",
-		"model":  "mock-model",
+		"model":               "mock-model",
+		"wait_for_completion": true,
 	}))
 	// Call 2 (depth-2 grandchild, first turn): Agent tool call to spawn depth-3.
 	// This should be BLOCKED by the cap (DefaultMaxDispatchDepth=3, childDepth 3 >= 3).
 	mp.SetResponse(helpers.ToolCallResponse("Agent", "agent_tool_d2", map[string]interface{}{
 		"prompt": "depth3-task-blocked",
-		"model":  "mock-model",
+		"model":               "mock-model",
+		"wait_for_completion": true,
 	}))
 	// Call 3 (depth-2 grandchild, second turn after the blocked tool result):
 	// returns text to complete the grandchild.

@@ -126,9 +126,9 @@ func (a *dispatchCountSpyAccessor) SendPrompt(_, _ string, _ []string) error { r
 func (a *dispatchCountSpyAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error {
 	return nil
 }
-func (a *dispatchCountSpyAccessor) SteerSelfMainLoop(_ string) bool { return false }
+func (a *dispatchCountSpyAccessor) SteerSelfMainLoop(_ string) bool            { return false }
 func (a *dispatchCountSpyAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
-func (a *dispatchCountSpyAccessor) ParkSelfMainLoop() bool          { return false }
+func (a *dispatchCountSpyAccessor) ParkSelfMainLoop() bool                     { return false }
 func (a *dispatchCountSpyAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
@@ -241,7 +241,7 @@ func TestDeregisterReEmitsDispatchCount(t *testing.T) {
 
 	dispatchFn := BuildDispatchAgentFunc(acc, registry, 0, "")
 
-	result, err := dispatchFn(extension.DispatchAgentOpts{
+	result, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "count-test-agent",
 		Task: "do work",
 	})
@@ -294,7 +294,7 @@ func TestDeregisterFinalStatusCarriesZeroBgCount(t *testing.T) {
 	}
 
 	dispatchFn := BuildDispatchAgentFunc(acc, registry, 0, "")
-	_, _ = dispatchFn(extension.DispatchAgentOpts{
+	_, _ = dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "status-count-test-agent",
 		Task: "check bg count in status",
 	})

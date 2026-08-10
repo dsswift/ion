@@ -51,6 +51,10 @@ func (a *sessionAccessor) SendAbort() { a.m.SendAbort(a.key) }
 // session_root_context.go.
 func (a *sessionAccessor) RootContext() context.Context { return a.s.rootContext() }
 
+func (a *sessionAccessor) DeliverRootDispatchResult(result extension.DispatchAgentResult) {
+	a.m.deliverRootDispatchResult(a.key, result)
+}
+
 func (a *sessionAccessor) SendPrompt(text string, model string, bashAllowlistAdditions []string) error {
 	return a.SendPromptWithKind(text, model, bashAllowlistAdditions, "")
 }

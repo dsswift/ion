@@ -93,7 +93,7 @@ func TestDispatchPlanMode_AllocatesPlanFilePath(t *testing.T) {
 
 	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 
-	_, err := dispatchFn(extension.DispatchAgentOpts{
+	_, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name:     "plan-lead",
 		Task:     "plan the work",
 		PlanMode: true,
@@ -139,7 +139,7 @@ func TestDispatchPlanMode_RespectsExplicitPlanFilePath(t *testing.T) {
 
 	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 
-	_, err := dispatchFn(extension.DispatchAgentOpts{
+	_, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name:         "plan-lead",
 		Task:         "plan the work",
 		PlanMode:     true,
@@ -166,7 +166,7 @@ func TestDispatchNoPlanMode_NoPlanFilePath(t *testing.T) {
 
 	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 
-	_, err := dispatchFn(extension.DispatchAgentOpts{
+	_, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "worker",
 		Task: "just work",
 	})

@@ -81,7 +81,7 @@ func TestDispatchAgentStampsNestingAttribution(t *testing.T) {
 			// The child backend has no provider, so the dispatch fails after the
 			// agent-state append. The append is what we assert; the run outcome is
 			// irrelevant here.
-			_, _ = dispatchFn(extension.DispatchAgentOpts{
+			_, _ = dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 				Name: "engine-dev",
 				Task: "implement the thing",
 			})

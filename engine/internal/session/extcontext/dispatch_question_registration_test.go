@@ -45,7 +45,7 @@ func TestForegroundAndBackground_BothRegistered(t *testing.T) {
 			}
 		}()
 
-		_, _ = dispatchFn(extension.DispatchAgentOpts{
+		_, _ = dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 			Name: "fg-agent",
 			Task: "foreground task",
 		})

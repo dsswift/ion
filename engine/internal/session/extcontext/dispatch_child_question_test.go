@@ -94,7 +94,7 @@ func TestChildQuestion_NilCallback_NotWired(t *testing.T) {
 
 	// No OnChildQuestion set. The dispatch fails (no provider) but must not
 	// panic and must complete its lifecycle.
-	_, _ = dispatchFn(extension.DispatchAgentOpts{
+	_, _ = dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "nil-cb-agent",
 		Task: "task",
 		// OnChildQuestion intentionally nil.

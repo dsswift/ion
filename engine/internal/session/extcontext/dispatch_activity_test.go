@@ -113,9 +113,9 @@ func (a *activityRecordingAccessor) SendPrompt(_, _ string, _ []string) error { 
 func (a *activityRecordingAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error {
 	return nil
 }
-func (a *activityRecordingAccessor) SteerSelfMainLoop(_ string) bool { return false }
+func (a *activityRecordingAccessor) SteerSelfMainLoop(_ string) bool            { return false }
 func (a *activityRecordingAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
-func (a *activityRecordingAccessor) ParkSelfMainLoop() bool          { return false }
+func (a *activityRecordingAccessor) ParkSelfMainLoop() bool                     { return false }
 func (a *activityRecordingAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
@@ -248,7 +248,7 @@ func TestDispatchEmitsActivityWhileRunning(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_, _ = dispatchFn(extension.DispatchAgentOpts{Name: "activity-agent", Task: "do work"})
+		_, _ = dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true, Name: "activity-agent", Task: "do work"})
 		close(done)
 	}()
 

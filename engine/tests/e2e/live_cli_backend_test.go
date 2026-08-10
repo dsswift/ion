@@ -248,7 +248,7 @@ func TestLiveCliBackendDispatchAgent(t *testing.T) {
 			if ctx.DispatchAgent == nil {
 				return &types.ToolResult{Content: "DispatchAgent not wired", IsError: true}, nil
 			}
-			dispatchResult, dispatchErr = ctx.DispatchAgent(extension.DispatchAgentOpts{
+			dispatchResult, dispatchErr = ctx.DispatchAgent(extension.DispatchAgentOpts{WaitForCompletion: true,
 				Name: "e2e-child",
 				Task: "What is 7*6? Reply with just the number, nothing else.",
 			})

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -32,7 +33,9 @@ func TestNestedDispatchTelemetryOnRootStream(t *testing.T) {
 
 	// The child invokes the Agent tool → grandchild dispatch at depth 2.
 	// The child backend fails fast (no provider); telemetry emits first.
-	_, _ = spawner(context.Background(), "grandchild-agent", "deep work", "", "/tmp", "no-such-model")
+	// This telemetry test needs the terminal pair, so explicitly request the
+	// foreground contract rather than default asynchronous dispatch.
+	_, _ = spawner(tools.WithAgentWaitForCompletion(context.Background(), true), "grandchild-agent", "deep work", "", "/tmp", "no-such-model")
 
 	events := acc.emittedEvents()
 	var start, end *types.EngineEvent

@@ -15,7 +15,7 @@ import (
 // was always false — this test would not compile against that signature and
 // fails on the unfixed behavior.
 func TestBuildDispatchRunOptionsThreadsClaudeCompat(t *testing.T) {
-	opts := &extension.DispatchAgentOpts{
+	opts := &extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "child",
 		Task: "do work",
 	}

@@ -47,9 +47,9 @@ func (a *depthTestAccessor) SendPrompt(text string, model string, bash []string)
 func (a *depthTestAccessor) SendPromptWithKind(text string, _ string, _ []string, _ string) error {
 	return nil
 }
-func (a *depthTestAccessor) SteerSelfMainLoop(message string) bool { return false }
+func (a *depthTestAccessor) SteerSelfMainLoop(message string) bool      { return false }
 func (a *depthTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
-func (a *depthTestAccessor) ParkSelfMainLoop() bool                { return false }
+func (a *depthTestAccessor) ParkSelfMainLoop() bool                     { return false }
 func (a *depthTestAccessor) Elicit(info extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
@@ -159,7 +159,7 @@ func TestDepthGuard(t *testing.T) {
 
 			dispatchFn := BuildDispatchAgentFunc(acc, nil, tc.currentDepth, "parent-id")
 
-			_, err := dispatchFn(extension.DispatchAgentOpts{
+			_, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 				Name:             "test-agent",
 				Task:             "test task",
 				MaxDispatchDepth: tc.perDispatchMax,
@@ -192,7 +192,7 @@ func TestDepthGuard_NoDispatchStart(t *testing.T) {
 
 	// depth=0, cap=1 -> child=1 >= cap=1 -> blocked
 	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
-	_, err := dispatchFn(extension.DispatchAgentOpts{
+	_, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "blocked-agent",
 		Task: "should not start",
 	})
@@ -217,7 +217,7 @@ func TestDepthParentStamping(t *testing.T) {
 	// Simulate a depth-1 dispatch from orchestrator (depth=0, no parent).
 	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 	// This will fail (no provider) but the dispatch_start event should be emitted first.
-	_, _ = dispatchFn(extension.DispatchAgentOpts{
+	_, _ = dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "child-agent",
 		Task: "do work",
 	})
@@ -245,7 +245,7 @@ func TestDepthParentStamping(t *testing.T) {
 		config: &types.EngineRuntimeConfig{MaxDispatchDepth: 5},
 	}
 	dispatchFn2 := BuildDispatchAgentFunc(acc2, nil, 1, "parent-dispatch-123")
-	_, _ = dispatchFn2(extension.DispatchAgentOpts{
+	_, _ = dispatchFn2(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "grandchild-agent",
 		Task: "deeper work",
 	})
@@ -500,8 +500,8 @@ func TestDepthThreading_SameTierChildrenIdenticalGrandchildDepth(t *testing.T) {
 	dispatchFn2 := BuildDispatchAgentFunc(acc2, nil, 1, "parent-2")
 
 	// Both dispatches will fail (no provider) but emit dispatch_start with depth.
-	_, _ = dispatchFn1(extension.DispatchAgentOpts{Name: "child-a", Task: "work"})
-	_, _ = dispatchFn2(extension.DispatchAgentOpts{Name: "child-b", Task: "work"})
+	_, _ = dispatchFn1(extension.DispatchAgentOpts{WaitForCompletion: true, Name: "child-a", Task: "work"})
+	_, _ = dispatchFn2(extension.DispatchAgentOpts{WaitForCompletion: true, Name: "child-b", Task: "work"})
 
 	// Extract the childDepth from dispatch_start events.
 	var depth1, depth2 int
@@ -558,7 +558,7 @@ func TestForegroundDispatch_RegisteredDuringRun(t *testing.T) {
 
 	// Run a foreground dispatch. It will fail (no provider) but the
 	// register+deregister cycle should complete.
-	_, _ = dispatchFn(extension.DispatchAgentOpts{
+	_, _ = dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "fg-agent",
 		Task: "foreground task",
 	})

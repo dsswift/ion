@@ -453,32 +453,15 @@ func (b *ApiBackend) executeTools(
 				toolTimeout = run.cfg.Timeouts.ToolDefault()
 			}
 
-			// The Agent tool is a long-running child session with cooperative
-			// cancellation (parent abort → gCtx cancelled → child cancelled).
-			// Wrapping it in the standard tool timeout would kill child agents
-			// at the deadline. Use gCtx directly so Agent runs are bounded only
-			// by parent lifecycle, not by the tool deadline.
-			//
-			// All other tools get a finite deadline, but via a DeadlineSuspender
-			// rather than a bare context.WithTimeout: an extension tool's
-			// execute() may synchronously call ctx.elicit(), which is an
-			// indefinite human-wait. The suspender lets that path pause the
-			// finite deadline for exactly the span it is blocked on the human,
-			// then resume it for the remaining machine work — preserving the
-			// indefinite-human-wait guarantee without removing the finite
-			// ceiling from machine work. (Permission prompts do not flow through
-			// the suspender; they block elsewhere — see DeadlineSuspender's doc.)
+			// Agent dispatch now returns immediately by default. Explicit waits use
+			// this same finite deadline, so no tool can strand a conversation.
 			var toolCtx context.Context
 			var toolCancel context.CancelFunc
 			var toolSuspender *types.DeadlineSuspenderHandle
-			if block.Name == tools.AgentToolName {
-				toolCtx, toolCancel = context.WithCancel(gCtx)
-			} else {
-				toolCtx, toolCancel = context.WithCancel(gCtx)
-				ds := types.NewDeadlineSuspender(toolTimeout, toolCancel)
-				toolSuspender = ds
-				toolCtx = types.WithDeadlineSuspender(toolCtx, ds)
-			}
+			toolCtx, toolCancel = context.WithCancel(gCtx)
+			ds := types.NewDeadlineSuspender(toolTimeout, toolCancel)
+			toolSuspender = ds
+			toolCtx = types.WithDeadlineSuspender(toolCtx, ds)
 			defer toolCancel()
 			defer toolSuspender.Stop()
 

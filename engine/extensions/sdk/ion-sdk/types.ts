@@ -43,32 +43,36 @@ export interface DispatchAgentOpts {
   maxTurns?: number
   onEvent?: (event: EngineEvent) => void
 
-  // --- Background dispatch ---
+  // --- Async dispatch ---
 
   /**
-   * When true, the dispatch returns a stub result immediately and runs the
-   * child session in the background. The terminal outcome is delivered via
-   * {@link onComplete}, {@link onError}, or {@link onRecall} callbacks.
-   *
-   * Background dispatches are tracked in the engine's dispatch registry and
-   * can be cancelled via {@link IonContext.recallAgent}.
+   * Dispatches run asynchronously by default. Set this to true only when the
+   * caller needs terminal child output before continuing. Foreground dispatch
+   * does not deliver terminal lifecycle callbacks.
+   */
+  waitForCompletion?: boolean
+
+  /**
+   * Legacy compatibility flag. Dispatch is asynchronous regardless of this
+   * value; set `waitForCompletion: true` for explicit foreground dispatch.
+   * @deprecated Use `waitForCompletion`.
    */
   background?: boolean
 
   /**
-   * Fires when a background dispatch finishes successfully (exit code 0).
+   * Fires when an asynchronous dispatch finishes successfully (exit code 0).
    * Not called for foreground dispatches.
    */
   onComplete?: (result: DispatchAgentResult) => void
 
   /**
-   * Fires when a background dispatch finishes with an error (non-zero exit
+   * Fires when an asynchronous dispatch finishes with an error (non-zero exit
    * code or child error). Not called for foreground dispatches.
    */
   onError?: (err: DispatchError) => void
 
   /**
-   * Fires when a background dispatch is cancelled via
+   * Fires when an asynchronous dispatch is cancelled via
    * {@link IonContext.recallAgent}. Not called for foreground dispatches.
    */
   onRecall?: (info: RecallInfo) => void
@@ -168,7 +172,7 @@ export interface DispatchAgentOpts {
   subAgentPolicy?: 'allowlist' | 'unrestricted'
 
   /**
-   * Excludes this dispatch from its PARENT's park-on-children set. By
+   * Excludes this asynchronous dispatch from its PARENT's park-on-children set. By
    * default (false/unset) a background dispatch holds its dispatcher open:
    * when the dispatcher's run ends its turn with this child still running,
    * the engine parks the dispatcher (status `suspended`) and revives it when
@@ -296,7 +300,7 @@ export interface DispatchAgentResult {
   planExited?: boolean
 }
 
-/** Describes a failed background dispatch. Delivered via {@link DispatchAgentOpts.onError}. */
+/** Describes a failed asynchronous dispatch. Delivered via {@link DispatchAgentOpts.onError}. */
 export interface DispatchError {
   name: string
   dispatchId?: string
@@ -305,7 +309,7 @@ export interface DispatchError {
   elapsed: number
 }
 
-/** Describes a recalled (cancelled) background dispatch. Delivered via {@link DispatchAgentOpts.onRecall}. */
+/** Describes a recalled (cancelled) asynchronous dispatch. Delivered via {@link DispatchAgentOpts.onRecall}. */
 export interface RecallInfo {
   name: string
   dispatchId?: string
@@ -711,6 +715,34 @@ export interface SandboxWrapResult {
 }
 
 /**
+ * Options for {@link IonContext.intercept}. The engine routes the resulting
+ * `engine_intercept` event and stamps the source; how a client reacts is that
+ * client's policy, not something the engine enforces.
+ */
+export interface InterceptOpts {
+  /**
+   * Client hint about severity. "banner" is informational and
+   * non-disruptive; "redirect" is urgent and a client may abort the run and
+   * re-prompt. The engine does not validate or branch on this value.
+   */
+  level: 'banner' | 'redirect' | string
+  /** Short headline. Required. */
+  title: string
+  /**
+   * Body content. At "redirect" level a client may use this as the injected
+   * user prompt if it chooses to redirect.
+   */
+  message?: string
+  /**
+   * Which session receives the event. Empty emits on the caller's own
+   * session.
+   */
+  targetSessionKey?: string
+  /** Opaque map forwarded to clients unchanged. */
+  metadata?: Record<string, unknown>
+}
+
+/**
  * Spec for an LLM-visible agent registered at runtime via
  * {@link IonContext.registerAgentSpec}. Mirrors the markdown frontmatter
  * shape (name, description, model, tools, parent, systemPrompt). Specs
@@ -824,7 +856,7 @@ export interface IonContext {
    * Tempo, ...):
    *
    * ```ts
-   * ion.on('before_tool_call', async (ctx, info) => {
+   * ion.on('tool_call', async (ctx, info) => {
    *   const spanId = randomBytes(8).toString('hex') // your span, your id
    *   await ctx.http.post('https://api.example.com/v1/work', {
    *     scope: 'api://my-api/Work.Write',
@@ -1025,20 +1057,19 @@ export interface IonContext {
   setDispatchContextDefaults(policy: ContextPolicy): Promise<void>
 
   /**
-   * Terminate a running background dispatch by agent name. Returns `true` if
+   * Terminate a running asynchronous dispatch by agent name. Returns `true` if
    * a dispatch was found and recalled, `false` otherwise. The recalled agent's
    * {@link DispatchAgentOpts.onRecall} callback fires with the provided reason.
    *
-   * Only applies to dispatches started with `background: true`. Has no effect
-   * on foreground (synchronous) dispatches.
+   * Only applies to default asynchronous dispatches. Has no effect on
+   * foreground dispatches started with `waitForCompletion: true`.
    *
    * @example
    * ```ts
-   * // Launch a background agent
+   * // Launch an asynchronous agent
    * await ctx.dispatchAgent({
    *   name: 'code-reviewer',
    *   task: 'Review the PR',
-   *   background: true,
    *   onRecall: (info) => log.info(`recalled: ${info.reason}`),
    * })
    *
@@ -1048,7 +1079,7 @@ export interface IonContext {
    */
   recallAgent(name: string, opts?: RecallAgentOpts): Promise<boolean>
   /**
-   * Deliver a steering message to a running background dispatch. The message
+   * Deliver a steering message to a running asynchronous dispatch. The message
    * is injected into the child's conversation as a user message at the next
    * run-loop checkpoint, reusing the existing steer channel mechanism.
    *
@@ -1058,7 +1089,7 @@ export interface IonContext {
    */
   steerDispatch(dispatchId: string, message: string): Promise<SteerDispatchResult>
   /**
-   * Deliver a steering message to a running background dispatch identified by
+   * Deliver a steering message to a running asynchronous dispatch identified by
    * its agent **name**. This is the name-based peer of {@link steerDispatch}:
    * where `steerDispatch` requires the full collision-safe dispatch ID returned
    * by {@link dispatchAgent}, `steerDispatchByName` resolves by the
@@ -1095,7 +1126,7 @@ export interface IonContext {
    * - If the owning run is idle, the message is sent as a fresh prompt via the
    *   normal prompt path. Outcome: `'sent'`.
    *
-   * Use this to bubble a background dispatch's completion back to the
+   * Use this to bubble an asynchronous dispatch's completion back to the
    * dispatching agent without polling: a busy parent is steered immediately
    * instead of the completion queueing behind its live run until it goes idle.
    * Depth-aware — at depth 0 the owning run is the session's main loop; at
@@ -1133,6 +1164,47 @@ export interface IonContext {
    * ```
    */
   sandboxWrap(command: string, profile?: SandboxProfile): Promise<SandboxWrapResult>
+
+  /**
+   * Read the conversation's session memory (`.memory.md`). Returns an empty
+   * string when the conversation has none, or when the extension is running
+   * outside a session.
+   *
+   * Session memory is conversation-scoped state the engine persists alongside
+   * the transcript. It is not cross-session memory, which the engine
+   * deliberately does not own.
+   */
+  getSessionMemory(): Promise<string>
+
+  /**
+   * Replace the conversation's session memory (`.memory.md`).
+   *
+   * This overwrites rather than appends. Read first if you mean to add:
+   *
+   * ```ts
+   * const existing = await ctx.getSessionMemory()
+   * await ctx.setSessionMemory(`${existing}\n\n- new fact`)
+   * ```
+   */
+  setSessionMemory(content: string): Promise<void>
+
+  /**
+   * Emit an `engine_intercept` event on a session's stream.
+   *
+   * The engine routes the event and stamps the calling extension's name as
+   * the source; an extension cannot spoof it. Everything past that is client
+   * policy: `level` is a hint, not a behaviour the engine enforces.
+   *
+   * @example
+   * ```ts
+   * await ctx.intercept({
+   *   level: 'redirect',
+   *   title: 'Build is broken on main',
+   *   message: 'Stop and fix the build before continuing.',
+   * })
+   * ```
+   */
+  intercept(opts: InterceptOpts): Promise<void>
 
   /**
    * Register an LLM-visible agent spec at runtime. The next Agent tool call
@@ -1230,7 +1302,7 @@ export interface IonContext {
    * — terminal entries are deregistered on completion and absent from the
    * snapshot.
    *
-   * Use this to enumerate running background agents and their nesting
+   * Use this to enumerate running asynchronous agents and their nesting
    * relationships without subscribing to `engine_agent_state` events.
    * Complements {@link IonContext.recallAgent} and
    * {@link IonContext.steerDispatch}: get the `dispatchId` from here, then
@@ -1727,6 +1799,12 @@ export interface CompactionInfo {
   messagesBefore: number
   messagesAfter: number
   facts?: CompactionFact[]
+  tokensBefore?: number
+  tokenLimit?: number
+  targetTokens?: number
+  microCompactKeep?: number
+  tokensAfter?: number
+  sessionMemory?: string
 }
 
 /** Payload for `session_before_fork` and `session_fork`. */
@@ -2314,7 +2392,7 @@ export interface SystemInjectResult {
  * a string literal. Hooks that fire with no payload map to `void`.
  */
 export interface HookPayloadMap {
-  // Lifecycle (13)
+  // Lifecycle
   session_start: void
   session_end: void
   before_prompt: string
@@ -2329,18 +2407,18 @@ export interface HookPayloadMap {
   agent_start: AgentInfo
   agent_end: AgentInfo
 
-  // Session (5)
+  // Session
   session_before_compact: CompactionInfo
   session_compact: CompactionInfo
   session_before_fork: ForkInfo
   session_fork: ForkInfo
   session_before_switch: void
 
-  // Pre-action (2)
+  // Pre-action
   before_agent_start: AgentInfo
   before_provider_request: BeforeProviderRequestInfo
 
-  // Content (7)
+  // Content
   context: unknown
   message_update: MessageUpdateInfo
   tool_result: ToolResultInfo
@@ -2349,7 +2427,7 @@ export interface HookPayloadMap {
   user_bash: string
   plan_mode_prompt: string
 
-  // Per-tool call (7) -- payload is the tool's raw input map
+  // Per-tool call -- payload is the tool's raw input map
   bash_tool_call: Record<string, unknown>
   read_tool_call: Record<string, unknown>
   write_tool_call: Record<string, unknown>
@@ -2358,7 +2436,7 @@ export interface HookPayloadMap {
   glob_tool_call: Record<string, unknown>
   agent_tool_call: Record<string, unknown>
 
-  // Per-tool result (7) -- payload is the engine ToolResultEntry shape
+  // Per-tool result -- payload is the engine ToolResultEntry shape
   bash_tool_result: ToolResultInfo
   read_tool_result: ToolResultInfo
   write_tool_result: ToolResultInfo
@@ -2367,21 +2445,21 @@ export interface HookPayloadMap {
   glob_tool_result: ToolResultInfo
   agent_tool_result: ToolResultInfo
 
-  // Context (3)
+  // Context
   context_discover: ContextDiscoverInfo
   context_load: ContextLoadInfo
   instruction_load: ContextLoadInfo
 
-  // Permission (3 — including the new pluggable classifier)
+  // Permission -- including the pluggable classifier
   permission_request: PermissionRequestInfo
   permission_denied: PermissionDeniedInfo
   permission_classify: PermissionClassifyInfo
 
-  // File (1)
+  // File
   file_changed: FileChangedInfo
   workspace_file_changed: WorkspaceFileChangedInfo
 
-  // Task (2)
+  // Task
   task_created: TaskLifecycleInfo
   task_completed: TaskLifecycleInfo
 
@@ -2391,49 +2469,143 @@ export interface HookPayloadMap {
   // Dispatch loss (engine restart while dispatches were in flight)
   dispatch_lost: DispatchLostInfo
 
-  // Elicitation (2)
+  // Elicitation
   elicitation_request: ElicitationRequestInfo
   elicitation_result: ElicitationResultInfo
 
-  // Context inject (1)
+  // Context inject
   context_inject: ContextInjectInfo
 
-  // Capability (3)
+  // Capability
   capability_discover: void
   capability_match: CapabilityMatchInfo
   capability_invoke: CapabilityInvokeInfo
 
-  // Extension lifecycle (4)
+  // Extension lifecycle
   extension_respawned: ExtensionRespawnedInfo
   turn_aborted: TurnAbortedInfo
   peer_extension_died: PeerExtensionInfo
   peer_extension_respawned: PeerExtensionInfo
 
-  // Plan mode (3) -- workflow + state transitions on the plan-mode lifecycle.
+  // Plan mode -- workflow + state transitions on the plan-mode lifecycle.
   // See docs/architecture/adr/003-state-events-vs-workflow-events.md for the
   // state-vs-workflow distinction these hooks live alongside.
   before_plan_mode_enter: PlanModeEnterInfo
   before_plan_mode_exit: BeforePlanModeExitInfo
   before_plan_mode_auto_exit: BeforePlanModeAutoExitInfo
 
-  // System inject (1) -- fired before the engine injects any system message.
+  // System inject -- fired before the engine injects any system message.
   // The `kind` discriminator carries the reason (plan_mode_reminder,
   // turn_limit_warning, max_token_continue, early_stop_continue).
   system_inject: SystemInjectInfo
 
-  // Early-stop continuation (2) -- engine provides the mechanism, harness
+  // Early-stop continuation -- engine provides the mechanism, harness
   // owns the policy and the prompt text. See
   // docs/architecture/adr/002-engine-vs-harness-early-stop.md.
   before_early_stop_decision: EarlyStopDecisionInfo
   early_stop_continued: EarlyStopContinuedInfo
 
-  // Cross-session messaging (1) -- fires when another session of the same
+  // Cross-session messaging -- fires when another session of the same
   // extension type sends a message via ctx.sessions.send().
   session_message: SessionMessageInfo
 
-  // Schedule missed (1) -- fires when the scheduler detects a daily/weekly
+  // Schedule missed -- fires when the scheduler detects a daily/weekly
   // slot was missed while the engine was down. Observation-only: no veto.
   schedule_missed: ScheduleMissedInfo
+
+  // Compaction summary -- the harness's chance to supply a summary in
+  // place of the engine's regex fact extractor. Return a non-empty string
+  // (or `{ summary }`) to override; return nothing to abstain.
+  compact_summary_request: CompactSummaryRequestInfo
+
+  // Slash commands -- fires after the engine expands an invocation,
+  // before the body is committed as the LLM-visible prompt. Return a string
+  // to override the expansion.
+  slash_command_resolved: SlashCommandResolvedInfo
+
+  // Async-trigger registration lifecycle. The `*_registered` pair is
+  // veto-capable: return `{ block: true, reason }` to refuse. The
+  // `*_deregistered` pair is observation-only, because letting one extension
+  // trap another's resources would be a footgun.
+  webhook_registered: AsyncRegistrationInfo
+  webhook_deregistered: AsyncRegistrationInfo
+  schedule_registered: AsyncRegistrationInfo
+  schedule_deregistered: AsyncRegistrationInfo
+}
+
+/**
+ * Payload for the `compact_summary_request` hook. Carries the pre-compaction
+ * message slice, already cut at the last boundary so prior summaries are not
+ * re-scanned.
+ */
+export interface CompactSummaryRequestInfo {
+  /** Which compaction path fired: proactive or reactive. */
+  strategy: string
+  /** Number of messages in `messages`. */
+  messageCount: number
+  /**
+   * The messages under consideration, in engine `LlmMessage` wire shape.
+   * Typed loosely because the message wire shape is owned by the engine's
+   * conversation layer, not by the extension contract.
+   */
+  messages: Array<Record<string, unknown>>
+}
+
+/**
+ * Return shape for a `compact_summary_request` handler. A handler may also
+ * return a bare string, which is treated as `{ summary }`. Returning nothing
+ * (or an empty summary) abstains and the engine falls back to its regex path.
+ */
+export interface CompactSummaryRequestResult {
+  /** Replacement summary text. Empty means "no opinion". */
+  summary?: string
+}
+
+/**
+ * Payload for the `slash_command_resolved` hook. Carries the full frontmatter
+ * map — known and unknown keys alike — so an extension can branch on a key the
+ * engine itself ignores.
+ */
+export interface SlashCommandResolvedInfo {
+  /** The invoked command, e.g. `/diagram`. */
+  command: string
+  /** Raw argument string following the command name. */
+  args: string
+  /** Where the command was resolved from: extension|ion|claude|skill|project. */
+  source: string
+  /** The command file's full frontmatter map. */
+  frontmatter: Record<string, unknown>
+  /** The engine's expansion. A handler returning a string overrides this. */
+  expandedBody: string
+}
+
+/**
+ * Payload for the four async-trigger registration lifecycle hooks
+ * (`webhook_registered`, `webhook_deregistered`, `schedule_registered`,
+ * `schedule_deregistered`).
+ */
+export interface AsyncRegistrationInfo {
+  /** "webhook" or "schedule". */
+  kind: string
+  /** The declaration's stable id within its kind (webhook path, job id). */
+  id: string
+  /**
+   * "init" or "runtime" — distinguishes the bulk init handshake from a
+   * dynamic add/remove RPC, so a policy handler can treat them differently.
+   */
+  origin: string
+  /** The typed declaration: a {@link WebhookRoute} or a {@link ScheduleJob}. */
+  decl?: WebhookRoute | ScheduleJob | Record<string, unknown>
+}
+
+/**
+ * Return shape for a `*_registered` handler that wants to refuse a
+ * registration. `reason` is surfaced verbatim to the registering extension
+ * and to the observability event. Returning nothing means "no opinion".
+ */
+export interface AsyncRegistrationVeto {
+  block: boolean
+  reason?: string
 }
 
 /** Payload for the `session_message` hook. */
@@ -2492,7 +2664,7 @@ export interface IonSDK {
    * })
    * ```
    *
-   * See `docs/hooks/reference.md` for the complete hook list (59 total).
+   * See `docs/hooks/reference.md` for the complete hook list.
    */
   on<K extends HookName>(hook: K, handler: HookHandler<HookPayloadMap[K]>): void
   on(hook: string, handler: HookHandler<any>): void

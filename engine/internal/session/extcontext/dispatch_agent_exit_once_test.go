@@ -79,7 +79,7 @@ func TestDispatchExitOnce_DoubleFireNoPanic(t *testing.T) {
 
 	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 
-	result, err := dispatchFn(extension.DispatchAgentOpts{
+	result, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "exit-once-agent",
 		Task: "trigger double exit",
 	})

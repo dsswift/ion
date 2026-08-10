@@ -192,7 +192,7 @@ export function doRegisterAgentTools(
           sysPromptLen: dispatchSystemPrompt?.length ?? 0,
           taskLen: taskStr.length,
         })
-        const result = await ctx.dispatchAgent({
+        const stub = await ctx.dispatchAgent({
           name,
           task: taskStr,
           // Pass `undefined` cleanly when missing — both fields are
@@ -203,7 +203,10 @@ export function doRegisterAgentTools(
           systemPrompt: dispatchSystemPrompt,
           model: dispatchModel,
         })
-        return { content: result.output, isError: result.exitCode !== 0 }
+        return {
+          content: `Dispatched ${name} specialist${stub.dispatchId ? ` (${stub.dispatchId})` : ''}.`,
+          isError: false,
+        }
       },
     })
   }

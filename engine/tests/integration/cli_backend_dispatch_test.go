@@ -73,7 +73,7 @@ func TestDispatchAgent_CliBackendParent_SpawnsCliChild(t *testing.T) {
 			if ctx.DispatchAgent == nil {
 				return &types.ToolResult{Content: "DispatchAgent not wired", IsError: true}, nil
 			}
-			dispatchResult, dispatchErr = ctx.DispatchAgent(extension.DispatchAgentOpts{
+			dispatchResult, dispatchErr = ctx.DispatchAgent(extension.DispatchAgentOpts{WaitForCompletion: true,
 				Name: "test-agent",
 				Task: "say hello",
 			})

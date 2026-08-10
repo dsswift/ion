@@ -80,7 +80,7 @@ func TestDispatchWorkdirLog_ExplicitProjectPath(t *testing.T) {
 	const explicitPath = "/explicit/project/dir"
 	// The dispatch fails (no provider) but the working-directory log line is
 	// emitted before the run starts — that is all we assert here.
-	_, _ = dispatchFn(extension.DispatchAgentOpts{
+	_, _ = dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name:        "workdir-agent",
 		Task:        "do work",
 		ProjectPath: explicitPath,
@@ -112,7 +112,7 @@ func TestDispatchWorkdirLog_FallbackToParentCwd(t *testing.T) {
 	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 
 	// No ProjectPath -> falls back to sa.WorkingDirectory() == "/tmp".
-	_, _ = dispatchFn(extension.DispatchAgentOpts{
+	_, _ = dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "workdir-agent",
 		Task: "do work",
 	})

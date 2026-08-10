@@ -143,9 +143,9 @@ func (a *convIDRecordingAccessor) SendPrompt(_, _ string, _ []string) error { re
 func (a *convIDRecordingAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error {
 	return nil
 }
-func (a *convIDRecordingAccessor) SteerSelfMainLoop(_ string) bool { return false }
+func (a *convIDRecordingAccessor) SteerSelfMainLoop(_ string) bool            { return false }
 func (a *convIDRecordingAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
-func (a *convIDRecordingAccessor) ParkSelfMainLoop() bool          { return false }
+func (a *convIDRecordingAccessor) ParkSelfMainLoop() bool                     { return false }
 func (a *convIDRecordingAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
@@ -308,7 +308,7 @@ func TestDispatchCapturesConversationIDFromSessionInit(t *testing.T) {
 	// while the child backend is parked on its workGate.
 	done := make(chan struct{})
 	go func() {
-		_, _ = dispatchFn(extension.DispatchAgentOpts{Name: "convid-agent", Task: "do work"})
+		_, _ = dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true, Name: "convid-agent", Task: "do work"})
 		close(done)
 	}()
 
@@ -453,14 +453,14 @@ func TestRedispatchSameNameGetDistinctConversationIDs(t *testing.T) {
 	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 
 	// First dispatch: foreground, blocks until complete.
-	r1, err := dispatchFn(extension.DispatchAgentOpts{Name: "same-agent", Task: "first task"})
+	r1, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true, Name: "same-agent", Task: "first task"})
 	if err != nil {
 		t.Fatalf("first dispatch error: %v", err)
 	}
 
 	// Second dispatch of the SAME agent name. No sleep: uniqueness comes from
 	// the agentID suffix, not from the millisecond timestamp.
-	r2, err := dispatchFn(extension.DispatchAgentOpts{Name: "same-agent", Task: "second task"})
+	r2, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true, Name: "same-agent", Task: "second task"})
 	if err != nil {
 		t.Fatalf("second dispatch error: %v", err)
 	}
@@ -514,11 +514,11 @@ func TestConcurrentSameMillisDispatchesGetDistinctConversationIDs(t *testing.T) 
 	// Two foreground dispatches of the same name, back to back with no sleep.
 	// Both very likely land on the same UnixMilli; the test asserts uniqueness
 	// regardless, which is exactly the property the fix guarantees.
-	r1, err := dispatchFn(extension.DispatchAgentOpts{Name: "same-agent", Task: "first task"})
+	r1, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true, Name: "same-agent", Task: "first task"})
 	if err != nil {
 		t.Fatalf("first dispatch error: %v", err)
 	}
-	r2, err := dispatchFn(extension.DispatchAgentOpts{Name: "same-agent", Task: "second task"})
+	r2, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true, Name: "same-agent", Task: "second task"})
 	if err != nil {
 		t.Fatalf("second dispatch error: %v", err)
 	}

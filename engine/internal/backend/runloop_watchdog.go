@@ -71,8 +71,8 @@ const defaultRunStallThreshold = 10 * time.Minute
 // One deliberate exception: ToolStalledEvent is emitted via
 // emitWithoutProgress (not emit), so it does NOT reset the clock. That
 // event is the engine signalling the *absence* of progress; counting it
-// as progress would let a wedged but deadline-exempt Agent/dispatch tool
-// hold the watchdog off forever by emitting a stall advisory every tick
+// as progress would let a wedged long-running tool hold the watchdog off forever
+// by emitting a stall advisory every tick
 // (the conversation 1782012033034-37d617d3d9ab incident). Conversely, a
 // healthy long dispatch keeps its parent run's clock fresh through
 // BumpRunProgress, which the dispatch layer calls on every genuine child

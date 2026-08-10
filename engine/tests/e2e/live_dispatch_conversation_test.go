@@ -98,7 +98,7 @@ func TestLiveMultiAgentDispatchConversation(t *testing.T) {
 			defer close(dispatchDone)
 			for i, spec := range specs {
 				t.Logf("dispatching [%d] agent=%s task=%q", i, spec.agentName, spec.task)
-				result, err := ctx.DispatchAgent(extension.DispatchAgentOpts{
+				result, err := ctx.DispatchAgent(extension.DispatchAgentOpts{WaitForCompletion: true,
 					Name:     spec.agentName,
 					Task:     spec.task,
 					MaxTurns: 1,

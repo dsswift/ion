@@ -218,7 +218,9 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			return
 		}
 
-		// Check for steer messages that arrived between turns.
+		// Check for steer messages and completed child dispatches that arrived
+		// between turns. Both are injected before the next provider call.
+		b.drainCompletedChildDispatches(run, conv)
 		b.drainSteer(run, conv)
 
 		// Check for a suspend signal. When the extension has called

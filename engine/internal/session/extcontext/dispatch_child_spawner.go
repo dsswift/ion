@@ -18,7 +18,8 @@ import (
 // The spawner delegates to BuildDispatchAgentFunc (the same engine-native
 // dispatch infrastructure used by extension ctx.DispatchAgent), wrapping its
 // DispatchAgentOpts interface into the tools.AgentSpawner signature. The
-// dispatch runs foreground (synchronous), matching the Agent tool contract.
+// dispatch uses default asynchronous behavior. An explicit wait_for_completion
+// input is the only path that blocks for terminal child output.
 //
 // Why not extract wireAgentSpawner (prompt_agent_spawner.go)? That function
 // is tightly coupled to *Manager internals: m.resolveAgentSpec fires
@@ -48,13 +49,10 @@ func BuildChildAgentSpawner(
 	utils.LogWithFields(utils.LevelInfo, "server", "child spawner wired", map[string]any{"child_depth": childDepth, "child_dispatch_id": childDispatchId, "session_key": sa.SessionKey()})
 
 	return func(ctx context.Context, name, prompt, description, cwd, model string) (string, error) {
-		// Map the AgentSpawner parameters to DispatchAgentOpts.
-		// Foreground (Background=false) matches the Agent tool's synchronous
-		// contract: the tool blocks until the child completes.
+		// Map Agent tool inputs to DispatchAgentOpts. Dispatch returns an
+		// acknowledgement by default; wait_for_completion is explicit.
 		//
-		// Log the working directory the child spawner threads into the nested
-		// dispatch (ProjectPath below) so grandchild cwd resolution is
-		// observable. childDepth/childDispatchId identify the spawning child.
+		// Log nested working-directory resolution for observability.
 		utils.LogWithFields(utils.LevelDebug, "server", "child spawner dispatch", map[string]any{"model": name, "cwd": cwd, "child_dispatch_id": childDispatchId, "child_depth": childDepth, "session_key": sa.SessionKey()})
 		//
 		// AllowedSubAgents is intentionally left unset on this path. The
@@ -65,19 +63,27 @@ func BuildChildAgentSpawner(
 		// (enforced in checkDispatchEligibility regardless of the allowlist)
 		// applies. A harness that dispatches via ctx.DispatchAgent sets
 		// AllowedSubAgents per call and gets full allowlist enforcement.
+		// Agent tool dispatch is async by default. Its context carries an
+		// explicit wait_for_completion request when the model truly needs the
+		// terminal result in this turn.
+		waitForCompletion := tools.AgentWaitForCompletion(ctx)
 		result, err := dispatchFn(extension.DispatchAgentOpts{
-			Name:        name,
-			Task:        prompt,
-			Model:       model,
-			ProjectPath: cwd,
-			MaxTurns:    0, // no limit; the child runs until done
-			Background:  false,
+			Name:              name,
+			Task:              prompt,
+			Model:             model,
+			ProjectPath:       cwd,
+			MaxTurns:          0, // no limit; the child runs until done
+			WaitForCompletion: waitForCompletion,
+			Background:        !waitForCompletion,
 		})
 		if err != nil {
 			return "", err
 		}
 		if result == nil {
 			return "", nil
+		}
+		if !waitForCompletion {
+			return "Agent dispatched asynchronously. Dispatch ID: " + result.DispatchID + ". The engine will deliver its terminal result automatically.", nil
 		}
 		// Usage suffix: model-facing per-dispatch token/cost accounting.
 		// See dispatch_usage_suffix.go.

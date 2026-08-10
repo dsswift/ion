@@ -44,9 +44,9 @@ func (a *dispatchContextTestAccessor) SendPrompt(text, model string, bash []stri
 func (a *dispatchContextTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error {
 	return nil
 }
-func (a *dispatchContextTestAccessor) SteerSelfMainLoop(message string) bool { return false }
+func (a *dispatchContextTestAccessor) SteerSelfMainLoop(message string) bool      { return false }
 func (a *dispatchContextTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
-func (a *dispatchContextTestAccessor) ParkSelfMainLoop() bool                { return false }
+func (a *dispatchContextTestAccessor) ParkSelfMainLoop() bool                     { return false }
 func (a *dispatchContextTestAccessor) Elicit(info extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
@@ -138,7 +138,7 @@ func TestInjectDispatchContextGroundsChild(t *testing.T) {
 	dir := t.TempDir()
 	agentsPath := writeAgents(t, dir, "UNIVERSAL GROUNDING")
 
-	opts := &extension.DispatchAgentOpts{
+	opts := &extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name:         "child",
 		Task:         "do work",
 		SystemPrompt: "PERSONA DEFINITION",
@@ -168,7 +168,7 @@ func TestInjectDispatchContextPerDispatchProjectOff(t *testing.T) {
 	writeAgents(t, dir, "PROJECT ONLY")
 
 	off := false
-	opts := &extension.DispatchAgentOpts{
+	opts := &extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name:         "child",
 		SystemPrompt: "PERSONA",
 		ContextPolicy: &extension.ContextPolicy{
@@ -205,7 +205,7 @@ func TestInjectDispatchContextEngineConfigGlobalOff(t *testing.T) {
 			},
 		},
 	}
-	opts := &extension.DispatchAgentOpts{Name: "child", SystemPrompt: "PERSONA"}
+	opts := &extension.DispatchAgentOpts{WaitForCompletion: true, Name: "child", SystemPrompt: "PERSONA"}
 
 	injectDispatchContext("child", dir, opts, sa)
 
@@ -217,7 +217,7 @@ func TestInjectDispatchContextEngineConfigGlobalOff(t *testing.T) {
 // TestInjectDispatchContextEmptyProjectPath verifies an empty projectPath is a
 // no-op (no panic, persona untouched).
 func TestInjectDispatchContextEmptyProjectPath(t *testing.T) {
-	opts := &extension.DispatchAgentOpts{Name: "child", SystemPrompt: "PERSONA"}
+	opts := &extension.DispatchAgentOpts{WaitForCompletion: true, Name: "child", SystemPrompt: "PERSONA"}
 	sa := &dispatchContextTestAccessor{}
 	injectDispatchContext("child", "", opts, sa)
 	if opts.SystemPrompt != "PERSONA" {

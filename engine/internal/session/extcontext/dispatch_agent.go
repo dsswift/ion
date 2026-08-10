@@ -74,7 +74,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 
 		start := time.Now()
 
-		utils.LogWithFields(utils.LevelInfo, "server", "starting dispatch", map[string]any{"agent_name": opts.Name, "task_preview": truncate(opts.Task, 80), "model": opts.Model, "system_prompt_len": len(opts.SystemPrompt), "background": opts.Background, "plan_mode": opts.PlanMode, "session_key": sa.SessionKey()})
+		utils.LogWithFields(utils.LevelInfo, "server", "starting dispatch", map[string]any{"agent_name": opts.Name, "task_preview": truncate(opts.Task, 80), "model": opts.Model, "system_prompt_len": len(opts.SystemPrompt), "background": !opts.WaitForCompletion, "plan_mode": opts.PlanMode, "session_key": sa.SessionKey()})
 
 		// Determine model and project path.
 		model := opts.Model
@@ -333,6 +333,10 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			childCfg.OutstandingChildDispatches = func() []string {
 				return capturedRegistry.ChildIDsOf(capturedAgentID)
 			}
+			childCfg.PeekCompletedChildDispatches = func() ([]types.LlmMessage, func()) {
+				results, acknowledge := capturedRegistry.PeekChildResults(capturedAgentID)
+				return completedChildResultMessages(results), acknowledge
+			}
 		}
 
 		// Wire OnInitialMessages so the child receives per-turn plugin
@@ -442,14 +446,10 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		// goroutine selecting on ctx.Done() here, e.g. background recall
 		// wiring), keeping dispatch consistent with the unified tree.
 		//
-		// Parent selection: when the caller supplied opts.ParentCtx (the
-		// orchestrator's Agent tool passes its per-tool-call context), derive
-		// from it so cancelling that call cancels this dispatch. The tool-call
-		// context is itself derived from the session, so a session abort still
-		// cascades. When nil, fall back to the session cancellation root --
-		// the prior behavior for extension-initiated dispatches.
+		// Only explicit foreground waits inherit a per-tool-call context.
+		// Default asynchronous dispatches must survive their launching turn.
 		dispatchParentCtx := sa.RootContext()
-		if opts.ParentCtx != nil {
+		if opts.WaitForCompletion && opts.ParentCtx != nil {
 			dispatchParentCtx = opts.ParentCtx
 		}
 		ctx, cancelFn := context.WithCancel(dispatchParentCtx)
@@ -461,21 +461,13 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			// this dispatch. Two cases (root cause I of the dispatch-lifecycle
 			// incident):
 			//
-			//   - currentDispatchId == "": the dispatcher is the ROOT session
-			//     (depth-0 orchestrator). Its main-loop run is parked in the
-			//     deadline-exempt Agent tool call; BumpParentProgress reaches
-			//     exactly that run. (The historic behavior, preserved.)
-			//   - currentDispatchId != "": the dispatcher is ITSELF a
-			//     dispatched agent (a lead blocked in a synchronous
-			//     wait/fan-out). Its run is the registry entry's
-			//     Child+ChildRunID — NOT the root main-loop run. Crediting
-			//     only the root (the historic bug) starved the lead's own
-			//     watchdog clock, which killed every blocking lead at the
-			//     10-minute stall threshold while its specialist was
-			//     mid-stream.
+			//   - currentDispatchId == "": root dispatched this child. Root no
+			//     longer blocks in Agent; its own run continues independently.
+			//   - currentDispatchId != "": a dispatched parent may be waiting
+			//     for child completion. Credit that parent's own backend run,
+			//     never the root run, so its watchdog observes genuine progress.
 			//
-			// A genuine child event proves the dispatch is alive; without the
-			// credit the blocked dispatcher emits no progress of its own. See
+			// See
 			// sessionAccessor.BumpParentProgress and
 			// DispatchRegistry.BumpProgressForID.
 			if currentDispatchId != "" && registry != nil {
@@ -716,7 +708,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			task:             opts.Task,
 			model:            model,
 			childDepth:       childDepth,
-			background:       opts.Background,
+			background:       !opts.WaitForCompletion,
 			childReqID:       childReqID,
 			extensionName:    sa.ExtensionName(),
 			extensionVersion: sa.ExtensionVersion(),
@@ -932,6 +924,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			}
 
 			result := &extension.DispatchAgentResult{
+				Name:                     agentName,
 				DispatchID:               agentID,
 				Output:                   output,
 				ExitCode:                 exitCode,
@@ -1011,6 +1004,24 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			})
 			sa.EmitAgentSnapshot("dispatch_end")
 
+			// Record a non-detached asynchronous child's terminal result BEFORE
+			// deregistration. The parent sees either a live child or this record
+			// at every turn boundary, closing the completion/deregister race.
+			if !opts.WaitForCompletion && !opts.Detached && registry != nil && currentDispatchId != "" {
+				if !registry.RecordChildResult(currentDispatchId, ChildResultRecord{
+					ChildID:  agentID,
+					Name:     opts.Name,
+					Output:   result.Output,
+					ExitCode: result.ExitCode,
+				}) {
+					// Parent already ended or disappeared. Root fallback keeps a
+					// non-detached result from becoming invisible.
+					if root, ok := sa.(RootDispatchResultDelivery); ok {
+						root.DeliverRootDispatchResult(*result)
+					}
+				}
+			}
+
 			// Deregister from the dispatch registry (both foreground and
 			// background), now that the slot carries a terminal status. Deferred
 			// to here (from before the terminal transition) so the dispatch stays
@@ -1075,7 +1086,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			return result
 		}
 
-		if opts.Background {
+		if !opts.WaitForCompletion {
 			// Register in the dispatch registry for recall support, child-run
 			// steering, and the carry-forward allowlist. See registerDispatch.
 			registerDispatch(registry, agentID, opts.Name, func() {
@@ -1168,19 +1179,19 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				// registry.SignalReviveForSession (which handles bare
 				// suspend() revives triggered by sendPrompt).
 				if registry != nil && currentDispatchId != "" {
-					// Record the child's outcome on the parent's registry
-					// entry BEFORE the notify: NotifyChildComplete may signal
-					// the parent's revive, and the revive prompt drains these
-					// records — the ordering is what guarantees a revived
-					// parent always sees the result it was waiting for
-					// (root cause K).
-					registry.RecordChildResult(currentDispatchId, ChildResultRecord{
-						ChildID:  agentID,
-						Name:     opts.Name,
-						Output:   result.Output,
-						ExitCode: result.ExitCode,
-					})
+					// RecordChildResult ran before child deregistration. Notify now
+					// so a parent already parked on this exact child can revive.
 					registry.NotifyChildComplete(currentDispatchId, agentID)
+				} else if !opts.Detached {
+					// Root has no parent registry entry. Session queue delivery is
+					// lossless across active, exiting, and idle root states.
+					if root, ok := sa.(RootDispatchResultDelivery); ok {
+						root.DeliverRootDispatchResult(*result)
+					} else {
+						utils.LogWithFields(utils.LevelWarn, "server", "root dispatch completion has no session delivery seam", map[string]any{
+							"session_key": key, "dispatch_id": agentID, "model": opts.Name,
+						})
+					}
 				}
 			}()
 

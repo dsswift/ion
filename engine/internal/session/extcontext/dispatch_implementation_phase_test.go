@@ -18,7 +18,7 @@ import (
 // silently dropped).
 func TestBuildDispatchRunOptionsThreadsImplementationPhase(t *testing.T) {
 	t.Run("set", func(t *testing.T) {
-		opts := &extension.DispatchAgentOpts{
+		opts := &extension.DispatchAgentOpts{WaitForCompletion: true,
 			Name:                "child",
 			Task:                "implement the approved plan",
 			ImplementationPhase: true,
@@ -30,7 +30,7 @@ func TestBuildDispatchRunOptionsThreadsImplementationPhase(t *testing.T) {
 	})
 
 	t.Run("unset_default", func(t *testing.T) {
-		opts := &extension.DispatchAgentOpts{Name: "child", Task: "investigate"}
+		opts := &extension.DispatchAgentOpts{WaitForCompletion: true, Name: "child", Task: "investigate"}
 		runOpts := buildDispatchRunOptions(opts, "model-x", "/tmp/proj", context.Background(), false, noopSA{})
 		if runOpts.ImplementationPhase {
 			t.Fatal("expected RunOptions.ImplementationPhase=false by default, got true")
@@ -47,7 +47,7 @@ func TestBuildDispatchRunOptionsThreadsImplementationPhase(t *testing.T) {
 // silently dropped).
 func TestBuildDispatchRunOptionsThreadsSuppressTools(t *testing.T) {
 	t.Run("set", func(t *testing.T) {
-		opts := &extension.DispatchAgentOpts{
+		opts := &extension.DispatchAgentOpts{WaitForCompletion: true,
 			Name:          "child",
 			Task:          "do work",
 			SuppressTools: []string{"Agent"},
@@ -59,7 +59,7 @@ func TestBuildDispatchRunOptionsThreadsSuppressTools(t *testing.T) {
 	})
 
 	t.Run("unset_default", func(t *testing.T) {
-		opts := &extension.DispatchAgentOpts{Name: "child", Task: "do work"}
+		opts := &extension.DispatchAgentOpts{WaitForCompletion: true, Name: "child", Task: "do work"}
 		runOpts := buildDispatchRunOptions(opts, "model-x", "/tmp/proj", context.Background(), false, noopSA{})
 		if len(runOpts.SuppressTools) != 0 {
 			t.Fatalf("expected empty RunOptions.SuppressTools by default, got %v", runOpts.SuppressTools)

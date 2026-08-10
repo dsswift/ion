@@ -97,7 +97,7 @@ func TestDispatchAgentResult_PlanFields(t *testing.T) {
 
 	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 
-	result, err := dispatchFn(extension.DispatchAgentOpts{
+	result, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name:     "plan-agent",
 		Task:     "write a plan",
 		PlanMode: true,
@@ -127,7 +127,7 @@ func TestDispatchAgentResult_NoPlanFields(t *testing.T) {
 
 	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 
-	result, err := dispatchFn(extension.DispatchAgentOpts{
+	result, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "no-plan-agent",
 		Task: "just do work, no plan",
 	})

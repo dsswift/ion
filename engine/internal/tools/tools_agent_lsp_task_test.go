@@ -76,8 +76,29 @@ func TestAgentToolSpawnerError(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// LSP Tool Tests
+func TestAgentToolWaitForCompletionContext(t *testing.T) {
+	old := agentSpawner
+	var gotWait bool
+	agentSpawner = func(ctx context.Context, _, _, _, _, _ string) (string, error) {
+		gotWait = AgentWaitForCompletion(ctx)
+		return "done", nil
+	}
+	defer func() { agentSpawner = old }()
+
+	if _, err := ExecuteTool(context.Background(), "Agent", map[string]any{"prompt": "task"}, "/tmp"); err != nil {
+		t.Fatalf("default Agent: %v", err)
+	}
+	if gotWait {
+		t.Fatal("default Agent call unexpectedly requested foreground wait")
+	}
+	if _, err := ExecuteTool(context.Background(), "Agent", map[string]any{"prompt": "task", "wait_for_completion": true}, "/tmp"); err != nil {
+		t.Fatalf("foreground Agent: %v", err)
+	}
+	if !gotWait {
+		t.Fatal("wait_for_completion did not reach AgentSpawner")
+	}
+}
+
 // ---------------------------------------------------------------------------
 
 func TestLspToolNotConfigured(t *testing.T) {

@@ -49,7 +49,7 @@ func (p *panicTestAccessor) RootContext() context.Context                       
 func (p *panicTestAccessor) SendPrompt(_, _ string, _ []string) error                   { return nil }
 func (p *panicTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error { return nil }
 func (p *panicTestAccessor) SteerSelfMainLoop(_ string) bool                            { return false }
-func (p *panicTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
+func (p *panicTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool                 { return false }
 func (p *panicTestAccessor) ParkSelfMainLoop() bool                                     { return false }
 func (p *panicTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
@@ -181,7 +181,7 @@ func TestRecoverBackgroundDispatchPanic_SynthesizesTerminalState(t *testing.T) {
 		t.Fatal("precondition: registry should have the test agent registered")
 	}
 
-	opts := extension.DispatchAgentOpts{
+	opts := extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "test-agent",
 		Task: "exercise panic recovery",
 	}
@@ -308,7 +308,7 @@ func TestBackgroundDispatchAgentEndAlwaysFires(t *testing.T) {
 
 			recoverBackgroundDispatchPanic(
 				sa, registry,
-				extension.DispatchAgentOpts{Name: "agent-" + tc.name, Task: "t"},
+				extension.DispatchAgentOpts{WaitForCompletion: true, Name: "agent-" + tc.name, Task: "t"},
 				"k", agentID, "agent-"+tc.name, tc.panicValue,
 				0, "", // childDepth, parentDispatchId
 			)

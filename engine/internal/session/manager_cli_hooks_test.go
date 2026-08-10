@@ -690,7 +690,7 @@ func TestBuildAgentToolHandler_RoutesThroughDispatch(t *testing.T) {
 	})
 
 	handler := mgr.buildAgentToolHandler(s, "cli-ion-agent", "claude-opus-4-8")
-	res, err := handler(map[string]interface{}{"prompt": "do the thing", "name": "worker"})
+	res, err := handler(map[string]interface{}{"prompt": "do the thing", "name": "worker", "wait_for_completion": true})
 	if err != nil {
 		t.Fatalf("handler: %v", err)
 	}

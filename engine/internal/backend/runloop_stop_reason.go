@@ -118,6 +118,11 @@ func (b *ApiBackend) dispatchStopReason(
 			return true
 		}
 
+		// A completion may arrive while the model is composing its final
+		// response. Drain it before deciding this run is terminal, exactly as
+		// steers are drained below.
+		b.drainCompletedChildDispatches(run, conv)
+
 		// Check for a steer message that arrived while the model was
 		// streaming its final response. If present, inject it and
 		// continue the loop so the model reacts on its next turn
@@ -306,6 +311,10 @@ func (b *ApiBackend) dispatchStopReason(
 				"error": utils.ErrStr(err),
 			})
 		}
+
+		// Consume child completion records before user steering and the next
+		// provider turn. This is the active-parent arm of automatic delivery.
+		b.drainCompletedChildDispatches(run, conv)
 
 		// Check for a steer message that arrived during tool execution.
 		// Injecting it here (rather than waiting for the top-of-loop

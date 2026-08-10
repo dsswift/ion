@@ -16,7 +16,6 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// SessionAccessor abstracts the session fields and manager operations that
 // NewExtContext needs. The session package provides a concrete implementation
 // that delegates to *Manager and *engineSession with appropriate locking.
 type SessionAccessor interface {
@@ -44,7 +43,8 @@ type SessionAccessor interface {
 	// RootContext returns the session's cancellation root context. Every
 	// cancellable operation built from this accessor (ctx.llmCall, agent
 	// dispatch) derives its own context from this root so a session-level
-	// abort cancels them all. Implementations must never return nil — a
+	// abort cancels it. Async dispatch keeps this root rather than inheriting
+	// a short-lived launching tool-call context. Implementations must never return nil — a
 	// session with no root (test-constructed) returns context.Background()
 	// so derive sites can call context.WithCancel(sa.RootContext())
 	// unconditionally.
@@ -96,10 +96,8 @@ type SessionAccessor interface {
 	NewChildBackend() backend.RunBackend
 
 	// BumpParentProgress refreshes the parent run's run-progress watchdog
-	// clock. The dispatch/spawn layer calls this on every genuine child
-	// event so a healthy long-running child keeps the parent run — which is
-	// parked in the deadline-exempt Agent tool call and emits no progress of
-	// its own — from being falsely flagged as stalled. No-op when there is no
+	// clock. This matters only for explicit foreground waits; default async
+	// dispatch leaves parent run independently progress-capable. No-op when there is no
 	// active parent run or the backend does not support progress bumps. See
 	// ApiBackend.BumpRunProgress and the run-progress watchdog for the full
 	// rationale (the 1782012033034-37d617d3d9ab incident).
