@@ -15,7 +15,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Globe } from '@phosphor-icons/react'
 import type { ColorPalette } from '../../theme-tokens'
-import { NavigableText, NavigableCode } from '../../hooks/useNavigableLinks'
+import { NavigableLink, NavigableCode, readNavigableKind } from '../../hooks/useNavigableLinks'
 import { CodeBlock } from './CodeBlock'
 import { rWarn } from '../../rendererLogger'
 
@@ -242,15 +242,23 @@ export function makeMarkdownComponents({ colors, onOpenFile, onOpenUrl, variant 
       variant === 'assistant'
         ? <TableScrollWrapper>{children}</TableScrollWrapper>
         : <div className="overflow-x-auto max-w-full">{children}</div>,
-    a: ({ href, children }: any) => (
-      <FaviconLink href={href} colors={colors}>{children}</FaviconLink>
-    ),
+    // A real markdown link gets the favicon treatment; a bare path/URL that
+    // `remarkNavigableLinks` detected and rewrote into a `link` node (carrying
+    // the NAVIGABLE_DATA_ATTR marker) routes through NavigableLink instead, so
+    // it stays text-like until CMD is held (or renders as a file chip).
+    a: ({ node, href, children }: any) =>
+      readNavigableKind(node)
+        ? (
+          <NavigableLink node={node} href={href} color={colors.accent} onOpenFile={onOpenFile} onOpenUrl={onOpenUrl} chipFiles>
+            {children}
+          </NavigableLink>
+        )
+        : (
+          <FaviconLink href={href} colors={colors}>{children}</FaviconLink>
+        ),
     ...(variant === 'assistant'
       ? { img: ({ src, alt }: any) => <ImageCard src={src} alt={alt} colors={colors} /> }
       : {}),
-    text: ({ children }: any) => (
-      <NavigableText onOpenFile={onOpenFile} onOpenUrl={onOpenUrl} chipFiles>{children}</NavigableText>
-    ),
     // Inline code only — fenced blocks are intercepted by the `pre` override
     // below before this renders with a className.
     code: ({ children, className, ...props }: any) => (

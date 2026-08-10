@@ -3,14 +3,14 @@ import { motion } from 'framer-motion'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useColors } from '../../theme'
-import { useNavigableText } from '../../hooks/useNavigableLinks'
+import { useNavigableText, remarkNavigableLinks } from '../../hooks/useNavigableLinks'
 import { makeMarkdownComponents } from './markdownRenderers'
 import { CopyButton } from './CopyButton'
 import { InlineMessageImages, deriveMessageImages } from './InlineMessageImages'
 import type { Message } from '../../../shared/types'
 import { rWarn } from '../../rendererLogger'
 
-const REMARK_PLUGINS = [remarkGfm]
+const REMARK_PLUGINS = [remarkGfm, remarkNavigableLinks]
 const TASK_NOTIFICATION_RE = /<task-notification>[\s\S]*?<\/task-notification>\s*(?:Read the output file to retrieve the result:[^\n]*)?\n?/g
 
 // ─── AssistantMessage ───

@@ -1,24 +1,38 @@
 // @vitest-environment jsdom
 //
-// Tests for the plan-preview render-cost fix. The change:
-//   1. Hoisted segmentText into an unconditional useMemo inside NavigableText /
-//      NavigableCode so the link-regex does not re-run for unchanged text.
-//   2. Wrapped NavigableText, NavigableCode, LinkSegment, and PlanViewer in
-//      React.memo so an unrelated ancestor re-render does not re-parse the plan.
+// Tests for navigable (cmd-clickable) file paths and URLs in rendered markdown.
 //
-// The real hazard introduced by (1) is a conditional-hook reorder: NavigableText
-// and NavigableCode both branch on the input (non-string / code-block) and the
-// useMemo must sit ABOVE those branches. These tests re-render the SAME fiber
-// across those boundaries — on a version that put the hook below the early
-// return, React throws the hook-count error. They also pin segmentText output
-// and that the memo wrappers are in place.
+// The load-bearing case is `remarkNavigableLinks` end-to-end through
+// react-markdown: a `text` entry in react-markdown's `components` map is never
+// invoked, so the earlier `text: NavigableText` wiring was dead and cmd-click
+// did nothing in any prose. Link detection now runs as a remark plugin that
+// emits real `link` nodes, which the `a` override renders.
+//
+// The remaining cases pin the render-cost fix that came before it: segmentText
+// is hoisted into an unconditional useMemo inside NavigableCode (so the
+// link-regex does not re-run for unchanged text), and NavigableLink /
+// NavigableCode / LinkSegment are wrapped in React.memo so an unrelated
+// ancestor re-render does not re-parse a large plan. The NavigableCode case
+// re-renders the SAME fiber across its early-return boundary — on a version
+// that put the hook below the return, React throws the hook-count error.
 import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { describe, it, expect } from 'vitest'
-import { segmentText, NavigableText, NavigableCode, LinkSegment } from '../useNavigableLinks'
+import { describe, it, expect, beforeAll } from 'vitest'
+import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { segmentText, NavigableLink, NavigableCode, LinkSegment, remarkNavigableLinks } from '../useNavigableLinks'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+
+// A real markdown link routes through window.ion.openExternal. Stub it so the
+// external-open branch is exercisable and its target is observable.
+const externalOpens: string[] = []
+beforeAll(() => {
+  ;(globalThis as any).window.ion = {
+    openExternal: (url: string) => { externalOpens.push(url); return Promise.resolve() },
+  }
+})
 
 const noop = () => {}
 
@@ -45,16 +59,105 @@ describe('segmentText', () => {
   })
 })
 
-describe('NavigableText hook-order stability', () => {
-  it('re-renders the same fiber across the string / non-string boundary without a hook error', () => {
-    const { root } = mount()
-    // string child -> segmentation path
-    act(() => root.render(<NavigableText onOpenFile={noop} onOpenUrl={noop}>{'see src/a/b.ts'}</NavigableText>))
-    // non-string child -> passthrough path; the useMemo must still run in the
-    // same slot or React throws "rendered fewer hooks than expected".
-    act(() => root.render(<NavigableText onOpenFile={noop} onOpenUrl={noop}>{[<span key="x">x</span>]}</NavigableText>))
-    // back to string
-    act(() => root.render(<NavigableText onOpenFile={noop} onOpenUrl={noop}>{'and https://example.com'}</NavigableText>))
+describe('remarkNavigableLinks — end-to-end through react-markdown', () => {
+  // This is the regression guard for the dead-`text`-component bug. A `text`
+  // entry in react-markdown's `components` map is NEVER invoked (only tag-named
+  // components are mapped), so the previous `text: NavigableText` wiring meant
+  // cmd-click links silently did not work in any rendered prose. Rendering real
+  // markdown and asserting the click fires is the only seam that catches it —
+  // a unit test of NavigableText passed the whole time the feature was broken.
+  function renderMarkdown(source: string, handlers: { onOpenFile: (p: string) => void; onOpenUrl: (u: string) => void }) {
+    const { container, root } = mount()
+    const components = {
+      a: ({ node, href, children }: any) => (
+        <NavigableLink node={node} href={href} color="#fff" onOpenFile={handlers.onOpenFile} onOpenUrl={handlers.onOpenUrl}>
+          {children}
+        </NavigableLink>
+      ),
+    }
+    act(() => {
+      root.render(
+        <Markdown remarkPlugins={[remarkGfm, remarkNavigableLinks]} components={components}>
+          {source}
+        </Markdown>,
+      )
+    })
+    return { container, root }
+  }
+
+  /** Click an element whose text matches, with the CMD modifier set. */
+  function cmdClick(container: HTMLElement, text: string) {
+    const el = [...container.querySelectorAll('span, a, button')].find((n) => n.textContent === text)
+    expect(el, `no element with text ${JSON.stringify(text)}`).toBeTruthy()
+    act(() => {
+      el!.dispatchEvent(new MouseEvent('click', { bubbles: true, metaKey: true }))
+    })
+  }
+
+  it('fires onOpenFile for a bare relative path in prose', () => {
+    const opened: string[] = []
+    const { container, root } = renderMarkdown('please read src/a/b.ts today', {
+      onOpenFile: (p) => opened.push(p),
+      onOpenUrl: noop,
+    })
+    cmdClick(container, 'src/a/b.ts')
+    expect(opened).toEqual(['src/a/b.ts'])
+    act(() => root.unmount())
+  })
+
+  it('opens a bare URL externally (remark-gfm autolinks it before the plugin runs)', () => {
+    // A bare URL is NOT the regressed case: remark-gfm's autolink-literal
+    // extension already converts it to a real `link` node, so it reached the
+    // `a` override even while the dead `text` component was in place. Pinned
+    // here so a future plugin change cannot silently swallow it.
+    const opened: string[] = []
+    externalOpens.length = 0
+    const { container, root } = renderMarkdown('see https://example.com for details', {
+      onOpenFile: (p) => opened.push(p),
+      onOpenUrl: noop,
+    })
+    cmdClick(container, 'https://example.com')
+    expect(opened).toEqual([])
+    expect(externalOpens).toEqual(['https://example.com'])
+    act(() => root.unmount())
+  })
+
+  it('leaves a real markdown link on the external-open path, not the file opener', () => {
+    const opened: string[] = []
+    externalOpens.length = 0
+    const { container, root } = renderMarkdown('[label](https://example.com/page)', {
+      onOpenFile: (p) => opened.push(p),
+      onOpenUrl: noop,
+    })
+    // A real link renders as the button branch; cmd-clicking it must not be
+    // treated as a navigable file — it opens externally instead.
+    cmdClick(container, 'label')
+    expect(opened).toEqual([])
+    expect(externalOpens).toEqual(['https://example.com/page'])
+    act(() => root.unmount())
+  })
+
+  it('does not linkify a path inside a fenced code block', () => {
+    const opened: string[] = []
+    const { container, root } = renderMarkdown('```\nsrc/a/b.ts\n```\n', {
+      onOpenFile: (p) => opened.push(p),
+      onOpenUrl: noop,
+    })
+    expect(container.querySelector('code')).toBeTruthy()
+    expect(container.querySelectorAll('span').length).toBe(0)
+    expect(opened).toEqual([])
+    act(() => root.unmount())
+  })
+
+  it('does not re-linkify the label text of a markdown link', () => {
+    const { container, root } = renderMarkdown('[src/a/b.ts](https://example.com)', {
+      onOpenFile: noop,
+      onOpenUrl: noop,
+    })
+    // Exactly one clickable element for the link — the plugin must skip text
+    // nodes whose parent is already a link.
+    expect(container.querySelectorAll('button').length).toBe(1)
+    expect(container.querySelectorAll('span').length).toBe(0)
     act(() => root.unmount())
   })
 })
@@ -75,7 +178,7 @@ describe('NavigableCode hook-order stability', () => {
 describe('memoization wrappers', () => {
   const MEMO = Symbol.for('react.memo')
   it('wraps the link components in React.memo', () => {
-    expect((NavigableText as any).$$typeof).toBe(MEMO)
+    expect((NavigableLink as any).$$typeof).toBe(MEMO)
     expect((NavigableCode as any).$$typeof).toBe(MEMO)
     expect((LinkSegment as any).$$typeof).toBe(MEMO)
   })
