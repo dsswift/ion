@@ -392,7 +392,8 @@ func (m *Manager) dispatchCompact(s *engineSession, key string) {
 	rid := s.requestID
 	m.mu.RUnlock()
 	if rid == "" {
-		utils.LogWithFields(utils.LevelInfo, "session", "compact: serving backend has no engine-side compaction and no active run to forward to", map[string]any{"key": key, "model": model, "backend": fmt.Sprintf("%T", serving)})
+		backendType := fmt.Sprintf("%T", serving)
+		utils.LogWithFields(utils.LevelInfo, "session", "compact: serving backend has no engine-side compaction and no active run to forward to", map[string]any{"key": key, "model": model, "backend_type": backendType})
 		m.emit(key, types.EngineEvent{
 			Type:         "engine_command_result",
 			Command:      "compact",
