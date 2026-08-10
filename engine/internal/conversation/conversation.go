@@ -97,6 +97,11 @@ type MessageData struct {
 	// absent on every legacy entry, which correctly reads as an ordinary turn.
 	InjectionKind string `json:"injectionKind,omitempty"`
 
+	// DeliveryIDs identifies engine-owned deliveries represented by this message.
+	// It is persistence metadata only: providers never receive it. A retry uses
+	// these stable IDs to avoid adding an already-injected completion twice.
+	DeliveryIDs []string `json:"deliveryIds,omitempty"`
+
 	// MachineAuthored reports whether an engine-side actor authored this turn
 	// rather than a user, derived from InjectionKind at write time. Persisted
 	// (rather than re-derived on read) so a consumer reloading history reads
@@ -361,6 +366,56 @@ func AddUserMessage(conv *Conversation, content any) *SessionEntry {
 		return entry
 	}
 	return nil
+}
+
+// AddUserMessageWithDeliveryIDs adds one classified user message atomically and
+// returns false when every delivery ID is already represented in the persisted
+// tree. All supplied IDs map to one message, so a retry cannot duplicate a
+// batch of child completions.
+func AddUserMessageWithDeliveryIDs(conv *Conversation, content any, kind string, deliveryIDs []string) bool {
+	if len(deliveryIDs) == 0 {
+		AddUserMessageWithKind(conv, content, kind)
+		return true
+	}
+	blocks := toContentBlocks(content)
+	wanted := make(map[string]struct{}, len(deliveryIDs))
+	for _, id := range deliveryIDs {
+		wanted[id] = struct{}{}
+	}
+
+	conv.lock()
+	defer conv.unlock()
+	for _, entry := range conv.Entries {
+		message, ok := entry.Data.(MessageData)
+		if !ok {
+			continue
+		}
+		for _, id := range message.DeliveryIDs {
+			delete(wanted, id)
+		}
+	}
+	if len(wanted) == 0 {
+		return false
+	}
+
+	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: blocks})
+	if conv.Entries != nil {
+		ids := make([]string, 0, len(wanted))
+		for _, id := range deliveryIDs {
+			if _, remains := wanted[id]; remains {
+				ids = append(ids, id)
+			}
+		}
+		entry := appendEntryLocked(conv, EntryMessage, MessageData{
+			Role:            "user",
+			Content:         blocks,
+			InjectionKind:   kind,
+			MachineAuthored: types.InjectionKind(kind).IsMachineToMachine(),
+			DeliveryIDs:     ids,
+		}, "")
+		conv.Messages[len(conv.Messages)-1].EntryID = entry.ID
+	}
+	return true
 }
 
 // AddUserMessageWithKind is the kind-aware variant of AddUserMessage. It

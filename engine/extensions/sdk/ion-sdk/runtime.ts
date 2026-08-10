@@ -147,6 +147,7 @@ function notify(method: string, params: any): void {
 }
 
 let nextRequestId = 100000
+let nextDispatchCallbackId = 1
 const pendingRequests = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>()
 const notificationHandlers = new Map<string, (params: any) => void>()
 
@@ -325,8 +326,10 @@ function buildContext(ctxData: any): IonContext {
       // foreground terminal output. `background: false` remains accepted for
       // compatibility but cannot silently turn an async dispatch foreground.
       const isForeground = waitForCompletion === true
+      const callbackId = `cb-${Date.now()}-${nextDispatchCallbackId++}`
       const dispatchOpts = {
         ...rpcOpts,
+        callbackId,
         waitForCompletion: isForeground,
         background: !isForeground,
       }
@@ -361,16 +364,16 @@ function buildContext(ctxData: any): IonContext {
       // callbacks that fire while the dispatch runs.
       const agentKey = opts.name
       for (const [method, fn] of lifecycleEntries) {
-        if (fn) notificationHandlers.set(`${method}:${agentKey}`, fn)
+        if (fn) notificationHandlers.set(`${method}:${callbackId}`, fn)
       }
 
       const cleanupAsyncHandlers = (dispatchId?: string) => {
         for (const [method] of lifecycleEntries) {
-          notificationHandlers.delete(`${method}:${agentKey}`)
+          notificationHandlers.delete(`${method}:${callbackId}`)
           if (dispatchId) notificationHandlers.delete(`${method}:${dispatchId}`)
         }
         for (const method of ['dispatch_complete', 'dispatch_error', 'dispatch_recall']) {
-          notificationHandlers.delete(`${method}:${agentKey}`)
+          notificationHandlers.delete(`${method}:${callbackId}`)
           if (dispatchId) notificationHandlers.delete(`${method}:${dispatchId}`)
         }
       }
@@ -379,7 +382,7 @@ function buildContext(ctxData: any): IonContext {
       const wrapTerminal = (fn?: (p: any) => void) => (params: any) => {
         if (terminalDelivered) return
         terminalDelivered = true
-        terminalDispatchId = typeof params?.dispatchId === 'string' ? params.dispatchId : agentKey
+        terminalDispatchId = typeof params?.dispatchId === 'string' ? params.dispatchId : callbackId
         cleanupAsyncHandlers(terminalDispatchId)
         if (fn) fn(params)
       }
@@ -393,7 +396,7 @@ function buildContext(ctxData: any): IonContext {
       // before its stub response reaches this process; name routing covers that
       // window, then dispatch-ID routing takes over for concurrent children.
       for (const [method, fn] of terminalHandlers) {
-        notificationHandlers.set(`${method}:${agentKey}`, fn)
+        notificationHandlers.set(`${method}:${callbackId}`, fn)
       }
 
       if (!isForeground) {
@@ -402,7 +405,7 @@ function buildContext(ctxData: any): IonContext {
         // concurrent same-name dispatches each receive their own terminal
         // callback without clobbering.
         const stub: DispatchAgentResult = await request('ext/dispatch_agent', dispatchOpts)
-        const dispatchId = stub.dispatchId || agentKey
+        const dispatchId = stub.dispatchId || callbackId
 
         // A terminal notification can arrive before the stub. Do not restore
         // handlers after it has already cleaned them up.
@@ -423,7 +426,7 @@ function buildContext(ctxData: any): IonContext {
       // Foreground: wait for terminal output, then clean up lifecycle handlers.
       const cleanupForeground = () => {
         for (const [method] of lifecycleEntries) {
-          notificationHandlers.delete(`${method}:${agentKey}`)
+          notificationHandlers.delete(`${method}:${callbackId}`)
         }
       }
       try { return await request('ext/dispatch_agent', dispatchOpts) }
@@ -850,6 +853,7 @@ function startListening(): void {
         const agentName = params?.name
         const handler =
           (dispatchId && notificationHandlers.get(`${msg.method}:${dispatchId}`))
+          || (params?.callbackId && notificationHandlers.get(`${msg.method}:${params.callbackId}`))
           || (agentName && notificationHandlers.get(`${msg.method}:${agentName}`))
           || notificationHandlers.get(msg.method)
         if (handler) {

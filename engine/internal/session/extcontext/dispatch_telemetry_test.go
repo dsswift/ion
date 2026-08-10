@@ -180,6 +180,8 @@ func TestDispatchTelemetry_PanicPathCarriesDispatchId(t *testing.T) {
 		"test panic value",
 		2, // childDepth
 		testParentID,
+		nil,
+		nil,
 	)
 
 	sa.mu.Lock()

@@ -33,6 +33,16 @@ type pendingPrompt struct {
 	overrides *PromptOverrides
 }
 
+// rootDispatchCompletion is one root-owned child result awaiting normal prompt
+// acceptance. DeliveryID deduplicates retries in memory and identifies logs.
+type rootDispatchCompletion struct {
+	DeliveryID string
+	Text       string
+	DispatchID string
+	Name       string
+	ExitCode   int
+}
+
 // engineSession holds the state for a single session managed by the Manager.
 type engineSession struct {
 	key       string
@@ -208,6 +218,10 @@ type engineSession struct {
 	hasExitedPlanMode bool // set when ExitPlanMode fires; enables reentry detection
 	promptQueue       []pendingPrompt
 	maxQueueDepth     int // default 32
+	// rootDispatchCompletions is the FIFO durable outbox for top-level child
+	// terminal results. A delivery stays here until a classified prompt is
+	// accepted by the normal session path; queue backpressure never drops it.
+	rootDispatchCompletions []rootDispatchCompletion
 
 	// Wired subsystems (populated in StartSession)
 	extGroup       *extension.ExtensionGroup

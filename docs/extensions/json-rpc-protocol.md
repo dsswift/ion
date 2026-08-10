@@ -407,7 +407,7 @@ The per-tool hooks (`bash_tool_call`, etc.) and `permission_request` are **not**
 
 ### `ext/dispatch_agent`
 
-Dispatch an engine-native agent. Creates a child session with optional extension loading, system prompt injection, and event streaming. This call blocks until the agent completes.
+Dispatch an engine-native agent. Creates a child session with optional extension loading, system prompt injection, and event streaming. **Asynchronous by default** -- returns a stub with `dispatchId` immediately; terminal result delivered via notification.
 
 ```json
 {
@@ -421,30 +421,67 @@ Dispatch an engine-native agent. Creates a child session with optional extension
     "extensionDir": "~/.ion/extensions/my-ext",
     "systemPrompt": "You are a research agent.",
     "projectPath": "/Users/you/project",
-    "planMode": true,
-    "planFilePath": "/tmp/my-plan.md",
-    "planModeTools": ["Read", "Grep", "Glob"]
+    "callbackId": "client-local-42"
   }
 }
 ```
 
-**Response:**
+Only `name` and `task` are required. All other fields are optional.
+
+**Execution mode:**
+
+| Field | Effect |
+|-------|--------|
+| *(default)* | Asynchronous. Returns stub immediately; terminal result via `dispatch_complete` / `dispatch_error` / `dispatch_recall` notification. |
+| `"waitForCompletion": true` | Foreground. Blocks until child reaches terminal state; response contains full result. |
+| `"background": true` | **Deprecated.** Retained for JSON decode compatibility. Does not change execution mode -- dispatch is already async by default. `"background": false` does not select foreground; use `waitForCompletion` instead. |
+
+**Async response (default):**
 
 ```json
 {
   "jsonrpc": "2.0",
   "id": 100006,
   "result": {
-    "output": "Found 3 uses of deprecated API...",
-    "exitCode": 0,
-    "elapsed": 12.5,
-    "planFilePath": "/tmp/my-plan.md",
-    "planExited": true
+    "dispatchId": "d-abc123",
+    "name": "researcher"
   }
 }
 ```
 
-Only `name` and `task` are required. All other fields are optional. When `planMode` is true, the child runs in plan mode with a restricted tool set; `planFilePath` and `planModeTools` override the defaults.
+The stub carries `dispatchId` for correlating subsequent lifecycle notifications with this dispatch. Raw clients that can issue concurrent same-name dispatches should send a unique `callbackId`; the engine echoes it on every lifecycle and terminal notification, including ones that arrive before the stub response. The engine delivers terminal result to the dispatch owner automatically via notifications (see below).
+
+**Foreground response (`waitForCompletion: true`):**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 100006,
+  "result": {
+    "dispatchId": "d-abc123",
+    "name": "researcher",
+    "output": "Found 3 uses of deprecated API...",
+    "exitCode": 0,
+    "elapsed": 12.5,
+    "cost": 0.012,
+    "inputTokens": 5000,
+    "outputTokens": 2000,
+    "sessionId": "ses-xyz"
+  }
+}
+```
+
+When `planMode` is true, the child runs in plan mode with a restricted tool set; `planFilePath` and `planModeTools` override the defaults. The result then includes `planFilePath` and `planExited`.
+
+**Terminal notifications.** For async dispatches the engine sends these JSON-RPC notifications to the extension's stdin when the child reaches a terminal state:
+
+| Method | When | Key payload fields |
+|--------|------|--------------------|
+| `dispatch_complete` | Child finished successfully | `callbackId`, `dispatchId`, `name`, `output`, `exitCode`, `elapsed`, `cost`, `inputTokens`, `outputTokens`, `sessionId` |
+| `dispatch_error` | Child failed | `callbackId`, `dispatchId`, `name`, `message`, `exitCode`, `elapsed` |
+| `dispatch_recall` | Child was recalled | `callbackId`, `dispatchId`, `name`, `reason`, `elapsed`, `toolCount` |
+
+See [SDK Raw > Dispatch lifecycle notifications](sdk-raw.md#dispatch-lifecycle-notifications) for the full notification set including observational lifecycle events (`dispatch_tool_start`, `dispatch_usage`, etc.).
 
 ## Event buffering during hooks
 

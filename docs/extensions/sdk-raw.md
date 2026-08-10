@@ -300,20 +300,22 @@ When an asynchronous dispatch is active (default for `ext/dispatch_agent`; `wait
 
 | Method | When | Payload |
 |--------|------|---------|
-| `dispatch_complete` | Asynchronous dispatch finished successfully | `{name, output, exitCode, elapsed, cost, inputTokens, outputTokens, sessionId}` |
-| `dispatch_error` | Asynchronous dispatch failed | `{name, message, exitCode, elapsed}` |
-| `dispatch_recall` | Asynchronous dispatch was recalled | `{name, reason, elapsed, toolCount}` |
-| `dispatch_tool_start` | Tool invocation began in child | `{name, toolName, toolId}` |
-| `dispatch_tool_end` | Tool completed in child | `{name, toolName, toolId, content}` |
-| `dispatch_tool_error` | Tool errored in child | `{name, toolName, toolId, content}` |
-| `dispatch_usage` | Token usage update from child | `{name, inputTokens, outputTokens, cumulativeInputTokens, cumulativeOutputTokens, cumulativeCost}` |
-| `dispatch_text_delta` | Streaming text from child | `{name, delta, accumulated}` |
-| `dispatch_plan_proposal` | Child agent proposed a plan (called ExitPlanMode) | `{name, agentId, planFilePath, planSlug, planRequested}` |
+| `dispatch_complete` | Agent finished successfully | `{callbackId, dispatchId, name, output, exitCode, elapsed, cost, inputTokens, outputTokens, sessionId}` |
+| `dispatch_error` | Agent failed | `{callbackId, dispatchId, name, message, exitCode, elapsed}` |
+| `dispatch_recall` | Agent was recalled | `{callbackId, dispatchId, name, reason, elapsed, toolCount}` |
+| `dispatch_tool_start` | Tool invocation began in child | `{callbackId, dispatchId, name, toolName, toolId}` |
+| `dispatch_tool_end` | Tool completed in child | `{callbackId, dispatchId, name, toolName, toolId, content}` |
+| `dispatch_tool_error` | Tool errored in child | `{callbackId, dispatchId, name, toolName, toolId, content}` |
+| `dispatch_usage` | Token usage update from child | `{callbackId, dispatchId, name, inputTokens, outputTokens, cumulativeInputTokens, cumulativeOutputTokens, cumulativeCost}` |
+| `dispatch_text_delta` | Streaming text from child | `{callbackId, dispatchId, name, delta, accumulated}` |
+| `dispatch_plan_proposal` | Child agent proposed a plan (called ExitPlanMode) | `{callbackId, dispatchId, name, agentId, planFilePath, planSlug, planRequested}` |
+
+Every lifecycle payload carries `dispatchId` and, when supplied on the request, `callbackId`. Use `callbackId` from request start, then `dispatchId` after stub response, to correlate simultaneous same-name dispatches without a pre-response race.
 
 Example incoming notification:
 
 ```json
-{"jsonrpc":"2.0","method":"dispatch_complete","params":{"name":"researcher","output":"Found 12 TODOs","exitCode":0,"elapsed":8.3,"cost":0.012,"inputTokens":5000,"outputTokens":2000}}
+{"jsonrpc":"2.0","method":"dispatch_complete","params":{"callbackId":"client-local-42","dispatchId":"d-abc123","name":"researcher","output":"Found 12 TODOs","exitCode":0,"elapsed":8.3,"cost":0.012,"inputTokens":5000,"outputTokens":2000}}
 ```
 
 Handle these by checking the `method` field on incoming messages alongside the existing `hook/*`, `tool/*`, and `command/*` patterns.

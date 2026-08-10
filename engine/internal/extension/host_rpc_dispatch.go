@@ -34,18 +34,22 @@ func (h *Host) rpcDispatchAgent(ctx *Context, id int64, raw []byte) {
 			// Asynchronous dispatch: wire completion callbacks to notifications,
 			// respond immediately with a stub.
 			agentName := req.Params.Name
+			callbackID := req.Params.CallbackID
 			req.Params.OnComplete = func(result DispatchAgentResult) {
 				result.Name = agentName
+				result.CallbackID = callbackID
 				data, _ := json.Marshal(result) //nolint:errcheck // marshal of a local RPC struct
 				h.sendNotification("dispatch_complete", data)
 			}
 			req.Params.OnError = func(err DispatchError) {
 				err.Name = agentName
+				err.CallbackID = callbackID
 				data, _ := json.Marshal(err) //nolint:errcheck // marshal of a local RPC struct
 				h.sendNotification("dispatch_error", data)
 			}
 			req.Params.OnRecall = func(info RecallInfo) {
 				info.Name = agentName
+				info.CallbackID = callbackID
 				data, _ := json.Marshal(info) //nolint:errcheck // marshal of a local RPC struct
 				h.sendNotification("dispatch_recall", data)
 			}
@@ -53,35 +57,41 @@ func (h *Host) rpcDispatchAgent(ctx *Context, id int64, raw []byte) {
 			// Wire lifecycle callbacks to notifications.
 			req.Params.OnToolStart = func(info DispatchToolStartInfo) {
 				info.Name = agentName
+				info.CallbackID = callbackID
 				data, _ := json.Marshal(info) //nolint:errcheck // marshal of a local RPC struct
 				h.sendNotification("dispatch_tool_start", data)
 			}
 			req.Params.OnToolEnd = func(info DispatchToolEndInfo) {
 				info.Name = agentName
+				info.CallbackID = callbackID
 				data, _ := json.Marshal(info) //nolint:errcheck // marshal of a local RPC struct
 				h.sendNotification("dispatch_tool_end", data)
 			}
 			req.Params.OnToolError = func(info DispatchToolErrorInfo) {
 				info.Name = agentName
+				info.CallbackID = callbackID
 				data, _ := json.Marshal(info) //nolint:errcheck // marshal of a local RPC struct
 				h.sendNotification("dispatch_tool_error", data)
 			}
 			req.Params.OnUsage = func(info DispatchUsageInfo) {
 				info.Name = agentName
+				info.CallbackID = callbackID
 				data, _ := json.Marshal(info) //nolint:errcheck // marshal of a local RPC struct
 				h.sendNotification("dispatch_usage", data)
 			}
 			req.Params.OnTextDelta = func(info DispatchTextDeltaInfo) {
 				info.Name = agentName
+				info.CallbackID = callbackID
 				data, _ := json.Marshal(info) //nolint:errcheck // marshal of a local RPC struct
 				h.sendNotification("dispatch_text_delta", data)
 			}
 			req.Params.OnPlanProposal = func(info DispatchPlanProposalInfo) {
 				info.Name = agentName
+				info.CallbackID = callbackID
 				data, _ := json.Marshal(info) //nolint:errcheck // marshal of a local RPC struct
 				h.sendNotification("dispatch_plan_proposal", data)
 			}
-			req.Params.OnChildQuestion = h.makeOnChildQuestion(agentName)
+			req.Params.OnChildQuestion = h.makeOnChildQuestion(agentName, callbackID)
 
 			// Dispatch in a goroutine; respond immediately with stub.
 			go func() {
@@ -99,7 +109,8 @@ func (h *Host) rpcDispatchAgent(ctx *Context, id int64, raw []byte) {
 			// Foreground dispatch is an explicit WaitForCompletion opt-in.
 			// Wire OnChildQuestion so foreground child questions block-and-resume.
 			agentName := req.Params.Name
-			req.Params.OnChildQuestion = h.makeOnChildQuestion(agentName)
+			callbackID := req.Params.CallbackID
+			req.Params.OnChildQuestion = h.makeOnChildQuestion(agentName, callbackID)
 			go func() {
 				result, err := ctx.DispatchAgent(req.Params)
 				if err != nil {

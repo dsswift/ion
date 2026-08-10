@@ -60,6 +60,12 @@ export interface DispatchAgentOpts {
   background?: boolean
 
   /**
+   * Reserved for raw-protocol clients. The TypeScript runtime replaces any
+   * caller-supplied value with a unique token for each dispatch.
+   */
+  callbackId?: string
+
+  /**
    * Fires when an asynchronous dispatch finishes successfully (exit code 0).
    * Not called for foreground dispatches.
    */
@@ -282,6 +288,8 @@ export interface DispatchAgentResult {
   cost: number
   inputTokens: number
   outputTokens: number
+  /** SDK-generated identifier for routing pre-stub callbacks. Internal to extension-host RPC. */
+  callbackId?: string
   /** Engine-assigned unique identifier for this dispatch instance. Collision-safe. */
   dispatchId?: string
   sessionId?: string
@@ -303,6 +311,7 @@ export interface DispatchAgentResult {
 /** Describes a failed asynchronous dispatch. Delivered via {@link DispatchAgentOpts.onError}. */
 export interface DispatchError {
   name: string
+  callbackId?: string
   dispatchId?: string
   message: string
   exitCode: number
@@ -312,6 +321,7 @@ export interface DispatchError {
 /** Describes a recalled (cancelled) asynchronous dispatch. Delivered via {@link DispatchAgentOpts.onRecall}. */
 export interface RecallInfo {
   name: string
+  callbackId?: string
   dispatchId?: string
   reason: string
   elapsed: number
@@ -386,6 +396,7 @@ export interface SteerDispatchResult {
 /** Payload for {@link DispatchAgentOpts.onToolStart}. */
 export interface DispatchToolStartInfo {
   name: string
+  callbackId?: string
   toolName: string
   toolId: string
 }
@@ -393,6 +404,7 @@ export interface DispatchToolStartInfo {
 /** Payload for {@link DispatchAgentOpts.onToolEnd}. */
 export interface DispatchToolEndInfo {
   name: string
+  callbackId?: string
   toolName: string
   toolId: string
   content: string
@@ -401,6 +413,7 @@ export interface DispatchToolEndInfo {
 /** Payload for {@link DispatchAgentOpts.onToolError}. */
 export interface DispatchToolErrorInfo {
   name: string
+  callbackId?: string
   toolName: string
   toolId: string
   content: string
@@ -409,6 +422,7 @@ export interface DispatchToolErrorInfo {
 /** Payload for {@link DispatchAgentOpts.onUsage}. */
 export interface DispatchUsageInfo {
   name: string
+  callbackId?: string
   /** Per-turn input tokens from the current UsageEvent. */
   inputTokens: number
   /** Per-turn output tokens from the current UsageEvent. */
@@ -424,6 +438,7 @@ export interface DispatchUsageInfo {
 /** Payload for {@link DispatchAgentOpts.onTextDelta}. */
 export interface DispatchTextDeltaInfo {
   name: string
+  callbackId?: string
   /** The new text chunk. */
   delta: string
   /** All text accumulated so far across the dispatch. */
@@ -440,6 +455,7 @@ export interface DispatchTextDeltaInfo {
 export interface DispatchPlanProposalInfo {
   /** Canonical agent name (the name field from DispatchAgentOpts). */
   name: string
+  callbackId?: string
   /** Engine-assigned dispatch ID for this dispatch instance. */
   agentId: string
   /** Absolute filesystem path of the plan markdown file. */
@@ -464,6 +480,7 @@ export interface DispatchPlanProposalInfo {
 export interface DispatchChildQuestionInfo {
   /** Canonical agent name (the name field from DispatchAgentOpts). */
   name: string
+  callbackId?: string
   /** Engine-assigned dispatch ID for this dispatch instance. */
   dispatchId: string
   /**

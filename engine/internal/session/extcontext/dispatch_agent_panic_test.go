@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
@@ -199,8 +200,10 @@ func TestRecoverBackgroundDispatchPanic_SynthesizesTerminalState(t *testing.T) {
 		"agent-id-xyz",
 		"test-agent",
 		"synthetic panic value for test",
-		0,  // childDepth
-		"", // parentDispatchId
+		0,   // childDepth
+		"",  // parentDispatchId
+		nil, // child tool server
+		nil, // terminal callback
 	)
 
 	sa.mu.Lock()
@@ -311,6 +314,7 @@ func TestBackgroundDispatchAgentEndAlwaysFires(t *testing.T) {
 				extension.DispatchAgentOpts{WaitForCompletion: true, Name: "agent-" + tc.name, Task: "t"},
 				"k", agentID, "agent-"+tc.name, tc.panicValue,
 				0, "", // childDepth, parentDispatchId
+				nil, nil,
 			)
 
 			sa.mu.Lock()
@@ -329,3 +333,42 @@ type fakePanicErr struct{ msg string }
 
 func (e *fakePanicErr) Error() string                            { return e.msg }
 func (a *panicTestAccessor) DispatchRegistry() *DispatchRegistry { return nil }
+
+func TestRecoverBackgroundDispatchPanic_NotifiesParentAndCallback(t *testing.T) {
+	sa := &panicTestAccessor{}
+	registry := NewDispatchRegistry()
+	registry.RegisterWithID("parent", "lead", func() {}, nil, "panic-test-session", "", 1)
+	revive := make(chan struct{}, 1)
+	registry.SetSuspendedState("parent", revive, []string{"child"})
+	registry.RegisterWithID("child", "worker", func() {}, nil, "panic-test-session", "parent", 2)
+
+	callback := make(chan extension.DispatchAgentResult, 1)
+	recoverBackgroundDispatchPanic(
+		sa, registry,
+		extension.DispatchAgentOpts{Name: "worker", Task: "panic", WaitForCompletion: false},
+		"panic-test-session", "child", "worker", "boom", 2, "parent", nil,
+		func(result extension.DispatchAgentResult) { callback <- result },
+	)
+
+	select {
+	case result := <-callback:
+		if result.Name != "worker" || result.ExitCode != 1 {
+			t.Fatalf("panic callback result = %#v", result)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("panic did not invoke asynchronous terminal callback")
+	}
+	select {
+	case <-revive:
+	case <-time.After(time.Second):
+		t.Fatal("panic child did not revive suspended parent")
+	}
+	recorded := registry.DrainChildResults("parent")
+	if len(recorded) != 1 || recorded[0].Name != "worker" || recorded[0].ExitCode != 1 {
+		t.Fatalf("panic child record = %#v", recorded)
+	}
+}
+
+func TestInvokeDispatchCallback_RecoversPanic(t *testing.T) {
+	invokeDispatchCallback(func() { panic("callback failure") }, "session", "dispatch", "test")
+}

@@ -1,52 +1,63 @@
 package backend
 
 import (
-	"os"
-	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
-	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
-// TestCompletedChildDeliveryAcknowledgesOnlyAfterSave pins durable delivery.
-// Before this regression, draining cleared registry records before Save; a disk
-// error lost child output and retrying also appended duplicate in-memory turns.
-func TestCompletedChildDeliveryAcknowledgesOnlyAfterSave(t *testing.T) {
-	dataRoot := t.TempDir()
-	blockedRoot := filepath.Join(dataRoot, "not-a-directory")
-	if err := os.WriteFile(blockedRoot, []byte("file"), 0o644); err != nil {
-		t.Fatalf("seed blocked data root: %v", err)
-	}
-	t.Setenv("ION_DATA_DIR", blockedRoot)
+func TestCompletedChildDispatch_EndTurnForcesContinuation(t *testing.T) {
+	setupTestProvider([][]types.LlmStreamEvent{
+		textResponse("first turn", 10, 5),
+		textResponse("completion consumed", 10, 5),
+	})
 
-	acknowledged := 0
-	pending := []types.LlmMessage{{Role: "user", Content: "[Agent worker completed]\nresult"}}
-	cfg := &RunConfig{PeekCompletedChildDispatches: func() ([]types.LlmMessage, func()) {
-		return pending, func() {
-			acknowledged++
-			pending = nil
+	b := NewApiBackend()
+	collector := collectEvents(b, "child-completion-end-turn")
+	var mu sync.Mutex
+	pending := true
+	acked := 0
+	cfg := &RunConfig{
+		PeekCompletedChildDispatches: func() ([]types.LlmMessage, func()) {
+			mu.Lock()
+			defer mu.Unlock()
+			if !pending {
+				return nil, func() {}
+			}
+			return []types.LlmMessage{{Role: "user", Content: "[Agent reviewer completed]\nresult"}}, func() {
+				mu.Lock()
+				defer mu.Unlock()
+				pending = false
+				acked++
+			}
+		},
+	}
+
+	b.StartRunWithConfig("child-completion-end-turn", types.RunOptions{
+		Prompt: "work", Model: testModel, EarlyStopEnabled: testEarlyStopDisabled(),
+	}, cfg)
+	if !waitForExit(collector, 5*time.Second) {
+		t.Fatal("timed out waiting for completion continuation")
+	}
+
+	mu.Lock()
+	gotAcked := acked
+	mu.Unlock()
+	if gotAcked != 1 {
+		t.Fatalf("ack count = %d, want 1", gotAcked)
+	}
+
+	collector.mu.Lock()
+	defer collector.mu.Unlock()
+	steers := 0
+	for _, event := range collector.normalized {
+		if _, ok := event.Data.(*types.SteerInjectedEvent); ok {
+			steers++
 		}
-	}}
-	conv := &conversation.Conversation{ID: "child-delivery", Version: conversation.CurrentVersion, Entries: []conversation.SessionEntry{}}
-	run := &activeRun{requestID: "run-child-delivery", cfg: cfg}
-	backend := NewApiBackend()
-
-	backend.drainCompletedChildDispatches(run, conv)
-	backend.drainCompletedChildDispatches(run, conv)
-	if acknowledged != 0 || len(pending) != 1 {
-		t.Fatalf("failed save acknowledged delivery: acknowledgements=%d pending=%d", acknowledged, len(pending))
 	}
-	if got := len(conv.Messages); got != 1 {
-		t.Fatalf("failed-save retry duplicated in-memory completion: messages=%d, want 1", got)
-	}
-
-	t.Setenv("ION_DATA_DIR", dataRoot)
-	backend.drainCompletedChildDispatches(run, conv)
-	if acknowledged != 1 || len(pending) != 0 {
-		t.Fatalf("successful save did not acknowledge exactly once: acknowledgements=%d pending=%d", acknowledged, len(pending))
-	}
-	if got := len(conv.Messages); got != 1 {
-		t.Errorf("successful retry changed staged message count: got %d, want 1", got)
+	if steers != 1 {
+		t.Fatalf("completion injections = %d, want 1", steers)
 	}
 }

@@ -120,6 +120,10 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 		dispatchRegistry: extcontext.NewDispatchRegistry(),
 		resourceBroker:   resource.NewBroker(),
 	}
+	s.rootDispatchCompletions = loadRootDispatchOutbox(convID)
+	if len(s.rootDispatchCompletions) > 0 {
+		utils.LogWithFields(utils.LevelInfo, "session.dispatch_delivery", "root dispatch outbox rehydrated", map[string]any{"session_id": key, "conversation_id": convID, "count": len(s.rootDispatchCompletions)})
+	}
 
 	// Initialize the session's cancellation root before any run or
 	// dispatch can be launched. Every cancellable operation spawned for
@@ -301,6 +305,7 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 	// extension group; the typed engine_dispatch_lost event rides the
 	// session stream regardless. No-op when rehydration queued nothing.
 	m.announceLostDispatches(s, key)
+	m.retryRootDispatchCompletions(key)
 
 	// Load skills from default paths. The project root resolves against the
 	// session's working directory (not the daemon cwd) via IonSkillPathsFor.

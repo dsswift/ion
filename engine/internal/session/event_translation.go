@@ -701,11 +701,15 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	// mid-turn hook interleaving.
 	m.respawnDeadExtensions(key)
 
-	// Dispatch queued prompt outside the lock
+	// Dispatch queued prompt outside the lock. A user prompt accepted before a
+	// completion retains FIFO priority; once it is dispatched, the completion
+	// retry queues safely behind its active run.
 	if nextPrompt != nil {
 		utils.LogWithFields(utils.LevelDebug, "session", "dispatching queued prompt", map[string]any{"key": key})
 		m.dispatchQueuedPrompt(key, nextPrompt)
+		return
 	}
+	m.retryRootDispatchCompletions(key)
 }
 
 // dispatchQueuedPrompt re-submits a dequeued prompt on its own goroutine,

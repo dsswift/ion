@@ -33,9 +33,10 @@ import (
 //
 // The TS SDK answers via ext/answer_dispatch_question, handled by
 // handleAnswerDispatchQuestion below.
-func (h *Host) makeOnChildQuestion(agentName string) func(DispatchChildQuestionInfo) (string, bool, error) {
+func (h *Host) makeOnChildQuestion(agentName, callbackID string) func(DispatchChildQuestionInfo) (string, bool, error) {
 	return func(info DispatchChildQuestionInfo) (string, bool, error) {
 		info.Name = agentName
+		info.CallbackID = callbackID
 		requestID := fmt.Sprintf("q-%d", time.Now().UnixNano())
 		key := info.DispatchID + ":" + requestID
 
@@ -47,12 +48,14 @@ func (h *Host) makeOnChildQuestion(agentName string) func(DispatchChildQuestionI
 		// ext/answer_dispatch_question.
 		payload := struct {
 			Name       string `json:"name"`
+			CallbackID string `json:"callbackId,omitempty"`
 			DispatchID string `json:"dispatchId"`
 			RequestID  string `json:"requestId"`
 			Question   string `json:"question"`
 			Depth      int    `json:"depth"`
 		}{
 			Name:       agentName,
+			CallbackID: callbackID,
 			DispatchID: info.DispatchID,
 			RequestID:  requestID,
 			Question:   info.Question,

@@ -19,6 +19,13 @@ type DispatchAgentOpts struct {
 	ProjectPath  string `json:"projectPath,omitempty"`
 	SessionID    string `json:"sessionId,omitempty"`
 
+	// CallbackID is an SDK-generated unique token for this dispatch call.
+	// The host echoes it on every lifecycle and terminal notification so
+	// the SDK can route callbacks before the engine-assigned DispatchID is
+	// known (the stub RPC response carries the DispatchID, but notifications
+	// can arrive before it). Not part of the engine wire contract.
+	CallbackID string `json:"callbackId,omitempty"`
+
 	// MaxTurns caps the child session's agent loop iteration count. <=0 (the
 	// default when omitted) means unlimited -- the engine ships unopinionated.
 	// Lets harness engineers fine-tune dispatched-agent budgets without
@@ -244,6 +251,10 @@ type DispatchAgentResult struct {
 	InputTokens  int     `json:"inputTokens"`
 	OutputTokens int     `json:"outputTokens"`
 
+	// CallbackID is echoed from the dispatch request so the SDK can route
+	// this notification before the DispatchID-keyed handlers are registered.
+	CallbackID string `json:"callbackId,omitempty"`
+
 	// DispatchID is the engine-assigned unique identifier for this dispatch
 	// instance. Collision-safe: two parallel dispatches of the same agent
 	// name in the same millisecond receive distinct IDs. Consumers use it
@@ -291,6 +302,7 @@ type DispatchAgentResult struct {
 // DispatchError describes a failed background dispatch.
 type DispatchError struct {
 	Name       string  `json:"name"`
+	CallbackID string  `json:"callbackId,omitempty"`
 	DispatchID string  `json:"dispatchId,omitempty"`
 	Message    string  `json:"message"`
 	ExitCode   int     `json:"exitCode"`
@@ -300,6 +312,7 @@ type DispatchError struct {
 // RecallInfo describes a recalled (cancelled) background dispatch.
 type RecallInfo struct {
 	Name       string  `json:"name"`
+	CallbackID string  `json:"callbackId,omitempty"`
 	DispatchID string  `json:"dispatchId,omitempty"`
 	Reason     string  `json:"reason"`
 	Elapsed    float64 `json:"elapsed"`
@@ -340,6 +353,7 @@ type SteerDispatchResult struct {
 // DispatchToolStartInfo carries data for the OnToolStart callback.
 type DispatchToolStartInfo struct {
 	Name       string `json:"name"`
+	CallbackID string `json:"callbackId,omitempty"`
 	DispatchID string `json:"dispatchId,omitempty"`
 	ToolName   string `json:"toolName"`
 	ToolID     string `json:"toolId"`
@@ -348,6 +362,7 @@ type DispatchToolStartInfo struct {
 // DispatchToolEndInfo carries data for the OnToolEnd callback.
 type DispatchToolEndInfo struct {
 	Name       string `json:"name"`
+	CallbackID string `json:"callbackId,omitempty"`
 	DispatchID string `json:"dispatchId,omitempty"`
 	ToolName   string `json:"toolName"`
 	ToolID     string `json:"toolId"`
@@ -357,6 +372,7 @@ type DispatchToolEndInfo struct {
 // DispatchToolErrorInfo carries data for the OnToolError callback.
 type DispatchToolErrorInfo struct {
 	Name       string `json:"name"`
+	CallbackID string `json:"callbackId,omitempty"`
 	DispatchID string `json:"dispatchId,omitempty"`
 	ToolName   string `json:"toolName"`
 	ToolID     string `json:"toolId"`
@@ -366,6 +382,7 @@ type DispatchToolErrorInfo struct {
 // DispatchUsageInfo carries per-turn and cumulative usage data.
 type DispatchUsageInfo struct {
 	Name       string `json:"name"`
+	CallbackID string `json:"callbackId,omitempty"`
 	DispatchID string `json:"dispatchId,omitempty"`
 
 	// Per-turn usage from the current UsageEvent.
@@ -381,6 +398,7 @@ type DispatchUsageInfo struct {
 // DispatchTextDeltaInfo carries a text chunk and accumulated text.
 type DispatchTextDeltaInfo struct {
 	Name        string `json:"name"`
+	CallbackID  string `json:"callbackId,omitempty"`
 	DispatchID  string `json:"dispatchId,omitempty"`
 	Delta       string `json:"delta"`
 	Accumulated string `json:"accumulated"`
@@ -389,6 +407,7 @@ type DispatchTextDeltaInfo struct {
 // DispatchPlanProposalInfo carries data for the OnPlanProposal callback.
 type DispatchPlanProposalInfo struct {
 	Name         string `json:"name"`
+	CallbackID   string `json:"callbackId,omitempty"`
 	AgentID      string `json:"agentId"`
 	PlanFilePath string `json:"planFilePath"`
 	PlanSlug     string `json:"planSlug"`
@@ -403,6 +422,8 @@ type DispatchPlanProposalInfo struct {
 type DispatchChildQuestionInfo struct {
 	// Name is the dispatched agent's name.
 	Name string `json:"name"`
+	// CallbackID is the SDK-generated identifier for routing pre-stub callbacks.
+	CallbackID string `json:"callbackId,omitempty"`
 	// DispatchID is the dispatch's unique identifier.
 	DispatchID string `json:"dispatchId"`
 	// Question is the text from the child's AskUserQuestion call.

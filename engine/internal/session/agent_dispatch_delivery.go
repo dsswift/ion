@@ -2,36 +2,101 @@ package session
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// session's normal prompt queue. SendPrompt is intentionally the delivery
-// primitive: it queues behind an active root run and starts an idle session,
-// covering both completion races without trying to steer a tool execution that
-// has not yet reached a drain checkpoint.
+// deliverRootDispatchResult records every terminal root-owned dispatch before
+// attempting prompt delivery. Queue backpressure retains the FIFO record for a
+// retry after a run exits or a prompt leaves the queue.
 func (m *Manager) deliverRootDispatchResult(key string, result extension.DispatchAgentResult) {
-	payload := formatRootDispatchResult(result)
-	overrides := buildPromptOverrides("", nil, string(types.InjectionKindAgentCompletion))
-	if err := m.SendPrompt(key, payload, overrides); err != nil {
-		utils.LogWithFields(utils.LevelError, "session.dispatch_delivery", "root dispatch completion delivery failed", map[string]any{
-			"session_id":  key,
-			"dispatch_id": result.DispatchID,
-			"model":       result.Name,
-			"exit_code":   result.ExitCode,
-			"error":       err.Error(),
+	record := rootDispatchCompletion{
+		DeliveryID: fmt.Sprintf("root-completion-%d-%s", time.Now().UnixNano(), result.DispatchID),
+		Text:       formatRootDispatchResult(result),
+		DispatchID: result.DispatchID,
+		Name:       result.Name,
+		ExitCode:   result.ExitCode,
+	}
+	m.mu.Lock()
+	if s, ok := m.sessions[key]; ok {
+		s.rootDispatchCompletions = append(s.rootDispatchCompletions, record)
+		if err := persistRootDispatchOutbox(s.conversationID, s.rootDispatchCompletions); err != nil {
+			s.rootDispatchCompletions = s.rootDispatchCompletions[:len(s.rootDispatchCompletions)-1]
+			m.mu.Unlock()
+			utils.LogWithFields(utils.LevelError, "session.dispatch_delivery", "root dispatch completion outbox persistence failed", map[string]any{
+				"session_id": key, "delivery_id": record.DeliveryID, "dispatch_id": record.DispatchID, "error": err.Error(),
+			})
+			return
+		}
+		utils.LogWithFields(utils.LevelInfo, "session.dispatch_delivery", "root dispatch completion recorded", map[string]any{
+			"session_id": key, "delivery_id": record.DeliveryID, "dispatch_id": record.DispatchID,
+			"model": record.Name, "exit_code": record.ExitCode, "pending": len(s.rootDispatchCompletions),
+		})
+	} else {
+		m.mu.Unlock()
+		utils.LogWithFields(utils.LevelWarn, "session.dispatch_delivery", "root dispatch completion dropped for missing session", map[string]any{
+			"session_id": key, "dispatch_id": record.DispatchID, "model": record.Name,
 		})
 		return
 	}
-	m.emitPromptInjected(key, payload, string(types.InjectionKindAgentCompletion))
+	m.mu.Unlock()
+	m.retryRootDispatchCompletions(key)
+}
+
+// retryRootDispatchCompletions delivers FIFO head only. A successful SendPrompt
+// has inserted the classified completion into the ordinary prompt path, so the
+// head can be acknowledged. An error leaves it untouched for the next retry.
+func (m *Manager) retryRootDispatchCompletions(key string) {
+	m.mu.RLock()
+	s, ok := m.sessions[key]
+	if !ok || len(s.rootDispatchCompletions) == 0 {
+		m.mu.RUnlock()
+		return
+	}
+	record := s.rootDispatchCompletions[0]
+	m.mu.RUnlock()
+
+	// Do not put a completion ahead of user input already accepted into the
+	// session FIFO. Retry after its dequeue/run exit instead.
+	m.mu.RLock()
+	queuedUserPrompt := len(s.promptQueue) > 0
+	m.mu.RUnlock()
+	if queuedUserPrompt {
+		return
+	}
+
+	overrides := buildPromptOverrides("", nil, string(types.InjectionKindAgentCompletion))
+	if err := m.SendPrompt(key, record.Text, overrides); err != nil {
+		utils.LogWithFields(utils.LevelWarn, "session.dispatch_delivery", "root dispatch completion remains queued", map[string]any{
+			"session_id": key, "delivery_id": record.DeliveryID, "dispatch_id": record.DispatchID,
+			"model": record.Name, "exit_code": record.ExitCode, "error": err.Error(),
+		})
+		return
+	}
+
+	m.mu.Lock()
+	if current, exists := m.sessions[key]; exists && len(current.rootDispatchCompletions) > 0 && current.rootDispatchCompletions[0].DeliveryID == record.DeliveryID {
+		current.rootDispatchCompletions = current.rootDispatchCompletions[1:]
+		if err := persistRootDispatchOutbox(current.conversationID, current.rootDispatchCompletions); err != nil {
+			current.rootDispatchCompletions = append([]rootDispatchCompletion{record}, current.rootDispatchCompletions...)
+			m.mu.Unlock()
+			utils.LogWithFields(utils.LevelError, "session.dispatch_delivery", "root dispatch completion acknowledgement persistence failed", map[string]any{
+				"session_id": key, "delivery_id": record.DeliveryID, "dispatch_id": record.DispatchID, "error": err.Error(),
+			})
+			return
+		}
+	}
+	m.mu.Unlock()
+	m.emitPromptInjected(key, record.Text, string(types.InjectionKindAgentCompletion))
 	utils.LogWithFields(utils.LevelInfo, "session.dispatch_delivery", "root dispatch completion delivered", map[string]any{
-		"session_id":  key,
-		"dispatch_id": result.DispatchID,
-		"model":       result.Name,
-		"exit_code":   result.ExitCode,
+		"session_id": key, "delivery_id": record.DeliveryID, "dispatch_id": record.DispatchID,
+		"model": record.Name, "exit_code": record.ExitCode,
 	})
+	// Continue only after acknowledgement, preserving FIFO ordering.
+	m.retryRootDispatchCompletions(key)
 }
 
 func formatRootDispatchResult(result extension.DispatchAgentResult) string {

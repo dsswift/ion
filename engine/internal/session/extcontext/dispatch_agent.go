@@ -924,7 +924,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			}
 
 			result := &extension.DispatchAgentResult{
-				Name:                     agentName,
+				Name:                     opts.Name,
 				DispatchID:               agentID,
 				Output:                   output,
 				ExitCode:                 exitCode,
@@ -1129,7 +1129,18 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 						endDispatchSpanPanic(dispatchSpan, r)
 						recoverBackgroundDispatchPanic(
 							sa, registry, opts, key, agentID, agentName, r,
-							childDepth, currentDispatchId,
+							childDepth, currentDispatchId, childToolServer,
+							func(result extension.DispatchAgentResult) {
+								if opts.OnError != nil {
+									opts.OnError(extension.DispatchError{
+										Name:       opts.Name,
+										DispatchID: result.DispatchID,
+										Message:    result.Output,
+										ExitCode:   result.ExitCode,
+										Elapsed:    result.Elapsed,
+									})
+								}
+							},
 						)
 					}
 				}()
@@ -1140,51 +1151,12 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 					childToolServer.Stop()
 				}
 
-				// Fire the appropriate callback.
-				if recalled {
-					if opts.OnRecall != nil {
-						opts.OnRecall(extension.RecallInfo{
-							DispatchID: agentID,
-							Reason:     recallReason,
-							Elapsed:    result.Elapsed,
-							ToolCount:  toolCount,
-						})
-					}
-				} else if childErr != nil || result.ExitCode != 0 {
-					if opts.OnError != nil {
-						opts.OnError(extension.DispatchError{
-							DispatchID: agentID,
-							Message:    result.Output,
-							ExitCode:   result.ExitCode,
-							Elapsed:    result.Elapsed,
-						})
-					}
-				} else {
-					if opts.OnComplete != nil {
-						opts.OnComplete(*result)
-					}
-				}
-				// Notify the parent dispatch registry that this child reached
-				// a terminal state — on EVERY terminal path (complete, error,
-				// recall), not only success. If the parent is suspended via
-				// suspendUntilAll and this was one of its awaited children,
-				// the registry decrements the pending set and signals
-				// reviveCh when the set empties. A parent waiting on a child
-				// must be revived whether the child succeeded or failed
-				// (root cause C: notifying only on success left a parent
-				// whose child errored or was recalled parked until its
-				// timeout — the pending set never emptied). The child's
-				// outcome is already carried in the result the parent reads.
-				// This is the engine-side complement to
-				// registry.SignalReviveForSession (which handles bare
-				// suspend() revives triggered by sendPrompt).
+				// Notify the parent dispatch registry before optional callbacks. The
+				// result was recorded before deregistration, so a parent now sees the
+				// terminal record or wakes immediately regardless of observer behavior.
 				if registry != nil && currentDispatchId != "" {
-					// RecordChildResult ran before child deregistration. Notify now
-					// so a parent already parked on this exact child can revive.
 					registry.NotifyChildComplete(currentDispatchId, agentID)
 				} else if !opts.Detached {
-					// Root has no parent registry entry. Session queue delivery is
-					// lossless across active, exiting, and idle root states.
 					if root, ok := sa.(RootDispatchResultDelivery); ok {
 						root.DeliverRootDispatchResult(*result)
 					} else {
@@ -1193,12 +1165,48 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 						})
 					}
 				}
+
+				// Callbacks observe terminal state only. Isolate failures so a
+				// callback cannot re-panic this goroutine after owner delivery.
+				if recalled {
+					invokeDispatchCallback(func() {
+						if opts.OnRecall != nil {
+							opts.OnRecall(extension.RecallInfo{
+								Name:       opts.Name,
+								DispatchID: agentID,
+								Reason:     recallReason,
+								Elapsed:    result.Elapsed,
+								ToolCount:  toolCount,
+							})
+						}
+					}, key, agentID, "recall")
+				} else if childErr != nil || result.ExitCode != 0 {
+					invokeDispatchCallback(func() {
+						if opts.OnError != nil {
+							opts.OnError(extension.DispatchError{
+								Name:       opts.Name,
+								DispatchID: agentID,
+								Message:    result.Output,
+								ExitCode:   result.ExitCode,
+								Elapsed:    result.Elapsed,
+							})
+						}
+					}, key, agentID, "error")
+				} else {
+					invokeDispatchCallback(func() {
+						if opts.OnComplete != nil {
+							opts.OnComplete(*result)
+						}
+					}, key, agentID, "complete")
+				}
+
 			}()
 
 			utils.LogWithFields(utils.LevelInfo, "server", "background dispatch started", map[string]any{"model": opts.Name, "session_id": key})
 
 			// Return a stub result immediately.
 			return &extension.DispatchAgentResult{
+				Name:       opts.Name,
 				DispatchID: agentID,
 				SessionID:  childReqID,
 			}, nil

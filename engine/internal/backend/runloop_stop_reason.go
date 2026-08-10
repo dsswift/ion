@@ -119,9 +119,12 @@ func (b *ApiBackend) dispatchStopReason(
 		}
 
 		// A completion may arrive while the model is composing its final
-		// response. Drain it before deciding this run is terminal, exactly as
-		// steers are drained below.
-		b.drainCompletedChildDispatches(run, conv)
+		// response. Persist and inject it before terminalizing, then give the
+		// provider a new turn to consume it. Returning completion here would
+		// make the durable message invisible until an unrelated future prompt.
+		if b.drainCompletedChildDispatches(run, conv) {
+			return false
+		}
 
 		// Check for a steer message that arrived while the model was
 		// streaming its final response. If present, inject it and
