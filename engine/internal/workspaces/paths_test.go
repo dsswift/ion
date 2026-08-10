@@ -128,3 +128,37 @@ func TestCanonicalizeFallsBackToLexicalForm(t *testing.T) {
 		t.Fatalf("unresolvable path must keep its lexical form, got %q", got)
 	}
 }
+
+// The graph provisioning feature links only graph.json, so query cache files
+// remain local while a typed write through that file resolves into the base repo.
+func TestContainmentRefusesLinkedGraphFileButNotRead(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink semantics differ on windows")
+	}
+	root := t.TempDir()
+	ionDir := filepath.Join(root, "ion")
+	repo := filepath.Join(root, "repo")
+	worktree := filepath.Join(root, "wt")
+	for _, d := range []string{ionDir, filepath.Join(repo, "graphify-out"), filepath.Join(worktree, "graphify-out")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	graph := filepath.Join(repo, "graphify-out", "graph.json")
+	if err := os.WriteFile(graph, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	linkedGraph := filepath.Join(worktree, "graphify-out", "graph.json")
+	if err := os.Symlink(graph, linkedGraph); err != nil {
+		t.Skipf("cannot create symlink: %v", err)
+	}
+	writeWorktreeRegistry(t, ionDir, []WorktreeEntry{{WorktreePath: worktree, RepoPath: repo}})
+	c := NewCheckerAt(ionDir)
+
+	if r := c.Check("Write", writeInput(linkedGraph), worktree); r == nil || r.Kind != RefusalBaseRepo {
+		t.Fatalf("write through linked graph must be refused, got %+v", r)
+	}
+	if r := c.Check("Read", writeInput(linkedGraph), worktree); r != nil {
+		t.Fatalf("read tools are ungated, got %+v", r)
+	}
+}
