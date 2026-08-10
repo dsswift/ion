@@ -7,6 +7,7 @@ module.exports = {
       'desktop',
       'relay',
       'ios',
+      'sdk',
       // Repository-level
       'repo',
       'docs',

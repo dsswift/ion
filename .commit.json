@@ -4,6 +4,7 @@
     { "path": "desktop/", "scope": "desktop" },
     { "path": "relay/", "scope": "relay" },
     { "path": "ios/", "scope": "ios" },
+    { "path": "sdk/", "scope": "sdk" },
     { "path": "docs/", "scope": "docs" },
     { "path": ".github/", "scope": "repo" }
   ],
