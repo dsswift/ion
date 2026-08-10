@@ -218,6 +218,7 @@ export type RemoteCommand =
   // desktop_request_resource_content → desktop_resource_content. The snapshot no longer
   // embeds the full plan body — iOS fetches pages on expand/copy.
   | { type: 'desktop_request_plan_content'; tabId: string; questionId: string; planFilePath: string; offset: number; length: number }
+  | { type: 'desktop_report_mobile_auth'; accountUsername?: string; accountName?: string; subject?: string; tenantId?: string; signedInAt?: string; clearIdentity?: boolean; accessStatus?: string; accessReason?: string; reportedAt?: string }
 
 // ─── Ion → iOS events ───
 

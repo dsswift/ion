@@ -834,6 +834,13 @@ export interface RemotePairedDevice {
   pairedAt: string
   lastSeen: string | null
   channelId: string
+  relayOidcAccountUsername?: string
+  relayOidcAccountName?: string
+  relayOidcTenantId?: string
+  relayOidcSignedInAt?: string
+  relayOidcAccessStatus?: string
+  relayOidcAccessReason?: string
+  relayOidcReportedAt?: string
 }
 
 export type RemoteTransportState = 'disconnected' | 'relay_only' | 'lan_preferred'

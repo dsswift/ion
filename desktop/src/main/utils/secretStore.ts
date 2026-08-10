@@ -312,7 +312,7 @@ const SENSITIVE_TOP_FIELDS = ['relayApiKey'] as const
 
 // SENSITIVE_DEVICE_FIELDS lists fields on each entry of pairedDevices[] that
 // must be encrypted on disk.
-const SENSITIVE_DEVICE_FIELDS = ['sharedSecret'] as const
+const SENSITIVE_DEVICE_FIELDS = ['sharedSecret', 'relayOidcSubject'] as const
 
 /** Returns true when `value` carries any encryption prefix. */
 function isEncrypted(value: string): boolean {
