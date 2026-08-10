@@ -21,6 +21,7 @@ extension SessionViewModel {
         case .transportReconnecting:
             if connectionState == .connected {
                 connectionState = .reconnecting
+                markActiveDesktopTransientlyDisconnected(source: "transport_reconnecting")
             }
             connectionQuality.transportState = transport?.state ?? .disconnected
 
@@ -40,9 +41,11 @@ extension SessionViewModel {
             // startRelayStateObservation re-sends sync when the peer returns.
             if connectionState == .connected || connectionState == .connecting {
                 connectionState = .reconnecting
+                markActiveDesktopTransientlyDisconnected(source: "peer_disconnected")
                 startReconnectSafetyTimer()
             }
             connectionQuality.transportState = transport?.state ?? .disconnected
+            lockDeferredRelayMismatchIfNeeded()
 
         case .lanAuthRejected:
             handleLANAuthRejected()

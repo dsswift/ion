@@ -48,7 +48,7 @@ final class SessionViewModelLanAuthRejectedTests: XCTestCase {
         )
     }
 
-    func testLanAuthRejectedSetsAuthFailedAndKeepsPairings() {
+    func testLanAuthRejectedLocksActivePairingAndKeepsPairings() {
         let vm = SessionViewModel()
         let device = makeDevice(id: "device-rejected-test")
         let bystander = makeDevice(id: "device-bystander")
@@ -61,10 +61,13 @@ final class SessionViewModelLanAuthRejectedTests: XCTestCase {
 
         vm.handleEvent(.lanAuthRejected)
 
-        XCTAssertEqual(vm.connectionState, .authFailed,
-            "A definitive identity rejection must route to the pairing screen via .authFailed — on the unfixed code the app sat on reconnecting forever")
+        XCTAssertEqual(vm.activeDesktopAccess.status, .rejected)
+        XCTAssertEqual(vm.activeDesktopAccess.reason, .pairingRejected,
+            "A definitive identity rejection must lock this pairing without treating transport state as authorization")
+        XCTAssertFalse(vm.mayViewActiveDesktopData,
+            "Cached desktop data must be hidden until this pairing authenticates again")
         XCTAssertEqual(vm.pairedDevices.map(\.id), [device.id, bystander.id],
-            ".authFailed must never wipe pairedDevices — that is the pairing-wipe incident")
+            "A rejected pairing must remain available for repair, switch, or unpair")
         XCTAssertNil(vm.transport,
             "Transport must be torn down so nothing keeps retrying the dead identity")
         XCTAssertNil(vm.reconnectSafetyTask,

@@ -57,7 +57,9 @@ extension SessionViewModel {
             "reason": activeDevice?.name ?? "unknown"
         ])
         cancelReconnectSafetyTimer()
-        connectionState = .authFailed
+        if let device = activeDevice {
+            lockDesktop(deviceId: device.id, status: .rejected, reason: .pairingRejected, source: "lan_auth_rejected")
+        }
         // Stop the transport: the auto-reconnect loop already latched its
         // rejected flag (no more LAN attempts), and a dead identity has
         // nothing to keep alive on the relay side either.

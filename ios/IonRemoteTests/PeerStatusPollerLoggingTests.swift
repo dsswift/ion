@@ -15,7 +15,7 @@ final class PeerStatusPollerLoggingTests: XCTestCase {
         // Empty relay URL -> the guard fires before any network call.
         let result = await PeerStatusPoller.checkDesktopOnline(
             relayURL: "",
-            apiKey: "key",
+            bearer: "key",
             channelId: "chan-abc"
         )
         XCTAssertNil(result, "empty relay URL must return nil")
@@ -24,5 +24,43 @@ final class PeerStatusPollerLoggingTests: XCTestCase {
             entry.tag == "transport.peerstatus" && entry.level == .warn
         }
         XCTAssertTrue(logged, "invalid relay URL must produce a transport.peerstatus warning, not a silent nil")
+    }
+
+    /// An OIDC pairing with no silently-obtainable token must be reported as
+    /// unknown, not polled with whatever stale key happens to be stored.
+    ///
+    /// Before this, every pairing was polled with `device.relayAPIKey`; in OIDC
+    /// mode that holds a stale desktop-minted bootstrap token (often empty), so
+    /// the relay answered 401/403 and the desktop was rendered offline.
+    func testNilBearerSkipsRequestAndWarns() async {
+        DiagnosticLog.clear()
+
+        let result = await PeerStatusPoller.checkDesktopOnline(
+            relayURL: "wss://relay.example.com",
+            bearer: nil,
+            channelId: "chan-oidc"
+        )
+        XCTAssertNil(result, "no credential means unknown status, never a guessed answer")
+
+        let logged = DiagnosticLog.entries().contains { entry in
+            entry.tag == "transport.peerstatus" && entry.level == .warn
+        }
+        XCTAssertTrue(logged, "skipping the poll for lack of a credential must be observable")
+    }
+
+    func testEmptyBearerIsTreatedAsMissing() async {
+        DiagnosticLog.clear()
+
+        let result = await PeerStatusPoller.checkDesktopOnline(
+            relayURL: "wss://relay.example.com",
+            bearer: "",
+            channelId: "chan-empty"
+        )
+        XCTAssertNil(result)
+
+        let logged = DiagnosticLog.entries().contains { entry in
+            entry.tag == "transport.peerstatus" && entry.level == .warn
+        }
+        XCTAssertTrue(logged)
     }
 }

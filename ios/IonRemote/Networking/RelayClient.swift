@@ -26,6 +26,7 @@ final class RelayClient {
     private let apnsToken: String?
     private let getCredential: (() async throws -> String)?
     private let onTokenRejected: (() -> Void)?
+    private let onIdentityMismatch: (() -> Void)?
 
     // MARK: - Internals
 
@@ -58,13 +59,15 @@ final class RelayClient {
 
     init(relayURL: URL, apiKey: String, channelId: String, apnsToken: String? = nil,
          getCredential: (() async throws -> String)? = nil,
-         onTokenRejected: (() -> Void)? = nil) {
+         onTokenRejected: (() -> Void)? = nil,
+         onIdentityMismatch: (() -> Void)? = nil) {
         self.relayURL = relayURL
         self.apiKey = apiKey
         self.channelId = channelId
         self.apnsToken = apnsToken
         self.getCredential = getCredential
         self.onTokenRejected = onTokenRejected
+        self.onIdentityMismatch = onIdentityMismatch
 
         var continuation: AsyncStream<Data>.Continuation!
         self.messages = AsyncStream { continuation = $0 }
@@ -268,20 +271,36 @@ final class RelayClient {
                 // refresh token is gone. A fresh relay_config pushed by the
                 // desktop is still honored, but iOS no longer depends on it to
                 // recover.
+                //
+                // HTTP 403 is the exception and is handled separately below: it
+                // means the channel is owned by a different OIDC subject, which
+                // no refresh can fix.
                 let rawCloseCode = wsTask.closeCode.rawValue
                 let httpStatus = (wsTask.response as? HTTPURLResponse)?.statusCode
-                let rejected = RelayRejection.isCredentialRejection(
+                let rejection = RelayRejection.classify(
                     closeCode: rawCloseCode > 0 ? rawCloseCode : nil,
                     httpStatus: httpStatus
                 )
-                if rejected {
-                    onTokenRejected?()
+                switch rejection {
+                case .identityMismatch:
+                    // Terminal for this pairing. Reconnecting would present the
+                    // same subject and be refused identically, so stop the
+                    // ladder and let the user pick the right account.
+                    self.intentionallyClosed = true
+                    self.onIdentityMismatch?()
+                    DiagnosticLog.log("relay refused credential: channel owned by another identity, not retrying", tag: "relay.client", level: .error, fields: [
+                        "close_code": rawCloseCode > 0 ? String(rawCloseCode) : "none",
+                        "http_status": httpStatus.map(String.init) ?? "none",
+                        "error": error.localizedDescription
+                    ])
+                case .expiredCredential:
+                    self.onTokenRejected?()
                     DiagnosticLog.log("relay rejected credential, invalidating token", tag: "relay.client", level: .warn, fields: [
                         "close_code": rawCloseCode > 0 ? String(rawCloseCode) : "none",
                         "http_status": httpStatus.map(String.init) ?? "none",
                         "error": error.localizedDescription
                     ])
-                } else {
+                case .none:
                     DiagnosticLog.log("relay websocket receive failed", tag: "relay.client", level: .warn, fields: [
                         "error": error.localizedDescription,
                         "close_code": rawCloseCode > 0 ? String(rawCloseCode) : "none",

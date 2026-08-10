@@ -462,6 +462,19 @@ extension RemoteCommand {
             }
             try container.encode(interceptEnabled, forKey: .interceptEnabled)
 
+        case .reportMobileAuth(let accountUsername, let accountName, let subject, let tenantId, let signedInAt, let clearIdentity, let accessStatus, let accessReason, let reportedAt):
+            try container.encode(TypeKey.reportMobileAuth, forKey: .type)
+            try container.encodeIfPresent(accountUsername, forKey: .accountUsername)
+            try container.encodeIfPresent(accountName, forKey: .accountName)
+            try container.encodeIfPresent(subject, forKey: .subject)
+            try container.encodeIfPresent(tenantId, forKey: .tenantId)
+            try container.encodeIfPresent(signedInAt?.ISO8601Format(), forKey: .signedInAt)
+            if clearIdentity { try container.encode(true, forKey: .clearIdentity)
+            }
+            try container.encodeIfPresent(accessStatus, forKey: .accessStatus)
+            try container.encodeIfPresent(accessReason, forKey: .accessReason)
+            try container.encodeIfPresent(reportedAt?.ISO8601Format(), forKey: .reportedAt)
+
         case .requestResourceContent(let kind, let resourceId):
             // iOS → desktop: fetch the full content for a single resource item.
             // Desktop reads both fields, queries the renderer store, and replies

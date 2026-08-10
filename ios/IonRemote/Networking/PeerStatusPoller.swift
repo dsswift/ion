@@ -7,11 +7,24 @@ enum PeerStatusPoller {
 
     /// Check whether the desktop ("ion" role) is connected on a channel.
     /// Returns `true` if connected, `false` if not, `nil` on error.
+    ///
+    /// `bearer` is nil when the caller could not resolve a credential for this
+    /// pairing without user interaction (an OIDC pairing with no cached or
+    /// refreshable token). In that case the poll is skipped entirely and status
+    /// is reported unknown: issuing the request with a credential known to be
+    /// wrong would return 401/403 and be indistinguishable from "the desktop is
+    /// offline", which is a worse answer than no answer.
     static func checkDesktopOnline(
         relayURL: String,
-        apiKey: String,
+        bearer: String?,
         channelId: String
     ) async -> Bool? {
+        guard let bearer, !bearer.isEmpty else {
+            DiagnosticLog.log("peer status poll: no credential for pairing, skipping", tag: "transport.peerstatus", level: .warn, fields: [
+                "channel_id": channelId,
+            ])
+            return nil
+        }
         guard !relayURL.isEmpty,
               let base = URL(string: relayURL) else {
             DiagnosticLog.log("peer status poll: invalid or empty relay URL", tag: "transport.peerstatus", level: .warn, fields: [
@@ -42,7 +55,7 @@ enum PeerStatusPoller {
         }
 
         var request = URLRequest(url: url)
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 5
 
         do {

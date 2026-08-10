@@ -38,6 +38,37 @@ struct PairedDevice: Codable, Identifiable, Sendable {
     /// pre-Phase-2 OIDC devices that pre-date autonomous acquisition.
     var relayOidcClientId: String?
 
+    // MARK: - Per-pairing OIDC account (display only)
+
+    // Which identity this pairing's tokens belong to, so a phone paired with
+    // desktops in different tenants can show the user which account each
+    // desktop is bound to and explain a relay refusal.
+    //
+    // Captured on THIS device from the `id_token` in the token-endpoint
+    // response; never sent to the desktop and never read by the relay. These
+    // are display values only — see `OIDCAccountIdentity`, which documents why
+    // parsing without signature verification is safe here. All optional, so
+    // existing Keychain blobs written before these fields existed still decode.
+
+    /// UPN / email of the signed-in account (`preferred_username` / `upn` / `email`).
+    var relayOidcAccountUsername: String?
+    /// Display name of the signed-in account (`name`).
+    var relayOidcAccountName: String?
+    /// Stable subject identifier (`oid` / `sub`) — what the relay binds a channel to.
+    var relayOidcSubject: String?
+    /// Tenant identifier (`tid`), distinguishing a work tenant from a personal one.
+    var relayOidcTenantId: String?
+    /// When this account was captured on this device.
+    var relayOidcSignedInAt: Date?
+
+    /// Per-pairing authority to render desktop-owned cached data. Optional so
+    /// Keychain blobs written before ADR-026 decode unchanged.
+    var desktopAccess: DesktopAccessRecord?
+
+    /// Last account whose credential was explicitly removed during a cancelled
+    /// account switch. Displayed as historical context, never as signed-in state.
+    var relayOidcPreviousAccount: String?
+
     /// User-supplied override for the desktop's display name. Empty/whitespace
     /// is treated as "no override" and the original `name` (host name) is used.
     var customName: String?
@@ -52,6 +83,31 @@ struct PairedDevice: Codable, Identifiable, Sendable {
     var remoteDisplayUpdatedAt: Date?
 
     // MARK: - Display helpers
+
+    /// Whether this pairing authenticates to its relay with OIDC tokens minted
+    /// on the phone (as opposed to a pre-shared key or a LAN-direct pairing).
+    var usesOIDC: Bool {
+        relayAuthMode == "oidc"
+            && !(relayOidcClientId ?? "").isEmpty
+            && !(relayOidcIssuer ?? "").isEmpty
+    }
+
+    /// Best available label for the bound account, or nil when no identity has
+    /// been captured yet for this pairing.
+    var oidcAccountLabel: String? {
+        if let username = relayOidcAccountUsername, !username.isEmpty { return username }
+        if let name = relayOidcAccountName, !name.isEmpty { return name }
+        return nil
+    }
+
+    /// Host of the OIDC issuer, for a compact "which directory" hint.
+    var oidcIssuerHost: String? {
+        guard let issuer = relayOidcIssuer, !issuer.isEmpty,
+              let host = URL(string: issuer)?.host(percentEncoded: false) else {
+            return nil
+        }
+        return host
+    }
 
     /// Resolved display name: the user override if set + non-blank, else
     /// the original host name discovered during pairing.

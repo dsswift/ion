@@ -87,3 +87,5 @@ The engine is also UI-agnostic. It emits typed data events over the socket. It h
 | [ADR-023](adr/023-root-session-park-and-wake.md) | Accepted | Background bash completion is session-scoped outstanding work; the root parks at the turn boundary and is woken per completion. |
 | [ADR-024](adr/024-integration-workspace.md) | Accepted | The integration bench is a pure function of (source tip, ordered pinned members). Integration is manual, staleness is advisory, and landing absorbs a member into the base. |
 | [ADR-025](adr/025-client-tool-gate.md) | Accepted | A session's owning client can refuse tool calls and provide its own tools over the wire; the engine owns the blocking mechanism and no policy. |
+| [ADR-026](adr/026-authenticated-client-data-access.md) | Accepted | Cached desktop data is visible only while a pairing retains authenticated authority; transport loss and explicit authorization failure are separate states. |
+| [ADR-027](adr/027-contextual-per-pairing-authentication.md) | Accepted | Interactive OIDC is pairing-contextual and user-initiated; desktop displays last-reported mobile identity without treating it as authority. |

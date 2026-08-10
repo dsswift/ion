@@ -10,6 +10,13 @@ enum OIDCTokenError: Error, LocalizedError {
     case tokenEndpointFailed(String)
     case discoveryFailed(String)
     case missingTokenInResponse
+    case randomGenerationFailed
+    case callbackStateMismatch
+    /// Token endpoint rejected the durable authorization grant. Retrying the
+    /// same refresh token cannot succeed; caller must request interaction.
+    case refreshGrantRejected(String)
+    /// show Ion's contextual preflight before it invokes interactive PKCE.
+    case interactionRequired
 
     var errorDescription: String? {
         switch self {
@@ -18,6 +25,10 @@ enum OIDCTokenError: Error, LocalizedError {
         case .tokenEndpointFailed(let m): return "Token endpoint failed: \(m)"
         case .discoveryFailed(let m):    return "OIDC discovery failed: \(m)"
         case .missingTokenInResponse:    return "Token endpoint response missing access_token"
+        case .randomGenerationFailed:    return "Could not generate secure PKCE verifier"
+        case .callbackStateMismatch:     return "Authorization callback did not match request"
+        case .refreshGrantRejected(let m): return "Refresh token was rejected: \(m)"
+        case .interactionRequired:       return "Interactive sign-in is required"
         }
     }
 }
@@ -37,21 +48,48 @@ struct OIDCTokenResult {
 /// Three-tier: in-memory cache -> silent refresh (Keychain refresh token) ->
 /// interactive PKCE (ASWebAuthenticationSession). Called by RelayClient when
 /// a bearer token is needed for the relay WebSocket connection.
+///
+/// **One instance per pairing.** A phone paired with desktops in different
+/// identity tenants holds one manager per desktop, each with its own issuer,
+/// client ID, scope, cached token, and Keychain refresh token.
+/// `OIDCTokenManagerRegistry` owns their lifetimes; nothing else constructs
+/// them in production code.
 actor OIDCTokenManager {
 
-    // Configuration is nonisolated-readable (immutable lets on an actor are
-    // cross-actor accessible for Sendable types). SessionViewModel compares
-    // these against an incoming relay_config to decide whether the existing
-    // manager can be kept — replacing the manager discards the single-flight
-    // guard and the post-cancel cooldown, which re-opens the "stacked sign-in
-    // sheets" defect.
-    let clientId: String
-    let issuer: String
-    let scope: String
-    let deviceId: String
+    // Configuration is nonisolated-readable so it can be compared without an
+    // await. OIDCTokenManagerRegistry compares these against a pairing's stored
+    // config to decide whether this instance can be kept — replacing the manager
+    // discards the single-flight guard and the post-cancel cooldown, which
+    // re-opens the "stacked sign-in sheets" defect.
+    //
+    // `nonisolated` is explicit rather than inferred: an actor's immutable
+    // properties are only implicitly cross-actor readable within the defining
+    // module (SE-0327), and the test target reaches them through
+    // `@testable import`.
+    nonisolated let clientId: String
+    nonisolated let issuer: String
+    nonisolated let scope: String
+    nonisolated let deviceId: String
 
-    /// Composed Keychain service key for the refresh token.
-    private var keychainKey: String { "com.ion.oidc.refresh.\(deviceId)" }
+    /// Composed Keychain service key for this pairing's refresh token.
+    ///
+    /// `static` because `parseTokenResponse` is `nonisolated` and needs the same
+    /// composition: one definition, so a future rename cannot drift between the
+    /// write path, the read path, and the registry's delete path.
+    nonisolated static func refreshKey(deviceId: String) -> String {
+        "com.ion.oidc.refresh.\(deviceId)"
+    }
+
+    /// This pairing's Keychain service key.
+    private var keychainKey: String { Self.refreshKey(deviceId: deviceId) }
+
+    /// Account behind the most recently parsed token response, for display.
+    /// Nil until a token has been acquired in this process.
+    private var accountIdentity: OIDCAccountIdentity?
+
+    /// Fired whenever a token response yields an account identity, so the
+    /// session layer can persist it onto the matching `PairedDevice`.
+    private let onIdentity: (@Sendable (String, OIDCAccountIdentity) -> Void)?
 
     /// Cached access token and its expiry. Nil when not yet acquired or invalidated.
     private var cachedToken: String?
@@ -83,105 +121,178 @@ actor OIDCTokenManager {
     /// Minimum seconds before expiry to consider token still valid (2 minutes).
     private static let expiryLeadSeconds: TimeInterval = 120
 
-    init(clientId: String, issuer: String, scope: String, deviceId: String) {
+    init(
+        clientId: String,
+        issuer: String,
+        scope: String,
+        deviceId: String,
+        onIdentity: (@Sendable (String, OIDCAccountIdentity) -> Void)? = nil
+    ) {
         self.clientId = clientId
         self.issuer = issuer
         self.scope = scope
         self.deviceId = deviceId
+        self.onIdentity = onIdentity
+    }
+
+    /// Test-only initializer that seeds the in-memory token cache.
+    ///
+    /// Tiers 2 and 3 both require network I/O — silent refresh hits the token
+    /// endpoint and interactive sign-in needs a live `ASWebAuthenticationSession`
+    /// presentation context that XCTest cannot provide. Seeding tier 1 directly
+    /// is what makes cache-hit, expiry-window, and invalidation behaviour
+    /// testable without either.
+    init(
+        clientId: String,
+        issuer: String,
+        scope: String,
+        deviceId: String,
+        seedToken: String,
+        seedExpiry: Date,
+        onIdentity: (@Sendable (String, OIDCAccountIdentity) -> Void)? = nil
+    ) {
+        self.clientId = clientId
+        self.issuer = issuer
+        self.scope = scope
+        self.deviceId = deviceId
+        self.onIdentity = onIdentity
+        self.cachedToken = seedToken
+        self.cachedExpiry = seedExpiry
     }
 
     // MARK: - Public API
 
-    /// Returns a valid access token. Three-tier: cache -> silent refresh -> interactive.
-    /// Throws OIDCTokenError on unrecoverable failure.
-    ///
-    /// Single-flight: when an acquisition is already running (e.g. the user
-    /// is mid-sign-in in the browser sheet), concurrent callers await that
-    /// same acquisition instead of starting a parallel one. This is what
-    /// prevents the reconnect/backoff loop from stacking repeated sign-in
-    /// prompts on top of an in-progress flow.
+    /// Returns a valid token without launching browser UI. Automatic connection
+    /// may refresh silently, but interaction belongs to the app-owned contextual
+    /// recovery screen (ADR-027).
     func accessToken() async throws -> String {
-        // Tier 1: cache hit — fast path, no single-flight needed.
         if let token = cachedToken, let expiry = cachedExpiry,
            expiry.timeIntervalSinceNow > Self.expiryLeadSeconds {
-            DiagnosticLog.log("oidc: returning cached token", tag: "oidc.token", fields: [
+            return token
+        }
+        guard let refreshToken = KeychainHelper.get(keychainKey) else {
+            throw OIDCTokenError.interactionRequired
+        }
+        do {
+            let endpoints = try await discoverEndpoints()
+            let result = try await silentRefresh(refreshToken: refreshToken, tokenEndpoint: endpoints.tokenEndpoint)
+            cachedToken = result.accessToken
+            cachedExpiry = result.expiry
+            return result.accessToken
+        } catch OIDCTokenError.refreshGrantRejected {
+            // Durable grant is spent/revoked. Delete exactly this pairing's
+            // credential and route user through contextual interaction.
+            KeychainHelper.delete(keychainKey)
+            throw OIDCTokenError.interactionRequired
+        } catch {
+            // Discovery/network/5xx failures are transient. RelayClient keeps its
+            // backoff path and cached data stays visible rather than locking.
+            throw error
+        }
+    }
+
+    /// A valid access token if one can be produced **without showing UI**, else nil.
+    ///
+    /// Tier 1 (cache) then tier 2 (silent refresh) only — tier 3 is never
+    /// reached. Background and inactive-pairing work (polling an inactive
+    /// desktop's online status) uses this: those paths run without the user
+    /// having asked for anything, and throwing a browser sign-in sheet at them
+    /// is the exact behaviour the post-cancel cooldown exists to prevent. A nil
+    /// return means "no silent credential available", and the caller degrades.
+    func accessTokenIfAvailable() async -> String? {
+        if let token = cachedToken, let expiry = cachedExpiry,
+           expiry.timeIntervalSinceNow > Self.expiryLeadSeconds {
+            DiagnosticLog.log("oidc: silent request served from cache", tag: "oidc.token", fields: [
+                "device": String(deviceId.prefix(8)),
                 "expires_in_s": String(Int(expiry.timeIntervalSinceNow))
             ])
             return token
         }
 
-        // Join an in-flight acquisition rather than starting a second one.
-        if let inFlight = inFlightAcquisition {
-            DiagnosticLog.log("oidc: joining in-flight token acquisition", tag: "oidc.token")
-            return try await inFlight.value
-        }
-
-        let task = Task<String, Error> { try await self.acquireToken() }
-        inFlightAcquisition = task
-        defer { inFlightAcquisition = nil }
-        return try await task.value
-    }
-
-    /// The actual tier 2 (silent refresh) / tier 3 (interactive) acquisition.
-    /// Runs at most once concurrently — guarded by inFlightAcquisition.
-    private func acquireToken() async throws -> String {
-        // Tier 2: silent refresh
-        if let refreshToken = KeychainHelper.get(keychainKey) {
-            DiagnosticLog.log("oidc: attempting silent refresh", tag: "oidc.token")
-            do {
-                let endpoints = try await discoverEndpoints()
-                let result = try await silentRefresh(refreshToken: refreshToken, tokenEndpoint: endpoints.tokenEndpoint)
-                cachedToken = result.accessToken
-                cachedExpiry = result.expiry
-                DiagnosticLog.log("oidc: silent refresh succeeded", tag: "oidc.token", fields: [
-                    "expires_in_s": String(Int(result.expiry.timeIntervalSinceNow))
-                ])
-                return result.accessToken
-            } catch {
-                DiagnosticLog.log("oidc: silent refresh failed, escalating to interactive", tag: "oidc.token", level: .warn, fields: [
-                    "error": error.localizedDescription
-                ])
-                // Clear stale refresh token if it caused auth failure
-                if case OIDCTokenError.tokenEndpointFailed = error {
-                    KeychainHelper.delete(keychainKey)
-                }
-            }
-        }
-
-        // Tier 3: interactive PKCE
-        // Respect the post-cancel cooldown: if the user just dismissed the
-        // sheet, don't shove it back in their face on the next reconnect tick.
-        if Date() < interactiveCooldownUntil {
-            DiagnosticLog.log("oidc: interactive sign-in suppressed (user-cancel cooldown)", tag: "oidc.token", fields: [
-                "cooldown_remaining_s": String(Int(interactiveCooldownUntil.timeIntervalSinceNow))
+        guard let refreshToken = KeychainHelper.get(keychainKey) else {
+            DiagnosticLog.log("oidc: no silent credential available (no refresh token)", tag: "oidc.token", fields: [
+                "device": String(deviceId.prefix(8))
             ])
-            throw OIDCTokenError.interactiveCancelled
+            return nil
         }
-        DiagnosticLog.log("oidc: launching interactive sign-in", tag: "oidc.token", level: .warn)
-        let endpoints = try await discoverEndpoints()
+
         do {
-            let result = try await interactiveSignIn(authEndpoint: endpoints.authorizationEndpoint, tokenEndpoint: endpoints.tokenEndpoint)
+            let endpoints = try await discoverEndpoints()
+            let result = try await silentRefresh(refreshToken: refreshToken, tokenEndpoint: endpoints.tokenEndpoint)
             cachedToken = result.accessToken
             cachedExpiry = result.expiry
-            DiagnosticLog.log("oidc: interactive sign-in succeeded", tag: "oidc.token", fields: [
+            DiagnosticLog.log("oidc: silent request refreshed token", tag: "oidc.token", fields: [
+                "device": String(deviceId.prefix(8)),
+                "expires_in_s": String(Int(result.expiry.timeIntervalSinceNow))
+            ])
+            return result.accessToken
+        } catch {
+            // Not escalated to interactive by design; the caller asked for a
+            // silent token and gets nothing rather than a sign-in sheet.
+            DiagnosticLog.log("oidc: silent request failed, not escalating", tag: "oidc.token", level: .warn, fields: [
+                "device": String(deviceId.prefix(8)),
+                "error": error.localizedDescription
+            ])
+            return nil
+        }
+    }
+
+    /// Discard all credential state for this pairing and sign in interactively.
+    ///
+    /// Backs the user-initiated "Switch Account" action, which is the only way
+    /// out of a relay subject mismatch: the relay bound this channel to a
+    /// different identity, and no amount of refreshing changes which account the
+    /// stored refresh token represents. The Keychain token is deleted and the
+    /// post-cancel cooldown is cleared, because the user just explicitly asked
+    /// for the sheet the cooldown normally suppresses.
+    func forceInteractiveReauth() async throws -> String {
+        DiagnosticLog.log("oidc: forced interactive re-auth requested", tag: "oidc.token", level: .warn, fields: [
+            "device": String(deviceId.prefix(8)),
+            "issuer": issuer
+        ])
+        cachedToken = nil
+        cachedExpiry = nil
+        accountIdentity = nil
+        KeychainHelper.delete(keychainKey)
+        interactiveCooldownUntil = .distantPast
+
+        let endpoints = try await discoverEndpoints()
+        do {
+            let result = try await interactiveSignIn(
+                authEndpoint: endpoints.authorizationEndpoint,
+                tokenEndpoint: endpoints.tokenEndpoint
+            )
+            cachedToken = result.accessToken
+            cachedExpiry = result.expiry
+            DiagnosticLog.log("oidc: forced re-auth succeeded", tag: "oidc.token", fields: [
+                "device": String(deviceId.prefix(8)),
                 "expires_in_s": String(Int(result.expiry.timeIntervalSinceNow))
             ])
             return result.accessToken
         } catch OIDCTokenError.interactiveCancelled {
-            // User explicitly dismissed the sheet — back off before asking again.
+            // The user opened the picker and backed out. Re-arm the cooldown so
+            // an automatic reconnect does not immediately re-present the sheet.
             interactiveCooldownUntil = Date().addingTimeInterval(Self.interactiveCancelCooldownSeconds)
-            DiagnosticLog.log("oidc: user cancelled sign-in, cooldown started", tag: "oidc.token", fields: [
+            DiagnosticLog.log("oidc: forced re-auth cancelled by user", tag: "oidc.token", level: .warn, fields: [
+                "device": String(deviceId.prefix(8)),
                 "cooldown_s": String(Int(Self.interactiveCancelCooldownSeconds))
             ])
             throw OIDCTokenError.interactiveCancelled
         }
     }
 
+    /// The account behind the current tokens, when one has been parsed.
+    func currentIdentity() -> OIDCAccountIdentity? {
+        accountIdentity
+    }
+
     /// Invalidates the in-memory cached token. Called by RelayClient on 4401.
     /// The next accessToken() call will attempt silent refresh before falling
     /// back to interactive.
     func invalidateAccessToken() {
-        DiagnosticLog.log("oidc: access token invalidated (4401 received)", tag: "oidc.token")
+        DiagnosticLog.log("oidc: access token invalidated (4401 received)", tag: "oidc.token", fields: [
+            "device": String(deviceId.prefix(8))
+        ])
         cachedToken = nil
         cachedExpiry = nil
     }
@@ -232,117 +343,25 @@ actor OIDCTokenManager {
         }
         guard http.statusCode == 200 else {
             let body = String(data: data, encoding: .utf8) ?? "unknown"
+            // 400/401 indicate a rejected OAuth grant. 5xx is the provider
+            // failing, not proof the locally stored grant is invalid.
+            if http.statusCode == 400 || http.statusCode == 401 {
+                throw OIDCTokenError.refreshGrantRejected("HTTP \(http.statusCode): \(body.prefix(200))")
+            }
             throw OIDCTokenError.tokenEndpointFailed("HTTP \(http.statusCode): \(body.prefix(200))")
         }
         return try parseTokenResponse(data: data)
     }
 
-    // MARK: - Interactive PKCE
-
-    @MainActor
-    private func interactiveSignIn(authEndpoint: URL, tokenEndpoint: URL) async throws -> OIDCTokenResult {
-        // Generate PKCE code verifier (43 random URL-safe base64 chars)
-        var verifierBytes = [UInt8](repeating: 0, count: 32)
-        _ = SecRandomCopyBytes(kSecRandomDefault, verifierBytes.count, &verifierBytes)
-        let codeVerifier = Data(verifierBytes).base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
-
-        // Code challenge = BASE64URL(SHA256(verifier))
-        let challengeData = SHA256.hash(data: Data(codeVerifier.utf8))
-        let codeChallenge = Data(challengeData).base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
-
-        let state = UUID().uuidString
-        let redirectURI = "ionremote://auth"
-        let fullScope = "openid offline_access \(scope)"
-
-        guard var components = URLComponents(url: authEndpoint, resolvingAgainstBaseURL: false) else {
-            // authEndpoint originates from discovery (wire-derived); a value that
-            // cannot be parsed into components must throw, not crash.
-            throw OIDCTokenError.discoveryFailed("malformed authorization endpoint")
-        }
-        components.queryItems = [
-            URLQueryItem(name: "response_type", value: "code"),
-            URLQueryItem(name: "client_id", value: clientId),
-            URLQueryItem(name: "redirect_uri", value: redirectURI),
-            URLQueryItem(name: "scope", value: fullScope),
-            URLQueryItem(name: "code_challenge", value: codeChallenge),
-            URLQueryItem(name: "code_challenge_method", value: "S256"),
-            URLQueryItem(name: "state", value: state),
-            // Force the account picker. prefersEphemeralWebBrowserSession=false
-            // shares Safari's Entra session for SSO convenience, but silent SSO
-            // picks whichever account Safari holds — often a work account from
-            // a different tenant, which fails with AADSTS50020 ("account does
-            // not exist in tenant"). select_account keeps the SSO cookie (the
-            // right account is one tap, no password) while letting the user
-            // choose when Safari's default account is the wrong one.
-            URLQueryItem(name: "prompt", value: "select_account"),
-        ]
-        guard let authURL = components.url else {
-            throw OIDCTokenError.discoveryFailed("could not build authorization URL")
-        }
-
-        // Run ASWebAuthenticationSession
-        let callbackURL: URL = try await withCheckedThrowingContinuation { continuation in
-            let session = ASWebAuthenticationSession(url: authURL, callbackURLScheme: "ionremote") { url, error in
-                if let error = error {
-                    let asError = error as? ASWebAuthenticationSessionError
-                    if asError?.code == .canceledLogin {
-                        continuation.resume(throwing: OIDCTokenError.interactiveCancelled)
-                    } else {
-                        continuation.resume(throwing: OIDCTokenError.tokenEndpointFailed(error.localizedDescription))
-                    }
-                    return
-                }
-                guard let url else {
-                    continuation.resume(throwing: OIDCTokenError.tokenEndpointFailed("no callback URL"))
-                    return
-                }
-                continuation.resume(returning: url)
-            }
-            session.prefersEphemeralWebBrowserSession = false
-            session.presentationContextProvider = ASWebAuthenticationPresentationContext.shared
-            session.start()
-        }
-
-        // Extract authorization code
-        guard let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
-              let code = components.queryItems?.first(where: { $0.name == "code" })?.value else {
-            throw OIDCTokenError.tokenEndpointFailed("no code in callback URL")
-        }
-
-        // Exchange code for tokens
-        var tokenRequest = URLRequest(url: tokenEndpoint)
-        tokenRequest.httpMethod = "POST"
-        tokenRequest.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        let body = [
-            "grant_type=authorization_code",
-            "client_id=\(clientId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? clientId)",
-            "redirect_uri=\(redirectURI.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? redirectURI)",
-            "code=\(code.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? code)",
-            "code_verifier=\(codeVerifier.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? codeVerifier)",
-        ].joined(separator: "&")
-        tokenRequest.httpBody = body.data(using: .utf8)
-
-        let (data, response) = try await URLSession.shared.data(for: tokenRequest)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            let body = String(data: data, encoding: .utf8) ?? "unknown"
-            throw OIDCTokenError.tokenEndpointFailed("HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1): \(body.prefix(200))")
-        }
-        let result = try parseTokenResponse(data: data)
-        // parseTokenResponse already persisted the refresh token to Keychain
-        // (it is the single persistence point, shared with silentRefresh's
-        // rotation). No second write here.
-        return result
-    }
-
     // MARK: - Token Response Parsing
 
-    nonisolated private func parseTokenResponse(data: Data) throws -> OIDCTokenResult {
+    /// Parse a token-endpoint response, persist the rotated refresh token, and
+    /// capture the account identity when the response carries an `id_token`.
+    ///
+    /// Actor-isolated so identity recording completes before a caller can observe
+    /// a successful token result; no detached task can lose the update during a
+    /// manager replacement.
+    func parseTokenResponse(data: Data) throws -> OIDCTokenResult {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let accessToken = json["access_token"] as? String,
               let refreshToken = json["refresh_token"] as? String else {
@@ -351,22 +370,28 @@ actor OIDCTokenManager {
         let expiresIn = (json["expires_in"] as? TimeInterval) ?? 3600
         let expiry = Date().addingTimeInterval(expiresIn)
         // Persist refresh token (also called from silentRefresh to rotate)
-        KeychainHelper.set(refreshToken, service: "com.ion.oidc.refresh.\(deviceId)")
+        KeychainHelper.set(refreshToken, service: Self.refreshKey(deviceId: deviceId))
+
+        // Capture the signing-in account for display. The scope always requests
+        // `openid`, so Entra returns an id_token; an issuer that omits one just
+        // leaves the pairing without an account label.
+        if let idToken = json["id_token"] as? String,
+           let identity = OIDCAccountIdentity.parse(idToken: idToken) {
+            DiagnosticLog.log("oidc: captured account identity", tag: "oidc.token", fields: [
+                "device": String(deviceId.prefix(8)),
+                "has_username": String(!identity.username.isEmpty),
+                "has_tenant": String(!identity.tenantId.isEmpty)
+            ])
+            onIdentity?(deviceId, identity)
+            accountIdentity = identity
+        } else {
+            DiagnosticLog.log("oidc: token response carried no usable id_token", tag: "oidc.token", fields: [
+                "device": String(deviceId.prefix(8)),
+                "had_id_token": String(json["id_token"] != nil)
+            ])
+        }
+
         return OIDCTokenResult(accessToken: accessToken, refreshToken: refreshToken, expiry: expiry)
     }
-}
 
-// MARK: - ASWebAuthentication Presentation Context
-
-/// Singleton presentation context for ASWebAuthenticationSession.
-/// Provides the key window as the anchor for the authentication web view.
-private final class ASWebAuthenticationPresentationContext: NSObject, ASWebAuthenticationPresentationContextProviding {
-    static let shared = ASWebAuthenticationPresentationContext()
-
-    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap { $0.windows }
-            .first(where: { $0.isKeyWindow }) ?? ASPresentationAnchor()
-    }
 }

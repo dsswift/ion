@@ -22,39 +22,135 @@ extension SessionViewModel {
         return ""
     }
 
-    /// Initializes `oidcTokenManager` from the stored `PairedDevice` fields when
-    /// the device is in OIDC mode and all required fields are present.
+    /// Credential callbacks for this pairing's relay transport, or nil when the
+    /// device is not OIDC-configured (PSK pairings pass their stored key).
     ///
-    /// Called at the top of `connect()` and `softReconnect()` so the credential
-    /// factory is always wired before the first connection attempt — not lazily
-    /// after desktop pushes a fresh relay_config (which requires a successful
-    /// connection first, creating a chicken-and-egg failure on restart).
-    ///
-    /// Idempotent: skips initialization when a manager already exists for the
-    /// same device (avoids discarding a live manager with a cached token on
-    /// every softReconnect).
-    func ensureOIDCTokenManager(for device: PairedDevice) {
-        guard device.relayAuthMode == "oidc",
-              let clientId = device.relayOidcClientId,
-              let issuer = device.relayOidcIssuer,
-              let scope = device.relayOidcRequiredScope,
-              !clientId.isEmpty, !issuer.isEmpty, !scope.isEmpty else {
+    /// The closures capture the **device ID**, never the manager instance, and
+    /// resolve through the registry at call time. That is what pins a live
+    /// transport to its own pairing: a phone paired with a personal desktop and
+    /// a work desktop in different tenants can switch between them without the
+    /// second transport ever resolving the first one's token. Capturing the
+    /// instance instead would freeze whichever manager existed at build time —
+    /// the same class of bug as the old single slot — and would also miss a
+    /// legitimate rebuild triggered by a `relay_config` carrying new OIDC
+    /// metadata.
+    // Not @MainActor: connect() and softReconnect() are synchronous and
+    // nonisolated, and resolving a pairing's credential must not require an
+    // await on the connect path. The registry is thread-safe by construction.
+    func oidcCredentialClosures(for device: PairedDevice) -> (
+        get: @Sendable () async throws -> String,
+        rejected: @Sendable () -> Void,
+        mismatch: @Sendable () -> Void
+    )? {
+        guard oidcRegistry.manager(for: device) != nil else { return nil }
+        let deviceId = device.id
+        let registry: OIDCTokenManagerRegistry = oidcRegistry
+
+        let get: @Sendable () async throws -> String = { [weak self] in
+            // Re-resolve on the MainActor so a `relay_config` that changed this
+            // pairing's OIDC metadata since the transport was built is honored;
+            // fall back to the registry's existing entry when the view model is
+            // gone or the pairing has been removed from the list.
+            let resolved: OIDCTokenManager? = await MainActor.run {
+                guard let self, let device = self.pairedDevices.first(where: { $0.id == deviceId }) else {
+                    return registry.existing(deviceId: deviceId)
+                }
+                return registry.manager(for: device)
+            }
+            guard let manager = resolved else {
+                DiagnosticLog.log("oidc: no manager for device at credential time", tag: "session.relay", level: .error, fields: [
+                    "device": String(deviceId.prefix(8))
+                ])
+                throw OIDCTokenError.managerUnavailable
+            }
+            do {
+                return try await manager.accessToken()
+            } catch OIDCTokenError.interactionRequired {
+                await MainActor.run {
+                    self?.lockDesktop(deviceId: deviceId, reason: .noCredential, source: "silent_oidc_exhausted")
+                }
+                throw OIDCTokenError.interactionRequired
+            }
+        }
+
+        let rejected: @Sendable () -> Void = {
+            guard let manager = registry.existing(deviceId: deviceId) else {
+                DiagnosticLog.log("oidc: token rejected but no manager to invalidate", tag: "session.relay", level: .warn, fields: [
+                    "device": String(deviceId.prefix(8))
+                ])
+                return
+            }
+            Task { await manager.invalidateAccessToken() }
+        }
+
+        let mismatch: @Sendable () -> Void = { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.handleRelayIdentityMismatch(deviceId: deviceId)
+            }
+        }
+
+        return (get, rejected, mismatch)
+    }
+
+    /// Registry lookup for a pairing that is still in `pairedDevices`, so a
+    /// config change picked up since the transport was built is honored.
+    @MainActor
+    func oidcManagerForConnectedDevice(_ deviceId: String) -> OIDCTokenManager? {
+        guard let device = pairedDevices.first(where: { $0.id == deviceId }) else {
+            return oidcRegistry.existing(deviceId: deviceId)
+        }
+        return oidcRegistry.manager(for: device)
+    }
+
+    /// The relay refused this pairing because the channel belongs to a different
+    /// OIDC subject. Recorded so the UI can offer "Switch Account"; the
+    /// transport has already stopped retrying.
+    @MainActor
+    func handleRelayIdentityMismatch(deviceId: String) {
+        let alreadyKnown = relayIdentityMismatch.contains(deviceId)
+        relayIdentityMismatch.insert(deviceId)
+        if deviceId == activeDevice?.id {
+            // A LAN-preferred transport already completed its independent
+            // challenge-response handshake. Relay 403 is actionable metadata,
+            // not authority loss, until that authenticated LAN path disappears.
+            if transport?.state == .lanPreferred {
+                DiagnosticLog.log("relay subject mismatch deferred: authenticated LAN remains active", tag: "session.relay", level: .warn, fields: [
+                    "device": String(deviceId.prefix(8))
+                ])
+            } else {
+                lockDesktop(deviceId: deviceId, status: .rejected, reason: .wrongAccount, source: "relay_subject_mismatch")
+            }
+        }
+        DiagnosticLog.log("relay refused pairing: channel owned by another identity", tag: "session.relay", level: .error, fields: [
+            "device": String(deviceId.prefix(8)),
+            "already_known": String(alreadyKnown),
+            "is_active": String(deviceId == activeDevice?.id)
+        ])
+    }
+
+    /// Persist the account behind a pairing's tokens so Settings can show which
+    /// identity each desktop is bound to. Display-only (see `OIDCAccountIdentity`).
+    @MainActor
+    func applyOIDCIdentity(deviceId: String, identity: OIDCAccountIdentity) {
+        guard let idx = pairedDevices.firstIndex(where: { $0.id == deviceId }) else {
+            DiagnosticLog.log("oidc identity for unknown pairing, discarding", tag: "session.relay", level: .warn, fields: [
+                "device": String(deviceId.prefix(8))
+            ])
             return
         }
-        // Don't replace an existing manager for the same device — it may hold
-        // a valid cached access token or an in-progress refresh.
-        if oidcTokenManager != nil {
-            return
-        }
-        oidcTokenManager = OIDCTokenManager(
-            clientId: clientId,
-            issuer: issuer,
-            scope: scope,
-            deviceId: device.id
-        )
-        DiagnosticLog.log("oidc: token manager initialized from stored device", tag: "session.relay", fields: [
-            "device": String(device.id.prefix(8)),
-            "issuer": issuer
+        pairedDevices[idx].relayOidcAccountUsername = identity.username
+        pairedDevices[idx].relayOidcAccountName = identity.displayName
+        pairedDevices[idx].relayOidcSubject = identity.subject
+        pairedDevices[idx].relayOidcTenantId = identity.tenantId
+        pairedDevices[idx].relayOidcSignedInAt = identity.issuedAt
+        savePairedDevices()
+        // A successful token acquisition proves this account is usable; if the
+        // pairing was flagged after a subject refusal, that flag is now stale.
+        relayIdentityMismatch.remove(deviceId)
+        DiagnosticLog.log("oidc identity persisted for pairing", tag: "session.relay", fields: [
+            "device": String(deviceId.prefix(8)),
+            "has_username": String(!identity.username.isEmpty),
+            "has_tenant": String(!identity.tenantId.isEmpty)
         ])
     }
 
@@ -131,6 +227,13 @@ extension SessionViewModel {
         if !effectiveUrl.isEmpty { self.relayURL = effectiveUrl }
         if !effectiveApiKey.isEmpty { self.relayAPIKey = effectiveApiKey }
 
+        // Captured BEFORE the persist block below overwrites them. `activeDevice`
+        // is computed from `pairedDevices`, so reading these afterwards would
+        // return the values just written and the change comparison would never
+        // fire.
+        let previousIssuer = activeDevice?.relayOidcIssuer
+        let previousClientId = activeDevice?.relayOidcClientId
+
         if let device = activeDevice,
            let idx = pairedDevices.firstIndex(where: { $0.id == device.id }) {
             if !effectiveUrl.isEmpty { pairedDevices[idx].relayURL = effectiveUrl }
@@ -156,40 +259,30 @@ extension SessionViewModel {
             ])
         }
 
-        // Instantiate OIDCTokenManager when fully configured for autonomous acquisition.
-        if let device = pairedDevices.first(where: { $0.id == activeDeviceId }),
-           device.relayAuthMode == "oidc",
-           let clientId = device.relayOidcClientId,
-           let oidcIssuer = device.relayOidcIssuer,
-           let oidcScope = device.relayOidcRequiredScope,
-           !clientId.isEmpty, !oidcIssuer.isEmpty, !oidcScope.isEmpty {
-            // Keep the existing manager when its configuration is unchanged.
-            // Every relay_config push used to replace the manager; each
-            // replacement discarded the in-flight single-flight guard and the
-            // post-cancel cooldown, so a config push landing while the user
-            // was mid-sign-in spawned a SECOND sign-in sheet on top of the
-            // first (and reset the cooldown after a cancel). Desktop pushes
-            // relay_config on peer-connect, settings changes, and every
-            // proactive token refresh — replacement must be config-driven,
-            // not push-driven.
-            if let existing = oidcTokenManager,
-               existing.clientId == clientId,
-               existing.issuer == oidcIssuer,
-               existing.scope == oidcScope,
-               existing.deviceId == device.id {
-                DiagnosticLog.log("oidc: token manager unchanged, keeping existing", tag: "session.relay", fields: [
-                    "device": String(device.id.prefix(8))
-                ])
-            } else {
-                oidcTokenManager = OIDCTokenManager(
-                    clientId: clientId,
-                    issuer: oidcIssuer,
-                    scope: oidcScope,
-                    deviceId: device.id
-                )
-                DiagnosticLog.log("oidc: token manager initialized", tag: "session.relay", fields: [
+        // Resolve this pairing's token manager against the freshly-persisted
+        // config. The registry keeps an existing instance when every field still
+        // matches — preserving its cached token, single-flight guard, and
+        // post-cancel cooldown — and rebuilds only when the tenant, app
+        // registration, or scope actually changed. Desktop pushes relay_config
+        // on peer-connect, settings changes, and every proactive token refresh,
+        // so replacement must be config-driven, not push-driven.
+        //
+        // Indexed via `activeDevice` (not a raw `activeDeviceId` lookup) so this
+        // agrees with the block above: `activeDevice` falls back to the first
+        // pairing when no active ID is set, and the two must not disagree about
+        // which device this config was just written to.
+        if let device = activeDevice {
+            _ = oidcRegistry.manager(for: device)
+            // A changed issuer or client ID means a different tenant or app
+            // registration is now in play, so a prior subject refusal no longer
+            // describes reality. Clear it and let the next attempt be judged on
+            // its own.
+            let identityContextChanged = previousIssuer != relayOidcIssuer || previousClientId != relayOidcClientId
+            if identityContextChanged, relayIdentityMismatch.contains(device.id) {
+                relayIdentityMismatch.remove(device.id)
+                DiagnosticLog.log("relay identity context changed, clearing mismatch flag", tag: "session.relay", fields: [
                     "device": String(device.id.prefix(8)),
-                    "issuer": oidcIssuer
+                    "issuer": relayOidcIssuer ?? ""
                 ])
             }
         }
