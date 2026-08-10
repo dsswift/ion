@@ -35,9 +35,20 @@ export function registerFileDialogIpc(): void {
     const options = {
       defaultPath: extensionsDir,
       properties: ['openFile' as const, 'multiSelections' as const],
+      // Script entry points and native binaries are both loadable extension
+      // entries: the engine transpiles .ts, runs .js/.mjs/.cjs via node, and
+      // executes anything else directly (spawnAndInit in
+      // engine/internal/extension/host_lifecycle.go). Electron's filter model
+      // is extension-based and cannot express "executable bit set", so a
+      // compiled binary like cos2's `main` (no file extension) matches only
+      // the '*' filter — and macOS greys out everything the ACTIVE filter
+      // rejects, defaulting to the first entry. The permissive filter must
+      // therefore come first or native extensions are unselectable until the
+      // user discovers the filter dropdown; the scripts filter remains as an
+      // optional narrowing.
       filters: [
-        { name: 'Extension Entry Points', extensions: ['ts', 'js', 'mjs', 'cjs'] },
-        { name: 'All Files', extensions: ['*'] },
+        { name: 'All Entry Points (scripts and native binaries)', extensions: ['*'] },
+        { name: 'Script Entry Points', extensions: ['ts', 'js', 'mjs', 'cjs'] },
       ],
     }
     const result = process.platform === 'darwin'
