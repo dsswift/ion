@@ -18,10 +18,8 @@ import { useAnchoredPopover } from "../hooks/useAnchoredPopover";
 import { zoomRect, zoomViewport } from "../viewport-zoom";
 import { buildWorktreeMenuItems } from "./WorktreeRowMenu.items";
 import { useWorktreeRowMenuVerbs } from "./useWorktreeRowMenuVerbs";
-import {
-  WorktreeRowMenuDialogs,
-  WorktreeRenameEditor,
-} from "./WorktreeRowMenuDialogs";
+import { WorktreeRowMenuDialogs } from "./WorktreeRowMenuDialogs";
+import { WorktreeRowMenuRename } from "./WorktreeRowMenuRename";
 import { WorktreeRowGoToTabSubmenu } from "./WorktreeRowGoToTabSubmenu";
 import { collectAllDirConversations } from "../../shared/worktree-conversations";
 import { rError, rWarn } from "../rendererLogger";
@@ -284,15 +282,15 @@ export function WorktreeRowMenu({
           }}
         >
           {renaming ? (
-            <WorktreeRenameEditor
+            <WorktreeRowMenuRename
               draftTitle={draftTitle}
-              setDraftTitle={setDraftTitle}
               placeholder={entry.label}
               busy={busy}
-              doRename={doRename}
+              colors={colors}
+              setDraftTitle={setDraftTitle}
               setRenaming={setRenaming}
+              doRename={doRename}
               onClose={onClose}
-              colors={colors as unknown as Record<string, string>}
             />
           ) : (
             items.map((item) => (
