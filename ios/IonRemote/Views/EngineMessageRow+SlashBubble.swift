@@ -167,9 +167,14 @@ extension EngineMessageRow {
                 .accessibilityIdentifier("slash-model-pill")
             }
 
-            // Args text (omitted when command has no arguments)
+            // Args use same verbatim-markdown renderer as plain user bubbles,
+            // preserving multiline invocations instead of reflowing them.
             if !args.isEmpty {
-                Text(args)
+                MarkdownContentView(
+                    blocks: MarkdownFormatter.parse(args, verbatim: true),
+                    blockSpacing: 0,
+                    blankLineHeight: 20
+                )
                     .textSelection(.enabled)
             }
         }

@@ -13,6 +13,8 @@ enum MarkdownBlock: Identifiable {
     case code(language: String?, text: String)
     case blockQuote(text: AttributedString)
     case listItem(ordinal: Int, ordered: Bool, text: AttributedString)
+    /// Source blank lines discarded by CommonMark between root blocks.
+    case blankLines(count: Int)
     case thematicBreak
     case table(
         headers: [AttributedString],
@@ -33,6 +35,8 @@ enum MarkdownBlock: Identifiable {
         case .listItem(let o, let ord, let t):
             let k = "li\(ord ? "o" : "u")\(o)"
             return "\(k)-\(String(t.characters).hashValue)"
+        case .blankLines(let count):
+            return "blank-\(count)"
         case .thematicBreak:
             return "hr-\(Int.random(in: 0...Int.max))"
         case .table(let h, let r, _):
@@ -61,10 +65,19 @@ enum MarkdownFormatter {
 
     // MARK: - Rich block API (full-screen viewer)
 
-    static func parse(_ markdown: String) -> [MarkdownBlock] {
+    /// Parse markdown into renderable blocks.
+    ///
+    /// `verbatim` selects USER-message semantics: soft breaks stay newlines,
+    /// continuation-line indentation is restored from the source, and an
+    /// indented (non-fenced) code run is re-emitted as a plain paragraph rather
+    /// than a code card. See `VerbatimContext` for why each is needed. The
+    /// default (`false`) is the assistant/prose reading, where CommonMark's
+    /// collapse of a soft break to a space is correct — that path is unchanged.
+    static func parse(_ markdown: String, verbatim: Bool = false) -> [MarkdownBlock] {
         let inputLen = markdown.count
         DiagnosticLog.trace("markdown parse", tag: "markdown.parse", fields: [
-            "count": String(inputLen)
+            "count": String(inputLen),
+            "verbatim": String(verbatim)
         ])
 
         // Empty / whitespace input: return a single empty paragraph. This
@@ -83,6 +96,10 @@ enum MarkdownFormatter {
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
 
+        // Built from the NORMALIZED source so line indices agree with the
+        // positions swift-markdown reports.
+        let context = verbatim ? VerbatimContext(source: normalized) : nil
+
         // The Document(parsing:) initializer itself does not throw — it
         // always returns *some* Document, however degenerate. The do/try
         // here is defensive: if a future swift-markdown release changes
@@ -91,7 +108,7 @@ enum MarkdownFormatter {
         let blocks: [MarkdownBlock]
         do {
             let document = Markdown.Document(parsing: normalized)
-            blocks = try walkDocument(document, raw: normalized)
+            blocks = try walkDocument(document, raw: normalized, verbatim: context)
         } catch {
             DiagnosticLog.log("markdown parse walker failed", tag: "markdown.parse", level: .warn, fields: [
                 "error": String(describing: error)
@@ -141,6 +158,8 @@ enum MarkdownFormatter {
             case .listItem(let o, let ord, let t):
                 result.append(AttributedString(ord ? "\(o). " : "• "))
                 result.append(t)
+            case .blankLines(let count):
+                result.append(AttributedString(String(repeating: "\n", count: count)))
             case .thematicBreak:
                 var hr = AttributedString("───")
                 hr.foregroundColor = .secondary
@@ -168,11 +187,19 @@ enum MarkdownFormatter {
     /// extensions throw without restructuring `parse(_:)`.
     private static func walkDocument(
         _ document: Markdown.Document,
-        raw: String
+        raw: String,
+        verbatim: VerbatimContext?
     ) throws -> [MarkdownBlock] {
         var out: [MarkdownBlock] = []
-        for child in document.blockChildren {
-            walkBlock(child, into: &out)
+        let children = Array(document.blockChildren)
+        for (index, child) in children.enumerated() {
+            walkBlock(child, into: &out, verbatim: verbatim)
+            guard verbatim != nil, index + 1 < children.count,
+                  let endLine = child.range?.upperBound.line,
+                  let startLine = children[index + 1].range?.lowerBound.line
+            else { continue }
+            let count = startLine - endLine - 1
+            if count > 0 { out.append(.blankLines(count: count)) }
         }
         return out
     }
@@ -181,19 +208,34 @@ enum MarkdownFormatter {
     /// to `out`. Lists fan out internally via `walkListItem`.
     private static func walkBlock(
         _ block: any Markup,
-        into out: inout [MarkdownBlock]
+        into out: inout [MarkdownBlock],
+        verbatim: VerbatimContext?
     ) {
         switch block {
         case let heading as Markdown.Heading:
             out.append(.heading(
                 level: heading.level,
-                text: renderInline(heading.inlineChildren)
+                text: renderInline(heading.inlineChildren, verbatim: verbatim)
             ))
 
         case let paragraph as Markdown.Paragraph:
-            out.append(.paragraph(text: renderInline(paragraph.inlineChildren)))
+            // Re-anchor on the paragraph's own content column so a paragraph
+            // nested in a blockquote or list item restores indentation relative
+            // to its container's content, never its marker.
+            let scoped = paragraphContext(paragraph, verbatim: verbatim)
+            out.append(.paragraph(text: renderInline(paragraph.inlineChildren, verbatim: scoped)))
 
         case let codeBlock as Markdown.CodeBlock:
+            // In verbatim mode an INDENTED (non-fenced) run is accidental
+            // alignment in a paste, not an intentional code block: re-emit it as
+            // a paragraph carrying the exact source. A fenced block is
+            // deliberate and stays a code card.
+            if let verbatim,
+               !verbatim.isFenced(codeBlock),
+               let source = verbatim.indentedCodeSource(codeBlock) {
+                out.append(.paragraph(text: AttributedString(source)))
+                return
+            }
             // CodeBlock.code retains the trailing newline that cmark inserts;
             // trim it so the rendered code view doesn't show a phantom empty
             // last line.
@@ -213,14 +255,14 @@ enum MarkdownFormatter {
             // Flatten quoted content. We render every nested block's plain
             // text into one attributed string with newlines, preserving the
             // current MarkdownBlock.blockQuote contract (single AttributedString).
-            let inner = flattenBlocksToAttributed(blockQuote.blockChildren)
+            let inner = flattenBlocksToAttributed(blockQuote.blockChildren, verbatim: verbatim)
             out.append(.blockQuote(text: inner))
 
         case let orderedList as Markdown.OrderedList:
             // CommonMark stores the starting ordinal on the list itself.
             var ordinal = Int(orderedList.startIndex)
             for item in orderedList.listItems {
-                walkListItem(item, into: &out, ordinal: ordinal, ordered: true)
+                walkListItem(item, into: &out, ordinal: ordinal, ordered: true, verbatim: verbatim)
                 ordinal += 1
             }
 
@@ -228,11 +270,11 @@ enum MarkdownFormatter {
             // Unordered lists carry no ordinal; we pass 0 (the renderer ignores
             // it when `ordered == false`).
             for item in unorderedList.listItems {
-                walkListItem(item, into: &out, ordinal: 0, ordered: false)
+                walkListItem(item, into: &out, ordinal: 0, ordered: false, verbatim: verbatim)
             }
 
         case let table as Markdown.Table:
-            walkTable(table, into: &out)
+            walkTable(table, into: &out, verbatim: verbatim)
 
         case let htmlBlock as Markdown.HTMLBlock:
             // Raw HTML has no SwiftUI rendering path; surface it as a
@@ -263,7 +305,8 @@ enum MarkdownFormatter {
         _ item: Markdown.ListItem,
         into out: inout [MarkdownBlock],
         ordinal: Int,
-        ordered: Bool
+        ordered: Bool,
+        verbatim: VerbatimContext?
     ) {
         // Reserve the position where the list-item block will land. Any
         // nested blocks (sublists, code, blockquotes) emitted by the loop
@@ -274,13 +317,16 @@ enum MarkdownFormatter {
         var didCaptureFirst = false
         for child in item.blockChildren {
             if !didCaptureFirst, let para = child as? Markdown.Paragraph {
-                itemText = renderInline(para.inlineChildren)
+                itemText = renderInline(
+                    para.inlineChildren,
+                    verbatim: paragraphContext(para, verbatim: verbatim)
+                )
                 didCaptureFirst = true
                 continue
             }
             // Any other nested blocks (code, sublists, blockquotes) are
             // emitted as their own top-level blocks after the item.
-            walkBlock(child, into: &out)
+            walkBlock(child, into: &out, verbatim: verbatim)
         }
         if !didCaptureFirst {
             // Empty list item (rare) — emit an empty item so list numbering
@@ -301,12 +347,13 @@ enum MarkdownFormatter {
     /// padded to the column count.
     private static func walkTable(
         _ table: Markdown.Table,
-        into out: inout [MarkdownBlock]
+        into out: inout [MarkdownBlock],
+        verbatim: VerbatimContext?
     ) {
         // Header
         var headers: [AttributedString] = []
         for cell in table.head.cells {
-            headers.append(renderInline(cell.inlineChildren))
+            headers.append(renderInline(cell.inlineChildren, verbatim: verbatim))
         }
 
         // Body rows
@@ -314,7 +361,7 @@ enum MarkdownFormatter {
         for row in table.body.rows {
             var cells: [AttributedString] = []
             for cell in row.cells {
-                cells.append(renderInline(cell.inlineChildren))
+                cells.append(renderInline(cell.inlineChildren, verbatim: verbatim))
             }
             rows.append(cells)
         }
@@ -356,20 +403,53 @@ enum MarkdownFormatter {
     /// Render a sequence of inline markup nodes into a single `AttributedString`
     /// with the appropriate per-run styling. SwiftUI's `Text(AttributedString)`
     /// honors `font`, `foregroundColor`, and inline links automatically.
-    private static func renderInline(
-        _ inlines: some Sequence<InlineMarkup>
+    // `internal` (not `private`): MarkdownFormatter+Helpers.swift's
+    // flattenBlocksToAttributed calls this, and Swift's `private` does not
+    // extend across files even for extensions of the same type.
+    static func renderInline(
+        _ inlines: some Sequence<InlineMarkup>,
+        verbatim: VerbatimContext?
     ) -> AttributedString {
         var result = AttributedString()
-        for inline in inlines {
-            result.append(renderInlineNode(inline))
+        // Adjacency matters in verbatim mode: a SoftBreak carries NO source range
+        // in swift-markdown (verified — `softBreak.range` is nil), so the line
+        // whose indentation was stripped can only be learned from the node that
+        // FOLLOWS the break. Walk with one-node lookahead and let the soft-break
+        // case read the next node's start line.
+        let nodes = Array(inlines)
+        for (index, inline) in nodes.enumerated() {
+            if verbatim != nil, inline is Markdown.SoftBreak {
+                let nextLine = nodes[(index + 1)...].lazy
+                    .compactMap { $0.range?.lowerBound.line }
+                    .first
+                result.append(softBreakText(nextLine: nextLine, verbatim: verbatim))
+                continue
+            }
+            result.append(renderInlineNode(inline, verbatim: verbatim))
         }
         return result
+    }
+
+    /// The rendering of one soft break.
+    ///
+    /// Prose (`verbatim == nil`) collapses it to a space, per CommonMark. In
+    /// verbatim mode the newline IS content, and the indentation the block parser
+    /// stripped from the following line is restored with it — a soft break is
+    /// exactly the seam where that whitespace was lost, and nothing in the AST
+    /// carries it anymore.
+    private static func softBreakText(nextLine: Int?, verbatim: VerbatimContext?) -> AttributedString {
+        guard let verbatim else { return AttributedString(" ") }
+        guard let nextLine else { return AttributedString("\n") }
+        return AttributedString("\n" + verbatim.restoredIndent(forLine: nextLine))
     }
 
     /// Render one inline AST node. Recurses through containers (Emphasis,
     /// Strong, Link, Strikethrough) so nested styles compose (e.g. bold
     /// inside a link).
-    private static func renderInlineNode(_ inline: any Markup) -> AttributedString {
+    private static func renderInlineNode(
+        _ inline: any Markup,
+        verbatim: VerbatimContext?
+    ) -> AttributedString {
         switch inline {
         case let text as Markdown.Text:
             return AttributedString(text.string)
@@ -378,7 +458,7 @@ enum MarkdownFormatter {
             return renderInlineCode(code.code)
 
         case let emphasis as Markdown.Emphasis:
-            var inner = renderInline(emphasis.inlineChildren)
+            var inner = renderInline(emphasis.inlineChildren, verbatim: verbatim)
             // Apply italic to every existing run by setting the font on the
             // attribute container. AttributedString lacks a direct "merge
             // italic into existing font" API, so we walk the runs and
@@ -392,7 +472,7 @@ enum MarkdownFormatter {
             return inner
 
         case let strong as Markdown.Strong:
-            var inner = renderInline(strong.inlineChildren)
+            var inner = renderInline(strong.inlineChildren, verbatim: verbatim)
             inner.runs.forEach { run in
                 let range = run.range
                 inner[range].font = (inner[range].font ?? .body).bold()
@@ -400,7 +480,7 @@ enum MarkdownFormatter {
             return inner
 
         case let strike as Markdown.Strikethrough:
-            var inner = renderInline(strike.inlineChildren)
+            var inner = renderInline(strike.inlineChildren, verbatim: verbatim)
             inner.runs.forEach { run in
                 let range = run.range
                 inner[range].strikethroughStyle = .single
@@ -413,7 +493,7 @@ enum MarkdownFormatter {
             // favicon. SwiftUI Text renders no image attachments from
             // AttributedString (the same limit noted on renderInlineCode's
             // file-icon gap below), so iOS links render text-only.
-            var inner = renderInline(link.inlineChildren)
+            var inner = renderInline(link.inlineChildren, verbatim: verbatim)
             if let dest = link.destination, let url = URL(string: dest) {
                 inner.runs.forEach { run in
                     let range = run.range
@@ -435,9 +515,11 @@ enum MarkdownFormatter {
             return AttributedString("\n")
 
         case is Markdown.SoftBreak:
-            // CommonMark soft breaks render as a space in HTML; we mirror
-            // that so prose reflows naturally on small screens.
-            return AttributedString(" ")
+            // Reached only for the non-verbatim path, or when a soft break turns
+            // up outside `renderInline`'s lookahead walk. `renderInline` handles
+            // the verbatim case, because restoring indentation needs the NEXT
+            // node's line and a SoftBreak carries no range of its own.
+            return softBreakText(nextLine: nil, verbatim: verbatim)
 
         case let inlineHTML as Markdown.InlineHTML:
             // Raw inline HTML: surface as plain text rather than dropping.
@@ -450,7 +532,7 @@ enum MarkdownFormatter {
 
         case let attrs as Markdown.InlineAttributes:
             // We don't honor the attributes themselves; render the children.
-            return renderInline(attrs.inlineChildren)
+            return renderInline(attrs.inlineChildren, verbatim: verbatim)
 
         default:
             // CustomInline and any future inline kinds: render plain text.
@@ -458,82 +540,11 @@ enum MarkdownFormatter {
         }
     }
 
-    // MARK: - Helpers
-
-    /// Inline-code chip. Detected file paths additionally get an
-    /// `ion-file://` link (intercepted by MarkdownContentView's
-    /// OpenURLAction), staying one flowing AttributedString so wrapping,
-    /// taps, and selection all keep working.
-    ///
-    /// Platform differences (documented, both stem from AttributedString
-    /// limits inside SwiftUI Text):
-    ///   - the desktop chip carries a 1px border; AttributedString cannot
-    ///     stroke one, so iOS approximates the chip with the fill alone.
-    ///   - the desktop chip prefixes a file-type icon; SwiftUI Text renders
-    ///     no image attachments from AttributedString (only Text-level
-    ///     `\(Image(...))` interpolation, which cannot compose with the
-    ///     formatter's single-AttributedString contract), so iOS renders
-    ///     path text only. The block-level code badge does carry the icon.
-    private static func renderInlineCode(_ code: String) -> AttributedString {
-        var body = AttributedString(code)
-        body.font = .system(.body, design: .monospaced)
-        body.backgroundColor = Color(.tertiarySystemFill)
-        if let ref = FilePathDetector.detect(code), let url = FilePathDetector.url(for: ref) {
-            body.link = url
-        }
-        return body
-    }
-
-    /// Flatten a sequence of blocks (e.g. the contents of a BlockQuote) into
-    /// a single attributed string, joining nested blocks with newlines. This
-    /// preserves the current `MarkdownBlock.blockQuote` contract, which holds
-    /// a single `AttributedString` rather than nested blocks.
-    private static func flattenBlocksToAttributed(
-        _ blocks: some Sequence<BlockMarkup>
-    ) -> AttributedString {
-        var result = AttributedString()
-        var first = true
-        for block in blocks {
-            if !first {
-                result.append(AttributedString("\n"))
-            }
-            first = false
-            switch block {
-            case let p as Markdown.Paragraph:
-                result.append(renderInline(p.inlineChildren))
-            case let h as Markdown.Heading:
-                result.append(renderInline(h.inlineChildren))
-            case let cb as Markdown.CodeBlock:
-                var a = AttributedString(cb.code)
-                a.font = .system(.body, design: .monospaced)
-                result.append(a)
-            default:
-                result.append(AttributedString(block.format()))
-            }
-        }
-        return result
-    }
-
-    /// Build a "kind:count" summary string for the diagnostic log so we can
-    /// audit parser output without grepping the full block list.
-    private static func summarize(_ blocks: [MarkdownBlock]) -> String {
-        var counts: [String: Int] = [:]
-        for b in blocks {
-            let key: String
-            switch b {
-            case .heading:       key = "heading"
-            case .paragraph:     key = "paragraph"
-            case .code:          key = "code"
-            case .blockQuote:    key = "blockQuote"
-            case .listItem:      key = "listItem"
-            case .thematicBreak: key = "thematicBreak"
-            case .table:         key = "table"
-            }
-            counts[key, default: 0] += 1
-        }
-        return counts
-            .sorted { $0.key < $1.key }
-            .map { "\($0.key):\($0.value)" }
-            .joined(separator: ", ")
-    }
+    // MARK: - Helpers live in MarkdownFormatter+Helpers.swift
+    //
+    // renderInlineCode, paragraphContext, flattenBlocksToAttributed, and
+    // summarize moved out to keep this file under the 600-line cap. They are
+    // `internal` rather than `private` because Swift's `private` does not
+    // extend across files even for extensions of the same type — the
+    // functions are still only called from within MarkdownFormatter.
 }

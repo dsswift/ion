@@ -103,6 +103,8 @@
 		A1B2C3D4E5F600010000F2AA /* KeyboardUtilityBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000F3AA /* KeyboardUtilityBar.swift */; };
 		A1B2C3D4E5F600010000F4AA /* EngineInstanceBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000F5AA /* EngineInstanceBar.swift */; };
 		A1B2C3D4E5F600010000F6AA /* MarkdownFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000F7AA /* MarkdownFormatter.swift */; };
+		A1B2C3D4E5F600010000FA01 /* VerbatimContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000FB01 /* VerbatimContext.swift */; };
+		A1B2C3D4E5F600010000FC01 /* MarkdownFormatter+Helpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000FD01 /* MarkdownFormatter+Helpers.swift */; };
 		A1B2C3D4E5F600010000F8AA /* PlanFullScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000F9AA /* PlanFullScreenView.swift */; };
 		A1B2C3D4E5F600010000FAAA /* MarkdownContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000FBAA /* MarkdownContentView.swift */; };
 		A1B2C3D4E5F600010000FCAA /* TabRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000FDAA /* TabRowView.swift */; };
@@ -382,6 +384,7 @@
 		A1B2C3D4E5F60001FF0003AA /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60001FF0001AA /* Markdown */; };
 		A1B2C3D4E5F60001FF0005AA /* MarkdownFormatterFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0004AA /* MarkdownFormatterFixtures.swift */; };
 		A1B2C3D4E5F60001FF0007AA /* MarkdownFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0006AA /* MarkdownFormatterTests.swift */; };
+		A1B2C3D4E5F60001FF00FA02 /* MarkdownFormatterVerbatimTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF00FB02 /* MarkdownFormatterVerbatimTests.swift */; };
 		A1B2C3D4E5F60001FF0011AA /* FrontmatterSplitter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0010AA /* FrontmatterSplitter.swift */; };
 		A1B2C3D4E5F60001FF0013AA /* FrontmatterSplitterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0012AA /* FrontmatterSplitterTests.swift */; };
 		A1B2C3D4E5F60001FF0021AA /* RemoteCommand+Decode.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0020AA /* RemoteCommand+Decode.swift */; };
@@ -536,6 +539,8 @@
 		A1B2C3D4E5F600010000F3AA /* KeyboardUtilityBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardUtilityBar.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000F5AA /* EngineInstanceBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineInstanceBar.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000F7AA /* MarkdownFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFormatter.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010000FB01 /* VerbatimContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VerbatimContext.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010000FD01 /* MarkdownFormatter+Helpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MarkdownFormatter+Helpers.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000F9AA /* PlanFullScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanFullScreenView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000FBAA /* MarkdownContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownContentView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000FDAA /* TabRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabRowView.swift; sourceTree = "<group>"; };
@@ -805,6 +810,7 @@
 		A1B2C3D4E5F60001F1000CAA /* FuzzyMatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FuzzyMatch.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0004AA /* MarkdownFormatterFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFormatterFixtures.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0006AA /* MarkdownFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFormatterTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001FF00FB02 /* MarkdownFormatterVerbatimTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFormatterVerbatimTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0010AA /* FrontmatterSplitter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrontmatterSplitter.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0012AA /* FrontmatterSplitterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrontmatterSplitterTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0020AA /* RemoteCommand+Decode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RemoteCommand+Decode.swift"; sourceTree = "<group>"; };
@@ -1270,6 +1276,7 @@
 				C0DEC0DE000000000012 /* FilePathDetectorTests.swift */,
 				C0DEC0DE000000000014 /* CodeHighlighterTests.swift */,
 				C0DEC0DE000000000016 /* CollapsibleUserTextTests.swift */,
+				A1B2C3D4E5F60001FF00FB02 /* MarkdownFormatterVerbatimTests.swift */,
 				A1B2C3D4E5F60001FF0012AA /* FrontmatterSplitterTests.swift */,
 				A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */,
 				A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */,
@@ -1378,6 +1385,8 @@
 				C0DEC0DE000000000002 /* FilePathDetector.swift */,
 				C0DEC0DE000000000004 /* IonCodeTheme.swift */,
 				C0DEC0DE000000000006 /* CodeHighlighter.swift */,
+				A1B2C3D4E5F600010000FB01 /* VerbatimContext.swift */,
+				A1B2C3D4E5F600010000FD01 /* MarkdownFormatter+Helpers.swift */,
 				A1B2C3D4E5F60001000705AA /* ToolGrouping.swift */,
 				INJPOLICY00000000000002 /* InjectionPolicy.swift */,
 				A1B2C3D4E5F60001001001AA /* LayoutCache.swift */,
@@ -1732,6 +1741,8 @@
 				C0DEC0DE000000000009 /* HighlightedCodeView.swift in Sources */,
 				C0DEC0DE000000000101 /* EngineMessageRow+UserBubble.swift in Sources */,
 				C0DEC0DE000000000011 /* CollapsibleUserText.swift in Sources */,
+				A1B2C3D4E5F600010000FA01 /* VerbatimContext.swift in Sources */,
+				A1B2C3D4E5F600010000FC01 /* MarkdownFormatter+Helpers.swift in Sources */,
 				A1B2C3D4E5F60001FF0011AA /* FrontmatterSplitter.swift in Sources */,
 				A1B2C3D4E5F600010000F8AA /* PlanFullScreenView.swift in Sources */,
 				A1B2C3D4E5F600010000FAAA /* MarkdownContentView.swift in Sources */,
@@ -1923,6 +1934,7 @@
 				C0DEC0DE000000000013 /* FilePathDetectorTests.swift in Sources */,
 				C0DEC0DE000000000015 /* CodeHighlighterTests.swift in Sources */,
 				C0DEC0DE000000000017 /* CollapsibleUserTextTests.swift in Sources */,
+				A1B2C3D4E5F60001FF00FA02 /* MarkdownFormatterVerbatimTests.swift in Sources */,
 				A1B2C3D4E5F60001FF0013AA /* FrontmatterSplitterTests.swift in Sources */,
 				A1B2C3D4E5F60001000029AA /* TransportManagerTests.swift in Sources */,
 				A1B2C3D4E5F6000100002BAA /* RelayClientTests.swift in Sources */,

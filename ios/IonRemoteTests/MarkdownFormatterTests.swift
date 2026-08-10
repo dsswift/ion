@@ -284,6 +284,7 @@ final class MarkdownFormatterTests: XCTestCase {
             case .code(_, let text):     out += text + "\n"
             case .blockQuote(let t):     out += String(t.characters) + "\n"
             case .listItem(_, _, let t): out += String(t.characters) + "\n"
+            case .blankLines(let count): out += String(repeating: "\n", count: count)
             case .thematicBreak:         out += "---\n"
             case .table(let headers, let rows, _):
                 out += headers.map { String($0.characters) }.joined(separator: " | ") + "\n"
