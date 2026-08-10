@@ -38,6 +38,7 @@ func sdkClaimedMethods() map[string]string {
 		"ext/steer_dispatch_by_name":        "Context.SteerDispatchByName",
 		"ext/steer_self":                    "Context.SteerSelf",
 		"ext/answer_dispatch_question":      "Context.AnswerDispatchQuestion",
+		"ext/ack_dispatch_lost":             "Context.AckDispatchLost",
 		"ext/list_dispatch_state":           "Context.ListDispatchState",
 		"ext/set_dispatch_context_defaults": "Context.SetDispatchContextDefaults",
 

@@ -433,6 +433,12 @@ func (c *Context) AnswerDispatchQuestion(ctx context.Context, dispatchID, reques
 	}, nil)
 }
 
+// AckDispatchLost acknowledges a durable lost-dispatch notice. Repeated
+// acknowledgements are safe, allowing consumers to retry after restart.
+func (c *Context) AckDispatchLost(ctx context.Context, dispatchID string) error {
+	return c.sdk.call(ctx, "ext/ack_dispatch_lost", map[string]string{"dispatchId": dispatchID}, nil)
+}
+
 // ListDispatchState returns a snapshot of every in-flight dispatch in this
 // session. Returns an empty slice — never nil — when nothing is running.
 func (c *Context) ListDispatchState(ctx context.Context) ([]DispatchStateEntry, error) {
