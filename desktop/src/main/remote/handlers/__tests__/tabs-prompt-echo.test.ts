@@ -36,7 +36,7 @@ vi.mock('../../../state', () => ({
   sessionPlane: { cancelTab: vi.fn() },
   engineBridge: {},
 }))
-vi.mock('../../../logger', () => ({ log: vi.fn() }))
+vi.mock('../../../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn(), trace: vi.fn() }))
 vi.mock('../../../prompt-pipeline', () => ({ processIncomingPrompt: vi.fn(async () => {}) }))
 vi.mock('../../attachment-encoder', () => ({
   encodeAttachments: vi.fn((text: string) => ({ encoded: [], rewrittenText: text })),

@@ -1,4 +1,5 @@
 import { log as _log } from '../../logger'
+import { resolveEngineModel } from '../../resolve-engine-model'
 import { state, sessionPlane, engineBridge } from '../../state'
 import { processIncomingPrompt } from '../../prompt-pipeline'
 import { encodeAttachments } from '../attachment-encoder'
@@ -107,11 +108,11 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
           instance: instanceInfo,
         })
       }
-      // Send the initial model override so iOS knows the configured model
-      const _escapedInstId = instanceId!.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-      const modelOverride = await state.mainWindow.webContents.executeJavaScript(
-        `window.__Ion_resolveEngineModel('${escapedTab}')`
-      )
+      // Send the initial model override so iOS knows the configured model.
+      // Resolved in main rather than via executeJavaScript: both inputs (the
+      // tab's override in the renderer snapshot cache, and the two preference
+      // fallbacks) are already main-owned, so the round-trip bought nothing.
+      const modelOverride = resolveEngineModel(cmd.tabId, instanceId)
       if (modelOverride) {
         state.remoteTransport?.send({
           type: 'desktop_model_override',

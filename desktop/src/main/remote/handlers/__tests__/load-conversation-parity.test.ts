@@ -69,7 +69,7 @@ vi.mock('../../../state', () => ({
   extensionCommandRegistry: new Map(),
 }))
 
-vi.mock('../../../logger', () => ({ log: vi.fn() }))
+vi.mock('../../../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn(), trace: vi.fn() }))
 vi.mock('../../../broadcast', () => ({ broadcast: vi.fn() }))
 vi.mock('../../../terminal-manager-instance', () => ({ terminalManager: {} }))
 vi.mock('../../../settings-store', () => ({

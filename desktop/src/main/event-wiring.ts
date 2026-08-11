@@ -12,7 +12,7 @@ import { injectDiskResourcesIfEmpty } from './event-wiring-disk-seed'
 import { accumulateTextDelta, flushKeyDeltas, dropKeyDeltas } from './event-wiring-text-delta-batcher'
 import { projectEngineEventToWire } from './event-wiring-wire-projection'
 import { notifyAtvPermissionResolved } from './atv-window-manager'
-import { recordAgentState } from './agent-state-mirror'
+import { recordAgentState, recordStatusFields, recordWorkingMessage } from './agent-state-mirror'
 export { wireTabFocusHandler, wireMarkResourceReadHandler, wireDeleteResourceHandler, wireResourceGetHandler, handleResourceItemEvent } from './event-wiring-resources'
 export { wireRemoteSessionPlaneForwarding } from './event-wiring-remote'
 
@@ -304,7 +304,20 @@ export function wireEngineBridgeEvents(): void {
         aggregateCostUsd: event.contextBreakdown.aggregateCostUsd,
         modelBreakdown: event.contextBreakdown.modelBreakdown,
       })
-      if (state.remoteTransport) {
+      // Mirror the other two live-state fields from the same upstream point, so
+    // an iOS resync is answered entirely from main. Both are recorded before
+    // the renderer forward below, so the mirror is never the staler copy.
+    if (event.type === 'engine_status' && event.fields) {
+      const [k0, k1] = key.split(':')
+      recordStatusFields(k0, k1 || null, event.fields)
+    }
+    if (event.type === 'engine_working_message') {
+      const [k0, k1] = key.split(':')
+      // '' is meaningful: it is how a stale banner is cleared.
+      recordWorkingMessage(k0, k1 || null, typeof event.message === 'string' ? event.message : '')
+    }
+
+    if (state.remoteTransport) {
         const tabIdBD = key.split(':')[0]
         const instanceIdBD = key.split(':')[1] || null
         state.remoteTransport.send({

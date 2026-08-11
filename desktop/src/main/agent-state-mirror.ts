@@ -20,14 +20,32 @@
 // so the whole snapshot re-sends continuously — reintroducing the
 // amplification this change removes.
 
-import type { AgentStateUpdate } from '../shared/types-engine'
+import type { AgentStateUpdate, StatusFields } from '../shared/types-engine'
 import { debug, warn } from './logger'
 
 interface MirrorEntry {
   tabId: string
   instanceId: string | null
   agents: AgentStateUpdate[]
+  /** Last engine_status fields; null until one arrives. */
+  status: StatusFields | null
+  /** Last engine_working_message text; '' clears the banner. */
+  working: string
   updatedAt: number
+}
+
+/** Read-modify-write an entry, creating it if absent. */
+function upsert(tabId: string, instanceId: string | null, mutate: (e: MirrorEntry) => void): void {
+  if (!tabId) return
+  const key = wireKey(tabId, instanceId)
+  const existing = mirror.get(key)
+  const entry: MirrorEntry = existing ?? {
+    tabId, instanceId, agents: [], status: null, working: '', updatedAt: 0,
+  }
+  mutate(entry)
+  entry.updatedAt = Date.now()
+  mirror.set(key, entry)
+  if (mirror.size > MAX_MIRROR_KEYS) sweepOldest()
 }
 
 /**
@@ -56,18 +74,51 @@ export function recordAgentState(
   instanceId: string | null,
   agents: AgentStateUpdate[],
 ): void {
-  if (!tabId) return
+  // Copy the array: the caller's reference belongs to the event pipeline and
+  // may be reused or mutated downstream.
+  upsert(tabId, instanceId, (e) => { e.agents = [...agents] })
+}
 
-  mirror.set(wireKey(tabId, instanceId), {
-    tabId,
-    instanceId,
-    // Copy the array: the caller's reference belongs to the event pipeline and
-    // may be reused or mutated downstream.
-    agents: [...agents],
-    updatedAt: Date.now(),
-  })
+/**
+ * Record the latest engine_status fields for a wire key.
+ *
+ * Same reasoning as the roster: main handles engine_status before the renderer
+ * projects it, so this is the upstream copy.
+ */
+export function recordStatusFields(
+  tabId: string,
+  instanceId: string | null,
+  status: StatusFields | null,
+): void {
+  upsert(tabId, instanceId, (e) => { e.status = status })
+}
 
-  if (mirror.size > MAX_MIRROR_KEYS) sweepOldest()
+/**
+ * Record the latest working message. An empty string is meaningful — it is how
+ * a stale "thinking…" banner is cleared — so it is stored, not skipped.
+ */
+export function recordWorkingMessage(tabId: string, instanceId: string | null, message: string): void {
+  upsert(tabId, instanceId, (e) => { e.working = message })
+}
+
+/** Read the recorded status fields, or null when none has arrived. */
+export function getStatusFields(tabId: string, instanceId: string | null): StatusFields | null {
+  const entry = mirror.get(wireKey(tabId, instanceId)) ?? (instanceId ? mirror.get(tabId) : undefined)
+  return entry?.status ?? null
+}
+
+/** Read the recorded working message; '' when none. */
+export function getWorkingMessage(tabId: string, instanceId: string | null): string {
+  const entry = mirror.get(wireKey(tabId, instanceId)) ?? (instanceId ? mirror.get(tabId) : undefined)
+  return entry?.working ?? ''
+}
+
+/** Read the recorded instanceId for a tab, if any compound key is known. */
+export function getKnownInstanceId(tabId: string): string | null {
+  for (const [key, entry] of mirror) {
+    if (key.startsWith(`${tabId}:`) && entry.instanceId) return entry.instanceId
+  }
+  return null
 }
 
 /**

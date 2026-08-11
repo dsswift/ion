@@ -1,5 +1,6 @@
 import { readFile } from 'fs/promises'
-import { getAgentState, clearAgentStateForTab } from '../../agent-state-mirror'
+import { getAgentState, getStatusFields, getWorkingMessage, getKnownInstanceId, clearAgentStateForTab } from '../../agent-state-mirror'
+import { resolveEngineModel } from '../../resolve-engine-model'
 import { IPC } from '../../../shared/types'
 import { log as _log, warn as _warn } from '../../logger'
 import { state, sessionPlane, engineBridge, activeAssistantMessages, lastMessagePreview, lastForwardedTabStatus, extensionCommandRegistry } from '../../state'
@@ -57,52 +58,50 @@ function warn(msg: string, fields?: Record<string, unknown>): void {
  * of megabytes of structured-clone work on the UI thread.
  */
 async function sendCurrentEngineState(tabId: string, deviceId: string): Promise<void> {
-  if (!state.mainWindow || !state.remoteTransport) return
-  const escapedTab = tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-  try {
-    const snapshot = await state.mainWindow.webContents.executeJavaScript(`
-      (function() {
-        var store = window.__Ion_SESSION_STORE__;
-        if (!store) return null;
-        var s = store.getState();
-        var pane = s.conversationPanes.get('${escapedTab}');
-        var inst = pane ? (pane.instances.find(function(i) { return i.id === pane.activeInstanceId; }) || pane.instances[0]) : null;
-        var instId = inst ? inst.id : null;
-        var status = (inst && inst.statusFields) || null;
-        var key = '${escapedTab}' + (instId ? ':' + instId : '');
-        var working = s.engineWorkingMessages.get(key) || '';
-        var modelOverride = window.__Ion_resolveEngineModel ? window.__Ion_resolveEngineModel('${escapedTab}') : null;
-        return { instId: instId, status: status, working: working, modelOverride: modelOverride };
-      })()
-    `)
-    if (!snapshot) {
-      log('send_current_engine_state: no snapshot available', { tab_id: tabId })
-      return
-    }
-    const instanceId: string | null = snapshot.instId ?? null
-    const agents = getAgentState(tabId, instanceId)
-    log('send_current_engine_state', { tab_id: tabId, instance_id: instanceId, agents: agents.length, has_status: !!snapshot.status, has_working: !!snapshot.working, has_model_override: !!snapshot.modelOverride })
+  if (!state.remoteTransport) return
 
-    // Always send the authoritative agent snapshot — including empty.
-    state.remoteTransport.sendToDevice(deviceId, {
-      type: 'desktop_agent_state', tabId, instanceId, agents,
-    })
-    if (snapshot.status) {
-      state.remoteTransport.sendToDevice(deviceId, {
-        type: 'desktop_status', tabId, instanceId, fields: snapshot.status,
-      })
-    }
-    // Always forward working message (use '' to clear stale banner on resync).
-    state.remoteTransport.sendToDevice(deviceId, {
-      type: 'desktop_working_message', tabId, instanceId, message: snapshot.working || '',
-    })
-    if (snapshot.modelOverride) {
-      state.remoteTransport.sendToDevice(deviceId, {
-        type: 'desktop_model_override', tabId, instanceId, model: snapshot.modelOverride,
-      })
-    }
+  // Every field below comes from main-owned state. There is no renderer
+  // round-trip: main receives engine_agent_state, engine_status, and
+  // engine_working_message first and forwards them on, so asking the renderer
+  // for any of them read a downstream copy of what main already had.
+  const instanceId = getKnownInstanceId(tabId)
+  const agents = getAgentState(tabId, instanceId)
+  const status = getStatusFields(tabId, instanceId)
+  const working = getWorkingMessage(tabId, instanceId)
+  // Model resolution reads the settings store, which can throw on a corrupt
+  // file. A resync that dies here would leave the phone with no agent state at
+  // all, so fall back rather than abort the whole push.
+  let model = ''
+  try {
+    model = resolveEngineModel(tabId, instanceId)
   } catch (err) {
-    log('send_current_engine_state error', { error: (err as Error).message })
+    warn('send_current_engine_state: model resolution failed', { tab_id: tabId, error: (err as Error).message })
+  }
+
+  log('send_current_engine_state', {
+    tab_id: tabId, instance_id: instanceId, agents: agents.length,
+    has_status: !!status, has_working: !!working, model,
+  })
+
+  // Always send the authoritative agent snapshot — including empty. An empty
+  // agents: [] is the "drop your stale rows" signal; skipping it is what left
+  // iOS reconnects showing ghost agents from sessions ago.
+  state.remoteTransport.sendToDevice(deviceId, {
+    type: 'desktop_agent_state', tabId, instanceId, agents,
+  })
+  if (status) {
+    state.remoteTransport.sendToDevice(deviceId, {
+      type: 'desktop_status', tabId, instanceId, fields: status,
+    })
+  }
+  // Always forward the working message ('' clears a stale banner on resync).
+  state.remoteTransport.sendToDevice(deviceId, {
+    type: 'desktop_working_message', tabId, instanceId, message: working,
+  })
+  if (model) {
+    state.remoteTransport.sendToDevice(deviceId, {
+      type: 'desktop_model_override', tabId, instanceId, model,
+    })
   }
 }
 
