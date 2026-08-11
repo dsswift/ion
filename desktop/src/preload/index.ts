@@ -81,6 +81,7 @@ const api: IonAPI = {
   terminalWrite: (key, data) => ipcRenderer.send(IPC.TERMINAL_DATA, { key, data }),
   terminalResize: (key, cols, rows) => ipcRenderer.send(IPC.TERMINAL_RESIZE, { key, cols, rows }),
   terminalDestroy: (key) => ipcRenderer.invoke(IPC.TERMINAL_DESTROY, { key }),
+  terminalGetScrollback: (key) => ipcRenderer.invoke(IPC.TERMINAL_GET_SCROLLBACK, { key }),
   onTerminalData: (callback) => {
     const handler = (_e: Electron.IpcRendererEvent, key: string, data: string) => callback(key, data)
     ipcRenderer.on(IPC.TERMINAL_INCOMING, handler)

@@ -267,6 +267,7 @@ export const IPC = {
   TERMINAL_INCOMING: 'ion:terminal-incoming',
   TERMINAL_EXIT: 'ion:terminal-exit',
   TERMINAL_DESTROY: 'ion:terminal-destroy',
+  TERMINAL_GET_SCROLLBACK: 'ion:terminal-get-scrollback',
 
   // Bash command execution
   EXECUTE_BASH: 'ion:execute-bash',

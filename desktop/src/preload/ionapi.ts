@@ -91,6 +91,14 @@ export interface IonAPI extends AtvApi {
   terminalWrite(key: string, data: string): void
   terminalResize(key: string, cols: number, rows: number): void
   terminalDestroy(key: string): Promise<void>
+  /**
+   * Main-process scrollback for a terminal key.
+   *
+   * Non-empty when a PTY streamed output while the renderer had no xterm
+   * attached (a pane opened into a background conversation by a deep link, or
+   * an instance created from iOS). Consumed once on first mount.
+   */
+  terminalGetScrollback(key: string): Promise<string>
   onTerminalData(callback: (key: string, data: string) => void): () => void
   onTerminalExit(callback: (key: string, exitCode: number) => void): () => void
   executeBash(id: string, command: string, cwd: string): Promise<{ stdout: string; stderr: string; exitCode: number | null }>

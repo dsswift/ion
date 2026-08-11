@@ -19,24 +19,82 @@ export function handleTerminalResize(cmd: Extract<RemoteCommand, { type: 'deskto
   terminalManager.resize(key, cmd.cols, cmd.rows)
 }
 
+/**
+ * Create a terminal instance on a NAMED tab and start its PTY.
+ *
+ * Shared by the iOS `desktop_terminal_add_instance` command and the `ion://`
+ * deep-link terminal action, so both get identical semantics rather than two
+ * drifting implementations.
+ *
+ * Three properties matter and each is a fix for a real defect:
+ *
+ *  1. **The pane is marked OPEN.** This used to write `terminalPanes` only, so
+ *     a tab ended up holding instances the panel did not render until the
+ *     operator manually toggled the terminal — output streaming into a pane
+ *     nobody could see.
+ *  2. **The tab is resolved strictly by id, never by "active".** Returns
+ *     `null` when `tabId` names no live tab so the caller can refuse. Silently
+ *     retargeting the active tab is the stray-pane failure the deep-link
+ *     surface exists to prevent: `dev run` in conversation A's shell must put
+ *     its panes in A even when the operator has navigated to B.
+ *  3. **Focus is not stolen.** The new instance becomes active WITHIN its own
+ *     pane, but `activeTabId` is untouched, so a pane opening in a background
+ *     conversation does not yank the operator out of the one they are reading.
+ *
+ * `label` is optional. When given (a deep link naming a service, e.g. `api`)
+ * it replaces the auto-numbered `Shell N`; when absent the store's existing
+ * numbering applies, which is what the iOS caller relies on.
+ *
+ * Returns the created instance, or `null` when the renderer store is
+ * unavailable or the tab does not exist.
+ */
+export async function createTerminalInstanceOnTab(
+  tabId: string,
+  opts: { label?: string } = {},
+): Promise<{ id: string; label: string; kind: string; cwd: string } | null> {
+  const escaped = JSON.stringify(tabId)
+  const escapedLabel = opts.label ? JSON.stringify(opts.label) : 'null'
+  const result = await state.mainWindow?.webContents.executeJavaScript(`
+    (function() {
+      var store = window.__Ion_SESSION_STORE__;
+      if (!store) return null;
+      var s = store.getState();
+      // Resolve by id only. No fallback to the active tab: a caller that names
+      // a dead tab must be refused, not silently redirected.
+      if (!s.tabs.some(function(t) { return t.id === ${escaped}; })) return 'no-such-tab';
+      var id = s.addTerminalInstance(${escaped}, 'user');
+      var label = ${escapedLabel};
+      if (label) s.renameTerminalInstance(${escaped}, id, label);
+      // Mark the pane open so the panel actually renders it, and select the new
+      // instance within that pane. activeTabId is deliberately NOT changed.
+      var nextOpen = new Set(store.getState().terminalOpenTabIds);
+      nextOpen.add(${escaped});
+      store.setState({ terminalOpenTabIds: nextOpen });
+      store.getState().selectTerminalInstance(${escaped}, id);
+      var pane = store.getState().terminalPanes.get(${escaped});
+      if (!pane) return null;
+      var inst = pane.instances.find(function(i) { return i.id === id; });
+      if (!inst) return null;
+      return { id: inst.id, label: inst.label, kind: inst.kind, cwd: inst.cwd || '' };
+    })()
+  `)
+  if (result === 'no-such-tab') {
+    log('terminal_add_instance refused: no such tab', { tabId })
+    return null
+  }
+  if (!result) {
+    log('terminal_add_instance failed: renderer store unavailable', { tabId })
+    return null
+  }
+  terminalManager.create(`${tabId}:${result.id}`, result.cwd || '~')
+  log('terminal_add_instance created', { tabId, instanceId: result.id, label: result.label })
+  return result
+}
+
 export async function handleTerminalAddInstance(cmd: Extract<RemoteCommand, { type: 'desktop_terminal_add_instance' }>): Promise<void> {
   try {
-    const escaped = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    const result = await state.mainWindow?.webContents.executeJavaScript(`
-      (function() {
-        var store = window.__Ion_SESSION_STORE__;
-        if (!store) return null;
-        var id = store.getState().addTerminalInstance('${escaped}', 'user');
-        var pane = store.getState().terminalPanes.get('${escaped}');
-        if (!pane) return null;
-        var inst = pane.instances.find(function(i) { return i.id === id; });
-        if (!inst) return null;
-        return { id: inst.id, label: inst.label, kind: inst.kind, cwd: inst.cwd || '' };
-      })()
-    `)
+    const result = await createTerminalInstanceOnTab(cmd.tabId)
     if (result) {
-      const key = `${cmd.tabId}:${result.id}`
-      terminalManager.create(key, result.cwd || '~')
       state.remoteTransport?.send({
         type: 'desktop_terminal_instance_added',
         tabId: cmd.tabId,
