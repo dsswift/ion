@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -26,6 +27,10 @@ var ErrNotFound = errors.New("conversation not found")
 // in base64). The server and stream parsers use 8 MB; conversation lines
 // can be larger because they accumulate entire turn payloads.
 const maxScanTokenSize = 32 * 1024 * 1024
+
+// tmpSeq disambiguates concurrent temp files within one process; the pid
+// disambiguates across processes.
+var tmpSeq uint64
 
 // MigrateConversation upgrades a raw JSON map to the current schema version.
 func MigrateConversation(raw map[string]any) (*Conversation, error) {
@@ -356,8 +361,15 @@ func saveJSON(conv *Conversation, dir string) error {
 // writeFileSynced writes data to path with fsync, so a crash immediately
 // after the write does not lose the contents. Uses a temp file + rename
 // for atomicity, then fsyncs the parent directory so the rename is durable.
+//
+// The temp name is unique per call. A shared `path + ".tmp"` made concurrent
+// writers of the same conversation destroy each other: both opened the same
+// temp path, the first rename consumed it, and the second failed with ENOENT
+// ("rename <id>.llm.jsonl.tmp: no such file or directory") after its data was
+// already truncated away by the other writer's O_TRUNC. A dispatch fan-out hit
+// this on every parallel registration.
 func writeFileSynced(path string, data []byte) error {
-	tmp := path + ".tmp"
+	tmp := fmt.Sprintf("%s.tmp-%d-%d", path, os.Getpid(), atomic.AddUint64(&tmpSeq, 1))
 	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
 		return err

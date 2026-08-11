@@ -268,13 +268,12 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		s.sendResult(conn, cmd, err, messages)
 
 	case "save_session_label":
-		conv, err := conversation.Load(cmd.Key, "")
-		if err != nil {
-			s.sendResult(conn, cmd, err, nil)
-			break
-		}
-		conversation.AddLabelEntry(conv, cmd.Label)
-		err = conversation.Save(conv, "")
+		// Serialized read-modify-write: a label append racing a dispatch
+		// record append would otherwise drop whichever save landed first.
+		err := conversation.UpdateOnDisk(cmd.Key, "", func(conv *conversation.Conversation) (bool, error) {
+			conversation.AddLabelEntry(conv, cmd.Label)
+			return true, nil
+		})
 		s.sendResult(conn, cmd, err, nil)
 
 	case "get_conversation":

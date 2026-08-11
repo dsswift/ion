@@ -126,10 +126,6 @@ type Manager struct {
 	// ldflags). Propagated to extension Hosts so the init handshake can
 	// validate that the SDK subprocess was built from the same release.
 	engineBuildIdentity string
-
-	// persistedDispatchLocks serializes per-conversation read-modify-write updates
-	// to durable dispatch records without blocking unrelated conversations.
-	persistedDispatchLocks sync.Map // map[string]*sync.Mutex
 }
 
 // SetProcessTelemetry installs the process-level telemetry collector used for
