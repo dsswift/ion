@@ -675,34 +675,6 @@ func (r *notificationRouter) bindLifecycle(key string, opts DispatchAgentOpts) f
 	}
 }
 
-// bindTerminal registers terminal callbacks under a dispatch ID. New dispatch
-// calls use terminalBinding to also protect the pre-stub name-routing window;
-// this helper remains available for callers that already hold an ID.
-func (r *notificationRouter) bindTerminal(dispatchID string, opts DispatchAgentOpts, cleanup func()) {
-	var once sync.Once
-	terminal := func(fire func(json.RawMessage)) func(json.RawMessage) {
-		return func(params json.RawMessage) {
-			once.Do(func() {
-				r.mu.Lock()
-				for _, m := range []string{"dispatch_complete", "dispatch_error", "dispatch_recall"} {
-					delete(r.handlers, m+":"+dispatchID)
-				}
-				r.mu.Unlock()
-				cleanup()
-			})
-			if fire != nil {
-				fire(params)
-			}
-		}
-	}
-
-	r.mu.Lock()
-	r.handlers["dispatch_complete:"+dispatchID] = terminal(decodeIntoOptional(r.sdk, opts.OnComplete))
-	r.handlers["dispatch_error:"+dispatchID] = terminal(decodeIntoOptional(r.sdk, opts.OnError))
-	r.handlers["dispatch_recall:"+dispatchID] = terminal(decodeIntoOptional(r.sdk, opts.OnRecall))
-	r.mu.Unlock()
-}
-
 // childQuestionHandler answers a child's question by invoking the caller's
 // callback and sending the result back, which unblocks the child's run.
 func (r *notificationRouter) childQuestionHandler(
