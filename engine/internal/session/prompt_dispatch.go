@@ -496,6 +496,8 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	m.emit(key, types.EngineEvent{Type: "engine_working_message", EventMessage: ""})
 
 	m.fireModelSelect(s, key, extGroup, skipExtensions, &opts)
+	refreshSlashModelProvenance(&opts, key)
+	normalizeSlashThinkingForResolvedModel(&opts, overrides)
 
 	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: building backend run config", map[string]any{"key": key})
 

@@ -10,6 +10,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/gitcontext"
 	"github.com/dsswift/ion/engine/internal/modelconfig"
+	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 	"github.com/dsswift/ion/engine/internal/workspaces"
@@ -450,6 +451,49 @@ func resolveModelTier(opts *types.RunOptions) {
 	if len(fallbacks) > 0 && len(opts.FallbackChain) == 0 {
 		opts.FallbackChain = fallbacks
 	}
+}
+
+// normalizeSlashThinkingForResolvedModel reconciles an explicit slash-run
+// thinking effort with the final selected model. Frontmatter tier resolution and
+// model_select can both replace the ambient model after desktop submitted the
+// prompt, so client-side capability repair against that ambient model is wrong.
+//
+// This applies only to a slash command with an explicit per-prompt effort. A
+// session/engine default has no caller-declared intent to reinterpret. "adaptive"
+// is valid only on an adaptive model; unsupported level values are likewise
+// cleared rather than reaching the provider as a rejected directive.
+func normalizeSlashThinkingForResolvedModel(opts *types.RunOptions, overrides *PromptOverrides) {
+	if opts.ResolvedSlashModelAlias == "" || overrides == nil || overrides.ThinkingEffort == "" || overrides.ThinkingEffort == types.ThinkingEffortOff {
+		return
+	}
+	info := providers.GetModelInfo(opts.Model)
+	if info == nil || info.ThinkingMode == "" {
+		utils.LogWithFields(utils.LevelDebug, "session.slash", "thinking capability unknown after model resolution", map[string]any{"model": opts.Model, "model_alias": opts.ResolvedSlashModelAlias})
+		return
+	}
+	if overrides.ThinkingEffort == types.ThinkingEffortAdaptive && info.ThinkingMode == "adaptive" {
+		return
+	}
+	for _, effort := range info.ThinkingEfforts {
+		if effort == overrides.ThinkingEffort {
+			return
+		}
+	}
+	opts.Thinking = nil
+	opts.ThinkingCleared = true
+	utils.LogWithFields(utils.LevelInfo, "session.slash", "cleared unsupported thinking effort after model resolution", map[string]any{
+		"model": opts.Model, "model_alias": opts.ResolvedSlashModelAlias, "effort": overrides.ThinkingEffort,
+	})
+}
+
+// refreshSlashModelProvenance records a reroute made after initial tier
+// resolution. Model-select hooks are allowed to choose the serving model, so
+// slash provenance must describe that final choice rather than the tier result.
+func refreshSlashModelProvenance(opts *types.RunOptions, key string) {
+	if opts.ResolvedSlashModelAlias == "" || opts.ResolvedSlashModelEffective == opts.Model {
+		return
+	}
+	finalizeSlashModelProvenance(opts, key)
 }
 
 func finalizeSlashModelProvenance(opts *types.RunOptions, key string) {

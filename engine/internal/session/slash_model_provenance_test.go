@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/dsswift/ion/engine/internal/extension"
+	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -199,5 +201,74 @@ func TestFinalizeSlashModelProvenance(t *testing.T) {
 	finalizeSlashModelProvenance(plain, "test-session")
 	if plain.ResolvedSlashModelEffective != "" {
 		t.Fatalf("plain prompt effective provenance = %q, want empty", plain.ResolvedSlashModelEffective)
+	}
+}
+
+func TestNormalizeSlashThinkingForResolvedModel(t *testing.T) {
+	register := func(id, mode string, efforts []string) {
+		providers.RegisterModel(id, types.ModelInfo{ThinkingMode: mode, ThinkingEfforts: efforts})
+		t.Cleanup(func() { providers.UnregisterModel(id) })
+	}
+
+	t.Run("adaptive is cleared for an effort model", func(t *testing.T) {
+		register("slash-effort", "reasoning_effort", []string{"low"})
+		opts := &types.RunOptions{
+			Model: "slash-effort", ResolvedSlashModelAlias: "standard",
+			Thinking: &types.ThinkingConfig{Enabled: true},
+		}
+		normalizeSlashThinkingForResolvedModel(opts, &PromptOverrides{ThinkingEffort: types.ThinkingEffortAdaptive})
+		if opts.Thinking != nil || !opts.ThinkingCleared {
+			t.Fatalf("thinking = %+v, cleared = %t; want cleared unsupported adaptive effort", opts.Thinking, opts.ThinkingCleared)
+		}
+	})
+
+	t.Run("adaptive remains enabled for an adaptive model", func(t *testing.T) {
+		register("slash-adaptive", "adaptive", []string{"low", "high"})
+		opts := &types.RunOptions{
+			Model: "slash-adaptive", ResolvedSlashModelAlias: "standard",
+			Thinking: &types.ThinkingConfig{Enabled: true},
+		}
+		normalizeSlashThinkingForResolvedModel(opts, &PromptOverrides{ThinkingEffort: types.ThinkingEffortAdaptive})
+		if opts.Thinking == nil || opts.ThinkingCleared {
+			t.Fatalf("thinking = %+v, cleared = %t; want adaptive thinking retained", opts.Thinking, opts.ThinkingCleared)
+		}
+	})
+
+	t.Run("unsupported level is cleared for final tier model", func(t *testing.T) {
+		register("slash-low-only", "reasoning_effort", []string{"low"})
+		opts := &types.RunOptions{
+			Model: "slash-low-only", ResolvedSlashModelAlias: "fast",
+			Thinking: &types.ThinkingConfig{Enabled: true, Effort: "high"},
+		}
+		normalizeSlashThinkingForResolvedModel(opts, &PromptOverrides{ThinkingEffort: "high"})
+		if opts.Thinking != nil || !opts.ThinkingCleared {
+			t.Fatalf("thinking = %+v, cleared = %t; want cleared unsupported effort", opts.Thinking, opts.ThinkingCleared)
+		}
+	})
+}
+
+func TestRefreshSlashModelProvenanceAfterModelSelect(t *testing.T) {
+	const selected = "slash-selected-model"
+	mgr := NewManager(newMockBackend())
+	s := &engineSession{}
+	host := extension.NewHost()
+	host.SDK().On(extension.HookModelSelect, func(_ *extension.Context, _ interface{}) (interface{}, error) {
+		return selected, nil
+	})
+	group := extension.NewExtensionGroup()
+	group.Add(host)
+
+	opts := types.RunOptions{
+		Model:                       "slash-tier-model",
+		ResolvedSlashModelAlias:     "standard",
+		ResolvedSlashModelEffective: "slash-tier-model",
+	}
+	mgr.fireModelSelect(s, "slash-model-select", group, false, &opts)
+	if opts.Model != selected {
+		t.Fatalf("model_select model = %q, want %q", opts.Model, selected)
+	}
+	refreshSlashModelProvenance(&opts, "slash-model-select")
+	if opts.ResolvedSlashModelEffective != selected {
+		t.Fatalf("slash effective model = %q, want final selected model %q", opts.ResolvedSlashModelEffective, selected)
 	}
 }
