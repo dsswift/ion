@@ -398,8 +398,8 @@ func TestParity_CallToolReentrancy(t *testing.T) {
 		// is the whole point of the scenario.
 		ctx := &extension.Context{
 			SessionKey: "parity-session",
-			CallTool: func(name string, input map[string]any) (string, bool, error) {
-				return "inner result for " + name, false, nil
+			CallTool: func(name string, input map[string]any) (*types.ToolResult, error) {
+				return &types.ToolResult{Content: "inner result for " + name}, nil
 			},
 		}
 
