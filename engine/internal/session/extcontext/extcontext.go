@@ -375,14 +375,18 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 		}
 	}
 
+	runID, traceID := sa.RunID(), sa.TraceID()
+	if identity, ok := sa.(interface{ RunIdentity() (string, string) }); ok {
+		runID, traceID = identity.RunIdentity()
+	}
 	ctx := &extension.Context{
 		SessionKey:     sa.SessionKey(),
 		ConversationID: sa.ConversationID(),
 		// Run identity: both empty when no run is in flight (session_start, a
 		// schedule or webhook delivery), which is the honest encoding — there
 		// is no transaction to correlate against.
-		RunID:   sa.RunID(),
-		TraceID: sa.TraceID(),
+		RunID:   runID,
+		TraceID: traceID,
 		// Dispatch identity travels on the context so every hook fired in a
 		// child session (session_start included, whose payload is nil) can
 		// discriminate root (Depth 0) from dispatched children (Depth > 0).

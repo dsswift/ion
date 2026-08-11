@@ -48,6 +48,10 @@ type engineSession struct {
 	key       string
 	config    types.EngineConfig
 	requestID string // empty when no active run
+	// runIdentityMu serializes extension-context snapshots of requestID and
+	// runTraceID with lifecycle writes. Manager-owned readers still use m.mu;
+	// writers hold m.mu before this lock, preserving one lock order.
+	runIdentityMu sync.RWMutex
 
 	// dispatchingRunID marks the dispatch-in-flight window for a run. It is
 	// set to the run's requestID inside SendPrompt, under m.mu, at the same

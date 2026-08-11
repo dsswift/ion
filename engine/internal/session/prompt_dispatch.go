@@ -174,7 +174,6 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	}
 
 	requestID := fmt.Sprintf("%s-%d", key, time.Now().UnixMilli())
-	s.requestID = requestID
 	// Mint this run's trace ID under the same lock hold that assigns
 	// requestID, so the two identities for one run can never disagree. Scope
 	// is the run because a trace is one logical transaction: every log line
@@ -187,7 +186,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// ParentCtx assignment below, but the context this run carries must keep
 	// the ID it was dispatched with.
 	runTraceID := utils.NewTraceID()
-	s.runTraceID = runTraceID
+	s.setRunIdentity(requestID, runTraceID)
 	utils.LogWithFields(utils.LevelDebug, "session", "sendprompt: minted run trace id", map[string]any{"key": key, "run_id": requestID, "trace_id": runTraceID})
 	// A run is starting, so the session is no longer parked on outstanding
 	// background commands. Clear any park record here — under the same lock
@@ -261,10 +260,9 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	if overrides != nil && overrides.ResolveSlash {
 		resolved, failedCmd := m.resolveSlashIntoOpts(s, key, &opts, hasExplicitModel)
 		if !resolved {
+			s.clearRunIdentity()
+			m.unbindRunLocked(requestID)
 			m.mu.Unlock()
-			s.requestID = ""
-			s.runTraceID = "" // run over: the trace ends with it
-			m.unbindRun(requestID)
 			m.emitUnknownCommand(key, failedCmd)
 			return nil
 		}
@@ -357,8 +355,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// stays idle and immediately usable for the next prompt.
 	caps := m.resolvedBackend(opts.Model).Capabilities()
 	if opts.PlanMode && !caps.PlanMode {
-		s.requestID = ""
-		s.runTraceID = "" // run over: the trace ends with it
+		s.clearRunIdentity()
 		m.unbindRunLocked(requestID)
 		m.mu.Unlock()
 		reason := fmt.Sprintf("plan mode is not supported on the %s backend", caps.Kind)
@@ -433,6 +430,8 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 					"source":  source,
 				}, nil)
 			}
+			s.clearRunIdentity()
+			m.unbindRunLocked(requestID)
 			m.mu.Unlock()
 			m.emit(key, types.EngineEvent{
 				Type:         "engine_error",
@@ -485,11 +484,12 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// starting an inline run on the parent.
 	if opts.ResolvedSlashContext == "fork" {
 		m.forkResolvedSlash(s, key, &opts)
-		s.requestID = ""
-		s.runTraceID = "" // run over: the trace ends with it
+		m.mu.Lock()
+		s.clearRunIdentityFor(requestID)
+		m.unbindRunLocked(requestID)
+		m.mu.Unlock()
 		// Forked to a sub-agent — no inline run started on the parent, so
-		// clear the routing binding set at dispatch.
-		m.unbindRun(requestID)
+		// the parent run identity and routing binding are both cleared.
 		return nil
 	}
 

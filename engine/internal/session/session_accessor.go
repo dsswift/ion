@@ -32,10 +32,19 @@ type sessionAccessor struct {
 	suspender types.DeadlineSuspender
 }
 
-func (a *sessionAccessor) SessionKey() string       { return a.key }
-func (a *sessionAccessor) ConversationID() string   { return a.s.conversationID }
-func (a *sessionAccessor) RunID() string            { return a.s.requestID }
-func (a *sessionAccessor) TraceID() string          { return a.s.runTraceID }
+func (a *sessionAccessor) SessionKey() string     { return a.key }
+func (a *sessionAccessor) ConversationID() string { return a.s.conversationID }
+func (a *sessionAccessor) RunIdentity() (string, string) {
+	return a.s.runIdentitySnapshot()
+}
+func (a *sessionAccessor) RunID() string {
+	runID, _ := a.RunIdentity()
+	return runID
+}
+func (a *sessionAccessor) TraceID() string {
+	_, traceID := a.RunIdentity()
+	return traceID
+}
 func (a *sessionAccessor) ExtensionName() string    { return a.s.extensionName }
 func (a *sessionAccessor) ExtensionVersion() string { return a.s.extensionVersion }
 func (a *sessionAccessor) WorkingDirectory() string { return a.s.config.WorkingDirectory }
