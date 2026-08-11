@@ -63,9 +63,20 @@ describe('TypeScript SDK asynchronous dispatch routing', () => {
       .find((frame) => frame.method === 'ext/dispatch_agent')
     expect(dispatch).toBeDefined()
 
-    // Completion wins the race against the RPC response. Name-keyed terminal
+    // Completion wins the race against the RPC response. Callback-ID terminal
     // handlers must consume it before the dispatch ID is available.
-    line!('{"jsonrpc":"2.0","method":"dispatch_complete","params":{"name":"worker","dispatchId":"dispatch-fast","output":"done","exitCode":0}}')
+    expect(dispatch.params.callbackId).toEqual(expect.any(String))
+    line!(JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'dispatch_complete',
+      params: {
+        name: 'worker',
+        callbackId: dispatch.params.callbackId,
+        dispatchId: 'dispatch-fast',
+        output: 'done',
+        exitCode: 0,
+      },
+    }))
     line!(`{"jsonrpc":"2.0","id":${dispatch.id},"result":{"dispatchId":"dispatch-fast"}}`)
     await nextTurn()
     await nextTurn()

@@ -198,7 +198,11 @@ describe('wireEngineBridgeEvents — permission_request synthesis for iOS', () =
     expect(calls[0][0].toolInput).toEqual({ planFilePath: '/p' })
     // Push notification metadata
     expect(calls[0][1]).toBe(true)
-    expect(calls[0][2]).toEqual({ title: 'Ion needs your attention', body: 'Plan ready for your review' })
+    expect(calls[0][2]).toEqual({
+      title: 'Ion needs your attention',
+      body: 'Plan ready for your review',
+      tabId: 'tab1',
+    })
   })
 
   it('synthesizes permission_request for AskUserQuestion denial', () => {
