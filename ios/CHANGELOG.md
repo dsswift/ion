@@ -10,6 +10,18 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.59.0](https://github.com/dsswift/ion/compare/ios-v1.58.0...ios-v1.59.0) (2026-08-11)
+
+### Features
+
+* **ios:** render model provenance in slash bubbles ([fd2694b](https://github.com/dsswift/ion/commit/fd2694be0004275291fd7036f0a7ce22198b0138))
+* **ios:** support per-pairing OIDC identity and access ([fbf2634](https://github.com/dsswift/ion/commit/fbf26341b50566da55e3634031e7df89b2985e27))
+
+### Bug Fixes
+
+* **ios:** preserve user message formatting ([f18fa11](https://github.com/dsswift/ion/commit/f18fa11e0c30edb08614ac4fc7c205554a9ef68f))
+* **ios:** preserve degraded steer event semantics ([4930ad5](https://github.com/dsswift/ion/commit/4930ad5ef27b36b3b1bdabf5182d93818895db96))
+
 ## [1.58.0](https://github.com/dsswift/ion/compare/ios-v1.57.1...ios-v1.58.0) (2026-08-08)
 
 ### Features

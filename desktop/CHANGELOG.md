@@ -10,6 +10,30 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.78.0](https://github.com/dsswift/ion/compare/desktop-v1.77.0...desktop-v1.78.0) (2026-08-11)
+
+### Features
+
+* **desktop:** focus git graph on active branch ([8de7c7b](https://github.com/dsswift/ion/commit/8de7c7b142472ac6c6575fb0d8b02e333046ac27))
+* **desktop:** enforce extension SDK contract parity (#311) ([22d747e](https://github.com/dsswift/ion/commit/22d747e24164bb23f075564f2f2b6e7971c4b9d9))
+* **desktop:** display model provenance in slash pills ([b45ebdb](https://github.com/dsswift/ion/commit/b45ebdbae8a2abee373f5755b7a10fca569bc2af))
+* **desktop:** add primary graph access for worktrees ([2b3866e](https://github.com/dsswift/ion/commit/2b3866ebdd5dfdfbe311ebc39f8ba76582af33d3))
+* **desktop:** report paired mobile OIDC identity ([81a6b7f](https://github.com/dsswift/ion/commit/81a6b7f967fa8527eaa26ffe6539b1edc9d07950))
+* **desktop:** route pairing-aware push metadata ([dcf1dc2](https://github.com/dsswift/ion/commit/dcf1dc281e2d752aa728eaa09161b7d77be64822))
+
+### Bug Fixes
+
+* **desktop:** make native binary extensions selectable in picker ([dff7339](https://github.com/dsswift/ion/commit/dff7339816b2ea646f43bffd95cb8857ec9a33c2))
+* **desktop:** refresh resolved bench conflict row ([fbc739c](https://github.com/dsswift/ion/commit/fbc739c63afcd3d7a3eca7bbf7dfcef0de9d6102))
+* **desktop:** exclude workspaces from recents ([e7f70e2](https://github.com/dsswift/ion/commit/e7f70e23eb9f9cdf457b0c3ea01dfa3911f3097a))
+* **desktop:** repair worktree row menu validation ([599dc81](https://github.com/dsswift/ion/commit/599dc81f8511787b07b77ea4f601eab0c10e127c))
+* **desktop:** restore cmd-click links in rendered markdown ([0062bc5](https://github.com/dsswift/ion/commit/0062bc584aec14a2e963d272130117b53b6a4a56))
+* **desktop:** preserve user message formatting ([2385b1e](https://github.com/dsswift/ion/commit/2385b1e0ef3513b8b7624ecf3cda9aa18bef2588))
+* **desktop:** split worktree row menu under size cap ([c78b915](https://github.com/dsswift/ion/commit/c78b915bc86bd0f18c54d7bbf80ab68adefd6ed4))
+* **desktop:** render degraded steer without live reconciliation ([352bd9e](https://github.com/dsswift/ion/commit/352bd9e1d12f16beb33bf6700e8e04beec9d86c9))
+* **desktop:** align async routing tests ([f2cec1d](https://github.com/dsswift/ion/commit/f2cec1dc94f2f537500d29880d25953cb4a55497))
+* **desktop:** bound test runner concurrency ([b106097](https://github.com/dsswift/ion/commit/b106097f2d2a098f8b5f15f0c77145fbc5a7ab9d))
+
 ## [1.77.0](https://github.com/dsswift/ion/compare/desktop-v1.76.1...desktop-v1.77.0) (2026-08-08)
 
 ### Features

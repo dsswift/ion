@@ -13,6 +13,34 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.65.0](https://github.com/dsswift/ion/compare/engine-v1.64.1...engine-v1.65.0) (2026-08-11)
+
+### Features
+
+* **engine:** add extension SDK contract mechanisms (#311) ([15aee77](https://github.com/dsswift/ion/commit/15aee776015a912d2a9f1772b0c6a8a202168e67))
+* **engine:** dispatch agents asynchronously by default ([2bd68cd](https://github.com/dsswift/ion/commit/2bd68cd378c0ee2f9fc16e41e56a0a5c0c347195))
+* **engine:** install Go SDK for source builds ([c831b6e](https://github.com/dsswift/ion/commit/c831b6ec01ebd349d3ec8624c8dff805438f421d))
+* **engine:** add model provenance to slash commands ([142538b](https://github.com/dsswift/ion/commit/142538bce6babd17c56fff893a00e5024e3721ec))
+* **engine:** run context breakdown asynchronously ([3835714](https://github.com/dsswift/ion/commit/3835714acda59bb8aaf53f3306e3d2d3a5ea9598))
+* **engine:** cover linked graph containment ([42563cb](https://github.com/dsswift/ion/commit/42563cb3ba42a51f34db8c7088e201aa24754bf6))
+* **engine:** dispatch agents asynchronously by default ([9103b43](https://github.com/dsswift/ion/commit/9103b4350567bc826f2aed5859491144910549dd))
+
+### Bug Fixes
+
+* **engine:** refuse blocking foreground sleep, cap bash timeout ([592d25d](https://github.com/dsswift/ion/commit/592d25dbfad485846182b8fcb85e3032a3a373dc))
+* **engine:** require dispatch registry on every extension context ([210f25a](https://github.com/dsswift/ion/commit/210f25a66df76ba5bec8e254ac0f0941012ee26f))
+* **engine:** reap orphaned transpile bundles ([f067b92](https://github.com/dsswift/ion/commit/f067b9268bb72d1c46f2c02a841daa2da7c4e789))
+* **engine:** frontmatter model overrides conversation model ([1fa91ac](https://github.com/dsswift/ion/commit/1fa91ac72d5f58356e311a879c0f82cebf56d10b))
+* **engine:** preserve clear context boundary ([d2261f1](https://github.com/dsswift/ion/commit/d2261f1ef2f0c308f87d5d5035169ad510055ff3))
+* **engine:** resolve model metadata in extension tool contexts ([8c20578](https://github.com/dsswift/ion/commit/8c20578c98a13a77e9a2860d2a6a8a8438e3ccb8))
+* **engine:** resolve hybrid backend capabilities per run ([b055308](https://github.com/dsswift/ion/commit/b0553080257ae10293a2f17cef09fe8d90cccea8))
+* **engine:** use canonical backend type log field ([2f284ab](https://github.com/dsswift/ion/commit/2f284ab1f3cd61a56a8ec26fcee6b3787c1ed4e1))
+* **engine:** distinguish degraded steer delivery from live drain ([994a563](https://github.com/dsswift/ion/commit/994a5637d85cfc5a3b583450518b4fcce523d9cd))
+* **engine:** remove duplicate hook envelope test ([522ab4e](https://github.com/dsswift/ion/commit/522ab4e43036813f6c96062670c0585f421b6b7d))
+* **engine:** stabilize Linux race tests ([e0e185f](https://github.com/dsswift/ion/commit/e0e185fcb457d6f18a2b46e4f35831f703336848))
+* **engine:** synchronize run identity access ([589b7ae](https://github.com/dsswift/ion/commit/589b7ae3687d97c2fb6fd144d53bfe42ace422c4))
+* **engine:** synchronize model context access ([d179cf4](https://github.com/dsswift/ion/commit/d179cf42d0432b76cc3c2fec621e73c4cb929e7a))
+
 ## [1.64.1](https://github.com/dsswift/ion/compare/engine-v1.64.0...engine-v1.64.1) (2026-08-10)
 
 ## [1.64.0](https://github.com/dsswift/ion/compare/engine-v1.63.2...engine-v1.64.0) (2026-08-08)

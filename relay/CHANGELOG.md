@@ -10,6 +10,12 @@ clients to Ion Engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.7.0](https://github.com/dsswift/ion/compare/relay-v1.6.0...relay-v1.7.0) (2026-08-11)
+
+### Features
+
+* **relay:** route pairing-aware push metadata ([ce2e546](https://github.com/dsswift/ion/commit/ce2e5461c65599b3ff94cd14b548dc1404028254))
+
 ## [1.6.0](https://github.com/dsswift/ion/compare/relay-v1.5.2...relay-v1.6.0) (2026-07-25)
 
 ### Features
