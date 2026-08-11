@@ -290,7 +290,11 @@ export type RemoteEvent =
   | { type: 'desktop_terminal_instance_added'; tabId: string; instance: TerminalInstanceInfo }
   | { type: 'desktop_terminal_instance_removed'; tabId: string; instanceId: string }
   | { type: 'desktop_terminal_snapshot'; tabId: string; instances: TerminalInstanceInfo[]; activeInstanceId: string | null; buffers?: Record<string, string> }
-  | { type: 'desktop_agent_state'; tabId: string; instanceId?: string | null; agents: AgentStateUpdate[] }
+  // metadataOmitted marks a payload the transport DEGRADED to fit a size cap:
+  // agent identity and the protected metadata subset survive, the rest is
+  // shed. Consumers should treat detail fields as unavailable rather than
+  // absent-and-therefore-cleared, and may request a fresh snapshot.
+  | { type: 'desktop_agent_state'; tabId: string; instanceId?: string | null; agents: AgentStateUpdate[]; metadataOmitted?: boolean }
   | { type: 'desktop_status'; tabId: string; instanceId?: string | null; fields: StatusFields; metadata?: Record<string, unknown> }
   | { type: 'desktop_working_message'; tabId: string; instanceId?: string | null; message: string; metadata?: Record<string, unknown> }
   | { type: 'desktop_notify'; tabId: string; instanceId?: string | null; message: string; level: string; metadata?: Record<string, unknown> }

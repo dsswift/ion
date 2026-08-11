@@ -30,7 +30,8 @@ const buildSpy = vi.fn((deviceId: string) => ({ seq: 1, ts: 0, deviceId, nonce: 
 vi.mock('../transport-frame', () => ({
   buildDeviceFrame: (deviceId: string, ..._rest: unknown[]) => buildSpy(deviceId),
 }))
-vi.mock('../../logger', () => ({ log: vi.fn() }))
+// error() is used by the oversized-event drop path, which this file exercises.
+vi.mock('../../logger', () => ({ log: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() }))
 
 import { sendToAll, MAX_PLAINTEXT_BYTES, type SendCtx } from '../transport-send'
 import { Activity } from '../../watchdog'

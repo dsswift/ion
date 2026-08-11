@@ -14,6 +14,7 @@ import { buildFramesForEvent } from './transport-frame-pipeline'
 import { compressPayload } from './transport-compression'
 import { mark, Activity } from '../watchdog'
 import { MAX_WIRE_FRAME_BYTES } from './protocol'
+import { degradeOversizedEvent, canDegrade } from './transport-degrade'
 import type { RemoteEvent, WireMessage } from './protocol'
 import type { RetransmitBuffer } from './retransmit-buffer'
 
@@ -47,9 +48,19 @@ export const MAX_QUEUE_SIZE = 500
 export const MAX_PLAINTEXT_BYTES = 6 * 1024 * 1024
 
 /**
- * Event types that must never be silently dropped by backpressure. Delivery is
- * best-effort at the socket layer (a live delta can still be lost in a transport
- * switch); this set prevents the desktop from *choosing* to drop one.
+ * Event types the desktop must never CHOOSE to discard. Delivery is best-effort
+ * at the socket layer (a live delta can still be lost in a transport switch);
+ * this set prevents the desktop from dropping one on purpose.
+ *
+ * Backpressure honours this set. So do the size gates -- but they cannot honour
+ * it by sending an oversized frame, so an oversized critical event is DEGRADED
+ * (see transport-degrade.ts) and dropped only when the degraded form still
+ * exceeds the cap, which is logged at ERROR.
+ *
+ * That distinction was previously a real contradiction rather than a nuance:
+ * desktop_agent_state sat in this set while the plaintext gate dropped it
+ * outright, which is exactly what happened for 15 hours in production. The
+ * comment claimed a guarantee the code did not keep.
  */
 export const CRITICAL_TYPES = new Set([
   'desktop_permission_request', 'desktop_snapshot', 'desktop_tab_created', 'desktop_tab_closed',
@@ -358,10 +369,17 @@ export function sendDirect(
   retransmit: RetransmitBuffer,
   deliverFrame: (deviceId: string, frame: WireMessage) => boolean,
 ): void {
-  const plaintext = JSON.stringify(event)
+  let plaintext = JSON.stringify(event)
   if (plaintext.length > MAX_PLAINTEXT_BYTES) {
-    log('transport: dropping oversized event before sendToDevice', { event_type: event.type, chars: plaintext.length, cap: MAX_PLAINTEXT_BYTES })
-    return
+    const degraded = degradeOversizedEvent(event, MAX_PLAINTEXT_BYTES)
+    if (degraded) {
+      log('transport: degraded oversized event instead of dropping (direct)', { event_type: event.type, chars: plaintext.length, degraded_chars: degraded.plaintext.length, cap: MAX_PLAINTEXT_BYTES })
+      event = degraded.event
+      plaintext = degraded.plaintext
+    } else {
+      _error('RemoteTransport', 'transport: dropping oversized event before sendToDevice', { event_type: event.type, chars: plaintext.length, cap: MAX_PLAINTEXT_BYTES, critical: CRITICAL_TYPES.has(event.type), degradable: canDegrade(event.type) })
+      return
+    }
   }
   mark(Activity.RelayCompress)
   const wire = compressPayload(plaintext)
@@ -390,13 +408,25 @@ export function sendToAll(
   // compress/encrypt pipeline (the relay-wedge failure mode), and pre-filter
   // for the wire-frame cap below (see MAX_PLAINTEXT_BYTES doc). Drop it with a
   // loud log; iOS heals via the next snapshot resync.
+  let plaintextToSend = plaintext
+  let eventToSend = event
   if (plaintext.length > MAX_PLAINTEXT_BYTES) {
-    log('transport: dropping oversized event before send', { event_type: eventType, chars: plaintext.length, cap: MAX_PLAINTEXT_BYTES })
-    return false
+    // Degrade before dropping. A CRITICAL_TYPES event that vanishes leaves the
+    // consumer rendering stale state with no recovery path, because the
+    // periodic resync that would heal it is itself subject to this gate.
+    const degraded = degradeOversizedEvent(event, MAX_PLAINTEXT_BYTES)
+    if (degraded) {
+      log('transport: degraded oversized event instead of dropping', { event_type: eventType, chars: plaintext.length, degraded_chars: degraded.plaintext.length, cap: MAX_PLAINTEXT_BYTES })
+      eventToSend = degraded.event
+      plaintextToSend = degraded.plaintext
+    } else {
+      _error('RemoteTransport', 'transport: dropping oversized event before send', { event_type: eventType, chars: plaintext.length, cap: MAX_PLAINTEXT_BYTES, critical: CRITICAL_TYPES.has(eventType), degradable: canDegrade(eventType) })
+      return false
+    }
   }
-  if (event.type === 'desktop_snapshot') {
+  if (eventToSend.type === 'desktop_snapshot') {
     // Log snapshot size before compression.
-    log('transport: snapshot payload', { bytes: plaintext.length, tab_count: (event as any).tabs?.length ?? 0 })
+    log('transport: snapshot payload', { bytes: plaintextToSend.length, tab_count: (eventToSend as any).tabs?.length ?? 0 })
   }
 
   // Recipient set: a targeted send (targetDeviceId set — the queued sendToDevice
@@ -424,13 +454,13 @@ export function sendToAll(
   if (ctx.cryptoHost?.usingWorker) {
     const devices = recipientIds.map((deviceId) => ({ deviceId, seq: ctx.nextSeq(deviceId) }))
     if (devices.length === 0) return false
-    const submitted = ctx.cryptoHost.submit(plaintext, eventType, devices, { push, pushTitle, pushBody, pushTabId, epoch: ctx.epoch }, enqueuedAt)
+    const submitted = ctx.cryptoHost.submit(plaintextToSend, eventType, devices, { push, pushTitle, pushBody, pushTabId, epoch: ctx.epoch }, enqueuedAt)
     if (submitted) return true
     // Worker died between the check and the post: fall through to the sync
     // path — but the seqs above are already allocated. Build with THOSE seqs
     // via the pure pipeline so the wire stream stays contiguous.
     mark(Activity.RelayCompress)
-    const { results } = buildFramesForEvent(plaintext, devices, ctx.deviceSecrets, { push, pushTitle, pushBody, pushTabId, epoch: ctx.epoch })
+    const { results } = buildFramesForEvent(plaintextToSend, devices, ctx.deviceSecrets, { push, pushTitle, pushBody, pushTabId, epoch: ctx.epoch })
     let sent = false
     for (const r of results) {
       if (!r.frame) continue
@@ -444,7 +474,7 @@ export function sendToAll(
   }
 
   mark(Activity.RelayCompress)
-  const wire = compressPayload(plaintext)
+  const wire = compressPayload(plaintextToSend)
 
   let sentAny = false
 
@@ -453,7 +483,7 @@ export function sendToAll(
     const secret = ctx.deviceSecrets.get(deviceId)
     if (!secret) continue
     // buildDeviceFrame marks its own relay_encrypt sub-stage.
-    const msg = buildDeviceFrame(deviceId, secret, plaintext, wire, eventType, ctx.nextSeq, push, pushTitle, pushBody, pushTabId, enqueuedAt, ctx.epoch)
+    const msg = buildDeviceFrame(deviceId, secret, plaintextToSend, wire, eventType, ctx.nextSeq, push, pushTitle, pushBody, pushTabId, enqueuedAt, ctx.epoch)
     if (!msg) continue // encrypt failed — skip this device
 
     // Authoritative frame-size backstop, on the SERIALIZED frame — the JSON
