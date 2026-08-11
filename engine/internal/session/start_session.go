@@ -12,7 +12,6 @@ import (
 	"github.com/dsswift/ion/engine/internal/permissions"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/resource"
-	"github.com/dsswift/ion/engine/internal/session/agents"
 	"github.com/dsswift/ion/engine/internal/session/extcontext"
 	"github.com/dsswift/ion/engine/internal/session/pending"
 	"github.com/dsswift/ion/engine/internal/skills"
@@ -113,7 +112,7 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 		config:           config,
 		conversationID:   convID,
 		bindingPending:   !convExists,
-		agents:           agents.NewRegistry(),
+		agents:           m.newAgentRegistry(),
 		childPIDs:        make(map[int]struct{}),
 		pending:          pending.New(),
 		maxQueueDepth:    32,
