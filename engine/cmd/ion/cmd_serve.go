@@ -28,6 +28,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/titling"
 	"github.com/dsswift/ion/engine/internal/transport"
+	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -73,7 +74,18 @@ func cmdServe() {
 	// /usr/bin:/bin:/usr/sbin:/sbin; without this step, tools installed in
 	// /opt/homebrew/bin and similar locations are not found. HydrateProcessPath
 	// is nil-safe and a no-op when useLoginShell is false.
-	cfg.Shell.HydrateProcessPath()
+	cfg.Shell.HydrateProcessPath(func(level types.HydrationLogLevel, message string, fields map[string]any) {
+		switch level {
+		case types.HydrationLogLevelDebug:
+			utils.LogWithFields(utils.LevelDebug, "shell.path", message, fields)
+		case types.HydrationLogLevelInfo:
+			utils.LogWithFields(utils.LevelInfo, "shell.path", message, fields)
+		case types.HydrationLogLevelWarn:
+			utils.LogWithFields(utils.LevelWarn, "shell.path", message, fields)
+		default:
+			utils.LogWithFields(utils.LevelWarn, "shell.path", "process path hydration reporter received unknown level", map[string]any{"reason": string(level)})
+		}
+	})
 
 	// Apply a soft heap ceiling (GOMEMLIMIT) so the GC holds resident memory below
 	// the level where the OS memory-pressure killer (macOS jetsam / Linux OOM) would
