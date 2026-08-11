@@ -406,6 +406,20 @@ func (b *ApiBackend) removeRun(requestID string) {
 	delete(b.activeRuns, requestID)
 	b.mu.Unlock()
 
+	// End in-memory ownership of the conversation now that the run is
+	// unreachable: nothing will save run.conv again, so later writers must go
+	// back to loading from disk. Released after the map delete so the two can
+	// never disagree about who owns the object.
+	if ok && run != nil {
+		run.mu.Lock()
+		release := run.releaseLive
+		run.releaseLive = nil
+		run.mu.Unlock()
+		if release != nil {
+			release()
+		}
+	}
+
 	// Signal the run-progress watchdog goroutine to exit immediately.
 	// stopWatchdogOnce guards against double-close in the (theoretical)
 	// case where removeRun is invoked twice for the same run — e.g.

@@ -1,6 +1,8 @@
 package session
 
 import (
+	"errors"
+
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -132,29 +134,38 @@ func (m *Manager) persistCliTurn(key, convID string) {
 		return // engine-owned run, or nothing to persist
 	}
 
-	conv, err := conversation.Load(convID, "")
-	if err != nil {
-		// No file yet (first turn on a pre-minted CLI conversation): create it
-		// so the turn is not lost. Mirrors the backend's loadOrCreate.
-		conv = conversation.CreateConversation(convID, "", "")
+	// Serialized read-modify-write: a dispatch record or label appended
+	// between this load and its save would otherwise be erased by it.
+	leaf := ""
+	appendTurn := func(conv *conversation.Conversation) (bool, error) {
+		conversation.AddUserMessage(conv, userText)
+		if assistantText != "" {
+			// No usage annotation: the CLI reported no provider accounting for
+			// this turn, and a zero-valued LlmUsage{} would poison the occupancy
+			// backward scan (GetContextUsage) into reading ~0 tokens.
+			conversation.AddAssistantMessageNoUsage(conv, []types.LlmContentBlock{{Type: "text", Text: assistantText}})
+		}
+		if conv.LeafID != nil {
+			leaf = *conv.LeafID
+		}
+		return true, nil
 	}
 
-	conversation.AddUserMessage(conv, userText)
-	if assistantText != "" {
-		// No usage annotation: the CLI reported no provider accounting for
-		// this turn, and a zero-valued LlmUsage{} would poison the occupancy
-		// backward scan (GetContextUsage) into reading ~0 tokens.
-		conversation.AddAssistantMessageNoUsage(conv, []types.LlmContentBlock{{Type: "text", Text: assistantText}})
+	saveErr := conversation.UpdateOnDisk(convID, "", appendTurn)
+	if errors.Is(saveErr, conversation.ErrNotFound) {
+		// No file yet (first turn on a pre-minted CLI conversation): create it
+		// so the turn is not lost. Mirrors the backend's loadOrCreate. There is
+		// no on-disk state to race with in this branch.
+		conv := conversation.CreateConversation(convID, "", "")
+		if _, err := appendTurn(conv); err == nil {
+			saveErr = conversation.Save(conv, "")
+		}
 	}
-	if saveErr := conversation.Save(conv, ""); saveErr != nil {
+	if saveErr != nil {
 		utils.LogWithFields(utils.LevelWarn, "session.native_session", "persistCliTurn: save failed, turn dropped from Ion store", map[string]any{
 			"key": key, "conversation_id": convID, "error": saveErr.Error(),
 		})
 		return
-	}
-	leaf := ""
-	if conv.LeafID != nil {
-		leaf = *conv.LeafID
 	}
 	utils.LogWithFields(utils.LevelInfo, "session.native_session", "persisted delegated-CLI turn into Ion transcript", map[string]any{
 		"key": key, "conversation_id": convID, "new_leaf": leaf,

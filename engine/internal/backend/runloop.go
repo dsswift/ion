@@ -91,6 +91,17 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	}
 	run.conv = conv
 
+	// Claim in-memory ownership of this conversation for the run's duration.
+	// The run holds `conv` across every turn and saves it repeatedly, so any
+	// other writer that loaded its own copy from disk would have its append
+	// erased by the next save here. While this registration stands, those
+	// writers (dispatch records, labels) mutate THIS object instead — so the
+	// saves below carry their work rather than overwriting it. Ownership is
+	// released by removeRun, which is what makes run.conv unreachable.
+	run.mu.Lock()
+	run.releaseLive = conversation.RegisterLive(conv.ID, conv)
+	run.mu.Unlock()
+
 	// Initialize the read-triggered nested context sink. The dedup set is
 	// seeded later, after the system prompt is built (so conv.System carries
 	// the eager context blocks we must not re-inject).

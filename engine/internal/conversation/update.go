@@ -92,12 +92,20 @@ func UpdateOnDisk(convID, dir string, mutate func(conv *Conversation) (bool, err
 	release := acquireConvLock(convID)
 	defer release()
 
-	conv, err := Load(convID, dir)
-	if err != nil {
-		utils.LogWithFields(utils.LevelWarn, "conversation", "updateondisk: load failed", map[string]any{
-			"conversation_id": convID, "error": utils.ErrStr(err),
-		})
-		return err
+	// When a run owns this conversation in memory, mutate ITS object. Loading
+	// a private copy here would produce a write the owner's next save silently
+	// discards — see live.go for why ownership, not merging, is the fix.
+	conv := lookupLive(convID)
+	live := conv != nil
+	if !live {
+		var err error
+		conv, err = Load(convID, dir)
+		if err != nil {
+			utils.LogWithFields(utils.LevelWarn, "conversation", "updateondisk: load failed", map[string]any{
+				"conversation_id": convID, "error": utils.ErrStr(err),
+			})
+			return err
+		}
 	}
 
 	changed, err := mutate(conv)
@@ -109,7 +117,7 @@ func UpdateOnDisk(convID, dir string, mutate func(conv *Conversation) (bool, err
 	}
 	if !changed {
 		utils.LogWithFields(utils.LevelDebug, "conversation", "updateondisk: no change (save skipped)", map[string]any{
-			"conversation_id": convID,
+			"conversation_id": convID, "live": live,
 		})
 		return nil
 	}
@@ -122,7 +130,7 @@ func UpdateOnDisk(convID, dir string, mutate func(conv *Conversation) (bool, err
 	}
 
 	utils.LogWithFields(utils.LevelDebug, "conversation", "updateondisk: saved", map[string]any{
-		"conversation_id": convID,
+		"conversation_id": convID, "live": live,
 	})
 	return nil
 }

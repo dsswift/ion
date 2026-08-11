@@ -22,7 +22,14 @@ type activeRun struct {
 	mu        sync.Mutex
 	requestID string
 	conv      *conversation.Conversation
-	cancel    context.CancelFunc
+	// releaseLive ends this run's in-memory ownership of conv (see
+	// conversation.RegisterLive). removeRun calls it rather than a defer in
+	// runLoop, so ownership ends exactly when the run leaves activeRuns:
+	// while the run is still reachable, FlushConversations can still save
+	// run.conv, and a writer that had already fallen back to a disk copy
+	// would lose its append to that save.
+	releaseLive func()
+	cancel      context.CancelFunc
 	// turnCount is read by Cancel (and other RPC paths) while runLoop is
 	// still mutating it. Atomic load/store gives the race detector the
 	// happens-before edge it needs without forcing every read site to
