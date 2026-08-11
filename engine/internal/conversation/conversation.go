@@ -28,6 +28,11 @@ const (
 	EntryLabel         SessionEntryType = "label"
 	EntryCustom        SessionEntryType = "custom"
 	EntryAgentDispatch SessionEntryType = "agent_dispatch"
+	// EntryDispatchError records a terminal dispatch failure discovered after
+	// the child backend's final save (for example code 0 + signal "cancelled"
+	// mapped to an error by the dispatch lifecycle). It replays as a system-role
+	// error row in scrollback and is excluded from provider-visible context.
+	EntryDispatchError SessionEntryType = "dispatch_error"
 	// EntryPlanMarker records a plan-file-written event so the "plan created /
 	// updated" marker survives reload; it renders live via PlanFileWrittenEvent,
 	// which is not persisted.
