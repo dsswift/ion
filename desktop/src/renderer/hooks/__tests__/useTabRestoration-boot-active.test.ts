@@ -19,7 +19,7 @@ vi.mock('../../rendererLogger', () => ({
   rDebug: vi.fn(), rInfo: vi.fn(), rWarn: vi.fn(), rError: vi.fn(), rTrace: vi.fn(),
 }))
 
-import { resolveBootActiveTabId, hydrateBootActiveTab, hydrateBootWorkspace } from '../useTabRestoration-helpers'
+import { resolveBootActiveTabId, hydrateBootActiveTab, hydrateBootWorkspace, restoredModelSelection } from '../useTabRestoration-helpers'
 import { makeMainPane } from '../../stores/conversation-instance'
 import type { ConversationPane } from '../../../shared/types-engine'
 
@@ -169,5 +169,22 @@ describe('hydrateBootActiveTab', () => {
     }
     hydrateBootActiveTab(s, 'tab-1')
     expect(loadSkeletonMessages).not.toHaveBeenCalled()
+  })
+})
+
+describe('restoredModelSelection', () => {
+  it('preserves user and automatic selection while leaving legacy provenance unknown', () => {
+    expect(restoredModelSelection({ modelOverride: 'gpt-5.6-sol', modelOverrideSource: 'user' })).toEqual({
+      modelOverride: 'gpt-5.6-sol', modelOverrideSource: 'user',
+    })
+    expect(restoredModelSelection({ modelOverride: 'gpt-5.6-sol', modelOverrideSource: 'automatic' })).toEqual({
+      modelOverride: 'gpt-5.6-sol', modelOverrideSource: 'automatic',
+    })
+    expect(restoredModelSelection({ modelOverride: 'gpt-5.6-sol' })).toEqual({
+      modelOverride: 'gpt-5.6-sol', modelOverrideSource: null,
+    })
+    expect(restoredModelSelection({ modelOverride: null, modelOverrideSource: 'user' })).toEqual({
+      modelOverride: null, modelOverrideSource: null,
+    })
   })
 })

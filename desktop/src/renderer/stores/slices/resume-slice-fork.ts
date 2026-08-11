@@ -1,4 +1,4 @@
-import type { TabState, Message } from '../../../shared/types'
+import type { TabState, Message, ConversationInstance } from '../../../shared/types'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { makeLocalTab, nextMsgId } from '../session-store-helpers'
 import { makeMainPane, activeInstance, effectivePermissionMode, effectiveThinkingEffort } from '../conversation-instance'
@@ -28,6 +28,16 @@ function nextForkTitle(source: TabState, existingTitles: string[]): string {
   let n = 1
   while (existingTitles.includes(`${baseName} (${n})`)) n++
   return `${baseName} (${n})`
+}
+
+/** Carry both model value and its explicit-vs-automatic provenance into a fork. */
+export function forkModelSelection(
+  source: Pick<ConversationInstance, 'modelOverride' | 'modelOverrideSource'>,
+): Pick<ConversationInstance, 'modelOverride' | 'modelOverrideSource'> {
+  return {
+    modelOverride: source.modelOverride,
+    modelOverrideSource: source.modelOverrideSource,
+  }
 }
 
 export function createForkSlice(set: StoreSet, get: StoreGet): Partial<State> {
@@ -75,7 +85,7 @@ export function createForkSlice(set: StoreSet, get: StoreGet): Partial<State> {
           conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({
             messages,
             messageCount: messages.length,
-            modelOverride: sourceInst.modelOverride,
+            ...forkModelSelection(sourceInst),
             permissionDenied: restoredDenied,
             permissionMode: forkMode,
             thinkingEffort: forkEffort,
@@ -137,7 +147,7 @@ export function createForkSlice(set: StoreSet, get: StoreGet): Partial<State> {
           conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({
             messages,
             messageCount: messages.length,
-            modelOverride: sourceInst.modelOverride,
+            ...forkModelSelection(sourceInst),
             permissionDenied: restoredDenied,
             draftInput: targetMessage.content,
             permissionMode: forkMode,
