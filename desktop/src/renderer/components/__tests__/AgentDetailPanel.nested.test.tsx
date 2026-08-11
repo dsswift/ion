@@ -22,7 +22,7 @@ vi.mock('../../theme', () => ({
 
 vi.mock('../../preferences', () => ({
   usePreferencesStore: (sel: (s: Record<string, unknown>) => unknown) =>
-    sel({ unifiedTurnView: false, agentPanelDefaultOpen: false, agentDetailPopup: false }),
+    sel({ unifiedTurnView: false, agentPanelDefaultOpen: false }),
 }))
 
 const mockGetConversation = vi.fn()

@@ -81,7 +81,6 @@ vi.mock('../../preferences', () => ({
   usePreferencesStore: (sel: (s: Record<string, unknown>) => unknown) =>
     sel({
       agentPanelDefaultOpen: false,
-      agentDetailPopup: false,
       unifiedTurnView: UNIFIED_TURN_VIEW,
       expandToolResults: false,
     }),

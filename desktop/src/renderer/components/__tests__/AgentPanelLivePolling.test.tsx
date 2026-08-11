@@ -27,7 +27,7 @@ vi.mock('../../preferences', () => ({
   // Popup mode ON so clicking an agent opens the floating detail panel (the
   // surface the poller drives). default-open so the panel is expanded.
   usePreferencesStore: (sel: (s: Record<string, unknown>) => unknown) =>
-    sel({ agentPanelDefaultOpen: true, agentDetailPopup: true, unifiedTurnView: false }),
+    sel({ agentPanelDefaultOpen: true, unifiedTurnView: false }),
 }))
 
 vi.mock('../../stores/sessionStore', () => ({
@@ -50,7 +50,7 @@ vi.mock('../FloatingPanel', () => ({
 }))
 
 // The conversation barrel pulls in markdown/codemirror-heavy components. Stub
-// the pieces AgentExpandedView consumes with simple text renderers so the
+// the pieces the detail panel consumes with simple text renderers so the
 // transcript content is assertable.
 vi.mock('../conversation', () => ({
   groupMessages: (msgs: Array<{ id: string; content: string }>) =>

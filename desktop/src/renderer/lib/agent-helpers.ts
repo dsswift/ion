@@ -83,7 +83,7 @@ export function telemetryToDispatchInfo(entry: DispatchTelemetryEntry): Dispatch
  * persisted state).
  */
 export function dispatchKey(agent: AgentStateUpdate): string {
-  return getDispatches(agent).at(-1)?.id ?? agent.name
+  return mostRecentDispatch(getDispatches(agent))?.id ?? agent.name
 }
 
 export const AGENT_COLORS: Record<string, string> = {
@@ -182,44 +182,166 @@ export interface StatusDot {
 }
 
 /**
+ * A `StatusDot` plus its rank, so an aggregate over several dispatches can pick
+ * the most important state to show (higher wins) the way
+ * `getGroupStatusColor` folds a group of tabs down to one dot.
+ *
+ * Deliberately a SEPARATE type rather than a field on `StatusDot`: `getStatusDot`
+ * is consumed by callers that compare its result exactly, so widening the base
+ * shape would change a published contract for every one of them. The rank is
+ * additive surface for the folds that need it.
+ */
+export interface RankedStatusDot extends StatusDot {
+  priority: number
+}
+
+/**
+ * Statuses that mean "this agent is alive", as opposed to terminal.
+ *
+ * `suspended` is the engine's park state (dispatch_agent.go sets it when a
+ * dispatch waits on its children or a revive; agents/registry.go ranks it above
+ * the terminal states). A parked agent has NOT finished, so every liveness
+ * question in this module — descendant walks, active counts — must treat it the
+ * same as `running`. Losing this distinction is how a live tree once rendered
+ * as fully complete.
+ */
+export function isLiveStatus(status: string): boolean {
+  return status === 'running' || status === 'suspended'
+}
+
+/**
+ * Resolve the dot attributes for one status, given whether a live descendant
+ * hangs off the dispatch being described.
+ *
+ * This is the single cascade; `getStatusDot` delegates to it. Order matters:
+ *
+ *   error                          → solid statusError
+ *   live descendant, or suspended  → pulsing statusWaitingChildren + glow
+ *   running                        → pulsing statusRunning
+ *   done                           → solid statusComplete
+ *   else (idle / cancelled / …)    → solid statusIdle
+ *
+ * The descendant check sits ABOVE the terminal branches on purpose: a parent
+ * marked done while a child still runs must read as waiting-on-children, never
+ * as a finished green dot, because the tree is not finished.
+ */
+export function resolveDotForStatus(
+  status: string,
+  colors: StatusDotColors,
+  hasLiveDescendant: boolean,
+): RankedStatusDot {
+  if (status === 'error') {
+    return { bg: colors.statusError, pulse: false, glowColor: '', priority: 4 }
+  }
+  if (hasLiveDescendant || status === 'suspended') {
+    return { bg: colors.statusWaitingChildren, pulse: true, glowColor: colors.statusWaitingChildrenGlow, priority: 3 }
+  }
+  if (status === 'running') {
+    return { bg: colors.statusRunning, pulse: true, glowColor: '', priority: 2 }
+  }
+  if (status === 'done') {
+    return { bg: colors.statusComplete, pulse: false, glowColor: '', priority: 1 }
+  }
+  return { bg: colors.statusIdle, pulse: false, glowColor: '', priority: 0 }
+}
+
+/**
+ * Whether any agent anywhere BELOW the given dispatch is still alive.
+ *
+ * Walks the dispatch tree breadth-first: children of `dispatchId` are the
+ * agents whose `dispatchParentId` metadata names it, and each of those agents'
+ * own dispatch ids are queued in turn, so a depth-3+ descendant counts just as
+ * a direct child does. Matching on the dispatch ID (not the agent name) is what
+ * makes this precise — a grouped agent row spans several dispatches, and only
+ * the id says which one owns a given descendant.
+ *
+ * `visited` guards against a cycle in the parent attribution, which would
+ * otherwise spin forever on malformed metadata.
+ */
+export function hasLiveDescendantOfDispatch(
+  allAgents: AgentStateUpdate[],
+  dispatchId: string,
+): boolean {
+  if (!dispatchId) return false
+  const queue: string[] = [dispatchId]
+  const visited = new Set<string>()
+  while (queue.length > 0) {
+    const current = queue.shift()!
+    if (!current || visited.has(current)) continue
+    visited.add(current)
+    for (const child of childAgentsOf(allAgents, current)) {
+      if (isLiveStatus(child.status)) return true
+      for (const d of getDispatches(child)) queue.push(d.id)
+    }
+  }
+  return false
+}
+
+/**
+ * The agent's most recent dispatch, by START TIME rather than array position.
+ *
+ * The engine merges an agent's dispatches in slot-insertion order and
+ * de-duplicates them by id (agents/registry.go), so the array is only
+ * incidentally chronological — trusting `.at(-1)` would silently pick the wrong
+ * one after a persist/rehydrate round-trip. Members with no `startTime` (legacy
+ * or rehydrated rows) fall back to their array position, so a list without any
+ * timestamps still resolves to its last entry.
+ */
+export function mostRecentDispatch(dispatches: DispatchInfo[]): DispatchInfo | undefined {
+  if (dispatches.length === 0) return undefined
+  let best = dispatches[0]
+  let bestIdx = 0
+  for (let i = 1; i < dispatches.length; i++) {
+    const candidate = dispatches[i]
+    const candidateTime = candidate.startTime
+    const bestTime = best.startTime
+    if (candidateTime == null && bestTime == null) {
+      // Neither is timestamped — later position wins.
+      best = candidate
+      bestIdx = i
+      continue
+    }
+    if (candidateTime == null) continue
+    if (bestTime == null || candidateTime > bestTime || (candidateTime === bestTime && i > bestIdx)) {
+      best = candidate
+      bestIdx = i
+    }
+  }
+  return best
+}
+
+/**
+ * Whether an agent counts as ACTIVE for the panel header's breakdown.
+ *
+ * True when the agent itself is live, or when any of its dispatches still owns
+ * a live descendant. The second clause is what keeps the header honest with the
+ * row dots: a lead whose own dispatches all finished, but one of whose older
+ * dispatches still has a specialist working, is not "done".
+ */
+export function isAgentActive(agent: AgentStateUpdate, allAgents: AgentStateUpdate[]): boolean {
+  if (isLiveStatus(agent.status)) return true
+  return getDispatches(agent).some((d) => hasLiveDescendantOfDispatch(allAgents, d.id))
+}
+
+/**
  * Map an agent's status to the platform's standardized status-dot vocabulary,
- * the same cascade `StatusDot` (TabStripStatusDot.tsx) and the status bar use:
+ * the same cascade `StatusDot` (TabStripStatusDot.tsx) and the status bar use.
  *
- *   error                     → solid statusError
- *   any non-error + running child(ren) → pulsing yellow statusWaitingChildren + glow
- *   suspended (parked)        → pulsing yellow statusWaitingChildren + glow
- *   running                   → pulsing orange statusRunning
- *   done                      → solid green statusComplete
- *   else (idle/…)             → solid statusIdle
- *
- * `hasRunningChildren` is consulted BEFORE the terminal branches: a parent
- * marked done/suspended while a child dispatch still runs must read as
- * "waiting on children", never as a solid green done dot — the tree is not
- * finished (the Infra Engineer incident: a lead rendered complete while its
- * terraform specialist worked). `suspended` is the engine's park state
- * (dispatch waiting on children or a revive) and reads the same yellow even
- * when the child set is not visible to this client. Kept pure — the caller
- * resolves `colors` from `useColors()` and the child-running flag from
- * `childAgentsOf`.
+ * Thin delegator to `resolveDotForStatus` — that function documents and owns
+ * the cascade, so there is exactly ONE place the ordering lives and no way for
+ * a second copy to drift from it. Kept pure: the caller resolves `colors` from
+ * `useColors()` and the child-liveness flag from `childAgentsOf` (direct
+ * children) or `hasLiveDescendantOfDispatch` (the whole subtree).
  */
 export function getStatusDot(
   agent: AgentStateUpdate,
   colors: StatusDotColors,
   hasRunningChildren: boolean,
 ): StatusDot {
-  if (agent.status === 'error') {
-    return { bg: colors.statusError, pulse: false, glowColor: '' }
-  }
-  if (hasRunningChildren || agent.status === 'suspended') {
-    return { bg: colors.statusWaitingChildren, pulse: true, glowColor: colors.statusWaitingChildrenGlow }
-  }
-  if (agent.status === 'running') {
-    return { bg: colors.statusRunning, pulse: true, glowColor: '' }
-  }
-  if (agent.status === 'done') {
-    return { bg: colors.statusComplete, pulse: false, glowColor: '' }
-  }
-  return { bg: colors.statusIdle, pulse: false, glowColor: '' }
+  // Drop `priority` so this function's published shape is unchanged: callers
+  // compare the result exactly, and the rank is only meaningful to the folds.
+  const { bg, pulse, glowColor } = resolveDotForStatus(agent.status, colors, hasRunningChildren)
+  return { bg, pulse, glowColor }
 }
 
 export function formatDuration(secs: number): string {

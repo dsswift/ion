@@ -18,7 +18,7 @@ vi.mock('../../theme', () => ({
 
 vi.mock('../../preferences', () => ({
   usePreferencesStore: (sel: (s: Record<string, unknown>) => unknown) =>
-    sel({ agentPanelDefaultOpen: true, agentDetailPopup: true, unifiedTurnView: false }),
+    sel({ agentPanelDefaultOpen: true, unifiedTurnView: false }),
 }))
 
 vi.mock('../../stores/sessionStore', () => ({

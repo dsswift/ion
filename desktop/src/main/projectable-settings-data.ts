@@ -97,14 +97,6 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
     defaultValue: true,
   },
   {
-    key: 'agentDetailPopup',
-    type: 'boolean',
-    group: 'general',
-    label: 'Agent detail popup',
-    description: 'Click an agent row to open a floating detail panel instead of expanding inline.',
-    defaultValue: true,
-  },
-  {
     key: 'aiGeneratedTitles',
     type: 'boolean',
     group: 'general',

@@ -26,7 +26,7 @@ vi.mock('../../preferences', () => ({
   // default-open so rows render; popup OFF so the inline path is the default and
   // onOpenDispatch (when provided) is unambiguously the escalation under test.
   usePreferencesStore: (sel: (s: Record<string, unknown>) => unknown) =>
-    sel({ agentPanelDefaultOpen: true, agentDetailPopup: true, unifiedTurnView: false }),
+    sel({ agentPanelDefaultOpen: true, unifiedTurnView: false }),
 }))
 
 vi.mock('../../stores/sessionStore', () => ({
