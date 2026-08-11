@@ -93,7 +93,7 @@ func TestLateLoadExtensions_EmitsMergedNotRawSnapshot(t *testing.T) {
 
 	// Assertions -----------------------------------------------------------
 
-	snapshots := *captured
+	snapshots := captured.snapshot()
 	if len(snapshots) == 0 {
 		t.Fatal("no engine_agent_state events emitted; expected exactly 1")
 	}

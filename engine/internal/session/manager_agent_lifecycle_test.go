@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -26,12 +27,27 @@ import (
 // See docs/architecture/agent-state.md for the full spec.
 // ---------------------------------------------------------------------------
 
+// capturedAgentStateEvents serializes event capture with test assertions because
+// agent lifecycle emissions may arrive from background dispatch goroutines.
+type capturedAgentStateEvents struct {
+	mu     sync.Mutex
+	events []types.EngineEvent
+}
+
+func (c *capturedAgentStateEvents) snapshot() []types.EngineEvent {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	events := make([]types.EngineEvent, len(c.events))
+	copy(events, c.events)
+	return events
+}
+
 // captureAgentStateEvents installs an event listener on the manager that
-// records every engine_agent_state payload (copied so callers can mutate
-// safely). Returns a pointer to the slice so the caller can inspect it
-// after triggering events.
-func captureAgentStateEvents(mgr *Manager) *[]types.EngineEvent {
-	var captured []types.EngineEvent
+// records every engine_agent_state payload. Both the event list and each agent
+// slice are copied so callers can inspect a stable snapshot safely.
+func captureAgentStateEvents(mgr *Manager) *capturedAgentStateEvents {
+	captured := &capturedAgentStateEvents{}
 	mgr.OnEvent(func(_ string, ev types.EngineEvent) {
 		if ev.Type != "engine_agent_state" {
 			return
@@ -40,12 +56,14 @@ func captureAgentStateEvents(mgr *Manager) *[]types.EngineEvent {
 		// silently change recorded history.
 		copyAgents := make([]types.AgentStateUpdate, len(ev.Agents))
 		copy(copyAgents, ev.Agents)
-		captured = append(captured, types.EngineEvent{
+		captured.mu.Lock()
+		captured.events = append(captured.events, types.EngineEvent{
 			Type:   ev.Type,
 			Agents: copyAgents,
 		})
+		captured.mu.Unlock()
 	})
-	return &captured
+	return captured
 }
 
 // assertNoRunningInLastSnapshot fails the test if the most recent
@@ -107,8 +125,8 @@ func TestAbortAllDescendants_TransitionsEngineStatesToCancelled(t *testing.T) {
 	mgr.abortAllDescendants("life-abort", "test_abort")
 
 	// Last emission must reflect that both agents are cancelled.
-	assertNoRunningInLastSnapshot(t, *captured, "worker-1")
-	assertNoRunningInLastSnapshot(t, *captured, "worker-2")
+	assertNoRunningInLastSnapshot(t, captured.snapshot(), "worker-1")
+	assertNoRunningInLastSnapshot(t, captured.snapshot(), "worker-2")
 
 	// And the registry itself must now report them as cancelled (so a
 	// subsequent ReconcileState would re-broadcast terminal status).
@@ -169,10 +187,11 @@ func TestReconcileState_EmitsCurrentSnapshot(t *testing.T) {
 
 	mgr.ReconcileState("recon-full")
 
-	if len(*captured) == 0 {
+	snapshots := captured.snapshot()
+	if len(snapshots) == 0 {
 		t.Fatal("expected engine_agent_state event from ReconcileState")
 	}
-	last := (*captured)[len(*captured)-1]
+	last := snapshots[len(snapshots)-1]
 	if len(last.Agents) != 2 {
 		t.Errorf("expected 2 agents in reconciled snapshot, got %d: %+v", len(last.Agents), last.Agents)
 	}
@@ -274,7 +293,7 @@ func TestAgentLifecycle_ModelFallbackDoesNotPerturbSnapshots(t *testing.T) {
 	// pins two invariants:
 	//   1. The first snapshot shows the agent running.
 	//   2. The LAST snapshot shows the agent done (never orphaned in "running").
-	snapshots := *captured
+	snapshots := captured.snapshot()
 	if len(snapshots) < 2 {
 		var summary []string
 		for _, snap := range snapshots {
@@ -374,7 +393,7 @@ func TestHandleRunExit_CleanCancel_TerminalAgentSnapshot(t *testing.T) {
 
 	// Half (1): the descendant must not be stranded "running" in the last
 	// snapshot — it appears terminal or is absent.
-	assertNoRunningInLastSnapshot(t, *captured, "child-1")
+	assertNoRunningInLastSnapshot(t, captured.snapshot(), "child-1")
 
 	// Half (2): the descendant handle must be reaped so no orphaned child
 	// outlives the cancelled parent. This is the assertion that goes red when
