@@ -313,6 +313,18 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 		// that semantic distinction for external consumers.
 		return types.EngineEvent{Type: "engine_steer_degraded", SteerDegradedMessageLength: e.MessageLength}
 
+	case types.AgentStateClampedEvent:
+		return types.EngineEvent{
+			Type:                 "engine_agent_state_clamped",
+			ClampedAgentName:     e.AgentName,
+			ClampedScope:         e.Scope,
+			ClampedKeys:          e.ClampedKeys,
+			ClampedDroppedKeys:   e.DroppedKeys,
+			ClampedOriginalBytes: e.OriginalBytes,
+			ClampedBytes:         e.ClampedBytes,
+			ClampedLimitBytes:    e.LimitBytes,
+		}
+
 	case *types.PromptInjectedEvent:
 		// Engine-initiated prompt (extension ctx.sendPrompt): the run's user
 		// turn was not submitted by any consumer — the full text crosses the

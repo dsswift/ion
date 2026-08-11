@@ -3,6 +3,15 @@
     "agent_state": [
       "agents"
     ],
+    "agent_state_clamped": [
+      "agentName",
+      "clampedBytes",
+      "clampedKeys",
+      "droppedKeys",
+      "limitBytes",
+      "originalBytes",
+      "scope"
+    ],
     "background_task_complete": [
       "command",
       "elapsedMs",
@@ -262,6 +271,13 @@
     "capability",
     "capabilityBackend",
     "capabilityReason",
+    "clampedAgentName",
+    "clampedBytes",
+    "clampedDroppedKeys",
+    "clampedKeys",
+    "clampedLimitBytes",
+    "clampedOriginalBytes",
+    "clampedScope",
     "clearedBlocks",
     "command",
     "commandError",

@@ -188,6 +188,20 @@ export type NormalizedEvent =
   // ctx.steerSelf accepted a fresh prompt because no owning run was live.
   // Distinct from steer_injected, which proves a live run-loop drain.
   | { type: 'steer_degraded'; messageLength: number }
+  // The engine bounded an agent-state metadata payload that exceeded its
+  // configured limits. Carries key names and byte counts only -- never the
+  // offending content, which is by definition the multi-megabyte value that
+  // made the original event undeliverable.
+  | {
+      type: 'agent_state_clamped'
+      agentName?: string
+      scope: string
+      clampedKeys?: string[]
+      droppedKeys?: string[]
+      originalBytes: number
+      clampedBytes: number
+      limitBytes: number
+    }
   // Extension-injected prompt (engine ctx.sendPrompt): no client submitted
   // this turn, so no client did an optimistic insert — the renderer appends
   // it as a user message. The text is also persisted as the run's user turn,

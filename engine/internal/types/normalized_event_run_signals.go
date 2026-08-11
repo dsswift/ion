@@ -67,6 +67,37 @@ type SteerDegradedEvent struct {
 
 func (SteerDegradedEvent) eventType() string { return EventSteerDegraded }
 
+// AgentStateClampedEvent is emitted when the engine bounded an agent-state
+// metadata payload that exceeded the configured limits.
+//
+// It carries key NAMES and byte counts only, never the offending content.
+// That is not squeamishness about size: the content is by definition the
+// multi-megabyte value that made the original event undeliverable, so
+// echoing it here would recreate the exact pathology in a second event.
+//
+// The engine also stamps `_truncated` / `_truncatedKeys` into the affected
+// metadata map. The two surfaces answer different questions and are not
+// redundant: this event says "a clamp happened in this session, here is how
+// much was lost", while the in-band marker says "THIS value on THIS agent in
+// THIS snapshot is not what the producer wrote" -- which is what a consumer
+// needs to render an ellipsis or a tooltip, and which cannot be reliably
+// reconstructed by correlating an out-of-band event to one field of one agent.
+type AgentStateClampedEvent struct {
+	// AgentName is empty for a snapshot-scoped clamp, which spans agents.
+	AgentName string `json:"agentName,omitempty"`
+	// Scope is "value", "entry", or "snapshot" -- which tier tripped.
+	Scope string `json:"scope"`
+	// ClampedKeys were truncated in place; DroppedKeys were removed entirely.
+	ClampedKeys []string `json:"clampedKeys,omitempty"`
+	DroppedKeys []string `json:"droppedKeys,omitempty"`
+
+	OriginalBytes int `json:"originalBytes"`
+	ClampedBytes  int `json:"clampedBytes"`
+	LimitBytes    int `json:"limitBytes"`
+}
+
+func (AgentStateClampedEvent) eventType() string { return EventAgentStateClamped }
+
 // PromptInjectedEvent is emitted when an ENGINE-SIDE actor (an extension via
 // ctx.sendPrompt) starts a run whose user prompt no client submitted. Without
 // it, live clients watch the model respond to a turn they cannot see — the

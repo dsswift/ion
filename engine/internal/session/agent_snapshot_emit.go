@@ -23,9 +23,19 @@
 package session
 
 import (
+	"time"
+
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
+
+// clampAdvisoryRecord remembers the last advisory emitted for one
+// (agent, scope) pair so repeats inside the window can be suppressed.
+type clampAdvisoryRecord struct {
+	at            time.Time
+	originalBytes int
+}
 
 // Emission reasons. Kept as constants so the log field is greppable and a
 // typo cannot silently create a new reason that no dashboard knows about.
@@ -47,10 +57,91 @@ const (
 // agents are live, wipe your view" signal and must reach consumers, so this
 // never treats emptiness as "nothing to do" (see docs/architecture/agent-state.md).
 func (m *Manager) emitAgentSnapshot(key, reason string, force bool, snapshot []types.AgentStateUpdate) {
+	// Publish any clamp advisories BEFORE the snapshot they describe, so a
+	// consumer that reacts to the advisory has it in hand by the time the
+	// clamped payload arrives rather than one frame late.
+	m.emitClampAdvisories(key)
+
 	utils.LogWithFields(utils.LevelInfo, "session", "agent_snapshot_emitted", map[string]any{
 		"key": key, "count": len(snapshot), "reason": reason, "force": force,
 	})
 	m.emit(key, types.EngineEvent{Type: "engine_agent_state", Agents: snapshot})
+}
+
+// clampAdvisoryInterval is the per-(agent, scope) floor between advisories.
+//
+// Rate limiting is not cosmetic here. The production payload was clamped on
+// every one of 1,873 emissions over 15 hours; an unthrottled advisory would
+// have added 1,873 events describing the same unchanging condition, which is
+// the same "flood the wire" failure the clamp exists to stop.
+const clampAdvisoryInterval = 60 * time.Second
+
+// emitClampAdvisories drains the registry's clamp reports and emits a typed
+// advisory for each, subject to the rate limit.
+//
+// Every clamp is logged at WARN unconditionally by the clamp itself; the rate
+// limit applies only to the wire event. Diagnosing from logs therefore stays
+// complete even when the event stream is throttled.
+func (m *Manager) emitClampAdvisories(key string) {
+	m.mu.RLock()
+	s, ok := m.sessions[key]
+	m.mu.RUnlock()
+	if !ok || s == nil {
+		return
+	}
+
+	reports := s.agents.TakeClampReports()
+	if len(reports) == 0 {
+		return
+	}
+
+	now := time.Now()
+	for _, rep := range reports {
+		if !s.shouldEmitClampAdvisory(rep, now) {
+			continue
+		}
+		m.emit(key, types.EngineEvent{
+			Type:                 "engine_agent_state_clamped",
+			ClampedAgentName:     rep.AgentName,
+			ClampedScope:         rep.Scope,
+			ClampedKeys:          rep.ClampedKeys,
+			ClampedDroppedKeys:   rep.DroppedKeys,
+			ClampedOriginalBytes: rep.OriginalBytes,
+			ClampedBytes:         rep.ClampedBytes,
+			ClampedLimitBytes:    rep.LimitBytes,
+		})
+	}
+}
+
+// shouldEmitClampAdvisory applies the per-(agent, scope) rate limit.
+//
+// A materially different size always emits, even inside the window: a payload
+// that grew by an order of magnitude is new information, not a repeat of the
+// condition already reported.
+func (s *engineSession) shouldEmitClampAdvisory(rep agents.ClampReport, now time.Time) bool {
+	s.clampAdvisoryMu.Lock()
+	defer s.clampAdvisoryMu.Unlock()
+
+	if s.lastClampAdvisory == nil {
+		s.lastClampAdvisory = make(map[string]clampAdvisoryRecord)
+	}
+	sig := rep.AgentName + "\x00" + rep.Scope
+
+	prev, seen := s.lastClampAdvisory[sig]
+	if seen && now.Sub(prev.at) < clampAdvisoryInterval && !materiallyDifferent(prev.originalBytes, rep.OriginalBytes) {
+		return false
+	}
+	s.lastClampAdvisory[sig] = clampAdvisoryRecord{at: now, originalBytes: rep.OriginalBytes}
+	return true
+}
+
+// materiallyDifferent reports whether two sizes differ enough to be worth a
+// fresh advisory inside the rate-limit window (a 2x change either way).
+func materiallyDifferent(prev, cur int) bool {
+	if prev <= 0 {
+		return cur > 0
+	}
+	return cur >= prev*2 || cur*2 <= prev
 }
 
 // emitAgentSnapshotFor resolves the session's current merged snapshot and

@@ -100,6 +100,7 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
   tool_stalled: ['elapsed', 'toolId', 'toolName'],
   steer_injected: ['messageLength'],
   steer_degraded: ['messageLength'],
+  agent_state_clamped: ['agentName', 'scope', 'clampedKeys', 'droppedKeys', 'originalBytes', 'clampedBytes', 'limitBytes'],
   prompt_injected: ['kind', 'machineAuthored', 'origin', 'prompt'],
   model_fallback: ['fallbackModel', 'reason', 'requestedModel'],
   capability_unsupported: ['backend', 'capability', 'reason'],
