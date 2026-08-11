@@ -91,7 +91,11 @@ enum RemoteEvent: Sendable {
     case terminalInstanceRemoved(tabId: String, instanceId: String)
     case terminalSnapshot(tabId: String, instances: [TerminalInstanceInfo], activeInstanceId: String?, buffers: [String: String]?)
     // Engine events (structured)
-    case engineAgentState(tabId: String, instanceId: String?, agents: [AgentStateUpdate])
+    /// `metadataOmitted` marks a roster the desktop DEGRADED to fit a size cap:
+    /// identity and the protected metadata subset survive, detail fields were
+    /// shed. Treat those as unavailable rather than absent-and-therefore-cleared,
+    /// and request a fresh roster when the agents panel is visible.
+    case engineAgentState(tabId: String, instanceId: String?, agents: [AgentStateUpdate], metadataOmitted: Bool)
     case engineStatus(tabId: String, instanceId: String?, fields: StatusFields, metadata: [String: AnyCodable]?)
     /// Phase 3 of the state-management overhaul: engine_session_status
     /// is the typed-payload counterpart to engine_status. The engine
@@ -674,6 +678,7 @@ enum RemoteEvent: Sendable {
         case instanceId, data, exitCode, instance, instances, activeInstanceId, buffers
         case level, dialogId, method, title, defaultValue
         case agents, fields, inputTokens, outputTokens, contextPercent
+        case metadataOmitted
         // Phase 3 of the state-management overhaul: engine_session_status
         // carries a typed SessionStatus payload under the `sessionStatus`
         // wire key (mirrors EngineEvent.SessionStatus in Go).

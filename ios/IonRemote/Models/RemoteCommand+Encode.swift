@@ -200,6 +200,11 @@ extension RemoteCommand {
             try container.encode(TypeKey.requestTerminalSnapshot, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
 
+        case .requestAgentState(let tabId, let instanceId):
+            try container.encode(TypeKey.requestAgentState, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+
         case .requestContextBreakdown(let tabId):
             try container.encode(TypeKey.requestContextBreakdown, forKey: .type)
             try container.encode(tabId, forKey: .tabId)

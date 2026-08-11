@@ -111,6 +111,12 @@ export type RemoteCommand =
   | { type: 'desktop_terminal_remove_instance'; tabId: string; instanceId: string }
   | { type: 'desktop_terminal_select_instance'; tabId: string; instanceId: string }
   | { type: 'desktop_request_terminal_snapshot'; tabId: string }
+  // Ask the desktop to re-send the agent roster for one tab. Scoped
+  // deliberately: desktop_sync rebuilds every tab, engine profiles, settings,
+  // and terminal buffers, which is the amplification this whole change
+  // removes. A client uses this after receiving a degraded payload
+  // (metadataOmitted) or on a detected gap.
+  | { type: 'desktop_request_agent_state'; tabId: string; instanceId?: string | null }
   | { type: 'desktop_request_context_breakdown'; tabId: string }
   | { type: 'desktop_rename_tab'; tabId: string; customTitle: string | null }
   | { type: 'desktop_rename_terminal_instance'; tabId: string; instanceId: string; label: string }

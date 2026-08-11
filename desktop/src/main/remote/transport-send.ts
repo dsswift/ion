@@ -15,6 +15,7 @@ import { compressPayload } from './transport-compression'
 import { mark, Activity } from '../watchdog'
 import { MAX_WIRE_FRAME_BYTES } from './protocol'
 import { degradeOversizedEvent, canDegrade } from './transport-degrade'
+import { scheduleAgentStateSelfHeal } from './handlers/agent-state'
 import type { RemoteEvent, WireMessage } from './protocol'
 import type { RetransmitBuffer } from './retransmit-buffer'
 
@@ -390,6 +391,22 @@ export function sendDirect(
   deliverFrame(deviceId, msg)
 }
 
+/**
+ * After a degrade or a drop, ask for one full re-send shortly afterwards.
+ *
+ * Recovery must not depend on the client asking: iOS needs a release to send
+ * desktop_request_agent_state, and this heals a transient overflow without
+ * one. A payload that is still oversized simply degrades or drops again, which
+ * is logged — so a wedged condition stays visible rather than retrying
+ * silently forever.
+ */
+function scheduleSelfHealIfAgentState(event: RemoteEvent): void {
+  if (event.type !== 'desktop_agent_state') return
+  const e = event as RemoteEvent & { tabId?: string; instanceId?: string | null }
+  if (!e.tabId) return
+  scheduleAgentStateSelfHeal(e.tabId, e.instanceId ?? null)
+}
+
 export function sendToAll(
   ctx: SendCtx,
   event: RemoteEvent,
@@ -419,8 +436,10 @@ export function sendToAll(
       log('transport: degraded oversized event instead of dropping', { event_type: eventType, chars: plaintext.length, degraded_chars: degraded.plaintext.length, cap: MAX_PLAINTEXT_BYTES })
       eventToSend = degraded.event
       plaintextToSend = degraded.plaintext
+      scheduleSelfHealIfAgentState(event)
     } else {
       _error('RemoteTransport', 'transport: dropping oversized event before send', { event_type: eventType, chars: plaintext.length, cap: MAX_PLAINTEXT_BYTES, critical: CRITICAL_TYPES.has(eventType), degradable: canDegrade(eventType) })
+      scheduleSelfHealIfAgentState(event)
       return false
     }
   }

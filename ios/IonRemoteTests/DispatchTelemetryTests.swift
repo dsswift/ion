@@ -181,7 +181,7 @@ final class DispatchTelemetryTests: XCTestCase {
             makeAgentPill(name: "desktop-dev", parent: "dev-lead-dispatch-1"),
             makeAgentPill(name: "qa-reviewer", parent: "other-dispatch"),
         ]
-        vm.handleEvent(.engineAgentState(tabId: "t1", instanceId: "main", agents: pills))
+        vm.handleEvent(.engineAgentState(tabId: "t1", instanceId: "main", agents: pills, metadataOmitted: false))
 
         let children = vm.childAgentStates(tabId: "t1", parentDispatchId: "dev-lead-dispatch-1")
         XCTAssertEqual(Set(children.map(\.name)), Set(["engine-dev", "desktop-dev"]))
@@ -449,7 +449,7 @@ final class DispatchTelemetryTests: XCTestCase {
         let engineDev2 = makeChildPill(name: "engine-dev", agentId: "engine-dev-for-dl2", parentDispatchId: "dev-lead-dispatch-2")
 
         vm.handleEvent(.engineAgentState(tabId: "t1", instanceId: "main",
-            agents: [devLeadPill, engineDev1, engineDev2]))
+            agents: [devLeadPill, engineDev1, engineDev2], metadataOmitted: false))
 
         // Selecting dev-lead dispatch-1 MUST show only dispatch-1's engine-dev.
         let children1 = vm.childAgentStates(tabId: "t1", parentDispatchId: "dev-lead-dispatch-1")
@@ -496,7 +496,7 @@ final class DispatchTelemetryTests: XCTestCase {
         let childForDl2 = makeChildPill(name: "engine-dev", agentId: "child-for-dl2", parentDispatchId: "dl-2")
 
         vm.handleEvent(.engineAgentState(tabId: "t1", instanceId: "main",
-            agents: [devLeadPill, childForDl1, childForDl2]))
+            agents: [devLeadPill, childForDl1, childForDl2], metadataOmitted: false))
 
         // Verify the merged pill's dispatches — last dispatch id is "dl-2".
         let states = vm.engineInstance(tabId: "t1", instanceId: "main")?.agentStates ?? []

@@ -10,11 +10,13 @@ extension RemoteEvent {
     /// Encode engine events. Returns `true` if the receiver was an engine event.
     func encodeEngine(into container: inout KeyedEncodingContainer<CodingKeys>) throws -> Bool {
         switch self {
-        case .engineAgentState(let tabId, let instanceId, let agents):
+        case .engineAgentState(let tabId, let instanceId, let agents, let metadataOmitted):
             try container.encode(TypeKey.engineAgentState, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
             try container.encode(agents, forKey: .agents)
+            // Only encoded when true, matching the desktop's optional field.
+            if metadataOmitted { try container.encode(true, forKey: .metadataOmitted) }
             return true
 
         case .engineStatus(let tabId, let instanceId, let fields, let metadata):

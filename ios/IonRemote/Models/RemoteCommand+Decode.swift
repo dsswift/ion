@@ -132,6 +132,11 @@ extension RemoteCommand {
             let tabId = try container.decode(String.self, forKey: .tabId)
             self = .requestTerminalSnapshot(tabId: tabId)
 
+        case .requestAgentState:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            self = .requestAgentState(tabId: tabId, instanceId: instanceId)
+
         case .requestContextBreakdown:
             let tabId = try container.decode(String.self, forKey: .tabId)
             self = .requestContextBreakdown(tabId: tabId)

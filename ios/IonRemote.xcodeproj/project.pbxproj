@@ -178,6 +178,7 @@
 		GRPPARITY000000000000001 /* GroupingParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = GRPPARITY000000000000002 /* GroupingParityTests.swift */; };
 		MSGIDMAP0000000000000004 /* DispatchSnapshotIdMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MSGIDMAP0000000000000003 /* DispatchSnapshotIdMappingTests.swift */; };
 		DISPINVAL000000000000007 /* SessionViewModel+DispatchCacheInvalidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = DISPINVAL000000000000008 /* SessionViewModel+DispatchCacheInvalidation.swift */; };
+		AGENTSTEV00000000000001 /* SessionViewModel+AgentStateEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGENTSTEV00000000000002 /* SessionViewModel+AgentStateEvent.swift */; };
 		DISPINVALT00000000000007 /* DispatchCacheInvalidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DISPINVALT00000000000008 /* DispatchCacheInvalidationTests.swift */; };
 		DISPACT0000000000000007 /* DispatchActivityFoldTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DISPACT0000000000000008 /* DispatchActivityFoldTests.swift */; };
 		DSPCOV00000000000000007 /* DispatchTurnCoverageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DSPCOV00000000000000008 /* DispatchTurnCoverageTests.swift */; };
@@ -634,6 +635,7 @@
 		GRPPARITY000000000000002 /* GroupingParityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupingParityTests.swift; sourceTree = "<group>"; };
 		MSGIDMAP0000000000000003 /* DispatchSnapshotIdMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchSnapshotIdMappingTests.swift; sourceTree = "<group>"; };
 		DISPINVAL000000000000008 /* SessionViewModel+DispatchCacheInvalidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+DispatchCacheInvalidation.swift"; sourceTree = "<group>"; };
+		AGENTSTEV00000000000002 /* SessionViewModel+AgentStateEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+AgentStateEvent.swift"; sourceTree = "<group>"; };
 		DISPINVALT00000000000008 /* DispatchCacheInvalidationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchCacheInvalidationTests.swift; sourceTree = "<group>"; };
 		DISPACT0000000000000008 /* DispatchActivityFoldTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchActivityFoldTests.swift; sourceTree = "<group>"; };
 		DSPCOV00000000000000008 /* DispatchTurnCoverageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchTurnCoverageTests.swift; sourceTree = "<group>"; };
@@ -1206,6 +1208,7 @@
 				A1B2C3D4E5F60001000903AA /* SessionViewModel+Snapshot.swift */,
 				A1B2C3D4E5F60001000981AA /* SessionViewModel+SessionStatus.swift */,
 				DISPINVAL000000000000008 /* SessionViewModel+DispatchCacheInvalidation.swift */,
+				AGENTSTEV00000000000002 /* SessionViewModel+AgentStateEvent.swift */,
 				DTELACC000000000000A2 /* SessionViewModel+DispatchTelemetryAccessors.swift */,
 				A1B2C3D4E5F60001000991AA /* SessionViewModel+PermissionMessageEvents.swift */,
 				A1B2C3D4E5F60001000951AA /* SessionViewModel+OnConnected.swift */,
@@ -1722,6 +1725,7 @@
 				A1B2C3D4E5F60001000902AA /* SessionViewModel+Snapshot.swift in Sources */,
 				A1B2C3D4E5F60001000980AA /* SessionViewModel+SessionStatus.swift in Sources */,
 				DISPINVAL000000000000007 /* SessionViewModel+DispatchCacheInvalidation.swift in Sources */,
+				AGENTSTEV00000000000001 /* SessionViewModel+AgentStateEvent.swift in Sources */,
 				A1B2C3D4E5F60001000990AA /* SessionViewModel+PermissionMessageEvents.swift in Sources */,
 				A1B2C3D4E5F60001000950AA /* SessionViewModel+OnConnected.swift in Sources */,
 				THEMESYNCVM00000000002 /* SessionViewModel+ThemeSync.swift in Sources */,

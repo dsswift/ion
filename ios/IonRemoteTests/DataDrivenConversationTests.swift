@@ -58,7 +58,7 @@ final class DataDrivenConversationTests: XCTestCase {
         // conversation instance via mutateEngineInstance (no tab-type check),
         // so a plain tab gets agentStates just like an engine tab.
         let agent = try alwaysVisibleAgent(name: "Researcher")
-        vm.handleEvent(.engineAgentState(tabId: "plain", instanceId: nil, agents: [agent]))
+        vm.handleEvent(.engineAgentState(tabId: "plain", instanceId: nil, agents: [agent], metadataOmitted: false))
 
         let instance = try XCTUnwrap(vm.conversationInstances["plain"]?.first,
             "mutateEngineInstance must create the single instance for a plain tab")
@@ -138,7 +138,7 @@ final class DataDrivenConversationTests: XCTestCase {
             $0.append(Message(id: "m1", role: .user, content: "hi", timestamp: 1))
         }
         let agent = try alwaysVisibleAgent(name: "Worker")
-        vm.handleEvent(.engineAgentState(tabId: "plain", instanceId: nil, agents: [agent]))
+        vm.handleEvent(.engineAgentState(tabId: "plain", instanceId: nil, agents: [agent], metadataOmitted: false))
 
         // Snapshot updates a projected field (runningAgentCount) on the same id.
         let json = """

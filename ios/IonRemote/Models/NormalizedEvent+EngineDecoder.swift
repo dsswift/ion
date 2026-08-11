@@ -19,7 +19,9 @@ extension RemoteEvent {
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
             let agents = try container.decode([AgentStateUpdate].self, forKey: .agents)
-            return .engineAgentState(tabId: tabId, instanceId: instanceId, agents: agents)
+            // Absent on a full roster; only a degraded payload sets it.
+            let metadataOmitted = try container.decodeIfPresent(Bool.self, forKey: .metadataOmitted) ?? false
+            return .engineAgentState(tabId: tabId, instanceId: instanceId, agents: agents, metadataOmitted: metadataOmitted)
 
         case .engineStatus:
             let tabId = try container.decode(String.self, forKey: .tabId)
