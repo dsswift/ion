@@ -36,8 +36,27 @@ BASE_REF="origin/main"
 if ! git rev-parse --verify --quiet "$BASE_REF" >/dev/null; then
   echo "pre-push: $BASE_REF not found locally; skipping change-scoped checks"
   CHANGED=""
+  BASE_SHA="missing"
 else
+  BASE_SHA="$(git rev-parse "$BASE_REF")"
   CHANGED="$(git diff --name-only "$(git merge-base HEAD "$BASE_REF")"...HEAD 2>/dev/null || true)"
+fi
+
+# A successful validation belongs to one exact branch tip, base ref, and gate
+# implementation. Long full-suite runs can outlive a caller's process timeout
+# after every gate has passed; without this receipt, retrying the push reruns the
+# same expensive checks forever and may never reach transport. Keep the receipt
+# in git metadata, never the worktree, and use it only when the worktree is clean.
+# Any commit, base update, gate edit, or dirty file invalidates the match.
+CACHE_PATH="$(git rev-parse --git-path ion-pre-push-success)"
+CACHE_KEY="$(git rev-parse HEAD):${BASE_SHA}:$(git hash-object scripts/pre-push.sh)"
+WORKTREE_CLEAN=false
+if [ -z "$(git status --porcelain)" ]; then
+  WORKTREE_CLEAN=true
+fi
+if [ "$WORKTREE_CLEAN" = true ] && [ -f "$CACHE_PATH" ] && [ "$(cat "$CACHE_PATH")" = "$CACHE_KEY" ]; then
+  echo "pre-push: exact HEAD already passed all gates"
+  exit 0
 fi
 
 touched() {
@@ -120,4 +139,7 @@ if [ ${#failures[@]} -gt 0 ]; then
 fi
 
 echo
+if [ "$WORKTREE_CLEAN" = true ]; then
+  printf '%s\n' "$CACHE_KEY" > "$CACHE_PATH"
+fi
 echo "pre-push: all gates passed"
