@@ -57,6 +57,47 @@ const (
 // agents are live, wipe your view" signal and must reach consumers, so this
 // never treats emptiness as "nothing to do" (see docs/architecture/agent-state.md).
 func (m *Manager) emitAgentSnapshot(key, reason string, force bool, snapshot []types.AgentStateUpdate) {
+	m.mu.RLock()
+	s := m.sessions[key]
+	m.mu.RUnlock()
+
+	// No session (teardown races, some test harnesses): no gate state exists,
+	// so emit unconditionally rather than dropping an authoritative frame.
+	if s == nil || s.agentEmitter == nil {
+		m.publishAgentSnapshot(key, reason, force, snapshot)
+		return
+	}
+
+	limits := m.agentStateEmitLimits()
+	decision := s.agentEmitter.decide(snapshot, reason, force, limits,
+		func(flushReason string, coalesced int) {
+			// Trailing edge: re-read the CURRENT snapshot rather than reusing
+			// the one that opened the window, so the coalesced emission
+			// carries final state. That is what makes collapsing a burst
+			// lossless rather than merely cheaper.
+			m.mu.RLock()
+			var latest []types.AgentStateUpdate
+			if sess, ok := m.sessions[key]; ok {
+				latest = sess.agents.MergedSnapshot()
+			}
+			m.mu.RUnlock()
+
+			utils.LogWithFields(utils.LevelDebug, "session", "agent_state: flushing coalesced burst", map[string]any{
+				"key": key, "reason": flushReason, "absorbed": coalesced,
+			})
+			m.publishAgentSnapshot(key, flushReason, false, latest)
+		})
+
+	switch decision {
+	case emitSuppress, emitDefer:
+		return
+	default:
+		m.publishAgentSnapshot(key, reason, force, snapshot)
+	}
+}
+
+// publishAgentSnapshot performs the actual emission, past every gate.
+func (m *Manager) publishAgentSnapshot(key, reason string, force bool, snapshot []types.AgentStateUpdate) {
 	// Publish any clamp advisories BEFORE the snapshot they describe, so a
 	// consumer that reacts to the advisory has it in hand by the time the
 	// clamped payload arrives rather than one frame late.
@@ -66,6 +107,14 @@ func (m *Manager) emitAgentSnapshot(key, reason string, force bool, snapshot []t
 		"key": key, "count": len(snapshot), "reason": reason, "force": force,
 	})
 	m.emit(key, types.EngineEvent{Type: "engine_agent_state", Agents: snapshot})
+}
+
+// agentStateEmitLimits resolves the dedup/coalesce configuration.
+func (m *Manager) agentStateEmitLimits() types.ResolvedAgentStateEmitLimits {
+	if m == nil || m.config == nil {
+		return types.AgentStateEmitDefaults()
+	}
+	return m.config.Limits.AgentStateEmit.Resolved()
 }
 
 // clampAdvisoryInterval is the per-(agent, scope) floor between advisories.

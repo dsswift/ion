@@ -88,3 +88,40 @@ func TestEnterpriseCeiling_NilIsPassthrough(t *testing.T) {
 		t.Errorf("nil ceiling changed limits: %+v", got)
 	}
 }
+
+func TestAgentStateEmitLimits_NilResolvesToDefaults(t *testing.T) {
+	var l *AgentStateEmitLimits
+	got := l.Resolved()
+
+	if got.CoalesceMs != DefaultAgentStateCoalesceMs {
+		t.Errorf("CoalesceMs = %d, want %d", got.CoalesceMs, DefaultAgentStateCoalesceMs)
+	}
+	if !got.Dedup {
+		t.Error("Dedup should default to enabled")
+	}
+}
+
+// -1 is the escape hatch for a consumer that depends on emission cardinality.
+// It must survive resolution rather than being read as "unset".
+func TestAgentStateEmitLimits_NegativeOneDisablesCoalescing(t *testing.T) {
+	l := &AgentStateEmitLimits{CoalesceMs: intPtr(-1)}
+	if got := l.Resolved().CoalesceMs; got != -1 {
+		t.Errorf("CoalesceMs = %d, want -1 to survive resolution", got)
+	}
+}
+
+func TestAgentStateEmitLimits_ZeroMeansDefault(t *testing.T) {
+	l := &AgentStateEmitLimits{CoalesceMs: intPtr(0)}
+	if got := l.Resolved().CoalesceMs; got != DefaultAgentStateCoalesceMs {
+		t.Errorf("CoalesceMs = %d, want the default %d", got, DefaultAgentStateCoalesceMs)
+	}
+}
+
+// Dedup is a bool, so false must be distinguishable from unset -- which is
+// exactly why the config field is a pointer.
+func TestAgentStateEmitLimits_DedupFalseIsHonored(t *testing.T) {
+	l := &AgentStateEmitLimits{Dedup: boolPtr(false)}
+	if l.Resolved().Dedup {
+		t.Error("explicit dedup:false must be honored, not treated as unset")
+	}
+}

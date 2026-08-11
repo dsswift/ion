@@ -113,6 +113,7 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 		conversationID:   convID,
 		bindingPending:   !convExists,
 		agents:           m.newAgentRegistry(),
+		agentEmitter:     &agentEmitter{},
 		childPIDs:        make(map[int]struct{}),
 		pending:          pending.New(),
 		maxQueueDepth:    32,

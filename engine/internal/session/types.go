@@ -60,6 +60,11 @@ type engineSession struct {
 	// advisory would flood the wire the clamp exists to protect.
 	lastClampAdvisory map[string]clampAdvisoryRecord
 
+	// agentEmitter gates engine_agent_state emissions (dedup + coalesce).
+	// Carries its own mutex; see agent_emitter.go for why it does not share
+	// m.mu.
+	agentEmitter *agentEmitter
+
 	// runIdentityMu serializes extension-context snapshots of requestID and
 	// runTraceID with lifecycle writes. Manager-owned readers still use m.mu;
 	// writers hold m.mu before this lock, preserving one lock order.

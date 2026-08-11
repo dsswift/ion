@@ -70,6 +70,7 @@ func (m *Manager) ForkSession(key string, messageIndex int) (string, error) {
 		config:         s.config,
 		conversationID: forked.ID,
 		agents:         m.newAgentRegistry(),
+		agentEmitter:   &agentEmitter{},
 		childPIDs:      make(map[int]struct{}),
 		pending:        pending.New(),
 		planMode:       s.planMode,

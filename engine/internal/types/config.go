@@ -599,6 +599,11 @@ type LimitsConfig struct {
 	// Nil inherits the compiled defaults. See config_agent_state.go for why
 	// the engine bounds a field extensions own.
 	AgentStateMetadata *AgentStateMetadataLimits `json:"agentStateMetadata,omitempty"`
+
+	// AgentStateEmit controls dedup and coalescing of engine_agent_state
+	// emissions. Nil inherits the compiled defaults. See
+	// config_agent_state_emit.go for why coalescing is safe by default.
+	AgentStateEmit *AgentStateEmitLimits `json:"agentStateEmit,omitempty"`
 	// PlanModeAutoExitOnEndTurn controls the engine's "deterministic
 	// plan-mode exit" safety net. When a plan-mode run terminates with
 	// stop reason end_turn / stop and the assistant did not invoke

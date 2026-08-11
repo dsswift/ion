@@ -401,6 +401,14 @@ func (m *Manager) StopSession(key string) error {
 	// See session_root_context.go.
 	s.cancelSessionRoot("stop session")
 
+	// Halt the agent-state coalesce timer so a trailing flush cannot fire
+	// against a session that is going away. Deliberately does NOT flush a
+	// pending emission: teardown force-emits its own terminal snapshot, and
+	// flushing here would race that with a staler view.
+	if s.agentEmitter != nil {
+		s.agentEmitter.stop()
+	}
+
 	// Cancel active run
 	if s.requestID != "" {
 		m.backend.Cancel(s.requestID)
