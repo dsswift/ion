@@ -914,6 +914,18 @@ type AuthConfig struct {
 	// token forwarding, and authenticated log egress. Empty means no
 	// operator identity is configured.
 	IdentityProvider string `json:"identityProvider,omitempty"`
+	// HasKeyNegativeCacheSeconds bounds how long a "this provider has no
+	// credentials" result is remembered, so repeated lookups for an
+	// unconfigured provider do not re-walk the keychain and file store every
+	// time. Only NEGATIVE results are cached — a positive is always re-read,
+	// because serving a cached one would keep handing out a credential the
+	// operator revoked.
+	//
+	// Every credential write invalidates the entry directly, so this TTL is a
+	// backstop for a writer outside the engine (an external process editing
+	// credentials.json), not the primary mechanism. Zero uses the built-in
+	// default; -1 disables the cache.
+	HasKeyNegativeCacheSeconds int `json:"hasKeyNegativeCacheSeconds,omitempty"`
 }
 
 // --- Network Types (from engine/src/network.ts) ---

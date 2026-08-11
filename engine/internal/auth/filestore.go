@@ -113,6 +113,12 @@ func (fs *FileStore) SetKey(provider, key string) error {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 
+	// A negative cached for this provider is now wrong. Invalidating up front
+	// rather than on the success path means an interrupted write cannot leave
+	// a stale negative behind, which would make a credential that DID land
+	// look absent.
+	InvalidateHasKey(provider)
+
 	creds, _, err := fs.readFile()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -143,6 +149,11 @@ func (fs *FileStore) SetKey(provider, key string) error {
 func (fs *FileStore) DeleteKey(provider string) error {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
+
+	// Deleting only ever makes HasKey MORE negative, so this is not strictly
+	// required for correctness. It is here so every write path treats the
+	// cache identically and nobody has to reason about which ones matter.
+	InvalidateHasKey(provider)
 
 	creds, _, err := fs.readFile()
 	if err != nil {
