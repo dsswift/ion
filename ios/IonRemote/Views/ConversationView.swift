@@ -92,26 +92,6 @@ struct ConversationView: View {
         )
     }
 
-    var visibleAgents: [AgentStateUpdate] {
-        (viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)?.agentStates ?? [])
-            .filter { $0.isVisible && $0.isRootLevel }
-            .sorted { a, b in
-                let statusOrder: [String: Int] = ["running": 0, "done": 1, "error": 1, "cancelled": 1, "idle": 2]
-                let visOrder: [String: Int] = ["always": 0, "sticky": 1, "ephemeral": 2]
-                let sa = statusOrder[a.status] ?? 2
-                let sb = statusOrder[b.status] ?? 2
-                if sa != sb { return sa < sb }
-                let va = visOrder[a.visibility] ?? 9
-                let vb = visOrder[b.visibility] ?? 9
-                if va != vb { return va < vb }
-                return a.displayName.localizedCompare(b.displayName) == .orderedAscending
-            }
-    }
-
-    var runningAgentCount: Int {
-        visibleAgents.filter { $0.status == "running" }.count
-    }
-
     /// Active tool calls for this tab, sorted by start time (oldest first).
     /// Read from the flat toolId-keyed store; the StatusDrawerView renders these.
     var activeToolsList: [ActiveToolInfo] {
@@ -371,6 +351,7 @@ struct ConversationView: View {
                     )
                 },
                 agents: visibleAgents.isEmpty ? nil : visibleAgents,
+                allAgents: allAgents,
                 onOpenDispatch: { dispatch, agent in
                     selectedDispatchId = dispatch.id
                 },

@@ -119,20 +119,6 @@ struct SettingsAppearanceView: View {
                 Text("Git Info shows the current branch and commit counts. Tab Colors tints rows with the color set on desktop (desktop always shows color).")
             }
 
-            // ─── Agent Panel ────────────────────────────────────────
-            Section {
-                Toggle(isOn: Binding(
-                    get: { viewModel.agentPanelFullScreenPopup },
-                    set: { viewModel.agentPanelFullScreenPopup = $0 }
-                )) {
-                    Label("Full-Screen Agent Detail", systemImage: "rectangle.expand.vertical")
-                }
-            } header: {
-                Text("Agent Panel")
-            } footer: {
-                Text("When enabled, tapping an agent opens a full-screen detail view instead of expanding inline.")
-            }
-
             // ─── Keyboard Utility Bar ──────────────────────────────
             //
             // Per-view toggles for the keyboard utility bar (the strip
