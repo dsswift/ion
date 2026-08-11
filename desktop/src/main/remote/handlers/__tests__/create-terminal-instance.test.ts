@@ -49,7 +49,7 @@ function makeFakeStore(opts: { tabs: Array<{ id: string; workingDirectory: strin
     activeTabId: opts.activeTabId,
     terminalPanes: new Map<string, { instances: FakeInstance[]; activeInstanceId: string | null }>(),
     terminalOpenTabIds: new Set<string>(),
-    addTerminalInstance(tabId: string, kind: string): string {
+    addTerminalInstance(tabId: string, kind: string, cwd?: string): string {
       const tab = s.tabs.find((t) => t.id === tabId)
       const pane = s.terminalPanes.get(tabId) || { instances: [], activeInstanceId: null }
       const maxShell = pane.instances
@@ -61,7 +61,9 @@ function makeFakeStore(opts: { tabs: Array<{ id: string; workingDirectory: strin
       const id = `inst${++seq}`
       pane.instances = [...pane.instances, {
         id, label: `Shell ${maxShell + 1}`, kind, readOnly: false,
-        cwd: tab?.workingDirectory || '~',
+        // Mirrors terminal-slice.ts: an explicit caller directory wins; an
+        // ordinary iOS/user pane keeps the tab working-directory fallback.
+        cwd: cwd || tab?.workingDirectory || '~',
       }]
       pane.activeInstanceId = id
       s.terminalPanes.set(tabId, pane)
@@ -125,6 +127,7 @@ vi.mock('../../../terminal-manager-instance', () => ({
   },
 }))
 
+import { state } from '../../../state'
 import { createTerminalInstanceOnTab, handleTerminalAddInstance } from '../terminal'
 
 beforeEach(() => {
@@ -150,6 +153,22 @@ describe('createTerminalInstanceOnTab', () => {
     expect(fakeStore._raw.terminalPanes.has('tab-b')).toBe(false)
     // PTY keyed to the named tab, with that tab's cwd.
     expect(mocks.terminalCreate).toHaveBeenCalledWith(`tab-a:${result!.id}`, '/repo/a')
+  })
+
+  it('uses an explicit service directory for both pane metadata and PTY cwd', async () => {
+    // Regression: `dev run` sent a per-service directory through ion://, but
+    // action-terminal discarded it. The shared creator therefore called the
+    // store with no cwd, which fell back to /repo/a. `func start` then searched
+    // the repo root for host.json and `dotnet watch --project file.csproj`
+    // searched it for the service csproj — both failed despite the terminals
+    // launching successfully.
+    const result = await createTerminalInstanceOnTab('tab-a', { cwd: '/repo/a/services/functions' })
+
+    expect(result!.cwd).toBe('/repo/a/services/functions')
+    expect(fakeStore._raw.terminalPanes.get('tab-a')?.instances[0].cwd)
+      .toBe('/repo/a/services/functions')
+    expect(mocks.terminalCreate)
+      .toHaveBeenCalledWith(`tab-a:${result!.id}`, '/repo/a/services/functions')
   })
 
   it('marks the pane open so the panel renders it', async () => {
@@ -178,6 +197,19 @@ describe('createTerminalInstanceOnTab', () => {
     expect(fakeStore._raw.terminalPanes.size).toBe(0)
     expect(fakeStore._raw.terminalOpenTabIds.size).toBe(0)
     expect(mocks.logLines.some((l) => l.msg.includes('no such tab'))).toBe(true)
+  })
+
+  it('contains renderer failure and creates no PTY', async () => {
+    const mainWindow = state.mainWindow!
+    const original = mainWindow.webContents.executeJavaScript
+    mainWindow.webContents.executeJavaScript = vi.fn().mockRejectedValue(new Error('renderer disconnected'))
+
+    const result = await createTerminalInstanceOnTab('tab-a')
+
+    expect(result).toBeNull()
+    expect(mocks.terminalCreate).not.toHaveBeenCalled()
+    expect(mocks.logLines.some((line) => line.msg.includes('renderer request threw'))).toBe(true)
+    mainWindow.webContents.executeJavaScript = original
   })
 
   it('applies an explicit label so a pane can be named after its service', async () => {

@@ -24,6 +24,7 @@ vi.mock('../state', () => ({
   MAX_SCROLLBACK_SIZE: 1024,
 }))
 
+import { IPC } from '../../shared/types'
 import { broadcast } from '../broadcast'
 import { state } from '../state'
 
@@ -67,6 +68,19 @@ describe('broadcast → ATV full-stream gate', () => {
     ;(state as { atvWindow: unknown }).atvWindow = win
     broadcast('ion:engine-reconnected')
     expect(win.webContents.send).toHaveBeenCalledWith('ion:engine-reconnected')
+  })
+
+  it('forwards deep-link confirmation requests and settlements to open ATV window', () => {
+    const win = fakeWindow()
+    ;(state as { atvWindow: unknown }).atvWindow = win
+    broadcast(IPC.DEEPLINK_CONFIRM_REQUEST, { id: 'dl-1', owner: 'atv', action: 'terminal' })
+    broadcast(IPC.DEEPLINK_CONFIRM_SETTLED, 'dl-1')
+
+    expect(win.webContents.send).toHaveBeenCalledWith(
+      IPC.DEEPLINK_CONFIRM_REQUEST,
+      expect.objectContaining({ id: 'dl-1', owner: 'atv' }),
+    )
+    expect(win.webContents.send).toHaveBeenCalledWith(IPC.DEEPLINK_CONFIRM_SETTLED, 'dl-1')
   })
 
   it('drops nothing into the void: closed ATV window means no send, no throw', () => {

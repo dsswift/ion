@@ -28,6 +28,7 @@ import { registerLogIpc } from './log'
 import { registerAtvIpc } from './atv'
 import { registerThemesIpc } from './themes'
 import { registerFaviconIpc } from './favicon'
+import { registerDeepLinkIpc } from './deeplink'
 
 export function registerAllIpc(): void {
   registerWindowIpc()
@@ -60,4 +61,5 @@ export function registerAllIpc(): void {
   registerAtvIpc()
   registerThemesIpc()
   registerFaviconIpc()
+  registerDeepLinkIpc()
 }

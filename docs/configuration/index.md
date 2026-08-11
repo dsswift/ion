@@ -114,3 +114,10 @@ Not every file under `.ion/` belongs to the engine's four-layer merge.
 |---|---|---|
 | `.ion/engine.json` | Engine | Yes — the project layer described above. |
 | [`.ion/worktree.json`](worktree-json.md) | Desktop | No. Read only when creating a worktree, to provision the gitignored dependency state git cannot carry. It has no user or enterprise layer because it describes the *project's* build inputs, not a person's preferences. |
+
+## Other desktop surfaces
+
+[Deep links (`ion://`)](deep-links.md) let a script, a build tool, or a published
+link open a terminal pane or start a conversation in Ion Desktop. Not part of any
+config merge — it is a request surface rather than a settings file — but it is
+configured by the same operator and gated by a capability token under `~/.ion/`.

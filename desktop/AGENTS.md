@@ -105,6 +105,19 @@ Both primitives are zoom-aware. The operator's UI zoom is applied as `document.d
 
 - `CLAUDECODE` and similar leakage env vars are stripped before spawn (`main/cli-env.ts`). Don't bypass.
 - `node-pty` is legacy (still in dependencies for existing terminals). New subprocess work goes through `terminal-manager.ts` patterns. Note: `engine-bridge.ts` is **not** a subprocess spawner — the engine is a persistent launchd daemon and the bridge only *connects* to its socket (`~/.ion/engine.sock`); it never spawns the engine.
+- Every terminal PTY carries `ION_DESKTOP_TAB_ID`, `ION_DESKTOP_TERMINAL_INSTANCE_ID`, and `ION_DESKTOP_DEEPLINK_TOKEN`. Tools running in a pane read these to target their own conversation through `ion://` ([ADR-025](../docs/architecture/adr/025-deep-link-surface.md)). Don't drop them when touching `terminal-manager.ts`, and don't resolve a deep link's target conversation from the active tab — a pane must land where the request names, or be refused.
+
+## Deep links (`ion://`)
+
+`main/deeplink/` — one dispatcher, two transports (inline query params and a handoff file under `~/.ion/deeplink-requests/`), two actions (`terminal`, `prompt`). Reference: [`docs/configuration/deep-links.md`](../docs/configuration/deep-links.md).
+
+The rules that bite when adding an action:
+
+- **Never apply the trust check in an action.** `dispatch.ts` resolves the tier once, before routing; an action that re-checks (or forgets to) is how the gate gets bypassed.
+- **A new action goes in the parser's allowlist** with per-field length caps. Unknown actions and over-long fields are refused, not truncated.
+- **Untrusted requests must be fully described** in `DeepLinkConfirmDialog`. Show the real command or prompt text — a dialog that hides what it authorises trains the operator to approve blindly.
+- **Every path that cannot obtain an answer resolves to declined.** No window, timeout, closed window. An untrusted terminal request without `tabId` is the explicit exception to strict targeting: its confirmation dialog must require the operator to choose a live conversation before approval; trusted requests without `tabId` are refused.
+
 
 ## Hot reload
 

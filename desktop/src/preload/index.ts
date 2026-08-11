@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/types'
 import { legacyReviewToStage } from '../shared/types-git'
 import { atvApi } from './atv-api'
-import type { NormalizedEvent, EnrichedError, GitEvent } from '../shared/types'
+import type { NormalizedEvent, EnrichedError, GitEvent, DeepLinkConfirmRequest, DeepLinkConfirmResult } from '../shared/types'
 import type { IonAPI } from './ionapi'
 
 export type { IonAPI } from './ionapi'
@@ -92,6 +92,23 @@ const api: IonAPI = {
     ipcRenderer.on(IPC.TERMINAL_EXIT, handler)
     return () => ipcRenderer.removeListener(IPC.TERMINAL_EXIT, handler)
   },
+  // An untrusted ion:// deep link needs the operator's approval before anything
+  // runs. Main describes the request; the renderer renders it and answers.
+  onDeepLinkConfirmRequest: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, request: DeepLinkConfirmRequest) => callback(request)
+    ipcRenderer.on(IPC.DEEPLINK_CONFIRM_REQUEST, handler)
+    return () => ipcRenderer.removeListener(IPC.DEEPLINK_CONFIRM_REQUEST, handler)
+  },
+  onDeepLinkConfirmSettled: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, id: string) => callback(id)
+    ipcRenderer.on(IPC.DEEPLINK_CONFIRM_SETTLED, handler)
+    return () => ipcRenderer.removeListener(IPC.DEEPLINK_CONFIRM_SETTLED, handler)
+  },
+  setDeepLinkConfirmAvailability: (owner, available) => ipcRenderer.send(
+    available ? IPC.DEEPLINK_CONFIRM_READY : IPC.DEEPLINK_CONFIRM_UNAVAILABLE,
+    { owner },
+  ),
+  resolveDeepLinkConfirm: (result: DeepLinkConfirmResult) => ipcRenderer.send(IPC.DEEPLINK_CONFIRM_RESULT, result),
   // iOS asked to open a worktree / bench conversation. Tab creation lives in
   // the renderer store (it owns panes and titling), so main relays the intent
   // here rather than duplicating that logic.

@@ -45,16 +45,25 @@ export function handleTerminalResize(cmd: Extract<RemoteCommand, { type: 'deskto
  * it replaces the auto-numbered `Shell N`; when absent the store's existing
  * numbering applies, which is what the iOS caller relies on.
  *
+ * `cwd` is also optional. A deep link created by a service orchestrator supplies
+ * the service directory, so a command such as `func start` or `dotnet watch
+ * --project file.csproj` runs where its project files actually live rather than
+ * at the parent conversation repository. iOS does not supply it and retains the
+ * tab working-directory fallback.
+ *
  * Returns the created instance, or `null` when the renderer store is
  * unavailable or the tab does not exist.
  */
 export async function createTerminalInstanceOnTab(
   tabId: string,
-  opts: { label?: string } = {},
+  opts: { label?: string; cwd?: string } = {},
 ): Promise<{ id: string; label: string; kind: string; cwd: string } | null> {
   const escaped = JSON.stringify(tabId)
   const escapedLabel = opts.label ? JSON.stringify(opts.label) : 'null'
-  const result = await state.mainWindow?.webContents.executeJavaScript(`
+  const escapedCwd = opts.cwd ? JSON.stringify(opts.cwd) : 'undefined'
+  let result: { id: string; label: string; kind: string; cwd: string } | 'no-such-tab' | null | undefined
+  try {
+    result = await state.mainWindow?.webContents.executeJavaScript(`
     (function() {
       var store = window.__Ion_SESSION_STORE__;
       if (!store) return null;
@@ -62,7 +71,7 @@ export async function createTerminalInstanceOnTab(
       // Resolve by id only. No fallback to the active tab: a caller that names
       // a dead tab must be refused, not silently redirected.
       if (!s.tabs.some(function(t) { return t.id === ${escaped}; })) return 'no-such-tab';
-      var id = s.addTerminalInstance(${escaped}, 'user');
+      var id = s.addTerminalInstance(${escaped}, 'user', ${escapedCwd});
       var label = ${escapedLabel};
       if (label) s.renameTerminalInstance(${escaped}, id, label);
       // Mark the pane open so the panel actually renders it, and select the new
@@ -78,6 +87,11 @@ export async function createTerminalInstanceOnTab(
       return { id: inst.id, label: inst.label, kind: inst.kind, cwd: inst.cwd || '' };
     })()
   `)
+  } catch (err) {
+    log('terminal_add_instance failed: renderer request threw', { tabId, error: String(err) })
+    return null
+  }
+
   if (result === 'no-such-tab') {
     log('terminal_add_instance refused: no such tab', { tabId })
     return null

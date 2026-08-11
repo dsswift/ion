@@ -269,6 +269,14 @@ export const IPC = {
   TERMINAL_DESTROY: 'ion:terminal-destroy',
   TERMINAL_GET_SCROLLBACK: 'ion:terminal-get-scrollback',
 
+  // Deep links (ion:// URL scheme). An untrusted request is described to the
+  // operator and waits for an explicit decision before anything runs.
+  DEEPLINK_CONFIRM_REQUEST: 'ion:deeplink-confirm-request',
+  DEEPLINK_CONFIRM_RESULT: 'ion:deeplink-confirm-result',
+  DEEPLINK_CONFIRM_SETTLED: 'ion:deeplink-confirm-settled',
+  DEEPLINK_CONFIRM_READY: 'ion:deeplink-confirm-ready',
+  DEEPLINK_CONFIRM_UNAVAILABLE: 'ion:deeplink-confirm-unavailable',
+
   // Bash command execution
   EXECUTE_BASH: 'ion:execute-bash',
   CANCEL_BASH: 'ion:cancel-bash',
@@ -448,3 +456,44 @@ export const IPC = {
   // inserts it so its transcript matches the owner's optimistic insert.
   ATV_USER_MESSAGE_ECHO: 'atv:user-message-echo',
 } as const
+
+/**
+ * An untrusted `ion://` request awaiting the operator's decision.
+ *
+ * Lives in `shared/` because it crosses the process boundary: main builds it,
+ * the preload bridge types it, and the renderer dialog renders it. Every field
+ * the operator needs in order to decide is present — the dialog shows the real
+ * command or the real prompt text, because a confirmation that describes the
+ * request only vaguely trains people to approve without reading.
+ */
+export type DeepLinkConfirmOwner = 'overlay' | 'atv'
+
+export interface DeepLinkConfirmResult {
+  id: string
+  owner: DeepLinkConfirmOwner
+  approved: boolean
+  /** Required only when an untrusted terminal link omitted its target. */
+  tabId?: string
+}
+
+export interface DeepLinkConfirmRequest {
+  /** Correlates the operator's answer with the pending request in main. */
+  id: string
+  /** Exactly one renderer presents and may answer this request. */
+  owner: DeepLinkConfirmOwner
+  action: 'terminal' | 'prompt'
+  /** True when untrusted terminal request needs explicit target selection. */
+  selectTab?: boolean
+  /** Target conversation id (terminal requests). */
+  tabId?: string
+  /** Pane label (terminal requests). */
+  title?: string
+  /** The command that would run (terminal requests). */
+  cmd?: string
+  /** Working directory. */
+  dir?: string
+  /** The prompt that would be sent (prompt requests). */
+  text?: string
+  /** Whether the prompt would be submitted immediately (prompt requests). */
+  submit?: boolean
+}

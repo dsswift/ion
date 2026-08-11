@@ -72,6 +72,14 @@
   "build": {
     "appId": "com.sprague.ion.desktop",
     "productName": "Ion",
+    "protocols": [
+      {
+        "name": "Ion Deep Link",
+        "schemes": [
+          "ion"
+        ]
+      }
+    ],
     "directories": {
       "output": "release"
     },

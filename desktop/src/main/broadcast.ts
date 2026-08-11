@@ -31,7 +31,7 @@ export function broadcast(channel: string, ...args: unknown[]): void {
       maybeBeacon(event)
     }
   } else if (
-    (channel === 'ion:tab-status-change' || channel === 'ion:enriched-error' || channel === 'ion:settings-changed' || channel === 'ion:themes-changed' || channel === 'ion:engine-reconnected') &&
+    (channel === 'ion:tab-status-change' || channel === 'ion:enriched-error' || channel === 'ion:settings-changed' || channel === 'ion:themes-changed' || channel === 'ion:engine-reconnected' || channel === IPC.DEEPLINK_CONFIRM_REQUEST || channel === IPC.DEEPLINK_CONFIRM_SETTLED) &&
     state.atvWindow &&
     !state.atvWindow.isDestroyed()
   ) {

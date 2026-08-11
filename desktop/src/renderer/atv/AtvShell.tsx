@@ -27,6 +27,7 @@ import { AtvApp } from './AtvApp'
 import { AtvControlsPopover } from './AtvControlsPopover'
 import { useAtvControlsBus } from './state/controls-bus'
 import { CommandPalette } from '../components/CommandPalette'
+import { DeepLinkConfirmDialog } from '../components/DeepLinkConfirmDialog'
 import type { PaletteEntry } from '../components/command-palette-rank'
 
 /** One-time mirror boot, before the first render reads the store. */
@@ -253,6 +254,7 @@ export function AtvShell(): React.JSX.Element {
         {editorState && activeTabId && <FileEditor dir={editorState.dir} tabId={activeTabId} />}
         <AtvControlsPopover />
         <CommandPalette actions={paletteActions.current} />
+        <DeepLinkConfirmDialog />
       </div>
     </PopoverLayerProvider>
   )

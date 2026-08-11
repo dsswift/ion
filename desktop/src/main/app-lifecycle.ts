@@ -11,6 +11,8 @@ import { createTray, createWindow, installContentSecurityPolicy, snapshotWindowS
 import { focusAtvWindow, isAtvWindowOpen, openAtvWindow, toggleAtvWindow, applyAtvPin, isAtvPinned } from './atv-window-manager'
 import { resolveSurfacePlan } from './surface-launch'
 import { requestPermissions } from './permissions-preflight'
+import { claimSingleInstance, setupDeepLinks, consumeLaunchUrl, bindDeepLinkRenderer } from './deeplink-setup'
+import { markDeepLinksReady } from './deeplink/dispatch'
 import { cleanOrphanedWorktrees } from './git-runner'
 import { focusState } from './git/focus-state'
 import { startConversationCleanup } from './conversation-cleanup'
@@ -207,6 +209,24 @@ async function flushRendererTabs(): Promise<void> {
 }
 
 export function setupAppLifecycle(): void {
+  // Single-instance lock FIRST, before any startup work at all.
+  //
+  // `open ion://…` launches Ion when it is not running, so without this a click
+  // while Ion is already running would start a second full instance: two engine
+  // bootstraps, two tab stores, two windows over the same files. Losing the lock
+  // means another Ion is live and has already been handed our URL via its
+  // `second-instance` handler, so the only correct move is to quit immediately —
+  // before the machine-identity read, before whenReady, before anything
+  // observable.
+  if (!claimSingleInstance()) {
+    app.quit()
+    return
+  }
+
+  // Register the ion:// scheme and its arrival paths before whenReady resolves,
+  // so a cold-launch URL is not dropped while the app is still booting.
+  setupDeepLinks()
+
   // Resolve stable machine identity early (before the first log line is written
   // to egress). Non-fatal — errors are swallowed and identity fields are simply
   // absent. loadMachineIdentity resolves quickly on all platforms; the host name
@@ -320,6 +340,20 @@ export function setupAppLifecycle(): void {
 
     createWindow(surfacePlan.showOverlayOnLaunch)
     snapshotWindowState('after createWindow')
+
+    // Deep links can only run once the RENDERER STORE exists — every action
+    // drives store actions (createTabInDirectory, addTerminalInstance), and the
+    // confirmation dialog lives in the renderer too. `did-finish-load` is the
+    // first point at which that is true. Anything that arrived earlier (a cold
+    // launch, which is the common case for a link that starts the app) was
+    // queued by the dispatcher and flushes here.
+    if (state.mainWindow) {
+      state.mainWindow.webContents.once('did-finish-load', () => {
+        markDeepLinksReady()
+        consumeLaunchUrl()
+      })
+      bindDeepLinkRenderer('overlay', state.mainWindow)
+    }
 
     const pidDir = app.getPath('userData')
     const pidPath = join(pidDir, 'ion.pid')
