@@ -12,6 +12,7 @@ import { injectDiskResourcesIfEmpty } from './event-wiring-disk-seed'
 import { accumulateTextDelta, flushKeyDeltas, dropKeyDeltas } from './event-wiring-text-delta-batcher'
 import { projectEngineEventToWire } from './event-wiring-wire-projection'
 import { notifyAtvPermissionResolved } from './atv-window-manager'
+import { recordAgentState } from './agent-state-mirror'
 export { wireTabFocusHandler, wireMarkResourceReadHandler, wireDeleteResourceHandler, wireResourceGetHandler, handleResourceItemEvent } from './event-wiring-resources'
 export { wireRemoteSessionPlaneForwarding } from './event-wiring-remote'
 
@@ -324,6 +325,11 @@ export function wireEngineBridgeEvents(): void {
     // trace level when transport diagnosis is needed.
     if (event.type === 'engine_agent_state') {
       const agents = Array.isArray(event.agents) ? event.agents : []
+      // Record BEFORE forwarding. Main sees this event first, so the mirror is
+      // the upstream copy; an iOS resync is answered from here rather than by
+      // scraping the renderer's downstream projection back across IPC.
+      const [mirrorTabId, mirrorInstanceId] = key.split(':')
+      recordAgentState(mirrorTabId, mirrorInstanceId || null, agents)
       _trace('main', 'agent_state', { key, count: agents.length })
       // Trace dispatch metadata for terminal agents so we can verify
       // conversationId survives the engine→desktop pipeline.

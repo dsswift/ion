@@ -1,4 +1,5 @@
 import { readFile } from 'fs/promises'
+import { getAgentState, clearAgentStateForTab } from '../../agent-state-mirror'
 import { IPC } from '../../../shared/types'
 import { log as _log, warn as _warn } from '../../logger'
 import { state, sessionPlane, engineBridge, activeAssistantMessages, lastMessagePreview, lastForwardedTabStatus, extensionCommandRegistry } from '../../state'
@@ -42,12 +43,18 @@ function warn(msg: string, fields?: Record<string, unknown>): void {
  * conversation's messages live on the active instance regardless of backend;
  * the same live-state push applies whenever the session is running.
  *
- * Engine contract: `engine_agent_state` is a complete snapshot. The
- * authoritative truth is "what the renderer holds right now" — including
- * the empty case. We forward unconditionally: an empty `agents: []`
- * payload tells the mobile client "drop your stale rows from a previous
- * session." Without this, iOS reconnects show ghost agents from connections
- * ago. See docs/architecture/agent-state.md.
+ * Engine contract: `engine_agent_state` is a complete snapshot, and we forward
+ * unconditionally INCLUDING the empty case — an empty `agents: []` payload is
+ * the authoritative "drop your stale rows" signal, without which an iOS
+ * reconnect shows ghost agents from connections ago. See
+ * docs/architecture/agent-state.md.
+ *
+ * Agents come from the main-process mirror (agent-state-mirror.ts), not from
+ * the renderer. Main receives `engine_agent_state` first and forwards it on,
+ * so asking the renderer for it read a downstream copy of data main already
+ * had — and made the renderer serialize the whole roster across IPC on every
+ * resync, which with the 35 MB payload from the production incident was tens
+ * of megabytes of structured-clone work on the UI thread.
  */
 async function sendCurrentEngineState(tabId: string, deviceId: string): Promise<void> {
   if (!state.mainWindow || !state.remoteTransport) return
@@ -61,12 +68,11 @@ async function sendCurrentEngineState(tabId: string, deviceId: string): Promise<
         var pane = s.conversationPanes.get('${escapedTab}');
         var inst = pane ? (pane.instances.find(function(i) { return i.id === pane.activeInstanceId; }) || pane.instances[0]) : null;
         var instId = inst ? inst.id : null;
-        var agents = (inst && inst.agentStates) || [];
         var status = (inst && inst.statusFields) || null;
         var key = '${escapedTab}' + (instId ? ':' + instId : '');
         var working = s.engineWorkingMessages.get(key) || '';
         var modelOverride = window.__Ion_resolveEngineModel ? window.__Ion_resolveEngineModel('${escapedTab}') : null;
-        return { instId: instId, agents: agents, status: status, working: working, modelOverride: modelOverride };
+        return { instId: instId, status: status, working: working, modelOverride: modelOverride };
       })()
     `)
     if (!snapshot) {
@@ -74,7 +80,7 @@ async function sendCurrentEngineState(tabId: string, deviceId: string): Promise<
       return
     }
     const instanceId: string | null = snapshot.instId ?? null
-    const agents = snapshot.agents || []
+    const agents = getAgentState(tabId, instanceId)
     log('send_current_engine_state', { tab_id: tabId, instance_id: instanceId, agents: agents.length, has_status: !!snapshot.status, has_working: !!snapshot.working, has_model_override: !!snapshot.modelOverride })
 
     // Always send the authoritative agent snapshot — including empty.
@@ -151,6 +157,7 @@ export function handleCloseTab(cmd: Extract<RemoteCommand, { type: 'desktop_clos
   activeAssistantMessages.delete(tabId)
   lastMessagePreview.delete(tabId)
   lastForwardedTabStatus.delete(tabId)
+  clearAgentStateForTab(tabId)
   for (const key of extensionCommandRegistry.keys()) {
     if (key === tabId || key.startsWith(`${tabId}:`)) extensionCommandRegistry.delete(key)
   }
