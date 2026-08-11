@@ -4,22 +4,6 @@ import Network
 import Observation
 import os
 
-// MARK: - TransportState
-
-/// Current transport connectivity state.
-///
-/// State machine:
-/// - `disconnected` -> `relayOnly`: relay connects
-/// - `disconnected` -> `lanPreferred`: LAN connects (LAN-only mode)
-/// - `relayOnly` -> `lanPreferred`: LAN discovered and connected
-/// - `lanPreferred` -> `relayOnly`: LAN lost, relay still connected
-/// - any -> `disconnected`: all transports lost
-enum TransportState: String {
-    case disconnected
-    case relayOnly
-    case lanPreferred
-}
-
 // MARK: - TransportManager
 
 /// Manages relay and LAN WebSocket connections, preferring LAN when available.
@@ -59,6 +43,10 @@ final class TransportManager {
     var deviceName: String?
     private let getCredential: (() async throws -> String)?
     private let onTokenRejected: (() -> Void)?
+    /// Fired when the relay refuses this pairing because the channel is owned by
+    /// a different OIDC subject. Distinct from a rejected credential: retrying
+    /// cannot help, so the relay client stops rather than backing off.
+    private let onIdentityMismatch: (() -> Void)?
 
     // MARK: - Internals
 
@@ -209,14 +197,17 @@ final class TransportManager {
 
     init(relayURL: URL, apiKey: String, channelId: String, sharedKey: SymmetricKey, apnsToken: String? = nil,
          getCredential: (() async throws -> String)? = nil,
-         onTokenRejected: (() -> Void)? = nil) {
+         onTokenRejected: (() -> Void)? = nil,
+         onIdentityMismatch: (() -> Void)? = nil) {
         self.relay = RelayClient(relayURL: relayURL, apiKey: apiKey, channelId: channelId, apnsToken: apnsToken,
-                                 getCredential: getCredential, onTokenRejected: onTokenRejected)
+                                 getCredential: getCredential, onTokenRejected: onTokenRejected,
+                                 onIdentityMismatch: onIdentityMismatch)
         self.lan = LANClient()
         self.bonjour = BonjourBrowser()
         self.sharedKey = sharedKey
         self.getCredential = getCredential
         self.onTokenRejected = onTokenRejected
+        self.onIdentityMismatch = onIdentityMismatch
 
         var continuation: AsyncStream<RemoteEvent>.Continuation!
         self.events = AsyncStream { continuation = $0 }
@@ -234,6 +225,7 @@ final class TransportManager {
         self.deviceId = deviceId
         self.getCredential = nil
         self.onTokenRejected = nil
+        self.onIdentityMismatch = nil
 
         var continuation: AsyncStream<RemoteEvent>.Continuation!
         self.events = AsyncStream { continuation = $0 }

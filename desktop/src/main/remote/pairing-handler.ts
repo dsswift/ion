@@ -7,6 +7,7 @@ import { SETTINGS_FILE, readSettings, writeSettings } from '../settings-store'
 import { deriveChannelId, generateKeyPair, deriveSharedSecret } from './crypto'
 import { getRemoteTabStates } from './snapshot'
 import type { PairedDevice } from './protocol'
+import { recentLocalDirectories } from '../../shared/recent-directories'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -124,7 +125,8 @@ export function handlePairRequest(request: PairRequest): void {
     void (async () => {
       const { tabs, resourceManifest } = await getRemoteTabStates()
       const pairSettings = readSettings()
-      const pairRecentDirs: string[] = Array.isArray(pairSettings.recentBaseDirectories) ? pairSettings.recentBaseDirectories : []
+      const persistedPairRecentDirs: string[] = Array.isArray(pairSettings.recentBaseDirectories) ? pairSettings.recentBaseDirectories : []
+      const pairRecentDirs = recentLocalDirectories(persistedPairRecentDirs)
       state.remoteTransport?.send({
         type: 'desktop_snapshot',
         tabs,

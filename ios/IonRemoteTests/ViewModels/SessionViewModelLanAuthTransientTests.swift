@@ -61,21 +61,18 @@ final class SessionViewModelLanAuthTransientTests: XCTestCase {
         // any desktop: the canonical *transient* failure.
         vm.connectLAN(host: "127.0.0.1", port: 1)
 
-        // Wait for the connect task to run its retries and settle, recording
-        // every state observed so an .authFailed flip is caught even if the
-        // terminal state were later overwritten.
-        var sawAuthFailed = false
+        // Wait for the connect task to run its retries and settle. A
+        // verdict-less failure must never lock desktop data.
         let deadline = Date().addingTimeInterval(15)
         while Date() < deadline {
-            if vm.connectionState == .authFailed { sawAuthFailed = true }
             if vm.connectionState == .disconnected { break }
             try? await Task.sleep(for: .milliseconds(10))
         }
 
-        XCTAssertFalse(sawAuthFailed,
-            "A transient LAN auth failure must never surface as .authFailed — that state routes to the pairing screen and once triggered a full pairing wipe")
+        XCTAssertTrue(vm.mayViewActiveDesktopData,
+            "A transient LAN failure must not lock cached desktop data")
         XCTAssertEqual(vm.connectionState, .disconnected,
-            "Transient failure must settle in .disconnected (reconnect machinery territory), not .authFailed")
+            "Transient failure must settle in disconnected reconnect territory")
         XCTAssertNil(vm.transport,
             "Transport must be torn down after the transient hand-off")
         XCTAssertEqual(vm.pairedDevices.map(\.id), [device.id],

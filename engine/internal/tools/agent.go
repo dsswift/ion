@@ -22,6 +22,8 @@ const AgentToolName = "Agent"
 // session's agent spec registry — populated at session start from disk and
 // extended at runtime via Context.RegisterAgentSpec — and fires the
 // `capability_match` hook before failing if the name is not registered.
+// AgentSpawner starts a child session. The tool context carries whether this
+// particular call explicitly waits for completion.
 type AgentSpawner func(ctx context.Context, name, prompt, description, cwd, model string) (string, error)
 
 var agentSpawner AgentSpawner
@@ -32,6 +34,20 @@ func SetAgentSpawner(fn AgentSpawner) {
 }
 
 type agentSpawnerKey struct{}
+type agentWaitForCompletionKey struct{}
+
+// WithAgentWaitForCompletion carries Agent's explicit foreground opt-in to the
+// session-scoped spawner without widening the public spawner callback shape.
+func WithAgentWaitForCompletion(ctx context.Context, wait bool) context.Context {
+	return context.WithValue(ctx, agentWaitForCompletionKey{}, wait)
+}
+
+// AgentWaitForCompletion reports whether this Agent tool call requested the
+// explicit synchronous result contract.
+func AgentWaitForCompletion(ctx context.Context) bool {
+	wait, _ := ctx.Value(agentWaitForCompletionKey{}).(bool) //nolint:errcheck // absent means async
+	return wait
+}
 
 // WithAgentSpawner returns a context carrying a session-scoped AgentSpawner.
 func WithAgentSpawner(ctx context.Context, fn AgentSpawner) context.Context {
@@ -49,14 +65,15 @@ func AgentSpawnerFromContext(ctx context.Context) AgentSpawner {
 func AgentTool() *types.ToolDef {
 	return &types.ToolDef{
 		Name:        AgentToolName,
-		Description: "Launch a new agent to handle complex, multi-step tasks autonomously.",
+		Description: "Dispatch a child agent asynchronously. The call returns its dispatch ID immediately; the engine delivers the terminal result back to this conversation. Set wait_for_completion only when this turn must block for the final output.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"prompt":      map[string]any{"type": "string", "description": "The task for the agent to perform"},
-				"description": map[string]any{"type": "string", "description": "A short description of what the agent will do"},
-				"model":       map[string]any{"type": "string", "description": "Optional model override for this agent (e.g. claude-opus-4-6)"},
-				"name":        map[string]any{"type": "string", "description": "Optional specialist agent name (e.g. 'code-reviewer'). If set, the engine resolves the spec from the session's agent registry; the capability_match hook fires when the name is not registered."},
+				"prompt":              map[string]any{"type": "string", "description": "The task for the agent to perform"},
+				"description":         map[string]any{"type": "string", "description": "A short description of what the agent will do"},
+				"model":               map[string]any{"type": "string", "description": "Optional model override for this agent (e.g. claude-opus-4-6)"},
+				"wait_for_completion": map[string]any{"type": "boolean", "description": "Wait for terminal child output. Default false: dispatch asynchronously and receive automatic completion delivery."},
+				"name":                map[string]any{"type": "string", "description": "Optional specialist agent name (e.g. 'code-reviewer'). If set, the engine resolves the spec from the session's agent registry; the capability_match hook fires when the name is not registered."},
 			},
 			"required": []string{"prompt"},
 		},
@@ -69,9 +86,11 @@ func executeAgent(ctx context.Context, input map[string]any, cwd string) (*types
 	if prompt == "" {
 		return &types.ToolResult{Content: "Error: prompt is required", IsError: true}, nil
 	}
-	description, _ := input["description"].(string) //nolint:errcheck // best-effort; failure not actionable here
-	model, _ := input["model"].(string)             //nolint:errcheck // best-effort; failure not actionable here
-	name, _ := input["name"].(string)               //nolint:errcheck // best-effort; failure not actionable here
+	description, _ := input["description"].(string)             //nolint:errcheck // best-effort; failure not actionable here
+	model, _ := input["model"].(string)                         //nolint:errcheck // best-effort; failure not actionable here
+	name, _ := input["name"].(string)                           //nolint:errcheck // best-effort; failure not actionable here
+	waitForCompletion, _ := input["wait_for_completion"].(bool) //nolint:errcheck // absent/non-bool means async
+	ctx = WithAgentWaitForCompletion(ctx, waitForCompletion)
 
 	// Prefer session-scoped spawner from context, fall back to global (tests).
 	spawner := AgentSpawnerFromContext(ctx)

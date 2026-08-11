@@ -106,6 +106,20 @@ struct SettingsDesktopsView: View {
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
+                                    // Which enterprise account this desktop is
+                                    // bound to. Two desktops in different
+                                    // tenants otherwise look identical here.
+                                    if viewModel.relayIdentityMismatch.contains(device.id) {
+                                        Label("Wrong account — tap to switch", systemImage: "exclamationmark.triangle.fill")
+                                            .font(.caption)
+                                            .foregroundStyle(.orange)
+                                    } else if let account = device.oidcAccountLabel {
+                                        Label(account, systemImage: "person.crop.circle")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                    }
                                     Text("Paired \(device.pairedAt.formatted(date: .abbreviated, time: .shortened))")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)

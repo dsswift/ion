@@ -462,18 +462,29 @@ describe('WorktreeListSection — the landed band', () => {
   })
 })
 
-describe('WorktreeListSection — fills its pane body', () => {
-  /** The declaration that makes the section fill its pane and clip sideways. */
-  it('grows into the pane instead of shrink-wrapping its rows', () => {
+describe('WorktreeListSection — fixed bench toolbar and scrolling rows', () => {
+  it('fills pane while only row body scrolls', () => {
     render()
-    const el = host().firstElementChild as HTMLElement
+    const section = host().firstElementChild as HTMLElement
+    const scroll = q('worktree-list-scroll')!
 
-    // flexGrow 1 is the fix: without it the scroll box is content-sized.
-    expect(el.style.flexGrow || el.style.flex).toContain('1')
-    expect(el.style.minHeight).toBe('0px')
-    // Vertical only. Horizontal scroll is what put row controls out of reach.
-    expect(el.style.overflowY).toBe('auto')
-    expect(el.style.overflowX).toBe('hidden')
+    expect(section.style.flexGrow || section.style.flex).toContain('1')
+    expect(section.style.minHeight).toBe('0px')
+    expect(section.style.overflow).toBe('hidden')
+    expect(scroll.style.flexGrow || scroll.style.flex).toContain('1')
+    expect(scroll.style.minHeight).toBe('0px')
+    expect(scroll.style.overflowY).toBe('auto')
+    expect(scroll.style.overflowX).toBe('hidden')
+  })
+
+  it('keeps bench controls outside scrolling rows', () => {
+    storeState.benchWorkspaces = new Map([[REPO, [workspace([member('a')])]]])
+    render()
+    const scroll = q('worktree-list-scroll')!
+
+    expect(scroll.contains(q('bench-assemble'))).toBe(false)
+    expect(scroll.contains(q('worktree-new'))).toBe(true)
+    expect(scroll.contains(q('worktree-row-wt/a'))).toBe(true)
   })
 
   it('keeps the New-worktree button from being squeezed by a full list', () => {

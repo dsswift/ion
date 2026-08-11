@@ -152,6 +152,12 @@ These hooks are observational. Extensions can use them for logging, notification
 
 Note that `task_created` / `task_completed` are **turn** lifecycle hooks (`TaskID` is `<session-key>-t<turn-number>`). Background shell commands have their own hook — see below.
 
+## Agent dispatch completion
+
+`Agent({ prompt })` dispatches a child asynchronously by default. The tool returns a dispatch ID at once, so parent may continue work or end turn. Engine routes child success, error, or recall back as classified `agent_completion` input; it does not require extension callbacks or polling. A user can steer a live child by dispatch ID through the existing steering surface. Use `wait_for_completion: true` only when current turn must block for terminal child output.
+
+`detached: true` on extension dispatch opts out of automatic parent delivery for genuine fire-and-forget work such as schedule-owned jobs.
+
 ## Background bash completion
 
 `Bash({ run_in_background: true, notify_on_complete: true })` starts a shell command the session will be told about when it finishes, rather than one the model has to poll with `TaskGet`.

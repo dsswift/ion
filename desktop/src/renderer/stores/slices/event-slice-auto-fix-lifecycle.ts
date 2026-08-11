@@ -133,61 +133,90 @@ export function retryAutoFixCloseOnTerminalChildren(tabId: string, get: () => St
 function scheduleClose(tabId: string, evidence: AutoFixCompletionEvidence, get: () => State): void {
   cancelAutoFixClose(tabId)
   const timer = setTimeout(() => {
-    pendingCloses.delete(tabId)
-    // Re-read the committed store: reject stale work. The tab may be gone,
-    // re-roled, or running a NEW request since the completion that scheduled
-    // this close.
-    const now = get().tabs.find((t) => t.id === tabId)
-    if (!now || now.tabRole !== 'conflict-auto-fix') {
-      rDebug('auto-fix.lifecycle', 'close aborted: tab gone or re-roled', { tab_id: tabId.slice(0, 8) })
-      return
-    }
-    if (now.status === 'running' || (now.activeRequestId && now.activeRequestId !== evidence.runRequestId)) {
-      rWarn('auto-fix.lifecycle', 'close aborted: newer run in flight', {
-        tab_id: tabId.slice(0, 8), status: now.status,
-      })
-      return
-    }
-    if (hasRunningAgents(get().conversationPanes, tabId)) {
-      rDebug('auto-fix.lifecycle', 'close aborted: children resumed', { tab_id: tabId.slice(0, 8) })
-      return
-    }
-    rInfo('auto-fix.lifecycle', 'closing auto-fix tab after clean completion', { tab_id: tabId.slice(0, 8) })
-
-    // Resolve the repo whose worktree surfaces this fix changed, BEFORE closing:
-    // `closeTab` removes the tab from `tabs`, so reading it afterwards yields
-    // undefined and the refresh would be silently skipped.
-    //
-    // A bench auto-fix runs IN the bench directory, which is not a repo root and
-    // carries no `tab.worktree` — so the bench record supplies the repo. A
-    // worktree auto-fix has the metadata directly. Both end at the repo whose
-    // inventory and bench the row is joined from.
-    const repoPath = resolveRepoForRefresh(now, get)
-
-    get().closeTab(tabId)
-
-    // The resolution just changed what the worktree row says: the conflict is
-    // gone, the operation state cleared, and the bench member's merge verdict
-    // moved. Without this the row keeps its red badge until the panel's 5s poll
-    // fires — and that poll is skipped entirely while the window is hidden, so a
-    // backgrounded overlay showed a stale conflict indefinitely.
-    //
-    // Refresh only; never reassemble. The operator decides when to rebuild.
-    if (repoPath) {
-      void get().refreshWorkspaceViews(repoPath)
-        .then(() => rInfo('auto-fix.lifecycle', 'refreshed worktree surfaces after resolution', {
-          tab_id: tabId.slice(0, 8), repo_path: repoPath,
-        }))
-        .catch((err) => rWarn('auto-fix.lifecycle', 'post-close workspace refresh failed', {
-          tab_id: tabId.slice(0, 8), repo_path: repoPath, error: String(err),
-        }))
-    } else {
-      rDebug('auto-fix.lifecycle', 'no repo resolved for post-close refresh', {
-        tab_id: tabId.slice(0, 8), directory: now.workingDirectory,
-      })
-    }
+    void closeAutoFixTab(tabId, evidence, get)
   }, CLOSE_DELAY_MS)
   pendingCloses.set(tabId, timer)
+}
+
+async function closeAutoFixTab(
+  tabId: string,
+  evidence: AutoFixCompletionEvidence,
+  get: () => State,
+): Promise<void> {
+  pendingCloses.delete(tabId)
+  // Re-read the committed store: reject stale work. The tab may be gone,
+  // re-roled, or running a NEW request since the completion that scheduled
+  // this close.
+  const now = get().tabs.find((t) => t.id === tabId)
+  if (!now || now.tabRole !== 'conflict-auto-fix') {
+    rDebug('auto-fix.lifecycle', 'close aborted: tab gone or re-roled', { tab_id: tabId.slice(0, 8) })
+    return
+  }
+  if (now.status === 'running' || (now.activeRequestId && now.activeRequestId !== evidence.runRequestId)) {
+    rWarn('auto-fix.lifecycle', 'close aborted: newer run in flight', {
+      tab_id: tabId.slice(0, 8), status: now.status,
+    })
+    return
+  }
+  if (hasRunningAgents(get().conversationPanes, tabId)) {
+    rDebug('auto-fix.lifecycle', 'close aborted: children resumed', { tab_id: tabId.slice(0, 8) })
+    return
+  }
+  rInfo('auto-fix.lifecycle', 'closing auto-fix tab after clean completion', { tab_id: tabId.slice(0, 8) })
+
+  // Resolve the repo whose worktree surfaces this fix changed, BEFORE closing:
+  // `closeTab` removes the tab from `tabs`, so reading it afterwards yields
+  // undefined and the refresh would be silently skipped.
+  //
+  // A bench auto-fix runs IN the bench directory, which is not a repo root and
+  // carries no `tab.worktree` — so the bench record supplies the repo. A
+  // worktree auto-fix has the metadata directly. Both end at the repo whose
+  // inventory and bench the row is joined from.
+  const repoPath = resolveRepoForRefresh(now, get)
+  const isBenchAutoFix = [...get().benchWorkspaces.values()]
+    .some((workspaces) => workspaces.some((workspace) => workspace.benchPath === now.workingDirectory))
+  if (isBenchAutoFix) {
+    await reconcileCompletedBenchConflict(tabId, now.workingDirectory)
+  }
+
+  get().closeTab(tabId)
+
+  // The resolution just changed what the worktree row says: the conflict is
+  // gone, the operation state cleared, and the bench member's merge verdict
+  // moved. Without this the row keeps its red badge until the panel's 5s poll
+  // fires — and that poll is skipped entirely while the window is hidden, so a
+  // backgrounded overlay showed a stale conflict indefinitely.
+  //
+  // Refresh only; never reassemble. The operator decides when to rebuild.
+  if (repoPath) {
+    void get().refreshWorkspaceViews(repoPath)
+      .then(() => rInfo('auto-fix.lifecycle', 'refreshed worktree surfaces after resolution', {
+        tab_id: tabId.slice(0, 8), repo_path: repoPath,
+      }))
+      .catch((err) => rWarn('auto-fix.lifecycle', 'post-close workspace refresh failed', {
+        tab_id: tabId.slice(0, 8), repo_path: repoPath, error: String(err),
+      }))
+  } else {
+    rDebug('auto-fix.lifecycle', 'no repo resolved for post-close refresh', {
+      tab_id: tabId.slice(0, 8), directory: now.workingDirectory,
+    })
+  }
+}
+
+/** Reconcile only a known bench auto-fix. A plain worktree resolution must not
+ * probe or mutate unrelated bench records. Reconciliation verifies completed
+ * Git state before clearing a row verdict and never assembles the bench. */
+async function reconcileCompletedBenchConflict(tabId: string, directory: string): Promise<void> {
+  try {
+    const result = await window.ion.benchReconcileResolution(directory)
+    rInfo('auto-fix.lifecycle', 'bench resolution reconciliation completed', {
+      tab_id: tabId.slice(0, 8), directory, reconciled: result.reconciled,
+    })
+  } catch (err) {
+    rWarn('auto-fix.lifecycle', 'bench resolution reconciliation failed', {
+      tab_id: tabId.slice(0, 8), directory, error: String(err),
+    })
+  }
 }
 
 /**

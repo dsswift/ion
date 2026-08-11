@@ -42,7 +42,6 @@ vi.mock('../../preferences', () => ({
       planModelSplitEnabled: false,
       planModeModel: null,
       addRecentBaseDirectory: vi.fn(),
-      incrementDirectoryUsage: vi.fn(),
       defaultTallConversation: false,
       engineProfiles: [],
       engineDefaultModel: null,
@@ -164,7 +163,7 @@ describe('sendMessage — optimistic slash bubble pills via fallback', () => {
     // Because content starts with `/`, the FALLBACK pill path resolves it
     // even without metadata — this is what makes the optimistic pill render.
     const pill = resolveSlashPill(bubble, bubble.content)
-    expect(pill).toEqual({ command: '/diagram', args: 'the auth flow' })
+    expect(pill).toEqual({ command: '/diagram', args: 'the auth flow', modelDisplay: null })
   })
 
   it('does NOT pill an ordinary (non-slash) optimistic bubble', () => {

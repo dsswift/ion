@@ -229,6 +229,50 @@ This prevents one OIDC user from eavesdropping on another's relay sessions. PSK 
 
 Ownership is persisted to disk (when `RELAY_STATE_DIR` is configured) and survives relay restarts. Admins can unbind channels manually (Phase 4).
 
+## One iPhone, Multiple Tenants
+
+A single phone can be paired with desktops that authenticate against **different identity tenants through different relays** — a personal tenant on a home relay and a work tenant on a corporate relay, for example. The iOS app holds one OIDC identity **per pairing**, not one per device.
+
+### What is per-pairing
+
+| State | Scope | Where it lives |
+|---|---|---|
+| Issuer, client ID, scope | Per pairing | `PairedDevice`, pushed by that desktop's `relay_config` |
+| Access token (in memory) | Per pairing | One `OIDCTokenManager` per device ID |
+| Refresh token | Per pairing | Keychain, keyed `com.ion.oidc.refresh.<deviceId>` |
+| Account identity (display) | Per pairing | `PairedDevice`, parsed from that pairing's `id_token` |
+
+Switching desktops in the app switches every one of these together. Signing in to the work tenant never disturbs the personal pairing's credential, and the personal token is still cached when you switch back — no re-prompt.
+
+Each pairing signs in independently. Automatic reconnect uses a cached access token or silent refresh only; it never opens a blind browser sheet. When interaction is required, iOS first names the desktop, issuer/tenant, and prior account, then the user chooses **Continue to Microsoft** or **Not Now**. Not Now hides that desktop's cached data until a later authenticated snapshot proves access again.
+
+A temporary network disconnect is different: cached data remains visible with its last synchronization time while Ion reconnects. An explicit cancellation, sign-out, wrong-account refusal, or pairing rejection hides tabs, conversations, resources, terminals, and desktop settings for that pairing. A successfully authenticated LAN connection is sufficient access even if relay OIDC is unavailable.
+
+### Which account is bound to a desktop
+
+**Settings → Desktops & Connection** lists each paired desktop with the account it is bound to. Tapping a desktop opens its detail sheet, which shows the account, the issuer host, when it was signed in, and two actions:
+
+- **Switch Account** — opens a pairing-context screen first, then signs in interactively and rebinds this pairing to the chosen account. The authorization request sends `prompt=select_account`, so Safari does not silently choose an account from the other tenant.
+- **Sign Out** — deletes this pairing's saved credential and immediately hides its cached desktop data. The pairing itself is kept; authentication recovery remains available.
+
+Unpairing a desktop also deletes that pairing's refresh token, so an unpaired work desktop leaves no usable credential behind on the phone.
+
+### "Wrong account for this desktop" (HTTP 403)
+
+The relay binds a channel to the first subject that connects to it (see *Subject-Based Channel Ownership* above) and answers `403 forbidden: channel owned by another identity` to any other subject. On the phone this surfaces as **Wrong account for this desktop** on the pairing, and the app stops reconnecting for it.
+
+That stop is deliberate. A 403 is not an expired credential: refreshing produces a token for the **same** subject, so a retry loop can never succeed and would only drain the battery. Recover with **Switch Account** and pick the account that owns the channel.
+
+Distinguish it from the other two failures:
+
+| Symptom | Meaning | Recovery |
+|---|---|---|
+| `401` at connect, or close code `4401` mid-session | Token expired or invalid | Automatic silent refresh; iOS explains and asks before interactive sign-in if needed |
+| `403` at connect | Channel belongs to a different account | **Switch Account** on that pairing; an authenticated LAN session remains usable |
+| Desktop shows offline in the picker, no error | No silent credential for that pairing | Open the desktop recovery screen and sign in; presence polling never prompts |
+
+Presence polling for inactive desktops is silent by design: it uses each pairing's cached or refreshable token and reports *unknown* rather than raising a sign-in sheet you did not ask for.
+
 ## Troubleshooting
 
 ### 401 / "invalid credential" in Relay Logs
@@ -257,9 +301,10 @@ If the relay rejects a token but does not log the reason (e.g., `issuer: got X, 
 
 ### iOS Cannot Acquire Token (Silent Refresh / Interactive Fails)
 
-- **Silent refresh fails**: Refresh token is missing or stale. Prompt interactive sign-in.
-- **Interactive blocked by user-cancel cooldown**: iOS suppresses re-launching the sign-in sheet for 5 minutes after the user dismisses it, to avoid pestering.
-- **Token endpoint timeout**: Network issue or IdP is slow. Retry with backoff.
+- **Silent refresh fails because the grant is rejected**: iOS deletes the stale refresh token, hides cached desktop data for that pairing, and shows pairing-specific recovery before any browser UI.
+- **Interactive sign-in is needed**: iOS first explains which desktop and issuer/tenant needs access. The browser opens only after the user selects **Continue to Microsoft**.
+- **Not Now or Apple-sheet cancel**: the pairing remains, but its cached desktop data stays hidden until an authenticated relay or LAN snapshot arrives.
+- **Token endpoint timeout / 5xx**: transient network or provider failure. Cached data remains visible with reconnect state; retry continues without opening browser UI.
 
 ## Non-Entra OIDC Providers
 

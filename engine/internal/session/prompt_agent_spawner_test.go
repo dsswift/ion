@@ -13,6 +13,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
+	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -171,9 +172,9 @@ func (c *childStubBackend) Cancel(_ string) bool {
 	return true
 }
 
-func (c *childStubBackend) IsRunning(_ string) bool                             { return false }
-func (c *childStubBackend) WriteToStdin(_ string, _ interface{}) error          { return nil }
-func (c *childStubBackend) FlushConversations()                                 {}
+func (c *childStubBackend) IsRunning(_ string) bool                    { return false }
+func (c *childStubBackend) WriteToStdin(_ string, _ interface{}) error { return nil }
+func (c *childStubBackend) FlushConversations()                        {}
 func (c *childStubBackend) Capabilities() backend.BackendCapabilities {
 	return backend.BackendCapabilities{
 		Kind:         "mock",
@@ -271,6 +272,10 @@ func runSpawnerOnce(t *testing.T, stub *childStubBackend, parentCtx context.Cont
 		t.Fatal("wireAgentSpawner did not install AgentSpawner closure")
 	}
 
+	// Unit tests exercise the terminal dispatch contract. Production Agent tool
+	// calls default async; pass the explicit context marker here so existing
+	// lifecycle assertions remain focused on terminal behavior.
+	parentCtx = tools.WithAgentWaitForCompletion(parentCtx, true)
 	result, err := runCfg.AgentSpawner(parentCtx, "", prompt, "test-display", "/tmp", "")
 	return result, cap, err
 }
@@ -316,7 +321,7 @@ func TestWireAgentSpawner_EmitsDispatchActivity(t *testing.T) {
 
 	runCfg := &backend.RunConfig{}
 	mgr.wireAgentSpawner(s, "activity-spawn", "claude-sonnet", group, runCfg)
-	if _, err := runCfg.AgentSpawner(context.Background(), "", "do thing", "disp", "/tmp", ""); err != nil {
+	if _, err := runCfg.AgentSpawner(tools.WithAgentWaitForCompletion(context.Background(), true), "", "do thing", "disp", "/tmp", ""); err != nil {
 		t.Fatalf("spawner returned error: %v", err)
 	}
 
@@ -467,7 +472,7 @@ func TestWireAgentSpawner_NilExtGroup_DoesNotPanic(t *testing.T) {
 		t.Fatal("AgentSpawner closure was not installed")
 	}
 
-	result, err := runCfg.AgentSpawner(context.Background(), "", "task", "", "/tmp", "")
+	result, err := runCfg.AgentSpawner(tools.WithAgentWaitForCompletion(context.Background(), true), "", "task", "", "/tmp", "")
 	if err != nil {
 		t.Fatalf("spawner returned error with nil extGroup: %v", err)
 	}
@@ -566,7 +571,7 @@ func TestWireAgentSpawner_ResolvesTierAlias(t *testing.T) {
 	// The LLM passes the name; the spawner resolves the spec, gets
 	// "standard", and should resolve it to "claude-sonnet-4-6".
 	result, spawnErr := runCfg.AgentSpawner(
-		context.Background(),
+		tools.WithAgentWaitForCompletion(context.Background(), true),
 		"test-specialist", // requestedName
 		"audit the extension",
 		"", // description
@@ -620,7 +625,7 @@ func TestWireAgentSpawner_ConcreteModelPassesThrough(t *testing.T) {
 
 	// Dispatch with an explicit concrete model from the call site.
 	_, err := runCfg.AgentSpawner(
-		context.Background(),
+		tools.WithAgentWaitForCompletion(context.Background(), true),
 		"", "task", "", "/tmp",
 		"claude-sonnet-4-6", // explicit concrete model
 	)
@@ -694,7 +699,7 @@ func TestWireAgentSpawner_ThreadsDefaultModelToChild(t *testing.T) {
 	}
 
 	_, spawnErr := runCfg.AgentSpawner(
-		context.Background(),
+		tools.WithAgentWaitForCompletion(context.Background(), true),
 		"test-specialist",
 		"audit the extension",
 		"", // description
@@ -763,7 +768,7 @@ func TestWireAgentSpawner_WiresChildAgentSpawner(t *testing.T) {
 		t.Fatal("wireAgentSpawner did not install AgentSpawner closure")
 	}
 
-	if _, err := runCfg.AgentSpawner(context.Background(), "", "do thing", "disp", "/tmp", ""); err != nil {
+	if _, err := runCfg.AgentSpawner(tools.WithAgentWaitForCompletion(context.Background(), true), "", "do thing", "disp", "/tmp", ""); err != nil {
 		t.Fatalf("spawner returned error: %v", err)
 	}
 
@@ -798,7 +803,7 @@ func TestWireAgentSpawner_SetsIsSubagent(t *testing.T) {
 
 	runCfg := &backend.RunConfig{}
 	mgr.wireAgentSpawner(s, "spawner-subagent", "claude-sonnet", nil, runCfg)
-	if _, err := runCfg.AgentSpawner(context.Background(), "", "do thing", "disp", "/tmp", ""); err != nil {
+	if _, err := runCfg.AgentSpawner(tools.WithAgentWaitForCompletion(context.Background(), true), "", "do thing", "disp", "/tmp", ""); err != nil {
 		t.Fatalf("spawner returned error: %v", err)
 	}
 
@@ -845,7 +850,7 @@ func TestWireAgentSpawner_EmitsDispatchTelemetry(t *testing.T) {
 
 	runCfg := &backend.RunConfig{}
 	mgr.wireAgentSpawner(s, "spawner-telemetry", "claude-sonnet", nil, runCfg)
-	if _, err := runCfg.AgentSpawner(context.Background(), "", "brief me", "disp", "/tmp", ""); err != nil {
+	if _, err := runCfg.AgentSpawner(tools.WithAgentWaitForCompletion(context.Background(), true), "", "brief me", "disp", "/tmp", ""); err != nil {
 		t.Fatalf("spawner returned error: %v", err)
 	}
 
@@ -893,7 +898,7 @@ func TestWireAgentSpawner_StampsPillAttribution(t *testing.T) {
 
 	runCfg := &backend.RunConfig{}
 	mgr.wireAgentSpawner(s, "spawner-attr", "claude-sonnet", nil, runCfg)
-	if _, err := runCfg.AgentSpawner(context.Background(), "", "brief me", "disp", "/tmp", ""); err != nil {
+	if _, err := runCfg.AgentSpawner(tools.WithAgentWaitForCompletion(context.Background(), true), "", "brief me", "disp", "/tmp", ""); err != nil {
 		t.Fatalf("spawner returned error: %v", err)
 	}
 
@@ -968,10 +973,10 @@ func (c *nestingStubBackend) StartRunWithConfig(requestID string, opts types.Run
 	c.StartRun(requestID, opts)
 }
 
-func (c *nestingStubBackend) Cancel(_ string) bool                                { return true }
-func (c *nestingStubBackend) IsRunning(_ string) bool                             { return false }
-func (c *nestingStubBackend) WriteToStdin(_ string, _ interface{}) error          { return nil }
-func (c *nestingStubBackend) FlushConversations()                                 {}
+func (c *nestingStubBackend) Cancel(_ string) bool                       { return true }
+func (c *nestingStubBackend) IsRunning(_ string) bool                    { return false }
+func (c *nestingStubBackend) WriteToStdin(_ string, _ interface{}) error { return nil }
+func (c *nestingStubBackend) FlushConversations()                        {}
 func (c *nestingStubBackend) Capabilities() backend.BackendCapabilities {
 	return backend.BackendCapabilities{
 		Kind:         "mock",
@@ -1035,7 +1040,7 @@ func TestWireAgentSpawner_NestedDispatchChain(t *testing.T) {
 
 	runCfg := &backend.RunConfig{}
 	mgr.wireAgentSpawner(s, "nested-chain", "claude-sonnet", nil, runCfg)
-	if _, err := runCfg.AgentSpawner(context.Background(), "dev-lead", "dispatch the engine dev", "lead", "/tmp", ""); err != nil {
+	if _, err := runCfg.AgentSpawner(tools.WithAgentWaitForCompletion(context.Background(), true), "dev-lead", "dispatch the engine dev", "lead", "/tmp", ""); err != nil {
 		t.Fatalf("spawner returned error: %v", err)
 	}
 

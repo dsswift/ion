@@ -36,13 +36,17 @@ func (noopSA) TraceID() string                                                  
 func (noopSA) ExtensionName() string                                             { return "" }
 func (noopSA) ExtensionVersion() string                                          { return "" }
 func (noopSA) WorkingDirectory() string                                          { return "" }
+func (noopSA) CurrentModel() string                                              { return "" }
 func (noopSA) Emit(_ types.EngineEvent)                                          {}
 func (noopSA) SendAbort()                                                        {}
 func (noopSA) RootContext() context.Context                                      { return context.Background() }
 func (noopSA) SendPrompt(_ string, _ string, _ []string) error                   { return nil }
 func (noopSA) SendPromptWithKind(_ string, _ string, _ []string, _ string) error { return nil }
+func (noopSA) SendPromptDegradedSteer(_ string, _ string, _ []string, _ string) error {
+	return nil
+}
 func (noopSA) SteerSelfMainLoop(_ string) bool                                   { return false }
-func (noopSA) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
+func (noopSA) SteerSelfMainLoopWithKind(_, _ string) bool                        { return false }
 func (noopSA) ParkSelfMainLoop() bool                                            { return false }
 func (noopSA) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
@@ -61,6 +65,7 @@ func (noopSA) ProcRegistry() *extension.ProcessRegistry                         
 func (noopSA) NewChildBackend() backend.RunBackend                                 { return nil }
 func (noopSA) BumpParentProgress()                                                 {}
 func (noopSA) EmitDispatchCountStatus(_ string)                                    {}
+func (noopSA) DispatchRegistry() *DispatchRegistry                                 { return nil }
 func (noopSA) EngineConfig() *types.EngineRuntimeConfig                            { return nil }
 func (noopSA) ClaudeCompat() bool                                                  { return false }
 func (noopSA) GetDispatchContextDefaults() *extension.ContextPolicy                { return nil }

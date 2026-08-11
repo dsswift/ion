@@ -21,6 +21,7 @@ extension SessionViewModel {
         case .transportReconnecting:
             if connectionState == .connected {
                 connectionState = .reconnecting
+                markActiveDesktopTransientlyDisconnected(source: "transport_reconnecting")
             }
             connectionQuality.transportState = transport?.state ?? .disconnected
 
@@ -40,9 +41,11 @@ extension SessionViewModel {
             // startRelayStateObservation re-sends sync when the peer returns.
             if connectionState == .connected || connectionState == .connecting {
                 connectionState = .reconnecting
+                markActiveDesktopTransientlyDisconnected(source: "peer_disconnected")
                 startReconnectSafetyTimer()
             }
             connectionQuality.transportState = transport?.state ?? .disconnected
+            lockDeferredRelayMismatchIfNeeded()
 
         case .lanAuthRejected:
             handleLANAuthRejected()
@@ -228,7 +231,15 @@ extension SessionViewModel {
         case .engineSteerInjected(let tabId, let instanceId, let messageLength):
             handleEngineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength)
 
+        case .engineSteerDegraded(let tabId, let instanceId, let messageLength):
+            handleEngineSteerDegraded(tabId: tabId, instanceId: instanceId, messageLength: messageLength)
+
         case .enginePromptInjected(let tabId, let instanceId, let prompt, _, let kind, let machineAuthored):
+            // A degraded self-steer needs no case here: the engine emits
+            // `engine_steer_degraded` alongside this event, so the divider is
+            // appended by that handler. This arm only decides whether the TURN
+            // renders, and a machine-authored one does not.
+            //
             // A machine-to-machine injection is not a turn the user authored —
             // a dispatch callback, a background command's result, a scheduled
             // check-in, or the expanded body of a slash command whose display
@@ -338,8 +349,8 @@ extension SessionViewModel {
         case .engineMessageEnd(let tabId, let instanceId, let inputTokens, _, let contextPercent, _, let entryId, let userEntryId):
             handleEngineMessageEnd(tabId: tabId, instanceId: instanceId, inputTokens: inputTokens, contextPercent: contextPercent, entryId: entryId, userEntryId: userEntryId)
 
-        case .engineUserTurnPersisted(let tabId, let instanceId, let entryId):
-            handleEngineUserTurnPersisted(tabId: tabId, instanceId: instanceId, entryId: entryId)
+        case .engineUserTurnPersisted(let tabId, let instanceId, let entryId, let slashModelAlias, let slashModelEffective):
+            handleEngineUserTurnPersisted(tabId: tabId, instanceId: instanceId, entryId: entryId, slashModelAlias: slashModelAlias, slashModelEffective: slashModelEffective)
 
         case .engineHarnessMessage(let tabId, let instanceId, let message, _, _, let dedupKey, let dedupMode):
             handleEngineHarnessMessage(tabId: tabId, instanceId: instanceId, message: message, dedupKey: dedupKey, dedupMode: dedupMode)

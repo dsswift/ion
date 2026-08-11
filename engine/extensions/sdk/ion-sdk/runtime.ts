@@ -43,6 +43,7 @@ import type {
   IonContext,
   IonHttpRequestOptions,
   IonHttpResponse,
+  InterceptOpts,
   IonSDK,
   LLMCallOpts,
   LLMCallResult,
@@ -146,6 +147,7 @@ function notify(method: string, params: any): void {
 }
 
 let nextRequestId = 100000
+let nextDispatchCallbackId = 1
 const pendingRequests = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>()
 const notificationHandlers = new Map<string, (params: any) => void>()
 
@@ -316,9 +318,21 @@ function buildContext(ctxData: any): IonContext {
       const {
         onEvent, onComplete, onError, onRecall,
         onToolStart, onToolEnd, onToolError, onUsage, onTextDelta, onPlanProposal,
-        onChildQuestion,
+        onChildQuestion, waitForCompletion, background: _background,
         ...rpcOpts
       } = opts
+
+      // Dispatch is asynchronous unless the caller explicitly opts into
+      // foreground terminal output. `background: false` remains accepted for
+      // compatibility but cannot silently turn an async dispatch foreground.
+      const isForeground = waitForCompletion === true
+      const callbackId = `cb-${Date.now()}-${nextDispatchCallbackId++}`
+      const dispatchOpts = {
+        ...rpcOpts,
+        callbackId,
+        waitForCompletion: isForeground,
+        background: !isForeground,
+      }
 
       // Build the list of lifecycle callback entries. Each entry pairs a
       // notification method name with the handler function (if provided).
@@ -350,50 +364,72 @@ function buildContext(ctxData: any): IonContext {
       // callbacks that fire while the dispatch runs.
       const agentKey = opts.name
       for (const [method, fn] of lifecycleEntries) {
-        if (fn) notificationHandlers.set(`${method}:${agentKey}`, fn)
+        if (fn) notificationHandlers.set(`${method}:${callbackId}`, fn)
       }
 
-      if (opts.background) {
-        // Background: send the RPC to get the stub (which carries dispatchId),
+      const cleanupAsyncHandlers = (dispatchId?: string) => {
+        for (const [method] of lifecycleEntries) {
+          notificationHandlers.delete(`${method}:${callbackId}`)
+          if (dispatchId) notificationHandlers.delete(`${method}:${dispatchId}`)
+        }
+        for (const method of ['dispatch_complete', 'dispatch_error', 'dispatch_recall']) {
+          notificationHandlers.delete(`${method}:${callbackId}`)
+          if (dispatchId) notificationHandlers.delete(`${method}:${dispatchId}`)
+        }
+      }
+      let terminalDispatchId: string | undefined
+      let terminalDelivered = false
+      const wrapTerminal = (fn?: (p: any) => void) => (params: any) => {
+        if (terminalDelivered) return
+        terminalDelivered = true
+        terminalDispatchId = typeof params?.dispatchId === 'string' ? params.dispatchId : callbackId
+        cleanupAsyncHandlers(terminalDispatchId)
+        if (fn) fn(params)
+      }
+      const terminalHandlers: [string, (p: any) => void][] = [
+        ['dispatch_complete', wrapTerminal(onComplete)],
+        ['dispatch_error', wrapTerminal(onError)],
+        ['dispatch_recall', wrapTerminal(onRecall)],
+      ]
+
+      // Register terminal handlers by name before dispatch. A child can finish
+      // before its stub response reaches this process; name routing covers that
+      // window, then dispatch-ID routing takes over for concurrent children.
+      for (const [method, fn] of terminalHandlers) {
+        notificationHandlers.set(`${method}:${callbackId}`, fn)
+      }
+
+      if (!isForeground) {
+        // Async: send the RPC to get the stub (which carries dispatchId),
         // then register terminal callbacks keyed by dispatch ID so two
         // concurrent same-name dispatches each receive their own terminal
         // callback without clobbering.
-        const stub: DispatchAgentResult = await request('ext/dispatch_agent', rpcOpts)
-        const dispatchId = stub.dispatchId || agentKey
+        const stub: DispatchAgentResult = await request('ext/dispatch_agent', dispatchOpts)
+        const dispatchId = stub.dispatchId || callbackId
 
-        // Re-key lifecycle handlers by dispatch ID (additive, keeps name
-        // keys too so notifications arriving before the re-key still route).
+        // A terminal notification can arrive before the stub. Do not restore
+        // handlers after it has already cleaned them up.
+        if (terminalDispatchId === dispatchId) return stub
+
         for (const [method, fn] of lifecycleEntries) {
           if (fn) notificationHandlers.set(`${method}:${dispatchId}`, fn)
         }
-
-        const cleanup = () => {
-          for (const [method] of lifecycleEntries) {
-            notificationHandlers.delete(`${method}:${agentKey}`)
-            notificationHandlers.delete(`${method}:${dispatchId}`)
-          }
-          for (const k of ['dispatch_complete', 'dispatch_error', 'dispatch_recall']) {
-            notificationHandlers.delete(`${k}:${dispatchId}`)
-          }
+        for (const [method, fn] of terminalHandlers) {
+          notificationHandlers.set(`${method}:${dispatchId}`, fn)
         }
-
-        const wrapTerminal = (fn?: (p: any) => void) => (params: any) => {
-          cleanup()
-          if (fn) fn(params)
-        }
-        notificationHandlers.set(`dispatch_complete:${dispatchId}`, wrapTerminal(onComplete))
-        notificationHandlers.set(`dispatch_error:${dispatchId}`, wrapTerminal(onError))
-        notificationHandlers.set(`dispatch_recall:${dispatchId}`, wrapTerminal(onRecall))
         return stub
       }
 
-      // Foreground: wait for RPC, then clean up lifecycle handlers.
+      // Foreground does not use asynchronous callbacks.
+      cleanupAsyncHandlers()
+
+      // Foreground: wait for terminal output, then clean up lifecycle handlers.
       const cleanupForeground = () => {
         for (const [method] of lifecycleEntries) {
-          notificationHandlers.delete(`${method}:${agentKey}`)
+          notificationHandlers.delete(`${method}:${callbackId}`)
         }
       }
-      try { return await request('ext/dispatch_agent', rpcOpts) }
+      try { return await request('ext/dispatch_agent', dispatchOpts) }
       finally { cleanupForeground() }
     },
     async recallAgent(name: string, opts?: RecallAgentOpts): Promise<boolean> {
@@ -452,6 +488,28 @@ function buildContext(ctxData: any): IonContext {
     async sandboxWrap(command: string, profile?: SandboxProfile): Promise<SandboxWrapResult> {
       const result = await request('ext/sandbox_wrap', { command, ...(profile || {}) })
       return { wrapped: result?.wrapped ?? command, platform: result?.platform ?? '' }
+    },
+    async getSessionMemory(): Promise<string> {
+      // The engine answers {content: ""} when the conversation has no memory
+      // or the extension is running outside a session, so the empty string is
+      // a real answer rather than a missing one.
+      const result = await request('ext/get_session_memory', {})
+      return typeof result?.content === 'string' ? result.content : ''
+    },
+    async setSessionMemory(content: string): Promise<void> {
+      await request('ext/set_session_memory', { content: content ?? '' })
+    },
+    async intercept(opts: InterceptOpts): Promise<void> {
+      // `source` is deliberately not forwarded: the engine stamps the calling
+      // extension's name so one extension cannot attribute an intercept to
+      // another.
+      await request('ext/intercept', {
+        level: opts?.level ?? 'banner',
+        title: opts?.title ?? '',
+        message: opts?.message ?? '',
+        targetSessionKey: opts?.targetSessionKey || '',
+        ...(opts?.metadata ? { metadata: opts.metadata } : {}),
+      })
     },
     async registerAgentSpec(spec: AgentSpec): Promise<void> {
       await request('ext/register_agent_spec', spec)
@@ -795,6 +853,7 @@ function startListening(): void {
         const agentName = params?.name
         const handler =
           (dispatchId && notificationHandlers.get(`${msg.method}:${dispatchId}`))
+          || (params?.callbackId && notificationHandlers.get(`${msg.method}:${params.callbackId}`))
           || (agentName && notificationHandlers.get(`${msg.method}:${agentName}`))
           || notificationHandlers.get(msg.method)
         if (handler) {
@@ -837,7 +896,7 @@ export function createIon(): IonSDK {
   process.nextTick(() => startListening())
 
   return {
-    on(hook, handler) {
+    on(hook: string, handler: (ctx: IonContext, payload: unknown) => unknown | Promise<unknown>) {
       hooks.set(hook, handler)
     },
     registerTool(def) {

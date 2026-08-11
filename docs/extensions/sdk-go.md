@@ -1,567 +1,376 @@
 ---
-title: Go SDK Reference
-description: Full API reference for the Ion Engine Go extension SDK.
+title: Go SDK
+description: Build Ion Engine extensions as compiled single-binary executables in Go.
 sidebar_position: 8
 ---
 
-# Go SDK Reference
+# Go SDK
 
-The Go SDK (`engine/internal/extension`) is the native extension system used by the engine itself. In-process extensions register hooks, tools, commands, and capabilities directly on the SDK. Subprocess extensions communicate via JSON-RPC and have their calls forwarded through the same SDK.
+Build an Ion extension as a compiled binary. No Node runtime, no transpile step, no `node_modules` — the engine spawns the executable directly and speaks JSON-RPC to it over stdin and stdout.
 
-## SDK
-
-The central registry for hooks, tools, commands, and capabilities.
-
-```go
-import "github.com/dsswift/ion/engine/internal/extension"
-
-sdk := extension.NewSDK()
+```bash
+go get github.com/dsswift/ion/sdk/go
 ```
 
-### Registration methods
+:::note Not to be confused with the engine-internal SDK
 
-**`On(event string, handler HookHandler)`** -- register a handler for a hook event. Multiple handlers per event are supported; they run in registration order.
+`engine/internal/extension` is the registry inside the engine, documented at [Engine-Internal Extension SDK](sdk-engine-internal.md). Go's `internal/` rule makes it unimportable from outside the engine module. This page is about the public module you actually build against.
 
-```go
-sdk.On("session_start", func(ctx *extension.Context, payload interface{}) (interface{}, error) {
-    utils.Log("ext", "session started")
-    return nil, nil
-})
-```
+:::
 
-**`PrependHook(event string, handler HookHandler)`** -- insert a handler at the front of the hook chain. Used for enterprise-required hooks that must run before extension handlers.
+## Quickstart
 
 ```go
-sdk.PrependHook("tool_call", func(ctx *extension.Context, payload interface{}) (interface{}, error) {
-    // Runs before any extension-registered tool_call handlers
-    return nil, nil
-})
-```
+package main
 
-**`RegisterTool(def ToolDefinition)`** -- register a tool.
+import (
+	"context"
+	"encoding/json"
+	"fmt"
 
-```go
-sdk.RegisterTool(extension.ToolDefinition{
-    Name:        "my_tool",
-    Description: "Does something",
-    Parameters:  map[string]interface{}{"type": "object", "properties": map[string]interface{}{}},
-    Execute: func(params interface{}, ctx *extension.Context) (*types.ToolResult, error) {
-        return &types.ToolResult{Content: "result"}, nil
-    },
-})
-```
+	ion "github.com/dsswift/ion/sdk/go"
+)
 
-**`RegisterCommand(name string, def CommandDefinition)`** -- register a slash command.
+func main() {
+	sdk := ion.New(ion.WithName("my-extension"))
 
-```go
-sdk.RegisterCommand("status", extension.CommandDefinition{
-    Description: "Show status",
-    Execute: func(args string, ctx *extension.Context) error {
-        ctx.Emit(types.EngineEvent{Type: "engine_notify", EventMessage: "OK", Level: "info"})
-        return nil
-    },
-})
-```
+	// A typed hook. The payload arrives decoded; the result is marshalled.
+	ion.OnHook(sdk, ion.HookSessionStart,
+		func(ctx *ion.Context, _ ion.NoPayload) (ion.NoResult, error) {
+			ctx.Log().Info("session started", map[string]any{"key": ctx.SessionKey})
+			return ion.NoResult{}, nil
+		})
 
-**`RegisterCapability(cap Capability)`** -- register a capability.
+	// A tool the model can call.
+	sdk.RegisterTool(ion.ToolDef{
+		Name:        "greet",
+		Description: "Greet someone by name",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"name": map[string]any{"type": "string"},
+			},
+			"required": []string{"name"},
+		},
+		Execute: func(c context.Context, ctx *ion.Context, input json.RawMessage) (ion.ToolResult, error) {
+			var args struct {
+				Name string `json:"name"`
+			}
+			if err := json.Unmarshal(input, &args); err != nil {
+				return ion.ToolResult{}, fmt.Errorf("decode name: %w", err)
+			}
+			return ion.ToolResult{Content: "Hello, " + args.Name}, nil
+		},
+	})
 
-```go
-sdk.RegisterCapability(extension.Capability{
-    ID:          "code-review",
-    Name:        "Code Review",
-    Description: "Automated code review with style checks",
-    Mode:        extension.CapabilityModeTool | extension.CapabilityModePrompt,
-    InputSchema: map[string]interface{}{
-        "type": "object",
-        "properties": map[string]interface{}{
-            "files": map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}},
-        },
-    },
-    Execute: func(ctx *extension.Context, input map[string]interface{}) (*types.ToolResult, error) {
-        return &types.ToolResult{Content: "Review complete"}, nil
-    },
-    Prompt: "When reviewing code, check for style violations.",
-})
-```
-
-### Query methods
-
-**`Tools() []ToolDefinition`** -- returns all registered tools.
-
-**`Commands() map[string]CommandDefinition`** -- returns all registered commands.
-
-**`Handlers(event string) []HookHandler`** -- returns a snapshot of handlers for a hook event.
-
-**`Capabilities() []Capability`** -- returns all registered capabilities.
-
-**`CapabilitiesByMode(mode CapabilityMode) []Capability`** -- returns capabilities matching a mode flag.
-
-### Fire methods
-
-The SDK provides typed `Fire*` methods for each hook. These iterate handlers, log errors, and merge results. The session manager calls these; extension code typically does not.
-
-**Lifecycle hooks:**
-
-```go
-sdk.FireSessionStart(ctx)
-sdk.FireSessionEnd(ctx)
-sdk.FireBeforePrompt(ctx, prompt) // returns (rewrittenPrompt, systemPromptAddition, error)
-sdk.FireTurnStart(ctx, TurnInfo{TurnNumber: 1})
-sdk.FireTurnEnd(ctx, TurnInfo{TurnNumber: 1})
-sdk.FireMessageStart(ctx)
-sdk.FireMessageEnd(ctx)
-sdk.FireToolStart(ctx, ToolStartInfo{ToolName: "Bash", ToolID: "abc"})
-sdk.FireToolEnd(ctx)
-sdk.FireToolCall(ctx, ToolCallInfo{...}) // returns (*ToolCallResult, error)
-sdk.FireOnError(ctx, ErrorInfo{...})
-sdk.FireAgentStart(ctx, AgentInfo{Name: "worker", Task: "test"})
-sdk.FireAgentEnd(ctx, AgentInfo{Name: "worker", Task: "test"})
-```
-
-**Session management hooks:**
-
-```go
-sdk.FireSessionBeforeCompact(ctx, CompactionInfo{...}) // returns (cancelled bool, error)
-
-// session_compact fires after compaction completes. CompactionInfo carries
-// token-level metrics (TokensBefore, TokenLimit, TargetTokens, TokensAfter),
-// the MicroCompactKeep setting, and structured Facts the engine extracted
-// from the pre-compaction message set ({Type, Content} pairs). Extensions
-// maintaining external memory (vector store, knowledge graph, SQLite) can
-// persist these durably before the source messages are discarded. Facts may
-// be empty when no patterns matched.
-sdk.FireSessionCompact(ctx, CompactionInfo{
-    Strategy:         "auto",
-    MessagesBefore:   50,
-    MessagesAfter:    10,
-    TokensBefore:     180000,
-    TokenLimit:       100000,
-    TargetTokens:     100000,
-    MicroCompactKeep: 3,
-    TokensAfter:      95000,
-    Facts: []CompactionFact{
-        {Type: "decision", Content: "decided to use SQLite"},
-        {Type: "file_mod", Content: "/Users/foo/project/main.go"},
-    },
-})
-
-// compact_summary_request fires inside proactive (auto) and reactive
-// (prompt_too_long) compaction, after the session-memory and LLM tiers
-// and before the regex fallback. Substitute a harness-side summariser
-// for the engine's regex fact extractor by registering a handler that
-// returns a non-empty string; an empty return falls through to the
-// regex path. Branch on Strategy ("auto" | "reactive") to tune the
-// summariser to the trigger — reactive summaries should be aggressive
-// (fewer tokens) because the provider just rejected the prompt; auto
-// summaries can afford a richer rendering. The engine never blocks on
-// the handler; wrap LLM calls in a bounded timeout and return ("",
-// false) on failure rather than blocking the run.
-summary, ok := sdk.FireCompactSummaryRequest(ctx, CompactSummaryRequestInfo{
-    Strategy:     "auto",
-    MessageCount: len(messages),
-    Messages:     messages,
-}) // returns (summary string, ok bool); ok=false means "fall back to regex"
-
-sdk.FireSessionBeforeFork(ctx, ForkInfo{...})           // returns (cancelled bool, error)
-sdk.FireSessionFork(ctx, ForkInfo{...})
-sdk.FireSessionBeforeSwitch(ctx)
-```
-
-**Content hooks:**
-
-```go
-sdk.FireInput(ctx, prompt)                // returns (modifiedPrompt, error)
-sdk.FireModelSelect(ctx, ModelSelectInfo{...}) // returns (modelID, error)
-sdk.FireContextInject(ctx, ContextInjectInfo{...}) // returns []ContextEntry
-sdk.FirePlanModePrompt(ctx, planFilePath)  // returns (customPrompt, customTools)
-```
-
-**Per-tool hooks:**
-
-```go
-sdk.FirePerToolCall(ctx, "bash", input)    // returns (*PerToolCallResult, error)
-sdk.FirePerToolResult(ctx, "bash", result) // returns (modifiedContent, error)
-```
-
-**Context discovery hooks:**
-
-```go
-sdk.FireContextDiscover(ctx, ContextDiscoverInfo{...}) // returns (reject bool, error)
-sdk.FireContextLoad(ctx, ContextLoadInfo{...})         // returns (content, reject, error)
-sdk.FireInstructionLoad(ctx, ContextLoadInfo{...})     // returns (content, reject, error)
-```
-
-**Capability hooks:**
-
-```go
-sdk.FireCapabilityDiscover(ctx)                        // returns []Capability
-sdk.FireCapabilityMatch(ctx, CapabilityMatchInfo{...}) // returns *CapabilityMatchResult
-sdk.FireCapabilityInvoke(ctx, capID, input)            // returns (blocked, reason)
-```
-
-**Plan-mode hooks:**
-
-```go
-// Fired when the model calls the EnterPlanMode sentinel tool. Handlers may
-// veto the entry by returning Allow=&false with a Reason returned to the
-// model. Default is auto-approve. Last non-nil Allow wins.
-sdk.FireBeforePlanModeEnter(ctx, PlanModeEnterInfo{Source: "model_tool"})
-// returns (allowed bool, reason string)
-
-// Fired when the model calls the ExitPlanMode sentinel tool. Handlers may
-// veto the exit by returning Allow=&false with a Reason returned to the
-// model (e.g. "plan is too short, add verification steps"). Default is
-// auto-approve. Last non-nil Allow wins.
-sdk.FireBeforePlanModeExit(ctx, planFilePath)
-// returns (allowed bool, reason string)
-```
-
-See [ADR-003](../architecture/adr/003-state-events-vs-workflow-events.md) for the
-distinction between the plan-mode *state* event (`engine_plan_mode_changed`,
-fires only on confirmed transitions) and the *workflow* event
-(`engine_plan_proposal`, fires when the model proposes an exit).
-
-**Early-stop continuation hooks:**
-
-```go
-// Fired after the model emits end_turn / stop, when the engine has
-// detected the run is below the configured token budget and is
-// considering whether to nudge the model to keep working. Per-field
-// last-non-nil-across-hosts wins. Returning ContinueMessage="" lets the
-// engine fall through to the wire-protocol round trip (see below).
-sdk.FireBeforeEarlyStopDecision(ctx, EarlyStopDecisionInfo{
-    RunID:                  "...",
-    Model:                  "...",
-    TurnNumber:             1,
-    CumulativeOutputTokens: 7200,
-    Budget:                 8000,
-    ThresholdPct:           90,
-    WouldContinue:          true,
-})
-// returns *EarlyStopDecisionResult (or nil for "no opinion")
-
-// Fired after a continuation has been injected, before the next turn
-// starts. Observe-only — return value ignored. Useful for metrics, UI
-// breadcrumbs, or coordinating sibling agents.
-sdk.FireEarlyStopContinued(ctx, EarlyStopContinuedInfo{
-    RunID:        "...",
-    InjectedText: "Keep working — do not summarize.",
-})
-```
-
-If no extension responds with a decisive `ForceContinue` or `ContinueMessage`,
-the engine emits `engine_early_stop_decision_request` on the wire and blocks
-briefly for a `early_stop_decision_response` from a socket-only harness. See
-[ADR-002](../architecture/adr/002-engine-vs-harness-early-stop.md).
-
-**System inject hooks:**
-
-```go
-// Fired before the engine injects a system message (plan_mode_reminder,
-// turn_limit_warning, max_token_continue, early_stop_continue). Handlers
-// can rewrite the text or suppress the injection entirely.
-sdk.FireSystemInject(ctx, SystemInjectInfo{
-    Kind: "early_stop_continue",
-    DefaultText: "...",
-    // Hook-specific fields per Kind
-})
-// returns *SystemInjectResult (Text replaces, Suppress=true cancels)
-```
-
-## Context
-
-The execution context passed to all hook handlers, tool execute functions, and command execute functions.
-
-```go
-type Context struct {
-    Cwd    string
-    Model  *ModelRef
-    Config *ExtensionConfig
-
-    Emit            func(event types.EngineEvent)
-    GetContextUsage func() *ContextUsage
-    Abort           func()
-    RegisterAgent   func(name string, handle types.AgentHandle)
-    DeregisterAgent func(name string)
-    ResolveTier     func(name string) string
-
-    RegisterProcess     func(name string, pid int, task string) error
-    DeregisterProcess   func(name string)
-    ListProcesses       func() []ProcessInfo
-    TerminateProcess    func(name string) error
-    CleanStaleProcesses func() int
-
-    DispatchAgent func(opts DispatchAgentOpts) (*DispatchAgentResult, error)
+	if err := sdk.Run(); err != nil {
+		panic(err)
+	}
 }
 ```
 
-### Context fields
+Build it to a binary named `main` and drop the directory into `~/.ion/extensions/`:
 
-**`Cwd`** -- working directory for the session.
+```bash
+go build -o main .
+```
 
-**`Model`** -- active model reference. Nil if not yet resolved.
+```
+~/.ion/extensions/my-extension/
+├── main              # the compiled binary (chmod +x)
+└── extension.json    # optional manifest
+```
+
+The engine probes for script entry points first (`extension.ts`, `index.ts`, `extension.js`, and so on), then for an executable file named `main`. The executable bit is required: a `main` without it fails at load with a clear error rather than at spawn with a bare permission denial.
+
+The public Go SDK is an ordinary Go module resolved by `go get`. In a source checkout, `engine/commands/install.command` also copies `sdk/go` into `~/.ion/extensions/sdk-go` as a developer asset, so locally compiled extensions use the SDK matching their installed engine. The `ion install-assets` subcommand installs only the TypeScript SDK.
+
+## Stdout is the protocol
+
+Every byte on stdout must be a JSON-RPC frame. One stray `fmt.Println` lands in the middle of a frame, desynchronises the stream, and the engine drops the connection — and the failure looks nothing like its cause.
+
+`Run()` defends against this by taking stdout away from the process: it dups fd 1 to a private descriptor the framing writer keeps, then dups stderr over fd 1. After that, anything writing to "stdout" — your code, a dependency, a cgo library — lands on stderr, which the engine drains into its log. On platforms without `dup2` the guard is absent and `Run()` logs that fact.
+
+The sanctioned channel is the logger:
+
+```go
+ctx.Log().Info("processed batch", map[string]any{"count": n, "elapsed_ms": ms})
+sdk.Log().Warn("config key missing, using default", map[string]any{"key": "timeout"})
+```
+
+Lines land in `~/.ion/engine.jsonl` stamped `component=extension` and `tag=<your extension name>`. Keep identifiers in the fields map rather than interpolating them into the message, so a log query can filter on them.
+
+## Typed hooks
+
+`OnHook` is a free function rather than a method because Go methods cannot take type parameters. It gives you both halves of a hook's contract: the payload decoded into its type, and a typed result.
+
+```go
+ion.OnHook(sdk, ion.HookBeforePrompt,
+	func(ctx *ion.Context, prompt string) (ion.BeforePromptResult, error) {
+		return ion.BeforePromptResult{Prompt: prompt + "\n\n(reviewed)"}, nil
+	})
+
+ion.OnHook(sdk, ion.HookToolCall,
+	func(ctx *ion.Context, info ion.ToolCallInfo) (ion.ToolCallResult, error) {
+		if info.ToolName == "Bash" && isDangerous(info.Input) {
+			return ion.ToolCallResult{Block: true, Reason: "refused by policy"}, nil
+		}
+		return ion.ToolCallResult{}, nil // zero value abstains
+	})
+```
+
+**Returning the zero result abstains.** The engine merges hook results last-writer-wins across handlers, so an abstention has to be distinguishable from an opinion. Returning `ion.ToolCallResult{}` sends `null` and leaves the decision to the engine or the next handler; returning `ion.ToolCallResult{Block: false}` would be the same zero value and also abstain. To positively allow something, abstain.
+
+For a hook this SDK version does not model, `On` takes the raw payload:
+
+```go
+sdk.On("some_future_hook", func(ctx *ion.Context, payload json.RawMessage) (any, error) {
+	return nil, nil
+})
+```
+
+Every hook name is a constant (`ion.HookNameSessionStart`) and every descriptor a value (`ion.HookSessionStart`). The full set is pinned to the engine by a parity test — see [Parity](#parity) below.
+
+## Tools and commands
+
+A tool's `Execute` receives the raw arguments so it can decode into its own type, plus a `context.Context` carrying the invocation's cancellation.
+
+```go
+sdk.RegisterTool(ion.ToolDef{
+	Name:         "read_config",
+	Description:  "Read the project configuration",
+	Parameters:   map[string]any{"type": "object"},
+	PlanModeSafe: true, // read-only, so it stays callable in plan mode
+	Execute: func(c context.Context, ctx *ion.Context, input json.RawMessage) (ion.ToolResult, error) {
+		data, err := os.ReadFile(filepath.Join(ctx.Cwd, "config.yaml"))
+		if err != nil {
+			// Returning an error reaches the model as tool output it can react
+			// to, not as an extension malfunction.
+			return ion.ToolResult{}, err
+		}
+		return ion.ToolResult{Content: string(data)}, nil
+	},
+})
+```
+
+Set `PlanModeSafe` only on tools that mutate nothing. Anything that writes must not carry it.
+
+Commands take the raw argument string:
+
+```go
+sdk.RegisterCommand("status", ion.CommandDef{
+	Description: "Show extension status",
+	Execute: func(c context.Context, ctx *ion.Context, args string) error {
+		ctx.Emit(ion.NewEvent("engine_harness_message", map[string]any{
+			"message": "all systems nominal",
+		}))
+		return nil
+	},
+})
+```
+
+## Agent tools from markdown
+
+An extension shipping `agents/*.md` files can expose each agent as its own dispatch tool, so the model calls `dispatch_code_reviewer` rather than a generic dispatch tool with a name argument.
+
+```go
+if err := sdk.RegisterAgentTools(ion.RegisterAgentToolsOpts{}); err != nil {
+	sdk.Log().Error("agent discovery failed", map[string]any{"error": err.Error()})
+}
+```
+
+Each generated tool captures the agent's persona and model, so the dispatched child is fully configured. Root agents (those with no `parent` in their frontmatter) are excluded by default: a root agent _is_ the conversation, not something to dispatch into. Override with `Filter`, `ToolName`, and `Description`.
+
+## Emitting events
+
+```go
+ctx.Emit(ion.NewEvent("engine_harness_message", map[string]any{
+	"message": "build finished",
+}))
+```
+
+`Emit` has two destinations, and the difference matters. Inside a handler the event is buffered and delivered with the handler's response, so the engine applies it atomically with whatever the handler decided. Once the invocation has answered — from a goroutine the handler spawned, say — the buffer is sealed and the event goes out as its own notification instead. You do not choose between them; the SDK picks based on whether the invocation is still open.
+
+## Async triggers
+
+The engine owns the mechanism — the HTTP listener, the scheduler, the persistence across restarts. Your extension declares what should happen.
+
+### Webhooks
+
+```go
+_, err := sdk.Webhooks().RegisterWithToken(context.Background(),
+	ion.WebhookRoute{
+		Path:   "/deploy/notify",
+		Method: "POST",
+		Auth:   ion.WebhookAuth{Kind: ion.AuthBearer},
+	},
+	func(c context.Context, ctx *ion.Context, req ion.WebhookRequest) (ion.WebhookResponse, error) {
+		var payload struct {
+			Status string `json:"status"`
+		}
+		if err := req.JSON(&payload); err != nil {
+			return ion.WebhookResponse{Status: 400, Body: "bad json"}, nil
+		}
+		return ion.WebhookResponse{Status: 200}, nil
+	},
+	func() (string, error) { return os.Getenv("DEPLOY_WEBHOOK_SECRET"), nil })
+```
+
+The token function is the important part. It is not called at registration — the engine invokes it over `engine/resolve_token` when it verifies a request, so the secret is read at use time and never crosses the wire as part of the declaration. A rotating credential needs no re-registration.
+
+### Schedules
+
+```go
+sdk.Schedule().Daily(context.Background(),
+	ion.ScheduleOpts{ID: "morning-briefing", Time: "07:00", TZ: "America/Chicago"},
+	func(c context.Context, ctx *ion.Context, control ion.ScheduleControl, meta ion.ScheduleFireMeta) error {
+		if meta.Backfill {
+			// A slot missed while the engine was down, or a manual
+			// ctx.FireSchedule. Decide whether catching up makes sense.
+			return nil
+		}
+		return buildBriefing(c, ctx)
+	})
+```
+
+`Daily`, `Weekly`, `Interval`, and `Once` cover the four kinds; `Once` fires a single time after `DelayMs` and deregisters itself on both sides. The `control` argument lets a handler stop its own job mid-run.
+
+### Registration timing
+
+Registering before `Run()` queues the declaration into the init handshake. Registering after sends it as its own RPC, and the engine fires the veto-capable `webhook_registered` / `schedule_registered` hook back at your extension before answering — which a policy extension can refuse. Either way you write the same call; the SDK picks the path.
+
+## Resources
+
+A resource is durable structured content clients subscribe to. The engine routes and fans out but **stores nothing** — when a client subscribes, the engine asks the producing extension for the snapshot, so persistence is your job.
+
+```go
+notes, _ := sdk.Resources().Declare(context.Background(), "briefing")
+
+sdk.Resources().OnQuery("briefing",
+	func(c context.Context, filter ion.ResourceFilter) ([]ion.ResourceItem, error) {
+		return loadBriefingsFromDisk(filter)
+	})
+
+// Later, when something changes:
+notes.Publish(ctx, ion.ResourceOpCreate, ion.ResourceItem{
+	ID:             "b-2026-01-02",
+	Title:          "Morning briefing",
+	Content:        text,
+	CreatedAt:      time.Now().UTC().Format(time.RFC3339),
+	ConversationID: ctx.ConversationID, // omit for a workspace-scoped item
+})
+```
+
+An item with a `ConversationID` belongs to that conversation's attachments; without one it lands in the global inbox.
+
+## Workspace context
+
+The `context_inject` and `system_inject` hooks receive structured workspace facts when a client supplies them. `system_inject` uses `Kind: "workspace_context"`; `context_inject` carries the same value on `Workspace`.
+
+```go
+type WorkspacePromptContext struct {
+    Kind     string            `json:"kind"`
+    Cwd      string            `json:"cwd"`
+    Worktree *WorktreeContext  `json:"worktree,omitempty"`
+    Bench    map[string]any    `json:"bench,omitempty"`
+    Client   map[string]any    `json:"client,omitempty"`
+}
+```
+
+`Worktree` is engine-owned registry data when `Kind` is `"worktree"`. `Bench` and `Client` are opaque maps passed through from the client, so an extension can react to client-specific workspace facts without coupling to one client implementation.
+
+```go
+ion.OnHook(sdk, ion.HookSystemInject,
+    func(ctx *ion.Context, info ion.SystemInjectInfo) (ion.StringResult, error) {
+        if info.Kind == "workspace_context" && info.Workspace != nil {
+            ctx.Log().Info("workspace context received", map[string]any{
+                "kind": info.Workspace.Kind,
+                "cwd":  info.Workspace.Cwd,
+            })
+        }
+        return "", nil // no replacement
+    })
+```
+
+See [client commands](../protocol/client-commands.md) for the client wire shape and [engine configuration](../configuration/engine-json.md) for session-wide defaults.
+
+## Context reference
+
+Every RPC-backed method takes a `context.Context` first. This is not decoration: **the engine applies no timeout of its own to an `ext/*` call**, so the context you pass is the only bound that exists. Cancelling it also cancels the work on the engine side where that is meaningful — `LLMCall` sends a cancellation keyed to the in-flight request so the provider call stops rather than billing for tokens nobody reads.
+
+| Area                | Methods                                                                                                                                |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Identity (fields)   | `SessionKey`, `ConversationID`, `RunID`, `TraceID`, `Depth`, `DispatchID`, `Cwd`, `Model`, `Config`                                         |
+| Events and messages | `Emit`, `SendMessage`, `SendPrompt`                                                                                                    |
+| Tools               | `CallTool`, `SuppressTool`                                                                                                             |
+| Dispatch            | `DispatchAgent`, `RecallAgent`, `SteerDispatch`, `SteerDispatchByName`, `SteerSelf`, `ListDispatchState`, `AnswerDispatchQuestion`     |
+| Agents              | `DiscoverAgents`, `RegisterAgentSpec`, `DeregisterAgentSpec`, `SetDispatchContextDefaults`                                             |
+| Session             | `Elicit`, `GetContextUsage`, `SearchHistory`, `GetSessionMemory`, `SetSessionMemory`, `WalkContextFiles`, `Suspend`, `SuspendUntilAll` |
+| Plan mode           | `EnterPlanMode`, `ExitPlanMode`, `GetPlanMode`                                                                                         |
+| Cross-session       | `Sessions().List`, `Sessions().Send`, `Intercept`                                                                                      |
+| Schedules           | `FireSchedule`, `GetScheduleStatus`                                                                                                    |
+| Processes           | `RegisterProcess`, `DeregisterProcess`, `ListProcesses`, `TerminateProcess`, `CleanStaleProcesses`                                     |
+| Other               | `HTTP()`, `LLMCall`, `Notify`, `RunOnce`, `SandboxWrap`, `Log()`                                                                       |
+
+`DispatchAgent` is asynchronous by default: it returns a stub with `DispatchID`, and the engine routes terminal results to the owner. Set `WaitForCompletion: true` only when explicit blocking terminal output is required.
+
+At the root session the engine omits `Depth` and `DispatchID`, so their zero values (`0` and `""`) _are_ the root shape rather than missing data. It omits `RunID` and `TraceID` when no prompt-to-completion run is active, so both are `""` for lifecycle hooks, schedules, and webhooks outside a run.
+
+`Model` is a `*ion.ModelRef` when the engine resolved an active model and `nil` when it did not:
 
 ```go
 type ModelRef struct {
-    ID            string
-    ContextWindow int
+    ID            string `json:"id"`
+    ContextWindow int    `json:"contextWindow"`
 }
 ```
 
-**`Config`** -- extension configuration.
+`Config` is an `ion.ExtensionConfig` value. It always carries the init-handshake defaults, with per-invocation `_ctx.config` values replacing it when the engine supplies them.
+
+## Graceful degradation
+
+There is no version negotiation, by design: adding one would make every engine and every extension carry a compatibility matrix. The contract is additive instead — new methods appear, existing ones never change shape — and a client discovers what an engine supports by calling and handling the refusal.
 
 ```go
-type ExtensionConfig struct {
-    ExtensionDir     string                 `json:"extensionDir"`
-    Model            string                 `json:"model,omitempty"`
-    WorkingDirectory string                 `json:"workingDirectory"`
-    McpConfigPath    string                 `json:"mcpConfigPath,omitempty"`
-    Options          map[string]interface{} `json:"options,omitempty"`
+usage, err := ctx.GetContextUsage(c)
+switch {
+case errors.Is(err, ion.ErrMethodNotFound):
+	// This engine build predates ext/get_context_usage. Carry on without it.
+case err != nil:
+	return err
 }
 ```
 
-### Context methods
+`ErrMethodNotFound` wraps JSON-RPC `-32601`. The connection stays usable afterwards — degradation means skipping one method, not shutting down.
 
-**`Emit(event)`** -- emit an engine event to socket clients. During hook execution events are buffered and returned with the hook response; outside hooks they fire immediately as `ext/emit` notifications.
+## Parity
 
-**`GetContextUsage()`** -- returns current context window utilization for the active conversation, or `nil` when no conversation is active. Reads live counters maintained by the session manager — repeated calls within a single hook are cheap.
+The Go and TypeScript SDKs are held in sync by tests, not by convention. A hook or context method added to one and not the other fails the build:
 
-```go
-type ContextUsage struct {
-    Percent int
-    Tokens  int
-    Cost    float64
-}
+- `sdk/go/parity_test.go` reads the engine's generated contract manifest and checks hooks, payload fields, result shapes, the `ext/*` method set, and the wire constants — in both directions.
+- `desktop/src/shared/__tests__/sdk-surface-sync.test.ts` reads that manifest plus the Go SDK's reflected surface and asserts the TypeScript SDK matches both.
+- `engine/tests/integration/parity_canary_test.go` runs two behaviourally-identical canary extensions, one per language, and asserts they produce the _same_ observations rather than merely each passing.
+
+Regenerating the goldens after an engine-side change:
+
+```bash
+cd engine && go test ./internal/extension/ -run TestSDKContractManifest -update
+cd sdk/go && go test -run TestGoSDKSurfaceManifest -update
 ```
 
-Useful for: warning the user before compaction kicks in; downgrading model selection under heavy context pressure.
+## Versioning
 
-**`SearchHistory(query, maxResults)`** -- search the active conversation's persisted message history for content matching `query`. Returns up to `maxResults` matches (engine-capped; pass `0` for the default). Returns an empty slice when no conversation is active.
+The module is tagged `sdk/go/vX.Y.Z`. The slash is required: the Go module proxy resolves a nested module only against a tag in exactly that form.
 
-```go
-type HistoryMatch struct {
-    Index   int
-    Role    string
-    Snippet string
-}
+```bash
+go get github.com/dsswift/ion/sdk/go@latest
 ```
 
-Searches the full persisted record (including pre-compaction messages), not just the currently-loaded context. Useful for recall commands and harness-side memory features.
+It stays on `v0` until parity has been green across a full release cycle. Treat additive changes as the default: new methods and fields appear without disturbing existing callers. A defect that makes a published field unusable against the engine wire may require an explicit, operator-approved correction.
 
-**`GetSessionMemory()`** -- returns the current session memory content. Empty string when not active.
+## See also
 
-**`SetSessionMemory(content)`** -- replaces the session memory with custom content and persists it to disk.
-
-**`SetPlanMode(enabled, source)`** -- imperatively flip the session's plan mode on or off. `source` is a free-form audit string (`"slash_command"`, `"hook"`, `"user_approval"`, etc.) that is logged with the transition. Fires `engine_plan_mode_changed` as a state event — this is a confirmed transition, not a proposal. See [ADR-003](../architecture/adr/003-state-events-vs-workflow-events.md) for the state-vs-workflow distinction.
-
-**`GetPlanMode()`** -- returns the current plan-mode state and (if active) the path to the plan file. Reads the session manager's authoritative state, not any cached value.
-
-```go
-enabled, planFilePath := ctx.GetPlanMode()
-```
-
-**`Elicit(info)`** -- ask the user a structured question via the connected client. Blocks the calling hook until the client replies or times out. The wire protocol promotes this to `engine_elicitation_request` / `elicitation_response` so socket-only consumers can present the prompt.
-
-**`SuppressTool(name)`** -- hide a built-in tool from the model on the current turn. Use sparingly.
-
-**`CallTool(name, input)`** -- dispatch a tool call from extension code through the same registry the LLM uses. Returns `(content, isError, error)`. Subject to the session's permission policy. Does **not** fire per-tool hooks or `permission_request` (prevents re-entrant recursion into the calling extension).
-
-**`SendPrompt(text, model)`** -- queue a fresh prompt on this session's agent loop. Resolves once the engine has accepted the prompt; does not wait for the LLM to finish. Pass `model=""` to use the session default.
-
-**Recursion hazard**: calling `SendPrompt` from inside `before_prompt` or any pre-prompt hook triggers a new run that fires the same hook again. Guard with a per-session in-flight flag.
-
-**`Abort()`** -- abort the current session run.
-
-**`RegisterAgent(name, handle)`** / **`DeregisterAgent(name)`** -- register/deregister agent handles for per-agent abort and steering.
-
-**`ResolveTier(name)`** -- resolve a model tier name to a model ID.
-
-**`RegisterProcess`**, **`DeregisterProcess`**, **`ListProcesses`**, **`TerminateProcess`**, **`CleanStaleProcesses`** -- process lifecycle management (see TypeScript SDK for semantics).
-
-**`Suspend()`** / **`SuspendUntilAll(dispatchIDs)`** -- end the current LLM run without completing it, then revive later. Inside a dispatched run (depth >= 1) the dispatch stays alive and idle until a revive message arrives; at depth 0 it parks the ROOT session on its outstanding background bash commands, and a new run starts when one completes. Errors at depth 0 when there is no active run to park or no outstanding notifying commands to park on. Same semantics as the TypeScript SDK — see [sdk-typescript.md](sdk-typescript.md) § `suspend()` and [ADR-023](../architecture/adr/023-root-session-park-and-wake.md).
-
-**`DispatchAgent(opts)`** -- dispatch an engine-native child agent.
-
-**`DiscoverAgents(opts)`** -- list agents discoverable via the harness's configured search paths (extension agents, project agents, user agents). Returns a structured result the harness can filter and register via `RegisterAgent`.
-
-## Workspace Context
-
-Clients supply workspace context on `ClientCommand` (per-prompt) or on `EngineConfig` (session-wide default) via the `ClientWorkspaceContext` field. The engine routes it to extensions through:
-
-- **`system_inject`** with `Kind: "workspace_context"` -- the `Workspace` field carries a `workspaces.PromptContext`. Return replacement text or `Suppress: true`.
-- **`context_inject`** -- the `Workspace` field on `ContextInjectInfo` carries the same `PromptContext`.
-
-### ClientWorkspaceContext
-
-```go
-type ClientWorkspaceContext struct {
-    Kind  string         `json:"kind"`
-    Cwd   string         `json:"cwd"`
-    Bench map[string]any `json:"bench,omitempty"`
-    Data  map[string]any `json:"data,omitempty"`
-    Text  string         `json:"text,omitempty"`
-}
-```
-
-### PromptContext (hook payload)
-
-```go
-type PromptContext struct {
-    Kind     ContextKind      `json:"kind"`
-    Cwd      string           `json:"cwd"`
-    Worktree *WorktreeContext  `json:"worktree,omitempty"`
-    Bench    map[string]any   `json:"bench,omitempty"`  // from ClientWorkspaceContext.Bench
-    Client   map[string]any   `json:"client,omitempty"` // from ClientWorkspaceContext.Data
-}
-```
-
-See [client-commands.md](../protocol/client-commands.md) for the wire shape and [engine.json](../configuration/engine-json.md) § `promptContext` for session-wide defaults.
-
-## Type definitions
-
-### HookHandler
-
-```go
-type HookHandler func(ctx *Context, payload interface{}) (interface{}, error)
-```
-
-Return `nil, nil` for void hooks. Return a typed result for hooks that expect one. Return `nil, error` to log an error without affecting the hook chain.
-
-### ToolDefinition
-
-```go
-type ToolDefinition struct {
-    Name         string
-    Description  string
-    Parameters   map[string]interface{}
-    PlanModeSafe bool
-    Execute      func(params interface{}, ctx *Context) (*types.ToolResult, error)
-}
-```
-
-### CommandDefinition
-
-```go
-type CommandDefinition struct {
-    Description string
-    Execute     func(args string, ctx *Context) error
-}
-```
-
-### ToolResult (from types package)
-
-```go
-type ToolResult struct {
-    Content string `json:"content"`
-    IsError bool   `json:"isError,omitempty"`
-}
-```
-
-### DispatchAgentOpts / DispatchAgentResult
-
-```go
-type DispatchAgentOpts struct {
-    Name          string   `json:"name"`
-    Task          string   `json:"task"`
-    Model         string   `json:"model,omitempty"`
-    ExtensionDir  string   `json:"extensionDir,omitempty"`
-    SystemPrompt  string   `json:"systemPrompt,omitempty"`
-    ProjectPath   string   `json:"projectPath,omitempty"`
-    SessionID     string   `json:"sessionId,omitempty"`
-    MaxTurns      int      `json:"maxTurns,omitempty"`      // cap child loop turns; <=0 means unlimited
-    PlanMode      bool     `json:"planMode,omitempty"`      // start child in plan mode
-    PlanFilePath  string   `json:"planFilePath,omitempty"`  // override plan file path
-    PlanModeTools []string `json:"planModeTools,omitempty"` // override allowed tools during plan mode
-}
-
-type DispatchAgentResult struct {
-    Output       string  `json:"output"`
-    ExitCode     int     `json:"exitCode"`
-    Elapsed      float64 `json:"elapsed"`
-    PlanFilePath string  `json:"planFilePath,omitempty"` // plan file written by child
-    PlanExited   bool    `json:"planExited,omitempty"`   // true when child called ExitPlanMode
-}
-```
-
-## Capability
-
-```go
-type CapabilityMode int
-
-const (
-    CapabilityModeTool   CapabilityMode = 1 << iota // surface as LLM tool
-    CapabilityModePrompt                            // inject into system prompt
-)
-
-type Capability struct {
-    ID          string
-    Name        string
-    Description string
-    Metadata    map[string]interface{}
-    Mode        CapabilityMode
-    InputSchema map[string]interface{}
-    Execute     func(ctx *Context, input map[string]interface{}) (*types.ToolResult, error)
-    Prompt      string
-}
-```
-
-Capabilities can operate in tool mode, prompt mode, or both (using bitwise OR):
-
-- **CapabilityModeTool** -- the engine creates an LLM tool from `InputSchema` and `Execute`
-- **CapabilityModePrompt** -- the engine injects `Prompt` into the system prompt
-- **Both** -- `CapabilityModeTool | CapabilityModePrompt`
-
-## Host
-
-The `Host` manages subprocess extension lifecycle. Most extension authors don't interact with it directly, but it's useful to understand for debugging.
-
-```go
-host := extension.NewHost()
-
-// Load a subprocess extension
-err := host.Load("/path/to/extension", &extension.ExtensionConfig{...})
-
-// Access the underlying SDK
-sdk := host.SDK()
-
-// Shutdown
-host.Dispose()
-```
-
-The Host:
-
-1. Resolves the entry point (binary, TypeScript, or JavaScript)
-2. Transpiles TypeScript if needed
-3. Spawns the subprocess
-4. Sends the init handshake
-5. Registers hook forwarders on the SDK
-6. Routes tool and command calls to the subprocess
-7. Handles extension-initiated notifications and requests
-8. Kills the subprocess on Dispose
-
-## Resources, Notifications, and Cross-Session Messaging
-
-The Go SDK context exposes methods for the resource subsystem, push notifications, and cross-session communication.
-
-**Resource subsystem:**
-
-- **`ctx.Resources.Declare(kind string)`** -- declare a resource collection. Returns a handle with a `Publish(op, item)` method that routes to the session or global broker depending on `item.ConversationID`.
-- **`ctx.Resources.OnQuery(kind string, handler func() ([]ResourceItem, error))`** -- register a query handler called when a client subscribes to provide the initial snapshot.
-
-**Notifications:**
-
-- **`ctx.Notify(opts NotifyOpts)`** -- emit a push notification through the engine/relay pipeline. `NotifyOpts` carries `Kind`, `ResourceID`, `Title`, `Body`, `Sound`, `Scope`, `ConversationID`, and `TargetSessionKey`. The `Push`, `PushTitle`, and `PushBody` fields on the resulting `engine_notification` event trigger APNs delivery when the relay is connected.
-
-**Cross-session messaging:**
-
-- **`ctx.Sessions.List()`** -- returns `[]SessionListEntry` with `Key`, `HasActiveRun`, `ExtensionName`, `ConversationID`. Only sessions running the same extension type are returned.
-- **`ctx.Sessions.Send(targetKey, kind string, payload map[string]interface{})`** -- send a structured message to another session. The engine enforces same extension type; cross-type sends return an error. The receiving session's `session_message` hook fires with `SessionMessageInfo{SenderSessionKey, Kind, Payload}`.
-
-**Intercept:**
-
-- **`ctx.Intercept(opts InterceptOpts)`** -- emit an `engine_intercept` event on a target session's stream. `InterceptOpts` carries `Level` (`"banner"` or `"redirect"`), `Title` (required), `Message`, `TargetSessionKey` (optional, defaults to caller's session), and `Metadata` (opaque map). The engine stamps `Source` from the extension name; extensions cannot override it.
-
-**Cross-instance dedup:**
-
-- **`ctx.RunOnceCheck(operationID string, debounceMs int64) (execute bool, reason string)`** -- check whether this instance should execute the named operation. Returns `execute=true` when this instance wins the dedup check. `reason` is one of `"in_progress"`, `"debounced"`, or `"already_ran"` when `execute=false`.
-- **`ctx.RunOnceComplete(operationID string, failed bool)`** -- record the outcome. When `failed=true`, the lock is released without updating the last-run timestamp so the next instance can retry immediately.
+- [Building extensions in any language](sdk-raw.md) — the raw JSON-RPC protocol, for languages with no SDK
+- [TypeScript SDK](sdk-typescript.md) — the other first-class SDK
+- [Engine-Internal Extension SDK](sdk-engine-internal.md) — the registry inside the engine
+- [Hook reference](../hooks/reference.md) — every hook by name, with payload and return semantics

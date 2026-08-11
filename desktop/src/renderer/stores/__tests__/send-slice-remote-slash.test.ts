@@ -49,7 +49,6 @@ vi.mock('../../preferences', () => ({
       planModelSplitEnabled: false,
       planModeModel: null,
       addRecentBaseDirectory: vi.fn(),
-      incrementDirectoryUsage: vi.fn(),
       defaultTallConversation: false,
       engineProfiles: [],
       engineDefaultModel: null,

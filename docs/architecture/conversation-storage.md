@@ -12,8 +12,8 @@ A conversation with ID `<id>` produces up to three files:
 
 | File | Purpose |
 |------|---------|
-| `<id>.tree.jsonl` | Conversation tree for rendering and branching. Source of truth for the full message history with parent/child relationships. |
-| `<id>.llm.jsonl` | LLM-authoritative message history. Source of truth for what the model actually saw and for token/cost accounting. |
+| `<id>.tree.jsonl` | Conversation tree for rendering and branching. Source of truth for full message history with parent/child relationships. `cleared` entries preserve `/clear` checkpoints for transcript replay and reset LLM-context reconstruction on paths that cross them. |
+| `<id>.llm.jsonl` | LLM-authoritative message history. Source of truth for what model actually saw and token/cost accounting. It retains only active-path messages after most recent compaction or clear boundary. |
 | `<id>.memory.md` | Session memory summary. Background-generated Markdown summary used for zero-cost compaction and system prompt injection. Optional — only present after enough turns and token growth. |
 
 Legacy formats may also exist: `.jsonl` (v1) and `.json` (v0). The engine auto-migrates legacy files to the split format on the next save.
@@ -24,9 +24,14 @@ Legacy formats may also exist: `.jsonl` (v1) and `.json` (v0). The engine auto-m
 - **Subsequent lines:** `SessionEntry` objects (`engine/internal/conversation/conversation.go`), each with:
   - `id` — unique entry identifier
   - `parentId` — pointer to parent entry (null for roots)
-  - `type` — one of `message`, `compaction`, `model_change`, `label`, `custom`
+  - `type` — one of `message`, `compaction`, `cleared`, `model_change`, `label`, `custom`
   - `timestamp` — Unix millis
   - `data` — type-specific payload (message content, compaction summary, etc.)
+
+A `cleared` entry is an LLM-context boundary, not a tree deletion. Prior entries
+remain available for rendering, export, and branch navigation. When the active
+path is rebuilt into `.llm.jsonl`, entries before its latest `cleared` marker are
+excluded; only non-display messages after marker reach model.
 
 ## `.llm.jsonl` structure
 

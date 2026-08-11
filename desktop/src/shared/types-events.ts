@@ -185,6 +185,9 @@ export type NormalizedEvent =
   | { type: 'compacting'; active: boolean; summary?: string; messagesBefore?: number; messagesAfter?: number; clearedBlocks?: number; strategy?: string; microOnly?: boolean }
   | { type: 'tool_stalled'; toolId: string; toolName: string; elapsed: number }
   | { type: 'steer_injected'; messageLength: number }
+  // ctx.steerSelf accepted a fresh prompt because no owning run was live.
+  // Distinct from steer_injected, which proves a live run-loop drain.
+  | { type: 'steer_degraded'; messageLength: number }
   // Extension-injected prompt (engine ctx.sendPrompt): no client submitted
   // this turn, so no client did an optimistic insert — the renderer appends
   // it as a user message. The text is also persisted as the run's user turn,
@@ -235,7 +238,7 @@ export type NormalizedEvent =
   // user_turn_persisted — the run-opening user turn's canonical persisted
   // tree-entry id, emitted before streaming so the optimistic user row can be
   // re-keyed even when the run never reaches a message_end (cancel, error).
-  | { type: 'user_turn_persisted'; entryId: string }
+  | { type: 'user_turn_persisted'; entryId: string; slashModelAlias?: string; slashModelEffective?: string }
   | { type: 'agent_state'; agents: import('./types-engine').AgentStateUpdate[] }
   // status — desktop-internal per-session status snapshot. Emitted by the
   // control plane (engine-control-plane-events.ts handleStatusEvent) from every

@@ -509,6 +509,34 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         }
     }
 
+    // MARK: - engine_steer_degraded (idle/no-owning-run fallback)
+
+    func testRoundTripEngineSteerDegraded() throws {
+        let original = RemoteEvent.engineSteerDegraded(tabId: "t1", instanceId: "i1", messageLength: 27)
+        let data = try encoder.encode(original)
+        let decoded = try decoder.decode(RemoteEvent.self, from: data)
+        if case .engineSteerDegraded(let tabId, let instanceId, let messageLength) = decoded {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+            XCTAssertEqual(messageLength, 27)
+        } else {
+            XCTFail("Round-trip engineSteerDegraded failed")
+        }
+    }
+
+    func testDecodeEngineSteerDegradedDoesNotAliasLiveSteer() throws {
+        let json = """
+        {"type":"desktop_steer_degraded","tabId":"t1","steerDegradedMessageLength":5}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        guard case .engineSteerDegraded(let tabId, let instanceId, let messageLength) = event else {
+            return XCTFail("Expected engineSteerDegraded, got \(event)")
+        }
+        XCTAssertEqual(tabId, "t1")
+        XCTAssertNil(instanceId)
+        XCTAssertEqual(messageLength, 5)
+    }
+
     // MARK: - lanAuthRejected (synthesized by TransportManager)
 
     /// Pins the codec for the transport-synthesized definitive-rejection

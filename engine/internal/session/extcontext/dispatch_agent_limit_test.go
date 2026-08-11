@@ -67,7 +67,7 @@ func TestDispatchAgentLimit_Rejected(t *testing.T) {
 	registry := populateRegistry(limit)
 
 	dispatchFn := BuildDispatchAgentFunc(sa, registry, 0, "")
-	_, err := dispatchFn(extension.DispatchAgentOpts{Name: "new-agent", Task: "do work"})
+	_, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true, Name: "new-agent", Task: "do work"})
 	if err == nil {
 		t.Fatal("expected rejection at MaxAgentsPerSession=2 with 2 active, got nil error")
 	}
@@ -91,7 +91,7 @@ func TestDispatchAgentLimit_AllowedBelowCeiling(t *testing.T) {
 	registry := populateRegistry(2)
 
 	dispatchFn := BuildDispatchAgentFunc(sa, registry, 0, "")
-	_, err := dispatchFn(extension.DispatchAgentOpts{Name: "new-agent", Task: "do work"})
+	_, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true, Name: "new-agent", Task: "do work"})
 	// The dispatch will fail eventually (no real backend), but NOT with the
 	// limit error — it should pass the gate and fail downstream.
 	if err != nil && strings.Contains(err.Error(), "agent dispatch limit reached") {
@@ -118,7 +118,7 @@ func TestDispatchAgentLimit_NilLimitsUnbounded(t *testing.T) {
 			// Pack the registry with many dispatches — none should be blocked.
 			registry := populateRegistry(50)
 			dispatchFn := BuildDispatchAgentFunc(sa, registry, 0, "")
-			_, err := dispatchFn(extension.DispatchAgentOpts{Name: "any-agent", Task: "do work"})
+			_, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true, Name: "any-agent", Task: "do work"})
 			if err != nil && strings.Contains(err.Error(), "agent dispatch limit reached") {
 				t.Errorf("case %q: without MaxAgentsPerSession policy the limit gate must not fire, got: %q", tc.name, err.Error())
 			}
@@ -138,7 +138,7 @@ func TestDispatchAgentLimit_NilRegistry(t *testing.T) {
 	}
 	// nil registry — the gate must be skipped entirely (no panic).
 	dispatchFn := BuildDispatchAgentFunc(sa, nil, 0, "")
-	_, err := dispatchFn(extension.DispatchAgentOpts{Name: "any-agent", Task: "do work"})
+	_, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true, Name: "any-agent", Task: "do work"})
 	if err != nil && strings.Contains(err.Error(), "agent dispatch limit reached") {
 		t.Errorf("nil registry must not trigger the limit gate, got: %q", err.Error())
 	}
@@ -161,7 +161,7 @@ func TestDispatchAgentLimit_ErrorMessagePrefix(t *testing.T) {
 	// Even an empty registry triggers the gate when the ceiling is 0.
 	registry := NewDispatchRegistry()
 	dispatchFn := BuildDispatchAgentFunc(sa, registry, 0, "")
-	_, err := dispatchFn(extension.DispatchAgentOpts{Name: "any-agent", Task: "work"})
+	_, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true, Name: "any-agent", Task: "work"})
 	if err == nil {
 		t.Fatal("expected rejection at MaxAgentsPerSession=0")
 	}

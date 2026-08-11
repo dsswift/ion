@@ -87,10 +87,12 @@ For extensions compiled to a native binary, place the executable at `main` in th
 
 ```
 my-extension/
-  main              # compiled binary (any language)
+  main              # compiled binary (any language), chmod +x
 ```
 
-The engine executes the binary directly. It must read JSON-RPC 2.0 from stdin and write responses to stdout. See [Building extensions in any language](sdk-raw.md) for protocol details.
+Script entry points take precedence: a directory holding both `index.ts` and `main` resolves to `index.ts`, because that combination is a source tree with its build output beside it. The executable bit is required — a `main` without it fails at load with a descriptive error rather than at spawn with a bare permission denial.
+
+The engine executes the binary directly. It must read JSON-RPC 2.0 from stdin and write responses to stdout. In Go, use the [Go SDK](sdk-go.md), which implements the protocol for you; for other languages see [Building extensions in any language](sdk-raw.md).
 
 ## Extension lifecycle
 

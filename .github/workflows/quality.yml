@@ -169,6 +169,9 @@ jobs:
       - name: Contract manifest up to date
         working-directory: engine
         run: go test ./internal/types/ -run TestContractManifest -v
+      - name: SDK contract manifest up to date
+        working-directory: engine
+        run: go test ./internal/extension/ -run TestSDKContractManifest -v
       - name: Integration tests with race detector
         working-directory: engine
         run: go test -race -tags integration ./tests/integration/...
@@ -211,6 +214,11 @@ jobs:
         with:
           version: v2.11.3
           working-directory: relay
+      - name: golangci-lint sdk
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.11.3
+          working-directory: sdk/go
 
   engine-vuln:
     runs-on: ubuntu-latest
@@ -228,6 +236,25 @@ jobs:
       - name: govulncheck (relay)
         run: govulncheck ./...
         working-directory: relay
+      - name: govulncheck (sdk)
+        run: govulncheck ./...
+        working-directory: sdk/go
+
+  sdk-test:
+    # The Go SDK's parity tests read two generated goldens — the engine's SDK
+    # contract manifest and the SDK's own surface manifest — so they run from a
+    # full checkout rather than from the module in isolation. This is the job
+    # that turns "a hook exists in one SDK and not the other" into a red build.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: sdk/go/go.mod
+      - name: Unit and parity tests with race detector
+        working-directory: sdk/go
+        run: go test -race ./...
 
   relay-test:
     runs-on: ubuntu-latest

@@ -366,7 +366,6 @@ export function TabStrip() {
             anchor={dirPickerState.anchor}
             onSelectDir={(dir) => {
               usePreferencesStore.getState().addRecentBaseDirectory(dir)
-              usePreferencesStore.getState().incrementDirectoryUsage(dir)
               switch (dirPickerState.mode) {
                 case 'conversation': {
                   const result = createNewConversationTab(dir)

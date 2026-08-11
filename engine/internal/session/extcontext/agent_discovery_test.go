@@ -30,6 +30,7 @@ func (a *agentDiscoveryTestAccessor) ConversationID() string                   {
 func (a *agentDiscoveryTestAccessor) RunID() string                            { return "" }
 func (a *agentDiscoveryTestAccessor) TraceID() string                          { return "" }
 func (a *agentDiscoveryTestAccessor) WorkingDirectory() string                 { return "/tmp" }
+func (a *agentDiscoveryTestAccessor) CurrentModel() string                     { return "" }
 func (a *agentDiscoveryTestAccessor) Emit(ev types.EngineEvent)                {}
 func (a *agentDiscoveryTestAccessor) SendAbort()                               {}
 func (a *agentDiscoveryTestAccessor) RootContext() context.Context             { return context.Background() }
@@ -37,9 +38,15 @@ func (a *agentDiscoveryTestAccessor) SendPrompt(_, _ string, _ []string) error {
 func (a *agentDiscoveryTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error {
 	return nil
 }
-func (a *agentDiscoveryTestAccessor) SteerSelfMainLoop(_ string) bool { return false }
+
+// Degraded-steer delivery is not what this test exercises; it delegates so
+// the fake satisfies SessionAccessor and behaves like the kind-aware send.
+func (a *agentDiscoveryTestAccessor) SendPromptDegradedSteer(text string, model string, bash []string, kind string) error {
+	return a.SendPromptWithKind(text, model, bash, kind)
+}
+func (a *agentDiscoveryTestAccessor) SteerSelfMainLoop(_ string) bool            { return false }
 func (a *agentDiscoveryTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
-func (a *agentDiscoveryTestAccessor) ParkSelfMainLoop() bool          { return false }
+func (a *agentDiscoveryTestAccessor) ParkSelfMainLoop() bool                     { return false }
 func (a *agentDiscoveryTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
@@ -62,6 +69,7 @@ func (a *agentDiscoveryTestAccessor) AllocatePlanFilePath(_ string) string {
 }
 func (a *agentDiscoveryTestAccessor) BumpParentProgress()                      {}
 func (a *agentDiscoveryTestAccessor) EmitDispatchCountStatus(_ string)         {}
+func (a *agentDiscoveryTestAccessor) DispatchRegistry() *DispatchRegistry      { return nil }
 func (a *agentDiscoveryTestAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }
 func (a *agentDiscoveryTestAccessor) ClaudeCompat() bool                       { return false }
 func (a *agentDiscoveryTestAccessor) GetDispatchContextDefaults() *extension.ContextPolicy {

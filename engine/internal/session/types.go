@@ -33,11 +33,25 @@ type pendingPrompt struct {
 	overrides *PromptOverrides
 }
 
+// rootDispatchCompletion is one root-owned child result awaiting normal prompt
+// acceptance. DeliveryID deduplicates retries in memory and identifies logs.
+type rootDispatchCompletion struct {
+	DeliveryID string
+	Text       string
+	DispatchID string
+	Name       string
+	ExitCode   int
+}
+
 // engineSession holds the state for a single session managed by the Manager.
 type engineSession struct {
 	key       string
 	config    types.EngineConfig
 	requestID string // empty when no active run
+	// runIdentityMu serializes extension-context snapshots of requestID and
+	// runTraceID with lifecycle writes. Manager-owned readers still use m.mu;
+	// writers hold m.mu before this lock, preserving one lock order.
+	runIdentityMu sync.RWMutex
 
 	// dispatchingRunID marks the dispatch-in-flight window for a run. It is
 	// set to the run's requestID inside SendPrompt, under m.mu, at the same
@@ -208,6 +222,10 @@ type engineSession struct {
 	hasExitedPlanMode bool // set when ExitPlanMode fires; enables reentry detection
 	promptQueue       []pendingPrompt
 	maxQueueDepth     int // default 32
+	// rootDispatchCompletions is the FIFO durable outbox for top-level child
+	// terminal results. A delivery stays here until a classified prompt is
+	// accepted by the normal session path; queue backpressure never drops it.
+	rootDispatchCompletions []rootDispatchCompletion
 
 	// Wired subsystems (populated in StartSession)
 	extGroup       *extension.ExtensionGroup
@@ -258,9 +276,12 @@ type engineSession struct {
 	lastContextPct    int
 	lastContextTokens int
 	lastContextWindow int
-	lastModel         string
-	lastTotalCost     float64 // run-scoped cost (alias: RunCostUsd)
-	lastConvCost      float64 // conversation-scoped cost (alias: ConversationCostUsd)
+	// modelMu protects lastModel for extension-context construction, which may
+	// run without Manager.mu and from paths already holding Manager.mu.
+	modelMu       sync.RWMutex
+	lastModel     string
+	lastTotalCost float64 // run-scoped cost (alias: RunCostUsd)
+	lastConvCost  float64 // conversation-scoped cost (alias: ConversationCostUsd)
 
 	// lastPermissionDenials retains the PermissionDenials slice from the
 	// most recent TaskCompleteEvent. The slice typically contains

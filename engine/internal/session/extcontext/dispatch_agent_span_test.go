@@ -20,7 +20,7 @@ func TestDispatchAgentSpanEmitted(t *testing.T) {
 	// Foreground dispatch with no resolvable model: the child backend fails
 	// fast (no provider), runChild completes, and the span ends. We assert the
 	// span event landed regardless of the child's failure.
-	_, _ = dispatchFn(extension.DispatchAgentOpts{
+	_, _ = dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name:  "span-agent",
 		Task:  "do span work",
 		Model: "no-such-model-for-span",
@@ -66,7 +66,7 @@ func TestDispatchAgentSpanEmitted(t *testing.T) {
 func TestDispatchAgentSpanDisabledNoEvent(t *testing.T) {
 	acc := &depthTestAccessor{} // telem nil
 	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
-	_, _ = dispatchFn(extension.DispatchAgentOpts{
+	_, _ = dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name:  "no-telem-agent",
 		Task:  "work",
 		Model: "no-such-model",
@@ -90,7 +90,7 @@ func TestDispatchAgentSpanExtensionAttributionCarried(t *testing.T) {
 		extVer:            "4.0.0",
 	}
 	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
-	_, _ = dispatchFn(extension.DispatchAgentOpts{
+	_, _ = dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name:  "ext-span-agent",
 		Task:  "attributed work",
 		Model: "no-such-model",
@@ -124,7 +124,7 @@ func TestDispatchAgentSpanExtensionAttributionAbsent(t *testing.T) {
 	col := telemetry.NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
 	acc := &depthTestAccessor{telem: col} // ExtensionName/ExtensionVersion return ""
 	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
-	_, _ = dispatchFn(extension.DispatchAgentOpts{
+	_, _ = dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name:  "unattributed-agent",
 		Task:  "work",
 		Model: "no-such-model",

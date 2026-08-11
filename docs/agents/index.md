@@ -13,8 +13,9 @@ Agents are delegated tasks that run their own tool loops. When the primary sessi
 1. The LLM calls the `Agent` tool with a prompt and working directory.
 2. The engine creates a child `ApiBackend` with its own run loop.
 3. The child streams LLM calls, executes tools, and iterates until done.
-4. The child's text output flows back to the parent as the tool result.
-5. The parent continues its own tool loop with the agent's output.
+4. The `Agent` call returns a dispatch ID immediately; parent continues work or ends turn.
+5. Engine delivers terminal child result back to parent as machine-authored completion input.
+6. Parent may steer running child by dispatch ID; `wait_for_completion: true` is explicit blocking escape hatch.
 
 Parent and child share the same event bus. Events from child agents are forwarded to connected clients so UIs can show agent activity in real time.
 

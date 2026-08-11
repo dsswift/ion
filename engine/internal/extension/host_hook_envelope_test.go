@@ -85,6 +85,32 @@ func TestBuildHookEnvelope_RunIdentity(t *testing.T) {
 	}
 }
 
+func TestBuildHookEnvelope_Model(t *testing.T) {
+	h := NewHost()
+
+	withModel := h.buildHookEnvelope(&Context{
+		Cwd:   "/tmp",
+		Model: &ModelRef{ID: "opus", ContextWindow: 200000},
+	}, nil)
+	withModelCtx := withModel["_ctx"].(map[string]interface{})
+	model, ok := withModelCtx["model"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("model = %T, want object", withModelCtx["model"])
+	}
+	if got := model["id"]; got != "opus" {
+		t.Errorf("model.id = %v, want opus", got)
+	}
+	if got := model["contextWindow"]; got != 200000 {
+		t.Errorf("model.contextWindow = %v, want 200000", got)
+	}
+
+	withoutModel := h.buildHookEnvelope(&Context{Cwd: "/tmp"}, nil)
+	withoutModelCtx := withoutModel["_ctx"].(map[string]interface{})
+	if _, present := withoutModelCtx["model"]; present {
+		t.Errorf("nil model must be omitted, got %v", withoutModelCtx["model"])
+	}
+}
+
 // TestBuildHookEnvelope_BaseFieldsAndPayloadMerge pins the pre-existing
 // envelope behavior through the extracted seam: base `_ctx` keys appear when
 // set, and a map payload merges into the top level alongside `_ctx`.

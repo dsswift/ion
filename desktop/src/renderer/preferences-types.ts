@@ -243,7 +243,6 @@ export interface PreferencesState {
   setDefaultBaseDirectory: (dir: string) => void
   addRecentBaseDirectory: (dir: string) => void
   removeRecentBaseDirectory: (dir: string) => void
-  incrementDirectoryUsage: (dir: string) => void
   setDefaultPermissionMode: (mode: 'auto' | 'plan') => void
   setExpandOnTabSwitch: (enabled: boolean) => void
   setBashCommandEntry: (enabled: boolean) => void

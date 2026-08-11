@@ -14,20 +14,16 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// handleHTTPRPC dispatches the ext/http_request method. Returns true when
-// the method was handled (caller short-circuits its own switch).
-func (h *Host) handleHTTPRPC(method string, id int64, raw []byte) bool {
-	if method != "ext/http_request" {
-		return false
-	}
-
+// handleHTTPRequest answers ext/http_request, registered in
+// host_rpc_registry.go.
+func (h *Host) handleHTTPRequest(id int64, raw []byte) {
 	var req struct {
 		Params OperatorHTTPRequestParams `json:"params"`
 	}
 	if err := json.Unmarshal(raw, &req); err != nil {
 		utils.LogWithFields(utils.LevelError, "extension", "ext/http_request: parse error", map[string]any{"error": err.Error()})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
-		return true
+		return
 	}
 
 	// Perform the request off the RPC read loop; the response is delivered
@@ -36,7 +32,7 @@ func (h *Host) handleHTTPRPC(method string, id int64, raw []byte) bool {
 		resp, err := DoOperatorHTTPRequest(context.Background(), req.Params)
 		if err != nil {
 			utils.LogWithFields(utils.LevelInfo, "extension", "ext/http_request: failed", map[string]any{
-				"model": h.name,
+				"model": h.name_(),
 				"url":   req.Params.URL,
 				"error": err.Error(),
 			})
@@ -50,5 +46,4 @@ func (h *Host) handleHTTPRPC(method string, id int64, raw []byte) bool {
 		}
 		h.sendResponse(id, json.RawMessage(data), nil)
 	}()
-	return true
 }

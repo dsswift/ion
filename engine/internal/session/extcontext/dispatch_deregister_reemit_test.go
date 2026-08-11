@@ -116,6 +116,7 @@ func (a *dispatchCountSpyAccessor) ConversationID() string   { return "" }
 func (a *dispatchCountSpyAccessor) RunID() string            { return "" }
 func (a *dispatchCountSpyAccessor) TraceID() string          { return "" }
 func (a *dispatchCountSpyAccessor) WorkingDirectory() string { return "/tmp" }
+func (a *dispatchCountSpyAccessor) CurrentModel() string     { return "" }
 func (a *dispatchCountSpyAccessor) Emit(ev types.EngineEvent) {
 	a.mu.Lock()
 	a.emitted = append(a.emitted, ev)
@@ -126,9 +127,15 @@ func (a *dispatchCountSpyAccessor) SendPrompt(_, _ string, _ []string) error { r
 func (a *dispatchCountSpyAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error {
 	return nil
 }
-func (a *dispatchCountSpyAccessor) SteerSelfMainLoop(_ string) bool { return false }
+
+// Degraded-steer delivery is not what this test exercises; it delegates so
+// the fake satisfies SessionAccessor and behaves like the kind-aware send.
+func (a *dispatchCountSpyAccessor) SendPromptDegradedSteer(text string, model string, bash []string, kind string) error {
+	return a.SendPromptWithKind(text, model, bash, kind)
+}
+func (a *dispatchCountSpyAccessor) SteerSelfMainLoop(_ string) bool            { return false }
 func (a *dispatchCountSpyAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
-func (a *dispatchCountSpyAccessor) ParkSelfMainLoop() bool          { return false }
+func (a *dispatchCountSpyAccessor) ParkSelfMainLoop() bool                     { return false }
 func (a *dispatchCountSpyAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
@@ -241,7 +248,7 @@ func TestDeregisterReEmitsDispatchCount(t *testing.T) {
 
 	dispatchFn := BuildDispatchAgentFunc(acc, registry, 0, "")
 
-	result, err := dispatchFn(extension.DispatchAgentOpts{
+	result, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "count-test-agent",
 		Task: "do work",
 	})
@@ -294,7 +301,7 @@ func TestDeregisterFinalStatusCarriesZeroBgCount(t *testing.T) {
 	}
 
 	dispatchFn := BuildDispatchAgentFunc(acc, registry, 0, "")
-	_, _ = dispatchFn(extension.DispatchAgentOpts{
+	_, _ = dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "status-count-test-agent",
 		Task: "check bg count in status",
 	})
@@ -312,3 +319,4 @@ func TestDeregisterFinalStatusCarriesZeroBgCount(t *testing.T) {
 			"the stale bgCount from handleRunExit was not corrected by Deregister re-emit", count)
 	}
 }
+func (a *dispatchCountSpyAccessor) DispatchRegistry() *DispatchRegistry { return nil }

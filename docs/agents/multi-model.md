@@ -10,13 +10,24 @@ Each agent can specify its own model, allowing you to route expensive reasoning 
 
 ## How model selection works
 
-Model resolution follows this priority order:
+Model resolution has two stages: first the engine decides *which name* to use,
+then it resolves that name to a concrete model.
+
+**Stage 1 -- precedence.** The first of these that is set wins:
 
 1. **Agent definition** -- the `model` field in the agent's frontmatter
 2. **Per-prompt override** -- model specified in the `send_prompt` command
 3. **Session config** -- model set when the session was started
 4. **Engine default** -- `defaultModel` from engine runtime config
-5. **Tier alias** -- if the resolved name is a tier alias (e.g., `fast`), the model config resolves it to a concrete model
+
+**Stage 2 -- tier resolution.** If the name that won stage 1 is a tier alias
+(e.g. `fast`), the model config resolves it to a concrete model. This is not a
+fifth precedence level: it applies to whichever name stage 1 selected, so a tier
+alias in an agent definition is resolved rather than being overridden by
+`defaultModel`.
+
+If the resolved model maps to no configured provider, the run falls back to
+`defaultModel` and emits `engine_model_fallback` once per run.
 
 ## Cost optimization patterns
 

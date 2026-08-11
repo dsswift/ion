@@ -270,12 +270,28 @@ func appendInboundUserMessage(conv *conversation.Conversation, opts *types.RunOp
 		})
 	}
 
+	entry := appendInboundUserEntry(conv, opts)
+	// Independent of which append shape ran: a degraded steer needs its marker
+	// whether or not it carried a kind. A human steering an idle run degrades
+	// with an EMPTY kind, so keying this off the kind-bearing arm would have
+	// silently skipped exactly that case.
+	appendDegradedSteerMarker(conv, opts)
+	return entry
+}
+
+// appendInboundUserEntry writes the user turn itself, choosing the append shape
+// from the prompt's provenance. Split from appendInboundUserMessage so the
+// degraded-steer marker applies to every shape rather than only the
+// kind-bearing one.
+func appendInboundUserEntry(conv *conversation.Conversation, opts *types.RunOptions) *conversation.SessionEntry {
 	switch {
 	case opts.ResolvedSlashCommand != "":
 		return conversation.AddUserMessageWithInvocation(conv, opts.Prompt, conversation.SlashInvocation{
-			Command: opts.ResolvedSlashCommand,
-			Args:    opts.ResolvedSlashArgs,
-			Source:  opts.ResolvedSlashSource,
+			Command:        opts.ResolvedSlashCommand,
+			Args:           opts.ResolvedSlashArgs,
+			Source:         opts.ResolvedSlashSource,
+			ModelAlias:     opts.ResolvedSlashModelAlias,
+			ModelEffective: opts.ResolvedSlashModelEffective,
 		})
 	case len(opts.Attachments) > 0:
 		return conversation.AddUserMessage(conv, buildUserContentBlocks(opts.Prompt, opts.Attachments))
@@ -287,6 +303,36 @@ func appendInboundUserMessage(conv *conversation.Conversation, opts *types.RunOp
 	default:
 		return conversation.AddUserMessage(conv, opts.Prompt)
 	}
+}
+
+// appendDegradedSteerMarker persists the steer marker for a ctx.steerSelf
+// delivery that could not steer a live run and became a fresh prompt instead.
+//
+// drainSteer writes this same marker when the steer DOES reach a live run
+// (runloop_steer.go). Writing it here too is what makes the two delivery paths
+// agree: the signal is identical, only the transport differed, so a consumer
+// that renders a divider from the marker renders one either way. Without it a
+// degraded machine turn is suppressed with no trace, and an operator sees a
+// tool sweep begin with nothing in the transcript explaining why.
+//
+// Keyed on opts.SteerDegraded rather than on any injection kind. The kind says
+// who authored the turn; degradation says how it arrived, and both are
+// independently true — see the field comment on types.RunOptions.SteerDegraded.
+//
+// The marker rides the caller's existing Save (see RunAgentLoop), so this adds
+// no write.
+func appendDegradedSteerMarker(conv *conversation.Conversation, opts *types.RunOptions) {
+	if !opts.SteerDegraded || conv.Entries == nil {
+		return
+	}
+	conversation.AppendEntry(conv, conversation.EntrySteerMarker, conversation.SteerMarkerData{
+		MessageLength: len(opts.Prompt),
+	})
+	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "append: persisted steer marker for degraded steer delivery", map[string]any{
+		"conversation_id": conv.ID,
+		"count":           len(opts.Prompt),
+		"injection_kind":  opts.InjectionKind,
+	})
 }
 
 // inboundDuplicatesLeaf reports whether the inbound user turn is

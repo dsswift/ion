@@ -37,12 +37,11 @@ cd "$REPO_ROOT" || exit 0
 [ -d graphify-out ] || exit 0
 [ -f graphify-out/graph.json ] || exit 0
 
-# Linked worktrees share core.hooksPath with the main checkout but have their
-# own HEAD. Only the primary checkout rebuilds, matching the same guard in the
-# graphify-generated hooks.
-_GITDIR=$(cd "$(git rev-parse --git-dir 2>/dev/null)" 2>/dev/null && pwd)
-_COMMONDIR=$(cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd)
-if [ -n "$_COMMONDIR" ] && [ "$_GITDIR" != "$_COMMONDIR" ]; then
+# Linked worktrees share core.hooksPath with the primary checkout but never
+# rebuild its provisioned graph link. An unreadable identity is safe to skip:
+# hooks are convenience automation and must not mutate an uncertain target.
+_GUARD=$(bash scripts/graphify-worktree-guard.sh) || exit 0
+if [ "${_GUARD%% *}" = "worktree" ]; then
     exit 0
 fi
 

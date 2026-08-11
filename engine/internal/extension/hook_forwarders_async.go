@@ -22,6 +22,7 @@ import (
 // a broken hook should not be allowed to silently block every
 // registration.
 func (h *Host) registerAsyncRegistrationVetoForwarder(hook string) {
+	h.noteForwarder(hook, hookResultAsyncVeto)
 	h.sdk.On(hook, func(ctx *Context, payload interface{}) (interface{}, error) {
 		raw, err := h.callHook("hook/"+hook, ctx, payload)
 		if err != nil {

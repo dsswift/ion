@@ -44,6 +44,7 @@ export function buildDeviceFrame(
   push: boolean,
   pushTitle?: string,
   pushBody?: string,
+  pushTabId?: string,
   /** Optional: epoch ms when the event entered the send queue. Used for queue_dwell_ms. */
   enqueuedAt?: number,
   /** Outbound-seq epoch (generation id) stamped on the frame; see WireMessage.epoch. */
@@ -57,7 +58,7 @@ export function buildDeviceFrame(
   // main-thread breadcrumb and the error log live here in the wrapper.
   if (secret.length === 32) mark(Activity.RelayEncrypt)
   const { frame: msg, error } = buildFrameCore(deviceId, secret, plaintext, wire, seq, sendTs, {
-    push, pushTitle, pushBody, epoch,
+    push, pushTitle, pushBody, pushTabId, epoch,
   })
   if (!msg) {
     _error('transport-frame', `encrypt failed for device ${deviceId}: ${error}`)

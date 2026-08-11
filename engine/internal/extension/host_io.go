@@ -186,7 +186,7 @@ func (h *Host) callHook(method string, ctx *Context, payload interface{}) (json.
 	if h.dead.Load() {
 		if h.deathReported.CompareAndSwap(false, true) {
 			if ctx != nil && ctx.Emit != nil {
-				name := h.name
+				name := h.name_()
 				if name == "" {
 					name = "(unknown)"
 				}
@@ -259,7 +259,7 @@ func (h *Host) callHook(method string, ctx *Context, payload interface{}) (json.
 	// the join keys.
 	corr := map[string]any{
 		"session_id": sessionKey,
-		"extension":  h.name,
+		"extension":  h.name_(),
 	}
 	if conversationID != "" {
 		corr["conversation_id"] = conversationID
@@ -269,7 +269,7 @@ func (h *Host) callHook(method string, ctx *Context, payload interface{}) (json.
 	}
 
 	telemFn("extension.hook_latency", map[string]any{
-		"extension":  h.name,
+		"extension":  h.name_(),
 		"hook":       hookKind,
 		"latency_ms": latencyMs,
 		"turn":       turn,
@@ -277,11 +277,11 @@ func (h *Host) callHook(method string, ctx *Context, payload interface{}) (json.
 	}, corr)
 
 	utils.LogWithFields(utils.LevelDebug, "extension", "hook_latency emitted", map[string]any{
-		"extension":      h.name,
-		"hook":           hookKind,
-		"latency_ms":     latencyMs,
-		"turn":           turn,
-		"blocked":        blocked,
+		"extension":       h.name_(),
+		"hook":            hookKind,
+		"latency_ms":      latencyMs,
+		"turn":            turn,
+		"blocked":         blocked,
 		"session_id":      sessionKey,
 		"conversation_id": conversationID,
 	})
@@ -381,7 +381,7 @@ func (h *Host) readLoop(stdout *bufio.Scanner) {
 		wasAlive := !h.dead.Load()
 		if wasAlive {
 			h.dead.Store(true)
-			utils.LogWithFields(utils.LevelInfo, "extension", "subprocess stdout closed unexpectedly ()", map[string]any{"model": h.name})
+			utils.LogWithFields(utils.LevelInfo, "extension", "subprocess stdout closed unexpectedly ()", map[string]any{"model": h.name_()})
 		}
 		// Signal dead BEFORE draining so callers racing the add-to-pending
 		// step (between dead.Load() and pending[id]=ch) can observe death
@@ -462,7 +462,7 @@ func (h *Host) readLoop(stdout *bufio.Scanner) {
 				if len(preview) > 200 {
 					preview = preview[:200] + "...(truncated)"
 				}
-				utils.LogWithFields(utils.LevelWarn, "extension", "non-json line from subprocess ( )", map[string]any{"model": h.name, "error": err, "preview": preview})
+				utils.LogWithFields(utils.LevelWarn, "extension", "non-json line from subprocess ( )", map[string]any{"model": h.name_(), "error": err, "preview": preview})
 			}
 			continue
 		}
@@ -483,7 +483,7 @@ func (h *Host) readLoop(stdout *bufio.Scanner) {
 	// Log scanner errors explicitly so buffer overflows and I/O failures
 	// are never silently swallowed as "subprocess died".
 	if err := stdout.Err(); err != nil {
-		utils.LogWithFields(utils.LevelError, "extension", "stdout scanner error ()", map[string]any{"model": h.name, "error": err})
+		utils.LogWithFields(utils.LevelError, "extension", "stdout scanner error ()", map[string]any{"model": h.name_(), "error": err})
 	}
 }
 

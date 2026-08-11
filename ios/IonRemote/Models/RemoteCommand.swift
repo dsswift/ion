@@ -226,6 +226,9 @@ enum RemoteCommand: Codable, Sendable {
     /// and uses it to decide whether to perform redirect-level intercepts
     /// on behalf of this device.
     case reportFocus(tabId: String?, interceptEnabled: Bool)
+    /// Display-only account summary for this paired phone. No access or refresh
+    /// token crosses the wire; desktop persists it as last-reported context.
+    case reportMobileAuth(accountUsername: String?, accountName: String?, subject: String?, tenantId: String?, signedInAt: Date?, clearIdentity: Bool, accessStatus: String?, accessReason: String?, reportedAt: Date?)
     /// Request the full content for a single resource item from the
     /// desktop's renderer store. Sent when the user taps a resource card
     /// to expand it. The snapshot carries only metadata (id, kind, title,
@@ -352,6 +355,7 @@ enum RemoteCommand: Codable, Sendable {
         case setPillColor = "desktop_set_pill_color"
         case setPillIcon = "desktop_set_pill_icon"
         case reportFocus = "desktop_report_focus"
+        case reportMobileAuth = "desktop_report_mobile_auth"
         case requestResourceContent = "desktop_request_resource_content"
         case markResourceRead = "desktop_mark_resource_read"
         case deleteResource = "desktop_delete_resource"
@@ -405,6 +409,7 @@ enum RemoteCommand: Codable, Sendable {
         // declared above (shared with many commands); `interceptEnabled`
         // is new and unique to this command.
         case interceptEnabled
+        case accountUsername, accountName, subject, tenantId, signedInAt, clearIdentity, accessStatus, accessReason, reportedAt
         // requestResourceContent payload. `kind` identifies the resource
         // type (any extension-declared kind); `resourceId` is the item ID.
         // These share no wire key with any existing command field.

@@ -19,7 +19,18 @@ extension EngineMessageRow {
     }
 
     private func userBubbleCore(text: String, isBash: Bool) -> some View {
-        Text(text)
+        // Markdown, with VERBATIM whitespace. A plain `Text(text)` kept the
+        // operator's newlines but rendered `**bold**` and tables as raw source,
+        // which diverged from the desktop bubble for the same message. Parsing
+        // with `verbatim: true` keeps the paste exact (soft breaks stay
+        // newlines, stripped indentation is restored, an indented run stays
+        // prose rather than becoming a code card) while a real fence, table, or
+        // emphasis renders as markdown — matching the desktop's UserMarkdown.
+        MarkdownContentView(
+            blocks: MarkdownFormatter.parse(text, verbatim: true),
+            blockSpacing: 0,
+            blankLineHeight: 20
+        )
             .textSelection(.enabled)
             .padding(.leading, 14)
             .padding(.trailing, 12)

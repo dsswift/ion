@@ -1,6 +1,7 @@
 package extcontext
 
 import (
+	"sync"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -29,9 +30,24 @@ func (r *DispatchRegistry) ChildIDsOf(parentID string) []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var ids []string
+	seen := make(map[string]struct{})
 	for id, d := range r.dispatches {
 		if d.ParentID == parentID && !d.Detached {
 			ids = append(ids, id)
+			seen[id] = struct{}{}
+		}
+	}
+	// A child can finish while its parent is still working. Keep its exact ID
+	// visible until the parent drains its recorded terminal result; otherwise a
+	// parent ending its turn after the child deregisters would complete without
+	// ever receiving the result. SetSuspendedState prunes already-recorded IDs
+	// and immediately revives, so this is a precise delivery marker, not a
+	// liveness guess.
+	if parent, ok := r.dispatches[parentID]; ok {
+		for _, result := range parent.CompletedChildResults {
+			if _, exists := seen[result.ChildID]; !exists {
+				ids = append(ids, result.ChildID)
+			}
 		}
 	}
 	return ids
@@ -184,7 +200,7 @@ const maxChildResultLen = 48 * 1024
 // notified/revived, so the revive prompt always sees it. No-op when the
 // parent is unknown (already terminal — its own consumer owns the result
 // then). Thread-safe.
-func (r *DispatchRegistry) RecordChildResult(parentID string, rec ChildResultRecord) {
+func (r *DispatchRegistry) RecordChildResult(parentID string, rec ChildResultRecord) bool {
 	if len(rec.Output) > maxChildResultLen {
 		rec.Output = rec.Output[:maxChildResultLen] + "\n[... truncated; read the child conversation for the full output]"
 	}
@@ -193,16 +209,49 @@ func (r *DispatchRegistry) RecordChildResult(parentID string, rec ChildResultRec
 	d, ok := r.dispatches[parentID]
 	if !ok {
 		utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "recordchildresult: parent not found (no-op)", map[string]any{"run_id": parentID, "reason": rec.ChildID})
-		return
+		return false
 	}
 	d.CompletedChildResults = append(d.CompletedChildResults, rec)
 	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recordchildresult: child result recorded on parent", map[string]any{"run_id": parentID, "reason": rec.ChildID, "model": rec.Name, "status": rec.ExitCode, "count": len(d.CompletedChildResults)})
+	return true
+}
+
+// PeekChildResults returns a snapshot of pending child results plus an
+// acknowledgement closure. Acknowledge removes exactly this prefix only after
+// the caller has durably persisted delivery, so a failed save cannot erase a
+// completion or duplicate a later retry's in-memory turn.
+func (r *DispatchRegistry) PeekChildResults(id string) ([]ChildResultRecord, func()) {
+	r.mu.Lock()
+	d, ok := r.dispatches[id]
+	if !ok || len(d.CompletedChildResults) == 0 {
+		r.mu.Unlock()
+		return nil, func() {}
+	}
+	out := append([]ChildResultRecord(nil), d.CompletedChildResults...)
+	r.mu.Unlock()
+
+	var once sync.Once
+	return out, func() {
+		once.Do(func() {
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			current, ok := r.dispatches[id]
+			if !ok || len(current.CompletedChildResults) == 0 {
+				return
+			}
+			ackCount := len(out)
+			if ackCount > len(current.CompletedChildResults) {
+				ackCount = len(current.CompletedChildResults)
+			}
+			current.CompletedChildResults = current.CompletedChildResults[ackCount:]
+		})
+	}
 }
 
 // DrainChildResults returns and clears the recorded child results for the
-// dispatch. Called by runChild on revive to build the resume prompt, and by
-// the terminal path after a successful live steer (the steer already
-// delivered the content). Thread-safe.
+// dispatch. It remains for parked-dispatch resume, where no separate durable
+// checkpoint follows the read. Active run-loop delivery uses PeekChildResults
+// and acknowledges only after saving the conversation.
 func (r *DispatchRegistry) DrainChildResults(id string) []ChildResultRecord {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -37,12 +37,12 @@ func (h *Host) handleDeclareResource(id int64, raw []byte) {
 
 	decl := types.ResourceDeclaration{Kind: req.Params.Kind}
 	if err := ctx.DeclareResource(decl); err != nil {
-		utils.LogWithFields(utils.LevelInfo, "extension", "ext/declare_resource: rejected", map[string]any{"model": h.name, "kind": req.Params.Kind, "error": err})
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/declare_resource: rejected", map[string]any{"model": h.name_(), "kind": req.Params.Kind, "error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 		return
 	}
 
-	utils.LogWithFields(utils.LevelInfo, "extension", "ext/declare_resource: registered", map[string]any{"model": h.name, "kind": req.Params.Kind})
+	utils.LogWithFields(utils.LevelInfo, "extension", "ext/declare_resource: registered", map[string]any{"model": h.name_(), "kind": req.Params.Kind})
 	resp, _ := json.Marshal(struct { //nolint:errcheck // marshal of a local anonymous struct
 		OK   bool   `json:"ok"`
 		Kind string `json:"kind"`
@@ -83,12 +83,12 @@ func (h *Host) handlePublishResource(id int64, raw []byte) {
 		Item: req.Params.Item,
 	}
 	if err := publishFn(req.Params.Kind, delta); err != nil {
-		utils.LogWithFields(utils.LevelInfo, "extension", "ext/publish_resource: failed", map[string]any{"model": h.name, "kind": req.Params.Kind, "op": req.Params.Op, "error": err})
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/publish_resource: failed", map[string]any{"model": h.name_(), "kind": req.Params.Kind, "op": req.Params.Op, "error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 		return
 	}
 
-	utils.LogWithFields(utils.LevelDebug, "extension", "ext/publish_resource: published", map[string]any{"model": h.name, "kind": req.Params.Kind, "op": req.Params.Op})
+	utils.LogWithFields(utils.LevelDebug, "extension", "ext/publish_resource: published", map[string]any{"model": h.name_(), "kind": req.Params.Kind, "op": req.Params.Op})
 	resp, _ := json.Marshal(struct { //nolint:errcheck // marshal of a local anonymous struct
 		OK bool `json:"ok"`
 	}{OK: true})
@@ -132,7 +132,7 @@ func (h *Host) CommitPendingResourceDecls(broker *resource.Broker) []error {
 	for _, decl := range decls {
 		fph := &resource.FuncProducerHost{}
 		if err := broker.RegisterProducer(decl.Kind, fph, decl); err != nil {
-			utils.LogWithFields(utils.LevelInfo, "extension", "commitpendingresourcedecls: rejected", map[string]any{"model": h.name, "kind": decl.Kind, "error": err})
+			utils.LogWithFields(utils.LevelInfo, "extension", "commitpendingresourcedecls: rejected", map[string]any{"model": h.name_(), "kind": decl.Kind, "error": err})
 			errs = append(errs, fmt.Errorf("resource %s: %w", decl.Kind, err))
 			continue
 		}
@@ -142,10 +142,10 @@ func (h *Host) CommitPendingResourceDecls(broker *resource.Broker) []error {
 		broker.SetQueryHandler(kind, func(filter types.ResourceFilter) ([]types.ResourceItem, error) {
 			return h.CallResourceQuery(kind, filter)
 		})
-		utils.LogWithFields(utils.LevelInfo, "extension", "commitpendingresourcedecls: registered with query handler", map[string]any{"model": h.name, "kind": decl.Kind})
+		utils.LogWithFields(utils.LevelInfo, "extension", "commitpendingresourcedecls: registered with query handler", map[string]any{"model": h.name_(), "kind": decl.Kind})
 	}
 	h.pendingInitResources = nil
-	utils.LogWithFields(utils.LevelInfo, "extension", "commit pending resource decls", map[string]any{"model": h.name, "count": len(decls), "error": len(errs)})
+	utils.LogWithFields(utils.LevelInfo, "extension", "commit pending resource decls", map[string]any{"model": h.name_(), "count": len(decls), "error": len(errs)})
 	return errs
 }
 
@@ -167,13 +167,13 @@ func (h *Host) RewireResourceDecls(broker *resource.Broker) {
 	}
 	for _, decl := range decls {
 		kind := decl.Kind // capture for closure
-		utils.LogWithFields(utils.LevelInfo, "extension", "rewireresourcedecls: rewiring after respawn", map[string]any{"model": h.name, "kind": kind})
+		utils.LogWithFields(utils.LevelInfo, "extension", "rewireresourcedecls: rewiring after respawn", map[string]any{"model": h.name_(), "kind": kind})
 		broker.RewireQueryHandlerAndResnapshot(kind, func(filter types.ResourceFilter) ([]types.ResourceItem, error) {
 			return h.CallResourceQuery(kind, filter)
 		})
 	}
 	h.pendingInitResources = nil
-	utils.LogWithFields(utils.LevelInfo, "extension", "rewireresourcedecls: kinds", map[string]any{"model": h.name, "count": len(decls)})
+	utils.LogWithFields(utils.LevelInfo, "extension", "rewireresourcedecls: kinds", map[string]any{"model": h.name_(), "count": len(decls)})
 }
 
 // handleNotify handles ext/notify: an extension calls ctx.notify() and the
@@ -196,12 +196,12 @@ func (h *Host) handleNotify(id int64, raw []byte) {
 	}
 
 	if err := ctx.Notify(req.Params); err != nil {
-		utils.LogWithFields(utils.LevelInfo, "extension", "ext/notify", map[string]any{"model": h.name, "error": err})
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/notify", map[string]any{"model": h.name_(), "error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 		return
 	}
 
-	utils.LogWithFields(utils.LevelDebug, "extension", "ext/notify", map[string]any{"model": h.name, "kind": req.Params.Kind, "title": req.Params.Title})
+	utils.LogWithFields(utils.LevelDebug, "extension", "ext/notify", map[string]any{"model": h.name_(), "kind": req.Params.Kind, "title": req.Params.Title})
 	h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
 }
 
@@ -221,7 +221,7 @@ func (h *Host) handleIntercept(id int64, raw []byte) {
 
 	// Stamp the extension name as the source. Extensions cannot set this
 	// field via RPC because InterceptOpts.Source carries json:"-".
-	req.Params.Source = h.name
+	req.Params.Source = h.name_()
 
 	ctx := h.ctxStack.Current()
 	if ctx == nil || ctx.Intercept == nil {
@@ -231,12 +231,12 @@ func (h *Host) handleIntercept(id int64, raw []byte) {
 	}
 
 	if err := ctx.Intercept(req.Params); err != nil {
-		utils.LogWithFields(utils.LevelInfo, "extension", "ext/intercept", map[string]any{"model": h.name, "error": err})
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/intercept", map[string]any{"model": h.name_(), "error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 		return
 	}
 
-	utils.LogWithFields(utils.LevelDebug, "extension", "ext/intercept", map[string]any{"model": h.name, "level": req.Params.Level, "title": req.Params.Title, "target_session_key": req.Params.TargetSessionKey})
+	utils.LogWithFields(utils.LevelDebug, "extension", "ext/intercept", map[string]any{"model": h.name_(), "level": req.Params.Level, "title": req.Params.Title, "target_session_key": req.Params.TargetSessionKey})
 	h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
 }
 
@@ -263,7 +263,7 @@ func (h *Host) handleListSessions(id int64, raw []byte) {
 		return
 	}
 
-	utils.LogWithFields(utils.LevelDebug, "extension", "ext/list_sessions: returning sessions", map[string]any{"model": h.name, "count": len(entries)})
+	utils.LogWithFields(utils.LevelDebug, "extension", "ext/list_sessions: returning sessions", map[string]any{"model": h.name_(), "count": len(entries)})
 	h.sendResponse(id, data, nil)
 }
 
@@ -295,7 +295,7 @@ func (h *Host) handleSendToSession(id int64, raw []byte) {
 		return
 	}
 
-	utils.LogWithFields(utils.LevelDebug, "extension", "ext/send_to_session", map[string]any{"model": h.name, "target_key": req.Params.TargetKey, "kind": req.Params.Kind})
+	utils.LogWithFields(utils.LevelDebug, "extension", "ext/send_to_session", map[string]any{"model": h.name_(), "target_key": req.Params.TargetKey, "kind": req.Params.Kind})
 	h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
 }
 
@@ -328,7 +328,7 @@ func (h *Host) handleSetPlanMode(id int64, raw []byte) {
 		source = "extension"
 	}
 	ctx.SetPlanMode(req.Params.Enabled, source)
-	utils.LogWithFields(utils.LevelDebug, "extension", "ext/set_plan_mode", map[string]any{"model": h.name, "enabled": req.Params.Enabled, "source": source})
+	utils.LogWithFields(utils.LevelDebug, "extension", "ext/set_plan_mode", map[string]any{"model": h.name_(), "enabled": req.Params.Enabled, "source": source})
 	h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
 }
 
@@ -354,7 +354,6 @@ func (h *Host) handleGetPlanMode(id int64, _ []byte) {
 		return
 	}
 
-	utils.LogWithFields(utils.LevelDebug, "extension", "ext/get_plan_mode", map[string]any{"model": h.name, "enabled": enabled})
+	utils.LogWithFields(utils.LevelDebug, "extension", "ext/get_plan_mode", map[string]any{"model": h.name_(), "enabled": enabled})
 	h.sendResponse(id, result, nil)
 }
-

@@ -40,6 +40,12 @@ func TestAgentToolSchema_HasRequiredProperties(t *testing.T) {
 		t.Fatalf("AgentTool.InputSchema.properties: expected map[string]any, got %T", def.InputSchema["properties"])
 	}
 
+	// Explicit wait field controls the only foreground path; omitted Agent calls
+	// return dispatch stubs and receive automatic terminal delivery.
+	if _, present := props["wait_for_completion"]; !present {
+		t.Error("AgentTool.InputSchema.properties: missing wait_for_completion")
+	}
+
 	// The four properties the CLI-backend MCP tool depends on. The
 	// previous hand-rolled schema in prompt_cli_hooks.go duplicated these
 	// four; routing through tools.AgentTool() means dropping any of them

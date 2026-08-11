@@ -102,7 +102,7 @@ slow command still notifies when it eventually finishes.
 ### On "the engine never blocks for user input"
 
 It still doesn't. That rule is about the **socket** (see
-[`../../engine-grounding.md`](../engine-grounding.md) § 2): no dispatch arm may hold the
+[`../../engine-grounding.md`](../../engine-grounding.md) § 2): no dispatch arm may hold the
 client's read loop waiting on a human. A parked session holds nothing — the run has fully
 exited, the socket is idle, and the client is free. This is the same shape as the
 delegated-CLI login flow: return immediately, continue on a bounded, cancellable

@@ -32,6 +32,7 @@ func (a *eligibilityTestAccessor) ConversationID() string                   { re
 func (a *eligibilityTestAccessor) RunID() string                            { return "" }
 func (a *eligibilityTestAccessor) TraceID() string                          { return "" }
 func (a *eligibilityTestAccessor) WorkingDirectory() string                 { return "/tmp" }
+func (a *eligibilityTestAccessor) CurrentModel() string                     { return "" }
 func (a *eligibilityTestAccessor) Emit(_ types.EngineEvent)                 {}
 func (a *eligibilityTestAccessor) SendAbort()                               {}
 func (a *eligibilityTestAccessor) RootContext() context.Context             { return context.Background() }
@@ -39,9 +40,15 @@ func (a *eligibilityTestAccessor) SendPrompt(_, _ string, _ []string) error { re
 func (a *eligibilityTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error {
 	return nil
 }
-func (a *eligibilityTestAccessor) SteerSelfMainLoop(_ string) bool { return false }
+
+// Degraded-steer delivery is not what this test exercises; it delegates so
+// the fake satisfies SessionAccessor and behaves like the kind-aware send.
+func (a *eligibilityTestAccessor) SendPromptDegradedSteer(text string, model string, bash []string, kind string) error {
+	return a.SendPromptWithKind(text, model, bash, kind)
+}
+func (a *eligibilityTestAccessor) SteerSelfMainLoop(_ string) bool            { return false }
 func (a *eligibilityTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
-func (a *eligibilityTestAccessor) ParkSelfMainLoop() bool          { return false }
+func (a *eligibilityTestAccessor) ParkSelfMainLoop() bool                     { return false }
 func (a *eligibilityTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
@@ -62,9 +69,10 @@ func (a *eligibilityTestAccessor) NewChildBackend() backend.RunBackend      { re
 func (a *eligibilityTestAccessor) AllocatePlanFilePath(_ string) string {
 	return "/tmp/.ion/plans/plan.md"
 }
-func (a *eligibilityTestAccessor) BumpParentProgress()              {}
-func (a *eligibilityTestAccessor) EmitDispatchCountStatus(_ string) {}
-func (a *eligibilityTestAccessor) ResolveTier(_ string) string      { return "" }
+func (a *eligibilityTestAccessor) BumpParentProgress()                 {}
+func (a *eligibilityTestAccessor) EmitDispatchCountStatus(_ string)    {}
+func (a *eligibilityTestAccessor) DispatchRegistry() *DispatchRegistry { return nil }
+func (a *eligibilityTestAccessor) ResolveTier(_ string) string         { return "" }
 func (a *eligibilityTestAccessor) PermissionCheck(_ string, _ map[string]interface{}) (string, string) {
 	return "", ""
 }

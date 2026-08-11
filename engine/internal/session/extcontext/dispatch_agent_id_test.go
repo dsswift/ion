@@ -87,11 +87,18 @@ func (a *idTestAccessor) ConversationID() string                                
 func (a *idTestAccessor) RunID() string                                              { return "" }
 func (a *idTestAccessor) TraceID() string                                            { return "" }
 func (a *idTestAccessor) WorkingDirectory() string                                   { return "/tmp" }
+func (a *idTestAccessor) CurrentModel() string                                       { return "" }
 func (a *idTestAccessor) SendAbort()                                                 {}
 func (a *idTestAccessor) SendPrompt(_, _ string, _ []string) error                   { return nil }
 func (a *idTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error { return nil }
+
+// Degraded-steer delivery is not what this test exercises; it delegates so
+// the fake satisfies SessionAccessor and behaves like the kind-aware send.
+func (a *idTestAccessor) SendPromptDegradedSteer(text string, model string, bash []string, kind string) error {
+	return a.SendPromptWithKind(text, model, bash, kind)
+}
 func (a *idTestAccessor) SteerSelfMainLoop(_ string) bool                            { return false }
-func (a *idTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
+func (a *idTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool                 { return false }
 func (a *idTestAccessor) ParkSelfMainLoop() bool                                     { return false }
 func (a *idTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
@@ -208,7 +215,7 @@ func TestDispatchID_Populated(t *testing.T) {
 
 	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 
-	result, err := dispatchFn(extension.DispatchAgentOpts{
+	result, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "test-agent",
 		Task: "do something",
 	})
@@ -233,12 +240,10 @@ func TestDispatchID_Populated(t *testing.T) {
 	}
 }
 
-// TestDispatchID_BackgroundStub verifies DispatchID is set on the background
-// stub result returned immediately before the dispatch completes.
-//
-// Revert-red: removing the DispatchID assignment on the stub return makes
-// the assertion fail.
-func TestDispatchID_BackgroundStub(t *testing.T) {
+// TestDispatchID_DefaultAsyncStub verifies omitted execution mode returns a
+// dispatch stub immediately before child completion. This pins async default;
+// legacy background:false must follow same path.
+func TestDispatchID_DefaultAsyncStub(t *testing.T) {
 	gate := make(chan struct{})
 	child := &blockingChildBackend{convID: "conv-bg-1", gate: gate}
 	acc := &idTestAccessor{child: child}
@@ -246,9 +251,8 @@ func TestDispatchID_BackgroundStub(t *testing.T) {
 	dispatchFn := BuildDispatchAgentFunc(acc, NewDispatchRegistry(), 0, "")
 
 	result, err := dispatchFn(extension.DispatchAgentOpts{
-		Name:       "bg-agent",
-		Task:       "background work",
-		Background: true,
+		Name: "bg-agent",
+		Task: "background work",
 	})
 	if err != nil {
 		t.Fatalf("dispatch error: %v", err)
@@ -283,7 +287,7 @@ func TestDispatchID_CollisionSafe(t *testing.T) {
 			child := &idChildBackend{convID: "conv-collision-" + itoa(idx)}
 			acc := &idTestAccessor{child: child}
 			dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
-			result, err := dispatchFn(extension.DispatchAgentOpts{
+			result, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 				Name: "same-agent",
 				Task: "task",
 			})
@@ -329,7 +333,7 @@ func TestConversationIds_NoDuplicates(t *testing.T) {
 
 	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 
-	result, err := dispatchFn(extension.DispatchAgentOpts{
+	result, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "dedup-agent",
 		Task: "task",
 	})
@@ -377,7 +381,7 @@ func TestConversationIds_EarlyCaptureDedups(t *testing.T) {
 	// already has the ID from a prior dispatch.
 	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 
-	result, err := dispatchFn(extension.DispatchAgentOpts{
+	result, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "early-dedup-agent",
 		Task: "task",
 	})
@@ -403,7 +407,7 @@ func TestConversationIds_EarlyCaptureDedups(t *testing.T) {
 	acc.mu.Unlock()
 
 	dispatchFn2 := BuildDispatchAgentFunc(acc, nil, 0, "")
-	result2, err := dispatchFn2(extension.DispatchAgentOpts{
+	result2, err := dispatchFn2(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "early-dedup-agent",
 		Task: "task 2",
 	})
@@ -712,3 +716,4 @@ func (d *lifecycleChildBackend) StartRun(requestID string, _ types.RunOptions) {
 		}
 	}()
 }
+func (a *idTestAccessor) DispatchRegistry() *DispatchRegistry { return nil }

@@ -19,11 +19,14 @@ import (
 // an injected login/logout driver.
 func loginTestServer(t *testing.T, login cliprobe.LoginFunc, logout cliprobe.LogoutFunc) (*Server, <-chan types.EngineEvent) {
 	t.Helper()
+	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
 	s := &Server{
-		clients: make(map[net.Conn]*clientWriter),
-		done:    make(chan struct{}),
-		config:  &types.EngineRuntimeConfig{Providers: map[string]types.ProviderConfig{"openai": {Backend: "codex"}}},
-		probes:  cliprobe.NewRegistry(),
+		clients:        make(map[net.Conn]*clientWriter),
+		done:           make(chan struct{}),
+		shutdownCtx:    shutdownCtx,
+		shutdownCancel: shutdownCancel,
+		config:         &types.EngineRuntimeConfig{Providers: map[string]types.ProviderConfig{"openai": {Backend: "codex"}}},
+		probes:         cliprobe.NewRegistry(),
 	}
 	s.probes.SetProbeFunc(func(kind string) cliprobe.Probe { return cliprobe.Probe{Kind: kind} })
 	s.SetLoginFuncs(login, logout)
@@ -80,7 +83,10 @@ func loginTestServer(t *testing.T, login cliprobe.LoginFunc, logout cliprobe.Log
 			time.Sleep(2 * time.Millisecond)
 		}
 	})
-	t.Cleanup(func() { close(s.done) })
+	t.Cleanup(func() {
+		shutdownCancel()
+		close(s.done)
+	})
 	return s, events
 }
 

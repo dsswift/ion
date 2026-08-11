@@ -9,6 +9,7 @@ import { usePopoverLayer } from './PopoverLayer'
 import { usePreferencesStore } from '../preferences'
 import { pickDirectoryForSession } from '../stores/remote-fs-store'
 import { rError } from '../rendererLogger'
+import { recentLocalDirectories } from '../../shared/recent-directories'
 
 interface DirectoryPickerProps {
   anchor: { x: number; y: number; bottom: number }
@@ -37,6 +38,23 @@ export function dedupeByPath<T>(entries: readonly T[], pathOf: (e: T) => string)
     if (seen.has(path)) return false
     seen.add(path)
     return true
+  })
+}
+
+/**
+ * Return generic local project recents in display order.
+ *
+ * Workspace rows are deliberately rendered from worktree/bench inventory above
+ * this list, so raw workspace paths never compete with their named shortcuts.
+ */
+export function sortRecentDirectories(
+  recentDirs: readonly string[],
+  usageCounts: Readonly<Record<string, number>>,
+): string[] {
+  return [...recentLocalDirectories(recentDirs)].sort((a, b) => {
+    const countDiff = (usageCounts[b] || 0) - (usageCounts[a] || 0)
+    if (countDiff !== 0) return countDiff
+    return a.localeCompare(b)
   })
 }
 
@@ -105,12 +123,7 @@ export function DirectoryPicker({
     [openRepoPaths, benchWorkspaces],
   )
 
-  // Sort by usage frequency (descending), then alphabetically as tiebreaker
-  const sortedDirs = [...recentDirs].sort((a, b) => {
-    const countDiff = (usageCounts[b] || 0) - (usageCounts[a] || 0)
-    if (countDiff !== 0) return countDiff
-    return a.localeCompare(b)
-  })
+  const sortedDirs = sortRecentDirectories(recentDirs, usageCounts)
 
   // Flip to open downward if the popover overflows the top of the viewport
   useLayoutEffect(() => {

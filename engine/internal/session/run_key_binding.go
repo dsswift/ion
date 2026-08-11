@@ -1,7 +1,6 @@
 package session
 
 import (
-
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -43,7 +42,7 @@ import (
 // runKeyBindings is a stable runID -> key map that is independent of the
 // transient requestID. It is set at dispatch (when the run is registered),
 // consulted first by keyForRun, and cleared only at the authoritative terminal
-// points (handleRunExit, and the early-abort paths that assign requestID = ""
+// points (handleRunExit and early-abort paths that clear run identity
 // without ever starting a run). Routing therefore no longer depends on the
 // requestID field surviving every concurrent status query.
 //

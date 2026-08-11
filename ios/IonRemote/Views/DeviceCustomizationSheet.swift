@@ -86,6 +86,11 @@ struct DeviceCustomizationSheet: View {
                         Text("Will connect briefly to this desktop to apply the change, then disconnect. Active session is not interrupted.")
                     }
                 }
+
+                // Per-pairing enterprise account. Renders nothing unless this
+                // desktop authenticates its relay with OIDC.
+                DesktopAccountSection(device: device)
+                    .environment(viewModel)
             }
             .navigationTitle("Customize")
             .navigationBarTitleDisplayMode(.inline)

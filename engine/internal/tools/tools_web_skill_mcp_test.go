@@ -246,6 +246,32 @@ func TestLocalBashOperationsTimeout(t *testing.T) {
 	if err == nil && (result == nil || result.ExitCode == 0) {
 		t.Fatal("expected timeout to produce error or non-zero exit, got clean result")
 	}
+	// The kill is attributed to THIS call's timeout, which is what lets the
+	// Bash tool report the deadline instead of a bare "signal: killed".
+	if result == nil || !result.TimedOut {
+		t.Error("expected TimedOut to be set on a deadline kill")
+	}
+}
+
+// TestLocalBashOperationsTimeout_ParentCancelNotAttributed pins the
+// attribution boundary: a parent cancellation (run abort) also kills the
+// process, but it is not the bash timeout, and reporting it as one would send
+// the caller chasing the wrong limit.
+func TestLocalBashOperationsTimeout_ParentCancelNotAttributed(t *testing.T) {
+	ops := &LocalBashOperations{}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+
+	result, _ := ops.Exec(ctx, "sleep 30", os.TempDir(), ExecOptions{
+		Timeout: 30 * time.Second, // far beyond the cancel
+	})
+	if result != nil && result.TimedOut {
+		t.Error("parent cancellation was misattributed to the bash timeout")
+	}
 }
 
 func TestLocalBashOperationsEnv(t *testing.T) {

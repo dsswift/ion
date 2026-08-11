@@ -448,10 +448,9 @@ func (b *ApiBackend) emit(run *activeRun, event types.NormalizedEvent) {
 //
 // Why this matters: the run-progress watchdog (runloop_watchdog.go) cancels a
 // run when no emit lands within RunStall(). If the stall advisory bumped the
-// progress clock, a wedged but deadline-exempt Agent/dispatch tool — which the
-// runloop intentionally exempts from the per-tool deadline (runloop_tools.go,
-// AgentToolName branch) — would emit a ToolStalledEvent every 30s, reset the
-// clock every 30s, and never trip the 10-minute run-stall backstop. The event
+// progress clock, a wedged long-running tool would emit a ToolStalledEvent
+// every 30s, reset the clock every 30s, and never trip the 10-minute
+// run-stall backstop. The event
 // meant to *signal* the stall would be the very thing preventing the backstop
 // from firing. That is exactly the incident in conversation
 // 1782012033034-37d617d3d9ab: a foreground dispatch whose child never reached
@@ -513,9 +512,9 @@ func (b *ApiBackend) dispatchEvent(run *activeRun, event types.NormalizedEvent) 
 
 // BumpRunProgress stamps the run-progress watchdog clock for the named active
 // run, if it exists. It is the seam through which a dispatch/spawn layer reports
-// that a *child* agent is demonstrably alive (producing events) so the parent
-// run — which is parked in the deadline-exempt Agent tool call and therefore
-// emits no progress of its own — is not falsely flagged as stalled.
+// that a *child* agent is demonstrably alive (producing events) so a parent
+// synchronously waiting for explicit terminal output is not falsely flagged as
+// stalled. Default asynchronous dispatches do not hold parent runs.
 //
 // This is the second half of the matched pair documented on emitWithoutProgress:
 // the parent's self-emitted stall advisory stops counting as progress, and the

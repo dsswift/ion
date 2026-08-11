@@ -32,7 +32,7 @@ func TestDispatchTelemetry_StartCarriesDispatchId(t *testing.T) {
 	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 	// The dispatch will fail (no provider) but dispatch_start fires before
 	// the backend is started. We only need the start event.
-	_, _ = dispatchFn(extension.DispatchAgentOpts{
+	_, _ = dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "tel-agent",
 		Task: "do telemetry work",
 	})
@@ -84,7 +84,7 @@ func TestDispatchTelemetry_EndCarriesDispatchId(t *testing.T) {
 	}
 
 	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
-	_, _ = dispatchFn(extension.DispatchAgentOpts{
+	_, _ = dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "tel-end-agent",
 		Task: "end telemetry",
 	})
@@ -137,7 +137,7 @@ func TestDispatchTelemetry_ParentChildLinkage(t *testing.T) {
 
 	// Simulate depth-1 child of parentDispatchId.
 	dispatchFn := BuildDispatchAgentFunc(acc, nil, 1, parentDispatchId)
-	_, _ = dispatchFn(extension.DispatchAgentOpts{
+	_, _ = dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "child-agent",
 		Task: "child work",
 	})
@@ -173,13 +173,15 @@ func TestDispatchTelemetry_PanicPathCarriesDispatchId(t *testing.T) {
 	recoverBackgroundDispatchPanic(
 		sa,
 		registry,
-		extension.DispatchAgentOpts{Name: "panic-agent", Task: "panic work"},
+		extension.DispatchAgentOpts{WaitForCompletion: true, Name: "panic-agent", Task: "panic work"},
 		"panic-session",
 		testAgentID,
 		"panic-agent",
 		"test panic value",
-		2,              // childDepth
+		2, // childDepth
 		testParentID,
+		nil,
+		nil,
 	)
 
 	sa.mu.Lock()

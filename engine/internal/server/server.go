@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -55,6 +56,8 @@ type Server struct {
 	identity           *auth.IdentityManager
 	broadcastListeners []*listenerHandle
 	done               chan struct{}
+	shutdownCtx        context.Context
+	shutdownCancel     context.CancelFunc
 	stopOnce           sync.Once
 	version            string
 	startedAt          time.Time
@@ -63,6 +66,14 @@ type Server struct {
 	// HybridBackend). list_models uses this to mark the anthropic provider
 	// as authed via CLI when no API key is configured.
 	cliCapable bool
+
+	// computeContextBreakdown performs potentially slow provider token-counting for
+	// get_context_breakdown. It is injected for tests; production wires the
+	// manager implementation. Dispatch always runs it off the socket read loop.
+	computeContextBreakdown func(context.Context, string) error
+	contextBreakdownMu      sync.Mutex
+	contextBreakdownActive  map[string]struct{}
+	contextBreakdownWorkers sync.WaitGroup
 
 	// probes caches the install/auth state of the delegated provider CLIs
 	// (claude/codex/grok/cursor). list_models reads it to populate each
@@ -165,6 +176,7 @@ func (s *Server) SetAuthResolver(r *auth.Resolver) {
 // The session Manager is created internally and wired to the backend.
 func NewServer(socketPath string, b backend.RunBackend) *Server {
 	mgr := session.NewManager(b)
+	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
 
 	// Detect whether the backend can serve Anthropic models via Claude CLI,
 	// and retain the typed hybrid so SetConfig can wire credential routing.
@@ -180,14 +192,18 @@ func NewServer(socketPath string, b backend.RunBackend) *Server {
 	utils.LogWithFields(utils.LevelInfo, "server", "backend type", map[string]any{"reason": cliCapable, "hybrid": hybrid != nil})
 
 	s := &Server{
-		socketPath: socketPath,
-		clients:    make(map[net.Conn]*clientWriter),
-		manager:    mgr,
-		done:       make(chan struct{}),
-		startedAt:  time.Now(),
-		cliCapable: cliCapable,
-		probes:     cliprobe.NewRegistry(),
-		hybrid:     hybrid,
+		socketPath:              socketPath,
+		clients:                 make(map[net.Conn]*clientWriter),
+		manager:                 mgr,
+		done:                    make(chan struct{}),
+		shutdownCtx:             shutdownCtx,
+		shutdownCancel:          shutdownCancel,
+		startedAt:               time.Now(),
+		cliCapable:              cliCapable,
+		computeContextBreakdown: mgr.ComputeAndEmitContextBreakdownContext,
+		contextBreakdownActive:  make(map[string]struct{}),
+		probes:                  cliprobe.NewRegistry(),
+		hybrid:                  hybrid,
 	}
 	// Reap orphaned sessions a grace window after their last owning
 	// connection disconnects. Wired to StopSession so the full teardown
@@ -296,7 +312,12 @@ func isAddrInUse(err error) bool {
 // Safe to call multiple times (e.g. from both shutdown command and OS signal).
 func (s *Server) Stop() error {
 	s.stopOnce.Do(func() {
+		s.contextBreakdownMu.Lock()
 		close(s.done)
+		if s.shutdownCancel != nil {
+			s.shutdownCancel()
+		}
+		s.contextBreakdownMu.Unlock()
 
 		if s.ownership != nil {
 			s.ownership.stopAll()
@@ -306,6 +327,7 @@ func (s *Server) Stop() error {
 			// Sessions refusing to stop during shutdown are otherwise invisible.
 			utils.LogWithFields(utils.LevelInfo, "server", "StopAll during shutdown returned error", map[string]any{"error": err.Error()})
 		}
+		s.contextBreakdownWorkers.Wait()
 
 		s.mu.Lock()
 		for conn, cw := range s.clients {

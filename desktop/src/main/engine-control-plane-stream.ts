@@ -2,7 +2,7 @@
 // engine-control-plane-events.ts (split by event domain to keep every file
 // under the 600-line cap). These are the `engine_stream_reset`,
 // `engine_compacting`, `engine_tool_stalled`, `engine_run_stalled`, and
-// `engine_steer_injected` arms of the EngineEvent→NormalizedEvent translation
+// `engine_steer_injected` / `engine_steer_degraded` arms of the EngineEvent→NormalizedEvent translation
 // switch, lifted out verbatim. No logic change. The main file delegates to
 // handleStreamSignalEvent from its switch.
 import type { EngineEvent, NormalizedEvent } from '../shared/types'
@@ -102,6 +102,16 @@ export function handleStreamSignalEvent(
       ctx.emit('event', tabId, {
         type: 'steer_injected',
         messageLength: event.steerMessageLength,
+      } as NormalizedEvent)
+      return true
+
+    case 'engine_steer_degraded':
+      // No owning run was live. Preserve the distinct engine semantic so the
+      // renderer can append a divider without reconciling live pending steers.
+      log('steer_degraded', { tab_id: tabId, message_length: event.steerDegradedMessageLength })
+      ctx.emit('event', tabId, {
+        type: 'steer_degraded',
+        messageLength: event.steerDegradedMessageLength,
       } as NormalizedEvent)
       return true
 

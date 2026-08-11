@@ -29,23 +29,57 @@ enum RelayRejection {
     /// WebSocket application close code the relay uses for an expired token.
     static let closeCodeTokenExpired = 4401
 
-    /// Whether the observed failure signals that the relay refused our
-    /// credential (as opposed to a network fault, timeout, or peer restart).
+    /// Why the relay refused the connection, when it did.
+    ///
+    /// The distinction matters because the two failures need opposite handling.
+    /// An expired credential is recoverable without the user: invalidate, mint a
+    /// fresh token, reconnect. An identity mismatch is not recoverable at all by
+    /// retrying — the relay bound this channel to a different OIDC subject
+    /// (`relay/main.go`, "forbidden: channel owned by another identity"), and a
+    /// refresh returns a token for the same subject. Retrying that in a backoff
+    /// ladder burns battery forever and never succeeds; the user has to sign in
+    /// with the account that owns the channel.
+    enum Kind: Equatable {
+        /// Not a credential refusal (network fault, timeout, peer restart).
+        case none
+        /// The credential was rejected but a new one may work.
+        case expiredCredential
+        /// The channel belongs to a different identity. Retrying cannot help.
+        case identityMismatch
+    }
+
+    /// Classify an observed WebSocket failure.
     ///
     /// - Parameters:
     ///   - closeCode: raw WebSocket close code, or `nil`/0 when the socket
     ///     failed without a close frame.
     ///   - httpStatus: status code from the upgrade response, when the
     ///     handshake got far enough to produce one.
-    /// - Returns: `true` when the credential should be invalidated and
-    ///   re-acquired before the next attempt.
-    static func isCredentialRejection(closeCode: Int?, httpStatus: Int?) -> Bool {
+    static func classify(closeCode: Int?, httpStatus: Int?) -> Kind {
         if let code = closeCode, code == closeCodeTokenExpired {
-            return true
+            return .expiredCredential
         }
-        if let status = httpStatus, status == 401 || status == 403 {
-            return true
+        if let status = httpStatus {
+            if status == 403 { return .identityMismatch }
+            if status == 401 { return .expiredCredential }
         }
-        return false
+        return .none
+    }
+
+    /// Whether the observed failure signals that the relay refused our
+    /// credential (as opposed to a network fault, timeout, or peer restart).
+    ///
+    /// Both refusal kinds count: each means the credential we presented did not
+    /// get us onto the channel. Callers that need to act differently on the two
+    /// use `classify` directly.
+    ///
+    /// - Parameters:
+    ///   - closeCode: raw WebSocket close code, or `nil`/0 when the socket
+    ///     failed without a close frame.
+    ///   - httpStatus: status code from the upgrade response, when the
+    ///     handshake got far enough to produce one.
+    /// - Returns: `true` when the relay refused the credential.
+    static func isCredentialRejection(closeCode: Int?, httpStatus: Int?) -> Bool {
+        classify(closeCode: closeCode, httpStatus: httpStatus) != .none
     }
 }

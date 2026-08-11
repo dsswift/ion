@@ -42,6 +42,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/conversation"
@@ -67,26 +68,38 @@ type contextBreakdownSnapshot struct {
 	runopts types.RunOptions
 }
 
-// ComputeAndEmitContextBreakdown assembles the context breakdown for the session
-// identified by key and emits it as engine_context_breakdown. It is the
-// wire-protocol entrypoint for the get_context_breakdown client command.
+// ComputeAndEmitContextBreakdown reconstructs and publishes an on-demand
+// breakdown with no caller-imposed deadline. Socket callers should use the
+// context-aware variant below so server shutdown can cancel provider work.
+func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
+	if err := m.ComputeAndEmitContextBreakdownContext(context.Background(), key); err != nil {
+		utils.LogWithFields(utils.LevelDebug, "session", "computeandemitcontextbreakdown: synchronous call failed", map[string]any{"key": key, "error": err})
+	}
+}
+
+// ComputeAndEmitContextBreakdownContext assembles the context breakdown for the
+// session identified by key and emits it as engine_context_breakdown. It is the
+// context-aware entrypoint for get_context_breakdown.
 //
 // The method is intentionally outside any active run: it reconstructs every
 // input to BuildContextBreakdown using the session's persisted + live state,
 // then emits via the normal manager event bus so every attached consumer
 // receives the event.
 //
-// Returns silently when no session exists for the key (a Warn log fires so an
-// out-of-sync caller is visible in the engine log), matching the behavior of
-// QuerySessionStatus.
-func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
+// The supplied context bounds provider counting and must remain live through
+// publication. Cancellation returns its cause without emitting a stale event.
+func (m *Manager) ComputeAndEmitContextBreakdownContext(ctx context.Context, key string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	// --- Phase 1: snapshot all session state under the lock. ---
 	m.mu.RLock()
 	s, ok := m.sessions[key]
 	if !ok {
 		m.mu.RUnlock()
 		utils.LogWithFields(utils.LevelWarn, "session", "computeandemitcontextbreakdown: session not found", map[string]any{"key": key})
-		return
+		return fmt.Errorf("context breakdown: session %q not found", key)
 	}
 
 	snap := contextBreakdownSnapshot{
@@ -105,6 +118,10 @@ func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
 
 	utils.LogWithFields(utils.LevelInfo, "session", "computeandemitcontextbreakdown", map[string]any{"key": key, "model": snap.model, "conversation_id": snap.conversationID})
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	// --- Phase 2: load conversation outside the lock (disk I/O). ---
 	var conv *conversation.Conversation
 	if snap.conversationID != "" {
@@ -120,6 +137,10 @@ func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
 		}
 	} else {
 		conv = conversation.CreateConversation("", "", "")
+	}
+
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
 	// --- Phase 3: inject context + assemble prompt outside the lock. ---
@@ -138,7 +159,7 @@ func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
 	if !ok {
 		m.mu.RUnlock()
 		utils.LogWithFields(utils.LevelWarn, "session", "computeandemitcontextbreakdown: session disappeared", map[string]any{"key": key})
-		return
+		return fmt.Errorf("context breakdown: session %q disappeared", key)
 	}
 	sForInject := s
 	m.mu.RUnlock()
@@ -150,6 +171,10 @@ func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
 	injectPluginContext(sForInject, &opts)
 	if snap.sessionMemory != nil {
 		snap.sessionMemory.InjectMemoryIntoSystemPrompt(&opts)
+	}
+
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
 	// Assemble the system prompt (nil run — sparse-reminder cache path skipped,
@@ -195,14 +220,20 @@ func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
 		provider = apiBackend.ResolveProviderOnDemand(opts.Model)
 	}
 
-	ctx := context.Background()
 	bd, err := providers.BuildContextBreakdown(ctx, opts.Model, provider, &streamOpts, nil, nil, "")
 	if err != nil {
-		utils.LogWithFields(utils.LevelWarn, "session", "computeandemitcontextbreakdown: buildcontextbreakdown failed", map[string]any{"key": key, "error": err})
-		return
+		level := utils.LevelWarn
+		if ctx.Err() != nil {
+			level = utils.LevelDebug
+		}
+		utils.LogWithFields(level, "session", "computeandemitcontextbreakdown: buildcontextbreakdown failed", map[string]any{"key": key, "error": err})
+		return err
 	}
 	if bd == nil {
-		return
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
 	// Publish the engine's authoritative occupancy figure alongside the itemized
@@ -273,7 +304,11 @@ func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
 		bdEvent.ModelBreakdown = modelBreakdown
 	}
 	engineEvent := translateToEngineEvent(types.NormalizedEvent{Data: bdEvent}, snap.contextWindow)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	m.emit(key, engineEvent)
+	return nil
 }
 
 // liveChildConvIDs returns the conversation IDs of all in-flight background

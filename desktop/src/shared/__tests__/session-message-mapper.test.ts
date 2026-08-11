@@ -16,7 +16,7 @@ import { describe, it, expect } from 'vitest'
 import type { SessionLoadMessage } from '../types'
 import { mapSessionMessage, mapSessionHistory } from '../session-message-mapper'
 import { COMPACTION_MARKER_PREFIX } from '../compaction-marker'
-import { isClearDivider } from '../clear-divider'
+import { isClearDivider, isSteerAppliedDivider } from '../clear-divider'
 
 let counter = 0
 const makeId = () => `id-${++counter}`
@@ -174,6 +174,21 @@ describe('mapSessionMessage — ordinary rows', () => {
     expect(msg.slashSource).toBe('ion')
   })
 
+  it('carries slash model provenance through history mapping', () => {
+    const row: SessionLoadMessage = {
+      role: 'user',
+      content: '/align',
+      timestamp: 6001,
+      slashCommand: '/align',
+      slashModelAlias: 'standard',
+      slashModelEffective: 'dci-marketing/gpt-5.6-terra',
+    }
+
+    const msg = mapSessionMessage(row, makeId)!
+    expect(msg.slashModelAlias).toBe('standard')
+    expect(msg.slashModelEffective).toBe('dci-marketing/gpt-5.6-terra')
+  })
+
   it('carries engine-replayed image attachments on a reloaded tool row', () => {
     // The engine's flattenEntries replays a persisted tool-result image as a
     // SessionMessage.Attachments entry on the owning tool row (image support,
@@ -274,5 +289,62 @@ describe('mapSessionHistory', () => {
     ]
     const out = mapSessionHistory(history, makeId)
     expect(out).toHaveLength(2)
+  })
+})
+
+describe('mapSessionHistory — degraded-steer and slash-command reload parity', () => {
+  const makeId = () => 'gen-id'
+
+  // A degraded ctx.steerSelf delivery persists TWO rows: the classified turn
+  // and a steer marker beside it. The turn is suppressed by its kind like any
+  // machine turn; the marker becomes the divider. Net result matches the live
+  // path exactly — one divider, zero user bubbles — which is what stops the
+  // transcript changing shape when history rehydrates.
+  it('renders a degraded self-steer as a divider only, matching the live filter', () => {
+    const history: SessionLoadMessage[] = [
+      { role: 'user', content: 'kick off the work', timestamp: 1 },
+      {
+        role: 'user',
+        content: '[SYSTEM] Dispatch check-in\n\nYou have been idle.',
+        timestamp: 2,
+        injectionKind: 'checkin',
+        machineAuthored: true,
+      },
+      { role: 'system', content: '──', timestamp: 3, markerKind: 'steer', markerMessageLength: 42 },
+      { role: 'assistant', content: 'checking dispatches', timestamp: 4 },
+    ]
+
+    const out = mapSessionHistory(history, makeId)
+
+    expect(out.filter((m) => m.role === 'user' && m.content.includes('Dispatch check-in'))).toHaveLength(0)
+    expect(out.map((m) => m.role)).toEqual(['user', 'system', 'assistant'])
+    expect(isSteerAppliedDivider(out[1].content)).toBe(true)
+  })
+
+  // Guard against a filter that looks obviously right and is actively wrong.
+  // The engine never persists a slash command's EXPANDED body: it writes the
+  // raw invocation as the tree entry (AddUserMessageWithInvocation) and sends
+  // the expansion only to the .llm.jsonl. So the reloaded row IS the pill, and
+  // suppressing it here would delete the user's command from the transcript on
+  // every rehydrate.
+  it('keeps the slash-command pill on reload (the expansion body is never persisted)', () => {
+    const history: SessionLoadMessage[] = [
+      {
+        role: 'user',
+        content: '/align now',
+        timestamp: 1,
+        slashCommand: '/align',
+        slashArgs: 'now',
+        slashSource: 'extension',
+      },
+      { role: 'assistant', content: 'aligning', timestamp: 2 },
+    ]
+
+    const out = mapSessionHistory(history, makeId)
+
+    expect(out).toHaveLength(2)
+    expect(out[0].role).toBe('user')
+    expect(out[0].content).toBe('/align now')
+    expect(out[0].slashCommand).toBe('/align')
   })
 })

@@ -16,7 +16,7 @@ func TestFireLifecycleCallbacks_ToolCall(t *testing.T) {
 	var gotInfo extension.DispatchToolStartInfo
 	var fired bool
 
-	opts := &extension.DispatchAgentOpts{
+	opts := &extension.DispatchAgentOpts{WaitForCompletion: true,
 		OnToolStart: func(info extension.DispatchToolStartInfo) {
 			fired = true
 			gotInfo = info
@@ -59,7 +59,7 @@ func TestFireLifecycleCallbacks_ToolResult(t *testing.T) {
 		var gotEnd extension.DispatchToolEndInfo
 		var endFired bool
 
-		opts := &extension.DispatchAgentOpts{
+		opts := &extension.DispatchAgentOpts{WaitForCompletion: true,
 			OnToolEnd: func(info extension.DispatchToolEndInfo) {
 				endFired = true
 				gotEnd = info
@@ -106,7 +106,7 @@ func TestFireLifecycleCallbacks_ToolResult(t *testing.T) {
 		var gotErr extension.DispatchToolErrorInfo
 		var errFired bool
 
-		opts := &extension.DispatchAgentOpts{
+		opts := &extension.DispatchAgentOpts{WaitForCompletion: true,
 			OnToolEnd: func(_ extension.DispatchToolEndInfo) {
 				t.Error("OnToolEnd should not fire for an error result")
 			},
@@ -151,7 +151,7 @@ func TestFireLifecycleCallbacks_ToolResult(t *testing.T) {
 func TestFireLifecycleCallbacks_TextChunk(t *testing.T) {
 	var deltas []extension.DispatchTextDeltaInfo
 
-	opts := &extension.DispatchAgentOpts{
+	opts := &extension.DispatchAgentOpts{WaitForCompletion: true,
 		OnTextDelta: func(info extension.DispatchTextDeltaInfo) {
 			deltas = append(deltas, info)
 		},
@@ -209,7 +209,7 @@ func TestFireLifecycleCallbacks_TextChunk(t *testing.T) {
 func TestFireLifecycleCallbacks_Usage(t *testing.T) {
 	var gotUsage []extension.DispatchUsageInfo
 
-	opts := &extension.DispatchAgentOpts{
+	opts := &extension.DispatchAgentOpts{WaitForCompletion: true,
 		OnUsage: func(info extension.DispatchUsageInfo) {
 			gotUsage = append(gotUsage, info)
 		},
@@ -345,7 +345,7 @@ func TestTruncate(t *testing.T) {
 // TestFireLifecycleCallbacks_NilCallbacks verifies that events are
 // processed without panic when no callbacks are set on opts.
 func TestFireLifecycleCallbacks_NilCallbacks(t *testing.T) {
-	opts := &extension.DispatchAgentOpts{} // all callbacks nil
+	opts := &extension.DispatchAgentOpts{WaitForCompletion: true} // all callbacks nil
 
 	toolNames := make(map[string]string)
 	toolCount := 0
@@ -385,7 +385,7 @@ func TestFireLifecycleCallbacks_NilCallbacks(t *testing.T) {
 func TestFireLifecycleCallbacks_TaskCompleteUpdatesCost(t *testing.T) {
 	var gotUsage extension.DispatchUsageInfo
 
-	opts := &extension.DispatchAgentOpts{
+	opts := &extension.DispatchAgentOpts{WaitForCompletion: true,
 		OnUsage: func(info extension.DispatchUsageInfo) {
 			gotUsage = info
 		},
@@ -428,7 +428,7 @@ func TestFireLifecycleCallbacks_PlanProposal(t *testing.T) {
 	var gotInfo extension.DispatchPlanProposalInfo
 	var fired bool
 
-	opts := &extension.DispatchAgentOpts{
+	opts := &extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name:     "plan-test-agent",
 		PlanMode: true,
 		OnPlanProposal: func(info extension.DispatchPlanProposalInfo) {
@@ -474,7 +474,7 @@ func TestFireLifecycleCallbacks_PlanProposal(t *testing.T) {
 // TestFireLifecycleCallbacks_PlanProposal_NilCallback verifies that a
 // PlanProposalEvent with no OnPlanProposal handler does not panic.
 func TestFireLifecycleCallbacks_PlanProposal_NilCallback(t *testing.T) {
-	opts := &extension.DispatchAgentOpts{
+	opts := &extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "plan-test-agent",
 		// OnPlanProposal intentionally nil
 	}
@@ -522,7 +522,7 @@ func TestFireLifecycleCallbacks_PlanProposal_NilCallback(t *testing.T) {
 func TestFireLifecycleCallbacks_ConcurrentNoRace(t *testing.T) {
 	const goroutines = 64
 
-	opts := &extension.DispatchAgentOpts{}
+	opts := &extension.DispatchAgentOpts{WaitForCompletion: true}
 
 	// Shared accumulators, exactly as captured by the dispatch_agent.go closure.
 	toolNames := make(map[string]string)

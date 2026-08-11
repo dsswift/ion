@@ -46,7 +46,11 @@ func (h *Host) disposeInternal() {
 		_ = h.stdin.Close() //nolint:errcheck // best-effort dispose teardown
 		h.stdin = nil
 	}
+	// Captured before the kill so the reap diagnostics below can name the
+	// process even though h.process is cleared here.
+	pid := 0
 	if h.process != nil {
+		pid = h.process.Pid
 		_ = h.process.Kill() //nolint:errcheck // best-effort dispose teardown
 		h.process = nil
 	}
@@ -60,37 +64,46 @@ func (h *Host) disposeInternal() {
 
 	if cmd != nil {
 		// os/exec documents cmd.Wait as single-call: concurrent Wait calls on
-		// the same Cmd are a data race. captureExitStatus owns the Wait call
-		// when it is running (launched by readLoop on subprocess EOF). To avoid
-		// racing with it, gate on exitDone when it is available (set during
-		// spawnAndInit). exitDone is closed by captureExitStatus when Wait
-		// returns, so waiting on it is equivalent to waiting for Wait — without
-		// calling it a second time.
+		// the same Cmd are a data race. Ownership is settled by the waitClaimed
+		// CAS rather than by guessing which path got there first.
 		//
 		// Three cases:
-		//   - exitDone non-nil, captureExitStatus running: it owns Wait; we wait
-		//     for exitDone and then skip our own Wait. No race.
-		//   - exitDone non-nil, captureExitStatus not running yet (process still
-		//     alive; we just killed it): the kill causes EOF on stdout, readLoop
-		//     will launch captureExitStatus shortly, which will reap the process
-		//     and close exitDone. We wait for that.
-		//   - exitDone nil (spawnAndInit never reached the exitDone init, e.g.
-		//     process failed before the reader goroutine started): no
-		//     captureExitStatus will ever run; call Wait directly.
-		if exitDone != nil {
+		//   - We win the claim: readLoop never launched captureExitStatus (no
+		//     EOF observed, which is the common case when dispose is what kills
+		//     the process). We must do the Wait ourselves — before this claim
+		//     existed, nobody did, so exitDone was never closed and dispose sat
+		//     out its full 2s timeout on every teardown while leaving the
+		//     process unreaped.
+		//   - captureExitStatus won the claim: it owns Wait and closes exitDone
+		//     when it returns. We wait on exitDone, capped, and never call Wait.
+		//   - exitDone is nil (spawnAndInit never got that far, e.g. the process
+		//     failed before the reader goroutine started): no captureExitStatus
+		//     will ever run, so Wait directly.
+		if exitDone == nil {
+			if h.waitClaimed.CompareAndSwap(false, true) {
+				_ = cmd.Wait() //nolint:errcheck // best-effort dispose teardown
+			}
+		} else if h.waitClaimed.CompareAndSwap(false, true) {
+			// We own the reap. Wait is bounded by the process already having
+			// been killed above, so this does not need the safety-net timeout.
+			_ = cmd.Wait() //nolint:errcheck // best-effort dispose teardown
+			utils.LogWithFields(utils.LevelDebug, "extension", "disposeInternal: reaped subprocess directly (no reader-side capture was running)", map[string]any{
+				"extension": h.name,
+			})
+		} else {
 			select {
 			case <-exitDone:
 			case <-time.After(2 * time.Second):
-				// Safety net: never block dispose indefinitely. If the process
-				// has not been reaped in 2 s something is deeply wrong; proceed
-				// so callers are not stuck. Log at ERROR so this anomalous path
-				// is observable without a debugger.
-				utils.LogWithFields(utils.LevelError, "extension", "disposeInternal: process reap timed out", map[string]any{
+				// Safety net: never block dispose indefinitely. captureExitStatus
+				// owns the Wait but has not finished in 2 s. Log the state that
+				// distinguishes a genuinely slow reap from a wedged reader so the
+				// branch is diagnosable from logs alone.
+				utils.LogWithFields(utils.LevelError, "extension", "disposeInternal: process reap timed out (captureExitStatus owns Wait and has not returned)", map[string]any{
 					"extension": h.name,
+					"pid":       pid,
+					"dead":      h.dead.Load(),
 				})
 			}
-		} else {
-			_ = cmd.Wait() //nolint:errcheck // best-effort dispose teardown
 		}
 	}
 	for _, f := range tempFiles {

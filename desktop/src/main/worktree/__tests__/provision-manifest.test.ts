@@ -59,6 +59,21 @@ describe('readProvisionManifest — the happy path', () => {
     const plan = readProvisionManifest(repo)
     expect(plan.seed[0]).toMatchObject({ path: 'vendor', build: undefined })
   })
+
+  it('parses an additive linked file seed', () => {
+    writeManifest(JSON.stringify({ version: 1, worktree: { seed: [{ path: 'graphify-out/graph.json', link: true }] } }))
+    expect(readProvisionManifest(repo).seed).toEqual([
+      { path: 'graphify-out/graph.json', link: true, build: undefined, cwd: undefined, staleWhen: [] },
+    ])
+  })
+
+  it('rejects a linked seed with directory build semantics', () => {
+    writeManifest(JSON.stringify({
+      version: 1,
+      worktree: { seed: [{ path: 'graphify-out/graph.json', link: true, build: 'make graph-refresh' }] },
+    }))
+    expect(readProvisionManifest(repo).seed).toEqual([])
+  })
 })
 
 describe('readProvisionManifest — fails open, never throws', () => {

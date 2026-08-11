@@ -17,6 +17,22 @@
 		THEMESYNCTHEME00000002 /* SyncedTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = THEMESYNCTHEME00000001 /* SyncedTheme.swift */; };
 		A1B2C3D4E5F6000100000BAA /* RelayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100000CAA /* RelayClient.swift */; };
 		A2B3C4D5E6F700000000001B /* OIDCTokenManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F700000000001A /* OIDCTokenManager.swift */; };
+		DAUTHCONTEXT000000002 /* OIDCAuthenticationContextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAUTHCONTEXT000000001 /* OIDCAuthenticationContextView.swift */; };
+		DACCESSVIEW00000000002 /* DesktopAccessRecoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DACCESSVIEW00000000001 /* DesktopAccessRecoveryView.swift */; };
+		DACCESSVM0000000000002 /* SessionViewModel+DesktopAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = DACCESSVM0000000000001 /* SessionViewModel+DesktopAccess.swift */; };
+		DACCESSPOLICY000000002 /* DesktopAccessPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = DACCESSPOLICY000000001 /* DesktopAccessPolicy.swift */; };
+		DACCESSMODEL0000000002 /* DesktopAccessRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = DACCESSMODEL0000000001 /* DesktopAccessRecord.swift */; };
+		MTOIDCVIEW000000000002 /* DesktopAccountSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = MTOIDCVIEW000000000001 /* DesktopAccountSection.swift */; };
+		MTOIDCVMST0000000002 /* SessionViewModelOidcSwitchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MTOIDCVMST0000000001 /* SessionViewModelOidcSwitchTests.swift */; };
+		MTOIDCRRKT0000000002 /* RelayRejectionKindTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MTOIDCRRKT0000000001 /* RelayRejectionKindTests.swift */; };
+		MTOIDCPDCT0000000002 /* PairedDeviceCodableTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MTOIDCPDCT0000000001 /* PairedDeviceCodableTests.swift */; };
+		MTOIDCIDNT0000000002 /* OIDCAccountIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MTOIDCIDNT0000000001 /* OIDCAccountIdentityTests.swift */; };
+		MTOIDCREGT0000000002 /* OIDCTokenManagerRegistryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MTOIDCREGT0000000001 /* OIDCTokenManagerRegistryTests.swift */; };
+		MTOIDCPEER000000000002 /* SessionViewModel+PeerStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = MTOIDCPEER000000000001 /* SessionViewModel+PeerStatus.swift */; };
+		MTOIDCIDN0000000000002 /* OIDCAccountIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = MTOIDCIDN0000000000001 /* OIDCAccountIdentity.swift */; };
+		MTTRANSTATE00000000002 /* TransportState.swift in Sources */ = {isa = PBXBuildFile; fileRef = MTTRANSTATE00000000001 /* TransportState.swift */; };
+		MTOIDCPKCE000000000002 /* OIDCTokenManager+PKCE.swift in Sources */ = {isa = PBXBuildFile; fileRef = MTOIDCPKCE000000000001 /* OIDCTokenManager+PKCE.swift */; };
+		MTOIDCREG0000000000002 /* OIDCTokenManagerRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = MTOIDCREG0000000000001 /* OIDCTokenManagerRegistry.swift */; };
 		A1B2C3D4E5F6000100000DAA /* LANClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100000EAA /* LANClient.swift */; };
 		LANAUTHOUT0000000000001 /* LANAuthOutcome.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANAUTHOUT0000000000002 /* LANAuthOutcome.swift */; };
 		RELAYREJECT00000000001 /* RelayRejection.swift in Sources */ = {isa = PBXBuildFile; fileRef = RELAYREJECT00000000002 /* RelayRejection.swift */; };
@@ -50,6 +66,7 @@
 		A1B2C3D4E5F60001000029AA /* TransportManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */; };
 		A1B2C3D4E5F6000100002BAA /* RelayClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */; };
 		A2B3C4D5E6F700000000002B /* OIDCTokenManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F700000000002A /* OIDCTokenManagerTests.swift */; };
+		DACCESSPOLTEST000002 /* DesktopAccessPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DACCESSPOLTEST000001 /* DesktopAccessPolicyTests.swift */; };
 		RELAYOIDC00000000000001 /* RelayConfigOidcTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RELAYOIDC00000000000002 /* RelayConfigOidcTests.swift */; };
 		RELAYRECOV0000000000001 /* RelayConfigRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RELAYRECOV0000000000002 /* RelayConfigRecoveryTests.swift */; };
 		TMRTESTS00000000000001 /* TransportManagerReceiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TMRTESTS00000000000002 /* TransportManagerReceiveTests.swift */; };
@@ -65,6 +82,7 @@
 		LIVEBND00000000000001 /* LiveBoundaryMarkingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LIVEBND00000000000002 /* LiveBoundaryMarkingTests.swift */; };
 		PROMPTINJ00000000000001 /* PromptInjectedSuppressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PROMPTINJ00000000000002 /* PromptInjectedSuppressionTests.swift */; };
 		INJPOLTEST0000000000001 /* InjectionPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = INJPOLTEST0000000000002 /* InjectionPolicyTests.swift */; };
+		CONVHISTINJ000000000001 /* ConversationHistoryInjectionFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CONVHISTINJ000000000002 /* ConversationHistoryInjectionFilterTests.swift */; };
 		A1B2C3D4E5F60001000090AA /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000091AA /* Message.swift */; };
 		PENDINGCARD0000000000001 /* PendingCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = PENDINGCARD0000000000002 /* PendingCard.swift */; };
 		PLANCARDGATE000000000001 /* PlanCardGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLANCARDGATE000000000002 /* PlanCardGate.swift */; };
@@ -103,6 +121,8 @@
 		A1B2C3D4E5F600010000F2AA /* KeyboardUtilityBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000F3AA /* KeyboardUtilityBar.swift */; };
 		A1B2C3D4E5F600010000F4AA /* EngineInstanceBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000F5AA /* EngineInstanceBar.swift */; };
 		A1B2C3D4E5F600010000F6AA /* MarkdownFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000F7AA /* MarkdownFormatter.swift */; };
+		A1B2C3D4E5F600010000FA01 /* VerbatimContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000FB01 /* VerbatimContext.swift */; };
+		A1B2C3D4E5F600010000FC01 /* MarkdownFormatter+Helpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000FD01 /* MarkdownFormatter+Helpers.swift */; };
 		A1B2C3D4E5F600010000F8AA /* PlanFullScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000F9AA /* PlanFullScreenView.swift */; };
 		A1B2C3D4E5F600010000FAAA /* MarkdownContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000FBAA /* MarkdownContentView.swift */; };
 		A1B2C3D4E5F600010000FCAA /* TabRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000FDAA /* TabRowView.swift */; };
@@ -382,6 +402,7 @@
 		A1B2C3D4E5F60001FF0003AA /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60001FF0001AA /* Markdown */; };
 		A1B2C3D4E5F60001FF0005AA /* MarkdownFormatterFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0004AA /* MarkdownFormatterFixtures.swift */; };
 		A1B2C3D4E5F60001FF0007AA /* MarkdownFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0006AA /* MarkdownFormatterTests.swift */; };
+		A1B2C3D4E5F60001FF00FA02 /* MarkdownFormatterVerbatimTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF00FB02 /* MarkdownFormatterVerbatimTests.swift */; };
 		A1B2C3D4E5F60001FF0011AA /* FrontmatterSplitter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0010AA /* FrontmatterSplitter.swift */; };
 		A1B2C3D4E5F60001FF0013AA /* FrontmatterSplitterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0012AA /* FrontmatterSplitterTests.swift */; };
 		A1B2C3D4E5F60001FF0021AA /* RemoteCommand+Decode.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0020AA /* RemoteCommand+Decode.swift */; };
@@ -447,6 +468,22 @@
 		THEMESYNCTHEME00000001 /* SyncedTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncedTheme.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100000CAA /* RelayClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayClient.swift; sourceTree = "<group>"; };
 		A2B3C4D5E6F700000000001A /* OIDCTokenManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OIDCTokenManager.swift; sourceTree = "<group>"; };
+		DAUTHCONTEXT000000001 /* OIDCAuthenticationContextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OIDCAuthenticationContextView.swift; sourceTree = "<group>"; };
+		DACCESSVIEW00000000001 /* DesktopAccessRecoveryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DesktopAccessRecoveryView.swift"; sourceTree = "<group>"; };
+		DACCESSVM0000000000001 /* SessionViewModel+DesktopAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+DesktopAccess.swift"; sourceTree = "<group>"; };
+		DACCESSPOLICY000000001 /* DesktopAccessPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DesktopAccessPolicy.swift"; sourceTree = "<group>"; };
+		DACCESSMODEL0000000001 /* DesktopAccessRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DesktopAccessRecord.swift"; sourceTree = "<group>"; };
+		MTOIDCVIEW000000000001 /* DesktopAccountSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopAccountSection.swift; sourceTree = "<group>"; };
+		MTOIDCVMST0000000001 /* SessionViewModelOidcSwitchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionViewModelOidcSwitchTests.swift; sourceTree = "<group>"; };
+		MTOIDCRRKT0000000001 /* RelayRejectionKindTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayRejectionKindTests.swift; sourceTree = "<group>"; };
+		MTOIDCPDCT0000000001 /* PairedDeviceCodableTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairedDeviceCodableTests.swift; sourceTree = "<group>"; };
+		MTOIDCIDNT0000000001 /* OIDCAccountIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OIDCAccountIdentityTests.swift; sourceTree = "<group>"; };
+		MTOIDCREGT0000000001 /* OIDCTokenManagerRegistryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OIDCTokenManagerRegistryTests.swift; sourceTree = "<group>"; };
+		MTOIDCPEER000000000001 /* SessionViewModel+PeerStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+PeerStatus.swift"; sourceTree = "<group>"; };
+		MTOIDCIDN0000000000001 /* OIDCAccountIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OIDCAccountIdentity.swift; sourceTree = "<group>"; };
+		MTTRANSTATE00000000001 /* TransportState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportState.swift; sourceTree = "<group>"; };
+		MTOIDCPKCE000000000001 /* OIDCTokenManager+PKCE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OIDCTokenManager+PKCE.swift"; sourceTree = "<group>"; };
+		MTOIDCREG0000000000001 /* OIDCTokenManagerRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OIDCTokenManagerRegistry.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100000EAA /* LANClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANClient.swift; sourceTree = "<group>"; };
 		LANAUTHOUT0000000000002 /* LANAuthOutcome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANAuthOutcome.swift; sourceTree = "<group>"; };
 		RELAYREJECT00000000002 /* RelayRejection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayRejection.swift; sourceTree = "<group>"; };
@@ -480,6 +517,7 @@
 		A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManagerTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayClientTests.swift; sourceTree = "<group>"; };
 		A2B3C4D5E6F700000000002A /* OIDCTokenManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OIDCTokenManagerTests.swift; sourceTree = "<group>"; };
+		DACCESSPOLTEST000001 /* DesktopAccessPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopAccessPolicyTests.swift; sourceTree = "<group>"; };
 		RELAYOIDC00000000000002 /* RelayConfigOidcTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayConfigOidcTests.swift; sourceTree = "<group>"; };
 		RELAYRECOV0000000000002 /* RelayConfigRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayConfigRecoveryTests.swift; sourceTree = "<group>"; };
 		TMRTESTS00000000000002 /* TransportManagerReceiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManagerReceiveTests.swift; sourceTree = "<group>"; };
@@ -495,6 +533,7 @@
 		LIVEBND00000000000002 /* LiveBoundaryMarkingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveBoundaryMarkingTests.swift; sourceTree = "<group>"; };
 		PROMPTINJ00000000000002 /* PromptInjectedSuppressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptInjectedSuppressionTests.swift; sourceTree = "<group>"; };
 		INJPOLTEST0000000000002 /* InjectionPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InjectionPolicyTests.swift; sourceTree = "<group>"; };
+		CONVHISTINJ000000000002 /* ConversationHistoryInjectionFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationHistoryInjectionFilterTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002EAA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002FAA /* IonRemote.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = IonRemote.entitlements; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000032AA /* IonRemote.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = IonRemote.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -536,6 +575,8 @@
 		A1B2C3D4E5F600010000F3AA /* KeyboardUtilityBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardUtilityBar.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000F5AA /* EngineInstanceBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineInstanceBar.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000F7AA /* MarkdownFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFormatter.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010000FB01 /* VerbatimContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VerbatimContext.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010000FD01 /* MarkdownFormatter+Helpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MarkdownFormatter+Helpers.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000F9AA /* PlanFullScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanFullScreenView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000FBAA /* MarkdownContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownContentView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000FDAA /* TabRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabRowView.swift; sourceTree = "<group>"; };
@@ -805,6 +846,7 @@
 		A1B2C3D4E5F60001F1000CAA /* FuzzyMatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FuzzyMatch.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0004AA /* MarkdownFormatterFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFormatterFixtures.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0006AA /* MarkdownFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFormatterTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001FF00FB02 /* MarkdownFormatterVerbatimTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFormatterVerbatimTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0010AA /* FrontmatterSplitter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrontmatterSplitter.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0012AA /* FrontmatterSplitterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrontmatterSplitterTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0020AA /* RemoteCommand+Decode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RemoteCommand+Decode.swift"; sourceTree = "<group>"; };
@@ -950,6 +992,7 @@
 				KINDNM00000000000000002 /* RemoteCommand+KindName.swift */,
 				RMDECERR000000000000002 /* RemoteEventDecodeError.swift */,
 				A1B2C3D4E5F6000100000AAA /* PairedDevice.swift */,
+				DACCESSMODEL0000000001 /* DesktopAccessRecord.swift */,
 				THEMESYNCPAY0000000001 /* SyncedThemePayload.swift */,
 				A1B2C3D4E5F60001000091AA /* Message.swift */,
 				PENDINGCARD0000000000002 /* PendingCard.swift */,
@@ -971,6 +1014,10 @@
 			children = (
 				A1B2C3D4E5F6000100000CAA /* RelayClient.swift */,
 				A2B3C4D5E6F700000000001A /* OIDCTokenManager.swift */,
+				MTOIDCIDN0000000000001 /* OIDCAccountIdentity.swift */,
+				MTTRANSTATE00000000001 /* TransportState.swift */,
+				MTOIDCPKCE000000000001 /* OIDCTokenManager+PKCE.swift */,
+				MTOIDCREG0000000000001 /* OIDCTokenManagerRegistry.swift */,
 				A1B2C3D4E5F6000100000EAA /* LANClient.swift */,
 				LANAUTHOUT0000000000002 /* LANAuthOutcome.swift */,
 				RELAYREJECT00000000002 /* RelayRejection.swift */,
@@ -1005,6 +1052,9 @@
 			isa = PBXGroup;
 			children = (
 				A1B2C3D4E5F60001000018AA /* TabListView.swift */,
+				DAUTHCONTEXT000000001 /* OIDCAuthenticationContextView.swift */,
+				DACCESSVIEW00000000001 /* DesktopAccessRecoveryView.swift */,
+				MTOIDCVIEW000000000001 /* DesktopAccountSection.swift */,
 				FE01AA02BC03DD04EE05FF01 /* TabListView+Helpers.swift */,
 				FE01AA02BC03DD04EE05FF03 /* TabListView+DetailViews.swift */,
 				A1B2C3D4E5F60001009B00AA /* TabListNewTabSheet.swift */,
@@ -1112,6 +1162,8 @@
 			isa = PBXGroup;
 			children = (
 				A1B2C3D4E5F60001000022AA /* SessionViewModel.swift */,
+				DACCESSVM0000000000001 /* SessionViewModel+DesktopAccess.swift */,
+				MTOIDCPEER000000000001 /* SessionViewModel+PeerStatus.swift */,
 				B1B2C3D4E5F60001CC000010 /* SessionViewModelTypes.swift */,
 				DRAFT0000000000000000001 /* SessionViewModel+Drafts.swift */,
 			A1B2C3D4E5F60001000201AA /* SessionViewModel+Lifecycle.swift */,
@@ -1270,10 +1322,16 @@
 				C0DEC0DE000000000012 /* FilePathDetectorTests.swift */,
 				C0DEC0DE000000000014 /* CodeHighlighterTests.swift */,
 				C0DEC0DE000000000016 /* CollapsibleUserTextTests.swift */,
+				A1B2C3D4E5F60001FF00FB02 /* MarkdownFormatterVerbatimTests.swift */,
 				A1B2C3D4E5F60001FF0012AA /* FrontmatterSplitterTests.swift */,
 				A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */,
 				A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */,
 				A2B3C4D5E6F700000000002A /* OIDCTokenManagerTests.swift */,
+				DACCESSPOLTEST000001 /* DesktopAccessPolicyTests.swift */,
+				MTOIDCRRKT0000000001 /* RelayRejectionKindTests.swift */,
+				MTOIDCPDCT0000000001 /* PairedDeviceCodableTests.swift */,
+				MTOIDCIDNT0000000001 /* OIDCAccountIdentityTests.swift */,
+				MTOIDCREGT0000000001 /* OIDCTokenManagerRegistryTests.swift */,
 				RELAYOIDC00000000000002 /* RelayConfigOidcTests.swift */,
 				RELAYRECOV0000000000002 /* RelayConfigRecoveryTests.swift */,
 				TMRTESTS00000000000002 /* TransportManagerReceiveTests.swift */,
@@ -1291,6 +1349,7 @@
 				LIVEBND00000000000002 /* LiveBoundaryMarkingTests.swift */,
 				PROMPTINJ00000000000002 /* PromptInjectedSuppressionTests.swift */,
 				INJPOLTEST0000000000002 /* InjectionPolicyTests.swift */,
+				CONVHISTINJ000000000002 /* ConversationHistoryInjectionFilterTests.swift */,
 				HRNSBDG0000000000000004 /* EngineHarnessBadgeTests.swift */,
 				HRNMSGRELO0000000000002 /* HarnessMessageRelocateTests.swift */,
 				PLANCARD0000000000000002 /* PlanApprovalCardContentTests.swift */,
@@ -1336,6 +1395,7 @@
 			children = (
 				LOADCONV000000000000008 /* SessionViewModelLoadConversationTests.swift */,
 				LOADGATE00000000000008 /* ConversationLoadGateTests.swift */,
+				MTOIDCVMST0000000001 /* SessionViewModelOidcSwitchTests.swift */,
 				LANTRANSVM0000000000002 /* SessionViewModelLanAuthTransientTests.swift */,
 				LANREJVMT00000000000002 /* SessionViewModelLanAuthRejectedTests.swift */,
 			);
@@ -1378,6 +1438,8 @@
 				C0DEC0DE000000000002 /* FilePathDetector.swift */,
 				C0DEC0DE000000000004 /* IonCodeTheme.swift */,
 				C0DEC0DE000000000006 /* CodeHighlighter.swift */,
+				A1B2C3D4E5F600010000FB01 /* VerbatimContext.swift */,
+				A1B2C3D4E5F600010000FD01 /* MarkdownFormatter+Helpers.swift */,
 				A1B2C3D4E5F60001000705AA /* ToolGrouping.swift */,
 				INJPOLICY00000000000002 /* InjectionPolicy.swift */,
 				A1B2C3D4E5F60001001001AA /* LayoutCache.swift */,
@@ -1388,6 +1450,7 @@
 				A1B2C3D4E5F60001001013AA /* DiagnosticLog+Commands.swift */,
 				DIAGLOG0000000000003 /* DiagnosticLog+Schema.swift */,
 				A1B2C3D4E5F60001005103AA /* KeychainHelper.swift */,
+				DACCESSPOLICY000000001 /* DesktopAccessPolicy.swift */,
 				A1B2C3D4E5F60001F10001AA /* AppTheme.swift */,
 				THEMEDARK00000000000001 /* IonDarkTheme.swift */,
 				THEMELIGHT0000000000001 /* IonLightTheme.swift */,
@@ -1564,6 +1627,17 @@
 				A1B2C3D4E5F60001000092AA /* MessageAttachment.swift in Sources */,
 				A1B2C3D4E5F6000100000BAA /* RelayClient.swift in Sources */,
 				A2B3C4D5E6F700000000001B /* OIDCTokenManager.swift in Sources */,
+				DAUTHCONTEXT000000002 /* OIDCAuthenticationContextView.swift in Sources */,
+				DACCESSVIEW00000000002 /* DesktopAccessRecoveryView.swift in Sources */,
+				DACCESSVM0000000000002 /* SessionViewModel+DesktopAccess.swift in Sources */,
+				DACCESSPOLICY000000002 /* DesktopAccessPolicy.swift in Sources */,
+				DACCESSMODEL0000000002 /* DesktopAccessRecord.swift in Sources */,
+				MTOIDCVIEW000000000002 /* DesktopAccountSection.swift in Sources */,
+				MTOIDCPEER000000000002 /* SessionViewModel+PeerStatus.swift in Sources */,
+				MTOIDCIDN0000000000002 /* OIDCAccountIdentity.swift in Sources */,
+				MTTRANSTATE00000000002 /* TransportState.swift in Sources */,
+				MTOIDCPKCE000000000002 /* OIDCTokenManager+PKCE.swift in Sources */,
+				MTOIDCREG0000000000002 /* OIDCTokenManagerRegistry.swift in Sources */,
 				A1B2C3D4E5F6000100000DAA /* LANClient.swift in Sources */,
 				LANAUTHOUT0000000000001 /* LANAuthOutcome.swift in Sources */,
 				RELAYREJECT00000000001 /* RelayRejection.swift in Sources */,
@@ -1732,6 +1806,8 @@
 				C0DEC0DE000000000009 /* HighlightedCodeView.swift in Sources */,
 				C0DEC0DE000000000101 /* EngineMessageRow+UserBubble.swift in Sources */,
 				C0DEC0DE000000000011 /* CollapsibleUserText.swift in Sources */,
+				A1B2C3D4E5F600010000FA01 /* VerbatimContext.swift in Sources */,
+				A1B2C3D4E5F600010000FC01 /* MarkdownFormatter+Helpers.swift in Sources */,
 				A1B2C3D4E5F60001FF0011AA /* FrontmatterSplitter.swift in Sources */,
 				A1B2C3D4E5F600010000F8AA /* PlanFullScreenView.swift in Sources */,
 				A1B2C3D4E5F600010000FAAA /* MarkdownContentView.swift in Sources */,
@@ -1923,10 +1999,17 @@
 				C0DEC0DE000000000013 /* FilePathDetectorTests.swift in Sources */,
 				C0DEC0DE000000000015 /* CodeHighlighterTests.swift in Sources */,
 				C0DEC0DE000000000017 /* CollapsibleUserTextTests.swift in Sources */,
+				A1B2C3D4E5F60001FF00FA02 /* MarkdownFormatterVerbatimTests.swift in Sources */,
 				A1B2C3D4E5F60001FF0013AA /* FrontmatterSplitterTests.swift in Sources */,
 				A1B2C3D4E5F60001000029AA /* TransportManagerTests.swift in Sources */,
 				A1B2C3D4E5F6000100002BAA /* RelayClientTests.swift in Sources */,
 				A2B3C4D5E6F700000000002B /* OIDCTokenManagerTests.swift in Sources */,
+				DACCESSPOLTEST000002 /* DesktopAccessPolicyTests.swift in Sources */,
+				MTOIDCVMST0000000002 /* SessionViewModelOidcSwitchTests.swift in Sources */,
+				MTOIDCRRKT0000000002 /* RelayRejectionKindTests.swift in Sources */,
+				MTOIDCPDCT0000000002 /* PairedDeviceCodableTests.swift in Sources */,
+				MTOIDCIDNT0000000002 /* OIDCAccountIdentityTests.swift in Sources */,
+				MTOIDCREGT0000000002 /* OIDCTokenManagerRegistryTests.swift in Sources */,
 				RELAYOIDC00000000000001 /* RelayConfigOidcTests.swift in Sources */,
 				RELAYRECOV0000000000001 /* RelayConfigRecoveryTests.swift in Sources */,
 				TMRTESTS00000000000001 /* TransportManagerReceiveTests.swift in Sources */,
@@ -1944,6 +2027,7 @@
 				LIVEBND00000000000001 /* LiveBoundaryMarkingTests.swift in Sources */,
 				PROMPTINJ00000000000001 /* PromptInjectedSuppressionTests.swift in Sources */,
 				INJPOLTEST0000000000001 /* InjectionPolicyTests.swift in Sources */,
+				CONVHISTINJ000000000001 /* ConversationHistoryInjectionFilterTests.swift in Sources */,
 				HRNSBDG0000000000000003 /* EngineHarnessBadgeTests.swift in Sources */,
 				HRNMSGRELO0000000000001 /* HarnessMessageRelocateTests.swift in Sources */,
 				PLANCARD0000000000000001 /* PlanApprovalCardContentTests.swift in Sources */,

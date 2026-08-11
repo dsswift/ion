@@ -59,6 +59,7 @@ func (m *Manager) buildRootAgentSpawner(s *engineSession, key string, parentMode
 	capturedExtGroup := extGroup
 
 	return func(ctx context.Context, requestedName, prompt, description, cwd, model string) (string, error) {
+		waitForCompletion := tools.AgentWaitForCompletion(ctx)
 		// If the LLM named a specialist, resolve it. Fires capability_match
 		// when not registered so a harness extension can promote a draft
 		// (via ctx.RegisterAgentSpec) and we resolve on the same call.
@@ -169,9 +170,10 @@ func (m *Manager) buildRootAgentSpawner(s *engineSession, key string, parentMode
 		// returned spawner's grandchildren inherit depth+1, enforced by the
 		// depth guard inside BuildDispatchAgentFunc.
 		//
-		// Foreground (Background=false): the Agent tool blocks until the child
-		// completes, matching its synchronous contract. Identical to how
-		// BuildChildAgentSpawner delegates (dispatch_child_spawner.go).
+		// The Agent tool and an extension's ctx.DispatchAgent now share the SAME
+		// code path: spawner wiring, dispatch telemetry, nesting attribution, and
+		// DispatchRegistry registration. Agent dispatch is asynchronous by default;
+		// an explicit wait_for_completion request selects terminal output.
 		//
 		// SystemPrompt is passed via DispatchAgentOpts.SystemPrompt, which
 		// BuildDispatchAgentFunc applies as AppendSystemPrompt -- the matched
@@ -187,12 +189,12 @@ func (m *Manager) buildRootAgentSpawner(s *engineSession, key string, parentMode
 			ProjectPath:   cwd,
 			DisplayName:   displayName,
 			FallbackChain: childFallbacks,
-			// Thread the per-tool-call context so cancelling the Agent tool
-			// call (run abort, tool deadline) cancels this foreground dispatch
-			// and returns promptly. The tool-call context derives from the
-			// session, so session-level aborts still cascade.
-			ParentCtx:  ctx,
-			Background: false,
+			// Dispatches are asynchronous unless the model explicitly requests a
+			// terminal result in this tool call. The child derives from the session
+			// root in async mode so ending this tool call never cancels real work.
+			ParentCtx:         ctx,
+			WaitForCompletion: waitForCompletion,
+			Background:        !waitForCompletion,
 		}
 		if specMatched {
 			if spec.SystemPrompt != "" {
@@ -221,6 +223,9 @@ func (m *Manager) buildRootAgentSpawner(s *engineSession, key string, parentMode
 		if result == nil {
 			utils.LogWithFields(utils.LevelDebug, "session", "agent spawner returning empty", map[string]any{"model": agentName})
 			return "", nil
+		}
+		if !waitForCompletion {
+			return fmt.Sprintf("Agent dispatched asynchronously. Dispatch ID: %s. Continue working or end your turn; the engine will deliver this agent's terminal result automatically.", result.DispatchID), nil
 		}
 		utils.LogWithFields(utils.LevelDebug, "session", "agent spawner returning", map[string]any{"model": agentName, "exit_code": result.ExitCode, "count": len(result.Output), "input_tokens": result.InputTokens, "output_tokens": result.OutputTokens})
 		// Usage suffix: model-facing per-dispatch token/cost accounting. The

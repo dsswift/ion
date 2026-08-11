@@ -29,6 +29,8 @@ struct Message: Codable, Identifiable, Sendable {
     var slashCommand: String?
     var slashArgs: String?
     var slashSource: String?
+    var slashModelAlias: String?
+    var slashModelEffective: String?
     /// Desktop-local reconciliation key (RC-9). On a `desktop_conversation_history`
     /// user row, the clientMsgId this device originally sent for that turn,
     /// annotated by the desktop from its clientMsgId↔entryId map. `submit` stamps
@@ -114,6 +116,9 @@ struct Message: Codable, Identifiable, Sendable {
     /// the `engineJSON` agent-history path) can inspect the structured payload
     /// for future routing without a contract change. Optional/additive.
     var markerKind: String? = nil
+    /// Character count carried by persisted `markerKind: "steer"` rows. The
+    /// engine uses it to replay a confirmation without exposing the steer body.
+    var markerMessageLength: Int? = nil
 
     /// Classifies engine-side injected user turns on historical reload.
     /// "agent_completion" marks a machine-to-machine dispatch callback (a child
@@ -177,8 +182,8 @@ struct Message: Codable, Identifiable, Sendable {
         case id, role, content, toolName, toolInput, toolId, toolStatus
         case attachments, timestamp, source
         case isInternal = "internal"
-        case slashCommand, slashArgs, slashSource
-        case planFilePath, markerKind
+        case slashCommand, slashArgs, slashSource, slashModelAlias, slashModelEffective
+        case planFilePath, markerKind, markerMessageLength
         case injectionKind, machineAuthored
         // clientMsgId: desktop-local reconciliation key on history user rows (RC-9).
         case clientMsgId
@@ -250,6 +255,8 @@ extension Message {
         slashCommand = try container.decodeIfPresent(String.self, forKey: .slashCommand)
         slashArgs = try container.decodeIfPresent(String.self, forKey: .slashArgs)
         slashSource = try container.decodeIfPresent(String.self, forKey: .slashSource)
+        slashModelAlias = try container.decodeIfPresent(String.self, forKey: .slashModelAlias)
+        slashModelEffective = try container.decodeIfPresent(String.self, forKey: .slashModelEffective)
 
         // planFilePath on plan-lifecycle divider system messages. The desktop
         // history mapper (engine-history.ts) carries it on the wire so a
@@ -265,6 +272,7 @@ extension Message {
         // under `markerPlanFilePath` (not `planFilePath`); fall back to it so
         // the divider still carries a path for the tappable slug link.
         markerKind = try container.decodeIfPresent(String.self, forKey: .markerKind)
+        markerMessageLength = try container.decodeIfPresent(Int.self, forKey: .markerMessageLength)
         if planFilePath == nil {
             planFilePath = try container.decodeIfPresent(String.self, forKey: .markerPlanFilePath)
         }
@@ -294,9 +302,9 @@ extension Message {
     private enum EngineCodingKeys: String, CodingKey {
         case id, role, content, toolName, toolId, toolStatus, timestamp
         case isInternal = "internal"
-        case slashCommand, slashArgs, slashSource
+        case slashCommand, slashArgs, slashSource, slashModelAlias, slashModelEffective
         case planFilePath
-        case markerKind, markerPlanFilePath, injectionKind, machineAuthored
+        case markerKind, markerMessageLength, markerPlanFilePath, injectionKind, machineAuthored
         case attachments
     }
 

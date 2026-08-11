@@ -454,7 +454,6 @@ type InterceptOpts struct {
 	Source string `json:"-"`
 }
 
-
 // DiscoverAgentsOpts configures which directories to scan for agent definitions
 // and the override precedence. Directories are listed in precedence order:
 // later entries override earlier entries with the same agent name (stem).

@@ -170,6 +170,19 @@ describe('wireEngineBridgeEvents — generic engine-event wire type', () => {
     expect(sentOfType('desktop_engine_profiles')).toHaveLength(1)
   })
 
+
+  it('forwards engine_steer_degraded with its distinct desktop type and length field', () => {
+    emit(KEY, { type: 'engine_steer_degraded', steerDegradedMessageLength: 42 })
+
+    const sent = sentOfType('desktop_steer_degraded')
+    expect(sent).toHaveLength(1)
+    expect(sent[0][0]).toMatchObject({
+      tabId: 'tab1',
+      instanceId: 'inst1',
+      steerDegradedMessageLength: 42,
+    })
+    expect(sent[0][0].type).not.toBe('desktop_steer_injected')
+  })
   it('never forwards any message with a raw engine_ wire type', () => {
     emit(KEY, { type: 'engine_message_end', usage: { inputTokens: 1, outputTokens: 1, contextPercent: 0, cost: 0 } })
     emit(KEY, { type: 'engine_status', fields: { state: 'idle' } })

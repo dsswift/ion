@@ -122,9 +122,9 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 	// if non-empty. This ensures every log line and event has a useful name
 	// even when the subprocess dies before completing the init handshake.
 	if manifest != nil && manifest.Name != "" {
-		h.name = manifest.Name
+		h.setName(manifest.Name)
 	} else {
-		h.name = filepath.Base(extensionDir)
+		h.setName(filepath.Base(extensionDir))
 	}
 	// Capture the extension version from the manifest. This is stamped once at
 	// load time and never changes — manifest version is a build-time constant.
@@ -142,7 +142,7 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 	// path (initial, daemon-restart re-registration, respawn) funnels through
 	// spawnAndInit, so this single check covers hot-reload.
 	if config != nil {
-		if err := checkExtensionAllowlist(h.name, extensionPath, config.ExtensionAllowlist); err != nil {
+		if err := checkExtensionAllowlist(h.name_(), extensionPath, config.ExtensionAllowlist); err != nil {
 			return err
 		}
 	}
@@ -303,16 +303,16 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 }
 
 // launchStderrDrain starts the background goroutine that copies subprocess
-// stderr into the ring buffer and logs each line. It snapshots h.name into a
-// local BEFORE launching the goroutine: parseInitResult may write h.name
+// stderr into the ring buffer and logs each line. It snapshots h.name_() into a
+// local BEFORE launching the goroutine: parseInitResult may write h.name_()
 // concurrently (when the init message carries a different name than the
-// manifest), and reading h.name from inside the goroutine would be an
+// manifest), and reading h.name_() from inside the goroutine would be an
 // unsynchronised access the race detector flags. The tag is cosmetic debug
 // output; the pre-launch snapshot is the correct identity for this subprocess
 // lifetime. Extracted from spawnAndInit so the snapshot-before-launch
 // ordering is pinned by a regression test (host_stderr_race_test.go).
 func (h *Host) launchStderrDrain(stderr io.Reader) {
-	stderrTag := "ext:" + h.name
+	stderrTag := "ext:" + h.name_()
 	h.stderrDrainWg.Add(1)
 	go func() {
 		defer h.stderrDrainWg.Done()
@@ -489,6 +489,11 @@ func (h *Host) captureExitStatus() {
 			close(ch)
 		}
 	}()
+	// Claim the single permitted cmd.Wait. If dispose already claimed it,
+	// it owns the reap; closing exitDone above still releases any waiter.
+	if !h.waitClaimed.CompareAndSwap(false, true) {
+		return
+	}
 	h.mu.Lock()
 	cmd := h.cmd
 	h.mu.Unlock()
@@ -528,8 +533,16 @@ var extensionEntryCandidates = []string{
 	"index.mjs",
 }
 
+// nativeExtensionEntry is the conventional entry-point name for extensions
+// compiled to a native binary (Go, Rust, C, ...). It is probed after every
+// script candidate: a directory shipping both a script and a compiled binary
+// is a source tree, and the script is the authored entry point.
+const nativeExtensionEntry = "main"
+
 // resolveExtensionEntry maps an extension directory to its entry-point file
-// by probing the conventional candidates in order. Returns a descriptive
+// by probing the conventional candidates in order. Script candidates come
+// first; an executable file named "main" is the native-binary fallback, which
+// the spawn path runs directly (no transpile, no node). Returns a descriptive
 // error naming the directory and the probed candidates when none exists.
 func resolveExtensionEntry(extDir string) (string, error) {
 	for _, name := range extensionEntryCandidates {
@@ -538,5 +551,14 @@ func resolveExtensionEntry(extDir string) (string, error) {
 			return candidate, nil
 		}
 	}
-	return "", fmt.Errorf("no extension entry point in %s (looked for %s)", extDir, strings.Join(extensionEntryCandidates, ", "))
+	// Native binary fallback. The executable bit is required: a stray
+	// non-executable file named "main" (a Go source tree's build output that
+	// lost its mode, a "main" directory, a text file) must not resolve, because
+	// spawning it would fail with a bare EACCES far from this decision.
+	native := filepath.Join(extDir, nativeExtensionEntry)
+	if info, err := os.Stat(native); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+		return native, nil
+	}
+	candidates := append(append([]string{}, extensionEntryCandidates...), nativeExtensionEntry+" (executable)")
+	return "", fmt.Errorf("no extension entry point in %s (looked for %s)", extDir, strings.Join(candidates, ", "))
 }

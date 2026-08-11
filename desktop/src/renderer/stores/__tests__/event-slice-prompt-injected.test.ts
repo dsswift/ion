@@ -42,6 +42,7 @@ vi.mock('../slices/engine-event-slice-messages', () => ({
 import { createEventSlice } from '../slices/event-slice'
 import type { State } from '../session-store-types'
 import { seedMainPane, mainInstance } from './helpers/conversation-test-helpers'
+import { isSteerAppliedDivider } from '../../../shared/clear-divider'
 
 function buildHarness() {
   const state: any = {
@@ -141,5 +142,44 @@ describe('prompt_injected reducer arm', () => {
     const msgs = mainInstance(state.conversationPanes, 'tab1')?.messages ?? []
     expect(msgs).toHaveLength(1)
     expect(msgs[0].content).toBe('please continue')
+  })
+
+  // A degraded ctx.steerSelf delivery (no live run, so it became a fresh
+  // prompt) carries the caller's kind — `checkin` for a heartbeat — and is
+  // suppressed as the machine turn it is. The DIVIDER for it does not come from
+  // this arm: the engine emits `steer_degraded` alongside, handled separately. This
+  // is the reported defect's regression guard — it must never render as a user
+  // bubble.
+  it('suppresses a degraded self-steer turn, leaving the divider to steer_degraded', () => {
+    const { state, slice } = buildHarness()
+    slice.handleNormalizedEvent('tab1', {
+      type: 'prompt_injected',
+      prompt: '[SYSTEM] Dispatch check-in\n\nYou have been idle for ~10 minutes.',
+      origin: 'ion-dev',
+      kind: 'checkin',
+      machineAuthored: true,
+    } as any)
+
+    const msgs = mainInstance(state.conversationPanes, 'tab1')?.messages ?? []
+    expect(msgs.filter((m: any) => m.role === 'user')).toHaveLength(0)
+    expect(msgs).toHaveLength(0)
+  })
+
+  // The divider itself, from the event the engine emits on the degraded arm.
+  // Together with the test above this pins the full rendering: one divider,
+  // zero user bubbles.
+  it('renders a degraded self-steer divider without resolving a pending bubble', () => {
+    const { state, slice } = buildHarness()
+    state.conversationPanes.get('tab1')!.instances[0].messages = [{
+      id: 'pending', role: 'user', content: 'user steer', timestamp: Date.now(), steerPending: true,
+    }] as any
+    slice.handleNormalizedEvent('tab1', { type: 'steer_degraded', messageLength: 42 } as any)
+
+    const msgs = mainInstance(state.conversationPanes, 'tab1')?.messages ?? []
+    expect(msgs).toHaveLength(2)
+    expect(msgs[0].steerPending).toBe(true)
+    expect(msgs[0].steerApplied).toBeUndefined()
+    expect(msgs[1].role).toBe('system')
+    expect(isSteerAppliedDivider(msgs[1].content)).toBe(true)
   })
 })

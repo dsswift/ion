@@ -14,9 +14,8 @@
         "staleWhen": ["desktop/package-lock.json"]
       },
       {
-        "path": "graphify-out",
-        "build": "make graph-refresh",
-        "staleWhen": []
+        "path": "graphify-out/graph.json",
+        "link": true
       }
     ],
     "setup": "make bootstrap"

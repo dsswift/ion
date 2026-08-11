@@ -74,7 +74,9 @@ type EngineEvent struct {
 	// their optimistic user row to this id so history loads dedup against it
 	// even when the run never reaches a message_end (cancel, mid-stream
 	// failure). Never carries content. See types.UserTurnPersistedEvent.
-	UserTurnEntryID string `json:"userTurnEntryId,omitempty"`
+	UserTurnEntryID             string `json:"userTurnEntryId,omitempty"`
+	UserTurnSlashModelAlias     string `json:"userTurnSlashModelAlias,omitempty"`
+	UserTurnSlashModelEffective string `json:"userTurnSlashModelEffective,omitempty"`
 
 	// engine_tool_start
 	ToolName string `json:"toolName,omitempty"`
@@ -134,6 +136,11 @@ type EngineEvent struct {
 	// echoing the message body back over the wire. See
 	// SteerInjectedEvent for the underlying normalized variant.
 	SteerMessageLength int `json:"steerMessageLength,omitempty"`
+
+	// engine_steer_degraded — character count of a ctx.steerSelf delivery
+	// accepted as a fresh prompt because no owning run was live. Distinct from
+	// SteerMessageLength: no run-loop steer channel drained this message.
+	SteerDegradedMessageLength int `json:"steerDegradedMessageLength,omitempty"`
 
 	// engine_prompt_injected — an extension injected a prompt via
 	// ctx.sendPrompt and a run started on it; no client submitted this

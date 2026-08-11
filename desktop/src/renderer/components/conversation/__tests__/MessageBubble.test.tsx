@@ -47,13 +47,21 @@ beforeAll(() => {
     openExternal: () => {},
     getFavicon: () => Promise.resolve(null),
   }
+  // TableScrollWrapper (shared with AssistantMessage) observes its scroller to
+  // decide the fade mask. jsdom ships no ResizeObserver, so a markdown table in
+  // a user bubble would throw on mount without this.
+  ;(globalThis as any).ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
 })
 
 const LONG_UNBREAKABLE =
   'https://example.com/' + 'a'.repeat(400) + '/path/that/never/wraps?q=' + 'z'.repeat(200)
 
-function userMessage(content: string): Message {
-  return { id: 'm1', role: 'user', content, timestamp: 0 }
+function userMessage(content: string, fields: Partial<Message> = {}): Message {
+  return { id: 'm1', role: 'user', content, timestamp: 0, ...fields }
 }
 
 let container: HTMLDivElement | null = null
@@ -124,6 +132,44 @@ describe('MessageBubble — attachment marker stripping', () => {
   })
 })
 
+describe('MessageBubble — slash model provenance', () => {
+  it('renders configured slash model as a separate attachment-style pill', () => {
+    const el = renderBubble(userMessage('/align review changes', {
+      slashCommand: '/align',
+      slashArgs: 'review changes',
+      slashModelAlias: 'standard',
+      slashModelEffective: 'dci-marketing/gpt-5.6-terra',
+    }))
+
+    const modelPill = el.querySelector('[data-slash-model-pill]')
+    expect(modelPill).not.toBeNull()
+    expect(modelPill?.textContent).toBe('Standard · GPT 5.6 Terra')
+    expect(modelPill?.querySelector('svg')).not.toBeNull()
+    expect((modelPill as HTMLElement).style.borderRadius).toBe('10px')
+    expect(modelPill?.parentElement?.firstElementChild).not.toBe(modelPill)
+  })
+
+  it('renders model pill when live event stamps provenance before slash metadata', () => {
+    const el = renderBubble(userMessage('/align', {
+      slashModelAlias: 'standard',
+      slashModelEffective: 'gpt-5.6-terra',
+    }))
+
+    const modelPill = el.querySelector('[data-slash-model-pill]')
+    expect(modelPill).not.toBeNull()
+    expect(modelPill?.textContent).toBe('Standard · GPT 5.6 Terra')
+  })
+
+  it('omits model pill when slash command has no model provenance', () => {
+    const el = renderBubble(userMessage('/clear', {
+      slashCommand: '/clear',
+      slashArgs: '',
+    }))
+
+    expect(el.querySelector('[data-slash-model-pill]')).toBeNull()
+  })
+})
+
 // ─── Layout containment ───
 
 // A user message whose collapsible wrapper engages (>600 chars) AND carries a
@@ -190,5 +236,132 @@ describe('MessageBubble — left-edge overflow containment', () => {
     const cls = prose!.className
     expect(cls).toContain('min-w-0')
     expect(cls).toContain('overflow-hidden')
+  })
+})
+
+// ─── Verbatim whitespace ───
+
+describe('MessageBubble — verbatim whitespace', () => {
+  // The paste from the bug report. Hard-wrapped lines with a blank-line break:
+  // before the fix every single newline collapsed to a space and the whole thing
+  // reflowed into one paragraph.
+  const TRANSCRIPT = [
+    'λ ssh josh@192.168.86.166',
+    'Linux hass-debian 6.1.0-51-amd64 #1 SMP PREEMPT_DYNAMIC',
+    '',
+    'The programs included with the Debian GNU/Linux system are free software;',
+    'the exact distribution terms for each program are described in the',
+    'individual files in /usr/share/doc/*/copyright.',
+  ].join('\n')
+
+  /**
+   * The paragraph that owns `pre-wrap`, i.e. the one whose whitespace actually
+   * renders as typed. Asserting on `el.textContent` alone is NOT sufficient:
+   * textContent preserves newlines even when CSS collapses them visually, so a
+   * text-only assertion passes on the unfixed code.
+   */
+  function verbatimParagraphs(el: HTMLElement): HTMLElement[] {
+    return [...el.querySelectorAll('p')].filter(
+      (n) => (n as HTMLElement).style.whiteSpace === 'pre-wrap',
+    ) as HTMLElement[]
+  }
+
+  it('keeps every newline of a pasted console transcript', () => {
+    const el = renderBubble(userMessage(TRANSCRIPT))
+    const verbatim = verbatimParagraphs(el)
+    // Both paragraphs of the transcript render verbatim (the blank line between
+    // them is a real paragraph break, which markdown keeps).
+    expect(verbatim).toHaveLength(2)
+    const text = verbatim.map((p) => p.textContent).join('\n')
+    expect(text).toContain('are free software;\nthe exact distribution terms')
+    expect(text).toContain('described in the\nindividual files')
+  })
+
+  it('preserves repeated blank lines between every text line', () => {
+    const source = 'first line\n\n\nsecond line\n\n\nthird line'
+    const el = renderBubble(userMessage(source))
+    const gaps = [...el.querySelectorAll('[data-ion-blank-lines]')] as HTMLElement[]
+    expect(gaps).toHaveLength(2)
+    expect(gaps.map((gap) => gap.dataset.ionBlankLines)).toEqual(['2', '2'])
+    expect(gaps.map((gap) => gap.style.height)).toEqual(['2lh', '2lh'])
+    expect([...el.querySelectorAll('p')].map((p) => (p as HTMLElement).style.margin)).toEqual(['', '', ''])
+  })
+
+  it('distinguishes one blank line from three blank lines', () => {
+    const el = renderBubble(userMessage('a\n\nb\n\n\n\nc'))
+    const gaps = [...el.querySelectorAll('[data-ion-blank-lines]')] as HTMLElement[]
+    expect(gaps.map((gap) => gap.dataset.ionBlankLines)).toEqual(['1', '3'])
+  })
+
+  it('keeps continuation-line indentation', () => {
+    const el = renderBubble(userMessage('trace:\n      at frame one\n      at frame two'))
+    const verbatim = verbatimParagraphs(el)
+    expect(verbatim).toHaveLength(1)
+    expect(verbatim[0].textContent).toContain('trace:\n      at frame one\n      at frame two')
+  })
+
+  it('applies pre-wrap to the paragraph carrying preserved newlines', () => {
+    const el = renderBubble(userMessage('line one\nline two'))
+    const p = el.querySelector('p') as HTMLElement | null
+    expect(p).not.toBeNull()
+    expect(p!.style.whiteSpace).toBe('pre-wrap')
+  })
+
+  it('does NOT apply pre-wrap to a single-line paragraph', () => {
+    // Scoping matters: pre-wrap is only for elements that own restored
+    // whitespace, never blanket-applied.
+    const el = renderBubble(userMessage('just one line'))
+    const p = el.querySelector('p') as HTMLElement | null
+    expect(p).not.toBeNull()
+    expect(p!.style.whiteSpace).toBe('')
+  })
+
+  it('renders a hard break as exactly one <br> with no phantom blank line', () => {
+    // This is why pre-wrap is NOT on the container: remark-rehype emits a
+    // structural "\n" text node immediately after every <br>, which a container
+    // rule would render as a second, empty line.
+    const el = renderBubble(userMessage('line one  \nline two'))
+    const p = el.querySelector('p') as HTMLElement | null
+    expect(p).not.toBeNull()
+    expect(p!.querySelectorAll('br').length).toBe(1)
+    expect(p!.style.whiteSpace).toBe('')
+  })
+
+  it('renders a list without blank rows between items', () => {
+    // Same hazard: structural newlines sit between <li> siblings.
+    const el = renderBubble(userMessage('- alpha\n- beta\n'))
+    const ul = el.querySelector('ul') as HTMLElement | null
+    expect(ul).not.toBeNull()
+    expect(ul!.querySelectorAll('li').length).toBe(2)
+    // The list itself must not be marked for pre-wrap.
+    expect(ul!.style.whiteSpace).toBe('')
+  })
+
+  it('renders a table without blank rows', () => {
+    const el = renderBubble(userMessage('| h1 | h2 |\n| -- | -- |\n| a | b |\n'))
+    const table = el.querySelector('table') as HTMLElement | null
+    expect(table).not.toBeNull()
+    expect(table!.style.whiteSpace).toBe('')
+  })
+})
+
+// ─── Markdown still renders ───
+
+describe('MessageBubble — markdown survives the whitespace fix', () => {
+  it('renders a fenced code block as a pre', () => {
+    const el = renderBubble(userMessage('```sh\necho hi\n```\n'))
+    const pre = el.querySelector('pre')
+    expect(pre).not.toBeNull()
+    expect(pre!.textContent).toContain('echo hi')
+  })
+
+  it('renders bold as a strong element', () => {
+    const el = renderBubble(userMessage('this is **bold** text'))
+    expect(el.querySelector('strong')?.textContent).toBe('bold')
+  })
+
+  it('renders a heading', () => {
+    const el = renderBubble(userMessage('# Title\n\nbody'))
+    expect(el.querySelector('h1')?.textContent).toBe('Title')
   })
 })

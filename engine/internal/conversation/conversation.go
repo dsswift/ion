@@ -69,6 +69,14 @@ type MessageData struct {
 	// "extension" | "ion" | "claude" | "skill" | "project". Display provenance
 	// only; lets a consumer label the pill by origin. Empty for ordinary prompts.
 	SlashSource string `json:"slashSource,omitempty"`
+	// SlashModelAlias is the model string from the slash command's frontmatter
+	// (`model:` key). Provenance only. Empty when no model hint was declared.
+	SlashModelAlias string `json:"slashModelAlias,omitempty"`
+	// SlashModelEffective is the model the engine resolved for this run after
+	// applying tier resolution and documented precedence. It is provenance only;
+	// an explicit per-prompt model override wins over slash frontmatter. Empty
+	// when no model was resolved.
+	SlashModelEffective string `json:"slashModelEffective,omitempty"`
 
 	// DisplayOnly marks an entry that belongs in the tree/scrollback (so the
 	// user sees it and it survives reload) but must NOT be reconstructed into
@@ -88,6 +96,11 @@ type MessageData struct {
 	// ordinary user turn with no special classification. Additive (omitempty):
 	// absent on every legacy entry, which correctly reads as an ordinary turn.
 	InjectionKind string `json:"injectionKind,omitempty"`
+
+	// DeliveryIDs identifies engine-owned deliveries represented by this message.
+	// It is persistence metadata only: providers never receive it. A retry uses
+	// these stable IDs to avoid adding an already-injected completion twice.
+	DeliveryIDs []string `json:"deliveryIds,omitempty"`
 
 	// MachineAuthored reports whether an engine-side actor authored this turn
 	// rather than a user, derived from InjectionKind at write time. Persisted
@@ -355,6 +368,56 @@ func AddUserMessage(conv *Conversation, content any) *SessionEntry {
 	return nil
 }
 
+// AddUserMessageWithDeliveryIDs adds one classified user message atomically and
+// returns false when every delivery ID is already represented in the persisted
+// tree. All supplied IDs map to one message, so a retry cannot duplicate a
+// batch of child completions.
+func AddUserMessageWithDeliveryIDs(conv *Conversation, content any, kind string, deliveryIDs []string) bool {
+	if len(deliveryIDs) == 0 {
+		AddUserMessageWithKind(conv, content, kind)
+		return true
+	}
+	blocks := toContentBlocks(content)
+	wanted := make(map[string]struct{}, len(deliveryIDs))
+	for _, id := range deliveryIDs {
+		wanted[id] = struct{}{}
+	}
+
+	conv.lock()
+	defer conv.unlock()
+	for _, entry := range conv.Entries {
+		message, ok := entry.Data.(MessageData)
+		if !ok {
+			continue
+		}
+		for _, id := range message.DeliveryIDs {
+			delete(wanted, id)
+		}
+	}
+	if len(wanted) == 0 {
+		return false
+	}
+
+	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: blocks})
+	if conv.Entries != nil {
+		ids := make([]string, 0, len(wanted))
+		for _, id := range deliveryIDs {
+			if _, remains := wanted[id]; remains {
+				ids = append(ids, id)
+			}
+		}
+		entry := appendEntryLocked(conv, EntryMessage, MessageData{
+			Role:            "user",
+			Content:         blocks,
+			InjectionKind:   kind,
+			MachineAuthored: types.InjectionKind(kind).IsMachineToMachine(),
+			DeliveryIDs:     ids,
+		}, "")
+		conv.Messages[len(conv.Messages)-1].EntryID = entry.ID
+	}
+	return true
+}
+
 // AddUserMessageWithKind is the kind-aware variant of AddUserMessage. It
 // stamps InjectionKind on the persisted entry, plus the MachineAuthored flag
 // derived from it, so consumers can classify the injection on historical
@@ -401,6 +464,12 @@ type SlashInvocation struct {
 	// Source records where the template resolved from: "extension" | "ion" |
 	// "claude" | "skill" | "project".
 	Source string
+	// ModelAlias is the model string from the command's frontmatter (`model:`).
+	// Empty when the command declared no model hint.
+	ModelAlias string
+	// ModelEffective is the model the engine resolved for this run after
+	// applying the frontmatter hint. Empty when no model was resolved.
+	ModelEffective string
 }
 
 // AddUserMessageWithInvocation appends a user turn whose LLM-visible content
@@ -440,12 +509,14 @@ func AddUserMessageWithInvocation(conv *Conversation, expandedContent any, inv S
 			display = inv.Command + " " + inv.Args
 		}
 		entry := appendEntryLocked(conv, EntryMessage, MessageData{
-			Role:         "user",
-			Content:      []types.LlmContentBlock{textBlock(display)},
-			LlmContent:   expandedBlocks,
-			SlashCommand: inv.Command,
-			SlashArgs:    inv.Args,
-			SlashSource:  inv.Source,
+			Role:                "user",
+			Content:             []types.LlmContentBlock{textBlock(display)},
+			LlmContent:          expandedBlocks,
+			SlashCommand:        inv.Command,
+			SlashArgs:           inv.Args,
+			SlashSource:         inv.Source,
+			SlashModelAlias:     inv.ModelAlias,
+			SlashModelEffective: inv.ModelEffective,
 		}, "")
 		conv.Messages[len(conv.Messages)-1].EntryID = entry.ID
 		return entry

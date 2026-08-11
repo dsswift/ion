@@ -14,6 +14,7 @@ import {
   updateMember, updateAllStale, assembleWorkspace, refreshStaleness, sourceBranchTip,
 } from '../integration/bench-ops'
 import { prepareConflictResolution } from '../integration/bench-resolve'
+import { reconcileCompletedBenchResolution } from '../integration/bench-resolution-completion'
 import { benchForPath } from '../integration/bench-attribution-support'
 import { countRerereRecordings, discardAllRerereRecordings, forgetRerereRecordings } from '../integration/bench-rerere-purge'
 import { prepareVerificationAnalysis, discardVerificationRecordingsAndReassemble } from '../integration/bench-ops'
@@ -170,6 +171,17 @@ export function registerBenchIpc(): void {
       const result = await discardVerificationRecordingsAndReassemble(repoPath, sourceBranch, branchNames)
       if (!result.ok) warn('discard verification recordings failed', { source_branch: sourceBranch, error: result.error ?? '' })
       return result
+    },
+  )
+
+  ipcMain.handle(
+    IPC.BENCH_RECONCILE_RESOLUTION,
+    async (_e, { directory }: { directory: string }) => {
+      if (!isValidProjectPath(directory)) {
+        warn('resolution reconciliation rejected invalid directory', { directory })
+        return { reconciled: false }
+      }
+      return { reconciled: await reconcileCompletedBenchResolution(directory) }
     },
   )
 

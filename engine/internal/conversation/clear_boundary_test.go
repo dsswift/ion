@@ -46,7 +46,7 @@ import (
 //     (a) Messages is nil — the agent context is empty.
 //     (b) GetContextUsage returns Estimated=true (no assistant messages to scan).
 //     (c) The .tree.jsonl file has exactly N+1 non-header lines — the original
-//         N message entries plus 1 EntryCleared, all preserved.
+//     N message entries plus 1 EntryCleared, all preserved.
 //     (d) LoadMessages returns exactly one MarkerKind=="clear" row.
 //
 // (c)+(d) are the hard halves: (c) proves /clear appends to the tree rather
@@ -275,6 +275,82 @@ func TestClear_RestartReattach(t *testing.T) {
 	}
 	if clearMarkers != 1 {
 		t.Errorf("restart: LoadMessages got %d MarkerKind==\"clear\" rows, want 1", clearMarkers)
+	}
+}
+
+func TestClear_PostClearSaveKeepsOnlyPostClearLLMContext(t *testing.T) {
+	dir := t.TempDir()
+	const id = "clear-post-turn-boundary"
+
+	conv := CreateConversation(id, "system prompt", "test-model")
+	AddUserMessage(conv, "large pre-clear user turn")
+	AddAssistantMessage(conv,
+		[]types.LlmContentBlock{{Type: "text", Text: "large pre-clear assistant turn"}},
+		types.LlmUsage{InputTokens: 900, OutputTokens: 50})
+	if err := Save(conv, dir); err != nil {
+		t.Fatalf("seed Save: %v", err)
+	}
+
+	// This is clearConversationCore's durable state: all prior entries remain
+	// tree-visible, but the LLM message slice is deliberately empty.
+	cleared, err := Load(id, dir)
+	if err != nil {
+		t.Fatalf("pre-clear Load: %v", err)
+	}
+	cleared.Messages = nil
+	AppendEntry(cleared, EntryMessage, MessageData{
+		Role: "user", Content: "/clear", SlashCommand: "/clear", SlashSource: "ion", DisplayOnly: true,
+	})
+	AppendEntry(cleared, EntryCleared, ClearedData{})
+
+	// Model the first post-clear slash command. The tree stores the raw pill;
+	// the LLM must retain its expanded body and response only.
+	AddUserMessageWithInvocation(cleared, "expanded /squash instructions", SlashInvocation{
+		Command: "/squash",
+		Source:  "ion",
+	})
+	AddAssistantMessage(cleared,
+		[]types.LlmContentBlock{{Type: "text", Text: "post-clear response"}},
+		types.LlmUsage{InputTokens: 123, OutputTokens: 25})
+	if err := Save(cleared, dir); err != nil {
+		t.Fatalf("post-clear Save: %v", err)
+	}
+
+	reloaded, err := Load(id, dir)
+	if err != nil {
+		t.Fatalf("post-clear Load: %v", err)
+	}
+	if len(reloaded.Messages) != 2 {
+		t.Fatalf("reloaded LLM context has %d messages, want post-clear user + assistant only: %+v", len(reloaded.Messages), reloaded.Messages)
+	}
+	blocks := contentToBlocks(reloaded.Messages[0].Content)
+	if len(blocks) != 1 || blocks[0].Text != "expanded /squash instructions" {
+		t.Errorf("reloaded post-clear user content = %#v, want expanded slash instructions", reloaded.Messages[0].Content)
+	}
+	if reloaded.Messages[1].Usage == nil || reloaded.Messages[1].Usage.InputTokens != 123 {
+		t.Errorf("reloaded post-clear assistant usage = %#v, want InputTokens=123", reloaded.Messages[1].Usage)
+	}
+	usage := GetContextUsage(reloaded, 2_000)
+	if usage.Estimated || usage.Tokens != 123 {
+		t.Errorf("post-clear context usage = %+v, want exact 123-token post-clear baseline", usage)
+	}
+
+	// Full history stays available to transcript consumers. The clear marker and
+	// both pre-clear entries must survive alongside the post-clear suffix.
+	if len(reloaded.Entries) != 6 {
+		t.Errorf("tree entries = %d, want 6 (pre-clear pair, clear pair, post-clear pair)", len(reloaded.Entries))
+	}
+	transcript, err := LoadMessages(id, dir)
+	if err != nil {
+		t.Fatalf("LoadMessages: %v", err)
+	}
+	var sawPreClear, sawMarker bool
+	for _, msg := range transcript {
+		sawPreClear = sawPreClear || msg.Content == "large pre-clear user turn"
+		sawMarker = sawMarker || msg.MarkerKind == "clear"
+	}
+	if !sawPreClear || !sawMarker {
+		t.Errorf("transcript lost preserved clear history: sawPreClear=%t sawMarker=%t", sawPreClear, sawMarker)
 	}
 }
 

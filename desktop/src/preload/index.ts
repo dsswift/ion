@@ -258,6 +258,7 @@ const api: IonAPI = {
   benchDiscardVerificationRecordings: (repoPath, sourceBranch, branchNames) =>
     ipcRenderer.invoke(IPC.BENCH_DISCARD_VERIFICATION_RECORDINGS, { repoPath, sourceBranch, branchNames }),
   benchRefreshStaleness: (repoPath, sourceBranch) => ipcRenderer.invoke(IPC.BENCH_REFRESH_STALENESS, { repoPath, sourceBranch }),
+  benchReconcileResolution: (directory) => ipcRenderer.invoke(IPC.BENCH_RECONCILE_RESOLUTION, { directory }),
   gitWorktreeAppraise: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_APPRAISE, { worktreePath, sourceBranch }),
   gitWorktreeRetire: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_RETIRE, args),
   gitWorktreeRetirePreview: (worktreePath) => ipcRenderer.invoke(IPC.GIT_WORKTREE_RETIRE_PREVIEW, { worktreePath }),

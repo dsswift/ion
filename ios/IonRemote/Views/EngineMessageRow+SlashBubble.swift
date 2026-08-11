@@ -66,6 +66,70 @@ extension Message {
         }
         return parseSlashCommand(fallbackText)
     }
+
+    /// Format model provenance badge text from the engine-resolved alias and
+    /// effective model name. Returns e.g. "Standard · GPT-5.6 Terra" when both
+    /// are present, just one when only one is set, or nil when neither exists.
+    var slashModelDisplay: String? {
+        let alias = slashModelAlias.map { value in
+            guard let first = value.first else { return value }
+            return first.uppercased() + value.dropFirst()
+        }
+        let bareModel = slashModelEffective?.split(separator: "/").last.map(String.init)
+        let model = bareModel.flatMap(formatSlashModelLabel)
+        switch (alias, model) {
+        case let (alias?, model?):
+            return "\(alias) · \(model)"
+        case let (alias?, nil):
+            return alias
+        case let (nil, model?):
+            return model
+        case (nil, nil):
+            return nil
+        }
+    }
+}
+
+private let gptSlashModelPattern: NSRegularExpression = {
+    return try! NSRegularExpression(pattern: #"^gpt-(\d+)[.-](\d+)-([a-z][a-z0-9-]*)$"#)
+}()
+
+private func formatSlashModelLabel(_ model: String) -> String {
+    let normalized = model.replacingOccurrences(
+        of: #"\[[^\]]+\]"#,
+        with: "",
+        options: .regularExpression
+    ).trimmingCharacters(in: .whitespacesAndNewlines)
+    let nsModel = normalized as NSString
+    let range = NSRange(location: 0, length: nsModel.length)
+    if let match = gptSlashModelPattern.firstMatch(in: normalized, range: range), match.numberOfRanges == 4 {
+        let major = nsModel.substring(with: match.range(at: 1))
+        let minor = nsModel.substring(with: match.range(at: 2))
+        let variant = nsModel.substring(with: match.range(at: 3))
+        return "GPT \(major).\(minor) \(variant.prefix(1).uppercased())\(variant.dropFirst())"
+    }
+
+    let compact = normalized
+        .replacingOccurrences(of: "claude-", with: "")
+        .replacingOccurrences(of: #"-\d{8}$"#, with: "", options: .regularExpression)
+    let familyVersion = compact.range(
+        of: #"^([a-z]+)-(\d+)-(\d+)$"#,
+        options: .regularExpression
+    )
+    if let familyVersion {
+        let captures = compact[familyVersion].split(separator: "-")
+        guard captures.count == 3 else { return normalized }
+        let family = captures[0].prefix(1).uppercased() + captures[0].dropFirst().lowercased()
+        return "\(family) \(captures[1]).\(captures[2])"
+    }
+    let familyMajor = compact.range(of: #"^([a-z]+)-(\d+)$"#, options: .regularExpression)
+    if let familyMajor {
+        let captures = compact[familyMajor].split(separator: "-")
+        guard captures.count == 2 else { return normalized }
+        let family = captures[0].prefix(1).uppercased() + captures[0].dropFirst().lowercased()
+        return "\(family) \(captures[1])"
+    }
+    return normalized
 }
 
 // MARK: - EngineMessageRow slash bubble
@@ -85,9 +149,32 @@ extension EngineMessageRow {
                 .background(theme.accent.opacity(0.12))
                 .clipShape(Capsule())
 
-            // Args text (omitted when command has no arguments)
+            // Model provenance uses same compact capsule language as message
+            // attachments, but remains non-interactive run metadata.
+            if let modelDisplay = message.slashModelDisplay {
+                HStack(spacing: 3) {
+                    Image(systemName: "brain")
+                        .font(.caption2)
+                    Text(modelDisplay)
+                        .font(.caption2.weight(.medium))
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color(.secondarySystemFill))
+                .clipShape(Capsule())
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("slash-model-pill")
+            }
+
+            // Args use same verbatim-markdown renderer as plain user bubbles,
+            // preserving multiline invocations instead of reflowing them.
             if !args.isEmpty {
-                Text(args)
+                MarkdownContentView(
+                    blocks: MarkdownFormatter.parse(args, verbatim: true),
+                    blockSpacing: 0,
+                    blankLineHeight: 20
+                )
                     .textSelection(.enabled)
             }
         }

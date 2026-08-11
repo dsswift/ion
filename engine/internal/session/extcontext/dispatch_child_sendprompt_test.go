@@ -28,6 +28,12 @@ func (s *sendPromptRecordingSA) SendPromptWithKind(text string, _ string, _ []st
 	return s.SendPrompt(text, "", nil)
 }
 
+// Degraded-steer delivery is not what this test exercises; it delegates so
+// the fake satisfies SessionAccessor and behaves like the kind-aware send.
+func (s *sendPromptRecordingSA) SendPromptDegradedSteer(text string, model string, bash []string, kind string) error {
+	return s.SendPromptWithKind(text, model, bash, kind)
+}
+
 // TestLoadChildExtension_WiresSetOnSendMessage pins the fix for Bug 3:
 // loadChildExtension must call SetOnSendMessage on the child extension host
 // so that background lifecycle callbacks (onChildQuestion → bubbleToParent →

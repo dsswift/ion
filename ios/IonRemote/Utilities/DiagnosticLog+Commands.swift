@@ -251,6 +251,9 @@ extension DiagnosticLog {
         case .reportFocus(let tabId, let interceptEnabled):
             log("CMD: reportFocus tabId=\(tabId?.prefix(8) ?? "nil") interceptEnabled=\(interceptEnabled)", tag: "ipc", level: .info)
 
+        case .reportMobileAuth(let username, _, _, let tenant, _, let clearIdentity, let status, let reason, _):
+            log("CMD: reportMobileAuth has_username=\(!(username ?? "").isEmpty) has_tenant=\(!(tenant ?? "").isEmpty) clear_identity=\(clearIdentity) status=\(status ?? "unknown") reason=\(reason ?? "none")", tag: "ipc", level: .info)
+
         case .requestResourceContent(let kind, let resourceId):
             log("CMD: requestResourceContent kind=\(kind) resourceId=\(resourceId.prefix(12))", tag: "ipc", level: .info)
 

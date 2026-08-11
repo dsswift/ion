@@ -4,7 +4,8 @@ import type { PreferencesState } from './preferences-types'
 import { SETTINGS_DEFAULTS } from './preferences-types'
 import { isThinkingEffort } from '../shared/thinking-options'
 import { isAiAssistWorkflowId, type AiAssistWorkflowId } from '../shared/ai-assist-workflows'
-import { rError } from './rendererLogger'
+import { rError, rInfo } from './rendererLogger'
+import { sanitizeRecentDirectories } from '../shared/recent-directories'
 
 export function saveSettings(s: Record<string, unknown>): void {
   window.ion?.saveSettings(s)?.catch((err) => rError('preferences', 'saveSettings failed; user settings not persisted', { error: String(err) }))
@@ -46,8 +47,14 @@ export function loadPersistedSettings(
     const expanded = typeof disk.expandedUI === 'boolean' ? disk.expandedUI : false
     const ultraWide = typeof disk.ultraWide === 'boolean' ? disk.ultraWide : false
     const baseDir = typeof disk.defaultBaseDirectory === 'string' ? disk.defaultBaseDirectory : ''
-    const recentDirs = Array.isArray(disk.recentBaseDirectories) ? disk.recentBaseDirectories.filter((d: unknown) => typeof d === 'string').slice(0, 12) : []
-    const dirUsageCounts = (disk.directoryUsageCounts && typeof disk.directoryUsageCounts === 'object' && !Array.isArray(disk.directoryUsageCounts)) ? Object.fromEntries(Object.entries(disk.directoryUsageCounts as Record<string, unknown>).filter(([k, v]) => typeof k === 'string' && typeof v === 'number')) as Record<string, number> : {}
+    const persistedRecentDirs = Array.isArray(disk.recentBaseDirectories) ? disk.recentBaseDirectories.filter((d: unknown) => typeof d === 'string').slice(0, 12) : []
+    const persistedDirUsageCounts = (disk.directoryUsageCounts && typeof disk.directoryUsageCounts === 'object' && !Array.isArray(disk.directoryUsageCounts)) ? Object.fromEntries(Object.entries(disk.directoryUsageCounts as Record<string, unknown>).filter(([k, v]) => typeof k === 'string' && typeof v === 'number')) as Record<string, number> : {}
+    // Worktrees and benches are rebuildable Ion-managed workspace paths, not
+    // user projects. Migrate legacy records during hydration, including their
+    // usage counters, so a retired workspace cannot return after restart.
+    const sanitizedRecents = sanitizeRecentDirectories(persistedRecentDirs, persistedDirUsageCounts)
+    const recentDirs = sanitizedRecents.directories
+    const dirUsageCounts = sanitizedRecents.usageCounts
     const expandTabSwitch = typeof disk.expandOnTabSwitch === 'boolean' ? disk.expandOnTabSwitch : true
     const bashCmd = typeof disk.bashCommandEntry === 'boolean' ? disk.bashCommandEntry : false
     // Pane proportions replaced the single Changes-vs-Graph ratio. A disk value
@@ -200,6 +207,12 @@ export function loadPersistedSettings(
       ? Object.fromEntries(Object.entries(disk.keyboardShortcuts as Record<string, unknown>).filter(([k, v]) => typeof k === 'string' && typeof v === 'string')) as Record<string, string>
       : {}
     setState({ selectedTheme, soundEnabled: sound, expandedUI: expanded, ultraWide, defaultBaseDirectory: baseDir, recentBaseDirectories: recentDirs, directoryUsageCounts: dirUsageCounts, expandOnTabSwitch: expandTabSwitch, bashCommandEntry: bashCmd, gitPanelPaneProportions: paneProportions, gitPanelHeight, fileExplorerHeight, gitPanelChangesOpen: changesOpen, gitPanelGraphOpen: graphOpen, gitPanelWorktreesOpen: worktreesOpen, expandToolResults: expandTools, terminalFontFamily: termFont, terminalFontSize: termSize, editorFontSize, conversationFontSize, previewFontSize, closeExplorerOnFileOpen: closeExplorer, openMarkdownInPreview: mdPreview, editorWordWrap: wordWrap, gitOpsMode, worktreeCompletionStrategy: wtStrategy, worktreeBranchDefaults: wtDefaults, worktreeSkipPrTitle: wtSkipPr, allowSettingsEdits: allowSettings, enableClaudeCompat: enableCompat, enableEarlyStopContinuation: enableEarlyStop, showTodoList: showTodo, agentPanelDefaultOpen, agentDetailPopup, unifiedTurnView, aiGeneratedTitles: aiTitles, hideOnExternalLaunch: hideExternal, tabGroupMode: tabGroupMode as TabGroupMode, tabGroups, autoGroupOrder, stashedManualGroups, stashedManualTabAssignments, inProgressGroupId, doneGroupId, planningGroupId, autoGroupMovement, commitCommand, aiAssistPromptOverrides, gitChangesTreeView: changesTreeView, keepExplorerOnCollapse: keepExplorer, keepTerminalOnCollapse: keepTerminal, keepGitPanelOnCollapse: keepGitPanel, keepStatusDrawerOnCollapse: keepStatusDrawer, defaultPermissionMode: permMode, quickTools, uiZoom, remoteEnabled, relayUrl, relayApiKey, lanServerPort, pairedDevices, streamThinkingToRemote, defaultThinkingEffort, remoteDisplay, engineDefaultModel, defaultEngineProfileId, engineProfiles, preferredModel, defaultTallConversation, defaultTallTerminal, tabRecoveryEnabled, tabRecoveryTimeoutSec, planModelSplitEnabled, planModeModel, implementModeModel, showImplementClearContext, gitWatcherIgnoredDirectories: gitWatcherIgnoredDirs, excludedResourceKinds, keyboardShortcuts })
+    if (sanitizedRecents.removed) {
+      saveSettings(getAllSettings(getState))
+      rInfo('preferences', 'removed ephemeral workspaces from persisted recent directories', {
+        removed_directory_count: persistedRecentDirs.length - recentDirs.length,
+      })
+    }
     applyTheme(selectedTheme)
     if (uiZoom !== 1) document.documentElement.style.zoom = String(uiZoom)
   })?.catch((err) => rError('preferences', 'loadSettings failed; using in-memory defaults', { error: String(err) }))

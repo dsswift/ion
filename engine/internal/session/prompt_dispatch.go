@@ -114,6 +114,13 @@ type PromptOverrides struct {
 	// MessageData.InjectionKind via appendInboundUserMessage so consumers
 	// can classify the turn on historical reload.
 	InjectionKind string
+
+	// SteerDegraded marks a prompt that began as a ctx.steerSelf delivery and
+	// became a fresh prompt because the owning run was not live. Forwarded onto
+	// RunOptions.SteerDegraded so the backend persists the same steer marker
+	// drainSteer writes for the live-run path. Orthogonal to InjectionKind —
+	// see the RunOptions field comment.
+	SteerDegraded bool
 }
 
 // SendPrompt dispatches a prompt to the session's backend run.
@@ -167,7 +174,6 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	}
 
 	requestID := fmt.Sprintf("%s-%d", key, time.Now().UnixMilli())
-	s.requestID = requestID
 	// Mint this run's trace ID under the same lock hold that assigns
 	// requestID, so the two identities for one run can never disagree. Scope
 	// is the run because a trace is one logical transaction: every log line
@@ -180,7 +186,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// ParentCtx assignment below, but the context this run carries must keep
 	// the ID it was dispatched with.
 	runTraceID := utils.NewTraceID()
-	s.runTraceID = runTraceID
+	s.setRunIdentity(requestID, runTraceID)
 	utils.LogWithFields(utils.LevelDebug, "session", "sendprompt: minted run trace id", map[string]any{"key": key, "run_id": requestID, "trace_id": runTraceID})
 	// A run is starting, so the session is no longer parked on outstanding
 	// background commands. Clear any park record here — under the same lock
@@ -238,6 +244,11 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// write plans to <project>/.ion/plans/.
 	opts := buildRunOptions(s, text, overrides)
 
+	// An explicit send_prompt.model is a published per-prompt override. Preserve
+	// it over slash frontmatter and conversation continuity; only its value, not
+	// model equality, proves caller intent.
+	hasExplicitModel := overrides != nil && overrides.Model != ""
+
 	// Slash-command resolution + expansion. When the client flagged this prompt
 	// as a slash invocation, resolve the template across the conventional roots
 	// and rewrite opts.Prompt to the EXPANDED body; the runloop persists the raw
@@ -247,12 +258,11 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// handled here — those route through SendCommand; this path owns the
 	// .md/skill/template resolution that was formerly a per-consumer fallback.
 	if overrides != nil && overrides.ResolveSlash {
-		resolved, failedCmd := m.resolveSlashIntoOpts(s, key, &opts)
+		resolved, failedCmd := m.resolveSlashIntoOpts(s, key, &opts, hasExplicitModel)
 		if !resolved {
+			s.clearRunIdentity()
+			m.unbindRunLocked(requestID)
 			m.mu.Unlock()
-			s.requestID = ""
-			s.runTraceID = "" // run over: the trace ends with it
-			m.unbindRun(requestID)
 			m.emitUnknownCommand(key, failedCmd)
 			return nil
 		}
@@ -269,6 +279,11 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		opts.ResolvedSlashCommand = s.pendingSlashInvocation.Command
 		opts.ResolvedSlashArgs = s.pendingSlashInvocation.Args
 		opts.ResolvedSlashSource = s.pendingSlashInvocation.Source
+		// Extension commands carry command frontmatter through ctx.sendPrompt's
+		// explicit per-prompt model override. Preserve alias before resolution.
+		if overrides != nil && overrides.Model != "" {
+			opts.ResolvedSlashModelAlias = overrides.Model
+		}
 		utils.LogWithFields(utils.LevelInfo, "session", "send prompt applied pending slash invocation", map[string]any{"session_id": key, "reason": opts.ResolvedSlashCommand, "count": len(opts.ResolvedSlashArgs)})
 		s.pendingSlashInvocation = nil
 	} else if s.pendingSlashInvocation != nil {
@@ -283,10 +298,12 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// preserves the model across desktop restarts where the tab UUID changes
 	// and the desktop loses its engineModelOverrides. The user can still
 	// explicitly override by selecting a different model in the picker.
-	if s.lastModel != "" && m.config != nil && opts.Model == m.config.DefaultModel && opts.Model != s.lastModel {
+	if s.lastModel != "" && !hasExplicitModel && opts.ResolvedSlashModelAlias == "" && m.config != nil && opts.Model == m.config.DefaultModel && opts.Model != s.lastModel {
 		utils.LogWithFields(utils.LevelInfo, "session", "prompt_dispatch: overriding default model with conversation model", map[string]any{"key": key, "model": opts.Model, "conversation_model": s.lastModel})
 		opts.Model = s.lastModel
 	}
+
+	finalizeSlashModelProvenance(&opts, key)
 
 	// Plan-file allocation: now that opts.Model is final, resolve the serving
 	// backend for this model so the directory choice is correct. For the api
@@ -338,8 +355,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// stays idle and immediately usable for the next prompt.
 	caps := m.resolvedBackend(opts.Model).Capabilities()
 	if opts.PlanMode && !caps.PlanMode {
-		s.requestID = ""
-		s.runTraceID = "" // run over: the trace ends with it
+		s.clearRunIdentity()
 		m.unbindRunLocked(requestID)
 		m.mu.Unlock()
 		reason := fmt.Sprintf("plan mode is not supported on the %s backend", caps.Kind)
@@ -414,6 +430,8 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 					"source":  source,
 				}, nil)
 			}
+			s.clearRunIdentity()
+			m.unbindRunLocked(requestID)
 			m.mu.Unlock()
 			m.emit(key, types.EngineEvent{
 				Type:         "engine_error",
@@ -466,11 +484,12 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// starting an inline run on the parent.
 	if opts.ResolvedSlashContext == "fork" {
 		m.forkResolvedSlash(s, key, &opts)
-		s.requestID = ""
-		s.runTraceID = "" // run over: the trace ends with it
+		m.mu.Lock()
+		s.clearRunIdentityFor(requestID)
+		m.unbindRunLocked(requestID)
+		m.mu.Unlock()
 		// Forked to a sub-agent — no inline run started on the parent, so
-		// clear the routing binding set at dispatch.
-		m.unbindRun(requestID)
+		// the parent run identity and routing binding are both cleared.
 		return nil
 	}
 
@@ -519,7 +538,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	}
 
 	m.mu.Lock()
-	s.lastModel = opts.Model
+	s.setCurrentModel(opts.Model)
 	s.lastContextWindow = promptCtxWindow
 	// Clear any retained permission denials from a prior task_complete —
 	// the user is dispatching a new prompt, which is implicitly the answer

@@ -86,7 +86,7 @@ export type EngineEvent =
   // their optimistic user row to this id so history loads dedup against it
   // even when the run never reaches a message_end (cancel, mid-stream
   // failure). Mirror of Go EngineEvent.UserTurnEntryID.
-  | { type: 'engine_user_turn_persisted'; userTurnEntryId: string }
+  | { type: 'engine_user_turn_persisted'; userTurnEntryId: string; userTurnSlashModelAlias?: string; userTurnSlashModelEffective?: string }
   | { type: 'engine_tool_start'; toolName: string; toolId: string }
   | { type: 'engine_tool_end'; toolId: string; result?: string; isError?: boolean }
   // engine_image_content — a single image produced during a run, either
@@ -186,6 +186,8 @@ export type EngineEvent =
   // already part of the conversation. See
   // engine/internal/types/normalized_event.go (SteerInjectedEvent).
   | { type: 'engine_steer_injected'; steerMessageLength: number }
+  // No owning run was live, so ctx.steerSelf delivered a fresh prompt instead.
+  | { type: 'engine_steer_degraded'; steerDegradedMessageLength: number }
   | { type: 'engine_prompt_injected'; injectedPrompt: string; injectedPromptOrigin?: string; injectedPromptKind?: string; injectedPromptMachineAuthored?: boolean }
   // engine_run_stalled — advisory event emitted by the run-progress watchdog
   // when a run records no forward progress for longer than the configured

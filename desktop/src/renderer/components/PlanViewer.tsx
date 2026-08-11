@@ -4,10 +4,10 @@ import remarkGfm from 'remark-gfm'
 import { FloatingPanel } from './FloatingPanel'
 import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
-import { useNavigableText, NavigableText, NavigableCode } from '../hooks/useNavigableLinks'
+import { useNavigableText, NavigableLink, NavigableCode, remarkNavigableLinks } from '../hooks/useNavigableLinks'
 import { rError } from '../rendererLogger'
 
-const REMARK_PLUGINS = [remarkGfm]
+const REMARK_PLUGINS = [remarkGfm, remarkNavigableLinks]
 
 interface PlanViewerProps {
   content: string
@@ -36,19 +36,11 @@ export const PlanViewer = React.memo(function PlanViewer({ content, fileName, fi
   )
 
   const markdownComponents = useMemo(() => ({
-    a: ({ href, children }: any) => (
-      <button
-        type="button"
-        className="underline decoration-dotted underline-offset-2 cursor-pointer"
-        style={{ color: colors.accent }}
-        onClick={() => {
-          if (href) void window.ion.openExternal(String(href))
-        }}
-      >
+    a: ({ node, href, children }: any) => (
+      <NavigableLink node={node} href={href} color={colors.accent} onOpenFile={handleOpenFile} onOpenUrl={onOpenUrl}>
         {children}
-      </button>
+      </NavigableLink>
     ),
-    text: ({ children }: any) => <NavigableText onOpenFile={handleOpenFile} onOpenUrl={onOpenUrl}>{children}</NavigableText>,
     code: ({ children, className, ...props }: any) => <NavigableCode className={className} onOpenFile={handleOpenFile} onOpenUrl={onOpenUrl} {...props}>{children}</NavigableCode>,
   }), [colors, handleOpenFile, onOpenUrl])
 

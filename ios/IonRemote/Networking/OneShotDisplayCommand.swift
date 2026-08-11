@@ -60,6 +60,7 @@ enum OneShotDisplayCommand {
         customName: String?,
         customIcon: String?,
         updatedAt: Date,
+        getCredential: (() async throws -> String)? = nil,
     ) async throws -> RemoteDisplayAck {
         let updatedAtMs = Int(updatedAt.timeIntervalSince1970 * 1000)
         let deviceIdShort = device.id.prefix(8)
@@ -119,6 +120,11 @@ enum OneShotDisplayCommand {
                 channelId: channelId,
                 sharedKey: sharedKey,
                 apnsToken: nil,
+                // An OIDC pairing must authenticate this sidecar with its OWN
+                // token; `effectiveAPIKey` is only a bootstrap value there and
+                // is routinely stale or empty. Interactive acquisition is
+                // acceptable on this path because the user tapped Save.
+                getCredential: getCredential,
             )
             tm.deviceId = device.id
             tm.deviceName = device.name

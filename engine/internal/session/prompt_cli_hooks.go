@@ -263,7 +263,9 @@ func (m *Manager) buildAgentToolHandler(s *engineSession, key, parentModel strin
 		// The ToolHandler signature carries no context; the dispatch is
 		// cancellable via the DispatchRegistry (session abort / recall), so a
 		// background context here is correct.
-		out, err := spawner(context.Background(), name, prompt, description, s.config.WorkingDirectory, model)
+		waitForCompletion, _ := input["wait_for_completion"].(bool) //nolint:errcheck // omitted means async
+		callCtx := tools.WithAgentWaitForCompletion(context.Background(), waitForCompletion)
+		out, err := spawner(callCtx, name, prompt, description, s.config.WorkingDirectory, model)
 		if err != nil {
 			utils.LogWithFields(utils.LevelWarn, "session.cli_dispatch", "ion_agent dispatch failed", map[string]any{
 				"key": key, "agent": name, "error": err.Error(),
@@ -274,8 +276,8 @@ func (m *Manager) buildAgentToolHandler(s *engineSession, key, parentModel strin
 			}
 			return &types.ToolResult{Content: fmt.Sprintf("%s failed: %s", label, err.Error()), IsError: true}, nil
 		}
-		utils.LogWithFields(utils.LevelInfo, "session.cli_dispatch", "ion_agent dispatch completed", map[string]any{
-			"key": key, "agent": name, "result_bytes": len(out),
+		utils.LogWithFields(utils.LevelInfo, "session.cli_dispatch", "ion_agent dispatch returned", map[string]any{
+			"key": key, "agent": name, "result_bytes": len(out), "wait_for_completion": waitForCompletion,
 		})
 		return &types.ToolResult{Content: out, IsError: false}, nil
 	}

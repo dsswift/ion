@@ -64,6 +64,54 @@ func TestResolveExtensionEntry_CandidateOrder(t *testing.T) {
 		}
 	})
 
+	t.Run("executable_main_resolves", func(t *testing.T) {
+		dir := t.TempDir()
+		mustWriteExecutable(t, filepath.Join(dir, "main"), "#!/bin/sh\nexit 0\n")
+		entry, err := resolveExtensionEntry(dir)
+		if err != nil {
+			t.Fatalf("resolveExtensionEntry: %v", err)
+		}
+		if filepath.Base(entry) != "main" {
+			t.Errorf("entry = %s, want main", entry)
+		}
+	})
+
+	t.Run("index_ts_beats_main", func(t *testing.T) {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "index.ts"), "// idx")
+		mustWriteExecutable(t, filepath.Join(dir, "main"), "#!/bin/sh\nexit 0\n")
+		entry, err := resolveExtensionEntry(dir)
+		if err != nil {
+			t.Fatalf("resolveExtensionEntry: %v", err)
+		}
+		if filepath.Base(entry) != "index.ts" {
+			t.Errorf("entry = %s, want index.ts (script candidates take precedence)", entry)
+		}
+	})
+
+	t.Run("non_executable_main_does_not_resolve", func(t *testing.T) {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, "main"), "not executable")
+		_, err := resolveExtensionEntry(dir)
+		if err == nil {
+			t.Fatal("expected error: a non-executable main must not resolve")
+		}
+		if !strings.Contains(err.Error(), "main") {
+			t.Errorf("error should name main among probed candidates, got %q", err.Error())
+		}
+	})
+
+	t.Run("main_directory_does_not_resolve", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(dir, "main"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		_, err := resolveExtensionEntry(dir)
+		if err == nil {
+			t.Fatal("expected error: a directory named main must not resolve")
+		}
+	})
+
 	t.Run("no_candidate_is_descriptive_error", func(t *testing.T) {
 		dir := t.TempDir()
 		_, err := resolveExtensionEntry(dir)
@@ -123,6 +171,16 @@ func TestHostLoad_DirectoryResolvesEntryPoint(t *testing.T) {
 func mustWrite(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+// mustWriteExecutable writes a file with the executable bit set. The native
+// entry-point probe requires mode&0111, so tests covering "main" resolution
+// cannot use mustWrite.
+func mustWriteExecutable(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
 		t.Fatalf("write %s: %v", path, err)
 	}
 }

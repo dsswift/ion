@@ -11,7 +11,25 @@
 
 Engine, desktop, and iOS each have their own `AGENTS.md` with subsystem-specific rules.
 
-SDK edits have a source-of-truth split (repo source vs. build-overwritten installed copy) — moved to [`engine/AGENTS.md`](engine/AGENTS.md) § "Extension SDK source location". Read it before changing any file under `engine/extensions/sdk/ion-sdk/` or touching `~/.ion/extensions/sdk/`.
+## Extension SDK source location
+
+The TypeScript SDK that extensions import lives in **two places**:
+
+| Location | Role |
+|----------|------|
+| `engine/extensions/sdk/ion-sdk/` | **Source of truth.** Edit here. |
+| `~/.ion/extensions/sdk/ion-sdk/` | **Installed copy.** Overwritten at build time. Never edit. |
+
+The **Go SDK** at `sdk/go/` (module `github.com/dsswift/ion/sdk/go`) has no such split: it is consumed by `go get`, never copied anywhere, and `install-assets` does not touch it. Edit it in place.
+
+The two SDKs are held in parity by tests, not convention — `sdk/go/parity_test.go` and `desktop/src/shared/__tests__/sdk-surface-sync.test.ts` both read generated goldens, so a hook or context method added to one SDK and not the other fails CI. After an engine-side hook change, regenerate:
+
+```bash
+cd engine && go test ./internal/extension/ -run TestSDKContractManifest -update
+cd sdk/go && go test -run TestGoSDKSurfaceManifest -update
+```
+
+The build process copies the repo source to the installed location. Any edit made only to `~/.ion/extensions/sdk/` will be lost on the next build. **Always edit `engine/extensions/sdk/ion-sdk/`** for SDK changes (types, runtime, or any other SDK file). The installed copy at `~/.ion/` is read-only from the agent's perspective.
 ## File-size caps (CI hard-fails above)
 
 | Language | Cap |
@@ -122,6 +140,8 @@ The graph is a starting point, not the authority. It tells you *where* to look; 
 
 Once a graph exists the hooks keep it current — `post-commit` for your own commits, `post-checkout` for branch switches, and Ion's own `post-merge` / `post-rewrite` for pulls, rebases, and amends (`scripts/graphify-rebuild.sh`). They re-extract changed files incrementally, AST-only, in a detached process, and write files without ever staging or committing them. Every one of them exits cleanly when graphify is absent, so a contributor without it sees no failures. Set `GRAPHIFY_SKIP_HOOK=1` to skip one rebuild.
 
+A provisioned worktree links its `graphify-out/graph.json` to its primary checkout, while keeping query cache files local. Query it normally from the worktree. Never run `graphify update` or `make graph` there: graph mutation belongs only in the primary checkout. `make graph-refresh` is a compatibility no-op that creates or validates the primary graph link for worktrees provisioned from an older manifest; it never refreshes a graph there.
+
 Because the rebuild is detached, it finishes a few seconds *after* the commit that triggered it closes. The graph is therefore always a moment behind. That is by design and requires no action.
 
 **To rebuild from scratch, run `make graph`.** It moves the existing graph aside, re-extracts, and restores the old one if extraction fails — no manual `rm -rf` needed, and a failed rebuild never leaves the clone with no graph. (`make graph-refresh` re-extracts incrementally into the existing one; `make graph-ensure` is the bootstrap-only build-if-absent path.) All three are cheap and offline: extraction is pure local tree-sitter (`graphify . --code-only`, skipping the docs/PDFs/images that would need an LLM backend), then `graphify cluster-only . --no-viz --no-label` partitions communities and writes `GRAPH_REPORT.md`. No API key, nothing leaves the machine. Reach for a rebuild to purge nodes that repeated incremental updates have left stale.
@@ -214,6 +234,7 @@ The following gates are **slow** — Docker container spin-up, full-network vuln
 | `desktop` | `desktop/` |
 | `relay` | `relay/` |
 | `ios` | `ios/` |
+| `sdk` | `sdk/` (the public Go extension SDK module) |
 | `docs` | `docs/` |
 | `repo` | root files or cross-cutting changes |
 | `ci` | `.github/` workflows and CI config |
@@ -887,7 +908,7 @@ builds. Ion materialises what the project declares in the committed
 `.ion/worktree.json`: each `seed` entry is cloned (copy-on-write), built with its
 own command, or copied, and the project's `setup` command runs afterward. A clone
 is a separate inode sharing blocks, so an install inside a worktree stays
-independent of the main clone — Ion never symlinks a shared dependency directory.
+independent of the main clone — Ion never symlinks a shared mutable dependency directory. A manifest can explicitly link a primary-owned read-mostly file such as a knowledge graph; that file is not a dependency tree and worktrees never build it.
 No manifest means no provisioning. Ion refuses to seed any path git does not
 ignore, so provisioning can never dirty `git status`. Reference:
 [`docs/configuration/worktree-json.md`](docs/configuration/worktree-json.md).

@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { darkColors } from '../../theme/palette-dark'
+import { remarkNavigableLinks } from '../../hooks/useNavigableLinks'
 import { makeMarkdownComponents, parseFenceMeta, extractCodeText } from './markdownRenderers'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -31,7 +32,7 @@ function renderMarkdown(md: string, variant: 'assistant' | 'user' = 'assistant')
   root = createRoot(container)
   act(() => {
     root!.render(
-      <Markdown remarkPlugins={[remarkGfm]} components={components}>{md}</Markdown>,
+      <Markdown remarkPlugins={[remarkGfm, remarkNavigableLinks]} components={components}>{md}</Markdown>,
     )
   })
   return container
@@ -101,6 +102,25 @@ describe('makeMarkdownComponents', () => {
     expect(chip).not.toBeNull()
     expect(chip.textContent).toContain('src/foo.ts')
     expect(chip.querySelector('svg')).not.toBeNull() // file-type icon
+    act(() => {
+      chip.dispatchEvent(new MouseEvent('click', { bubbles: true, metaKey: true }))
+    })
+    expect(onOpenFile).toHaveBeenCalledWith('src/foo.ts')
+  })
+
+  // Regression guard for the dead-`text`-component bug: a `text` entry in
+  // react-markdown's `components` map is never invoked (only tag-named
+  // components are mapped), so a bare file path in ordinary prose never went
+  // through NavigableText and cmd-click silently did nothing. Link detection
+  // now runs as the `remarkNavigableLinks` plugin, which rewrites the bare
+  // path into a real `link` node before the `a` override sees it — this test
+  // exercises that path through the actual factory the conversation
+  // components use, not just the underlying NavigableLink unit.
+  it('cmd-clicks a bare file path in prose (not inline code) as a chip that opens the file', () => {
+    const el = renderMarkdown('please read src/foo.ts today')
+    const chip = el.querySelector('[role="link"]') as HTMLElement
+    expect(chip).not.toBeNull()
+    expect(chip.textContent).toContain('src/foo.ts')
     act(() => {
       chip.dispatchEvent(new MouseEvent('click', { bubbles: true, metaKey: true }))
     })

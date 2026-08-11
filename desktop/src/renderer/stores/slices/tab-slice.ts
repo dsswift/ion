@@ -133,7 +133,6 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       }
 
       usePreferencesStore.getState().addRecentBaseDirectory(dir)
-      usePreferencesStore.getState().incrementDirectoryUsage(dir)
 
       // Worktree resolution runs BEFORE tab creation, and this ordering is the
       // whole point. createConversationTab eagerly starts an engine session in

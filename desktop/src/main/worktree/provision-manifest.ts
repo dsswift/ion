@@ -34,14 +34,20 @@ function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, 
 export const MANIFEST_RELATIVE_PATH = join('.ion', 'worktree.json')
 
 /**
- * One directory the worktree needs that git will not provide.
+ * One gitignored path the worktree needs that git will not provide.
  *
  * `path` is repo-relative and must be gitignored — seeding a tracked path would
  * dirty `git status`, which the seeder refuses (see provision-seed.ts).
  */
 export interface SeedEntry {
-  /** Repo-relative directory to materialise, e.g. `node_modules`. */
+  /** Repo-relative path to materialise, e.g. `node_modules`. */
   path: string
+  /**
+   * Link one regular source file from the primary checkout rather than creating
+   * an independent directory seed. Explicit opt-in only: shared mutable trees
+   * such as `node_modules` must always use the clone/build/copy ladder.
+   */
+  link?: boolean
   /**
    * Command that rebuilds this directory from scratch, e.g. `npm ci`. Used when
    * no copy-on-write clone is available, and by the staleness reconciler.
@@ -194,7 +200,7 @@ export function readProvisionManifest(repoPath: string): ProvisionPlan {
  * is the one way that invariant could be subverted by data rather than by code.
  */
 function normalizeSeedEntry(raw: unknown, file: string): SeedEntry | null {
-  const e = raw as { path?: unknown; build?: unknown; cwd?: unknown; staleWhen?: unknown }
+  const e = raw as { path?: unknown; link?: unknown; build?: unknown; cwd?: unknown; staleWhen?: unknown }
   if (!e || typeof e.path !== 'string' || !e.path.trim()) {
     warn('seed entry has no usable `path`; ignoring it', { path: file })
     return null
@@ -214,13 +220,19 @@ function normalizeSeedEntry(raw: unknown, file: string): SeedEntry | null {
   const staleWhen = Array.isArray(e.staleWhen)
     ? e.staleWhen.filter((s): s is string => typeof s === 'string' && !!s.trim() && isRepoRelative(s.trim())).map((s) => s.trim())
     : []
+  const link = e.link === true
+  const build = typeof e.build === 'string' && e.build.trim() ? e.build.trim() : undefined
 
-  return {
-    path: p,
-    build: typeof e.build === 'string' && e.build.trim() ? e.build.trim() : undefined,
-    cwd,
-    staleWhen,
+  // Linking aliases a primary-owned regular file. It has no local build or
+  // staleness semantics, so accepting either would hide a malformed manifest.
+  if (link && (build || cwd || staleWhen.length > 0)) {
+    warn('linked seed cannot declare build, cwd, or staleWhen; ignoring the entry', {
+      path: file, seed_path: p,
+    })
+    return null
   }
+
+  return { path: p, link: link || undefined, build, cwd, staleWhen }
 }
 
 /**

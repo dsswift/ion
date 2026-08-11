@@ -14,6 +14,7 @@ vi.mock('../integration/bench-resolution-validation', () => ({
 }))
 vi.mock('../integration/bench-resolution-journal', () => ({ recordResolution: vi.fn() }))
 vi.mock('../integration/bench-store', () => ({ loadWorkspaces: vi.fn(() => []) }))
+vi.mock('../integration/bench-resolution-completion', () => ({ clearResolvedBenchConflict: vi.fn(() => true) }))
 
 import { runGit } from '../git-runner'
 import { probeOperationState } from '../git/operation-state'
@@ -25,6 +26,7 @@ import {
 import { runBenchVerify } from '../integration/bench-verify'
 import { recordResolution } from '../integration/bench-resolution-journal'
 import { loadWorkspaces } from '../integration/bench-store'
+import { clearResolvedBenchConflict } from '../integration/bench-resolution-completion'
 import { continueBenchMerge } from '../integration/bench-merge-continue'
 
 const mockedRunGit = vi.mocked(runGit)
@@ -35,6 +37,7 @@ const mockedValidate = vi.mocked(validateBenchResolution)
 const mockedVerify = vi.mocked(runBenchVerify)
 const mockedRecord = vi.mocked(recordResolution)
 const mockedWorkspaces = vi.mocked(loadWorkspaces)
+const mockedClearResolvedBenchConflict = vi.mocked(clearResolvedBenchConflict)
 
 function arrangeRecovery(postHeadFails: boolean): void {
   let headReads = 0
@@ -60,6 +63,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockedVerify.mockResolvedValue({ ran: false, ok: true, output: '', command: '' })
   mockedWorkspaces.mockReturnValue([])
+  mockedClearResolvedBenchConflict.mockReturnValue(true)
 })
 
 describe('continueBenchMerge postcondition recovery injection', () => {
@@ -242,6 +246,44 @@ describe('continueBenchMerge — resolution journal', () => {
 
     expect(result.ok).toBe(true)
     expect(mockedRecord).not.toHaveBeenCalled()
+  })
+
+  it('clears the exact MERGE_HEAD member only after proven continuation', async () => {
+    mockedWorkspaces.mockReturnValue([bench] as never)
+    arrangeSuccess()
+
+    const result = await continueBenchMerge('/bench')
+
+    expect(result).toEqual({ ok: true })
+    expect(mockedClearResolvedBenchConflict).toHaveBeenCalledWith('/bench', 'target')
+  })
+
+  it('does not clear row verdict when continuation rolls back', async () => {
+    mockedWorkspaces.mockReturnValue([bench] as never)
+    let headReads = 0
+    mockedRunGit.mockImplementation((_directory, args) => {
+      if (args[0] === 'rev-parse' && args[1] === 'HEAD') {
+        headReads++
+        return Promise.resolve(headReads === 1 ? 'old-head\n' : headReads === 2 ? 'new-head\n' : 'old-head\n')
+      }
+      if (args[0] === 'rev-parse' && args[1] === '--git-path') return Promise.resolve(args[2])
+      if (args[0] === 'merge' && args.includes('--no-ff')) return Promise.reject(new Error('conflict'))
+      return Promise.resolve('')
+    })
+    mockedPaths.mockResolvedValue({ ok: true, paths: ['shared.txt'] })
+    mockedForget.mockResolvedValue({ ok: true, forgottenPaths: ['shared.txt'] })
+    mockedValidate
+      .mockResolvedValueOnce({ ok: true, unmergedPaths: [] })
+      .mockResolvedValue({ ok: false, unmergedPaths: ['shared.txt'] })
+    mockedProbe
+      .mockResolvedValueOnce({ conflictedPaths: [] })
+      .mockResolvedValue({ state: 'merging', conflictedPaths: ['shared.txt'] })
+    mockedVerify.mockResolvedValue({ ran: true, ok: false, output: 'build failed', command: 'test-verify' })
+
+    const result = await continueBenchMerge('/bench')
+
+    expect(result.ok).toBe(false)
+    expect(mockedClearResolvedBenchConflict).not.toHaveBeenCalled()
   })
 
   it('marks the entry verified only when verification actually ran and passed', async () => {

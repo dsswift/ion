@@ -395,6 +395,26 @@ The revive semantics differ by design: the dispatch path revives only when **eve
 
 ---
 
+### steer_injected
+
+A live run-loop checkpoint drained a steer message into its conversation before the next LLM call. This is a workflow signal, not a snapshot. The body is already in the conversation and is never echoed in the event.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"steer_injected"` | A live run drained the steer. |
+| `messageLength` | number | Character count of the delivered message. |
+
+### steer_degraded
+
+`ctx.steerSelf` found no owning run to drain, so the engine accepted the steer message as a fresh prompt instead. It is distinct from `steer_injected`: no active run-loop checkpoint consumed this message. The engine persists the same steer marker on both paths, so history replay can acknowledge the delivery.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"steer_degraded"` | No owning run was live; the steer became a fresh prompt. |
+| `messageLength` | number | Character count of the delivered message. |
+
+---
+
 ### background_task_complete
 
 A background bash command started with `Bash(run_in_background: true, notify_on_complete: true)` reached a terminal state — exited cleanly, failed, or was stopped.

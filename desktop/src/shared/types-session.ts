@@ -305,6 +305,10 @@ export interface Message {
   slashArgs?: string
   /** Origin of the resolved template: "extension"|"ion"|"claude"|"skill"|"project". */
   slashSource?: string
+  /** Model alias for the slash-command run (e.g. "Standard", "Extended"). */
+  slashModelAlias?: string
+  /** Effective model for the slash-command run (e.g. "GPT-5.6 Terra"). */
+  slashModelEffective?: string
   /**
    * Intercept level carried from `engine_intercept.interceptLevel`.
    * Populated only on `role: 'harness'` messages pushed by the
@@ -647,6 +651,8 @@ export interface SessionLoadMessage {
   slashCommand?: string
   slashArgs?: string
   slashSource?: string
+  slashModelAlias?: string
+  slashModelEffective?: string
   /**
    * Marker payload fields (additive, omitempty on the wire). Set only when
    * `role === 'system'` and this row is a persisted marker entry (compaction,
@@ -828,6 +834,13 @@ export interface RemotePairedDevice {
   pairedAt: string
   lastSeen: string | null
   channelId: string
+  relayOidcAccountUsername?: string
+  relayOidcAccountName?: string
+  relayOidcTenantId?: string
+  relayOidcSignedInAt?: string
+  relayOidcAccessStatus?: string
+  relayOidcAccessReason?: string
+  relayOidcReportedAt?: string
 }
 
 export type RemoteTransportState = 'disconnected' | 'relay_only' | 'lan_preferred'

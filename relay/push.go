@@ -62,6 +62,8 @@ type pushRequest struct {
 	body        string
 	kind        string // resource kind for deep-link routing on the client
 	resourceId  string // resource ID for deep-link routing on the client
+	channelId   string // relay channel ID (pairing identity for multi-device routing)
+	tabId       string // desktop tab ID (conversation routing on the client)
 
 	// onFailure is called with a stable reason string when the push fails.
 	// It is optional (nil means no callback).
@@ -157,6 +159,8 @@ type apnsPayload struct {
 	Aps           apsPayload `json:"aps"`
 	IonKind       string     `json:"ionKind,omitempty"`
 	IonResourceId string     `json:"ionResourceId,omitempty"`
+	IonChannelId  string     `json:"ionChannelId,omitempty"`
+	IonTabId      string     `json:"ionTabId,omitempty"`
 }
 
 type apsPayload struct {
@@ -175,21 +179,23 @@ type apsAlert struct {
 // capacity. The onFailure callback from SendWithNotify is not invoked on a
 // queue-full drop — callers using SendWithNotify must check the return error
 // and invoke the callback themselves when it is non-nil.
-func (p *APNsPusher) Send(deviceToken, title, body, kind, resourceId string) error {
-	return p.SendWithNotify(deviceToken, title, body, kind, resourceId, nil)
+func (p *APNsPusher) Send(deviceToken, title, body, kind, resourceId, channelId, tabId string) error {
+	return p.SendWithNotify(deviceToken, title, body, kind, resourceId, channelId, tabId, nil)
 }
 
 // SendWithNotify enqueues a push notification and registers an optional
 // callback that is invoked with a stable reason string if the push fails at
 // any stage (queue full, token error, transport error, or a non-200 APNs
 // response). Callers that do not need failure notification may use Send instead.
-func (p *APNsPusher) SendWithNotify(deviceToken, title, body, kind, resourceId string, onFailure func(reason string)) error {
+func (p *APNsPusher) SendWithNotify(deviceToken, title, body, kind, resourceId, channelId, tabId string, onFailure func(reason string)) error {
 	req := pushRequest{
 		deviceToken: deviceToken,
 		title:       title,
 		body:        body,
 		kind:        kind,
 		resourceId:  resourceId,
+		channelId:   channelId,
+		tabId:       tabId,
 		onFailure:   onFailure,
 	}
 	select {
@@ -242,6 +248,8 @@ func (p *APNsPusher) sendAsync(req pushRequest) error {
 		},
 		IonKind:       req.kind,
 		IonResourceId: req.resourceId,
+		IonChannelId:  req.channelId,
+		IonTabId:      req.tabId,
 	}
 
 	data, err := json.Marshal(payload)
@@ -282,6 +290,7 @@ func (p *APNsPusher) sendAsync(req pushRequest) error {
 	}
 
 	logger.Info("APNs push delivered", "tag", "relay.apns.delivered",
-		"status", resp.StatusCode, "kind", req.kind, "resource_id", req.resourceId)
+		"status", resp.StatusCode, "kind", req.kind, "resource_id", req.resourceId,
+		"channel_id", req.channelId, "tab_id", req.tabId)
 	return nil
 }

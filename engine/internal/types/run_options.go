@@ -339,6 +339,16 @@ type RunOptions struct {
 	// the expanded body as a forked sub-agent with its own context/token budget).
 	// In-process run field. Empty for non-slash prompts.
 	ResolvedSlashContext string `json:"-"`
+	// ResolvedSlashModelAlias is the model string from the slash command's
+	// frontmatter (`model:` key) -- the alias the command author requested.
+	// Empty when the command declared no model hint. In-process run field.
+	ResolvedSlashModelAlias string `json:"-"`
+	// ResolvedSlashModelEffective is the model that the engine actually uses
+	// for this run after tier resolution and documented precedence: an explicit
+	// per-prompt model override wins; otherwise slash frontmatter can select the
+	// run model over conversation continuity. Empty when no model was resolved.
+	// In-process run field.
+	ResolvedSlashModelEffective string `json:"-"`
 
 	// InjectionKind classifies an engine-side injected user turn so the
 	// backend can stamp it on the persisted conversation entry. "agent_completion"
@@ -348,6 +358,28 @@ type RunOptions struct {
 	// persisted MessageData.InjectionKind and the SessionMessage.InjectionKind
 	// fields instead.
 	InjectionKind string `json:"-"`
+
+	// SteerDegraded marks a prompt that began as a ctx.steerSelf delivery and
+	// became a fresh prompt because the owning run was not live.
+	//
+	// It is deliberately SEPARATE from InjectionKind. The kind says who
+	// authored the turn (a check-in, a completion, a human); this says how it
+	// arrived. Both are true at once and neither implies the other: a check-in
+	// can be steered onto a live run OR degrade to a prompt, and a degraded
+	// delivery can carry any machine kind. Encoding "degraded" as its own kind
+	// would force one fact to overwrite the other and would add a string every
+	// consumer has to learn — the hand-maintained-list defect InjectionKind was
+	// introduced to remove.
+	//
+	// The backend uses it for one purpose: persist the steer marker that
+	// drainSteer already writes on the live-run path, so the two paths agree.
+	// Without it a degraded steer leaves no marker, and an operator sees a
+	// suppressed machine turn start a tool sweep with nothing in the transcript
+	// explaining why.
+	//
+	// In-process only (json:"-"): it never crosses the wire, because the
+	// persisted steer marker is what a consumer reads on reload.
+	SteerDegraded bool `json:"-"`
 
 	// ParentCtx is the session's cancellation root. When non-nil, the
 	// backend derives the run's cancellation context from it

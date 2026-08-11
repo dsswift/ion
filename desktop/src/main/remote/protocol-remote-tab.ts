@@ -196,6 +196,8 @@ export interface RemoteMessage {
   slashCommand?: string
   slashArgs?: string
   slashSource?: string
+  slashModelAlias?: string
+  slashModelEffective?: string
   /** Plan path on plan-lifecycle divider system messages (Plan created / Plan
    * updated / Implementing plan). Lets iOS render the divider's slug as a
    * clickable link to the plan preview after a history reload. Omitted on

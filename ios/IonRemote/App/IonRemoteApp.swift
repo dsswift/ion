@@ -91,14 +91,14 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            // .authFailed routes to the pairing screen but NEVER auto-wipes:
-            // paired devices, keychain, and cached layout must survive an
-            // auth failure. resetAll() is reserved for the explicit
-            // user-initiated "unpair / start over" actions — an automatic
-            // resetAll() here once let a transient desktop-side auth cooldown
-            // destroy every pairing on the device.
-            if viewModel.pairedDevices.isEmpty || viewModel.connectionState == .authFailed {
+            // Locked desktop access never auto-wipes: paired devices, Keychain,
+            // and cached layout survive explicit auth refusal so recovery can
+            // restore access without re-pairing. The root gate hides the entire
+            // desktop-owned subtree instead of treating this as a network drop.
+            if viewModel.pairedDevices.isEmpty {
                 PairingView()
+            } else if viewModel.activeDesktopIsLocked {
+                DesktopAccessRecoveryView()
             } else if !viewModel.hasConnectedBefore && viewModel.tabs.isEmpty
                         && viewModel.connectionState != .connected {
                 // First launch with no cached data — show the connecting screen.

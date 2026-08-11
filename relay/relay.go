@@ -159,6 +159,7 @@ type relayMessage struct {
 	PushBody         string `json:"pushBody,omitempty"`
 	NotifyKind       string `json:"notifyKind,omitempty"`
 	NotifyResourceId string `json:"notifyResourceId,omitempty"`
+	PushTabId        string `json:"pushTabId,omitempty"`
 }
 
 // HandleWebSocket upgrades the HTTP connection to WebSocket and runs the relay
@@ -336,7 +337,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 						sendControlPayload(ionConn, frame, h.WriteTimeout, connLog)
 					}
 
-					if err := pusher.SendWithNotify(apnsToken, title, body, msg.NotifyKind, resourceId, onFailure); err != nil {
+					if err := pusher.SendWithNotify(apnsToken, title, body, msg.NotifyKind, resourceId, channelID, msg.PushTabId, onFailure); err != nil {
 						// Queue was full — report back to the ion peer immediately.
 						onFailure("queue_full")
 					}

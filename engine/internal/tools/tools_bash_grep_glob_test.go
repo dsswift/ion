@@ -63,11 +63,19 @@ func TestBashTool(t *testing.T) {
 	}
 }
 
+// TestBashToolTimeout exercises the real local backend's timeout kill and the
+// message the model receives.
+//
+// The command is a shell loop rather than a bare `sleep 30`: a LEADING
+// `sleep N` is refused by the blocking-sleep gate (bash_sleep_gate.go) before
+// execution, so a bare sleep would make this test pass on the refusal instead
+// of on the timeout it is meant to pin. A sleep inside a loop body is never
+// inspected by the gate — see the head-only rule there.
 func TestBashToolTimeout(t *testing.T) {
 	ctx := context.Background()
 
 	result, err := ExecuteTool(ctx, "Bash", map[string]any{
-		"command": "sleep 30",
+		"command": "while true; do sleep 1; done",
 		"timeout": float64(200), // 200ms timeout
 	}, os.TempDir())
 	if err != nil {
@@ -75,6 +83,13 @@ func TestBashToolTimeout(t *testing.T) {
 	}
 	if !result.IsError {
 		t.Error("expected error for timed-out command")
+	}
+	// The timeout is attributed as a timeout, not surfaced as a bare
+	// "signal: killed", and names the mechanism that outlives the deadline.
+	for _, want := range []string{"200ms timeout", "run_in_background"} {
+		if !strings.Contains(result.Content, want) {
+			t.Errorf("timeout result missing %q; got %q", want, result.Content)
+		}
 	}
 }
 

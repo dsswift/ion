@@ -43,11 +43,10 @@ export function entry(over: Partial<WorktreeInventoryEntry> = {}): WorktreeInven
  * commit counts when it logs, so a two-field mock makes the component throw in
  * a way production never would.
  *
- * Every field of `WorktreeAppraisalWire` is spelled out, including the ones no
- * test asserts on, so that a field added to the wire shape fails `tsc` here
- * rather than silently leaving the fixture behind. Note that vitest does not
- * typecheck, so `npm test` passing says nothing about these fixtures matching
- * the type — only `npm run typecheck` does.
+ * Every required field of `WorktreeAppraisalWire` is spelled out, including the
+ * ones no test asserts on. Because the fixture is typed (not `as` cast), `tsc`
+ * is what catches a wire field added or removed without the fixture following —
+ * vitest alone would not, since it does not typecheck.
  */
 export const DIRTY_APPRAISAL: WorktreeAppraisalWire = {
   hasUncommittedChanges: true,

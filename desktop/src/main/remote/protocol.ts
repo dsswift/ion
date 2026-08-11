@@ -218,6 +218,7 @@ export type RemoteCommand =
   // desktop_request_resource_content → desktop_resource_content. The snapshot no longer
   // embeds the full plan body — iOS fetches pages on expand/copy.
   | { type: 'desktop_request_plan_content'; tabId: string; questionId: string; planFilePath: string; offset: number; length: number }
+  | { type: 'desktop_report_mobile_auth'; accountUsername?: string; accountName?: string; subject?: string; tenantId?: string; signedInAt?: string; clearIdentity?: boolean; accessStatus?: string; accessReason?: string; reportedAt?: string }
 
 // ─── Ion → iOS events ───
 
@@ -310,7 +311,7 @@ export type RemoteEvent =
   // engine→wire mapper). iOS re-keys its optimistic user row to this id so a
   // run that never reaches a message_end (cancel, mid-stream failure) still
   // leaves the row canonically keyed and history reloads dedup against it.
-  | { type: 'desktop_user_turn_persisted'; tabId: string; instanceId?: string | null; userTurnEntryId: string }
+  | { type: 'desktop_user_turn_persisted'; tabId: string; instanceId?: string | null; userTurnEntryId: string; userTurnSlashModelAlias?: string; userTurnSlashModelEffective?: string }
   // `metadata` is an opaque pass-through hint map forwarded from the engine.
   // Carried verbatim across the relay to iOS so future iOS-side handlers
   // (e.g. dedup, render-style hints) can adopt the same conventions the
@@ -320,6 +321,10 @@ export type RemoteEvent =
   | { type: 'desktop_tool_start'; tabId: string; instanceId?: string | null; toolName: string; toolId: string }
   | { type: 'desktop_tool_end'; tabId: string; instanceId?: string | null; toolId: string; result?: string; isError?: boolean }
   | { type: 'desktop_tool_stalled'; tabId: string; instanceId?: string | null; toolId: string; toolName: string; elapsed: number }
+  // A live run-loop checkpoint drained this steer before its next LLM call.
+  | { type: 'desktop_steer_injected'; tabId: string; instanceId?: string | null; steerMessageLength: number }
+  // No owning run was live, so ctx.steerSelf delivered a fresh prompt instead.
+  | { type: 'desktop_steer_degraded'; tabId: string; instanceId?: string | null; steerDegradedMessageLength: number }
   // desktop_prompt_injected: forwarded verbatim from engine_prompt_injected
   // by the generic engine-event forwarder in event-wiring.ts (engineToWireType
   // strips the engine_ prefix). An extension injected a prompt via

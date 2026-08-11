@@ -78,6 +78,7 @@ import { handleRequestResourceContent, handleMarkResourceRead, handleDeleteResou
 import { handleRequestPlanContent } from './handlers/plan-content'
 import { handleImplementPlan } from './handlers/implement-plan'
 import { handleWorktreeCommand } from './handlers/worktree'
+import { handleReportMobileAuth } from './handlers/mobile-auth'
 import type { RemoteCommand } from './protocol'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -199,5 +200,6 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
       log('desktop_report_focus', { device_id: deviceId, tab_id: tabId, intercept_enabled: interceptEnabled })
       break
     }
+    case 'desktop_report_mobile_auth': handleReportMobileAuth(cmd, deviceId); break
   }
 }

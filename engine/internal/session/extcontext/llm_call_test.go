@@ -41,6 +41,7 @@ func (a *llmCallTestAccessor) ConversationID() string   { return "" }
 func (a *llmCallTestAccessor) RunID() string            { return "" }
 func (a *llmCallTestAccessor) TraceID() string          { return "" }
 func (a *llmCallTestAccessor) WorkingDirectory() string { return "/tmp" }
+func (a *llmCallTestAccessor) CurrentModel() string     { return "" }
 func (a *llmCallTestAccessor) Emit(ev types.EngineEvent) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -62,8 +63,14 @@ func (a *llmCallTestAccessor) RootContext() context.Context {
 }
 func (a *llmCallTestAccessor) SendPrompt(_, _ string, _ []string) error                   { return nil }
 func (a *llmCallTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error { return nil }
+
+// Degraded-steer delivery is not what this test exercises; it delegates so
+// the fake satisfies SessionAccessor and behaves like the kind-aware send.
+func (a *llmCallTestAccessor) SendPromptDegradedSteer(text string, model string, bash []string, kind string) error {
+	return a.SendPromptWithKind(text, model, bash, kind)
+}
 func (a *llmCallTestAccessor) SteerSelfMainLoop(_ string) bool                            { return false }
-func (a *llmCallTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
+func (a *llmCallTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool                 { return false }
 func (a *llmCallTestAccessor) ParkSelfMainLoop() bool                                     { return false }
 func (a *llmCallTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
@@ -85,6 +92,7 @@ func (a *llmCallTestAccessor) NewChildBackend() backend.RunBackend              
 func (a *llmCallTestAccessor) AllocatePlanFilePath(_ string) string                 { return "/tmp/.ion/plans/plan.md" }
 func (a *llmCallTestAccessor) BumpParentProgress()                                  {}
 func (a *llmCallTestAccessor) EmitDispatchCountStatus(_ string)                     {}
+func (a *llmCallTestAccessor) DispatchRegistry() *DispatchRegistry                  { return nil }
 func (a *llmCallTestAccessor) EngineConfig() *types.EngineRuntimeConfig             { return nil }
 func (a *llmCallTestAccessor) ClaudeCompat() bool                                   { return false }
 func (a *llmCallTestAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }

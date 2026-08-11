@@ -133,17 +133,19 @@ function hasLegacyReviewKey(raw: unknown[]): boolean {
 }
 
 /** Persist the full workspace list atomically. */
-export function saveWorkspaces(workspaces: IntegrationWorkspace[]): void {
+export function saveWorkspaces(workspaces: IntegrationWorkspace[]): boolean {
   try {
     const dir = ionDir()
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
     const payload: WorkspacesFile = { version: 1, workspaces }
     atomicWriteFileSync(workspacesFile(), JSON.stringify(payload, null, 2), 0o644)
     log('workspaces saved', { count: workspaces.length })
+    return true
   } catch (err) {
     // Losing the write means the member set is not durable; that is worth an
     // error, not a debug line.
     warn('failed to save workspaces', { path: workspacesFile(), error: String(err) })
+    return false
   }
 }
 

@@ -449,8 +449,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	// same runID correctly resolves to "" and is dropped.
 	m.unbindRunLocked(runID)
 	if s, ok := m.sessions[key]; ok {
-		s.requestID = ""
-		s.runTraceID = "" // run over: the trace ends with it
+		s.clearRunIdentity()
 		// Ion's durable conversation-file identity, captured under the lock
 		// for use in persistTerminalDispatches below. This is NOT the
 		// backend-reported sessionID (which is claude's UUID for the CLI
@@ -701,11 +700,15 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	// mid-turn hook interleaving.
 	m.respawnDeadExtensions(key)
 
-	// Dispatch queued prompt outside the lock
+	// Dispatch queued prompt outside the lock. A user prompt accepted before a
+	// completion retains FIFO priority; once it is dispatched, the completion
+	// retry queues safely behind its active run.
 	if nextPrompt != nil {
 		utils.LogWithFields(utils.LevelDebug, "session", "dispatching queued prompt", map[string]any{"key": key})
 		m.dispatchQueuedPrompt(key, nextPrompt)
+		return
 	}
+	m.retryRootDispatchCompletions(key)
 }
 
 // dispatchQueuedPrompt re-submits a dequeued prompt on its own goroutine,

@@ -399,11 +399,20 @@ func BuildContextBreakdown(
 	extensionContext []string,
 	sessionMemory string,
 ) (*ContextBreakdown, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	bd := &ContextBreakdown{Model: model}
 
 	// 1. System prompt.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if opts != nil && opts.System != "" {
 		n, tier := countText(ctx, model, provider, opts.System, "system")
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		bd.Categories = append(bd.Categories, BreakdownCategory{
 			Name: "system", Kind: "system", Tokens: n, Tier: tier,
 		})
@@ -411,18 +420,30 @@ func BuildContextBreakdown(
 
 	// 2. Per context file.
 	for _, cf := range contextFiles {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if cf.Content == "" {
 			continue
 		}
 		n, tier := countText(ctx, model, provider, cf.Content, "file:"+cf.Path)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		bd.Categories = append(bd.Categories, BreakdownCategory{
 			Name: cf.Path, Kind: "file", Tokens: n, Tier: tier, Path: cf.Path,
 		})
 	}
 
 	// 3. Session memory.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if sessionMemory != "" {
 		n, tier := countText(ctx, model, provider, sessionMemory, "memory")
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		bd.Categories = append(bd.Categories, BreakdownCategory{
 			Name: "memory", Kind: "memory", Tokens: n, Tier: tier,
 		})
@@ -430,10 +451,16 @@ func BuildContextBreakdown(
 
 	// 4. Extension-injected context blocks.
 	for i, block := range extensionContext {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if block == "" {
 			continue
 		}
 		n, tier := countText(ctx, model, provider, block, "ext:"+strconv.Itoa(i))
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		bd.Categories = append(bd.Categories, BreakdownCategory{
 			Name: "extension:" + strconv.Itoa(i), Kind: "extension", Tokens: n, Tier: tier,
 		})
@@ -445,8 +472,14 @@ func BuildContextBreakdown(
 	// the content-only cost, which is then distributed per-tool proportionally
 	// by each tool's serialized byte size. No synthetic "tool_overhead" row and
 	// no negative rows — the overhead is folded into the batch total once.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if opts != nil && len(opts.Tools) > 0 {
 		if err := appendToolRows(ctx, bd, model, provider, opts.Tools); err != nil {
+			return nil, err
+		}
+		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 	}
@@ -458,8 +491,17 @@ func BuildContextBreakdown(
 	// this call passes messages only. Image blocks contribute a fixed per-image
 	// cost on the local-fallback path; their base64 payload is never counted by
 	// byte length.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if opts != nil && len(opts.Messages) > 0 {
 		appendConversationRow(ctx, bd, model, provider, opts.Messages)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
 	// Total and context window.

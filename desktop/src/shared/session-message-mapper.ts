@@ -124,6 +124,8 @@ export function mapSessionMessage(m: SessionLoadMessage, makeId: () => string): 
     slashCommand: m.slashCommand,
     slashArgs: m.slashArgs,
     slashSource: m.slashSource,
+    slashModelAlias: m.slashModelAlias,
+    slashModelEffective: m.slashModelEffective,
     attachments: m.attachments,
     timestamp: m.timestamp,
   }
@@ -150,6 +152,12 @@ export function mapSessionMessage(m: SessionLoadMessage, makeId: () => string): 
  * three, so a `slash_command` injection was hidden while streaming and then
  * appeared when history rehydrated. Sharing the function makes that class of
  * divergence unrepresentable.
+ *
+ * A degraded self-steer needs no case here either. Its turn carries whatever
+ * kind the caller supplied — `checkin` for a heartbeat — and is suppressed or
+ * kept by that classification like any other. The steer MARKER the engine
+ * persists beside it flattens to its own `markerKind: 'steer'` row and becomes
+ * the divider, which is how the reload matches the live `steer_degraded` event for an idle fallback.
  */
 export function mapSessionHistory(
   history: readonly SessionLoadMessage[],

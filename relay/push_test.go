@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -57,13 +58,13 @@ func TestSendReturnsErrQueueFull(t *testing.T) {
 	p := newTestPusher(t, "http://localhost:9", 1)
 
 	// Fill the queue.
-	if err := p.Send("token", "title", "body", "kind", "res1"); err != nil {
+	if err := p.Send("token", "title", "body", "kind", "res1", "chan1", "tab1"); err != nil {
 		t.Fatalf("first Send unexpectedly failed: %v", err)
 	}
 
 	// Next Send should fail with ErrQueueFull.
 	var callbackReason string
-	err := p.SendWithNotify("token", "title", "body", "kind", "res2", func(reason string) {
+	err := p.SendWithNotify("token", "title", "body", "kind", "res2", "chan1", "tab1", func(reason string) {
 		callbackReason = reason
 	})
 	if err == nil {
@@ -144,6 +145,76 @@ func TestSendAsyncSucceeds(t *testing.T) {
 	req := pushRequest{deviceToken: "tok", title: "t", body: "b", kind: "k", resourceId: "r"}
 	if err := p.sendAsync(req); err != nil {
 		t.Fatalf("expected nil on 200, got: %v", err)
+	}
+}
+
+// TestSendAsyncPayloadContainsChannelAndTabId verifies that the APNs HTTP
+// request body includes ionChannelId and ionTabId when set on the pushRequest.
+func TestSendAsyncPayloadContainsChannelAndTabId(t *testing.T) {
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	p := newTestPusher(t, srv.URL, 8)
+	req := pushRequest{
+		deviceToken: "tok",
+		title:       "t",
+		body:        "b",
+		kind:        "briefing",
+		resourceId:  "res-1",
+		channelId:   "chan-abc",
+		tabId:       "tab-42",
+	}
+	if err := p.sendAsync(req); err != nil {
+		t.Fatalf("expected nil on 200, got: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(capturedBody, &payload); err != nil {
+		t.Fatalf("unmarshal APNs payload: %v", err)
+	}
+	if got := payload["ionChannelId"]; got != "chan-abc" {
+		t.Errorf("expected ionChannelId 'chan-abc', got %v", got)
+	}
+	if got := payload["ionTabId"]; got != "tab-42" {
+		t.Errorf("expected ionTabId 'tab-42', got %v", got)
+	}
+	if got := payload["ionKind"]; got != "briefing" {
+		t.Errorf("expected ionKind 'briefing', got %v", got)
+	}
+	if got := payload["ionResourceId"]; got != "res-1" {
+		t.Errorf("expected ionResourceId 'res-1', got %v", got)
+	}
+}
+
+// TestSendAsyncPayloadOmitsEmptyChannelAndTabId verifies that ionChannelId
+// and ionTabId are omitted from the APNs payload when empty (omitempty).
+func TestSendAsyncPayloadOmitsEmptyChannelAndTabId(t *testing.T) {
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	p := newTestPusher(t, srv.URL, 8)
+	req := pushRequest{deviceToken: "tok", title: "t", body: "b", kind: "k", resourceId: "r"}
+	if err := p.sendAsync(req); err != nil {
+		t.Fatalf("expected nil on 200, got: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(capturedBody, &payload); err != nil {
+		t.Fatalf("unmarshal APNs payload: %v", err)
+	}
+	if _, ok := payload["ionChannelId"]; ok {
+		t.Errorf("expected ionChannelId to be omitted when empty, got %v", payload["ionChannelId"])
+	}
+	if _, ok := payload["ionTabId"]; ok {
+		t.Errorf("expected ionTabId to be omitted when empty, got %v", payload["ionTabId"])
 	}
 }
 

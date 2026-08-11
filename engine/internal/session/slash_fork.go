@@ -42,12 +42,14 @@ func (m *Manager) forkResolvedSlash(s *engineSession, key string, opts *types.Ru
 			// untouched.
 			if conv.Entries != nil {
 				conversation.AppendEntry(conv, conversation.EntryMessage, conversation.MessageData{
-					Role:         "user",
-					Content:      display,
-					SlashCommand: opts.ResolvedSlashCommand,
-					SlashArgs:    opts.ResolvedSlashArgs,
-					SlashSource:  opts.ResolvedSlashSource,
-					DisplayOnly:  true,
+					Role:                "user",
+					Content:             display,
+					SlashCommand:        opts.ResolvedSlashCommand,
+					SlashArgs:           opts.ResolvedSlashArgs,
+					SlashSource:         opts.ResolvedSlashSource,
+					SlashModelAlias:     opts.ResolvedSlashModelAlias,
+					SlashModelEffective: opts.ResolvedSlashModelEffective,
+					DisplayOnly:         true,
 				})
 				if saveErr := conversation.Save(conv, ""); saveErr != nil {
 					utils.LogWithFields(utils.LevelInfo, "session.slash", "fork: failed to persist parent display turn", map[string]any{"key": key, "error": saveErr})

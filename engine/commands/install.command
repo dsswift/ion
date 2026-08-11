@@ -176,5 +176,57 @@ if [[ -d "$SDK_SRC" ]]; then
     cp -r "$SDK_SRC"/* "$SDK_DST/"
 fi
 
+# Install the Go extension SDK — DEVELOPER ASSET, source builds only.
+#
+# Unlike the TypeScript SDK above, this is a BUILD-TIME dependency, not a
+# runtime one. That asymmetry is the whole reason this block lives here and
+# not in the packaged install path:
+#
+#   TypeScript: the engine transpiles a .ts extension with esbuild at LOAD
+#               time, on the machine running it, and the extension's
+#               `from '../sdk/ion-sdk'` import must resolve to
+#               $ION_HOME/extensions/sdk at that moment. Remove it and every
+#               TS extension fails to load. It has to ship to every user.
+#
+#   Go:         `go build` statically links the SDK into the extension binary.
+#               The engine just exec's that binary — nothing reads this
+#               directory at runtime. Delete it after building and every Go
+#               extension keeps working.
+#
+# So this belongs only where someone compiles: a source checkout running
+# `make engine`. A packaged install (DMG/PKG/MDM) deliberately does NOT carry
+# it — those machines run pre-built extension binaries and have no Go
+# toolchain to use it with. Shipping it there would put a dev asset on every
+# workstation for no runtime benefit.
+#
+# Deployment shape this supports: developers build here and get the SDK; what
+# they hand to employees or a headless cluster is the engine binary plus the
+# compiled extension binary, and nothing else.
+#
+# Source is the repository root's sdk/go, OUTSIDE the engine/ tree SCRIPT_DIR
+# points at, so it is addressed relative to the repo root. That path exists
+# only in a checkout, which is itself the guard: a packaged artifact has no
+# sdk/go and takes the skip branch.
+#
+# Replace, don't merge: a deleted or renamed SDK file left behind here is a
+# stale COMPILE input, and Go would happily build an extension against a
+# surface the engine no longer has.
+GO_SDK_SRC="$SCRIPT_DIR/../sdk/go"
+GO_SDK_DST="$ION_HOME/extensions/sdk-go"
+if [[ -d "$GO_SDK_SRC" ]]; then
+    echo "==> Installing Go extension SDK to $GO_SDK_DST (developer asset)..."
+    rm -rf "$GO_SDK_DST"
+    mkdir -p "$GO_SDK_DST"
+    # Module source only. Tests and their goldens are the repo's own
+    # verification — testdata/ carries the SDK parity manifests, meaningless
+    # outside the repo — and are not part of the surface an extension
+    # compiles against.
+    find "$GO_SDK_SRC" -maxdepth 1 -type f \
+        \( -name '*.go' ! -name '*_test.go' -o -name 'go.mod' -o -name 'go.sum' -o -name 'README.md' -o -name 'VERSION' \) \
+        -exec cp {} "$GO_SDK_DST/" \;
+else
+    echo "==> No Go SDK at $GO_SDK_SRC; skipping (not a source checkout)"
+fi
+
 VERSION=$("$BIN_DIR/ion" version 2>/dev/null || echo "unknown")
 echo "==> Ion Engine $VERSION installed at $BIN_DIR/ion"

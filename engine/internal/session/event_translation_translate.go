@@ -165,8 +165,10 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 
 	case *types.UserTurnPersistedEvent:
 		return types.EngineEvent{
-			Type:            "engine_user_turn_persisted",
-			UserTurnEntryID: e.EntryID,
+			Type:                        "engine_user_turn_persisted",
+			UserTurnEntryID:             e.EntryID,
+			UserTurnSlashModelAlias:     e.SlashModelAlias,
+			UserTurnSlashModelEffective: e.SlashModelEffective,
 		}
 
 	case *types.SessionDeadEvent:
@@ -304,6 +306,12 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 		// already in the conversation as a user turn and does not need
 		// to be echoed back over the wire.
 		return types.EngineEvent{Type: "engine_steer_injected", SteerMessageLength: e.MessageLength}
+
+	case *types.SteerDegradedEvent:
+		// The no-live-run peer of SteerInjectedEvent. The message became a
+		// fresh prompt, so it did not pass through a run-loop drain; preserve
+		// that semantic distinction for external consumers.
+		return types.EngineEvent{Type: "engine_steer_degraded", SteerDegradedMessageLength: e.MessageLength}
 
 	case *types.PromptInjectedEvent:
 		// Engine-initiated prompt (extension ctx.sendPrompt): the run's user

@@ -15,6 +15,12 @@ extension SessionViewModel {
         savePairedDevices()
         LayoutCache.delete(deviceId: device.id)
         deviceOnlineStatus.removeValue(forKey: device.id)
+        relayIdentityMismatch.remove(device.id)
+        // Drop this pairing's token manager AND its Keychain refresh token.
+        // A refresh token is long-lived: leaving it behind would keep a usable
+        // credential for a tenant the user has just walked away from sitting on
+        // the device indefinitely.
+        oidcRegistry.remove(deviceId: device.id)
 
         if pairedDevices.isEmpty {
             activeDeviceId = nil
@@ -93,6 +99,11 @@ extension SessionViewModel {
                 customName: customName,
                 customIcon: customIcon,
                 updatedAt: updatedAt,
+                // An inactive OIDC pairing still needs ITS OWN token for the
+                // sidecar relay connection. Without this the sidecar sent the
+                // stored bootstrap key, which in OIDC mode is a stale
+                // desktop-minted token (or empty) and is refused.
+                getCredential: oidcCredentialClosures(for: device)?.get,
             )
             // Reconcile by applying the server's authoritative value.
             await MainActor.run {
@@ -119,10 +130,103 @@ extension SessionViewModel {
         }
     }
 
+    // MARK: - Per-pairing OIDC account
+
+    /// Forget the OIDC account bound to this pairing.
+    ///
+    /// Drops the token manager, deletes the Keychain refresh token, and clears
+    /// the cached account fields. The pairing itself survives — the desktop is
+    /// still paired, it simply has no identity attached, so the next connection
+    /// attempt signs in fresh.
+    @MainActor
+    func signOutOIDC(device: PairedDevice) {
+        DiagnosticLog.log("oidc sign-out requested for pairing", tag: "session.relay", level: .warn, fields: [
+            "device": String(device.id.prefix(8)),
+            "was_active": String(device.id == activeDevice?.id)
+        ])
+        oidcRegistry.remove(deviceId: device.id)
+        lockDesktop(deviceId: device.id, reason: .signedOut, source: "sign_out")
+        relayIdentityMismatch.remove(device.id)
+        if let idx = pairedDevices.firstIndex(where: { $0.id == device.id }) {
+            pairedDevices[idx].relayOidcAccountUsername = nil
+            pairedDevices[idx].relayOidcAccountName = nil
+            pairedDevices[idx].relayOidcSubject = nil
+            pairedDevices[idx].relayOidcTenantId = nil
+            pairedDevices[idx].relayOidcSignedInAt = nil
+            savePairedDevices()
+        }
+        if device.id == activeDevice?.id {
+            softReconnect()
+        }
+    }
+
+    /// Sign in to this pairing with a different account.
+    ///
+    /// The recovery path when the relay refuses the channel because it is owned
+    /// by another OIDC subject: no refresh can change which account the stored
+    /// token represents, so the only way through is an interactive sign-in with
+    /// the account that owns the channel. User-initiated, so presenting the
+    /// browser sheet here is expected rather than intrusive.
+    @MainActor
+    func switchOIDCAccount(device: PairedDevice) async throws {
+        guard let manager = oidcRegistry.manager(for: device) else {
+            DiagnosticLog.log("oidc account switch requested for non-OIDC pairing", tag: "session.relay", level: .warn, fields: [
+                "device": String(device.id.prefix(8))
+            ])
+            throw OIDCTokenError.managerUnavailable
+        }
+        DiagnosticLog.log("oidc account switch starting", tag: "session.relay", fields: [
+            "device": String(device.id.prefix(8)),
+            "issuer": device.relayOidcIssuer ?? ""
+        ])
+        let previousAccount = device.oidcAccountLabel
+        do {
+            _ = try await manager.forceInteractiveReauth()
+        } catch OIDCTokenError.interactiveCancelled {
+            clearAccountAfterCancelledSwitch(device: device, previousAccount: previousAccount)
+            lockDesktop(deviceId: device.id, reason: .userCancelled, source: "switch_account_cancelled")
+            throw OIDCTokenError.interactiveCancelled
+        } catch {
+            clearAccountAfterCancelledSwitch(device: device, previousAccount: previousAccount)
+            lockDesktop(deviceId: device.id, reason: .refreshRejected, source: "switch_account_failed")
+            DiagnosticLog.log("oidc account switch failed", tag: "session.relay", level: .error, fields: [
+                "device": String(device.id.prefix(8)),
+                "error": error.localizedDescription
+            ])
+            throw error
+        }
+        relayIdentityMismatch.remove(device.id)
+        DiagnosticLog.log("oidc account switch succeeded", tag: "session.relay", fields: [
+            "device": String(device.id.prefix(8))
+        ])
+        if device.id == activeDevice?.id {
+            softReconnect()
+        }
+    }
+
+    @MainActor
+    private func clearAccountAfterCancelledSwitch(device: PairedDevice, previousAccount: String?) {
+        if let index = pairedDevices.firstIndex(where: { $0.id == device.id }) {
+            pairedDevices[index].relayOidcPreviousAccount = previousAccount
+            pairedDevices[index].relayOidcAccountUsername = nil
+            pairedDevices[index].relayOidcAccountName = nil
+            pairedDevices[index].relayOidcSubject = nil
+            pairedDevices[index].relayOidcTenantId = nil
+            pairedDevices[index].relayOidcSignedInAt = nil
+            savePairedDevices()
+        }
+    }
+
     func resetAll() {
         Task {
             try? await transport?.send(.unpair)
             await MainActor.run {
+                // Purge every pairing's OIDC manager and Keychain refresh token
+                // BEFORE the device list is cleared — the IDs are the only way
+                // to find those Keychain entries, and losing them would strand
+                // live refresh tokens on the device.
+                self.oidcRegistry.removeAll(deviceIds: self.pairedDevices.map(\.id))
+                self.relayIdentityMismatch = []
                 self.disconnect()
                 self.pairedDevices = []
                 self.activeDeviceId = nil
@@ -139,7 +243,11 @@ extension SessionViewModel {
                 self.relayAPIKey = ""
                 self.pairingState = .idle
                 self.deviceOnlineStatus = [:]
-                try? KeychainStore.deleteAll()
+                do {
+                    try KeychainStore.deleteAll()
+                } catch {
+                    DiagnosticLog.log("failed to delete paired devices during reset", tag: "pairing", level: .error, fields: ["error": error.localizedDescription])
+                }
                 LayoutCache.deleteAll()
             }
         }
@@ -166,6 +274,9 @@ extension SessionViewModel {
             DiagnosticLog.log("failed to load paired devices from keychain", tag: "pairing", level: .error, fields: [
                 "error": String(describing: error)
             ])
+        }
+        Task { @MainActor [weak self] in
+            self?.normalizeDesktopAccessRecords()
         }
         hydrateRelayConfig()
     }

@@ -36,6 +36,10 @@ const (
 	EventCompacting      = "compacting"
 	EventToolStalled     = "tool_stalled"
 	EventSteerInjected   = "steer_injected"
+	// EventSteerDegraded is emitted when ctx.steerSelf found no live owning run
+	// and delivered the steer as a fresh prompt instead. Distinct from
+	// EventSteerInjected, whose contract is a live run-loop drain.
+	EventSteerDegraded = "steer_degraded"
 	// EventPromptInjected is emitted when a prompt no client submitted is
 	// injected into the session — an extension calling ctx.sendPrompt
 	// (dispatch-completion delivery, check-ins, orchestrator revives). The

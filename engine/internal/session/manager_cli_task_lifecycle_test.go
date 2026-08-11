@@ -67,6 +67,13 @@ func newTaskGroup(rec *taskRecorder) *extension.ExtensionGroup {
 	return group
 }
 
+func TestFireCliTurnHooks_MissingSessionIsNoOp(t *testing.T) {
+	mgr := NewManager(backend.NewClaudeCodeBackend())
+	mgr.fireCliTurnHooks(nil, "missing", false, types.NormalizedEvent{
+		Data: &types.TextChunkEvent{Text: "late event"},
+	})
+}
+
 func TestFireCliTurnHooks_TaskCreatedOnTextStart(t *testing.T) {
 	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)

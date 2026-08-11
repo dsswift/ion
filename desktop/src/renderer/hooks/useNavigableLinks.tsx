@@ -3,6 +3,15 @@ import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
 import { getFileIcon } from '../components/FileExplorerIcons'
 import { rDebug, rWarn } from '../rendererLogger'
+import { segmentText, EDITABLE_EXTS, type TextSegment } from './link-segments'
+import { readNavigableKind } from './remarkNavigableLinks'
+
+// The pure pieces live in their own modules so the remark plugin stays loadable
+// without React, the theme, or the session store (this file imports all three,
+// and the theme touches `document` at import time). Re-exported here because
+// every existing consumer imports them from this path.
+export { segmentText, LINK_RE, EDITABLE_EXTS, type TextSegment } from './link-segments'
+export { remarkNavigableLinks, readNavigableKind, NAVIGABLE_DATA_ATTR } from './remarkNavigableLinks'
 
 // ─── CMD key tracking (singleton — one listener pair for all components) ───
 
@@ -31,40 +40,7 @@ export function isCmdHeld(): boolean {
   return _cmdHeld
 }
 
-// ─── Text segmentation — detect file paths and URLs in plain text ───
-
-type TextSegment = { type: 'plain' | 'file' | 'url'; value: string }
-
-// Matches: URLs (https://...), absolute paths (/foo/bar), home-relative paths (~/foo/bar), and relative paths (src/foo/bar.ext)
-// Relative paths require a file extension to avoid false positives on plain text with slashes
-export const LINK_RE = /(https?:\/\/[^\s<>"')\]]+|~\/(?:[a-zA-Z0-9._~-]+\/)*[a-zA-Z0-9._~-]+|\/(?:[a-zA-Z0-9._~-]+\/)+[a-zA-Z0-9._~-]+|[a-zA-Z0-9._~-]+(?:\/[a-zA-Z0-9._~-]+)+\.[a-zA-Z0-9]+)/g
-
-// Exported for the memoization regression test in useNavigableLinks.test.tsx,
-// which spies on this to prove it is not re-run for unchanged text.
-export function segmentText(text: string): TextSegment[] {
-  const segments: TextSegment[] = []
-  let last = 0
-  for (const match of text.matchAll(LINK_RE)) {
-    const start = match.index!
-    if (start > last) segments.push({ type: 'plain', value: text.slice(last, start) })
-    const raw = match[0]
-    // Trim trailing punctuation that's likely not part of the path/url
-    const trimmed = raw.replace(/[.,;:!?)]+$/, '')
-    const isUrl = trimmed.startsWith('http')
-    segments.push({ type: isUrl ? 'url' : 'file', value: trimmed })
-    // Anything we trimmed off goes back as plain text
-    if (trimmed.length < raw.length) {
-      segments.push({ type: 'plain', value: raw.slice(trimmed.length) })
-    }
-    last = start + raw.length
-  }
-  if (last < text.length) segments.push({ type: 'plain', value: text.slice(last) })
-  return segments
-}
-
 // ─── LinkSegment — interactive span for detected file/url when CMD held ───
-
-export const EDITABLE_EXTS = new Set(['.md', '.txt', '.ts', '.tsx', '.js', '.jsx', '.json', '.yaml', '.yml', '.toml', '.py', '.rs', '.go', '.css', '.html'])
 
 export const LinkSegment = React.memo(function LinkSegment({
   segment,
@@ -203,26 +179,126 @@ export function useNavigableText() {
 }
 
 /**
- * Markdown `text` component. Wrapped in React.memo so unrelated re-renders of
- * the markdown subtree don't re-render it, and the link-regex segmentation is
- * memoized on the input string so it never re-runs for unchanged text. Both
- * matter for large plans, where re-segmenting every text node on every render
- * caused scroll stutter.
+ * Markdown `a` component. Handles both link kinds in one place:
+ *
+ *   - a link `remarkNavigableLinks` synthesized from a bare path/URL —
+ *     cmd-gated, styled only while CMD is held, matching LinkSegment's
+ *     affordance so detected paths read as plain text until they are actionable;
+ *   - a real markdown link — always clickable, opens externally.
+ *
+ * Every markdown surface that wants navigable links uses this, so the gating
+ * rule and the hover affordance cannot drift between the transcript, the plan
+ * viewer, and the resource viewer.
  */
-export const NavigableText = React.memo(function NavigableText({ children, onOpenFile, onOpenUrl, chipFiles }: {
-  children: any
+export const NavigableLink = React.memo(function NavigableLink({
+  node,
+  href,
+  children,
+  color,
+  onOpenFile,
+  onOpenUrl,
+  chipFiles,
+}: {
+  node?: unknown
+  href?: string
+  children?: React.ReactNode
+  /** Link color for a real markdown link (per-surface accent). */
+  color: string
   onOpenFile: (path: string) => void
   onOpenUrl: (url: string) => void
-  /** Render detected file paths as always-visible chips (see LinkSegment). */
+  /** Render a detected file path as an always-visible chip (see LinkSegment)
+   * instead of plain text that only reveals itself on CMD. URLs are
+   * unaffected — they keep the cmd-gated span treatment either way. */
   chipFiles?: boolean
 }) {
-  const text = typeof children === 'string' ? children : null
-  // Hook order stays unconditional; segmentText only runs when the string changes.
-  const segments = useMemo(() => (text === null ? null : segmentText(text)), [text])
-  if (segments === null) return <>{children}</>
-  if (segments.length === 1 && segments[0].type === 'plain') return <>{children}</>
-  return <>{segments.map((seg, i) => <LinkSegment key={i} segment={seg} onOpenFile={onOpenFile} onOpenUrl={onOpenUrl} asChip={chipFiles} />)}</>
+  const colors = useColors()
+  const cmdHeld = useCmdHeld()
+  const [hovered, setHovered] = useState(false)
+  const navigableKind = readNavigableKind(node)
+
+  // Detected bare path / URL: text-like until CMD is held (or an
+  // always-visible chip for a file path when chipFiles is set).
+  if (navigableKind) {
+    const label = typeof children === 'string' ? children : String(href || '')
+    const target = extractLinkText(children) || label
+
+    if (chipFiles && navigableKind === 'file') {
+      return <LinkSegment segment={{ type: 'file', value: target }} onOpenFile={onOpenFile} onOpenUrl={onOpenUrl} asChip />
+    }
+
+    return (
+      <span
+        style={{
+          color: cmdHeld ? colors.accent : undefined,
+          textDecoration: cmdHeld ? 'underline' : undefined,
+          textUnderlineOffset: 2,
+          cursor: cmdHeld ? 'pointer' : undefined,
+          position: 'relative',
+        }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onClick={(e) => {
+          if (!e.metaKey) return
+          e.preventDefault()
+          e.stopPropagation()
+          if (navigableKind === 'url') onOpenUrl(target)
+          else onOpenFile(target)
+        }}
+      >
+        {children}
+        {navigableKind === 'url' && cmdHeld && hovered && (
+          <span
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: '100%',
+              marginTop: 4,
+              background: colors.surfacePrimary,
+              border: `1px solid ${colors.surfaceSecondary}`,
+              borderRadius: 6,
+              padding: '3px 8px',
+              fontSize: 11,
+              color: colors.textSecondary,
+              whiteSpace: 'nowrap',
+              zIndex: 999,
+              pointerEvents: 'none',
+              maxWidth: 500,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {target}
+          </span>
+        )}
+      </span>
+    )
+  }
+
+  // Real markdown link.
+  return (
+    <button
+      type="button"
+      className="underline decoration-dotted underline-offset-2 cursor-pointer"
+      style={{ color }}
+      onClick={() => {
+        if (href) void window.ion.openExternal(String(href)).catch((err) => rWarn('navigable-links', 'openExternal failed', { error: String(err) }))
+      }}
+    >
+      {children}
+    </button>
+  )
 })
+
+/** Flatten a React children tree to its text, for reading a link's label. */
+function extractLinkText(children: React.ReactNode): string {
+  if (typeof children === 'string') return children
+  if (typeof children === 'number') return String(children)
+  if (Array.isArray(children)) return children.map(extractLinkText).join('')
+  if (React.isValidElement(children)) {
+    return extractLinkText((children.props as { children?: React.ReactNode }).children)
+  }
+  return ''
+}
 
 /** Markdown `code` component — applies navigable links to inline code spans */
 export const NavigableCode = React.memo(function NavigableCode({ children, className, onOpenFile, onOpenUrl, chipFiles, ...props }: {

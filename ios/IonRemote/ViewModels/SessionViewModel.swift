@@ -23,8 +23,6 @@ enum ConnectionState: String, Sendable {
     case connecting
     case connected
     case reconnecting
-    /// Auth handshake was rejected -- the pairing is no longer valid.
-    case authFailed
 
     var label: String {
         switch self {
@@ -32,7 +30,6 @@ enum ConnectionState: String, Sendable {
         case .connecting: "Connecting"
         case .connected: "Connected"
         case .reconnecting: "Reconnecting"
-        case .authFailed: "Authentication Failed"
         }
     }
 
@@ -42,7 +39,6 @@ enum ConnectionState: String, Sendable {
         case .connecting: .yellow
         case .connected: .green
         case .reconnecting: .orange
-        case .authFailed: .red
         }
     }
 }
@@ -278,9 +274,22 @@ final class SessionViewModel {
     var pairedDevices: [PairedDevice] = []
     var connectionState: ConnectionState = .disconnected
     var pairingState: PairingState = .idle
-    /// OIDC token manager for autonomous relay authentication (Phase 2).
-    /// Non-nil when the active device is in OIDC mode and has a client ID.
-    var oidcTokenManager: OIDCTokenManager?
+    /// One OIDC token manager per paired desktop, keyed by device ID.
+    ///
+    /// A phone can be paired with desktops that authenticate against different
+    /// identity tenants through different relays, so the credential state is
+    /// per-pairing: separate issuer, client ID, cached token, and Keychain
+    /// refresh token. Assigned in `init()` because the identity callback needs
+    /// `self`.
+    private(set) var oidcRegistry: OIDCTokenManagerRegistry!
+
+    /// Pairings the relay refused because the channel is bound to a different
+    /// OIDC subject (HTTP 403).
+    ///
+    /// Distinct from an expired credential: refreshing returns the same subject,
+    /// so retrying can never succeed. The transport stops for these pairings and
+    /// the UI offers "Switch Account" instead of spinning a backoff ladder.
+    var relayIdentityMismatch: Set<String> = []
 
     /// Blocks deferred until the transport reaches `.connected` (i.e. the
     /// first snapshot has arrived and confirmed the round-trip works).
@@ -351,6 +360,13 @@ final class SessionViewModel {
 
     /// Recent base directories from the desktop, updated via snapshot events.
     var recentDirectories: [String] = []
+    /// Exact timestamp of the layout snapshot restored or received per pairing.
+    /// Used for stale-data disclosure; never used to infer authority.
+    var lastSynchronizedAt: [String: Date] = [:]
+    /// Pairing-aware external destination (APNs / future deep links). It is held
+    /// while desktop data is locked and released only by that pairing's
+    /// authenticated snapshot.
+    var pendingExternalNavigation: (deviceId: String, tabId: String)?
     /// Tab ID to auto-navigate to after remote creation.
     var pendingNavigationTabId: String? = nil
     /// Tab ID to auto-open the Git pane for (set by tapping the branch badge in tab list).
@@ -453,33 +469,6 @@ final class SessionViewModel {
 
     func tab(for id: String) -> RemoteTabState? {
         tabs.first { $0.id == id }
-    }
-
-    /// Navigate to a specific tab (e.g. from a push notification tap).
-    func navigateToTab(_ tabId: String) {
-        pendingNavigationTabId = tabId
-    }
-
-    /// Poll relay channel status for all non-active paired devices.
-    func pollDeviceStatus() {
-        let activeId = activeDevice?.id
-        let devices = pairedDevices.filter { $0.id != activeId }
-        guard !devices.isEmpty else { return }
-        Task {
-            for device in devices {
-                let relayUrl = device.relayURL ?? relayURL
-                let apiKey = device.relayAPIKey ?? relayAPIKey
-                let channelId = E2ECrypto.deriveChannelId(
-                    sharedSecret: SymmetricKey(data: device.sharedSecret)
-                )
-                let online = await PeerStatusPoller.checkDesktopOnline(
-                    relayURL: relayUrl, apiKey: apiKey, channelId: channelId
-                )
-                await MainActor.run {
-                    self.deviceOnlineStatus[device.id] = online
-                }
-            }
-        }
     }
 
     /// The desktop's `defaultEngineProfileId` preference, projected via
@@ -587,6 +576,14 @@ final class SessionViewModel {
     // Draft persistence methods live in SessionViewModel+Drafts.swift.
 
     init() {
+        // Built before any pairing is loaded so no connect path can observe a
+        // nil registry. The identity callback hops to the MainActor because it
+        // fires from the token actor's parsing path.
+        self.oidcRegistry = OIDCTokenManagerRegistry(onIdentity: { [weak self] deviceId, identity in
+            Task { @MainActor [weak self] in
+                self?.applyOIDCIdentity(deviceId: deviceId, identity: identity)
+            }
+        })
         loadPairedDevices()
         // Restore hasConnectedBefore from UserDefaults
         hasConnectedBefore = UserDefaults.standard.bool(forKey: "hasConnectedBefore")

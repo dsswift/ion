@@ -27,10 +27,10 @@ type activeRun struct {
 	// still mutating it. Atomic load/store gives the race detector the
 	// happens-before edge it needs without forcing every read site to
 	// take run.mu.
-	turnCount         atomic.Int64
-	totalCost         float64
-	startTime         time.Time
-	steerCh           chan steerMessage
+	turnCount atomic.Int64
+	totalCost float64
+	startTime time.Time
+	steerCh   chan steerMessage
 	// suspendCh carries the suspend signal from ext/task_suspend. When the
 	// extension calls ctx.suspend() or ctx.suspendUntilAll(), the RPC handler
 	// sends a suspendSignal here. runLoop drains it at the next turn boundary
@@ -100,6 +100,13 @@ type activeRun struct {
 	// cross-turn logic) can read config-driven knobs without plumbing opts
 	// through every internal call. Set once in StartRunWithConfig.
 	opts *types.RunOptions
+
+	// pendingChildCompletionMessages are completion turns already appended to
+	// conv but not yet durably saved. A failed save retries this exact batch
+	// without appending duplicates; acknowledgement clears the source registry
+	// only after persistence succeeds.
+	pendingChildCompletionMessages []types.LlmMessage
+	pendingChildCompletionAck      func()
 
 	// lastNonEmptyResultText holds the most recent non-empty assistant text
 	// produced across all turns. Populated each time the end_turn/stop branch

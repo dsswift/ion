@@ -248,9 +248,11 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 					// invocation (the engine stored it as the entry display
 					// content; the expanded body lives only in the .llm.jsonl).
 					// Forward the provenance so consumers render a command pill.
-					SlashCommand: md.SlashCommand,
-					SlashArgs:    md.SlashArgs,
-					SlashSource:  md.SlashSource,
+					SlashCommand:        md.SlashCommand,
+					SlashArgs:           md.SlashArgs,
+					SlashSource:         md.SlashSource,
+					SlashModelAlias:     md.SlashModelAlias,
+					SlashModelEffective: md.SlashModelEffective,
 					// InjectionKind classifies engine-injected turns. Propagate
 					// from the persisted MessageData entry so consumers can
 					// classify the turn on historical reload without inspecting

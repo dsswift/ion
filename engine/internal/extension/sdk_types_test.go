@@ -184,3 +184,58 @@ func TestDispatchID_OnNotificationPayloads(t *testing.T) {
 		t.Errorf("zero-value DispatchID should be omitted: %s", string(data))
 	}
 }
+
+func TestCallbackID_OnNotificationPayloads(t *testing.T) {
+	cbID := "cb-1234-abcdef"
+
+	cases := []struct {
+		name string
+		data []byte
+	}{
+		{"DispatchAgentResult", mustMarshal(DispatchAgentResult{CallbackID: cbID, Output: "ok"})},
+		{"DispatchError", mustMarshal(DispatchError{CallbackID: cbID, Name: "a", Message: "fail"})},
+		{"RecallInfo", mustMarshal(RecallInfo{CallbackID: cbID, Name: "a", Reason: "done"})},
+		{"DispatchToolStartInfo", mustMarshal(DispatchToolStartInfo{CallbackID: cbID, ToolName: "R"})},
+		{"DispatchToolEndInfo", mustMarshal(DispatchToolEndInfo{CallbackID: cbID, ToolName: "R"})},
+		{"DispatchToolErrorInfo", mustMarshal(DispatchToolErrorInfo{CallbackID: cbID, ToolName: "R"})},
+		{"DispatchUsageInfo", mustMarshal(DispatchUsageInfo{CallbackID: cbID, InputTokens: 1})},
+		{"DispatchTextDeltaInfo", mustMarshal(DispatchTextDeltaInfo{CallbackID: cbID, Delta: "x"})},
+		{"DispatchPlanProposalInfo", mustMarshal(DispatchPlanProposalInfo{CallbackID: cbID, Name: "a"})},
+		{"DispatchChildQuestionInfo", mustMarshal(DispatchChildQuestionInfo{CallbackID: cbID, Name: "a"})},
+	}
+	want := `"callbackId":"` + cbID + `"`
+	for _, tc := range cases {
+		if !strings.Contains(string(tc.data), want) {
+			t.Errorf("%s JSON missing callbackId: %s", tc.name, string(tc.data))
+		}
+	}
+
+	// Omitempty: zero-value CallbackID must be absent.
+	zeroData := mustMarshal(DispatchError{Name: "a", Message: "fail"})
+	if strings.Contains(string(zeroData), "callbackId") {
+		t.Errorf("zero-value CallbackID should be omitted: %s", string(zeroData))
+	}
+}
+
+func TestCallbackID_OnDispatchAgentOpts(t *testing.T) {
+	opts := DispatchAgentOpts{
+		Name:       "agent",
+		CallbackID: "cb-9999-xyz",
+	}
+	data, _ := json.Marshal(opts) //nolint:errcheck // test
+	if !strings.Contains(string(data), `"callbackId":"cb-9999-xyz"`) {
+		t.Errorf("DispatchAgentOpts JSON missing callbackId: %s", string(data))
+	}
+
+	// Omitempty: absent when empty.
+	opts2 := DispatchAgentOpts{Name: "agent"}
+	data2, _ := json.Marshal(opts2) //nolint:errcheck // test
+	if strings.Contains(string(data2), "callbackId") {
+		t.Errorf("zero-value CallbackID should be omitted from opts: %s", string(data2))
+	}
+}
+
+func mustMarshal(v any) []byte {
+	data, _ := json.Marshal(v) //nolint:errcheck // test helper
+	return data
+}

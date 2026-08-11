@@ -76,6 +76,13 @@ func buildContextPathLocked(conv *Conversation) []types.LlmMessage {
 				}
 				messages = append(messages, msg)
 			}
+		case EntryCleared:
+			// A clear entry is an LLM-context boundary. The tree retains prior
+			// turns for rendering and branch navigation, but the next provider
+			// request must carry only messages appended after /clear. Save rebuilds
+			// the LLM sidecar through this function, so resetting here prevents a
+			// post-clear save from resurrecting the preserved history.
+			messages = nil
 		case EntryCompaction:
 			// A compaction entry marks a boundary: everything before it
 			// was dropped from the LLM context. Discard accumulated

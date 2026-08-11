@@ -413,6 +413,12 @@ type RunConfig struct {
 	// root sessions keep the wake-on-sendPrompt completion delivery.
 	OutstandingChildDispatches func() []string
 
+	// PeekCompletedChildDispatches returns terminal child completion messages
+	// waiting at a safe run-loop checkpoint plus an acknowledgement closure. The
+	// loop calls acknowledgement only after persistence succeeds, so a save
+	// failure leaves the records available for retry.
+	PeekCompletedChildDispatches func() ([]types.LlmMessage, func())
+
 	// Shell carries EngineRuntimeConfig.Shell so the Bash tool can run
 	// commands through the user's login shell when Shell.UseLoginShell is
 	// set. Nil means "use the default non-login bash -c path".

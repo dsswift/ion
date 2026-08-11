@@ -236,7 +236,6 @@ vi.mock('../../preferences', () => ({
       defaultEngineProfileId: '',
       uiZoom: 1,
       addRecentBaseDirectory: () => {},
-      incrementDirectoryUsage: () => {},
       removeRecentBaseDirectory: () => {},
     }),
 }))

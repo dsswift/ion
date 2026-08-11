@@ -108,14 +108,21 @@ func (a *activityRecordingAccessor) ConversationID() string                   { 
 func (a *activityRecordingAccessor) RunID() string                            { return "" }
 func (a *activityRecordingAccessor) TraceID() string                          { return "" }
 func (a *activityRecordingAccessor) WorkingDirectory() string                 { return "/tmp" }
+func (a *activityRecordingAccessor) CurrentModel() string                     { return "" }
 func (a *activityRecordingAccessor) SendAbort()                               {}
 func (a *activityRecordingAccessor) SendPrompt(_, _ string, _ []string) error { return nil }
 func (a *activityRecordingAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error {
 	return nil
 }
-func (a *activityRecordingAccessor) SteerSelfMainLoop(_ string) bool { return false }
+
+// Degraded-steer delivery is not what this test exercises; it delegates so
+// the fake satisfies SessionAccessor and behaves like the kind-aware send.
+func (a *activityRecordingAccessor) SendPromptDegradedSteer(text string, model string, bash []string, kind string) error {
+	return a.SendPromptWithKind(text, model, bash, kind)
+}
+func (a *activityRecordingAccessor) SteerSelfMainLoop(_ string) bool            { return false }
 func (a *activityRecordingAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
-func (a *activityRecordingAccessor) ParkSelfMainLoop() bool          { return false }
+func (a *activityRecordingAccessor) ParkSelfMainLoop() bool                     { return false }
 func (a *activityRecordingAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
@@ -248,7 +255,7 @@ func TestDispatchEmitsActivityWhileRunning(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_, _ = dispatchFn(extension.DispatchAgentOpts{Name: "activity-agent", Task: "do work"})
+		_, _ = dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true, Name: "activity-agent", Task: "do work"})
 		close(done)
 	}()
 
@@ -322,3 +329,4 @@ func assertActivityShape(t *testing.T, acts []types.EngineEvent, convID string) 
 		}
 	}
 }
+func (a *activityRecordingAccessor) DispatchRegistry() *DispatchRegistry { return nil }

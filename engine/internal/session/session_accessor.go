@@ -11,6 +11,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/permissions"
 	"github.com/dsswift/ion/engine/internal/plugins"
 	"github.com/dsswift/ion/engine/internal/resource"
+	"github.com/dsswift/ion/engine/internal/session/extcontext"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -31,13 +32,28 @@ type sessionAccessor struct {
 	suspender types.DeadlineSuspender
 }
 
-func (a *sessionAccessor) SessionKey() string       { return a.key }
-func (a *sessionAccessor) ConversationID() string   { return a.s.conversationID }
-func (a *sessionAccessor) RunID() string            { return a.s.requestID }
-func (a *sessionAccessor) TraceID() string          { return a.s.runTraceID }
+func (a *sessionAccessor) SessionKey() string     { return a.key }
+func (a *sessionAccessor) ConversationID() string { return a.s.conversationID }
+func (a *sessionAccessor) RunIdentity() (string, string) {
+	return a.s.runIdentitySnapshot()
+}
+func (a *sessionAccessor) RunID() string {
+	runID, _ := a.RunIdentity()
+	return runID
+}
+func (a *sessionAccessor) TraceID() string {
+	_, traceID := a.RunIdentity()
+	return traceID
+}
 func (a *sessionAccessor) ExtensionName() string    { return a.s.extensionName }
 func (a *sessionAccessor) ExtensionVersion() string { return a.s.extensionVersion }
 func (a *sessionAccessor) WorkingDirectory() string { return a.s.config.WorkingDirectory }
+
+// CurrentModel reports the model of the run in flight, or the conversation's
+// last model when idle; empty when the session has never run. Model locking is
+// independent from Manager.mu because context construction may already hold
+// that non-reentrant lock.
+func (a *sessionAccessor) CurrentModel() string { return a.s.currentModel() }
 
 func (a *sessionAccessor) Emit(ev types.EngineEvent) { a.m.emit(a.key, ev) }
 
@@ -49,6 +65,10 @@ func (a *sessionAccessor) SendAbort() { a.m.SendAbort(a.key) }
 // context.Background() for test-constructed sessions. See
 // session_root_context.go.
 func (a *sessionAccessor) RootContext() context.Context { return a.s.rootContext() }
+
+func (a *sessionAccessor) DeliverRootDispatchResult(result extension.DispatchAgentResult) {
+	a.m.deliverRootDispatchResult(a.key, result)
+}
 
 func (a *sessionAccessor) SendPrompt(text string, model string, bashAllowlistAdditions []string) error {
 	return a.SendPromptWithKind(text, model, bashAllowlistAdditions, "")
@@ -64,7 +84,33 @@ func (a *sessionAccessor) SendPrompt(text string, model string, bashAllowlistAdd
 // session that is waiting for a bare revive (no pending children) so the
 // dispatch's LLM run restarts with the new conversation context.
 func (a *sessionAccessor) SendPromptWithKind(text string, model string, bashAllowlistAdditions []string, kind string) error {
+	return a.sendPromptWithKindOpts(text, model, bashAllowlistAdditions, kind, false)
+}
+
+// SendPromptDegradedSteer is the steerSelf-fallback variant of
+// SendPromptWithKind. Identical delivery, plus RunOptions.SteerDegraded so the
+// backend persists the steer marker drainSteer writes on the live-run path —
+// the two delivery paths then leave the same trace in the transcript.
+//
+// Separate from the kind: a degraded delivery can carry any kind (or none, when
+// a human steers an idle run), so the two facts cannot share one field.
+func (a *sessionAccessor) SendPromptDegradedSteer(text string, model string, bashAllowlistAdditions []string, kind string) error {
+	return a.sendPromptWithKindOpts(text, model, bashAllowlistAdditions, kind, true)
+}
+
+func (a *sessionAccessor) sendPromptWithKindOpts(text string, model string, bashAllowlistAdditions []string, kind string, steerDegraded bool) error {
 	overrides := buildPromptOverrides(model, bashAllowlistAdditions, kind)
+	if steerDegraded {
+		// buildPromptOverrides returns nil when every field is a zero value; a
+		// degraded steer with no model and no kind still needs the carrier.
+		if overrides == nil {
+			overrides = &PromptOverrides{}
+		}
+		overrides.SteerDegraded = true
+		utils.LogWithFields(utils.LevelInfo, "session", "sessionaccessor.sendprompt: degraded steer, marker will be persisted", map[string]any{
+			"key": a.key, "count": len(text), "injection_kind": kind,
+		})
+	}
 	if len(bashAllowlistAdditions) > 0 {
 		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sessionaccessor.sendprompt: threading bash-allowlist additions for this prompt", map[string]any{"key": a.key, "count": len(bashAllowlistAdditions), "bash_allowlist_additions": bashAllowlistAdditions})
 	}
@@ -78,6 +124,18 @@ func (a *sessionAccessor) SendPromptWithKind(text string, model string, bashAllo
 	// surface the injected turn to live clients. Client wire prompts never
 	// route through this accessor. See emitPromptInjected.
 	a.m.emitPromptInjected(a.key, text, injectedKind)
+
+	// A degraded steer emits its own typed signal. SteerInjectedEvent remains
+	// exclusive to a live run-loop drain; collapsing the two would tell an
+	// external consumer a non-existent run consumed this message mid-turn.
+	if steerDegraded {
+		a.m.emit(a.key, translateToEngineEvent(types.NormalizedEvent{
+			Data: &types.SteerDegradedEvent{MessageLength: len(text)},
+		}, 0))
+		utils.LogWithFields(utils.LevelInfo, "session", "sessionaccessor.sendprompt: emitted steer_degraded for fallback delivery", map[string]any{
+			"key": a.key, "count": len(text), "injection_kind": injectedKind,
+		})
+	}
 
 	// Signal any suspended dispatch on this session so its LLM run revives
 	// with the new conversation context. The new user turn is already
@@ -217,6 +275,13 @@ func (a *sessionAccessor) EmitDispatchCountStatus(reason string) {
 // (dispatch_rehydrate.go). Best-effort by contract; see the interface doc.
 func (a *sessionAccessor) PersistDispatchRegistered(agentID, agentName, displayName, task, model, parentDispatchID string, depth int) {
 	a.m.persistDispatchRegistered(a.key, a.s.conversationID, agentID, agentName, displayName, task, model, parentDispatchID, depth)
+}
+
+// DispatchRegistry returns the session's dispatch registry so context builders
+// that do not already hold one in scope (extension-tool dispatch, the LLM-call
+// hook context) can pass it to NewExtContext instead of silently omitting it.
+func (a *sessionAccessor) DispatchRegistry() *extcontext.DispatchRegistry {
+	return a.s.dispatchRegistry
 }
 
 func (a *sessionAccessor) EngineConfig() *types.EngineRuntimeConfig { return a.m.config }

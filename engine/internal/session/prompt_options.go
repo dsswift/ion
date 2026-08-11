@@ -289,6 +289,12 @@ func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) 
 		if overrides.InjectionKind != "" {
 			opts.InjectionKind = overrides.InjectionKind
 		}
+		// A steer that could not reach a live run: the backend persists the
+		// steer marker so the degraded path leaves the same trace the live
+		// path does.
+		if overrides.SteerDegraded {
+			opts.SteerDegraded = true
+		}
 	}
 
 	if s.config.SystemHint != "" {
@@ -442,6 +448,18 @@ func resolveModelTier(opts *types.RunOptions) {
 	if len(fallbacks) > 0 && len(opts.FallbackChain) == 0 {
 		opts.FallbackChain = fallbacks
 	}
+}
+
+func finalizeSlashModelProvenance(opts *types.RunOptions, key string) {
+	if opts.ResolvedSlashModelAlias == "" {
+		return
+	}
+	opts.ResolvedSlashModelEffective = opts.Model
+	utils.LogWithFields(utils.LevelInfo, "session.slash", "model provenance resolved", map[string]any{
+		"session_id":  key,
+		"model_alias": opts.ResolvedSlashModelAlias,
+		"model":       opts.ResolvedSlashModelEffective,
+	})
 }
 
 // injectContextFiles discovers Ion-native instruction files (AGENTS.md,

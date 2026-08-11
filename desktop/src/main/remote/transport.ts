@@ -272,7 +272,7 @@ export class RemoteTransport extends EventEmitter {
   }
 
   /** Send a remote event to all connected iOS devices via their preferred transport. */
-  send(event: RemoteEvent, push = false, pushMeta?: { title?: string; body?: string }): void {
+  send(event: RemoteEvent, push = false, pushMeta?: { title?: string; body?: string; tabId?: string }): void {
     enqueueSend(this._sendCtx, event, push, pushMeta)
   }
 

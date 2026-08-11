@@ -35,6 +35,13 @@ type ExecResult struct {
 	ExitCode int
 	Stdout   string
 	Stderr   string
+	// TimedOut reports that the command was killed because it exceeded
+	// ExecOptions.Timeout rather than exiting on its own. Without this the
+	// caller sees only the raw wait error ("signal: killed"), which names
+	// neither the deadline nor the fact that one was hit. Additive: backends
+	// outside this repo that never set it yield the zero value, and the
+	// caller's fallback is the pre-existing raw-error path.
+	TimedOut bool
 }
 
 // LocalBashOperations executes commands via a local bash shell.
@@ -46,6 +53,7 @@ func (l *LocalBashOperations) Exec(ctx context.Context, command, cwd string, opt
 		timeout = 120 * time.Second
 	}
 
+	parentCtx := ctx
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -89,6 +97,20 @@ func (l *LocalBashOperations) Exec(ctx context.Context, command, cwd string, opt
 	result := &ExecResult{
 		Stdout: stdout.String(),
 		Stderr: stderr.String(),
+	}
+
+	// Attribute a kill to THIS call's timeout only when our own deadline
+	// fired and the caller's context is still live. A parent cancellation
+	// (run abort) or a parent deadline (the per-tool ceiling) also kills the
+	// process, but neither is the bash timeout and reporting it as one would
+	// send the model chasing the wrong limit.
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) && parentCtx.Err() == nil {
+		result.TimedOut = true
+		utils.LogWithFields(utils.LevelInfo, "tools.bash", "command killed at timeout", map[string]any{
+			"timeout_ms": timeout.Milliseconds(),
+			"count":      len(command),
+			"cwd":        cwd,
+		})
 	}
 
 	if err != nil {

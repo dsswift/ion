@@ -55,15 +55,22 @@ func (a *bumpCountingAccessor) ConversationID() string                   { retur
 func (a *bumpCountingAccessor) RunID() string                            { return "" }
 func (a *bumpCountingAccessor) TraceID() string                          { return "" }
 func (a *bumpCountingAccessor) WorkingDirectory() string                 { return "/tmp" }
+func (a *bumpCountingAccessor) CurrentModel() string                     { return "" }
 func (a *bumpCountingAccessor) Emit(_ types.EngineEvent)                 {}
 func (a *bumpCountingAccessor) SendAbort()                               {}
 func (a *bumpCountingAccessor) SendPrompt(_, _ string, _ []string) error { return nil }
 func (a *bumpCountingAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error {
 	return nil
 }
-func (a *bumpCountingAccessor) SteerSelfMainLoop(_ string) bool { return false }
+
+// Degraded-steer delivery is not what this test exercises; it delegates so
+// the fake satisfies SessionAccessor and behaves like the kind-aware send.
+func (a *bumpCountingAccessor) SendPromptDegradedSteer(text string, model string, bash []string, kind string) error {
+	return a.SendPromptWithKind(text, model, bash, kind)
+}
+func (a *bumpCountingAccessor) SteerSelfMainLoop(_ string) bool            { return false }
 func (a *bumpCountingAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
-func (a *bumpCountingAccessor) ParkSelfMainLoop() bool          { return false }
+func (a *bumpCountingAccessor) ParkSelfMainLoop() bool                     { return false }
 func (a *bumpCountingAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
@@ -184,8 +191,7 @@ func (d *drippingChildBackend) StartRun(requestID string, _ types.RunOptions) {
 // TestDispatchChildActivityBumpsParentProgress pins the parent-bump half of the
 // dispatch-stall fix: a foreground dispatch whose child emits genuine events
 // must call BumpParentProgress for each one, so the parent run's run-progress
-// watchdog stays fresh while the child works (the parent is parked in the
-// deadline-exempt Agent tool call and emits no progress of its own).
+// watchdog stays fresh while the child works during explicit terminal wait.
 //
 // On the code BEFORE the parent-bump wiring, the child OnNormalized handler did
 // not call BumpParentProgress, so the bump count would be 0 — this test pins
@@ -197,7 +203,7 @@ func TestDispatchChildActivityBumpsParentProgress(t *testing.T) {
 
 	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 
-	result, err := dispatchFn(extension.DispatchAgentOpts{
+	result, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
 		Name: "bump-test-agent",
 		Task: "do work",
 		// Foreground (Background defaults to false): runs synchronously and
@@ -220,3 +226,4 @@ func TestDispatchChildActivityBumpsParentProgress(t *testing.T) {
 		t.Errorf("BumpParentProgress fired %d times, want >= %d (one per genuine child event) — parent-liveness wiring missing or regressed", got, childEvents)
 	}
 }
+func (a *bumpCountingAccessor) DispatchRegistry() *DispatchRegistry { return nil }

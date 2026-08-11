@@ -13,7 +13,8 @@ import (
 // Matching is positional on the LLM-visible active path, not by content. Content
 // cannot be used: a resolved slash stores raw invocation text in EntryMessage
 // while .llm.jsonl stores the expanded prompt. DisplayOnly entries are skipped,
-// and an EntryCompaction resets the path exactly as BuildContextPath does.
+// and EntryCompaction or EntryCleared resets the path exactly as BuildContextPath
+// does.
 func rehydrateMessageUsage(conv *Conversation) {
 	if len(conv.Messages) == 0 || len(conv.Entries) == 0 {
 		return
@@ -31,6 +32,12 @@ func rehydrateMessageUsage(conv *Conversation) {
 		case EntryCompaction:
 			// BuildContextPath discards everything before the newest boundary.
 			expected = []metadata{{entryID: entry.ID, role: "user"}}
+		case EntryCleared:
+			// /clear also discards all prior LLM-visible messages, but unlike
+			// compaction it injects no synthetic boundary message. Keep metadata
+			// aligned with BuildContextPath so post-clear assistant Usage is
+			// restored from only the active post-clear tree suffix.
+			expected = nil
 		case EntryMessage:
 			md := asMessageData(entry.Data)
 			if md == nil || md.DisplayOnly {

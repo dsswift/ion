@@ -15,11 +15,11 @@ extension SessionViewModel {
             return
         }
 
-        // Initialize OIDC token manager from stored device fields before the
-        // first connection attempt. Without this, the manager is nil until
-        // desktop pushes a fresh relay_config — which requires a successful
-        // connection first (chicken-and-egg on restart with a stale token).
-        ensureOIDCTokenManager(for: device)
+        // Resolve this pairing's OIDC credential callbacks before the first
+        // connection attempt. They are pinned to this device's ID, so a phone
+        // paired with desktops in different tenants never authenticates one
+        // desktop with another's token. Nil for PSK / LAN-direct pairings.
+        let oidc = oidcCredentialClosures(for: device)
 
         let effectiveRelayURL = device.relayURL ?? relayURL
         let effectiveAPIKey = device.relayAPIKey ?? relayAPIKey
@@ -67,16 +67,9 @@ extension SessionViewModel {
             channelId: channelId,
             sharedKey: sharedKey,
             apnsToken: apnsToken,
-            getCredential: oidcTokenManager != nil ? { [weak self] in
-                guard let manager = self?.oidcTokenManager else {
-                    throw OIDCTokenError.managerUnavailable
-                }
-                return try await manager.accessToken()
-            } : nil,
-            onTokenRejected: oidcTokenManager != nil ? { [weak self] in
-                guard let manager = self?.oidcTokenManager else { return }
-                Task { await manager.invalidateAccessToken() }
-            } : nil
+            getCredential: oidc?.get,
+            onTokenRejected: oidc?.rejected,
+            onIdentityMismatch: oidc?.mismatch
         )
         tm.deviceId = device.id
         tm.deviceName = device.name
@@ -151,7 +144,9 @@ extension SessionViewModel {
                     "reason": device.name
                 ])
                 await MainActor.run {
-                    self.connectionState = .authFailed
+                    if let device = self.activeDevice {
+                        self.lockDesktop(deviceId: device.id, status: .rejected, reason: .pairingRejected, source: "lan_direct_rejected")
+                    }
                     self.transport?.stop()
                     self.transport = nil
                 }
@@ -185,9 +180,9 @@ extension SessionViewModel {
         tearDownTransport()
         guard let device = activeDevice else { return }
 
-        // Same startup-initialization guard as connect(): ensure the OIDC token
-        // manager exists from stored device fields before rebuilding transport.
-        ensureOIDCTokenManager(for: device)
+        // Same startup-initialization guard as connect(): resolve this pairing's
+        // credential callbacks before rebuilding the transport.
+        let oidc = oidcCredentialClosures(for: device)
 
         let effectiveRelayURL = device.relayURL ?? relayURL
         let effectiveAPIKey = device.relayAPIKey ?? relayAPIKey
@@ -230,16 +225,9 @@ extension SessionViewModel {
             channelId: channelId,
             sharedKey: sharedKey,
             apnsToken: apnsToken,
-            getCredential: oidcTokenManager != nil ? { [weak self] in
-                guard let manager = self?.oidcTokenManager else {
-                    throw OIDCTokenError.managerUnavailable
-                }
-                return try await manager.accessToken()
-            } : nil,
-            onTokenRejected: oidcTokenManager != nil ? { [weak self] in
-                guard let manager = self?.oidcTokenManager else { return }
-                Task { await manager.invalidateAccessToken() }
-            } : nil
+            getCredential: oidc?.get,
+            onTokenRejected: oidc?.rejected,
+            onIdentityMismatch: oidc?.mismatch
         )
         tm.deviceId = device.id
         tm.deviceName = device.name

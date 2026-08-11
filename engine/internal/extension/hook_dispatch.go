@@ -11,11 +11,11 @@ import (
 
 // --- Delegated fire methods ---
 
-func (h *Host) FireSessionStart(ctx *Context) error         { return h.sdk.FireSessionStart(ctx) }
-func (h *Host) FireSessionEnd(ctx *Context) error           { return h.sdk.FireSessionEnd(ctx) }
-func (h *Host) FireMessageStart(ctx *Context) error         { return h.sdk.FireMessageStart(ctx) }
-func (h *Host) FireMessageEnd(ctx *Context) error           { return h.sdk.FireMessageEnd(ctx) }
-func (h *Host) FireToolEnd(ctx *Context) error              { return h.sdk.FireToolEnd(ctx) }
+func (h *Host) FireSessionStart(ctx *Context) error { return h.sdk.FireSessionStart(ctx) }
+func (h *Host) FireSessionEnd(ctx *Context) error   { return h.sdk.FireSessionEnd(ctx) }
+func (h *Host) FireMessageStart(ctx *Context) error { return h.sdk.FireMessageStart(ctx) }
+func (h *Host) FireMessageEnd(ctx *Context) error   { return h.sdk.FireMessageEnd(ctx) }
+func (h *Host) FireToolEnd(ctx *Context) error      { return h.sdk.FireToolEnd(ctx) }
 func (h *Host) FireTaskCreated(ctx *Context, info TaskLifecycleInfo) error {
 	return h.sdk.FireTaskCreated(ctx, info)
 }

@@ -52,6 +52,14 @@ export function RemoteCategoryDevices({
                 : `Paired ${new Date(device.pairedAt).toLocaleDateString()}`
               }
             </div>
+            {(device.relayOidcAccountUsername || device.relayOidcAccountName) && (
+              <div style={{ color: colors.textTertiary, fontSize: 11, marginTop: 2 }}>
+                Last reported by phone: {device.relayOidcAccountUsername || device.relayOidcAccountName}
+                {device.relayOidcTenantId ? ` · ${device.relayOidcTenantId}` : ''}
+                {device.relayOidcAccessStatus ? ` · ${device.relayOidcAccessStatus}` : ''}
+                {device.relayOidcAccessReason && device.relayOidcAccessReason !== 'none' ? ` (${device.relayOidcAccessReason})` : ''}
+              </div>
+            )}
           </div>
           <button
             onClick={() => onRevokeDevice(device.id)}

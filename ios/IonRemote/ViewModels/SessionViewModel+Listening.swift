@@ -50,7 +50,11 @@ extension SessionViewModel {
                         self.handleEvent(event)
                     }
                     if needsStateSync {
+                        let previousTransport = self.connectionQuality.transportState
                         self.connectionQuality.transportState = latestTransport
+                        if previousTransport == .lanPreferred, latestTransport != .lanPreferred {
+                            self.lockDeferredRelayMismatchIfNeeded()
+                        }
                     }
                 }
             }

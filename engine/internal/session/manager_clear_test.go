@@ -310,6 +310,79 @@ func TestSendCommand_Clear_ClearsPendingPermissionDenials(t *testing.T) {
 	}
 }
 
+// TestSendCommand_Clear_PostClearContextStaysBounded verifies the live-session
+// path carries the durable clear boundary through its first subsequent save.
+// `dispatchClear` preserves old tree entries, so a post-clear turn must rebuild
+// only its new suffix rather than restoring the prior provider context.
+func TestSendCommand_Clear_PostClearContextStaysBounded(t *testing.T) {
+	tempHome := t.TempDir()
+	t.Setenv("HOME", tempHome)
+
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	const key = "clear-post-turn"
+	if _, err := mgr.StartSession(key, defaultConfig()); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	t.Cleanup(func() { _ = mgr.StopSession(key) })
+
+	convID := "clear-post-turn-conversation"
+	conv := conversation.CreateConversation(convID, "system", "test-model")
+	conversation.AddUserMessage(conv, "pre-clear prompt")
+	conversation.AddAssistantMessage(conv,
+		[]types.LlmContentBlock{{Type: "text", Text: "pre-clear response"}},
+		types.LlmUsage{InputTokens: 700, OutputTokens: 30})
+	if err := conversation.Save(conv, ""); err != nil {
+		t.Fatalf("seed Save: %v", err)
+	}
+
+	mgr.mu.Lock()
+	s := mgr.sessions[key]
+	s.conversationID = convID
+	s.lastContextTokens = 700
+	s.lastContextPct = 1
+	mgr.mu.Unlock()
+
+	mgr.SendCommand(key, "clear", "")
+
+	// Simulate the next resolved slash turn, which is the path that previously
+	// rebuilt all pre-clear tree entries into the LLM sidecar.
+	convDir := filepath.Join(tempHome, ".ion", "conversations")
+	postClear, err := conversation.Load(convID, convDir)
+	if err != nil {
+		t.Fatalf("post-clear Load: %v", err)
+	}
+	conversation.AddUserMessageWithInvocation(postClear, "expanded /squash instructions", conversation.SlashInvocation{
+		Command: "/squash",
+		Source:  "ion",
+	})
+	conversation.AddAssistantMessage(postClear,
+		[]types.LlmContentBlock{{Type: "text", Text: "post-clear response"}},
+		types.LlmUsage{InputTokens: 111, OutputTokens: 20})
+	if err := conversation.Save(postClear, ""); err != nil {
+		t.Fatalf("post-clear Save: %v", err)
+	}
+
+	reloaded, err := conversation.Load(convID, convDir)
+	if err != nil {
+		t.Fatalf("reloaded Load: %v", err)
+	}
+	if len(reloaded.Messages) != 2 {
+		t.Fatalf("post-clear LLM history has %d messages, want slash expansion + response only", len(reloaded.Messages))
+	}
+	if reloaded.Messages[1].Usage == nil || reloaded.Messages[1].Usage.InputTokens != 111 {
+		t.Errorf("post-clear assistant Usage = %#v, want InputTokens=111", reloaded.Messages[1].Usage)
+	}
+
+	mgr.refreshContextUsage(key, "post_clear_regression")
+	mgr.mu.Lock()
+	gotTokens := s.lastContextTokens
+	mgr.mu.Unlock()
+	if gotTokens != 111 {
+		t.Errorf("retained post-clear context tokens = %d, want 111", gotTokens)
+	}
+}
+
 // TestClearConversationFile_MissingConv verifies that ClearConversationFile
 // treats a missing conversation file as an already-empty success, not an
 // error. This is the unified clear contract: a missing file means "there is
@@ -462,7 +535,6 @@ func clearMessageData(t *testing.T, entry conversation.SessionEntry) *conversati
 		return nil
 	}
 }
-
 
 // TestClearConversationFile_LiveSessionClearsDenialsAndEmits verifies the
 // unified clear contract for the file-only path: when a live session owns the

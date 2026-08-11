@@ -60,21 +60,32 @@ func TestHostDispose_NoRaceWithCaptureExitStatus(t *testing.T) {
 	}
 }
 
-// TestHostDispose_LiveProcessKill_NoHang covers the "dispose-first" race order
-// for the #278 fix.
+// TestHostDispose_LiveProcessKill_NoHang covers the "dispose-first" ordering
+// for the #278 fix, and pins the reap-ownership behaviour that replaced the
+// original 2-second stall.
 //
 // In this path disposeInternal kills a live process before readLoop has
 // launched captureExitStatus. Because disposeInternal sets dead=true first,
-// readLoop's defer sees wasAlive=false and does NOT launch captureExitStatus.
-// exitDone is therefore never closed. disposeInternal must return via the 2 s
-// safety-net timeout rather than waiting indefinitely on exitDone.
+// readLoop's defer sees wasAlive=false and does NOT launch captureExitStatus —
+// so nothing on the reader side will ever close exitDone.
+//
+// Originally dispose could only wait on exitDone here, so it burned its full
+// 2 s safety-net timeout and returned WITHOUT reaping: the child was left as a
+// zombie and every dispatch teardown paid two seconds. Because dispose used to
+// run before the dispatch's terminal agent-state transition, that stall sat
+// directly inside the window a concurrent run-exit sweep could orphan the
+// dispatch's slot in.
+//
+// Dispose now CLAIMS the single permitted cmd.Wait (waitClaimed) when no
+// reader-side capture owns it, so it reaps directly and returns promptly. The
+// timeout arm remains for the genuine case where captureExitStatus owns Wait
+// and is slow.
 //
 // The test constructs the scenario directly (within the package) rather than
 // going through Load, which would block the test goroutine waiting for an init
 // handshake that never arrives from a sleeping process. We start a real
 // subprocess (sleep or equivalent), wire the relevant Host fields by hand, and
-// call disposeInternal. The test verifies that disposeInternal returns within a
-// bounded time (≤5 s), proving the timeout arm fires and does not deadlock.
+// call disposeInternal.
 func TestHostDispose_LiveProcessKill_NoHang(t *testing.T) {
 	// Use "sleep 60" as a long-lived subprocess with no stdout output.
 	sleepPath, err := exec.LookPath("sleep")
@@ -100,18 +111,16 @@ func TestHostDispose_LiveProcessKill_NoHang(t *testing.T) {
 	// the dispose-first path where captureExitStatus never runs.
 	h.exitDone = make(chan struct{})
 
+	start := time.Now()
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		h.disposeInternal()
 	}()
 
-	// disposeInternal must return within 5 s:
-	//   - It kills the process (~instant).
-	//   - It waits on exitDone, which is never closed.
-	//   - The 2 s safety-net fires and it proceeds.
-	//   - readerWg.Wait() returns immediately (no readLoop goroutine was started).
-	// 5 s gives ample CI scheduling slack beyond the 2 s timeout.
+	// disposeInternal must return well inside the 2 s safety net: it kills the
+	// process, wins the Wait claim (no captureExitStatus is running), and reaps
+	// directly. 5 s is the outer deadlock bound.
 	select {
 	case <-done:
 		// Pass — disposeInternal returned within the bound.
@@ -119,6 +128,20 @@ func TestHostDispose_LiveProcessKill_NoHang(t *testing.T) {
 		t.Fatal("disposeInternal did not return within 5s — possible deadlock in exitDone wait")
 	}
 
-	// Reap the process ourselves (disposeInternal skipped Wait via the timeout).
-	_ = cmd.Wait()
+	// Regression pin for the stall: taking the safety-net timeout here means
+	// dispose is once again waiting on a channel nobody will close, which is
+	// what put a fixed 2 s gap between a child finishing and its dispatch slot
+	// being marked terminal. Reverting the waitClaimed ownership makes this
+	// elapsed time jump to ~2 s and turns this assertion red.
+	if elapsed := time.Since(start); elapsed >= 2*time.Second {
+		t.Errorf("disposeInternal took %v; expected a direct reap well under the 2s safety net "+
+			"(dispose must claim cmd.Wait when no captureExitStatus owns it)", elapsed)
+	}
+
+	// Dispose owned the reap, so the process is already collected. A second
+	// Wait must therefore fail — proving dispose actually reaped rather than
+	// timing out and leaving a zombie behind.
+	if err := cmd.Wait(); err == nil {
+		t.Error("cmd.Wait() succeeded after dispose; dispose did not reap the process itself")
+	}
 }

@@ -10,12 +10,13 @@ import (
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
+	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/resource"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// SessionAccessor abstracts the session fields and manager operations that
 // NewExtContext needs. The session package provides a concrete implementation
 // that delegates to *Manager and *engineSession with appropriate locking.
 type SessionAccessor interface {
@@ -37,13 +38,15 @@ type SessionAccessor interface {
 	// ExtensionName to attribute dispatch.agent spans with "extension_version".
 	ExtensionVersion() string
 	WorkingDirectory() string
+	CurrentModel() string
 	Emit(ev types.EngineEvent)
 	SendAbort()
 
 	// RootContext returns the session's cancellation root context. Every
 	// cancellable operation built from this accessor (ctx.llmCall, agent
 	// dispatch) derives its own context from this root so a session-level
-	// abort cancels them all. Implementations must never return nil — a
+	// abort cancels it. Async dispatch keeps this root rather than inheriting
+	// a short-lived launching tool-call context. Implementations must never return nil — a
 	// session with no root (test-constructed) returns context.Background()
 	// so derive sites can call context.WithCancel(sa.RootContext())
 	// unconditionally.
@@ -56,7 +59,6 @@ type SessionAccessor interface {
 	// should use SendPrompt; this method exists so the ext/send_prompt
 	// active-hook path can pass Kind without changing SendPrompt's signature.
 	SendPromptWithKind(text string, model string, bashAllowlistAdditions []string, kind string) error
-
 	// SteerSelfMainLoop attempts to steer the session's OWN main run loop
 	// (the depth-0 / orchestrator run) by injecting message onto its steer
 	// channel. Returns true when the steer reached a live run; false when
@@ -95,10 +97,8 @@ type SessionAccessor interface {
 	NewChildBackend() backend.RunBackend
 
 	// BumpParentProgress refreshes the parent run's run-progress watchdog
-	// clock. The dispatch/spawn layer calls this on every genuine child
-	// event so a healthy long-running child keeps the parent run — which is
-	// parked in the deadline-exempt Agent tool call and emits no progress of
-	// its own — from being falsely flagged as stalled. No-op when there is no
+	// clock. This matters only for explicit foreground waits; default async
+	// dispatch leaves parent run independently progress-capable. No-op when there is no
 	// active parent run or the backend does not support progress bumps. See
 	// ApiBackend.BumpRunProgress and the run-progress watchdog for the full
 	// rationale (the 1782012033034-37d617d3d9ab incident).
@@ -125,6 +125,12 @@ type SessionAccessor interface {
 	// Best-effort: failures are logged, never propagated (a dispatch must
 	// not fail because its durability record could not be written).
 	PersistDispatchRegistered(agentID, agentName, displayName, task, model, parentDispatchID string, depth int)
+	// DispatchRegistry returns the session's dispatch registry. Required by
+	// the context paths that build an extension.Context without already
+	// holding one in scope (extension-tool dispatch, the LLM-call hook
+	// context). Never returns nil for a live session; a test accessor may.
+	DispatchRegistry() *DispatchRegistry
+
 	EngineConfig() *types.EngineRuntimeConfig
 
 	// ClaudeCompat reports the parent session's Claude-compatibility setting.
@@ -270,11 +276,29 @@ type SessionAccessor interface {
 	PluginTurnMessages(prompt string) []types.LlmMessage
 }
 
+// degradedSteerPromptSender is an optional SessionAccessor refinement.
+// sessionAccessor implements it so no-owning-run delivery persists a marker and
+// emits engine_steer_degraded. Existing minimal accessors remain source
+// compatible and use the ordinary classified prompt fallback.
+type degradedSteerPromptSender interface {
+	SendPromptDegradedSteer(text string, model string, bashAllowlistAdditions []string, kind string) error
+}
+
+func sendDegradedSteerPrompt(sa SessionAccessor, message, kind string) error {
+	if sender, ok := sa.(degradedSteerPromptSender); ok {
+		return sender.SendPromptDegradedSteer(message, "", nil, kind)
+	}
+	return sa.SendPromptWithKind(message, "", nil, kind)
+}
+
 // ExtContextOpts holds optional configuration for NewExtContext. All fields
 // default to zero values, which produce a root-level (depth 0) context.
+//
+// The DispatchRegistry is deliberately NOT a member here: it is a required
+// positional parameter of NewExtContext. It used to be an optional field, and
+// omitting it silently produced a context whose DispatchAgent could not
+// register anything — see the NewExtContext doc comment for what that cost.
 type ExtContextOpts struct {
-	// Registry enables background dispatch and recall support.
-	Registry *DispatchRegistry
 	// Depth is the dispatch depth of the agent that will own this context.
 	// 0 for the orchestrator (root), 1 for a direct dispatch, etc.
 	Depth int
@@ -289,28 +313,48 @@ type ExtContextOpts struct {
 }
 
 // NewExtContext builds a fully-populated extension.Context by delegating all
-// callbacks to the provided SessionAccessor. The optional DispatchRegistry
-// enables background dispatch and recall support; pass nil to disable.
+// callbacks to the provided SessionAccessor.
 //
-// The variadic argument accepts either a *DispatchRegistry (backward-compat)
-// or an ExtContextOpts struct. When opts are provided, the context's
-// DispatchAgent closure is depth-aware: it binds the given depth and dispatch
-// ID so child dispatches inherit depth+1 and cannot forge their ancestry.
-func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
-	var registry *DispatchRegistry
+// registry is REQUIRED and positional. It backs ctx.DispatchAgent's ability to
+// reserve, register, deregister, and revive dispatches; a nil registry yields a
+// context whose dispatch calls silently no-op every one of those steps, because
+// each is `if registry != nil` guarded on the dispatch path.
+//
+// It is positional rather than an ExtContextOpts field on purpose. It was
+// optional, and three call sites simply left it out — the two agent_start /
+// agent_end contexts and the before_provider_request context. Those contexts
+// get pushed onto the host's ctxStack for the duration of a blocking hook RPC,
+// and ctxStack.Current() returns top-of-stack, so any concurrent
+// ext/dispatch_agent RPC arriving inside that window resolved against the
+// registry-less context. The dispatch then never reserved its ID, so
+// handleRunExit's sweep deleted its still-running agent-state slot and every
+// later UpdateStateByID landed nowhere: the agent rendered as permanently
+// running, its parent was never revived, and the orchestrator sat idle with the
+// work finished and undelivered. Making the parameter positional turns that
+// omission into a compile error.
+//
+// When opts are provided, the context's DispatchAgent closure is depth-aware:
+// it binds the given depth and dispatch ID so child dispatches inherit depth+1
+// and cannot forge their ancestry.
+func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtContextOpts) *extension.Context {
 	var depth int
 	var dispatchId string
 	var suspendFn func(awaitingDispatchIDs []string) error
-	for _, arg := range args {
-		switch v := arg.(type) {
-		case *DispatchRegistry:
-			registry = v
-		case ExtContextOpts:
-			registry = v.Registry
-			depth = v.Depth
-			dispatchId = v.DispatchId
-			suspendFn = v.SuspendFn
-		}
+	for _, o := range opts {
+		depth = o.Depth
+		dispatchId = o.DispatchId
+		suspendFn = o.SuspendFn
+	}
+
+	// A nil registry is an invariant violation, not a supported mode: it
+	// disables dispatch reservation, deregistration, and child-completion
+	// revival while leaving every call site silently successful. Log at ERROR
+	// so the condition is greppable rather than inferred from a downstream
+	// "no slot found" storm. Mirrors the ctxStack.Push session guard.
+	if registry == nil {
+		utils.LogWithFields(utils.LevelError, "session.extcontext", "newextcontext: nil dispatch registry (dispatch reserve/deregister/revive will silently no-op on this context)", map[string]any{
+			"session_id": sa.SessionKey(), "count": depth, "run_id": dispatchId,
+		})
 	}
 
 	// At depth 0 there is no dispatched run to suspend, but the ROOT session
@@ -331,14 +375,18 @@ func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
 		}
 	}
 
+	runID, traceID := sa.RunID(), sa.TraceID()
+	if identity, ok := sa.(interface{ RunIdentity() (string, string) }); ok {
+		runID, traceID = identity.RunIdentity()
+	}
 	ctx := &extension.Context{
 		SessionKey:     sa.SessionKey(),
 		ConversationID: sa.ConversationID(),
 		// Run identity: both empty when no run is in flight (session_start, a
 		// schedule or webhook delivery), which is the honest encoding — there
 		// is no transaction to correlate against.
-		RunID:   sa.RunID(),
-		TraceID: sa.TraceID(),
+		RunID:   runID,
+		TraceID: traceID,
 		// Dispatch identity travels on the context so every hook fired in a
 		// child session (session_start included, whose payload is nil) can
 		// discriminate root (Depth 0) from dispatched children (Depth > 0).
@@ -428,6 +476,10 @@ func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
 		GetPlanMode: func() (bool, string) {
 			return sa.GetPlanModeState()
 		},
+	}
+
+	if model := sa.CurrentModel(); model != "" {
+		ctx.Model = modelRefFor(model)
 	}
 
 	// Wire process lifecycle management.
@@ -643,6 +695,16 @@ func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
 	return ctx
 }
 
+// modelRefFor builds the model metadata exposed to extension hooks. Unknown
+// models retain their ID with a zero context window, matching session behavior.
+func modelRefFor(model string) *extension.ModelRef {
+	ref := &extension.ModelRef{ID: model}
+	if info := providers.GetModelInfo(model); info != nil {
+		ref.ContextWindow = info.ContextWindow
+	}
+	return ref
+}
+
 // steerSelfWithKind is the shared body behind ctx.SteerSelf and
 // ctx.SteerSelfWithKind. One implementation, so the kindless alias cannot drift
 // from the kind-aware form — the two-implementations-of-one-thing hazard that
@@ -670,10 +732,21 @@ func steerSelfWithKind(
 		if outcome == SteerOutcomeDelivered {
 			return extension.SteerDispatchResult{Delivered: true, Outcome: "steered"}, nil
 		}
-		// Child run not live (no_run / not_found / channel_full) — fall
-		// back to a fresh prompt on the owning session so the completion
-		// is never silently dropped.
-		if err := sa.SendPromptWithKind(message, "", nil, kind); err != nil {
+		// A full channel proves the child run IS live; it simply could not
+		// accept another buffered steer. Preserve that fact: the session prompt
+		// fallback keeps the message from dropping, but is not a degraded
+		// no-owning-run delivery and must not emit SteerDegradedEvent.
+		if outcome == SteerOutcomeChannelFull {
+			if err := sa.SendPromptWithKind(message, "", nil, kind); err != nil {
+				return extension.SteerDispatchResult{Delivered: false, Outcome: string(outcome)}, err
+			}
+			return extension.SteerDispatchResult{Delivered: true, Outcome: "sent"}, nil
+		}
+
+		// no_run / not_found: no child run owns the context, so the fresh prompt
+		// is a genuinely degraded steer delivery and receives its distinct signal
+		// plus the persisted marker.
+		if err := sendDegradedSteerPrompt(sa, message, kind); err != nil {
 			return extension.SteerDispatchResult{Delivered: false, Outcome: string(outcome)}, err
 		}
 		return extension.SteerDispatchResult{Delivered: true, Outcome: "sent"}, nil
@@ -683,7 +756,7 @@ func steerSelfWithKind(
 	if sa.SteerSelfMainLoopWithKind(message, kind) {
 		return extension.SteerDispatchResult{Delivered: true, Outcome: "steered"}, nil
 	}
-	if err := sa.SendPromptWithKind(message, "", nil, kind); err != nil {
+	if err := sendDegradedSteerPrompt(sa, message, kind); err != nil {
 		return extension.SteerDispatchResult{Delivered: false, Outcome: "sent"}, err
 	}
 	return extension.SteerDispatchResult{Delivered: true, Outcome: "sent"}, nil

@@ -86,7 +86,17 @@ final class DiagnosticLogBoundsTests: XCTestCase {
         DiagnosticLog.log("cursor line 3", tag: "cursor", level: .info)
         DiagnosticLog.flush()
         let second = await DiagnosticLog.exportIncrementalSince(sinceSeq: first.nextSeq)
-        let secondLines = second.logs.components(separatedBy: "\n").filter { !$0.isEmpty }
+        // Counted over THIS test's own tag, not every line in the pull. The log is
+        // a process-wide singleton and the scheme runs test classes in parallel
+        // (`parallelizable = "YES"`), so any other suite whose code logs — e.g. a
+        // MarkdownFormatter parse — can legitimately land lines inside this
+        // window. Counting all of them made this assertion depend on which other
+        // tests happened to be running, which is a flake, not a stronger check.
+        // Cursor semantics are what matters and they are fully preserved: exactly
+        // the two new `cursor` lines ship, and the already-pulled one does not.
+        let secondLines = second.logs
+            .components(separatedBy: "\n")
+            .filter { $0.contains("\"tag\":\"cursor\"") }
         XCTAssertEqual(secondLines.count, 2, "only the two new lines must ship")
         XCTAssertTrue(second.logs.contains("cursor line 2"))
         XCTAssertTrue(second.logs.contains("cursor line 3"))

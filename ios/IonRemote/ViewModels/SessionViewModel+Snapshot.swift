@@ -31,6 +31,12 @@ extension SessionViewModel {
             }
         }
         if connectionState != .connected {
+            if let deviceId = activeDevice?.id {
+                // A decrypted snapshot can arrive only after relay bearer + E2E
+                // validation or LAN challenge-response + E2E validation. This is
+                // precise authorization proof, not a freshness guess.
+                authorizeDesktop(deviceId: deviceId)
+            }
             DiagnosticLog.log("snapshot connected", tag: "session.snapshot", fields: [
                 "reason": String(describing: connectionState)
             ])

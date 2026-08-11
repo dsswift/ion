@@ -377,6 +377,20 @@ extension RemoteCommand {
             let interceptEnabled = try container.decodeIfPresent(Bool.self, forKey: .interceptEnabled) ?? true
             self = .reportFocus(tabId: tabId, interceptEnabled: interceptEnabled)
 
+        case .reportMobileAuth:
+            let signedInAt = try container.decodeIfPresent(String.self, forKey: .signedInAt).flatMap { ISO8601DateFormatter().date(from: $0) }
+            self = .reportMobileAuth(
+                accountUsername: try container.decodeIfPresent(String.self, forKey: .accountUsername),
+                accountName: try container.decodeIfPresent(String.self, forKey: .accountName),
+                subject: try container.decodeIfPresent(String.self, forKey: .subject),
+                tenantId: try container.decodeIfPresent(String.self, forKey: .tenantId),
+                signedInAt: signedInAt,
+                clearIdentity: try container.decodeIfPresent(Bool.self, forKey: .clearIdentity) ?? false,
+                accessStatus: try container.decodeIfPresent(String.self, forKey: .accessStatus),
+                accessReason: try container.decodeIfPresent(String.self, forKey: .accessReason),
+                reportedAt: try container.decodeIfPresent(String.self, forKey: .reportedAt).flatMap { ISO8601DateFormatter().date(from: $0) }
+            )
+
         case .requestResourceContent:
             // iOS only sends this command (never decodes it from the wire),
             // but the Codable conformance requires the path.

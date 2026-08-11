@@ -41,6 +41,7 @@ type recordedEvent struct {
 type eventRecorder struct {
 	mu     sync.Mutex
 	events []recordedEvent
+	raw    []types.EngineEvent
 }
 
 func (r *eventRecorder) attach(m *Manager) {
@@ -48,6 +49,7 @@ func (r *eventRecorder) attach(m *Manager) {
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		r.events = append(r.events, recordedEvent{key, ev.Type, ev.InjectedPrompt, ev.InjectedPromptOrigin, ev.InjectedPromptKind})
+		r.raw = append(r.raw, ev)
 	})
 }
 
@@ -235,5 +237,67 @@ func TestPromptInjected_ExtensionKindPreservedOverSlashFulfillment(t *testing.T)
 	}
 	if got[0].kind != "agent_completion" {
 		t.Errorf("expected extension kind %q to be preserved, got %q", "agent_completion", got[0].kind)
+	}
+}
+
+// TestSendPromptDegradedSteer_EmitsDistinctOrderedEvents pins the actual
+// accessor path ctx.steerSelf uses after it finds no live owning run.
+//
+// The prompt event remains classified with the caller's kind. The second event
+// is deliberately engine_steer_degraded, NOT engine_steer_injected: no run-loop
+// checkpoint drained this delivery, so claiming the established live-drain
+// event would change its published semantics for external consumers.
+//
+// Revert-red: substitute SteerInjectedEvent in SendPromptDegradedSteer and the
+// event-type assertion fails; remove the kind threading and the prompt payload
+// assertion fails.
+func TestSendPromptDegradedSteer_EmitsDistinctOrderedEvents(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	rec := &eventRecorder{}
+	rec.attach(mgr)
+	_, _ = mgr.StartSession("inj-degraded-steer", defaultConfig())
+
+	mgr.mu.RLock()
+	s := mgr.sessions["inj-degraded-steer"]
+	mgr.mu.RUnlock()
+	sa := &sessionAccessor{m: mgr, s: s, key: "inj-degraded-steer"}
+	prompt := "[SYSTEM] Dispatch check-in\n\nYou have been idle."
+
+	if err := sa.SendPromptDegradedSteer(prompt, "", nil, string(types.InjectionKindCheckIn)); err != nil {
+		t.Fatalf("SendPromptDegradedSteer failed: %v", err)
+	}
+
+	rec.mu.Lock()
+	all := append([]types.EngineEvent(nil), rec.raw...)
+	rec.mu.Unlock()
+	got := make([]types.EngineEvent, 0, 2)
+	for _, event := range all {
+		if event.Type == "engine_prompt_injected" || event.Type == "engine_steer_degraded" || event.Type == "engine_steer_injected" {
+			got = append(got, event)
+		}
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected prompt injection then degraded-steer event, got %d relevant events: %#v", len(got), got)
+	}
+	if got[0].Type != "engine_prompt_injected" {
+		t.Fatalf("first event type = %q, want engine_prompt_injected", got[0].Type)
+	}
+	if got[0].InjectedPromptKind != string(types.InjectionKindCheckIn) {
+		t.Errorf("prompt kind = %q, want %q", got[0].InjectedPromptKind, types.InjectionKindCheckIn)
+	}
+	if !got[0].InjectedPromptMachineAuthored {
+		t.Error("checkin prompt must carry machine-authored=true")
+	}
+	if got[1].Type != "engine_steer_degraded" {
+		t.Fatalf("second event type = %q, want engine_steer_degraded", got[1].Type)
+	}
+	if got[1].SteerDegradedMessageLength != len(prompt) {
+		t.Errorf("degraded message length = %d, want %d", got[1].SteerDegradedMessageLength, len(prompt))
+	}
+	for _, event := range got {
+		if event.Type == "engine_steer_injected" {
+			t.Fatal("degraded fallback must not emit engine_steer_injected; that event means a live run-loop drain")
+		}
 	}
 }

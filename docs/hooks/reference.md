@@ -54,7 +54,7 @@ Beyond the payload, every hook's context carries the correlation identifiers:
 
 `runId` and `traceId` are empty on hooks that fire outside a run — `session_start`,
 `session_end`, schedule and webhook deliveries, extension load — because no transaction is in
-flight. Hooks that fire during a run (`before_prompt`, `before_tool_call`, `turn_start`, ...)
+flight. Hooks that fire during a run (`before_prompt`, `tool_call`, `turn_start`, ...)
 carry both.
 
 `traceId` is the value to forward in a `traceparent` header so downstream services join the

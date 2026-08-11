@@ -58,8 +58,16 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
-        if let tabId = userInfo["tabId"] as? String {
-            sessionViewModel?.navigateToTab(tabId)
+        if let channelId = userInfo["ionChannelId"] as? String,
+           let tabId = userInfo["ionTabId"] as? String,
+           let device = sessionViewModel?.pairedDevices.first(where: { $0.channelId == channelId }) {
+            sessionViewModel?.navigateToExternalTab(deviceId: device.id, tabId: tabId)
+        } else if let tabId = userInfo["tabId"] as? String,
+                  let viewModel = sessionViewModel,
+                  viewModel.mayViewActiveDesktopData {
+            // Legacy payloads have no pairing identity. They may only navigate
+            // inside the currently authorized pairing and never bypass a lock.
+            viewModel.navigateToTab(tabId)
         }
         completionHandler()
     }

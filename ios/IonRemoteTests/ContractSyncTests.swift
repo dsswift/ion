@@ -182,7 +182,7 @@ final class ContractSyncTests: XCTestCase {
         "agent_state", "compacting", "context_breakdown", "dialog", "engine_plan_content",
         "error", "harness_message", "image_content", "message_end", "notify",
         "permission_request", "plan_mode_auto_exit", "plan_mode_changed", "plan_proposal",
-        "prompt_injected", "rate_limit", "session_dead", "steer_injected", "task_complete",
+        "prompt_injected", "rate_limit", "session_dead", "steer_injected", "steer_degraded", "task_complete",
         "task_update", "text_chunk", "thinking_block_end", "thinking_block_start",
         "thinking_delta", "tool_call", "tool_call_complete", "tool_call_update",
         "tool_result", "usage", "working_message",
@@ -678,13 +678,15 @@ final class ContractSyncTests: XCTestCase {
     /// forwarded via the desktop's generic engine→wire mapper.
     func testEngineUserTurnPersistedDecode() throws {
         let json = """
-        {"type":"desktop_user_turn_persisted","tabId":"t1","userTurnEntryId":"entry-77"}
+        {"type":"desktop_user_turn_persisted","tabId":"t1","userTurnEntryId":"entry-77","userTurnSlashModelAlias":"Premium","userTurnSlashModelEffective":"claude-opus-4"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineUserTurnPersisted(let tabId, let instanceId, let entryId) = event {
+        if case .engineUserTurnPersisted(let tabId, let instanceId, let entryId, let alias, let effective) = event {
             XCTAssertEqual(tabId, "t1")
             XCTAssertNil(instanceId)
             XCTAssertEqual(entryId, "entry-77")
+            XCTAssertEqual(alias, "Premium")
+            XCTAssertEqual(effective, "claude-opus-4")
         } else {
             XCTFail("Expected engineUserTurnPersisted")
         }
@@ -799,7 +801,8 @@ final class ContractSyncTests: XCTestCase {
         let swiftHandled: Set<String> = [
             // Decoded by Message (Codable + engineJSON paths).
             "attachments", "content", "id", "internal", "role",
-            "slashArgs", "slashCommand", "slashSource",
+            "slashArgs", "slashCommand", "slashModelAlias",
+            "slashModelEffective", "slashSource",
             "timestamp", "toolId", "toolInput", "toolName",
             // Decoded by Message(engineJSON:) (markerKind + markerPlanFilePath
             // fallback for plan-divider links).

@@ -285,7 +285,7 @@ func TestRunStallFiresDespiteToolStallEmits(t *testing.T) {
 	}
 
 	if !waitForExit(c, 15*time.Second) {
-		t.Fatal("run-stall watchdog never fired despite a wedged deadline-exempt Agent tool — tool-stall emits are defeating the watchdog (the incident defect)")
+		t.Fatal("run-stall watchdog never fired despite a wedged long-running tool — tool-stall emits are defeating the watchdog")
 	}
 
 	c.mu.Lock()

@@ -74,7 +74,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 
 		start := time.Now()
 
-		utils.LogWithFields(utils.LevelInfo, "server", "starting dispatch", map[string]any{"agent_name": opts.Name, "task_preview": truncate(opts.Task, 80), "model": opts.Model, "system_prompt_len": len(opts.SystemPrompt), "background": opts.Background, "plan_mode": opts.PlanMode, "session_key": sa.SessionKey()})
+		utils.LogWithFields(utils.LevelInfo, "server", "starting dispatch", map[string]any{"agent_name": opts.Name, "task_preview": truncate(opts.Task, 80), "model": opts.Model, "system_prompt_len": len(opts.SystemPrompt), "background": !opts.WaitForCompletion, "plan_mode": opts.PlanMode, "session_key": sa.SessionKey()})
 
 		// Determine model and project path.
 		model := opts.Model
@@ -186,7 +186,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		// roster row flips to running.
 		if extGroup := sa.ExtGroup(); extGroup != nil && !extGroup.IsEmpty() {
 			utils.LogWithFields(utils.LevelInfo, "server", "firing agent_start", map[string]any{"key": key, "model": agentName, "run_id": agentID})
-			startCtx := NewExtContext(sa)
+			startCtx := NewExtContext(sa, registry)
 			extGroup.FireAgentStart(startCtx, extension.AgentInfo{
 				Name: agentName,
 				Task: opts.Task,
@@ -268,10 +268,9 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 								return nil
 							}
 						}
-						tcCtx := NewExtContext(sa, ExtContextOpts{
+						tcCtx := NewExtContext(sa, registry, ExtContextOpts{
 							Depth:      childDepth,
 							DispatchId: agentID,
-							Registry:   registry,
 							SuspendFn:  suspendFn,
 						})
 						result, _ := childExtHost.FireToolCall(tcCtx, extension.ToolCallInfo{ //nolint:errcheck // best-effort; failure not actionable here
@@ -333,6 +332,10 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			capturedAgentID := agentID
 			childCfg.OutstandingChildDispatches = func() []string {
 				return capturedRegistry.ChildIDsOf(capturedAgentID)
+			}
+			childCfg.PeekCompletedChildDispatches = func() ([]types.LlmMessage, func()) {
+				results, acknowledge := capturedRegistry.PeekChildResults(capturedAgentID)
+				return completedChildResultMessages(results), acknowledge
 			}
 		}
 
@@ -443,14 +446,10 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		// goroutine selecting on ctx.Done() here, e.g. background recall
 		// wiring), keeping dispatch consistent with the unified tree.
 		//
-		// Parent selection: when the caller supplied opts.ParentCtx (the
-		// orchestrator's Agent tool passes its per-tool-call context), derive
-		// from it so cancelling that call cancels this dispatch. The tool-call
-		// context is itself derived from the session, so a session abort still
-		// cascades. When nil, fall back to the session cancellation root --
-		// the prior behavior for extension-initiated dispatches.
+		// Only explicit foreground waits inherit a per-tool-call context.
+		// Default asynchronous dispatches must survive their launching turn.
 		dispatchParentCtx := sa.RootContext()
-		if opts.ParentCtx != nil {
+		if opts.WaitForCompletion && opts.ParentCtx != nil {
 			dispatchParentCtx = opts.ParentCtx
 		}
 		ctx, cancelFn := context.WithCancel(dispatchParentCtx)
@@ -462,21 +461,13 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			// this dispatch. Two cases (root cause I of the dispatch-lifecycle
 			// incident):
 			//
-			//   - currentDispatchId == "": the dispatcher is the ROOT session
-			//     (depth-0 orchestrator). Its main-loop run is parked in the
-			//     deadline-exempt Agent tool call; BumpParentProgress reaches
-			//     exactly that run. (The historic behavior, preserved.)
-			//   - currentDispatchId != "": the dispatcher is ITSELF a
-			//     dispatched agent (a lead blocked in a synchronous
-			//     wait/fan-out). Its run is the registry entry's
-			//     Child+ChildRunID — NOT the root main-loop run. Crediting
-			//     only the root (the historic bug) starved the lead's own
-			//     watchdog clock, which killed every blocking lead at the
-			//     10-minute stall threshold while its specialist was
-			//     mid-stream.
+			//   - currentDispatchId == "": root dispatched this child. Root no
+			//     longer blocks in Agent; its own run continues independently.
+			//   - currentDispatchId != "": a dispatched parent may be waiting
+			//     for child completion. Credit that parent's own backend run,
+			//     never the root run, so its watchdog observes genuine progress.
 			//
-			// A genuine child event proves the dispatch is alive; without the
-			// credit the blocked dispatcher emits no progress of its own. See
+			// See
 			// sessionAccessor.BumpParentProgress and
 			// DispatchRegistry.BumpProgressForID.
 			if currentDispatchId != "" && registry != nil {
@@ -717,7 +708,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			task:             opts.Task,
 			model:            model,
 			childDepth:       childDepth,
-			background:       opts.Background,
+			background:       !opts.WaitForCompletion,
 			childReqID:       childReqID,
 			extensionName:    sa.ExtensionName(),
 			extensionVersion: sa.ExtensionVersion(),
@@ -886,19 +877,27 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			// activity emitter's coalesce timer now that the child is done.
 			activity.Close()
 
-			// Cleanup child extension.
-			if childExtHost != nil {
-				childExtHost.Dispose()
-			}
-
-			// NOTE: deregistration is deliberately deferred until AFTER the
-			// terminal agent-state transition below. Deregister removes the
-			// dispatch from ActiveIDs; if it ran here (before the slot is marked
-			// terminal), a concurrent run-exit sweep in the gap would delete the
-			// still-"running" slot and the terminal UpdateStateByID would land
-			// nowhere. Marking the slot terminal first (a terminal slot is never
-			// swept) closes that window. See the Deregister block after
-			// EmitAgentSnapshot("dispatch_end").
+			// NOTE: BOTH the child-extension dispose and the registry
+			// deregistration are deliberately deferred until AFTER the terminal
+			// agent-state transition below.
+			//
+			// Deregister removes the dispatch from ActiveIDs; if it ran here
+			// (before the slot is marked terminal), a concurrent run-exit sweep
+			// in the gap would delete the still-"running" slot and the terminal
+			// UpdateStateByID would land nowhere. Marking the slot terminal
+			// first (a terminal slot is never swept) closes that window. See the
+			// Deregister block after EmitAgentSnapshot("dispatch_end").
+			//
+			// Dispose is subject to the same constraint for a less obvious
+			// reason: it is SLOW on the failure path. disposeInternal kills the
+			// subprocess and then waits for it to be reaped, capped by a 2s
+			// safety net that real extensions hit routinely. Running it here
+			// held the dispatch in "running" for those 2 seconds with the child
+			// already finished — a wide, easily-lost race against any run-exit
+			// sweep, paid on every single completion. The child process is
+			// already dead by the time we get here; reaping it is cleanup, not a
+			// precondition for reporting the outcome, so it now runs after the
+			// terminal transition, Deregister, and the callbacks.
 
 			// Build the result. An engine-initiated cancel that was not a
 			// recall (childExitCancelled — e.g. the run-progress watchdog's
@@ -925,6 +924,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			}
 
 			result := &extension.DispatchAgentResult{
+				Name:                     opts.Name,
 				DispatchID:               agentID,
 				Output:                   output,
 				ExitCode:                 exitCode,
@@ -1004,6 +1004,24 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			})
 			sa.EmitAgentSnapshot("dispatch_end")
 
+			// Record a non-detached asynchronous child's terminal result BEFORE
+			// deregistration. The parent sees either a live child or this record
+			// at every turn boundary, closing the completion/deregister race.
+			if !opts.WaitForCompletion && !opts.Detached && registry != nil && currentDispatchId != "" {
+				if !registry.RecordChildResult(currentDispatchId, ChildResultRecord{
+					ChildID:  agentID,
+					Name:     opts.Name,
+					Output:   result.Output,
+					ExitCode: result.ExitCode,
+				}) {
+					// Parent already ended or disappeared. Root fallback keeps a
+					// non-detached result from becoming invisible.
+					if root, ok := sa.(RootDispatchResultDelivery); ok {
+						root.DeliverRootDispatchResult(*result)
+					}
+				}
+			}
+
 			// Deregister from the dispatch registry (both foreground and
 			// background), now that the slot carries a terminal status. Deferred
 			// to here (from before the terminal transition) so the dispatch stays
@@ -1023,7 +1041,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			// Fire agent_end on the parent extension group.
 			if extGroup := sa.ExtGroup(); extGroup != nil && !extGroup.IsEmpty() {
 				utils.LogWithFields(utils.LevelInfo, "server", "firing agent_end", map[string]any{"key": key, "model": agentName, "run_id": agentID, "exit_code": exitCode})
-				endCtx := NewExtContext(sa)
+				endCtx := NewExtContext(sa, registry)
 				extGroup.FireAgentEnd(endCtx, extension.AgentInfo{
 					Name: agentName,
 					Task: opts.Task,
@@ -1052,10 +1070,23 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 
 			utils.LogWithFields(utils.LevelInfo, "server", "dispatch complete", map[string]any{"model": opts.Name, "exit_code": exitCode, "elapsed": elapsed, "total_cost": totalCost, "tool_count": toolCount, "session_id": key})
 
+			// Cleanup the child extension subprocess. Last, deliberately: see
+			// the NOTE above the result construction. Dispose kills the child
+			// host and waits on the reap (bounded at 2s), and every millisecond
+			// of that wait used to sit between the child finishing and its slot
+			// being marked terminal, which is exactly the window a run-exit
+			// sweep can orphan the slot in. Everything a consumer observes —
+			// terminal agent state, Deregister, agent_end, dispatch_end — has
+			// already happened by this point, so a slow reap now delays nothing
+			// but its own cleanup.
+			if childExtHost != nil {
+				childExtHost.Dispose()
+			}
+
 			return result
 		}
 
-		if opts.Background {
+		if !opts.WaitForCompletion {
 			// Register in the dispatch registry for recall support, child-run
 			// steering, and the carry-forward allowlist. See registerDispatch.
 			registerDispatch(registry, agentID, opts.Name, func() {
@@ -1098,7 +1129,18 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 						endDispatchSpanPanic(dispatchSpan, r)
 						recoverBackgroundDispatchPanic(
 							sa, registry, opts, key, agentID, agentName, r,
-							childDepth, currentDispatchId,
+							childDepth, currentDispatchId, childToolServer,
+							func(result extension.DispatchAgentResult) {
+								if opts.OnError != nil {
+									opts.OnError(extension.DispatchError{
+										Name:       opts.Name,
+										DispatchID: result.DispatchID,
+										Message:    result.Output,
+										ExitCode:   result.ExitCode,
+										Elapsed:    result.Elapsed,
+									})
+								}
+							},
 						)
 					}
 				}()
@@ -1109,65 +1151,62 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 					childToolServer.Stop()
 				}
 
-				// Fire the appropriate callback.
-				if recalled {
-					if opts.OnRecall != nil {
-						opts.OnRecall(extension.RecallInfo{
-							DispatchID: agentID,
-							Reason:     recallReason,
-							Elapsed:    result.Elapsed,
-							ToolCount:  toolCount,
-						})
-					}
-				} else if childErr != nil || result.ExitCode != 0 {
-					if opts.OnError != nil {
-						opts.OnError(extension.DispatchError{
-							DispatchID: agentID,
-							Message:    result.Output,
-							ExitCode:   result.ExitCode,
-							Elapsed:    result.Elapsed,
-						})
-					}
-				} else {
-					if opts.OnComplete != nil {
-						opts.OnComplete(*result)
-					}
-				}
-				// Notify the parent dispatch registry that this child reached
-				// a terminal state — on EVERY terminal path (complete, error,
-				// recall), not only success. If the parent is suspended via
-				// suspendUntilAll and this was one of its awaited children,
-				// the registry decrements the pending set and signals
-				// reviveCh when the set empties. A parent waiting on a child
-				// must be revived whether the child succeeded or failed
-				// (root cause C: notifying only on success left a parent
-				// whose child errored or was recalled parked until its
-				// timeout — the pending set never emptied). The child's
-				// outcome is already carried in the result the parent reads.
-				// This is the engine-side complement to
-				// registry.SignalReviveForSession (which handles bare
-				// suspend() revives triggered by sendPrompt).
+				// Notify the parent dispatch registry before optional callbacks. The
+				// result was recorded before deregistration, so a parent now sees the
+				// terminal record or wakes immediately regardless of observer behavior.
 				if registry != nil && currentDispatchId != "" {
-					// Record the child's outcome on the parent's registry
-					// entry BEFORE the notify: NotifyChildComplete may signal
-					// the parent's revive, and the revive prompt drains these
-					// records — the ordering is what guarantees a revived
-					// parent always sees the result it was waiting for
-					// (root cause K).
-					registry.RecordChildResult(currentDispatchId, ChildResultRecord{
-						ChildID:  agentID,
-						Name:     opts.Name,
-						Output:   result.Output,
-						ExitCode: result.ExitCode,
-					})
 					registry.NotifyChildComplete(currentDispatchId, agentID)
+				} else if !opts.Detached {
+					if root, ok := sa.(RootDispatchResultDelivery); ok {
+						root.DeliverRootDispatchResult(*result)
+					} else {
+						utils.LogWithFields(utils.LevelWarn, "server", "root dispatch completion has no session delivery seam", map[string]any{
+							"session_key": key, "dispatch_id": agentID, "model": opts.Name,
+						})
+					}
 				}
+
+				// Callbacks observe terminal state only. Isolate failures so a
+				// callback cannot re-panic this goroutine after owner delivery.
+				if recalled {
+					invokeDispatchCallback(func() {
+						if opts.OnRecall != nil {
+							opts.OnRecall(extension.RecallInfo{
+								Name:       opts.Name,
+								DispatchID: agentID,
+								Reason:     recallReason,
+								Elapsed:    result.Elapsed,
+								ToolCount:  toolCount,
+							})
+						}
+					}, key, agentID, "recall")
+				} else if childErr != nil || result.ExitCode != 0 {
+					invokeDispatchCallback(func() {
+						if opts.OnError != nil {
+							opts.OnError(extension.DispatchError{
+								Name:       opts.Name,
+								DispatchID: agentID,
+								Message:    result.Output,
+								ExitCode:   result.ExitCode,
+								Elapsed:    result.Elapsed,
+							})
+						}
+					}, key, agentID, "error")
+				} else {
+					invokeDispatchCallback(func() {
+						if opts.OnComplete != nil {
+							opts.OnComplete(*result)
+						}
+					}, key, agentID, "complete")
+				}
+
 			}()
 
 			utils.LogWithFields(utils.LevelInfo, "server", "background dispatch started", map[string]any{"model": opts.Name, "session_id": key})
 
 			// Return a stub result immediately.
 			return &extension.DispatchAgentResult{
+				Name:       opts.Name,
 				DispatchID: agentID,
 				SessionID:  childReqID,
 			}, nil

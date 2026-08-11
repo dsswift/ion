@@ -42,7 +42,7 @@ func TestMakeOnChildQuestion_BlocksAndResumes(t *testing.T) {
 		}
 	}()
 
-	cb := h.makeOnChildQuestion("researcher")
+	cb := h.makeOnChildQuestion("researcher", "")
 
 	type result struct {
 		answer    string
@@ -117,7 +117,7 @@ func TestMakeOnChildQuestion_DeadChCancels(t *testing.T) {
 	h.stdin = pw
 	go io.Copy(io.Discard, pr)
 
-	cb := h.makeOnChildQuestion("agent")
+	cb := h.makeOnChildQuestion("agent", "")
 
 	type result struct {
 		cancelled bool

@@ -26,27 +26,6 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// handleAsyncRPC dispatches the four async-trigger RPC methods. Returns
-// true when the method was handled (caller short-circuits its own
-// dispatch); false leaves the caller to try other cases.
-func (h *Host) handleAsyncRPC(method string, id int64, raw []byte) bool {
-	switch method {
-	case "ext/register_webhook":
-		h.rpcRegisterWebhook(id, raw)
-		return true
-	case "ext/deregister_webhook":
-		h.rpcDeregisterWebhook(id, raw)
-		return true
-	case "ext/register_schedule":
-		h.rpcRegisterSchedule(id, raw)
-		return true
-	case "ext/deregister_schedule":
-		h.rpcDeregisterSchedule(id, raw)
-		return true
-	}
-	return false
-}
-
 func (h *Host) rpcRegisterWebhook(id int64, raw []byte) {
 	var req struct {
 		Params WebhookRoute `json:"params"`
@@ -65,11 +44,11 @@ func (h *Host) rpcRegisterWebhook(id int64, raw []byte) {
 		err := h.RegisterWebhookDecl(req.Params, asyncreg.OriginRuntime)
 		if err != nil {
 			code := asyncRPCErrorCode(err)
-			utils.LogWithFields(utils.LevelInfo, "extension", "ext/register_webhook: rejected", map[string]any{"model": h.name, "path": req.Params.Path, "error": err})
+			utils.LogWithFields(utils.LevelInfo, "extension", "ext/register_webhook: rejected", map[string]any{"model": h.name_(), "path": req.Params.Path, "error": err})
 			h.sendResponse(id, nil, &jsonrpcError{Code: code, Message: err.Error()})
 			return
 		}
-		utils.LogWithFields(utils.LevelInfo, "extension", "ext/register_webhook: registered (origin=runtime)", map[string]any{"model": h.name, "path": req.Params.Path})
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/register_webhook: registered (origin=runtime)", map[string]any{"model": h.name_(), "path": req.Params.Path})
 		resp, _ := json.Marshal(struct { //nolint:errcheck // marshal of a local anonymous struct
 			OK bool   `json:"ok"`
 			ID string `json:"id"`
@@ -95,7 +74,7 @@ func (h *Host) rpcDeregisterWebhook(id int64, raw []byte) {
 	}
 	go func() {
 		removed := h.DeregisterWebhookDecl(req.Params.Path)
-		utils.LogWithFields(utils.LevelInfo, "extension", "ext/deregister_webhook", map[string]any{"model": h.name, "path": req.Params.Path, "removed": removed})
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/deregister_webhook", map[string]any{"model": h.name_(), "path": req.Params.Path, "removed": removed})
 		resp, _ := json.Marshal(struct { //nolint:errcheck // marshal of a local anonymous struct
 			OK      bool `json:"ok"`
 			Removed bool `json:"removed"`
@@ -117,11 +96,11 @@ func (h *Host) rpcRegisterSchedule(id int64, raw []byte) {
 		err := h.RegisterScheduleDecl(req.Params, asyncreg.OriginRuntime)
 		if err != nil {
 			code := asyncRPCErrorCode(err)
-			utils.LogWithFields(utils.LevelInfo, "extension", "ext/register_schedule: rejected", map[string]any{"model": h.name, "run_id": req.Params.JobID, "error": err})
+			utils.LogWithFields(utils.LevelInfo, "extension", "ext/register_schedule: rejected", map[string]any{"model": h.name_(), "run_id": req.Params.JobID, "error": err})
 			h.sendResponse(id, nil, &jsonrpcError{Code: code, Message: err.Error()})
 			return
 		}
-		utils.LogWithFields(utils.LevelInfo, "extension", "ext/register_schedule: registered (origin=runtime)", map[string]any{"model": h.name, "run_id": req.Params.JobID})
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/register_schedule: registered (origin=runtime)", map[string]any{"model": h.name_(), "run_id": req.Params.JobID})
 		resp, _ := json.Marshal(struct { //nolint:errcheck // marshal of a local anonymous struct
 			OK bool   `json:"ok"`
 			ID string `json:"id"`
@@ -147,7 +126,7 @@ func (h *Host) rpcDeregisterSchedule(id int64, raw []byte) {
 	}
 	go func() {
 		removed := h.DeregisterScheduleDecl(req.Params.ID)
-		utils.LogWithFields(utils.LevelInfo, "extension", "ext/deregister_schedule", map[string]any{"model": h.name, "run_id": req.Params.ID, "removed": removed})
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/deregister_schedule", map[string]any{"model": h.name_(), "run_id": req.Params.ID, "removed": removed})
 		resp, _ := json.Marshal(struct { //nolint:errcheck // marshal of a local anonymous struct
 			OK      bool `json:"ok"`
 			Removed bool `json:"removed"`

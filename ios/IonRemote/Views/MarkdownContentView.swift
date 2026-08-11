@@ -6,13 +6,19 @@ import SwiftUI
 struct MarkdownContentView: View {
     @Environment(\.appTheme) private var theme
     let blocks: [MarkdownBlock]
+    /// Standard markdown uses editorial spacing between blocks. Verbatim user
+    /// messages reconstruct spacing from source positions, so implicit spacing
+    /// must be zero or every block gets vertical space the operator did not type.
+    var blockSpacing: CGFloat = 16
+    /// Font-relative height used for one reconstructed source blank line.
+    var blankLineHeight: CGFloat = 20
     /// When set, `ion-file://` links emitted by the formatter's file-path
     /// detection (see MarkdownFormatter + FilePathDetector) route here with
     /// the decoded path; every other URL falls through to the system.
     var onOpenFile: ((String) -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: blockSpacing) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 blockView(block)
             }
@@ -50,6 +56,10 @@ struct MarkdownContentView: View {
             blockQuoteView(text: text)
         case .listItem(let ordinal, let ordered, let text):
             listItemView(ordinal: ordinal, ordered: ordered, text: text)
+        case .blankLines(let count):
+            Color.clear
+                .frame(height: CGFloat(count) * blankLineHeight)
+                .accessibilityHidden(true)
         case .thematicBreak:
             thematicBreakView
         case .table(let headers, let rows, let alignments):
