@@ -91,6 +91,11 @@ export interface PersistedConversationInstance {
   /** Blank-tab / lazy-load proxy when messages are omitted. */
   messageCount?: number
   modelOverride?: string | null
+  /**
+   * Origin of modelOverride. Absent means legacy provenance is unknown, never
+   * proof of an explicit user choice. New writes preserve both origins.
+   */
+  modelOverrideSource?: 'user' | 'automatic'
   sessionModel?: string | null
   permissionMode?: 'auto' | 'plan'
   /**

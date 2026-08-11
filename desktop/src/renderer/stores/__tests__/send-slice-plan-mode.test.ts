@@ -288,6 +288,86 @@ describe('prompt_sync parity — setPermissionMode before prompt', () => {
 
     expect(mockSetPermissionMode).toHaveBeenCalledWith('tab-1', 'plan', 'prompt_sync', '/plans/p.md')
   })
+
+  it('lets slash frontmatter select its tier over an automatic plan model', () => {
+    // A plan-mode model is an ambient default, not an operator's per-prompt
+    // selection. Omitting it allows `/create-pr`'s `model: standard` frontmatter
+    // to resolve through models.json instead of being forced to the plan model.
+    const { state } = buildHarness(makeTab(), {
+      permissionMode: 'plan',
+      modelOverride: 'gpt-5.6-sol',
+      modelOverrideSource: 'automatic',
+    })
+
+    state.submit('tab-1', '/create-pr')
+
+    expect(mockPrompt).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(String),
+      expect.objectContaining({ model: undefined }),
+    )
+  })
+
+  it('does not treat a legacy unmarked model as explicit for a slash command', () => {
+    const { state } = buildHarness(makeTab(), {
+      modelOverride: 'gpt-5.6-sol',
+      modelOverrideSource: null,
+    })
+
+    state.submit('tab-1', '/create-pr')
+
+    expect(mockPrompt).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(String),
+      expect.objectContaining({ model: undefined }),
+    )
+  })
+
+  it('keeps an operator-selected model explicit for a slash command', () => {
+    const { state } = buildHarness(makeTab(), {
+      modelOverride: 'gpt-5.6-sol',
+      modelOverrideSource: 'user',
+    })
+
+    state.submit('tab-1', '/create-pr')
+
+    expect(mockPrompt).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(String),
+      expect.objectContaining({ model: 'gpt-5.6-sol' }),
+    )
+  })
+
+  it('continues to send an automatic model for an ordinary prompt', () => {
+    const { state } = buildHarness(makeTab(), {
+      modelOverride: 'gpt-5.6-sol',
+      modelOverrideSource: 'automatic',
+    })
+
+    state.submit('tab-1', 'review current changes')
+
+    expect(mockPrompt).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(String),
+      expect.objectContaining({ model: 'gpt-5.6-sol' }),
+    )
+  })
+
+  it('applies same slash precedence to an iOS prompt', () => {
+    const { state } = buildHarness(makeTab(), {
+      permissionMode: 'plan',
+      modelOverride: 'gpt-5.6-sol',
+      modelOverrideSource: 'automatic',
+    })
+
+    state.submitRemotePrompt('tab-1', '/create-pr')
+
+    expect(mockPrompt).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(String),
+      expect.objectContaining({ model: undefined, source: 'remote' }),
+    )
+  })
 })
 
 describe('permissionDenied clearing on new prompt', () => {

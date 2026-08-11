@@ -42,6 +42,7 @@ export const FORWARDED_ACTIONS: Record<string, ForwardedActionSpec> = {
   setTabPillColor: { minArgs: 1, maxArgs: 2, tabIdAt: 0 },
   setTabPillIcon: { minArgs: 1, maxArgs: 2, tabIdAt: 0 },
   setTabModel: { minArgs: 1, maxArgs: 2, tabIdAt: 0 },
+  setTabAutomaticModel: { minArgs: 1, maxArgs: 2, tabIdAt: 0 },
   setTabGroupId: { minArgs: 1, maxArgs: 2, tabIdAt: 0 },
   moveTabToGroup: { minArgs: 1, maxArgs: 2, tabIdAt: 0 },
   moveTabToGroupAndPin: { minArgs: 1, maxArgs: 2, tabIdAt: 0 },

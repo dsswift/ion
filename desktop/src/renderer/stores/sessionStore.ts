@@ -42,7 +42,7 @@ const initialTab = makeLocalTab()
 // every tab — normal or engine — owns at least one ConversationInstance in
 // conversationPanes from creation, so no consumer ever sees a missing pane.
 const initialEnginePanes = new Map<string, ConversationPane>([
-  [initialTab.id, makeMainPane({ modelOverride: initialModelOverride(), thinkingEffort: initialThinkingEffort(initialModelOverride()) })],
+  [initialTab.id, makeMainPane({ modelOverride: initialModelOverride(), modelOverrideSource: initialModelOverride() ? 'automatic' : null, thinkingEffort: initialThinkingEffort(initialModelOverride()) })],
 ])
 
 const initialState = {

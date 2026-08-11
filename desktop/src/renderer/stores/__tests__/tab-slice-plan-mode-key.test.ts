@@ -31,24 +31,26 @@ vi.mock('../session-store-helpers', () => ({
   scheduleDoneGroupMove: vi.fn(),
 }))
 
+const preferenceState = vi.hoisted(() => ({
+  autoGroupMovement: false,
+  tabGroupMode: 'manual',
+  planningGroupId: 'group-planning',
+  inProgressGroupId: 'group-inprogress',
+  doneGroupId: 'group-done',
+  preferredModel: null,
+  defaultPermissionMode: 'auto' as const,
+  planModelSplitEnabled: false,
+  planModeModel: null as string | null,
+  addRecentBaseDirectory: vi.fn(),
+  defaultTallConversation: false,
+  engineProfiles: [],
+  engineDefaultModel: null,
+  tabGroups: [{ id: 'group-default', label: 'Default', isDefault: true, order: 0 }],
+}))
+
 vi.mock('../../preferences', () => ({
   usePreferencesStore: {
-    getState: vi.fn(() => ({
-      autoGroupMovement: false,
-      tabGroupMode: 'manual',
-      planningGroupId: 'group-planning',
-      inProgressGroupId: 'group-inprogress',
-      doneGroupId: 'group-done',
-      preferredModel: null,
-      defaultPermissionMode: 'auto' as const,
-      planModelSplitEnabled: false,
-      planModeModel: null,
-      addRecentBaseDirectory: vi.fn(),
-      defaultTallConversation: false,
-      engineProfiles: [],
-      engineDefaultModel: null,
-      tabGroups: [{ id: 'group-default', label: 'Default', isDefault: true, order: 0 }],
-    })),
+    getState: vi.fn(() => preferenceState),
   },
   getEffectiveTabGroups: vi.fn(() => [
     { id: 'group-default', label: 'Default', isDefault: true, order: 0 },
@@ -111,6 +113,8 @@ function buildHarness(
 describe('setPermissionMode — engine session key', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    preferenceState.planModelSplitEnabled = false
+    preferenceState.planModeModel = null
   })
 
   it('passes the bare tabId to engineSetPlanMode when entering plan mode on an extension-hosted tab', () => {
@@ -141,5 +145,27 @@ describe('setPermissionMode — engine session key', () => {
 
     expect(mockEngineSetPlanMode).not.toHaveBeenCalled()
     expect(mockSetPermissionMode).toHaveBeenCalledWith('tab-1', 'plan', 'user', undefined)
+  })
+
+  it('marks a plan-split model as automatic rather than user-selected', () => {
+    preferenceState.planModelSplitEnabled = true
+    preferenceState.planModeModel = 'gpt-5.6-sol'
+    const { state } = buildHarness(makeTab({ engineProfileId: null }))
+
+    state.setPermissionMode('plan', 'user')
+
+    const instance = state.conversationPanes.get('tab-1').instances[0]
+    expect(instance.modelOverride).toBe('gpt-5.6-sol')
+    expect(instance.modelOverrideSource).toBe('automatic')
+  })
+
+  it('marks a direct model selection as user-selected', () => {
+    const { state } = buildHarness(makeTab({ engineProfileId: null }))
+
+    state.setTabModel('tab-1', 'gpt-5.6-terra')
+
+    const instance = state.conversationPanes.get('tab-1').instances[0]
+    expect(instance.modelOverride).toBe('gpt-5.6-terra')
+    expect(instance.modelOverrideSource).toBe('user')
   })
 })

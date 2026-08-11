@@ -356,7 +356,13 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         prompt: fullPrompt,
         projectPath: resolvedPath,
         sessionId: tab.conversationId || undefined,
-        model: sendInst?.modelOverride || preferredModel || undefined,
+        // `preferredModel` and plan/implementation/workflow models are ambient
+        // defaults. Sending either as `send_prompt.model` would turn it into an
+        // explicit override and defeat slash frontmatter (`standard` / `fast`).
+        // Only a direct picker choice remains explicit for a slash command.
+        model: isSlashPrompt
+          ? (sendInst?.modelOverrideSource === 'user' ? sendInst.modelOverride || undefined : undefined)
+          : sendInst?.modelOverride || preferredModel || undefined,
         addDirs: tab.additionalDirs.length > 0 ? tab.additionalDirs : undefined,
         appendSystemPrompt: effectiveSystemPrompt,
         extensions,
@@ -525,7 +531,11 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         prompt,
         projectPath: resolvedPath,
         sessionId: tab.conversationId || undefined,
-        model: remoteInst?.modelOverride || preferredModel || undefined,
+        // Mirror desktop sends: model frontmatter owns a slash command unless
+        // the operator explicitly selected a model for this conversation.
+        model: isSlashPrompt
+          ? (remoteInst?.modelOverrideSource === 'user' ? remoteInst.modelOverride || undefined : undefined)
+          : remoteInst?.modelOverride || preferredModel || undefined,
         addDirs: tab.additionalDirs.length > 0 ? tab.additionalDirs : undefined,
         source: 'remote',
         extensions: remoteExtensions,

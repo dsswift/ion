@@ -140,6 +140,39 @@ describe('serializeConversationPane + buildPopulatedInstance round-trip', () => 
     expect(restored.conversationIds).toEqual(['conv-plain'])
   })
 
+  it('round-trips automatic model provenance', () => {
+    const inst = makeInstance({
+      modelOverride: 'gpt-5.6-sol',
+      modelOverrideSource: 'automatic',
+    })
+    const persisted = serializeConversationPane(makePane(inst), { tabIdForLog: 'model-source' })!.instances[0]
+
+    expect(persisted.modelOverride).toBe('gpt-5.6-sol')
+    expect(persisted.modelOverrideSource).toBe('automatic')
+
+    const restored = buildPopulatedInstance(persisted, 'tab-model-source', {} as any)
+    expect(restored.modelOverrideSource).toBe('automatic')
+  })
+
+  it('keeps legacy unmarked model-override provenance unknown', () => {
+    const restored = buildPopulatedInstance({
+      id: 'main', label: 'main', modelOverride: 'gpt-5.6-sol',
+    }, 'legacy-model-source', {} as any)
+
+    expect(restored.modelOverrideSource).toBeNull()
+  })
+
+  it('round-trips user-selected model provenance', () => {
+    const inst = makeInstance({
+      modelOverride: 'gpt-5.6-sol',
+      modelOverrideSource: 'user',
+    })
+    const persisted = serializeConversationPane(makePane(inst), { tabIdForLog: 'user-model-source' })!.instances[0]
+
+    expect(persisted.modelOverrideSource).toBe('user')
+    expect(buildPopulatedInstance(persisted, 'tab-user-model-source', {} as any).modelOverrideSource).toBe('user')
+  })
+
   it('extension-hosted tab with harness rows: externalize → merge → buildPopulatedInstance → full messages', () => {
     const msgs = [
       makeMsg('user', 'start'),

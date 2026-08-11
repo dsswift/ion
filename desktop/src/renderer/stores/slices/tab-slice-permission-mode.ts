@@ -67,7 +67,7 @@ export function applyPermissionModeForTab(
   // Auto-switch to the plan model when entering plan mode
   const { planModelSplitEnabled, planModeModel } = usePreferencesStore.getState()
   if (planModelSplitEnabled && mode === 'plan' && planModeModel) {
-    get().setTabModel(tabId, planModeModel)
+    get().setTabAutomaticModel(tabId, planModeModel)
   }
 
   // Re-evaluate the auto-group for a tab that is actively running/connecting:

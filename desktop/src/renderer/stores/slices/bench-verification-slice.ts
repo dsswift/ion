@@ -86,7 +86,7 @@ export function createBenchVerificationSlice(set: StoreSet, get: StoreGet): Part
       // already open in the bench (the bench's persistent operator
       // conversation, in particular) — this is always a fresh tab.
       const tabId = await get().createTabInDirectory(prepared.benchPath, false, true)
-      get().setTabModel(tabId, tier.model)
+      get().setTabAutomaticModel(tabId, tier.model)
 
       // Plan mode, not auto: the deliverable here is a verdict, and plan mode
       // is read-only, so the agent structurally cannot edit the bench even

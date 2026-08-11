@@ -159,7 +159,7 @@ export function createConversationTabAction(set: StoreSet, get: StoreGet) {
     // tabs start with the user's default permission mode.
     const initMode: 'auto' | 'plan' = isEngine ? (profile?.defaultMode ?? 'auto') : initialPermissionMode()
     const pane = makeMainPane(
-      { modelOverride: initialModel, messages: [startDivider], messageCount: 1, permissionMode: initMode, thinkingEffort: initialThinkingEffort(initialModel) },
+      { modelOverride: initialModel, modelOverrideSource: initialModel ? 'automatic' : null, messages: [startDivider], messageCount: 1, permissionMode: initMode, thinkingEffort: initialThinkingEffort(initialModel) },
       'main',
     )
 

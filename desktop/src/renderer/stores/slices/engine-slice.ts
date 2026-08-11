@@ -76,6 +76,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
           messages: [startDivider],
           messageCount: 1,
           modelOverride: initialModel,
+          modelOverrideSource: initialModel ? 'automatic' : null,
           sessionModel: null,
           permissionMode: 'auto' as const,
           permissionDenied: null,

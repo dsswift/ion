@@ -56,6 +56,7 @@ function makeInstance(
     messages: messages as any,
     messageCount: messages.length,
     modelOverride: null,
+    modelOverrideSource: null,
     sessionModel: null,
     permissionMode: 'auto',
     permissionDenied: null,
