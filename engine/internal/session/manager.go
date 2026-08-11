@@ -777,12 +777,12 @@ func (m *Manager) ReconcileState(key string) {
 		return
 	}
 
-	// Re-emit agent states. Always emit, including the empty snapshot:
-	// reconnecting clients need the authoritative "no agents" signal as
-	// much as they need the "here are the agents" signal.
-	snapshot := s.agents.MergedSnapshot()
-	utils.LogWithFields(utils.LevelInfo, "session", "agent_snapshot_emitted reason=reconcile", map[string]any{"key": key, "count": len(snapshot)})
-	m.emit(key, types.EngineEvent{Type: "engine_agent_state", Agents: snapshot})
+	// Re-emit agent states. force=true: this is a liveness emission, so it
+	// must survive dedup even when the snapshot is byte-identical to the last
+	// one — a reconnecting client needs the authoritative "no agents" signal
+	// as much as the "here are the agents" signal, and suppressing a repeat
+	// would leave it showing stale rows.
+	m.emitAgentSnapshot(key, agentSnapshotReasonReconcile, true, s.agents.MergedSnapshot())
 
 	// Re-emit status via the shared snapshot helper so the legacy
 	// engine_status and the Phase 3 engine_session_status both ship

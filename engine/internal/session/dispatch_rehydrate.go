@@ -253,8 +253,9 @@ func (m *Manager) announceLostDispatches(s *engineSession, key string) {
 	}
 	// The error transitions from rehydration are now part of the registry;
 	// push one snapshot so consumers see the corrected states immediately.
-	snapshot := s.agents.MergedSnapshot()
-	m.emit(key, types.EngineEvent{Type: "engine_agent_state", Agents: snapshot})
+	// force=true: these are terminal (error) transitions recovered after a
+	// restart, so they carry the same never-delay obligation as a live abort.
+	m.emitAgentSnapshot(key, agentSnapshotReasonRehydrate, true, s.agents.MergedSnapshot())
 }
 
 // dedupDispatchesByID unions an existing []interface{} dispatches slice with a

@@ -1,7 +1,6 @@
 package session
 
 import (
-
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -111,12 +110,11 @@ func (m *Manager) abortAllDescendants(key, reason string) {
 	// publish their own snapshot. Even then, the engine emits a
 	// corrective snapshot on extension death (see handleHostDeath).
 	if !hasExt {
-		snapshot := s.agents.MergedSnapshot()
-		utils.LogWithFields(utils.LevelInfo, "session", "agent_snapshot_emitted reason=abort", map[string]any{"key": key, "count": len(snapshot)})
-		m.emit(key, types.EngineEvent{
-			Type:   "engine_agent_state",
-			Agents: snapshot,
-		})
+		// force=true: an abort is a terminal transition, and agent-state.md
+		// requires every path that ends a run to deliver the resulting
+		// terminal status. Delaying or suppressing it would leave consumers
+		// rendering aborted agents as still running.
+		m.emitAgentSnapshot(key, agentSnapshotReasonAbort, true, s.agents.MergedSnapshot())
 	} else {
 		utils.LogWithFields(utils.LevelDebug, "session", "abortalldescendants: skipping engine snapshot — extension owns agent registry", map[string]any{"key": key})
 	}

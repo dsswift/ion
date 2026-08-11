@@ -83,10 +83,7 @@ func (m *Manager) lateLoadExtensions(s *engineSession, key string, overrides *Pr
 		}
 		host.SetPersistentEmit(func(ev types.EngineEvent) {
 			if ev.Type == "engine_agent_state" {
-				s.agents.CacheExtStates(ev.Agents)
-				merged := s.agents.MergedSnapshot()
-				utils.LogWithFields(utils.LevelInfo, "session", "agent_snapshot_emitted reason=ext_emit_merged", map[string]any{"captured_key": capturedKey, "count": len(merged)})
-				m.emit(capturedKey, types.EngineEvent{Type: "engine_agent_state", Agents: merged})
+				m.cacheExtStatesAndEmit(capturedKey, s, ev.Agents)
 				return
 			}
 			if ev.Type == "engine_status" && ev.Fields != nil && ev.Fields.ExtensionName != "" {

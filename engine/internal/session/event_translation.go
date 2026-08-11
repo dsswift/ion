@@ -586,17 +586,9 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	//
 	// Engine contract: `engine_agent_state` is a complete snapshot.
 	// See docs/architecture/agent-state.md.
-	m.mu.RLock()
-	var runExitSnapshot []types.AgentStateUpdate
-	if s, ok := m.sessions[key]; ok {
-		runExitSnapshot = s.agents.MergedSnapshot()
-	}
-	m.mu.RUnlock()
-	utils.LogWithFields(utils.LevelInfo, "session", "agent_snapshot_emitted reason=run_exit", map[string]any{"key": key, "count": len(runExitSnapshot)})
-	m.emit(key, types.EngineEvent{
-		Type:   "engine_agent_state",
-		Agents: runExitSnapshot,
-	})
+	// force=true: run exit is a terminal transition (see agent-state.md's
+	// emitter guarantee), so it is never deduped or delayed.
+	m.emitAgentSnapshotFor(key, agentSnapshotReasonRunExit, true)
 
 	// Clear any stale working message before transitioning to idle
 	m.emit(key, types.EngineEvent{Type: "engine_working_message", EventMessage: ""})

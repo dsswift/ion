@@ -62,10 +62,12 @@ func (m *Manager) handleHostDeath(key string, h *extension.Host) {
 	s.agents.CacheExtStates(nil)
 	snapshot := s.agents.MergedSnapshot()
 	utils.LogWithFields(utils.LevelInfo, "session", "agent_recovery_snapshot reason=extension_died", map[string]any{"key": key, "model": h.Name(), "prev_ext_count": prevExtCount, "count": len(snapshot)})
-	m.emit(key, types.EngineEvent{
-		Type:   "engine_agent_state",
-		Agents: snapshot,
-	})
+	// force=true: this is the corrective snapshot after dropping the dead
+	// extension's cache. It is frequently the SHRINKING case (agents the
+	// extension claimed were running are now gone), and if it were deduped
+	// against a prior identical state the consumer would keep rendering the
+	// dead extension's agents indefinitely.
+	m.emitAgentSnapshot(key, agentSnapshotReasonExtensionDied, true, snapshot)
 
 	// Notify peers in the same session that a sibling died. Observational
 	// only — peers can't prevent the death, but they can degrade

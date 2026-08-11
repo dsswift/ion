@@ -138,17 +138,10 @@ func (m *Manager) emitHeartbeatTick() {
 		m.emitStatusSnapshot(key, "heartbeat")
 
 		// Re-emit agent state so a reconnected client converges within
-		// one tick even if reconcile_state was lost.
-		m.mu.RLock()
-		var agentSnapshot []types.AgentStateUpdate
-		if s, ok := m.sessions[key]; ok {
-			agentSnapshot = s.agents.MergedSnapshot()
-		}
-		m.mu.RUnlock()
-		m.emit(key, types.EngineEvent{
-			Type:   "engine_agent_state",
-			Agents: agentSnapshot,
-		})
+		// one tick even if reconcile_state was lost. force=true because the
+		// heartbeat's whole purpose is the repeat: an unchanged snapshot is
+		// exactly the case it exists to deliver, so it must bypass dedup.
+		m.emitAgentSnapshotFor(key, agentSnapshotReasonHeartbeat, true)
 	}
 }
 
