@@ -327,13 +327,17 @@ func TestDispatch_NotifyChildComplete_FiresOnErrorPath(t *testing.T) {
 	registry.RegisterWithID("parent-disp", "lead", func() {}, nil, "sess", "", 1)
 	reviveCh := make(chan struct{}, 1)
 
-	// The child errors (non-zero exit).
+	// Hold child exit until parent has armed its pending-child state. Without
+	// this barrier, a fast child can notify before SetSuspendedState and make
+	// the test depend on scheduler timing rather than the error-path contract.
+	childExit := make(chan struct{})
 	child := newScriptedChildBackend(
 		childRunScript{
 			events: []types.NormalizedEvent{
 				{Data: &types.SessionInitEvent{SessionID: "conv-err-child"}},
 			},
 			code: 1,
+			hold: childExit,
 		},
 	)
 	acc := &idTestAccessor{child: child}
@@ -350,8 +354,10 @@ func TestDispatch_NotifyChildComplete_FiresOnErrorPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dispatch error: %v", err)
 	}
-	// Park the parent on the child's ACTUAL dispatch id.
+	// Park the parent on the child's ACTUAL dispatch id before allowing the
+	// child to terminate and notify the registry.
 	registry.SetSuspendedState("parent-disp", reviveCh, []string{stub.DispatchID})
+	close(childExit)
 
 	select {
 	case <-errCh:
