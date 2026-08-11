@@ -27,6 +27,7 @@ import { handleTaskEvent } from './event-slice-task'
 import { maybeCloseAutoFixTab, retryAutoFixCloseOnTerminalChildren } from './event-slice-auto-fix-lifecycle'
 import { handleErrorAction } from './event-slice-error'
 import { rTrace, rWarn } from '../../rendererLogger'
+import { sameTab, sameInstance, preserveArrayIdentity, shouldStampLastEventAt } from '../store-identity'
 
 /** Compact a multi-line message into a single ~80-char preview for the tab strip. */
 function formatMessagePreview(content: string): string {
@@ -74,9 +75,12 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
         let engineDialogs: Map<string, { dialogId: string; method: string; title: string; options?: string[]; defaultValue?: string } | null> | undefined
         let engineModelFallbacks: typeof s.engineModelFallbacks | undefined
 
-        const tabs = s.tabs.map((tab) => {
+        const nextTabs = s.tabs.map((tab) => {
           if (tab.id !== tabId) return tab
-          const updated = { ...tab, lastEventAt: Date.now() }
+          const now = Date.now()
+          const updated = shouldStampLastEventAt(tab.lastEventAt, now)
+            ? { ...tab, lastEventAt: now }
+            : { ...tab }
 
           // Extended thinking (issue #158), plain-conversation path. The three
           // thinking_* events delegate to event-slice-thinking.ts (mirrors
@@ -658,14 +662,18 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
             updated.lastMessagePreview = formatMessagePreview(lastMsg.content)
           }
 
-          return updated
+          // Hand back the original when this event moved nothing on the tab:
+          // `tabs` is a bare subscription in many components, so a new array
+          // per event re-renders all of them for no visible change.
+          return sameTab(tab, updated) ? tab : updated
         })
+        const tabs = preserveArrayIdentity(s.tabs, nextTabs) as typeof s.tabs
 
         // Commit the working message list + per-conversation patch back onto
         // the active instance in a single set (1B). conversationPanes is replaced
         // only when the tab existed and the instance was found.
         const conversationPanes = commitInstance(s.conversationPanes, tabId, (inst) => {
-          const next = { ...inst, messages, permissionQueue, elicitationQueue }
+          const next: typeof inst = { ...inst, messages, permissionQueue, elicitationQueue }
           if (instTouched) {
             if ('permissionDenied' in instPatch) next.permissionDenied = instPatch.permissionDenied!
             if ('planFilePath' in instPatch) next.planFilePath = instPatch.planFilePath ?? null
@@ -678,7 +686,10 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
             if ('sessions' in instPatch) next.sessions = instPatch.sessions!
             if ('pendingCutReason' in instPatch) next.pendingCutReason = instPatch.pendingCutReason
           }
-          return next
+          // Same identity argument as the tab above: the tab strip and every
+          // tab pill subscribe to conversationPanes, so an unchanged instance
+          // must not produce a new Map.
+          return sameInstance(inst, next) ? inst : next
         })
 
         return {

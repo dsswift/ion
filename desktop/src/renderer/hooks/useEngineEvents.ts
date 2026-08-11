@@ -1,7 +1,10 @@
 import { useEffect, useRef } from 'react'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
-import { IPC, type NormalizedEvent, type ImageAttachmentPayload } from '../../shared/types'
+import { IPC, type ImageAttachmentPayload } from '../../shared/types'
+import {
+  type QueuedItem, enqueueEvent, enqueueStatus, enqueueError, dropQueuedTextFor, countMergedChunks,
+} from './engine-event-frame-queue'
 import { FORWARDED_ACTIONS } from '../../shared/atv-mirror-actions'
 import { rTrace, rWarn, rDebug } from '../rendererLogger'
 
@@ -23,73 +26,76 @@ export function useEngineEvents() {
   const handleStatusChange = useSessionStore((s) => s.handleStatusChange)
   const handleError = useSessionStore((s) => s.handleError)
 
-  // RAF batching for text_chunk events
-  const chunkBufferRef = useRef<Map<string, string>>(new Map())
+  // One frame's worth of inbound stream work, replayed in arrival order.
+  const queueRef = useRef<QueuedItem[]>([])
   const rafIdRef = useRef<number>(0)
 
   useEffect(() => {
-    // Capture the buffer reference at effect-setup time so the cleanup
-    // function uses the same Map instance (refs can change between setup and
-    // cleanup per the react-hooks/exhaustive-deps rule).
-    const chunkBuffer = chunkBufferRef.current
-    const flushChunks = () => {
-      rafIdRef.current = 0
-      const buffer = chunkBufferRef.current
-      if (buffer.size === 0) return
+    // Counters for one frame, reported at flush so the stream's real inbound
+    // rate and the coalescing ratio are visible in desktop.jsonl without a
+    // debugger (the renderer console is unavailable in a packaged build).
+    let received = 0
 
-      // Flush all accumulated text per tab in one go
-      for (const [tabId, text] of buffer) {
-        rTrace('event.stream', 'flushing text_chunk', { tab_id: tabId, flush_len: text.length })
-        handleNormalizedEvent(tabId, { type: 'text_chunk', text } as NormalizedEvent)
+    const flush = () => {
+      rafIdRef.current = 0
+      const items = queueRef.current
+      if (items.length === 0) {
+        received = 0
+        return
       }
-      buffer.clear()
+      queueRef.current = []
+
+      const merged = countMergedChunks(received, items)
+      rTrace('event.stream', 'frame flush', {
+        received, applied: items.length, merged_chunks: merged,
+      })
+      received = 0
+
+      for (const item of items) {
+        switch (item.kind) {
+          case 'event':
+            handleNormalizedEvent(item.tabId, item.event)
+            break
+          case 'status':
+            handleStatusChange(item.tabId, item.status, item.previous)
+            break
+          case 'error':
+            handleError(item.tabId, item.error)
+            break
+        }
+      }
+    }
+
+    const schedule = () => {
+      if (!rafIdRef.current) {
+        rafIdRef.current = requestAnimationFrame(flush)
+      }
     }
 
     rDebug('event.stream', 'registering onEvent handler')
     const unsubEvent = window.ion.onEvent((tabId, event) => {
-      if (event.type === 'text_chunk') {
-        // Buffer text chunks and flush on next animation frame
-        const buffer = chunkBufferRef.current
-        const existing = buffer.get(tabId) || ''
-        buffer.set(tabId, existing + (event as any).text)
-        rTrace('event.stream', 'text_chunk buffered', { tab_id: tabId, chunk_len: (event as any).text?.length, buffer_len: buffer.get(tabId)?.length })
-
-        if (!rafIdRef.current) {
-          rafIdRef.current = requestAnimationFrame(flushChunks)
-        }
-      } else {
-        // stream_reset: engine is retrying — discard any buffered text for this
-        // tab so it doesn't get flushed after the reset clears the store.
-        if (event.type === 'stream_reset') {
-          chunkBufferRef.current.delete(tabId)
-          if (rafIdRef.current && chunkBufferRef.current.size === 0) {
-            cancelAnimationFrame(rafIdRef.current)
-            rafIdRef.current = 0
-          }
-        }
-        // task_update and task_complete contain fallback text logic that checks
-        // whether any assistant text has already been rendered. If a RAF flush is
-        // pending, those checks would see stale state and incorrectly conclude
-        // "no text yet" — causing duplicate messages once the RAF fires.
-        // Flush synchronously before handling these events so the store sees the
-        // correct message state.
-        if (
-          (event.type === 'task_update' || event.type === 'task_complete') &&
-          rafIdRef.current
-        ) {
-          cancelAnimationFrame(rafIdRef.current)
-          flushChunks()
-        }
-        handleNormalizedEvent(tabId, event)
+      received += 1
+      // stream_reset: the engine is retrying — text queued behind the reset
+      // would be appended after the reset cleared it, so drop it now.
+      if (event.type === 'stream_reset') {
+        queueRef.current = dropQueuedTextFor(queueRef.current, tabId)
       }
+      enqueueEvent(queueRef.current, tabId, event)
+      schedule()
     })
 
     const unsubStatus = window.ion.onTabStatusChange((tabId, newStatus, oldStatus) => {
-      handleStatusChange(tabId, newStatus, oldStatus)
+      // Queued rather than applied directly: a status transition and the event
+      // that caused it arrive on different IPC channels, and applying one
+      // ahead of the other would show a status the conversation had not
+      // reached yet.
+      enqueueStatus(queueRef.current, tabId, newStatus, oldStatus)
+      schedule()
     })
 
     const unsubError = window.ion.onError((tabId, error) => {
-      handleError(tabId, error)
+      enqueueError(queueRef.current, tabId, error)
+      schedule()
     })
 
     const unsubSkill = window.ion.onSkillStatus((status) => {
@@ -297,7 +303,7 @@ export function useEngineEvents() {
       window.ion.off(IPC.REMOTE_SET_PILL_ICON, remoteSetPillIconHandler)
       unsubExecAction()
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current)
-      chunkBuffer.clear()
+      queueRef.current = []
     }
   }, [handleNormalizedEvent, handleStatusChange, handleError])
 
