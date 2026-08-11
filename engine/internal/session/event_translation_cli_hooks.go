@@ -27,10 +27,13 @@ import (
 // (no run yet), this is a no-op — matching the pre-hybrid behavior of
 // returning early when the backend wasn't ClaudeCodeBackend.
 func (m *Manager) fireCliTurnHooks(s *engineSession, key string, sOk bool, event types.NormalizedEvent) {
-	if _, isCli := m.resolvedBackend(s.lastModel).(*backend.ClaudeCodeBackend); !isCli {
+	if !sOk || s == nil {
 		return
 	}
-	if !sOk || s.extGroup == nil || s.extGroup.IsEmpty() {
+	if _, isCli := m.resolvedBackend(s.currentModel()).(*backend.ClaudeCodeBackend); !isCli {
+		return
+	}
+	if s.extGroup == nil || s.extGroup.IsEmpty() {
 		return
 	}
 

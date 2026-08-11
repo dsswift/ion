@@ -248,7 +248,7 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 			usage := conversation.GetContextUsage(conv, ctxWindow)
 			m.mu.Lock()
 			if convModel != "" {
-				s.lastModel = convModel
+				s.setCurrentModel(convModel)
 			}
 			s.lastContextWindow = ctxWindow
 			s.lastContextTokens = usage.Tokens
@@ -437,7 +437,7 @@ func (m *Manager) rebindSession(s *engineSession, key, newConvID string) {
 		usage := conversation.GetContextUsage(conv, ctxWindow)
 		m.mu.Lock()
 		if convModel != "" {
-			s.lastModel = convModel
+			s.setCurrentModel(convModel)
 		}
 		s.lastContextWindow = ctxWindow
 		s.lastContextTokens = usage.Tokens

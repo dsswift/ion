@@ -276,9 +276,12 @@ type engineSession struct {
 	lastContextPct    int
 	lastContextTokens int
 	lastContextWindow int
-	lastModel         string
-	lastTotalCost     float64 // run-scoped cost (alias: RunCostUsd)
-	lastConvCost      float64 // conversation-scoped cost (alias: ConversationCostUsd)
+	// modelMu protects lastModel for extension-context construction, which may
+	// run without Manager.mu and from paths already holding Manager.mu.
+	modelMu       sync.RWMutex
+	lastModel     string
+	lastTotalCost float64 // run-scoped cost (alias: RunCostUsd)
+	lastConvCost  float64 // conversation-scoped cost (alias: ConversationCostUsd)
 
 	// lastPermissionDenials retains the PermissionDenials slice from the
 	// most recent TaskCompleteEvent. The slice typically contains

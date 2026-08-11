@@ -538,7 +538,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	}
 
 	m.mu.Lock()
-	s.lastModel = opts.Model
+	s.setCurrentModel(opts.Model)
 	s.lastContextWindow = promptCtxWindow
 	// Clear any retained permission denials from a prior task_complete —
 	// the user is dispatching a new prompt, which is implicitly the answer
