@@ -7,11 +7,16 @@
  */
 
 import { RelayClient } from './relay-client'
-import { log as _log } from '../logger'
+import { log as _log, warn as _warn } from '../logger'
 import type { WireMessage, PairedDevice } from './protocol'
+import type { RelayFailure } from './relay-failure'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('RemoteTransport', msg, fields)
+}
+
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn('RemoteTransport', msg, fields)
 }
 
 /** The slice of RemoteTransport the relay wiring needs. */
@@ -54,6 +59,16 @@ export function connectRelayForDevice(ctx: RelayWiringCtx, device: PairedDevice)
 
   relay.on('disconnected', () => {
     log('transport: relay disconnected', { device_id: device.id })
+    ctx.recomputeState()
+  })
+
+  // A permanent failure has stopped retrying. Recompute so the UI shows a
+  // reason instead of a spinner that will never resolve — the whole point of
+  // classifying is that the operator learns what to fix.
+  relay.on('failed', (failure: RelayFailure) => {
+    warn('transport: relay failed permanently, not retrying', {
+      device_id: device.id, reason: failure.reason, detail: failure.detail,
+    })
     ctx.recomputeState()
   })
 
