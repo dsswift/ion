@@ -65,7 +65,8 @@ preflight_check() {
 preflight_check
 
 echo "==> Building Ion Engine..."
-go build -o bin/ion ./cmd/ion
+ION_VERSION="${ION_VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}"
+go build -ldflags "-s -w -X main.version=${ION_VERSION}" -o bin/ion ./cmd/ion
 
 echo "==> Installing to $BIN_DIR..."
 mkdir -p "$BIN_DIR"
@@ -141,8 +142,36 @@ if [[ "${1:-}" == "--standalone" ]]; then
     fi
 fi
 
+# Install SDK for TypeScript extensions — BEFORE the LaunchAgent starts the
+# daemon below. Exact-replace, not merge: `rm -rf` then copy, mirroring
+# cmd_install_assets.go's replaceDirContents (the packaged/DMG install path).
+# A merge-copy (`cp -r src/* dst/` with no prior removal) leaves orphaned
+# files behind — deleted or renamed SDK modules, stray nested directories
+# from older staging bugs — that shadow the real surface forever. Both
+# install paths must produce byte-identical installed trees, and doing this
+# BEFORE the daemon loads means the daemon's first init handshake always sees
+# the SDK that matches the binary it just started from, instead of racing a
+# daemon that came up under a stale or half-replaced SDK.
+SDK_SRC="$SCRIPT_DIR/extensions/sdk"
+SDK_DST="$ION_HOME/extensions/sdk"
+if [[ -d "$SDK_SRC" ]]; then
+    echo "==> Installing extension SDK to $SDK_DST (exact-replace)..."
+    rm -rf "$SDK_DST"
+    mkdir -p "$SDK_DST"
+    cp -r "$SDK_SRC"/* "$SDK_DST/"
+
+    # Stamp the engine's build identity into the installed SDK so the SDK
+    # subprocess can report it back during the init handshake. The engine
+    # Host validates this against its own identity (SetEngineBuildIdentity)
+    # to detect mixed-build runtimes — mirrors cmd_install_assets.go's
+    # stampBuildIdentity so both install paths carry the same contract.
+    echo "{\"buildIdentity\":\"${ION_VERSION}\"}" > "$SDK_DST/ion-sdk/build-identity.json"
+fi
+
 # Install LaunchAgent plist from the repo template, substituting $HOME.
-# Written/refreshed on every install so updates propagate.
+# Written/refreshed on every install so updates propagate. Runs AFTER the SDK
+# install above so the daemon's first init handshake never races a stale or
+# half-installed SDK tree.
 PLIST_TEMPLATE="$SCRIPT_DIR/../packaging/launchd/$PLIST_FILENAME"
 PLIST_DEST="$LAUNCH_AGENTS_DIR/$PLIST_FILENAME"
 if [[ -f "$PLIST_TEMPLATE" ]]; then
@@ -165,15 +194,6 @@ if [[ -f "$PLIST_TEMPLATE" ]]; then
     fi
 else
     echo "  WARNING: plist template not found at $PLIST_TEMPLATE, skipping LaunchAgent install"
-fi
-
-# Install SDK for TypeScript extensions
-SDK_SRC="$SCRIPT_DIR/extensions/sdk"
-SDK_DST="$ION_HOME/extensions/sdk"
-if [[ -d "$SDK_SRC" ]]; then
-    echo "==> Installing extension SDK to $SDK_DST..."
-    mkdir -p "$SDK_DST"
-    cp -r "$SDK_SRC"/* "$SDK_DST/"
 fi
 
 # Install the Go extension SDK — DEVELOPER ASSET, source builds only.

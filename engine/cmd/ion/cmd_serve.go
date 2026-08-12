@@ -220,6 +220,7 @@ func cmdServe() {
 
 	srv.SetConfig(cfg)
 	srv.SetVersion(version)
+	srv.SessionManager().SetEngineBuildIdentity(version)
 	srv.SetAuthResolver(resolver)
 
 	// Engine-owned operator or machine identity. Token acquisition routes
