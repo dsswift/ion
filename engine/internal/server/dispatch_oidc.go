@@ -26,6 +26,12 @@ import (
 // serveContext returns the server-lifetime context, cancelled during shutdown.
 // Background flows derive their own child contexts when they need a deadline.
 func (s *Server) serveContext() context.Context {
+	if s.shutdownCtx == nil {
+		// Minimal Server fixtures invoke dispatch helpers without NewServer.
+		// A background context keeps those flows valid; real servers always
+		// install shutdownCtx and retain cancellation on Stop.
+		return context.Background()
+	}
 	return s.shutdownCtx
 }
 
