@@ -133,6 +133,81 @@ func TestInboundNotification_DoesNotDeadlockReadLoop(t *testing.T) {
 	releaseEmit()
 }
 
+func TestInboundNotification_CapturesActiveContext(t *testing.T) {
+	h := NewHost()
+
+	engineInR, engineInW := io.Pipe()
+	scanner := bufio.NewScanner(engineInR)
+	h.readerWg.Add(1)
+	go h.readLoop(scanner)
+	t.Cleanup(func() {
+		engineInW.Close()
+		h.readerWg.Wait()
+	})
+
+	blockEntered := make(chan struct{})
+	releaseBlock := make(chan struct{})
+	h.SetPersistentEmit(func(event types.EngineEvent) {
+		if event.Type == "block_dispatch" {
+			close(blockEntered)
+			<-releaseBlock
+		}
+	})
+	blockFrame, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "method": "ext/emit",
+		"params": map[string]any{"type": "block_dispatch"},
+	})
+	if _, err := engineInW.Write(append(blockFrame, '\n')); err != nil {
+		t.Fatalf("write blocking frame: %v", err)
+	}
+	select {
+	case <-blockEntered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("blocking notification did not enter dispatcher")
+	}
+
+	emitted := make(chan types.EngineEvent, 1)
+	ctx := &Context{Emit: func(event types.EngineEvent) { emitted <- event }}
+	h.ctxStack.Push(ctx)
+	responseRead := make(chan *jsonrpcResponse, 1)
+	h.pendMu.Lock()
+	h.pending[42] = responseRead
+	h.pendMu.Unlock()
+	frame, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "method": "ext/emit",
+		"params": map[string]any{"type": "context_scoped_event"},
+	})
+	if _, err := engineInW.Write(append(frame, '\n')); err != nil {
+		t.Fatalf("write context-scoped frame: %v", err)
+	}
+	responseFrame, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 42, "result": map[string]any{"ok": true},
+	})
+	if _, err := engineInW.Write(append(responseFrame, '\n')); err != nil {
+		t.Fatalf("write response frame: %v", err)
+	}
+	select {
+	case <-responseRead:
+	case <-time.After(3 * time.Second):
+		t.Fatal("readLoop did not consume frame following context-scoped notification")
+	}
+
+	// The response proves readLoop already captured the preceding notification.
+	// The worker remains blocked, so popping now distinguishes captured context
+	// from a context lookup deferred until dispatch.
+	h.ctxStack.Pop()
+	close(releaseBlock)
+
+	select {
+	case event := <-emitted:
+		if event.Type != "context_scoped_event" {
+			t.Fatalf("event type = %q, want context_scoped_event", event.Type)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("notification lost the context active when its frame was read")
+	}
+}
+
 // TestInboundDispatch_PreservesOrder pins that moving dispatch off the readLoop
 // did not make it concurrent. Notification order is observable — ext/emit
 // carries engine events that consumers render in sequence — so the queue must
@@ -157,7 +232,7 @@ func TestInboundDispatch_PreservesOrder(t *testing.T) {
 		frame, _ := json.Marshal(map[string]any{
 			"jsonrpc": "2.0",
 			"method":  "ext/emit",
-			"params":  map[string]any{"type": "engine_status", "message": string(rune('a' + i%26)) + string(rune('0'+i/26))},
+			"params":  map[string]any{"type": "engine_status", "message": string(rune('a'+i%26)) + string(rune('0'+i/26))},
 		})
 		if _, err := engineInW.Write(append(frame, '\n')); err != nil {
 			t.Fatalf("write emit %d: %v", i, err)

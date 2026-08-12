@@ -15,15 +15,6 @@ import (
 	"github.com/dsswift/ion/engine/internal/webhooks"
 )
 
-// SessionInfo describes a session in the list response.
-type SessionInfo struct {
-	Key            string `json:"key"`
-	HasActiveRun   bool   `json:"hasActiveRun"`
-	ToolCount      int    `json:"toolCount"`
-	ConversationID string `json:"conversationId,omitempty"`
-	ExtensionName  string `json:"extensionName,omitempty"`
-}
-
 // Manager orchestrates multiple engine sessions, routing prompts to the
 // backend and forwarding events to connected clients.
 type Manager struct {

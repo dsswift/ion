@@ -12,14 +12,15 @@ import (
 // raw is a copy: bufio.Scanner reuses its token buffer on the next Scan, so a
 // message handed to another goroutine must own its bytes.
 //
-// reqCtx is the ctxStack top as it stood when the readLoop *read* the frame,
-// not when the dispatcher gets to it. Capturing at read time keeps the
-// dispatch context identical to the synchronous behaviour this queue replaced.
+// ctx is the ctxStack top as it stood when the readLoop *read* the frame,
+// not when the dispatcher gets to it. Capturing at read time keeps requests
+// and notifications bound to the active tool or hook context even after the
+// synchronous call returns and pops that context.
 type inboundMsg struct {
 	method string
 	id     int64
 	isReq  bool
-	reqCtx *Context
+	ctx    *Context
 	raw    []byte
 }
 
@@ -124,9 +125,9 @@ func (d *inboundDispatcher) run(h *Host) {
 		d.mu.Unlock()
 
 		if m.isReq {
-			h.handleExtRequestWithContext(m.method, m.id, m.reqCtx, m.raw)
+			h.handleExtRequestWithContext(m.method, m.id, m.ctx, m.raw)
 		} else {
-			h.handleExtNotification(m.method, m.raw)
+			h.handleExtNotificationWithContext(m.method, m.ctx, m.raw)
 		}
 	}
 }

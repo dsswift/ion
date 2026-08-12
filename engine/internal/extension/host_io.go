@@ -455,12 +455,11 @@ func (h *Host) readLoop(stdout *bufio.Scanner) {
 			// Scan, so the dispatcher gets its own copy.
 			raw := make([]byte, len(line))
 			copy(raw, line)
-			m := inboundMsg{method: probe.Method, raw: raw}
+			m := inboundMsg{method: probe.Method, raw: raw, ctx: h.ctxStack.Current()}
 			if probe.ID != nil {
 				// Extension-to-engine request (has id, expects response).
 				m.isReq = true
 				m.id = *probe.ID
-				m.reqCtx = h.ctxStack.Current()
 			}
 			inbound.enqueue(h, m)
 			continue
