@@ -501,6 +501,24 @@ func formatOpenAIMessages(system string, messages []types.LlmMessage) []map[stri
 			}
 		}
 
+		// OpenAI requires every tool response immediately after the assistant's
+		// tool_calls message. A persisted tool-result carrier can also include
+		// images, which serialize as a following user message; emit the tool
+		// responses first so that user message cannot interleave illegally.
+		if msg.Role == "user" && len(toolResults) > 0 && len(otherBlocks) > 0 {
+			utils.LogWithFields(utils.LevelDebug, "OpenAI", "serialized tool responses before following user blocks", map[string]any{
+				"toolResultCount":     len(toolResults),
+				"followingBlockCount": len(otherBlocks),
+			})
+		}
+		for _, tr := range toolResults {
+			result = append(result, map[string]any{
+				"role":         "tool",
+				"tool_call_id": tr.ToolUseID,
+				"content":      tr.Content,
+			})
+		}
+
 		// Assistant messages with tool_use blocks
 		if msg.Role == "assistant" {
 			var toolUses []map[string]any
@@ -589,15 +607,6 @@ func formatOpenAIMessages(system string, messages []types.LlmMessage) []map[stri
 			if len(parts) > 0 {
 				result = append(result, map[string]any{"role": "user", "content": parts})
 			}
-		}
-
-		// Tool results as separate messages
-		for _, tr := range toolResults {
-			result = append(result, map[string]any{
-				"role":         "tool",
-				"tool_call_id": tr.ToolUseID,
-				"content":      tr.Content,
-			})
 		}
 	}
 

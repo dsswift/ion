@@ -3,17 +3,21 @@ import { darkColors } from './palette-dark'
 import { lightColors } from './palette-light'
 import { classicColors } from './palette-classic'
 import { hudColors } from './palette-hud'
+import { contrastDarkColors } from './palette-contrast-dark'
+import { contrastLightColors } from './palette-contrast-light'
 
 describe('palette parity', () => {
-  it('all four palettes carry the identical key set', () => {
+  it('all built-in palettes carry the identical key set', () => {
     const darkKeys = Object.keys(darkColors).sort()
     expect(Object.keys(lightColors).sort()).toEqual(darkKeys)
     expect(Object.keys(classicColors).sort()).toEqual(darkKeys)
     expect(Object.keys(hudColors).sort()).toEqual(darkKeys)
+    expect(Object.keys(contrastDarkColors).sort()).toEqual(darkKeys)
+    expect(Object.keys(contrastLightColors).sort()).toEqual(darkKeys)
   })
 
   it('every token is a non-empty string in every palette', () => {
-    for (const palette of [darkColors, lightColors, classicColors, hudColors]) {
+    for (const palette of [darkColors, lightColors, classicColors, hudColors, contrastDarkColors, contrastLightColors]) {
       for (const [key, value] of Object.entries(palette)) {
         expect(typeof value, `${key} must be a string`).toBe('string')
         expect((value as string).length, `${key} must be non-empty`).toBeGreaterThan(0)

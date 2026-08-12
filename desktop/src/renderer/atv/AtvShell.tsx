@@ -12,7 +12,8 @@
  * reading the same store — never a bespoke ATV widget.
  */
 import React, { useEffect, useRef, useState } from 'react'
-import { useSessionStore, editorDirForTab } from '../stores/sessionStore'
+import { useSessionStore } from '../stores/sessionStore'
+import { selectActiveEditorDir } from './atv-shell-selectors'
 import { activeInstance } from '../stores/conversation-instance'
 import { FileEditor } from '../components/FileEditor'
 import { StatusBar } from '../components/StatusBar'
@@ -177,13 +178,7 @@ export function AtvShell(): React.JSX.Element {
   // Floating file editor — same gating the overlay uses: visible when the
   // active tab's editor dir has open files (per-window editor state).
   const activeTabId = useSessionStore((s) => s.activeTabId)
-  const editorState = useSessionStore((s) => {
-    const tab = s.tabs.find((t) => t.id === s.activeTabId)
-    if (!tab) return null
-    const dir = editorDirForTab(tab)
-    const dirState = s.fileEditorStates.get(dir)
-    return dirState && dirState.files.length > 0 && s.fileEditorOpenDirs.has(dir) ? { dir } : null
-  })
+  const editorDir = useSessionStore(selectActiveEditorDir)
 
   return (
     <PopoverLayerProvider>
@@ -251,7 +246,7 @@ export function AtvShell(): React.JSX.Element {
         <div style={{ flexShrink: 0, borderTop: `1px solid ${colors.containerBorder}` }}>
           <StatusBar />
         </div>
-        {editorState && activeTabId && <FileEditor dir={editorState.dir} tabId={activeTabId} />}
+        {editorDir && activeTabId && <FileEditor dir={editorDir} tabId={activeTabId} />}
         <AtvControlsPopover />
         <CommandPalette actions={paletteActions.current} />
         <DeepLinkConfirmDialog />

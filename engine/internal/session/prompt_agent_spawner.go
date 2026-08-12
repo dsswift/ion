@@ -41,7 +41,8 @@ import (
 // are documented as "Observe only": the parent observes its children's
 // lifecycle.
 func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel string, extGroup *extension.ExtensionGroup, runCfg *backend.RunConfig) {
-	runCfg.AgentSpawner = m.buildRootAgentSpawner(s, key, parentModel, extGroup)
+	capturedRunID, _ := s.runIdentitySnapshot()
+	runCfg.AgentSpawner = m.buildRootAgentSpawner(s, key, parentModel, extGroup, m.progressTarget(capturedRunID))
 }
 
 // buildRootAgentSpawner returns the depth-0 AgentSpawner used by BOTH the
@@ -53,7 +54,11 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 // telemetry, child tool wiring (BuildDelegatedChildToolServer), and a
 // grandchild-capable spawner — instead of the old bare synchronous child run
 // that surfaced no agent and left the child tool-orphaned.
-func (m *Manager) buildRootAgentSpawner(s *engineSession, key string, parentModel string, extGroup *extension.ExtensionGroup) tools.AgentSpawner {
+func (m *Manager) buildRootAgentSpawner(s *engineSession, key string, parentModel string, extGroup *extension.ExtensionGroup, progressTargets ...func()) tools.AgentSpawner {
+	var progressTarget func()
+	if len(progressTargets) > 0 {
+		progressTarget = progressTargets[0]
+	}
 	capturedModel := parentModel
 	capturedKey := key
 	capturedExtGroup := extGroup
@@ -178,7 +183,7 @@ func (m *Manager) buildRootAgentSpawner(s *engineSession, key string, parentMode
 		// spec's persona augments the base system prompt rather than replacing
 		// it. This matches the CLI-hook agent-spec path (prompt_cli_hooks.go)
 		// and is the engine-consistent behavior.
-		acc := &sessionAccessor{m: m, s: s, key: capturedKey}
+		acc := &sessionAccessor{m: m, s: s, key: capturedKey, progressTarget: progressTarget}
 		dispatchFn := extcontext.BuildDispatchAgentFunc(acc, s.dispatchRegistry, 0, "")
 		dispatchOpts := extension.DispatchAgentOpts{
 			Name:          agentName,

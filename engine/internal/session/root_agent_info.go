@@ -19,6 +19,6 @@ func (m *Manager) rootBeforeAgentStartInfo(task string) extension.AgentInfo {
 	return extension.AgentInfo{
 		Task:                 task,
 		IsRoot:               true,
-		RemainingDepthBudget: extcontext.RemainingDepthBudget(engineCap, 0),
+		RemainingDepthBudget: extcontext.RemainingDepthBudgetForRoot(engineCap),
 	}
 }

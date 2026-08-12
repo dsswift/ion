@@ -74,7 +74,7 @@ private struct WaveBar: View {
     }
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 1.5)
+        RoundedRectangle(cornerRadius: 1.5) // design-geometry: hairline rounding on a thin waveform bar; below the control radius floor
             .fill(theme.accent)
             .frame(width: 3, height: barHeight)
             .animation(.easeInOut(duration: 0.08), value: barHeight)

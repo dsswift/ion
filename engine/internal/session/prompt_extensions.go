@@ -38,10 +38,9 @@ func (m *Manager) lateLoadExtensions(s *engineSession, key string, overrides *Pr
 		}
 	}
 	m.mu.RUnlock()
+	buildIdentity := m.engineBuildIdentitySnapshot()
 
 	group := extension.NewExtensionGroup()
-	accessor := &sessionAccessor{m: m, s: s, key: key}
-	buildIdentity := accessor.EngineBuildIdentity()
 	for _, extPath := range overrides.Extensions {
 		host, extCfg := newPerPromptExtensionHost(buildIdentity, extPath, s.config.WorkingDirectory)
 		if rpcTimeout > 0 {
@@ -50,7 +49,6 @@ func (m *Manager) lateLoadExtensions(s *engineSession, key string, overrides *Pr
 		if len(requiredHooks) > 0 {
 			host.RegisterRequiredHooks(requiredHooks)
 		}
-		host.SetEngineBuildIdentity(buildIdentity)
 		if err := host.Load(extPath, extCfg); err != nil {
 			stderrTail := host.StderrTail()
 			utils.LogWithFields(utils.LevelError, "session", "per-prompt extension load failed", map[string]any{"ext_path": extPath, "error": err.Error()})

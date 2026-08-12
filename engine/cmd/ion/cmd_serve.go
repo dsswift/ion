@@ -140,6 +140,15 @@ func cmdServe() {
 		providers.ApplyConfig(cfg.Providers)
 	}
 
+	// Install the engine-wide operator thinking policy. cfg is post-merge and
+	// post-EnforceEnterprise, so a sealed enterprise disable is already folded
+	// in and cannot be weakened here. A nil block leaves the default in place:
+	// thinking permitted. Called unconditionally (rather than only when the
+	// block is set) so the resolved decision is always in the log — an install
+	// where reasoning is missing must be diagnosable from engine.jsonl alone.
+	// See internal/providers/thinking_policy.go.
+	providers.SetThinkingDisabled(cfg.ThinkingPolicy != nil && cfg.ThinkingPolicy.Disabled)
+
 	if cfg.FeatureFlags != nil {
 		ffCfg := featureflags.Config{
 			Source: featureflags.Source(cfg.FeatureFlags.Source),

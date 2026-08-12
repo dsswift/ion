@@ -130,6 +130,14 @@ describe('snapshot projection parity: backgroundAgents → hasRunningChildren', 
     expect((result as any).hasRunningChildren).toBe(true)
   })
 
+  it('preserves non-zero backgroundShellCount through the main-process projection', () => {
+    const result = projectRendererTab(
+      { id: 'shell-tab', backgroundShellCount: 3 },
+      BASE,
+    )
+    expect(result.backgroundShellCount).toBe(3)
+  })
+
   it('plain tab with backgroundAgents=0: hasRunningChildren absent/false projected through', () => {
     // Ensures we don't invent a hasRunningChildren=true when both sources are 0.
     const result = projectRendererTab(

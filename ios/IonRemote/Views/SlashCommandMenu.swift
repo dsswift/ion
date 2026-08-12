@@ -49,7 +49,7 @@ struct SlashCommandMenu: View {
                         commandRow(cmd)
                     }
                 }
-                .padding(.vertical, 4)
+                .padding(.vertical, IonSpace.hairlineGap)
             }
             .frame(maxHeight: 260)
             .background(.ultraThinMaterial)
@@ -66,9 +66,9 @@ struct SlashCommandMenu: View {
             .fontWeight(.medium)
             .textCase(.uppercase)
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 12)
-            .padding(.top, 8)
-            .padding(.bottom, 2)
+            .padding(.horizontal, IonSpace.contentGap)
+            .padding(.top, IonSpace.compactGap)
+            .padding(.bottom, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
     }
 
     private func commandRow(_ cmd: DiscoveredSlashCommand) -> some View {
@@ -83,7 +83,7 @@ struct SlashCommandMenu: View {
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text("/\(cmd.name)")
-                        .font(.system(.caption, design: .monospaced))
+                        .ionType(.mono)
                         .fontWeight(.medium)
                         .foregroundStyle(.primary)
 
@@ -97,8 +97,8 @@ struct SlashCommandMenu: View {
 
                 Spacer()
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            .padding(.horizontal, IonSpace.contentGap)
+            .padding(.vertical, IonSpace.compactInset)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

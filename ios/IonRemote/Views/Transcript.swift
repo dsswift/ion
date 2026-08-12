@@ -15,6 +15,10 @@ struct Transcript: View {
     /// headerSection (the "> prompt" bar).
     let pinnedPrompt: String?
     let isRunning: Bool
+    /// Settled-run metadata supplied by ConversationView. Nil while a new run
+    /// is active or before the desktop reports any completion.
+    var runDurationMs: Int? = nil
+    var runCompletionReason: TaskCompletionReason? = nil
     let onRewind: ((String) -> Void)?
     let agents: [AgentStateUpdate]?
     /// Full unfiltered agent list for descendant walks and running-count
@@ -59,10 +63,18 @@ struct Transcript: View {
         // with dedupMode "relocate" are already positioned correctly in the
         // message list by handleEngineHarnessMessage; no pre-pass needed.
         let items = groupConversationItems(messages, unifiedTurnView: unifiedTurnView)
-        return items.map { item -> ConversationView.GroupedItem in
+        return items.enumerated().map { index, item -> ConversationView.GroupedItem in
             switch item {
-            case .user(let m), .assistant(let m), .system(let m):
-                return .single(m)
+            case .user(let m), .system(let m):
+                return .single(m, followsUser: false)
+            case .assistant(let m):
+                let followsUser: Bool
+                if index > 0, case .user = items[index - 1] {
+                    followsUser = true
+                } else {
+                    followsUser = false
+                }
+                return .single(m, followsUser: followsUser)
             case .thinking(let m):
                 return .thinking(m)
             case .toolGroup(let tools):
@@ -75,8 +87,28 @@ struct Transcript: View {
         }
     }
 
-    private var chatItems: [ChatItem<ConversationView.GroupedItem>] {
-        groupedMessages.map { ChatItem(id: $0.id, payload: $0) }
+    private enum Item: Identifiable {
+        case message(ConversationView.GroupedItem)
+        case runDuration(Int, TaskCompletionReason?)
+
+        var id: String {
+            switch self {
+            case .message(let item): return item.id
+            case .runDuration: return "run-duration"
+            }
+        }
+    }
+
+    private var chatItems: [ChatItem<Item>] {
+        var items = groupedMessages.map { ChatItem(id: $0.id, payload: Item.message($0)) }
+        if !isRunning, let runDurationMs, transcriptHasContent {
+            items.append(ChatItem(id: "run-duration", payload: .runDuration(runDurationMs, runCompletionReason)))
+        }
+        return items
+    }
+
+    private var transcriptHasContent: Bool {
+        !messages.isEmpty
     }
 
     // MARK: - Body
@@ -93,8 +125,8 @@ struct Transcript: View {
                         .truncationMode(.tail)
                 }
                 .font(IonTheme.codeFont(size: 12))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, IonSpace.contentGap)
+                .padding(.vertical, IonSpace.compactGap)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color(.secondarySystemFill).opacity(0.7))
             }
@@ -110,28 +142,39 @@ struct Transcript: View {
                 ) { item in
                     Group {
                         switch item {
-                        case .single(let msg):
-                            if msg.role == .user && !isRunning {
-                                if let rewind = onRewind {
-                                    EngineMessageRow(message: msg, onRewind: rewind)
-                                } else {
-                                    EngineMessageRow(message: msg)
+                        case .message(let item):
+                            switch item {
+                            case .single(let msg, let followsUser):
+                                if followsUser {
+                                    Rectangle()
+                                        .fill(theme.borderSubtle)
+                                        .frame(height: 1)
+                                        .padding(.horizontal, IonSpace.rowInset)
                                 }
-                            } else {
-                                if let tapPlan = onTapPlan {
-                                    EngineMessageRow(message: msg, onTapPlan: tapPlan, onOpenFile: onOpenFile)
+                                if msg.role == .user && !isRunning {
+                                    if let rewind = onRewind {
+                                        EngineMessageRow(message: msg, onRewind: rewind)
+                                    } else {
+                                        EngineMessageRow(message: msg)
+                                    }
                                 } else {
-                                    EngineMessageRow(message: msg, onOpenFile: onOpenFile)
+                                    if let tapPlan = onTapPlan {
+                                        EngineMessageRow(message: msg, onTapPlan: tapPlan, onOpenFile: onOpenFile)
+                                    } else {
+                                        EngineMessageRow(message: msg, onOpenFile: onOpenFile)
+                                    }
                                 }
+                            case .toolGroup(let tools):
+                                EngineToolGroupRow(tools: tools)
+                            case .compaction(let msg):
+                                CompactionRowView(message: msg)
+                            case .thinking(let msg):
+                                ThinkingRowView(message: msg)
+                            case .agentTurn(let tools, let assistants, let isActive, let thinking):
+                                AgentTurnRow(tools: tools, assistantMessages: assistants, isActive: isActive, thinking: thinking)
                             }
-                        case .toolGroup(let tools):
-                            EngineToolGroupRow(tools: tools)
-                        case .compaction(let msg):
-                            CompactionRowView(message: msg)
-                        case .thinking(let msg):
-                            ThinkingRowView(message: msg)
-                        case .agentTurn(let tools, let assistants, let isActive, let thinking):
-                            AgentTurnRow(tools: tools, assistantMessages: assistants, isActive: isActive, thinking: thinking)
+                        case .runDuration(let durationMs, let reason):
+                            RunDurationRow(durationMs: durationMs, reason: reason)
                         }
                     }
                 }
@@ -141,14 +184,14 @@ struct Transcript: View {
                         isNearBottom = true
                     } label: {
                         Image(systemName: "chevron.down")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 14, weight: .semibold)) // design-type: SF Symbol chevron glyph sized as icon geometry, not text
                             .foregroundStyle(.secondary)
                             .frame(width: 40, height: 40)
                             .background(.regularMaterial)
                             .clipShape(Circle())
                             .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
                     }
-                    .padding(.bottom, 12)
+                    .padding(.bottom, IonSpace.contentGap)
                     .transition(.opacity.combined(with: .scale))
                 }
             }
@@ -244,8 +287,8 @@ struct TranscriptAgentSection: View {
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
+            .padding(.horizontal, IonSpace.contentGap)
+            .padding(.vertical, IonSpace.hairlineGap)
 
             // MARK: Agent list (gated on isExpanded)
             //
@@ -265,8 +308,8 @@ struct TranscriptAgentSection: View {
                             )
                         }
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, IonSpace.compactGap)
+                    .padding(.vertical, IonSpace.compactInset)
                 }
 
                 if isFullscreen {

@@ -2,23 +2,27 @@ import Foundation
 
 // MARK: - Harness badge helpers
 //
-// The harness badge is a small text chip rendered on every tab row that has
-// extensions loaded. It shows an abbreviated profile name so the user can
-// see at a glance which harness is running — useful when multiple engine-tab
-// profiles are open side by side.
+// The harness badge is a small text chip showing an abbreviated profile name,
+// so the user can see at a glance which harness is running — useful when
+// multiple engine-tab profiles are open side by side.
 //
 // Mirrors `abbreviateProfileName` in desktop's TabStripShared.ts (commit #256).
 // The abbreviation rules are intentionally identical so the badge reads the
-// same on both surfaces.
+// same wherever it is rendered.
 //
-// Visibility gate: DATA presence, not a tab-type flag. The badge renders iff
-// `TabRowView.harnessBadgeLabel` is non-nil, which is driven by the tab having
-// an `engineProfileId` (the data). #256 follow-up moved the gate off the
-// `tab.hasEngineExtension` boolean — the two are equivalent today (the desktop
-// sets `hasEngineExtension` iff `engineProfileId != nil`), but keying off the
-// data keeps the badge free of a tab-type code fork: a plain conversation
-// carries no profile id and so shows no badge, purely because it lacks the
-// data, not because of a branch on tab type.
+// Render sites: the DESKTOP tab strip (TabStripDropdownTabRow.tsx,
+// TabStripGroupPill.tsx). The iOS tab row rendered it until the restraint pass,
+// which reduced the row to a title plus one subtitle line; this helper stays
+// because the abbreviation rules are shared contract with the desktop and are
+// pinned by EngineHarnessBadgeTests.
+//
+// Visibility gate: DATA presence, not a tab-type flag. A badge renders iff a
+// profile name resolves, which is driven by the tab having an `engineProfileId`.
+// #256 moved the gate off the `tab.hasEngineExtension` boolean — the two are
+// equivalent today (the desktop sets `hasEngineExtension` iff
+// `engineProfileId != nil`), but keying off the data keeps the badge free of a
+// tab-type code fork: a plain conversation carries no profile id and so shows no
+// badge, purely because it lacks the data, not because of a branch on tab type.
 
 /// Abbreviate a profile name to at most 8 characters for the harness badge.
 ///

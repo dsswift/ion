@@ -150,6 +150,7 @@ export function useTabRestoration() {
                           queuedPrompts: st.queuedPrompts?.length ? [st.queuedPrompts.join('\n\n')] : [],
                           lastMessagePreview: st.lastMessagePreview || null,
                           lastEventAt: st.lastEventAt ?? null,
+                          lastResult: st.lastResult ?? null,
                           // If worktree is valid, restore workingDirectory to worktree path
                           // If worktree was cleaned up, fall back to original repo path
                           ...(restoredWorktree
@@ -204,6 +205,7 @@ export function useTabRestoration() {
                 queuedPrompts: st.queuedPrompts?.length ? [st.queuedPrompts.join('\n\n')] : [],
                 lastMessagePreview: st.lastMessagePreview || null,
                 lastEventAt: st.lastEventAt ?? null,
+                lastResult: st.lastResult ?? null,
                 // If worktree is valid, restore workingDirectory to worktree path
                 // If worktree was cleaned up, fall back to original repo path
                 ...(restoredWorktree
@@ -339,6 +341,7 @@ export function useTabRestoration() {
                         queuedPrompts: st.queuedPrompts?.length ? [st.queuedPrompts.join('\n\n')] : [],
                         lastMessagePreview: st.lastMessagePreview || null,
                         lastEventAt: st.lastEventAt ?? null,
+                        lastResult: st.lastResult ?? null,
                       }
                     : t
                 ),

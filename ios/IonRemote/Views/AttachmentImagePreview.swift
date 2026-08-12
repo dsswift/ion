@@ -89,7 +89,10 @@ struct AttachmentImagePreview: View {
     var body: some View {
         NavigationStack {
             content
-                .background(Color.black)
+                // Photo-viewer backdrop. Black is functional here, not decorative: a
+                // neutral, uncast surround is what lets the image's own colors be judged.
+                // A themed surface would tint the viewing conditions.
+                .background(Color.black) // theme-color-ok: neutral photo-viewer backdrop
                 .navigationTitle(title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {

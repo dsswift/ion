@@ -258,7 +258,7 @@ func TestWebSearchMode_DefaultsToAuto(t *testing.T) {
 // --- plan mode prompt tests ---
 
 func TestBuildPlanModePrompt_ExistingFile(t *testing.T) {
-	prompt := buildPlanModePrompt("/tmp/plan.md", true, nil)
+	prompt := buildPlanModePrompt("/tmp/plan.md", true, nil, nil)
 
 	checks := []struct {
 		label    string
@@ -280,7 +280,7 @@ func TestBuildPlanModePrompt_ExistingFile(t *testing.T) {
 }
 
 func TestBuildPlanModePrompt_NewFile(t *testing.T) {
-	prompt := buildPlanModePrompt("/tmp/plan.md", false, nil)
+	prompt := buildPlanModePrompt("/tmp/plan.md", false, nil, nil)
 
 	if !strings.Contains(prompt, "No plan file exists yet") {
 		t.Error("expected 'No plan file exists yet' for new file")
@@ -298,7 +298,7 @@ func TestBuildPlanModePrompt_DispatchAllowed(t *testing.T) {
 	// plan-mode-safe sub-agent tool is not a system mutation and must be
 	// explicitly permitted so the model does not refuse to call such tools.
 	for _, exists := range []bool{true, false} {
-		prompt := buildPlanModePrompt("/tmp/plan.md", exists, nil)
+		prompt := buildPlanModePrompt("/tmp/plan.md", exists, nil, nil)
 		if !strings.Contains(prompt, "Dispatching or delegating to a sub-agent via a plan-mode-safe tool IS permitted") {
 			t.Errorf("planFileExists=%v: expected prompt to permit plan-mode-safe dispatch", exists)
 		}
@@ -891,7 +891,7 @@ func TestBuildToolDefs_PlanModeNoBashWhenAllowlistEmpty(t *testing.T) {
 // TestBuildPlanModePrompt_BashAllowlist verifies that the plan mode prompt
 // includes bash-specific guidance when the allowlist is non-empty.
 func TestBuildPlanModePrompt_BashAllowlist(t *testing.T) {
-	prompt := buildPlanModePrompt("/tmp/plan.md", false, []string{"gh", "git log"})
+	prompt := buildPlanModePrompt("/tmp/plan.md", false, []string{"gh", "git log"}, nil)
 
 	if !strings.Contains(prompt, "Bash (restricted)") {
 		t.Error("expected 'Bash (restricted)' in Phase 1 tool list")
@@ -907,7 +907,7 @@ func TestBuildPlanModePrompt_BashAllowlist(t *testing.T) {
 // TestBuildPlanModePrompt_NoBashWithoutAllowlist verifies that the plan mode
 // prompt does NOT mention Bash when no allowlist is configured.
 func TestBuildPlanModePrompt_NoBashWithoutAllowlist(t *testing.T) {
-	prompt := buildPlanModePrompt("/tmp/plan.md", false, nil)
+	prompt := buildPlanModePrompt("/tmp/plan.md", false, nil, nil)
 
 	if strings.Contains(prompt, "Bash (restricted)") {
 		t.Error("should NOT contain 'Bash (restricted)' when no allowlist")
@@ -925,7 +925,7 @@ func TestBuildPlanModePrompt_NoBashWithoutAllowlist(t *testing.T) {
 // allowlist IS set, the restrictions section no longer bans Bash entirely
 // but instead mentions the allowed command prefixes.
 func TestBuildPlanModePrompt_BashRestrictionLineChanges(t *testing.T) {
-	prompt := buildPlanModePrompt("/tmp/plan.md", false, []string{"gh"})
+	prompt := buildPlanModePrompt("/tmp/plan.md", false, []string{"gh"}, nil)
 
 	if strings.Contains(prompt, "MUST NOT call Bash") {
 		t.Error("should NOT contain 'MUST NOT call Bash' when allowlist is set — it's allowed (restricted)")
@@ -1410,5 +1410,20 @@ func TestEffectiveBashAllowlist_NoEnterpriseLeavesUnionIntact(t *testing.T) {
 
 	if len(got) != 2 || got[0] != "git log" || got[1] != "graphify" {
 		t.Fatalf("expected [git log, graphify] with no enterprise policy, got %v", got)
+	}
+}
+
+func TestMcpToolAllowedHonorsExactNamesAndServerBoundaries(t *testing.T) {
+	if !mcpToolAllowed("mcp__mobbin__search_screens", []string{"mcp__mobbin__search_screens"}) {
+		t.Fatal("exact MCP tool name should match")
+	}
+	if mcpToolAllowed("mcp__mobbin__delete_screen", []string{"mcp__mobbin__search_screens"}) {
+		t.Fatal("exact MCP tool allowlist entry must not grant other tools on its server")
+	}
+	if !mcpToolAllowed("mcp__mobbin__search_screens", []string{"mcp__mobbin"}) {
+		t.Fatal("MCP server prefix should match tools on that server")
+	}
+	if mcpToolAllowed("mcp__mobbin_internal__delete", []string{"mcp__mobbin"}) {
+		t.Fatal("MCP server prefix must not match a differently named server")
 	}
 }

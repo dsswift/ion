@@ -25,6 +25,9 @@ const mocks = vi.hoisted(() => ({
 }))
 let portalTarget: HTMLDivElement
 let gitChanges: ReturnType<typeof vi.fn>
+let tabGroupMode: 'auto' | 'manual'
+let tabGroups: Array<{ id: string; label: string }>
+let moveTabToGroup: ReturnType<typeof vi.fn>
 
 vi.mock('@phosphor-icons/react', () => ({
   Plus: () => null, GitFork: () => null, FolderOpen: () => null, GitBranch: () => null,
@@ -52,10 +55,10 @@ vi.mock('../PopoverLayer', () => ({
 
 vi.mock('../../preferences', () => ({
   usePreferencesStore: Object.assign(
-    (selector: (state: { tabGroupMode: string; tabGroups: never[] }) => unknown) => selector({ tabGroupMode: 'auto', tabGroups: [] }),
-    { getState: () => ({ tabGroups: [], worktreeBranchDefaults: {}, uiZoom: 1 }) },
+    (selector: (state: { tabGroupMode: 'auto' | 'manual'; tabGroups: Array<{ id: string; label: string }> }) => unknown) => selector({ tabGroupMode, tabGroups }),
+    { getState: () => ({ tabGroups, worktreeBranchDefaults: {}, uiZoom: 1 }) },
   ),
-  getEffectiveTabGroups: () => [],
+  getEffectiveTabGroups: (groups: Array<{ id: string; label: string }>) => groups,
 }))
 
 // The convert gate subscribes to `conversationPanes` to answer "is this tab
@@ -70,7 +73,7 @@ vi.mock('../../stores/sessionStore', () => ({
       toggleTabGroupPin: () => void
       conversationPanes: Map<string, unknown>
     }) => unknown) => selector({
-      moveTabToGroup: () => {},
+      moveTabToGroup: moveTabToGroup as () => void,
       toggleTabGroupPin: () => {},
       conversationPanes: panes,
     }),
@@ -102,7 +105,7 @@ function paneWith(inst: Record<string, unknown>) {
   ])
 }
 
-function renderMenu(over: Partial<TabState> = {}) {
+function renderMenu(over: Partial<TabState> = {}, options: { onRename?: () => void; onClose?: () => void } = {}) {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
@@ -111,9 +114,10 @@ function renderMenu(over: Partial<TabState> = {}) {
       <TabContextMenu
         anchor={{ x: 10, y: 10 }}
         tab={{ ...baseTab, ...over }}
+        onRename={options.onRename}
         onNewTabInDir={() => {}}
         onFinishWork={() => {}}
-        onClose={() => {}}
+        onClose={options.onClose ?? (() => {})}
       />,
     )
   })
@@ -137,6 +141,9 @@ beforeEach(() => {
   mocks.convertToWorktree.mockClear()
   mocks.rWarn.mockClear()
   panes = new Map()
+  tabGroupMode = 'auto'
+  tabGroups = []
+  moveTabToGroup = vi.fn()
   gitChanges = vi.fn()
   window.ion = {
     gitIsRepo: vi.fn().mockResolvedValue({ isRepo: true }),
@@ -161,6 +168,36 @@ describe('TabContextMenu convert to worktree', () => {
     expect(button?.disabled).toBe(false)
     act(() => { button!.click() })
     expect(mocks.convertToWorktree).toHaveBeenCalledWith('tab-1')
+
+    act(() => { root.unmount() })
+    container.remove()
+  })
+
+
+  it('closes move submenu when pointer enters an ordinary parent item, then runs that item', async () => {
+    tabGroupMode = 'manual'
+    tabGroups = [{ id: 'group-2', label: 'Elsewhere' }]
+    gitChanges.mockResolvedValue({ files: [] })
+    const onRename = vi.fn()
+    const { container, root } = renderMenu({ groupId: 'group-1' }, { onRename })
+
+    await settle()
+
+    const move = [...portalTarget.querySelectorAll('button')]
+      .find((button) => button.textContent?.trim() === 'Move to group')!
+    act(() => { move.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })) })
+    expect(portalTarget.textContent).toContain('Elsewhere')
+
+    const rename = [...portalTarget.querySelectorAll('button')]
+      .find((button) => button.textContent?.trim() === 'Rename')!
+    act(() => { rename.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })) })
+    expect(portalTarget.textContent).not.toContain('Elsewhere')
+
+    act(() => {
+      rename.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+      rename.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(onRename).toHaveBeenCalledOnce()
 
     act(() => { root.unmount() })
     container.remove()

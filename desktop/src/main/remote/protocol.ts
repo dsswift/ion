@@ -14,32 +14,8 @@
 import type { TabStatus, AgentStateUpdate, StatusFields } from '../../shared/types'
 import type { RemoteTabState, RemoteMessage, TerminalInstanceInfo } from './protocol-remote-tab'
 
-/**
- * Wire shape for one entry in `desktop_settings_snapshot.schema`.
- *
- * Mirrors `ProjectableSettingSchema` from
- * `desktop/src/main/projectable-settings-types.ts`. Declared here as a
- * named interface (rather than inlined) so the recursive `itemSchema`
- * reference can name itself — TS forbids self-references inside
- * anonymous object types.
- *
- * The recursion supports list-typed settings whose records contain
- * sub-fields. Today the per-record schemas describe only scalar leaves
- * (boolean/string/number/enum), but the wire type allows arbitrary
- * nesting so a future list-of-list shape would not require a protocol
- * bump.
- */
-export interface DesktopSettingsSchemaEntry {
-  key: string
-  type: 'boolean' | 'string' | 'number' | 'enum' | 'list'
-  group: string
-  label: string
-  description: string
-  defaultValue: unknown
-  choices?: Array<{ value: string | null; label: string }>
-  range?: { min: number; max: number; step: number }
-  itemSchema?: DesktopSettingsSchemaEntry[]
-}
+import type { DesktopSettingsSchemaEntry } from './protocol-settings'
+export type { DesktopSettingsSchemaEntry } from './protocol-settings'
 
 // ─── Remote Tab State + message types — extracted for line-cap ───
 // All types re-exported so existing import paths remain valid.
@@ -274,7 +250,7 @@ export type RemoteEvent =
   // enabling rich tool descriptions during live streaming.
   | { type: 'desktop_tool_update'; tabId: string; instanceId?: string; toolId: string; partialInput: string }
   | { type: 'desktop_tool_result'; tabId: string; toolId: string; content: string; isError: boolean }
-  | { type: 'desktop_task_complete'; tabId: string; result: string; costUsd: number; reason?: import('../../shared/types-events').TaskCompletionReason | (string & {}) }
+  | { type: 'desktop_task_complete'; tabId: string; result: string; costUsd: number; durationMs?: number; reason?: import('../../shared/types-events').TaskCompletionReason | (string & {}) }
   // `instanceId` scopes engine-view permission requests to the engine
   // sub-tab (instance) that produced them, so clients can hide a plan/
   // question card when the user views a sibling sub-conversation.
@@ -466,9 +442,12 @@ export type RemoteEvent =
   // from the manifest were uninstalled and must be pruned (per-desktop
   // keying keeps desktop A's sync from deleting desktop B's themes).
   //
-  // Token payloads are the full iOS AppTheme token set (#RRGGBBAA), small
-  // enough to inline. Image assets are NOT inlined: each is described by
-  // {slot, sha256, size} and fetched lazily via desktop_request_theme_asset
+  // Token payloads are the iOS AppTheme token set (#RRGGBBAA), small enough
+  // to inline. A component supplying the complete required set carries no
+  // `base`; one omitting any required token names a built-in `base` and iOS
+  // inherits the omitted tokens from that compiled-in theme
+  // (required-when-partial). Image assets are NOT inlined: each is described
+  // by {slot, sha256, size} and fetched lazily via desktop_request_theme_asset
   // when the sha misses the iOS cache.
   //
   // `hash` fingerprints the canonical payload so iOS can skip re-persisting
@@ -480,6 +459,7 @@ export type RemoteEvent =
         name: string
         version: string
         tokens: Record<string, string>
+        base?: 'ion-dark' | 'ion-light' | 'ion-classic' | 'jarvis-hud' | 'ion-contrast-dark' | 'ion-contrast-light'
         preferredColorScheme?: 'light' | 'dark'
         assets?: Array<{ slot: 'background' | 'logo'; sha256: string; size: number }>
       }>

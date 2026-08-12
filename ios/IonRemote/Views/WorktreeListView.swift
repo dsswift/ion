@@ -27,7 +27,7 @@ struct WorktreeListView: View {
         .overlay(alignment: .top) {
             if let toast = viewModel.gitToast {
                 GitToastView(toast: toast) { viewModel.gitToast = nil }
-                    .padding(.top, 8)
+                    .padding(.top, IonSpace.compactGap)
             }
         }
     }
@@ -70,12 +70,12 @@ struct WorktreeListView: View {
                     .foregroundStyle(.orange)
                 if let command = evidence?.command, !command.isEmpty {
                     Text(command)
-                        .font(.system(.caption2, design: .monospaced))
+                        .ionType(.mono)
                         .foregroundStyle(.secondary)
                 }
                 if let output = evidence?.outputTail, !output.isEmpty {
                     Text(output)
-                        .font(.system(.caption2, design: .monospaced))
+                        .ionType(.mono)
                         .foregroundStyle(.secondary)
                         .lineLimit(4)
                 }
@@ -146,7 +146,7 @@ struct WorktreeListView: View {
 
             benchVerbs(bench)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
     }
 
     /// Bench actions stay compact on narrow phones. Full labels fit when space

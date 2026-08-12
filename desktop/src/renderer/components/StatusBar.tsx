@@ -46,8 +46,9 @@ export { compactPath } from './StatusBarShared'
  * types: it reads the active instance's `statusFields.contextTokens` —
  * the engine's absolute occupancy figure, seeded at session start,
  * updated per turn, and recomputed at run exit — and divides it by the
- * SELECTED model's context window. A radial ring with a hover tooltip
- * carrying the exact token counts; click opens the status drawer.
+ * SELECTED model's context window. Before occupancy arrives (or after a
+ * zero reset), it stays mounted as a neutral 0% radial. Hover carries
+ * exact token counts; click opens the status drawer.
  */
 
 export function StatusBar() {

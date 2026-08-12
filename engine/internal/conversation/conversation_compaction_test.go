@@ -1063,6 +1063,46 @@ func TestGetContextUsage_ZeroUsageIsNotABaseline(t *testing.T) {
 		}
 	})
 
+	t.Run("skips output-only usage for earlier input baseline", func(t *testing.T) {
+		conv := CreateConversation("output-only-after-real", "sys", "model")
+		AddUserMessage(conv, "real turn")
+		AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "real reply"}},
+			types.LlmUsage{InputTokens: 2, CacheReadInputTokens: 618_171, CacheCreationInputTokens: 6_634})
+		AddUserMessage(conv, "tool continuation")
+		AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "continuation reply"}},
+			types.LlmUsage{OutputTokens: 143})
+
+		info := GetContextUsage(conv, 1_000_000)
+		wantBaseline := 2 + 618_171 + 6_634
+		if info.Estimated {
+			t.Fatal("expected provider-backed occupancy from the earlier input-bearing usage")
+		}
+		if info.Tokens < wantBaseline {
+			t.Fatalf("Tokens = %d; output-only usage replaced the earlier %d-token input baseline", info.Tokens, wantBaseline)
+		}
+		u := LastAssistantUsage(conv)
+		if u == nil || u.CacheReadInputTokens != 618_171 {
+			t.Fatalf("LastAssistantUsage = %+v, want the earlier input-bearing usage", u)
+		}
+	})
+
+	t.Run("falls back to estimation when only output usage exists", func(t *testing.T) {
+		conv := CreateConversation("output-only", "sys", "model")
+		AddUserMessage(conv, strings.Repeat("content ", 500))
+		AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: strings.Repeat("reply ", 500)}}, types.LlmUsage{OutputTokens: 500})
+
+		info := GetContextUsage(conv, 1_000_000)
+		if !info.Estimated {
+			t.Fatal("expected estimated=true: output-only usage has no context occupancy baseline")
+		}
+		if info.Tokens < 500 {
+			t.Fatalf("Tokens = %d; expected an honest content estimate, not an output-only zero baseline", info.Tokens)
+		}
+		if got := LastAssistantUsage(conv); got != nil {
+			t.Fatalf("LastAssistantUsage = %+v, want nil when the only usage is output-only", *got)
+		}
+	})
+
 	t.Run("falls back to estimation when only zero usage exists", func(t *testing.T) {
 		conv := CreateConversation("zero-usage-only", "sys", "model")
 		AddUserMessage(conv, strings.Repeat("content ", 500))

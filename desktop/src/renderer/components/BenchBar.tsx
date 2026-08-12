@@ -316,7 +316,9 @@ export function BenchBar(props: BenchBarProps): React.JSX.Element {
           anchor={goToTabAnchor}
           conversations={allConversations}
           prefer="below"
+          triggerRef={chatButtonRef}
           onClose={() => setGoToTabAnchor(null)}
+          onSelect={() => setGoToTabAnchor(null)}
         />
       )}
 

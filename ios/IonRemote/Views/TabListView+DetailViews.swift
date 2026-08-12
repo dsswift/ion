@@ -30,7 +30,7 @@ extension TabListView {
         } else {
             VStack(spacing: 12) {
                 Image(systemName: "sidebar.leading")
-                    .font(.system(size: 40))
+                    .font(.system(size: 40)) // design-type: SF Symbol empty-state glyph sized as icon geometry, not text
                     .foregroundStyle(.tertiary)
                 Text("Select a tab")
                     .font(.title3.weight(.semibold))
@@ -72,7 +72,7 @@ extension TabListView {
         if viewModel.tabs.isEmpty {
             VStack(spacing: 12) {
                 Image(systemName: "terminal")
-                    .font(.system(size: 40))
+                    .font(.system(size: 40)) // design-type: SF Symbol empty-state glyph sized as icon geometry, not text
                     .foregroundStyle(theme.accent)
                 Text("No Tabs")
                     .font(.title3.weight(.semibold))
@@ -91,7 +91,7 @@ extension TabListView {
         if isSearching && filteredDisplayGroups.isEmpty && !viewModel.tabs.isEmpty {
             VStack(spacing: 12) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 40))
+                    .font(.system(size: 40)) // design-type: SF Symbol empty-state glyph sized as icon geometry, not text
                     .foregroundStyle(.tertiary)
                 Text("No Results")
                     .font(.title3.weight(.semibold))

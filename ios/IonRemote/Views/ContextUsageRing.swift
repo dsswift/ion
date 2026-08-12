@@ -14,11 +14,12 @@ struct ContextUsageRing: View {
     let percent: Double
     let color: Color
     var size: CGFloat = 18
+    @Environment(\.appTheme) private var theme
 
     var body: some View {
         ZStack {
             Circle()
-                .stroke(Color.secondary.opacity(0.25), lineWidth: Self.lineWidth)
+                .stroke(theme.gaugeTrack, lineWidth: Self.lineWidth)
             Circle()
                 .trim(from: 0, to: Self.trimFraction(percent))
                 .stroke(color, style: StrokeStyle(lineWidth: Self.lineWidth, lineCap: .round))

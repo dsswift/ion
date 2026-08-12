@@ -6,16 +6,17 @@
  *      (built-ins + installed packs with a desktop component), not the
  *      static choices — the regression that silently rejected custom-pack
  *      ids written from iOS.
- *   2. `projectableSchema()` injects installed packs into the
- *      `selectedTheme` choices.
- *   3. A locked enterprise theme policy overrides the projected
- *      `selectedTheme` value (on-disk value untouched); an unlocked
- *      (managed-default) policy does not.
+ *   2. `selectedTheme` stays desktop-only even when packs are installed.
+ *   3. Enterprise policy does not override an omitted phone projection.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 vi.mock('electron', () => ({
-  app: { get isPackaged() { return false } },
+  app: {
+    get isPackaged() {
+      return false
+    },
+  },
   safeStorage: {
     isEncryptionAvailable: () => false,
     encryptString: (s: string) => Buffer.from(s),
@@ -31,14 +32,21 @@ vi.mock('../plan-bash-allowlist-store', () => ({
 // Enterprise theme policy: controllable so the lock tests set it without
 // importing the full main-process state module.
 const themePolicyMock = vi.hoisted(() => ({
-  getEnterpriseThemePolicy: vi.fn((): { themeId: string; locked: boolean } | null => null),
+  getEnterpriseThemePolicy: vi.fn(
+    (): { themeId: string; locked: boolean } | null => null,
+  ),
 }))
 vi.mock('../theme-policy', () => ({
   getEnterpriseThemePolicy: () => themePolicyMock.getEnterpriseThemePolicy(),
-  isThemeLocked: () => themePolicyMock.getEnterpriseThemePolicy()?.locked === true,
+  isThemeLocked: () =>
+    themePolicyMock.getEnterpriseThemePolicy()?.locked === true,
 }))
 
-import { validateSettingValue, projectableSchema, projectCurrentSettings } from '../projectable-settings'
+import {
+  validateSettingValue,
+  projectableSchema,
+  projectCurrentSettings,
+} from '../projectable-settings'
 import * as settingsStore from '../settings-store'
 import { resetThemePacksForTest } from '../theme-packs'
 import { IOS_THEME_TOKEN_KEYS } from '../../shared/theme-pack-types'
@@ -49,13 +57,25 @@ import { join } from 'path'
 let themesUserRoot: string
 let themesSystemRoot: string
 
-function installThemePack(id: string, opts: { desktop?: boolean; ios?: boolean } = { desktop: true }): void {
+function installThemePack(
+  id: string,
+  opts: { desktop?: boolean; ios?: boolean } = { desktop: true },
+): void {
   const dir = join(themesUserRoot, id)
   mkdirSync(dir, { recursive: true })
-  const manifest: Record<string, unknown> = { id, name: `Pack ${id}`, version: '1.0.0' }
-  if (opts.desktop) manifest.desktop = { base: 'ion-dark', tokens: { accent: '#FF6600' } }
+  const manifest: Record<string, unknown> = {
+    id,
+    name: `Pack ${id}`,
+    version: '1.0.0',
+  }
+  if (opts.desktop)
+    manifest.desktop = { base: 'ion-dark', tokens: { accent: '#FF6600' } }
   if (opts.ios) {
-    manifest.ios = { tokens: Object.fromEntries(IOS_THEME_TOKEN_KEYS.map((k) => [k, '#FF6600FF'])) }
+    manifest.ios = {
+      tokens: Object.fromEntries(
+        IOS_THEME_TOKEN_KEYS.map((k) => [k, '#FF6600FF']),
+      ),
+    }
   }
   writeFileSync(join(dir, 'theme.json'), JSON.stringify(manifest))
   resetThemePacksForTest({ user: themesUserRoot, system: themesSystemRoot })
@@ -90,13 +110,17 @@ describe('validateSettingValue: selectedTheme against the live registry', () => 
 
   it('rejects unknown ids and ios-only pack ids', () => {
     installThemePack('ios-only-pack', { desktop: false, ios: true })
-    expect(validateSettingValue('selectedTheme', 'not-installed')).not.toBeNull()
-    expect(validateSettingValue('selectedTheme', 'ios-only-pack')).not.toBeNull()
+    expect(
+      validateSettingValue('selectedTheme', 'not-installed'),
+    ).not.toBeNull()
+    expect(
+      validateSettingValue('selectedTheme', 'ios-only-pack'),
+    ).not.toBeNull()
     expect(validateSettingValue('selectedTheme', null)).not.toBeNull()
   })
 })
 
-describe('projectableSchema: selectedTheme choices', () => {
+describe('projectableSchema: selectedTheme scope', () => {
   let readSettingsSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
@@ -108,25 +132,18 @@ describe('projectableSchema: selectedTheme choices', () => {
     readSettingsSpy.mockRestore()
   })
 
-  it('lists built-ins with no packs, built-ins + packs when installed', () => {
-    const before = projectableSchema().find((s) => s.key === 'selectedTheme')
-    expect(before?.choices?.map((c) => c.value)).toEqual([
-      'ion-dark', 'ion-light', 'ion-classic', 'jarvis-hud',
-    ])
-
+  it('omits selectedTheme from phone schema even when desktop packs are installed', () => {
+    expect(
+      projectableSchema().find((s) => s.key === 'selectedTheme'),
+    ).toBeUndefined()
     installThemePack('acme-corp', { desktop: true })
-    installThemePack('ios-only-pack', { desktop: false, ios: true })
-    const after = projectableSchema().find((s) => s.key === 'selectedTheme')
-    // Desktop-component packs join the choice list; iOS-only packs do not
-    // (they are not selectable as the desktop theme).
-    expect(after?.choices?.map((c) => c.value)).toEqual([
-      'ion-dark', 'ion-light', 'ion-classic', 'jarvis-hud', 'acme-corp',
-    ])
-    expect(after?.choices?.find((c) => c.value === 'acme-corp')?.label).toBe('Pack acme-corp')
+    expect(
+      projectableSchema().find((s) => s.key === 'selectedTheme'),
+    ).toBeUndefined()
   })
 })
 
-describe('projectCurrentSettings: enterprise theme lock', () => {
+describe('projectCurrentSettings: selectedTheme scope', () => {
   let readSettingsSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
@@ -137,15 +154,21 @@ describe('projectCurrentSettings: enterprise theme lock', () => {
     readSettingsSpy.mockRestore()
   })
 
-  it('a locked policy overrides the projected selectedTheme (on-disk value untouched)', () => {
+  it('omits selectedTheme from projection even when policy is locked', () => {
     readSettingsSpy.mockReturnValue({ selectedTheme: 'ion-light' })
-    themePolicyMock.getEnterpriseThemePolicy.mockReturnValue({ themeId: 'ion-classic', locked: true })
-    expect(projectCurrentSettings().selectedTheme).toBe('ion-classic')
+    themePolicyMock.getEnterpriseThemePolicy.mockReturnValue({
+      themeId: 'ion-classic',
+      locked: true,
+    })
+    expect(projectCurrentSettings()).not.toHaveProperty('selectedTheme')
   })
 
-  it('an unlocked (managed default) policy does NOT override the projected selectedTheme', () => {
+  it('omits selectedTheme from projection when managed policy is unlocked', () => {
     readSettingsSpy.mockReturnValue({ selectedTheme: 'ion-light' })
-    themePolicyMock.getEnterpriseThemePolicy.mockReturnValue({ themeId: 'ion-classic', locked: false })
-    expect(projectCurrentSettings().selectedTheme).toBe('ion-light')
+    themePolicyMock.getEnterpriseThemePolicy.mockReturnValue({
+      themeId: 'ion-classic',
+      locked: false,
+    })
+    expect(projectCurrentSettings()).not.toHaveProperty('selectedTheme')
   })
 })

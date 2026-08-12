@@ -72,3 +72,24 @@ func ClampPlanModeBashToEnterprise(cmds []string) []string {
 	}
 	return intersectBashCommandsWithCeiling(cmds, enterprise.Limits.PlanModeAllowedBashCommands)
 }
+
+// ClampPlanModeMcpToolsToEnterprise applies the enterprise MCP plan-mode ceiling.
+func ClampPlanModeMcpToolsToEnterprise(tools []string) []string {
+	if len(tools) == 0 {
+		return tools
+	}
+	enterprise := LoadEnterpriseConfig()
+	if enterprise == nil || enterprise.Limits == nil || enterprise.Limits.PlanModeAllowedMcpTools == nil {
+		return tools
+	}
+	return intersectMcpToolsWithCeiling(tools, enterprise.Limits.PlanModeAllowedMcpTools)
+}
+
+// ResolvePlanModeMcpAllowlist reads the named MCP plan-mode allowlist fresh.
+func ResolvePlanModeMcpAllowlist(projectDir string) ([]string, bool) {
+	merged := mergeConfigLayers(projectDir)
+	tools := merged.Limits.PlanModeAllowedMcpTools
+	found := tools != nil
+	utils.LogWithFields(utils.LevelDebug, "config", "resolved plan-mode MCP allowlist fresh", map[string]any{"project_dir": projectDir, "found": found, "count": len(tools), "allowlist": tools})
+	return tools, found
+}

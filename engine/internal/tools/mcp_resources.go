@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"strings"
 
@@ -102,6 +103,11 @@ func executeReadMcpResource(ctx context.Context, input map[string]any, _ string)
 		return &types.ToolResult{Content: content.Text}, nil
 	}
 	if content.Blob != "" {
+		if strings.HasPrefix(content.MimeType, "image/") {
+			if _, err := base64.StdEncoding.DecodeString(content.Blob); err == nil {
+				return &types.ToolResult{Content: fmt.Sprintf("[MCP image resource: %s]", content.MimeType), Images: []*types.ImageSource{{Type: "base64", MediaType: content.MimeType, Data: content.Blob}}}, nil
+			}
+		}
 		return &types.ToolResult{Content: fmt.Sprintf("[base64 blob, %d chars, mime: %s]", len(content.Blob), content.MimeType)}, nil
 	}
 	return &types.ToolResult{Content: "Resource returned empty content."}, nil

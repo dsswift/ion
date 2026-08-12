@@ -2,8 +2,10 @@ package tools
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -196,11 +198,37 @@ func executeWebFetch(ctx context.Context, input map[string]any, _ string) (*type
 		}, nil
 	}
 
+	contentType, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	if err != nil {
+		utils.LogWithFields(utils.LevelWarn, "tools.web_fetch", "response content type invalid; treating response as text", map[string]any{
+			"url":         rawURL,
+			"contentType": resp.Header.Get("Content-Type"),
+			"error":       utils.ErrStr(err),
+		})
+	}
+	if isSupportedImageMediaType(http.DetectContentType(data)) {
+		contentType = http.DetectContentType(data)
+	}
+	if isSupportedImageMediaType(contentType) {
+		utils.LogWithFields(utils.LevelInfo, "tools.web_fetch", "response image attached", map[string]any{
+			"url":       rawURL,
+			"mediaType": contentType,
+			"bytes":     len(data),
+		})
+		return &types.ToolResult{
+			Content: fmt.Sprintf("[Image: %s, %d bytes]", rawURL, len(data)),
+			Images: []*types.ImageSource{{
+				Type:      "base64",
+				MediaType: contentType,
+				Data:      base64.StdEncoding.EncodeToString(data),
+			}},
+		}, nil
+	}
+
 	text := string(data)
 
 	// Convert HTML to text.
-	contentType := resp.Header.Get("Content-Type")
-	if strings.Contains(contentType, "text/html") {
+	if strings.EqualFold(contentType, "text/html") {
 		text = htmlToText(text)
 	}
 
@@ -210,4 +238,15 @@ func executeWebFetch(ctx context.Context, input map[string]any, _ string) (*type
 	}
 
 	return &types.ToolResult{Content: text}, nil
+}
+
+// isSupportedImageMediaType reports whether mediaType can be passed to vision
+// providers as a ToolResult image source.
+func isSupportedImageMediaType(mediaType string) bool {
+	switch strings.ToLower(mediaType) {
+	case "image/gif", "image/jpeg", "image/png", "image/webp":
+		return true
+	default:
+		return false
+	}
 }

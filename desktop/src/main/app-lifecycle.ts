@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, Menu, screen } from 'electron'
+import { app, BrowserWindow, globalShortcut, Menu, powerMonitor, screen } from 'electron'
 import { existsSync, rmSync, writeFileSync } from 'fs'
 import { readFileSync } from 'fs'
 import { join } from 'path'
@@ -34,7 +34,7 @@ import { startEgressTailers, stopEgressTailers } from './log-egress-tailer'
 import { getAccessToken, getSignedInIdentity, ensureEntraAuthConfig } from './oauth/entra-auth'
 import { getEnterprisePolicy, getEnterprisePolicyNewConversationDefaults } from './engine-bridge-fs'
 import { initAutoUpdater } from './updater'
-import { startWatchdog, stopWatchdog } from './watchdog'
+import { startWatchdog, stopWatchdog, setWatchdogSuspended } from './watchdog'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -243,6 +243,14 @@ export function setupAppLifecycle(): void {
     // thread and writes stall diagnostics that survive a main-thread freeze —
     // the one condition under which the main-process logger itself goes blind.
     startWatchdog()
+    powerMonitor.on('suspend', () => {
+      setWatchdogSuspended(true)
+      log('watchdog: paused for system suspend')
+    })
+    powerMonitor.on('resume', () => {
+      setWatchdogSuspended(false)
+      log('watchdog: resumed after system wake')
+    })
 
     await requestPermissions()
 

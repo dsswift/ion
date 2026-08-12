@@ -55,7 +55,7 @@ git diff main..HEAD --name-only
 
 - If any path starts with `engine/`, the **engine** gate applies.
 - If any path starts with `desktop/`, the **desktop** gate applies.
-- If neither `engine/` nor `desktop/` is touched, **skip this step entirely** and go to Step 4. (Pure `ios/`, `relay/`, `docs/`, or `repo` changes have no Linux-divergent test gate here.)
+- If neither `engine/` nor `desktop/` is touched, skip Linux parity and continue to Step 3e. (Pure `ios/`, `relay/`, `docs/`, or `repo` changes have no Linux-divergent gate.)
 
 ### 3b. Docker preflight
 
@@ -96,6 +96,23 @@ The woken run receives the completion result (exit code, command, and a bounded 
 - **Gate fails** → **do not push. Do not open the PR.** Fix every failure the gate surfaced — including failures that reproduce on `main` (pre-existing) — then re-dispatch the same gate the same way (background + notify) and wait for the next wake. A failure that is visible now blocks the PR now; its age and origin are irrelevant. Only abort back to the user when a failure genuinely cannot be fixed without a product decision the user must make.
 - **User opted to skip** (Docker down, proceed anyway) → proceed to Step 4; note in the final report that the Linux gate was skipped.
 - **Synchronous fallback used** (background unsupported) → act on the plain `Bash` return code the same way as above; note the fallback path in the final report.
+
+### 3e. iOS PR parity gate
+
+The required `ios-build` CI job compiles the iOS app and runs the targeted
+contract/parity simulator suites. If any path starts with `ios/`, or the change
+touches `scripts/run-ios-tests.sh`, `Makefile`, or `quality.yml`, run its exact
+local counterpart before pushing:
+
+```bash
+make ios-pr-check
+```
+
+This is a foreground gate. It selects a real installed simulator and runs:
+`ContractSyncTests`, `ThemeParityTests`, `ThemeableSurfaceCoverageTests`,
+`StatusCascadeParityTests`, and `SpacingRoleCoverageTests`. Do not push or open
+the PR on failure: fix it and rerun this gate. The full simulator suite is a
+nightly/manual CI lane, not a per-PR prerequisite.
 
 ---
 

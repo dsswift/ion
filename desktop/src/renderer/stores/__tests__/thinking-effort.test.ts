@@ -162,6 +162,21 @@ describe('sendMessage — thinking effort on prompt', () => {
     const opts = mockPrompt.mock.calls[0][2] as any
     expect(opts.thinkingEffort).toBe('off')
   })
+
+  it("tab level adaptive → thinkingEffort:'adaptive' reaches the prompt verbatim", () => {
+    // 'adaptive' is a distinct wire value, not a display label over 'off'. The
+    // send path must transmit it unchanged so the engine takes its adaptive arm
+    // (prompt_options.go: eff == ThinkingEffortAdaptive → Thinking{Enabled:true}
+    // with no pinned effort). resolveEffortForModel leaves a stored 'adaptive'
+    // untouched when the model is unknown (no registry entry in this harness),
+    // which is the case here — so the raw instance value must arrive on the
+    // prompt. A regression that mapped 'adaptive' to 'off'/undefined, or that
+    // dropped it as an unrecognized string, turns this red.
+    const { state } = buildHarness(makeTab(), { thinkingEffort: 'adaptive' })
+    state.submit('tab-1', 'hello')
+    const opts = mockPrompt.mock.calls[0][2] as any
+    expect(opts.thinkingEffort).toBe('adaptive')
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

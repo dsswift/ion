@@ -5,10 +5,9 @@
 // canonical import path is TabStripShared.ts which re-exports
 // `getGroupStatusColor`. Do not import from this file directly in components.
 //
-// Priority constants mirror the inline literals in `getTabStatusColor`
-// (TabStripShared.ts). Both must be updated together if the cascade changes.
-// One-way dependency: this file imports from TabStripShared; TabStripShared
-// re-exports from here. No circular dependency.
+// Priority values come from TabStripStatusPriority.ts. That module has no
+// dependency on either status helper, so both render paths can use one derived
+// cascade without a circular import.
 
 import type { TabState } from '../../shared/types'
 import type { useColors } from '../theme'
@@ -32,35 +31,23 @@ export type GroupDotModel =
 
 // ─── Priority constants ───────────────────────────────────────────────────────
 //
-// Exported so tests can assert specific priority levels without hardcoding
-// magic numbers. `getTabStatusColor` uses the same values inlined as numeric
-// literals to avoid the circular import that would arise if TabStripShared
-// imported from here.
-//
-//   8 = error            (dead/failed — red)
-//   7 = permission       (orange glow, blocked)
-//   6 = running          (orange pulse, foreground active)
-//   5 = running-children (yellow pulse, background agents)
-//   4 = plan-ready       (green glow, waiting on user)
-//   3 = question         (blue glow, waiting on user)
-//   2 = bash             (amber pulse/glow, executing shell)
-//   1 = unread           (green, notification)
-//   0 = idle             (gray, no activity)
+// Re-exported for callers and tests. Values derive from the declared cascade in
+// TabStripStatusPriority.ts, which is asserted against the shared fixture.
 
-export const STATUS_PRIORITY_ERROR       = 9
-export const STATUS_PRIORITY_PERMISSION  = 8
-export const STATUS_PRIORITY_RUNNING     = 7
-export const STATUS_PRIORITY_CHILDREN    = 6
-// Background shell commands the session is waiting on (Bash
-// run_in_background + notify_on_complete). Sits between CHILDREN and
-// PLAN_READY: it is active background work like CHILDREN, but the agent
-// signal is richer, and both outrank the passive "waiting on you" states.
-export const STATUS_PRIORITY_BASH_BACKGROUND = 5
-export const STATUS_PRIORITY_PLAN_READY  = 4
-export const STATUS_PRIORITY_QUESTION    = 3
-export const STATUS_PRIORITY_BASH        = 2
-export const STATUS_PRIORITY_UNREAD      = 1
-export const STATUS_PRIORITY_IDLE        = 0
+export {
+  STATUS_PRIORITY_BASH,
+  STATUS_PRIORITY_BASH_BACKGROUND,
+  STATUS_PRIORITY_CHILDREN,
+  STATUS_PRIORITY_ERROR,
+  STATUS_PRIORITY_IDLE,
+  STATUS_PRIORITY_PERMISSION,
+  STATUS_PRIORITY_PLAN_READY,
+  STATUS_PRIORITY_QUESTION,
+  STATUS_PRIORITY_RUNNING,
+  STATUS_PRIORITY_UNREAD,
+} from './TabStripStatusPriority'
+
+import { STATUS_PRIORITY_IDLE } from './TabStripStatusPriority'
 
 /**
  * Derive the highest-priority status dot for a group of tabs.
@@ -69,7 +56,7 @@ export const STATUS_PRIORITY_IDLE        = 0
  * returns the result with the highest `priority` value. When the group is
  * empty or all tabs are terminal-only, returns an idle dot. This is the
  * single source of truth for the group pill's status indicator — it shares
- * the same 9-level cascade as the per-tab dot, so desktop and iOS can both
+ * the same status cascade as the per-tab dot, so desktop and iOS can both
  * derive the same answer from the same ranked list.
  *
  * Imported and re-exported by TabStripShared.ts — consumers should import

@@ -8,6 +8,17 @@ import { evaluateStall, mark, Activity, ACTIVITY_NAMES } from '../watchdog'
 describe('evaluateStall', () => {
   const staleMs = 5000
 
+  it('does not report a stall while system sleep has paused monitoring', () => {
+    const r = evaluateStall({ nowMs: 20_000, beatMs: 10_000, staleMs, paused: true, counter: 5, prevCounter: 5, wasStalled: false })
+    expect(r.isStalled).toBe(false)
+    expect(r.transition).toBe('none')
+  })
+
+  it('detects a real awake stall after resume resets monitoring', () => {
+    const r = evaluateStall({ nowMs: 20_000, beatMs: 10_000, staleMs, paused: false, counter: 5, prevCounter: 5, wasStalled: false })
+    expect(r.isStalled).toBe(true)
+    expect(r.transition).toBe('onset')
+  })
   it('reports no transition while the heartbeat is fresh', () => {
     const r = evaluateStall({ nowMs: 10_000, beatMs: 9_500, staleMs, counter: 5, prevCounter: 5, wasStalled: false })
     expect(r.isStalled).toBe(false)

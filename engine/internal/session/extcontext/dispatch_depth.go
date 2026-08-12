@@ -1,16 +1,12 @@
 package extcontext
 
-import (
-	"errors"
-)
-
 // Depth-guard constants and helpers for the dispatch path, split from
 // dispatch_agent.go to keep that file under the 800-line cap. Same package;
 // no API change.
 
 // ExitCodeRecalled is the exit code used when a dispatch is cancelled via
-// RecallAgent. Distinct from 0 (success) and 1 (error) so consumers can
-// distinguish recall from failure.
+// RecallAgent. Distinct from 0 (success) and 1 (depth-cap rejection) so
+// consumers can distinguish recall from a rejected dispatch.
 const ExitCodeRecalled = 2
 
 // DefaultMaxDispatchDepth is the built-in cap when neither the per-dispatch
@@ -18,11 +14,6 @@ const ExitCodeRecalled = 2
 // (EngineRuntimeConfig.MaxDispatchDepth) sets a value. Allows depths
 // 0 (orchestrator), 1, and 2.
 const DefaultMaxDispatchDepth = 3
-
-// ErrDispatchDepthExceeded is returned by DispatchAgent when the requested
-// dispatch would exceed the effective MaxDispatchDepth. The caller sees a
-// typed error so it can distinguish depth rejection from other failures.
-var ErrDispatchDepthExceeded = errors.New("dispatch depth exceeded")
 
 // ErrSelfDispatch and ErrSubAgentNotAllowed (the eligibility-guard errors)
 // are defined in dispatch_eligibility.go alongside the guard that returns them.
@@ -50,8 +41,9 @@ func remainingDepthBudget(effectiveCap, currentDepth int) int {
 	return budget
 }
 
-// RemainingDepthBudget resolves the engine cap then returns levels available
-// from currentDepth. Root hook paths use this without duplicating depth policy.
-func RemainingDepthBudget(engineCap, currentDepth int) int {
-	return remainingDepthBudget(resolveMaxDispatchDepth(0, engineCap), currentDepth)
+// RemainingDepthBudgetForRoot resolves the engine cap and returns levels
+// available to the root agent (depth 0). Used by session startup to populate
+// before_agent_start payload.
+func RemainingDepthBudgetForRoot(engineCap int) int {
+	return remainingDepthBudget(resolveMaxDispatchDepth(0, engineCap), 0)
 }

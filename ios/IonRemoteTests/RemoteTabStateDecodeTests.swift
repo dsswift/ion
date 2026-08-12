@@ -83,6 +83,21 @@ final class RemoteTabStateDecodeTests: XCTestCase {
         XCTAssertEqual(tab.engineProfileId, "prof-2")
     }
 
+    // MARK: - latest run metadata
+
+    func testLatestRunMetadataDecodes() throws {
+        let data = minimalTab(extra: #""lastRunDurationMs": 62007, "lastRunReason": "aborted""#)
+        let tab = try decoder.decode(RemoteTabState.self, from: data)
+        XCTAssertEqual(tab.lastRunDurationMs, 62_007)
+        XCTAssertEqual(tab.lastRunReason, .aborted)
+    }
+
+    func testLatestRunMetadataNilWhenAbsent() throws {
+        let tab = try decoder.decode(RemoteTabState.self, from: minimalTab())
+        XCTAssertNil(tab.lastRunDurationMs)
+        XCTAssertNil(tab.lastRunReason)
+    }
+
     // MARK: - inputLocked (auto-generated conflict-fix conversations)
 
     func testInputLockedDecodesTrue() throws {

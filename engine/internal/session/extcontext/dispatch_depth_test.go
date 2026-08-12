@@ -3,7 +3,6 @@ package extcontext
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -167,25 +166,37 @@ func TestDepthGuard(t *testing.T) {
 
 			dispatchFn := BuildDispatchAgentFunc(acc, nil, tc.currentDepth, "parent-id")
 
-			_, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
+			result, err := dispatchFn(extension.DispatchAgentOpts{
 				Name:             "test-agent",
 				Task:             "test task",
 				MaxDispatchDepth: tc.perDispatchMax,
 			})
 
 			if tc.wantAllowed {
-				// Should not get depth error. May get other errors (no provider, etc.),
-				// but NOT ErrDispatchDepthExceeded.
-				if err != nil && errors.Is(err, ErrDispatchDepthExceeded) {
-					t.Fatalf("expected dispatch to be allowed, got depth error: %v", err)
+				// Should not get a depth-cap result. May get other errors (no provider, etc.).
+				if result != nil && result.DepthCapExceeded {
+					t.Fatalf("expected dispatch to be allowed, got depth-cap result: %+v", result)
 				}
-			} else {
-				if err == nil {
-					t.Fatal("expected dispatch to be blocked by depth guard, got nil error")
-				}
-				if !errors.Is(err, ErrDispatchDepthExceeded) {
-					t.Fatalf("expected ErrDispatchDepthExceeded, got: %v", err)
-				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("expected structured depth-cap result, got error: %v", err)
+			}
+			if result == nil {
+				t.Fatal("expected structured depth-cap result, got nil")
+			}
+			if !result.DepthCapExceeded {
+				t.Fatalf("expected DepthCapExceeded=true, got %+v", result)
+			}
+			if result.RemainingDepthBudget != 0 {
+				t.Errorf("RemainingDepthBudget = %d, want 0", result.RemainingDepthBudget)
+			}
+			if result.ExitCode == 0 {
+				t.Error("ExitCode = 0, want non-zero for blocked dispatch")
+			}
+			if !strings.Contains(result.Output, "was not launched") || !strings.Contains(result.Output, "caller work is intact") {
+				t.Errorf("Output = %q, want depth-cap message preserving caller work", result.Output)
 			}
 		})
 	}
@@ -200,12 +211,15 @@ func TestDepthGuard_NoDispatchStart(t *testing.T) {
 
 	// depth=0, cap=1 -> child=1 >= cap=1 -> blocked
 	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
-	_, err := dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
+	result, err := dispatchFn(extension.DispatchAgentOpts{
 		Name: "blocked-agent",
 		Task: "should not start",
 	})
-	if !errors.Is(err, ErrDispatchDepthExceeded) {
-		t.Fatalf("expected depth exceeded, got: %v", err)
+	if err != nil {
+		t.Fatalf("expected structured depth-cap result, got error: %v", err)
+	}
+	if result == nil || !result.DepthCapExceeded {
+		t.Fatalf("expected depth-cap result, got %+v", result)
 	}
 
 	for _, ev := range acc.emittedEvents() {
@@ -215,6 +229,8 @@ func TestDepthGuard_NoDispatchStart(t *testing.T) {
 	}
 }
 
+// TestBeforeAgentStartInfo_RemainingDepthBudget pins exact remaining budgets
+// for child lifecycle payloads under the default cap of three.
 func TestBeforeAgentStartInfo_RemainingDepthBudget(t *testing.T) {
 	opts := &extension.DispatchAgentOpts{Name: "worker", Task: "work"}
 	cases := []struct {

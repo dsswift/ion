@@ -5,12 +5,12 @@
  * generator (seed/theme) sit behind the TabStrip's ATV button popover
  * (AtvControlsPopover). Conversation switching lives in the real TabStrip
  * mounted by AtvShell — never a bespoke picker here (parity mechanism 1).
- * Colors come from the shared dark token set — the ATV canvas palette is
- * theme-pack-driven, not app-theme-driven.
+ * Chrome colors come from the active application theme. Canvas colors stay
+ * theme-pack-driven.
  */
 import React from 'react'
 import { Buildings, Camera, ClockCounterClockwise, FilmSlate, MagnifyingGlassPlus, MagnifyingGlassMinus, ArrowsIn, Fire, SidebarSimple } from '@phosphor-icons/react'
-import { darkColors } from '../theme-tokens'
+import { useColors } from '../theme'
 
 export interface AtvToolbarProps {
   /** Side-dock toggle (conversation/files drawer on the right). */
@@ -39,39 +39,23 @@ export interface AtvToolbarProps {
   onZoomFit(): void
 }
 
-const bar: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-  padding: '6px 10px',
-  background: darkColors.containerBg,
-  borderBottom: `1px solid ${darkColors.containerBorder}`,
-  color: darkColors.textPrimary,
-  fontFamily: 'system-ui, sans-serif',
-  fontSize: 12,
-  userSelect: 'none',
-}
-
-const buttonStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: 24,
-  height: 24,
-  borderRadius: 6,
-  border: 'none',
-  background: 'transparent',
-  color: darkColors.textTertiary,
-  cursor: 'pointer',
-}
-
 export function AtvToolbar(props: AtvToolbarProps): React.JSX.Element {
+  const colors = useColors()
+  const bar: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
+    background: colors.containerBg, borderBottom: `1px solid ${colors.containerBorder}`,
+    color: colors.textPrimary, fontFamily: 'system-ui, sans-serif', fontSize: 12, userSelect: 'none',
+  }
+  const buttonStyle: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24,
+    borderRadius: 6, border: 'none', background: 'transparent', color: colors.textTertiary, cursor: 'pointer',
+  }
   return (
     <div style={bar}>
       <div style={{ flex: 1 }} />
 
       {props.problems.length > 0 && (
-        <span title={props.problems.join('\n')} style={{ color: darkColors.statusWaitingChildren }}>
+        <span title={props.problems.join('\n')} style={{ color: colors.statusWaitingChildren }}>
           {props.problems.length} asset issue{props.problems.length === 1 ? '' : 's'}
         </span>
       )}
@@ -79,7 +63,7 @@ export function AtvToolbar(props: AtvToolbarProps): React.JSX.Element {
       <button style={buttonStyle} title="Zoom out" onClick={() => props.onZoom(-1)}>
         <MagnifyingGlassMinus size={14} />
       </button>
-      <span style={{ color: darkColors.textTertiary, minWidth: 24, textAlign: 'center' }}>
+      <span style={{ color: colors.textTertiary, minWidth: 24, textAlign: 'center' }}>
         {/* Display scale: a comfortable 2:1 pixel ratio reads as "1x", so the
             internal 1..6 render scale shows as 0.5x..3x. */}
         {props.zoom === 0 ? 'fit' : `${props.zoom / 2}x`}
@@ -88,7 +72,7 @@ export function AtvToolbar(props: AtvToolbarProps): React.JSX.Element {
         <MagnifyingGlassPlus size={14} />
       </button>
       <button
-        style={{ ...buttonStyle, color: props.zoom === 0 ? darkColors.accent : darkColors.textTertiary }}
+        style={{ ...buttonStyle, color: props.zoom === 0 ? colors.accent : colors.textTertiary }}
         title="Fit office to window"
         onClick={props.onZoomFit}
       >
@@ -96,14 +80,14 @@ export function AtvToolbar(props: AtvToolbarProps): React.JSX.Element {
       </button>
 
       <button
-        style={{ ...buttonStyle, color: props.campus ? darkColors.accent : darkColors.textTertiary }}
+        style={{ ...buttonStyle, color: props.campus ? colors.accent : colors.textTertiary }}
         title={props.campus ? 'Back to the office' : 'Campus view (all conversations)'}
         onClick={props.onToggleCampus}
       >
         <Buildings size={14} weight={props.campus ? 'fill' : 'regular'} />
       </button>
       <button
-        style={{ ...buttonStyle, color: props.replaying ? darkColors.statusWaitingChildren : darkColors.textTertiary }}
+        style={{ ...buttonStyle, color: props.replaying ? colors.statusWaitingChildren : colors.textTertiary }}
         title={props.replaying ? 'Exit replay (return to live)' : 'Replay this session'}
         onClick={props.onToggleReplay}
       >
@@ -113,7 +97,7 @@ export function AtvToolbar(props: AtvToolbarProps): React.JSX.Element {
         <Camera size={14} />
       </button>
       <button
-        style={{ ...buttonStyle, color: props.clipSecondsLeft !== 0 ? darkColors.statusRunning : darkColors.textTertiary, width: props.clipSecondsLeft > 0 ? 34 : 24 }}
+        style={{ ...buttonStyle, color: props.clipSecondsLeft !== 0 ? colors.statusRunning : colors.textTertiary, width: props.clipSecondsLeft > 0 ? 34 : 24 }}
         title="Record a 10s office clip (webm)"
         onClick={props.onRecordClip}
         disabled={props.clipSecondsLeft !== 0}
@@ -122,7 +106,7 @@ export function AtvToolbar(props: AtvToolbarProps): React.JSX.Element {
         {props.clipSecondsLeft > 0 && <span style={{ fontSize: 9, marginLeft: 2 }}>{props.clipSecondsLeft}</span>}
       </button>
       <button
-        style={{ ...buttonStyle, color: props.heatOn ? darkColors.statusWaitingChildren : darkColors.textTertiary }}
+        style={{ ...buttonStyle, color: props.heatOn ? colors.statusWaitingChildren : colors.textTertiary }}
         title="Footstep heat overlay"
         onClick={props.onToggleHeat}
       >
@@ -131,7 +115,7 @@ export function AtvToolbar(props: AtvToolbarProps): React.JSX.Element {
       {/* Drawer toggle: a sidebar glyph (flipped — the dock is on the RIGHT),
           deliberately distinct from the TabStrip's new-chat bubble icon. */}
       <button
-        style={{ ...buttonStyle, color: props.dockOpen ? darkColors.accent : darkColors.textTertiary }}
+        style={{ ...buttonStyle, color: props.dockOpen ? colors.accent : colors.textTertiary }}
         title={props.dockOpen ? 'Hide side dock' : 'Show side dock'}
         onClick={props.onToggleDock}
       >

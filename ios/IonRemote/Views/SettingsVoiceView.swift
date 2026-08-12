@@ -87,8 +87,8 @@ struct SettingsVoiceView: View {
                             .font(.caption)
                             .frame(minHeight: 120, maxHeight: 200)
                             .scrollContentBackground(.hidden)
-                            .background(Color(.systemGray6))
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .background(theme.surfaceSecondary)
+                            .clipShape(RoundedRectangle(cornerRadius: IonRadius.control))
                         HStack {
                             Button("Save Prompt") {
                                 viewModel.voiceService.voiceSystemPrompt = voicePromptText

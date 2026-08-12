@@ -83,7 +83,7 @@ describe('validateThemePackManifest', () => {
     expect(r.ok).toBe(true)
     expect(r.pack?.desktop?.tokens.notAToken).toBeUndefined()
     expect(r.pack?.desktop?.tokens.accent).toBe('#FF6600')
-    expect(r.warnings.some((w) => w.includes('notAToken'))).toBe(true)
+    expect(r.diagnostics.some((d) => d.message.includes('notAToken'))).toBe(true)
   })
 
   it('drops unsafe desktop token values', () => {
@@ -117,7 +117,7 @@ describe('validateThemePackManifest', () => {
     expect(r.ok).toBe(true)
     expect(r.pack?.ios).toBeUndefined()
     expect(r.pack?.desktop).toBeDefined()
-    expect(r.warnings.some((w) => w.includes('accent'))).toBe(true)
+    expect(r.diagnostics.some((d) => d.message.includes('accent'))).toBe(true)
   })
 
   it('rejects the ios component when a token is not hex', () => {
@@ -143,7 +143,7 @@ describe('validateThemePackManifest', () => {
     }
     // Every required token still made it through.
     expect(r.pack?.ios?.tokens.accent).toBe('#FF6600FF')
-    expect(r.warnings.some((w) => w.includes('codeKeyword') && w.includes('falls back'))).toBe(true)
+    expect(r.diagnostics.some((d) => d.message.includes('codeKeyword') && d.message.includes('falls back'))).toBe(true)
   })
 
   it('accepts an ios component with an invalid-hex optional code-syntax token, dropping just that token', () => {
@@ -156,7 +156,73 @@ describe('validateThemePackManifest', () => {
     expect(r.pack?.ios).toBeDefined()
     expect(r.pack?.ios?.tokens.codeString).toBeUndefined()
     expect(r.pack?.ios?.tokens.codeKeyword).toBe('#FF6600FF')
-    expect(r.warnings.some((w) => w.includes('codeString') && w.includes('invalid hex'))).toBe(true)
+    expect(r.diagnostics.some((d) => d.message.includes('codeString') && d.message.includes('invalid hex'))).toBe(true)
+  })
+
+  // ─── base: required-when-partial ───
+
+  it('accepts a complete ios component with no base (base stays undefined)', () => {
+    const m = validManifest()
+    // validManifest supplies the full token set and names no base.
+    const r = validateThemePackManifest(m, 'acme-corp', DESKTOP_KEYS)
+    expect(r.ok).toBe(true)
+    expect(r.pack?.ios).toBeDefined()
+    expect(r.pack?.ios?.base).toBeUndefined()
+  })
+
+  it('accepts a partial ios component when it names a built-in base, carrying only the supplied tokens', () => {
+    const m = validManifest()
+    const tokens = fullIosTokens()
+    delete tokens.accent
+    delete tokens.background
+    ;(m.ios as Record<string, unknown>).tokens = tokens
+    ;(m.ios as Record<string, unknown>).base = 'ion-light'
+    const r = validateThemePackManifest(m, 'acme-corp', DESKTOP_KEYS)
+    expect(r.ok).toBe(true)
+    expect(r.pack?.ios).toBeDefined()
+    expect(r.pack?.ios?.base).toBe('ion-light')
+    // Omitted required tokens are NOT filled here — iOS inherits them from the
+    // named base. The carried token set contains only what the pack supplied.
+    expect(r.pack?.ios?.tokens.accent).toBeUndefined()
+    expect(r.pack?.ios?.tokens.background).toBeUndefined()
+    expect(r.pack?.ios?.tokens.textPrimary).toBe('#FF6600FF')
+  })
+
+  it('rejects a partial ios component with no base to inherit from, naming the missing tokens', () => {
+    const m = validManifest()
+    const tokens = fullIosTokens()
+    delete tokens.accent
+    delete tokens.statusError
+    ;(m.ios as Record<string, unknown>).tokens = tokens
+    const r = validateThemePackManifest(m, 'acme-corp', DESKTOP_KEYS)
+    expect(r.ok).toBe(true) // desktop half survives
+    expect(r.pack?.ios).toBeUndefined()
+    const warn = r.diagnostics.find((d) => d.message.includes('no base to inherit'))
+    expect(warn).toBeDefined()
+    expect(warn?.message).toContain('accent')
+    expect(warn?.message).toContain('statusError')
+  })
+
+  it('rejects the ios component when base is present but not a built-in id', () => {
+    const m = validManifest()
+    ;(m.ios as Record<string, unknown>).base = 'acme-other'
+    const r = validateThemePackManifest(m, 'acme-corp', DESKTOP_KEYS)
+    expect(r.ok).toBe(true) // desktop half survives
+    expect(r.pack?.ios).toBeUndefined()
+    expect(r.diagnostics.some((d) => d.message.includes('ios.base') && d.message.includes('not a built-in'))).toBe(true)
+  })
+
+  it('rejects a partial ios component with invalid hex even when it names a base', () => {
+    const m = validManifest()
+    const tokens = fullIosTokens()
+    delete tokens.accent // omitted → would inherit from base
+    tokens.background = 'rgba(1,2,3,0.5)' // present but bad → always fatal
+    ;(m.ios as Record<string, unknown>).tokens = tokens
+    ;(m.ios as Record<string, unknown>).base = 'ion-dark'
+    const r = validateThemePackManifest(m, 'acme-corp', DESKTOP_KEYS)
+    expect(r.ok).toBe(true)
+    expect(r.pack?.ios).toBeUndefined()
+    expect(r.diagnostics.some((d) => d.message.includes('invalid hex') && d.message.includes('background'))).toBe(true)
   })
 
   it('drops malformed asset refs but keeps valid ones', () => {

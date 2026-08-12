@@ -279,6 +279,19 @@ func (m *Manager) SetPlanModeBashAllowlist(key string, cmds []string) {
 	utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "log", map[string]any{"key": key, "cmds": cmds})
 }
 
+// SetPlanModeMcpAllowlist sets named MCP tools allowed during plan mode.
+func (m *Manager) SetPlanModeMcpAllowlist(key string, tools []string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[key]
+	if !ok {
+		utils.LogWithFields(utils.LevelDebug, "session", "set plan-mode MCP allowlist skipped; session not found", map[string]any{"key": key})
+		return
+	}
+	s.planModeAllowedMcpTools = tools
+	utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "set plan-mode MCP allowlist", map[string]any{"key": key, "tools": tools})
+}
+
 // GetPlanModeState returns the current plan mode state for a session.
 // Returns (planMode, planFilePath). Safe to call from any goroutine.
 func (m *Manager) GetPlanModeState(key string) (enabled bool, planFilePath string) {

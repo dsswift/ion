@@ -16,7 +16,7 @@ import { drawBadges, drawDashboards, drawFxSprites, drawHeat, drawLighting } fro
 const tintCache = new Map<string, HTMLCanvasElement>()
 
 /** Palette tones reserved for the runtime tint layer (see asset-design.md). */
-const TINT_TONES = ['#566073', '#6f7a90']
+const TINT_TONES = ['#566073', '#6f7a90'] // hardcoded-ok: ATV canvas palette is theme-pack-driven, not app-theme-driven
 
 function tintedBitmap(strip: LoadedStrip, key: string, tint: string | null): CanvasImageSource | null {
   if (!strip.bitmap) return null
@@ -136,7 +136,7 @@ export function renderOffice(
   const layout = office.layout
   const tile = theme.tileSize
   ctx.imageSmoothingEnabled = false
-  ctx.fillStyle = '#14161c'
+  ctx.fillStyle = '#14161c' // hardcoded-ok: ATV canvas palette is theme-pack-driven, not app-theme-driven
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
   ctx.save()
   ctx.translate(camera.offsetX, camera.offsetY)
@@ -247,13 +247,13 @@ export function renderOffice(
     let color: string | null = null
     let alpha = 1
     if (entity.working) {
-      color = '#ff8c3c'
+      color = '#ff8c3c' // hardcoded-ok: ATV canvas palette is theme-pack-driven, not app-theme-driven
       alpha = pulse
     } else if (entity.waiting) {
-      color = '#ffd23c'
+      color = '#ffd23c' // hardcoded-ok: ATV canvas palette is theme-pack-driven, not app-theme-driven
       alpha = pulse
     } else if (entity.completed) {
-      color = '#3ecf6e'
+      color = '#3ecf6e' // hardcoded-ok: ATV canvas palette is theme-pack-driven, not app-theme-driven
     }
     if (!color) continue
     ctx.save()

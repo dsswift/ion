@@ -30,6 +30,31 @@ final class MergedConversationViewTests: XCTestCase {
         try String(contentsOf: viewsDir.appendingPathComponent(name), encoding: .utf8)
     }
 
+    /// Reads a view's source across every file that declares part of it: the
+    /// host file plus its `Type+Concern.swift` extensions.
+    ///
+    /// These guards pin the *type's* structural contract, not a filename's.
+    /// Reading a single file makes them fail the moment the type is split to
+    /// stay under the size cap, even though the contract is intact -- which is
+    /// what happened when the view builders moved to
+    /// `ConversationView+Layout.swift`. Globbing the family keeps each guard
+    /// pinned to the thing it actually asserts and leaves the type free to be
+    /// organized across files.
+    ///
+    /// `testSingleConversationViewStructExists` deliberately keeps using
+    /// `read(_:)`: that one is a claim about a specific file (the host file
+    /// declares the type), not about the type as a whole.
+    private func readFamily(_ typeName: String) throws -> String {
+        let names = try FileManager.default
+            .contentsOfDirectory(atPath: viewsDir.path)
+            .filter { $0 == "\(typeName).swift" || $0.hasPrefix("\(typeName)+") }
+            .sorted()
+        XCTAssertFalse(names.isEmpty, "no source files found for \(typeName)")
+        return try names
+            .map { try String(contentsOf: viewsDir.appendingPathComponent($0), encoding: .utf8) }
+            .joined(separator: "\n")
+    }
+
     func testEngineViewFileNoLongerExists() {
         let engineView = viewsDir.appendingPathComponent("EngineView.swift")
         XCTAssertFalse(FileManager.default.fileExists(atPath: engineView.path),
@@ -45,9 +70,13 @@ final class MergedConversationViewTests: XCTestCase {
     }
 
     func testHeaderUsesInlineThreeButtonToolbar() throws {
-        let src = try read("ConversationView.swift")
-        // The inline toolbar exposes three discrete buttons.
-        XCTAssertTrue(src.contains("private var toolbarButtons: some View"),
+        let src = try readFamily("ConversationView")
+        // The inline toolbar exposes three discrete buttons. `toolbarButtons`
+        // lives in ConversationView+Layout.swift and is internal rather than
+        // private, because a cross-file extension cannot declare a private
+        // member the host file's `body` reaches; the guard is that the member
+        // exists on the type, not which file holds it or its access level.
+        XCTAssertTrue(src.contains("var toolbarButtons: some View"),
             "Inline toolbarButtons must exist")
         XCTAssertTrue(src.contains("HStack(spacing: 12)"),
             "Toolbar buttons render inline in an HStack")
@@ -60,13 +89,16 @@ final class MergedConversationViewTests: XCTestCase {
     }
 
     func testMergedViewHasNoFileSizeException() throws {
-        let src = try read("ConversationView.swift")
+        // Every file of the family, not just the host: extracting a subview
+        // into ConversationView+Layout.swift would defeat the point if the
+        // extraction itself carried an exception marker.
+        let src = try readFamily("ConversationView")
         XCTAssertFalse(src.contains("@file-size-exception"),
             "The merged view must stay under the cap via subview extraction, not an exception marker")
     }
 
     func testAgentPanelIsDataDrivenNotTabTypeGated() throws {
-        let src = try read("ConversationView.swift")
+        let src = try readFamily("ConversationView")
         // #256 follow-up: the agent panel renders on DATA (non-empty agents),
         // NOT on a tab-type flag. The former `tabHasExtensions && …` gate is
         // gone — a plain conversation that dispatches background sub-agents must
@@ -88,6 +120,6 @@ final class MergedConversationViewTests: XCTestCase {
         XCTAssertFalse(src.contains("if tabHasExtensions {") && src.contains("loadEngineConversation"),
             "loadConversationHistory must not fork on tabHasExtensions after WI-004 retirement")
         XCTAssertFalse(src.contains("loadEngineConversation"),
-            "loadEngineConversation must not appear in ConversationView.swift after WI-004")
+            "loadEngineConversation must not appear anywhere in ConversationView after WI-004")
     }
 }

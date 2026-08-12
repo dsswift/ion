@@ -3,6 +3,7 @@ import SwiftUI
 /// Scrollable list of git commits with ref badges and pagination.
 struct GitGraphListView: View {
     @Environment(SessionViewModel.self) private var viewModel
+    @Environment(\.appTheme) private var theme
     let directory: String
     @State private var expandedCommitHash: String? = nil
     @State private var selectedCommitFileDiff: (hash: String, path: String)? = nil
@@ -30,13 +31,13 @@ struct GitGraphListView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                .padding(.vertical, 12)
+                .padding(.vertical, IonSpace.contentGap)
                 .frame(maxWidth: .infinity)
             } else if commits.isEmpty {
                 Text("No commits")
                     .foregroundStyle(.secondary)
                     .font(.caption)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, IonSpace.compactGap)
             } else {
                 LazyVStack(spacing: 0) {
                     ForEach(Array(commits.enumerated()), id: \.element.id) { index, commit in
@@ -54,7 +55,7 @@ struct GitGraphListView: View {
                             Text("Load more commits…")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                                .padding(.vertical, 12)
+                                .padding(.vertical, IonSpace.contentGap)
                                 .frame(maxWidth: .infinity)
                         }
                     }
@@ -106,7 +107,7 @@ struct GitGraphListView: View {
 
                         HStack(spacing: 6) {
                             Text(commit.hash)
-                                .font(.system(size: 11, design: .monospaced))
+                                .ionType(.mono)
                                 .foregroundStyle(.secondary)
 
                             Text(commit.authorName)
@@ -125,7 +126,7 @@ struct GitGraphListView: View {
                         }
                     }
                     .padding(.horizontal, layout != nil ? 4 : 12)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, IonSpace.compactGap)
                 }
 
                 // Expanded detail
@@ -148,7 +149,7 @@ struct GitGraphListView: View {
             // Metadata row
             HStack(spacing: 6) {
                 Text(commit.fullHash)
-                    .font(.system(size: 10, design: .monospaced))
+                    .ionType(.mono)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                 Spacer()
@@ -197,8 +198,8 @@ struct GitGraphListView: View {
                         .buttonStyle(.plain)
                     }
                 }
-                .background(Color(.secondarySystemGroupedBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .background(theme.surfaceSecondary)
+                .clipShape(RoundedRectangle(cornerRadius: IonRadius.control))
             } else if filesResponse == nil {
                 HStack(spacing: 6) {
                     ProgressView()
@@ -209,8 +210,8 @@ struct GitGraphListView: View {
                 }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.bottom, 10)
+        .padding(.horizontal, IonSpace.contentGap)
+        .padding(.bottom, 10) // design-geometry: 10pt gap between compactGap and contentGap; off the 4pt ratio scale
         .transition(.opacity.combined(with: .move(edge: .top)))
         .onAppear {
             if viewModel.gitCommitFiles[commit.fullHash] == nil {
@@ -222,7 +223,7 @@ struct GitGraphListView: View {
     private func commitFileRow(_ file: GitCommitFile) -> some View {
         HStack(spacing: 8) {
             Text(file.statusLetter)
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .font(.system(size: 10, weight: .bold, design: .monospaced)) // design-type: single-char status letter pinned to a fixed 14pt column
                 .foregroundStyle(fileStatusColor(file.status))
                 .frame(width: 14)
 
@@ -233,7 +234,7 @@ struct GitGraphListView: View {
                     .lineLimit(1)
                 if !file.directory.isEmpty {
                     Text(file.directory)
-                        .font(.system(size: 9))
+                        .font(.system(size: 9)) // design-type: secondary path label below the microLabel floor; a plain-font directory paired under the filename
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
                 }
@@ -242,11 +243,11 @@ struct GitGraphListView: View {
             Spacer()
 
             Image(systemName: "chevron.right")
-                .font(.system(size: 8))
+                .font(.system(size: 8)) // design-type: SF Symbol disclosure glyph sized as icon geometry, not text
                 .foregroundStyle(.quaternary)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 10) // design-geometry: 10pt gap between compactGap and contentGap; off the 4pt ratio scale
+        .padding(.vertical, IonSpace.compactInset)
     }
 
     private func fileStatusColor(_ status: String) -> Color {
@@ -265,9 +266,9 @@ struct GitGraphListView: View {
             HStack(spacing: 4) {
                 ForEach(refs, id: \.name) { ref in
                     Text(ref.name)
-                        .font(.system(size: 10, weight: ref.isCurrent ? .bold : .regular))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
+                        .ionCompactSelectionLabel(isSelected: ref.isCurrent, selectedWeight: .bold)
+                        .padding(.horizontal, IonSpace.compactInset)
+                        .padding(.vertical, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
                         .background(refColor(ref).opacity(0.2))
                         .foregroundStyle(refColor(ref))
                         .clipShape(Capsule())

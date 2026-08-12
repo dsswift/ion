@@ -42,8 +42,92 @@ protocol AppTheme {
     /// triangle. Distinct from `statusError` (all failed) so partial
     /// failure is visually differentiated from total failure.
     var statusWarning: Color { get }
+    /// A tool that has been running long enough to watch but is not yet stalled.
+    ///
+    /// A third warm role beside `statusRunning` and `statusWarning`, and it
+    /// needs to be: `statusRunning` is the terracotta foreground-run hue and
+    /// `statusWarning` is the still permission triangle, so neither means
+    /// "running long enough to watch". The values sit in the gold band, off
+    /// whichever side each theme's `statusWarning` occupies.
+    ///
+    /// Never paint text on this at full alpha. See `ActiveToolRow.swift`: any
+    /// hue saturated enough to read as a warning fill is too light to back
+    /// white text, so the render site pairs a low-alpha tint with
+    /// `textPrimary` rather than a foreground on a saturated fill.
+    var statusActiveWarning: Color { get }
+    /// The unfilled portion of a gauge: the empty signal bar, the unconsumed
+    /// arc of a usage ring.
+    ///
+    /// Its own role rather than a reused neutral, for two reasons the render
+    /// sites make concrete. `borderSubtle` is a 6%-alpha hairline that
+    /// composites to 1.14:1 and simply vanishes as a 4pt fill. `statusIdle`
+    /// means "no work in flight", not "capacity not reached", and
+    /// `ContextUsageRing` draws its track concentric with a status-colored arc,
+    /// so a track in a status hue would read as a second status.
+    ///
+    /// Opaque in every theme. The literals this replaced used alpha over
+    /// `Color.gray` / `Color.secondary`, which is why they were unpredictable:
+    /// a system dynamic color composites against the ambient scheme rather than
+    /// the active theme.
+    ///
+    /// Threshold is 3:1 (WCAG 1.4.11): the empty half of a meter carries state,
+    /// and this is not the decorative-hairline case, because the track IS the
+    /// boundary. `ion-light` is a deliberate exception at 2.90:1 -- see that
+    /// theme's note, which records why the 3:1-clearing alternative was refused.
+    var gaugeTrack: Color { get }
+    /// The agent-bar tint for a `staff` agent, alongside `statusRunning`
+    /// (chief), `statusPending` (specialist) and `statusDone` (consultant).
+    ///
+    /// Violet is the only hue region those three leave open. It takes the same
+    /// value as `statusQuestion` in every theme, which is safe because the two
+    /// never render on one surface: the agent bar's axes are the type-tinted
+    /// pill and the run-state dot, while question is a run state resolved on tab
+    /// and rollup surfaces. They stay separate members so a theme can move one
+    /// without disturbing the other -- exactly the freedom `jarvis-hud` already
+    /// exercises for `statusPending` versus `statusIdle`.
+    var statusStaff: Color { get }
+    /// Settings category-tile fills. Five values that must be read as a set:
+    /// each tile backs a white 14pt semibold glyph, so the binding constraint is
+    /// contrast against white, and the set's value is that five categories stay
+    /// mutually distinguishable.
+    ///
+    /// 14pt semibold is large bold text, so 3:1 (WCAG 1.4.3) is the governing
+    /// threshold. Four values across `ion-dark` and `ion-classic` land between
+    /// 3:1 and 4.5:1: they comply, and darkening them to reach the stricter
+    /// 4.5:1 design target would compress the set's internal separation, which
+    /// is the property that actually keeps five tiles readable as five
+    /// categories.
+    var categoryTileConnection: Color { get }
+    /// See `categoryTileConnection` -- one member of the category-tile set.
+    var categoryTileAppearance: Color { get }
+    /// See `categoryTileConnection` -- one member of the category-tile set.
+    var categoryTileModels: Color { get }
+    /// See `categoryTileConnection` -- one member of the category-tile set.
+    var categoryTileVoice: Color { get }
+    /// See `categoryTileConnection` -- one member of the category-tile set. Also
+    /// the palette's neutral, which is what the intercept-permission toggle
+    /// takes: that row is not one of the four navigational categories, and it
+    /// previously reused the Models orange, giving two unrelated rows in one
+    /// list the same tile color.
+    var categoryTileDiagnostics: Color { get }
     /// No activity in a conversation. Mirrors the desktop `statusIdle` token.
     var statusIdle: Color { get }
+    /// A conversation waiting on an answer to a question it asked. Rendered as
+    /// a violet dot, never as a text foreground.
+    ///
+    /// Violet is the one hue region the status vocabulary leaves open, and the
+    /// separation from its two nearest neighbors is the reason: a question dot
+    /// in the blue-cyan band would collide with `statusPending` (and, in
+    /// `jarvis-hud`, with the cyan `statusRunning` -- see the note on
+    /// `statusWaitingChildren` in `JarvisArcReactorTheme.swift`, which refused a
+    /// third cyan for exactly this reason).
+    ///
+    /// Not fixture-pinned. The desktop declares `statusQuestion` too, but
+    /// `ion-light` and `ion-classic` deliberately carry different values there
+    /// (`palette-light.ts` pins `#7C3AED`, pinned again by
+    /// `palette-parity.test.ts`), so there is no shared value to pin. It joins
+    /// `assets/theme-parity.json` if and when both platforms agree on a value.
+    var statusQuestion: Color { get }
     /// Uncommitted changes in a worktree, drawn as a small `!`.
     ///
     /// The glyph is what lets this borrow the danger hue without claiming a
@@ -53,6 +137,57 @@ protocol AppTheme {
     /// being the base-moved sync signal on the same row.
     var worktreeDirty: Color { get }
     var surfaceElevated: Color { get }
+    /// One level above `surfaceElevated`: row fills, chips, tool-bubble
+    /// headers, and line-number gutters. Mirrors the desktop
+    /// `surfaceSecondary` token. This is the token that replaced the
+    /// opaque `secondarySystemBackground` / `tertiarySystemBackground`
+    /// system colors a theme pack could never reach.
+    var surfaceSecondary: Color { get }
+    /// Sheet and pane backgrounds that sit *below* the container rather
+    /// than above it — git panes, the file-editor body. Mirrors the
+    /// desktop `containerBgCollapsed` token; the iOS name describes the
+    /// role, since the desktop's collapsed-container state has no iOS
+    /// equivalent.
+    var surfaceSunken: Color { get }
+    /// Hairline strokes and separators on themed surfaces. Mirrors the
+    /// desktop `borderSubtle` token.
+    var borderSubtle: Color { get }
+    /// The pressed/active state of a tappable themed surface: one rung further
+    /// along the tone ladder than `surfaceSecondary`, continuing in the same
+    /// direction. Dark themes step lighter, light themes step darker.
+    ///
+    /// Not fixture-pinned. The desktop declares `surfacePressed` as an alpha
+    /// overlay (`rgba(255,255,255,0.10)` in `palette-dark.ts`), whereas the iOS
+    /// value is an opaque ladder rung -- an overlay and a fill are different
+    /// mechanisms, so there is no shared value to pin.
+    var surfacePressed: Color { get }
+    /// The emphatic border: focus rings, selection outlines, and the modal
+    /// separator on themes whose `overlayScrim` cannot dim (see that token).
+    /// Clears 3:1 against `surfaceElevated` in every theme, which is what
+    /// separates it from the decorative `borderSubtle` hairline.
+    ///
+    /// Not fixture-pinned: the desktop palette declares no counterpart.
+    var borderStrong: Color { get }
+    /// The backdrop behind a modal or sheet.
+    ///
+    /// Read the treatment note before using this as a visual separator. A black
+    /// scrim composited over an already-dark `surfaceElevated` does not dim: it
+    /// computes 1.18:1 on `ion-dark`, 1.48:1 on `ion-classic`, and 1.12:1 on
+    /// `jarvis-hud`. Raising alpha cannot fix it, because the limit is pure
+    /// black against a near-black surface. On every dark theme the modal's
+    /// separation therefore comes from a 1pt `borderStrong` outline on the sheet
+    /// and this token is hit-testing (tap-to-dismiss) only. The two light themes
+    /// genuinely dim (2.81:1 and 2.80:1) and need no outline.
+    ///
+    /// The token ships in all six themes regardless, because the tap-to-dismiss
+    /// surface exists in all six.
+    ///
+    /// Not fixture-pinned: the desktop palette declares no counterpart.
+    var overlayScrim: Color { get }
+    var usesSheetOutline: Bool { get }
+    /// Placeholder and muted label text on themed surfaces, a step below
+    /// `textSecondary`. Mirrors the desktop `textTertiary` token.
+    var textTertiary: Color { get }
     var codeBg: Color { get }
     var userBubbleTint: Color { get }
 
@@ -93,6 +228,16 @@ protocol AppTheme {
 extension AppTheme {
     var logoImage: UIImage? { nil }
 
+    var usesSheetOutline: Bool {
+        // How much the scrim dims its own surface. A near-black scrim over a
+        // near-black surface barely changes luminance, so every dark theme
+        // clusters at =1.5:1 (ion-dark 1.18, ion-classic 1.48, contrast-dark
+        // 1.09, jarvis 1.12) and genuinely needs the sheet outline. Both light
+        // themes dim to ~2.8:1 with their 40% scrim and need none. The 2.0
+        // threshold sits between the two clusters with margin on each side.
+        contrastRatio(composite(overlayScrim, over: surfaceElevated), surfaceElevated) < 2.0
+    }
+
     // Fallbacks so a theme predating the code tokens still compiles and
     // renders readable (accent for the strong roles, textSecondary for the
     // quiet ones). Every shipped theme overrides every one of them.
@@ -120,6 +265,8 @@ enum ThemeRegistry {
         IonLightTheme(),
         IonClassicTheme(),
         JarvisArcReactorTheme(),
+        IonContrastDarkTheme(),
+        IonContrastLightTheme(),
     ]
 
     static func theme(for id: String) -> any AppTheme {
@@ -278,9 +425,26 @@ final class ThemeManager: AppTheme {
     var statusWaitingChildren: Color { _currentTheme.statusWaitingChildren }
     var statusBash: Color { _currentTheme.statusBash }
     var statusWarning: Color { _currentTheme.statusWarning }
+    var statusActiveWarning: Color { _currentTheme.statusActiveWarning }
+    var gaugeTrack: Color { _currentTheme.gaugeTrack }
+    var statusStaff: Color { _currentTheme.statusStaff }
+    var categoryTileConnection: Color { _currentTheme.categoryTileConnection }
+    var categoryTileAppearance: Color { _currentTheme.categoryTileAppearance }
+    var categoryTileModels: Color { _currentTheme.categoryTileModels }
+    var categoryTileVoice: Color { _currentTheme.categoryTileVoice }
+    var categoryTileDiagnostics: Color { _currentTheme.categoryTileDiagnostics }
     var statusIdle: Color { _currentTheme.statusIdle }
+    var statusQuestion: Color { _currentTheme.statusQuestion }
     var worktreeDirty: Color { _currentTheme.worktreeDirty }
     var surfaceElevated: Color { _currentTheme.surfaceElevated }
+    var surfaceSecondary: Color { _currentTheme.surfaceSecondary }
+    var surfaceSunken: Color { _currentTheme.surfaceSunken }
+    var surfacePressed: Color { _currentTheme.surfacePressed }
+    var borderSubtle: Color { _currentTheme.borderSubtle }
+    var borderStrong: Color { _currentTheme.borderStrong }
+    var overlayScrim: Color { _currentTheme.overlayScrim }
+    var usesSheetOutline: Bool { _currentTheme.usesSheetOutline }
+    var textTertiary: Color { _currentTheme.textTertiary }
     var codeBg: Color { _currentTheme.codeBg }
     var userBubbleTint: Color { _currentTheme.userBubbleTint }
     var codeKeyword: Color { _currentTheme.codeKeyword }

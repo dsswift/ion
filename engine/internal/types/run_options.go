@@ -117,6 +117,7 @@ type RunOptions struct {
 	PlanModeSparseReminder      string   `json:"planModeSparseReminder,omitempty"`
 	PlanModeReentry             bool     `json:"planModeReentry,omitempty"`
 	PlanModeAllowedBashCommands []string `json:"planModeAllowedBashCommands,omitempty"`
+	PlanModeAllowedMcpTools     []string `json:"planModeAllowedMcpTools,omitempty"`
 	// PlanModeAutoExit is the per-run override for the
 	// LimitsConfig.PlanModeAutoExitOnEndTurn safety-net behaviour. nil
 	// (the default) means "inherit the engine config". &true forces
@@ -143,6 +144,7 @@ type RunOptions struct {
 	// session-side entries' positions. Mirrors
 	// ClientCommand.BashAllowlistAdditionsForThisPrompt one-for-one.
 	BashAllowlistAdditionsForThisPrompt []string `json:"bashAllowlistAdditionsForThisPrompt,omitempty"`
+	McpAllowlistAdditionsForThisPrompt  []string `json:"mcpAllowlistAdditionsForThisPrompt,omitempty"`
 	// InitialMessages are ephemeral messages prepended to the conversation
 	// just before each LLM provider call. They are NOT persisted to disk and
 	// are rebuilt fresh on every run. Used by the plugin system to inject

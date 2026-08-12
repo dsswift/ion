@@ -25,6 +25,13 @@ enum AgentDuration {
         return nil
     }
 
+    /// Format run milliseconds for compact settled-run metadata. Invalid and
+    /// sub-second values preserve desktop's `<1s` treatment.
+    static func formatMilliseconds(_ durationMs: Int) -> String {
+        guard durationMs >= 1_000 else { return "<1s" }
+        return format(durationMs / 1_000)
+    }
+
     /// Format an elapsed-seconds value into a human-readable string.
     ///
     /// - < 60 s  → "42s"

@@ -29,9 +29,25 @@ struct SyncedTheme: AppTheme {
     let statusWaitingChildren: Color
     let statusBash: Color
     let statusWarning: Color
+    let statusActiveWarning: Color
+    let gaugeTrack: Color
+    let statusStaff: Color
+    let categoryTileConnection: Color
+    let categoryTileAppearance: Color
+    let categoryTileModels: Color
+    let categoryTileVoice: Color
+    let categoryTileDiagnostics: Color
     let statusIdle: Color
+    let statusQuestion: Color
     let worktreeDirty: Color
     let surfaceElevated: Color
+    let surfaceSecondary: Color
+    let surfaceSunken: Color
+    let surfacePressed: Color
+    let borderSubtle: Color
+    let borderStrong: Color
+    let overlayScrim: Color
+    let textTertiary: Color
     let codeBg: Color
     let userBubbleTint: Color
     let codeKeyword: Color
@@ -65,7 +81,7 @@ struct SyncedTheme: AppTheme {
         id = payload.id
         displayName = payload.name
 
-        let fallback = IonDarkTheme()
+        let fallback = SyncedTheme.baseTheme(for: payload.base)
         func color(_ token: String, _ fallbackColor: Color) -> Color {
             guard let hex = payload.tokens[token], let parsed = Color(rgbaHex: hex) else {
                 return fallbackColor
@@ -85,9 +101,31 @@ struct SyncedTheme: AppTheme {
         statusWaitingChildren = color("statusWaitingChildren", fallback.statusWaitingChildren)
         statusBash = color("statusBash", fallback.statusBash)
         statusWarning = color("statusWarning", fallback.statusWarning)
+        statusActiveWarning = color("statusActiveWarning", fallback.statusActiveWarning)
+        gaugeTrack = color("gaugeTrack", fallback.gaugeTrack)
+        statusStaff = color("statusStaff", fallback.statusStaff)
+        categoryTileConnection = color("categoryTileConnection", fallback.categoryTileConnection)
+        categoryTileAppearance = color("categoryTileAppearance", fallback.categoryTileAppearance)
+        categoryTileModels = color("categoryTileModels", fallback.categoryTileModels)
+        categoryTileVoice = color("categoryTileVoice", fallback.categoryTileVoice)
+        categoryTileDiagnostics = color("categoryTileDiagnostics", fallback.categoryTileDiagnostics)
         statusIdle = color("statusIdle", fallback.statusIdle)
+        // Every token the payload omits inherits from `fallback` — the
+        // author-named `base` built-in (required-when-partial), or Ion Dark
+        // when the payload names no base because it supplies the complete
+        // required set. The desktop validator guarantees a baseless payload
+        // carries every required token, so these fallbacks fire only for the
+        // optional code-syntax tokens or an intentionally-inheriting partial.
+        statusQuestion = color("statusQuestion", fallback.statusQuestion)
         worktreeDirty = color("worktreeDirty", fallback.worktreeDirty)
         surfaceElevated = color("surfaceElevated", fallback.surfaceElevated)
+        surfaceSecondary = color("surfaceSecondary", fallback.surfaceSecondary)
+        surfaceSunken = color("surfaceSunken", fallback.surfaceSunken)
+        surfacePressed = color("surfacePressed", fallback.surfacePressed)
+        borderSubtle = color("borderSubtle", fallback.borderSubtle)
+        borderStrong = color("borderStrong", fallback.borderStrong)
+        overlayScrim = color("overlayScrim", fallback.overlayScrim)
+        textTertiary = color("textTertiary", fallback.textTertiary)
         codeBg = color("codeBg", fallback.codeBg)
         userBubbleTint = color("userBubbleTint", fallback.userBubbleTint)
         codeKeyword = color("codeKeyword", fallback.codeKeyword)
@@ -107,6 +145,17 @@ struct SyncedTheme: AppTheme {
 
         backgroundImage = store.assetData(themeId: payload.id, slot: "background").flatMap(UIImage.init(data:))
         logoImage = store.assetData(themeId: payload.id, slot: "logo").flatMap(UIImage.init(data:))
+    }
+
+    /// Resolve a payload's `base` id to the compiled-in built-in theme its
+    /// omitted required tokens inherit from. nil (no base named — the payload
+    /// supplies the complete required set) resolves to Ion Dark, matching the
+    /// prior baseless behavior. An unknown id also falls back to Ion Dark via
+    /// `ThemeRegistry`, which only ever contains built-ins, so this can never
+    /// recurse into another SyncedTheme.
+    private static func baseTheme(for base: String?) -> any AppTheme {
+        guard let base else { return IonDarkTheme() }
+        return ThemeRegistry.theme(for: base)
     }
 }
 

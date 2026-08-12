@@ -60,7 +60,7 @@ func (r *DispatchRegistry) Recall(name string, reason string) bool {
 	// Cancel descendants first (leaves before parent) for orderly teardown.
 	for i := len(descDispatches) - 1; i >= 0; i-- {
 		dd := descDispatches[i]
-		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recall: cascade cancelling descendant", map[string]any{"desc_i_ds_i": descIDs[i], "model": dd.Name, "reason": reason})
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recall: cascade cancelling descendant", map[string]any{"dispatch_id": descIDs[i], "model": dd.Name, "reason": reason})
 		if dd.Cancel != nil {
 			dd.Cancel()
 		}
@@ -71,7 +71,7 @@ func (r *DispatchRegistry) Recall(name string, reason string) bool {
 	if found.Cancel != nil {
 		found.Cancel()
 	} else {
-		utils.LogWithFields(utils.LevelError, "session.extcontext.dispatch_registry", "recall: has nil cancel func, dispatch leaked", map[string]any{"found_i_d": foundID, "model": name})
+		utils.LogWithFields(utils.LevelError, "session.extcontext.dispatch_registry", "recall: has nil cancel func, dispatch leaked", map[string]any{"dispatch_id": foundID, "model": name})
 	}
 
 	return true
@@ -85,7 +85,7 @@ func (r *DispatchRegistry) RecallByID(id string, reason string) bool {
 	d, exists := r.dispatches[id]
 	if !exists {
 		r.mu.Unlock()
-		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallbyid: not found", map[string]any{"run_id": id, "reason": reason})
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallbyid: not found", map[string]any{"dispatch_id": id, "reason": reason})
 		return false
 	}
 
@@ -124,7 +124,7 @@ func (r *DispatchRegistry) RecallByID(id string, reason string) bool {
 	// Cancel descendants first (leaves before parent).
 	for i := len(descDispatches) - 1; i >= 0; i-- {
 		dd := descDispatches[i]
-		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallbyid: cascade cancelling descendant", map[string]any{"desc_i_ds_i": descIDs[i], "model": dd.Name, "reason": reason})
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallbyid: cascade cancelling descendant", map[string]any{"dispatch_id": descIDs[i], "model": dd.Name, "reason": reason})
 		if dd.Cancel != nil {
 			dd.Cancel()
 		}
@@ -135,7 +135,7 @@ func (r *DispatchRegistry) RecallByID(id string, reason string) bool {
 	if d.Cancel != nil {
 		d.Cancel()
 	} else {
-		utils.LogWithFields(utils.LevelError, "session.extcontext.dispatch_registry", "recallbyid: has nil cancel func, dispatch leaked", map[string]any{"run_id": id, "model": d.Name})
+		utils.LogWithFields(utils.LevelError, "session.extcontext.dispatch_registry", "recallbyid: has nil cancel func, dispatch leaked", map[string]any{"dispatch_id": id, "model": d.Name})
 	}
 
 	return true

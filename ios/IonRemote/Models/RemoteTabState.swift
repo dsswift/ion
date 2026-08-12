@@ -105,6 +105,12 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     /// value on cold open. Nil when the tab has never had a run report it.
     /// Mirrors protocol.ts RemoteTabState.conversationTurns.
     var conversationTurns: Int?
+    /// Latest settled run duration in milliseconds. Snapshot-projected so the
+    /// transcript footer renders correctly immediately after reconnect.
+    var lastRunDurationMs: Int?
+    /// Terminal reason for latest settled run. Nil for older desktops or a tab
+    /// with no settled run.
+    var lastRunReason: TaskCompletionReason?
     /// @deprecated Use runCostUsd. Kept for lockstep wire compat until the
     /// desktop snapshot fully removes it. Set to the same value as runCostUsd
     /// when both fields are present. Mirrors protocol.ts RemoteTabState.totalCostUsd.

@@ -9,32 +9,18 @@ import SwiftUI
 // group pill (`getGroupStatusColor` in TabStripGroupStatus.ts). Keeping a
 // single classifier is what stops the two surfaces from drifting.
 //
-// ─── Priority cascade (mirrors desktop TabStripGroupStatus.ts) ──────────────
+// ─── Priority cascade ───────────────────────────────────────────────────────
 //
-//   9 = error            (dead/failed — red)
-//   8 = permission       (generic tool permission — amber glow)
-//   7 = running          (running/connecting — orange pulse)
-//   6 = running-children (background agents — yellow pulse)
-//   5 = bash-background  (background shell commands — pink pulse)
-//   4 = plan-ready       (ExitPlanMode denial — green glow)
-//   3 = question         (AskUserQuestion denial — purple glow)
-//   2 = bash             (user-typed `!` command — desktop-only, see note)
-//   1 = unread           (desktop-only — see note)
-//   0 = idle             (gray, dimmed)
+// The cross-client order is pinned by
+// `assets/design-system/status-cascade.json`. StatusCascadeParityTests asserts
+// this local declaration against that fixture.
 //
-// The numeric priorities are kept identical to the desktop constants so the
-// fold ranks the same way on both clients. When the desktop renumbers its
-// tiers, these renumber in lockstep — otherwise the two folds silently
-// disagree on a tab that matches two states at once.
-//
-// Level 5 (bash-background) IS reachable: the desktop projects
+// `bash-background` is reachable: the desktop projects
 // `backgroundShellCount` onto RemoteTabState, so a session holding for
 // background bash commands renders the pink dot here exactly as it does on the
-// desktop. Levels 2 (user-typed `!` bash) and 1 (unread) remain UNREACHABLE on
+// desktop. `bash` (user-typed `!` bash) and `unread` remain unreachable on
 // iOS: the wire carries neither `bashExecuting` nor `hasUnread`, which are
-// desktop-renderer-only `TabState` fields. If either is ever added to the wire
-// and to `RemoteTabState.swift`, its branch slots into the existing numeric gap
-// without renumbering anything else.
+// desktop-renderer-only `TabState` fields.
 //
 // iOS wire nuance vs. desktop: on the desktop, ExitPlanMode / AskUserQuestion
 // denials live on a separate `permissionDenied` field while `permissionQueue`
@@ -43,182 +29,89 @@ import SwiftUI
 // distinguishes them by tool name: `ExitPlanMode` → plan-ready, `AskUserQuestion`
 // → question, anything else → generic permission.
 
-/// The highest-priority status info for a tab (or a group of tabs). `priority`
-/// drives the group fold (higher wins); `color` / `shouldPulse` / `glow` /
-/// `glowColor` drive rendering.
+/// Semantic state returned by shared cascade. Views own shape rendering;
+/// classifier owns only priority and state.
+enum TabStatusState: Equatable {
+    case error, permission, running, children, bash, planReady, question, idle
+
+    func color(_ theme: AppTheme) -> Color {
+        switch self {
+        case .error: theme.statusError
+        case .permission: theme.statusWarning
+        case .running: theme.statusRunning
+        case .children: theme.statusWaitingChildren
+        case .bash: theme.statusBash
+        case .planReady: theme.statusDone
+        case .question: theme.statusQuestion
+        case .idle: theme.statusIdle
+        }
+    }
+
+    var breathes: Bool {
+        switch self {
+        case .running, .children, .bash: true
+        default: false
+        }
+    }
+}
+
 struct GroupTabStatus: Equatable {
     let priority: Int
-    let color: Color
-    let shouldPulse: Bool
-    let glow: Bool
-    let glowColor: Color
+    let state: TabStatusState
 }
 
 enum TabStatusRollup {
-    // ─── Priority constants (mirror desktop) ─────────────────────────────────
-    static let priorityError = 9
-    static let priorityPermission = 8
-    static let priorityRunning = 7
-    static let priorityChildren = 6
-    static let priorityBashBackground = 5
-    static let priorityPlanReady = 4
-    static let priorityQuestion = 3
-    // 2 = user-typed `!` bash and 1 = unread are desktop-only (not on the wire).
-    static let priorityIdle = 0
+    static let statusCascade: [(name: String, iosReachable: Bool)] = [
+        ("error", true), ("permission", true), ("running", true),
+        ("children", true), ("bash-background", true), ("plan-ready", true),
+        ("question", true), ("bash", false), ("unread", false), ("idle", true)
+    ]
 
-    // ─── Palette ─────────────────────────────────────────────────────────────
-    // Theme-independent tab-dot constants, mirroring the desktop Ion Dark
-    // palette token-for-token (palette-dark.ts). Mirroring the whole block
-    // rather than a couple of tokens is what keeps the cascade's hues
-    // separable: the running dot is Ion Classic's terracotta #D97757, which
-    // sits within ~5-8° of hue of the Classic-era error (#C47060) and
-    // permission (#E8854A) values this block used to carry. Those two moved
-    // to their Ion Dark counterparts — a clear red error and an amber
-    // permission — so "dead session", "blocked on you", and "working" stay
-    // three distinguishable signals. The closest remaining pair is
-    // permission vs children (~6° apart), which is exactly the separation
-    // Ion Dark already ships between those same two tokens.
-    static let errorColor = Color(hex: 0xF87171)
-    static let permissionAmber = Color(hex: 0xF59E0B)
-    static let childrenYellow = Color(hex: 0xFBBF24)
-    static let runningOrange = Color(hex: 0xD97757)
-    static let questionPurple = Color(hex: 0xA78BFA)
-    /// Blaze pink for the shell-activity dot. Mirrors the desktop Ion Dark
-    /// `statusBash` (#ff2d95). Like every constant in this block the value is
-    /// theme-independent by design (see the note above), and the Ion Dark
-    /// source value it mirrors is pinned by assets/theme-parity.json —
-    /// asserted from both sides by theme-parity.test.ts and ThemeParityTests.
-    /// Deliberately far from errorColor so "a shell is running" never reads as
-    /// an error.
-    static let shellPink = Color(hex: 0xFF2D95)
-    static let idleGray = Color(hex: 0x818188)
-
-    /// Classify a single tab into its status info. This is the exact cascade
-    /// `TabRowView.statusInfo` renders — that computed property delegates here
-    /// so there is one implementation, not two.
-    static func classify(_ tab: RemoteTabState) -> GroupTabStatus {
-        // 1. Dead / failed → red (no pulse, no glow).
-        if tab.status == .dead || tab.status == .failed {
-            return GroupTabStatus(
-                priority: priorityError,
-                color: errorColor,
-                shouldPulse: false,
-                glow: false,
-                glowColor: errorColor
-            )
+    private static func priority(for name: String) -> Int {
+        guard let index = statusCascade.firstIndex(where: { $0.name == name }) else {
+            preconditionFailure("unknown tab-status cascade entry: \(name)")
         }
-
-        // Partition the permission queue by tool name. On iOS all denial /
-        // permission signals arrive here (see file header).
-        let hasGenericPermission = tab.permissionQueue.contains {
-            $0.toolName != "ExitPlanMode" && $0.toolName != "AskUserQuestion"
-        }
-        let hasPlanReady = tab.permissionQueue.contains { $0.toolName == "ExitPlanMode" }
-        let hasQuestion = tab.permissionQueue.contains { $0.toolName == "AskUserQuestion" }
-
-        // 2. Generic tool permission → amber glow (blocked, steady).
-        if hasGenericPermission {
-            return GroupTabStatus(
-                priority: priorityPermission,
-                color: permissionAmber,
-                shouldPulse: false,
-                glow: true,
-                glowColor: permissionAmber
-            )
-        }
-
-        // 3. Running / connecting → terracotta-orange pulse (foreground
-        //    active). Wins over the passive plan/question waits below. The
-        //    amber permission dot sits ~23° of hue away, so a pulsing running
-        //    dot and a steady permission dot never read as the same signal.
-        if tab.status == .running || tab.status == .connecting {
-            return GroupTabStatus(
-                priority: priorityRunning,
-                color: runningOrange,
-                shouldPulse: true,
-                glow: true,
-                glowColor: runningOrange
-            )
-        }
-
-        // 4. Awaiting children → yellow pulse (orchestrator idle, background
-        //    agents still executing). Outranks plan-ready: active background
-        //    work is a stronger signal than a passive "waiting on you" state.
-        //    This is the b8e21298 ordering — running-children beats plan-ready.
-        if tab.hasRunningChildren == true {
-            return GroupTabStatus(
-                priority: priorityChildren,
-                color: childrenYellow,
-                shouldPulse: true,
-                glow: true,
-                glowColor: childrenYellow
-            )
-        }
-
-        // 5. Awaiting background shells → pink pulse (orchestrator idle,
-        //    background bash commands still running). Ranked directly under
-        //    children: both are active background work, and both outrank the
-        //    passive plan/question waits, but the agent signal is the richer
-        //    one when both are in flight.
-        if (tab.backgroundShellCount ?? 0) > 0 {
-            return GroupTabStatus(
-                priority: priorityBashBackground,
-                color: shellPink,
-                shouldPulse: true,
-                glow: true,
-                glowColor: shellPink
-            )
-        }
-
-        // 6. Plan ready → green glow (ExitPlanMode denial, run idle/completed).
-        if hasPlanReady && (tab.status == .idle || tab.status == .completed) {
-            return GroupTabStatus(
-                priority: priorityPlanReady,
-                color: .green,
-                shouldPulse: false,
-                glow: true,
-                glowColor: .green
-            )
-        }
-
-        // 7. Question pending → purple glow (AskUserQuestion denial).
-        if hasQuestion && (tab.status == .idle || tab.status == .completed) {
-            return GroupTabStatus(
-                priority: priorityQuestion,
-                color: questionPurple,
-                shouldPulse: false,
-                glow: true,
-                glowColor: questionPurple
-            )
-        }
-
-        // 8. Idle → dimmed gray (no pulse, no glow).
-        return GroupTabStatus(
-            priority: priorityIdle,
-            color: idleGray,
-            shouldPulse: false,
-            glow: false,
-            glowColor: idleGray
-        )
+        return statusCascade.count - index - 1
     }
 
-    /// Fold `classify` across a group's tabs and return the highest-priority
-    /// status. Terminal-only tabs are excluded (they carry no conversation
-    /// status), matching the desktop `getGroupStatusColor` filter. An empty or
-    /// all-terminal group returns idle.
+    // Compatibility palette constants retained for existing parity tests. Rendering
+    // resolves `TabStatusState` through active AppTheme, never these values.
+    static let errorColor = IonDarkTheme().statusError
+    static let permissionAmber = IonDarkTheme().statusWarning
+    static let runningOrange = IonDarkTheme().statusRunning
+    static let childrenYellow = IonDarkTheme().statusWaitingChildren
+    static let shellPink = IonDarkTheme().statusBash
+    static let questionPurple = IonDarkTheme().statusQuestion
+    static let idleGray = IonDarkTheme().statusIdle
+
+    static let priorityError = priority(for: "error")
+    static let priorityPermission = priority(for: "permission")
+    static let priorityRunning = priority(for: "running")
+    static let priorityChildren = priority(for: "children")
+    static let priorityBashBackground = priority(for: "bash-background")
+    static let priorityPlanReady = priority(for: "plan-ready")
+    static let priorityQuestion = priority(for: "question")
+    static let priorityIdle = priority(for: "idle")
+
+    static func classify(_ tab: RemoteTabState) -> GroupTabStatus {
+        if tab.status == .dead || tab.status == .failed { return .init(priority: priorityError, state: .error) }
+        let genericPermission = tab.permissionQueue.contains { $0.toolName != "ExitPlanMode" && $0.toolName != "AskUserQuestion" }
+        let planReady = tab.permissionQueue.contains { $0.toolName == "ExitPlanMode" }
+        let question = tab.permissionQueue.contains { $0.toolName == "AskUserQuestion" }
+        if genericPermission { return .init(priority: priorityPermission, state: .permission) }
+        if tab.status == .running || tab.status == .connecting { return .init(priority: priorityRunning, state: .running) }
+        if tab.hasRunningChildren == true { return .init(priority: priorityChildren, state: .children) }
+        if (tab.backgroundShellCount ?? 0) > 0 { return .init(priority: priorityBashBackground, state: .bash) }
+        if planReady && (tab.status == .idle || tab.status == .completed) { return .init(priority: priorityPlanReady, state: .planReady) }
+        if question && (tab.status == .idle || tab.status == .completed) { return .init(priority: priorityQuestion, state: .question) }
+        return .init(priority: priorityIdle, state: .idle)
+    }
+
     static func groupStatus(tabs: [RemoteTabState]) -> GroupTabStatus {
-        var best = GroupTabStatus(
-            priority: priorityIdle,
-            color: idleGray,
-            shouldPulse: false,
-            glow: false,
-            glowColor: idleGray
-        )
+        var best = GroupTabStatus(priority: priorityIdle, state: .idle)
         for tab in tabs where tab.isTerminalOnly != true {
             let status = classify(tab)
-            if status.priority > best.priority {
-                best = status
-            }
+            if status.priority > best.priority { best = status }
         }
         return best
     }

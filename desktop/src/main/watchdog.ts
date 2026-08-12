@@ -123,12 +123,13 @@ export function evaluateStall(s: {
   nowMs: number
   beatMs: number
   staleMs: number
+  paused?: boolean
   counter: number
   prevCounter: number
   wasStalled: boolean
 }): { isStalled: boolean; transition: 'onset' | 'ongoing' | 'recovery' | 'none'; stallMs: number; counterDelta: number } {
   const stallMs = s.nowMs - s.beatMs
-  const isStalled = stallMs >= s.staleMs
+  const isStalled = !s.paused && stallMs >= s.staleMs
   const counterDelta = s.counter - s.prevCounter
   let transition: 'onset' | 'ongoing' | 'recovery' | 'none' = 'none'
   if (isStalled && !s.wasStalled) transition = 'onset'
@@ -145,14 +146,29 @@ export function evaluateStall(s: {
  */
 function watchdogLoop(): void {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { workerData } = require('worker_threads')
+  const { workerData, parentPort } = require('worker_threads')
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const fs = require('fs')
   const { sab, logFile, staleMs, pollMs, heartbeatOffset, activityOffset, activityNames } = workerData
   const hb = new BigInt64Array(sab, heartbeatOffset, 1)
   const act = new Int32Array(sab, activityOffset, 2)
   let wasStalled = false
+  let paused = false
   let prevCounter = Atomics.load(act, 1)
+
+  parentPort.on('message', (message: { type?: string }) => {
+    if (message?.type === 'pause') {
+      paused = true
+      wasStalled = false
+      return
+    }
+    if (message?.type === 'resume') {
+      paused = false
+      Atomics.store(hb, 0, BigInt(Date.now()))
+      prevCounter = Atomics.load(act, 1)
+      wasStalled = false
+    }
+  })
 
   setInterval(() => {
     try {
@@ -162,7 +178,7 @@ function watchdogLoop(): void {
       const counter = Atomics.load(act, 1)
       // evaluateStall is in scope: prepended to the worker source.
       // eslint-disable-next-line no-undef
-      const r = evaluateStall({ nowMs, beatMs, staleMs, counter, prevCounter, wasStalled })
+      const r = evaluateStall({ nowMs, beatMs, staleMs, paused, counter, prevCounter, wasStalled })
       prevCounter = counter
       wasStalled = r.isStalled
       if (r.transition === 'none') return
@@ -281,6 +297,16 @@ export function startWatchdog(): void {
     if (heartbeat) Atomics.store(heartbeat, 0, BigInt(Date.now()))
   }, BEAT_INTERVAL_MS)
   if (beatTimer && typeof beatTimer === 'object' && 'unref' in beatTimer) beatTimer.unref()
+}
+
+export function setWatchdogSuspended(suspended: boolean): void {
+  if (!worker || !heartbeat || !activity) return
+  if (suspended) {
+    worker.postMessage({ type: 'pause' })
+    return
+  }
+  Atomics.store(heartbeat, 0, BigInt(Date.now()))
+  worker.postMessage({ type: 'resume' })
 }
 
 /**

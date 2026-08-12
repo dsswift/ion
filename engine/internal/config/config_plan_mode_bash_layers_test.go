@@ -261,3 +261,11 @@ func TestEnforceEnterprise_PlanModeBash_DoesNotMutateInput(t *testing.T) {
 		t.Fatalf("EnforceEnterprise mutated the caller's slice: %v", original)
 	}
 }
+
+func TestPlanModeMcpToolsEnterpriseCeilingRespectsBoundary(t *testing.T) {
+	merged := []string{"mcp__mobbin__search_screens", "mcp__mobbin_internal__delete", "mcp__github__create_pr"}
+	got := intersectMcpToolsWithCeiling(merged, []string{"mcp__mobbin"})
+	if len(got) != 1 || got[0] != "mcp__mobbin__search_screens" {
+		t.Fatalf("ceiling result = %v, want only Mobbin screen search", got)
+	}
+}

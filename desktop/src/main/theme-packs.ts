@@ -23,6 +23,7 @@ import { extname, join, resolve, sep } from 'path'
 import { log as _log } from './logger'
 import { darkColors } from '../renderer/theme/palette-dark'
 import {
+  BUILTIN_THEME_IDS,
   THEME_PACK_ID_RE,
   validateThemePackManifest,
   type CustomThemeForRenderer,
@@ -158,8 +159,14 @@ function scanRoot(root: string, source: 'user' | 'system', into: Map<string, Loa
       continue
     }
     const result = validateThemePackManifest(raw, dir, DESKTOP_TOKEN_KEYS)
-    for (const warning of result.warnings) {
-      log('manifest warning', { pack_id: dir, source, warning })
+    for (const diagnostic of result.diagnostics) {
+      log('manifest diagnostic', {
+        pack_id: dir,
+        source,
+        surface: diagnostic.surface,
+        fatal: diagnostic.fatal,
+        message: diagnostic.message,
+      })
     }
     if (!result.ok || !result.pack) {
       log('skipping invalid pack', { pack_id: dir, source, error: result.error })
@@ -173,6 +180,7 @@ function scanRoot(root: string, source: 'user' | 'system', into: Map<string, Loa
       source,
       desktopAssets: validateAssets(packDir, dir, result.pack.desktop?.assets, 'desktop'),
       iosAssets: validateAssets(packDir, dir, result.pack.ios?.assets, 'ios'),
+      diagnostics: result.diagnostics,
     })
   }
 }
@@ -343,15 +351,22 @@ export function getRendererThemes(): CustomThemeForRenderer[] {
   const out: CustomThemeForRenderer[] = []
   for (const pack of getThemePacks()) {
     const desktop = pack.manifest.desktop
-    if (!desktop) continue
+    const diagnostics = pack.diagnostics.filter((d) => d.surface === 'ios' || d.surface === 'desktop')
+    if (!desktop && diagnostics.length === 0) continue
     const entry: CustomThemeForRenderer = {
       id: pack.manifest.id,
       name: pack.manifest.name,
       version: pack.manifest.version,
-      base: desktop.base,
-      tokens: desktop.tokens,
+      tokens: desktop?.tokens ?? {},
+      ...(desktop ? { base: desktop.base } : { desktopAvailable: false }),
     }
-    if (desktop.forcedColorScheme) entry.forcedColorScheme = desktop.forcedColorScheme
+    if (desktop?.forcedColorScheme) entry.forcedColorScheme = desktop.forcedColorScheme
+    // Diagnostics are typed at validation time, so accepted-but-degraded
+    // components and rejected `.base` components retain their surface.
+    const iosDiagnostics = pack.diagnostics.filter((d) => d.surface === 'ios')
+    const desktopDiagnostics = pack.diagnostics.filter((d) => d.surface === 'desktop')
+    if (iosDiagnostics.length > 0) entry.iosDiagnostics = iosDiagnostics
+    if (desktopDiagnostics.length > 0) entry.desktopDiagnostics = desktopDiagnostics
     for (const asset of pack.desktopAssets) {
       const dataUrl = assetDataUrl(pack, asset)
       if (!dataUrl) continue
@@ -369,6 +384,11 @@ export interface ThemeManifestEntry {
   name: string
   version: string
   tokens: Record<string, string>
+  /** Built-in id the iOS component inherits omitted required tokens from
+   * (required-when-partial). Absent when the component supplies the complete
+   * required set. iOS resolves the inheritance against its compiled-in
+   * built-in themes. */
+  base?: (typeof BUILTIN_THEME_IDS)[number]
   preferredColorScheme?: 'light' | 'dark'
   assets?: Array<{ slot: ThemeAssetSlot; sha256: string; size: number }>
 }
@@ -389,6 +409,7 @@ export function buildThemeManifest(): { themes: ThemeManifestEntry[]; hash: stri
       version: pack.manifest.version,
       tokens: ios.tokens,
     }
+    if (ios.base) entry.base = ios.base
     if (ios.preferredColorScheme) entry.preferredColorScheme = ios.preferredColorScheme
     if (pack.iosAssets.length > 0) {
       entry.assets = pack.iosAssets.map((a) => ({ slot: a.slot, sha256: a.sha256, size: a.size }))

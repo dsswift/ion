@@ -92,6 +92,7 @@ struct PlanContentView: View {
 /// Displays the raw content with line numbers in a monospaced font.
 struct FileContentView: View {
     @Environment(SessionViewModel.self) private var viewModel
+    @Environment(\.appTheme) private var theme
     @Environment(\.dismiss) private var dismiss
     let path: String
 
@@ -158,8 +159,8 @@ struct FileContentView: View {
             ScrollView {
                 MarkdownContentView(blocks: MarkdownFormatter.parse(content))
                     .textSelection(.enabled)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+                    .padding(.horizontal, IonSpace.rowInset)
+                    .padding(.vertical, IonSpace.contentGap)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         } else {
@@ -171,22 +172,22 @@ struct FileContentView: View {
                         VStack(alignment: .trailing, spacing: 0) {
                             ForEach(1...max(lines.count, 1), id: \.self) { lineNum in
                                 Text("\(lineNum)")
-                                    .font(.system(.caption, design: .monospaced))
+                                    .ionType(.mono)
                                     .foregroundStyle(.tertiary)
                                     .frame(height: 20)
                             }
                         }
-                        .padding(.top, 8)
-                        .padding(.horizontal, 4)
+                        .padding(.top, IonSpace.compactGap)
+                        .padding(.horizontal, IonSpace.hairlineGap)
                         .frame(width: 40)
-                        .background(Color(.secondarySystemBackground))
+                        .background(theme.surfaceSecondary)
 
                         Text(content)
-                            .font(.system(.body, design: .monospaced))
+                            .ionType(.mono)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
+                            .padding(.horizontal, IonSpace.contentGap)
+                            .padding(.vertical, IonSpace.compactGap)
                     }
                 }
             }

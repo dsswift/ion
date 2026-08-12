@@ -51,6 +51,12 @@ export function DirContextMenu({
   const [movePinParentRect, setMovePinParentRect] = useState<{ left: number; right: number; top: number; bottom: number } | null>(null)
   const movePinItemRef = useRef<HTMLButtonElement>(null)
   const movePinSubmenuRef = useRef<HTMLDivElement>(null)
+  const closeMoveSubmenus = () => {
+    setMoveSubmenu(null)
+    setMoveParentRect(null)
+    setMovePinSubmenu(null)
+    setMovePinParentRect(null)
+  }
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -92,6 +98,9 @@ export function DirContextMenu({
   return createPortal(
     <motion.div
       ref={(node) => { (ref as React.MutableRefObject<HTMLDivElement | null>).current = node; pos.ref(node) }}
+      onMouseOver={(e) => {
+        if (!(e.target as HTMLElement).closest('[data-ion-submenu-trigger]')) closeMoveSubmenus()
+      }}
       data-ion-ui
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
@@ -171,6 +180,7 @@ export function DirContextMenu({
           <div style={{ height: 1, background: colors.popoverBorder, margin: '2px 0' }} />
           <button
             ref={moveItemRef}
+            data-ion-submenu-trigger
             className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
             style={{ fontSize: 12, color: colors.textPrimary, background: 'transparent', border: 'none', cursor: 'pointer' }}
             onMouseEnter={(e) => {
@@ -205,6 +215,7 @@ export function DirContextMenu({
           */}
           <button
             ref={movePinItemRef}
+            data-ion-submenu-trigger
             className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
             style={{ fontSize: 12, color: colors.textPrimary, background: 'transparent', border: 'none', cursor: 'pointer' }}
             onMouseEnter={(e) => {
@@ -237,9 +248,11 @@ export function DirContextMenu({
           anchor={moveSubmenu}
           tabId={tabId}
           currentGroupId={tabGroupId || ''}
+          triggerRef={moveItemRef}
           containerRef={submenuRef}
           parentRect={moveParentRect ?? undefined}
-          onClose={() => { setMoveSubmenu(null); setMoveParentRect(null); onClose() }}
+          onClose={() => { setMoveSubmenu(null); setMoveParentRect(null) }}
+          onSelect={onClose}
         />
       )}
       {movePinSubmenu && tabId && (
@@ -247,10 +260,12 @@ export function DirContextMenu({
           anchor={movePinSubmenu}
           tabId={tabId}
           currentGroupId={tabGroupId || ''}
+          triggerRef={movePinItemRef}
           containerRef={movePinSubmenuRef}
           parentRect={movePinParentRect ?? undefined}
           pinAfter
-          onClose={() => { setMovePinSubmenu(null); setMovePinParentRect(null); onClose() }}
+          onClose={() => { setMovePinSubmenu(null); setMovePinParentRect(null) }}
+          onSelect={onClose}
         />
       )}
     </motion.div>,

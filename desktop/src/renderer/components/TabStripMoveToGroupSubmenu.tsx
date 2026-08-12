@@ -13,7 +13,12 @@ interface MoveToGroupSubmenuProps {
   anchor: { x: number; y: number }
   tabId: string
   currentGroupId: string
+  /** Closes this portalled submenu while keeping its parent menu open. */
   onClose: () => void
+  /** Runs after choosing a destination, when host should close whole hierarchy. */
+  onSelect?: () => void
+  /** Trigger row treated as inside during portalled submenu dismissal. */
+  triggerRef?: React.RefObject<HTMLElement | null>
   containerRef?: React.RefObject<HTMLDivElement | null>
   /**
    * When true, the submenu performs the combined "move and pin" action
@@ -38,6 +43,8 @@ export function MoveToGroupSubmenu({
   tabId,
   currentGroupId,
   onClose,
+  onSelect,
+  triggerRef,
   containerRef,
   pinAfter = false,
   parentRect,
@@ -65,7 +72,9 @@ export function MoveToGroupSubmenu({
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+      const target = e.target as Node
+      if (ref.current?.contains(target) || triggerRef?.current?.contains(target)) return
+      onClose()
     }
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
@@ -76,7 +85,7 @@ export function MoveToGroupSubmenu({
       window.removeEventListener('mousedown', handleClick)
       window.removeEventListener('keydown', handleKey)
     }
-  }, [onClose])
+  }, [onClose, triggerRef])
 
   useEffect(() => {
     if (showNewGroupInput) inputRef.current?.focus()
@@ -154,7 +163,8 @@ export function MoveToGroupSubmenu({
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
           onClick={() => {
             performMove(tabId, t.id)
-            onClose()
+            if (onSelect) onSelect()
+            else onClose()
           }}
         >
           <ArrowRight size={12} color={colors.textTertiary} />
@@ -174,7 +184,8 @@ export function MoveToGroupSubmenu({
                   if (e.key === 'Enter' && newGroupName.trim()) {
                     const id = usePreferencesStore.getState().createTabGroup(newGroupName.trim())
                     performMove(tabId, id)
-                    onClose()
+                    if (onSelect) onSelect()
+                    else onClose()
                   }
                   if (e.key === 'Escape') setShowNewGroupInput(false)
                 }}

@@ -12,13 +12,13 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockBackend struct {
-	mu           sync.Mutex
-	started      map[string]types.RunOptions
-	startOrder   []string // insertion order for started runs
-	cancelled    []string
-	onNorm       func(string, types.NormalizedEvent)
-	onExitF      func(string, *int, *string, string)
-	onErrF       func(string, error)
+	mu         sync.Mutex
+	started    map[string]types.RunOptions
+	startOrder []string // insertion order for started runs
+	cancelled  []string
+	onNorm     func(string, types.NormalizedEvent)
+	onExitF    func(string, *int, *string, string)
+	onErrF     func(string, error)
 
 	// Human-wait recording (satisfies humanWaitSuspendable). beginHumanWait /
 	// endHumanWait on the Manager resolve to the backend and call these; the
@@ -26,6 +26,7 @@ type mockBackend struct {
 	// the right run.
 	humanWaitBegin map[string]int
 	humanWaitEnd   map[string]int
+	progressBumps  map[string]int
 }
 
 func newMockBackend() *mockBackend {
@@ -33,6 +34,7 @@ func newMockBackend() *mockBackend {
 		started:        make(map[string]types.RunOptions),
 		humanWaitBegin: make(map[string]int),
 		humanWaitEnd:   make(map[string]int),
+		progressBumps:  make(map[string]int),
 	}
 }
 
@@ -95,6 +97,18 @@ func (m *mockBackend) humanWaitCounts(requestID string) (begin, end int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.humanWaitBegin[requestID], m.humanWaitEnd[requestID]
+}
+
+func (m *mockBackend) BumpRunProgress(requestID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.progressBumps[requestID]++
+}
+
+func (m *mockBackend) progressBumpCount(requestID string) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.progressBumps[requestID]
 }
 
 func (m *mockBackend) OnNormalized(fn func(string, types.NormalizedEvent)) {

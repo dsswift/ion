@@ -117,8 +117,16 @@ type EnterpriseConfig struct {
 	// Only fields the engine actually enforces belong here; this is not a
 	// mirror of LimitsConfig. Adding a field without enforcement would make
 	// the schema claim a guarantee the engine does not keep.
-	Limits       *EnterpriseLimits `json:"limits,omitempty"`
-	CustomFields map[string]any    `json:"customFields,omitempty"`
+	Limits *EnterpriseLimits `json:"limits,omitempty"`
+	// Thinking seals the engine-wide extended-thinking policy. Sealed ONE WAY:
+	// when the enterprise sets Disabled=true, thinking is off and no user or
+	// project layer can re-enable it. An enterprise block with Disabled=false
+	// does not force thinking ON over a user layer that disabled it — a
+	// ceiling, not a mandate, matching the sealed-ceiling pattern used by
+	// ResourceLimits and the plan-mode Bash allowlist. Nil means no enterprise
+	// thinking policy; the merged user/project value stands.
+	Thinking     *ThinkingPolicyConfig `json:"thinking,omitempty"`
+	CustomFields map[string]any        `json:"customFields,omitempty"`
 }
 
 // EnterpriseLimits holds enterprise-sealed ceilings that mirror `limits` keys
@@ -156,6 +164,11 @@ type EnterpriseLimits struct {
 	// producing extension's own UI: the engine writes it to the NDJSON
 	// socket, and a client whose frame cap it exceeds receives nothing at all.
 	AgentStateMetadata *EnterpriseAgentStateMetadataLimits `json:"agentStateMetadata,omitempty"`
+
+	// PlanModeAllowedMcpTools is the enterprise ceiling for named MCP tools in
+	// plan mode. Entries match an exact tool name or a narrower `__`-delimited
+	// MCP tool name.
+	PlanModeAllowedMcpTools []string `json:"planModeAllowedMcpTools,omitempty"`
 }
 
 // ExtensionAllowlistEntry is a single entry in the enterprise extension
@@ -342,6 +355,48 @@ type EngineRuntimeConfig struct {
 	// ctx.setDispatchContextDefaults() (level 3) or per-dispatch via
 	// DispatchAgentOpts.ContextPolicy (level 4).
 	DispatchContext *DispatchContextConfig `json:"dispatchContext,omitempty"`
+
+	// ThinkingPolicy holds the engine-wide operator policy for extended
+	// thinking. It is distinct from Thinking, which configures default per-run
+	// behavior. See ThinkingPolicyConfig.
+	ThinkingPolicy *ThinkingPolicyConfig `json:"thinkingPolicy,omitempty"`
+}
+
+// ThinkingPolicyConfig is the engine-wide operator kill switch for extended
+// thinking. It sits above the per-run types.ThinkingConfig: a consumer that
+// sends Enabled:true on a run does not override this, because whether reasoning
+// is permitted at all is the operator's decision, not the caller's.
+//
+// The engine owns the MECHANISM (whether a thinking directive may be emitted
+// and whether models report reasoning capability). Consumers own the OPINION of
+// how to present the result. The engine therefore carries this decision through
+// the EXISTING per-model capability projection — a disabled install reports
+// models with no thinking mode and no effort levels — rather than through a new
+// wire field that would require every consumer to learn a new concept.
+type ThinkingPolicyConfig struct {
+	// Disabled turns extended thinking OFF for the entire engine when true.
+	//
+	// The polarity is deliberate. The Go zero value of a bool is false, so an
+	// absent or empty block means thinking is PERMITTED — the out-of-the-box
+	// behavior, identical to every install that predates this field. A field
+	// named `Enabled` would default to false and silently disable reasoning on
+	// every existing install, which is a breaking behavior change wearing an
+	// additive field's clothing. Do not invert this. Pinned by
+	// TestThinkingPolicyZeroValuePermitsThinking in internal/providers.
+	//
+	// When true, two things follow, both enforced in
+	// internal/providers/thinking_policy.go:
+	//   - No provider request carries a thinking directive, regardless of the
+	//     per-run ThinkingConfig (including the Anthropic adaptive
+	//     display-only directive, which is otherwise emitted with no consumer
+	//     config at all).
+	//   - list_models reports every model with supportsThinking=false, no
+	//     thinkingMode, and no thinkingEfforts, so consumers render
+	//     unavailability from the capability they already read.
+	//
+	// Enterprise policy can seal this on (EnterpriseConfig.Thinking); a lower
+	// layer cannot re-enable thinking the enterprise has disabled.
+	Disabled bool `json:"disabled,omitempty"`
 }
 
 // DispatchContextConfig is the engine.json-level context policy for dispatched
@@ -581,8 +636,11 @@ type LimitsConfig struct {
 	SuppressSystemMessages      *bool    `json:"suppressSystemMessages,omitempty"`
 	DisablePlanModeReminder     *bool    `json:"disablePlanModeReminder,omitempty"`
 	PlanModeAllowedBashCommands []string `json:"planModeAllowedBashCommands,omitempty"`
-	DisableTurnLimitWarning     *bool    `json:"disableTurnLimitWarning,omitempty"`
-	DisableMaxTokenContinue     *bool    `json:"disableMaxTokenContinue,omitempty"`
+	// PlanModeAllowedMcpTools lists exact MCP tools or `mcp__server` prefixes
+	// permitted during plan mode. Empty or absent leaves MCP tools blocked.
+	PlanModeAllowedMcpTools []string `json:"planModeAllowedMcpTools,omitempty"`
+	DisableTurnLimitWarning *bool    `json:"disableTurnLimitWarning,omitempty"`
+	DisableMaxTokenContinue *bool    `json:"disableMaxTokenContinue,omitempty"`
 	// MaxTokenThinkingOnlyBreaker is the number of consecutive max_tokens turns
 	// that produce zero non-thinking output (pure thinking blocks) before the
 	// engine terminates the run with an error. Zero uses the built-in default (3).

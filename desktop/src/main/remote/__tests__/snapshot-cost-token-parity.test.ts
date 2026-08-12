@@ -79,6 +79,16 @@ describe('snapshot cold-start parity: cost + token fields', () => {
     expect(result.cacheCreationTokens).toBe(11)
   })
 
+  it('projects latest completed-run metadata from renderer tab', () => {
+    const result = projectRendererTab(
+      { id: 't1', conversationTurns: 7, lastRunDurationMs: 12_345, lastRunReason: 'aborted' },
+      BASE,
+    )
+    expect(result.conversationTurns).toBe(7)
+    expect(result.lastRunDurationMs).toBe(12_345)
+    expect(result.lastRunReason).toBe('aborted')
+  })
+
   it('emits undefined (not 0) when cost fields are absent (clean cold-start)', () => {
     // A tab that has never had a run must not project 0-values as if it
     // had completed a turn. undefined tells iOS "no data yet" vs 0 which
@@ -87,6 +97,9 @@ describe('snapshot cold-start parity: cost + token fields', () => {
     expect(result.runCostUsd).toBeUndefined()
     expect(result.conversationCostUsd).toBeUndefined()
     expect(result.totalCostUsd).toBeUndefined()
+    expect(result.conversationTurns).toBeUndefined()
+    expect(result.lastRunDurationMs).toBeUndefined()
+    expect(result.lastRunReason).toBeUndefined()
     expect(result.inputTokens).toBeUndefined()
     expect(result.outputTokens).toBeUndefined()
     expect(result.cacheReadTokens).toBeUndefined()

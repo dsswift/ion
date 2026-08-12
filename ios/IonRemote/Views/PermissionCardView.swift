@@ -27,14 +27,17 @@ struct PermissionCardGenericView: View {
     @State private var dragOffset: CGFloat = 0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: IonSpace.contentGap) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(IonType.metadata)
+                .foregroundStyle(theme.statusWarning)
             Text(request.toolName)
-                .font(.headline)
+                .font(IonType.mono)
 
             if let toolInput = request.toolInput {
                 ScrollView {
                     Text(formatJSON(toolInput))
-                        .font(.system(.caption, design: .monospaced))
+                        .font(IonType.mono)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -54,15 +57,18 @@ struct PermissionCardGenericView: View {
                         Text(option.label)
                             .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
+                            .padding(.vertical, IonSpace.contentGap)
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(buttonTint(for: option))
                 }
             }
         }
-        .padding()
-        .cardStyle()
+        .padding(IonSpace.rowInset)
+        .background(theme.surfaceElevated)
+        .clipShape(RoundedRectangle(cornerRadius: IonRadius.container))
+        .overlay(RoundedRectangle(cornerRadius: IonRadius.container).stroke(theme.statusWarning, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: IonRadius.container).stroke(permissionCardBorderColor(theme: theme), lineWidth: 1))
         .offset(y: dragOffset)
         .gesture(
             DragGesture(minimumDistance: 20)
@@ -86,7 +92,7 @@ struct PermissionCardGenericView: View {
     private func buttonTint(for option: PermissionOption) -> Color {
         let label = option.label.lowercased()
         if label.contains("deny") || label.contains("reject") || label.contains("no") {
-            return .red
+            return theme.statusError
         }
         return theme.accent
     }
@@ -113,13 +119,27 @@ struct PermissionCardGenericView: View {
     }
 
     private func formatJSON(_ dict: [String: AnyCodable]) -> String {
-        guard let data = try? JSONEncoder().encode(dict),
-              let obj = try? JSONSerialization.jsonObject(with: data),
-              let pretty = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys]),
-              let str = String(data: pretty, encoding: .utf8)
-        else {
+        do {
+            let data = try JSONEncoder().encode(dict)
+            let object = try JSONSerialization.jsonObject(with: data)
+            let pretty = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
+            guard let string = String(data: pretty, encoding: .utf8) else {
+                DiagnosticLog.log("permission JSON formatting produced invalid UTF-8", tag: "view.permission", level: .warn, fields: [
+                    "keys": String(dict.keys.count)
+                ])
+                return String(describing: dict)
+            }
+            return string
+        } catch {
+            DiagnosticLog.log("permission JSON formatting failed", tag: "view.permission", level: .warn, fields: [
+                "keys": String(dict.keys.count),
+                "error": String(describing: error)
+            ])
             return String(describing: dict)
         }
-        return str
     }
+}
+
+func permissionCardBorderColor(theme: any AppTheme) -> Color {
+    theme.usesSheetOutline ? theme.borderStrong : .clear
 }

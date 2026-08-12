@@ -78,42 +78,51 @@ final class ConversationStatusBarTriggerTests: XCTestCase {
     /// present in toolbarButtons — a structural guard that catches regression
     /// without requiring SwiftUI rendering.
     func testToolbarButtonsDoNotContainInfoCircle() throws {
-        // Locate ConversationView.swift relative to the test bundle.
-        // The source file is in the app target; __FILE__ gives the test file
-        // path. Walk up to ios/ then into the source tree.
-        let testFileURL = URL(fileURLWithPath: #file)
-        // #file: .../ios/IonRemoteTests/ConversationStatusBarTriggerTests.swift
-        // Source:  .../ios/IonRemote/Views/ConversationView.swift
-        let iosDir = testFileURL.deletingLastPathComponent().deletingLastPathComponent()
-        let sourceURL = iosDir
-            .appendingPathComponent("IonRemote")
-            .appendingPathComponent("Views")
-            .appendingPathComponent("ConversationView.swift")
-
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let source = try conversationViewSource()
 
         // The toolbarButtons computed var spans from its declaration to the
         // closing brace. We check the full source for "info.circle" absence
         // since it should not appear at all after removal.
         XCTAssertFalse(
             source.contains("info.circle"),
-            "info.circle must not appear in ConversationView.swift after toolbar declutter"
+            "info.circle must not appear anywhere in ConversationView after toolbar declutter"
         )
     }
 
     /// Verify the three expected buttons are still present after removal.
     func testToolbarButtonsRetainFolderBranchTerminal() throws {
-        let testFileURL = URL(fileURLWithPath: #file)
-        let iosDir = testFileURL.deletingLastPathComponent().deletingLastPathComponent()
-        let sourceURL = iosDir
-            .appendingPathComponent("IonRemote")
-            .appendingPathComponent("Views")
-            .appendingPathComponent("ConversationView.swift")
-
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let source = try conversationViewSource()
 
         XCTAssertTrue(source.contains("\"folder\""), "folder button must remain in toolbarButtons")
         XCTAssertTrue(source.contains("\"arrow.triangle.branch\""), "branch button must remain in toolbarButtons")
         XCTAssertTrue(source.contains("\"terminal\""), "terminal button must remain in toolbarButtons")
+    }
+
+    // MARK: - Source helper
+
+    /// Concatenates every file that declares part of `ConversationView`: the
+    /// host file plus its `ConversationView+*.swift` extensions.
+    ///
+    /// The two guards above pin the *type's* toolbar contract, not a
+    /// filename's. Reading only `ConversationView.swift` made them fail the
+    /// moment `toolbarButtons` moved to `ConversationView+Layout.swift` for the
+    /// 600-line cap, even though the toolbar was unchanged. Globbing the family
+    /// keeps each guard pinned to what it actually asserts.
+    private func conversationViewSource() throws -> String {
+        // #file: .../ios/IonRemoteTests/ConversationStatusBarTriggerTests.swift
+        // Sources: .../ios/IonRemote/Views/ConversationView*.swift
+        let viewsDir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("IonRemote")
+            .appendingPathComponent("Views")
+        let names = try FileManager.default
+            .contentsOfDirectory(atPath: viewsDir.path)
+            .filter { $0 == "ConversationView.swift" || $0.hasPrefix("ConversationView+") }
+            .sorted()
+        XCTAssertFalse(names.isEmpty, "no ConversationView source files found")
+        return try names
+            .map { try String(contentsOf: viewsDir.appendingPathComponent($0), encoding: .utf8) }
+            .joined(separator: "\n")
     }
 }

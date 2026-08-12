@@ -61,7 +61,8 @@ Read the content of a specific resource by URI.
 Returns the resource content. Two content types are supported:
 
 - **Text** -- returned as plain text
-- **Blob** -- returned as a summary with byte count and MIME type (e.g. `[base64 blob, 4096 chars, mime: image/png]`)
+- **Image blob** -- attached as a vision image when its MIME type is supported
+- **Other blob** -- returned as a summary with byte count and MIME type
 
 ### Errors
 

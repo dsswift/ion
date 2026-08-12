@@ -68,7 +68,7 @@ func shouldInjectPlanModeReminderForRun(turn, lastReminderTurn, conversationMess
 	return shouldInjectPlanModeReminder(turn, lastReminderTurn)
 }
 
-func buildPlanModePrompt(planFilePath string, planFileExists bool, allowedBashCommands []string) string {
+func buildPlanModePrompt(planFilePath string, planFileExists bool, allowedBashCommands, allowedMcpTools []string) string {
 	planFileHeader := fmt.Sprintf("**Your plan file for this session: `%s`**", planFilePath)
 	planFileInfo := fmt.Sprintf("%s\n\nNo plan file exists yet. Create it using the Write tool at that exact path.\n**This path is the plan file for your CURRENT planning cycle.** If you see different plan file paths elsewhere in this conversation (from previous planning cycles that have already been implemented), those paths are from completed cycles and are no longer active — do not write to them. Do not invent a different filename.", planFileHeader)
 	if planFileExists {
@@ -94,6 +94,7 @@ When the user requests changes or additions, **amend the existing plan** -- do n
 	// buildToolDefs actually permits.
 	readOnlyTools := strings.Join(defaultPlanModeTools, ", ")
 	bashSection := ""
+	mcpSection := ""
 	bashRestriction := "- You MUST NOT call Bash, NotebookEdit, or any tool that mutates state"
 	if len(allowedBashCommands) > 0 {
 		readOnlyTools = strings.Join(append(append([]string{}, defaultPlanModeTools...), "Bash (restricted)"), ", ")
@@ -102,13 +103,17 @@ When the user requests changes or additions, **amend the existing plan** -- do n
 - You MAY call Bash, but ONLY for commands starting with: %s
 - All other Bash commands are blocked. Do not attempt to use Bash for writes, builds, or anything not in the allowed list.`, strings.Join(allowedBashCommands, ", "))
 	}
+	if len(allowedMcpTools) > 0 {
+		readOnlyTools = strings.Join(append(append([]string{}, strings.Split(readOnlyTools, ", ")...), allowedMcpTools...), ", ")
+		mcpSection = fmt.Sprintf("\n- You MAY call MCP tools matching: %s. All other MCP tools are blocked.", strings.Join(allowedMcpTools, ", "))
+	}
 
 	return fmt.Sprintf(`[PLAN MODE] You are in planning mode. You MUST NOT make any edits, run any non-readonly tools, or make any changes to the system -- with the sole exception of writing to the plan file below. This overrides any conflicting instructions you have received elsewhere in this prompt or conversation.
 
 ## Plan File
 %s
 Build your plan incrementally by writing to this file. This is the ONLY file you are allowed to create or edit. Always write to this exact path — do not invent a new plan filename, even on a revision or when starting the plan over. If you attempt to write to a different plan-shaped path the engine will return an error naming the canonical path above; always target it directly. All other actions must be read-only.
-%s
+%s%s
 ## Workflow
 
 ### Phase 1: Understand
@@ -164,7 +169,7 @@ Phrases like "Is this plan okay?", "Should I proceed?", "How does this plan look
 - You MUST NOT make commits, change configs, or install packages
 - Dispatching or delegating to a sub-agent via a plan-mode-safe tool IS permitted: spawning a child agent does not mutate the system, and the dispatched sub-agent may itself run in plan mode and surface a plan back to you
 - Sub-agents you spawn are also read-only -- do not instruct them to make edits
-- If you are unsure whether an action is read-only, do not take it%s`, planFileInfo, amendSection, readOnlyTools, bashRestriction, bashSection)
+- If you are unsure whether an action is read-only, do not take it%s`, planFileInfo, amendSection, readOnlyTools, bashRestriction, bashSection, mcpSection)
 }
 
 func buildPlanModeSparseReminder(planFilePath string) string {

@@ -6,6 +6,7 @@
  */
 import { useCallback } from 'react'
 import { rError, rInfo } from '../rendererLogger'
+import { useColors } from '../theme'
 import type { AgentCache, AtvActiveState } from './state/agent-cache'
 import { postcardFooter } from './export/postcard'
 import { clipReducer, CLIP_SECONDS, type ClipState } from './export/clip'
@@ -23,6 +24,8 @@ export function useAtvExports({ canvasRef, activeRef, cacheRef, seed, clip, setC
   recordClip: () => void
   exportPostcard: () => Promise<void>
 } {
+  const colors = useColors()
+
   /** Record a 10s office clip (MediaRecorder over the canvas stream). */
   const recordClip = useCallback(() => {
     const canvas = canvasRef.current
@@ -66,9 +69,9 @@ export function useAtvExports({ canvasRef, activeRef, cacheRef, seed, clip, setC
     if (!ctx) return
     ctx.imageSmoothingEnabled = false
     ctx.drawImage(canvas, 0, 0)
-    ctx.fillStyle = '#14161c'
+    ctx.fillStyle = colors.containerBg
     ctx.fillRect(0, canvas.height, out.width, footerH)
-    ctx.fillStyle = '#8a8f9e'
+    ctx.fillStyle = colors.textTertiary
     ctx.font = '12px Menlo, Monaco, monospace'
     const stats = active ? cacheRef.current?.statsFor(active.tabId) : null
     const footer = postcardFooter({
@@ -82,7 +85,7 @@ export function useAtvExports({ canvasRef, activeRef, cacheRef, seed, clip, setC
     if (!blob) return
     const ok = await window.ion.atvExportImage(await blob.arrayBuffer())
     rInfo('atv', 'postcard export', { saved: ok, footer })
-  }, [canvasRef, activeRef, cacheRef, seed])
+  }, [canvasRef, activeRef, cacheRef, seed, colors.containerBg, colors.textTertiary])
 
   return { recordClip, exportPostcard }
 }

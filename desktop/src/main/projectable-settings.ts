@@ -61,14 +61,17 @@
 
 import { readSettings, SETTINGS_DEFAULTS } from './settings-store'
 import { SETTINGS_DEFAULTS as RENDERER_SETTINGS_DEFAULTS } from '../renderer/preferences-types'
-import { PROJECTABLE_SETTINGS_DATA, ENGINE_CONFIG_BACKED_KEYS } from './projectable-settings-data'
+import {
+  PROJECTABLE_SETTINGS_DATA,
+  ENGINE_CONFIG_BACKED_KEYS,
+} from './projectable-settings-data'
 import { readPlanBashAllowlist } from './plan-bash-allowlist-store'
-import { customThemeChoices, isKnownDesktopThemeId } from './theme-packs'
-import { getEnterpriseThemePolicy } from './theme-policy'
+import { isKnownDesktopThemeId } from './theme-packs'
 import { BUILTIN_THEME_IDS } from '../shared/theme-pack-types'
 import type {
   ProjectableChoice,
   ProjectableGroup,
+  ProjectableItemField,
   ProjectableSetting,
   ProjectableSettingSchema,
 } from './projectable-settings-types'
@@ -78,6 +81,7 @@ import type {
 export type {
   ProjectableChoice,
   ProjectableGroup,
+  ProjectableItemField,
   ProjectableRange,
   ProjectableSetting,
   ProjectableSettingSchema,
@@ -91,7 +95,13 @@ export type {
  * the 600-line TS cap. Adding a new entry only requires touching the
  * data file (and the test, to cover any new type-specific branches).
  */
-export const PROJECTABLE_SETTINGS: readonly ProjectableSetting[] = PROJECTABLE_SETTINGS_DATA
+export const PROJECTABLE_SETTINGS: readonly ProjectableSetting[] =
+  PROJECTABLE_SETTINGS_DATA
+
+const VISIBLE = PROJECTABLE_SETTINGS.filter(
+  (s) => s.iosSurface !== 'desktop-only',
+)
+const VISIBLE_GROUPS = new Set(VISIBLE.map((s) => s.group))
 
 /**
  * Ordered list of group identifiers — matches the desktop SettingsDialog
@@ -133,9 +143,8 @@ export const PROJECTABLE_GROUP_LABELS: Record<ProjectableGroup, string> = {
 }
 
 /** Map from key to allowlist entry, for O(1) lookups. */
-const PROJECTABLE_BY_KEY: Record<string, ProjectableSetting> = Object.fromEntries(
-  PROJECTABLE_SETTINGS.map((s) => [s.key, s]),
-)
+const PROJECTABLE_BY_KEY: Record<string, ProjectableSetting> =
+  Object.fromEntries(PROJECTABLE_SETTINGS.map((s) => [s.key, s]))
 
 /** Returns true when `key` is on the allowlist. */
 export function isProjectableKey(key: string): boolean {
@@ -177,16 +186,21 @@ function isDynamicGroupIdKey(key: string): boolean {
  *     schema enforcement is the iOS editor's responsibility and
  *     downstream consumers tolerate forward-compat extra fields.
  */
-export function validateSettingValue(key: string, value: unknown): string | null {
+export function validateSettingValue(
+  key: string,
+  value: unknown,
+): string | null {
   const entry = PROJECTABLE_BY_KEY[key]
   if (!entry) return `unknown projectable key: ${key}`
   const actualType = typeof value
   switch (entry.type) {
     case 'boolean':
-      if (actualType !== 'boolean') return `key ${key} expects boolean, got ${actualType}`
+      if (actualType !== 'boolean')
+        return `key ${key} expects boolean, got ${actualType}`
       return null
     case 'string':
-      if (actualType !== 'string') return `key ${key} expects string, got ${actualType}`
+      if (actualType !== 'string')
+        return `key ${key} expects string, got ${actualType}`
       return null
     case 'number':
       if (actualType !== 'number' || Number.isNaN(value)) {
@@ -203,16 +217,23 @@ export function validateSettingValue(key: string, value: unknown): string | null
         // — otherwise iOS writes of installed custom themes are silently
         // rejected.
         if (key === 'selectedTheme') {
-          if (typeof value === 'string' && isKnownDesktopThemeId(value, BUILTIN_THEME_IDS)) return null
+          if (
+            typeof value === 'string' &&
+            isKnownDesktopThemeId(value, BUILTIN_THEME_IDS)
+          )
+            return null
           return `key ${key} value ${JSON.stringify(value)} is not an installed theme id`
         }
         const choices = entry.choices ?? []
         const ok = choices.some((c) => c.value === value)
-        return ok ? null : `key ${key} value ${JSON.stringify(value)} not in enum choices`
+        return ok
+          ? null
+          : `key ${key} value ${JSON.stringify(value)} not in enum choices`
       }
       return `key ${key} expects enum string|null, got ${actualType}`
     case 'list':
-      if (!Array.isArray(value)) return `key ${key} expects array, got ${actualType}`
+      if (!Array.isArray(value))
+        return `key ${key} expects array, got ${actualType}`
       // Primitive-list: every element must match the declared itemType.
       // Record-list (itemType absent): per-element schema is not enforced
       // here; the iOS editor produces well-formed records and downstream
@@ -248,7 +269,7 @@ export function validateSettingValue(key: string, value: unknown): string | null
 export function projectCurrentSettings(): Record<string, unknown> {
   const saved = readSettings()
   const out: Record<string, unknown> = {}
-  for (const entry of PROJECTABLE_SETTINGS) {
+  for (const entry of VISIBLE) {
     // Engine-config-backed keys live in engine.json, not settings.json — read
     // them from their canonical store so iOS sees the real engine policy.
     if (ENGINE_CONFIG_BACKED_KEYS.has(entry.key)) {
@@ -262,21 +283,15 @@ export function projectCurrentSettings(): Record<string, unknown> {
   // Reconcile dynamic group-id pointers against the live tabGroups.
   const groups = (out.tabGroups as Array<{ id?: string }>) ?? []
   const liveIds = new Set(
-    groups.map((g) => g.id).filter((id): id is string => typeof id === 'string'),
+    groups
+      .map((g) => g.id)
+      .filter((id): id is string => typeof id === 'string'),
   )
   for (const key of DYNAMIC_GROUP_ID_KEYS) {
     const v = out[key]
     if (typeof v === 'string' && !liveIds.has(v)) {
       out[key] = null
     }
-  }
-  // Enterprise theme lock: the projected value is the enforced theme, not
-  // the user's saved pick (the on-disk value is left untouched so the
-  // choice restores when the policy lifts — same non-persisting rule as
-  // every enterprise constraint).
-  const themePolicy = getEnterpriseThemePolicy()
-  if (themePolicy?.locked) {
-    out.selectedTheme = themePolicy.themeId
   }
   return out
 }
@@ -322,14 +337,15 @@ export function projectableKeysWithoutDefault(): string[] {
  */
 export function projectableSchema(): ProjectableSettingSchema[] {
   const saved = readSettings()
-  const groups = (saved.tabGroups as Array<{ id?: string; label?: string }>) ?? []
+  const groups =
+    (saved.tabGroups as Array<{ id?: string; label?: string }>) ?? []
   const groupChoices: ProjectableChoice[] = [
     { value: null, label: 'None' },
     ...groups
       .filter((g) => typeof g.id === 'string' && typeof g.label === 'string')
       .map((g) => ({ value: g.id as string, label: g.label as string })),
   ]
-  return PROJECTABLE_SETTINGS.map((s) => {
+  return VISIBLE.map((s) => {
     const base: ProjectableSettingSchema = {
       key: s.key,
       type: s.type,
@@ -340,11 +356,6 @@ export function projectableSchema(): ProjectableSettingSchema[] {
     }
     if (isDynamicGroupIdKey(s.key)) {
       base.choices = groupChoices
-    } else if (s.key === 'selectedTheme') {
-      // Live registry injection: built-in choices from the data entry plus
-      // every installed theme pack with a desktop component, so the iOS
-      // picker reflects the packs on this desktop without a wire round-trip.
-      base.choices = [...(s.choices ?? []), ...customThemeChoices()]
     } else if (s.choices) {
       base.choices = s.choices
     }
@@ -361,7 +372,7 @@ export function projectableSchema(): ProjectableSettingSchema[] {
  * Mirrors the structure of `projectableSchema` but skips the dynamic-
  * choices injection (item-level fields are not dynamic today).
  */
-function itemToSchema(s: ProjectableSetting): ProjectableSettingSchema {
+function itemToSchema(s: ProjectableItemField): ProjectableSettingSchema {
   const out: ProjectableSettingSchema = {
     key: s.key,
     type: s.type,
@@ -382,9 +393,14 @@ function itemToSchema(s: ProjectableSetting): ProjectableSettingSchema {
  * identifier with its display label; iOS renders one Section per
  * group in this order.
  */
-export function projectableGroups(): Array<{ id: ProjectableGroup; label: string }> {
-  return PROJECTABLE_GROUP_ORDER.map((id) => ({
-    id,
-    label: PROJECTABLE_GROUP_LABELS[id],
-  }))
+export function projectableGroups(): Array<{
+  id: ProjectableGroup
+  label: string
+}> {
+  return PROJECTABLE_GROUP_ORDER.filter((id) => VISIBLE_GROUPS.has(id)).map(
+    (id) => ({
+      id,
+      label: PROJECTABLE_GROUP_LABELS[id],
+    }),
+  )
 }

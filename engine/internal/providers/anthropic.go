@@ -330,6 +330,18 @@ func (p *anthropicProvider) buildRequestBody(opts types.LlmStreamOptions) map[st
 		// Consumers that never want reasoning text keep their existing
 		// opt-outs: ThinkingConfig.StreamDeltas=false (wire) and
 		// Persist=false (history).
+		//
+		// The operator kill switch gates this branch explicitly. It reaches
+		// here through Mode=="none" — the same value a non-reasoning model
+		// produces — so without its own check the display-only directive would
+		// still ship on a disabled install, and adaptive models would keep
+		// reasoning. This is the ONE thinking directive not governed by the
+		// resolver's return value, which is exactly why it needs the guard.
+		// See thinking_policy.go.
+		if !ThinkingPermitted() {
+			utils.LogWithFields(utils.LevelInfo, "Thinking", "build request body adaptive self-engaged directive withheld thinking disabled by operator", map[string]any{"model": opts.Model})
+			break
+		}
 		if info := GetModelInfo(opts.Model); info != nil && info.ThinkingMode == "adaptive" {
 			utils.LogWithFields(utils.LevelInfo, "Thinking", "build request body adaptive self-engaged display-only directive", map[string]any{"model": opts.Model})
 			body["thinking"] = map[string]any{

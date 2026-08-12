@@ -18,6 +18,7 @@ final class ThemeSyncWireTests: XCTestCase {
               "name": "Acme Corp",
               "version": "1.2.0",
               "tokens": { "accent": "#FF6600FF", "background": "#0A0A0CFF" },
+              "base": "ion-light",
               "preferredColorScheme": "dark",
               "assets": [ { "slot": "background", "sha256": "abc123", "size": 2048 } ]
             },
@@ -39,11 +40,14 @@ final class ThemeSyncWireTests: XCTestCase {
         XCTAssertEqual(themes.count, 2)
         XCTAssertEqual(themes[0].id, "acme-corp")
         XCTAssertEqual(themes[0].tokens["accent"], "#FF6600FF")
+        XCTAssertEqual(themes[0].base, "ion-light")
         XCTAssertEqual(themes[0].preferredColorScheme, "dark")
         XCTAssertEqual(themes[0].assets?.first?.slot, "background")
         XCTAssertEqual(themes[0].assets?.first?.sha256, "abc123")
         XCTAssertEqual(themes[0].assets?.first?.size, 2048)
-        // Optional fields absent on the second theme decode to nil.
+        // Optional fields absent on the second theme decode to nil — including
+        // base (a complete component supplies the whole required set).
+        XCTAssertNil(themes[1].base)
         XCTAssertNil(themes[1].preferredColorScheme)
         XCTAssertNil(themes[1].assets)
     }
@@ -84,7 +88,7 @@ final class ThemeSyncWireTests: XCTestCase {
     func testThemeManifestRoundTripsThroughEncoder() throws {
         let payload = SyncedThemePayload(
             id: "acme-corp", name: "Acme Corp", version: "1.0.0",
-            tokens: ["accent": "#FF6600FF"], preferredColorScheme: "dark",
+            tokens: ["accent": "#FF6600FF"], base: "ion-dark", preferredColorScheme: "dark",
             assets: [SyncedThemeAssetDescriptor(slot: "logo", sha256: "aa", size: 5)]
         )
         let original = RemoteEvent.desktopThemeManifest(themes: [payload], hash: "h1")

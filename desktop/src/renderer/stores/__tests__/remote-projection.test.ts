@@ -459,6 +459,8 @@ describe('projectRemoteTabStates — cost/token precedence', () => {
     expect(tab.runCostUsd).toBeUndefined()
     expect(tab.conversationCostUsd).toBeUndefined()
     expect(tab.conversationTurns).toBeUndefined()
+    expect(tab.lastRunDurationMs).toBeUndefined()
+    expect(tab.lastRunReason).toBeUndefined()
     expect(tab.inputTokens).toBeUndefined()
     expect(tab.outputTokens).toBeUndefined()
     expect(tab.cacheReadTokens).toBeUndefined()
@@ -470,13 +472,15 @@ describe('projectRemoteTabStates — cost/token precedence', () => {
     const tab = makeTab({
       id: 't-u',
       lastResult: {
-        totalCostUsd: 1, durationMs: 1, numTurns: 2, conversationTurns: 5, sessionId: 's',
+        totalCostUsd: 1, durationMs: 42_000, reason: 'normal', numTurns: 2, conversationTurns: 5, sessionId: 's',
         usage: { input_tokens: 1000, output_tokens: 200, cache_read_input_tokens: 50, cache_creation_input_tokens: 25 },
       },
     })
     const s = makeState([tab], [['t-u', { instances: [inst], activeInstanceId: 'main' }]])
     const out = projectRemoteTabStates(s).tabs[0]
     expect(out.conversationTurns).toBe(7) // live wins
+    expect(out.lastRunDurationMs).toBe(42_000)
+    expect(out.lastRunReason).toBe('normal')
     expect(out.conversationCostUsd).toBe(3.5)
     expect(out.inputTokens).toBe(1000)
     expect(out.outputTokens).toBe(200)

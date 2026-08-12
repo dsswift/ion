@@ -228,6 +228,15 @@ describe('prompt_sync parity — setPermissionMode before prompt', () => {
     mockPrompt.mockResolvedValue(undefined)
   })
 
+  it('clears completed-run metadata immediately when a new prompt starts', () => {
+    const previousRun = { totalCostUsd: 0, durationMs: 12_000, reason: 'normal' as const, numTurns: 1, usage: {}, sessionId: 's1' }
+    const { state } = buildHarness(makeTab({ lastResult: previousRun }))
+
+    state.submit('tab-1', 'next task')
+
+    expect(state.tabs[0].lastResult).toBeNull()
+  })
+
   it('sendMessage calls setPermissionMode with current plan mode', () => {
     // permissionMode lives on the instance (WI-002) — pass as instanceOverride
     const { state } = buildHarness(makeTab(), { permissionMode: 'plan' })

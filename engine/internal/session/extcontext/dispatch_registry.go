@@ -215,6 +215,14 @@ func (r *DispatchRegistry) SetDispatchLossRecallObserver(observer func([]Recalle
 }
 
 // NewDispatchRegistry returns an empty, ready-to-use registry.
+// SetRecallObserver receives every target and descendant before cancellation.
+// It lets the session manager persist recall intent across conversation files.
+func (r *DispatchRegistry) SetRecallObserver(observer func([]RecalledDispatch)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.recallObserver = observer
+}
+
 func NewDispatchRegistry() *DispatchRegistry {
 	utils.Debug("DispatchRegistry", "created new dispatch registry")
 	return &DispatchRegistry{

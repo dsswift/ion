@@ -4,6 +4,7 @@ import SwiftUI
 /// Presented via `.fullScreenCover` from `ConversationView`.
 struct GitPaneView: View {
     @Environment(SessionViewModel.self) private var viewModel
+    @Environment(\.appTheme) private var theme
     @Environment(\.dismiss) private var dismiss
     let tabId: String
 
@@ -43,7 +44,7 @@ struct GitPaneView: View {
                         GitChangesListView(directory: directory)
                     }
 
-                    Divider().padding(.vertical, 4)
+                    Divider().padding(.vertical, IonSpace.hairlineGap)
 
                     // Graph section
                     collapsibleSection(
@@ -102,7 +103,7 @@ struct GitPaneView: View {
                         viewModel.gitToast = nil
                     }
                     .onAppearAnimate()
-                    .padding(.top, 8)
+                    .padding(.top, IonSpace.compactGap)
                 }
             }
         }
@@ -133,7 +134,8 @@ struct GitPaneView: View {
                 if worktreeCount > 0 {
                     Text("\(worktreeCount)")
                         .font(.caption2)
-                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .padding(.horizontal, IonSpace.compactInset)
+                        .padding(.vertical, 2) // design-geometry: 2pt sub-base inset, tighter than the 4pt grid allows; off the ratio scale
                         .background(Color.accentColor.opacity(0.15), in: Capsule())
                 }
                 if staleBases + benchStale > 0 {
@@ -142,9 +144,9 @@ struct GitPaneView: View {
                         .foregroundStyle(.orange)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(Color(.secondarySystemGroupedBackground))
+            .padding(.horizontal, IonSpace.contentGap)
+            .padding(.vertical, 10) // design-geometry: 10pt gap between compactGap and contentGap; off the 4pt ratio scale
+            .background(theme.surfaceSecondary)
         }
         .buttonStyle(.plain)
         .task { viewModel.refreshWorktrees(repoPath: directory) }
@@ -181,9 +183,9 @@ struct GitPaneView: View {
 
             Spacer()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color(.secondarySystemGroupedBackground))
+        .padding(.horizontal, IonSpace.contentGap)
+        .padding(.vertical, IonSpace.compactGap)
+        .background(theme.surfaceSecondary)
     }
 
     // MARK: - Summary bar
@@ -208,8 +210,8 @@ struct GitPaneView: View {
                     }
                     Spacer()
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+                .padding(.horizontal, IonSpace.contentGap)
+                .padding(.vertical, IonSpace.compactInset)
             }
         }
     }
@@ -239,8 +241,8 @@ struct GitPaneView: View {
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, IonSpace.contentGap)
+                .padding(.vertical, IonSpace.compactGap)
             }
             .buttonStyle(.plain)
 

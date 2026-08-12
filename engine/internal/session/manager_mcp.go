@@ -139,9 +139,19 @@ func (m *Manager) ensureMcpConnections(s *engineSession, key string) {
 			}
 			s.mcpConns = append(s.mcpConns, conn)
 			m.mu.Unlock()
-			utils.LogWithFields(utils.LevelInfo, "session", "mcp server connected", map[string]any{"serverName": name, "key": key, "toolCount": len(conn.Tools())})
+			utils.LogWithFields(utils.LevelInfo, "session", "mcp server connected", map[string]any{"serverName": name, "key": key, "toolCount": len(conn.Tools()), "toolNames": mcpToolNames(conn)})
 		}
 	})
+}
+
+func mcpToolNames(conn *mcp.Connection) []string {
+	tools := conn.Tools()
+	names := make([]string, 0, len(tools))
+	for _, tool := range tools {
+		names = append(names, tool.Name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // mcpConnectionsFor returns the live MCP connections for a session key, or nil
@@ -355,7 +365,7 @@ func (m *Manager) ReconnectMcpServer(name string) int {
 
 		reconnected++
 		utils.LogWithFields(utils.LevelInfo, "session", "mcp server reconnected", map[string]any{
-			"serverName": name, "key": key, "toolCount": len(conn.Tools()), "replaced": replaced != nil,
+			"serverName": name, "key": key, "toolCount": len(conn.Tools()), "toolNames": mcpToolNames(conn), "replaced": replaced != nil,
 		})
 	}
 

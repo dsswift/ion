@@ -11,7 +11,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
     /// Minimal valid RemoteTabState JSON matching the wire format.
     private var sampleTabJSON: String {
         """
-        {"id":"t1","title":"Tab 1","customTitle":null,"status":"idle","workingDirectory":"/tmp","permissionMode":"auto","permissionQueue":[],"lastMessage":null,"contextTokens":null}
+        {"id":"t1","title":"Tab 1","customTitle":null,"status":"idle","workingDirectory":"/tmp","permissionMode":"auto","permissionQueue":[],"lastMessage":null,"contextTokens":null,"lastRunDurationMs":62007,"lastRunReason":"aborted"}
         """
     }
 
@@ -33,6 +33,8 @@ final class NormalizedEventLifecycleTests: XCTestCase {
             XCTAssertTrue(tabs[0].permissionQueue.isEmpty)
             XCTAssertNil(tabs[0].lastMessage)
             XCTAssertNil(tabs[0].contextTokens)
+            XCTAssertEqual(tabs[0].lastRunDurationMs, 62_007)
+            XCTAssertEqual(tabs[0].lastRunReason, .aborted)
         } else {
             XCTFail("Expected snapshot, got \(event)")
         }

@@ -16,6 +16,12 @@ struct SyncedThemePayload: Codable, Equatable, Sendable {
     let version: String
     /// AppTheme token key → #RRGGBBAA (or #RRGGBB / #RGB) hex string.
     let tokens: [String: String]
+    /// Built-in theme id whose token values fill every REQUIRED token this
+    /// payload omits (`required-when-partial`). nil = the payload supplies the
+    /// complete required set and inherits nothing. Resolved against the
+    /// compiled-in built-in themes by `SyncedTheme`; an unknown id falls back
+    /// to Ion Dark there, same as any other unresolvable theme id.
+    let base: String?
     /// "light" | "dark"; nil = follow the system setting.
     let preferredColorScheme: String?
     let assets: [SyncedThemeAssetDescriptor]?

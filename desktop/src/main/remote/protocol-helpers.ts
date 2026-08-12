@@ -19,7 +19,7 @@ export function normalizedToRemote(tabId: string, event: NormalizedEvent): Remot
     case 'tool_result':
       return { type: 'desktop_tool_result', tabId, toolId: event.toolId, content: event.content, isError: event.isError }
     case 'task_complete':
-      return { type: 'desktop_task_complete', tabId, result: event.result, costUsd: event.costUsd, reason: event.reason }
+      return { type: 'desktop_task_complete', tabId, result: event.result, costUsd: event.costUsd, durationMs: event.durationMs, reason: event.reason }
     case 'permission_request':
       return {
         type: 'desktop_permission_request',

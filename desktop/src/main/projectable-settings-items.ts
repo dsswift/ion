@@ -3,7 +3,7 @@
  *
  * The `PROJECTABLE_SETTINGS` allowlist supports a `'list'` type whose value
  * is an array of objects. Each list entry declares an `itemSchema` —
- * itself an array of `ProjectableSetting`-shaped descriptors — so iOS can
+ * itself an array of `ProjectableItemField` descriptors — so iOS can
  * render a per-record editor without hardcoding the record shape.
  *
  * The two list-typed settings today are `quickTools` (custom shell-command
@@ -15,11 +15,11 @@
  * These itemSchemas are imported back into `projectable-settings.ts`
  * rather than declared inline because the parent file would otherwise
  * blow past the 800-line Go / 600-line TS cap. The split is purely
- * mechanical — every entry below is structurally a `ProjectableSetting`
+ * mechanical — every entry below is structurally a `ProjectableItemField`
  * and would type-check identically if pasted into the main array.
  */
 
-import type { ProjectableSetting } from './projectable-settings-types'
+import type { ProjectableItemField } from './projectable-settings-types'
 
 /**
  * Per-field metadata for one QuickTool record. Mirrors the runtime shape
@@ -33,7 +33,7 @@ import type { ProjectableSetting } from './projectable-settings-types'
  * with `_` (internal convention) once we add that flag, or hardcode the
  * `id` skip until then.
  */
-export const QUICK_TOOL_ITEM_SCHEMA: ProjectableSetting[] = [
+export const QUICK_TOOL_ITEM_SCHEMA: ProjectableItemField[] = [
   {
     key: 'id',
     type: 'string',
@@ -55,7 +55,8 @@ export const QUICK_TOOL_ITEM_SCHEMA: ProjectableSetting[] = [
     type: 'string',
     group: 'quicktools',
     label: 'Icon',
-    description: 'Phosphor icon name, e.g. "GitMerge". Falls back to "Lightning" if unknown.',
+    description:
+      'Phosphor icon name, e.g. "GitMerge". Falls back to "Lightning" if unknown.',
     defaultValue: 'Lightning',
   },
   {
@@ -63,7 +64,8 @@ export const QUICK_TOOL_ITEM_SCHEMA: ProjectableSetting[] = [
     type: 'string',
     group: 'quicktools',
     label: 'Command',
-    description: 'Shell command to run. Supports {cwd} and {branch} placeholders.',
+    description:
+      'Shell command to run. Supports {cwd} and {branch} placeholders.',
     defaultValue: '',
   },
 ]
@@ -85,7 +87,7 @@ export const QUICK_TOOL_ITEM_SCHEMA: ProjectableSetting[] = [
  * edits — without the schema entries, the desktop would receive
  * partially-populated records missing required fields.
  */
-export const TAB_GROUP_ITEM_SCHEMA: ProjectableSetting[] = [
+export const TAB_GROUP_ITEM_SCHEMA: ProjectableItemField[] = [
   {
     key: 'id',
     type: 'string',
@@ -107,7 +109,8 @@ export const TAB_GROUP_ITEM_SCHEMA: ProjectableSetting[] = [
     type: 'boolean',
     group: 'tabs',
     label: 'Default Group',
-    description: 'New tabs are assigned to this group when no other group rule matches.',
+    description:
+      'New tabs are assigned to this group when no other group rule matches.',
     defaultValue: false,
   },
   {
@@ -123,7 +126,8 @@ export const TAB_GROUP_ITEM_SCHEMA: ProjectableSetting[] = [
     type: 'boolean',
     group: 'tabs',
     label: 'Collapsed',
-    description: 'Whether the group renders as a single collapsed pill on the desktop.',
+    description:
+      'Whether the group renders as a single collapsed pill on the desktop.',
     defaultValue: true,
   },
 ]

@@ -310,6 +310,10 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
     ? liveTurns
     : (typeof t.lastResult?.conversationTurns === 'number' ? t.lastResult.conversationTurns : undefined)
   const usage = t.lastResult?.usage
+  const lastRunDurationMs = typeof t.lastResult?.durationMs === 'number'
+    ? t.lastResult.durationMs
+    : undefined
+  const lastRunReason = t.lastResult?.reason
 
   // Per-conversation extended-thinking effort from the active instance.
   // Omitted when 'off'/absent so the iOS control defaults to off.
@@ -373,6 +377,8 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
     runCostUsd,
     conversationCostUsd: typeof sf?.conversationCostUsd === 'number' ? sf.conversationCostUsd : undefined,
     conversationTurns,
+    lastRunDurationMs,
+    lastRunReason,
     inputTokens: typeof usage?.input_tokens === 'number' ? usage.input_tokens : undefined,
     outputTokens: typeof usage?.output_tokens === 'number' ? usage.output_tokens : undefined,
     cacheReadTokens: typeof usage?.cache_read_input_tokens === 'number' ? usage.cache_read_input_tokens : undefined,

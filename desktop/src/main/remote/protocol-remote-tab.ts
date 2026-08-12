@@ -68,6 +68,10 @@ export interface RemoteTabState {
    * that have never had a run report it.
    */
   conversationTurns?: number
+  /** Latest completed run duration, in milliseconds. */
+  lastRunDurationMs?: number
+  /** Terminal reason for latest completed run. */
+  lastRunReason?: import('../../shared/types-events').TaskCompletionReason | (string & {})
   /**
    * @deprecated Use runCostUsd. Kept for lockstep iOS wire compatibility
    * until the iOS side migrates to runCostUsd. Both fields are projected in

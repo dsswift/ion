@@ -32,8 +32,8 @@ import (
 //     steered message appears in the 3rd-tier conversation
 //   - Root-to-2nd steer: the root steers a 2nd-tier dispatch
 //   - Root-to-2nd follow-up: the root sends a follow-up to a 2nd-tier dispatch
-//   - Depth cap: a depth-2 agent attempting a 4th-tier dispatch is blocked
-//     with ErrDispatchDepthExceeded and no dispatch_start event
+//   - Depth cap: a depth-2 agent attempting a 4th-tier dispatch receives a
+//     structured depth-cap result and emits no dispatch_start event
 //   - Parallel isolation: two parallel 3rd-tier dispatches have isolated
 //     output, each retrievable by dispatchId
 //   - Steer-to-finished: steer to a completed dispatch returns not_found
@@ -680,19 +680,30 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 		})
 
 		// Attempt to dispatch a 4th-tier agent. DefaultMaxDispatchDepth=3,
-		// so childDepth=3 >= cap=3, blocked.
-		_, err := tier3Ctx.DispatchAgent(extension.DispatchAgentOpts{
+		// so childDepth=3 >= cap=3. A cap rejection is a structured result,
+		// not an RPC error: caller work remains intact and can inspect the
+		// remaining depth budget without handling an exceptional transport path.
+		result, err := tier3Ctx.DispatchAgent(extension.DispatchAgentOpts{
 			Name: "tier4-blocked", Task: "Task-T4", Model: "mock-model",
 			MaxTurns: 1, Background: true,
 			OnComplete: func(_ extension.DispatchAgentResult) {
 				t.Error("4th-tier dispatch should have been blocked")
 			},
 		})
-		if err == nil {
-			t.Fatal("expected ErrDispatchDepthExceeded, got nil")
+		if err != nil {
+			t.Fatalf("expected structured depth-cap result, got error: %v", err)
 		}
-		if !strings.Contains(err.Error(), "dispatch depth exceeded") {
-			t.Errorf("error=%q, want dispatch depth exceeded", err.Error())
+		if result == nil || !result.DepthCapExceeded {
+			t.Fatalf("expected DepthCapExceeded=true, got %+v", result)
+		}
+		if result.RemainingDepthBudget != 0 {
+			t.Errorf("RemainingDepthBudget = %d, want 0", result.RemainingDepthBudget)
+		}
+		if result.ExitCode == 0 {
+			t.Error("ExitCode = 0, want non-zero for blocked dispatch")
+		}
+		if !strings.Contains(result.Output, "was not launched") || !strings.Contains(result.Output, "caller work is intact") {
+			t.Errorf("Output = %q, want depth-cap rejection message", result.Output)
 		}
 
 		// Verify no dispatch_start event was emitted for the blocked dispatch.

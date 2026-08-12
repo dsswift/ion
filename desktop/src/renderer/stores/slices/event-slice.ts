@@ -158,6 +158,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                 const isTerminal = updated.status === 'failed' || updated.status === 'dead' || updated.status === 'completed'
                 if (isTerminal) break
                 updated.status = 'running'
+                updated.lastResult = null
                 updated.currentActivity = 'Thinking...'
                 instPatch.permissionDenied = null
                 instTouched = true

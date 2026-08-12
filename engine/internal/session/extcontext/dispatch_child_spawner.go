@@ -34,8 +34,8 @@ import (
 //
 // Depth enforcement: the returned spawner creates grandchildren at
 // childDepth+1. The depth guard inside BuildDispatchAgentFunc (dispatch_agent.go
-// line 64-71) enforces maxDispatchDepth, so a depth-2 agent's 4th-tier
-// dispatch still returns ErrDispatchDepthExceeded.
+// line 37-45) enforces maxDispatchDepth, so a depth-2 agent's 4th-tier
+// dispatch returns a structured depth-cap result without launching a child.
 func BuildChildAgentSpawner(
 	sa SessionAccessor,
 	registry *DispatchRegistry,

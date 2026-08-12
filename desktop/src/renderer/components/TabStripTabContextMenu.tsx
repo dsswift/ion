@@ -83,6 +83,14 @@ export function TabContextMenu({
   const [newGroupName, setNewGroupName] = useState('')
   const newGroupInputRef = useRef<HTMLInputElement>(null)
   const [pendingMoveAll, setPendingMoveAll] = useState<{ groupId: string; label: string } | null>(null)
+  const closeMoveSubmenus = useCallback(() => {
+    setMoveSubmenu(null)
+    setMoveParentRect(null)
+    setMovePinSubmenu(null)
+    setMovePinParentRect(null)
+    setMoveAllSubmenu(null)
+    setMoveAllParentRect(null)
+  }, [])
 
   const showMoveAll = groupTabs && groupTabs.length > 1
   // Visibility, enablement, and label for the convert row. Both refusal
@@ -96,8 +104,9 @@ export function TabContextMenu({
   // Confirm dialogs are exempted structurally by the hook (via
   // `[data-ion-confirm]`), so this menu no longer threads a ref for them.
   const dismiss = useCallback(() => {
-    setMoveSubmenu(null); setMovePinSubmenu(null); setMoveAllSubmenu(null); onClose()
-  }, [onClose])
+    closeMoveSubmenus()
+    onClose()
+  }, [closeMoveSubmenus, onClose])
   useOutsideDismiss([ref, submenuRef, movePinSubmenuRef, moveAllSubmenuRef], dismiss)
 
   // Position the outer menu so it never falls off-screen. The hook
@@ -137,6 +146,9 @@ export function TabContextMenu({
     <>
       <motion.div
         ref={(node) => { (ref as React.MutableRefObject<HTMLDivElement | null>).current = node; pos.ref(node) }}
+        onMouseOver={(e) => {
+          if (!(e.target as HTMLElement).closest('[data-ion-submenu-trigger]')) closeMoveSubmenus()
+        }}
         data-ion-ui
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -214,6 +226,7 @@ export function TabContextMenu({
           </ContextMenuItem>
           <ContextMenuItem
             ref={moveItemRef}
+            submenuTrigger
             onHoverStart={() => {
               setMoveAllSubmenu(null)
               setMoveAllParentRect(null)
@@ -247,6 +260,7 @@ export function TabContextMenu({
           */}
           <ContextMenuItem
             ref={movePinItemRef}
+            submenuTrigger
             onHoverStart={() => {
               setMoveAllSubmenu(null)
               setMoveAllParentRect(null)
@@ -275,6 +289,7 @@ export function TabContextMenu({
       {showMoveAll && tabGroupMode === 'manual' && (
         <ContextMenuItem
           ref={moveAllItemRef}
+          submenuTrigger
           onHoverStart={() => {
             setMoveSubmenu(null)
             setMoveParentRect(null)
@@ -304,9 +319,11 @@ export function TabContextMenu({
           anchor={moveSubmenu}
           tabId={tab.id}
           currentGroupId={tab.groupId || ''}
+          triggerRef={moveItemRef}
           containerRef={submenuRef}
           parentRect={moveParentRect ?? undefined}
-          onClose={() => { setMoveSubmenu(null); setMoveParentRect(null); onClose() }}
+          onClose={() => { setMoveSubmenu(null); setMoveParentRect(null) }}
+          onSelect={dismiss}
         />
       )}
       {/*
@@ -320,10 +337,12 @@ export function TabContextMenu({
           anchor={movePinSubmenu}
           tabId={tab.id}
           currentGroupId={tab.groupId || ''}
+          triggerRef={movePinItemRef}
           containerRef={movePinSubmenuRef}
           parentRect={movePinParentRect ?? undefined}
           pinAfter
-          onClose={() => { setMovePinSubmenu(null); setMovePinParentRect(null); onClose() }}
+          onClose={() => { setMovePinSubmenu(null); setMovePinParentRect(null) }}
+          onSelect={dismiss}
         />
       )}
       {moveAllSubmenu && showMoveAll && popoverLayer && (

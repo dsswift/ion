@@ -300,6 +300,8 @@ export async function pollRendererTabStates(): Promise<RemoteTabStatesPayload> {
                 if (live !== undefined) return live;
                 return t.lastResult && typeof t.lastResult.conversationTurns === 'number' ? t.lastResult.conversationTurns : undefined;
               })(),
+              lastRunDurationMs: t.lastResult && typeof t.lastResult.durationMs === 'number' ? t.lastResult.durationMs : undefined,
+              lastRunReason: t.lastResult && typeof t.lastResult.reason === 'string' ? t.lastResult.reason : undefined,
               inputTokens: (t.lastResult && t.lastResult.usage && typeof t.lastResult.usage.input_tokens === 'number') ? t.lastResult.usage.input_tokens : undefined,
               outputTokens: (t.lastResult && t.lastResult.usage && typeof t.lastResult.usage.output_tokens === 'number') ? t.lastResult.usage.output_tokens : undefined,
               cacheReadTokens: (t.lastResult && t.lastResult.usage && typeof t.lastResult.usage.cache_read_input_tokens === 'number') ? t.lastResult.usage.cache_read_input_tokens : undefined,

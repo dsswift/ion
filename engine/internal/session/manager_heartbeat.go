@@ -234,14 +234,15 @@ func (m *Manager) emitStatusSnapshot(key, reason string) {
 // command; callers that only need status freshness use this.
 //
 // Returns silently when no session exists for the key, matching the
-// behavior of ReconcileState. A Warn log fires so an out-of-sync
-// caller is visible in the engine log.
+// behavior of ReconcileState. This is expected during desktop reconnect, where
+// status polling can arrive before the engine has re-registered every key, so
+// the miss is DEBUG rather than an actionable warning.
 func (m *Manager) QuerySessionStatus(key string) {
 	m.mu.RLock()
 	_, ok := m.sessions[key]
 	m.mu.RUnlock()
 	if !ok {
-		utils.LogWithFields(utils.LevelWarn, "session", "querysessionstatus: session not found", map[string]any{"key": key})
+		utils.LogWithFields(utils.LevelDebug, "session", "querysessionstatus: session not found", map[string]any{"key": key})
 		return
 	}
 	m.emitStatusSnapshot(key, "query")

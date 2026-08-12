@@ -24,10 +24,10 @@ export function badgeKindOf(toolName: string | null | undefined): BadgeKind | nu
 
 /** Chip colors per kind (drawn procedurally; readable on any floor). */
 export const BADGE_COLORS: Record<BadgeKind, string> = {
-  terminal: '#1f2937',
-  search: '#1e3a5f',
-  edit: '#3b2f1e',
-  web: '#1e3a2f',
-  task: '#3a1e3a',
-  generic: '#2a2a2e',
+  terminal: '#1f2937', // hardcoded-ok: ATV canvas palette is theme-pack-driven, not app-theme-driven
+  search: '#1e3a5f', // hardcoded-ok: ATV canvas palette is theme-pack-driven, not app-theme-driven
+  edit: '#3b2f1e', // hardcoded-ok: ATV canvas palette is theme-pack-driven, not app-theme-driven
+  web: '#1e3a2f', // hardcoded-ok: ATV canvas palette is theme-pack-driven, not app-theme-driven
+  task: '#3a1e3a', // hardcoded-ok: ATV canvas palette is theme-pack-driven, not app-theme-driven
+  generic: '#2a2a2e', // hardcoded-ok: ATV canvas palette is theme-pack-driven, not app-theme-driven
 }

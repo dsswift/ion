@@ -207,9 +207,9 @@ struct ModelPickerSheet: View {
 
     private func badge(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 9, weight: .medium))
-            .padding(.horizontal, 4)
-            .padding(.vertical, 1)
+            .ionType(.microLabel)
+            .padding(.horizontal, IonSpace.hairlineGap)
+            .padding(.vertical, 1) // design-geometry: sub-hairline 1pt inset; below the 4pt rhythm floor
             .background(Capsule().fill(Color(.tertiarySystemFill)))
             .foregroundStyle(.secondary)
     }

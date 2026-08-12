@@ -10,14 +10,14 @@ import SwiftUI
 extension ConversationView {
 
     enum GroupedItem: Identifiable {
-        case single(Message)
+        case single(Message, followsUser: Bool)
         case toolGroup([Message])
         case compaction(Message)
         case thinking(Message)
         case agentTurn(tools: [Message], assistantMessages: [Message], isActive: Bool, thinking: Message?)
         var id: String {
             switch self {
-            case .single(let msg): return msg.id
+            case .single(let msg, _): return msg.id
             case .toolGroup(let msgs): return "tg-\(msgs.first?.id ?? "")"
             case .compaction(let msg): return "cp-\(msg.id)"
             case .thinking(let msg): return "th-\(msg.id)"

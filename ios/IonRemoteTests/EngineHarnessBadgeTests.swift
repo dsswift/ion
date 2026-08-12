@@ -129,24 +129,48 @@ final class EngineHarnessBadgeTests: XCTestCase {
 
     // MARK: - Data-driven gate (#256 follow-up)
 
-    /// The harness badge must render iff a harness/extension NAME is present
-    /// (DATA), not iff the `tab.hasEngineExtension` tab-type boolean is set.
-    /// `harnessBadgeLabel` is private, so this pins the contract at the source
-    /// seam (mirroring MergedConversationViewTests' source guards).
-    func testHarnessBadgeGateIsDataDrivenNotTabTypeFlag() throws {
+    /// The #256 follow-up contract was: resolve the harness label from the
+    /// PROFILE-ID DATA, never from the `tab.hasEngineExtension` tab-type flag.
+    ///
+    /// This used to pin three source strings inside `TabRowView` (the
+    /// `harnessBadgeLabel` resolver and its `if harnessBadgeLabel != nil` render
+    /// site). The restraint pass removed the badge from the iOS tab row — the
+    /// row now carries a title and one subtitle line — so those strings are
+    /// gone and pinning them would assert a render site that no longer exists.
+    ///
+    /// The contract itself is unchanged and still live on the desktop, which
+    /// renders the badge via the same `abbreviateProfileName` rules
+    /// (`TabStripDropdownTabRow.tsx:89`, `TabStripGroupPill.tsx:69`). What is
+    /// portable and worth pinning on iOS is the resolver's BEHAVIOR: an absent
+    /// or unresolved profile name yields the "EXT" fallback rather than an
+    /// empty label or a crash, which is what let the desktop drop the tab-type
+    /// branch. The rule tests above cover the abbreviation itself; this pins
+    /// the two fallback paths the data-driven gate depends on.
+    func testUnresolvedProfileNameFallsBackToEXT() {
+        // A tab carrying a profile id whose profile is not in the list (deleted
+        // upstream, or profiles not yet synced) resolves to the sentinel, not
+        // to an empty string — the case the tab-type flag used to hide.
+        XCTAssertEqual(abbreviateProfileName(nil), "EXT")
+        XCTAssertEqual(abbreviateProfileName(""), "EXT")
+        XCTAssertEqual(abbreviateProfileName("   "), "EXT")
+    }
+
+    /// The iOS tab row must not regrow the badge: it was removed deliberately
+    /// in the restraint pass, and re-adding it would put a third register back
+    /// into a row that is now title + one subtitle line.
+    func testTabRowDoesNotRenderTheHarnessBadge() throws {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("IonRemote/Views/TabRowView.swift")
         let src = try String(contentsOf: url, encoding: .utf8)
-        // The label resolver must key off the profile-id DATA…
-        XCTAssertTrue(src.contains("guard let pid = tab.engineProfileId else { return nil }"),
-            "harnessBadgeLabel must gate on the engineProfileId data presence, not the tab-type flag")
-        // …and must NOT gate the label on the hasEngineExtension boolean.
-        XCTAssertFalse(src.contains("guard tab.hasEngineExtension == true else { return nil }"),
-            "harnessBadgeLabel must not be gated on the hasEngineExtension tab-type boolean (#256 follow-up)")
-        // The render site uses label presence (data), not the tab-type flag.
-        XCTAssertTrue(src.contains("if harnessBadgeLabel != nil {"),
-            "The badge render site must gate on harnessBadgeLabel != nil (data), not tab.hasEngineExtension")
+        XCTAssertFalse(
+            src.contains("harnessBadge"),
+            """
+            The harness badge was removed from the iOS tab row in the restraint \
+            pass. The desktop still renders it (TabStripDropdownTabRow.tsx, \
+            TabStripGroupPill.tsx); iOS shows title + one subtitle line.
+            """
+        )
     }
 }

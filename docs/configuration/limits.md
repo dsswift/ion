@@ -179,3 +179,19 @@ Resource limits (turns, budget) control *how much* work a session does. Timeouts
 Tool execution timeouts, MCP call timeouts, extension RPC timeouts, and other operational timeouts are configured via the `timeouts` block in `engine.json`. See [engine.json Reference — timeouts](engine-json.md#timeouts) for the full field reference.
 
 For CLI prompts, the `--timeout` flag sets a wall-clock deadline for the entire prompt execution. See [CLI Reference](../cli/reference.md#ion-prompt) for details.
+
+## Plan-mode MCP tool allowlist
+
+`planModeAllowedMcpTools` grants named MCP tools during plan mode. It uses the
+same layered union and enterprise ceiling as the Bash allowlist, but matches
+MCP names at the `__` boundary. `"mcp__mobbin"` permits tools from the Mobbin
+server; `"mcp__mobbin__search_screens"` permits only that tool. A prefix never
+matches a differently named server such as `mcp__mobbin_internal__delete`.
+
+```jsonc
+{ "limits": { "planModeAllowedMcpTools": ["mcp__mobbin__search_screens"] } }
+```
+
+Absent or empty blocks MCP tools in plan mode. An enterprise ceiling may narrow
+this list; lower configuration cannot generalize a tool-specific ceiling into a
+server-wide grant.

@@ -10,7 +10,8 @@ struct ActivityIndicatorView: View {
     private let dotSize: CGFloat = 5 // matches desktop 4×4px dots (bumped to 5 for mobile)
     // Terracotta orange — the shared `statusRunning` value across Ion Dark,
     // Ion Light, and Ion Classic (see TabStatusRollup.runningOrange).
-    private let defaultDotColor = TabStatusRollup.runningOrange
+    @Environment(\.appTheme) private var theme
+    private var defaultDotColor: Color { theme.statusRunning }
 
     private var dotColor: Color { dotColorOverride ?? defaultDotColor }
 
@@ -26,11 +27,11 @@ struct ActivityIndicatorView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, IonSpace.contentGap)
+        .padding(.vertical, IonSpace.compactInset)
         .background(Capsule().fill(Color(.tertiarySystemFill)))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, IonSpace.rowInset)
     }
 }
 

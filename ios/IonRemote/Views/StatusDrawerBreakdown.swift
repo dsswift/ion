@@ -119,7 +119,7 @@ struct ProportionGraphView: View {
                 }
             }
             .frame(height: 8)
-            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .clipShape(RoundedRectangle(cornerRadius: 4)) // design-geometry: rounding on an 8pt-tall gauge bar; control radius would bloat a sub-control element
 
             // Legend dots.
             FlowLegend(segments: segments, showFree: freePct > 0.5)
@@ -143,7 +143,7 @@ private struct FlowLegend: View {
                         .fill(BreakdownKind.color(seg.kind))
                         .frame(width: 6, height: 6)
                     Text(BreakdownKind.label(seg.kind))
-                        .font(.system(size: 9))
+                        .font(.system(size: 9)) // design-type: token-breakdown legend below the microLabel floor; enlarging breaks the compact instrument panel
                         .foregroundStyle(theme.textSecondary)
                 }
             }
@@ -153,7 +153,7 @@ private struct FlowLegend: View {
                         .fill(theme.textSecondary.opacity(0.2))
                         .frame(width: 6, height: 6)
                     Text("Free")
-                        .font(.system(size: 9))
+                        .font(.system(size: 9)) // design-type: token-breakdown legend below the microLabel floor; enlarging breaks the compact instrument panel
                         .foregroundStyle(theme.textSecondary.opacity(0.7))
                 }
             }
@@ -186,7 +186,7 @@ struct BreakdownCategoryRow: View {
         HStack(spacing: 4) {
             if indent {
                 Text("↳")
-                    .font(.system(size: 9))
+                    .font(.system(size: 9)) // design-type: tree-indent glyph aligned to a 9pt instrument row
                     .foregroundStyle(theme.textSecondary.opacity(0.5))
             }
             Text(label)
@@ -232,12 +232,12 @@ private struct TierBadge: View {
 
     var body: some View {
         Text(label)
-            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+            .font(.system(size: 9, weight: .semibold, design: .monospaced)) // design-type: monospaced pill label below the microLabel floor in the compact instrument panel
             .foregroundStyle(.white)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 1)
+            .padding(.horizontal, IonSpace.hairlineGap)
+            .padding(.vertical, 1) // design-geometry: sub-hairline 1pt inset; below the 4pt rhythm floor
             .background(badgeColor)
-            .clipShape(RoundedRectangle(cornerRadius: 3))
+            .clipShape(RoundedRectangle(cornerRadius: 3)) // design-geometry: micro-pill in the compact instrument panel; control radius would bloat a sub-control element
     }
 }
 
@@ -265,8 +265,8 @@ extension StatusDrawerView {
                 sectionHeader("Context Breakdown")
                 ProportionGraphView(segments: segments, contextWindow: window)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
+            .padding(.horizontal, IonSpace.rowInset)
+            .padding(.top, IonSpace.compactGap)
 
             // Scrollable rows.
             ScrollView {
@@ -277,7 +277,7 @@ extension StatusDrawerView {
 
                     // Unaccounted row (pre-total).
                     if let unaccounted = bd.unaccounted, unaccounted != 0 {
-                        Divider().background(theme.textSecondary.opacity(0.15)).padding(.top, 2)
+                        Divider().background(theme.textSecondary.opacity(0.15)).padding(.top, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
                         HStack {
                             Text("unaccounted")
                                 .font(.caption)
@@ -298,7 +298,7 @@ extension StatusDrawerView {
                     // that the headline figure above was fixed to avoid. The
                     // `unaccounted` row directly above carries its drift from
                     // the provider's reported total.
-                    Divider().background(theme.textSecondary.opacity(0.15)).padding(.top, 2)
+                    Divider().background(theme.textSecondary.opacity(0.15)).padding(.top, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
                     HStack {
                         Text("total")
                             .font(.caption.weight(.semibold))
@@ -316,8 +316,8 @@ extension StatusDrawerView {
                         cacheAnnotation(read: cacheRead, written: cacheWritten)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.horizontal, IonSpace.rowInset)
+                .padding(.vertical, IonSpace.compactGap)
             }
             .frame(minHeight: 0)
         }
@@ -331,15 +331,15 @@ extension StatusDrawerView {
                     .fill(BreakdownKind.color(group.kind))
                     .frame(width: 6, height: 6)
                 Text(BreakdownKind.label(group.kind).uppercased())
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.system(size: 9, weight: .semibold)) // design-type: uppercased tracked group header below the microLabel floor in the compact instrument panel
                     .tracking(0.8)
                     .foregroundStyle(theme.textSecondary)
                 Text(group.total.formatted())
-                    .font(.system(size: 9).monospacedDigit())
+                    .font(.system(size: 9).monospacedDigit()) // design-type: monospacedDigit counter aligned to the 9pt instrument row
                     .foregroundStyle(theme.textSecondary.opacity(0.7))
                 Spacer()
             }
-            .padding(.top, 4)
+            .padding(.top, IonSpace.hairlineGap)
 
             // Category rows (indented sub-rows when >1 in the bucket).
             ForEach(Array(group.categories.enumerated()), id: \.offset) { _, cat in
@@ -355,35 +355,35 @@ extension StatusDrawerView {
     private func cacheAnnotation(read: Int, written: Int) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("of which, cached")
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 9, weight: .semibold)) // design-type: cache annotation header below the microLabel floor in the compact instrument panel
                 .foregroundStyle(theme.accent)
             if read > 0 {
                 HStack {
                     Text("served (read)")
-                        .font(.system(size: 9))
+                        .font(.system(size: 9)) // design-type: cache annotation label below the microLabel floor in the compact instrument panel
                         .foregroundStyle(theme.textSecondary)
                     Spacer()
                     Text(read.formatted())
-                        .font(.system(size: 9).monospacedDigit())
+                        .font(.system(size: 9).monospacedDigit()) // design-type: monospacedDigit counter aligned to the 9pt instrument row
                         .foregroundStyle(theme.textSecondary)
                 }
             }
             if written > 0 {
                 HStack {
                     Text("written")
-                        .font(.system(size: 9))
+                        .font(.system(size: 9)) // design-type: cache annotation label below the microLabel floor in the compact instrument panel
                         .foregroundStyle(theme.textSecondary)
                     Spacer()
                     Text(written.formatted())
-                        .font(.system(size: 9).monospacedDigit())
+                        .font(.system(size: 9).monospacedDigit()) // design-type: monospacedDigit counter aligned to the 9pt instrument row
                         .foregroundStyle(theme.textSecondary)
                 }
             }
         }
-        .padding(6)
+        .padding(IonSpace.compactInset)
         .background(theme.accent.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: 4))
-        .padding(.top, 4)
+        .clipShape(RoundedRectangle(cornerRadius: 4)) // design-geometry: compact annotation well in the instrument panel; control radius would bloat a sub-control element
+        .padding(.top, IonSpace.hairlineGap)
     }
 }
 

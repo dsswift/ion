@@ -19,11 +19,13 @@ struct RemoteModelEntry: Codable, Sendable, Identifiable, Equatable {
     var providerLabel: String?
     /// Reasoning mechanism the model uses ("adaptive" | "budget" |
     /// "reasoning_effort" | "gemini" | "none"). Used with thinkingEfforts to
-    /// show/gray the per-conversation thinking control. Optional for
-    /// back-compat with older desktop snapshots.
+    /// resolve the per-conversation thinking control's rendering: "adaptive"
+    /// means the model always thinks and cannot be turned off, so its "off" row
+    /// reads "Adaptive". Optional for back-compat with older desktop snapshots.
     var thinkingMode: String?
     /// Effort levels the model accepts (e.g. ["low","medium","high"]).
-    /// Empty/absent ⇒ thinking control hidden for this model.
+    /// Empty/absent ⇒ no override levels to offer, so the thinking control
+    /// renders DISABLED for this model — never hidden.
     var thinkingEfforts: [String]?
     /// API shape this model uses. nil / absent means "chat" (standard
     /// conversational API). "image" means a dedicated image-generation API

@@ -6,6 +6,7 @@ struct GitDiffView: View {
     let fileName: String
     let diff: String
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.appTheme) private var theme
 
     var body: some View {
         NavigationStack {
@@ -14,7 +15,7 @@ struct GitDiffView: View {
                     if diffLines.isEmpty {
                         Text("No changes")
                             .foregroundStyle(.secondary)
-                            .padding(.top, 40)
+                            .padding(.top, 40) // design-geometry: 40pt inset beyond screenInset; off the 4pt ratio scale
                             .frame(width: geo.size.width)
                     } else {
                         LazyVStack(spacing: 0) {
@@ -23,7 +24,7 @@ struct GitDiffView: View {
                             }
                         }
                         .frame(minWidth: geo.size.width, alignment: .leading)
-                        .padding(.bottom, 20)
+                        .padding(.bottom, 20) // design-geometry: 20pt gap between rowInset and sectionGap; off the 4pt ratio scale
                     }
                 }
             }
@@ -66,41 +67,41 @@ struct GitDiffView: View {
     private func diffLineRow(_ line: DiffLine) -> some View {
         if line.type == .hunk {
             Text(line.content)
-                .font(.system(size: 11, design: .monospaced))
+                .font(.system(size: 11, design: .monospaced)) // design-type: column-aligned diff grid; row pins line numbers to 36pt and must stay baseline-aligned at a uniform size
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+                .padding(.horizontal, IonSpace.compactGap)
+                .padding(.vertical, IonSpace.hairlineGap)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color(.tertiarySystemFill))
         } else {
             HStack(spacing: 0) {
                 // Old line number
                 Text(line.oldLine.map { String($0) } ?? "")
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.system(size: 10, design: .monospaced)) // design-type: fixed 36pt line-number column in a coupled diff grid
                     .foregroundStyle(.tertiary)
                     .frame(width: 36, alignment: .trailing)
-                    .padding(.trailing, 4)
+                    .padding(.trailing, IonSpace.hairlineGap)
 
                 // New line number
                 Text(line.newLine.map { String($0) } ?? "")
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.system(size: 10, design: .monospaced)) // design-type: fixed 36pt line-number column in a coupled diff grid
                     .foregroundStyle(.tertiary)
                     .frame(width: 36, alignment: .trailing)
-                    .padding(.trailing, 4)
+                    .padding(.trailing, IonSpace.hairlineGap)
 
                 // Prefix character
                 Text(line.type == .add ? "+" : line.type == .remove ? "-" : " ")
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.system(size: 11, design: .monospaced)) // design-type: diff prefix glyph aligned with content row at a uniform size
                     .foregroundStyle(lineColor(line.type))
 
                 // Content
                 Text(line.content)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.system(size: 11, design: .monospaced)) // design-type: column-aligned diff grid; content row must stay baseline-aligned with the fixed 36pt number columns
                     .foregroundStyle(lineColor(line.type))
                     .textSelection(.enabled)
             }
-            .padding(.horizontal, 4)
-            .padding(.vertical, 1)
+            .padding(.horizontal, IonSpace.hairlineGap)
+            .padding(.vertical, 1) // design-geometry: sub-hairline 1pt inset; below the 4pt rhythm floor
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(lineBackground(line.type))
         }
@@ -108,16 +109,16 @@ struct GitDiffView: View {
 
     private func lineColor(_ type: DiffLineType) -> Color {
         switch type {
-        case .add: return .green
-        case .remove: return .red
+        case .add: return theme.statusDone
+        case .remove: return theme.statusError
         case .context, .hunk: return .secondary
         }
     }
 
     private func lineBackground(_ type: DiffLineType) -> Color {
         switch type {
-        case .add: return Color.green.opacity(0.1)
-        case .remove: return Color.red.opacity(0.1)
+        case .add: return theme.statusDone.opacity(0.1)
+        case .remove: return theme.statusError.opacity(0.1)
         case .context, .hunk: return .clear
         }
     }

@@ -193,7 +193,7 @@ CI: `.github/workflows/build.yml` (release), `.github/workflows/quality.yml` (pe
 
 ### Heavy gates — never run during development
 
-The following gates are **slow** — Docker container spin-up, full-network vulnerability scan, full multi-package race runs, full iOS build. **Never run them during normal development.** Re-running them mid-session burns wall-clock and tokens for no added safety, because they run once, authoritatively, at PR time.
+The following gates are **slow** — Docker container spin-up, full-network vulnerability scan, full multi-package race runs, full iOS simulator suite. **Never run them during normal development.** Re-running them mid-session burns wall-clock and tokens for no added safety. Required PR checks run once through `/create-pr`; the full iOS simulator suite runs nightly or by manual dispatch.
 
 | Heavy gate | Command |
 |------------|---------|
@@ -204,9 +204,10 @@ The following gates are **slow** — Docker container spin-up, full-network vuln
 | Relay tests + race | `cd relay && go test -race ./...` |
 | Desktop audit | `cd desktop && npm audit --audit-level=high --omit=dev` |
 | Full desktop suite | `cd desktop && npm test` |
-| iOS build | `make ios-check` |
+| iOS PR parity | `make ios-pr-check` — required before push when touching iOS, iOS test runner, `Makefile`, or `quality.yml`; compiles device target plus targeted simulator contract/parity suites |
+| Full iOS simulator suite | `make ios-test` — scheduled/manual CI only |
 
-**The heavy gates run at PR time, not during development.** CI (`quality.yml`) is the authoritative gate: it runs the full set above — race suites, integration, `govulncheck`, `npm audit`, iOS build — on **every PR**, on `ubuntu-latest`. Locally, `/create-pr` runs the **Linux parity** subset (`make test-linux`, which executes the engine unit + integration race suites and the desktop lint, typecheck, and test steps inside Linux containers) **once**, right before pushing, to catch Linux-only failures before they burn Actions minutes on a red build. The only times the agent runs a heavy gate are (a) when `/create-pr` explicitly instructs it to, or (b) when the user explicitly asks for it (e.g. to reproduce a known Linux-only failure). Outside those two cases, the heavy gates are off-limits during development — CI is what proves them green on the PR.
+**Required PR gates run before push, not as build feedback after it.** `/create-pr` runs the Linux parity subset (`make test-linux`) plus `make ios-pr-check` when iOS or its gate paths changed, so the pushed branch has already passed the matching required CI behavior. CI confirms that known-good commit on hosted runners and protects merge. The full iOS simulator suite runs nightly or by manual dispatch because cold hosted simulators consume roughly fifteen minutes. The only times the agent runs a heavy gate are (a) when `/create-pr` explicitly instructs it to, or (b) when the user explicitly asks for it. Outside those cases, heavy gates are off-limits during development.
 
 > **Why `/create-pr` runs `make test-linux`.** Local validation runs on macOS; the blocking CI gates run on `ubuntu-latest`. `go test -race ./...` plus `go test -race -tags integration ./tests/integration/...` (the `engine-test` job), `npm run lint` (the `desktop-lint` job), and `npm test` (the `desktop-test` job) all run on Linux in CI, so a macOS-only pass is **not** sufficient — OS-sensitive failures (path semantics, file-watcher timing, locale, goroutine starvation under the Linux race detector, eager `require('electron')` under `npm ci --ignore-scripts`) slip through. `make test-linux` runs the same commands CI runs, in Linux containers, so those failures surface before the PR instead of after burning Actions minutes on a red build. `/create-pr` runs this gate automatically before pushing and pauses if Docker isn't running — the common path needs no manual step.
 >

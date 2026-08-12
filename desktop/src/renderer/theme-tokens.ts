@@ -18,9 +18,11 @@ import { darkColors, type ColorPalette } from './theme/palette-dark'
 import { lightColors } from './theme/palette-light'
 import { classicColors } from './theme/palette-classic'
 import { hudColors } from './theme/palette-hud'
-import type { CustomThemeForRenderer } from '../shared/theme-pack-types'
+import { contrastDarkColors } from './theme/palette-contrast-dark'
+import { contrastLightColors } from './theme/palette-contrast-light'
+import type { CustomThemeForRenderer, ThemePackDiagnostic } from '../shared/theme-pack-types'
 
-export { darkColors, lightColors, classicColors, hudColors }
+export { darkColors, lightColors, classicColors, hudColors, contrastDarkColors, contrastLightColors }
 export type { ColorPalette }
 
 // ─── Theme utilities ───
@@ -69,10 +71,15 @@ export interface ThemeDefinition {
   forcedColorScheme?: 'light' | 'dark'
   /** True for disk-loaded theme packs (absent on built-ins). */
   custom?: boolean
+  /** False for diagnostics-only packs with no selectable desktop component. */
+  selectable?: boolean
   /** Data URL of the pack's background asset, rendered by `.ion-theme-backdrop`. */
   backgroundImageUrl?: string
   /** Data URL of the pack's logo asset, shown in Settings → Appearance. */
   logoUrl?: string
+  /** Validation diagnostics surfaced at this custom pack's Settings row. */
+  iosDiagnostics?: ThemePackDiagnostic[]
+  desktopDiagnostics?: ThemePackDiagnostic[]
 }
 
 export const themes: ThemeDefinition[] = [
@@ -80,6 +87,8 @@ export const themes: ThemeDefinition[] = [
   { id: 'ion-light',   displayName: 'Ion Light',   colors: lightColors,   forcedColorScheme: 'light' },
   { id: 'ion-classic', displayName: 'Ion Classic', colors: classicColors, forcedColorScheme: 'dark' },
   { id: 'jarvis-hud',  displayName: 'Jarvis HUD',  colors: hudColors,     forcedColorScheme: 'dark' },
+  { id: 'ion-contrast-dark',  displayName: 'Ion Contrast Dark',  colors: contrastDarkColors,  forcedColorScheme: 'dark' },
+  { id: 'ion-contrast-light', displayName: 'Ion Contrast Light', colors: contrastLightColors, forcedColorScheme: 'light' },
 ]
 
 // Custom themes are loaded from theme packs on disk (main process scans
@@ -107,8 +116,11 @@ export function resolveCustomThemeDefinition(t: CustomThemeForRenderer): ThemeDe
     colors: colors as ColorPalette,
     forcedColorScheme: t.forcedColorScheme ?? base.forcedColorScheme,
     custom: true,
+    selectable: t.desktopAvailable !== false,
     ...(t.backgroundDataUrl ? { backgroundImageUrl: t.backgroundDataUrl } : {}),
     ...(t.logoDataUrl ? { logoUrl: t.logoDataUrl } : {}),
+    ...(t.iosDiagnostics && t.iosDiagnostics.length > 0 ? { iosDiagnostics: t.iosDiagnostics } : {}),
+    ...(t.desktopDiagnostics && t.desktopDiagnostics.length > 0 ? { desktopDiagnostics: t.desktopDiagnostics } : {}),
   }
 }
 

@@ -6,6 +6,7 @@ import SwiftUI
 struct CompactionRowView: View {
     let message: Message
     @State private var isExpanded = false
+    @Environment(\.appTheme) private var theme
 
     /// Parse the structured [Compaction] content.
     private var parsed: (headline: String, summary: String) {
@@ -34,11 +35,11 @@ struct CompactionRowView: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 8, weight: .semibold))
+                        .font(.system(size: 8, weight: .semibold)) // design-type: SF Symbol disclosure glyph sized as icon geometry, not text
                         .foregroundStyle(.blue.opacity(0.7))
 
                     Image(systemName: "arrow.down.right.and.arrow.up.left")
-                        .font(.system(size: 10))
+                        .font(.system(size: 10)) // design-type: SF Symbol glyph sized as icon geometry, not text
                         .foregroundStyle(.blue.opacity(0.7))
 
                     Text("Context compacted")
@@ -58,8 +59,8 @@ struct CompactionRowView: View {
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+                .padding(.horizontal, IonSpace.contentGap)
+                .padding(.vertical, IonSpace.compactInset)
             }
             .buttonStyle(.plain)
 
@@ -74,21 +75,24 @@ struct CompactionRowView: View {
                         SummarySections(text: parsed.summary)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .padding(.leading, 4)
+                .padding(.horizontal, IonSpace.rowInset)
+                .padding(.vertical, IonSpace.compactGap)
+                .padding(.leading, IonSpace.hairlineGap)
                 .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.blue.opacity(0.05))
+                    RoundedRectangle(cornerRadius: IonRadius.control)
+                        .fill(theme.surfaceSecondary)
                 )
                 .overlay(
                     Rectangle()
-                        .fill(Color.blue.opacity(0.3))
+                        // A 2pt structural rail marks the expanded-region boundary.
+                        // It needs the stronger selection boundary rather than the
+                        // hairline `borderSubtle` token.
+                        .fill(theme.borderStrong)
                         .frame(width: 2),
                     alignment: .leading
                 )
-                .padding(.horizontal, 12)
-                .padding(.bottom, 4)
+                .padding(.horizontal, IonSpace.contentGap)
+                .padding(.bottom, IonSpace.hairlineGap)
             }
         }
     }

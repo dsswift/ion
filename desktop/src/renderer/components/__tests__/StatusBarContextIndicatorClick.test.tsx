@@ -100,6 +100,12 @@ function renderIntoContainer(): { container: HTMLDivElement; root: ReturnType<ty
 beforeEach(() => {
   portalTarget = document.createElement('div')
   document.body.appendChild(portalTarget)
+  const instance = storeState.conversationPanes.get('tab1')!.instances[0] as { statusFields?: unknown }
+  instance.statusFields = {
+    contextTokens: 50_000,
+    contextPercent: 25,
+    contextWindow: 200_000,
+  }
   toggleStatusDrawer.mockClear()
 })
 
@@ -140,6 +146,42 @@ describe('StatusBarContextIndicator — click wires toggleStatusDrawer', () => {
 
     const span = container.querySelector('span')
     expect(span!.style.cursor).toBe('pointer')
+
+    act(() => { root.unmount() })
+    container.remove()
+  })
+
+  it('renders a 0% radial and keeps drawer trigger live when occupancy is zero', () => {
+    const instance = storeState.conversationPanes.get('tab1')!.instances[0] as { statusFields?: unknown }
+    instance.statusFields = { contextTokens: 0, contextPercent: 0, contextWindow: 200_000 }
+
+    const { container, root } = renderIntoContainer()
+    act(() => { root.render(<ContextIndicator />) })
+
+    const span = container.querySelector('span')
+    expect(span).not.toBeNull()
+    expect(span!.getAttribute('aria-label')).toMatch(/Context usage 0%/)
+    expect(span!.getAttribute('aria-label')).toMatch(/0k \/ 200k tokens/)
+    expect(container.querySelector('svg')).not.toBeNull()
+
+    act(() => { span!.click() })
+    expect(toggleStatusDrawer).toHaveBeenCalledTimes(1)
+
+    act(() => { root.unmount() })
+    container.remove()
+  })
+
+  it('renders a 0% radial before engine occupancy arrives', () => {
+    const instance = storeState.conversationPanes.get('tab1')!.instances[0] as { statusFields?: unknown }
+    instance.statusFields = undefined
+
+    const { container, root } = renderIntoContainer()
+    act(() => { root.render(<ContextIndicator />) })
+
+    const span = container.querySelector('span')
+    expect(span).not.toBeNull()
+    expect(span!.getAttribute('aria-label')).toMatch(/Context usage 0%/)
+    expect(container.querySelector('svg')).not.toBeNull()
 
     act(() => { root.unmount() })
     container.remove()

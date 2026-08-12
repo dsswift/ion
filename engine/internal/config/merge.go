@@ -3,7 +3,6 @@ package config
 import (
 	"net/url"
 	"path"
-	"strings"
 
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -314,88 +313,37 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 			enterprise.Limits.PlanModeAllowedBashCommands,
 		)
 	}
+	if enterprise.Limits != nil && enterprise.Limits.PlanModeAllowedMcpTools != nil {
+		result.Limits.PlanModeAllowedMcpTools = intersectMcpToolsWithCeiling(
+			result.Limits.PlanModeAllowedMcpTools,
+			enterprise.Limits.PlanModeAllowedMcpTools,
+		)
+	}
+
+	// Extended thinking: sealed ceiling, one way only. An enterprise
+	// Disabled=true forces thinking off and no lower layer can re-enable it.
+	// An enterprise block with Disabled=false is NOT a mandate to think — it
+	// leaves the merged user/project value alone, so an operator who disabled
+	// thinking locally keeps that choice. Copy-on-write so the clamp never
+	// mutates the caller's block (same discipline as ResourceLimits above).
+	// Both branches logged: a capability change that happens silently is
+	// undiagnosable from the log file alone.
+	if enterprise.Thinking != nil && enterprise.Thinking.Disabled {
+		already := result.ThinkingPolicy != nil && result.ThinkingPolicy.Disabled
+		result.ThinkingPolicy = &types.ThinkingPolicyConfig{Disabled: true}
+		utils.LogWithFields(utils.LevelInfo, "ConfigMerge", "enterprise: extended thinking sealed off", map[string]any{
+			"status": false, "changed": !already,
+		})
+	} else if enterprise.Thinking != nil {
+		utils.LogWithFields(utils.LevelInfo, "ConfigMerge", "enterprise: thinking policy present but not disabling, merged value stands", map[string]any{
+			"status": result.ThinkingPolicy == nil || !result.ThinkingPolicy.Disabled,
+		})
+	}
 
 	// Store enterprise config for runtime access
 	result.Enterprise = enterprise
 
 	return &result
-}
-
-// intersectBashCommandsWithCeiling clamps a merged plan-mode Bash allowlist to
-// an enterprise ceiling, returning only the entries the ceiling sanctions.
-//
-// An empty (non-nil) ceiling is the "no Bash in plan mode" policy and strips
-// everything. Otherwise an entry is retained when it is exactly a ceiling
-// entry, or when it is a MORE SPECIFIC form of one — ceiling "gh" retains
-// "gh pr view", because the gate's prefix matching already lets every "gh ..."
-// command through when "gh" is permitted, so keeping the narrower entry grants
-// nothing new.
-//
-// The asymmetry is the whole security property, and it runs one way only:
-// a lower layer can never generalise a ceiling entry outward. With ceiling
-// "gh pr view", a project asking for "gh" is dropped, not kept — retaining it
-// would permit "gh repo delete", which the ceiling deliberately excluded.
-// Every dropped entry is recorded as an enforcement action so the operator can
-// see which project/user entries policy rejected.
-func intersectBashCommandsWithCeiling(merged, ceiling []string) []string {
-	if len(ceiling) == 0 {
-		// Explicit block-all policy. Record each stripped entry.
-		for _, cmd := range merged {
-			recordEnforcement(EnforcementPlanModeBashPruned, cmd, "planModeAllowedBashCommands", map[string]any{
-				"reason": "enterprise policy blocks Bash in plan mode",
-			})
-		}
-		return []string{}
-	}
-	out := make([]string, 0, len(merged))
-	for _, cmd := range merged {
-		if bashCommandWithinCeiling(cmd, ceiling) {
-			out = append(out, cmd)
-			continue
-		}
-		recordEnforcement(EnforcementPlanModeBashPruned, cmd, "planModeAllowedBashCommands", map[string]any{
-			"reason": "not permitted by enterprise plan-mode Bash ceiling",
-		})
-	}
-	return out
-}
-
-// bashCommandWithinCeiling reports whether cmd is permitted by the ceiling:
-// an exact match, or an extension of a ceiling entry at a word boundary.
-//
-// The word-boundary check prevents a prefix-string coincidence from passing as
-// a policy match: ceiling "git" must not sanction "github-cli-doer" merely
-// because the bytes line up. Requiring the next character to be a space means
-// only genuine sub-commands ("git log") are treated as narrower forms.
-func bashCommandWithinCeiling(cmd string, ceiling []string) bool {
-	for _, allowed := range ceiling {
-		if cmd == allowed {
-			return true
-		}
-		if strings.HasPrefix(cmd, allowed+" ") {
-			return true
-		}
-	}
-	return false
-}
-
-// sealLimitCeiling resolves one resource-limit field against the enterprise
-// ceiling. A nil enterprise value leaves the user value untouched (no policy
-// on this axis). A non-nil enterprise value caps the result: an absent or
-// higher user value is replaced by the ceiling; a lower user value stands
-// (users may self-restrict below policy, never exceed it).
-func sealLimitCeiling(user, enterprise *int, name string) *int {
-	if enterprise == nil {
-		return user
-	}
-	if user == nil || *user > *enterprise {
-		if user != nil {
-			utils.LogWithFields(utils.LevelInfo, "config.merge", "enterprise: resource limit capped to ceiling", map[string]any{"limit": name, "user": *user, "ceiling": *enterprise})
-		}
-		v := *enterprise
-		return &v
-	}
-	return user
 }
 
 // mcpServerURLHost extracts the hostname from an MCP server's configured URL.
@@ -495,252 +443,6 @@ func matchesAny(patterns []string, target string) bool {
 	return false
 }
 
-// mergeInto applies fields from src onto dst (dst is mutated).
-func mergeInto(dst, src *types.EngineRuntimeConfig) {
-	if src.Backend != "" {
-		dst.Backend = src.Backend
-	}
-	if src.DefaultModel != "" {
-		dst.DefaultModel = src.DefaultModel
-	}
-
-	// Providers: merge maps
-	if len(src.Providers) > 0 {
-		if dst.Providers == nil {
-			dst.Providers = make(map[string]types.ProviderConfig)
-		}
-		for k, v := range src.Providers {
-			dst.Providers[k] = v
-		}
-	}
-
-	// Limits: override if explicitly set (nil means "not set")
-	if src.Limits.MaxTurns != nil {
-		dst.Limits.MaxTurns = src.Limits.MaxTurns
-	}
-	if src.Limits.MaxBudgetUsd != nil {
-		dst.Limits.MaxBudgetUsd = src.Limits.MaxBudgetUsd
-	}
-	if src.Limits.SuppressSystemMessages != nil {
-		dst.Limits.SuppressSystemMessages = src.Limits.SuppressSystemMessages
-	}
-	if src.Limits.DisablePlanModeReminder != nil {
-		dst.Limits.DisablePlanModeReminder = src.Limits.DisablePlanModeReminder
-	}
-	if src.Limits.DisableTurnLimitWarning != nil {
-		dst.Limits.DisableTurnLimitWarning = src.Limits.DisableTurnLimitWarning
-	}
-	if src.Limits.DisableMaxTokenContinue != nil {
-		dst.Limits.DisableMaxTokenContinue = src.Limits.DisableMaxTokenContinue
-	}
-	// PlanModeAllowedBashCommands is a slice, not a pointer, and carries a
-	// tri-valued contract across layers:
-	//
-	//   nil        — this layer did not set the field; the earlier layer stands.
-	//   non-empty  — ADDITIVE. Unioned with the earlier layer's list, so a
-	//                project .ion/engine.json can permit a command the user's
-	//                global config never mentioned (and vice versa) without
-	//                either layer having to restate the other's entries.
-	//   empty ([]) — an intentional "block Bash entirely in plan mode" signal.
-	//                It wins over any earlier non-empty list, matching normal
-	//                layer precedence: the later, more specific layer decides.
-	//
-	// Additive-union (rather than whole-slice replacement) is what makes the
-	// project layer portable: a repo that needs one extra command ships it in
-	// .ion/engine.json and every clone gains it on top of whatever each
-	// developer already allows globally. Replacement would force the project
-	// file to restate every developer's personal list, which it cannot know.
-	//
-	// This union is deliberately NOT a security boundary. When an enterprise
-	// policy exists, EnforceEnterprise intersects the merged result against
-	// the enterprise ceiling AFTER this merge runs, so no combination of user
-	// and project entries can widen past what the enterprise permits. Absent
-	// an enterprise policy there is no policy to circumvent — an unmanaged
-	// machine configuring its own tool is the point of the project layer.
-	if src.Limits.PlanModeAllowedBashCommands != nil {
-		if len(src.Limits.PlanModeAllowedBashCommands) == 0 {
-			// Explicit block-all from the higher-precedence layer.
-			dst.Limits.PlanModeAllowedBashCommands = []string{}
-		} else {
-			dst.Limits.PlanModeAllowedBashCommands = unionBashCommands(
-				dst.Limits.PlanModeAllowedBashCommands,
-				src.Limits.PlanModeAllowedBashCommands,
-			)
-		}
-	}
-	// MaxTokenThinkingOnlyBreaker is a non-pointer int: zero means "not set /
-	// use the built-in default", so only a non-zero value from a later layer
-	// overrides. -1 (disable the breaker) is a legitimate non-zero override.
-	if src.Limits.MaxTokenThinkingOnlyBreaker != 0 {
-		dst.Limits.MaxTokenThinkingOnlyBreaker = src.Limits.MaxTokenThinkingOnlyBreaker
-	}
-	if src.Limits.PlanModeAutoExitOnEndTurn != nil {
-		dst.Limits.PlanModeAutoExitOnEndTurn = src.Limits.PlanModeAutoExitOnEndTurn
-	}
-	if src.Limits.DisableSkillSystemPrompt != nil {
-		dst.Limits.DisableSkillSystemPrompt = src.Limits.DisableSkillSystemPrompt
-	}
-
-	// MCP servers: merge maps
-	if len(src.McpServers) > 0 {
-		if dst.McpServers == nil {
-			dst.McpServers = make(map[string]types.McpServerConfig)
-		}
-		for k, v := range src.McpServers {
-			dst.McpServers[k] = v
-		}
-	}
-
-	// Plugins: whole-block override (pointer). A later layer that sets the block
-	// replaces an earlier one; nil leaves the earlier value intact. Same convention
-	// as Permissions / Network / Telemetry.
-	if src.Plugins != nil {
-		dst.Plugins = src.Plugins
-	}
-
-	// ResourceLimits: whole-block override (pointer), same convention as
-	// Plugins above. Enterprise ceiling enforcement happens later in
-	// EnforceEnterprise; this merge only carries the user/project layers.
-	if src.ResourceLimits != nil {
-		dst.ResourceLimits = src.ResourceLimits
-	}
-
-	// Profiles: replace if provided
-	if len(src.Profiles) > 0 {
-		dst.Profiles = src.Profiles
-	}
-
-	// Optional fields: override if set
-	if src.Permissions != nil {
-		dst.Permissions = src.Permissions
-	}
-	if src.Auth != nil {
-		dst.Auth = src.Auth
-	}
-	if src.Network != nil {
-		dst.Network = src.Network
-	}
-	if src.Telemetry != nil {
-		dst.Telemetry = src.Telemetry
-	}
-	if src.Compaction != nil {
-		dst.Compaction = src.Compaction
-	}
-
-	// Shell: override the whole pointer if set. The engine.json shell block
-	// (useLoginShell / shellPath) is small and atomic, so whole-pointer
-	// replacement matches the Permissions/Network/Telemetry convention above
-	// and avoids a field-by-field merge that would add no value.
-	if src.Shell != nil {
-		dst.Shell = src.Shell
-	}
-
-	// Optional pointer blocks that are consumed from the merged config by
-	// downstream layers (cmd_serve, the session layer, prompt options) but
-	// were historically not carried through this merge. Each is overridden
-	// as a whole pointer when the source layer sets it, matching the
-	// Permissions/Network/Telemetry convention. Without these, a user who
-	// sets the block in ~/.ion/engine.json or a project .ion/engine.json
-	// has it silently dropped. See TestMergeCarriesOptionalPointerBlocks.
-	if src.Security != nil {
-		dst.Security = src.Security
-	}
-	if src.FeatureFlags != nil {
-		dst.FeatureFlags = src.FeatureFlags
-	}
-	if src.Relay != nil {
-		dst.Relay = src.Relay
-	}
-	if src.WebSearch != nil {
-		dst.WebSearch = src.WebSearch
-	}
-	if src.Webhooks != nil {
-		dst.Webhooks = src.Webhooks
-	}
-	if src.Scheduling != nil {
-		dst.Scheduling = src.Scheduling
-	}
-
-	// LogLevel: project-level overrides global
-	if src.LogLevel != "" {
-		dst.LogLevel = src.LogLevel
-	}
-
-	// Logging: whole-block override (pointer). A later layer that sets the
-	// block replaces an earlier one; nil leaves the earlier value intact.
-	if src.Logging != nil {
-		dst.Logging = src.Logging
-	}
-
-	// EarlyStopContinue: merge field-by-field so engine.json can override a
-	// single sub-field (e.g. just `enabled`) without nuking the others.
-	// Built-in defaults are applied later at the run-loop layer; merge here
-	// only carries forward explicit values from JSON layers.
-	if src.EarlyStopContinue != nil {
-		if dst.EarlyStopContinue == nil {
-			cp := *src.EarlyStopContinue
-			dst.EarlyStopContinue = &cp
-		} else {
-			if src.EarlyStopContinue.Enabled != nil {
-				dst.EarlyStopContinue.Enabled = src.EarlyStopContinue.Enabled
-			}
-			if src.EarlyStopContinue.Budget != 0 {
-				dst.EarlyStopContinue.Budget = src.EarlyStopContinue.Budget
-			}
-			if src.EarlyStopContinue.ThresholdPct != 0 {
-				dst.EarlyStopContinue.ThresholdPct = src.EarlyStopContinue.ThresholdPct
-			}
-			if src.EarlyStopContinue.MaxContinuations != 0 {
-				dst.EarlyStopContinue.MaxContinuations = src.EarlyStopContinue.MaxContinuations
-			}
-			if src.EarlyStopContinue.DiminishingDelta != 0 {
-				dst.EarlyStopContinue.DiminishingDelta = src.EarlyStopContinue.DiminishingDelta
-			}
-		}
-	}
-
-	// Thinking: merge field-by-field so a layer can override a single
-	// sub-field (e.g. just `effort`) without nuking the others. Mirrors the
-	// EarlyStopContinue treatment above.
-	//
-	// Enabled is a plain bool, so it cannot distinguish "absent" from
-	// "explicitly false" the way the pointer-bools can. It is therefore
-	// carried whenever the source declares the block at all — a layer that
-	// writes `"thinking": {"enabled": false}` is expressing intent to
-	// disable, and that must beat a weaker layer that enabled it.
-	// StreamDeltas and Persist are pointer-bools and carry only when set.
-	if src.Thinking != nil {
-		if dst.Thinking == nil {
-			cp := *src.Thinking
-			dst.Thinking = &cp
-		} else {
-			dst.Thinking.Enabled = src.Thinking.Enabled
-			if src.Thinking.Effort != "" {
-				dst.Thinking.Effort = src.Thinking.Effort
-			}
-			if src.Thinking.BudgetTokens != 0 {
-				dst.Thinking.BudgetTokens = src.Thinking.BudgetTokens
-			}
-			if src.Thinking.StreamDeltas != nil {
-				dst.Thinking.StreamDeltas = src.Thinking.StreamDeltas
-			}
-			if src.Thinking.Persist != nil {
-				dst.Thinking.Persist = src.Thinking.Persist
-			}
-		}
-	}
-
-	// Timeouts: merge non-zero fields
-	if src.Timeouts != nil {
-		dst.Timeouts = types.MergeTimeouts(dst.Timeouts, src.Timeouts)
-	}
-
-	// Workspace: merge non-zero fields (reap grace window, watcher dir cap)
-	if src.Workspace != nil {
-		dst.Workspace = types.MergeWorkspace(dst.Workspace, src.Workspace)
-	}
-}
-
 func contains(slice []string, item string) bool {
 	for _, s := range slice {
 		if s == item {
@@ -748,35 +450,4 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
-}
-
-// unionBashCommands merges two plan-mode Bash allowlists, preserving order and
-// dropping duplicates. Entries from base come first (the lower-precedence
-// layer), then any entry from add that base did not already contain.
-//
-// Order is stable rather than sorted so the resolved list reads the way the
-// operator wrote it: their global entries, then whatever the project added.
-// The gate that consumes this list does prefix matching, and prefix matching
-// is order-independent, so ordering is a readability property (log lines,
-// system-prompt prose) rather than a semantic one.
-//
-// Duplicate collapsing matters because both layers legitimately name common
-// commands (git log, ls). Without it the resolved list, which is echoed into
-// the plan-mode system prompt, would repeat entries back to the model.
-func unionBashCommands(base, add []string) []string {
-	seen := make(map[string]struct{}, len(base)+len(add))
-	out := make([]string, 0, len(base)+len(add))
-	for _, list := range [][]string{base, add} {
-		for _, cmd := range list {
-			if cmd == "" {
-				continue
-			}
-			if _, dup := seen[cmd]; dup {
-				continue
-			}
-			seen[cmd] = struct{}{}
-			out = append(out, cmd)
-		}
-	}
-	return out
 }

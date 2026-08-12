@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -82,6 +83,10 @@ func TestServerSessionStartAndPrompt(t *testing.T) {
 	t.Cleanup(func() { srv.Stop() })
 
 	conn := dialSocket(t, sockPath)
+	// Keep one scanner for this command sequence. A socket read can buffer both
+	// result frames, so constructing a new scanner per acknowledgement can drop
+	// the later result before the prompt lane has run.
+	scanner := bufio.NewScanner(conn)
 
 	// Start session.
 	sendCmd(t, conn, map[string]interface{}{
@@ -90,7 +95,7 @@ func TestServerSessionStartAndPrompt(t *testing.T) {
 		"config":    map[string]interface{}{"profileId": "default", "extensionDir": "/tmp", "workingDirectory": "/tmp", "model": "mock-model"},
 		"requestId": "req-s1",
 	})
-	readLines(t, conn, 2, 2*time.Second)
+	scanForResult(t, conn, scanner, "req-s1", 2*time.Second)
 
 	// Send prompt via socket.
 	sendCmd(t, conn, map[string]interface{}{
@@ -99,13 +104,16 @@ func TestServerSessionStartAndPrompt(t *testing.T) {
 		"text":      "Hello from socket",
 		"requestId": "req-p1",
 	})
-	readLine(t, conn, 2*time.Second)
+	scanForResult(t, conn, scanner, "req-p1", 2*time.Second)
 
-	// Backend should have received the prompt.
-	time.Sleep(100 * time.Millisecond)
-	keys := mb.StartedKeys()
-	if len(keys) == 0 {
-		t.Error("expected backend to receive a run start")
+	// Wait for backend run registration. RequestId names the socket command;
+	// Manager mints an independent run ID, so inspect the backend population.
+	deadline := time.Now().Add(2 * time.Second)
+	for len(mb.StartedKeys()) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("backend did not receive a run start")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

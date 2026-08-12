@@ -85,16 +85,16 @@ extension ConversationView {
         if isInputLocked {
             HStack(spacing: 6) {
                 Image(systemName: "lock")
-                    .font(.system(size: 10))
+                    .font(.system(size: 10)) // design-type: SF Symbol lock glyph sized as icon geometry, not text
                     .foregroundStyle(.tertiary)
                 Text("Automated fix conversation — input is disabled. Continue the work in its worktree.")
-                    .font(.system(size: 11))
+                    .ionType(.microLabel)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                 Spacer()
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
+            .padding(.horizontal, 14) // design-geometry: 14pt gap between contentGap and rowInset; off the 4pt ratio scale
+            .padding(.vertical, IonSpace.contentGap)
             .accessibilityIdentifier("input-locked-notice")
         } else {
             engineInputBarUnlocked
@@ -123,16 +123,16 @@ extension ConversationView {
             if showImageModelBanner {
                 HStack(spacing: 4) {
                     Image(systemName: "photo")
-                        .font(.system(size: 9))
+                        .font(.system(size: 9)) // design-type: SF Symbol photo glyph sized as icon geometry, not text
                         .foregroundStyle(.tertiary)
                     Text("Image model — only this message is sent")
-                        .font(.system(size: 10))
+                        .ionType(.microLabel)
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
                     Spacer()
                 }
-                .padding(.horizontal, 14)
-                .padding(.top, 4)
+                .padding(.horizontal, 14) // design-geometry: 14pt gap between contentGap and rowInset; off the 4pt ratio scale
+                .padding(.top, IonSpace.hairlineGap)
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
 
@@ -140,12 +140,12 @@ extension ConversationView {
                 attachButton
                 TextField("Send a prompt...", text: promptTextBinding, axis: .vertical)
                     .lineLimit(1...5)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color(.tertiarySystemBackground))
+                    .padding(.horizontal, IonSpace.contentGap)
+                    .padding(.vertical, IonSpace.compactGap)
+                    .background(theme.surfaceSecondary)
                     .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.medium))
                     .overlay(RoundedRectangle(cornerRadius: IonTheme.Radius.medium).stroke(
-                        isRecordingVoice ? theme.accent.opacity(0.5) : Color(.separator),
+                        isRecordingVoice ? theme.accent.opacity(0.5) : theme.borderSubtle,
                         lineWidth: isRecordingVoice ? 1.5 : 1
                     ))
                     .focused($isInputFocused)
@@ -168,10 +168,11 @@ extension ConversationView {
                         ])
                         viewModel.cancel(tabId: tabId)
                     } label: {
-                        Image(systemName: "stop.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(.red)
-                            .shadow(color: .red.opacity(0.3), radius: 6)
+                        Image(systemName: "stop.fill")
+                            .font(IonType.metadata)
+                            .foregroundStyle(theme.statusError)
+                            .frame(width: IonSpace.screenInset, height: IonSpace.screenInset)
+                            .overlay(Circle().stroke(theme.statusError, lineWidth: 1))
                     }
                     .accessibilityLabel("Stop")
                 }
@@ -191,12 +192,12 @@ extension ConversationView {
                 Button { submitPrompt() } label: {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.title)
-                        .foregroundStyle(!cannotSend ? theme.accent : Color.gray)
+                        .foregroundStyle(!cannotSend ? theme.accent : theme.textTertiary)
                 }
                 .disabled(cannotSend)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, IonSpace.contentGap)
+            .padding(.vertical, IonSpace.compactGap)
         }
         .animation(IonTheme.snappySpring, value: slashFilter)
         .animation(IonTheme.snappySpring, value: isRecordingVoice)

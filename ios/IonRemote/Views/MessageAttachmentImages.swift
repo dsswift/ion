@@ -97,8 +97,8 @@ struct MessageAttachmentImages: View {
                 .font(.caption2)
                 .lineLimit(1)
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
+        .padding(.horizontal, IonSpace.compactInset)
+        .padding(.vertical, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
         .background(Color(.secondarySystemFill))
         .clipShape(Capsule())
         .foregroundStyle(.secondary)

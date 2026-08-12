@@ -61,14 +61,14 @@ export interface Glow {
 
 /** Status → building glow: attention beats error beats working beats idle. */
 export function buildingGlow(entry: Pick<CampusEntry, 'state' | 'working' | 'error' | 'pendingPermissions'>): Glow {
-  if (entry.pendingPermissions > 0) return { color: '#ffd23c', pulse: true }
+  if (entry.pendingPermissions > 0) return { color: '#ffd23c', pulse: true } // hardcoded-ok: ATV canvas palette is theme-pack-driven, not app-theme-driven
   if (entry.error > 0 || entry.state === 'error' || entry.state === 'failed' || entry.state === 'dead') {
-    return { color: '#ff5f5f', pulse: false }
+    return { color: '#ff5f5f', pulse: false } // hardcoded-ok: ATV canvas palette is theme-pack-driven, not app-theme-driven
   }
   if (entry.working > 0 || entry.state === 'running' || entry.state === 'connecting') {
-    return { color: '#ff8c3c', pulse: true }
+    return { color: '#ff8c3c', pulse: true } // hardcoded-ok: ATV canvas palette is theme-pack-driven, not app-theme-driven
   }
-  return { color: '#4a4f5e', pulse: false }
+  return { color: '#4a4f5e', pulse: false } // hardcoded-ok: ATV canvas palette is theme-pack-driven, not app-theme-driven
 }
 
 export function buildingAt(buildings: readonly Building[], tx: number, ty: number): Building | null {

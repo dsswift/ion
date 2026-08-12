@@ -75,32 +75,33 @@ final class DiagnosticLogBoundsTests: XCTestCase {
     /// new lines (cursor semantics), and a rotated-in session file with no
     /// cursor entry is still exported in full (read from 0).
     func testExportCursorIncrementalAndRotation() async throws {
-        DiagnosticLog.log("cursor line 1", tag: "cursor", level: .info)
+        // `DiagnosticLog` is a process-wide singleton writing one session
+        // file, so a whole-suite run interleaves lines from every other test
+        // class into the window between two pulls. Counting ALL shipped lines
+        // therefore asserted "the suite logged nothing else", not the cursor
+        // contract -- it passed in isolation and failed in the full suite with
+        // 4 lines where 2 were expected. Tagging this run's lines with a unique
+        // marker and counting only those pins the actual contract (new lines
+        // ship, already-pulled lines do not) independent of suite ordering.
+        let marker = "cursor-\(UUID().uuidString)"
+        DiagnosticLog.log("cursor line 1 \(marker)", tag: "cursor", level: .info)
         DiagnosticLog.flush()
 
         let first = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0)
         XCTAssertFalse(first.logs.isEmpty)
 
         // Write more; second pull returns ONLY the new lines.
-        DiagnosticLog.log("cursor line 2", tag: "cursor", level: .info)
-        DiagnosticLog.log("cursor line 3", tag: "cursor", level: .info)
+        DiagnosticLog.log("cursor line 2 \(marker)", tag: "cursor", level: .info)
+        DiagnosticLog.log("cursor line 3 \(marker)", tag: "cursor", level: .info)
         DiagnosticLog.flush()
         let second = await DiagnosticLog.exportIncrementalSince(sinceSeq: first.nextSeq)
-        // Counted over THIS test's own tag, not every line in the pull. The log is
-        // a process-wide singleton and the scheme runs test classes in parallel
-        // (`parallelizable = "YES"`), so any other suite whose code logs — e.g. a
-        // MarkdownFormatter parse — can legitimately land lines inside this
-        // window. Counting all of them made this assertion depend on which other
-        // tests happened to be running, which is a flake, not a stronger check.
-        // Cursor semantics are what matters and they are fully preserved: exactly
-        // the two new `cursor` lines ship, and the already-pulled one does not.
-        let secondLines = second.logs
+        let ownLines = second.logs
             .components(separatedBy: "\n")
-            .filter { $0.contains("\"tag\":\"cursor\"") }
-        XCTAssertEqual(secondLines.count, 2, "only the two new lines must ship")
-        XCTAssertTrue(second.logs.contains("cursor line 2"))
-        XCTAssertTrue(second.logs.contains("cursor line 3"))
-        XCTAssertFalse(second.logs.contains("cursor line 1"),
+            .filter { $0.contains(marker) }
+        XCTAssertEqual(ownLines.count, 2, "only the two new lines must ship")
+        XCTAssertTrue(second.logs.contains("cursor line 2 \(marker)"))
+        XCTAssertTrue(second.logs.contains("cursor line 3 \(marker)"))
+        XCTAssertFalse(second.logs.contains("cursor line 1 \(marker)"),
                        "already-pulled lines must not re-ship")
 
         // Rotation: drop a new session file (no cursor entry) with a line

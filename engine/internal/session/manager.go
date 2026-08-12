@@ -116,6 +116,7 @@ type Manager struct {
 	// engineBuildIdentity is the engine binary's build identity (set via
 	// ldflags). Propagated to extension Hosts so the init handshake can
 	// validate that the SDK subprocess was built from the same release.
+	// Guarded by m.mu.
 	engineBuildIdentity string
 }
 
@@ -126,14 +127,6 @@ type Manager struct {
 func (m *Manager) SetProcessTelemetry(c *telemetry.Collector) {
 	m.mu.Lock()
 	m.procTelemetry = c
-	m.mu.Unlock()
-}
-
-// SetEngineBuildIdentity stores the engine binary's build identity so it
-// can be propagated to extension Hosts during the init handshake.
-func (m *Manager) SetEngineBuildIdentity(id string) {
-	m.mu.Lock()
-	m.engineBuildIdentity = id
 	m.mu.Unlock()
 }
 

@@ -270,4 +270,58 @@ describe('rescan + consumers', () => {
     expect(themes[0].backgroundDataUrl?.startsWith('data:image/png;base64,')).toBe(true)
     expect(themes[0].logoDataUrl?.startsWith('data:image/png;base64,')).toBe(true)
   })
+
+  it('buildThemeManifest carries a partial ios component base over the wire', () => {
+    const partial = basicManifest('acme-corp')
+    const tokens = iosTokens()
+    delete tokens.accent
+    ;(partial.ios as Record<string, unknown>).tokens = tokens
+    ;(partial.ios as Record<string, unknown>).base = 'ion-light'
+    writePack(userRoot, 'acme-corp', partial)
+    const manifest = buildThemeManifest()
+    expect(manifest.themes).toHaveLength(1)
+    expect(manifest.themes[0].base).toBe('ion-light')
+    // The omitted required token is inherited on iOS, so it is absent here.
+    expect(manifest.themes[0].tokens.accent).toBeUndefined()
+  })
+
+  it('buildThemeManifest omits base for a complete ios component', () => {
+    writePack(userRoot, 'acme-corp', basicManifest('acme-corp'))
+    const manifest = buildThemeManifest()
+    expect(manifest.themes[0].base).toBeUndefined()
+  })
+
+  it('getRendererThemes surfaces fatal iOS diagnostics for a rejected `.base` component', () => {
+    // Desktop component loads while the iOS inheritance base is rejected.
+    const m = basicManifest('acme-corp')
+    ;(m.ios as Record<string, unknown>).base = 'not-a-built-in'
+    writePack(userRoot, 'acme-corp', m)
+    const themes = getRendererThemes()
+    expect(themes).toHaveLength(1)
+    expect(themes[0].iosDiagnostics).toContainEqual(expect.objectContaining({
+      surface: 'ios', fatal: true, message: expect.stringContaining('ios.base'),
+    }))
+  })
+
+  it('getRendererThemes surfaces non-fatal iOS diagnostics for a degraded component', () => {
+    const m = basicManifest('acme-corp')
+    delete (m.ios as Record<string, unknown>).tokens
+    writePack(userRoot, 'acme-corp', m)
+    const themes = getRendererThemes()
+    expect(themes[0].iosDiagnostics).toContainEqual(expect.objectContaining({
+      surface: 'ios', fatal: false, message: expect.stringContaining('code token'),
+    }))
+  })
+
+  it('getRendererThemes surfaces fatal desktop diagnostics for a rejected component', () => {
+    const m = basicManifest('acme-corp')
+    ;(m.desktop as Record<string, unknown>).base = 'not-a-built-in'
+    writePack(userRoot, 'acme-corp', m)
+    const themes = getRendererThemes()
+    expect(themes).toHaveLength(1)
+    expect(themes[0].desktopAvailable).toBe(false)
+    expect(themes[0].desktopDiagnostics).toContainEqual(expect.objectContaining({
+      surface: 'desktop', fatal: true, message: expect.stringContaining('desktop.base'),
+    }))
+  })
 })

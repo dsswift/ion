@@ -29,7 +29,7 @@ struct PlanFullScreenView: View {
 
                     if isFetching {
                         ProgressView()
-                            .padding(.bottom, 4)
+                            .padding(.bottom, IonSpace.hairlineGap)
                     }
                 }
 
@@ -41,7 +41,7 @@ struct PlanFullScreenView: View {
                         Text("Implement")
                             .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
+                            .padding(.vertical, 14) // design-geometry: 14pt gap between contentGap and rowInset; off the 4pt ratio scale
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.green)

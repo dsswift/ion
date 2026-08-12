@@ -77,6 +77,7 @@ func modelSupportsEffort(info *types.ModelInfo, effort string) bool {
 // made in one testable place.
 //
 // Resolution order:
+//  0. operator disabled thinking engine-wide → none (no directive, logged).
 //  1. cfg nil or !Enabled              → none (no directive).
 //  2. model unknown / ThinkingMode none → none (logged; fail-loud).
 //  3. Effort set but not in the model's allowed set → none (logged).
@@ -85,6 +86,15 @@ func modelSupportsEffort(info *types.ModelInfo, effort string) bool {
 //     (budget / gemini). When Effort is empty but a legacy BudgetTokens was
 //     supplied, the budget path honors it directly (back-compat).
 func resolveThinking(model string, cfg *types.ThinkingConfig) ThinkingResolution {
+	// Operator policy outranks the per-run config. A consumer that sends
+	// Enabled:true on a disabled install gets no directive — the switch is the
+	// operator's, not the caller's. Checked FIRST so no later branch can emit a
+	// directive past it. See thinking_policy.go.
+	if !ThinkingPermitted() {
+		utils.LogWithFields(utils.LevelInfo, "Thinking", "resolve thinking disabled by operator no directive", map[string]any{"model": model, "reason": "operator config"})
+		return ThinkingResolution{Mode: "none"}
+	}
+
 	if cfg == nil || !cfg.Enabled {
 		return ThinkingResolution{Mode: "none"}
 	}

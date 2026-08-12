@@ -75,7 +75,7 @@ struct DeviceCustomizationSheet: View {
                             )
                         }
                     }
-                    .padding(.vertical, 4)
+                    .padding(.vertical, IonSpace.hairlineGap)
                 } header: {
                     Text("Icon")
                 } footer: {
@@ -135,20 +135,20 @@ struct DeviceCustomizationSheet: View {
         } label: {
             VStack(spacing: 6) {
                 Image(systemName: symbol)
-                    .font(.system(size: 24))
+                    .font(.system(size: 24)) // design-type: SF Symbol glyph sized as icon geometry inside a fixed 28pt frame
                     .frame(width: 28, height: 28)
                 Text(label)
                     .font(.caption2)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, minHeight: 72)
-            .padding(.vertical, 6)
+            .padding(.vertical, IonSpace.compactInset)
             .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(isSelected ? theme.accent.opacity(0.18) : Color(.tertiarySystemBackground))
+                RoundedRectangle(cornerRadius: IonRadius.container)
+                    .fill(isSelected ? theme.accent.opacity(0.18) : theme.surfaceSecondary)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: IonRadius.container)
                     .stroke(isSelected ? theme.accent : Color.clear, lineWidth: 2)
             )
             .foregroundStyle(isSelected ? theme.accent : .primary)

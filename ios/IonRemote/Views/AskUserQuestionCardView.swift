@@ -104,8 +104,8 @@ struct AskUserQuestionCardView: View {
                             } label: {
                                 Text("Send")
                                     .font(.subheadline.weight(.medium))
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
+                                    .padding(.horizontal, IonSpace.rowInset)
+                                    .padding(.vertical, IonSpace.compactGap)
                             }
                             .buttonStyle(.borderedProminent)
                             .clipShape(Capsule())
@@ -123,8 +123,8 @@ struct AskUserQuestionCardView: View {
                                 } label: {
                                     Text(option)
                                         .font(.subheadline.weight(.medium))
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 10)
+                                        .padding(.horizontal, IonSpace.rowInset)
+                                        .padding(.vertical, 10) // design-geometry: 10pt gap between compactGap and contentGap; off the 4pt ratio scale
                                 }
                                 .buttonStyle(.borderedProminent)
                                 .clipShape(Capsule())

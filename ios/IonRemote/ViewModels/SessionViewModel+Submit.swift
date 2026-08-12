@@ -78,8 +78,12 @@ extension SessionViewModel {
         // .running (a queued prompt sent while a turn is already active).
         // Mirrors the desktop send-slice which sets a connecting/running state
         // on submit; the next snapshot reconciles the authoritative value.
-        if let idx = tabs.firstIndex(where: { $0.id == tabId }), tabs[idx].status != .running {
-            tabs[idx].status = .connecting
+        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+            tabs[idx].lastRunDurationMs = nil
+            tabs[idx].lastRunReason = nil
+            if tabs[idx].status != .running {
+                tabs[idx].status = .connecting
+            }
         }
 
         // Optimistic local insert so the user's message (with inline image

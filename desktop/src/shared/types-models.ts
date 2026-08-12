@@ -23,7 +23,11 @@ export interface ModelEntry {
    * per-conversation thinking control honestly.
    */
   thinkingMode?: string
-  /** Effort levels this model accepts, e.g. ["low","medium","high"]. Empty ⇒ thinking control hidden. */
+  /**
+   * Effort levels this model accepts, e.g. ["low","medium","high"]. Empty ⇒ the
+   * model has no override levels to offer, so clients render the thinking
+   * control DISABLED — never hidden.
+   */
   thinkingEfforts?: string[]
   /**
    * BPE encoding identifier for the local tiktoken tokenizer. Used by the

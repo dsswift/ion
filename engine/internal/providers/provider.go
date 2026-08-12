@@ -383,7 +383,12 @@ func ListModels() []types.ModelEntry {
 		}
 		return entries[i].ID < entries[j].ID
 	})
-	return entries
+	// Apply the engine-wide operator thinking policy LAST, after catalog
+	// enrichment and discovery merging have filled in every capability field.
+	// Scrubbing earlier would let the fill-if-zero enrichment above restore the
+	// very fields the policy withheld. No-op (and no allocation) on the default
+	// permitted path. See thinking_policy.go.
+	return applyThinkingPolicyToEntries(entries)
 }
 
 // ListProviderIDs returns the IDs of all registered providers.

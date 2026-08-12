@@ -193,6 +193,7 @@ func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) 
 		PlanModeTools:               s.planModeTools,
 		PlanFilePath:                s.planFilePath,
 		PlanModeAllowedBashCommands: s.planModeAllowedBashCommands,
+		PlanModeAllowedMcpTools:     s.planModeAllowedMcpTools,
 	}
 
 	if overrides != nil {
@@ -269,6 +270,9 @@ func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) 
 		// rather than a session-scoped mutation here.
 		if len(overrides.BashAllowlistAdditionsForThisPrompt) > 0 {
 			opts.BashAllowlistAdditionsForThisPrompt = overrides.BashAllowlistAdditionsForThisPrompt
+		}
+		if len(overrides.McpAllowlistAdditionsForThisPrompt) > 0 {
+			opts.McpAllowlistAdditionsForThisPrompt = overrides.McpAllowlistAdditionsForThisPrompt
 		}
 		// Compaction overrides — per-prompt tuning of context compaction.
 		if overrides.CompactTargetPercent > 0 {
@@ -420,6 +424,14 @@ func (m *Manager) applyConfigDefaults(opts *types.RunOptions) {
 			})
 		} else {
 			utils.LogWithFields(utils.LevelDebug, "session.plan_mode", "no bash allowlist in engine config (Bash blocked in plan mode)", nil)
+		}
+	}
+	if len(opts.PlanModeAllowedMcpTools) == 0 {
+		if tools, found := ionconfig.ResolvePlanModeMcpAllowlist(opts.ProjectPath); found {
+			opts.PlanModeAllowedMcpTools = tools
+			utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "MCP allowlist resolved fresh from engine.json", map[string]any{"count": len(tools), "allowlist": tools})
+		} else if len(m.config.Limits.PlanModeAllowedMcpTools) > 0 {
+			opts.PlanModeAllowedMcpTools = m.config.Limits.PlanModeAllowedMcpTools
 		}
 	}
 	if m.config.Limits.DisableTurnLimitWarning != nil && *m.config.Limits.DisableTurnLimitWarning {

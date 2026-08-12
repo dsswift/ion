@@ -32,6 +32,7 @@ const (
 	// allowlist entry was stripped because the enterprise ceiling did not
 	// sanction it (or blocks Bash in plan mode outright).
 	EnforcementPlanModeBashPruned EnforcementActionKind = "plan_mode_bash_pruned"
+	EnforcementPlanModeMcpPruned  EnforcementActionKind = "plan_mode_mcp_pruned"
 )
 
 // EnforcementAction is one recorded enforcement action. Subject names the
