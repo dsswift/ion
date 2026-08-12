@@ -8,6 +8,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/session/agents"
+	"github.com/dsswift/ion/engine/internal/session/extcontext"
 	"github.com/dsswift/ion/engine/internal/session/pending"
 	"github.com/dsswift/ion/engine/internal/types"
 )
@@ -125,6 +126,9 @@ func TestFireBeforeAgentStart_RootCallSiteSetsIsRoot(t *testing.T) {
 	}
 	if !received.IsRoot {
 		t.Error("root call site must pass AgentInfo{IsRoot: true}; got IsRoot=false")
+	}
+	if received.RemainingDepthBudget != extcontext.DefaultMaxDispatchDepth {
+		t.Errorf("root remaining depth budget = %d, want default cap %d", received.RemainingDepthBudget, extcontext.DefaultMaxDispatchDepth)
 	}
 	if received.Name != "" {
 		t.Errorf("root firing must have empty Name; got %q", received.Name)

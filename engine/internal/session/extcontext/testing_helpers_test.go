@@ -20,6 +20,7 @@ type noopPluginMethods struct{}
 
 func (noopPluginMethods) PluginSessionMessages() []types.LlmMessage      { return nil }
 func (noopPluginMethods) PluginTurnMessages(_ string) []types.LlmMessage { return nil }
+func (noopPluginMethods) EngineBuildIdentity() string                    { return "" }
 func (noopPluginMethods) PersistDispatchRegistered(_, _, _, _, _, _ string, _ int) {
 }
 
@@ -45,9 +46,9 @@ func (noopSA) SendPromptWithKind(_ string, _ string, _ []string, _ string) error
 func (noopSA) SendPromptDegradedSteer(_ string, _ string, _ []string, _ string) error {
 	return nil
 }
-func (noopSA) SteerSelfMainLoop(_ string) bool                                   { return false }
-func (noopSA) SteerSelfMainLoopWithKind(_, _ string) bool                        { return false }
-func (noopSA) ParkSelfMainLoop() bool                                            { return false }
+func (noopSA) SteerSelfMainLoop(_ string) bool            { return false }
+func (noopSA) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
+func (noopSA) ParkSelfMainLoop() bool                     { return false }
 func (noopSA) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
@@ -67,6 +68,7 @@ func (noopSA) BumpParentProgress()                                              
 func (noopSA) EmitDispatchCountStatus(_ string)                                    {}
 func (noopSA) DispatchRegistry() *DispatchRegistry                                 { return nil }
 func (noopSA) EngineConfig() *types.EngineRuntimeConfig                            { return nil }
+func (noopSA) EngineBuildIdentity() string                                         { return "" }
 func (noopSA) ClaudeCompat() bool                                                  { return false }
 func (noopSA) GetDispatchContextDefaults() *extension.ContextPolicy                { return nil }
 func (noopSA) ResolveTier(_ string) string                                         { return "" }

@@ -18,6 +18,8 @@ type attributionAccessor struct {
 	appended []types.AgentStateUpdate
 }
 
+func (a *attributionAccessor) EngineBuildIdentity() string { return "" }
+
 func (a *attributionAccessor) AppendOrUpdateAgentState(state types.AgentStateUpdate) string {
 	a.mu.Lock()
 	a.appended = append(a.appended, state)
