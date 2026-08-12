@@ -1,7 +1,9 @@
 package session
 
 import (
+	"context"
 	"strings"
+	"time"
 
 	ionconfig "github.com/dsswift/ion/engine/internal/config"
 	ioncontext "github.com/dsswift/ion/engine/internal/context"
@@ -598,12 +600,39 @@ func (m *Manager) injectExtensionContext(s *engineSession, key string, opts *typ
 	}
 }
 
+// gitContextTimeout bounds the total wall-clock time git subprocesses may
+// take during a single prompt dispatch. Each GetGitContext call spawns
+// several git subprocesses (rev-parse, status, log); on a healthy repo
+// they complete in <100ms. 5s gives generous margin for large repos or
+// slow filesystems while preventing an indefinite hang.
+const gitContextTimeout = 5 * time.Second
+
+// testInjectGitContextHook is called at the start of injectGitContext when
+// non-nil. Tests use it to inject delays that simulate slow git
+// subprocesses without replacing the real binary. Nil in production.
+var testInjectGitContextHook func()
+
 // injectGitContext appends formatted git context to the system prompt.
+// Git subprocesses are bounded by gitContextTimeout; a timeout produces
+// a warning log and skips the injection rather than blocking the dispatch.
 func injectGitContext(s *engineSession, opts *types.RunOptions) {
+	if testInjectGitContextHook != nil {
+		testInjectGitContextHook()
+	}
 	if s.config.WorkingDirectory == "" {
 		return
 	}
-	if gitCtx := gitcontext.GetGitContext(s.config.WorkingDirectory); gitCtx != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), gitContextTimeout)
+	defer cancel()
+	gitCtx := gitcontext.GetGitContextWithContext(ctx, s.config.WorkingDirectory)
+	if ctx.Err() != nil {
+		utils.LogWithFields(utils.LevelWarn, "session", "git context timed out, skipping injection", map[string]any{
+			"cwd":     s.config.WorkingDirectory,
+			"timeout": gitContextTimeout.String(),
+		})
+		return
+	}
+	if gitCtx != nil {
 		if formatted := gitcontext.FormatForPrompt(gitCtx); formatted != "" {
 			opts.AppendSystemPrompt += "\n\n" + formatted
 		}

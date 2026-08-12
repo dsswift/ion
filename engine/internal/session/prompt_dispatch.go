@@ -389,34 +389,9 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		s.pendingCliUserTurn = ""
 	}
 
-	injectContextFiles(s, &opts)
-	// Resolve client-supplied workspace context with precedence:
-	// per-prompt (overrides) > session-level (EngineConfig) > nil (engine-derived).
-	var clientWsCtx *types.ClientWorkspaceContext
-	if overrides != nil && overrides.ClientWorkspaceContext != nil {
-		clientWsCtx = overrides.ClientWorkspaceContext
-	} else if s.config.ClientWorkspaceContext != nil {
-		clientWsCtx = s.config.ClientWorkspaceContext
-	}
-	workspaceContext := m.injectWorkspaceContext(s, key, &opts, clientWsCtx)
-	m.injectExtensionContext(s, key, &opts, workspaceContext)
-	injectGitContext(s, &opts)
-	injectPluginContext(s, &opts)
-
-	// Inject session memory into the system prompt so the model has context
-	// from previously compacted conversation history. Only fires when memory
-	// is non-empty (i.e. a prior session generated a summary).
-	if s.sessionMemory != nil {
-		s.sessionMemory.InjectMemoryIntoSystemPrompt(&opts)
-	}
-
-	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: releasing lock", map[string]any{"key": key, "model": opts.Model})
-
-	// G07: Enterprise model enforcement
+	// G07: Enterprise model enforcement (fast check, under initial lock).
 	if m.config != nil && m.config.Enterprise != nil {
 		if !ionconfig.IsModelAllowed(opts.Model, m.config.Enterprise) {
-			// Enforcement audit event (feature 0010 audit clause). Emitted while
-			// s.telemetry is still in scope under the lock; nil-safe.
 			if s.telemetry != nil {
 				source := "allowlist"
 				for _, b := range m.config.Enterprise.BlockedModels {
@@ -441,27 +416,49 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		}
 	}
 
+	// --- Release the manager lock BEFORE I/O-heavy inject functions. ---
+	// Safety: s.config is immutable after StartSession. s.requestID is set,
+	// preventing a concurrent SendPrompt for this session from reaching
+	// inject phase. s.extGroup, s.sessionMemory, and s.pluginSessionMessages
+	// are written only by lateLoadExtensions below (sequential in this
+	// goroutine). m.config pointer is snapshotted before unlock.
+	skipExtensions := overrides != nil && overrides.NoExtensions
+	m.mu.Unlock()
+	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: lock released for off-lock inject", map[string]any{"key": key, "model": opts.Model})
+
+	// --- Off-lock: context injection (I/O-heavy) ---
+	injectContextFiles(s, &opts)
+	var clientWsCtx *types.ClientWorkspaceContext
+	if overrides != nil && overrides.ClientWorkspaceContext != nil {
+		clientWsCtx = overrides.ClientWorkspaceContext
+	} else if s.config.ClientWorkspaceContext != nil {
+		clientWsCtx = s.config.ClientWorkspaceContext
+	}
+	workspaceContext := m.injectWorkspaceContext(s, key, &opts, clientWsCtx)
+	m.injectExtensionContext(s, key, &opts, workspaceContext)
+	injectGitContext(s, &opts)
+	injectPluginContext(s, &opts)
+
+	if s.sessionMemory != nil {
+		s.sessionMemory.InjectMemoryIntoSystemPrompt(&opts)
+	}
+
+	// --- Off-lock: late-load extensions (manages its own locking) ---
 	m.lateLoadExtensions(s, key, overrides)
 
-	// lateLoadExtensions may have just populated s.extensionName /
-	// s.extensionVersion (first prompt on a session whose extensions arrive
-	// per-prompt). buildRunOptions above ran before the late load, so re-stamp
-	// the identity onto opts here — otherwise the very first extension-hosted
-	// run's llm.call telemetry would miss ctx.extension.
+	// Re-stamp extension identity (lateLoadExtensions may have populated it).
+	m.mu.RLock()
 	if opts.ExtensionName == "" {
 		opts.ExtensionName = s.extensionName
 	}
 	if opts.ExtensionVersion == "" {
 		opts.ExtensionVersion = s.extensionVersion
 	}
-
-	skipExtensions := overrides != nil && overrides.NoExtensions
-
 	extGroup := s.extGroup
 	permEng := s.permEngine
 	telemCollector := s.telemetry
-	m.mu.Unlock()
-	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: lock released", map[string]any{"key": key})
+	m.mu.RUnlock()
+	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: off-lock inject complete", map[string]any{"key": key})
 
 	// Lazily connect MCP servers, once per session, now that the lock is
 	// released (the connect is network I/O). This is the seam that replaced the

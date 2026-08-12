@@ -2,7 +2,7 @@ package session
 
 import (
 	"fmt"
-	"path/filepath"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
@@ -11,32 +11,46 @@ import (
 )
 
 // lateLoadExtensions loads per-prompt extensions if the override provides them
-// and the session has no current extension group. Caller must hold m.mu.
+// and the session has no current extension group. Self-locking: caller must NOT
+// hold m.mu. I/O-heavy (subprocess spawn, host.Load), so runs off-lock.
 func (m *Manager) lateLoadExtensions(s *engineSession, key string, overrides *PromptOverrides) {
 	if overrides == nil || len(overrides.Extensions) == 0 {
 		return
 	}
-	if s.extGroup != nil && !s.extGroup.IsEmpty() {
+	m.mu.RLock()
+	alreadyLoaded := s.extGroup != nil && !s.extGroup.IsEmpty()
+	m.mu.RUnlock()
+	if alreadyLoaded {
 		return
 	}
 
+	// Snapshot config under RLock, then release before I/O.
+	m.mu.RLock()
+	var rpcTimeout time.Duration
+	var requiredHooks []struct{ Event, Handler string }
+	if m.config != nil && m.config.Timeouts != nil {
+		rpcTimeout = m.config.Timeouts.ExtensionRpc()
+	}
+	if m.config != nil && m.config.Enterprise != nil && len(m.config.Enterprise.RequiredHooks) > 0 {
+		requiredHooks = make([]struct{ Event, Handler string }, len(m.config.Enterprise.RequiredHooks))
+		for i, h := range m.config.Enterprise.RequiredHooks {
+			requiredHooks[i] = struct{ Event, Handler string }{Event: h.Event, Handler: h.Handler}
+		}
+	}
+	m.mu.RUnlock()
+
 	group := extension.NewExtensionGroup()
+	accessor := &sessionAccessor{m: m, s: s, key: key}
+	buildIdentity := accessor.EngineBuildIdentity()
 	for _, extPath := range overrides.Extensions {
-		host := extension.NewHost()
-		if m.config != nil && m.config.Timeouts != nil {
-			host.SetRPCTimeout(m.config.Timeouts.ExtensionRpc())
+		host, extCfg := newPerPromptExtensionHost(buildIdentity, extPath, s.config.WorkingDirectory)
+		if rpcTimeout > 0 {
+			host.SetRPCTimeout(rpcTimeout)
 		}
-		if m.config != nil && m.config.Enterprise != nil && len(m.config.Enterprise.RequiredHooks) > 0 {
-			hooks := make([]struct{ Event, Handler string }, len(m.config.Enterprise.RequiredHooks))
-			for i, h := range m.config.Enterprise.RequiredHooks {
-				hooks[i] = struct{ Event, Handler string }{Event: h.Event, Handler: h.Handler}
-			}
-			host.RegisterRequiredHooks(hooks)
+		if len(requiredHooks) > 0 {
+			host.RegisterRequiredHooks(requiredHooks)
 		}
-		extCfg := &extension.ExtensionConfig{
-			ExtensionDir:     filepath.Dir(extPath),
-			WorkingDirectory: s.config.WorkingDirectory,
-		}
+		host.SetEngineBuildIdentity(buildIdentity)
 		if err := host.Load(extPath, extCfg); err != nil {
 			stderrTail := host.StderrTail()
 			utils.LogWithFields(utils.LevelError, "session", "per-prompt extension load failed", map[string]any{"ext_path": extPath, "error": err.Error()})
@@ -60,28 +74,15 @@ func (m *Manager) lateLoadExtensions(s *engineSession, key string, overrides *Pr
 
 	for _, host := range group.Hosts() {
 		capturedKey := key
-		// Bind session/conversation IDs so extension log notifications are
-		// stamped with the correlating IDs (unified log schema).
 		host.BindSession(s.key, s.conversationID)
 		host.SetOnSendMessage(func(payload extension.SendPromptPayload) {
-			// Shared dispatch body (prompt_options.go) so this late-loaded-
-			// extension path produces identical run configuration to the
-			// primary wiring in start_session.go. The two sites must not diverge.
 			go m.dispatchSendPromptPayload(capturedKey, "prompt_extensions", payload)
 		})
-		// Wire the per-handler hook_latency telemetry sink (mirrors the primary
-		// wiring in start_session.go — the two sites must not diverge). Nil sink
-		// when the session has no collector; callHook then emits nothing.
 		if s.telemetry != nil {
 			host.SetTelemetrySink(s.telemetry.Event)
 		}
 		host.SetPersistentEmit(func(ev types.EngineEvent) {
 			if ev.Type == "engine_agent_state" {
-				// Cache the extension's roster, then re-emit a merged snapshot
-				// that includes engine-managed entries (dispatch state with
-				// task, conversationId, progress). Forwarding the extension's
-				// raw event would overwrite engine-managed entries on the
-				// desktop due to the complete-snapshot contract.
 				s.agents.CacheExtStates(ev.Agents)
 				merged := s.agents.MergedSnapshot()
 				utils.LogWithFields(utils.LevelInfo, "session", "agent_snapshot_emitted reason=ext_emit_merged", map[string]any{"captured_key": capturedKey, "count": len(merged)})
@@ -96,13 +97,10 @@ func (m *Manager) lateLoadExtensions(s *engineSession, key string, overrides *Pr
 			m.emit(capturedKey, ev)
 		})
 	}
+
+	// Brief lock to write session state.
+	m.mu.Lock()
 	s.extGroup = group
-	// Capture extension identity for telemetry attribution (run.complete /
-	// llm.call ctx.extension). Same capture as loadAndWireExtensions — the
-	// two wiring sites must not diverge. Caller holds m.mu, so no extra
-	// locking here. Name resolves manifest → init-handshake → directory
-	// basename (host_lifecycle.go / parseInitResult); Version is
-	// manifest-only.
 	for _, h := range group.Hosts() {
 		if s.extensionName == "" && h.Name() != "" {
 			s.extensionName = h.Name()
@@ -111,6 +109,8 @@ func (m *Manager) lateLoadExtensions(s *engineSession, key string, overrides *Pr
 			s.extensionVersion = h.Version()
 		}
 	}
+	m.mu.Unlock()
+
 	ctx := m.newExtContext(s, key)
 	group.FireSessionStart(ctx) //nolint:errcheck // errors logged internally by fireVoid/s.fire
 }
@@ -123,7 +123,7 @@ func (m *Manager) fireBeforeAgentStart(s *engineSession, key string, extGroup *e
 	}
 	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: firing before_agent_start", map[string]any{"key": key})
 	basCtx := m.newExtContext(s, key)
-	agentSysPrompt, _, _ := extGroup.FireBeforeAgentStart(basCtx, extension.AgentInfo{IsRoot: true}) //nolint:errcheck // errors logged internally by fireVoid/s.fire
+	agentSysPrompt, _, _ := extGroup.FireBeforeAgentStart(basCtx, m.rootBeforeAgentStartInfo("")) //nolint:errcheck // errors logged internally by fireVoid/s.fire
 	if agentSysPrompt != "" {
 		opts.AppendSystemPrompt += "\n\n" + agentSysPrompt
 		utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: before_agent_start injected chars", map[string]any{"key": key, "count": len(agentSysPrompt)})
