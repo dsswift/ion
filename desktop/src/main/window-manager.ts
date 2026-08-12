@@ -9,6 +9,7 @@ import { openAtvWindow, reassertAtvActivationPolicy } from './atv-window-manager
 import { restartEngineDaemon } from './engine-bootstrap'
 import { resolveSurfacePlan } from './surface-launch'
 import { readSettings } from './settings-store'
+import { attemptRendererRecovery, resetRendererCrashGuard } from './renderer-crash-guard'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -172,7 +173,23 @@ export function createWindow(showOnReady = true): void {
     }
   })
   mainWindow.webContents.on('render-process-gone', (_e, details) => {
-    log('[renderer:gone]', { reason: details.reason, exit_code: details.exitCode })
+    // A crashed renderer does NOT destroy the window: without recovery the
+    // overlay becomes a transparent, click-blocking, permanently empty layer
+    // over the whole desktop while the tray stays alive. Recover (bounded by
+    // the crash-loop guard) instead of only logging.
+    _error('main', '[renderer:gone]', { reason: details.reason, exit_code: details.exitCode })
+    if (details.reason === 'clean-exit') return
+    attemptRendererRecovery('overlay', details, () => {
+      // The renderer-owned session store died with the process; the cached
+      // projection of it is stale the moment the fresh renderer boots.
+      state.rendererSnapshotCache = null
+      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+        state.mainWindow.webContents.reload()
+      } else {
+        state.mainWindow = null
+        createWindow(false)
+      }
+    })
   })
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
@@ -310,6 +327,13 @@ export function createTray(): void {
 export function ensureWindow(): void {
   if (!state.mainWindow || state.mainWindow.isDestroyed()) {
     createWindow()
+  } else if (state.mainWindow.webContents.isCrashed?.()) {
+    // The window survived a renderer crash (crashes don't destroy windows).
+    // A manual show must never present the dead, transparent, click-blocking
+    // shell — reload it, regardless of the automatic budget's state.
+    log('ensureWindow: reloading crashed renderer on manual show')
+    state.rendererSnapshotCache = null
+    state.mainWindow.webContents.reload()
   }
   if (!state.tray || state.tray.isDestroyed()) {
     createTray()
@@ -317,6 +341,9 @@ export function ensureWindow(): void {
 }
 
 export function showWindow(source = 'unknown'): void {
+  // An operator explicitly summoning the overlay re-arms crash recovery,
+  // even after the automatic budget was exhausted by a crash loop.
+  resetRendererCrashGuard('overlay')
   ensureWindow()
   if (!state.mainWindow) return
   const toggleId = ++state.toggleSequence

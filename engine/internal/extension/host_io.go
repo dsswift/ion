@@ -377,6 +377,12 @@ func (h *Host) buildHookEnvelope(ctx *Context, payload interface{}) map[string]i
 func (h *Host) readLoop(stdout *bufio.Scanner) {
 	defer h.readerWg.Done()
 
+	// Every extension-initiated message is dispatched here, off this goroutine.
+	// Scoped to the read loop: one dispatcher per spawn, torn down when stdout
+	// closes, so a respawned host never inherits the dead one's backlog.
+	inbound := startInboundDispatcher(h)
+	defer inbound.close()
+
 	defer func() {
 		wasAlive := !h.dead.Load()
 		if wasAlive {
@@ -439,13 +445,23 @@ func (h *Host) readLoop(stdout *bufio.Scanner) {
 			ID     *int64 `json:"id"`
 		}
 		if err := json.Unmarshal(line, &probe); err == nil && probe.Method != "" {
+			// Hand off to the inbound dispatcher rather than running the
+			// handler here. This goroutine is the only reader of the host's
+			// stdout, so a handler that blocks here stops every response to an
+			// engine→extension call from being read — see inboundDispatcher for
+			// the deadlock that produced.
+			//
+			// line aliases the scanner's buffer, which is reused on the next
+			// Scan, so the dispatcher gets its own copy.
+			raw := make([]byte, len(line))
+			copy(raw, line)
+			m := inboundMsg{method: probe.Method, raw: raw, ctx: h.ctxStack.Current()}
 			if probe.ID != nil {
 				// Extension-to-engine request (has id, expects response).
-				h.handleExtRequest(probe.Method, *probe.ID, line)
-			} else {
-				// Notification (no id, fire-and-forget).
-				h.handleExtNotification(probe.Method, line)
+				m.isReq = true
+				m.id = *probe.ID
 			}
+			inbound.enqueue(h, m)
 			continue
 		}
 

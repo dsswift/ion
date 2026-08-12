@@ -12,7 +12,6 @@ import (
 	"github.com/dsswift/ion/engine/internal/permissions"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/resource"
-	"github.com/dsswift/ion/engine/internal/session/agents"
 	"github.com/dsswift/ion/engine/internal/session/extcontext"
 	"github.com/dsswift/ion/engine/internal/session/pending"
 	"github.com/dsswift/ion/engine/internal/skills"
@@ -113,7 +112,8 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 		config:           config,
 		conversationID:   convID,
 		bindingPending:   !convExists,
-		agents:           agents.NewRegistry(),
+		agents:           m.newAgentRegistry(),
+		agentEmitter:     &agentEmitter{},
 		childPIDs:        make(map[int]struct{}),
 		pending:          pending.New(),
 		maxQueueDepth:    32,
@@ -607,15 +607,7 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 		}
 		host.SetPersistentEmit(func(ev types.EngineEvent) {
 			if ev.Type == "engine_agent_state" {
-				// Cache the extension's roster, then re-emit a merged snapshot
-				// that includes engine-managed entries (dispatch state with
-				// task, conversationId, progress). Forwarding the extension's
-				// raw event would overwrite engine-managed entries on the
-				// desktop due to the complete-snapshot contract.
-				s.agents.CacheExtStates(ev.Agents)
-				merged := s.agents.MergedSnapshot()
-				utils.LogWithFields(utils.LevelInfo, "session", "agent_snapshot_emitted reason=ext_emit_merged", map[string]any{"captured_key": capturedKey, "count": len(merged)})
-				m.emit(capturedKey, types.EngineEvent{Type: "engine_agent_state", Agents: merged})
+				m.cacheExtStatesAndEmit(capturedKey, s, ev.Agents)
 				return
 			}
 			if ev.Type == "engine_status" && ev.Fields != nil && ev.Fields.ExtensionName != "" {

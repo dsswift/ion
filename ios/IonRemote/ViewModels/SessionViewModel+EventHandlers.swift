@@ -174,25 +174,10 @@ extension SessionViewModel {
             }
 
         // Engine events (structured)
-        case .engineAgentState(let tabId, let instanceId, let agents):
-            // Engine contract: `engine_agent_state` is a complete snapshot
-            // of every agent the engine considers live. Replace local
-            // state with the payload, full stop — no merging, no historical
-            // preservation. See docs/architecture/agent-state.md.
-            //
-            // Post-#256 a tab has exactly one conversation instance, so the
-            // event's instanceId is vestigial — mutateEngineInstance targets
-            // that single instance regardless.
-            let statuses = agents.map { "\($0.name):\($0.status)" }.joined(separator: ",")
-            DiagnosticLog.log("agent state", tag: "session.events", level: .debug, fields: [
-                "tab_id": String(tabId.prefix(8)),
-                "count": String(agents.count),
-                "agent": statuses
-            ])
-            mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.agentStates = agents }
-            // Clear push/snapshot input caches for terminal dispatches so
-            // stale push entries don't produce ghost duplicates on popup reopen.
-            clearTerminalDispatchCaches(for: agents)
+        case .engineAgentState(let tabId, let instanceId, let agents, let metadataOmitted):
+            // See SessionViewModel+AgentStateEvent.swift.
+            applyAgentStateEvent(tabId: tabId, instanceId: instanceId,
+                                 agents: agents, metadataOmitted: metadataOmitted)
 
         case .engineStatus(let tabId, let instanceId, let fields, _):
             mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.statusFields = fields }

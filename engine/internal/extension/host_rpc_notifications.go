@@ -15,7 +15,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-func (h *Host) rpcEmit(raw []byte) {
+func (h *Host) rpcEmit(ctx *Context, raw []byte) {
 	var notif struct {
 		Params types.EngineEvent `json:"params"`
 	}
@@ -25,7 +25,7 @@ func (h *Host) rpcEmit(raw []byte) {
 	}
 	// Resolve emit function: prefer active context, fall back to persistent emit
 	var emitFn func(types.EngineEvent)
-	if ctx := h.ctxStack.Current(); ctx != nil && ctx.Emit != nil {
+	if ctx != nil && ctx.Emit != nil {
 		emitFn = ctx.Emit
 	} else {
 		h.notifMu.RLock()
@@ -61,7 +61,7 @@ func (h *Host) rpcEmit(raw []byte) {
 	emitFn(notif.Params)
 }
 
-func (h *Host) rpcSendMessage(raw []byte) {
+func (h *Host) rpcSendMessage(_ *Context, raw []byte) {
 	var notif struct {
 		Params struct {
 			Text string `json:"text"`
@@ -83,7 +83,7 @@ func (h *Host) rpcSendMessage(raw []byte) {
 	}
 }
 
-func (h *Host) rpcLogNotification(raw []byte) {
+func (h *Host) rpcLogNotification(_ *Context, raw []byte) {
 	// Native SDK logging channel. Routes structured log calls (and
 	// redirected console.* output) through the JSON-RPC frame so
 	// nothing ever lands on the subprocess's raw stdout. Structured
@@ -123,7 +123,7 @@ func (h *Host) rpcLogNotification(raw []byte) {
 	utils.LogExtension(lvl, tag, notif.Params.Message, fields, sessionID, conversationID)
 }
 
-func (h *Host) rpcLlmCallCancel(raw []byte) {
+func (h *Host) rpcLlmCallCancel(_ *Context, raw []byte) {
 	// Per-call cancellation for ctx.llmCall({ signal }). The TS runtime
 	// fires this fire-and-forget notification (no response) when the
 	// caller's AbortSignal aborts, keyed by the in-flight ext/llm_call

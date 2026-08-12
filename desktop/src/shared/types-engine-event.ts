@@ -188,6 +188,16 @@ export type EngineEvent =
   | { type: 'engine_steer_injected'; steerMessageLength: number }
   // No owning run was live, so ctx.steerSelf delivered a fresh prompt instead.
   | { type: 'engine_steer_degraded'; steerDegradedMessageLength: number }
+  | {
+      type: 'engine_agent_state_clamped'
+      clampedAgentName?: string
+      clampedScope?: string
+      clampedKeys?: string[]
+      clampedDroppedKeys?: string[]
+      clampedOriginalBytes?: number
+      clampedBytes?: number
+      clampedLimitBytes?: number
+    }
   | { type: 'engine_prompt_injected'; injectedPrompt: string; injectedPromptOrigin?: string; injectedPromptKind?: string; injectedPromptMachineAuthored?: boolean }
   // engine_run_stalled — advisory event emitted by the run-progress watchdog
   // when a run records no forward progress for longer than the configured

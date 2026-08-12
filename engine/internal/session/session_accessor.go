@@ -440,10 +440,14 @@ func (a *sessionAccessor) UpsertAgentStateByID(id string, seed types.AgentStateU
 	a.s.agents.UpsertStateByID(id, seed, updater)
 }
 
+// EmitAgentSnapshot publishes the session's current merged agent snapshot.
+//
+// force=false: these are routine state-change emissions driven by extension
+// and dispatch activity — the high-frequency path this funnel exists to bound.
+// Terminal transitions do not come through here; they have their own
+// force=true sites (abort, run exit, host death, rehydrate).
 func (a *sessionAccessor) EmitAgentSnapshot(reason string) {
-	snapshot := a.s.agents.MergedSnapshot()
-	utils.LogWithFields(utils.LevelInfo, "session", "agent_snapshot_emitted", map[string]any{"key": a.key, "count": len(snapshot), "reason": reason})
-	a.m.emit(a.key, types.EngineEvent{Type: "engine_agent_state", Agents: snapshot})
+	a.m.emitAgentSnapshot(a.key, reason, false, a.s.agents.MergedSnapshot())
 }
 
 func (a *sessionAccessor) ResourceBroker() *resource.Broker       { return a.s.resourceBroker }

@@ -79,6 +79,13 @@ enum RemoteCommand: Codable, Sendable {
     case terminalRemoveInstance(tabId: String, instanceId: String)
     case terminalSelectInstance(tabId: String, instanceId: String)
     case requestTerminalSnapshot(tabId: String)
+
+    /// Ask the desktop to re-send one tab's agent roster.
+    ///
+    /// Scoped deliberately rather than reusing `sync`, which rebuilds every
+    /// tab plus engine profiles, settings, and terminal buffers. Sent after a
+    /// degraded roster arrives (`metadataOmitted`) or a gap is detected.
+    case requestAgentState(tabId: String, instanceId: String?)
     /// Request on-demand context breakdown from the desktop for a tab.
     /// The desktop forwards get_context_breakdown to the engine; the result
     /// arrives as desktop_context_breakdown and populates inst.contextBreakdown.
@@ -290,6 +297,7 @@ enum RemoteCommand: Codable, Sendable {
         case terminalRemoveInstance = "desktop_terminal_remove_instance"
         case terminalSelectInstance = "desktop_terminal_select_instance"
         case requestTerminalSnapshot = "desktop_request_terminal_snapshot"
+        case requestAgentState = "desktop_request_agent_state"
         case requestContextBreakdown = "desktop_request_context_breakdown"
         case renameTab = "desktop_rename_tab"
         case renameTerminalInstance = "desktop_rename_terminal_instance"

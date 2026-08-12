@@ -15,15 +15,6 @@ import (
 	"github.com/dsswift/ion/engine/internal/webhooks"
 )
 
-// SessionInfo describes a session in the list response.
-type SessionInfo struct {
-	Key            string `json:"key"`
-	HasActiveRun   bool   `json:"hasActiveRun"`
-	ToolCount      int    `json:"toolCount"`
-	ConversationID string `json:"conversationId,omitempty"`
-	ExtensionName  string `json:"extensionName,omitempty"`
-}
-
 // Manager orchestrates multiple engine sessions, routing prompts to the
 // backend and forwarding events to connected clients.
 type Manager struct {
@@ -74,6 +65,16 @@ type Manager struct {
 	heartbeatDone     chan struct{}
 	heartbeatStopOnce sync.Once
 	heartbeatInterval time.Duration
+	// heartbeatKick wakes the heartbeat goroutine when the interval changes so
+	// the new value applies to the wait already in progress. Buffered depth 1:
+	// coalescing repeated changes into one wake is correct, since the
+	// goroutine re-reads the current interval when it wakes.
+	heartbeatKick chan struct{}
+
+	// lockWatch reports holds of m.mu that outlast the stall threshold, with
+	// a goroutine dump naming the holder. Detection only — see
+	// lock_watchdog.go for why the engine must never force-release the lock.
+	lockWatch *lockWatchdog
 
 	// Async-trigger subsystems. Lazily allocated on first
 	// ensureAsyncSubsystems call. Shared across every session managed
@@ -116,10 +117,6 @@ type Manager struct {
 	// ldflags). Propagated to extension Hosts so the init handshake can
 	// validate that the SDK subprocess was built from the same release.
 	engineBuildIdentity string
-
-	// persistedDispatchLocks serializes per-conversation read-modify-write updates
-	// to durable dispatch records without blocking unrelated conversations.
-	persistedDispatchLocks sync.Map // map[string]*sync.Mutex
 }
 
 // SetProcessTelemetry installs the process-level telemetry collector used for
@@ -190,6 +187,7 @@ func NewManager(b backend.RunBackend) *Manager {
 		globalBroker:      resource.NewBroker(),
 		heartbeatStop:     make(chan struct{}),
 		heartbeatDone:     make(chan struct{}),
+		heartbeatKick:     make(chan struct{}, 1),
 		heartbeatInterval: DefaultSessionStatusHeartbeatInterval,
 		runOnce:           newRunOnceRegistry(),
 	}
@@ -207,6 +205,15 @@ func NewManager(b backend.RunBackend) *Manager {
 	// so SetHeartbeatInterval calls before the first tick take effect.
 	// See manager_heartbeat.go.
 	go m.runStatusHeartbeat()
+
+	// Watch m.mu for holds long enough to have stalled the whole engine. The
+	// probe takes the read side: it is enough to detect a stuck writer, and it
+	// never delays a healthy dispatch. See lock_watchdog.go.
+	m.lockWatch = newLockWatchdog("session_manager", func() {
+		m.mu.RLock()
+		m.mu.RUnlock() //nolint:staticcheck // probe: acquire-and-release is the whole point
+	})
+	m.lockWatch.start()
 
 	return m
 }
@@ -385,6 +392,14 @@ func (m *Manager) StopSession(key string) error {
 	// See session_root_context.go.
 	s.cancelSessionRoot("stop session")
 
+	// Halt the agent-state coalesce timer so a trailing flush cannot fire
+	// against a session that is going away. Deliberately does NOT flush a
+	// pending emission: teardown force-emits its own terminal snapshot, and
+	// flushing here would race that with a staler view.
+	if s.agentEmitter != nil {
+		s.agentEmitter.stop()
+	}
+
 	// Cancel active run
 	if s.requestID != "" {
 		m.backend.Cancel(s.requestID)
@@ -547,6 +562,10 @@ func (m *Manager) Shutdown() {
 		close(m.heartbeatStop)
 	})
 	<-m.heartbeatDone
+
+	if m.lockWatch != nil {
+		m.lockWatch.stop()
+	}
 
 	m.StopAll() //nolint:errcheck // best-effort stop; not-found is benign
 	m.asyncMu.Lock()
@@ -757,12 +776,12 @@ func (m *Manager) ReconcileState(key string) {
 		return
 	}
 
-	// Re-emit agent states. Always emit, including the empty snapshot:
-	// reconnecting clients need the authoritative "no agents" signal as
-	// much as they need the "here are the agents" signal.
-	snapshot := s.agents.MergedSnapshot()
-	utils.LogWithFields(utils.LevelInfo, "session", "agent_snapshot_emitted reason=reconcile", map[string]any{"key": key, "count": len(snapshot)})
-	m.emit(key, types.EngineEvent{Type: "engine_agent_state", Agents: snapshot})
+	// Re-emit agent states. force=true: this is a liveness emission, so it
+	// must survive dedup even when the snapshot is byte-identical to the last
+	// one — a reconnecting client needs the authoritative "no agents" signal
+	// as much as the "here are the agents" signal, and suppressing a repeat
+	// would leave it showing stale rows.
+	m.emitAgentSnapshot(key, agentSnapshotReasonReconcile, true, s.agents.MergedSnapshot())
 
 	// Re-emit status via the shared snapshot helper so the legacy
 	// engine_status and the Phase 3 engine_session_status both ship

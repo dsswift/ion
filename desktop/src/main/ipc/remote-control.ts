@@ -122,7 +122,12 @@ export function registerRemoteControlIpc(): void {
   })
 
   ipcMain.handle(IPC.REMOTE_GET_STATE, () => {
-    return { transportState: state.remoteTransport?.state || 'disconnected' }
+    // failure is additive: absent when the relay is healthy or merely
+    // retrying, present only once a permanent failure has latched.
+    return {
+      transportState: state.remoteTransport?.state || 'disconnected',
+      failure: state.remoteTransport?.relayFailure ?? null,
+    }
   })
 
   ipcMain.handle(IPC.REMOTE_SET_LAN_DISABLED, async (_event, disabled: boolean) => {

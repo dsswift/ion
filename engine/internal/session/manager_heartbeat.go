@@ -33,12 +33,24 @@ import (
 // so changes take effect after the current tick completes.
 func (m *Manager) SetHeartbeatInterval(d time.Duration) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if d <= 0 {
 		m.heartbeatInterval = DefaultSessionStatusHeartbeatInterval
-		return
+	} else {
+		m.heartbeatInterval = d
 	}
-	m.heartbeatInterval = d
+	m.mu.Unlock()
+
+	// Wake the goroutine so the new interval applies to the wait already in
+	// progress. Without this, a change only takes effect after the *current*
+	// wait elapses — so a caller that shortens the interval right after
+	// NewManager still waits out the default, and whether it does is a race
+	// against the goroutine's first interval read.
+	if m.heartbeatKick != nil {
+		select {
+		case m.heartbeatKick <- struct{}{}:
+		default: // a wake is already pending; one is enough.
+		}
+	}
 }
 
 // snapshotHeartbeatInterval reads heartbeatInterval under the manager
@@ -74,6 +86,16 @@ func (m *Manager) runStatusHeartbeat() {
 		select {
 		case <-m.heartbeatStop:
 			return
+		case <-m.heartbeatKick:
+			// Interval changed mid-wait: re-arm against the new value rather
+			// than serving out the old one.
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			timer.Reset(m.snapshotHeartbeatInterval())
 		case <-timer.C:
 			m.emitHeartbeatTick()
 			// Re-read interval each tick so SetHeartbeatInterval
@@ -116,17 +138,10 @@ func (m *Manager) emitHeartbeatTick() {
 		m.emitStatusSnapshot(key, "heartbeat")
 
 		// Re-emit agent state so a reconnected client converges within
-		// one tick even if reconcile_state was lost.
-		m.mu.RLock()
-		var agentSnapshot []types.AgentStateUpdate
-		if s, ok := m.sessions[key]; ok {
-			agentSnapshot = s.agents.MergedSnapshot()
-		}
-		m.mu.RUnlock()
-		m.emit(key, types.EngineEvent{
-			Type:   "engine_agent_state",
-			Agents: agentSnapshot,
-		})
+		// one tick even if reconcile_state was lost. force=true because the
+		// heartbeat's whole purpose is the repeat: an unchanged snapshot is
+		// exactly the case it exists to deliver, so it must bypass dedup.
+		m.emitAgentSnapshotFor(key, agentSnapshotReasonHeartbeat, true)
 	}
 }
 

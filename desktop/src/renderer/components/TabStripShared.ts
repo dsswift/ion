@@ -76,11 +76,18 @@ export function getWaitingState(
   tab: TabState,
   conversationPanes: Map<string, ConversationPane> = useSessionStore.getState().conversationPanes,
 ): WaitingState {
+  return waitingStateOfPane(conversationPanes.get(tab.id))
+}
+
+/**
+ * Pane-scoped form of {@link getWaitingState}, for a component that subscribes
+ * to one tab's pane instead of the whole `conversationPanes` map.
+ */
+export function waitingStateOfPane(pane: ConversationPane | undefined): WaitingState {
   // DATA-driven (not tab-type): fold the waiting state across ALL of the tab's
   // instances. A plain conversation has a single `main` instance, so the fold
   // collapses to reading that one instance's permissionDenied; an
   // extension-backed tab folds across its instances. One path for both.
-  const pane = conversationPanes.get(tab.id)
   if (!pane || pane.instances.length === 0) return null
   let hasPlanReady = false
   for (const inst of pane.instances) {

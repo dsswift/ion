@@ -31,14 +31,10 @@ import { rError } from '../rendererLogger'
 
 export function TabStrip() {
   const tabs = useSessionStore((s) => s.tabs)
-  // Subscribe to engine state so the waiting-state border on an engine
-  // tab's pill re-renders when any of its sub-instances gets/clears a
-  // pending AskUserQuestion / ExitPlanMode denial. getWaitingState()
-  // Subscribe to conversationPanes so tab strip pills re-render when instance
-  // permissionDenied or other ConversationInstance fields change. With all
-  // instance state on conversationPanes, a single subscription covers everything
-  // that previously required separate enginePermissionDenied subscription.
-  useSessionStore((s) => s.conversationPanes)
+  // No conversationPanes subscription here on purpose: each pill subscribes to
+  // its OWN pane (TabStripTabPill), so instance changes re-render exactly the
+  // pill they affect. Subscribing to the whole map at the strip level would
+  // re-render every pill whenever any conversation streamed.
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const selectTab = useSessionStore((s) => s.selectTab)
   const requestCloseTab = useSessionStore((s) => s.requestCloseTab)

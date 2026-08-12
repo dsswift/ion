@@ -12,6 +12,9 @@ import { injectDiskResourcesIfEmpty } from './event-wiring-disk-seed'
 import { accumulateTextDelta, flushKeyDeltas, dropKeyDeltas } from './event-wiring-text-delta-batcher'
 import { projectEngineEventToWire } from './event-wiring-wire-projection'
 import { notifyAtvPermissionResolved } from './atv-window-manager'
+import { recordStatusFields, recordWorkingMessage, clearAllAgentState } from './agent-state-mirror'
+import { resetAgentStateSelfHeal } from './remote/handlers/agent-state'
+import { ingestAgentStateEvent } from './event-wiring-agent-state'
 export { wireTabFocusHandler, wireMarkResourceReadHandler, wireDeleteResourceHandler, wireResourceGetHandler, handleResourceItemEvent } from './event-wiring-resources'
 export { wireRemoteSessionPlaneForwarding } from './event-wiring-remote'
 
@@ -97,6 +100,16 @@ export function wireEngineBridgeEvents(): void {
   engineBridge.on('reconnected', () => {
     log('engineBridge: broadcasting engine reconnect to renderers')
     broadcast('ion:engine-reconnected')
+    // Every mirrored roster is void across a reconnect: engine_agent_state is
+    // a complete snapshot, and after an engine RESTART the old session keys
+    // never emit again, so an entry kept here is stale forever (a 30.7 MB
+    // dead-session roster once looped through self-heal for 10+ hours on
+    // exactly this). Live sessions re-emit on re-registration within seconds,
+    // repopulating the mirror; an iOS resync inside that window honestly
+    // answers "no agents" instead of serving the stale copy.
+    clearAllAgentState()
+    resetAgentStateSelfHeal()
+    log('engineBridge: agent-state mirror cleared on reconnect')
   })
 
   // Track whether we've done the initial global resource subscription.
@@ -303,7 +316,20 @@ export function wireEngineBridgeEvents(): void {
         aggregateCostUsd: event.contextBreakdown.aggregateCostUsd,
         modelBreakdown: event.contextBreakdown.modelBreakdown,
       })
-      if (state.remoteTransport) {
+      // Mirror the other two live-state fields from the same upstream point, so
+    // an iOS resync is answered entirely from main. Both are recorded before
+    // the renderer forward below, so the mirror is never the staler copy.
+    if (event.type === 'engine_status' && event.fields) {
+      const [k0, k1] = key.split(':')
+      recordStatusFields(k0, k1 || null, event.fields)
+    }
+    if (event.type === 'engine_working_message') {
+      const [k0, k1] = key.split(':')
+      // '' is meaningful: it is how a stale banner is cleared.
+      recordWorkingMessage(k0, k1 || null, typeof event.message === 'string' ? event.message : '')
+    }
+
+    if (state.remoteTransport) {
         const tabIdBD = key.split(':')[0]
         const instanceIdBD = key.split(':')[1] || null
         state.remoteTransport.send({
@@ -323,16 +349,11 @@ export function wireEngineBridgeEvents(): void {
     // generating the dominant share of desktop log volume. Available at
     // trace level when transport diagnosis is needed.
     if (event.type === 'engine_agent_state') {
-      const agents = Array.isArray(event.agents) ? event.agents : []
-      _trace('main', 'agent_state', { key, count: agents.length })
-      // Trace dispatch metadata for terminal agents so we can verify
-      // conversationId survives the engine→desktop pipeline.
-      for (const a of agents) {
-        if ((a.status === 'done' || a.status === 'error') && a.metadata?.task) {
-          const meta = a.metadata
-          _trace('main', 'agent_state: dispatch_agent', { name: a.name, status: a.status, conv_id: meta.conversationId ?? 'MISSING' })
-        }
-      }
+      // Ingest bound + upstream mirror record + tracing. Mutates the event
+      // when the roster exceeds the ingest cap so every downstream copy
+      // (renderer store, iOS wire) carries the bounded form. Details in
+      // event-wiring-agent-state.ts.
+      ingestAgentStateEvent(key, event as never)
     }
 
     if (state.remoteTransport) {

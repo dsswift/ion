@@ -142,6 +142,19 @@ type EngineEvent struct {
 	// SteerMessageLength: no run-loop steer channel drained this message.
 	SteerDegradedMessageLength int `json:"steerDegradedMessageLength,omitempty"`
 
+	// engine_agent_state_clamped — the engine bounded an agent-state metadata
+	// payload that exceeded the configured limits. Carries key names and byte
+	// counts only; the offending content is never echoed, because it is by
+	// definition the oversized value that made the original event
+	// undeliverable. See AgentStateClampedEvent for the normalized variant.
+	ClampedAgentName     string   `json:"clampedAgentName,omitempty"`
+	ClampedScope         string   `json:"clampedScope,omitempty"`
+	ClampedKeys          []string `json:"clampedKeys,omitempty"`
+	ClampedDroppedKeys   []string `json:"clampedDroppedKeys,omitempty"`
+	ClampedOriginalBytes int      `json:"clampedOriginalBytes,omitempty"`
+	ClampedBytes         int      `json:"clampedBytes,omitempty"`
+	ClampedLimitBytes    int      `json:"clampedLimitBytes,omitempty"`
+
 	// engine_prompt_injected — an extension injected a prompt via
 	// ctx.sendPrompt and a run started on it; no client submitted this
 	// turn, so live clients must render it from this event (the text is
@@ -718,75 +731,4 @@ type EngineEvent struct {
 	// telemetry — consumers render it however they like; the engine attaches
 	// no UI semantics. See ContextBreakdownPayload for the per-field contract.
 	ContextBreakdown *ContextBreakdownPayload `json:"contextBreakdown,omitempty"`
-}
-
-// ContextBreakdownPayload is the payload for engine_context_breakdown events.
-// Mirrors the internal ContextBreakdownEvent shape. All token counts are
-// itemized per category; Tier records how each count was obtained ("exact"
-// from a provider count-tokens endpoint, "local" from the tiktoken BPE
-// encoder, or "approximate" from the char/4 heuristic).
-type ContextBreakdownPayload struct {
-	Categories       []ContextBreakdownCategory `json:"categories"`
-	ContextWindow    int                        `json:"contextWindow"`
-	TotalTokens      int                        `json:"totalTokens"`
-	APIReportedTotal int                        `json:"apiReportedTotal,omitempty"`
-	Unaccounted      int                        `json:"unaccounted,omitempty"`
-	// CacheReadTokens and CacheCreationTokens are provider-reported cache
-	// annotations. Annotation only — NOT included in TotalTokens.
-	CacheReadTokens     int    `json:"cacheReadTokens,omitempty"`
-	CacheCreationTokens int    `json:"cacheCreationTokens,omitempty"`
-	Model               string `json:"model"`
-	// OccupancyTokens is the engine's authoritative context-window occupancy —
-	// the same figure carried by StatusFields.ContextTokens and the same input
-	// the proactive-compaction gate measures. Divide it by ContextWindow to
-	// render "how full is the context".
-	//
-	// Distinct from its two neighbours by design: TotalTokens is the itemized
-	// per-category sum (an independent estimate, for attribution), and
-	// APIReportedTotal is the raw provider input_tokens for the last turn with
-	// nothing added for messages appended since. See the field comment on
-	// ContextBreakdownEvent for the full contract.
-	//
-	// Zero when the engine has no occupancy figure for the conversation.
-	OccupancyTokens int `json:"occupancyTokens,omitempty"`
-	// AggregateCostUsd is the sum of this session's cost plus every descendant
-	// dispatch session's cost, computed on demand. Zero for sessions with no
-	// dispatches or no cost yet.
-	AggregateCostUsd float64 `json:"aggregateCostUsd,omitempty"`
-	// ModelBreakdown is the per-model cost breakdown for the conversation dispatch
-	// tree. Populated by the on-demand breakdown. Sorted by CostUsd descending.
-	// Empty for runloop-emitted breakdowns.
-	ModelBreakdown []ModelBreakdown `json:"modelBreakdown,omitempty"`
-}
-
-// BackgroundTaskCompletePayload is the payload for
-// engine_background_task_complete events. Mirrors the internal
-// BackgroundTaskCompleteEvent shape: a background bash command started with
-// notify_on_complete reached a terminal state.
-//
-// RemainingTaskIDs is the session's still-outstanding notifying task set at
-// the instant this task completed, so a consumer can render progress
-// ("2 of 3 done") without having tracked the starts. Empty means this was the
-// last outstanding command.
-type BackgroundTaskCompletePayload struct {
-	TaskID           string   `json:"taskId"`
-	Status           string   `json:"status"`
-	ExitCode         int      `json:"exitCode"`
-	ElapsedMs        int64    `json:"elapsedMs"`
-	OutputPath       string   `json:"outputPath,omitempty"`
-	Tail             string   `json:"tail,omitempty"`
-	Command          string   `json:"command,omitempty"`
-	RemainingTaskIDs []string `json:"remainingTaskIds,omitempty"`
-}
-
-// DispatchLostPayload is the nested wire payload for engine_dispatch_lost
-// events. Mirrors the internal DispatchLostEvent field-for-field; see that
-// type (normalized_event_run_signals.go) for full semantics.
-type DispatchLostPayload struct {
-	DispatchID          string `json:"dispatchId"`
-	AgentName           string `json:"agentName"`
-	Task                string `json:"task,omitempty"`
-	ParentDispatchID    string `json:"parentDispatchId,omitempty"`
-	Depth               int    `json:"depth,omitempty"`
-	ChildConversationID string `json:"childConversationId,omitempty"`
 }

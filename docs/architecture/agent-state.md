@@ -96,7 +96,7 @@ Consumers should accept any string and degrade gracefully on unknown values (ren
 | `color` | string | CSS color string for the agent's identity badge. |
 | `model` | string | Provider model id (e.g. `claude-sonnet-4-6`). |
 | `task` | string | The prompt the orchestrator handed to this agent. |
-| `lastWork` | string | Short summary of the agent's last activity (truncated, ≤100 chars). |
+| `lastWork` | string | Short summary of the agent's last activity. Producers should keep this to roughly a line; the engine bounds it (see "Metadata size bounds"). |
 | `fullOutput` | string | Full agent output (clients may render or hide). |
 | `elapsed` | number | Wall-clock seconds since `startTime`. |
 | `startTime` | number | Unix timestamp (seconds) when the agent started its current run. |
@@ -106,6 +106,62 @@ Consumers should accept any string and degrade gracefully on unknown values (ren
 | `depth` | number | Nesting depth from the root run. |
 
 The list is advisory. Extensions are free to add their own keys; pick a unique prefix to avoid collisions.
+
+Keys beginning with `_` are reserved by the engine (see `_truncated` below).
+
+## Metadata size bounds
+
+`metadata` is an open-ended map, and because this event is a **complete snapshot** an oversized value is paid on *every* emission for the life of the session rather than once. The engine therefore bounds it.
+
+This is not theoretical. A 36,969,872-byte `engine_agent_state` carrying only 11 agents (~3.3 MB each) was rebuilt byte-identical for over 15 hours. It exceeded the desktop's 6 MiB transport cap on all 1,873 attempts, so it was dropped every time — iOS went blind to agent state for the entire window while the desktop burned CPU rebuilding an undeliverable frame. The engine had written all 35 MB to the NDJSON socket regardless, so every external wire consumer paid for it too.
+
+The tiers are configurable under `limits.agentStateMetadata` in `engine.json` (`0` = default, `-1` = disabled), with an enterprise ceiling that is minimum-wins:
+
+| Tier | Default | Catches |
+|---|---|---|
+| `maxValueBytes` | 4096 | one giant string |
+| `maxEntryBytes` | 65536 | death by a thousand keys |
+| `maxSnapshotBytes` | 4 MiB | an agent-*count* explosion |
+| `maxDepth` | 4 | nested structures |
+| `maxDispatchEntries` | 50 | an unbounded dispatch *history* |
+
+`maxDispatchEntries` exists because a byte tier cannot see a history coming: `dispatches[]` accumulates one small record per Agent-tool dispatch (and rehydrates across restarts), so no single value ever trips `maxValueBytes` while the array grows without bound. The emitted snapshot keeps the most recent entries, stamps the original count as `dispatchesTotal`, and marks the cut in `_truncatedKeys`. The full history remains in conversation storage and producer persistence — a complete-snapshot event carries live status, not an archive.
+
+**The entry and snapshot bounds are hard guarantees, not best-effort.** The entry budget runs in three phases: drop unprotected keys largest-first; then shrink protected *collection* values (arrays lose their oldest elements, nested maps their largest inner keys); then, as an unconditional backstop, replace protected values with a truncation marker until the entry fits — `displayName` last, truncated rather than dropped. The snapshot budget re-applies the same pipeline per entry against a proportional share. A clamp advisory therefore always reports `clamped_bytes ≤ limit_bytes`.
+
+Rules the clamp obeys, which consumers may rely on:
+
+- **An agent is never dropped**, only metadata. Omitting an agent from a complete snapshot means "this agent is gone", so shedding one to save bytes would be a lie.
+- **Protected keys are never removed, but their values are shrunk as far as the budget requires.** Protection is about key retention, not exemption from the bound. The protected set is `displayName`, `type`, `visibility`, `invited`, `status`, `color`, `dispatchId`, `dispatchParentId`, `dispatchDepth`, `dispatches`, `conversationId`.
+- **`visibility` and `invited` are protected for a cross-client reason.** iOS defaults an absent `visibility` to `ephemeral` and renders ephemeral agents only while running; an absent `invited` defaults to `false`, which hides `sticky` rows. Dropping either would silently empty the agents panel — a wrong render that looks successful, which is worse than a dropped frame.
+- **Truncation is UTF-8 safe.** A byte-slice cut would emit invalid UTF-8 and make the whole frame undecodable, turning a large snapshot into no snapshot.
+- **`dispatches[]` keeps its most recent entries**, each recursed into rather than flattened, because per-dispatch UI state is keyed on the `id` / `status` / `conversationId` inside it. When the array is cut, `dispatchesTotal` carries the pre-cut count.
+
+### `_truncated` / `_truncatedKeys`
+
+When the engine clamps an entry it stamps `_truncated: true` and `_truncatedKeys: [...]` into that agent's metadata, and separately emits `engine_agent_state_clamped` carrying key names and byte counts (never the content — echoing the offending value would recreate the pathology in a second event).
+
+These are **not** redundant surfaces for one signal, which the typed-event rule would otherwise forbid. The event answers "a clamp happened in this session and here is how much was lost". The in-band marker answers "*this* value on *this* agent in *this* snapshot is not what the producer wrote" — which is what a consumer needs to render an ellipsis or a tooltip, and which cannot be reliably reconstructed by correlating an out-of-band event back to one field of one agent inside one snapshot.
+
+The advisory is rate-limited per `(agent, scope)`; every clamp is logged at WARN regardless, so log-based diagnosis stays complete.
+
+> **iOS caveat.** iOS rebuilds the metadata map from its typed fields when it persists a tab snapshot, so unknown keys — including `_truncated` — do not survive a save/load round-trip. The marker is reliable on first receipt.
+
+## Emission cardinality: dedup and coalescing
+
+The engine does not emit every internally-observed change as its own frame.
+
+- **Identical repeats are suppressed.** Re-sending a byte-identical snapshot is a no-op by definition under replace semantics.
+- **Metadata-only bursts are coalesced** through a leading+trailing rate limiter (default 250 ms, `limits.agentStateEmit.coalesceMs`). The first change in an idle window emits immediately, so an isolated update has no added latency; only a burst collapses, and the trailing flush re-reads current state.
+
+This is safe because snapshot *N+1* is a total function of engine state and strictly supersedes *N*: a consumer receiving only *N+1* lands in exactly the state it would occupy after applying *N* then *N+1*. Combined with rule 3 above — consumers must not derive history from these events — no conforming consumer can observe the difference.
+
+**Two classes never wait:**
+
+- **Forced emissions** — heartbeat and reconcile, where the repeat *is* the signal, plus every terminal transition (abort, run exit, extension death, dispatch rehydrate). These bypass both gates.
+- **Structural changes** — any change to the ordered `(name, id, status)` tuple set. An agent appearing, disappearing, or reaching a terminal status flushes synchronously. Only metadata churn is ever held.
+
+Set `coalesceMs: -1` to restore per-change emission cardinality exactly, or `dedup: false` to restore repeats.
 
 ## Examples
 

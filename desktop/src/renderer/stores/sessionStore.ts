@@ -6,7 +6,6 @@ import type { ResourceItem } from '../../shared/types-engine'
 import { markResourcesRead } from './slices/resource-slice'
 import { makeLocalTab, initialModelOverride, initialThinkingEffort } from './session-store-helpers'
 import { makeMainPane } from './conversation-instance'
-import { parseSessionKey } from '../../shared/session-key'
 import { createTabSlice } from './slices/tab-slice'
 import { createCloseIntentSlice } from './slices/close-intent-slice'
 import { createResumeSlice } from './slices/resume-slice'
@@ -153,14 +152,6 @@ export const useSessionStore = create<State>((set, get) => {
 
 ;(window as any).__Ion_SESSION_STORE__ = useSessionStore
 ;(window as any).__Ion_PREFERENCES_STORE__ = usePreferencesStore
-;(window as any).__Ion_resolveEngineModel = (compoundKey: string): string => {
-  const s = useSessionStore.getState()
-  const prefs = usePreferencesStore.getState()
-  const { tabId, instanceId } = parseSessionKey(compoundKey)
-  const pane = s.conversationPanes.get(tabId)
-  const inst = pane?.instances.find((i) => i.id === instanceId)
-  return inst?.modelOverride || prefs.engineDefaultModel || prefs.preferredModel || 'claude-sonnet-4-6'
-}
 ;(window as any).__serializeTerminalBuffer = serializeTerminalBuffer
 
 // The ATV mirror window never persists: the overlay renderer is the single

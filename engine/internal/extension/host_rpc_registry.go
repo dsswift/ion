@@ -24,7 +24,7 @@ type extRequestHandler func(h *Host, ctx *Context, id int64, raw []byte)
 
 // extNotificationHandler consumes an extension-initiated notification. There
 // is no id and no response.
-type extNotificationHandler func(h *Host, raw []byte)
+type extNotificationHandler func(h *Host, ctx *Context, raw []byte)
 
 // extRequestHandlers is the authoritative set of ext/* request methods.
 // Anything absent yields JSON-RPC -32601, which client SDKs treat as a

@@ -7,7 +7,6 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/extension"
-	"github.com/dsswift/ion/engine/internal/session/agents"
 	"github.com/dsswift/ion/engine/internal/session/pending"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -70,7 +69,8 @@ func (m *Manager) ForkSession(key string, messageIndex int) (string, error) {
 		key:            newKey,
 		config:         s.config,
 		conversationID: forked.ID,
-		agents:         agents.NewRegistry(),
+		agents:         m.newAgentRegistry(),
+		agentEmitter:   &agentEmitter{},
 		childPIDs:      make(map[int]struct{}),
 		pending:        pending.New(),
 		planMode:       s.planMode,

@@ -143,7 +143,8 @@ func TestScheduler_NilContextResolve_SkipsWithoutPanic(t *testing.T) {
 	// goroutine.
 	nilResolver := func(_ *extension.Host) (*extension.Context, error) { return nil, nil }
 	key := hostJobKey{host: h, id: job.JobID}
-	s.fireJob(h, job, key, nilResolver)
+	slot, _ := s.claimInFlight(key, job, s.now())
+	s.fireJob(h, job, key, slot, nilResolver)
 
 	collected := drainEvents(events)
 	var sawSkipped bool

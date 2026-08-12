@@ -12,11 +12,21 @@
 
 import { EventEmitter } from 'events'
 import WebSocket from 'ws'
-import { log as _log } from '../logger'
+import { log as _log, error as _errorLog } from '../logger'
 import type { WireMessage, RelayControlMessage } from './protocol'
+import {
+  classifyCredentialError,
+  classifyCloseCode,
+  UNKNOWN_FAILURE_ESCALATE_AFTER,
+  type RelayFailure,
+} from './relay-failure'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('RelayClient', msg, fields)
+}
+
+function error(msg: string, fields?: Record<string, unknown>): void {
+  _errorLog('RelayClient', msg, fields)
 }
 
 const BACKOFF_BASE = 1000
@@ -55,6 +65,15 @@ export class RelayClient extends EventEmitter {
   private ws: WebSocket | null = null
   private options: RelayClientOptions
   private reconnectAttempt = 0
+  /**
+   * Set when a failure cannot be fixed by retrying. While latched, no
+   * reconnect is scheduled — the loop that produced one attempt every ~14
+   * seconds for an unsigned-in user is exactly what this stops. Cleared by
+   * retry(), which the settings UI and a credential change both call.
+   */
+  private permanentFailure: RelayFailure | null = null
+  /** Consecutive unknown-class failures, for escalation. */
+  private unknownFailureCount = 0
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private intentionallyClosed = false
   private _connected = false
@@ -87,10 +106,7 @@ export class RelayClient extends EventEmitter {
       try {
         bearer = await getCredential()
       } catch (err) {
-        log('relay_client: credential fetch failed, deferring to backoff', { error: (err as Error).message })
-        if (!this.intentionallyClosed) {
-          this._scheduleReconnect()
-        }
+        this._handleFailure(classifyCredentialError(err as Error), 'credential')
         return
       }
     } else {
@@ -117,6 +133,8 @@ export class RelayClient extends EventEmitter {
       log('connected')
       this._connected = true
       this.reconnectAttempt = 0
+      this.permanentFailure = null
+      this.unknownFailureCount = 0
       this.emit('connected')
     })
 
@@ -145,12 +163,10 @@ export class RelayClient extends EventEmitter {
       if (code === CLOSE_CODE_TOKEN_EXPIRED) {
         // Token rejected or expired. The backoff handles reconnect timing;
         // on the next _doConnect, getCredential() will mint a fresh token.
-        log('relay_client: token expired (4401), reconnecting via backoff', {}, )
+        log('relay_client: token expired (4401), reconnecting via backoff')
       }
 
-      if (!this.intentionallyClosed) {
-        this._scheduleReconnect()
-      }
+      this._handleFailure(classifyCloseCode(code, reason?.toString() || ''), 'close')
     })
 
     this.ws.on('error', (err) => {
@@ -187,6 +203,65 @@ export class RelayClient extends EventEmitter {
 
   updateOptions(options: Partial<RelayClientOptions>): void {
     Object.assign(this.options, options)
+  }
+
+  /**
+   * Route a failure by class.
+   *
+   * Permanent failures latch and emit 'failed' instead of scheduling a
+   * reconnect: retrying a missing sign-in or a rejected scope cannot succeed,
+   * and doing it forever hides the actual problem behind a spinner. Transient
+   * failures keep the existing backoff. Unknown failures keep retrying —
+   * misclassifying a transient as permanent is the worse mistake — but
+   * escalate to ERROR once they stop looking like a blip.
+   */
+  private _handleFailure(failure: RelayFailure, source: 'credential' | 'close'): void {
+    if (this.intentionallyClosed) return
+
+    if (failure.class === 'permanent') {
+      this.permanentFailure = failure
+      error('relay_client: permanent failure, not retrying', {
+        source, reason: failure.reason, detail: failure.detail,
+      })
+      this.emit('failed', failure)
+      return
+    }
+
+    if (failure.class === 'unknown') {
+      this.unknownFailureCount++
+      if (this.unknownFailureCount >= UNKNOWN_FAILURE_ESCALATE_AFTER) {
+        error('relay_client: unclassified failure persisting, still retrying', {
+          source, reason: failure.reason, detail: failure.detail, attempts: this.unknownFailureCount,
+        })
+        this.unknownFailureCount = 0
+      }
+    } else {
+      this.unknownFailureCount = 0
+    }
+
+    this._scheduleReconnect()
+  }
+
+  /**
+   * Clear a permanent latch and reconnect now.
+   *
+   * Called after the operator signs in or edits the relay config, and by an
+   * explicit Reconnect action. Without this a permanent failure would be
+   * terminal for the process lifetime, which trades one bad behaviour
+   * (retrying forever) for another (never retrying).
+   */
+  retry(): void {
+    if (!this.permanentFailure) return
+    log('relay_client: clearing permanent failure, retrying', { reason: this.permanentFailure.reason })
+    this.permanentFailure = null
+    this.unknownFailureCount = 0
+    this.reconnectAttempt = 0
+    void this._doConnect()
+  }
+
+  /** The latched permanent failure, if any. Drives the UI's reason line. */
+  getFailure(): RelayFailure | null {
+    return this.permanentFailure
   }
 
   private _scheduleReconnect(): void {

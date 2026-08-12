@@ -65,6 +65,9 @@ type Resolver struct {
 // NewResolver creates a resolver with the given auth configuration.
 // If config is nil, only environment variable and keychain resolution is available.
 func NewResolver(config *types.AuthConfig) *Resolver {
+	if config != nil {
+		SetNegativeCacheTTL(config.HasKeyNegativeCacheSeconds)
+	}
 	return &Resolver{
 		config:       config,
 		programmatic: make(map[string]string),
@@ -75,6 +78,8 @@ func NewResolver(config *types.AuthConfig) *Resolver {
 // map. Keys set here take priority over all other resolution levels.
 func (r *Resolver) SetProgrammatic(providerID, apiKey string) {
 	r.programmatic[strings.ToLower(providerID)] = apiKey
+	// A negative cached before this call would now be wrong.
+	InvalidateHasKey(providerID)
 }
 
 // HasKey performs a lightweight check to determine if the given provider has
@@ -84,6 +89,17 @@ func (r *Resolver) SetProgrammatic(providerID, apiKey string) {
 // (e.g. "env", "filestore").
 func (r *Resolver) HasKey(provider string) (bool, string) {
 	provider = strings.ToLower(provider)
+
+	// A cached negative skips levels 3-4c, which are the I/O ones (keychain
+	// lookup, two file-store reads, credentials.json). Only negatives are
+	// cached: serving a stale positive would keep handing out a credential the
+	// operator revoked. Every credential write invalidates this, so the TTL is
+	// a backstop rather than the mechanism.
+	if hasNegative(provider) {
+		utils.LogWithFields(utils.LevelDebug, "auth", "has key negative cache hit", map[string]any{"provider": provider})
+		return false, ""
+	}
+
 	utils.LogWithFields(utils.LevelDebug, "auth", "has key checking", map[string]any{"provider": provider})
 
 	// Level 1: Programmatic
@@ -133,6 +149,7 @@ func (r *Resolver) HasKey(provider string) (bool, string) {
 	}
 	utils.LogWithFields(utils.LevelDebug, "auth", "has key miss", map[string]any{"provider": provider, "reason": "credentials.json"})
 
+	rememberNegative(provider)
 	utils.LogWithFields(utils.LevelInfo, "auth", "has key no credentials found", map[string]any{"provider": provider})
 	return false, ""
 }

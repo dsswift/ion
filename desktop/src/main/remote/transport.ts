@@ -11,6 +11,8 @@
 
 import { EventEmitter } from 'events'
 import { RelayClient } from './relay-client'
+import type { RelayFailure } from './relay-failure'
+import { firstRelayFailure, retryAllRelays } from './transport-relay-failure'
 import { LANServer } from './lan-server'
 import { startLanAuth, handleLanAuthResponse, type LanAuthCtx } from './transport-lan-auth'
 import { log as _log } from '../logger'
@@ -147,6 +149,14 @@ export class RemoteTransport extends EventEmitter {
   constructor(config: RemoteTransportConfig) {
     super()
     this.config = config
+  }
+
+  /** First latched permanent relay failure. See transport-relay-failure.ts. */
+  get relayFailure(): RelayFailure | null { return firstRelayFailure(this.relays) }
+
+  /** Clear permanent latches and reconnect after sign-in or a config edit. */
+  retryRelays(): void {
+    retryAllRelays(this.relays)
   }
 
   get state(): TransportState {

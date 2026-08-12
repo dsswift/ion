@@ -48,6 +48,23 @@ type engineSession struct {
 	key       string
 	config    types.EngineConfig
 	requestID string // empty when no active run
+
+	// clampAdvisoryMu guards lastClampAdvisory. Its own lock rather than
+	// m.mu: the advisory drain runs inside the emit path, which already takes
+	// m.mu.RLock via m.emit, so reusing m.mu risks a lock-order inversion for
+	// a concern that touches nothing else.
+	clampAdvisoryMu sync.Mutex
+	// lastClampAdvisory rate-limits engine_agent_state_clamped per
+	// (agent, scope). A wedged payload clamps on every emission — 1,873 times
+	// over 15 hours in the incident this guards against — so an unthrottled
+	// advisory would flood the wire the clamp exists to protect.
+	lastClampAdvisory map[string]clampAdvisoryRecord
+
+	// agentEmitter gates engine_agent_state emissions (dedup + coalesce).
+	// Carries its own mutex; see agent_emitter.go for why it does not share
+	// m.mu.
+	agentEmitter *agentEmitter
+
 	// runIdentityMu serializes extension-context snapshots of requestID and
 	// runTraceID with lifecycle writes. Manager-owned readers still use m.mu;
 	// writers hold m.mu before this lock, preserving one lock order.

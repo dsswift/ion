@@ -90,5 +90,9 @@ func (m *Manager) emitDispatchCountStatus(s *engineSession, reason string) {
 
 	fields := m.buildIdleStatusFields(s, key, bgCount)
 	m.emit(key, types.EngineEvent{Type: "engine_status", Fields: fields})
-	m.emit(key, types.EngineEvent{Type: "engine_agent_state", Agents: snapshot})
+	// force=true: this fires on dispatch-count transitions, which are the
+	// structural changes consumers drive their spinner and counter off. It
+	// pairs with the engine_status emitted immediately above, and letting the
+	// two diverge in timing would show a count that disagrees with the roster.
+	m.emitAgentSnapshot(key, agentSnapshotReasonDispatchCount, true, snapshot)
 }

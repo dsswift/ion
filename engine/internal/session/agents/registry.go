@@ -16,13 +16,30 @@ type Registry struct {
 	specs         map[string]types.AgentSpec
 	states        []types.AgentStateUpdate
 	lastExtStates []types.AgentStateUpdate
+
+	// limits bounds metadata size on every write path. See metadata_clamp.go
+	// for why the engine keeps a backstop even though each producer is also
+	// fixed at source.
+	limits MetadataLimits
+	// clampReports accumulates until drained by TakeClampReports. The clamp
+	// runs inside the registry, which must not emit events, so whoever owns
+	// emission drains these and publishes the typed advisory.
+	clampReports []ClampReport
 }
 
-// NewRegistry creates a ready-to-use Registry.
+// NewRegistry creates a ready-to-use Registry with the built-in metadata
+// bounds. Kept as the zero-argument constructor so the existing call sites
+// that do not care about limits continue to compile unchanged.
 func NewRegistry() *Registry {
+	return NewRegistryWithLimits(DefaultMetadataLimits())
+}
+
+// NewRegistryWithLimits creates a Registry with operator-configured bounds.
+func NewRegistryWithLimits(limits MetadataLimits) *Registry {
 	return &Registry{
 		handles: make(map[string]types.AgentHandle),
 		specs:   make(map[string]types.AgentSpec),
+		limits:  limits,
 	}
 }
 
@@ -157,10 +174,12 @@ func (r *Registry) AppendOrUpdate(state types.AgentStateUpdate, updater func(*ty
 	for i := range r.states {
 		if r.states[i].Name == state.Name {
 			updater(&r.states[i])
+			r.clampOneLocked(&r.states[i])
 			return true
 		}
 	}
 	r.states = append(r.states, state)
+	r.clampOneLocked(&r.states[len(r.states)-1])
 	return false
 }
 
@@ -175,10 +194,12 @@ func (r *Registry) AppendOrUpdateByID(state types.AgentStateUpdate, updater func
 	for i := range r.states {
 		if r.states[i].ID == state.ID {
 			updater(&r.states[i])
+			r.clampOneLocked(&r.states[i])
 			return true
 		}
 	}
 	r.states = append(r.states, state)
+	r.clampOneLocked(&r.states[len(r.states)-1])
 	return false
 }
 
@@ -187,6 +208,7 @@ func (r *Registry) AppendState(state types.AgentStateUpdate) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.states = append(r.states, state)
+	r.clampOneLocked(&r.states[len(r.states)-1])
 }
 
 // UpdateState finds all states with the given name and applies the updater
@@ -199,6 +221,9 @@ func (r *Registry) UpdateState(name string, updater func(*types.AgentStateUpdate
 	for i := range r.states {
 		if r.states[i].Name == name {
 			updater(&r.states[i])
+			// Post-pass: the updater writes metadata directly, so the bound
+			// has to be applied after it runs, not before.
+			r.clampOneLocked(&r.states[i])
 		}
 	}
 }
@@ -214,6 +239,9 @@ func (r *Registry) UpdateStateByID(id string, updater func(*types.AgentStateUpda
 	for i := range r.states {
 		if r.states[i].ID == id {
 			updater(&r.states[i])
+			// Post-pass: the updater writes metadata directly, so the bound
+			// applies after it runs.
+			r.clampOneLocked(&r.states[i])
 			return
 		}
 	}
@@ -233,12 +261,14 @@ func (r *Registry) UpsertStateByID(id string, seed types.AgentStateUpdate, updat
 	for i := range r.states {
 		if r.states[i].ID == id {
 			updater(&r.states[i])
+			r.clampOneLocked(&r.states[i])
 			return
 		}
 	}
 	seed.ID = id
 	r.states = append(r.states, seed)
 	updater(&r.states[len(r.states)-1])
+	r.clampOneLocked(&r.states[len(r.states)-1])
 	utils.LogWithFields(utils.LevelWarn, "session.agents", "upsertstatebyid: slot absent, re-materialized terminal row (a lifecycle gap swept the running slot; terminal state preserved)", map[string]any{"run_id": id})
 }
 
@@ -398,7 +428,7 @@ func (r *Registry) MergedSnapshot() []types.AgentStateUpdate {
 	// AppendOrUpdateByID still target individual dispatches. This projection
 	// prevents a consumer from receiving duplicate same-name rows when the
 	// orchestrator dispatches the same agent name multiple times.
-	grouped := groupByName(r.states)
+	grouped := groupByName(r.states, r.limits.normalized().MaxDispatchEntries)
 	merged = append(merged, grouped...)
 
 	// Observability: the merge is the single point where an extension roster
@@ -464,11 +494,15 @@ func statusPriority(status string) int {
 // never mutating the source slice or aliasing its metadata maps.
 //
 // For each name group:
-//   - dispatches[] arrays from every entry's metadata are merged (order preserved).
+//   - dispatches[] arrays from every entry's metadata are merged (order
+//     preserved), then bounded to the most recent maxDispatchEntries with a
+//     dispatchesTotal stamp (see capDispatches) — the merged history is a
+//     monotonic append re-serialized on every emission, so it is bounded at
+//     the projection, while the ID-keyed store keeps every record.
 //   - The most-active status wins (running > error > done > cancelled).
 //   - The most-recently-active entry's top-level metadata (task, model,
 //     displayName, lastWork) is used as the representative.
-func groupByName(states []types.AgentStateUpdate) []types.AgentStateUpdate {
+func groupByName(states []types.AgentStateUpdate, maxDispatchEntries int) []types.AgentStateUpdate {
 	if len(states) == 0 {
 		return nil
 	}
@@ -490,6 +524,7 @@ func groupByName(states []types.AgentStateUpdate) []types.AgentStateUpdate {
 		// Single entry: deep-copy metadata and emit directly.
 		if len(indices) == 1 {
 			single := copyAgentState(states[indices[0]])
+			capDispatches(single.Metadata, maxDispatchEntries)
 			// Ensure each dispatch member in the snapshot carries an explicit,
 			// non-empty dispatchId (plus dispatchParentId/dispatchDepth/status)
 			// so a consumer can address individual dispatches even for a
@@ -564,6 +599,7 @@ func groupByName(states []types.AgentStateUpdate) []types.AgentStateUpdate {
 		}
 		if len(mergedDispatches) > 0 {
 			representative.Metadata["dispatches"] = mergedDispatches
+			capDispatches(representative.Metadata, maxDispatchEntries)
 		}
 
 		// Observability: a same-name group that collapses N entries into one
@@ -715,6 +751,11 @@ func (r *Registry) CacheExtStates(states []types.AgentStateUpdate) {
 	defer r.mu.Unlock()
 	r.lastExtStates = make([]types.AgentStateUpdate, len(states))
 	copy(r.lastExtStates, states)
+	// The primary ingest for extension-supplied metadata, and the path the
+	// 35 MB production payload arrived on. Clamping here rather than at
+	// emission means the oversized value is bounded once on the way in, not
+	// re-clamped on every one of the session's emissions.
+	r.clampStatesLocked(r.lastExtStates)
 }
 
 // LastExtStates returns the cached extension agent states.

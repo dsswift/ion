@@ -146,6 +146,16 @@ type EnterpriseLimits struct {
 	// to "gh" and thereby reach commands the ceiling excluded. See
 	// config.intersectBashCommandsWithCeiling.
 	PlanModeAllowedBashCommands []string `json:"planModeAllowedBashCommands,omitempty"`
+
+	// AgentStateMetadata is the sealed ceiling for the engine_agent_state
+	// metadata bound. MINIMUM-wins: a lower layer may tighten but never
+	// loosen, and it cannot disable a tier the enterprise has bounded.
+	//
+	// This matters because an oversized agent-state payload is a
+	// denial-of-service against every consumer of the session, not just the
+	// producing extension's own UI: the engine writes it to the NDJSON
+	// socket, and a client whose frame cap it exceeds receives nothing at all.
+	AgentStateMetadata *EnterpriseAgentStateMetadataLimits `json:"agentStateMetadata,omitempty"`
 }
 
 // ExtensionAllowlistEntry is a single entry in the enterprise extension
@@ -584,6 +594,16 @@ type LimitsConfig struct {
 	// would otherwise inject "Continue from where you left off." forever, burning
 	// tokens with zero forward progress. See runloop.go's max_tokens case.
 	MaxTokenThinkingOnlyBreaker int `json:"maxTokenThinkingOnlyBreaker,omitempty"`
+
+	// AgentStateMetadata bounds the size of engine_agent_state metadata.
+	// Nil inherits the compiled defaults. See config_agent_state.go for why
+	// the engine bounds a field extensions own.
+	AgentStateMetadata *AgentStateMetadataLimits `json:"agentStateMetadata,omitempty"`
+
+	// AgentStateEmit controls dedup and coalescing of engine_agent_state
+	// emissions. Nil inherits the compiled defaults. See
+	// config_agent_state_emit.go for why coalescing is safe by default.
+	AgentStateEmit *AgentStateEmitLimits `json:"agentStateEmit,omitempty"`
 	// PlanModeAutoExitOnEndTurn controls the engine's "deterministic
 	// plan-mode exit" safety net. When a plan-mode run terminates with
 	// stop reason end_turn / stop and the assistant did not invoke
@@ -894,6 +914,18 @@ type AuthConfig struct {
 	// token forwarding, and authenticated log egress. Empty means no
 	// operator identity is configured.
 	IdentityProvider string `json:"identityProvider,omitempty"`
+	// HasKeyNegativeCacheSeconds bounds how long a "this provider has no
+	// credentials" result is remembered, so repeated lookups for an
+	// unconfigured provider do not re-walk the keychain and file store every
+	// time. Only NEGATIVE results are cached — a positive is always re-read,
+	// because serving a cached one would keep handing out a credential the
+	// operator revoked.
+	//
+	// Every credential write invalidates the entry directly, so this TTL is a
+	// backstop for a writer outside the engine (an external process editing
+	// credentials.json), not the primary mechanism. Zero uses the built-in
+	// default; -1 disables the cache.
+	HasKeyNegativeCacheSeconds int `json:"hasKeyNegativeCacheSeconds,omitempty"`
 }
 
 // --- Network Types (from engine/src/network.ts) ---

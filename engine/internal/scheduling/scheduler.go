@@ -79,8 +79,7 @@ type Scheduler struct {
 	// now-removed host. This preserves interval cadence across host-pointer
 	// replacements (session teardown + recreation).
 	extNextRun    map[extensionJobKey]time.Time
-	inFlight      sync.Map // hostJobKey -> struct{}
-	inFlightSkips sync.Map // hostJobKey -> *inFlightSkipState
+	inFlight sync.Map // hostJobKey -> *inFlightSlot
 
 	// persistDir is the directory under which last-run markers are
 	// persisted. Empty means no persistence (tests / catch-up
@@ -396,6 +395,12 @@ func (s *Scheduler) tickOnce() {
 		}
 	}
 
+	// Reclaim in-flight claims that no live fire can still release —
+	// stalled fires and claims whose (host, job) pair is gone. Runs
+	// before the nextRun prune so a reclaimed job is re-firable on its
+	// next due tick. See inflight.go.
+	s.reapInFlight(now, activeKeys)
+
 	// Prune orphaned nextRun entries. When schedule.cancel removes a
 	// job from the host registry, the scheduler's nextRun map retains
 	// the stale entry. A re-registered job with the same ID would
@@ -452,18 +457,22 @@ func (s *Scheduler) maybeFire(h *extension.Host, job extension.ScheduleJob, now 
 	if now.Before(next) {
 		return
 	}
-	if _, busy := s.inFlight.LoadOrStore(key, struct{}{}); busy {
-		s.logInFlightSkip(h, job, key)
+	slot, busy := s.claimInFlight(key, job, now)
+	if busy {
+		// A previous fire is still running; skip this tick to avoid
+		// overlap. Log so the operator sees the overlap — throttled,
+		// because a wedged fire is skipped on every tick.
+		s.logSkippedTick(h, key, slot, now)
 		return
 	}
 	if resolve == nil {
-		s.inFlight.Delete(key)
+		s.releaseInFlight(h, key, slot)
 		s.emitScheduleSkipped(job, "no_resolver")
 		utils.LogWithFields(utils.LevelError, "scheduling", "maybe fire no resolver wired", map[string]any{"model": h.Name(), "schedule_job_id": job.JobID})
 		s.advanceNextRun(key, job, now)
 		return
 	}
-	go s.fireJob(h, job, key, resolve)
+	go s.fireJob(h, job, key, slot, resolve)
 }
 
 // fireJob runs the handler invocation for a single tick. Blocks until
@@ -477,9 +486,8 @@ func (s *Scheduler) maybeFire(h *extension.Host, job extension.ScheduleJob, now 
 // never revisits it. The predicate-skip path returns before the handler
 // runs, so a once job whose predicate returns false remains armed for
 // the next tick — it has NOT spent its shot.
-func (s *Scheduler) fireJob(h *extension.Host, job extension.ScheduleJob, key hostJobKey, resolve SessionResolver) {
-	defer s.inFlight.Delete(key)
-	defer s.inFlightSkips.Delete(key)
+func (s *Scheduler) fireJob(h *extension.Host, job extension.ScheduleJob, key hostJobKey, slot *inFlightSlot, resolve SessionResolver) {
+	defer s.releaseInFlight(h, key, slot)
 	now := s.now()
 
 	// For repeating jobs: advance next-run BEFORE the fire so a slow
@@ -644,7 +652,8 @@ func (s *Scheduler) FireScheduleNow(h *extension.Host, jobID string) error {
 	}
 
 	key := hostJobKey{host: target, id: jobID}
-	if _, busy := s.inFlight.LoadOrStore(key, struct{}{}); busy {
+	slot, busy := s.claimInFlight(key, job, s.now())
+	if busy {
 		// Already in-flight: benign, not an error.
 		utils.LogWithFields(utils.LevelInfo, "scheduling", "fire schedule now skipped already in flight", map[string]any{"model": target.Name(), "schedule_job_id": jobID})
 		return nil
@@ -654,20 +663,19 @@ func (s *Scheduler) FireScheduleNow(h *extension.Host, jobID string) error {
 	resolve := s.resolve
 	s.mu.RUnlock()
 	if resolve == nil {
-		s.inFlight.Delete(key)
+		s.releaseInFlight(target, key, slot)
 		return fmt.Errorf("fire schedule now: no resolver wired")
 	}
 
-	go s.fireJobWithMeta(target, job, key, resolve, true, "")
+	go s.fireJobWithMeta(target, job, key, slot, resolve, true, "")
 	return nil
 }
 
 // fireJobWithMeta is like fireJob but carries optional backfill metadata
 // in the payload so the handler can distinguish a manual/backfill fire from
 // a live tick fire. When backfill is false, behavior is identical to fireJob.
-func (s *Scheduler) fireJobWithMeta(h *extension.Host, job extension.ScheduleJob, key hostJobKey, resolve SessionResolver, backfill bool, missedSlotUtc string) {
-	defer s.inFlight.Delete(key)
-	defer s.inFlightSkips.Delete(key)
+func (s *Scheduler) fireJobWithMeta(h *extension.Host, job extension.ScheduleJob, key hostJobKey, slot *inFlightSlot, resolve SessionResolver, backfill bool, missedSlotUtc string) {
+	defer s.releaseInFlight(h, key, slot)
 	now := s.now()
 
 	if job.Kind != extension.ScheduleOnce {

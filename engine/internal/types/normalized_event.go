@@ -91,6 +91,8 @@ func (e *NormalizedEvent) UnmarshalJSON(data []byte) error {
 		target = &SteerInjectedEvent{}
 	case EventSteerDegraded:
 		target = &SteerDegradedEvent{}
+	case EventAgentStateClamped:
+		target = &AgentStateClampedEvent{}
 	case EventPromptInjected:
 		target = &PromptInjectedEvent{}
 	case EventModelFallback:

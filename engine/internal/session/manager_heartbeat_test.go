@@ -475,3 +475,33 @@ func TestHeartbeatDoesNotClobberBackgroundAgents(t *testing.T) {
 			last.Fields.BackgroundAgents, wantBg)
 	}
 }
+
+// TestHeartbeat_IntervalChangeAppliesMidWait pins that shortening the
+// interval re-arms the wait already in progress. Without the wake, the
+// goroutine serves out the wait it armed at startup — the 30 s default — so
+// whether a caller that shortens the interval right after NewManager sees a
+// tick at all depends on winning a race against the goroutine's first
+// interval read. The sleep here removes that race in the losing direction:
+// the goroutine has certainly armed the default before the interval changes.
+func TestHeartbeat_IntervalChangeAppliesMidWait(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	defer mgr.Shutdown()
+
+	_, _ = mgr.StartSession("hb-midwait", defaultConfig())
+	cap := newCaptureEngineStatus()
+	mgr.OnEvent(cap.handler())
+
+	// Let the goroutine arm its wait at the default interval first.
+	time.Sleep(100 * time.Millisecond)
+	mgr.SetHeartbeatInterval(25 * time.Millisecond)
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if cap.countFor("hb-midwait") >= 1 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Error("no heartbeat within 3 s of shortening the interval: the change did not re-arm the in-progress wait")
+}

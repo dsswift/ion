@@ -13,12 +13,20 @@ import (
 // Dispatch is a lookup into extNotificationHandlers (host_rpc_registry.go),
 // so the declared registry and the answered method set cannot drift.
 func (h *Host) handleExtNotification(method string, raw []byte) {
+	h.handleExtNotificationWithContext(method, h.ctxStack.Current(), raw)
+}
+
+// handleExtNotificationWithContext dispatches a notification against the
+// context captured when its frame was read. The inbound worker may run after
+// the engine-to-extension call has returned and popped ctxStack, so resolving
+// the context here would lose tool- and hook-scoped callbacks such as Emit.
+func (h *Host) handleExtNotificationWithContext(method string, ctx *Context, raw []byte) {
 	handler, ok := extNotificationHandlers[method]
 	if !ok {
 		utils.LogWithFields(utils.LevelInfo, "extension", "unknown notification method", map[string]any{"method": method})
 		return
 	}
-	handler(h, raw)
+	handler(h, ctx, raw)
 }
 
 // handleExtRequest processes extension-initiated JSON-RPC requests (messages
@@ -29,13 +37,21 @@ func (h *Host) handleExtNotification(method string, raw []byte) {
 // build does not have that capability" and degrade on rather than treating
 // as fatal.
 func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
+	h.handleExtRequestWithContext(method, id, h.ctxStack.Current(), raw)
+}
+
+// handleExtRequestWithContext is handleExtRequest with the dispatch context
+// supplied by the caller. The readLoop captures the ctxStack top when it reads
+// the frame and passes it here, so a request dispatched a moment later by the
+// inbound queue still runs against the context that was current on the wire.
+func (h *Host) handleExtRequestWithContext(method string, id int64, reqCtx *Context, raw []byte) {
 	handler, ok := extRequestHandlers[method]
 	if !ok {
 		utils.LogWithFields(utils.LevelInfo, "extension", "unknown ext request method", map[string]any{"method": method, "extension": h.name_()})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32601, Message: "method not found: " + method})
 		return
 	}
-	handler(h, h.ctxStack.Current(), id, raw)
+	handler(h, reqCtx, id, raw)
 }
 
 // sendResponse writes a JSON-RPC response back to the subprocess.

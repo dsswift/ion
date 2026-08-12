@@ -26,6 +26,7 @@ import { readSettings, writeSettings } from './settings-store'
 import { getAtvState } from './atv-state-cache'
 import { clearBeacon } from './atv-beacon'
 import { markDeepLinkConfirmationReady, markDeepLinkConfirmationUnavailable } from './deeplink/confirm'
+import { attemptRendererRecovery, resetRendererCrashGuard } from './renderer-crash-guard'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('atv', msg, fields)
@@ -293,6 +294,13 @@ export function openAtvWindow(source = 'unknown'): void {
     // Unreadable settings: no policy, proceed.
   }
   if (state.atvWindow && !state.atvWindow.isDestroyed()) {
+    if (state.atvWindow.webContents.isCrashed?.()) {
+      // Crashes don't destroy windows; a manual open must never focus the
+      // dead shell. Reload regardless of the automatic budget's state.
+      log('atv_window: reloading crashed renderer on manual open', { source })
+      resetRendererCrashGuard('atv')
+      state.atvWindow.webContents.reload()
+    }
     focusAtvWindow(`open existing (${source})`)
     return
   }
@@ -332,7 +340,18 @@ export function openAtvWindow(source = 'unknown'): void {
     }
   })
   win.webContents.on('render-process-gone', (_e, details) => {
-    log('atv_window: renderer gone', { reason: details.reason, exit_code: details.exitCode })
+    _error('atv', 'atv_window: renderer gone', { reason: details.reason, exit_code: details.exitCode })
+    if (details.reason === 'clean-exit') return
+    attemptRendererRecovery('atv', details, () => {
+      // The ATV runs the session store in mirror mode (ADR-021): a fresh
+      // renderer re-hydrates from main's caches and broadcasts on boot, so a
+      // reload (or recreate) restores it without renderer-side state.
+      if (state.atvWindow && !state.atvWindow.isDestroyed()) {
+        state.atvWindow.webContents.reload()
+      } else {
+        openAtvWindow('crash-recovery')
+      }
+    })
   })
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   win.webContents.on('will-navigate', (event) => event.preventDefault())

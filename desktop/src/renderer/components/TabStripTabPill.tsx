@@ -5,11 +5,11 @@ import { usePreferencesStore } from '../preferences'
 import { useSessionStore } from '../stores/sessionStore'
 import type { TabState } from '../../shared/types'
 import {
-  getWaitingState, isAnyEngineInstanceRunning, anyEngineInstanceHasRunningChildren,
+  waitingStateOfPane, isAnyEngineInstanceRunning, anyEngineInstanceHasRunningChildren,
   anyEngineInstanceHasRunningShells,
   formatRelativeShort, abbreviateProfileName, resolveTabModelFallback, getTabStatusColor,
 } from './TabStripShared'
-import { activeInstance } from '../stores/conversation-instance'
+import { activeInstanceOfPane } from '../stores/conversation-instance'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { StatusDot } from './TabStripStatusDot'
 import { InlineRenameInput } from './TabStripInlineRenameInput'
@@ -72,14 +72,13 @@ export function TabPill({
     return abbreviateProfileName(profile?.name)
   })
 
-  // Subscribe to conversationPanes so this component re-renders when any engine
-  // instance's statusFields or agentStates changes. Both fields now live
-  // on the instance in conversationPanes — the single subscription covers what
-  // previously required separate engineStatusFields + engineAgentStates
-  // subscriptions. Normal tabs also read their `main` instance from here
-  // now (permissionDenied / permissionQueue moved off TabState), so we
-  // subscribe unconditionally rather than only for engine tabs.
-  const conversationPanes = useSessionStore((s) => s.conversationPanes)
+  // Subscribe to THIS TAB'S pane so the pill re-renders when its own engine
+  // instance changes — statusFields, agentStates, permissionDenied and
+  // permissionQueue all live on the instance. Subscribing to the whole
+  // conversationPanes map instead would re-render every pill in the strip
+  // whenever any conversation streamed, which is how one busy tab pinned the
+  // renderer's main thread with many tabs open.
+  const pane = useSessionStore((s) => s.conversationPanes.get(tab.id))
 
   // Model-fallback warning for this tab's active instance. The engine emits
   // engine_model_fallback when a requested model is unavailable and it runs
@@ -98,7 +97,7 @@ export function TabPill({
 
   // Active instance for this tab (the single `main` instance for normal
   // tabs). Holds the permission queue that used to live on TabState.
-  const inst = activeInstance(conversationPanes, tab.id)
+  const inst = activeInstanceOfPane(pane)
   const _hasPermission = (inst?.permissionQueue.length ?? 0) > 0
 
   // DATA-driven (not tab-type): does ANY instance of this tab have a running
@@ -126,7 +125,7 @@ export function TabPill({
   const closeBlocked = isRunning || anyInstanceHasRunningChildren || anyInstanceHasRunningShells
 
   // Derive waiting-for-user state from permission denials
-  const waitingState = getWaitingState(tab, conversationPanes)
+  const waitingState = waitingStateOfPane(pane)
 
   // Waiting-state border color (thin rim, no boxShadow bleed)
   const waitingBorder = waitingState === 'plan-ready'

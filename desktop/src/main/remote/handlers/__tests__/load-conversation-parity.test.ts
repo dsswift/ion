@@ -22,6 +22,8 @@
 
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
+import { recordAgentState, clearAllAgentState } from '../../../agent-state-mirror'
+
 // Electron is not installed in CI (npm ci --ignore-scripts skips the binary
 // download). Any module in the transitive import chain that does
 // `import ... from 'electron'` at the top level will throw at load time
@@ -67,7 +69,7 @@ vi.mock('../../../state', () => ({
   extensionCommandRegistry: new Map(),
 }))
 
-vi.mock('../../../logger', () => ({ log: vi.fn() }))
+vi.mock('../../../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn(), trace: vi.fn() }))
 vi.mock('../../../broadcast', () => ({ broadcast: vi.fn() }))
 vi.mock('../../../terminal-manager-instance', () => ({ terminalManager: {} }))
 vi.mock('../../../settings-store', () => ({
@@ -193,6 +195,35 @@ describe('handleLoadConversation — engine-sourced history', () => {
     loadChainHistoryMock.mockResolvedValueOnce(engineRows(1))
     await handleLoadConversation({ type: 'desktop_load_conversation', tabId: 'tab-idle' }, 'device-6')
     expect(sent.filter(s => s.event.type === 'desktop_agent_state')).toHaveLength(0)
+  })
+
+  // The roster is served from the main-process mirror, not scraped back out of
+  // the renderer. Main receives engine_agent_state first and forwards it on, so
+  // asking the renderer for it read a downstream copy of data main already had
+  // -- and made the renderer serialize the whole roster across IPC on every
+  // resync. With the 35 MB payload from the production incident that was tens
+  // of megabytes of structured-clone work on the UI thread.
+  //
+  // The renderer result here deliberately carries NO agents key: if the handler
+  // still depended on it, this fails.
+  it('serves the agent roster from the main-process mirror, not the renderer', async () => {
+    clearAllAgentState()
+    recordAgentState('tab-mirror', null, [
+      { name: 'FromMirror', status: 'running', metadata: { displayName: 'From Mirror' } },
+    ] as never)
+
+    executeJsMock.mockResolvedValueOnce(tabMeta({ status: 'running' }))
+    loadChainHistoryMock.mockResolvedValueOnce(engineRows(1))
+    executeJsMock.mockResolvedValueOnce({
+      instId: null, status: { contextPercent: 1 }, working: '', modelOverride: null,
+    })
+
+    await handleLoadConversation({ type: 'desktop_load_conversation', tabId: 'tab-mirror' }, 'device-mirror')
+
+    const agentEvents = sent.filter(s => s.event.type === 'desktop_agent_state')
+    expect(agentEvents).toHaveLength(1)
+    expect((agentEvents[0].event as { agents: Array<{ name: string }> }).agents.map(a => a.name))
+      .toEqual(['FromMirror'])
   })
 
   it('never sends desktop_engine_conversation_history (retired string)', async () => {

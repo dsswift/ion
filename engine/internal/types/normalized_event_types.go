@@ -40,6 +40,10 @@ const (
 	// and delivered the steer as a fresh prompt instead. Distinct from
 	// EventSteerInjected, whose contract is a live run-loop drain.
 	EventSteerDegraded = "steer_degraded"
+
+	// EventAgentStateClamped is emitted when the engine bounded an
+	// agent-state metadata payload that exceeded the configured limits.
+	EventAgentStateClamped = "agent_state_clamped"
 	// EventPromptInjected is emitted when a prompt no client submitted is
 	// injected into the session — an extension calling ctx.sendPrompt
 	// (dispatch-completion delivery, check-ins, orchestrator revives). The

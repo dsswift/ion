@@ -2,7 +2,6 @@ package session
 
 import (
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
@@ -254,8 +253,9 @@ func (m *Manager) announceLostDispatches(s *engineSession, key string) {
 	}
 	// The error transitions from rehydration are now part of the registry;
 	// push one snapshot so consumers see the corrected states immediately.
-	snapshot := s.agents.MergedSnapshot()
-	m.emit(key, types.EngineEvent{Type: "engine_agent_state", Agents: snapshot})
+	// force=true: these are terminal (error) transitions recovered after a
+	// restart, so they carry the same never-delay obligation as a live abort.
+	m.emitAgentSnapshot(key, agentSnapshotReasonRehydrate, true, s.agents.MergedSnapshot())
 }
 
 // dedupDispatchesByID unions an existing []interface{} dispatches slice with a
@@ -319,9 +319,6 @@ func (m *Manager) persistTerminalDispatches(key, convID string) {
 	if convID == "" {
 		return
 	}
-	lock := m.persistedDispatchLock(convID)
-	lock.Lock()
-	defer lock.Unlock()
 
 	m.mu.RLock()
 	s, ok := m.sessions[key]
@@ -433,63 +430,65 @@ func (m *Manager) persistTerminalDispatches(key, convID string) {
 		return
 	}
 
-	conv, err := conversation.Load(convID, "")
-	if err != nil {
-		utils.LogWithFields(utils.LevelInfo, "session", "persistterminaldispatches: load failed", map[string]any{"conversation_id": convID, "error": err})
-		return
-	}
+	// Same serialization rationale as persistDispatchRegistered: this is a
+	// read-modify-write of the conversation file, and terminal transitions of
+	// a fan-out land concurrently.
+	var added int
+	err := conversation.UpdateOnDisk(convID, "", func(conv *conversation.Conversation) (bool, error) {
+		added = 0
 
-	// Dedup is (dispatch, status)-aware, not ID-only. The dispatch lifecycle
-	// is persisted as SUPERSEDING entries: registration writes a `running`
-	// record (persistDispatchRegistered) and the terminal transition must
-	// still land afterwards — an ID-only dedup would skip it forever, the
-	// file would read `running` for a cleanly-completed dispatch, and the
-	// NEXT restart's rehydrate would mark it lost and emit a false
-	// engine_dispatch_lost. Rehydrate resolves last-entry-wins per dispatch,
-	// so a register(running) → complete(done) file reads as done. Keyed on
-	// the DATA's AgentID (the stable dispatch identity) with the LAST
-	// persisted status winning, so a same-status re-persist is skipped on
-	// every subsequent run exit (handleRunExit runs per exit; a terminal
-	// state does not change again).
-	lastStatus := make(map[string]string) // dispatch AgentID -> last persisted status
-	for _, e := range conv.Entries {
-		if e.Type == conversation.EntryAgentDispatch {
-			if ad := conversation.AsAgentDispatchData(e.Data); ad != nil {
-				lastStatus[ad.AgentID] = ad.Status
+		// Dedup is (dispatch, status)-aware, not ID-only. The dispatch lifecycle
+		// is persisted as SUPERSEDING entries: registration writes a `running`
+		// record (persistDispatchRegistered) and the terminal transition must
+		// still land afterwards — an ID-only dedup would skip it forever, the
+		// file would read `running` for a cleanly-completed dispatch, and the
+		// NEXT restart's rehydrate would mark it lost and emit a false
+		// engine_dispatch_lost. Rehydrate resolves last-entry-wins per dispatch,
+		// so a register(running) → complete(done) file reads as done. Keyed on
+		// the DATA's AgentID (the stable dispatch identity) with the LAST
+		// persisted status winning, so a same-status re-persist is skipped on
+		// every subsequent run exit (handleRunExit runs per exit; a terminal
+		// state does not change again).
+		lastStatus := make(map[string]string) // dispatch AgentID -> last persisted status
+		for _, e := range conv.Entries {
+			if e.Type == conversation.EntryAgentDispatch {
+				if ad := conversation.AsAgentDispatchData(e.Data); ad != nil {
+					lastStatus[ad.AgentID] = ad.Status
+				}
 			}
 		}
-	}
 
-	var added int
-	for _, d := range dispatches {
-		ad := conversation.AsAgentDispatchData(d.Data)
-		if ad == nil {
-			continue
+		for _, d := range dispatches {
+			ad := conversation.AsAgentDispatchData(d.Data)
+			if ad == nil {
+				continue
+			}
+			prev, seen := lastStatus[ad.AgentID]
+			if seen && prev == ad.Status {
+				continue
+			}
+			// Dispatch records are intentional extra roots (ParentID nil) that do
+			// not move the leaf; append through the locked detached funnel rather
+			// than mutating conv.Entries directly (see conversation/lock.go).
+			// A status change appends a NEW entry for the same dispatch; the
+			// SessionEntry ID must stay unique per line, so superseding entries
+			// carry a suffix while the data's AgentID keeps the stable identity.
+			if seen {
+				d.ID = fmt.Sprintf("%s-s%d", d.ID, time.Now().UnixMilli())
+			}
+			conversation.AppendDetachedEntry(conv, d)
+			lastStatus[ad.AgentID] = ad.Status
+			added++
 		}
-		prev, seen := lastStatus[ad.AgentID]
-		if seen && prev == ad.Status {
-			continue
-		}
-		// Dispatch records are intentional extra roots (ParentID nil) that do
-		// not move the leaf; append through the locked detached funnel rather
-		// than mutating conv.Entries directly (see conversation/lock.go).
-		// A status change appends a NEW entry for the same dispatch; the
-		// SessionEntry ID must stay unique per line, so superseding entries
-		// carry a suffix while the data's AgentID keeps the stable identity.
-		if seen {
-			d.ID = fmt.Sprintf("%s-s%d", d.ID, time.Now().UnixMilli())
-		}
-		conversation.AppendDetachedEntry(conv, d)
-		lastStatus[ad.AgentID] = ad.Status
-		added++
-	}
 
-	if added == 0 {
+		return added > 0, nil
+	})
+	if err != nil {
+		utils.LogWithFields(utils.LevelInfo, "session", "persistterminaldispatches: persist failed", map[string]any{"conversation_id": convID, "error": utils.ErrStr(err)})
 		return
 	}
-
-	if err := conversation.Save(conv, ""); err != nil {
-		utils.LogWithFields(utils.LevelInfo, "session", "persistterminaldispatches: save failed", map[string]any{"conversation_id": convID, "error": err})
+	if added == 0 {
+		utils.LogWithFields(utils.LevelDebug, "session", "persistterminaldispatches: nothing to add (no-op)", map[string]any{"conversation_id": convID, "key": key})
 		return
 	}
 
@@ -519,43 +518,43 @@ func (m *Manager) persistDispatchRegistered(key, convID, agentID, agentName, dis
 		utils.LogWithFields(utils.LevelDebug, "session", "persistdispatchregistered: no conversation id (no-op)", map[string]any{"key": key, "run_id": agentID})
 		return
 	}
-	lock := m.persistedDispatchLock(convID)
-	lock.Lock()
-	defer lock.Unlock()
-	conv, err := conversation.Load(convID, "")
-	if err != nil {
-		utils.LogWithFields(utils.LevelWarn, "session", "persistdispatchregistered: load failed", map[string]any{"conversation_id": convID, "error": utils.ErrStr(err)})
-		return
-	}
-	// Skip when this dispatch already has a persisted record (an engine-side
-	// retry or a re-entrant registration); the lifecycle owns supersession.
-	for _, e := range conv.Entries {
-		if e.Type != conversation.EntryAgentDispatch {
-			continue
+	// The load/append/save runs inside UpdateOnDisk so a dispatch fan-out
+	// cannot lose records: without it, four concurrent registrations each
+	// load the same pre-fan-out file and the last save overwrites the other
+	// three, leaving the dispatch-loss detector blind exactly when the most
+	// dispatches are in flight.
+	err := conversation.UpdateOnDisk(convID, "", func(conv *conversation.Conversation) (bool, error) {
+		// Skip when this dispatch already has a persisted record (an engine-side
+		// retry or a re-entrant registration); the lifecycle owns supersession.
+		for _, e := range conv.Entries {
+			if e.Type != conversation.EntryAgentDispatch {
+				continue
+			}
+			if ad := conversation.AsAgentDispatchData(e.Data); ad != nil && ad.AgentID == agentID {
+				utils.LogWithFields(utils.LevelDebug, "session", "persistdispatchregistered: record already present (no-op)", map[string]any{"run_id": agentID, "reason": ad.Status})
+				return false, nil
+			}
 		}
-		if ad := conversation.AsAgentDispatchData(e.Data); ad != nil && ad.AgentID == agentID {
-			utils.LogWithFields(utils.LevelDebug, "session", "persistdispatchregistered: record already present (no-op)", map[string]any{"run_id": agentID, "reason": ad.Status})
-			return
-		}
-	}
-	conversation.AppendDetachedEntry(conv, conversation.SessionEntry{
-		ID:        agentID,
-		ParentID:  nil,
-		Type:      conversation.EntryAgentDispatch,
-		Timestamp: time.Now().UnixMilli(),
-		Data: conversation.AgentDispatchData{
-			AgentName:        agentName,
-			AgentID:          agentID,
-			DisplayName:      displayName,
-			Task:             task,
-			Model:            model,
-			Status:           "running",
-			DispatchDepth:    depth,
-			DispatchParentID: parentDispatchID,
-		},
+		conversation.AppendDetachedEntry(conv, conversation.SessionEntry{
+			ID:        agentID,
+			ParentID:  nil,
+			Type:      conversation.EntryAgentDispatch,
+			Timestamp: time.Now().UnixMilli(),
+			Data: conversation.AgentDispatchData{
+				AgentName:        agentName,
+				AgentID:          agentID,
+				DisplayName:      displayName,
+				Task:             task,
+				Model:            model,
+				Status:           "running",
+				DispatchDepth:    depth,
+				DispatchParentID: parentDispatchID,
+			},
+		})
+		return true, nil
 	})
-	if err := conversation.Save(conv, ""); err != nil {
-		utils.LogWithFields(utils.LevelWarn, "session", "persistdispatchregistered: save failed", map[string]any{"conversation_id": convID, "error": utils.ErrStr(err)})
+	if err != nil {
+		utils.LogWithFields(utils.LevelWarn, "session", "persistdispatchregistered: persist failed", map[string]any{"conversation_id": convID, "run_id": agentID, "error": utils.ErrStr(err)})
 		return
 	}
 	utils.LogWithFields(utils.LevelInfo, "session", "persistdispatchregistered: running record persisted", map[string]any{"run_id": agentID, "model": agentName, "key": key, "conversation_id": convID})
@@ -584,48 +583,40 @@ func (m *Manager) persistRecallIntent(conversationID, agentID string) {
 	})
 }
 
-func (m *Manager) persistedDispatchLock(conversationID string) *sync.Mutex {
-	newLock := &sync.Mutex{}
-	lock, loaded := m.persistedDispatchLocks.LoadOrStore(conversationID, newLock)
-	if !loaded {
-		return newLock
-	}
-	return lock.(*sync.Mutex) //nolint:errcheck // values are only created as *sync.Mutex above
-}
-
 func (m *Manager) updatePersistedDispatch(conversationID, agentID string, update func(*conversation.AgentDispatchData)) {
 	if conversationID == "" {
 		utils.LogWithFields(utils.LevelDebug, "session", "updatepersisteddispatch: no conversation id", map[string]any{"run_id": agentID})
 		return
 	}
-	lock := m.persistedDispatchLock(conversationID)
-	lock.Lock()
-	defer lock.Unlock()
-	conv, err := conversation.Load(conversationID, "")
-	if err != nil {
-		utils.LogWithFields(utils.LevelWarn, "session", "updatepersisteddispatch: load failed", map[string]any{"conversation_id": conversationID, "run_id": agentID, "error": utils.ErrStr(err)})
-		return
-	}
+	// UpdateOnDisk serializes this read-modify-write against every other
+	// dispatch persister (persistDispatchRegistered, persistTerminalDispatches)
+	// on the same conversation, so a state update cannot overwrite a concurrent
+	// append and vice versa.
 	updated := false
-	for i := range conv.Entries {
-		e := &conv.Entries[i]
-		if e.Type != conversation.EntryAgentDispatch {
-			continue
+	err := conversation.UpdateOnDisk(conversationID, "", func(conv *conversation.Conversation) (bool, error) {
+		for i := range conv.Entries {
+			e := &conv.Entries[i]
+			if e.Type != conversation.EntryAgentDispatch {
+				continue
+			}
+			d := conversation.AsAgentDispatchData(e.Data)
+			if d == nil || d.AgentID != agentID {
+				continue
+			}
+			update(d)
+			e.Data = *d
+			updated = true
 		}
-		d := conversation.AsAgentDispatchData(e.Data)
-		if d == nil || d.AgentID != agentID {
-			continue
+		if !updated {
+			utils.LogWithFields(utils.LevelDebug, "session", "updatepersisteddispatch: dispatch record not found", map[string]any{"conversation_id": conversationID, "run_id": agentID})
 		}
-		update(d)
-		e.Data = *d
-		updated = true
+		return updated, nil
+	})
+	if err != nil {
+		utils.LogWithFields(utils.LevelWarn, "session", "updatepersisteddispatch: persist failed", map[string]any{"conversation_id": conversationID, "run_id": agentID, "error": utils.ErrStr(err)})
+		return
 	}
 	if !updated {
-		utils.LogWithFields(utils.LevelDebug, "session", "updatepersisteddispatch: dispatch record not found", map[string]any{"conversation_id": conversationID, "run_id": agentID})
-		return
-	}
-	if err := conversation.Save(conv, ""); err != nil {
-		utils.LogWithFields(utils.LevelWarn, "session", "updatepersisteddispatch: save failed", map[string]any{"conversation_id": conversationID, "run_id": agentID, "error": utils.ErrStr(err)})
 		return
 	}
 	utils.LogWithFields(utils.LevelInfo, "session", "updatepersisteddispatch: persisted dispatch state", map[string]any{"conversation_id": conversationID, "run_id": agentID})

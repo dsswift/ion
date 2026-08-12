@@ -31,6 +31,9 @@ extension RemoteCommand {
             return "discoverCommands:\(dir)"
         case .requestTerminalSnapshot(let tabId):
             return "requestTerminalSnapshot:\(tabId)"
+
+        case .requestAgentState(let tabId, let instanceId):
+            return "requestAgentState:\(tabId):\(instanceId ?? "")"
         // Read-only refresh: dedupe per repo so a view that appears while a
         // refresh is already queued does not stack duplicates. The mutating
         // bench/worktree verbs are deliberately NOT keyed -- each is a distinct

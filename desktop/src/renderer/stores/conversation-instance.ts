@@ -118,7 +118,17 @@ export function activeInstance(
   conversationPanes: Map<string, ConversationPane>,
   tabId: string,
 ): Instance | null {
-  const pane = conversationPanes.get(tabId)
+  return activeInstanceOfPane(conversationPanes.get(tabId))
+}
+
+/**
+ * Pane-scoped form of {@link activeInstance}. A component that only cares
+ * about one tab subscribes to that tab's pane rather than to the whole
+ * `conversationPanes` map, so a streaming conversation does not re-render
+ * every other tab's UI; this resolves the instance from the pane it already
+ * holds.
+ */
+export function activeInstanceOfPane(pane: ConversationPane | undefined): Instance | null {
   if (!pane) return null
   const activeId = pane.activeInstanceId ?? pane.instances[0]?.id
   if (!activeId) return null
@@ -200,6 +210,12 @@ export function needsHistoryHydration(inst: ConversationInstance | null | undefi
  * missing, so callers can `set({ conversationPanes })` unconditionally without
  * allocating on a miss. This is the single-commit seam the streaming hub uses
  * (1B): build the next instance once, commit once.
+ *
+ * The map is also returned unchanged when `mutate` hands back the instance it
+ * was given. Reference identity is the signal every subscriber reads: the tab
+ * strip and each tab pill subscribe to `conversationPanes` directly, so
+ * cloning the map for an event that changed nothing re-renders all of them for
+ * nothing — the dominant cost when many tabs are open and agents are streaming.
  */
 export function commitInstance(
   conversationPanes: Map<string, ConversationPane>,
@@ -212,15 +228,19 @@ export function commitInstance(
   if (!activeId) return conversationPanes
   const idx = pane.instances.findIndex((i) => i.id === activeId)
   if (idx === -1) return conversationPanes
-  const next = new Map(conversationPanes)
-  const instances = pane.instances.slice()
-  const current = instances[idx] as Instance
+  const current = pane.instances[idx] as Instance
   const updated = mutate(current)
+
   // Keep messageCount in lockstep with loaded messages so the persisted proxy
   // is always accurate when messages are present.
-  instances[idx] = updated.messages.length > 0
+  const committed = updated.messages.length > 0 && updated.messageCount !== updated.messages.length
     ? { ...updated, messageCount: updated.messages.length }
     : updated
+  if (committed === current) return conversationPanes
+
+  const next = new Map(conversationPanes)
+  const instances = pane.instances.slice()
+  instances[idx] = committed
   next.set(tabId, { ...pane, instances })
   return next
 }
