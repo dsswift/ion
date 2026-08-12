@@ -646,6 +646,42 @@ Feature flag source configuration.
 }
 ```
 
+## thinkingPolicy
+
+Engine-wide operator policy for extended thinking (model reasoning). This is not
+per-run thinking configuration, which consumers send on each prompt. This block
+answers a question no per-run field can express: whether models may reason at
+all on this install.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `disabled` | bool | `false` | Turns extended thinking off for the whole engine. Omitting the block, or leaving this `false`, permits thinking. |
+
+Thinking is permitted out of the box. An engine with no `thinkingPolicy` block behaves
+exactly as one that predates the field, so disabling is always an explicit act.
+
+When `disabled` is `true`:
+
+- No provider request carries a thinking directive, whatever a consumer sends as
+  per-run thinking config. The operator switch outranks the caller.
+- `list_models` reports every model with `supportsThinking: false`, no
+  `thinkingMode`, and no `thinkingEfforts`. Clients render availability from the
+  per-model capability they already read, so no client needs a new field to know
+  reasoning is unavailable.
+
+```json
+{
+  "thinkingPolicy": {
+    "disabled": true
+  }
+}
+```
+
+Enterprise policy can seal this on via `enterprise.thinking.disabled`. The seal
+is one way: an enterprise `disabled: true` cannot be re-enabled by a user or
+project layer, while an enterprise block with `disabled: false` is a ceiling
+rather than a mandate and leaves a locally-disabled install disabled.
+
 ## Full example
 
 A multi-provider configuration mixing a local Ollama model with a hosted OpenAI fallback. Pick whichever model fits the task and let the engine route to the right provider.
