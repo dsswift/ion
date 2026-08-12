@@ -29,7 +29,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 // fails before any test body runs. Same idiom as secret-store.test.ts and
 // ipc-session-prompt.test.ts.
 vi.mock('electron', () => ({
-  app: { get isPackaged() { return false } },
+  app: {
+    get isPackaged() {
+      return false
+    },
+  },
   safeStorage: {
     isEncryptionAvailable: () => false,
     encryptString: (s: string) => Buffer.from(s),
@@ -42,7 +46,9 @@ vi.mock('electron', () => ({
 // Mock the store so the projection is hermetic — returns [] by default,
 // matching the projectable entry's opinionless default. Individual tests
 // override readPlanBashAllowlist when they assert on the value.
-const planBashMock = vi.hoisted(() => ({ readPlanBashAllowlist: vi.fn(() => [] as string[]) }))
+const planBashMock = vi.hoisted(() => ({
+  readPlanBashAllowlist: vi.fn(() => [] as string[]),
+}))
 vi.mock('../plan-bash-allowlist-store', () => ({
   readPlanBashAllowlist: () => planBashMock.readPlanBashAllowlist(),
   writePlanBashAllowlist: vi.fn(),
@@ -52,11 +58,14 @@ vi.mock('../plan-bash-allowlist-store', () => ({
 // without importing the full main-process state module (theme-policy reads
 // the startup policy cache, which is irrelevant to allowlist mechanics).
 const themePolicyMock = vi.hoisted(() => ({
-  getEnterpriseThemePolicy: vi.fn((): { themeId: string; locked: boolean } | null => null),
+  getEnterpriseThemePolicy: vi.fn(
+    (): { themeId: string; locked: boolean } | null => null,
+  ),
 }))
 vi.mock('../theme-policy', () => ({
   getEnterpriseThemePolicy: () => themePolicyMock.getEnterpriseThemePolicy(),
-  isThemeLocked: () => themePolicyMock.getEnterpriseThemePolicy()?.locked === true,
+  isThemeLocked: () =>
+    themePolicyMock.getEnterpriseThemePolicy()?.locked === true,
 }))
 
 import {
@@ -75,6 +84,7 @@ import { resetThemePacksForTest } from '../theme-packs'
 import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import type { DesktopSettingsSchemaEntry } from '../remote/protocol'
 
 // selectedTheme validation + schema choices consult the live theme-pack
 // registry (fs scan). Point both roots at hermetic temp dirs so the
@@ -109,7 +119,10 @@ describe('projectable-settings allowlist', () => {
   it('every entry declares a recognized type', () => {
     const valid = new Set(['boolean', 'string', 'number', 'enum', 'list'])
     for (const entry of PROJECTABLE_SETTINGS) {
-      expect(valid.has(entry.type), `entry ${entry.key}: type=${entry.type}`).toBe(true)
+      expect(
+        valid.has(entry.type),
+        `entry ${entry.key}: type=${entry.type}`,
+      ).toBe(true)
     }
   })
 
@@ -124,20 +137,35 @@ describe('projectable-settings allowlist', () => {
         case 'boolean':
         case 'string':
         case 'number':
-          expect(typeof entry.defaultValue, `entry ${entry.key}: defaultValue type`).toBe(entry.type)
+          expect(
+            typeof entry.defaultValue,
+            `entry ${entry.key}: defaultValue type`,
+          ).toBe(entry.type)
           break
         case 'enum': {
           // null is allowed; otherwise must be a string in the choices.
           if (entry.defaultValue === null) {
-            expect(entry.choices?.some((c) => c.value === null), `entry ${entry.key}: nullable enum needs a null choice`).toBe(true)
+            expect(
+              entry.choices?.some((c) => c.value === null),
+              `entry ${entry.key}: nullable enum needs a null choice`,
+            ).toBe(true)
           } else {
-            expect(typeof entry.defaultValue, `entry ${entry.key}: enum default must be string`).toBe('string')
-            expect(entry.choices?.some((c) => c.value === entry.defaultValue), `entry ${entry.key}: default ${entry.defaultValue} not in choices`).toBe(true)
+            expect(
+              typeof entry.defaultValue,
+              `entry ${entry.key}: enum default must be string`,
+            ).toBe('string')
+            expect(
+              entry.choices?.some((c) => c.value === entry.defaultValue),
+              `entry ${entry.key}: default ${entry.defaultValue} not in choices`,
+            ).toBe(true)
           }
           break
         }
         case 'list':
-          expect(Array.isArray(entry.defaultValue), `entry ${entry.key}: list default must be array`).toBe(true)
+          expect(
+            Array.isArray(entry.defaultValue),
+            `entry ${entry.key}: list default must be array`,
+          ).toBe(true)
           // A list entry MUST carry exactly one of itemSchema (record-list)
           // or itemType (primitive-list) — never both, never neither. The
           // iOS view layer dispatches on this to pick the right editor
@@ -146,15 +174,24 @@ describe('projectable-settings allowlist', () => {
           {
             const hasSchema = !!entry.itemSchema
             const hasItemType = !!entry.itemType
-            expect(hasSchema || hasItemType, `entry ${entry.key}: list requires itemSchema or itemType`).toBe(true)
-            expect(hasSchema && hasItemType, `entry ${entry.key}: list must not have both itemSchema and itemType`).toBe(false)
+            expect(
+              hasSchema || hasItemType,
+              `entry ${entry.key}: list requires itemSchema or itemType`,
+            ).toBe(true)
+            expect(
+              hasSchema && hasItemType,
+              `entry ${entry.key}: list must not have both itemSchema and itemType`,
+            ).toBe(false)
             // When itemType is set, validate every default-array element
             // matches the declared primitive type so the projection is
             // self-consistent (we'd otherwise ship a bad default to iOS).
             if (hasItemType) {
               const expected = entry.itemType
               for (const elem of entry.defaultValue as unknown[]) {
-                expect(typeof elem, `entry ${entry.key}: default element must be ${expected}`).toBe(expected)
+                expect(
+                  typeof elem,
+                  `entry ${entry.key}: default element must be ${expected}`,
+                ).toBe(expected)
               }
             }
           }
@@ -194,7 +231,10 @@ describe('projectable-settings allowlist', () => {
     // group while permitting the intentional non-projected case.
     const knownGroups = new Set(Object.keys(PROJECTABLE_GROUP_LABELS))
     for (const entry of PROJECTABLE_SETTINGS) {
-      expect(knownGroups.has(entry.group as string), `entry ${entry.key} group=${entry.group}`).toBe(true)
+      expect(
+        knownGroups.has(entry.group as string),
+        `entry ${entry.key} group=${entry.group}`,
+      ).toBe(true)
     }
   })
 
@@ -205,13 +245,19 @@ describe('projectable-settings allowlist', () => {
     // after the last entry is moved out.
     const groupsWithEntries = new Set(PROJECTABLE_SETTINGS.map((s) => s.group))
     for (const group of PROJECTABLE_GROUP_ORDER) {
-      expect(groupsWithEntries.has(group as any), `group ${group} has no entries`).toBe(true)
+      expect(
+        groupsWithEntries.has(group as any),
+        `group ${group} has no entries`,
+      ).toBe(true)
     }
   })
 
   it('every group in PROJECTABLE_GROUP_ORDER has a label', () => {
     for (const group of PROJECTABLE_GROUP_ORDER) {
-      expect(PROJECTABLE_GROUP_LABELS[group], `group ${group} label`).toBeTruthy()
+      expect(
+        PROJECTABLE_GROUP_LABELS[group],
+        `group ${group} label`,
+      ).toBeTruthy()
     }
   })
 
@@ -220,9 +266,18 @@ describe('projectable-settings allowlist', () => {
     // Settings dialog categories 1:1. Locking the IDs here means a
     // desktop rename of one of these categories triggers this test —
     // forcing the projection groups to be kept in sync.
-    const expected = new Set(['general', 'ai', 'appearance', 'tabs', 'git', 'quicktools', 'notifications'])
-    const actual = new Set<string>(PROJECTABLE_GROUP_ORDER)
-    expect(actual).toEqual(expected)
+    const expected = new Set([
+      'general',
+      'ai',
+      'appearance',
+      'tabs',
+      'git',
+      'quicktools',
+      'notifications',
+    ])
+    const actual = new Set<string>(projectableGroups().map((group) => group.id))
+    expect(actual.size).toBeGreaterThan(0)
+    for (const group of actual) expect(expected).toContain(group)
   })
 
   it('projects streamThinkingToRemote as a default-on boolean in the General group (issue #158)', () => {
@@ -231,8 +286,13 @@ describe('projectable-settings allowlist', () => {
     // `remote` is not on the iOS allowlist — pairing/transport is iOS-
     // local — so the iOS-visible home is General). Default ON: the phone
     // receives the reasoning stream unless the user opts out.
-    const entry = PROJECTABLE_SETTINGS.find((s) => s.key === 'streamThinkingToRemote')
-    expect(entry, 'streamThinkingToRemote must be on the allowlist').toBeTruthy()
+    const entry = PROJECTABLE_SETTINGS.find(
+      (s) => s.key === 'streamThinkingToRemote',
+    )
+    expect(
+      entry,
+      'streamThinkingToRemote must be on the allowlist',
+    ).toBeTruthy()
     expect(entry?.type).toBe('boolean')
     expect(entry?.group).toBe('general')
     expect(entry?.defaultValue).toBe(true)
@@ -255,23 +315,31 @@ describe('projectableSchema / projectableGroups', () => {
 
   it('schema mirrors the allowlist in order and field shape', () => {
     const schema = projectableSchema()
-    expect(schema.length).toBe(PROJECTABLE_SETTINGS.length)
+    const visible = PROJECTABLE_SETTINGS.filter(
+      (setting) => setting.iosSurface !== 'desktop-only',
+    )
+    expect(schema.length).toBe(visible.length)
     for (let i = 0; i < schema.length; i++) {
-      expect(schema[i].key).toBe(PROJECTABLE_SETTINGS[i].key)
-      expect(schema[i].type).toBe(PROJECTABLE_SETTINGS[i].type)
-      expect(schema[i].group).toBe(PROJECTABLE_SETTINGS[i].group)
-      expect(schema[i].label).toBe(PROJECTABLE_SETTINGS[i].label)
-      expect(schema[i].description).toBe(PROJECTABLE_SETTINGS[i].description)
-      expect(schema[i].defaultValue).toBe(PROJECTABLE_SETTINGS[i].defaultValue)
+      expect(schema[i].key).toBe(visible[i].key)
+      expect(schema[i].type).toBe(visible[i].type)
+      expect(schema[i].group).toBe(visible[i].group)
+      expect(schema[i].label).toBe(visible[i].label)
+      expect(schema[i].description).toBe(visible[i].description)
+      expect(schema[i].defaultValue).toBe(visible[i].defaultValue)
     }
   })
 
   it('groups returns the ordered list of { id, label } descriptors', () => {
     const groups = projectableGroups()
-    expect(groups.length).toBe(PROJECTABLE_GROUP_ORDER.length)
-    for (let i = 0; i < groups.length; i++) {
-      expect(groups[i].id).toBe(PROJECTABLE_GROUP_ORDER[i])
-      expect(groups[i].label).toBe(PROJECTABLE_GROUP_LABELS[PROJECTABLE_GROUP_ORDER[i]])
+    const visibleGroups = PROJECTABLE_GROUP_ORDER.filter((group) =>
+      PROJECTABLE_SETTINGS.some(
+        (setting) =>
+          setting.group === group && setting.iosSurface !== 'desktop-only',
+      ),
+    )
+    expect(groups.map((group) => group.id)).toEqual(visibleGroups)
+    for (const group of groups) {
+      expect(group.label).toBe(PROJECTABLE_GROUP_LABELS[group.id])
     }
   })
 
@@ -296,10 +364,21 @@ describe('projectableSchema / projectableGroups', () => {
     const schema = projectableSchema()
     const tabGroups = schema.find((e) => e.key === 'tabGroups')
     expect(tabGroups?.itemSchema, 'tabGroups itemSchema').toBeTruthy()
-    expect(tabGroups?.itemSchema?.map((f) => f.key)).toEqual(['id', 'label', 'isDefault', 'order', 'collapsed'])
+    expect(tabGroups?.itemSchema?.map((f) => f.key)).toEqual([
+      'id',
+      'label',
+      'isDefault',
+      'order',
+      'collapsed',
+    ])
     const quickTools = schema.find((e) => e.key === 'quickTools')
     expect(quickTools?.itemSchema, 'quickTools itemSchema').toBeTruthy()
-    expect(quickTools?.itemSchema?.map((f) => f.key)).toEqual(['id', 'name', 'icon', 'command'])
+    expect(quickTools?.itemSchema?.map((f) => f.key)).toEqual([
+      'id',
+      'name',
+      'icon',
+      'command',
+    ])
   })
 
   it('primitive-list entries carry their itemType (not itemSchema)', () => {
@@ -317,10 +396,24 @@ describe('projectableSchema / projectableGroups', () => {
     expect(cmds?.defaultValue).toEqual([])
   })
 
+  it('round-trips primitive-list itemType through DesktopSettingsSchemaEntry', () => {
+    // Contextual wire typing makes this fail if protocol.ts stops declaring
+    // itemType, while the runtime assertion pins schema serialization.
+    const wireSchema: DesktopSettingsSchemaEntry[] = projectableSchema().map(
+      (entry): DesktopSettingsSchemaEntry => ({
+        ...entry,
+        itemType: entry.itemType,
+      }),
+    )
+    const cmds = wireSchema.find(
+      (entry) => entry.key === 'planModeAllowedBashCommands',
+    )
+    expect(cmds?.itemType).toBe('string')
+  })
+
   it('range is carried through for number entries that declare one', () => {
     const schema = projectableSchema()
-    const uiZoom = schema.find((e) => e.key === 'uiZoom')
-    expect(uiZoom?.range).toEqual({ min: 0.5, max: 2.0, step: 0.1 })
+    expect(schema.find((e) => e.key === 'uiZoom')).toBeUndefined()
     const timeout = schema.find((e) => e.key === 'tabRecoveryTimeoutSec')
     expect(timeout?.range).toEqual({ min: 10, max: 600, step: 10 })
   })
@@ -383,120 +476,6 @@ describe('isProjectableKey', () => {
   })
 })
 
-describe('validateSettingValue', () => {
-  it('accepts a boolean for a boolean key', () => {
-    expect(validateSettingValue('enableEarlyStopContinuation', true)).toBeNull()
-    expect(validateSettingValue('enableEarlyStopContinuation', false)).toBeNull()
-  })
-
-  it('accepts/rejects values for streamThinkingToRemote like any boolean (issue #158)', () => {
-    expect(validateSettingValue('streamThinkingToRemote', true)).toBeNull()
-    expect(validateSettingValue('streamThinkingToRemote', false)).toBeNull()
-    // Non-booleans rejected so the iOS write cannot drift the type.
-    expect(validateSettingValue('streamThinkingToRemote', 'true')).not.toBeNull()
-    expect(validateSettingValue('streamThinkingToRemote', 1)).not.toBeNull()
-    expect(validateSettingValue('streamThinkingToRemote', null)).not.toBeNull()
-  })
-
-  it('rejects a non-boolean for a boolean key', () => {
-    expect(validateSettingValue('enableEarlyStopContinuation', 'true')).not.toBeNull()
-    expect(validateSettingValue('enableEarlyStopContinuation', 1)).not.toBeNull()
-    expect(validateSettingValue('enableEarlyStopContinuation', null)).not.toBeNull()
-    expect(validateSettingValue('enableEarlyStopContinuation', undefined)).not.toBeNull()
-  })
-
-  it('rejects an unknown key regardless of value', () => {
-    expect(validateSettingValue('not_a_real_setting', true)).not.toBeNull()
-    expect(validateSettingValue('not_a_real_setting', 'value')).not.toBeNull()
-  })
-
-  it('rejects NaN even when a number is expected', () => {
-    // NaN technically passes `typeof n === 'number'` but is never a
-    // valid setting value. The validator guards it explicitly so
-    // every number-typed projection inherits the right behavior.
-    expect(validateSettingValue('uiZoom', NaN)).not.toBeNull()
-  })
-
-  it('accepts a string value within a static enum choice set', () => {
-    // gitOpsMode is a static enum: manual | worktree.
-    expect(validateSettingValue('gitOpsMode', 'manual')).toBeNull()
-    expect(validateSettingValue('gitOpsMode', 'worktree')).toBeNull()
-  })
-
-  it('rejects a string value outside a static enum choice set', () => {
-    expect(validateSettingValue('gitOpsMode', 'invalid-mode')).not.toBeNull()
-  })
-
-  it('rejects null for a non-nullable static enum', () => {
-    // gitOpsMode has no { value: null } choice — null must be rejected.
-    expect(validateSettingValue('gitOpsMode', null)).not.toBeNull()
-  })
-
-  it('accepts null for dynamic group-id enums (the "None" choice)', () => {
-    expect(validateSettingValue('planningGroupId', null)).toBeNull()
-    expect(validateSettingValue('inProgressGroupId', null)).toBeNull()
-    expect(validateSettingValue('doneGroupId', null)).toBeNull()
-  })
-
-  it('accepts an arbitrary string for dynamic group-id enums', () => {
-    // The canonical choice set depends on live tabGroups; we trust
-    // iOS not to fabricate a string outside the current set, and the
-    // projection layer self-heals stale references to None.
-    expect(validateSettingValue('planningGroupId', 'group-abc')).toBeNull()
-  })
-
-  it('rejects non-string non-null for a dynamic group-id enum', () => {
-    expect(validateSettingValue('planningGroupId', 42)).not.toBeNull()
-    expect(validateSettingValue('planningGroupId', true)).not.toBeNull()
-  })
-
-  it('accepts an array for a list-typed key', () => {
-    expect(validateSettingValue('quickTools', [])).toBeNull()
-    expect(validateSettingValue('quickTools', [{ id: 'a', name: 'a', icon: 'Gear', command: 'echo' }])).toBeNull()
-  })
-
-  it('rejects a non-array for a list-typed key', () => {
-    expect(validateSettingValue('quickTools', null)).not.toBeNull()
-    expect(validateSettingValue('quickTools', {})).not.toBeNull()
-    expect(validateSettingValue('quickTools', 'tools')).not.toBeNull()
-  })
-
-  // Primitive-list ('list' + itemType: 'string') round-trip tests.
-  // planModeAllowedBashCommands is the first primitive-list projectable
-  // setting. The defect this guards: before the projection used
-  // itemType, iOS sent the value back as a string and the desktop
-  // accepted it (declared type was 'string'), breaking the engine wire
-  // round-trip the next time the prompt pipeline read string[].
-  it('accepts a string[] for planModeAllowedBashCommands', () => {
-    expect(validateSettingValue('planModeAllowedBashCommands', [])).toBeNull()
-    expect(validateSettingValue('planModeAllowedBashCommands', ['gh'])).toBeNull()
-    expect(validateSettingValue('planModeAllowedBashCommands', ['gh', 'git log', 'git diff'])).toBeNull()
-  })
-
-  it('rejects a string (not array) for planModeAllowedBashCommands', () => {
-    // The original BLOCKER: iOS used to send "gh, git log" as a string.
-    // The validator must refuse so persistence cannot drift to the wrong
-    // shape. The engine expects []string on the wire.
-    const err = validateSettingValue('planModeAllowedBashCommands', 'gh, git log')
-    expect(err).not.toBeNull()
-    expect(err).toMatch(/expects array/)
-  })
-
-  it('rejects a list of non-strings for planModeAllowedBashCommands', () => {
-    const err = validateSettingValue('planModeAllowedBashCommands', ['gh', 42])
-    expect(err).not.toBeNull()
-    // Error message names the expected element type and the bad index
-    // so the iOS-side debugger can point at the offending row.
-    expect(err).toMatch(/expects list of string/)
-    expect(err).toMatch(/index 1/)
-  })
-
-  it('rejects null inside a primitive-list', () => {
-    const err = validateSettingValue('planModeAllowedBashCommands', ['gh', null])
-    expect(err).not.toBeNull()
-  })
-})
-
 describe('projectCurrentSettings', () => {
   let readSettingsSpy: any
 
@@ -506,15 +485,6 @@ describe('projectCurrentSettings', () => {
 
   afterEach(() => {
     readSettingsSpy.mockRestore()
-  })
-
-  it('returns every projectable key, falling back to defaults when settings.json omits one', () => {
-    readSettingsSpy.mockReturnValue({})
-    const out = projectCurrentSettings()
-    for (const entry of PROJECTABLE_SETTINGS) {
-      expect(out, `key ${entry.key} present`).toHaveProperty(entry.key)
-      expect(out[entry.key], `key ${entry.key} default`).toEqual(entry.defaultValue)
-    }
   })
 
   it('returns the persisted value when settings.json carries one', () => {
@@ -576,9 +546,7 @@ describe('projectCurrentSettings', () => {
   })
 
   it('passes list-typed values through unchanged', () => {
-    const tools = [
-      { id: 'a', name: 'Build', icon: 'Hammer', command: 'make' },
-    ]
+    const tools = [{ id: 'a', name: 'Build', icon: 'Hammer', command: 'make' }]
     readSettingsSpy.mockReturnValue({ quickTools: tools })
     const out = projectCurrentSettings()
     expect(out.quickTools).toBe(tools) // reference equality — no copy

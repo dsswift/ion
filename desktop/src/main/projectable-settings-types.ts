@@ -126,6 +126,8 @@ export interface ProjectableRange {
  * list with no itemSchema accepts any array, which is the legacy
  * behavior preserved for backward compat.
  */
+export type IosSurface = 'phone-critical' | 'phone' | 'desktop-only'
+
 export interface ProjectableSetting {
   key: string
   type: ProjectableType
@@ -133,14 +135,24 @@ export interface ProjectableSetting {
   label: string
   description: string
   defaultValue: unknown
+  /** Source-only classifier deciding whether iOS receives this setting. */
+  iosSurface: IosSurface
   /** For `'enum'` only — the available choices. */
   choices?: ProjectableChoice[]
   /** For `'number'` only — bounds + step. */
   range?: ProjectableRange
   /** For record-list `'list'` only — per-field metadata for one record. */
-  itemSchema?: ProjectableSetting[]
+  itemSchema?: ProjectableItemField[]
   /** For primitive-list `'list'` only — type of each scalar element. */
   itemType?: ProjectablePrimitiveItemType
+}
+
+/** Surface-free field descriptor for records inside a list setting. */
+export type ProjectableItemField = Omit<
+  ProjectableSetting,
+  'iosSurface' | 'itemSchema'
+> & {
+  itemSchema?: ProjectableItemField[]
 }
 
 /**
@@ -151,9 +163,8 @@ export interface ProjectableSetting {
  * Distinct from `ProjectableSetting` only structurally — the schema
  * shape is what crosses the wire, while `ProjectableSetting` is the
  * source-of-truth type used by the allowlist definition. They are
- * structurally identical today; we keep them separate so future
- * desktop-only fields (e.g. an `experimental` flag) can be added to
- * `ProjectableSetting` without leaking onto the wire.
+ * intentionally distinct: source-only fields such as `iosSurface` stay
+ * on `ProjectableSetting` and never leak onto the wire.
  */
 export interface ProjectableSettingSchema {
   key: string

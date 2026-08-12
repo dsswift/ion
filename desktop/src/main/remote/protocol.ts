@@ -39,6 +39,7 @@ export interface DesktopSettingsSchemaEntry {
   choices?: Array<{ value: string | null; label: string }>
   range?: { min: number; max: number; step: number }
   itemSchema?: DesktopSettingsSchemaEntry[]
+  itemType?: 'boolean' | 'string' | 'number' | 'enum'
 }
 
 // ─── Remote Tab State + message types — extracted for line-cap ───
@@ -466,9 +467,12 @@ export type RemoteEvent =
   // from the manifest were uninstalled and must be pruned (per-desktop
   // keying keeps desktop A's sync from deleting desktop B's themes).
   //
-  // Token payloads are the full iOS AppTheme token set (#RRGGBBAA), small
-  // enough to inline. Image assets are NOT inlined: each is described by
-  // {slot, sha256, size} and fetched lazily via desktop_request_theme_asset
+  // Token payloads are the iOS AppTheme token set (#RRGGBBAA), small enough
+  // to inline. A component supplying the complete required set carries no
+  // `base`; one omitting any required token names a built-in `base` and iOS
+  // inherits the omitted tokens from that compiled-in theme
+  // (required-when-partial). Image assets are NOT inlined: each is described
+  // by {slot, sha256, size} and fetched lazily via desktop_request_theme_asset
   // when the sha misses the iOS cache.
   //
   // `hash` fingerprints the canonical payload so iOS can skip re-persisting
@@ -480,6 +484,7 @@ export type RemoteEvent =
         name: string
         version: string
         tokens: Record<string, string>
+        base?: 'ion-dark' | 'ion-light' | 'ion-classic' | 'jarvis-hud' | 'ion-contrast-dark' | 'ion-contrast-light'
         preferredColorScheme?: 'light' | 'dark'
         assets?: Array<{ slot: 'background' | 'logo'; sha256: string; size: number }>
       }>

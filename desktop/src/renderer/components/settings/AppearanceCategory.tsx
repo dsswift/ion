@@ -180,11 +180,42 @@ export function AppearanceCategory() {
             opacity: themeLocked ? 0.6 : 1,
           }}
         >
-          {allThemes.map((t) => (
+          {allThemes.filter((t) => t.selectable !== false).map((t) => (
             <option key={t.id} value={t.id}>{t.displayName}</option>
           ))}
         </select>
       </SettingSection>
+
+      {allThemes.flatMap((theme) => ([
+        ['ios', theme.iosDiagnostics],
+        ['desktop', theme.desktopDiagnostics],
+      ] as const).flatMap(([surface, diagnostics]) =>
+        diagnostics?.map((diagnostic, index) => (
+          <div
+            key={`${surface}-diagnostic-${theme.id}-${index}`}
+            style={{
+              margin: '6px 0 10px',
+              padding: '8px 10px',
+              fontSize: 12,
+              lineHeight: 1.4,
+              color: colors.textPrimary,
+              background: colors.surfacePrimary,
+              border: `1px solid ${colors.statusWarning}`,
+              borderRadius: 8,
+            }}
+          >
+            <div style={{ fontWeight: 600, color: colors.statusWarning }}>
+              {theme.displayName}: {surface === 'ios' ? 'iOS' : 'Desktop'} theme {diagnostic.fatal ? 'not loaded' : 'loaded with defaults'}
+            </div>
+            <div style={{ color: colors.textSecondary, marginTop: 2 }}>
+              {diagnostic.fatal
+                ? `This ${surface} component was rejected.`
+                : `This ${surface} component loaded with fallback values.`}
+            </div>
+            <div style={{ color: colors.textSecondary, marginTop: 2 }}>{diagnostic.message}</div>
+          </div>
+        )) ?? [],
+      ))}
 
       <SettingToggle
         label="Tool Output"

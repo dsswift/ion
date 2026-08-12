@@ -19,6 +19,10 @@ import {
   QUICK_TOOL_ITEM_SCHEMA,
   TAB_GROUP_ITEM_SCHEMA,
 } from './projectable-settings-items'
+import { PROJECTABLE_SETTINGS_TAIL } from './projectable-settings-tail'
+
+export { CONNECTION_CRITICAL_KEYS } from './projectable-settings-critical-keys'
+export { ENGINE_CONFIG_BACKED_KEYS } from './projectable-settings-engine-config'
 
 export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
   // ═══════════════════════════════════════════════════════════════════
@@ -30,6 +34,7 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
   // ═══════════════════════════════════════════════════════════════════
   {
     key: 'defaultPermissionMode',
+    iosSurface: 'phone',
     type: 'enum',
     group: 'general',
     label: 'Default Permission Mode',
@@ -42,38 +47,47 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
   },
   {
     key: 'bashCommandEntry',
+    iosSurface: 'desktop-only',
     type: 'boolean',
     group: 'general',
     label: 'Bash command entry (! prefix)',
-    description: 'Allow `!command` in the prompt input to execute a shell command before the prompt is sent.',
+    description:
+      'Allow `!command` in the prompt input to execute a shell command before the prompt is sent.',
     defaultValue: false,
   },
   {
     key: 'allowSettingsEdits',
+    iosSurface: 'phone',
     type: 'boolean',
     group: 'general',
     label: 'Allow settings edits by the agent',
-    description: 'Show an approval card when the agent tries to edit its own settings files, instead of blocking outright.',
+    description:
+      'Show an approval card when the agent tries to edit its own settings files, instead of blocking outright.',
     defaultValue: false,
   },
   {
     key: 'enableClaudeCompat',
+    iosSurface: 'desktop-only',
     type: 'boolean',
     group: 'general',
     label: 'Claude Code compatibility',
-    description: 'Load .claude content alongside the always-on .ion roots: .claude/commands and .claude/skills in slash discovery and resolution, and CLAUDE.md context files. For users migrating from or co-running Claude Code. Off by default; .ion content needs no flag.',
+    description:
+      'Load .claude content alongside the always-on .ion roots: .claude/commands and .claude/skills in slash discovery and resolution, and CLAUDE.md context files. For users migrating from or co-running Claude Code. Off by default; .ion content needs no flag.',
     defaultValue: false,
   },
   {
     key: 'enableEarlyStopContinuation',
+    iosSurface: 'phone',
     type: 'boolean',
     group: 'general',
     label: 'Early-stop continuation nudge',
-    description: 'When the model emits end_turn below the configured token budget, ask it to keep working instead of completing the run.',
+    description:
+      'When the model emits end_turn below the configured token budget, ask it to keep working instead of completing the run.',
     defaultValue: false,
   },
   {
     key: 'soundEnabled',
+    iosSurface: 'phone-critical',
     type: 'boolean',
     group: 'general',
     label: 'Notification sound',
@@ -82,34 +96,42 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
   },
   {
     key: 'showTodoList',
+    iosSurface: 'phone',
     type: 'boolean',
     group: 'general',
     label: 'Show TODO list panel',
-    description: 'Render the TODO list panel for tabs that have an active TodoWrite tool.',
+    description:
+      'Render the TODO list panel for tabs that have an active TodoWrite tool.',
     defaultValue: true,
   },
   {
     key: 'agentPanelDefaultOpen',
+    iosSurface: 'phone',
     type: 'boolean',
     group: 'general',
     label: 'Agent panel open by default',
-    description: 'Automatically expand the agent panel when agents are dispatched. Disable to keep it collapsed until manually opened.',
+    description:
+      'Automatically expand the agent panel when agents are dispatched. Disable to keep it collapsed until manually opened.',
     defaultValue: true,
   },
   {
     key: 'aiGeneratedTitles',
+    iosSurface: 'phone',
     type: 'boolean',
     group: 'general',
     label: 'AI-generated tab titles',
-    description: 'After the first user message, ask the model to generate a short title for the tab.',
+    description:
+      'After the first user message, ask the model to generate a short title for the tab.',
     defaultValue: true,
   },
   {
     key: 'showImplementClearContext',
+    iosSurface: 'phone',
     type: 'boolean',
     group: 'general',
     label: 'Show "Implement, clear context" button',
-    description: 'Reveal a second button on the plan-approval card that starts a fresh conversation for the implementation phase. The regular Implement button always preserves the conversation. Use /clear to clear context manually at any time.',
+    description:
+      'Reveal a second button on the plan-approval card that starts a fresh conversation for the implementation phase. The regular Implement button always preserves the conversation. Use /clear to clear context manually at any time.',
     defaultValue: false,
   },
   {
@@ -127,10 +149,12 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
     // in RemoteCategory, but its iOS-visible home is the General section.
     // Read by the main process at the iOS forward path (event-wiring.ts).
     key: 'streamThinkingToRemote',
+    iosSurface: 'phone-critical',
     type: 'boolean',
     group: 'general',
     label: 'Stream reasoning to phone (low-bandwidth mode)',
-    description: 'Forward the model\'s live reasoning text to paired iOS devices. When off, the phone still sees that the model thought (and for how long) but skips the per-token reasoning stream to save bandwidth. The first facet of a broader low-bandwidth mode.',
+    description:
+      "Forward the model's live reasoning text to paired iOS devices. When off, the phone still sees that the model thought (and for how long) but skips the per-token reasoning stream to save bandwidth. The first facet of a broader low-bandwidth mode.",
     defaultValue: true,
   },
 
@@ -146,10 +170,12 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
     // desktop's opinionated default; each conversation can still be changed
     // individually from the status bar.
     key: 'defaultThinkingEffort',
+    iosSurface: 'phone',
     type: 'enum',
     group: 'ai',
     label: 'Default thinking level',
-    description: 'The reasoning level new conversations start at on models that take an explicit level. Models with adaptive reasoning (Claude) choose their own depth and start on Adaptive. Each conversation can still be changed from its status bar.',
+    description:
+      'The reasoning level new conversations start at on models that take an explicit level. Models with adaptive reasoning (Claude) choose their own depth and start on Adaptive. Each conversation can still be changed from its status bar.',
     defaultValue: 'high',
     choices: [
       { value: 'off', label: 'Off' },
@@ -162,35 +188,43 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
   },
   {
     key: 'planModelSplitEnabled',
+    iosSurface: 'phone',
     type: 'boolean',
     group: 'ai',
     label: 'Plan/implement model split',
-    description: 'Automatically switch models at the plan→implement boundary. When off, the same model is used for both phases.',
+    description:
+      'Automatically switch models at the plan→implement boundary. When off, the same model is used for both phases.',
     defaultValue: false,
   },
   {
     key: 'planModeModel',
+    iosSurface: 'phone',
     type: 'string',
     group: 'ai',
     label: 'Plan-mode model',
-    description: 'Model to use during plan mode. Leave empty to use the conversation default.',
+    description:
+      'Model to use during plan mode. Leave empty to use the conversation default.',
     defaultValue: '',
   },
   {
     key: 'implementModeModel',
+    iosSurface: 'phone',
     type: 'string',
     group: 'ai',
     label: 'Implement-mode model',
-    description: 'Model to use when implementing a plan. Leave empty to use the conversation default.',
+    description:
+      'Model to use when implementing a plan. Leave empty to use the conversation default.',
     defaultValue: '',
   },
   {
     key: 'planModeAllowedBashCommands',
+    iosSurface: 'phone',
     type: 'list',
     itemType: 'string',
     group: 'ai',
     label: 'Plan mode allowed Bash commands',
-    description: 'Command prefixes allowed in plan mode (e.g. "gh", "git log", "git diff"). Token-based prefix matching: "gh" matches "gh pr view" but not "ghost". Empty disables Bash entirely in plan mode. Stored in engine.json (engine policy), not settings.json.',
+    description:
+      'Command prefixes allowed in plan mode (e.g. "gh", "git log", "git diff"). Token-based prefix matching: "gh" matches "gh pr view" but not "ghost". Empty disables Bash entirely in plan mode. Stored in engine.json (engine policy), not settings.json.',
     // Opinionless default: the engine ships no built-in allowlist, so an
     // unset value means Bash is blocked in plan mode. This key is stored in
     // engine.json (see ENGINE_CONFIG_BACKED_KEYS), not settings.json.
@@ -205,10 +239,12 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
     // yet — this entry projects the preference to iOS so the iOS picker
     // can set it before the desktop UI ships.
     key: 'defaultEngineProfileId',
+    iosSurface: 'phone',
     type: 'string',
     group: 'ai',
     label: 'Default engine profile',
-    description: 'Engine profile used when opening a new tab. Leave empty for a plain conversation (no extension). Set to a profile ID to always open with that extension loaded.',
+    description:
+      'Engine profile used when opening a new tab. Leave empty for a plain conversation (no extension). Set to a profile ID to always open with that extension loaded.',
     defaultValue: '',
   },
 
@@ -220,6 +256,7 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
   // ═══════════════════════════════════════════════════════════════════
   {
     key: 'selectedTheme',
+    iosSurface: 'desktop-only',
     type: 'enum',
     group: 'appearance',
     label: 'Color theme',
@@ -234,6 +271,7 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
   },
   {
     key: 'expandedUI',
+    iosSurface: 'desktop-only',
     type: 'boolean',
     group: 'appearance',
     label: 'Full-width UI',
@@ -242,6 +280,7 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
   },
   {
     key: 'ultraWide',
+    iosSurface: 'desktop-only',
     type: 'boolean',
     group: 'appearance',
     label: 'Ultra-wide layout',
@@ -250,22 +289,27 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
   },
   {
     key: 'expandToolResults',
+    iosSurface: 'desktop-only',
     type: 'boolean',
     group: 'appearance',
     label: 'Expand tool results',
-    description: 'Render tool result blocks expanded in the conversation view. Disable to collapse them by default.',
+    description:
+      'Render tool result blocks expanded in the conversation view. Disable to collapse them by default.',
     defaultValue: false,
   },
   {
     key: 'unifiedTurnView',
+    iosSurface: 'desktop-only',
     type: 'boolean',
     group: 'appearance',
     label: 'Unified turn view',
-    description: 'Group tool calls into a collapsible panel and show assistant text as a continuous block, instead of interleaving tool calls with text fragments.',
+    description:
+      'Group tool calls into a collapsible panel and show assistant text as a continuous block, instead of interleaving tool calls with text fragments.',
     defaultValue: true,
   },
   {
     key: 'defaultTallConversation',
+    iosSurface: 'desktop-only',
     type: 'boolean',
     group: 'appearance',
     label: 'Tall conversation tabs by default',
@@ -274,6 +318,7 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
   },
   {
     key: 'defaultTallTerminal',
+    iosSurface: 'desktop-only',
     type: 'boolean',
     group: 'appearance',
     label: 'Tall terminal tabs by default',
@@ -282,42 +327,52 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
   },
   {
     key: 'closeExplorerOnFileOpen',
+    iosSurface: 'desktop-only',
     type: 'boolean',
     group: 'appearance',
     label: 'Close explorer on file open',
-    description: 'When opening a file from the explorer, collapse the explorer panel automatically.',
+    description:
+      'When opening a file from the explorer, collapse the explorer panel automatically.',
     defaultValue: true,
   },
   {
     key: 'openMarkdownInPreview',
+    iosSurface: 'desktop-only',
     type: 'boolean',
     group: 'appearance',
     label: 'Open Markdown in preview',
-    description: 'When opening a Markdown file from the explorer, open it in the preview pane instead of the editor.',
+    description:
+      'When opening a Markdown file from the explorer, open it in the preview pane instead of the editor.',
     defaultValue: true,
   },
   {
     key: 'editorWordWrap',
+    iosSurface: 'desktop-only',
     type: 'boolean',
     group: 'appearance',
     label: 'Editor word-wrap',
-    description: 'Wrap long lines in the file editor instead of horizontal scrolling.',
+    description:
+      'Wrap long lines in the file editor instead of horizontal scrolling.',
     defaultValue: true,
   },
   {
     key: 'hideOnExternalLaunch',
+    iosSurface: 'desktop-only',
     type: 'boolean',
     group: 'appearance',
     label: 'Hide window on external launch',
-    description: 'Hide the Ion window when an external app (Finder, Terminal, VS Code) is launched from a tab.',
+    description:
+      'Hide the Ion window when an external app (Finder, Terminal, VS Code) is launched from a tab.',
     defaultValue: true,
   },
   {
     key: 'uiZoom',
+    iosSurface: 'desktop-only',
     type: 'number',
     group: 'appearance',
     label: 'UI zoom',
-    description: 'Overall zoom level for the desktop UI. 1.0 is the default; values between 0.5 and 2.0 are supported.',
+    description:
+      'Overall zoom level for the desktop UI. 1.0 is the default; values between 0.5 and 2.0 are supported.',
     defaultValue: 1,
     range: { min: 0.5, max: 2.0, step: 0.1 },
   },
@@ -336,26 +391,32 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
   // ═══════════════════════════════════════════════════════════════════
   {
     key: 'expandOnTabSwitch',
+    iosSurface: 'phone',
     type: 'boolean',
     group: 'tabs',
     label: 'Scroll to bottom on tab switch',
-    description: 'When switching to a tab, automatically scroll the conversation to the bottom so the latest message is visible.',
+    description:
+      'When switching to a tab, automatically scroll the conversation to the bottom so the latest message is visible.',
     defaultValue: true,
   },
   {
     key: 'autoGroupMovement',
+    iosSurface: 'phone',
     type: 'boolean',
     group: 'tabs',
     label: 'Auto-group movement',
-    description: 'Automatically move tabs between the Planning, In Progress, and Done groups based on permission mode and completion state.',
+    description:
+      'Automatically move tabs between the Planning, In Progress, and Done groups based on permission mode and completion state.',
     defaultValue: false,
   },
   {
     key: 'tabGroupMode',
+    iosSurface: 'phone',
     type: 'enum',
     group: 'tabs',
     label: 'Tab group mode',
-    description: 'Off: flat tab list. Auto: group by working directory. Manual: user-defined groups.',
+    description:
+      'Off: flat tab list. Auto: group by working directory. Manual: user-defined groups.',
     defaultValue: 'off',
     choices: [
       { value: 'off', label: 'Off (flat)' },
@@ -365,10 +426,12 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
   },
   {
     key: 'tabGroups',
+    iosSurface: 'phone',
     type: 'list',
     group: 'tabs',
     label: 'Tab groups',
-    description: 'Custom groups for manual tab grouping. Add, rename, or reorder groups; toggle "Default Group" to control where new tabs land.',
+    description:
+      'Custom groups for manual tab grouping. Add, rename, or reorder groups; toggle "Default Group" to control where new tabs land.',
     defaultValue: [],
     itemSchema: TAB_GROUP_ITEM_SCHEMA,
   },
@@ -377,45 +440,55 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
   // module for the injection logic.
   {
     key: 'planningGroupId',
+    iosSurface: 'phone',
     type: 'enum',
     group: 'tabs',
     label: 'Planning group',
-    description: 'Group tabs auto-move into while in plan mode. Choose None to disable.',
+    description:
+      'Group tabs auto-move into while in plan mode. Choose None to disable.',
     defaultValue: null,
     choices: [{ value: null, label: 'None' }],
   },
   {
     key: 'inProgressGroupId',
+    iosSurface: 'phone',
     type: 'enum',
     group: 'tabs',
     label: 'In-Progress group',
-    description: 'Group tabs auto-move into when implementation starts. Choose None to disable.',
+    description:
+      'Group tabs auto-move into when implementation starts. Choose None to disable.',
     defaultValue: null,
     choices: [{ value: null, label: 'None' }],
   },
   {
     key: 'doneGroupId',
+    iosSurface: 'phone',
     type: 'enum',
     group: 'tabs',
     label: 'Done group',
-    description: 'Group tabs auto-move into after committing. Choose None to disable.',
+    description:
+      'Group tabs auto-move into after committing. Choose None to disable.',
     defaultValue: null,
     choices: [{ value: null, label: 'None' }],
   },
   {
     key: 'tabRecoveryEnabled',
+    iosSurface: 'phone-critical',
     type: 'boolean',
     group: 'tabs',
     label: 'Auto-recover stuck tabs',
-    description: 'Automatically attempt to recover tabs that appear stuck (no engine events for a period).',
+    description:
+      'Automatically attempt to recover tabs that appear stuck (no engine events for a period).',
     defaultValue: true,
   },
   {
     key: 'tabRecoveryTimeoutSec',
+    iosSurface: 'phone-critical',
     type: 'number',
     group: 'tabs',
     label: 'Tab recovery timeout (sec)',
-    description: 'Idle threshold in seconds before a stuck tab is force-recovered. Only applies when auto-recovery is enabled.',
+    description:
+      'Idle threshold in seconds before a stuck tab is force-recovered. Only applies when auto-recovery is enabled.',
     defaultValue: 120,
     range: { min: 10, max: 600, step: 10 },
   },
@@ -428,10 +501,12 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
   // ═══════════════════════════════════════════════════════════════════
   {
     key: 'gitOpsMode',
+    iosSurface: 'phone',
     type: 'enum',
     group: 'git',
     label: 'GitOps mode',
-    description: 'Manual: no automatic git operations. Worktree: each new tab gets an isolated worktree branch.',
+    description:
+      'Manual: no automatic git operations. Worktree: each new tab gets an isolated worktree branch.',
     defaultValue: 'manual',
     choices: [
       { value: 'manual', label: 'Manual' },
@@ -440,6 +515,7 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
   },
   {
     key: 'worktreeCompletionStrategy',
+    iosSurface: 'phone',
     type: 'enum',
     group: 'git',
     label: 'Worktree completion strategy',
@@ -452,26 +528,32 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
   },
   {
     key: 'worktreeSkipPrTitle',
+    iosSurface: 'phone',
     type: 'boolean',
     group: 'git',
     label: 'Skip PR title dialog',
-    description: 'Always use the auto-generated branch name when opening a worktree pull request, instead of prompting.',
+    description:
+      'Always use the auto-generated branch name when opening a worktree pull request, instead of prompting.',
     defaultValue: false,
   },
   {
     key: 'commitCommand',
+    iosSurface: 'desktop-only',
     type: 'string',
     group: 'git',
     label: 'Custom commit command',
-    description: 'Optional bash command to run instead of prompting the LLM for commits. Leave empty to use the default LLM-generated commit flow.',
+    description:
+      'Optional bash command to run instead of prompting the LLM for commits. Leave empty to use the default LLM-generated commit flow.',
     defaultValue: '',
   },
   {
     key: 'gitChangesTreeView',
+    iosSurface: 'desktop-only',
     type: 'boolean',
     group: 'git',
     label: 'Tree view in changes panel',
-    description: 'Group changed files by directory in tree view, instead of a flat list.',
+    description:
+      'Group changed files by directory in tree view, instead of a flat list.',
     defaultValue: false,
   },
 
@@ -483,68 +565,15 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
   // ═══════════════════════════════════════════════════════════════════
   {
     key: 'quickTools',
+    iosSurface: 'phone',
     type: 'list',
     group: 'quicktools',
     label: 'Quick tools',
-    description: 'Custom shell-command buttons available from any tab. Use {cwd} and {branch} placeholders in commands.',
+    description:
+      'Custom shell-command buttons available from any tab. Use {cwd} and {branch} placeholders in commands.',
     defaultValue: [],
     itemSchema: QUICK_TOOL_ITEM_SCHEMA,
   },
 
-  // ═══════════════════════════════════════════════════════════════════
-  // NOTIFICATIONS
-  // ───────────────────────────────────────────────────────────────────
-  // Per-kind blocklist for the global notification tray. The desktop
-  // always subscribes to every resource kind via the engine wildcard;
-  // this list only hides kinds from the global tray at render time.
-  // Conversation-scoped resources always appear in their conversation's
-  // attachments panel and are never filtered. Empty default = show all.
-  // ═══════════════════════════════════════════════════════════════════
-  {
-    key: 'excludedResourceKinds',
-    type: 'list',
-    itemType: 'string',
-    group: 'notifications',
-    label: 'Hidden notification kinds',
-    description: 'Resource kinds to hide from the global notification tray (e.g. "desktop.focus"). The desktop still receives every kind; this only filters what the tray shows. Conversation-scoped resources are never affected. Empty shows all kinds.',
-    defaultValue: [],
-  },
-
-  // ═══════════════════════════════════════════════════════════════════
-  // KEYBOARD SHORTCUTS
-  // ───────────────────────────────────────────────────────────────────
-  // User/enterprise keyboard-shortcut overrides. Only non-default
-  // bindings are stored. Grouped under 'advanced' because iOS has no
-  // desktop-chord editing surface — the key is validated and recognized
-  // but is NOT added to PROJECTABLE_GROUP_ORDER, so it is not projected
-  // to iOS. The allowlist entry ensures `isProjectableKey` returns true
-  // and `validateSettingValue` can accept/reject values, enabling
-  // enterprise deployment via settings.json without crashing the
-  // validator. `projectableKeysWithoutDefault()` stays green because
-  // `keyboardShortcuts: {}` is in RENDERER_SETTINGS_DEFAULTS.
-  // ═══════════════════════════════════════════════════════════════════
-  {
-    key: 'keyboardShortcuts',
-    type: 'list',
-    itemType: 'string',
-    group: 'advanced',
-    label: 'Keyboard shortcut overrides',
-    description: 'Custom keyboard bindings (command id → chord). Only non-default entries are stored. Edit via Settings → Keyboard or directly in ~/.ion/settings.json.',
-    defaultValue: [],
-  },
+  ...PROJECTABLE_SETTINGS_TAIL,
 ]
-
-/**
- * Projectable keys whose canonical storage is engine.json (engine policy),
- * NOT settings.json. Both desktop edit surfaces route these through
- * plan-bash-allowlist-store rather than writeSettings, and the projection
- * layer reads them back from engine.json — so iOS edits and reads them like
- * any other projectable setting without ever learning the storage location.
- *
- * Today this is only the plan-mode Bash allowlist. Membership here is what
- * makes settings-broadcast strip the key from the settings.json write and
- * projectCurrentSettings source it from engine.json.
- */
-export const ENGINE_CONFIG_BACKED_KEYS: ReadonlySet<string> = new Set([
-  'planModeAllowedBashCommands',
-])

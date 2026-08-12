@@ -6,8 +6,10 @@
  *
  *   - `desktop` — a partial ColorPalette overlay on a built-in base theme,
  *     rendered by the desktop overlay/ATV windows.
- *   - `ios`     — the full iOS AppTheme token set. Only this component (plus
- *     its assets) ships to iOS over the desktop↔iOS wire.
+ *   - `ios`     — the iOS AppTheme token set. A component supplying the
+ *     complete required set loads with no `base`; one omitting any required
+ *     token names a built-in `base` from which the rest inherit on iOS. Only
+ *     this component (plus its assets) ships to iOS over the desktop↔iOS wire.
  *
  * Shared module (no fs, no DOM): imported by the main-process loader
  * (`main/theme-packs.ts`), the renderer registry (`renderer/theme-tokens.ts`
@@ -18,7 +20,7 @@
 /** Built-in theme ids. Reserved: a pack claiming one of these is refused so
  * an installed pack can never silently redefine a stock theme and break the
  * identical-across-platforms guarantee. */
-export const BUILTIN_THEME_IDS = ['ion-dark', 'ion-light', 'ion-classic', 'jarvis-hud'] as const
+export const BUILTIN_THEME_IDS = ['ion-dark', 'ion-light', 'ion-classic', 'jarvis-hud', 'ion-contrast-dark', 'ion-contrast-light'] as const
 
 /** Pack ids match the ATV pack-id convention: lowercase alphanumeric + dashes,
  * 1–64 chars, and must equal the directory name. */
@@ -56,7 +58,13 @@ export const IOS_THEME_TOKEN_KEYS = [
   'statusWaitingChildren',
   'statusBash',
   'statusWarning',
+  'statusIdle',
+  'worktreeDirty',
   'surfaceElevated',
+  'surfaceSecondary',
+  'surfaceSunken',
+  'borderSubtle',
+  'textTertiary',
   'codeBg',
   'userBubbleTint',
   ...CODE_SYNTAX_TOKEN_KEYS,
@@ -73,6 +81,17 @@ export type IosThemeTokenKey = (typeof IOS_THEME_TOKEN_KEYS)[number]
  * component rejected.
  */
 export const OPTIONAL_IOS_THEME_TOKEN_KEYS: ReadonlySet<IosThemeTokenKey> = new Set(CODE_SYNTAX_TOKEN_KEYS)
+
+/**
+ * The frozen REQUIRED iOS token set: every `IOS_THEME_TOKEN_KEYS` entry that
+ * is not in `OPTIONAL_IOS_THEME_TOKEN_KEYS`. A pack's iOS component must
+ * supply every one of these OR name a built-in `base` from which the omitted
+ * ones inherit (`required-when-partial`). Derived from the two literal
+ * arrays so it can never drift from either — this is the single source of
+ * truth for "what a complete-but-baseless iOS component must contain".
+ */
+export const REQUIRED_IOS_THEME_TOKEN_KEYS: readonly IosThemeTokenKey[] =
+  IOS_THEME_TOKEN_KEYS.filter((k) => !OPTIONAL_IOS_THEME_TOKEN_KEYS.has(k))
 
 /** The two asset slots a component may declare. `background` renders as a
  * full-surface backdrop; `logo` is a brand mark shown in the Settings
@@ -95,6 +114,16 @@ export interface ThemePackDesktopComponent {
 }
 
 export interface ThemePackIosComponent {
+  /**
+   * Built-in theme id whose iOS token values fill every REQUIRED token this
+   * component omits (`required-when-partial`). REQUIRED-when-partial, not
+   * always: a component supplying the complete `REQUIRED_IOS_THEME_TOKEN_KEYS`
+   * set needs no base and this field stays undefined. A component omitting any
+   * required token MUST name a base — nothing is ever inferred. Inheritance is
+   * resolved on iOS (`SyncedTheme`), where the authoritative built-in token
+   * values are compiled in; the desktop only validates and carries the name.
+   */
+  base?: (typeof BUILTIN_THEME_IDS)[number]
   /** Omitted = follow the system light/dark setting. */
   preferredColorScheme?: 'light' | 'dark'
   /** Full iOS token set — every IOS_THEME_TOKEN_KEYS entry, #RGB/#RRGGBB/#RRGGBBAA. */
@@ -126,6 +155,8 @@ export interface LoadedThemePack {
   source: 'user' | 'system'
   desktopAssets: LoadedThemeAsset[]
   iosAssets: LoadedThemeAsset[]
+  /** Validation diagnostics retained for author-facing Settings feedback. */
+  diagnostics: ThemePackDiagnostic[]
 }
 
 /**
@@ -137,11 +168,18 @@ export interface CustomThemeForRenderer {
   id: string
   name: string
   version: string
-  base: (typeof BUILTIN_THEME_IDS)[number]
+  /** Omitted when validation rejected the desktop component. */
+  base?: (typeof BUILTIN_THEME_IDS)[number]
+  /** False for diagnostic-only entries with no usable desktop component. */
+  desktopAvailable?: boolean
   forcedColorScheme?: 'light' | 'dark'
   tokens: Record<string, string>
   backgroundDataUrl?: string
   logoDataUrl?: string
+  /** iOS validation diagnostics surfaced at this pack's Settings row. */
+  iosDiagnostics?: ThemePackDiagnostic[]
+  /** Desktop validation diagnostics surfaced at this pack's Settings row. */
+  desktopDiagnostics?: ThemePackDiagnostic[]
 }
 
 // ─── Validation ───
@@ -162,10 +200,15 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
-function validateAssetRefs(raw: unknown, warnings: string[], label: string): ThemePackAssetRefs | undefined {
+function validateAssetRefs(
+  raw: unknown,
+  diagnostics: ThemePackDiagnostic[],
+  surface: ThemePackDiagnostic['surface'],
+  label: string,
+): ThemePackAssetRefs | undefined {
   if (raw === undefined) return undefined
   if (!isRecord(raw)) {
-    warnings.push(`${label}.assets is not an object; ignored`)
+    diagnostics.push({ surface, message: `${label}.assets is not an object; ignored`, fatal: false })
     return undefined
   }
   const out: ThemePackAssetRefs = {}
@@ -173,7 +216,7 @@ function validateAssetRefs(raw: unknown, warnings: string[], label: string): The
     const rel = raw[slot]
     if (rel === undefined) continue
     if (typeof rel !== 'string' || rel.length === 0 || rel.length > 512 || rel.includes('\0')) {
-      warnings.push(`${label}.assets.${slot} is not a usable path; dropped`)
+      diagnostics.push({ surface, message: `${label}.assets.${slot} is not a usable path; dropped`, fatal: false })
       continue
     }
     out[slot] = rel
@@ -181,11 +224,17 @@ function validateAssetRefs(raw: unknown, warnings: string[], label: string): The
   return Object.keys(out).length > 0 ? out : undefined
 }
 
+export interface ThemePackDiagnostic {
+  surface: 'ios' | 'desktop' | 'pack'
+  message: string
+  fatal: boolean
+}
+
 export interface ThemePackValidationResult {
   ok: boolean
   pack?: ThemePackManifest
-  /** Non-fatal issues: dropped tokens, rejected components, dropped assets. */
-  warnings: string[]
+  /** Validation diagnostics for dropped values and rejected components. */
+  diagnostics: ThemePackDiagnostic[]
   error?: string
 }
 
@@ -196,8 +245,9 @@ export interface ThemePackValidationResult {
  * id collides with a built-in, neither component present.
  *
  * Non-fatal (warnings): unknown desktop token keys (dropped), unsafe token
- * values (dropped), an iOS component missing required tokens (iOS part
- * rejected; desktop part survives), malformed asset refs (dropped).
+ * values (dropped), an iOS component that omits required tokens without a
+ * `base` to inherit from, or names a bogus base, or carries invalid hex (iOS
+ * part rejected; desktop part survives), malformed asset refs (dropped).
  *
  * `knownDesktopTokenKeys` is the live ColorPalette key set — passed in so
  * this module stays palette-agnostic and the caller controls the contract.
@@ -207,18 +257,23 @@ export function validateThemePackManifest(
   dirName: string,
   knownDesktopTokenKeys: ReadonlySet<string>,
 ): ThemePackValidationResult {
-  const warnings: string[] = []
-  if (!isRecord(raw)) return { ok: false, warnings, error: 'theme.json is not a JSON object' }
+  const diagnostics: ThemePackDiagnostic[] = []
+  const rejectPack = (message: string): ThemePackValidationResult => ({
+    ok: false,
+    diagnostics: [{ surface: 'pack', message, fatal: true }],
+    error: message,
+  })
+  if (!isRecord(raw)) return rejectPack('theme.json is not a JSON object')
 
   const id = raw.id
   if (typeof id !== 'string' || !THEME_PACK_ID_RE.test(id)) {
-    return { ok: false, warnings, error: `invalid pack id: ${JSON.stringify(raw.id)}` }
+    return rejectPack(`invalid pack id: ${JSON.stringify(raw.id)}`)
   }
   if (id !== dirName) {
-    return { ok: false, warnings, error: `pack id ${id} does not match directory name ${dirName}` }
+    return rejectPack(`pack id ${id} does not match directory name ${dirName}`)
   }
   if ((BUILTIN_THEME_IDS as readonly string[]).includes(id)) {
-    return { ok: false, warnings, error: `pack id ${id} collides with a built-in theme id` }
+    return rejectPack(`pack id ${id} collides with a built-in theme id`)
   }
 
   const name = typeof raw.name === 'string' && raw.name.trim().length > 0 ? raw.name.trim() : id
@@ -228,21 +283,21 @@ export function validateThemePackManifest(
   let desktop: ThemePackDesktopComponent | undefined
   if (raw.desktop !== undefined) {
     if (!isRecord(raw.desktop)) {
-      warnings.push('desktop component is not an object; rejected')
+      diagnostics.push({ surface: 'desktop', message: 'desktop component is not an object; rejected', fatal: true })
     } else {
       const base = raw.desktop.base
       if (typeof base !== 'string' || !(BUILTIN_THEME_IDS as readonly string[]).includes(base)) {
-        warnings.push(`desktop.base ${JSON.stringify(raw.desktop.base)} is not a built-in theme id; desktop component rejected`)
+        diagnostics.push({ surface: 'desktop', message: `desktop.base ${JSON.stringify(raw.desktop.base)} is not a built-in theme id; desktop component rejected`, fatal: true })
       } else {
         const tokens: Record<string, string> = {}
         const rawTokens = isRecord(raw.desktop.tokens) ? raw.desktop.tokens : {}
         for (const [key, value] of Object.entries(rawTokens)) {
           if (!knownDesktopTokenKeys.has(key)) {
-            warnings.push(`desktop token ${key} is not a ColorPalette key; dropped`)
+            diagnostics.push({ surface: 'desktop', message: `desktop token ${key} is not a ColorPalette key; dropped`, fatal: false })
             continue
           }
           if (!isSafeCssValue(value)) {
-            warnings.push(`desktop token ${key} has an unsafe or non-string value; dropped`)
+            diagnostics.push({ surface: 'desktop', message: `desktop token ${key} has an unsafe or non-string value; dropped`, fatal: false })
             continue
           }
           tokens[key] = value
@@ -253,7 +308,7 @@ export function validateThemePackManifest(
           tokens,
           ...(scheme === 'light' || scheme === 'dark' ? { forcedColorScheme: scheme } : {}),
         }
-        const assets = validateAssetRefs(raw.desktop.assets, warnings, 'desktop')
+        const assets = validateAssetRefs(raw.desktop.assets, diagnostics, 'desktop', 'desktop')
         if (assets) desktop.assets = assets
       }
     }
@@ -263,8 +318,22 @@ export function validateThemePackManifest(
   let ios: ThemePackIosComponent | undefined
   if (raw.ios !== undefined) {
     if (!isRecord(raw.ios)) {
-      warnings.push('ios component is not an object; rejected')
+      diagnostics.push({ surface: 'ios', message: 'ios component is not an object; rejected', fatal: true })
     } else {
+      // base is required-when-partial: valid values are a built-in id or
+      // omission. A present-but-bogus base is fatal to the iOS component (it
+      // names an inheritance source that does not exist).
+      const rawBase = raw.ios.base
+      let base: (typeof BUILTIN_THEME_IDS)[number] | undefined
+      let baseInvalid = false
+      if (rawBase !== undefined) {
+        if (typeof rawBase === 'string' && (BUILTIN_THEME_IDS as readonly string[]).includes(rawBase)) {
+          base = rawBase as (typeof BUILTIN_THEME_IDS)[number]
+        } else {
+          baseInvalid = true
+        }
+      }
+
       const rawTokens = isRecord(raw.ios.tokens) ? raw.ios.tokens : {}
       const tokens: Record<string, string> = {}
       const missing: string[] = []
@@ -274,13 +343,13 @@ export function validateThemePackManifest(
         const optional = OPTIONAL_IOS_THEME_TOKEN_KEYS.has(key)
         if (typeof value !== 'string') {
           if (optional) {
-            warnings.push(`ios code token ${key} missing; iOS falls back to theme defaults`)
+            diagnostics.push({ surface: 'ios', message: `ios code token ${key} missing; iOS falls back to theme defaults`, fatal: false })
           } else {
             missing.push(key)
           }
         } else if (!HEX_COLOR_RE.test(value)) {
           if (optional) {
-            warnings.push(`ios code token ${key} has invalid hex; iOS falls back to theme defaults`)
+            diagnostics.push({ surface: 'ios', message: `ios code token ${key} has invalid hex; iOS falls back to theme defaults`, fatal: false })
           } else {
             invalid.push(key)
           }
@@ -288,34 +357,47 @@ export function validateThemePackManifest(
           tokens[key] = value
         }
       }
-      if (missing.length > 0 || invalid.length > 0) {
-        // The REQUIRED iOS tokens are all-or-nothing: a partial theme would
-        // render unreadable mixes of pack + fallback colors on the phone.
-        // The optional code-syntax tokens are exempt from this check above
-        // (they resolve to a readable derived color via AppTheme's
-        // protocol-extension defaults / SyncedTheme's per-token fallback),
-        // so a pack that omits them still gets a usable iOS component.
-        warnings.push(
-          `ios component rejected — missing tokens: [${missing.join(', ')}], invalid hex: [${invalid.join(', ')}]`,
-        )
+
+      if (baseInvalid) {
+        diagnostics.push({
+          surface: 'ios',
+          message: `ios.base ${JSON.stringify(raw.ios.base)} is not a built-in theme id; iOS component rejected`,
+          fatal: true,
+        })
+      } else if (invalid.length > 0) {
+        // Invalid hex is always fatal — a token present with a bad value is an
+        // authoring error, never something a base should silently paper over.
+        diagnostics.push({ surface: 'ios', message: `ios component rejected — invalid hex on required tokens: [${invalid.join(', ')}]`, fatal: true })
+      } else if (missing.length > 0 && base === undefined) {
+        // required-when-partial: a component omitting any REQUIRED token MUST
+        // name a base to inherit the rest. Without one, iOS would render an
+        // unreadable mix of pack + Ion Dark fallback colors, so the whole iOS
+        // component is rejected. Naming a base makes the omission intentional
+        // and the missing tokens resolve from that built-in on iOS.
+        diagnostics.push({
+          surface: 'ios',
+          message: `ios component rejected — missing required tokens with no base to inherit from: [${missing.join(', ')}]`,
+          fatal: true,
+        })
       } else {
         const scheme = raw.ios.preferredColorScheme
         ios = {
           tokens,
+          ...(base !== undefined ? { base } : {}),
           ...(scheme === 'light' || scheme === 'dark' ? { preferredColorScheme: scheme } : {}),
         }
-        const assets = validateAssetRefs(raw.ios.assets, warnings, 'ios')
+        const assets = validateAssetRefs(raw.ios.assets, diagnostics, 'ios', 'ios')
         if (assets) ios.assets = assets
       }
     }
   }
 
   if (!desktop && !ios) {
-    return { ok: false, warnings, error: 'pack has no usable desktop or ios component' }
+    return { ok: false, diagnostics, error: 'pack has no usable desktop or ios component' }
   }
 
   const pack: ThemePackManifest = { id, name, version }
   if (desktop) pack.desktop = desktop
   if (ios) pack.ios = ios
-  return { ok: true, pack, warnings }
+  return { ok: true, pack, diagnostics }
 }
