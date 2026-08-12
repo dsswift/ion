@@ -12,9 +12,9 @@ struct RunDurationRow: View {
             .font(.caption2.monospacedDigit())
             .foregroundStyle(theme.textSecondary.opacity(0.65))
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.leading, 20)
-            .padding(.top, 2)
-            .padding(.bottom, 3)
+            .padding(.leading, 20) // design-geometry: transcript metadata aligns beneath tool summary chrome
+            .padding(.top, 2) // design-geometry: compact caption baseline nudge
+            .padding(.bottom, 3) // design-geometry: visual separation before next turn
             .accessibilityLabel(label)
     }
 

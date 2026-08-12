@@ -123,6 +123,10 @@ final class ContractSyncTests: XCTestCase {
 
         /// Variants iOS deliberately does not decode, each with its reason.
         let deliberatelyNotDecoded: [String: String] = [
+            "agent_state_clamped":
+                "Engine-side advisory for metadata bounds. Desktop has no "
+                + "desktop_agent_state_clamped wire member; iOS renders the "
+                + "bounded roster from its existing snapshot/event path.",
             "background_task_complete":
                 "Engine-socket only. The desktop consumes it to drive tab status and "
                 + "projects the outcome through the snapshot (backgroundShellCount); "
@@ -712,13 +716,13 @@ final class ContractSyncTests: XCTestCase {
         {"type":"desktop_agent_state","tabId":"t1","agents":[{"name":"coder","status":"running","metadata":{"displayName":"Coder","type":"specialist","visibility":"always","invited":true}}]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineAgentState(_, _, let agents) = event {
-            XCTAssertEqual(agents.count, 1)
-            XCTAssertEqual(agents[0].name, "coder")
-            XCTAssertEqual(agents[0].status, "running")
-        } else {
-            XCTFail("Expected engineAgentState")
+        guard case .engineAgentState(_, _, let agents, _) = event else {
+            XCTFail("Expected engineAgentState, got \(event)")
+            return
         }
+        XCTAssertEqual(agents.count, 1)
+        XCTAssertEqual(agents[0].name, "coder")
+        XCTAssertEqual(agents[0].status, "running")
     }
 
     /// Pin that the engineResourceItem wire event decodes correctly. This is a

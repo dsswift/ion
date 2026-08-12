@@ -5,6 +5,8 @@
 # that's actually installed on this machine so the Makefile target doesn't
 # rot when Xcode updates its default device names. Override with:
 #   IOS_TEST_DESTINATION='platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5'
+# or pass signing build settings used by CI through IOS_TEST_BUILD_SETTINGS:
+#   IOS_TEST_BUILD_SETTINGS='CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=-'
 # in the environment.
 #
 # Exits non-zero on test failure or if no usable simulator is found.
@@ -49,7 +51,11 @@ fi
 # Run the test bundle. We want both readable output (per-test status,
 # totals, errors) AND a faithful exit code. Approach: log everything to a
 # temp file, grep the interesting lines to stdout, then exit with
-# xcodebuild's real status.
+# xcodebuild's real status. IOS_TEST_BUILD_SETTINGS is intentionally split by
+# the shell so CI can preserve simulator keychain entitlements without
+# duplicating this destination-selection logic.
+# shellcheck disable=SC2206
+BUILD_SETTINGS=(${IOS_TEST_BUILD_SETTINGS:-})
 LOG_FILE="$(mktemp -t ios-test.XXXXXX.log)"
 trap 'rm -f "$LOG_FILE"' EXIT
 
@@ -58,6 +64,7 @@ xcodebuild \
   -project IonRemote.xcodeproj \
   -scheme IonRemote \
   -destination "$IOS_TEST_DESTINATION" \
+  "${BUILD_SETTINGS[@]}" \
   test \
   > "$LOG_FILE" 2>&1
 STATUS=$?
