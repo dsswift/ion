@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.60.0](https://github.com/dsswift/ion/compare/ios-v1.59.1...ios-v1.60.0) (2026-08-12)
+
+### Features
+
+* **desktop:** add an agent-state recovery path for iOS ([e561189](https://github.com/dsswift/ion/commit/e561189e59f25574a2113e0eb7ad5db73fe24ac4))
+
 ## [1.59.1](https://github.com/dsswift/ion/compare/ios-v1.59.0...ios-v1.59.1) (2026-08-12)
 
 ### Bug Fixes

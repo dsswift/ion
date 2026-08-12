@@ -10,6 +10,23 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.80.0](https://github.com/dsswift/ion/compare/desktop-v1.79.1...desktop-v1.80.0) (2026-08-12)
+
+### Features
+
+* **engine:** add engine_agent_state_clamped advisory ([904076a](https://github.com/dsswift/ion/commit/904076a34187dd4cd01c63fb42d290c88054a283))
+* **desktop:** add an agent-state recovery path for iOS ([e561189](https://github.com/dsswift/ion/commit/e561189e59f25574a2113e0eb7ad5db73fe24ac4))
+
+### Bug Fixes
+
+* **desktop:** stop renderer render churn scaling with tab count ([752316b](https://github.com/dsswift/ion/commit/752316b17b2000ae81fadfec927597289568ae89))
+* **desktop:** degrade oversized agent-state frames instead of dropping them ([d7c65a8](https://github.com/dsswift/ion/commit/d7c65a806ac5feef2cf81fe1165f2b4d22d61805))
+* **desktop:** own agent state in main instead of scraping the renderer ([6f928f5](https://github.com/dsswift/ion/commit/6f928f57b7dea024aea871942ae3f01e1380fddf))
+* **desktop:** retire the renderer scrape from the iOS resync path ([dee5578](https://github.com/dsswift/ion/commit/dee55783360b06b6dbdabdef413ae39392f45517))
+* **desktop:** stop retrying relay failures that retrying cannot fix ([8496097](https://github.com/dsswift/ion/commit/84960975cda2d8681c41d022a4821bc8cddca288))
+* **desktop:** give up agent-state self-heal on repeated identical payloads ([f39f28f](https://github.com/dsswift/ion/commit/f39f28f107cbed69ae42d87b1fb608c437571817))
+* **desktop:** recover renderer windows after crash with loop guard ([3390e34](https://github.com/dsswift/ion/commit/3390e3420dd47e72a5e54086f095cdce146d565d))
+
 ## [1.79.1](https://github.com/dsswift/ion/compare/desktop-v1.79.0...desktop-v1.79.1) (2026-08-12)
 
 ### Bug Fixes

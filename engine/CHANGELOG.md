@@ -13,6 +13,26 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.68.0](https://github.com/dsswift/ion/compare/engine-v1.67.0...engine-v1.68.0) (2026-08-12)
+
+### Features
+
+* **engine:** add engine_agent_state_clamped advisory ([904076a](https://github.com/dsswift/ion/commit/904076a34187dd4cd01c63fb42d290c88054a283))
+
+### Bug Fixes
+
+* **engine:** reclaim stalled schedule in-flight slots ([e005685](https://github.com/dsswift/ion/commit/e0056853751fb88669f7cd01a6732fb2e3277d30))
+* **engine:** detect session-manager lock stalls; re-arm heartbeat on interval change ([910b267](https://github.com/dsswift/ion/commit/910b2676ac4554b6503f53d92386d379a8db822c))
+* **engine:** break manager-lock/extension readLoop deadlock ([6903bda](https://github.com/dsswift/ion/commit/6903bdae8af3628cc2f27c49c2d5e41f041ac05d))
+* **engine:** stop losing dispatch records on concurrent persistence ([703467e](https://github.com/dsswift/ion/commit/703467e70f97f9df5def331ba944f9b3514f3581))
+* **engine:** give a live run ownership of its conversation ([d40e017](https://github.com/dsswift/ion/commit/d40e01704cf6806c1c49d26c9a59b175dadc8445))
+* **engine:** bound engine_agent_state metadata size at ingest ([1fd127b](https://github.com/dsswift/ion/commit/1fd127b520927318f85bf9c62943f00b00b51d6b))
+* **engine:** dedup and coalesce engine_agent_state emissions ([5ed1193](https://github.com/dsswift/ion/commit/5ed1193e2fc542a337adfa5cc3b6a5a1e4d32771))
+* **engine:** cache negative HasKey results with write-path invalidation ([0cfe58a](https://github.com/dsswift/ion/commit/0cfe58af072dcf8d7bc98901e803499b03a4461a))
+* **engine:** enforce agent metadata bounds over protected keys ([e8a7e83](https://github.com/dsswift/ion/commit/e8a7e8305ca2efff8f91df40e2e5441eff2e535d))
+* **engine:** atomically publish workspace test pid ([6c42de3](https://github.com/dsswift/ion/commit/6c42de38e60b70086f4f5e637c95a2d0b62054e6))
+* **engine:** preserve queued notification context ([b01fe92](https://github.com/dsswift/ion/commit/b01fe92e896dc90216a328cd6bc64d4204bde8b9))
+
 ## [1.67.0](https://github.com/dsswift/ion/compare/engine-v1.66.0...engine-v1.67.0) (2026-08-12)
 
 ### Features
