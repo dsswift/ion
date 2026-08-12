@@ -2,8 +2,10 @@
 package gitcontext
 
 import (
+	"context"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // GitContext holds repository context.
@@ -20,45 +22,47 @@ const maxStatusBytes = 2048
 // GetGitContext extracts git context from the given working directory.
 // Returns nil if not a git repo or git not available.
 func GetGitContext(cwd string) *GitContext {
+	return GetGitContextWithContext(context.Background(), cwd)
+}
+
+// GetGitContextWithContext extracts git context, respecting the context
+// deadline. Returns nil if the context expires, the directory is not a git
+// repo, or git is unavailable.
+func GetGitContextWithContext(ctx context.Context, cwd string) *GitContext {
 	if cwd == "" {
 		return nil
 	}
 
-	// Check if git repo
-	if _, err := runGit(cwd, "rev-parse", "--is-inside-work-tree"); err != nil {
+	if _, err := runGitCtx(ctx, cwd, "rev-parse", "--is-inside-work-tree"); err != nil {
 		return nil
 	}
 
-	ctx := &GitContext{IsRepo: true}
+	gc := &GitContext{IsRepo: true}
 
-	// Branch
-	if out, err := runGit(cwd, "rev-parse", "--abbrev-ref", "HEAD"); err == nil {
-		ctx.Branch = strings.TrimSpace(out)
+	if out, err := runGitCtx(ctx, cwd, "rev-parse", "--abbrev-ref", "HEAD"); err == nil {
+		gc.Branch = strings.TrimSpace(out)
 	}
 
-	// Main branch detection
-	ctx.MainBranch = detectMainBranch(cwd)
+	gc.MainBranch = detectMainBranch(ctx, cwd)
 
-	// Status (short, truncate at 2KB)
-	if out, err := runGit(cwd, "status", "--short"); err == nil {
+	if out, err := runGitCtx(ctx, cwd, "status", "--short"); err == nil {
 		s := strings.TrimSpace(out)
 		if len(s) > maxStatusBytes {
 			s = s[:maxStatusBytes] + "\n...(truncated)"
 		}
-		ctx.Status = s
+		gc.Status = s
 	}
 
-	// Recent commits (last 5)
-	if out, err := runGit(cwd, "log", "--oneline", "-5"); err == nil {
-		ctx.RecentCommits = strings.TrimSpace(out)
+	if out, err := runGitCtx(ctx, cwd, "log", "--oneline", "-5"); err == nil {
+		gc.RecentCommits = strings.TrimSpace(out)
 	}
 
-	return ctx
+	return gc
 }
 
-func detectMainBranch(cwd string) string {
+func detectMainBranch(ctx context.Context, cwd string) string {
 	for _, name := range []string{"main", "master"} {
-		if _, err := runGit(cwd, "rev-parse", "--verify", name); err == nil {
+		if _, err := runGitCtx(ctx, cwd, "rev-parse", "--verify", name); err == nil {
 			return name
 		}
 	}
@@ -93,7 +97,8 @@ func FormatForPrompt(ctx *GitContext) string {
 	return "# Git Context\n" + strings.Join(parts, "\n")
 }
 
-// runGit executes a read-only git query in cwd.
+// runGitCtx executes a read-only git query in cwd, respecting the context
+// deadline.
 //
 // Every call is prefixed with --no-optional-locks. Without it, `git status`
 // opportunistically refreshes the on-disk index, and that refresh takes
@@ -107,9 +112,23 @@ func FormatForPrompt(ctx *GitContext) string {
 //
 // The flag suppresses only *optional* locks; commands that genuinely must lock
 // still do. GIT_OPTIONAL_LOCKS=0 is the environment equivalent.
-func runGit(cwd string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"--no-optional-locks"}, args...)...)
+//
+// WaitDelay bounds Cmd.Output's wait after the context is cancelled.
+// exec.CommandContext alone only signals the DIRECT child; if that child has
+// spawned its own subprocess which inherited the stdout/stderr pipes (any
+// shell wrapper, a git hook, a credential helper), the direct child can exit
+// on cancellation while the grandchild keeps the pipe open — Output() then
+// blocks reading from that pipe until the grandchild exits on its own,
+// silently defeating the deadline this function exists to enforce. WaitDelay
+// gives the direct child a grace window to exit cleanly, then force-closes
+// the I/O pipes itself so Output() returns promptly regardless of what any
+// descendant process is still doing. Kept short (well under the shortest
+// realistic caller deadline, gitContextTimeout in prompt_options.go) so it
+// adds negligible latency on the success path.
+func runGitCtx(ctx context.Context, cwd string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", append([]string{"--no-optional-locks"}, args...)...)
 	cmd.Dir = cwd
+	cmd.WaitDelay = 500 * time.Millisecond
 	out, err := cmd.Output()
 	if err != nil {
 		return "", err

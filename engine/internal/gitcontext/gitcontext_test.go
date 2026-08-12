@@ -1,11 +1,13 @@
 package gitcontext
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestGetGitContext_EngineRepo(t *testing.T) {
@@ -88,7 +90,7 @@ func TestDetectMainBranch_EngineRepo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("os.Getwd: %v", err)
 	}
-	branch := detectMainBranch(cwd)
+	branch := detectMainBranch(context.Background(), cwd)
 	if branch != "main" && branch != "master" {
 		t.Errorf("detectMainBranch should return 'main' or 'master', got: %q", branch)
 	}
@@ -114,8 +116,8 @@ func TestRunGit_UsesNoOptionalLocks(t *testing.T) {
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	if _, err := runGit(dir, "status", "--short"); err != nil {
-		t.Fatalf("runGit: %v", err)
+	if _, err := runGitCtx(context.Background(), dir, "status", "--short"); err != nil {
+		t.Fatalf("runGitCtx: %v", err)
 	}
 
 	recorded, err := os.ReadFile(argsFile)
@@ -128,5 +130,44 @@ func TestRunGit_UsesNoOptionalLocks(t *testing.T) {
 	}
 	if !slices.Contains(got, "status") {
 		t.Errorf("expected the caller's subcommand to survive, got %v", got)
+	}
+}
+
+func TestGetGitContextWithContext_DeadlineExceeded(t *testing.T) {
+	dir := t.TempDir()
+
+	shim := filepath.Join(dir, "git")
+	script := "#!/bin/sh\nsleep 10\nexit 0\n"
+	if err := os.WriteFile(shim, []byte(script), 0o755); err != nil {
+		t.Fatalf("write shim: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	gc := GetGitContextWithContext(ctx, dir)
+	elapsed := time.Since(start)
+
+	if gc != nil {
+		t.Error("expected nil result when context deadline exceeded")
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("expected fast return on deadline, took %v", elapsed)
+	}
+}
+
+func TestRunGitCtx_CancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("os.Getwd: %v", err)
+	}
+	_, err = runGitCtx(ctx, cwd, "status", "--short")
+	if err == nil {
+		t.Error("expected error with cancelled context")
 	}
 }
