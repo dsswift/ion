@@ -812,12 +812,16 @@ interface DispatchAgentResult {
   cost: number        // terminal USD cost
   inputTokens: number
   outputTokens: number
+  depthCapExceeded?: boolean // true when engine refused child at depth cap
+  remainingDepthBudget?: number // child levels still available from caller
   dispatchId?: string // immediate asynchronous-stub identifier; steer/recall target
   sessionId?: string  // child session ID (for resume)
   planFilePath?: string // plan file written by child (when planMode was true)
   planExited?: boolean  // true when child called ExitPlanMode
 }
 ```
+
+**Depth-cap result.** A refused dispatch resolves normally rather than throwing, with `depthCapExceeded: true` and `remainingDepthBudget: 0`. Inspect these fields before treating a zero-valued result as a launched child. Other results may include `remainingDepthBudget` to expose how many child levels remain under the effective engine cap.
 
 ## DispatchError
 
@@ -840,6 +844,10 @@ interface RecallInfo {
   toolCount: number  // tools completed before recall
 }
 ```
+
+## AgentInfo budget
+
+`before_agent_start` receives `AgentInfo.remainingDepthBudget`. It is number of child dispatch levels still available under the effective depth cap for that firing. `0` means this agent may run but cannot create another child. Use it to select work that fits available delegation depth, not as a replacement for handling `DispatchAgentResult.depthCapExceeded` after an attempted dispatch.
 
 ## RecallAgentOpts
 
@@ -1085,6 +1093,17 @@ await ctx.setSessionMemory(`${existing}\n\n- deploy target is staging`)
 ```
 
 `getSessionMemory` returns an empty string when the conversation has no memory yet, or when the extension is running outside a session (a schedule or webhook firing).
+
+## Durable lost-dispatch acknowledgement
+
+`dispatch_lost` can be delivered again after an extension or engine restart until acknowledged. After durably recording recovery work for `info.dispatch_id`, call `await ctx.ackDispatchLost(info.dispatch_id)`. This RPC is retry-safe: repeated calls for same dispatch ID succeed, so retry after transport uncertainty. Acknowledge only after local recovery state is durable.
+
+```typescript
+ion.on('dispatch_lost', async (ctx, info) => {
+  await persistRecovery(info)
+  await ctx.ackDispatchLost(info.dispatch_id)
+})
+```
 
 ## Cross-Instance Dedup (runOnce)
 
