@@ -18,13 +18,17 @@ import { join, relative } from 'node:path'
  */
 
 const RENDERER_ROOT = join(__dirname, '..')
-const SCAN_ROOTS = [join(RENDERER_ROOT, 'components'), join(RENDERER_ROOT, 'App.tsx')]
+const SCAN_ROOTS = [join(RENDERER_ROOT, 'components'), join(RENDERER_ROOT, 'atv'), join(RENDERER_ROOT, 'App.tsx')]
 
 // Hex colors (#fff, #ffffff, #ffffff80) and functional notations.
 // Word-boundary keeps css-id-like strings ('#root') from matching; 3-4 digit
 // sequences must contain a hex letter so issue references (#256, #4538) in
 // comments don't false-positive. All-digit 6+ hex colors still match.
 const COLOR_LITERAL = /#[0-9a-fA-F]{6,8}\b|#(?=[0-9a-fA-F]*[a-fA-F])[0-9a-fA-F]{3,4}\b|\brgba?\(|\bhsla?\(/
+
+// Static palette exports exist both through theme-tokens and their leaf palette modules.
+// `colors` is the legacy dark-palette alias, so it must not bypass this gate.
+const STATIC_PALETTE_IMPORT = /import\s*{[^}]*\b(?:darkColors|lightColors|classicColors|hudColors|colors)\b[^}]*}\s*from\s*['"][^'"]*(?:theme-tokens|theme\/palette-(?:dark|light|classic|hud))['"]/
 
 const ESCAPE_TAG = 'hardcoded-ok:'
 
@@ -36,7 +40,27 @@ function collectSources(path: string): string[] {
     .sort()
 }
 
-describe('hardcoded color scan (components + App)', () => {
+describe('hardcoded color scan (components + ATV + App)', () => {
+  it('finds no untagged static palette imports', () => {
+    const violations: string[] = []
+    for (const root of SCAN_ROOTS) {
+      for (const file of collectSources(root)) {
+        const lines = readFileSync(file, 'utf8').split('\n')
+        lines.forEach((line, i) => {
+          if (STATIC_PALETTE_IMPORT.test(line) && !line.includes(ESCAPE_TAG)) {
+            violations.push(`${relative(RENDERER_ROOT, file)}:${i + 1}  ${line.trim().slice(0, 120)}`)
+          }
+        })
+      }
+    }
+    expect(
+      violations,
+      `Static palette imports must use useColors(), or carry a same-line ` +
+        `"// ${ESCAPE_TAG} <reason>" tag when genuinely palette-fixed:\n` +
+        violations.join('\n'),
+    ).toEqual([])
+  })
+
   it('finds no untagged color literals', () => {
     const violations: string[] = []
     for (const root of SCAN_ROOTS) {

@@ -52,7 +52,7 @@ export function heatColor(count: number, p95: number): string | null {
   const r = Math.round(60 + t * 195)
   const g = Math.round(120 - t * 40)
   const b = Math.round(220 - t * 170)
-  return `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(3)})`
+  return `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(3)})` // hardcoded-ok: runtime canvas color derived from ATV scene palette
 }
 
 export class SceneFx {

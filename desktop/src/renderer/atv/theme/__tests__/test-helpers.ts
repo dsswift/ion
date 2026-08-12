@@ -96,7 +96,7 @@ export function minimalPack(packId = 'test-pack', extendsId: string | null = nul
       version: '1.0.0',
       extends: extendsId,
       tileSize: TILE,
-      palette: ['#101010', '#f2f5fa'],
+      palette: ['#101010', '#f2f5fa'], // hardcoded-ok: test fixture palette
     },
     characters: { hero: minimalCharacterManifest('hero') },
     pets: {},

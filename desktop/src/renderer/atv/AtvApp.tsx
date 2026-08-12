@@ -6,7 +6,7 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { rError, rInfo } from '../rendererLogger'
-import { darkColors } from '../theme-tokens'
+import { useColors } from '../theme'
 import type { AtvSettings, AtvThemeListEntry } from '../../shared/types-atv'
 import { createAtvEngine, type AtvEngine } from './engine'
 import { loadTheme, ipcAssetSource, type LoadedTheme } from './theme/loader'
@@ -51,6 +51,7 @@ export interface AtvAppProps {
 }
 
 export function AtvApp({ onAgentClick, dockOpen, onToggleDock }: AtvAppProps = {}): React.JSX.Element {
+  const colors = useColors()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const engineRef = useRef<AtvEngine | null>(null)
   const themeRef = useRef<LoadedTheme | null>(null)
@@ -503,21 +504,21 @@ export function AtvApp({ onAgentClick, dockOpen, onToggleDock }: AtvAppProps = {
               position: 'absolute',
               left: Math.min(tooltip.x + 12, (canvasRef.current?.clientWidth ?? 300) - 180),
               top: Math.max(tooltip.y - 44, 4),
-              background: darkColors.containerBg,
-              border: `1px solid ${darkColors.containerBorder}`,
+              background: colors.containerBg,
+              border: `1px solid ${colors.containerBorder}`,
               borderRadius: 6,
               padding: '4px 8px',
               pointerEvents: 'none',
               fontFamily: 'system-ui, sans-serif',
               fontSize: 11,
-              color: darkColors.textPrimary,
+              color: colors.textPrimary,
               maxWidth: 220,
               zIndex: 10,
             }}
           >
             <div style={{ fontWeight: 600 }}>{tooltip.title}</div>
             {tooltip.lines.map((line, i) => (
-              <div key={i} style={{ color: darkColors.textTertiary }}>{line}</div>
+              <div key={i} style={{ color: colors.textTertiary }}>{line}</div>
             ))}
           </div>
         )}
@@ -529,7 +530,7 @@ export function AtvApp({ onAgentClick, dockOpen, onToggleDock }: AtvAppProps = {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: darkColors.textTertiary,
+              color: colors.textTertiary,
               fontFamily: 'system-ui, sans-serif',
               fontSize: 13,
               padding: 24,

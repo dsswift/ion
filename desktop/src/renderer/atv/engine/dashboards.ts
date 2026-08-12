@@ -14,7 +14,7 @@ export interface KanbanCard {
   color: string
 }
 
-const COL_COLORS = ['#8a8a80', '#ff8c3c', '#3ecf6e'] as const
+const COL_COLORS = ['#8a8a80', '#ff8c3c', '#3ecf6e'] as const // hardcoded-ok: ATV canvas palette is theme-pack-driven, not app-theme-driven
 
 /** Card layout for dispatch statuses inside a (w × h) pixel region. */
 export function kanbanCards(statuses: readonly string[], w: number, h: number): KanbanCard[] {

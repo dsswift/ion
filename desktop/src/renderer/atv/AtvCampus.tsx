@@ -5,7 +5,7 @@
  * its own canvas; clicking a building dives into that conversation.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { darkColors } from '../theme-tokens'
+import { useColors } from '../theme'
 import { layoutCampus, campusSize, buildingGlow, buildingAt, type Building, type CampusEntry } from './engine/campus'
 import { rInfo } from '../rendererLogger'
 
@@ -19,6 +19,7 @@ export interface AtvCampusProps {
 }
 
 export function AtvCampus(props: AtvCampusProps): React.JSX.Element {
+  const colors = useColors()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [entries, setEntries] = useState<CampusEntry[]>([])
   const buildingsRef = useRef<Building[]>([])
@@ -67,13 +68,13 @@ export function AtvCampus(props: AtvCampusProps): React.JSX.Element {
       const oy = (canvas.height - size.h * TILE * zoom) / 2
       cameraRef.current = { zoom, ox, oy }
       ctx.imageSmoothingEnabled = false
-      ctx.fillStyle = '#101408'
+      ctx.fillStyle = '#101408' // hardcoded-ok: ATV canvas palette is theme-pack-driven, not app-theme-driven
       ctx.fillRect(0, 0, canvas.width, canvas.height)
       ctx.save()
       ctx.translate(ox, oy)
       ctx.scale(zoom, zoom)
       // Lawn.
-      ctx.fillStyle = '#1c2a14'
+      ctx.fillStyle = '#1c2a14' // hardcoded-ok: ATV canvas palette is theme-pack-driven, not app-theme-driven
       ctx.fillRect(0, 0, size.w * TILE, size.h * TILE)
       const byId = new Map(entries.map((e) => [e.tabId, e]))
       const pulse = 0.55 + 0.45 * Math.sin(performance.now() / 300)
@@ -92,18 +93,18 @@ export function AtvCampus(props: AtvCampusProps): React.JSX.Element {
         ctx.fillRect(px - 4, py - 4, pw + 8, ph + 8)
         ctx.restore()
         // Body + roof.
-        ctx.fillStyle = '#2c2f3a'
+        ctx.fillStyle = '#2c2f3a' // hardcoded-ok: ATV canvas palette is theme-pack-driven, not app-theme-driven
         ctx.fillRect(px, py, pw, ph)
-        ctx.fillStyle = '#3a3e4c'
+        ctx.fillStyle = '#3a3e4c' // hardcoded-ok: ATV canvas palette is theme-pack-driven, not app-theme-driven
         ctx.fillRect(px - 2, py - 6, pw + 4, 8)
         // Lit windows = working agents (capped by facade space).
         const lit = Math.min(entry.working, 8)
         for (let w = 0; w < 8; w++) {
-          ctx.fillStyle = w < lit ? '#ffd76a' : '#191c24'
+          ctx.fillStyle = w < lit ? '#ffd76a' : '#191c24' // hardcoded-ok: ATV canvas palette is theme-pack-driven, not app-theme-driven
           ctx.fillRect(px + 6 + (w % 4) * 14, py + 8 + Math.floor(w / 4) * 16, 8, 10)
         }
         // Label.
-        ctx.fillStyle = '#c8ccd8'
+        ctx.fillStyle = '#c8ccd8' // hardcoded-ok: ATV canvas palette is theme-pack-driven, not app-theme-driven
         ctx.font = '9px system-ui, sans-serif'
         const label = entry.title.length > 18 ? `${entry.title.slice(0, 18)}…` : entry.title
         ctx.fillText(label, px, py + ph + 12)
@@ -116,7 +117,7 @@ export function AtvCampus(props: AtvCampusProps): React.JSX.Element {
   }, [entries, props.seed])
 
   return (
-    <div style={{ position: 'absolute', inset: 0, background: '#101408' }}>
+    <div style={{ position: 'absolute', inset: 0, background: colors.containerBg }}>
       <canvas
         ref={canvasRef}
         style={{ width: '100%', height: '100%', display: 'block', cursor: 'pointer' }}
@@ -137,10 +138,10 @@ export function AtvCampus(props: AtvCampusProps): React.JSX.Element {
           position: 'absolute',
           top: 8,
           right: 8,
-          border: `1px solid ${darkColors.containerBorder}`,
+          border: `1px solid ${colors.containerBorder}`,
           borderRadius: 6,
-          background: darkColors.containerBgCollapsed,
-          color: darkColors.textPrimary,
+          background: colors.containerBgCollapsed,
+          color: colors.textPrimary,
           fontSize: 11,
           padding: '2px 8px',
           cursor: 'pointer',

@@ -6,7 +6,7 @@
  */
 import React, { useEffect, useState } from 'react'
 import { Play, Pause, ClockCounterClockwise, Broadcast } from '@phosphor-icons/react'
-import { darkColors } from '../theme-tokens'
+import { useColors } from '../theme'
 import type { AtvEngine } from './engine'
 import type { ReplaySpeed } from './engine/replay'
 
@@ -23,6 +23,7 @@ function fmt(ms: number, startMs: number): string {
 const SPEEDS: ReplaySpeed[] = [1, 4, 16]
 
 export function AtvReplayBar(props: AtvReplayBarProps): React.JSX.Element | null {
+  const colors = useColors()
   const [transport, setTransport] = useState(props.engine.getReplay())
 
   useEffect(() => {
@@ -39,17 +40,17 @@ export function AtvReplayBar(props: AtvReplayBarProps): React.JSX.Element | null
         alignItems: 'center',
         gap: 8,
         padding: '4px 10px',
-        background: darkColors.containerBgCollapsed,
-        borderTop: `1px solid ${darkColors.containerBorder}`,
+        background: colors.containerBgCollapsed,
+        borderTop: `1px solid ${colors.containerBorder}`,
         fontFamily: 'system-ui, sans-serif',
         fontSize: 11,
-        color: darkColors.textSecondary,
+        color: colors.textSecondary,
       }}
     >
-      <ClockCounterClockwise size={13} color={darkColors.statusWaitingChildren} />
+      <ClockCounterClockwise size={13} color={colors.statusWaitingChildren} />
       <button
         onClick={() => props.engine.setReplayPlaying(!transport.playing)}
-        style={{ border: 'none', background: 'transparent', color: darkColors.textPrimary, cursor: 'pointer', display: 'flex' }}
+        style={{ border: 'none', background: 'transparent', color: colors.textPrimary, cursor: 'pointer', display: 'flex' }}
         aria-label={transport.playing ? 'Pause replay' : 'Play replay'}
       >
         {transport.playing ? <Pause size={13} /> : <Play size={13} />}
@@ -71,10 +72,10 @@ export function AtvReplayBar(props: AtvReplayBarProps): React.JSX.Element | null
           props.engine.setReplaySpeed(next)
         }}
         style={{
-          border: `1px solid ${darkColors.containerBorder}`,
+          border: `1px solid ${colors.containerBorder}`,
           borderRadius: 5,
           background: 'transparent',
-          color: darkColors.textPrimary,
+          color: colors.textPrimary,
           fontSize: 10,
           padding: '1px 6px',
           cursor: 'pointer',
@@ -88,8 +89,8 @@ export function AtvReplayBar(props: AtvReplayBarProps): React.JSX.Element | null
         style={{
           border: 'none',
           borderRadius: 5,
-          background: darkColors.statusRunning,
-          color: '#fff',
+          background: colors.statusRunning,
+          color: colors.textPrimary,
           fontSize: 10,
           fontWeight: 700,
           padding: '2px 8px',

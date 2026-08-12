@@ -60,7 +60,7 @@ export function AtvControlsPopover(): React.JSX.Element | null {
           background: colors.containerBg,
           border: `1px solid ${colors.containerBorder}`,
           borderRadius: 10,
-          boxShadow: '0 8px 32px rgba(0,0,0,0.45)',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.45)', // hardcoded-ok: fixed black scrim preserves popover elevation across themes
           padding: 8,
           pointerEvents: 'auto',
           fontFamily: 'system-ui, sans-serif',

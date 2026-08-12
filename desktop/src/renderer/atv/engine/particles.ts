@@ -14,7 +14,7 @@ export interface Particle {
   ttl: number
 }
 
-const CONFETTI_COLORS = ['#ff5f5f', '#ffd23c', '#3ecf6e', '#5fa8ff', '#c95fff', '#ff9d3c']
+const CONFETTI_COLORS = ['#ff5f5f', '#ffd23c', '#3ecf6e', '#5fa8ff', '#c95fff', '#ff9d3c'] // hardcoded-ok: ATV canvas palette is theme-pack-driven, not app-theme-driven
 export const MAX_PARTICLES = 160
 
 /** Burst of confetti around (x, y) in tile coordinates. */
