@@ -383,12 +383,13 @@ func TestMergeConfigs_OptionalPointerBlocksSurvive(t *testing.T) {
 	base := DefaultConfig()
 	enabled := true
 	overlay := &types.EngineRuntimeConfig{
-		Security:     &types.SecurityConfig{RedactSecrets: true},
-		FeatureFlags: &types.FeatureFlagsConfig{Source: "static"},
-		Relay:        &types.RelayConfig{URL: "wss://relay.example", ChannelID: "abc"},
-		WebSearch:    &types.WebSearchConfig{Mode: "server"},
-		Webhooks:     &types.WebhooksConfig{Enabled: &enabled},
-		Scheduling:   &types.SchedulingConfig{DefaultTz: "America/Chicago"},
+		Security:       &types.SecurityConfig{RedactSecrets: true},
+		FeatureFlags:   &types.FeatureFlagsConfig{Source: "static"},
+		Relay:          &types.RelayConfig{URL: "wss://relay.example", ChannelID: "abc"},
+		WebSearch:      &types.WebSearchConfig{Mode: "server"},
+		Webhooks:       &types.WebhooksConfig{Enabled: &enabled},
+		Scheduling:     &types.SchedulingConfig{DefaultTz: "America/Chicago"},
+		ThinkingPolicy: &types.ThinkingPolicyConfig{Disabled: true},
 	}
 	result := MergeConfigs(nil, base, overlay)
 
@@ -409,6 +410,9 @@ func TestMergeConfigs_OptionalPointerBlocksSurvive(t *testing.T) {
 	}
 	if result.Scheduling == nil || result.Scheduling.DefaultTz != "America/Chicago" {
 		t.Error("Scheduling block dropped by merge")
+	}
+	if result.ThinkingPolicy == nil || !result.ThinkingPolicy.Disabled {
+		t.Error("ThinkingPolicy block dropped by merge")
 	}
 }
 

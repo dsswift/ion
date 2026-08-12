@@ -117,8 +117,16 @@ type EnterpriseConfig struct {
 	// Only fields the engine actually enforces belong here; this is not a
 	// mirror of LimitsConfig. Adding a field without enforcement would make
 	// the schema claim a guarantee the engine does not keep.
-	Limits       *EnterpriseLimits `json:"limits,omitempty"`
-	CustomFields map[string]any    `json:"customFields,omitempty"`
+	Limits *EnterpriseLimits `json:"limits,omitempty"`
+	// Thinking seals the engine-wide extended-thinking policy. Sealed ONE WAY:
+	// when the enterprise sets Disabled=true, thinking is off and no user or
+	// project layer can re-enable it. An enterprise block with Disabled=false
+	// does not force thinking ON over a user layer that disabled it — a
+	// ceiling, not a mandate, matching the sealed-ceiling pattern used by
+	// ResourceLimits and the plan-mode Bash allowlist. Nil means no enterprise
+	// thinking policy; the merged user/project value stands.
+	Thinking     *ThinkingPolicyConfig `json:"thinking,omitempty"`
+	CustomFields map[string]any        `json:"customFields,omitempty"`
 }
 
 // EnterpriseLimits holds enterprise-sealed ceilings that mirror `limits` keys
@@ -156,6 +164,11 @@ type EnterpriseLimits struct {
 	// producing extension's own UI: the engine writes it to the NDJSON
 	// socket, and a client whose frame cap it exceeds receives nothing at all.
 	AgentStateMetadata *EnterpriseAgentStateMetadataLimits `json:"agentStateMetadata,omitempty"`
+
+	// PlanModeAllowedMcpTools is the enterprise ceiling for named MCP tools in
+	// plan mode. Entries match an exact tool name or a narrower `__`-delimited
+	// MCP tool name.
+	PlanModeAllowedMcpTools []string `json:"planModeAllowedMcpTools,omitempty"`
 }
 
 // ExtensionAllowlistEntry is a single entry in the enterprise extension
