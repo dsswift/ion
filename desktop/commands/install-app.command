@@ -128,8 +128,9 @@ fi  # SKIP_WHISPER guard
 step "Step 3/6 — Building Ion Engine into desktop resources"
 
 ENGINE_OUT="resources/engine/ion"
+ION_VERSION="${ION_VERSION:-$(cd ../engine && git describe --tags --always --dirty 2>/dev/null || echo dev)}"
 mkdir -p "resources/engine"
-if ! (cd ../engine && go build -o "../desktop/${ENGINE_OUT}" ./cmd/ion); then
+if ! (cd ../engine && go build -ldflags "-s -w -X main.version=${ION_VERSION}" -o "../desktop/${ENGINE_OUT}" ./cmd/ion); then
   echo
   echo "Engine build failed."
   exit 1
