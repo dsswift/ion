@@ -1,42 +1,67 @@
-import { useSessionStore } from '../stores/sessionStore'
-import { usePreferencesStore } from '../preferences'
-import type { useColors } from '../theme'
-import type { TabState } from '../../shared/types'
-import type { ConversationPane } from '../../shared/types-engine'
-import { activeInstance } from '../stores/conversation-instance'
-import { tabHasExtensions as _tabHasExtensions } from '../../shared/tab-predicates'
-import { rDebug } from '../rendererLogger'
-export { tabHasExtensions } from '../../shared/tab-predicates'
+import { useSessionStore } from "../stores/sessionStore";
+import { usePreferencesStore } from "../preferences";
+import type { useColors } from "../theme";
+import type { TabState } from "../../shared/types";
+import type { ConversationPane } from "../../shared/types-engine";
+import { activeInstance } from "../stores/conversation-instance";
+import { tabHasExtensions as _tabHasExtensions } from "../../shared/tab-predicates";
+import { rDebug } from "../rendererLogger";
+import {
+  STATUS_PRIORITY_BASH,
+  STATUS_PRIORITY_BASH_BACKGROUND,
+  STATUS_PRIORITY_CHILDREN,
+  STATUS_PRIORITY_ERROR,
+  STATUS_PRIORITY_IDLE,
+  STATUS_PRIORITY_PERMISSION,
+  STATUS_PRIORITY_PLAN_READY,
+  STATUS_PRIORITY_QUESTION,
+  STATUS_PRIORITY_RUNNING,
+  STATUS_PRIORITY_UNREAD,
+} from "./TabStripStatusPriority";
+export { tabHasExtensions } from "../../shared/tab-predicates";
 
-export { PILL_COLOR_PRESETS, PILL_ICON_PRESETS, PILL_ICON_MAP } from './TabStripPillPresets'
+export {
+  PILL_COLOR_PRESETS,
+  PILL_ICON_PRESETS,
+  PILL_ICON_MAP,
+} from "./TabStripPillPresets";
 
 /** Decide whether a tab-creation event should use worktree mode. Holding Alt inverts the default. */
 export const shouldUseWorktree = (altKey: boolean): boolean => {
-  const gitOpsMode = usePreferencesStore.getState().gitOpsMode
-  return altKey ? gitOpsMode !== 'worktree' : gitOpsMode === 'worktree'
-}
+  const gitOpsMode = usePreferencesStore.getState().gitOpsMode;
+  return altKey ? gitOpsMode !== "worktree" : gitOpsMode === "worktree";
+};
 
 /** On-demand uncommitted check for worktree tabs whose status isn't in the map yet. */
 export function checkWorktreeUncommitted(tab: TabState | undefined): void {
-  if (!tab?.worktree) return
-  const { worktreeUncommittedMap, setWorktreeUncommitted } = useSessionStore.getState()
-  if (worktreeUncommittedMap.has(tab.id)) return
-  window.ion.gitChanges(tab.workingDirectory).then((result) => {
-    setWorktreeUncommitted(tab.id, result.files.length > 0)
-  }).catch((err) => rDebug("tabstrip", "gitChanges probe failed", { tab_id: tab.id, error: String(err) }))
+  if (!tab?.worktree) return;
+  const { worktreeUncommittedMap, setWorktreeUncommitted } =
+    useSessionStore.getState();
+  if (worktreeUncommittedMap.has(tab.id)) return;
+  window.ion
+    .gitChanges(tab.workingDirectory)
+    .then((result) => {
+      setWorktreeUncommitted(tab.id, result.files.length > 0);
+    })
+    .catch((err) =>
+      rDebug("tabstrip", "gitChanges probe failed", {
+        tab_id: tab.id,
+        error: String(err),
+      }),
+    );
 }
 
 /** Compact relative-time formatter for tab-pill subtitles. */
 export function formatRelativeShort(ms: number): string {
-  const d = Date.now() - ms
-  if (d < 60_000) return 'now'
-  if (d < 3_600_000) return `${Math.floor(d / 60_000)}m`
-  if (d < 86_400_000) return `${Math.floor(d / 3_600_000)}h`
-  return `${Math.floor(d / 86_400_000)}d`
+  const d = Date.now() - ms;
+  if (d < 60_000) return "now";
+  if (d < 3_600_000) return `${Math.floor(d / 60_000)}m`;
+  if (d < 86_400_000) return `${Math.floor(d / 3_600_000)}h`;
+  return `${Math.floor(d / 86_400_000)}d`;
 }
 
 /** Tristate "waiting for the user" derived from queued permission denials. */
-export type WaitingState = 'plan-ready' | 'question' | null
+export type WaitingState = "plan-ready" | "question" | null;
 
 /** Derive the waiting state from a denial-tools array. Returns 'question'
  *  if any tool is AskUserQuestion, else 'plan-ready' if any is
@@ -44,10 +69,10 @@ export type WaitingState = 'plan-ready' | 'question' | null
 function waitingStateFromTools(
   tools: ReadonlyArray<{ toolName: string }> | undefined | null,
 ): WaitingState {
-  if (!tools?.length) return null
-  if (tools.some((t) => t.toolName === 'AskUserQuestion')) return 'question'
-  if (tools.some((t) => t.toolName === 'ExitPlanMode')) return 'plan-ready'
-  return null
+  if (!tools?.length) return null;
+  if (tools.some((t) => t.toolName === "AskUserQuestion")) return "question";
+  if (tools.some((t) => t.toolName === "ExitPlanMode")) return "plan-ready";
+  return null;
 }
 
 /**
@@ -74,28 +99,31 @@ function waitingStateFromTools(
  */
 export function getWaitingState(
   tab: TabState,
-  conversationPanes: Map<string, ConversationPane> = useSessionStore.getState().conversationPanes,
+  conversationPanes: Map<string, ConversationPane> = useSessionStore.getState()
+    .conversationPanes,
 ): WaitingState {
-  return waitingStateOfPane(conversationPanes.get(tab.id))
+  return waitingStateOfPane(conversationPanes.get(tab.id));
 }
 
 /**
  * Pane-scoped form of {@link getWaitingState}, for a component that subscribes
  * to one tab's pane instead of the whole `conversationPanes` map.
  */
-export function waitingStateOfPane(pane: ConversationPane | undefined): WaitingState {
+export function waitingStateOfPane(
+  pane: ConversationPane | undefined,
+): WaitingState {
   // DATA-driven (not tab-type): fold the waiting state across ALL of the tab's
   // instances. A plain conversation has a single `main` instance, so the fold
   // collapses to reading that one instance's permissionDenied; an
   // extension-backed tab folds across its instances. One path for both.
-  if (!pane || pane.instances.length === 0) return null
-  let hasPlanReady = false
+  if (!pane || pane.instances.length === 0) return null;
+  let hasPlanReady = false;
   for (const inst of pane.instances) {
-    const ws = waitingStateFromTools(inst.permissionDenied?.tools)
-    if (ws === 'question') return 'question'
-    if (ws === 'plan-ready') hasPlanReady = true
+    const ws = waitingStateFromTools(inst.permissionDenied?.tools);
+    if (ws === "question") return "question";
+    if (ws === "plan-ready") hasPlanReady = true;
   }
-  return hasPlanReady ? 'plan-ready' : null
+  return hasPlanReady ? "plan-ready" : null;
 }
 
 /**
@@ -114,14 +142,14 @@ export function waitingStateOfPane(pane: ConversationPane | undefined): WaitingS
 // The "is work in flight?" fold cluster lives in TabStripActivityFolds.ts
 // (extracted at the file-size cap). Re-exported here so every existing import
 // site keeps working and the cascade below can use them unqualified.
-export * from './TabStripActivityFolds'
+export * from "./TabStripActivityFolds";
 // Imported as well as re-exported: the cascade below uses these three
 // unqualified, and `export *` alone does not bind them in this module's scope.
 import {
   isAnyEngineInstanceRunning,
   anyEngineInstanceHasRunningChildren,
   anyEngineInstanceHasRunningShells,
-} from './TabStripActivityFolds'
+} from "./TabStripActivityFolds";
 
 // ─── Harness badge helpers ─────────────────────────────────────────────────
 //
@@ -148,30 +176,25 @@ import {
  *  5. Fallback: first 8 chars uppercased.
  */
 export function abbreviateProfileName(name: string | null | undefined): string {
-  if (!name) return 'EXT'
-  const trimmed = name.trim()
-  if (!trimmed) return 'EXT'
-  if (trimmed.length <= 8) return trimmed
+  if (!name) return "EXT";
+  const trimmed = name.trim();
+  if (!trimmed) return "EXT";
+  if (trimmed.length <= 8) return trimmed;
   // Initials from whitespace-separated words
-  const words = trimmed.split(/\s+/)
+  const words = trimmed.split(/\s+/);
   if (words.length > 1) {
-    const initials = words.map((w) => w[0].toUpperCase()).join('')
-    return initials.slice(0, 8)
+    const initials = words.map((w) => w[0].toUpperCase()).join("");
+    return initials.slice(0, 8);
   }
   // Single long word: first 8 chars uppercased
-  return trimmed.slice(0, 8).toUpperCase()
+  return trimmed.slice(0, 8).toUpperCase();
 }
 
 // ─── Status-color priority table ───────────────────────────────────────────
 //
-// A single numeric `priority` is attached to each `getTabStatusColor` return
-// value so `getGroupStatusColor` (TabStripGroupStatus.ts) can fold across all
-// tabs in a group without reimplementing the same cascade. Higher number wins.
-// Inlined as numeric literals to keep TabStripGroupStatus.ts as a one-way
-// consumer (avoids a circular import). Named constants are in TabStripGroupStatus.ts.
-//
-//   9=error 8=permission 7=running 6=children 5=bash-background 4=plan-ready
-//   3=question 2=bash 1=unread 0=idle
+// `getTabStatusColor` and `getGroupStatusColor` use values derived from the
+// shared local declaration in TabStripStatusPriority.ts. That declaration is
+// independently asserted against assets/design-system/status-cascade.json.
 
 /** Status-dot color/pulse/glow derived from a tab's runtime state.
  *
@@ -181,11 +204,17 @@ export function abbreviateProfileName(name: string | null | undefined): string {
 export function getTabStatusColor(
   tab: TabState,
   colors: ReturnType<typeof useColors>,
-): { bg: string; pulse: boolean; glow: boolean; glowColor: string; priority: number } {
-  let bg = colors.statusIdle
-  let pulse = false
-  let glow = false
-  let glowColor = colors.statusPermissionGlow
+): {
+  bg: string;
+  pulse: boolean;
+  glow: boolean;
+  glowColor: string;
+  priority: number;
+} {
+  let bg = colors.statusIdle;
+  let pulse = false;
+  let glow = false;
+  let glowColor = colors.statusPermissionGlow;
 
   // Both waiting-state and the permission queue now live on the tab's
   // active ConversationInstance in conversationPanes (the `tab.permissionDenied`
@@ -193,29 +222,35 @@ export function getTabStatusColor(
   // this is a non-reactive helper; its callers re-render on conversationPanes
   // identity changes via their `s.conversationPanes` subscriptions, so the
   // read is consistent at render time.
-  const conversationPanes = useSessionStore.getState().conversationPanes
-  const inst = activeInstance(conversationPanes, tab.id)
-  const permissionQueueLength = inst?.permissionQueue.length ?? 0
+  const conversationPanes = useSessionStore.getState().conversationPanes;
+  const inst = activeInstance(conversationPanes, tab.id);
+  const permissionQueueLength = inst?.permissionQueue.length ?? 0;
 
-  const waitingState = getWaitingState(tab, conversationPanes)
+  const waitingState = getWaitingState(tab, conversationPanes);
 
-  let priority: number
+  let priority: number;
 
-  if (tab.status === 'dead' || tab.status === 'failed') {
-    bg = colors.statusError
-    priority = 9 // STATUS_PRIORITY_ERROR
+  if (tab.status === "dead" || tab.status === "failed") {
+    bg = colors.statusError;
+    priority = STATUS_PRIORITY_ERROR;
   } else if (permissionQueueLength > 0) {
-    bg = colors.statusPermission; glow = true
-    priority = 8 // STATUS_PRIORITY_PERMISSION
-  } else if (tab.status === 'connecting' || tab.status === 'running' || isAnyEngineInstanceRunning(tab.id)) {
+    bg = colors.statusPermission;
+    glow = true;
+    priority = STATUS_PRIORITY_PERMISSION;
+  } else if (
+    tab.status === "connecting" ||
+    tab.status === "running" ||
+    isAnyEngineInstanceRunning(tab.id)
+  ) {
     // Orange "foreground running" wins over amber "background only" —
     // the orchestrator's own activity is the strongest signal. Amber
     // "awaiting children" fires below for the case where orchestrator
     // is idle but dispatched agents are still executing. Data-driven: the
     // instance fold runs for every tab (a plain conversation with background
     // agents qualifies too), so no tab-type guard.
-    bg = colors.statusRunning; pulse = true
-    priority = 7 // STATUS_PRIORITY_RUNNING
+    bg = colors.statusRunning;
+    pulse = true;
+    priority = STATUS_PRIORITY_RUNNING;
   } else if (anyEngineInstanceHasRunningChildren(tab.id)) {
     // Yellow "awaiting children" — orchestrator idle, dispatched
     // background agents still running. Visually distinct from the
@@ -224,8 +259,11 @@ export function getTabStatusColor(
     // matching amber tint so the rim around the pill stays in palette.
     // Outranks plan-ready: active background work is a stronger signal
     // than a passive "waiting on you" state.
-    bg = colors.statusWaitingChildren; pulse = true; glow = true; glowColor = colors.statusWaitingChildrenGlow
-    priority = 6 // STATUS_PRIORITY_CHILDREN
+    bg = colors.statusWaitingChildren;
+    pulse = true;
+    glow = true;
+    glowColor = colors.statusWaitingChildrenGlow;
+    priority = STATUS_PRIORITY_CHILDREN;
   } else if (anyEngineInstanceHasRunningShells(tab.id)) {
     // Pink "waiting on background shells" — orchestrator idle, background
     // bash commands still running. Same treatment as the user-typed `!`
@@ -234,25 +272,35 @@ export function getTabStatusColor(
     // agents and shells can be outstanding at once and the agent signal is
     // the richer one; both outrank the passive plan-ready / question states,
     // for the same reason the children branch does.
-    bg = colors.statusBash; pulse = true; glow = true; glowColor = colors.statusBashGlow
-    priority = 5 // STATUS_PRIORITY_BASH_BACKGROUND
-  } else if (waitingState === 'plan-ready') {
-    bg = colors.statusComplete; glow = true; glowColor = colors.tabGlowPlanReady
-    priority = 4 // STATUS_PRIORITY_PLAN_READY
-  } else if (waitingState === 'question') {
-    bg = colors.statusQuestion; glow = true; glowColor = colors.tabGlowQuestion
-    priority = 3 // STATUS_PRIORITY_QUESTION
+    bg = colors.statusBash;
+    pulse = true;
+    glow = true;
+    glowColor = colors.statusBashGlow;
+    priority = STATUS_PRIORITY_BASH_BACKGROUND;
+  } else if (waitingState === "plan-ready") {
+    bg = colors.statusComplete;
+    glow = true;
+    glowColor = colors.tabGlowPlanReady;
+    priority = STATUS_PRIORITY_PLAN_READY;
+  } else if (waitingState === "question") {
+    bg = colors.statusQuestion;
+    glow = true;
+    glowColor = colors.tabGlowQuestion;
+    priority = STATUS_PRIORITY_QUESTION;
   } else if (tab.bashExecuting) {
-    bg = colors.statusBash; pulse = true; glow = true; glowColor = colors.statusBashGlow
-    priority = 2 // STATUS_PRIORITY_BASH
+    bg = colors.statusBash;
+    pulse = true;
+    glow = true;
+    glowColor = colors.statusBashGlow;
+    priority = STATUS_PRIORITY_BASH;
   } else if (tab.hasUnread) {
-    bg = colors.statusComplete
-    priority = 1 // STATUS_PRIORITY_UNREAD
+    bg = colors.statusComplete;
+    priority = STATUS_PRIORITY_UNREAD;
   } else {
-    priority = 0 // STATUS_PRIORITY_IDLE
+    priority = STATUS_PRIORITY_IDLE;
   }
 
-  return { bg, pulse, glow, glowColor, priority }
+  return { bg, pulse, glow, glowColor, priority };
 }
 
 /**
@@ -261,15 +309,15 @@ export function getTabStatusColor(
  * Re-exported from TabStripGroupStatus.ts (extracted to keep TabStripShared.ts
  * under the 600-line cap). Consumers import from here as usual.
  */
-export { getGroupStatusColor, getGroupDotModel } from './TabStripGroupStatus'
-export type { GroupDotModel } from './TabStripGroupStatus'
+export { getGroupStatusColor, getGroupDotModel } from "./TabStripGroupStatus";
+export type { GroupDotModel } from "./TabStripGroupStatus";
 
 /** Model-fallback fact stored per engine instance. */
 export interface TabModelFallback {
-  requestedModel: string
-  fallbackModel: string
-  reason: string
-  at: number
+  requestedModel: string;
+  fallbackModel: string;
+  reason: string;
+  at: number;
 }
 
 /**
@@ -291,7 +339,7 @@ export function resolveTabModelFallback(
   engineModelFallbacks: Map<string, TabModelFallback>,
   tabId: string,
 ): TabModelFallback | null {
-  const inst = activeInstance(conversationPanes, tabId)
-  if (!inst) return null
-  return engineModelFallbacks.get(tabId) ?? null
+  const inst = activeInstance(conversationPanes, tabId);
+  if (!inst) return null;
+  return engineModelFallbacks.get(tabId) ?? null;
 }
