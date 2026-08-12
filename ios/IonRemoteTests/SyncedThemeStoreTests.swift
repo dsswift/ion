@@ -26,6 +26,7 @@ final class SyncedThemeStoreTests: XCTestCase {
             name: "Theme \(id)",
             version: "1.0.0",
             tokens: ["accent": "#FF6600FF"],
+            base: nil,
             preferredColorScheme: "dark",
             assets: assets
         )
