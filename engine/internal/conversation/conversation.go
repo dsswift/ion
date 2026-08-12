@@ -188,6 +188,10 @@ type AgentDispatchData struct {
 	// (empty for a top-level dispatch). Persisted so the parent linkage
 	// survives an engine restart and can be rehydrated onto the agent-state row.
 	DispatchParentID string `json:"dispatchParentId,omitempty"`
+	// LostNoticeState tracks durable lost-dispatch delivery: "", "pending", or "sent".
+	LostNoticeState string `json:"lostNoticeState,omitempty"`
+	// RecallIntent prevents recalled dispatches from being announced as restart losses.
+	RecallIntent bool `json:"recallIntent,omitempty"`
 }
 
 // SessionEntry is a single node in the conversation tree.

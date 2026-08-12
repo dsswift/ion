@@ -8,6 +8,7 @@ export interface ExtensionConfig {
   model: string
   workingDirectory: string
   mcpConfigPath?: string
+  buildIdentity?: string
 }
 
 export interface ProcessInfo {
@@ -1177,6 +1178,8 @@ export interface IonContext {
    * @param cancelled  - When true, the child run terminates instead of resuming.
    */
   answerDispatchQuestion(dispatchId: string, requestId: string, answer: string | undefined, cancelled: boolean): Promise<void>
+  /** Acknowledge durable delivery of a lost-dispatch notice. */
+  ackDispatchLost(dispatchId: string): Promise<void>
   /**
    * Deliver a message to the run that OWNS this context, letting the engine
    * pick the mechanism based on that run's live state:
@@ -1785,6 +1788,8 @@ export interface AgentInfo {
    * legacy `name !== ""` sentinel.
    */
   isRoot?: boolean
+  /** Child dispatch levels available under effective depth cap. Present only on `before_agent_start`. */
+  remainingDepthBudget?: number
 }
 
 /**

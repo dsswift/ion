@@ -2,6 +2,7 @@ package extension
 
 import (
 	"encoding/json"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -84,5 +85,42 @@ func TestRecallAgentNotAvailableWhenIdleAndNoFallback(t *testing.T) {
 	msg, _ := errObj["message"].(string)
 	if msg != "recall not available" {
 		t.Errorf("error message = %q, want 'recall not available'", msg)
+	}
+}
+
+func TestAckDispatchLostCallsPersistentSinkAndIsIdempotent(t *testing.T) {
+	h := NewHost()
+	ch := attachStdout(h)
+	var acknowledged []string
+	h.SetPersistentAckDispatchLost(func(dispatchID string) {
+		acknowledged = append(acknowledged, dispatchID)
+	})
+	payload := func(id int) []byte {
+		return []byte(`{"jsonrpc":"2.0","id":` + strconv.Itoa(id) + `,"method":"ext/ack_dispatch_lost","params":{"dispatchId":"dispatch-1"}}`)
+	}
+	for id := 1; id <= 2; id++ {
+		h.handleExtRequest("ext/ack_dispatch_lost", int64(id), payload(id))
+		response := readResponse(t, ch, time.Second)
+		result, ok := response["result"].(map[string]interface{})
+		if !ok || result["ok"] != true {
+			t.Fatalf("response = %#v, want {ok:true}", response)
+		}
+	}
+	if got := len(acknowledged); got != 2 {
+		t.Fatalf("acknowledgements = %d, want 2 idempotent sink calls", got)
+	}
+}
+
+func TestAckDispatchLostRejectsEmptyDispatchID(t *testing.T) {
+	h := NewHost()
+	ch := attachStdout(h)
+	h.SetPersistentAckDispatchLost(func(dispatchID string) {
+		t.Fatal("sink must not be called with empty dispatchId")
+	})
+	raw := []byte(`{"jsonrpc":"2.0","id":1,"method":"ext/ack_dispatch_lost","params":{"dispatchId":""}}`)
+	h.handleExtRequest("ext/ack_dispatch_lost", 1, raw)
+	resp := readResponse(t, ch, time.Second)
+	if _, ok := resp["error"]; !ok {
+		t.Fatalf("expected error for empty dispatchId, got %#v", resp)
 	}
 }

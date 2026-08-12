@@ -74,6 +74,11 @@ type Host struct {
 	// Not updated after load; manifest version is a build-time constant.
 	version string
 
+	// engineBuildIdentity is the engine binary's build identity (set via
+	// ldflags). Used by parseInitResult to validate that the SDK subprocess
+	// was built from the same release as the engine.
+	engineBuildIdentity string
+
 	// Bidirectional RPC: context stack for extension-initiated requests.
 	// Supports concurrent tool/hook/async-fire contexts on ClaudeCodeBackend.
 	ctxStack ctxStack
@@ -112,6 +117,9 @@ type Host struct {
 	// outlives runs by design, so recall must work even when ctxStack is empty.
 	// Set by the session manager alongside persistentEmit. Guarded by notifMu.
 	persistentRecall func(name, reason string) (bool, error)
+
+	// persistentAckDispatchLost persists consumer acknowledgement for an orphaned dispatch.
+	persistentAckDispatchLost func(dispatchID string)
 
 	// persistentSteer is a session-scoped fallback for ext/steer_dispatch when
 	// no hook/run context is active. Guarded by notifMu.
@@ -320,6 +328,13 @@ func (h *Host) SetPersistentRecall(fn func(name, reason string) (bool, error)) {
 	h.persistentRecall = fn
 }
 
+// SetPersistentAckDispatchLost sets the session-scoped lost-notice acknowledgement sink.
+func (h *Host) SetPersistentAckDispatchLost(fn func(dispatchID string)) {
+	h.notifMu.Lock()
+	defer h.notifMu.Unlock()
+	h.persistentAckDispatchLost = fn
+}
+
 // SetPersistentSteer sets the fallback steer function used when no run
 // context is active (parent session is idle between dispatch runs).
 func (h *Host) SetPersistentSteer(fn func(dispatchID, message string) (SteerDispatchResult, error)) {
@@ -409,6 +424,18 @@ func (h *Host) CtxStackDepthForTest() int {
 	h.ctxStack.mu.Lock()
 	defer h.ctxStack.mu.Unlock()
 	return len(h.ctxStack.stack)
+}
+
+// SetEngineBuildIdentity sets the engine binary's build identity on this host.
+// Called by the session layer before Load so the init handshake can validate
+// that the SDK subprocess was built from the same release as the engine.
+func (h *Host) SetEngineBuildIdentity(id string) {
+	h.engineBuildIdentity = id
+}
+
+// EngineBuildIdentity returns the engine build identity set on this host.
+func (h *Host) EngineBuildIdentity() string {
+	return h.engineBuildIdentity
 }
 
 // SetNameForTest sets the host's name without loading an extension.

@@ -128,3 +128,33 @@ func truncateStr(s string, maxLen int) string {
 	}
 	return s[:maxLen] + "..."
 }
+
+// handleAckDispatchLost records a consumer acknowledgement for a durable lost
+// dispatch notice. The session manager owns persistence; repeated acknowledgements
+// are intentionally successful so consumers can retry after their own restart.
+func (h *Host) handleAckDispatchLost(id int64, raw []byte) {
+	var req struct {
+		Params struct {
+			DispatchID string `json:"dispatchId"`
+		} `json:"params"`
+	}
+	if err := json.Unmarshal(raw, &req); err != nil {
+		h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
+		return
+	}
+	if req.Params.DispatchID == "" {
+		h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "dispatchId is required"})
+		return
+	}
+	h.notifMu.RLock()
+	ack := h.persistentAckDispatchLost
+	h.notifMu.RUnlock()
+	if ack == nil {
+		utils.LogWithFields(utils.LevelDebug, "extension", "ext/ack_dispatch_lost: no session acknowledgement sink", map[string]any{"run_id": req.Params.DispatchID})
+		h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
+		return
+	}
+	ack(req.Params.DispatchID)
+	utils.LogWithFields(utils.LevelInfo, "extension", "ext/ack_dispatch_lost persisted", map[string]any{"run_id": req.Params.DispatchID})
+	h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
+}

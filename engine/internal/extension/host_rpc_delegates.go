@@ -27,6 +27,10 @@ func (h *Host) rpcAnswerDispatchQuestion(_ *Context, id int64, raw []byte) {
 	h.handleAnswerDispatchQuestion(id, raw)
 }
 
+func (h *Host) rpcAckDispatchLost(_ *Context, id int64, raw []byte) {
+	h.handleAckDispatchLost(id, raw)
+}
+
 // --- Steering ---
 
 func (h *Host) rpcSteerDispatch(ctx *Context, id int64, raw []byte) {

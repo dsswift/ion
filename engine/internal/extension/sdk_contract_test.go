@@ -168,7 +168,7 @@ func sdkJSONFieldNames(t reflect.Type) []string {
 // out of the init handshake response. Hand-declared because the struct is an
 // anonymous local in that function; the guard below pins it to reality.
 func initResultFields() []string {
-	f := []string{"name", "tools", "commands", "webhooks", "schedules", "resources"}
+	f := []string{"name", "tools", "commands", "webhooks", "schedules", "resources", "buildIdentity"}
 	sort.Strings(f)
 	return f
 }

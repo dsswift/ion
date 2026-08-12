@@ -112,9 +112,10 @@ type ErrorInfo struct {
 **AgentInfo**
 ```go
 type AgentInfo struct {
-    Name   string
-    Task   string
-    IsRoot bool // true only on the before_agent_start root-loop firing
+    Name                 string
+    Task                 string
+    IsRoot               bool // true only on the before_agent_start root-loop firing
+    RemainingDepthBudget int  // child levels available; before_agent_start only
 }
 ```
 
@@ -198,7 +199,7 @@ type ForkInfo struct {
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
-| `before_agent_start` | Before a sub-agent launches **and** once per root prompt for primary system-prompt injection | `AgentInfo{Name, Task, IsRoot}` | `BeforeAgentStartResult{SystemPrompt, AgentName}` | Last non-empty wins per field independently. Injects system prompt and/or resolves agent name. |
+| `before_agent_start` | Before a sub-agent launches **and** once per root prompt for primary system-prompt injection | `AgentInfo{Name, Task, IsRoot, RemainingDepthBudget}` | `BeforeAgentStartResult{SystemPrompt, AgentName}` | Last non-empty wins per field independently. Injects system prompt and/or resolves agent name. |
 | `before_provider_request` | Immediately before each outbound LLM provider call from the agent loop. Fires once per turn (including fallback hops). | `BeforeProviderRequestInfo{Provider, Model, TurnNumber, MessageCount, ToolCount, HasSystemPrompt, MaxTokens}` | ignored | Observe only |
 
 > **`before_agent_start` is dual-purpose.** It fires once per **sub-agent**
@@ -398,9 +399,9 @@ Out-of-tree paths are not covered. Extensions that need to watch files outside t
 | `task_created` | Turn starts (every backend) | `TaskLifecycleInfo{TaskID, Name, Status, Extra}` | ignored | Observe only |
 | `task_completed` | Turn ends (every backend) | `TaskLifecycleInfo{TaskID, Name, Status, Extra}` | ignored | Observe only |
 | `background_task_completed` | A background bash command started with `notify_on_complete` reaches a terminal state | `BackgroundTaskCompletedInfo{TaskID, SessionKey, Command, Status, ExitCode, ElapsedMs, OutputPath, Tail, RemainingTaskIDs}` | ignored | Observe only |
-| `dispatch_lost` | Once per dispatch that was running when the engine process died (unrecoverable after restart), during dispatch-state rehydration at session start | `DispatchLostInfo{DispatchID, AgentName, Task, ParentDispatchID, Depth, ChildConversationID}` | ignored | Observe only |
+| `dispatch_lost` | Once per dispatch that was running when the engine process died (unrecoverable after restart), during dispatch-state rehydration at session start; re-fires on later restarts until acknowledged | `DispatchLostInfo{DispatchID, AgentName, Task, ParentDispatchID, Depth, ChildConversationID}` | ignored | Observe and acknowledge after durable handling |
 
-> **`dispatch_lost` fires after the engine has already acted.** By the time handlers run, the typed `engine_dispatch_lost` event has been emitted on the session stream and the rehydrated agent-state row is marked `error` (`lastWork: "engine restarted while dispatch was running"`). The hook exists so a harness can *respond* to the loss — redispatch the task, harvest the child's partial transcript from the conversation store via `ChildConversationID`, or notify its orchestrator. The engine never resurrects a lost dispatch's run; resuming half-finished work is a consumer decision.
+> **`dispatch_lost` fires after the engine has already acted.** By the time handlers run, the typed `engine_dispatch_lost` event has been emitted on the session stream and the rehydrated agent-state row is marked `error` (`lastWork: "engine restarted while dispatch was running"`). The hook exists so a harness can *respond* to the loss — redispatch the task, harvest the child's partial transcript from the conversation store via `ChildConversationID`, or notify its orchestrator. The engine never resurrects a lost dispatch's run; resuming half-finished work is a consumer decision. The engine persists a pending delivery marker before firing; after the handler durably handles, delivers, or intentionally ignores the notice, call `await ctx.ackDispatchLost(info.dispatch_id)`. Until acknowledged, the event and hook re-fire on every later engine restart. Reconnecting a client alone does not replay the signal.
 
 > **`background_task_completed` is not a turn hook.** Despite sitting in this table, it reports a *shell process*, not a turn: its `TaskID` is the tasks-registry id the Bash tool returned (`bash-<n>-<millis>`), not the `<session-key>-t<turn-number>` format below. It fires for every notifying command regardless of the configured delivery mode, so a harness observes completions even when the engine is configured not to start runs on them. `Status` is `completed` / `failed` / `stopped`. See [../tools/task-tools.md](../tools/task-tools.md) § "Background bash completion".
 

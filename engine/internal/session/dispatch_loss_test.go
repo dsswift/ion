@@ -222,3 +222,179 @@ func TestDispatchLoss_RegistrationPersistsRunningRecord(t *testing.T) {
 		t.Errorf("persisted record = %+v, want the registration's identity", records[0])
 	}
 }
+
+func TestDispatchLoss_EmptyChildConversationIDReachesConsumer(t *testing.T) {
+	m, s, events := lossTestEnv(t, "loss-empty-child", []conversation.SessionEntry{
+		dispatchEntry("dispatch-empty-child", "worker", "running", ""),
+	})
+	m.rehydrateDispatchState(s, s.key)
+	m.announceLostDispatches(s, s.key)
+	for _, event := range events() {
+		if event.Type == "engine_dispatch_lost" {
+			if event.DispatchLost.ChildConversationID != "" {
+				t.Fatalf("ChildConversationID = %q, want empty payload preserved", event.DispatchLost.ChildConversationID)
+			}
+			return
+		}
+	}
+	t.Fatal("missing engine_dispatch_lost event")
+}
+
+func TestDispatchLoss_DurableOutboxSurvivesRestart(t *testing.T) {
+	m1, s1, events1 := lossTestEnv(t, "loss-outbox", []conversation.SessionEntry{
+		dispatchEntry("dispatch-outbox", "worker", "running", ""),
+	})
+	m1.rehydrateDispatchState(s1, s1.key)
+	m1.announceLostDispatches(s1, s1.key)
+	if got := countLossEvents(events1()); got != 1 {
+		t.Fatalf("first restart losses = %d, want 1", got)
+	}
+
+	m1.persistLostNoticeState(s1.conversationID, "dispatch-outbox", "sent")
+	m2, s2, events2 := freshLossSession(t, "loss-outbox")
+	m2.rehydrateDispatchState(s2, s2.key)
+	m2.announceLostDispatches(s2, s2.key)
+	if got := countLossEvents(events2()); got != 0 {
+		t.Fatalf("restart after acknowledgement losses = %d, want 0", got)
+	}
+	m3, s3, events3 := freshLossSession(t, "loss-outbox")
+	m3.rehydrateDispatchState(s3, s3.key)
+	m3.announceLostDispatches(s3, s3.key)
+	if got := countLossEvents(events3()); got != 0 {
+		t.Fatalf("second restart after acknowledgement losses = %d, want 0", got)
+	}
+}
+
+func TestRehydrate_AckedLostDispatch_TransitionsToError(t *testing.T) {
+	m, s, events := lossTestEnv(t, "loss-acked-status", []conversation.SessionEntry{
+		dispatchEntry("dispatch-acked", "worker", "running", ""),
+	})
+	m.persistLostNoticeState(s.conversationID, "dispatch-acked", "sent")
+
+	m.rehydrateDispatchState(s, s.key)
+	assertRehydratedDispatchStatus(t, s, "dispatch-acked", "error")
+	m.announceLostDispatches(s, s.key)
+	if got := countLossEvents(events()); got != 0 {
+		t.Fatalf("acknowledged loss events = %d, want 0", got)
+	}
+}
+
+func TestRehydrate_RecalledDispatch_TransitionsToError(t *testing.T) {
+	m, s, events := lossTestEnv(t, "loss-recalled-status", []conversation.SessionEntry{
+		dispatchEntry("dispatch-recalled", "worker", "running", ""),
+	})
+	m.persistRecallIntent(s.conversationID, "dispatch-recalled")
+
+	m.rehydrateDispatchState(s, s.key)
+	assertRehydratedDispatchStatus(t, s, "dispatch-recalled", "error")
+	m.announceLostDispatches(s, s.key)
+	if got := countLossEvents(events()); got != 0 {
+		t.Fatalf("recalled loss events = %d, want 0", got)
+	}
+}
+
+func TestDispatchLoss_PendingRetriesAfterCrash(t *testing.T) {
+	m1, s1, _ := lossTestEnv(t, "loss-pending", []conversation.SessionEntry{
+		dispatchEntry("dispatch-pending", "worker", "running", ""),
+	})
+	m1.persistLostNoticeState(s1.conversationID, "dispatch-pending", "pending")
+	m2, s2, events2 := freshLossSession(t, "loss-pending")
+	m2.rehydrateDispatchState(s2, s2.key)
+	m2.announceLostDispatches(s2, s2.key)
+	if got := countLossEvents(events2()); got != 1 {
+		t.Fatalf("pending retry after pre-emit crash = %d, want 1", got)
+	}
+	m3, s3, events3 := freshLossSession(t, "loss-pending")
+	m3.rehydrateDispatchState(s3, s3.key)
+	m3.announceLostDispatches(s3, s3.key)
+	if got := countLossEvents(events3()); got != 1 {
+		t.Fatalf("pending retry after post-emit crash = %d, want 1", got)
+	}
+}
+
+func TestDispatchLoss_RecallIntentCrossFile(t *testing.T) {
+	m, parent, _ := lossTestEnv(t, "parent-conversation", []conversation.SessionEntry{
+		dispatchEntry("parent-dispatch", "parent", "running", ""),
+	})
+	childID := "child-conversation"
+	child := conversation.CreateConversation(childID, "sys", "model")
+	conversation.AppendDetachedEntry(child, dispatchEntry("child-dispatch", "child", "running", ""))
+	if err := conversation.Save(child, ""); err != nil {
+		t.Fatal(err)
+	}
+	childSession := &engineSession{key: "child-key", conversationID: childID, agents: agents.NewRegistry(), dispatchRegistry: parent.dispatchRegistry, pending: pending.New()}
+	m.sessions[childSession.key] = childSession
+	parent.dispatchRegistry.RegisterWithID("parent-dispatch", "parent", func() {}, nil, parent.key, "", 1)
+	parent.dispatchRegistry.RegisterWithID("child-dispatch", "child", func() {}, nil, childSession.key, "parent-dispatch", 2)
+	parent.dispatchRegistry.SetDispatchLossRecallObserver(m.persistRecallIntents)
+	if !parent.dispatchRegistry.Recall("parent", "test recall") {
+		t.Fatal("Recall = false, want true")
+	}
+	loaded, err := conversation.Load(childID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := conversation.AgentDispatchEntries(loaded)
+	if len(entries) != 1 || !entries[0].RecallIntent {
+		t.Fatalf("child recall intent = %#v, want true", entries)
+	}
+	m2, s2, events := freshLossSession(t, childID)
+	m2.rehydrateDispatchState(s2, s2.key)
+	m2.announceLostDispatches(s2, s2.key)
+	if got := countLossEvents(events()); got != 0 {
+		t.Fatalf("recalled child losses = %d, want 0", got)
+	}
+}
+
+func freshLossSession(t *testing.T, convID string) (*Manager, *engineSession, func() []types.EngineEvent) {
+	t.Helper()
+	var mu sync.Mutex
+	var emitted []types.EngineEvent
+	m := &Manager{sessions: make(map[string]*engineSession), onEvent: func(_ string, ev types.EngineEvent) { mu.Lock(); defer mu.Unlock(); emitted = append(emitted, ev) }}
+	s := &engineSession{key: "fresh-loss-key", conversationID: convID, agents: agents.NewRegistry(), dispatchRegistry: extcontext.NewDispatchRegistry(), pending: pending.New()}
+	m.sessions[s.key] = s
+	return m, s, func() []types.EngineEvent {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]types.EngineEvent(nil), emitted...)
+	}
+}
+
+func assertRehydratedDispatchStatus(t *testing.T, s *engineSession, dispatchID, want string) {
+	t.Helper()
+	for _, state := range s.agents.MergedSnapshot() {
+		if state.ID == dispatchID {
+			if state.Status != want {
+				t.Fatalf("rehydrated dispatch %q status = %q, want %q", dispatchID, state.Status, want)
+			}
+			return
+		}
+	}
+	t.Fatalf("rehydrated dispatch %q missing from agent registry", dispatchID)
+}
+
+func countLossEvents(events []types.EngineEvent) int {
+	count := 0
+	for _, event := range events {
+		if event.Type == "engine_dispatch_lost" {
+			count++
+		}
+	}
+	return count
+}
+
+func TestDispatchLoss_PendingAnnouncementCannotOverwriteAcknowledgement(t *testing.T) {
+	m, s, _ := lossTestEnv(t, "loss-ack-wins", []conversation.SessionEntry{
+		dispatchEntry("dispatch-ack-wins", "worker", "running", ""),
+	})
+
+	m.persistLostNoticeState(s.conversationID, "dispatch-ack-wins", "sent")
+	m.persistLostNoticeState(s.conversationID, "dispatch-ack-wins", "pending")
+
+	m2, s2, events := freshLossSession(t, s.conversationID)
+	m2.rehydrateDispatchState(s2, s2.key)
+	m2.announceLostDispatches(s2, s2.key)
+	if got := countLossEvents(events()); got != 0 {
+		t.Fatalf("acknowledged loss re-announced %d times, want 0", got)
+	}
+}
