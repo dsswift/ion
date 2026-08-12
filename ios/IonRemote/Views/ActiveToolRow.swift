@@ -26,54 +26,56 @@ struct ActiveToolRow: View {
     var body: some View {
         HStack(spacing: 8) {
             // Tool name capsule
+            //
+            // Foreground and background are chosen as a PAIR. The previous
+            // white-on-saturated-fill spelling was an accessibility defect that
+            // no token could fix: white 12pt semibold over the warm fill at 0.85
+            // computes 2.80:1 on ion-dark and 3.80:1 on ion-light, and over the
+            // stalled statusError fill 3.54:1 and 4.14:1 -- all below the 4.5:1
+            // this small-but-bold text needs. Any hue saturated enough to read
+            // as a warning is too light to back white text, so retinting the
+            // background alone would have shipped a token that looked correct
+            // and left the failure in place.
+            //
+            // A low-alpha tint of the same status hue with theme.textPrimary on
+            // top fixes it and keeps the semantic color visible: 10.76:1 on
+            // ion-dark, 12.66:1 on ion-light, 5.35:1 on ion-classic and 8.44:1
+            // on jarvis-hud for the active-warning arm; 11.51:1 / 12.06:1 /
+            // 6.00:1 / 9.65:1 for the stalled arm.
             Text(tool.toolName)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(isLikelyStalled ? Color.red.opacity(0.85) : Color.orange.opacity(0.85))
+                .foregroundStyle(theme.textPrimary)
+                .padding(.horizontal, IonSpace.compactGap)
+                .padding(.vertical, 3) // design-geometry: 3pt inset; below the 4pt rhythm floor
+                .background(
+                    (isLikelyStalled ? theme.statusError : theme.statusActiveWarning)
+                        .opacity(0.18)
+                )
                 .clipShape(Capsule())
 
             // Elapsed time
             Text(formatElapsed(elapsed))
                 .font(.caption2.monospacedDigit())
-                .foregroundStyle(isLikelyStalled ? .red : theme.textSecondary)
+                .foregroundStyle(isLikelyStalled ? theme.statusError : theme.textSecondary)
 
             if isLikelyStalled {
                 Text("may be stuck")
                     .font(.caption2)
-                    .foregroundStyle(.red.opacity(0.8))
+                    .foregroundStyle(theme.statusError.opacity(0.8))
             }
 
             Spacer()
 
-            if isLikelyStalled {
-                Button {
-                    showAbortConfirm = true
-                } label: {
-                    Text("Abort")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(Color.red)
-                        .clipShape(Capsule())
-                }
-            } else {
-                Circle()
-                    .fill(.orange)
-                    .frame(width: 6, height: 6)
-                    .opacity(pulseOpacity)
-                    .animation(.easeInOut(duration: 1).repeatForever(autoreverses: true), value: now)
-            }
+            // Interrupt lives in the composer. Transcript/status drawer has no
+            // second abort control or animated running indicator.
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 10) // design-geometry: 10pt gap between compactGap and contentGap; off the 4pt ratio scale
+        .padding(.vertical, IonSpace.compactInset)
         .background(
-            (isLikelyStalled ? Color.red : Color.orange)
+            (isLikelyStalled ? theme.statusError : theme.statusActiveWarning)
                 .opacity(0.08)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .clipShape(RoundedRectangle(cornerRadius: IonRadius.container))
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { time in
             now = time
         }

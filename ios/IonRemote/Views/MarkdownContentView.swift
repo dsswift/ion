@@ -83,13 +83,7 @@ struct MarkdownContentView: View {
 
             if level <= 2 {
                 Rectangle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color(.separator), Color(.separator).opacity(0)],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                    .fill(theme.borderSubtle)
                     .frame(height: 0.5)
             }
         }
@@ -130,31 +124,31 @@ struct MarkdownContentView: View {
                 Spacer()
                 CodeBlockCopyButton(code: code)
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 8)
-            .padding(.bottom, 4)
+            .padding(.horizontal, IonSpace.contentGap)
+            .padding(.top, IonSpace.compactGap)
+            .padding(.bottom, IonSpace.hairlineGap)
 
             HighlightedCodeView(code: code, language: language)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(theme.codeBg)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: IonRadius.control))
     }
 
     // MARK: - Block quote
 
     private func blockQuoteView(text: AttributedString) -> some View {
         HStack(alignment: .top, spacing: 0) {
-            RoundedRectangle(cornerRadius: 1.5)
+            RoundedRectangle(cornerRadius: 1.5) // design-geometry: hairline rounding on a thin blockquote rule; below the control radius floor
                 .fill(theme.accent.opacity(0.6))
                 .frame(width: 3.5)
 
             Text(text)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.leading, 10)
+                .padding(.leading, 10) // design-geometry: 10pt gap between compactGap and contentGap; off the 4pt ratio scale
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, IonSpace.hairlineGap)
     }
 
     // MARK: - List item
@@ -172,7 +166,7 @@ struct MarkdownContentView: View {
 
             Text(text)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.leading, 6)
+                .padding(.leading, IonSpace.compactInset)
         }
     }
 
@@ -225,10 +219,10 @@ struct MarkdownContentView: View {
                     )
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .clipShape(RoundedRectangle(cornerRadius: IonRadius.control))
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color(.separator), lineWidth: 0.5)
+                RoundedRectangle(cornerRadius: IonRadius.control)
+                    .stroke(theme.borderSubtle, lineWidth: 0.5)
             )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -253,8 +247,8 @@ struct MarkdownContentView: View {
                     horizontal: alignment, vertical: .center
                 )
             )
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 10) // design-geometry: 10pt gap between compactGap and contentGap; off the 4pt ratio scale
+            .padding(.vertical, 7) // design-geometry: 7pt nudge; off the 4pt ratio scale
             .background(
                 isHeader
                     ? Color(.tertiarySystemFill)
@@ -262,7 +256,7 @@ struct MarkdownContentView: View {
             )
             .overlay(
                 Rectangle()
-                    .stroke(Color(.separator), lineWidth: 0.5)
+                    .stroke(theme.borderSubtle, lineWidth: 0.5)
             )
     }
 
@@ -282,13 +276,14 @@ struct MarkdownContentView: View {
 
     private var thematicBreakView: some View {
         Divider()
-            .padding(.vertical, 4)
+            .padding(.vertical, IonSpace.hairlineGap)
     }
 }
 
 // MARK: - Code block copy button
 
 private struct CodeBlockCopyButton: View {
+    @Environment(\.appTheme) private var theme
     let code: String
     @State private var copied = false
 
@@ -303,7 +298,7 @@ private struct CodeBlockCopyButton: View {
         } label: {
             Image(systemName: copied ? "checkmark" : "doc.on.doc")
                 .font(.caption2)
-                .foregroundStyle(copied ? Color.green : Color(.tertiaryLabel))
+                .foregroundStyle(copied ? theme.statusDone : Color(.tertiaryLabel))
                 .frame(width: 24, height: 24)
                 .contentTransition(.symbolEffect(.replace))
         }

@@ -144,8 +144,8 @@ extension EngineMessageRow {
             Text(command)
                 .font(.caption.monospaced().weight(.semibold))
                 .foregroundStyle(theme.accent)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
+                .padding(.horizontal, IonSpace.compactGap)
+                .padding(.vertical, 3) // design-geometry: 3pt inset; below the 4pt rhythm floor
                 .background(theme.accent.opacity(0.12))
                 .clipShape(Capsule())
 
@@ -159,8 +159,8 @@ extension EngineMessageRow {
                         .font(.caption2.weight(.medium))
                         .lineLimit(1)
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
+                .padding(.horizontal, 6) // design-geometry: model pill width tuned below the 4pt rhythm floor
+                .padding(.vertical, 2) // design-geometry: model pill height tuned below the 4pt rhythm floor
                 .background(Color(.secondarySystemFill))
                 .clipShape(Capsule())
                 .foregroundStyle(.secondary)
@@ -178,12 +178,12 @@ extension EngineMessageRow {
                     .textSelection(.enabled)
             }
         }
-        .padding(.leading, 14)
-        .padding(.trailing, 12)
-        .padding(.vertical, 8)
+        .padding(.leading, 14) // design-geometry: 14pt gap between contentGap and rowInset; off the 4pt ratio scale
+        .padding(.trailing, IonSpace.contentGap)
+        .padding(.vertical, IonSpace.compactGap)
         .background(
             ZStack {
-                Color(.tertiarySystemBackground)
+                theme.surfaceSecondary
                 theme.userBubbleTint
             }
         )
@@ -192,13 +192,13 @@ extension EngineMessageRow {
             Rectangle()
                 .fill(theme.accent)
                 .frame(width: 2.5)
-                .padding(.vertical, 4)
-                .padding(.leading, 1)
+                .padding(.vertical, IonSpace.hairlineGap)
+                .padding(.leading, 1) // design-geometry: sub-hairline 1pt inset; below the 4pt rhythm floor
         }
         .overlay(
             isBash
                 ? RoundedRectangle(cornerRadius: IonTheme.Radius.large)
-                    .stroke(Color(hex: 0xF472B6, opacity: 0.5), lineWidth: 2)
+                    .stroke(theme.statusBash.opacity(0.5), lineWidth: 2)
                 : nil
         )
     }

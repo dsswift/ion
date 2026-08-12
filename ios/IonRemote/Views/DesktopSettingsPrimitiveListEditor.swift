@@ -63,7 +63,7 @@ struct DesktopSettingsPrimitiveListEditor: View {
                     .font(.caption)
                     .italic()
                     .foregroundStyle(.secondary)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, IonSpace.hairlineGap)
             } else {
                 ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                     primitiveRow(at: index, value: item)
@@ -77,9 +77,9 @@ struct DesktopSettingsPrimitiveListEditor: View {
                 Label("Add", systemImage: "plus")
                     .font(.body)
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, IonSpace.hairlineGap)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, IonSpace.hairlineGap)
     }
 
     // MARK: - Row rendering

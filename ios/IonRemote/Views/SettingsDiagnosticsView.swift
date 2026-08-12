@@ -41,7 +41,7 @@ struct SettingsDiagnosticsView: View {
                     Spacer()
                     VStack(spacing: 8) {
                         Image(systemName: "bolt.shield.fill")
-                            .font(.system(size: 40))
+                            .font(.system(size: 40)) // design-type: SF Symbol hero glyph sized as icon geometry, not text
                             .foregroundStyle(theme.accent)
                         Text("Ion Remote")
                             .font(.headline)

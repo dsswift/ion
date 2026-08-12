@@ -26,7 +26,7 @@ struct ElicitationCardView: View {
             if let schema = request.schema, !schema.isEmpty {
                 ScrollView {
                     Text(formatSchema(schema))
-                        .font(.system(.caption, design: .monospaced))
+                        .ionType(.mono)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -41,7 +41,7 @@ struct ElicitationCardView: View {
                     Text("Approve")
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, IonSpace.contentGap)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(theme.accent)
@@ -53,7 +53,7 @@ struct ElicitationCardView: View {
                     Text("Cancel")
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, IonSpace.contentGap)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.red)

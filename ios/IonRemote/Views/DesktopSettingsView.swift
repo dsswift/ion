@@ -103,7 +103,7 @@ struct DesktopSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, IonSpace.hairlineGap)
         } footer: {
             Text("Other paired desktops keep their own preferences. To edit a different desktop's settings, switch to it from the picker at the top of Settings.")
         }
@@ -176,7 +176,7 @@ struct DesktopSettingsView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.vertical, 2)
+            .padding(.vertical, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
         }
     }
 
@@ -201,7 +201,7 @@ struct DesktopSettingsView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, IonSpace.hairlineGap)
     }
 
     /// Number-typed row. Renders a Stepper bounded by the entry's
@@ -233,7 +233,7 @@ struct DesktopSettingsView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, IonSpace.hairlineGap)
     }
 
     /// Format the displayed stepper value. Decimal steps (< 1) render
@@ -288,7 +288,7 @@ struct DesktopSettingsView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, IonSpace.hairlineGap)
     }
 
     /// List-typed row. Renders a NavigationLink to the per-record
@@ -314,7 +314,7 @@ struct DesktopSettingsView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.vertical, 2)
+            .padding(.vertical, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
         }
     }
 }

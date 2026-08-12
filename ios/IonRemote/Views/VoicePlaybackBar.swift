@@ -37,8 +37,8 @@ struct VoicePlaybackBar: View {
                     .foregroundStyle(.red)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, IonSpace.contentGap)
+        .padding(.vertical, IonSpace.compactInset)
         .background(.ultraThinMaterial)
     }
 }

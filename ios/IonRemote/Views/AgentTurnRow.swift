@@ -48,8 +48,8 @@ struct AgentTurnRow: View {
                                     .truncationMode(.tail)
                                 Spacer()
                             }
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 2)
+                            .padding(.horizontal, IonSpace.hairlineGap)
+                            .padding(.vertical, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
                         }
                     }
                 } label: {
@@ -70,10 +70,10 @@ struct AgentTurnRow: View {
                     }
                 }
                 .disclosureGroupStyle(AgentTurnDisclosureStyle(theme: theme))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
+                .padding(.horizontal, IonSpace.compactGap)
+                .padding(.vertical, IonSpace.compactInset)
                 .background(theme.surfaceElevated.opacity(0.5))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .clipShape(RoundedRectangle(cornerRadius: IonRadius.control))
             }
         }
     }

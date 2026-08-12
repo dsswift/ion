@@ -44,7 +44,7 @@ extension EngineMessageRow {
             toolBubbleBody
             if !message.imageAttachments.isEmpty {
                 MessageAttachmentImages(attachments: message.imageAttachments, alignment: .leading, onPreview: previewAttachment)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, IonSpace.contentGap)
             }
         }
     }
@@ -74,8 +74,8 @@ extension EngineMessageRow {
                             .font(.caption)
                             .foregroundStyle(.tertiary)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, IonSpace.contentGap)
+                    .padding(.vertical, IonSpace.compactInset)
                 }
                 .buttonStyle(.plain)
 
@@ -101,16 +101,16 @@ extension EngineMessageRow {
                                 .foregroundStyle(message.toolStatus == .error ? .red : .primary)
                         }
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
+                    .padding(.horizontal, IonSpace.contentGap)
+                    .padding(.bottom, IonSpace.compactGap)
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
         }
         .background(Color(.tertiarySystemFill))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 1)
+        .clipShape(RoundedRectangle(cornerRadius: IonRadius.container))
+        .padding(.horizontal, IonSpace.contentGap)
+        .padding(.vertical, 1) // design-geometry: sub-hairline 1pt inset; below the 4pt rhythm floor
     }
 
     var conversationToolStatusIcon: some View {
@@ -148,10 +148,10 @@ extension EngineMessageRow {
                     .foregroundStyle(.secondary)
                 Spacer()
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .padding(.horizontal, IonSpace.compactGap)
+            .padding(.vertical, IonSpace.hairlineGap)
+            .background(theme.surfaceSecondary)
+            .clipShape(RoundedRectangle(cornerRadius: IonRadius.control))
 
             if !message.imageAttachments.isEmpty {
                 MessageAttachmentImages(attachments: message.imageAttachments, alignment: .leading, onPreview: previewAttachment)

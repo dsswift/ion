@@ -191,7 +191,7 @@ struct StatusDrawerView: View {
                         if !activeTools.isEmpty { activeToolsSection }
                         if !runningDispatches.isEmpty { runningDispatchesSection }
                     }
-                    .padding(16)
+                    .padding(IonSpace.rowInset)
                 }
                 .frame(maxHeight: 340)
                 .scrollBounceBehavior(.basedOnSize)
@@ -224,10 +224,10 @@ struct StatusDrawerView: View {
     /// reuse it — see StatusDrawerView+Breakdown.swift.
     func sectionHeader(_ label: String) -> some View {
         Text(label.uppercased())
-            .font(.system(size: 10, weight: .semibold))
+            .font(.system(size: 10, weight: .semibold)) // design-type: uppercased tracked section header below the microLabel floor in the compact status drawer
             .tracking(1.2)
             .foregroundStyle(theme.textSecondary)
-            .padding(.bottom, 4)
+            .padding(.bottom, IonSpace.hairlineGap)
     }
 
     // MARK: - Section: Session
@@ -301,27 +301,27 @@ struct StatusDrawerView: View {
     /// groups within the per-model cost breakdown.
     private func modelGroupLabel(_ label: String) -> some View {
         Text(label.uppercased())
-            .font(.system(size: 8, weight: .semibold))
+            .font(.system(size: 8, weight: .semibold)) // design-type: uppercased tracked model-group header below the microLabel floor in the compact status drawer
             .tracking(0.8)
             .foregroundStyle(theme.textSecondary.opacity(0.5))
-            .padding(.leading, 12)
-            .padding(.top, 2)
+            .padding(.leading, IonSpace.contentGap)
+            .padding(.top, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
     }
 
     /// One per-model cost row (model name + conversation count + cost).
     private func modelRow(_ mb: ModelBreakdown) -> some View {
         HStack {
             Text("\(mb.model) (\(mb.conversations))")
-                .font(.system(size: 10))
+                .font(.system(size: 10)) // design-type: model-cost row label below the microLabel floor in the compact status drawer
                 .foregroundStyle(theme.textSecondary.opacity(0.65))
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer()
             Text(String(format: "$%.4f", mb.costUsd))
-                .font(.system(size: 10).monospacedDigit())
+                .font(.system(size: 10).monospacedDigit()) // design-type: monospacedDigit cost aligned to the 10pt status-drawer row
                 .foregroundStyle(theme.textSecondary.opacity(0.65))
         }
-        .padding(.leading, 20)
+        .padding(.leading, 20) // design-geometry: 20pt gap between rowInset and sectionGap; off the 4pt ratio scale
     }
 
     private func copyButton(_ id: String) -> some View {        Button {
@@ -417,10 +417,10 @@ struct StatusDrawerView: View {
                             Text("T\(item.depth)")
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(theme.textSecondary)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 2)
+                                .padding(.horizontal, IonSpace.hairlineGap)
+                                .padding(.vertical, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
                                 .background(theme.surfaceElevated.opacity(0.7))
-                                .clipShape(RoundedRectangle(cornerRadius: 3))
+                                .clipShape(RoundedRectangle(cornerRadius: 3)) // design-geometry: micro-pill in the compact status drawer; control radius would bloat a sub-control element
                         }
                         Text(item.agent.displayName)
                             .font(.caption)
@@ -434,10 +434,10 @@ struct StatusDrawerView: View {
                             .font(.caption2)
                             .foregroundStyle(theme.textSecondary.opacity(0.5))
                     }
-                    .padding(.vertical, 4)
-                    .padding(.horizontal, 6)
+                    .padding(.vertical, IonSpace.hairlineGap)
+                    .padding(.horizontal, IonSpace.compactInset)
                     .background(theme.surfaceElevated.opacity(0.4))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .clipShape(RoundedRectangle(cornerRadius: 4)) // design-geometry: compact well in the status drawer; control radius would bloat a sub-control element
                 }
                 .buttonStyle(.plain)
             }

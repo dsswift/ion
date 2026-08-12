@@ -99,7 +99,7 @@ struct NotificationsView: View {
     private var emptyState: some View {
         VStack(spacing: IonTheme.md) {
             Image(systemName: "bell.slash")
-                .font(.system(size: 40))
+                .font(.system(size: 40)) // design-type: SF Symbol empty-state glyph sized as icon geometry, not text
                 .foregroundStyle(.tertiary)
             Text("No Notifications Yet")
                 .font(.title3.weight(.semibold))
@@ -162,7 +162,7 @@ private struct ResourceRow: View {
                     Circle()
                         .fill(isRead ? Color.clear : theme.accent)
                         .frame(width: 7, height: 7)
-                        .padding(.top, 3)
+                        .padding(.top, 3) // design-geometry: 3pt inset; below the 4pt rhythm floor
                     Text(title)
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.primary)
@@ -300,8 +300,8 @@ struct NotificationsBellButton: View {
                     Text(resourceStore.unreadCount > 9 ? "9+" : "\(resourceStore.unreadCount)")
                         .font(.caption2.bold())
                         .foregroundStyle(.white)
-                        .padding(3)
-                        .background(Color.red)
+                        .padding(3) // design-geometry: 3pt inset; below the 4pt rhythm floor
+                        .background(theme.statusError)
                         .clipShape(Circle())
                         .offset(x: 6, y: -6)
                 }

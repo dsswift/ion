@@ -147,22 +147,22 @@ struct FileEditorView: View {
                     VStack(alignment: .trailing, spacing: 0) {
                         ForEach(1...max(editedContent.components(separatedBy: "\n").count, 1), id: \.self) { lineNum in
                             Text("\(lineNum)")
-                                .font(.system(.caption, design: .monospaced))
+                                .font(.system(.caption, design: .monospaced)) // design-type: line-number gutter pinned to fixed 20pt rows; scaling mono would desync from content
                                 .foregroundStyle(.tertiary)
                                 .frame(height: 20)
                         }
                     }
-                    .padding(.top, 8)
-                    .padding(.horizontal, 4)
+                    .padding(.top, IonSpace.compactGap)
+                    .padding(.horizontal, IonSpace.hairlineGap)
                     .frame(width: 40)
-                    .background(Color(.secondarySystemBackground))
+                    .background(theme.surfaceSecondary)
 
                     Text(editedContent)
-                        .font(.system(.body, design: .monospaced))
+                        .font(.system(.body, design: .monospaced)) // design-type: paired with fixed 20pt line-number gutter; must not scale independently
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, IonSpace.contentGap)
+                        .padding(.vertical, IonSpace.compactGap)
                 }
             }
         }
@@ -192,8 +192,8 @@ struct FileEditorView: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, IonSpace.rowInset)
+        .padding(.vertical, IonSpace.contentGap)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -205,15 +205,15 @@ struct FileEditorView: View {
         DisclosureGroup {
             ScrollView(.horizontal, showsIndicators: false) {
                 Text(raw)
-                    .font(.system(.footnote, design: .monospaced))
+                    .ionType(.mono)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, IonSpace.contentGap)
+                    .padding(.vertical, IonSpace.compactGap)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .background(Color(.secondarySystemFill).opacity(0.4))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .clipShape(RoundedRectangle(cornerRadius: IonRadius.control))
         } label: {
             Text("Frontmatter")
                 .font(.caption.weight(.semibold))
@@ -221,11 +221,11 @@ struct FileEditorView: View {
                 .foregroundStyle(.secondary)
                 .kerning(0.4)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, IonSpace.contentGap)
+        .padding(.vertical, IonSpace.compactGap)
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(.separator), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: IonRadius.control)
+                .stroke(theme.borderSubtle, lineWidth: 0.5)
         )
     }
 
@@ -239,26 +239,26 @@ struct FileEditorView: View {
                     VStack(alignment: .trailing, spacing: 0) {
                         ForEach(1...max(editedContent.components(separatedBy: "\n").count, 1), id: \.self) { lineNum in
                             Text("\(lineNum)")
-                                .font(.system(.caption, design: .monospaced))
+                                .font(.system(.caption, design: .monospaced)) // design-type: line-number gutter pinned to fixed 20pt rows; scaling mono would desync from content
                                 .foregroundStyle(.tertiary)
                                 .frame(height: 20)
                         }
                     }
-                    .padding(.top, 8)
-                    .padding(.horizontal, 4)
+                    .padding(.top, IonSpace.compactGap)
+                    .padding(.horizontal, IonSpace.hairlineGap)
                 }
                 .frame(width: 40)
-                .background(Color(.secondarySystemBackground))
+                .background(theme.surfaceSecondary)
                 .scrollDisabled(true)
 
                 Divider()
 
                 TextEditor(text: $editedContent)
-                    .font(.system(.body, design: .monospaced))
+                    .font(.system(.body, design: .monospaced)) // design-type: paired with fixed 20pt line-number gutter; must not scale independently
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                     .scrollContentBackground(.hidden)
-                    .background(Color(.systemBackground))
+                    .background(theme.surfaceSunken)
             }
 
             if let msg = saveMessage {
@@ -270,12 +270,12 @@ struct FileEditorView: View {
     private func saveMessageBadge(_ msg: String) -> some View {
         Text(msg)
             .font(.caption.weight(.medium))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(msg == "Saved" ? Color.green.opacity(0.15) : Color.red.opacity(0.15))
-            .foregroundStyle(msg == "Saved" ? .green : .red)
+            .padding(.horizontal, IonSpace.compactGap)
+            .padding(.vertical, IonSpace.hairlineGap)
+            .background(msg == "Saved" ? theme.statusDone.opacity(0.15) : theme.statusError.opacity(0.15))
+            .foregroundStyle(msg == "Saved" ? theme.statusDone : theme.statusError)
             .clipShape(Capsule())
-            .padding(8)
+            .padding(IonSpace.compactGap)
     }
 
     // MARK: - Error View

@@ -15,9 +15,6 @@ struct TabRowView: View {
     var isSpeaking: Bool = false
     var gitChanges: GitChangesResponse? = nil
     var onOpenGit: (() -> Void)? = nil
-    /// Engine profiles list, passed from the parent (TabListView reads it from
-    /// the view model). Used to resolve the harness badge display name.
-    var engineProfiles: [EngineProfile] = []
 
     @State private var pulseOpacity: Double = 1.0
 
@@ -26,205 +23,169 @@ struct TabRowView: View {
             "reason": String(describing: theme.accent),
             "status": theme.id
         ])
-        HStack(spacing: 12) {
-            // Status indicator: show a custom SF Symbol icon when pillIcon is set,
-            // otherwise fall back to the default Circle. Status dot color always
-            // tracks the semantic status (running=orange, idle=gray, etc.) —
-            // the pill color is expressed as a row background tint, not as a
-            // dot color override. This matches the desktop model where pillColor
-            // tints the pill background/border while the status dot remains semantic.
-            pillIndicator(color: statusInfo.color)
-                .opacity(statusInfo.pulse ? pulseOpacity : 1.0)
-                .shadow(color: statusInfo.pulse ? statusInfo.color.opacity(0.6) : .clear, radius: 3)
-                .onChange(of: statusInfo.pulse) { _, shouldPulse in
-                    if shouldPulse {
-                        withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
-                            pulseOpacity = 0.3
-                        }
-                    } else {
-                        withAnimation(.default) {
-                            pulseOpacity = 1.0
-                        }
+        HStack(spacing: IonSpace.contentGap) {
+            // The status dot renders only when the tab is NOT idle. A dot on
+            // every row carries no information in a list where most
+            // conversations are quiet; suppressing the idle case is what makes
+            // the remaining dots mean "look here". Every actionable state still
+            // renders — error, permission, running, running-children,
+            // background shells, plan-ready, question — so a failed background
+            // agent is never indistinguishable from an idle conversation.
+            //
+            // The frame is reserved either way so titles stay aligned down a
+            // mixed list rather than shifting by the dot's width.
+            ZStack {
+                if !isIdle {
+                    pillIndicator(color: statusInfo.state.color(theme))
+                        .opacity(statusInfo.state.breathes ? pulseOpacity : 1.0)
+                        .shadow(color: statusInfo.state.breathes ? statusInfo.state.color(theme).opacity(0.6) : .clear, radius: 3)
+                }
+            }
+            .frame(width: 8, height: 8)
+            .onChange(of: statusInfo.state.breathes) { _, shouldPulse in
+                if shouldPulse {
+                    withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
+                        pulseOpacity = 0.35
+                    }
+                } else {
+                    withAnimation(.default) {
+                        pulseOpacity = 1.0
                     }
                 }
-                .onAppear {
-                    if statusInfo.pulse {
-                        withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
-                            pulseOpacity = 0.3
-                        }
+            }
+            .onAppear {
+                if statusInfo.state.breathes {
+                    withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
+                        pulseOpacity = 0.35
                     }
                 }
+            }
 
             if tab.isTerminalOnly == true {
                 Image(systemName: "terminal")
-                    .font(.caption)
+                    .font(IonType.meaning)
                     .foregroundStyle(.secondary)
             }
 
-            if isSpeaking {
-                Image(systemName: "speaker.wave.2.fill")
-                    .font(.caption)
-                    .foregroundStyle(theme.accent)
-                    .symbolEffect(.variableColor.iterative)
-            }
 
             VStack(alignment: .leading, spacing: 2) {
+                // `.body`, not `.headline`: a list of headline-weight titles
+                // reads as a list of shouts.
                 Text(tab.displayTitle)
-                    .font(.headline)
+.font(titleFont)
+                    .lineLimit(1)
 
-                if showDirectory || (showGitInfo && gitChanges?.isGitRepo == true) || tab.hasEngineExtension == true {
-                    secondaryRow
-                }
-
-                if tab.status == .running || tab.status == .connecting {
-                    Text("Running…")
-                        .font(.caption2)
-                        .foregroundStyle(theme.statusRunning)
-                        .lineLimit(1)
-                } else if let since = idleSince, tab.isTerminalOnly != true {
-                    TimelineView(.periodic(from: .now, by: 60)) { context in
-                        Text(idleLabel(at: context.date, since: since))
-                            .font(.caption2)
-                            .foregroundStyle(idleLabelColor)
+                // Exactly ONE subtitle line. Previously the metadata row, the
+                // status line, and the message preview could all render at
+                // once, stacking three lines of three different sizes under
+                // the title. `subtitle(at:)` folds them into a single
+                // precedence.
+                //
+                // Wrapped in a TimelineView because the status branch carries a
+                // relative timestamp ("2h ago") that must keep counting; the
+                // per-minute tick is what stops it freezing at its first
+                // rendered value.
+                TimelineView(.periodic(from: .now, by: 60)) { context in
+                    if let subtitle = subtitle(at: context.date) {
+                        Text(subtitle.text)
+                            .font(IonType.meaning)
+                            .foregroundStyle(subtitle.color)
                             .lineLimit(1)
                     }
                 }
-
-                if let message = tab.lastMessage {
-                    Text(message)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
             }
 
-            Spacer()
+            Spacer(minLength: 0)
 
-            if tab.groupPinned == true && tab.hasEngineExtension != true {
-                Image(systemName: "pin.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
+            conditionRail
         }
-        .padding(.vertical, 4)
+        // Was 4. The row carries less content now, so it needs the padding to
+        // keep a comfortable touch target instead of reading as cramped.
+        .padding(.vertical, 10) // design-geometry: 10pt gap between compactGap and contentGap; off the 4pt ratio scale
+    }
+
+    // MARK: - Subtitle (single line, by precedence)
+
+    /// Whether the tab folds to the idle status. Drives dot suppression and the
+    /// subtitle precedence below — read from the one shared classifier so it can
+    /// never disagree with the dot's own color.
+    var isIdle: Bool {
+        TabStatusRollup.classify(tab).priority == TabStatusRollup.priorityIdle
+    }
+
+    /// The single subtitle line, by precedence:
+    ///
+    ///   1. the live status label, whenever the tab is doing or awaiting
+    ///      something ("Working… · 2h ago", "Plan ready · 5m ago") — this is the
+    ///      actionable case and always outranks content;
+    ///   2. the last message, which is the conversation preview;
+    ///   3. the directory name, so a fresh conversation with no message still
+    ///      says where it lives.
+    ///
+    /// Returns nil only when the tab is idle, has no message, and has no
+    /// resolvable directory — in which case the row is title-only.
+    ///
+    /// `now` is passed in (rather than read as `Date()`) so the caller's
+    /// TimelineView tick drives the relative timestamp and the function stays
+    /// pure for tests.
+    func subtitle(at now: Date) -> (text: String, color: Color)? {
+        // 1. Running is its own label; every other non-idle state is described
+        //    by `idleLabel`, which folds the same classifier as the dot.
+        if tab.status == .running || tab.status == .connecting {
+            return ("Running…", theme.statusRunning)
+        }
+        if !isIdle, let since = idleSince, tab.isTerminalOnly != true {
+            return (idleLabel(at: now, since: since), idleLabelColor)
+        }
+        // 2. Conversation preview.
+        if let message = tab.lastMessage, !message.isEmpty {
+            return (message, theme.textTertiary)
+        }
+        // 3. Where it lives.
+        let dir = directoryLabel
+        if !dir.isEmpty {
+            return (dir, theme.textTertiary)
+        }
+        return nil
     }
 
     // MARK: - Secondary Row (directory • branch)
 
-    @ViewBuilder
-    private var secondaryRow: some View {
-        HStack(spacing: 4) {
-            // The base-moved signal belongs on the ROW: otherwise the operator
-            // must drill two navigations into the git pane to discover they are
-            // building against stale code.
-            if viewModel.isWorktreeBaseStale(tab.workingDirectory) {
-                Label("base moved", systemImage: "arrow.triangle.pull")
-                    .labelStyle(.iconOnly)
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
-            }
-            // Harness badge — leading element when a harness/extension NAME is
-            // present. #256 follow-up: gate on the DATA (a resolvable harness
-            // label) rather than the `tab.hasEngineExtension` tab-type flag, so
-            // the badge and its separators appear iff there is a name to show.
-            if harnessBadgeLabel != nil {
-                harnessBadge
-
-                // Separator between badge and directory segment
-                if showDirectory {
-                    Text("•")
-                        .font(.caption2)
-                        .foregroundStyle(.quaternary)
-                }
-
-                // Separator between badge and git segment (when no directory is shown)
-                if !showDirectory, showGitInfo, let git = gitChanges, git.isGitRepo {
-                    Text("•")
-                        .font(.caption2)
-                        .foregroundStyle(.quaternary)
-                }
-            }
-
-            // Directory segment
-            if showDirectory {
-                Image(systemName: "folder")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Text(directoryLabel)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            // Separator between dir and git segment
-            if showDirectory && showGitInfo, let git = gitChanges, git.isGitRepo {
-                Text("•")
-                    .font(.caption2)
-                    .foregroundStyle(.quaternary)
-            }
-
-            // Git / branch segment — wrapped in a Button for tap-to-open-git
-            if showGitInfo, let git = gitChanges, git.isGitRepo {
-                Button {
-                    onOpenGit?()
-                } label: {
-                    gitSegment(git)
-                }
-                .buttonStyle(.plain)
-                .contentShape(Rectangle())
-            }
+    private var titleFont: Font {
+        switch statusInfo.state {
+        case .error, .permission, .planReady, .question: IonType.rowTitleAttention
+        default: IonType.rowTitle
         }
     }
 
+    private var worktree: RemoteWorktree? {
+        viewModel.worktreeState(for: tab.workingDirectory)?.worktrees.first { $0.worktreePath == tab.workingDirectory }
+    }
+
+    private var conditionRailSymbols: [String] {
+        var symbols: [String] = []
+        if viewModel.isWorktreeBaseStale(tab.workingDirectory) { symbols.append("arrow.triangle.pull") }
+        if worktree?.unlandedCommitCount ?? 0 > 0 { symbols.append("arrow.up.circle") }
+        if worktree?.isDirty == true { symbols.append("circle.fill") }
+        if isSpeaking { symbols.append("speaker.wave.2.fill") }
+        return symbols
+    }
+
     @ViewBuilder
-    private func gitSegment(_ git: GitChangesResponse) -> some View {
-        HStack(spacing: 3) {
-            Image(systemName: "arrow.triangle.branch")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-
-            if !git.branch.isEmpty {
-                Text(git.branch)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
+    private var conditionRail: some View {
+        let symbols = conditionRailSymbols
+        HStack(spacing: IonSpace.hairlineGap) {
+            ForEach(Array(symbols.prefix(2).enumerated()), id: \.offset) { _, symbol in
+                Image(systemName: symbol)
+                    .font(IonType.metadata)
             }
-
-            if git.ahead > 0 {
-                HStack(spacing: 1) {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 8, weight: .semibold))
-                    Text("\(git.ahead)")
-                        .font(.caption2.weight(.medium))
-                }
-                .foregroundStyle(.secondary)
-                .fixedSize()
-            }
-
-            if git.behind > 0 {
-                HStack(spacing: 1) {
-                    Image(systemName: "arrow.down")
-                        .font(.system(size: 8, weight: .semibold))
-                    Text("\(git.behind)")
-                        .font(.caption2.weight(.medium))
-                }
-                .foregroundStyle(.secondary)
-                .fixedSize()
-            }
-
-            let changeCount = git.effectiveStagedCount + git.effectiveUnstagedCount
-            if changeCount > 0 {
-                HStack(spacing: 1) {
-                    Circle()
-                        .fill(Color.orange)
-                        .frame(width: 5, height: 5)
-                    Text("\(changeCount)")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.orange)
-                }
-                .fixedSize()
+            if symbols.count > 2 {
+                Text("+")
+                    .font(IonType.microLabel)
             }
         }
+        .foregroundStyle(theme.textTertiary)
+        .accessibilityElement(children: .combine)
     }
 
     private var directoryLabel: String {
@@ -278,14 +239,14 @@ struct TabRowView: View {
 
         switch priority {
         case TabStatusRollup.priorityChildren:
-            return TabStatusRollup.childrenYellow
+            return theme.statusWaitingChildren
         case TabStatusRollup.priorityPlanReady:
-            return .green
+            return theme.statusDone
         case TabStatusRollup.priorityQuestion:
-            return TabStatusRollup.questionPurple
+            return theme.statusQuestion
         default:
-            if tab.status == .failed || tab.status == .dead { return TabStatusRollup.errorColor }
-            return TabStatusRollup.idleGray
+            if tab.status == .failed || tab.status == .dead { return theme.statusError }
+            return theme.statusIdle
         }
     }
 
@@ -300,67 +261,13 @@ struct TabRowView: View {
         return "\(days)d ago"
     }
 
-    /// Resolve the custom pill color to a SwiftUI Color. Returns nil when
-    /// `tab.pillColor` is nil or cannot be parsed as a hex string.
-    /// Used by TabListView to apply listRowBackground on the cell.
-    var pillColorValue: Color? {
-        guard let hex = tab.pillColor, !hex.isEmpty else { return nil }
-        return Color(hex: hex)
-    }
-
-    // MARK: - Harness badge
-
-    /// Abbreviated profile name for the harness badge, or nil when the tab has
-    /// no harness/extension NAME to show. Resolution order:
-    ///   1. No `engineProfileId` on the tab → nil (badge hidden). This is the
-    ///      DATA signal: a plain conversation carries no engine profile id, so
-    ///      it has no harness name and shows no badge. An extension-backed tab
-    ///      always carries one.
-    ///   2. `engineProfileId` present → resolve against `engineProfiles`:
-    ///      matched → abbreviated profile.name; unmatched (profile deleted or
-    ///      profiles not yet synced) → "EXT".
-    ///
-    /// #256 follow-up: the gate is the PRESENCE OF THE PROFILE-ID DATA, not the
-    /// `tab.hasEngineExtension` tab-type boolean. The two are equivalent today
-    /// (the desktop sets `hasEngineExtension` iff `engineProfileId != nil`), but
-    /// keying off the data keeps this branch-free of the tab-type flag in line
-    /// with the "difference is data, never a tab-type fork" standard.
-    private var harnessBadgeLabel: String? {
-        guard let pid = tab.engineProfileId else { return nil }
-        let profileName = engineProfiles.first(where: { $0.id == pid })?.name
-        return abbreviateProfileName(profileName)
-    }
-
-    /// Accent-tinted text chip matching the desktop badge style spec:
-    /// 9pt/semibold, accent bg at 15% opacity, accent border at 25% opacity,
-    /// 4pt corner radius, no-wrap. Coexists with the status dot and pillIcon.
-    @ViewBuilder
-    private var harnessBadge: some View {
-        if let label = harnessBadgeLabel {
-            Text(label)
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(theme.accent)
-                .padding(.horizontal, 3)
-                .padding(.vertical, 1)
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(theme.accent.opacity(0.15))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .strokeBorder(theme.accent.opacity(0.25), lineWidth: 0.5)
-                )
-                .fixedSize()
-        }
-    }
-
     /// Render the status dot as an SF Symbol icon when `tab.pillIcon` is set,
     /// or as a plain Circle otherwise. Both are sized at 8×8 to match.
     @ViewBuilder
     private func pillIndicator(color: Color) -> some View {
         if let icon = tab.pillIcon, let sfSymbol = Self.pillIconToSFSymbol(icon) {
             Image(systemName: sfSymbol)
-                .font(.system(size: 8, weight: .bold))
+                .font(.system(size: 8, weight: .bold)) // design-type: SF Symbol pill glyph sized as icon geometry, not text
                 .foregroundStyle(color)
                 .frame(width: 8, height: 8)
         } else {
@@ -394,8 +301,8 @@ struct TabRowView: View {
     /// so the per-tab dot and the group-header rollup dot fold the exact same
     /// cascade and cannot drift — mirroring how the desktop shares
     /// `getTabStatusColor` between the per-tab dot and `getGroupStatusColor`.
-    var statusInfo: (color: Color, pulse: Bool) {
+    var statusInfo: GroupTabStatus {
         let status = TabStatusRollup.classify(tab)
-        return (status.color, status.shouldPulse)
+        return status
     }
 }

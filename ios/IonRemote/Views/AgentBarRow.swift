@@ -51,7 +51,7 @@ struct AgentBarRow: View {
             .contentShape(Rectangle())
             .onTapGesture { onTap?() }
             .background(theme.surfaceElevated.opacity(0.5))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .clipShape(RoundedRectangle(cornerRadius: IonRadius.control))
             .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { t in
                 if AgentDotResolver.isLiveStatus(agent.status) { now = t }
             }
@@ -66,8 +66,8 @@ struct AgentBarRow: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
+                .padding(.horizontal, IonSpace.compactGap)
+                .padding(.vertical, 3) // design-geometry: 3pt inset; below the 4pt rhythm floor
                 .background(agentColor.opacity(0.85))
                 .clipShape(Capsule())
                 .fixedSize()
@@ -80,7 +80,7 @@ struct AgentBarRow: View {
                 Circle()
                     .fill(dot.color)
                     .frame(width: 6, height: 6)
-                    .padding(.leading, 2)
+                    .padding(.leading, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
             case .stack(let foreground, let background):
                 AgentStatusDotStack(
                     foreground: foreground,
@@ -88,14 +88,14 @@ struct AgentBarRow: View {
                     ringColor: theme.surfaceElevated,
                     size: 6
                 )
-                .padding(.leading, 2)
+                .padding(.leading, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
             }
 
             // Live duration
             if let secs = elapsedSeconds {
                 Text(AgentDuration.format(secs))
                     .font(.caption2.monospacedDigit())
-                    .foregroundStyle(theme.textSecondary.opacity(0.5))
+                    .foregroundStyle(theme.statusIdle)
                     .fixedSize()
             }
 
@@ -114,10 +114,10 @@ struct AgentBarRow: View {
             // this is an affordance for "this opens", not a state indicator.
             Image(systemName: "chevron.right")
                 .font(.caption2)
-                .foregroundStyle(theme.textSecondary.opacity(0.5))
+                .foregroundStyle(theme.statusIdle)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 10) // design-geometry: 10pt gap between compactGap and contentGap; off the 4pt ratio scale
+        .padding(.vertical, IonSpace.compactInset)
     }
 
     /// Text shown in the header activity area. For running agents this is
@@ -133,12 +133,11 @@ struct AgentBarRow: View {
         switch agent.type {
         case "chief": return theme.statusRunning
         case "specialist": return theme.statusPending
-        case "staff": return .purple
+        case "staff": return theme.statusStaff
         case "consultant": return theme.statusDone
         default: return theme.textSecondary
         }
     }
-
 }
 
 // MARK: - Color hex initializer

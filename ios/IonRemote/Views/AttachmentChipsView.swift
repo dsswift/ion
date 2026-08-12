@@ -29,8 +29,8 @@ struct AttachmentChipsView: View {
                     chipView(attachment)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
+            .padding(.horizontal, IonSpace.contentGap)
+            .padding(.vertical, IonSpace.hairlineGap)
         }
         .sheet(isPresented: Binding(
             get: { previewImage != nil },
@@ -66,8 +66,8 @@ struct AttachmentChipsView: View {
                     .foregroundStyle(.tertiary)
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, IonSpace.compactGap)
+        .padding(.vertical, IonSpace.hairlineGap)
         .background(Color(.secondarySystemFill))
         .clipShape(Capsule())
         .onTapGesture {

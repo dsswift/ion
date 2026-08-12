@@ -14,10 +14,10 @@ struct HighlightedCodeView: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             Text(CodeHighlighter.shared.highlight(code: code, language: language, theme: theme))
-                .font(.system(.callout, design: .monospaced))
+                .ionType(.mono)
                 .textSelection(.enabled)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+                .padding(.horizontal, IonSpace.contentGap)
+                .padding(.vertical, IonSpace.compactInset)
         }
     }
 }

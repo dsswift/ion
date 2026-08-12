@@ -135,7 +135,7 @@ struct FileExplorerView: View {
                                 .frame(width: CGFloat(item.depth + 1) * 20 + 16)
                             ProgressView()
                                 .controlSize(.small)
-                                .padding(.vertical, 6)
+                                .padding(.vertical, IonSpace.compactInset)
                             Spacer()
                         }
                     }

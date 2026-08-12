@@ -49,7 +49,7 @@ struct SettingsView: View {
                 categoryLink(
                     "Desktops & Connection",
                     icon: "desktopcomputer",
-                    color: .blue,
+                    color: theme.categoryTileConnection,
                     detail: viewModel.activeDevice?.displayName
                 ) {
                     SettingsDesktopsView()
@@ -58,7 +58,7 @@ struct SettingsView: View {
                 categoryLink(
                     "Appearance",
                     icon: "paintbrush",
-                    color: .purple,
+                    color: theme.categoryTileAppearance,
                     detail: currentThemeName
                 ) {
                     SettingsAppearanceView()
@@ -67,7 +67,7 @@ struct SettingsView: View {
                 categoryLink(
                     "Models",
                     icon: "cpu",
-                    color: .orange,
+                    color: theme.categoryTileModels,
                     detail: currentModelLabel
                 ) {
                     SettingsModelsView()
@@ -76,7 +76,7 @@ struct SettingsView: View {
                 categoryLink(
                     "Voice",
                     icon: "waveform",
-                    color: .green,
+                    color: theme.categoryTileVoice,
                     detail: viewModel.voiceService.isEnabled ? "On" : "Off"
                 ) {
                     SettingsVoiceView()
@@ -87,7 +87,7 @@ struct SettingsView: View {
                 categoryLink(
                     "Diagnostics & About",
                     icon: "stethoscope",
-                    color: .gray
+                    color: theme.categoryTileDiagnostics
                 ) {
                     SettingsDiagnosticsView()
                 }
@@ -137,16 +137,16 @@ struct SettingsView: View {
             HStack(spacing: 12) {
                 if let device = viewModel.activeDevice {
                     Image(systemName: device.displayIcon)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold)) // design-type: SF Symbol device-avatar glyph sized as icon geometry, not text
                         .foregroundStyle(.white)
                         .frame(width: 28, height: 28)
-                        .background(activeStatusColor, in: RoundedRectangle(cornerRadius: 6))
+                        .background(activeStatusColor, in: RoundedRectangle(cornerRadius: IonRadius.control))
                 } else {
                     Image(systemName: "questionmark")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold)) // design-type: SF Symbol device-avatar glyph sized as icon geometry, not text
                         .foregroundStyle(.white)
                         .frame(width: 28, height: 28)
-                        .background(Color.gray, in: RoundedRectangle(cornerRadius: 6))
+                        .background(theme.statusIdle, in: RoundedRectangle(cornerRadius: IonRadius.control))
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(viewModel.activeDevice?.displayName ?? "No active desktop")
@@ -209,10 +209,15 @@ struct SettingsView: View {
             )) {
                 HStack(spacing: 12) {
                     Image(systemName: "exclamationmark.bubble")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold)) // design-type: SF Symbol row-icon glyph sized as icon geometry, not text
                         .foregroundStyle(.white)
                         .frame(width: 28, height: 28)
-                        .background(Color.orange, in: RoundedRectangle(cornerRadius: 6))
+                        // The palette's neutral, not the Models orange this row
+                        // used to reuse. Intercept permission is not one of the
+                        // four navigational categories, and sharing Models'
+                        // tile color gave two unrelated rows in one list the
+                        // same fill.
+                        .background(theme.categoryTileDiagnostics, in: RoundedRectangle(cornerRadius: IonRadius.control))
                     Text("Allow conversation intercepts")
                 }
             }
@@ -248,10 +253,10 @@ struct SettingsView: View {
         NavigationLink(destination: destination) {
             HStack(spacing: 12) {
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold)) // design-type: SF Symbol row-icon glyph sized as icon geometry, not text
                     .foregroundStyle(.white)
                     .frame(width: 28, height: 28)
-                    .background(color, in: RoundedRectangle(cornerRadius: 6))
+                    .background(color, in: RoundedRectangle(cornerRadius: IonRadius.control))
 
                 Text(title)
 

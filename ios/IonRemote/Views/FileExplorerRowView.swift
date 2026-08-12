@@ -94,8 +94,8 @@ struct FileExplorerRowView: View {
 
                 Spacer()
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, IonSpace.contentGap)
+            .padding(.vertical, IonSpace.compactGap)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -132,8 +132,8 @@ struct FileExplorerRowView: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, IonSpace.contentGap)
+            .padding(.vertical, IonSpace.compactGap)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

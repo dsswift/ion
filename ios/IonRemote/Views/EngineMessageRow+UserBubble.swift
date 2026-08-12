@@ -32,27 +32,27 @@ extension EngineMessageRow {
             blankLineHeight: 20
         )
             .textSelection(.enabled)
-            .padding(.leading, 14)
-            .padding(.trailing, 12)
-            .padding(.vertical, 8)
+            .padding(.leading, 14) // design-geometry: 14pt gap between contentGap and rowInset; off the 4pt ratio scale
+            .padding(.trailing, IonSpace.contentGap)
+            .padding(.vertical, IonSpace.compactGap)
             .background(
                 ZStack {
-                    Color(.tertiarySystemBackground)
+                    theme.surfaceSecondary
                     theme.userBubbleTint
                 }
             )
-            .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.large))
+            .clipShape(RoundedRectangle(cornerRadius: IonRadius.container))
             .overlay(alignment: .leading) {
                 Rectangle()
                     .fill(theme.accent)
                     .frame(width: 2.5)
-                    .padding(.vertical, 4)
-                    .padding(.leading, 1)
+                    .padding(.vertical, IonSpace.hairlineGap)
+                    .padding(.leading, 1) // design-geometry: sub-hairline 1pt inset; below the 4pt rhythm floor
             }
             .overlay(
                 isBash
-                    ? RoundedRectangle(cornerRadius: IonTheme.Radius.large)
-                        .stroke(Color(hex: 0xF472B6, opacity: 0.5), lineWidth: 2)
+                    ? RoundedRectangle(cornerRadius: IonRadius.container)
+                        .stroke(theme.statusBash.opacity(0.5), lineWidth: 2)
                     : nil
             )
     }

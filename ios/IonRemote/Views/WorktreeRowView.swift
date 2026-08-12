@@ -87,15 +87,15 @@ struct WorktreeRowView: View {
                     switch worktree.enrollment {
                     case .included:
                         Image(systemName: "diamond.fill")
-                            .font(.system(size: 7))
+                            .font(.system(size: 7)) // design-type: SF Symbol membership glyph sized as icon geometry, not text
                             .foregroundStyle(Color.accentColor)
                     case .excluded:
                         Image(systemName: "diamond.bottomhalf.filled")
-                            .font(.system(size: 7))
+                            .font(.system(size: 7)) // design-type: SF Symbol membership glyph sized as icon geometry, not text
                             .foregroundStyle(Color.accentColor)
                     case .none:
                         Image(systemName: "diamond")
-                            .font(.system(size: 7))
+                            .font(.system(size: 7)) // design-type: SF Symbol membership glyph sized as icon geometry, not text
                             .foregroundStyle(Color.secondary)
                     }
 

@@ -84,7 +84,7 @@ struct PairingView: View {
                         .foregroundStyle(.tertiary)
                         .multilineTextAlignment(.center)
                 }
-                .padding(.horizontal, 32)
+                .padding(.horizontal, IonSpace.screenInset)
                 .frame(maxHeight: .infinity)
             } else {
                 List {
@@ -135,10 +135,10 @@ struct PairingView: View {
                 if viewModel.pairedDevices.contains(where: { $0.name == service.name }) {
                     Text("Paired")
                         .font(.caption2)
-                        .foregroundStyle(.green)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.green.opacity(0.15), in: Capsule())
+                        .foregroundStyle(theme.statusDone)
+                        .padding(.horizontal, IonSpace.compactInset)
+                        .padding(.vertical, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
+                        .background(theme.statusDone.opacity(0.15), in: Capsule())
                 }
                 Image(systemName: "chevron.right")
                     .foregroundStyle(.tertiary)
@@ -153,7 +153,7 @@ struct PairingView: View {
             VStack(spacing: 24) {
                 VStack(spacing: 8) {
                     Image(systemName: "server.rack")
-                        .font(.system(size: 40))
+                        .font(.system(size: 40)) // design-type: SF Symbol hero glyph sized as icon geometry, not text
                         .foregroundStyle(theme.accent)
                     Text(service.name)
                         .font(.title2.bold())
@@ -161,7 +161,7 @@ struct PairingView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
-                .padding(.top, 16)
+                .padding(.top, IonSpace.rowInset)
 
                 VStack(spacing: 12) {
                     Text("Relay servers require pairing through an Ion desktop app first.")
@@ -172,7 +172,7 @@ struct PairingView: View {
                         .foregroundStyle(.tertiary)
                         .multilineTextAlignment(.leading)
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, IonSpace.sectionGap)
 
                 Spacer()
             }
@@ -194,7 +194,7 @@ struct PairingView: View {
             VStack(spacing: 24) {
                 VStack(spacing: 8) {
                     Image(systemName: "desktopcomputer")
-                        .font(.system(size: 40))
+                        .font(.system(size: 40)) // design-type: SF Symbol hero glyph sized as icon geometry, not text
                         .foregroundStyle(theme.accent)
                     Text(service.name)
                         .font(.title2.bold())
@@ -205,7 +205,7 @@ struct PairingView: View {
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
-                .padding(.top, 16)
+                .padding(.top, IonSpace.rowInset)
 
                 if attemptingRecovery {
                     VStack(spacing: 12) {
@@ -240,7 +240,7 @@ struct PairingView: View {
                                         .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.small))
                                         .overlay(
                                             RoundedRectangle(cornerRadius: IonTheme.Radius.small)
-                                                .stroke(index == pairingCodeInput.count ? theme.accent : Color(.separator), lineWidth: index == pairingCodeInput.count ? 2 : 1)
+                                                .stroke(index == pairingCodeInput.count ? theme.accent : theme.borderSubtle, lineWidth: index == pairingCodeInput.count ? 2 : 1)
                                         )
                                 }
                             }
@@ -286,12 +286,12 @@ struct PairingView: View {
                         Text("Pair")
                             .font(.headline)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
+                            .padding(.vertical, 14) // design-geometry: 14pt gap between contentGap and rowInset; off the 4pt ratio scale
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(theme.accent)
                     .disabled(pairingCodeInput.count != 6 || viewModel.pairingState.isConnecting)
-                    .padding(.horizontal, 40)
+                    .padding(.horizontal, 40) // design-geometry: 40pt inset beyond screenInset; off the 4pt ratio scale
 
                     statusIndicator
                 }

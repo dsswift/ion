@@ -124,7 +124,7 @@ struct DesktopSettingsListRecordEditor: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, IonSpace.hairlineGap)
         }
     }
 
@@ -147,7 +147,7 @@ struct DesktopSettingsListRecordEditor: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.vertical, 2)
+            .padding(.vertical, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
         }
     }
 
@@ -167,7 +167,7 @@ struct DesktopSettingsListRecordEditor: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, IonSpace.hairlineGap)
     }
 
     @ViewBuilder
@@ -192,7 +192,7 @@ struct DesktopSettingsListRecordEditor: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, IonSpace.hairlineGap)
     }
 
     @ViewBuilder
@@ -223,6 +223,6 @@ struct DesktopSettingsListRecordEditor: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, IonSpace.hairlineGap)
     }
 }

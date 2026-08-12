@@ -125,8 +125,8 @@ struct InlineAttachmentImage: View {
                 .font(.caption2)
                 .lineLimit(1)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, IonSpace.compactGap)
+        .padding(.vertical, IonSpace.hairlineGap)
         .background(Color(.secondarySystemFill))
         .clipShape(Capsule())
         .foregroundStyle(.secondary)

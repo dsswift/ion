@@ -114,7 +114,7 @@ struct AgentExpandedContent: View {
                 headerView
                 bodyView
             }
-            .padding(.vertical, 6)
+            .padding(.vertical, IonSpace.compactInset)
             .onAppear { logDispatchState(event: "onAppear") }
             .onChange(of: selectedDispatchIndex) { _ in logDispatchState(event: "selectionChange") }
         }
@@ -151,7 +151,7 @@ struct AgentExpandedContent: View {
                     }
                 }
                 .foregroundStyle(theme.textSecondary.opacity(0.5))
-                .padding(.horizontal, 12)
+                .padding(.horizontal, IonSpace.contentGap)
                 .padding(.top, pinHeader ? 8 : 0)
             }
 
@@ -197,7 +197,7 @@ struct AgentExpandedContent: View {
                         .font(.caption2)
                         .foregroundStyle(theme.textSecondary.opacity(0.5))
                 }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, IonSpace.contentGap)
             case .fullOutput:
                 // Fallback: show fullOutput only when no conversation loaded
                 // and no specific dispatch is selected. In multi-dispatch mode
@@ -209,7 +209,7 @@ struct AgentExpandedContent: View {
                         blocks: MarkdownBlockCache.shared.blocks(for: fullOutput)
                     )
                     .textSelection(.enabled)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, IonSpace.contentGap)
                 }
             case .working:
                 HStack(spacing: 6) {
@@ -218,7 +218,7 @@ struct AgentExpandedContent: View {
                         .font(.caption2)
                         .foregroundStyle(theme.textSecondary.opacity(0.5))
                 }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, IonSpace.contentGap)
             case .noTranscript:
                 // A specific dispatch is selected but it is not running and has no
                 // transcript (empty conversationId, or no cached messages). The
@@ -227,7 +227,7 @@ struct AgentExpandedContent: View {
                 Text("No transcript recorded for this dispatch")
                     .font(.caption2)
                     .foregroundStyle(theme.textSecondary.opacity(0.5))
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, IonSpace.contentGap)
             case .empty:
                 EmptyView()
             }
@@ -299,16 +299,16 @@ struct AgentExpandedContent: View {
         switch item {
         case .toolGroup(let tools):
             EngineToolGroupRow(tools: tools)
-                .padding(.horizontal, 10)
+                .padding(.horizontal, 10) // design-geometry: 10pt gap between compactGap and contentGap; off the 4pt ratio scale
         case .thinking(let msg):
             ThinkingRowView(message: msg)
-                .padding(.horizontal, 12)
+                .padding(.horizontal, IonSpace.contentGap)
         case .compaction(let msg):
             CompactionRowView(message: msg)
-                .padding(.horizontal, 10)
+                .padding(.horizontal, 10) // design-geometry: 10pt gap between compactGap and contentGap; off the 4pt ratio scale
         case .agentTurn(let tools, let assistants, let isActive, let thinking):
             AgentTurnRow(tools: tools, assistantMessages: assistants, isActive: isActive, thinking: thinking)
-                .padding(.horizontal, 10)
+                .padding(.horizontal, 10) // design-geometry: 10pt gap between compactGap and contentGap; off the 4pt ratio scale
         case .system(let msg):
             if msg.content.hasPrefix("──") {
                 // Lifecycle divider (steer applied, plan created/updated,
@@ -323,15 +323,15 @@ struct AgentExpandedContent: View {
                     PlanDividerLabel(message: msg)
                     VStack { Divider() }
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 6)
+                .padding(.horizontal, IonSpace.sectionGap)
+                .padding(.vertical, IonSpace.compactInset)
             } else {
                 EngineMessageRow(message: msg)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, IonSpace.contentGap)
             }
         case .user(let msg), .assistant(let msg):
             EngineMessageRow(message: msg)
-                .padding(.horizontal, 12)
+                .padding(.horizontal, IonSpace.contentGap)
         }
     }
 
@@ -366,7 +366,7 @@ struct AgentExpandedContent: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
                 Text("Dispatches:")
-                    .font(.system(size: 9))
+                    .ionType(.microLabel)
                     .foregroundStyle(theme.textSecondary.opacity(0.5))
                 ForEach(Array(agent.dispatches.enumerated().reversed()), id: \.element.id) { idx, d in
                     let displayNum = idx + 1
@@ -378,17 +378,17 @@ struct AgentExpandedContent: View {
                         }
                     } label: {
                         Text("#\(displayNum)")
-                            .font(.system(size: 10, weight: isActive ? .semibold : .regular))
+                            .ionCompactSelectionLabel(isSelected: isActive, selectedWeight: .semibold)
                             .foregroundStyle(isActive ? theme.textPrimary : theme.textSecondary.opacity(0.5))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
+                            .padding(.horizontal, IonSpace.compactInset)
+                            .padding(.vertical, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
                             .background(isActive ? theme.surfaceElevated.opacity(0.7) : theme.surfaceElevated.opacity(0.3))
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                            .clipShape(RoundedRectangle(cornerRadius: 4)) // design-geometry: compact dispatch chip; control radius would bloat a sub-control element
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, IonSpace.contentGap)
         }
     }
 

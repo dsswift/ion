@@ -34,18 +34,18 @@ struct GitChangesListView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, IonSpace.contentGap)
             .frame(maxWidth: .infinity)
         } else if changesResponse?.files.isEmpty == true {
             VStack(spacing: 12) {
                 Image(systemName: "checkmark.circle")
-                    .font(.system(size: 32))
+                    .font(.system(size: 32)) // design-type: SF Symbol empty-state glyph sized as icon geometry, not text
                     .foregroundStyle(theme.accent)
                 Text("Working tree clean")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
             }
-            .padding(.vertical, 20)
+            .padding(.vertical, 20) // design-geometry: 20pt gap between rowInset and sectionGap; off the 4pt ratio scale
             .frame(maxWidth: .infinity)
         } else {
             VStack(spacing: 0) {
@@ -111,8 +111,8 @@ struct GitChangesListView: View {
                         .buttonStyle(.bordered)
                         .tint(.orange)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, IonSpace.contentGap)
+                    .padding(.vertical, IonSpace.compactGap)
                 }
             }
             .fullScreenCover(isPresented: $showDiff) {
@@ -182,8 +182,8 @@ struct GitChangesListView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 4)
+        .padding(.horizontal, IonSpace.contentGap)
+        .padding(.vertical, IonSpace.hairlineGap)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.tertiarySystemFill))
     }
@@ -212,9 +212,9 @@ struct GitChangesListView: View {
             Button(actionLabel, action: action)
                 .font(.caption)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(Color(.secondarySystemGroupedBackground))
+        .padding(.horizontal, IonSpace.contentGap)
+        .padding(.vertical, IonSpace.compactInset)
+        .background(theme.surfaceSecondary)
     }
 
     // MARK: - File row
@@ -252,8 +252,8 @@ struct GitChangesListView: View {
                 }
             }
             .padding(.leading, indented ? 28 : 12)
-            .padding(.trailing, 12)
-            .padding(.vertical, 6)
+            .padding(.trailing, IonSpace.contentGap)
+            .padding(.vertical, IonSpace.compactInset)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -289,7 +289,7 @@ struct GitChangesListView: View {
 
     private func statusBadge(_ file: GitChangedFile) -> some View {
         Text(file.statusLetter)
-            .font(.system(size: 12, weight: .bold, design: .monospaced))
+            .font(.system(size: 12, weight: .bold, design: .monospaced)) // design-type: single-char status letter pinned to a fixed 20x20 badge
             .foregroundStyle(statusColor(file.status))
             .frame(width: 20, height: 20)
     }
@@ -342,9 +342,9 @@ struct GitChangesListView: View {
             }
             .disabled(commitMessage.trimmingCharacters(in: .whitespaces).isEmpty)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color(.secondarySystemGroupedBackground))
+        .padding(.horizontal, IonSpace.contentGap)
+        .padding(.vertical, IonSpace.compactGap)
+        .background(theme.surfaceSecondary)
     }
 }
 

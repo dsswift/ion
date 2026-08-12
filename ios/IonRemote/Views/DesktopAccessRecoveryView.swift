@@ -14,7 +14,7 @@ struct DesktopAccessRecoveryView: View {
             VStack(spacing: 18) {
                 Spacer()
                 Image(systemName: "lock.shield.fill")
-                    .font(.system(size: 48))
+                    .font(.system(size: 48)) // design-type: recovery icon sized as icon geometry
                     .foregroundStyle(theme.accent)
                 Text(DesktopAccessPolicy.recoveryTitle(for: viewModel.activeDevice?.desktopAccess))
                     .font(.title2.bold())
@@ -23,7 +23,7 @@ struct DesktopAccessRecoveryView: View {
                 Text(DesktopAccessPolicy.recoveryMessage(for: viewModel.activeDevice?.desktopAccess))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 28)
+                    .padding(.horizontal, 28) // design-geometry: recovery card inset between sectionGap and screenInset
                 if let account = viewModel.activeDevice?.oidcAccountLabel {
                     Label(account, systemImage: "person.crop.circle")
                         .font(.subheadline)
@@ -41,7 +41,7 @@ struct DesktopAccessRecoveryView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .padding(.horizontal, 28)
+                .padding(.horizontal, 28) // design-geometry: recovery card inset between sectionGap and screenInset
                 Button("Open Settings") { showSettings = true }
                 if viewModel.pairedDevices.count > 1 {
                     Menu("Switch Desktop") {

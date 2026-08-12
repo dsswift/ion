@@ -12,7 +12,7 @@ struct OIDCAuthenticationContextView: View {
     var body: some View {
         VStack(spacing: 18) {
             Image(systemName: device.displayIcon)
-                .font(.system(size: 42))
+                .font(.system(size: 42)) // design-type: authentication context icon sized as icon geometry
                 .foregroundStyle(theme.accent)
             Text(DesktopAccessPolicy.recoveryTitle(for: record))
                 .font(.title2.bold())
@@ -39,6 +39,6 @@ struct OIDCAuthenticationContextView: View {
             Button("Not Now", action: onNotNow)
                 .buttonStyle(.bordered)
         }
-        .padding(28)
+        .padding(28) // design-geometry: authentication context card inset between sectionGap and screenInset
     }
 }

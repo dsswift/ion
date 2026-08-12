@@ -89,10 +89,10 @@ struct SettingsDesktopsView: View {
                                             Text("Active")
                                                 .font(.caption2)
                                                 .foregroundStyle(.green)
-                                                .padding(.horizontal, 6)
-                                                .padding(.vertical, 2)
+                                                .padding(.horizontal, IonSpace.compactInset)
+                                                .padding(.vertical, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
                                                 .background(
-                                                    Capsule().stroke(Color.green, lineWidth: 1)
+                                                    Capsule().stroke(theme.statusDone, lineWidth: 1)
                                                 )
                                         }
                                     }
@@ -141,8 +141,8 @@ struct SettingsDesktopsView: View {
                                     } label: {
                                         Text("Connect")
                                             .font(.caption.weight(.medium))
-                                            .padding(.horizontal, 10)
-                                            .padding(.vertical, 4)
+                                            .padding(.horizontal, 10) // design-geometry: 10pt gap between compactGap and contentGap; off the 4pt ratio scale
+                                            .padding(.vertical, IonSpace.hairlineGap)
                                             .background(theme.accent.opacity(0.15))
                                             .foregroundStyle(theme.accent)
                                             .clipShape(Capsule())
@@ -153,7 +153,7 @@ struct SettingsDesktopsView: View {
                                     .font(.caption)
                                     .foregroundStyle(.tertiary)
                                 Circle()
-                                    .fill(isActive && viewModel.connectionState == .connected ? Color.green : Color(.tertiaryLabel))
+                                    .fill(isActive && viewModel.connectionState == .connected ? theme.statusDone : Color(.tertiaryLabel))
                                     .frame(width: 8, height: 8)
                             }
                             .contentShape(Rectangle())

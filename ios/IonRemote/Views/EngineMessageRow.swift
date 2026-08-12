@@ -45,8 +45,9 @@ struct EngineMessageRow: View {
     // Conversation-view-only state
     @State var isToolExpanded = false
     @State private var showRewindConfirm = false
-    @State private var showCopyButton = false
-    @State private var showCopiedCheck = false
+    // Internal (not private) so the assistant-bubble extension in
+    // EngineMessageRow+AssistantBubble.swift can drive the tap-to-reveal copy
+    // overlay — Swift `private` is file-scoped and would be unreachable there.
     @State private var containerWidth: CGFloat = UIScreen.main.bounds.width
 
     /// True when operating in full conversation-view mode.
@@ -92,8 +93,11 @@ struct EngineMessageRow: View {
     }
 
     // MARK: - Timestamp helper
+    //
+    // Internal (not private) so the assistant-bubble extension can render the
+    // conversation-view timestamp.
 
-    private var relativeTimestamp: String {
+    var relativeTimestamp: String {
         let date = Date(timeIntervalSince1970: (message.timestamp ?? 0) / 1000)
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
@@ -202,8 +206,8 @@ struct EngineMessageRow: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
-            .padding(.trailing, 12)
-            .padding(.vertical, 2)
+            .padding(.trailing, IonSpace.contentGap)
+            .padding(.vertical, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
         }
         .contextMenu {
             Button { UIPasteboard.general.string = message.content } label: {
@@ -277,8 +281,8 @@ struct EngineMessageRow: View {
                     .frame(maxWidth: cap, alignment: .trailing)
                 }
             }
-            .padding(.trailing, 12)
-            .padding(.vertical, 2)
+            .padding(.trailing, IonSpace.contentGap)
+            .padding(.vertical, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
         }
     }
 
@@ -294,167 +298,11 @@ struct EngineMessageRow: View {
     /// extension method by name.
 
     // MARK: - Assistant
-
-    private var assistantMessage: some View {
-        Group {
-            if isConversationMode {
-                conversationAssistantBubble
-            } else {
-                engineAssistantBubble
-            }
-        }
-    }
-
-    /// Full conversation-view assistant message: plain inline text (no bubble),
-    /// matching engine-view rendering. Overlays add blinking cursor, voice
-    /// controls, copy button, timestamp, and context menu without any material
-    /// background or rounded-corner wrapper.
-    private var conversationAssistantBubble: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ZStack(alignment: .bottomTrailing) {
-                ZStack(alignment: .bottomLeading) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        if !message.content.isEmpty {
-                            MarkdownContentView(
-                                blocks: MarkdownBlockCache.shared.blocks(for: message.content),
-                                onOpenFile: onOpenFile
-                            )
-                            .textSelection(.enabled)
-                        }
-
-                        // Provider-generated images (e.g. an image-model turn)
-                        // arrive as structured image attachments on the assistant
-                        // message, often with empty content. Render them inline so
-                        // the turn shows the image instead of a blank row.
-                        if !message.imageAttachments.isEmpty {
-                            MessageAttachmentImages(attachments: message.imageAttachments, alignment: .leading, onPreview: previewAttachment)
-                        }
-
-                        // Blinking cursor for streaming
-                        if isRunning && message.isAssistant {
-                            RoundedRectangle(cornerRadius: 0.5)
-                                .fill(Color.primary)
-                                .frame(width: 2, height: 18)
-                                .modifier(BlinkingModifier())
-                        }
-                    }
-
-                    // Voice playback controls
-                    if isSpeaking {
-                        HStack(spacing: 6) {
-                            Button { onSkipSpeaking?() } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "speaker.wave.2.fill")
-                                        .font(.caption2)
-                                        .symbolEffect(.variableColor.iterative)
-                                    Image(systemName: hasPendingSpeech ? "forward.fill" : "stop.fill")
-                                        .font(.caption2)
-                                }
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(.ultraThinMaterial)
-                                .clipShape(Capsule())
-                            }
-
-                            if hasPendingSpeech {
-                                Button { onStopAllSpeaking?() } label: {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "stop.fill")
-                                            .font(.caption2)
-                                        Text("Stop All")
-                                            .font(.caption2)
-                                    }
-                                    .foregroundStyle(.secondary)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(.ultraThinMaterial)
-                                    .clipShape(Capsule())
-                                }
-                            }
-                        }
-                        .transition(.opacity.combined(with: .scale))
-                        .padding(4)
-                    }
-                }
-
-                // Copy button overlay
-                if showCopyButton && !isSpeaking {
-                    Button {
-                        UIPasteboard.general.string = copyableContent ?? message.content
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            showCopiedCheck = true
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                            withAnimation { showCopiedCheck = false }
-                        }
-                    } label: {
-                        Image(systemName: showCopiedCheck ? "checkmark" : "doc.on.doc")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .padding(6)
-                            .background(.ultraThinMaterial)
-                            .clipShape(Circle())
-                    }
-                    .transition(.opacity)
-                    .padding(4)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                guard !showCopyButton else { return }
-                withAnimation(.easeInOut(duration: 0.2)) { showCopyButton = true }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                    withAnimation(.easeOut(duration: 0.3)) { showCopyButton = false }
-                }
-            }
-
-            Text(relativeTimestamp)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .padding(.leading, 4)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 2)
-        .contextMenu {
-            Button {
-                UIPasteboard.general.string = copyableContent ?? message.content
-            } label: {
-                Label("Copy", systemImage: "doc.on.doc")
-            }
-            ShareLink(item: copyableContent ?? message.content) {
-                Label("Share", systemImage: "square.and.arrow.up")
-            }
-        } preview: {
-            Text(message.content.prefix(200) + (message.content.count > 200 ? "…" : ""))
-                .font(.body)
-                .padding()
-                .frame(maxWidth: 300, alignment: .leading)
-        }
-    }
-
-    /// Engine-view compact assistant bubble: plain markdown, no chrome.
-    private var engineAssistantBubble: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                MarkdownContentView(
-                    blocks: MarkdownBlockCache.shared.blocks(for: message.content),
-                    onOpenFile: onOpenFile
-                )
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .clipped()
-                Spacer(minLength: 0)
-            }
-            // Provider-generated images on the assistant turn (see
-            // conversationAssistantBubble) — render inline here too.
-            if !message.imageAttachments.isEmpty {
-                MessageAttachmentImages(attachments: message.imageAttachments, alignment: .leading, onPreview: previewAttachment)
-            }
-        }
-    }
+    // Assistant-role rendering (assistantMessage, conversationAssistantBubble,
+    // engineAssistantBubble) lives in EngineMessageRow+AssistantBubble.swift.
+    // That extension is referenced here by `assistantMessage` in the body
+    // switch above. Extracted at the size cap to make room for the
+    // conversation-surface rebuild, mirroring the ToolBubble/UserBubble splits.
 
     // MARK: - Tool
     // Tool-role rendering (toolMessage, conversationToolBubble,
@@ -483,29 +331,29 @@ struct EngineMessageRow: View {
         return HStack(alignment: .top, spacing: 6) {
             Text("⚠️")
                 .font(.caption2)
-                .padding(.top, 1)
+                .padding(.top, 1) // design-geometry: sub-hairline 1pt inset; below the 4pt rhythm floor
             Text(LocalizedStringKey(message.content))
                 .font(.caption)
                 .foregroundStyle(isRedirect ? Color(red: 0.96, green: 0.62, blue: 0.04) : .secondary)
                 .multilineTextAlignment(.leading)
             Spacer()
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 10) // design-geometry: 10pt gap between compactGap and contentGap; off the 4pt ratio scale
+        .padding(.vertical, IonSpace.compactInset)
         .background(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: IonRadius.control)
                 .fill(isRedirect
                     ? Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.08)
                     : Color(.secondarySystemFill))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: IonRadius.control)
                 .strokeBorder(
                     Color(red: 0.96, green: 0.62, blue: 0.04).opacity(isRedirect ? 0.55 : 0.3),
                     lineWidth: 1
                 )
         )
-        .padding(.vertical, 2)
+        .padding(.vertical, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
     }
 
     private var defaultHarnessMessage: some View {
@@ -519,7 +367,7 @@ struct EngineMessageRow: View {
                 .italic()
             Spacer()
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
     }
 
     // MARK: - System
@@ -541,8 +389,8 @@ struct EngineMessageRow: View {
             PlanDividerLabel(message: message, onTapPlan: onTapPlan)
             VStack { Divider() }
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 6)
+        .padding(.horizontal, IonSpace.sectionGap)
+        .padding(.vertical, IonSpace.compactInset)
     }
 
     /// Engine-view system bubble: divider-flanked for lifecycle markers (`──`
@@ -561,8 +409,8 @@ struct EngineMessageRow: View {
                     PlanDividerLabel(message: message, onTapPlan: onTapPlan)
                     VStack { Divider() }
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 6)
+                .padding(.horizontal, IonSpace.sectionGap)
+                .padding(.vertical, IonSpace.compactInset)
             } else {
                 HStack {
                     Spacer()

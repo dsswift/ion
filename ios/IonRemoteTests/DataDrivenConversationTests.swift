@@ -73,7 +73,7 @@ final class DataDrivenConversationTests: XCTestCase {
     /// `tabHasExtensions`. (SwiftUI bodies aren't introspectable; this pins the
     /// declaration site, mirroring MergedConversationViewTests.)
     func testAgentPanelRenderSiteHasNoTabTypeFork() throws {
-        let src = try viewSource("ConversationView.swift")
+        let src = try viewSourceFamily("ConversationView")
         XCTAssertFalse(src.contains("tabHasExtensions && !visibleAgents.isEmpty"),
             "Agent panel must not be gated on tabHasExtensions — it is data-driven (#256 follow-up)")
         // The render site passes agents via a ternary on visibleAgents.isEmpty, not an `if` branch.
@@ -166,11 +166,27 @@ final class DataDrivenConversationTests: XCTestCase {
 
     // MARK: - helpers (source guards)
 
-    private func viewSource(_ name: String) throws -> String {
-        let url = URL(fileURLWithPath: #filePath)
+    /// Reads a view's source across every file that declares part of it: the
+    /// host file plus its `Type+Concern.swift` extensions.
+    ///
+    /// A source guard names a *type's* contract, not a filename's. Reading one
+    /// file makes the guard fail the moment the type is split for the size cap
+    /// even though the contract it pins is intact -- which is exactly what
+    /// happened when ConversationView's view builders moved to
+    /// ConversationView+Layout.swift. Globbing the family keeps the guard
+    /// pinned to the contract and lets the type be organized freely.
+    private func viewSourceFamily(_ typeName: String) throws -> String {
+        let viewsDir = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .appendingPathComponent("IonRemote/Views/\(name)")
-        return try String(contentsOf: url, encoding: .utf8)
+            .appendingPathComponent("IonRemote/Views")
+        let names = try FileManager.default
+            .contentsOfDirectory(atPath: viewsDir.path)
+            .filter { $0 == "\(typeName).swift" || $0.hasPrefix("\(typeName)+") }
+            .sorted()
+        XCTAssertFalse(names.isEmpty, "no source files found for \(typeName)")
+        return try names
+            .map { try String(contentsOf: viewsDir.appendingPathComponent($0), encoding: .utf8) }
+            .joined(separator: "\n")
     }
 }

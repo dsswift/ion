@@ -69,8 +69,8 @@ struct DesktopPickerMenu: View {
                     .foregroundStyle(.secondary)
                 statusDot
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 10) // design-geometry: 10pt gap between compactGap and contentGap; off the 4pt ratio scale
+            .padding(.vertical, IonSpace.compactInset)
             .background(.regularMaterial, in: Capsule())
         }
         .onAppear { pollDeviceStatus() }

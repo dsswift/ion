@@ -13,6 +13,7 @@ struct EngineInstanceBar: View {
     let instances: [ConversationInstanceInfo]
     let activeInstanceId: String
     @Environment(SessionViewModel.self) private var viewModel
+    @Environment(\.appTheme) private var theme
     /// When non-nil, surfaces a small alert describing the model-fallback
     /// for the corresponding instance — tapped by the user on the ⚠
     /// glyph rendered in `instanceButton`. iOS has no tooltip primitive
@@ -27,10 +28,10 @@ struct EngineInstanceBar: View {
                     instanceButton(instance)
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, IonSpace.compactGap)
+            .padding(.vertical, IonSpace.hairlineGap)
         }
-        .background(.ultraThinMaterial)
+        .background(theme.surfaceSunken)
         // Model-fallback disclosure alert. Triggered when the user taps
         // the ⚠ glyph rendered next to an instance label in
         // `instanceButton`. Shows the requested vs. fallback model
@@ -75,7 +76,7 @@ struct EngineInstanceBar: View {
             // 5. None → no dot shown
             if let ws = instance.waitingState {
                 Circle()
-                    .fill(ws == "question" ? Color(hex: 0x4A9EF5) : Color.green)
+                    .fill(ws == "question" ? theme.statusQuestion : theme.statusDone) // theme-color-ok: question and model-fallback blue lack AppTheme role
                     .frame(width: 6, height: 6)
             } else if instance.isRunning == true {
                 InstancePulsingDot()
@@ -98,7 +99,7 @@ struct EngineInstanceBar: View {
                let shells = instance.backgroundShellCount, shells > 0 {
                 Text("\(shells) shell\(shells == 1 ? "" : "s")")
                     .font(.caption2)
-                    .foregroundStyle(TabStatusRollup.shellPink)
+                    .foregroundStyle(theme.statusBash)
                     .accessibilityLabel("Waiting on \(shells) background shell\(shells == 1 ? "" : "s")")
             }
 
@@ -108,20 +109,20 @@ struct EngineInstanceBar: View {
                     fallbackDetail = (instanceLabel: instance.label, info: fb)
                 } label: {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 10))
-                        .foregroundStyle(Color(hex: 0x4A9EF5))
+                        .font(.system(size: 10)) // design-type: SF Symbol warning glyph sized as icon geometry, not text
+                        .foregroundStyle(theme.statusQuestion) // theme-color-ok: model-fallback blue lacks AppTheme role
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Model fallback active for \(instance.label)")
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, IonSpace.compactGap)
+        .padding(.vertical, IonSpace.hairlineGap)
         .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(instance.id == activeInstanceId ? Color.orange.opacity(0.2) : Color.clear)
+            RoundedRectangle(cornerRadius: IonRadius.control)
+                .fill(instance.id == activeInstanceId ? theme.accentSubtle : Color.clear)
         )
-        .foregroundStyle(instance.id == activeInstanceId ? .primary : .secondary)
+        .foregroundStyle(instance.id == activeInstanceId ? theme.textPrimary : theme.textSecondary)
         .contextMenu {
             // Session-ID clipboard copy retained for debugging.
             let allIds = mergedSessionIds(for: instance)
@@ -152,7 +153,7 @@ private struct InstancePulsingDot: View {
             .opacity(pulseOpacity)
             .onAppear {
                 withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
-                    pulseOpacity = 0.3
+                    pulseOpacity = 0.35
                 }
             }
     }
@@ -180,7 +181,7 @@ private struct InstanceWaitingChildrenDot: View {
             .opacity(pulseOpacity)
             .onAppear {
                 withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
-                    pulseOpacity = 0.3
+                    pulseOpacity = 0.35
                 }
             }
     }
@@ -188,7 +189,7 @@ private struct InstanceWaitingChildrenDot: View {
 
 /// Pulsing pink dot for an instance holding on background bash commands
 /// (Bash run_in_background + notify_on_complete). Same pulse as the two dots
-/// above; only the fill differs. Uses TabStatusRollup.shellPink so the
+/// above; only the fill differs. Uses theme.statusBash so the
 /// instance bar and the tab dot render the identical color — the desktop
 /// makes the same guarantee via the shared statusBash token.
 ///
@@ -196,16 +197,17 @@ private struct InstanceWaitingChildrenDot: View {
 /// foreground work and dispatched agents both outrank shells, matching the
 /// cascade in TabStatusRollup.classify.
 private struct InstanceWaitingShellsDot: View {
+    @Environment(\.appTheme) private var theme
     @State private var pulseOpacity: Double = 1.0
 
     var body: some View {
         Circle()
-            .fill(TabStatusRollup.shellPink)
+            .fill(theme.statusBash)
             .frame(width: 6, height: 6)
             .opacity(pulseOpacity)
             .onAppear {
                 withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
-                    pulseOpacity = 0.3
+                    pulseOpacity = 0.35
                 }
             }
     }

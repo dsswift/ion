@@ -6,6 +6,7 @@ import SwiftUI
 /// Tapping opens a popover with transport details.
 struct ConnectionQualityView: View {
     @Environment(SessionViewModel.self) private var viewModel
+    @Environment(\.appTheme) private var theme
 
     /// When `true`, shows only the bars icon without any inline labels.
     var compact: Bool = false
@@ -59,8 +60,8 @@ struct ConnectionQualityView: View {
         return HStack(alignment: .bottom, spacing: 1.5) {
             ForEach(0..<3, id: \.self) { index in
                 let barHeight: CGFloat = CGFloat(6 + index * 4) // 6, 10, 14
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(index < filledCount ? color : Color.gray.opacity(0.3))
+                RoundedRectangle(cornerRadius: 1.5) // design-geometry: hairline rounding on a 1.5pt-wide signal bar; below the control radius floor
+                    .fill(index < filledCount ? color : theme.gaugeTrack)
                     .frame(width: 4, height: barHeight)
             }
         }

@@ -16,8 +16,8 @@ struct TerminalInstanceBar: View {
                     instanceButton(instance)
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, IonSpace.compactGap)
+            .padding(.vertical, IonSpace.hairlineGap)
         }
         .background(.ultraThinMaterial)
         .alert("Rename Shell", isPresented: .init(
@@ -62,16 +62,16 @@ struct TerminalInstanceBar: View {
                         viewModel.removeTerminalInstance(tabId: tabId, instanceId: instance.id)
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.system(size: 8, weight: .bold)) // design-type: SF Symbol close glyph sized as icon geometry, not text
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, IonSpace.compactGap)
+            .padding(.vertical, IonSpace.hairlineGap)
             .background(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: IonRadius.control)
                     .fill(instance.id == activeInstanceId ? Color.accentColor.opacity(0.2) : Color.clear)
             )
             .foregroundStyle(instance.id == activeInstanceId ? .primary : .secondary)

@@ -51,7 +51,7 @@ struct KeyboardUtilityBar: View {
                     .background(Circle().fill(Color(.tertiarySystemFill)))
             }
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, IonSpace.compactGap)
         .frame(height: 40)
         .background(.regularMaterial)
     }
