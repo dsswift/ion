@@ -15,9 +15,10 @@
  * Real repos, not mocks: the behavior under test IS git's range selection and
  * rerere's recording/replay, which a mock would just restate.
  */
+import { removeGitFixture } from '../../test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, realpathSync, unlinkSync } from 'fs'
+import { mkdtempSync, writeFileSync, readFileSync, realpathSync, unlinkSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -119,7 +120,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.ION_TEST_HOME_WT_SYNC
-  rmSync(root, { recursive: true, force: true })
+  removeGitFixture(root)
 })
 
 describe('stored-base sync — rebase --onto replays only the worktree\'s own commits', () => {

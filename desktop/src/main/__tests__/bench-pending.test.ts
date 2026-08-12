@@ -19,9 +19,10 @@
  * helpers are duplicated deliberately rather than shared, so each file's HOME
  * redirect stays independent (vitest runs files concurrently in one process).
  */
+import { removeGitFixture } from '../../test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, rmSync, writeFileSync, existsSync, realpathSync } from 'fs'
+import { mkdtempSync, writeFileSync, existsSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -122,7 +123,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.ION_TEST_HOME_BENCH_PENDING
-  rmSync(root, { recursive: true, force: true })
+  removeGitFixture(root)
 })
 
 describe('assembleBench — a member with nothing committed yet', () => {

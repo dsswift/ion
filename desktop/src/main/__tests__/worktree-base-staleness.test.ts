@@ -14,9 +14,10 @@
  * another worktree advances the feature branch — and also when a teammate
  * pushes or the operator commits to the feature branch directly.
  */
+import { removeGitFixture } from '../../test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, realpathSync } from 'fs'
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -63,7 +64,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.ION_TEST_HOME_BASE_STALENESS
-  rmSync(root, { recursive: true, force: true })
+  removeGitFixture(root)
 })
 
 function makeWorktree(name: string): { path: string; branch: string } {

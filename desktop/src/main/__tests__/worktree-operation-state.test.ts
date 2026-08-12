@@ -16,9 +16,10 @@
  * Real repos, not mocks: the behavior under test IS git's mid-rebase state
  * layout (.git/worktrees/<id>/rebase-merge/), which a mock would just restate.
  */
+import { removeGitFixture } from '../../test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, rmSync, writeFileSync, realpathSync } from 'fs'
+import { mkdtempSync, writeFileSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -103,7 +104,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.ION_TEST_HOME_WT_OPSTATE
-  rmSync(root, { recursive: true, force: true })
+  removeGitFixture(root)
 })
 
 describe('probeOperationState — reading git state via --git-path', () => {

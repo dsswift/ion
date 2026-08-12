@@ -10,6 +10,7 @@
  * beforeEach is enough and no module-load ordering is involved (same pattern
  * as bench-guard.test.ts).
  */
+import { removeGitFixture } from '../../test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -109,7 +110,7 @@ beforeEach(() => {
 
 afterEach(() => {
   process.env.HOME = savedHome
-  rmSync(root, { recursive: true, force: true })
+  removeGitFixture(root)
 })
 
 describe('bench history rules', () => {
