@@ -105,28 +105,6 @@ func readSessionListFromScanner(t *testing.T, conn net.Conn, scanner *bufio.Scan
 	return nil
 }
 
-// readSessionList drains incoming lines until it finds a {"cmd":"session_list"}
-// response. Skips events that interleave with the response.
-func readSessionList(t *testing.T, conn net.Conn, timeout time.Duration) *protocol.ServerSessionList {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	conn.SetReadDeadline(deadline)
-	scanner := bufio.NewScanner(conn)
-	for time.Now().Before(deadline) && scanner.Scan() {
-		line := scanner.Text()
-		if !strings.Contains(line, `"cmd":"session_list"`) {
-			continue
-		}
-		var resp protocol.ServerSessionList
-		if err := json.Unmarshal([]byte(line), &resp); err != nil {
-			t.Fatalf("unmarshal session_list: %v", err)
-		}
-		return &resp
-	}
-	t.Fatal("timed out waiting for session_list response")
-	return nil
-}
-
 func TestServerLifecycle(t *testing.T) {
 	sockPath := filepath.Join(t.TempDir(), "test.sock")
 	mb := helpers.NewMockBackend()

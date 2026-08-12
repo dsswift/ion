@@ -272,7 +272,7 @@ func TestScheduleFireTimeout_EndToEnd(t *testing.T) {
 	)
 	if webhookErr != nil {
 		t.Errorf("subprocess liveness check failed after timeout: %v (subprocess may have been killed)", webhookErr)
-	} else if rawWebhook == nil || len(rawWebhook) == 0 {
+	} else if len(rawWebhook) == 0 {
 		t.Errorf("subprocess liveness check returned empty response")
 	}
 }
