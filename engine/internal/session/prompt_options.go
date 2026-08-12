@@ -1,13 +1,16 @@
 package session
 
 import (
+	"context"
 	"strings"
+	"time"
 
 	ionconfig "github.com/dsswift/ion/engine/internal/config"
 	ioncontext "github.com/dsswift/ion/engine/internal/context"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/gitcontext"
 	"github.com/dsswift/ion/engine/internal/modelconfig"
+	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 	"github.com/dsswift/ion/engine/internal/workspaces"
@@ -450,6 +453,49 @@ func resolveModelTier(opts *types.RunOptions) {
 	}
 }
 
+// normalizeSlashThinkingForResolvedModel reconciles an explicit slash-run
+// thinking effort with the final selected model. Frontmatter tier resolution and
+// model_select can both replace the ambient model after desktop submitted the
+// prompt, so client-side capability repair against that ambient model is wrong.
+//
+// This applies only to a slash command with an explicit per-prompt effort. A
+// session/engine default has no caller-declared intent to reinterpret. "adaptive"
+// is valid only on an adaptive model; unsupported level values are likewise
+// cleared rather than reaching the provider as a rejected directive.
+func normalizeSlashThinkingForResolvedModel(opts *types.RunOptions, overrides *PromptOverrides) {
+	if opts.ResolvedSlashModelAlias == "" || overrides == nil || overrides.ThinkingEffort == "" || overrides.ThinkingEffort == types.ThinkingEffortOff {
+		return
+	}
+	info := providers.GetModelInfo(opts.Model)
+	if info == nil || info.ThinkingMode == "" {
+		utils.LogWithFields(utils.LevelDebug, "session.slash", "thinking capability unknown after model resolution", map[string]any{"model": opts.Model, "model_alias": opts.ResolvedSlashModelAlias})
+		return
+	}
+	if overrides.ThinkingEffort == types.ThinkingEffortAdaptive && info.ThinkingMode == "adaptive" {
+		return
+	}
+	for _, effort := range info.ThinkingEfforts {
+		if effort == overrides.ThinkingEffort {
+			return
+		}
+	}
+	opts.Thinking = nil
+	opts.ThinkingCleared = true
+	utils.LogWithFields(utils.LevelInfo, "session.slash", "cleared unsupported thinking effort after model resolution", map[string]any{
+		"model": opts.Model, "model_alias": opts.ResolvedSlashModelAlias, "effort": overrides.ThinkingEffort,
+	})
+}
+
+// refreshSlashModelProvenance records a reroute made after initial tier
+// resolution. Model-select hooks are allowed to choose the serving model, so
+// slash provenance must describe that final choice rather than the tier result.
+func refreshSlashModelProvenance(opts *types.RunOptions, key string) {
+	if opts.ResolvedSlashModelAlias == "" || opts.ResolvedSlashModelEffective == opts.Model {
+		return
+	}
+	finalizeSlashModelProvenance(opts, key)
+}
+
 func finalizeSlashModelProvenance(opts *types.RunOptions, key string) {
 	if opts.ResolvedSlashModelAlias == "" {
 		return
@@ -598,12 +644,39 @@ func (m *Manager) injectExtensionContext(s *engineSession, key string, opts *typ
 	}
 }
 
+// gitContextTimeout bounds the total wall-clock time git subprocesses may
+// take during a single prompt dispatch. Each GetGitContext call spawns
+// several git subprocesses (rev-parse, status, log); on a healthy repo
+// they complete in <100ms. 5s gives generous margin for large repos or
+// slow filesystems while preventing an indefinite hang.
+const gitContextTimeout = 5 * time.Second
+
+// testInjectGitContextHook is called at the start of injectGitContext when
+// non-nil. Tests use it to inject delays that simulate slow git
+// subprocesses without replacing the real binary. Nil in production.
+var testInjectGitContextHook func()
+
 // injectGitContext appends formatted git context to the system prompt.
+// Git subprocesses are bounded by gitContextTimeout; a timeout produces
+// a warning log and skips the injection rather than blocking the dispatch.
 func injectGitContext(s *engineSession, opts *types.RunOptions) {
+	if testInjectGitContextHook != nil {
+		testInjectGitContextHook()
+	}
 	if s.config.WorkingDirectory == "" {
 		return
 	}
-	if gitCtx := gitcontext.GetGitContext(s.config.WorkingDirectory); gitCtx != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), gitContextTimeout)
+	defer cancel()
+	gitCtx := gitcontext.GetGitContextWithContext(ctx, s.config.WorkingDirectory)
+	if ctx.Err() != nil {
+		utils.LogWithFields(utils.LevelWarn, "session", "git context timed out, skipping injection", map[string]any{
+			"cwd":     s.config.WorkingDirectory,
+			"timeout": gitContextTimeout.String(),
+		})
+		return
+	}
+	if gitCtx != nil {
 		if formatted := gitcontext.FormatForPrompt(gitCtx); formatted != "" {
 			opts.AppendSystemPrompt += "\n\n" + formatted
 		}

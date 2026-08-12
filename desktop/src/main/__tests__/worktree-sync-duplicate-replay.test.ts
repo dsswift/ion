@@ -24,9 +24,10 @@
  * Real repos, not mocks: the behavior under test IS git's range selection and
  * patch-id equivalence, which a mock would merely restate.
  */
+import { removeGitFixture } from '../../test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, rmSync, writeFileSync, realpathSync } from 'fs'
+import { mkdtempSync, writeFileSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -184,7 +185,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.ION_TEST_HOME_WT_DUP
-  rmSync(root, { recursive: true, force: true })
+  removeGitFixture(root)
 })
 
 describe('repeated sync does not replay commits the source branch already has', () => {

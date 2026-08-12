@@ -13,6 +13,7 @@
  * check-ignore semantics, symlink handling. Mocking those would assert that the
  * mocks agree with each other, not that the seeder works.
  */
+import { removeGitFixture } from '../../../test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, lstatSync, readFileSync, readlinkSync } from 'fs'
@@ -55,7 +56,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  rmSync(root, { recursive: true, force: true })
+  removeGitFixture(root)
 })
 
 describe('the check-ignore guard — the regression pin', () => {

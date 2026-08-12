@@ -51,6 +51,13 @@ export class EngineBridge extends EventEmitter {
    */
   lastLadderFailureAt = 0
   reconnectDisabled = false
+  /**
+   * Monotonic counter incremented on every successful socket connect.
+   * Package-internal (used by engine-bridge-start-session.ts to cancel
+   * stale reRegisterSessions batches after a new connection replaces the
+   * one that triggered the batch).
+   */
+  _reRegisterGeneration = 0
   private _drainScheduled = false
   // Package-internal (used by engine-bridge-start-session.ts and other siblings).
   activeSessions = new Map<string, { config: EngineConfig; conversationId?: string }>()
@@ -58,7 +65,8 @@ export class EngineBridge extends EventEmitter {
   private keyAliases = new Map<string, string>()
   /** Tracks last `engine_status` receipt per key for stale-sweep polling. */
   lastEngineStatusAt = new Map<string, number>()
-  private consecutiveTimeouts = 0
+  // Package-internal: reset by engine-bridge-connection.ts on new connection.
+  consecutiveTimeouts = 0
 
   constructor() {
     super()
@@ -253,8 +261,9 @@ export class EngineBridge extends EventEmitter {
 
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
-        warn('request_timeout', { request_id: requestId, cmd: msg.cmd })
+        if (!this.requestCallbacks.has(requestId)) return
         this.requestCallbacks.delete(requestId)
+        warn('request_timeout', { request_id: requestId, cmd: msg.cmd })
         this._onRequestTimeout()
         resolve({ ok: false, error: 'Request timed out' })
       }, 30000)
@@ -277,6 +286,7 @@ export class EngineBridge extends EventEmitter {
 
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
+        if (!this.requestCallbacks.has(requestId)) return
         this.requestCallbacks.delete(requestId)
         this._onRequestTimeout()
         resolve({ ok: false, error: 'Request timed out' })

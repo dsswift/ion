@@ -66,26 +66,36 @@ vi.mock('../session-store-helpers', () => ({
   scheduleDoneGroupMove: vi.fn(),
 }))
 
+const preferenceState = vi.hoisted(() => ({
+  autoGroupMovement: false,
+  tabGroupMode: 'manual',
+  planningGroupId: 'group-planning',
+  inProgressGroupId: 'group-inprogress',
+  doneGroupId: 'group-done',
+  preferredModel: null as string | null,
+  defaultPermissionMode: 'auto' as const,
+  planModelSplitEnabled: false,
+  planModeModel: null,
+  addRecentBaseDirectory: vi.fn(),
+  defaultTallConversation: false,
+  engineProfiles: [],
+  engineDefaultModel: null,
+  tabGroups: [
+    { id: 'group-default', label: 'Default', isDefault: true, order: 0 },
+  ],
+}))
+
 vi.mock('../../preferences', () => ({
   usePreferencesStore: {
-    getState: vi.fn(() => ({
-      autoGroupMovement: false,
-      tabGroupMode: 'manual',
-      planningGroupId: 'group-planning',
-      inProgressGroupId: 'group-inprogress',
-      doneGroupId: 'group-done',
-      preferredModel: null,
-      defaultPermissionMode: 'auto' as const,
-      planModelSplitEnabled: false,
-      planModeModel: null,
-      addRecentBaseDirectory: vi.fn(),
-      defaultTallConversation: false,
-      engineProfiles: [],
-      engineDefaultModel: null,
-      tabGroups: [
-        { id: 'group-default', label: 'Default', isDefault: true, order: 0 },
-      ],
-    })),
+    getState: vi.fn(() => preferenceState),
+  },
+}))
+
+const modelsById = vi.hoisted(() => new Map<string, { thinkingMode: string; thinkingEfforts: string[] }>())
+
+vi.mock('../model-store', () => ({
+  useModelStore: {
+    getState: () => ({ findModel: (id: string) => modelsById.get(id) }),
   },
 }))
 
@@ -213,6 +223,8 @@ function buildHarness(
 describe('prompt_sync parity — setPermissionMode before prompt', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    modelsById.clear()
+    preferenceState.preferredModel = null
     mockPrompt.mockResolvedValue(undefined)
   })
 
@@ -288,11 +300,143 @@ describe('prompt_sync parity — setPermissionMode before prompt', () => {
 
     expect(mockSetPermissionMode).toHaveBeenCalledWith('tab-1', 'plan', 'prompt_sync', '/plans/p.md')
   })
+
+  it('lets slash frontmatter select its tier over an automatic plan model', () => {
+    // A plan-mode model is an ambient default, not an operator's per-prompt
+    // selection. Omitting it allows `/create-pr`'s `model: standard` frontmatter
+    // to resolve through models.json instead of being forced to the plan model.
+    const { state } = buildHarness(makeTab(), {
+      permissionMode: 'plan',
+      modelOverride: 'gpt-5.6-sol',
+      modelOverrideSource: 'automatic',
+    })
+
+    state.submit('tab-1', '/create-pr')
+
+    expect(mockPrompt).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(String),
+      expect.objectContaining({ model: undefined }),
+    )
+  })
+
+  it('keeps effort unmodified when slash frontmatter owns the model', () => {
+    // Sol's effort-based capability would rewrite adaptive to off in the old
+    // renderer path. The final slash tier may target an adaptive model instead,
+    // so this directive must survive until the engine resolves that final model.
+    modelsById.set('gpt-5.6-sol', { thinkingMode: 'reasoning_effort', thinkingEfforts: ['low'] })
+    const { state } = buildHarness(makeTab(), {
+      modelOverride: 'gpt-5.6-sol',
+      modelOverrideSource: 'automatic',
+      thinkingEffort: 'adaptive',
+    })
+
+    state.submit('tab-1', '/create-pr')
+
+    expect(mockPrompt).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(String),
+      expect.objectContaining({ model: undefined, thinkingEffort: 'adaptive' }),
+    )
+  })
+
+  it('omits a preferred ambient model for a slash command', () => {
+    preferenceState.preferredModel = 'gpt-5.6-sol'
+    const { state } = buildHarness(makeTab(), { modelOverrideSource: null })
+
+    state.submit('tab-1', '/create-pr')
+
+    expect(mockPrompt).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(String),
+      expect.objectContaining({ model: undefined }),
+    )
+  })
+
+  it('does not treat a legacy unmarked model as explicit for a slash command', () => {
+    const { state } = buildHarness(makeTab(), {
+      modelOverride: 'gpt-5.6-sol',
+      modelOverrideSource: null,
+    })
+
+    state.submit('tab-1', '/create-pr')
+
+    expect(mockPrompt).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(String),
+      expect.objectContaining({ model: undefined }),
+    )
+  })
+
+  it('keeps an operator-selected model explicit for a slash command', () => {
+    const { state } = buildHarness(makeTab(), {
+      modelOverride: 'gpt-5.6-sol',
+      modelOverrideSource: 'user',
+    })
+
+    state.submit('tab-1', '/create-pr')
+
+    expect(mockPrompt).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(String),
+      expect.objectContaining({ model: 'gpt-5.6-sol' }),
+    )
+  })
+
+  it('continues to send an automatic model for an ordinary prompt', () => {
+    const { state } = buildHarness(makeTab(), {
+      modelOverride: 'gpt-5.6-sol',
+      modelOverrideSource: 'automatic',
+    })
+
+    state.submit('tab-1', 'review current changes')
+
+    expect(mockPrompt).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(String),
+      expect.objectContaining({ model: 'gpt-5.6-sol' }),
+    )
+  })
+
+  it('keeps iOS slash effort unmodified until engine resolves its tier', () => {
+    modelsById.set('gpt-5.6-sol', { thinkingMode: 'reasoning_effort', thinkingEfforts: ['low'] })
+    const { state } = buildHarness(makeTab(), {
+      modelOverride: 'gpt-5.6-sol',
+      modelOverrideSource: 'automatic',
+      thinkingEffort: 'adaptive',
+    })
+
+    state.submitRemotePrompt('tab-1', '/create-pr')
+
+    expect(mockPrompt).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(String),
+      expect.objectContaining({ model: undefined, source: 'remote', thinkingEffort: 'adaptive' }),
+    )
+  })
+
+  it('applies same slash precedence to an iOS prompt', () => {
+    const { state } = buildHarness(makeTab(), {
+      permissionMode: 'plan',
+      modelOverride: 'gpt-5.6-sol',
+      modelOverrideSource: 'automatic',
+    })
+
+    state.submitRemotePrompt('tab-1', '/create-pr')
+
+    expect(mockPrompt).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(String),
+      expect.objectContaining({ model: undefined, source: 'remote' }),
+    )
+  })
 })
 
 describe('permissionDenied clearing on new prompt', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    modelsById.clear()
+    preferenceState.preferredModel = null
     mockPrompt.mockResolvedValue(undefined)
   })
 
@@ -322,6 +466,8 @@ describe('permissionDenied clearing on new prompt', () => {
 describe('planFilePath forwarding from tab state', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    modelsById.clear()
+    preferenceState.preferredModel = null
     mockPrompt.mockResolvedValue(undefined)
   })
 
@@ -351,6 +497,8 @@ describe('planFilePath forwarding from tab state', () => {
 describe('Fix A — auto-exit does not corrupt prompt_sync assertion', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    modelsById.clear()
+    preferenceState.preferredModel = null
     mockPrompt.mockResolvedValue(undefined)
   })
 

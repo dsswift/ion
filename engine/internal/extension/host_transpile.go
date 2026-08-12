@@ -187,11 +187,11 @@ func ensureNodeModules(extDir string) error {
 	return nil
 }
 
-// parseInitResult extracts tools and commands from the subprocess init response
-// and registers them on the SDK.
-func (h *Host) parseInitResult(raw json.RawMessage) {
+// parseInitResult extracts tools and commands from the subprocess init response,
+// validates build identity, and registers them on the SDK.
+func (h *Host) parseInitResult(raw json.RawMessage) error {
 	if len(raw) == 0 || string(raw) == "null" {
-		return
+		return nil
 	}
 
 	var result struct {
@@ -216,10 +216,17 @@ func (h *Host) parseInitResult(raw json.RawMessage) {
 		// Resource kinds declared at init time (optional). The session
 		// wires them into the broker after the extension is fully loaded.
 		Resources []types.ResourceDeclaration `json:"resources,omitempty"`
+		// Build identity reported by the SDK subprocess. Compared against
+		// the engine's own build identity to detect mixed-build runtimes.
+		BuildIdentity string `json:"buildIdentity,omitempty"`
 	}
 	if err := json.Unmarshal(raw, &result); err != nil {
-		utils.LogWithFields(utils.LevelInfo, "extension", "init result parse error", map[string]any{"error": err})
-		return
+		utils.LogWithFields(utils.LevelError, "extension", "init result parse error", map[string]any{"error": err})
+		return fmt.Errorf("decode init result: %w", err)
+	}
+
+	if err := h.validateBuildIdentity(result.BuildIdentity); err != nil {
+		return err
 	}
 
 	if result.Name != "" {
@@ -299,4 +306,36 @@ func (h *Host) parseInitResult(raw json.RawMessage) {
 		h.pendingInitResources = append([]types.ResourceDeclaration(nil), result.Resources...)
 		utils.LogWithFields(utils.LevelInfo, "extension", "queued init resource decls", map[string]any{"model": h.name_(), "count": len(result.Resources)})
 	}
+
+	return nil
+}
+
+// validateBuildIdentity checks the SDK-reported build identity against the
+// engine's own. Mismatch (both non-empty, different) is a hard reject. Missing
+// (SDK returns empty) is a warning for backward compat with older SDKs.
+func (h *Host) validateBuildIdentity(sdkIdentity string) error {
+	engineID := h.engineBuildIdentity
+	fields := map[string]any{
+		"engine_build_identity": engineID,
+		"sdk_build_identity":    sdkIdentity,
+		"extension":             h.name,
+	}
+
+	if engineID == "" || engineID == "dev" {
+		utils.LogWithFields(utils.LevelDebug, "extension", "build identity check skipped: development engine build", fields)
+		return nil
+	}
+
+	if sdkIdentity == "" {
+		utils.LogWithFields(utils.LevelWarn, "extension", "SDK did not report build identity; allowing for backward compatibility", fields)
+		return nil
+	}
+
+	if sdkIdentity != engineID {
+		utils.LogWithFields(utils.LevelError, "extension", "build identity mismatch: engine and SDK built from different releases", fields)
+		return fmt.Errorf("build identity mismatch: engine=%q sdk=%q", engineID, sdkIdentity)
+	}
+
+	utils.LogWithFields(utils.LevelDebug, "extension", "build identity verified", fields)
+	return nil
 }

@@ -554,6 +554,7 @@ type ExtensionConfig struct {
 	Model            string `json:"model,omitempty"`
 	WorkingDirectory string `json:"workingDirectory"`
 	McpConfigPath    string `json:"mcpConfigPath,omitempty"`
+	BuildIdentity    string `json:"buildIdentity,omitempty"`
 	// ExtensionAllowlist, when non-empty, restricts which extensions Host.Load
 	// will spawn (feature 0011 / D-020, issue #308). The session layer copies
 	// the enterprise allowlist into this field so every load path (initial,

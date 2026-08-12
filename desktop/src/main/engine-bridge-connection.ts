@@ -37,6 +37,10 @@ export const IS_REMOTE = REMOTE_SOCKET.includes(':')
 export const LADDER_FAST_FAIL_WINDOW_MS = 30000
 
 export async function doConnect(bridge: EngineBridge): Promise<void> {
+  if (bridge.reconnectDisabled) {
+    throw new Error('Engine bridge connection is disabled during teardown.')
+  }
+
   // Try connecting to the daemon socket directly. The engine is a launchd
   // daemon; the desktop never spawns it. If the socket is not reachable,
   // retry with backoff (launchd may still be starting the daemon after
@@ -44,7 +48,10 @@ export async function doConnect(bridge: EngineBridge): Promise<void> {
   try {
     await connectSocket(bridge)
     return
-  } catch {
+  } catch (err) {
+    if (bridge.reconnectDisabled) {
+      throw err
+    }
     // Socket not ready yet
   }
 
@@ -106,11 +113,21 @@ function connectSocket(bridge: EngineBridge): Promise<void> {
     }
 
     conn.on('connect', () => {
+      if (bridge.reconnectDisabled) {
+        // stopAll can run while a socket is still connecting. Never publish
+        // that late connection onto a bridge that teardown already retired.
+        conn.destroy()
+        reject(new Error('Engine bridge connection was stopped during connect.'))
+        return
+      }
+
       const wasReconnect = bridge.reconnectAttempts > 0
       bridge.conn = conn
       bridge.connected = true
       bridge.reconnectAttempts = 0
       bridge.lastLadderFailureAt = 0
+      bridge.consecutiveTimeouts = 0
+      bridge._reRegisterGeneration++
       bridge.buffer = ''
       log('Connected to engine server')
       resolve()
@@ -126,6 +143,7 @@ function connectSocket(bridge: EngineBridge): Promise<void> {
     })
 
     conn.on('close', () => {
+      if (bridge.conn !== conn) return
       bridge.connected = false
       bridge.conn = null
       log('Disconnected from engine server')
@@ -139,8 +157,7 @@ function connectSocket(bridge: EngineBridge): Promise<void> {
         reject(err)
         return
       }
-      // For remote connections, emit a toast-friendly event for transient
-      // network errors instead of flooding each chat with error bubbles.
+      if (bridge.conn !== conn) return
       if (IS_REMOTE && (err.code === 'EHOSTDOWN' || err.code === 'ECONNREFUSED' || err.code === 'ECONNRESET')) {
         warn('remote_engine_unreachable', { code: err.code })
         bridge._failPendingRequests('Remote engine unreachable')
@@ -164,7 +181,7 @@ export function scheduleReconnect(bridge: EngineBridge): void {
   bridge.reconnectTimer = setTimeout(() => {
     void (async () => {
       bridge.reconnectTimer = null
-      if (bridge.connected) return
+      if (bridge.reconnectDisabled || bridge.connected) return
       try {
         await bridge.connect()
       } catch {

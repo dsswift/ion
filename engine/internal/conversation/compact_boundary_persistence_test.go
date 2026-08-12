@@ -255,17 +255,17 @@ func TestCompactBoundary_TreeRebuildAfterReloadMatchesLiveInjection(t *testing.T
 	if len(rebuiltBlocks) != 1 {
 		t.Fatalf("rebuilt boundary has %d blocks, want 1", len(rebuiltBlocks))
 	}
-	// The rebuild path carries only the fields persisted on
-	// CompactionData (Summary + TokensBefore) and a "auto" Trigger
-	// default. Pin those — see tree.go's EntryCompaction branch.
+	// The rebuild path carries exactly fields persisted on CompactionData. Older
+	// entries have no Strategy value, so Trigger remains empty rather than being
+	// silently rewritten to "auto".
 	if !strings.Contains(rebuiltBlocks[0].Summary, "we discussed Go") {
 		t.Errorf("rebuilt Summary = %q, want it to contain the persisted summary", rebuiltBlocks[0].Summary)
 	}
 	if rebuiltBlocks[0].TokensBefore != 50_000 {
 		t.Errorf("rebuilt TokensBefore = %d, want 50_000", rebuiltBlocks[0].TokensBefore)
 	}
-	if rebuiltBlocks[0].Trigger != "auto" {
-		t.Errorf("rebuilt Trigger = %q, want 'auto' default", rebuiltBlocks[0].Trigger)
+	if rebuiltBlocks[0].Trigger != "" {
+		t.Errorf("rebuilt Trigger = %q, want empty from legacy entry without persisted strategy", rebuiltBlocks[0].Trigger)
 	}
 	if rebuiltBlocks[0].Type != CompactBoundaryBlockType {
 		t.Errorf("rebuilt Type = %q, want %q", rebuiltBlocks[0].Type, CompactBoundaryBlockType)

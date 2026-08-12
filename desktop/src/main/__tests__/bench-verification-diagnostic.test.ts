@@ -4,9 +4,10 @@
  *
  * Real repos, not mocks: the merge/replay behaviour under test is git rerere's.
  */
+import { removeGitFixture } from '../../test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, realpathSync } from 'fs'
+import { mkdtempSync, writeFileSync, mkdirSync, existsSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -104,7 +105,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.ION_TEST_HOME_BENCH_DIAGNOSTIC
-  rmSync(root, { recursive: true, force: true })
+  removeGitFixture(root)
 })
 
 describe('prepareVerificationDiagnostic', () => {

@@ -111,6 +111,15 @@ type Manager struct {
 	// SetProcessTelemetry from the server's SetConfig, alongside the server's
 	// own process collector. Guarded by m.mu.
 	procTelemetry *telemetry.Collector
+
+	// engineBuildIdentity is the engine binary's build identity (set via
+	// ldflags). Propagated to extension Hosts so the init handshake can
+	// validate that the SDK subprocess was built from the same release.
+	engineBuildIdentity string
+
+	// persistedDispatchLocks serializes per-conversation read-modify-write updates
+	// to durable dispatch records without blocking unrelated conversations.
+	persistedDispatchLocks sync.Map // map[string]*sync.Mutex
 }
 
 // SetProcessTelemetry installs the process-level telemetry collector used for
@@ -120,6 +129,14 @@ type Manager struct {
 func (m *Manager) SetProcessTelemetry(c *telemetry.Collector) {
 	m.mu.Lock()
 	m.procTelemetry = c
+	m.mu.Unlock()
+}
+
+// SetEngineBuildIdentity stores the engine binary's build identity so it
+// can be propagated to extension Hosts during the init handshake.
+func (m *Manager) SetEngineBuildIdentity(id string) {
+	m.mu.Lock()
+	m.engineBuildIdentity = id
 	m.mu.Unlock()
 }
 

@@ -39,3 +39,19 @@ func resolveMaxDispatchDepth(perDispatch int, engineCfg int) int {
 	}
 	return DefaultMaxDispatchDepth
 }
+
+// remainingDepthBudget reports child dispatch levels available to an agent at
+// currentDepth under effectiveCap. A cap reached by the next child reports 0.
+func remainingDepthBudget(effectiveCap, currentDepth int) int {
+	budget := effectiveCap - currentDepth
+	if budget < 0 {
+		return 0
+	}
+	return budget
+}
+
+// RemainingDepthBudget resolves the engine cap then returns levels available
+// from currentDepth. Root hook paths use this without duplicating depth policy.
+func RemainingDepthBudget(engineCap, currentDepth int) int {
+	return remainingDepthBudget(resolveMaxDispatchDepth(0, engineCap), currentDepth)
+}

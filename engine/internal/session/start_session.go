@@ -483,9 +483,11 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 			host.RegisterRequiredHooks(hooks)
 		}
 
+		host.SetEngineBuildIdentity(m.engineBuildIdentity)
 		extCfg := &extension.ExtensionConfig{
 			ExtensionDir:     filepath.Dir(extPath),
 			WorkingDirectory: config.WorkingDirectory,
+			BuildIdentity:    m.engineBuildIdentity,
 		}
 		// Enterprise extension allowlist (feature 0011 / D-020, issue #308):
 		// carry the sealed allowlist into the host so Host.Load can enforce it
@@ -642,6 +644,11 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 			}
 			return nil
 		})
+
+		host.SetPersistentAckDispatchLost(func(dispatchID string) {
+			m.persistLostNoticeState(s.conversationID, dispatchID, "sent")
+		})
+		s.dispatchRegistry.SetDispatchLossRecallObserver(m.persistRecallIntents)
 
 		// Persistent recall for ext/recall_agent when the parent run is idle.
 		// The dispatch registry outlives runs; wiring it here lets a watchdog

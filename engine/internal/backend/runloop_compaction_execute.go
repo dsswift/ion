@@ -59,6 +59,7 @@ func (b *ApiBackend) performCompact(p performCompactParams) error {
 	// A no-op is defined only by mutation. Do not pay for a summary or claim a
 	// compaction occurred merely because a summary string could be generated.
 	noOp := cleared == 0 && cut.Dropped == 0
+	microOnly := !noOp && cut.Dropped == 0
 	var summary, sessionMemory string
 	var facts []compaction.Fact
 	if noOp {
@@ -91,35 +92,44 @@ func (b *ApiBackend) performCompact(p performCompactParams) error {
 			}
 		}
 
-		recentFiles := compaction.ExtractRecentFiles(p.conv.Messages[cut.CutIndex:])
-		meta := conversation.CompactMeta{
-			Trigger: p.trigger, MessagesSummarized: cut.Dropped,
-			MessagesBefore: msgBefore, MessagesAfter: msgBefore - cut.Dropped + 1,
-			ClearedBlocks: cleared, TokensBefore: tokensBefore, Summary: summary,
-			FactCount: len(facts), RecentFiles: recentFiles,
-		}
-		data := conversation.CompactionData{
-			Summary: summary, TokensBefore: tokensBefore, MessagesBefore: msgBefore,
-			MessagesAfter: meta.MessagesAfter, ClearedBlocks: cleared,
-			Strategy: p.trigger, MicroOnly: !shouldHardTruncate,
-		}
-		if _, err := conversation.CommitCompaction(p.conv, cut, data, conversation.BuildCompactBoundaryMessage(meta)); err != nil {
-			b.emit(p.run, types.NormalizedEvent{Data: &types.CompactingEvent{Active: false, MessagesBefore: msgBefore, MessagesAfter: msgBefore, Strategy: p.trigger}})
-			return fmt.Errorf("commit compaction: %w", err)
+		if microOnly {
+			if err := conversation.CommitMicroCompaction(p.conv); err != nil {
+				b.emit(p.run, types.NormalizedEvent{Data: &types.CompactingEvent{Active: false, MessagesBefore: msgBefore, MessagesAfter: msgBefore, Strategy: p.trigger, MicroOnly: true}})
+				return fmt.Errorf("commit micro compaction: %w", err)
+			}
+		} else {
+			recentFiles := compaction.ExtractRecentFiles(p.conv.Messages[cut.CutIndex:])
+			meta := conversation.CompactMeta{
+				Trigger: p.trigger, MessagesSummarized: cut.Dropped,
+				MessagesBefore: msgBefore, MessagesAfter: msgBefore - cut.Dropped + 1,
+				ClearedBlocks: cleared, TokensBefore: tokensBefore, Summary: summary,
+				FactCount: len(facts), RecentFiles: recentFiles,
+			}
+			data := conversation.CompactionData{
+				Summary: summary, TokensBefore: tokensBefore, MessagesSummarized: cut.Dropped,
+				MessagesBefore: msgBefore, MessagesAfter: meta.MessagesAfter, ClearedBlocks: cleared,
+				Strategy: p.trigger, FactCount: len(facts), RecentFiles: recentFiles,
+			}
+			if _, err := conversation.CommitCompaction(p.conv, cut, data, conversation.BuildCompactBoundaryMessage(meta)); err != nil {
+				b.emit(p.run, types.NormalizedEvent{Data: &types.CompactingEvent{Active: false, MessagesBefore: msgBefore, MessagesAfter: msgBefore, Strategy: p.trigger}})
+				return fmt.Errorf("commit compaction: %w", err)
+			}
 		}
 	}
 
 	storedMsgAfter := len(p.conv.Messages)
 	sourceMsgAfter := msgBefore
 	if !noOp {
-		// Stored slice includes the boundary. Report source-message counts on the
-		// event/hook contract, including transient messages removed by the atomic
-		// tree rebuild only if they actually survived.
-		sourceMsgAfter = storedMsgAfter - 1
+		if microOnly {
+			sourceMsgAfter = msgBefore
+		} else {
+			// Stored slice includes the hard-compaction boundary.
+			sourceMsgAfter = storedMsgAfter - 1
+		}
 	}
 	b.emit(p.run, types.NormalizedEvent{Data: &types.CompactingEvent{
 		Active: false, Summary: summary, MessagesBefore: msgBefore, MessagesAfter: sourceMsgAfter,
-		ClearedBlocks: cleared, Strategy: p.trigger, MicroOnly: !shouldHardTruncate,
+		ClearedBlocks: cleared, Strategy: p.trigger, MicroOnly: microOnly,
 	}})
 	tokensAfter := conversation.GetContextUsage(p.conv, p.contextWindow).Tokens
 
@@ -129,7 +139,7 @@ func (b *ApiBackend) performCompact(p performCompactParams) error {
 			"tokens_reclaimed": tokensBefore - tokensAfter, "messages_before": msgBefore,
 			"messages_after": sourceMsgAfter, "stored_messages_after": storedMsgAfter, "dropped_messages": cut.Dropped,
 			"cleared_blocks": cleared, "fact_count": len(facts), "summary_len": len(summary),
-			"target_tokens": targetTokens, "target_basis": targetBasis, "micro_only": !shouldHardTruncate,
+			"target_tokens": targetTokens, "target_basis": targetBasis, "micro_only": microOnly,
 		}, buildTelemCtx(p.run))
 	}
 

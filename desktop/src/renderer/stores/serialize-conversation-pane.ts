@@ -242,6 +242,9 @@ export function serializeConversationPane(
     }
 
     if (inst.modelOverride) out.modelOverride = inst.modelOverride
+    // Preserve source on every new write. Legacy values have unknown origin,
+    // so they cannot prove an explicit per-prompt preference for a slash run.
+    if (inst.modelOverrideSource) out.modelOverrideSource = inst.modelOverrideSource
     if (inst.sessionModel) out.sessionModel = inst.sessionModel
     if (inst.permissionMode && inst.permissionMode !== 'auto') out.permissionMode = inst.permissionMode
     // Thinking effort: conditional-write like permissionMode above. 'off' is

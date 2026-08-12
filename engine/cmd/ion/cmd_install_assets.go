@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -52,8 +53,16 @@ func cmdInstallAssets() {
 		fmt.Fprintf(os.Stderr, "install-assets: install SDK: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("==> Installed extension SDK to %s\n", sdkDst)
 
+	// Stamp the engine's build identity into the installed SDK so the
+	// subprocess can report it back during the init handshake. The engine
+	// validates this against its own identity to detect mixed-build runtimes.
+	if err := stampBuildIdentity(sdkDst); err != nil {
+		fmt.Fprintf(os.Stderr, "install-assets: stamp build identity: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("==> Installed extension SDK to %s\n", sdkDst)
 	fmt.Println("==> install-assets complete")
 }
 
@@ -136,6 +145,22 @@ func copyDirContents(src, dst string) error {
 		}
 		return copyFile(path, target)
 	})
+}
+
+// stampBuildIdentity writes build-identity.json into the SDK directory tree
+// at ion-sdk/build-identity.json. The SDK runtime reads this file at init
+// time and reports it in the init response so the engine Host can detect
+// version mismatches between the engine binary and the installed SDK.
+func stampBuildIdentity(sdkDir string) error {
+	identity := struct {
+		BuildIdentity string `json:"buildIdentity"`
+	}{BuildIdentity: version}
+	data, err := json.Marshal(identity)
+	if err != nil {
+		return fmt.Errorf("marshal build identity: %w", err)
+	}
+	dst := filepath.Join(sdkDir, "ion-sdk", "build-identity.json")
+	return os.WriteFile(dst, data, 0o644)
 }
 
 // copyFile copies a single regular file from src to dst, preserving

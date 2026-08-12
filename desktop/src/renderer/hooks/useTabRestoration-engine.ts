@@ -546,6 +546,10 @@ export function buildPopulatedInstance(
     // empty AND messageCount > 0) fires and lazy-load triggers correctly.
     messageCount: restoredMessages.length > 0 ? restoredMessages.length : (inst.messageCount ?? 0),
     modelOverride: inst.modelOverride || null,
+    // Files written before modelOverrideSource existed cannot prove whether
+    // their model was picked by a user or selected automatically. Keep that
+    // provenance unknown rather than guessing from the model value.
+    modelOverrideSource: inst.modelOverride ? (inst.modelOverrideSource ?? null) : null,
     sessionModel: null,
     permissionMode: permMode,
     permissionDenied: denied,

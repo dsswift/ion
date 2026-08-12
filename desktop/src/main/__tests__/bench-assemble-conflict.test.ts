@@ -14,9 +14,10 @@
  *
  * Real repos rather than mocks: the behaviour under test is git's.
  */
+import { removeGitFixture } from '../../test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync, mkdirSync, realpathSync } from 'fs'
+import { mkdtempSync, writeFileSync, existsSync, readFileSync, mkdirSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -102,7 +103,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.ION_TEST_HOME_BENCH_CONFLICT
-  rmSync(root, { recursive: true, force: true })
+  removeGitFixture(root)
 })
 
 describe('assembleBench — atomic conflicts and missing members', () => {

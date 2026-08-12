@@ -191,7 +191,10 @@ export interface State {
   cancelCloseTab: () => void
   reorderTabs: (reorderedTabs: TabState[]) => void
   renameTab: (tabId: string, customTitle: string | null) => void
+  /** Records a direct picker/remote model choice as explicit user intent. */
   setTabModel: (tabId: string, model: string) => void
+  /** Records a plan/implementation/workflow-selected model without masking slash frontmatter. */
+  setTabAutomaticModel: (tabId: string, model: string) => void
   setTabPillColor: (tabId: string, color: string | null) => void
   setTabPillIcon: (tabId: string, icon: string | null) => void
   clearTab: () => void

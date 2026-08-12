@@ -82,7 +82,9 @@ func SanitizeMessages(messages []types.LlmMessage) []types.LlmMessage {
 			removed++
 			continue
 		}
-		normalized = append(normalized, types.LlmMessage{Role: msg.Role, Content: filtered})
+		clean := msg
+		clean.Content = filtered
+		normalized = append(normalized, clean)
 	}
 
 	// Pass 2: enforce tool_use/tool_result pairing
@@ -180,7 +182,9 @@ func SanitizeMessages(messages []types.LlmMessage) []types.LlmMessage {
 					removed++
 					continue
 				}
-				result = append(result, types.LlmMessage{Role: msg.Role, Content: current})
+				clean := msg
+				clean.Content = current
+				result = append(result, clean)
 				continue
 			}
 
@@ -228,7 +232,9 @@ func SanitizeMessages(messages []types.LlmMessage) []types.LlmMessage {
 			// immediately after"). The partition is stable: tool_result blocks
 			// keep their relative order and non-tool_result blocks keep theirs.
 			filtered = partitionToolResultsFirst(filtered)
-			result = append(result, types.LlmMessage{Role: msg.Role, Content: filtered})
+			clean := msg
+			clean.Content = filtered
+			result = append(result, clean)
 			continue
 		}
 

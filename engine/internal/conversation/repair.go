@@ -33,11 +33,15 @@ type TreeRepairReport struct {
 	DuplicateIDs int
 	// CyclesBroken counts parent links severed to break reference cycles.
 	CyclesBroken int
+	// InvalidCompactionsRepaired counts compaction boundaries that recorded no
+	// source-message removal but still reset the active LLM path. Such a boundary
+	// can only be produced by corrupted metadata or a failed compaction commit.
+	InvalidCompactionsRepaired int
 }
 
 // repaired reports whether any repair was performed.
 func (r TreeRepairReport) repaired() bool {
-	return r.DanglingParentsRepaired > 0 || r.LeafRepaired || r.CyclesBroken > 0
+	return r.DanglingParentsRepaired > 0 || r.LeafRepaired || r.CyclesBroken > 0 || r.InvalidCompactionsRepaired > 0
 }
 
 // validateAndRepairTree validates entry linkage and repairs deterministically:
@@ -62,6 +66,13 @@ func validateAndRepairTree(conv *Conversation) TreeRepairReport {
 	if len(conv.Entries) == 0 {
 		return report
 	}
+
+	// Repair invalid zero-drop compactions before validating parent links. A
+	// historical faulty commit could append a compaction entry after the old leaf
+	// while retaining zero durable source messages. Removing that reset node and
+	// reconnecting its children restores the full active path without touching
+	// display history or any valid hard-compaction boundary.
+	repairInvalidZeroDropCompactions(conv, &report)
 
 	ids := make(map[string]int, len(conv.Entries)) // id → first file-order index
 	for i := range conv.Entries {
@@ -169,12 +180,13 @@ func validateAndRepairTree(conv *Conversation) TreeRepairReport {
 
 	if report.repaired() {
 		utils.LogWithFields(utils.LevelWarn, "conversation", "tree repair: repaired on load", map[string]any{
-			"conversation_id":   conv.ID,
-			"dangling_parents":  report.DanglingParentsRepaired,
-			"leaf_repaired":     report.LeafRepaired,
-			"duplicate_ids":     report.DuplicateIDs,
-			"cycles_broken":     report.CyclesBroken,
-			"total_entries":     len(conv.Entries),
+			"conversation_id":     conv.ID,
+			"dangling_parents":    report.DanglingParentsRepaired,
+			"leaf_repaired":       report.LeafRepaired,
+			"duplicate_ids":       report.DuplicateIDs,
+			"cycles_broken":       report.CyclesBroken,
+			"invalid_compactions": report.InvalidCompactionsRepaired,
+			"total_entries":       len(conv.Entries),
 		})
 	}
 	return report

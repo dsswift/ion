@@ -377,6 +377,10 @@ type AgentInfo struct {
 	// false for sub-agent before_agent_start firings and for the agent_start /
 	// agent_end hooks (which only ever describe sub-agents).
 	IsRoot bool `json:"isRoot,omitempty"`
+	// RemainingDepthBudget is the number of child dispatch levels available from
+	// this agent under the effective dispatch-depth cap. It is present on
+	// before_agent_start payloads and omitted for other lifecycle hooks.
+	RemainingDepthBudget int `json:"remainingDepthBudget,omitempty"`
 }
 
 // BeforeProviderRequestInfo describes a pending outbound LLM provider request.

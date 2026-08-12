@@ -5,6 +5,7 @@
       "payloadFields": [
         "isRoot",
         "name",
+        "remainingDepthBudget",
         "task"
       ],
       "result": "none"
@@ -14,6 +15,7 @@
       "payloadFields": [
         "isRoot",
         "name",
+        "remainingDepthBudget",
         "task"
       ],
       "result": "none"
@@ -54,6 +56,7 @@
       "payloadFields": [
         "isRoot",
         "name",
+        "remainingDepthBudget",
         "task"
       ],
       "result": "structured",
@@ -624,6 +627,7 @@
     }
   },
   "extRequests": [
+    "ext/ack_dispatch_lost",
     "ext/answer_dispatch_question",
     "ext/call_tool",
     "ext/clean_stale_processes",
@@ -677,6 +681,7 @@
     "log"
   ],
   "initResult": [
+    "buildIdentity",
     "commands",
     "name",
     "resources",

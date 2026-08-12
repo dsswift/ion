@@ -48,6 +48,7 @@ export function emptyConversationInstance(
     messages: [],
     messageCount: 0,
     modelOverride: null,
+    modelOverrideSource: null,
     sessionModel: null,
     permissionMode: 'auto',
     permissionDenied: null,

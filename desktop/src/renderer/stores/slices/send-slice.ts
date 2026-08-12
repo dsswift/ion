@@ -12,6 +12,29 @@ import { parseSlash } from '../../../main/slash-parse'
 import { rDebug, rInfo, rWarn } from '../../rendererLogger'
 import { createSendBashSlice } from './send-slice-bash'
 
+type PromptModelSelection = Pick<import('../../../shared/types-engine').ConversationInstance, 'modelOverride' | 'modelOverrideSource' | 'sessionModel'> | null | undefined
+
+/**
+ * Resolve a per-conversation thinking preference only when this renderer knows
+ * the model that will serve the prompt. Slash frontmatter resolves in engine
+ * after this dispatch, so its ambient model must not rewrite the preference.
+ */
+function resolvePromptThinkingEffort(
+  isSlashPrompt: boolean,
+  instance: PromptModelSelection,
+  rawEffort: import('../../../shared/types-session').ThinkingEffort,
+  preferredModel: string | null | undefined,
+): import('../../../shared/types-session').ThinkingEffort {
+  const explicitSlashModel = isSlashPrompt && instance?.modelOverrideSource === 'user'
+  const effortModelId = isSlashPrompt && !explicitSlashModel
+    ? undefined
+    : instance?.modelOverride || instance?.sessionModel || preferredModel
+  const effortModel = effortModelId ? useModelStore.getState().findModel(effortModelId) : undefined
+  return effortModel
+    ? resolveEffortForModel(rawEffort, effortModel.thinkingMode, effortModel.thinkingEfforts ?? [])
+    : rawEffort
+}
+
 export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
     // Bash-execution actions (startBashCommand, completeBashCommand,
@@ -343,20 +366,20 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // effort and drops the directive — silently no reasoning on a model where
       // the level is the only way to get any. Resolve to the model's neutral
       // entry instead, matching what the picker displays.
-      const sendModelId = sendInst?.modelOverride || sendInst?.sessionModel || preferredModel
-      const sendModelEntry = sendModelId ? useModelStore.getState().findModel(sendModelId) : undefined
       const rawEffort = effectiveThinkingEffort(tab, get().conversationPanes)
-      const thinkingEffort = resolveEffortForModel(
-        rawEffort,
-        sendModelEntry?.thinkingMode,
-        sendModelEntry?.thinkingEfforts ?? [],
-      )
+      const thinkingEffort = resolvePromptThinkingEffort(isSlashPrompt, sendInst, rawEffort, preferredModel)
 
       window.ion.prompt(tabId, requestId, {
         prompt: fullPrompt,
         projectPath: resolvedPath,
         sessionId: tab.conversationId || undefined,
-        model: sendInst?.modelOverride || preferredModel || undefined,
+        // `preferredModel` and plan/implementation/workflow models are ambient
+        // defaults. Sending either as `send_prompt.model` would turn it into an
+        // explicit override and defeat slash frontmatter (`standard` / `fast`).
+        // Only a direct picker choice remains explicit for a slash command.
+        model: isSlashPrompt
+          ? (sendInst?.modelOverrideSource === 'user' ? sendInst.modelOverride || undefined : undefined)
+          : sendInst?.modelOverride || preferredModel || undefined,
         addDirs: tab.additionalDirs.length > 0 ? tab.additionalDirs : undefined,
         appendSystemPrompt: effectiveSystemPrompt,
         extensions,
@@ -513,6 +536,14 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // Same plan-file-continuity sync as the local sendMessage path above.
       window.ion.setPermissionMode(tabId, syncMode, 'prompt_sync', syncMode === 'plan' ? (remoteInst?.planFilePath || undefined) : undefined)
 
+      // Remote submission uses the same per-conversation thinking setting as
+      // desktop submission. Keep slash frontmatter model selection opaque until
+      // engine resolution, exactly as the local path does.
+      const remoteRawEffort = effectiveThinkingEffort(tab, get().conversationPanes)
+      const remoteThinkingEffort = resolvePromptThinkingEffort(
+        isSlashPrompt, remoteInst, remoteRawEffort, preferredModel,
+      )
+
       let remoteExtensions: string[] | undefined
       if (tab.engineProfileId) {
         const profile = usePreferencesStore.getState().engineProfiles.find((p) => p.id === tab.engineProfileId)
@@ -525,11 +556,16 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         prompt,
         projectPath: resolvedPath,
         sessionId: tab.conversationId || undefined,
-        model: remoteInst?.modelOverride || preferredModel || undefined,
+        // Mirror desktop sends: model frontmatter owns a slash command unless
+        // the operator explicitly selected a model for this conversation.
+        model: isSlashPrompt
+          ? (remoteInst?.modelOverrideSource === 'user' ? remoteInst.modelOverride || undefined : undefined)
+          : remoteInst?.modelOverride || preferredModel || undefined,
         addDirs: tab.additionalDirs.length > 0 ? tab.additionalDirs : undefined,
         source: 'remote',
         extensions: remoteExtensions,
         imageAttachments,
+        thinkingEffort: remoteThinkingEffort,
         planFilePath: remoteInst?.planFilePath || undefined,
         // When the iOS slash re-submit set this, instruct the engine to
         // resolve + expand the raw `/command args` text rather than sending

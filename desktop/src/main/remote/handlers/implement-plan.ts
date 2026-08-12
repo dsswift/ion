@@ -109,7 +109,7 @@ export async function handleImplementPlan(
           var s = store.getState();
           var p = prefs.getState();
           if (p.planModelSplitEnabled && p.implementModeModel) {
-            s.setTabModel('${escapedTab}', p.implementModeModel);
+            s.setTabAutomaticModel('${escapedTab}', p.implementModeModel);
           }
           var tab = s.tabs.find(function(t) { return t.id === '${escapedTab}'; });
           if (tab

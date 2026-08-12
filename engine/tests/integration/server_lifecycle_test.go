@@ -65,6 +65,46 @@ func readLines(t *testing.T, conn net.Conn, n int, timeout time.Duration) []stri
 	return lines
 }
 
+// scanForResult waits for a command result by request ID while retaining one
+// scanner across an event-interleaved command sequence. A socket can deliver
+// several complete NDJSON messages in one read, so constructing a new scanner
+// per response can discard buffered messages from later commands.
+func scanForResult(t *testing.T, conn net.Conn, scanner *bufio.Scanner, requestID string, timeout time.Duration) {
+	t.Helper()
+	if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+		t.Fatalf("set read deadline for %q: %v", requestID, err)
+	}
+	for scanner.Scan() {
+		var result protocol.ServerResult
+		if err := json.Unmarshal(scanner.Bytes(), &result); err != nil || result.RequestID != requestID {
+			continue
+		}
+		if !result.OK {
+			t.Fatalf("request %q failed: %s", requestID, result.Error)
+		}
+		return
+	}
+	t.Fatalf("timed out waiting for result %q", requestID)
+}
+
+// readSessionListFromScanner drains incoming lines until it finds a
+// session_list response, retaining the scanner used for previous results.
+func readSessionListFromScanner(t *testing.T, conn net.Conn, scanner *bufio.Scanner, timeout time.Duration) *protocol.ServerSessionList {
+	t.Helper()
+	if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+		t.Fatalf("set read deadline for session list: %v", err)
+	}
+	for scanner.Scan() {
+		var resp protocol.ServerSessionList
+		if err := json.Unmarshal(scanner.Bytes(), &resp); err != nil || resp.Cmd != "session_list" {
+			continue
+		}
+		return &resp
+	}
+	t.Fatal("timed out waiting for session_list response")
+	return nil
+}
+
 // readSessionList drains incoming lines until it finds a {"cmd":"session_list"}
 // response. Skips events that interleave with the response.
 func readSessionList(t *testing.T, conn net.Conn, timeout time.Duration) *protocol.ServerSessionList {
@@ -250,6 +290,7 @@ func TestConcurrentSessions(t *testing.T) {
 	t.Cleanup(func() { srv.Stop() })
 
 	conn := dialSocket(t, sockPath)
+	scanner := bufio.NewScanner(conn)
 
 	config := map[string]interface{}{
 		"profileId":        "default",
@@ -258,42 +299,43 @@ func TestConcurrentSessions(t *testing.T) {
 		"model":            "mock-model",
 	}
 
-	// Start 3 sessions
+	// Start three sessions. Preserve one scanner for every response: server
+	// startup emits multiple broadcast events before its result, and Scanner may
+	// buffer later lines that would be lost if each command created a new one.
 	for _, key := range []string{"sess-1", "sess-2", "sess-3"} {
+		requestID := "req-" + key
 		sendCmd(t, conn, map[string]interface{}{
 			"cmd":       "start_session",
 			"key":       key,
 			"config":    config,
-			"requestId": "req-" + key,
+			"requestId": requestID,
 		})
-		// Read event + result
-		readLines(t, conn, 2, 2*time.Second)
+		scanForResult(t, conn, scanner, requestID, 2*time.Second)
 	}
 
-	// List sessions -- should show 3
+	// List sessions -- should show three.
 	sendCmd(t, conn, map[string]interface{}{"cmd": "list_sessions"})
-	resp := readSessionList(t, conn, 2*time.Second)
+	resp := readSessionListFromScanner(t, conn, scanner, 2*time.Second)
 	if len(resp.Sessions) != 3 {
 		t.Errorf("expected 3 sessions, got %d", len(resp.Sessions))
 	}
 
-	// Stop one session
+	// Stop one session.
 	sendCmd(t, conn, map[string]interface{}{
 		"cmd":       "stop_session",
 		"key":       "sess-2",
 		"requestId": "req-stop",
 	})
-	// Read event (engine_dead) + result
-	readLines(t, conn, 2, 2*time.Second)
+	scanForResult(t, conn, scanner, "req-stop", 2*time.Second)
 
-	// List again -- should show 2
+	// List again -- should show two.
 	sendCmd(t, conn, map[string]interface{}{"cmd": "list_sessions"})
-	resp = readSessionList(t, conn, 2*time.Second)
+	resp = readSessionListFromScanner(t, conn, scanner, 2*time.Second)
 	if len(resp.Sessions) != 2 {
 		t.Errorf("expected 2 sessions after stop, got %d", len(resp.Sessions))
 	}
 
-	// Verify remaining keys
+	// Verify remaining keys.
 	keys := make(map[string]bool)
 	for _, s := range resp.Sessions {
 		keys[s.Key] = true

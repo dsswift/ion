@@ -6,7 +6,7 @@ import { setSavedBuffer } from '../components/TerminalInstance'
 import { restoreConversationTab } from './useTabRestoration-engine'
 import { makeLocalTab } from '../stores/session-store-helpers'
 import { makeMainPane, commitInstance } from '../stores/conversation-instance'
-import { normalizeLegacyTabFields, readMainInstance, seedContextStatusFields, reassertRestoredPlanMode, resolveBootActiveTabId, hydrateBootActiveTab, hydrateBootWorkspace } from './useTabRestoration-helpers'
+import { normalizeLegacyTabFields, readMainInstance, restoredModelSelection, seedContextStatusFields, reassertRestoredPlanMode, resolveBootActiveTabId, hydrateBootActiveTab, hydrateBootWorkspace } from './useTabRestoration-helpers'
 import { startRestoredSessions } from './useTabRestoration-sessions'
 import { loadRestoredHistory } from './useTabRestoration-history'
 import { resolveRegisteredWorktree } from '../stores/worktree-registration'
@@ -116,7 +116,7 @@ export function useTabRestoration() {
                 const restoredMode: 'auto' | 'plan' = main?.permissionMode ?? (st as any).permissionMode ?? 'auto'
                 const conversationPanes = commitInstance(s.conversationPanes, tabId, (inst) => ({
                   ...inst,
-                  modelOverride: main?.modelOverride || null,
+                  ...restoredModelSelection(main),
                   draftInput: main?.draftInput ?? '',
                   permissionMode: restoredMode,
                   // Absent means 'off' — the serializer omits the default.
@@ -226,7 +226,7 @@ export function useTabRestoration() {
                 // events land on this pane before the user opens the tab.
                 historyHydrated: false,
                 messageCount: main?.messageCount ?? 0,
-                modelOverride: main?.modelOverride || null,
+                ...restoredModelSelection(main),
                 draftInput: main?.draftInput ?? '',
                 permissionDenied: main?.permissionDenied ?? null,
                 planFilePath: main?.planFilePath ?? null,
@@ -305,7 +305,7 @@ export function useTabRestoration() {
             const sessionlessMain = readMainInstance(st)
             const sessionlessMode: 'auto' | 'plan' = sessionlessMain?.permissionMode ?? (st as any).permissionMode ?? 'auto'
             const sessionlessPane = makeMainPane({
-              modelOverride: sessionlessMain?.modelOverride || null,
+              ...restoredModelSelection(sessionlessMain),
               draftInput: sessionlessMain?.draftInput ?? '',
               permissionMode: sessionlessMode,
               // Absent means 'off' — the serializer omits the default.

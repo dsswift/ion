@@ -54,8 +54,16 @@ type LlmMessage struct {
 	Content any    `json:"content"` // string or []LlmContentBlock
 	// EntryID links this in-memory LLM message to its persisted SessionEntry.
 	// Internal-only: providers, disk, SDKs, and wire consumers never see it.
-	// Empty means the message is transient and has no tree entry.
+	// Empty means the message has no tree entry. This is valid only when
+	// Transient is true; tree-backed compaction rejects an unidentified ordinary
+	// message rather than silently deleting it from reconstructed context.
 	EntryID string `json:"-"`
+	// Transient identifies an intentional in-memory-only injection. It is set
+	// exclusively by the conversation helpers for messages that must not reach
+	// the durable tree. Internal-only: it never crosses disk, provider, SDK, or
+	// wire boundaries. It distinguishes legitimate entry-less messages from a
+	// lost EntryID during a metadata transform such as sanitization.
+	Transient bool `json:"-"`
 	// Usage carries the API-reported token counts from the response that produced
 	// this message. Set only on assistant messages; nil on all other roles.
 	// Tagged json:"-" so it is excluded from JSON serialization (providers, disk,

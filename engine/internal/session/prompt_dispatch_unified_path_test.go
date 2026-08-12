@@ -60,10 +60,9 @@ func TestLateLoadExtensions_NilVsEmptySlice_NoopEquivalence(t *testing.T) {
 				overrides = &PromptOverrides{Extensions: tc.exts}
 			}
 
-			// Hold the lock as lateLoadExtensions requires caller to hold mu.
-			mgr.mu.Lock()
+			// lateLoadExtensions is self-locking (off-lock context-injection
+			// refactor): caller must NOT hold mgr.mu when calling it.
 			mgr.lateLoadExtensions(s, "late-load-"+tc.name, overrides)
-			mgr.mu.Unlock()
 
 			// extGroup must still be nil: lateLoadExtensions must have returned
 			// immediately without installing any extension group.

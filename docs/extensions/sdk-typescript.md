@@ -20,6 +20,12 @@ const ion = createIon()
 
 Returns an `IonSDK` instance. Register all hooks, tools, and commands synchronously after calling `createIon()`. The SDK starts reading stdin on `process.nextTick()`, giving your registration code time to run first.
 
+## Build identity
+
+At init, the runtime reads `~/.ion/extensions/sdk/ion-sdk/build-identity.json` and returns its `buildIdentity` in the handshake. Release engines reject a TypeScript SDK stamped by another build, preventing stale installed SDK files from running against a newly installed engine.
+
+A missing, unreadable, malformed, or shape-invalid stamp produces an empty identity for compatibility with older SDK installs and emits a structured `log` warning containing the path and read error when available. Development engines identified as `dev` accept any SDK identity. `ion install-assets` writes the stamp with the SDK files; extension authors do not set it manually.
+
 ## IonSDK
 
 The main SDK interface.
@@ -510,6 +516,15 @@ await ctx.dispatchAgent({
 
 ```typescript
 const found = await ctx.recallAgent('code-reviewer', { reason: 'user requested' })
+```
+
+**`ackDispatchLost(dispatchId)`** -- acknowledge durable handling of a `dispatch_lost` notice. The engine re-emits a loss after each engine restart until its consumer acknowledges it, so call this only after your handler has durably handled, delivered, or intentionally ignored the loss. Repeated acknowledgements succeed, making retry safe.
+
+```typescript
+ion.on('dispatch_lost', async (ctx, info) => {
+  // ...handle the loss...
+  await ctx.ackDispatchLost(info.dispatch_id)
+})
 ```
 
 **`llmCall(opts)`** -- run a single-turn, no-tools LLM completion through the engine's provider registry. Resolves with an `LLMCallResult` (text plus token/cost telemetry). This is the lightweight one-shot primitive for extraction, classification, routing, and summarisation prompts — it has no agent loop and no tool access. Going through `llmCall` (rather than calling a provider SDK directly) keeps the call visible to Ion's hook surface (it fires `before_provider_request` once per invocation) and to per-call observability (the `engine_llm_call` event).

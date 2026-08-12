@@ -21,9 +21,10 @@
  * operator works on their feature branch in the main clone, so landing takes
  * the in-place merge path rather than the ref-advance path.
  */
+import { removeGitFixture } from '../../test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, realpathSync } from 'fs'
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -74,7 +75,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.ION_TEST_HOME_BENCH_SCENARIO
-  rmSync(root, { recursive: true, force: true })
+  removeGitFixture(root)
 })
 
 function makeWorktree(name: string): { path: string; branch: string } {

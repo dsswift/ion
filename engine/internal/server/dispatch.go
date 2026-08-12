@@ -122,10 +122,12 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 
 	case "stop_session":
 		err := s.manager.StopSession(cmd.Key)
+		s.lanes.evictSession(cmd.Key)
 		s.sendResult(conn, cmd, err, nil)
 
 	case "stop_by_prefix":
 		s.manager.StopByPrefix(cmd.Prefix)
+		s.lanes.evictByPrefix(cmd.Prefix)
 		s.sendResult(conn, cmd, nil, nil)
 
 	case "list_sessions":
@@ -559,9 +561,15 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		s.dispatchGetPlanContent(conn, cmd)
 
 	case "shutdown":
-		if err := s.Stop(); err != nil {
-			utils.LogWithFields(utils.LevelInfo, "server", "shutdown stop returned error", map[string]any{"error": err.Error()})
-		}
+		// dispatch runs inside a command-lane worker. Stop waits for those workers,
+		// so calling it here would wait for this dispatch to return and deadlock.
+		// Starting shutdown separately lets this command complete before Stop joins
+		// the lanes.
+		go func() {
+			if err := s.Stop(); err != nil {
+				utils.LogWithFields(utils.LevelInfo, "server", "shutdown stop returned error", map[string]any{"error": err.Error()})
+			}
+		}()
 
 	case "plugin_install":
 		utils.LogWithFields(utils.LevelInfo, "server", "plugin install", map[string]any{"source": cmd.Source})

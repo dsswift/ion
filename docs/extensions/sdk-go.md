@@ -69,10 +69,11 @@ func main() {
 }
 ```
 
-Build it to a binary named `main` and drop the directory into `~/.ion/extensions/`:
+Build it to a binary named `main` and drop the directory into `~/.ion/extensions/`. Stamp the exact engine identity into every production binary so the init handshake proves which SDK release was statically linked:
 
 ```bash
-go build -o main .
+ENGINE_BUILD_IDENTITY="$(ion version | awk '{print $2}')"
+go build -ldflags "-X github.com/dsswift/ion/sdk/go.BuildIdentity=${ENGINE_BUILD_IDENTITY}" -o main .
 ```
 
 ```
@@ -84,6 +85,8 @@ go build -o main .
 The engine probes for script entry points first (`extension.ts`, `index.ts`, `extension.js`, and so on), then for an executable file named `main`. The executable bit is required: a `main` without it fails at load with a clear error rather than at spawn with a bare permission denial.
 
 The public Go SDK is an ordinary Go module resolved by `go get`. In a source checkout, `engine/commands/install.command` also copies `sdk/go` into `~/.ion/extensions/sdk-go` as a developer asset, so locally compiled extensions use the SDK matching their installed engine. The `ion install-assets` subcommand installs only the TypeScript SDK.
+
+`BuildIdentity` is intentionally linker-stamped rather than read from the engine's init config. A compiled Go extension statically links its SDK, so echoing an engine-provided value would let an old binary claim any new engine identity. The engine compares the value embedded in the extension artifact with its own and rejects a mismatch. An empty SDK value remains compatible with older SDKs and logs a warning. Engine builds identified as `dev` also accept any SDK identity, so local source builds work without linker stamping. Release builds require an exact match; rebuild the extension with the command above to enable strict verification.
 
 ## Stdout is the protocol
 
@@ -341,7 +344,7 @@ Every RPC-backed method takes a `context.Context` first. This is not decoration:
 | Identity (fields)   | `SessionKey`, `ConversationID`, `RunID`, `TraceID`, `Depth`, `DispatchID`, `Cwd`, `Model`, `Config`                                         |
 | Events and messages | `Emit`, `SendMessage`, `SendPrompt`                                                                                                    |
 | Tools               | `CallTool`, `SuppressTool`                                                                                                             |
-| Dispatch            | `DispatchAgent`, `RecallAgent`, `SteerDispatch`, `SteerDispatchByName`, `SteerSelf`, `ListDispatchState`, `AnswerDispatchQuestion`     |
+| Dispatch            | `DispatchAgent`, `RecallAgent`, `SteerDispatch`, `SteerDispatchByName`, `SteerSelf`, `ListDispatchState`, `AnswerDispatchQuestion`, `AckDispatchLost` |
 | Agents              | `DiscoverAgents`, `RegisterAgentSpec`, `DeregisterAgentSpec`, `SetDispatchContextDefaults`                                             |
 | Session             | `Elicit`, `GetContextUsage`, `SearchHistory`, `GetSessionMemory`, `SetSessionMemory`, `WalkContextFiles`, `Suspend`, `SuspendUntilAll` |
 | Plan mode           | `EnterPlanMode`, `ExitPlanMode`, `GetPlanMode`                                                                                         |
@@ -351,6 +354,16 @@ Every RPC-backed method takes a `context.Context` first. This is not decoration:
 | Other               | `HTTP()`, `LLMCall`, `Notify`, `RunOnce`, `SandboxWrap`, `Log()`                                                                       |
 
 `DispatchAgent` is asynchronous by default: it returns a stub with `DispatchID`, and the engine routes terminal results to the owner. Set `WaitForCompletion: true` only when explicit blocking terminal output is required.
+
+`AckDispatchLost` confirms durable handling of a `dispatch_lost` hook notice. The engine re-emits an unacknowledged loss after every later restart; call it only after your handler has durably recorded, delivered, or intentionally ignored the loss. Repeated acknowledgements are safe.
+
+```go
+ion.OnHook(sdk, ion.HookDispatchLost,
+	func(ctx *ion.Context, info ion.DispatchLostInfo) (ion.NoResult, error) {
+		// Record or deliver the loss first.
+		return ion.NoResult{}, ctx.AckDispatchLost(context.Background(), info.DispatchID)
+	})
+```
 
 At the root session the engine omits `Depth` and `DispatchID`, so their zero values (`0` and `""`) _are_ the root shape rather than missing data. It omits `RunID` and `TraceID` when no prompt-to-completion run is active, so both are `""` for lifecycle hooks, schedules, and webhooks outside a run.
 

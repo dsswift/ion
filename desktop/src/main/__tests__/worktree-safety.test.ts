@@ -17,9 +17,10 @@
  *    ref, and the recovered content is byte-identical.
  * 4. Preservation does not disturb the worktree it is rescuing.
  */
+import { removeGitFixture } from '../../test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, realpathSync } from 'fs'
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -62,7 +63,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  rmSync(root, { recursive: true, force: true })
+  removeGitFixture(root)
 })
 
 describe('appraiseWorktree — tells the truth about what would be lost', () => {

@@ -281,8 +281,10 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 		return fmt.Errorf("init handshake: %w", err)
 	}
 
-	// Parse init response to register tools and commands
-	h.parseInitResult(initResult)
+	// Parse init response, validate build identity, register tools and commands.
+	if err := h.parseInitResult(initResult); err != nil {
+		return fmt.Errorf("init result: %w", err)
+	}
 
 	// Record the cold-start readiness latency now that the init handshake
 	// succeeded. Caller holds h.mu.

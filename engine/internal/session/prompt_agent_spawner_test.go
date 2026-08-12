@@ -13,6 +13,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
+	"github.com/dsswift/ion/engine/internal/session/extcontext"
 	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
 )
@@ -1084,5 +1085,46 @@ func TestWireAgentSpawner_NestedDispatchChain(t *testing.T) {
 	}
 	if lead.DispatchParentId != "" {
 		t.Errorf("lead.DispatchParentId = %q, want empty (orchestrator-direct)", lead.DispatchParentId)
+	}
+}
+
+func TestWireAgentSpawner_UnnamedRootResolutionUsesRootPayload(t *testing.T) {
+	mgr := NewManager(newMockBackend())
+	mgr.childBackendOverride = func() backend.RunBackend {
+		return &childStubBackend{resultText: "child output"}
+	}
+	if _, err := mgr.StartSession("root-hook-payload", defaultConfig()); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	mgr.mu.RLock()
+	s := mgr.sessions["root-hook-payload"]
+	mgr.mu.RUnlock()
+
+	var received extension.AgentInfo
+	host := extension.NewHost()
+	host.SDK().On(extension.HookBeforeAgentStart, func(_ *extension.Context, payload interface{}) (interface{}, error) {
+		info, ok := payload.(extension.AgentInfo)
+		if !ok {
+			t.Fatalf("before_agent_start payload = %T, want AgentInfo", payload)
+		}
+		received = info
+		return nil, nil
+	})
+	group := extension.NewExtensionGroup()
+	group.Add(host)
+
+	runCfg := &backend.RunConfig{}
+	mgr.wireAgentSpawner(s, s.key, "claude-sonnet", group, runCfg)
+	if _, err := runCfg.AgentSpawner(tools.WithAgentWaitForCompletion(context.Background(), true), "", "choose an owner", "", "/tmp", ""); err != nil {
+		t.Fatalf("AgentSpawner: %v", err)
+	}
+	if !received.IsRoot {
+		t.Error("unnamed root resolution must carry IsRoot=true")
+	}
+	if received.RemainingDepthBudget != extcontext.DefaultMaxDispatchDepth {
+		t.Errorf("remaining depth budget = %d, want %d", received.RemainingDepthBudget, extcontext.DefaultMaxDispatchDepth)
+	}
+	if received.Task != "choose an owner" {
+		t.Errorf("task = %q, want root task", received.Task)
 	}
 }

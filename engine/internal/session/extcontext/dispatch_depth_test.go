@@ -84,6 +84,7 @@ func (a *depthTestAccessor) BumpParentProgress()                                
 func (a *depthTestAccessor) AllocatePlanFilePath(_ string) string                 { return "/tmp/.ion/plans/plan.md" }
 func (a *depthTestAccessor) EmitDispatchCountStatus(_ string)                     {}
 func (a *depthTestAccessor) EngineConfig() *types.EngineRuntimeConfig             { return a.config }
+func (a *depthTestAccessor) EngineBuildIdentity() string                          { return "" }
 func (a *depthTestAccessor) ClaudeCompat() bool                                   { return false }
 func (a *depthTestAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
 func (a *depthTestAccessor) ResolveTier(name string) string                       { return name }
@@ -210,6 +211,24 @@ func TestDepthGuard_NoDispatchStart(t *testing.T) {
 	for _, ev := range acc.emittedEvents() {
 		if ev.Type == "engine_dispatch_start" {
 			t.Fatal("dispatch_start should NOT be emitted for a blocked dispatch")
+		}
+	}
+}
+
+func TestBeforeAgentStartInfo_RemainingDepthBudget(t *testing.T) {
+	opts := &extension.DispatchAgentOpts{Name: "worker", Task: "work"}
+	cases := []struct {
+		childDepth int
+		wantBudget int
+	}{
+		{childDepth: 1, wantBudget: 2},
+		{childDepth: 2, wantBudget: 1},
+		{childDepth: 3, wantBudget: 0},
+	}
+	for _, tc := range cases {
+		info := beforeAgentStartInfo(opts, tc.childDepth, DefaultMaxDispatchDepth)
+		if info.RemainingDepthBudget != tc.wantBudget {
+			t.Errorf("depth %d budget = %d, want %d", tc.childDepth, info.RemainingDepthBudget, tc.wantBudget)
 		}
 	}
 }

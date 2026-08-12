@@ -226,9 +226,9 @@ export function createGitConflictSlice(set: StoreSet, get: StoreGet): Partial<St
       // context to sway the fix. Skipping keeps the guarantee unconditional.
       const tabId = await get().createTabInDirectory(directory, false, true)
 
-      // Pin the tier's model on the fresh conversation. setTabModel writes
-      // modelOverride on the active instance, which submit() then sends.
-      get().setTabModel(tabId, tier.model)
+      // Select the workflow tier on the fresh conversation. Automatic model
+      // selection yields to slash-command frontmatter on any later command.
+      get().setTabAutomaticModel(tabId, tier.model)
 
       // Force auto mode regardless of the operator's default. The assist's
       // whole job is to EXECUTE the fix; a plan-mode default would park it

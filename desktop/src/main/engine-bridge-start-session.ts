@@ -117,23 +117,48 @@ export async function startSession(
  * engine-side binding store and the desktop B1 divergence guard, this keeps a
  * tab bound to its original conversation across an engine restart (#230/#231).
  *
- * Fire-and-forget per session: a failed re-register is logged and skipped so one
- * bad session does not block recovery of the others.
+ * Batched with a concurrency cap so a reconnect with many tracked sessions
+ * doesn't flood the just-recovered socket. Generation-guarded: if a second
+ * reconnect increments `_reRegisterGeneration` while a batch is in flight,
+ * the stale batch cancels and the new connection's batch takes over.
  */
+const RE_REGISTER_BATCH_SIZE = 5
+
 export function reRegisterSessions(bridge: EngineBridge): void {
-  for (const [key, entry] of bridge.activeSessions) {
-    log('start_session: re-registering after reconnect', { key })
-    const config = { ...entry.config }
-    if (entry.conversationId) {
-      config.sessionId = entry.conversationId
+  const generation = bridge._reRegisterGeneration
+  const entries = [...bridge.activeSessions]
+  log('re-register: starting', { count: entries.length, generation })
+
+  void (async () => {
+    for (let i = 0; i < entries.length; i += RE_REGISTER_BATCH_SIZE) {
+      if (bridge._reRegisterGeneration !== generation) {
+        log('re-register: cancelled, generation changed', { generation, current: bridge._reRegisterGeneration })
+        return
+      }
+      const batch = entries.slice(i, i + RE_REGISTER_BATCH_SIZE)
+      await Promise.all(
+        batch.map(([key, entry]) => {
+          if (bridge._reRegisterGeneration !== generation) return Promise.resolve()
+          log('start_session: re-registering after reconnect', { key })
+          const config = { ...entry.config }
+          if (entry.conversationId) {
+            config.sessionId = entry.conversationId
+          }
+          return bridge
+            ._sendWithResult({ cmd: 'start_session', key, config })
+            .then((result) => {
+              if (result.ok && bridge._reRegisterGeneration === generation) {
+                bridge.sendReconcileState(key)
+              }
+            })
+            .catch(() => {
+              warn('start_session: failed to re-register', { key })
+            })
+        }),
+      )
     }
-    bridge
-      ._sendWithResult({ cmd: 'start_session', key, config })
-      .then((result) => {
-        if (result.ok) bridge.sendReconcileState(key)
-      })
-      .catch(() => {
-        warn('start_session: failed to re-register', { key })
-      })
-  }
+    if (bridge._reRegisterGeneration === generation) {
+      log('re-register: complete', { count: entries.length, generation })
+    }
+  })()
 }

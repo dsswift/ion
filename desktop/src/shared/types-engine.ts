@@ -185,8 +185,15 @@ export interface ConversationInstance {
    * tab's `main` instance carries the count its `TabState` used to hold.
    */
   messageCount: number
-  /** Model override in effect for this instance (null = use tab/profile default) */
+  /** Model selection in effect for this instance (null = use tab/profile default). */
   modelOverride: string | null
+  /**
+   * Why `modelOverride` exists. User selection is a published per-prompt
+   * preference; automatic selection comes from plan/implementation mode or a
+   * workflow. Slash-command frontmatter supersedes automatic selection, while
+   * a direct user choice remains an explicit override.
+   */
+  modelOverrideSource: 'user' | 'automatic' | null
   /**
    * Engine-reported active model for this conversation (from `session_init`
    * for normal tabs, mirrored from `statusFields.model` for engine tabs).

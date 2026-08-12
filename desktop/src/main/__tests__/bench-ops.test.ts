@@ -7,9 +7,10 @@
  * in member B's half-finished change — the exact failure the pinned model
  * exists to prevent.
  */
+import { removeGitFixture } from '../../test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync, realpathSync, statSync } from 'fs'
+import { mkdtempSync, writeFileSync, existsSync, readFileSync, realpathSync, statSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -63,7 +64,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.ION_TEST_HOME_BENCH_OPS
-  rmSync(root, { recursive: true, force: true })
+  removeGitFixture(root)
 })
 
 function makeWorktree(name: string): { path: string; branch: string } {

@@ -11,9 +11,10 @@
  * The hook is RETIRE, not tab close: closing a conversation deliberately leaves
  * the worktree (and its membership) intact so the operator can come back to it.
  */
+import { removeGitFixture } from '../../test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, rmSync, writeFileSync, existsSync, mkdirSync, realpathSync } from 'fs'
+import { mkdtempSync, writeFileSync, existsSync, mkdirSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -64,7 +65,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.ION_TEST_HOME_BENCH_DISENROLL
-  rmSync(root, { recursive: true, force: true })
+  removeGitFixture(root)
 })
 
 function makeWorktree(name: string): { path: string; branch: string } {

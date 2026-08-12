@@ -132,6 +132,9 @@ type SessionAccessor interface {
 	DispatchRegistry() *DispatchRegistry
 
 	EngineConfig() *types.EngineRuntimeConfig
+	// EngineBuildIdentity is the running engine binary identity. Child extension
+	// hosts use it during their init handshake to reject stale SDK runtimes.
+	EngineBuildIdentity() string
 
 	// ClaudeCompat reports the parent session's Claude-compatibility setting.
 	// It lives on the session-level config (EngineConfig.ClaudeCompat), not on

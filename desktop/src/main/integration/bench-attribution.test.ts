@@ -6,7 +6,8 @@
  * commits rather than of this module's bookkeeping.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { rmSync, writeFileSync } from 'fs'
+import { writeFileSync } from 'fs'
+import { removeGitFixture } from '../../test/git-fixture-cleanup'
 import { join } from 'path'
 import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
 
@@ -40,7 +41,7 @@ beforeEach(() => {
 afterEach(() => {
   setAttributionGitForTest(null)
   delete process.env.ION_TEST_HOME_BENCH_ATTR
-  rmSync(f.root, { recursive: true, force: true })
+  removeGitFixture(f.root)
 })
 
 function attr(req: Partial<AttributionRequest>): AttributionResult {

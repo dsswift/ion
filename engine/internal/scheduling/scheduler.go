@@ -78,8 +78,9 @@ type Scheduler struct {
 	// a new host is bootstrapped for a job that was previously tracked by a
 	// now-removed host. This preserves interval cadence across host-pointer
 	// replacements (session teardown + recreation).
-	extNextRun map[extensionJobKey]time.Time
-	inFlight   sync.Map // hostJobKey -> struct{}
+	extNextRun    map[extensionJobKey]time.Time
+	inFlight      sync.Map // hostJobKey -> struct{}
+	inFlightSkips sync.Map // hostJobKey -> *inFlightSkipState
 
 	// persistDir is the directory under which last-run markers are
 	// persisted. Empty means no persistence (tests / catch-up
@@ -452,9 +453,7 @@ func (s *Scheduler) maybeFire(h *extension.Host, job extension.ScheduleJob, now 
 		return
 	}
 	if _, busy := s.inFlight.LoadOrStore(key, struct{}{}); busy {
-		// A previous fire is still running; skip this tick to avoid
-		// overlap. Log so the operator sees the overlap.
-		utils.LogWithFields(utils.LevelInfo, "scheduling", "maybe fire skip previous in flight", map[string]any{"model": h.Name(), "schedule_job_id": job.JobID})
+		s.logInFlightSkip(h, job, key)
 		return
 	}
 	if resolve == nil {
@@ -480,6 +479,7 @@ func (s *Scheduler) maybeFire(h *extension.Host, job extension.ScheduleJob, now 
 // the next tick — it has NOT spent its shot.
 func (s *Scheduler) fireJob(h *extension.Host, job extension.ScheduleJob, key hostJobKey, resolve SessionResolver) {
 	defer s.inFlight.Delete(key)
+	defer s.inFlightSkips.Delete(key)
 	now := s.now()
 
 	// For repeating jobs: advance next-run BEFORE the fire so a slow
@@ -667,6 +667,7 @@ func (s *Scheduler) FireScheduleNow(h *extension.Host, jobID string) error {
 // a live tick fire. When backfill is false, behavior is identical to fireJob.
 func (s *Scheduler) fireJobWithMeta(h *extension.Host, job extension.ScheduleJob, key hostJobKey, resolve SessionResolver, backfill bool, missedSlotUtc string) {
 	defer s.inFlight.Delete(key)
+	defer s.inFlightSkips.Delete(key)
 	now := s.now()
 
 	if job.Kind != extension.ScheduleOnce {

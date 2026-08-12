@@ -1,6 +1,7 @@
+import { removeGitFixture } from '../../test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, realpathSync } from 'fs'
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { parseUntrackedObstruction, retryAfterClearingBlockingUntracked } from '../git/untracked-obstruction'
@@ -30,7 +31,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  rmSync(root, { recursive: true, force: true })
+  removeGitFixture(root)
 })
 
 describe('parseUntrackedObstruction', () => {

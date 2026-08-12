@@ -12,9 +12,10 @@
  *  - GIT_CONFLICT_ACCEPT ours/theirs stages the file and empties the unmerged
  *    list, including the delete-conflict path where acceptance is `git rm`.
  */
+import { removeGitFixture } from '../../test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, rmSync, writeFileSync, existsSync, realpathSync } from 'fs'
+import { mkdtempSync, writeFileSync, existsSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -92,7 +93,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.ION_TEST_HOME_GIT_CONFLICTS
-  rmSync(root, { recursive: true, force: true })
+  removeGitFixture(root)
 })
 
 describe('GIT_OP_STATE', () => {

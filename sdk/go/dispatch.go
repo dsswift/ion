@@ -87,12 +87,13 @@ func (s *SDK) dispatch(id *int64, method string, params json.RawMessage) {
 // initResult is the handshake response. Field names are pinned by the engine's
 // parseInitResult and by the contract manifest's initResult section.
 type initResult struct {
-	Name      string                 `json:"name,omitempty"`
-	Tools     []wireToolDecl         `json:"tools"`
-	Commands  map[string]wireCommand `json:"commands"`
-	Webhooks  []WebhookRoute         `json:"webhooks,omitempty"`
-	Schedules []ScheduleJob          `json:"schedules,omitempty"`
-	Resources []ResourceDeclaration  `json:"resources,omitempty"`
+	Name          string                 `json:"name,omitempty"`
+	Tools         []wireToolDecl         `json:"tools"`
+	Commands      map[string]wireCommand `json:"commands"`
+	Webhooks      []WebhookRoute         `json:"webhooks,omitempty"`
+	Schedules     []ScheduleJob          `json:"schedules,omitempty"`
+	Resources     []ResourceDeclaration  `json:"resources,omitempty"`
+	BuildIdentity string                 `json:"buildIdentity,omitempty"`
 }
 
 // wireToolDecl is a tool as the engine reads it at init. Execute stays local.
@@ -153,12 +154,13 @@ func (s *SDK) handleInit(id *int64, params json.RawMessage) {
 	s.markInitDone()
 
 	result := initResult{
-		Name:      s.name,
-		Tools:     tools,
-		Commands:  commands,
-		Webhooks:  webhooks,
-		Schedules: schedules,
-		Resources: resources,
+		Name:          s.name,
+		Tools:         tools,
+		Commands:      commands,
+		Webhooks:      webhooks,
+		Schedules:     schedules,
+		Resources:     resources,
+		BuildIdentity: BuildIdentity,
 	}
 
 	if id != nil {

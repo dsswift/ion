@@ -34,11 +34,11 @@ All compaction triggers use the same two-step flow:
 
 Replaces `tool_result` content (>100 chars) with `[cleared]` in messages older than the most recent N user turns (default 3, configurable via `microCompactKeep`). Image blocks are never cleared. If pass 1 clears nothing, a second pass truncates long assistant text blocks (>200 chars) in the same message range.
 
-After micro-compaction, the engine re-checks context usage. If below the limit, step 2 is skipped.
+After micro-compaction, the engine re-checks context usage. If it is below the limit, the pass is **micro-only**: compacted `LlmContent` overrides persist on existing tree entries, no `EntryCompaction` boundary is inserted, and every source message remains in provider context and transcript history.
 
 ### Step 2: Token-budget truncation with summary
 
-When micro-compaction is insufficient, the engine hard-truncates to a target token budget. Proactive and reactive compaction interpret `targetPercent` against the context window (default 50%). Explicit `/compact` interprets it against the currently truncatable message estimate so a user-forced pass always targets removable material. Before truncation drops messages, a summary is generated using the **four-tier fallback**:
+When micro-compaction is insufficient, the engine hard-truncates to a target token budget. Proactive and reactive compaction interpret `targetPercent` against the context window (default 50%). Explicit `/compact` interprets it against the currently truncatable message estimate so a user-forced pass always targets removable material. Before hard truncation drops messages, a summary is generated using the **four-tier fallback**:
 
 1. **Session memory** — if the background session memory summarizer has produced a current summary, use it (zero-cost, no LLM call).
 2. **LLM summary** — send only the message prefix being dropped to an LLM for summarization (costs one additional LLM call). Enabled by default; disable with `summaryEnabled: false`.
@@ -51,15 +51,9 @@ For reactive compaction, the target budget shrinks with each retry (`targetPerce
 
 ## Post-compaction artifacts
 
-After truncation, the engine injects a **typed compact-boundary user message** containing:
+After hard truncation, the engine inserts a **typed compact-boundary user message** into provider context. It carries the summary, strategy, source and retained message counts, cleared-block count, token count, fact count, and recent files. The boundary is persisted as an `EntryCompaction`; `.llm.jsonl` reconstructs it followed by the exact retained message suffix. Full pre-compaction entries remain in `.tree.jsonl` for history, search, and client rendering, while the active provider path restarts at the boundary.
 
-- A `[SYSTEM] Context compaction completed` notice with cleared-block count
-- The summary (if generated), under `[Extracted facts from compacted context]`
-- Recently modified files detected in the remaining messages
-- The full transcript path: `{convDir}/{convID}.tree.jsonl` — so the model can read pre-compaction history if needed
-- Instructions to use SearchHistory or re-read files rather than recapping
-
-The boundary is persisted as an `EntryCompaction`; `.llm.jsonl` reconstructs it followed by the exact retained message suffix. The full pre-compaction tree remains available for history and search, while the active LLM path restarts at the boundary.
+A conversation can separately contain an `EntryCleared` checkpoint from `/clear`. It is a dual projection: `LoadMessages` retains all pre-clear transcript rows, the DisplayOnly `/clear` invocation, and the clear divider for clients; provider context starts strictly after the latest checkpoint. Neither pre-clear content, `/clear`, nor the divider is sent to a provider.
 
 ### Immediate persistence
 
@@ -125,8 +119,8 @@ Engine config (`engine.json`) controls compaction behavior under the `compaction
 | `microCompactKeep` | int | `3` | Number of recent user turns whose tool results are protected from micro-compaction. |
 | `estimationPadding` | float | `1.33` | Multiplier applied to heuristic token estimates (conservative buffer to avoid immediate re-compaction). |
 | `summaryEnabled` | bool (nullable) | `null` (enabled) | Whether LLM-based summarization is used during compaction (tier 2 of the fallback). |
-| `summaryModel` | string | `""` | Model to use for LLM summarization. Empty uses the session's current model. |
-| `summaryMaxTokens` | int | `0` | Max output tokens for LLM summarization. `0` uses the provider default. |
+| `summaryModel` | string | `""` | Model to use for LLM summarization. Empty resolves the configured `fast` tier, then `defaultModel`; when neither is available, the engine skips the LLM tier. |
+| `summaryMaxTokens` | int | `0` | Max output tokens for the LLM summary. `0` uses the engine default of 4096. |
 | `memoryEnabled` | bool (nullable) | `null` (enabled) | Whether the background session memory summarizer is active. |
 | `memoryModel` | string | `""` | Model to use for background memory summarization. Empty uses the session's current model. |
 | `memoryUpdateThreshold` | int | `20000` | Token growth since last update before triggering a new background summary. |

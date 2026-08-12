@@ -23,6 +23,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 // Track side effects.
 const execSyncCalls: string[] = []
 const execFileSyncCalls: Array<{ file: string; args: string[] }> = []
+// Shared ordering ledger across the two mocked exec paths (execFile for
+// launchctl, execFileSync for install-assets) so tests can prove call ORDER,
+// not just call presence. Each entry records which mock fired and at what
+// sequence position -- required to pin the incident finding that the
+// standalone shell install.command installed the SDK AFTER bootstrapping the
+// LaunchAgent, racing the daemon's first init handshake against a
+// stale/absent SDK. ensureEngineDaemon (the packaged/desktop path) must
+// never regress into the same ordering bug.
+const execOrder: Array<{ kind: 'execFile' | 'execFileSync'; cmd: string }> = []
 const copiedFiles: Array<{ src: string; dst: string }> = []
 const renamedFiles: Array<{ src: string; dst: string }> = []
 let writtenFiles: Record<string, string> = {}
@@ -62,6 +71,7 @@ vi.mock('child_process', () => ({
   execFile: vi.fn((file: string, args: string[], _opts: any, cb?: (err: Error | null, stdout?: string, stderr?: string) => void) => {
     const cmd = [file, ...args].join(' ')
     execSyncCalls.push(cmd)
+    execOrder.push({ kind: 'execFile', cmd })
     const done = typeof _opts === 'function' ? (_opts as typeof cb) : cb
     if (cmd.includes('kickstart') && kickstartFailuresRemaining > 0) {
       kickstartFailuresRemaining--
@@ -72,6 +82,7 @@ vi.mock('child_process', () => ({
   }),
   execFileSync: vi.fn((file: string, args: string[], _opts?: any) => {
     execFileSyncCalls.push({ file, args })
+    execOrder.push({ kind: 'execFileSync', cmd: [file, ...args].join(' ') })
     // Binary identity is decided by a content hash of the bytes (see hashBinary),
     // NOT by `ion version` — the engine binary is never exec'd for the copy
     // decision. execFileSync is used only for `install-assets`.
@@ -115,6 +126,7 @@ let platformOverride: string | null = null
 beforeEach(() => {
   execSyncCalls.length = 0
   execFileSyncCalls.length = 0
+  execOrder.length = 0
   copiedFiles.length = 0
   renamedFiles.length = 0
   writtenFiles = {}
@@ -139,6 +151,21 @@ afterEach(() => {
     Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
     platformOverride = null
   }
+  // One test below (the version-string-matches-but-bytes-differ regression)
+  // installs a custom `.mockImplementation()` on execFileSync to make both
+  // binaries report the same `ion version` string. vi.clearAllMocks() (in
+  // beforeEach) resets call history but NOT a custom mockImplementation, so
+  // without this restore every test that runs after it in file order
+  // silently inherits that override -- its execFileSync stops pushing onto
+  // execOrder/execFileSyncCalls the way the default factory mock does,
+  // desyncing "did install-assets run" assertions from what actually ran.
+  // Restore the default factory implementation after every test.
+  vi.mocked(execFileSync).mockImplementation((file: any, args: any) => {
+    execFileSyncCalls.push({ file, args })
+    execOrder.push({ kind: 'execFileSync', cmd: [file, ...args].join(' ') })
+    if (args[0] === 'install-assets') return '==> install-assets complete'
+    return ''
+  })
 })
 
 // We test the exported helpers + ensureEngineDaemon by mocking findPlistTemplate
@@ -295,6 +322,33 @@ describe('engine-bootstrap', () => {
     // Must use the bundled path (Contents/Resources/engine/ion), not ~/.ion/bin/ion.
     expect(installAssetsCall!.file).toBe(bundledBinaryPath)
     expect(installAssetsCall!.file).not.toBe(destBinary)
+  })
+
+  it('runs install-assets BEFORE bootstrapping the LaunchAgent', async () => {
+    // Pins the ordering half of the SDK/engine build-identity contract
+    // (crash-investigation fix): install-assets (which exact-replaces the
+    // installed SDK and stamps build-identity.json) must complete before
+    // `launchctl bootstrap` starts the daemon. If the daemon started first,
+    // its very first extension init handshake could race a stale or
+    // half-installed SDK tree -- exactly the ordering bug found in the
+    // standalone shell install.command (SDK install ran AFTER the
+    // LaunchAgent was already bootstrapped there; fixed in the same change
+    // that added this test). ensureEngineDaemon is the packaged/desktop
+    // path and must never regress into that ordering.
+    fakeFs[plistTemplatePath] = '<string>$HOME/.ion/bin/ion</string>'
+    fakeFs[bundledBinaryPath] = 'bundled-binary-bytes'
+
+    const destBinary = '/Users/testuser/.ion/bin/ion'
+    fakeFs[destBinary] = 'old-binary-bytes'
+
+    await ensureEngineDaemon()
+
+    const installAssetsIndex = execOrder.findIndex((e) => e.kind === 'execFileSync' && e.cmd.includes('install-assets'))
+    const bootstrapIndex = execOrder.findIndex((e) => e.kind === 'execFile' && e.cmd.includes('launchctl bootstrap'))
+
+    expect(installAssetsIndex).toBeGreaterThanOrEqual(0)
+    expect(bootstrapIndex).toBeGreaterThanOrEqual(0)
+    expect(installAssetsIndex).toBeLessThan(bootstrapIndex)
   })
 
   it('force-restarts with kickstart -k when the plist was (re)written', async () => {

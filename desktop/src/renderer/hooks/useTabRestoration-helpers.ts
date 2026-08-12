@@ -103,6 +103,23 @@ export function readMainInstance(tab: PersistedTab): PersistedConversationInstan
 }
 
 /**
+ * Recover model-selection provenance from a persisted instance.
+ *
+ * Pre-provenance files have a model value but cannot prove whether it came from
+ * a picker or from automatic mode/workflow selection. Keep that state unknown:
+ * slash frontmatter may then choose its model tier. New files preserve the
+ * explicit source exactly.
+ */
+export function restoredModelSelection(
+  inst: Pick<PersistedConversationInstance, 'modelOverride' | 'modelOverrideSource'> | null | undefined,
+): { modelOverride: string | null; modelOverrideSource: 'user' | 'automatic' | null } {
+  return {
+    modelOverride: inst?.modelOverride || null,
+    modelOverrideSource: inst?.modelOverride ? (inst.modelOverrideSource ?? null) : null,
+  }
+}
+
+/**
  * Seed the persisted context-occupancy scalars back onto a restored
  * instance's `statusFields`.
  *

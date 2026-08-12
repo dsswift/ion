@@ -17,7 +17,8 @@
  * instead of silently dropping the field.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { readFileSync, rmSync, writeFileSync } from 'fs'
+import { readFileSync, writeFileSync } from 'fs'
+import { removeGitFixture } from '../../test/git-fixture-cleanup'
 import { join, resolve } from 'path'
 import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
 
@@ -53,7 +54,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.ION_TEST_HOME_BENCH_TOOLS
-  rmSync(f.root, { recursive: true, force: true })
+  removeGitFixture(f.root)
 })
 
 /** One journal entry with this bench's repo/branch identity. */

@@ -4,6 +4,8 @@
 // context builder, console redirect, native logger, and the public
 // createIon() factory. Pure types live in ./types.ts.
 
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { format as utilFormat } from 'node:util'
 
@@ -189,6 +191,47 @@ const emptyConfig: ExtensionConfig = {
   extensionDir: '',
   model: '',
   workingDirectory: '',
+}
+
+type BuildIdentityRead = {
+  identity: string
+  diagnostic?: { message: string; fields: Record<string, unknown> }
+}
+
+function readBuildIdentity(): BuildIdentityRead {
+  const home = process.env.HOME || ''
+  if (!home) {
+    return {
+      identity: '',
+      diagnostic: {
+        message: 'SDK build identity unavailable: HOME is not set',
+        fields: { source: 'build-identity.json' },
+      },
+    }
+  }
+
+  const path = join(home, '.ion', 'extensions', 'sdk', 'ion-sdk', 'build-identity.json')
+  try {
+    const data: unknown = JSON.parse(readFileSync(path, 'utf8'))
+    if (typeof data === 'object' && data !== null && typeof (data as { buildIdentity?: unknown }).buildIdentity === 'string') {
+      return { identity: (data as { buildIdentity: string }).buildIdentity }
+    }
+    return {
+      identity: '',
+      diagnostic: {
+        message: 'SDK build identity unavailable: file has no string buildIdentity',
+        fields: { path },
+      },
+    }
+  } catch (err) {
+    return {
+      identity: '',
+      diagnostic: {
+        message: 'SDK build identity unavailable: read failed',
+        fields: { path, error: err instanceof Error ? err.message : String(err) },
+      },
+    }
+  }
 }
 
 function buildContext(ctxData: any): IonContext {
@@ -454,6 +497,9 @@ function buildContext(ctxData: any): IonContext {
     async answerDispatchQuestion(dispatchId: string, requestId: string, answer: string | undefined, cancelled: boolean): Promise<void> {
       await request('ext/answer_dispatch_question', { dispatchId, requestId, answer, cancelled })
     },
+    async ackDispatchLost(dispatchId: string): Promise<void> {
+      await request('ext/ack_dispatch_lost', { dispatchId })
+    },
     async steerSelf(message: string, opts?: SteerSelfOpts): Promise<SteerDispatchResult> {
       // Deliver `message` to the run that owns this context. The engine picks
       // the mechanism: a live owning run is steered (outcome "steered"); an
@@ -687,6 +733,10 @@ async function handleRequest(
       const pending = drainPendingInit()
       // Drain resource declarations declared at module scope.
       const resourcePending = drainPendingResourceInit()
+      const buildIdentity = readBuildIdentity()
+      if (buildIdentity.diagnostic) {
+        emitLog('warn', buildIdentity.diagnostic.message, buildIdentity.diagnostic.fields)
+      }
       respond(id, {
         tools: Array.from(tools.values()).map((t) => ({
           name: t.name,
@@ -703,6 +753,7 @@ async function handleRequest(
         webhooks: pending.webhooks,
         schedules: pending.schedules,
         resources: resourcePending.resources,
+        buildIdentity: buildIdentity.identity,
       })
       return
     }

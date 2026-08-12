@@ -2,10 +2,12 @@ package session
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/extension"
+	"github.com/dsswift/ion/engine/internal/session/extcontext"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -183,7 +185,6 @@ func (m *Manager) rehydrateDispatchState(s *engineSession, key string) *conversa
 		if d.Status != "running" && d.Status != "suspended" {
 			continue
 		}
-		lost = append(lost, d)
 		s.agents.UpdateStateByID(id, func(st *types.AgentStateUpdate) {
 			st.Status = "error"
 			if st.Metadata == nil {
@@ -191,6 +192,11 @@ func (m *Manager) rehydrateDispatchState(s *engineSession, key string) *conversa
 			}
 			st.Metadata["lastWork"] = "engine restarted while dispatch was running"
 		})
+		if d.LostNoticeState == "sent" || d.RecallIntent {
+			utils.LogWithFields(utils.LevelInfo, "session", "rehydratedispatchstate: resolved lost dispatch (already acked/recalled)", map[string]any{"run_id": id, "lost_notice_state": d.LostNoticeState, "recall_intent": d.RecallIntent, "conversation_id": s.conversationID})
+			continue
+		}
+		lost = append(lost, d)
 		utils.LogWithFields(utils.LevelWarn, "session", "rehydratedispatchstate: dispatch lost (was running at engine death)", map[string]any{
 			"key": key, "run_id": id, "model": d.AgentName, "reason": d.Status, "conversation_id": d.ConversationID,
 		})
@@ -219,6 +225,7 @@ func (m *Manager) announceLostDispatches(s *engineSession, key string) {
 	s.lostDispatches = nil
 
 	for _, d := range lost {
+		m.persistLostNoticeState(s.conversationID, d.AgentID, "pending")
 		utils.LogWithFields(utils.LevelInfo, "session", "announcing lost dispatch", map[string]any{
 			"key": key, "run_id": d.AgentID, "model": d.AgentName, "conversation_id": d.ConversationID,
 		})
@@ -312,6 +319,9 @@ func (m *Manager) persistTerminalDispatches(key, convID string) {
 	if convID == "" {
 		return
 	}
+	lock := m.persistedDispatchLock(convID)
+	lock.Lock()
+	defer lock.Unlock()
 
 	m.mu.RLock()
 	s, ok := m.sessions[key]
@@ -509,6 +519,9 @@ func (m *Manager) persistDispatchRegistered(key, convID, agentID, agentName, dis
 		utils.LogWithFields(utils.LevelDebug, "session", "persistdispatchregistered: no conversation id (no-op)", map[string]any{"key": key, "run_id": agentID})
 		return
 	}
+	lock := m.persistedDispatchLock(convID)
+	lock.Lock()
+	defer lock.Unlock()
 	conv, err := conversation.Load(convID, "")
 	if err != nil {
 		utils.LogWithFields(utils.LevelWarn, "session", "persistdispatchregistered: load failed", map[string]any{"conversation_id": convID, "error": utils.ErrStr(err)})
@@ -546,4 +559,95 @@ func (m *Manager) persistDispatchRegistered(key, convID, agentID, agentName, dis
 		return
 	}
 	utils.LogWithFields(utils.LevelInfo, "session", "persistdispatchregistered: running record persisted", map[string]any{"run_id": agentID, "model": agentName, "key": key, "conversation_id": convID})
+}
+
+// persistLostNoticeState durably updates the latest record for an orphan before
+// it is emitted. Pending is intentionally retried after a crash until the host
+// receives the consumer's explicit acknowledgement.
+func (m *Manager) persistLostNoticeState(conversationID, agentID, state string) {
+	m.updatePersistedDispatch(conversationID, agentID, func(d *conversation.AgentDispatchData) {
+		// "sent" is terminal. A delayed announcement must never downgrade an
+		// acknowledgement back to pending and cause another restart delivery.
+		if d.LostNoticeState == "sent" && state == "pending" {
+			return
+		}
+		d.LostNoticeState = state
+	})
+}
+
+// persistRecallIntent marks a dispatch as intentionally recalled. It is kept
+// separate from lifecycle status because a process death can occur before a
+// terminal callback writes its superseding entry.
+func (m *Manager) persistRecallIntent(conversationID, agentID string) {
+	m.updatePersistedDispatch(conversationID, agentID, func(d *conversation.AgentDispatchData) {
+		d.RecallIntent = true
+	})
+}
+
+func (m *Manager) persistedDispatchLock(conversationID string) *sync.Mutex {
+	newLock := &sync.Mutex{}
+	lock, loaded := m.persistedDispatchLocks.LoadOrStore(conversationID, newLock)
+	if !loaded {
+		return newLock
+	}
+	return lock.(*sync.Mutex) //nolint:errcheck // values are only created as *sync.Mutex above
+}
+
+func (m *Manager) updatePersistedDispatch(conversationID, agentID string, update func(*conversation.AgentDispatchData)) {
+	if conversationID == "" {
+		utils.LogWithFields(utils.LevelDebug, "session", "updatepersisteddispatch: no conversation id", map[string]any{"run_id": agentID})
+		return
+	}
+	lock := m.persistedDispatchLock(conversationID)
+	lock.Lock()
+	defer lock.Unlock()
+	conv, err := conversation.Load(conversationID, "")
+	if err != nil {
+		utils.LogWithFields(utils.LevelWarn, "session", "updatepersisteddispatch: load failed", map[string]any{"conversation_id": conversationID, "run_id": agentID, "error": utils.ErrStr(err)})
+		return
+	}
+	updated := false
+	for i := range conv.Entries {
+		e := &conv.Entries[i]
+		if e.Type != conversation.EntryAgentDispatch {
+			continue
+		}
+		d := conversation.AsAgentDispatchData(e.Data)
+		if d == nil || d.AgentID != agentID {
+			continue
+		}
+		update(d)
+		e.Data = *d
+		updated = true
+	}
+	if !updated {
+		utils.LogWithFields(utils.LevelDebug, "session", "updatepersisteddispatch: dispatch record not found", map[string]any{"conversation_id": conversationID, "run_id": agentID})
+		return
+	}
+	if err := conversation.Save(conv, ""); err != nil {
+		utils.LogWithFields(utils.LevelWarn, "session", "updatepersisteddispatch: save failed", map[string]any{"conversation_id": conversationID, "run_id": agentID, "error": utils.ErrStr(err)})
+		return
+	}
+	utils.LogWithFields(utils.LevelInfo, "session", "updatepersisteddispatch: persisted dispatch state", map[string]any{"conversation_id": conversationID, "run_id": agentID})
+}
+
+// persistRecallIntents propagates a recall across every conversation file owned
+// by the registry cascade. Registry entries are removed after this callback, so
+// this is the only point where target and descendant session identities coexist.
+func (m *Manager) persistRecallIntents(recalled []extcontext.RecalledDispatch) {
+	visited := make(map[string]bool, len(recalled))
+	for _, dispatch := range recalled {
+		if dispatch.DispatchID == "" || visited[dispatch.DispatchID] {
+			continue
+		}
+		visited[dispatch.DispatchID] = true
+		m.mu.RLock()
+		session := m.sessions[dispatch.SessionID]
+		m.mu.RUnlock()
+		if session == nil {
+			utils.LogWithFields(utils.LevelWarn, "session", "persistrecallintents: session not found", map[string]any{"run_id": dispatch.DispatchID, "session_id": dispatch.SessionID, "model": dispatch.Name})
+			continue
+		}
+		m.persistRecallIntent(session.conversationID, dispatch.DispatchID)
+	}
 }

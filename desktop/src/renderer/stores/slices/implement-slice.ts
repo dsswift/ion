@@ -144,7 +144,7 @@ export function createImplementSlice(set: StoreSet, get: StoreGet): Partial<Stat
       // Auto-switch to the implementation model if the split feature is enabled
       const { planModelSplitEnabled, implementModeModel } = usePreferencesStore.getState()
       if (planModelSplitEnabled && implementModeModel) {
-        get().setTabModel(tabId, implementModeModel)
+        get().setTabAutomaticModel(tabId, implementModeModel)
       }
 
       // Auto-move tab to in-progress group if designated

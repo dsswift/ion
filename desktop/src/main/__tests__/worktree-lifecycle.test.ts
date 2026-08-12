@@ -10,6 +10,7 @@
  * regression tests for the original implementation, which did:
  *     git checkout <sourceBranch> && git merge --ff-only <wtBranch>
  */
+import { removeGitFixture } from '../../test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync, readdirSync, realpathSync } from 'fs'
@@ -82,7 +83,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.ION_TEST_HOME_WT_LIFECYCLE
-  rmSync(root, { recursive: true, force: true })
+  removeGitFixture(root)
 })
 
 describe('landWorktree — repeatability', () => {

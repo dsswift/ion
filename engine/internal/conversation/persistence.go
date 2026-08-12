@@ -667,7 +667,16 @@ func loadSplit(id, llmPath, treePath string) (*Conversation, error) {
 	// Validate and repair the tree linkage before anything walks it — a
 	// dangling parent otherwise silently truncates history at the gap. The
 	// repaired shape persists on the next Save, healing the file in place.
-	validateAndRepairTree(conv)
+	repairReport := validateAndRepairTree(conv)
+	if repairReport.InvalidCompactionsRepaired > 0 {
+		conv.Messages = BuildContextPath(conv)
+		utils.LogWithFields(utils.LevelWarn, "conversation", "recovered provider context after invalid compaction repair", map[string]any{
+			"conversation_id":           conv.ID,
+			"repaired_compactions":      repairReport.InvalidCompactionsRepaired,
+			"rebuilt_provider_messages": len(conv.Messages),
+			"transcript_rows":           len(flattenEntries(conv)),
+		})
+	}
 
 	utils.LogWithFields(utils.LevelInfo, "conversation", "load new", map[string]any{
 		"conversation_id": conv.ID, "count": len(conv.Entries), "max": len(conv.Messages),

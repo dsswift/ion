@@ -41,6 +41,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -48,6 +49,10 @@ import (
 // ctxGitRunner runs a context-aware git command in a directory and returns
 // stdout. Swappable for tests; defaults to runGitCtx.
 type ctxGitRunner func(ctx context.Context, dir string, args ...string) (string, error)
+
+// gitQueryWaitDelay bounds cancellation cleanup when a git descendant keeps
+// stdout/stderr pipes open after CommandContext kills git itself.
+const gitQueryWaitDelay = time.Second
 
 // runGitCtx executes a read-only git query in dir, honoring ctx cancellation.
 //
@@ -57,6 +62,7 @@ type ctxGitRunner func(ctx context.Context, dir string, args ...string) (string,
 // command the operator is running concurrently in the same worktree.
 func runGitCtx(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", append([]string{"--no-optional-locks"}, args...)...)
+	cmd.WaitDelay = gitQueryWaitDelay
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {

@@ -91,6 +91,12 @@ type Server struct {
 	loginFn  cliprobe.LoginFunc
 	logoutFn cliprobe.LogoutFunc
 
+	// lanes routes incoming commands into bounded per-session serial
+	// queues (same key ordered, different keys concurrent), a process-
+	// level concurrent pool, and an independent health path. Initialised
+	// lazily in Start so construction order is safe.
+	lanes *commandLanes
+
 	// ownership binds live session keys to the client connections that
 	// claimed them, reaping a session a grace window after its last owning
 	// connection disconnects. Prevents the orphaned-session FD leak (a
@@ -209,10 +215,17 @@ func NewServer(socketPath string, b backend.RunBackend) *Server {
 	// connection disconnects. Wired to StopSession so the full teardown
 	// (watcher release, extension close, MCP/telemetry cleanup) runs.
 	s.ownership = newSessionOwnership(func(key string) {
-		if err := s.manager.StopSession(key); err != nil {
+		err := s.manager.StopSession(key)
+		s.lanes.evictSession(key)
+		if err != nil {
 			utils.LogWithFields(utils.LevelDebug, "server", "reap stop session", map[string]any{"session_id": key, "error": err.Error()})
 		}
 	})
+
+	// Command lanes route incoming commands into bounded per-session
+	// serial queues. Initialised before events are wired so the lanes
+	// are ready when the first client connects.
+	s.lanes = newCommandLanes(s.dispatch, s.rejectStoppedSessionCommand)
 
 	// Wire manager events to broadcast
 	mgr.OnEvent(func(key string, event types.EngineEvent) {
@@ -319,6 +332,10 @@ func (s *Server) Stop() error {
 		}
 		s.contextBreakdownMu.Unlock()
 
+		if s.lanes != nil {
+			s.lanes.stop()
+		}
+
 		if s.ownership != nil {
 			s.ownership.stopAll()
 		}
@@ -390,7 +407,7 @@ func (s *Server) SessionManager() *session.Manager {
 // Used by relay transport to inject commands from mobile peers. Results and
 // errors are broadcast to all listeners (including the relay itself).
 func (s *Server) DispatchCommand(cmd *protocol.ClientCommand) {
-	s.dispatch(nil, cmd)
+	s.lanes.submit(nil, cmd)
 }
 
 func (s *Server) acceptLoop() {
@@ -497,13 +514,29 @@ func (s *Server) handleClient(conn net.Conn) {
 			continue
 		}
 
-		s.dispatch(conn, cmd)
+		if !s.lanes.submit(conn, cmd) {
+			result := protocol.SerializeServerResult(protocol.ServerResult{
+				RequestID: cmd.RequestID,
+				OK:        false,
+				Error:     "command queue full",
+			})
+			s.writeToClient(conn, result)
+		}
 	}
 }
 
 // dispatch is defined in dispatch.go — the command-routing switch lives in its
 // own file because it is the highest-churn surface in the package (every new
 // wire command adds a case).
+
+func (s *Server) rejectStoppedSessionCommand(conn net.Conn, cmd *protocol.ClientCommand) {
+	utils.LogWithFields(utils.LevelInfo, "server", "queued command rejected: session stopped", map[string]any{
+		"session_id": cmd.Key,
+		"status":     cmd.Cmd,
+		"request_id": cmd.RequestID,
+	})
+	s.sendResult(conn, cmd, fmt.Errorf("session stopped"), nil)
+}
 
 func (s *Server) sendResult(conn net.Conn, cmd *protocol.ClientCommand, err error, data interface{}) {
 	if cmd.RequestID == "" {

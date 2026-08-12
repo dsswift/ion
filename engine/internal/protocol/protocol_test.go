@@ -961,7 +961,26 @@ func TestParseClientCommand_StoreCredentialEmptyCredential(t *testing.T) {
 	}
 }
 
-// --- resource_publish command tests ---
+func TestParseClientCommand_ResourceGetScoping(t *testing.T) {
+	tests := []struct {
+		name  string
+		line  string
+		valid bool
+	}{
+		{"session resource includes key", `{"cmd":"resource_get","key":"s1","resourceKind":"briefing","resourceId":"item-1"}`, true},
+		{"global resource needs no key", `{"cmd":"resource_get","resourceGlobal":true,"resourceKind":"briefing","resourceId":"item-1"}`, true},
+		{"session resource rejects missing key", `{"cmd":"resource_get","resourceKind":"briefing","resourceId":"item-1"}`, false},
+		{"false global flag still requires key", `{"cmd":"resource_get","resourceGlobal":false,"resourceKind":"briefing","resourceId":"item-1"}`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ParseClientCommand(tt.line)
+			if (got != nil) != tt.valid {
+				t.Fatalf("ParseClientCommand(%s) = %v, want valid=%t", tt.line, got, tt.valid)
+			}
+		})
+	}
+}
 
 func TestParseClientCommand_ResourcePublishValid(t *testing.T) {
 	raw := `{"cmd":"resource_publish","key":"s1","resourceOp":"upsert"}`
