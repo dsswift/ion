@@ -10,7 +10,7 @@ Ion themes are distributed as **theme packs** — directories containing a `them
 | Component | Consumed by | Contents |
 |-----------|-------------|----------|
 | `desktop` | Desktop overlay + ATV windows | A partial ColorPalette token overlay on a built-in base theme, optional forced color scheme, optional assets |
-| `ios` | iOS companion app | The full iOS AppTheme token set, optional preferred color scheme, optional assets |
+| `ios` | iOS companion app | The iOS AppTheme token set (complete, or partial over a named built-in `base`), optional preferred color scheme, optional assets |
 
 A pack may include either component or both. Only the `ios` component (plus its assets) ever ships to iOS over the desktop↔iOS wire — the desktop component never leaves the desktop.
 
@@ -51,10 +51,14 @@ On Windows the system root is `%PROGRAMDATA%\Ion\themes`; on Linux, `/etc/ion/th
     }
   },
   "ios": {
+    "base": "ion-dark",              // optional; required-when-partial. Omit when
+                                      // tokens supplies the complete required set; name a
+                                      // built-in id to inherit every omitted required token.
     "preferredColorScheme": "dark",  // optional; omitted = follow the system
-    "tokens": {                       // every IOS_THEME_TOKEN_KEYS entry required, #RRGGBB or #RRGGBBAA
+    "tokens": {                       // every required IOS_THEME_TOKEN_KEYS entry, #RRGGBB or #RRGGBBAA
                                       // (except the 8 code-syntax tokens below, which are optional —
-                                      // omitted ones fall back to readable theme-derived defaults on iOS)
+                                      // omitted ones fall back to readable theme-derived defaults on iOS).
+                                      // Omit any required token only when a `base` is named.
       "accent": "#FF6600FF",
       "accentSubtle": "#FF66001F",
       "accentGlow": "#FF66002E",
@@ -68,7 +72,13 @@ On Windows the system root is `%PROGRAMDATA%\Ion\themes`; on Linux, `/etc/ion/th
       "statusWaitingChildren": "#FBBF24FF",
       "statusBash": "#FF2D95FF",
       "statusWarning": "#F59E0BFF",
+      "statusIdle": "#818188FF",
+      "worktreeDirty": "#F87171FF",
       "surfaceElevated": "#1E1E23FF",
+      "surfaceSecondary": "#26262CFF",
+      "surfaceSunken": "#101013FF",
+      "borderSubtle": "#FFFFFF0F",
+      "textTertiary": "#818188FF",
       "codeBg": "#0E0E11FF",
       "userBubbleTint": "#1E1E23FF",
       "codeKeyword": "#C792EAFF",
@@ -91,7 +101,9 @@ On Windows the system root is `%PROGRAMDATA%\Ion\themes`; on Linux, `/etc/ion/th
 Validation rules (shared module `desktop/src/shared/theme-pack-types.ts`):
 
 - The desktop token overlay is **partial** — unknown keys are dropped with a logged warning, everything unspecified inherits from `base`.
-- The iOS token set is **all-or-nothing** — a partial or invalid-hex set rejects the iOS component (the desktop component still loads). A partial iOS theme would render unreadable mixes of pack and fallback colors.
+- The iOS token set is **required-when-partial**. A component that supplies the complete required set (every `IOS_THEME_TOKEN_KEYS` entry except the optional code-syntax tokens) loads with no `base`. A component that omits any required token **must** name a built-in `base`, and iOS inherits every omitted required token from that theme — nothing is ever inferred. Omitting a required token with no `base`, naming a base that is not a built-in id, or supplying invalid hex on any token rejects the iOS component (the desktop component still loads). An omitted-token-with-no-base pack would render unreadable mixes of pack and fallback colors, which is what the rule prevents.
+- A pack whose desktop component loads but whose iOS component is rejected shows its rejection reason (the missing/invalid tokens) at the pack's row in Settings → Appearance, so the author learns their theme will not exist on paired phones.
+- Settings groups typed validation diagnostics into iOS diagnostics and desktop diagnostics. Each record identifies its surface and whether it rejected that component or loaded it with fallback values, so theme authors see every validation outcome without parsing log output.
 - Assets: PNG/JPEG/WebP, ≤ 3 MB each, and must resolve inside the pack directory (traversal and symlink escapes are refused). `background` renders as a full-surface backdrop; `logo` is a brand mark shown in the Settings appearance surface on both platforms.
 - Native effect renderers (Arc Reactor rings etc.) are reserved for built-ins; custom packs style with tokens and images.
 
