@@ -176,14 +176,13 @@ func AutoCompactTokenLimit(window, maxOutputTokens int) int {
 // assistant message carrying API-reported Usage and returns its index, or -1
 // when no such message exists. Callers must hold conv.mu.
 //
-// A non-nil but ALL-ZERO usage does not qualify. The zero struct is the
-// "no provider accounting" shape: delegated-CLI turns persisted into Ion's
-// transcript and failed runs historically annotated LlmUsage{} on the
-// assistant message. Treating that as the authoritative baseline collapsed a
-// ~292K-token conversation to a 71-token occupancy reading (pct=0), silently
-// disarming auto-compaction. Real provider responses always report non-zero
-// tokens, so skipping the zero shape only ever discards fabricated data and
-// lets GetContextUsage fall through to honest estimation.
+// A non-nil usage with NO input/cache tokens does not qualify either. Context
+// occupancy measures what the provider carried into its request: InputTokens +
+// CacheReadInputTokens + CacheCreationInputTokens. Output-only usage records
+// occur on tool-result continuation turns, and treating their non-zero output
+// as a baseline makes GetContextUsage select them before calculating a zero
+// occupancy numerator. Skip them so the scan reaches an earlier real request
+// baseline, or falls through to honest estimation when none exists.
 //
 // Extracted so GetContextUsage (which needs the index, to estimate messages
 // appended after it) and LastAssistantUsage (which needs only the usage) share
@@ -195,7 +194,7 @@ func lastAssistantUsageLocked(conv *Conversation) int {
 			continue
 		}
 		u := conv.Messages[i].Usage
-		if u.InputTokens+u.CacheReadInputTokens+u.CacheCreationInputTokens+u.OutputTokens == 0 {
+		if u.InputTokens+u.CacheReadInputTokens+u.CacheCreationInputTokens == 0 {
 			continue
 		}
 		return i
