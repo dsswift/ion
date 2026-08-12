@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.59.1](https://github.com/dsswift/ion/compare/ios-v1.59.0...ios-v1.59.1) (2026-08-12)
+
+### Bug Fixes
+
+* **ios:** mirror agent row dot stack and detail interaction ([3991150](https://github.com/dsswift/ion/commit/3991150eee3987c847c47cbb842b1c8cfac63815))
+
 ## [1.59.0](https://github.com/dsswift/ion/compare/ios-v1.58.0...ios-v1.59.0) (2026-08-11)
 
 ### Features

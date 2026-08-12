@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.2](https://github.com/dsswift/ion/compare/sdk/go-v0.1.1...sdk/go-v0.1.2) (2026-08-12)
+
+### Features
+
+* **engine:** preserve MCP result content (#348) ([ba6b842](https://github.com/dsswift/ion/commit/ba6b84213732657aba5bd70d1646033fd047d789))
 
 ## [0.1.1](https://github.com/dsswift/ion/compare/sdk/go-v0.1.0...sdk/go-v0.1.1) (2026-08-11)
 

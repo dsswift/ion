@@ -13,6 +13,20 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.66.0](https://github.com/dsswift/ion/compare/engine-v1.65.0...engine-v1.66.0) (2026-08-12)
+
+### Features
+
+* **engine:** broker multi-cloud machine identity (#346) ([871c9c7](https://github.com/dsswift/ion/commit/871c9c79009fafb1f4193c1d45d79577ddf9f5a3))
+* **engine:** preserve MCP result content (#348) ([ba6b842](https://github.com/dsswift/ion/commit/ba6b84213732657aba5bd70d1646033fd047d789))
+
+### Bug Fixes
+
+* **engine:** hydrate PATH from interactive shells ([5a89f17](https://github.com/dsswift/ion/commit/5a89f170592741699417ee11064f3744824284a7))
+* **engine:** persist dispatch terminal errors in child history ([4bb9948](https://github.com/dsswift/ion/commit/4bb99489d85b6c2b1b0c5deea8a038b76c0164db))
+* **engine:** stabilize child error revival test ([863a2ea](https://github.com/dsswift/ion/commit/863a2eab4f6591b8aa2492ecf02fffd5c1065eac))
+* **engine:** update integration tool callbacks ([8a0fc62](https://github.com/dsswift/ion/commit/8a0fc622c5dfcff8384ed21c72653206efc58f6f))
+
 ## [1.65.0](https://github.com/dsswift/ion/compare/engine-v1.64.1...engine-v1.65.0) (2026-08-11)
 
 ### Features

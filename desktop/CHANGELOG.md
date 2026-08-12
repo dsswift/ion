@@ -10,6 +10,19 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.79.0](https://github.com/dsswift/ion/compare/desktop-v1.78.0...desktop-v1.79.0) (2026-08-12)
+
+### Features
+
+* **desktop:** add targeted ion deep links ([dbf4992](https://github.com/dsswift/ion/commit/dbf49927cc84a715c4a41c5f795a1b2d06e26502))
+* **engine:** preserve MCP result content (#348) ([ba6b842](https://github.com/dsswift/ion/commit/ba6b84213732657aba5bd70d1646033fd047d789))
+
+### Bug Fixes
+
+* **desktop:** restore terminal pane state and labels ([6c8d14f](https://github.com/dsswift/ion/commit/6c8d14fc8b6a6648bb61858f129879a42d09ef34))
+* **desktop:** hydrate PATH from shell probes ([4d11aac](https://github.com/dsswift/ion/commit/4d11aacd3ee727242303feab6982bdb0dba96c79))
+* **desktop:** split agent row dot and remove inline expand ([6b99efd](https://github.com/dsswift/ion/commit/6b99efd157f3de0d99b439b4e75281b63fe0eaf2))
+
 ## [1.78.0](https://github.com/dsswift/ion/compare/desktop-v1.77.0...desktop-v1.78.0) (2026-08-11)
 
 ### Features
