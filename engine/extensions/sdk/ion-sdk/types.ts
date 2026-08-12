@@ -291,6 +291,10 @@ export interface DispatchAgentResult {
   outputTokens: number
   /** SDK-generated identifier for routing pre-stub callbacks. Internal to extension-host RPC. */
   callbackId?: string
+  /** True when engine refused to launch child at dispatch-depth cap. */
+  depthCapExceeded?: boolean
+  /** Remaining child levels available from caller at dispatch-depth cap. */
+  remainingDepthBudget?: number
   /** Engine-assigned unique identifier for this dispatch instance. Collision-safe. */
   dispatchId?: string
   sessionId?: string

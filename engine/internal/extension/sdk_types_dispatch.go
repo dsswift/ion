@@ -254,6 +254,12 @@ type DispatchAgentResult struct {
 	// CallbackID is echoed from the dispatch request so the SDK can route
 	// this notification before the DispatchID-keyed handlers are registered.
 	CallbackID string `json:"callbackId,omitempty"`
+	// DepthCapExceeded is true when the engine refused to launch a child because
+	// it would meet or exceed the effective dispatch-depth cap. The caller's work remains intact and the result is returned without an RPC error.
+	DepthCapExceeded bool `json:"depthCapExceeded,omitempty"`
+	// RemainingDepthBudget is the number of child levels available from the
+	// caller when a dispatch is refused by the depth cap.
+	RemainingDepthBudget int `json:"remainingDepthBudget"`
 
 	// DispatchID is the engine-assigned unique identifier for this dispatch
 	// instance. Collision-safe: two parallel dispatches of the same agent

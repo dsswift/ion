@@ -36,7 +36,12 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 
 		if childDepth >= effectiveCap {
 			utils.LogWithFields(utils.LevelWarn, "server", "depth guard: blocked dispatch", map[string]any{"model": opts.Name, "child_depth": childDepth, "effective_cap": effectiveCap, "current_dispatch_id": currentDispatchId, "session_key": sa.SessionKey()})
-			return nil, fmt.Errorf("%w: agent=%q would be depth %d (cap %d)", ErrDispatchDepthExceeded, opts.Name, childDepth, effectiveCap)
+			return &extension.DispatchAgentResult{
+				DepthCapExceeded:     true,
+				RemainingDepthBudget: 0,
+				ExitCode:             1,
+				Output:               fmt.Sprintf("dispatch depth cap reached: child %q was not launched; caller work is intact", opts.Name),
+			}, nil
 		}
 
 		utils.LogWithFields(utils.LevelInfo, "server", "depth guard: allowed dispatch", map[string]any{"model": opts.Name, "child_depth": childDepth, "effective_cap": effectiveCap, "current_dispatch_id": currentDispatchId, "session_key": sa.SessionKey()})

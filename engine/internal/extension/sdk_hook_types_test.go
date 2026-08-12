@@ -122,6 +122,8 @@ func TestAgentInfo_IsRootOmitEmpty(t *testing.T) {
 	}
 }
 
+// TestAgentInfo_RemainingDepthBudgetJSONWire pins the additive depth budget
+// field used by before_agent_start consumers to choose direct or fan-out work.
 func TestAgentInfo_RemainingDepthBudgetJSONWire(t *testing.T) {
 	out, err := json.Marshal(AgentInfo{
 		Name:                 "lead",

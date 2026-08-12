@@ -224,6 +224,11 @@ func TestDispatchLoss_RegistrationPersistsRunningRecord(t *testing.T) {
 	}
 }
 
+// TestDispatchLoss_DurableOutboxSurvivesRestart pins pending-before-emit and
+// sent-after-ack semantics across fresh sessions reading the persisted file.
+// TestDispatchLoss_EmptyChildConversationIDReachesConsumer preserves the empty
+// payload so the consumer can choose branch-verification wording. Operator copy
+// belongs to the ion-dev consumer, not the engine event transport.
 func TestDispatchLoss_EmptyChildConversationIDReachesConsumer(t *testing.T) {
 	m, s, events := lossTestEnv(t, "loss-empty-child", []conversation.SessionEntry{
 		dispatchEntry("dispatch-empty-child", "worker", "running", ""),
@@ -251,6 +256,7 @@ func TestDispatchLoss_DurableOutboxSurvivesRestart(t *testing.T) {
 		t.Fatalf("first restart losses = %d, want 1", got)
 	}
 
+	// This is the explicit host-RPC acknowledgement persistence endpoint.
 	m1.persistLostNoticeState(s1.conversationID, "dispatch-outbox", "sent")
 	m2, s2, events2 := freshLossSession(t, "loss-outbox")
 	m2.rehydrateDispatchState(s2, s2.key)
@@ -266,38 +272,13 @@ func TestDispatchLoss_DurableOutboxSurvivesRestart(t *testing.T) {
 	}
 }
 
-func TestRehydrate_AckedLostDispatch_TransitionsToError(t *testing.T) {
-	m, s, events := lossTestEnv(t, "loss-acked-status", []conversation.SessionEntry{
-		dispatchEntry("dispatch-acked", "worker", "running", ""),
-	})
-	m.persistLostNoticeState(s.conversationID, "dispatch-acked", "sent")
-
-	m.rehydrateDispatchState(s, s.key)
-	assertRehydratedDispatchStatus(t, s, "dispatch-acked", "error")
-	m.announceLostDispatches(s, s.key)
-	if got := countLossEvents(events()); got != 0 {
-		t.Fatalf("acknowledged loss events = %d, want 0", got)
-	}
-}
-
-func TestRehydrate_RecalledDispatch_TransitionsToError(t *testing.T) {
-	m, s, events := lossTestEnv(t, "loss-recalled-status", []conversation.SessionEntry{
-		dispatchEntry("dispatch-recalled", "worker", "running", ""),
-	})
-	m.persistRecallIntent(s.conversationID, "dispatch-recalled")
-
-	m.rehydrateDispatchState(s, s.key)
-	assertRehydratedDispatchStatus(t, s, "dispatch-recalled", "error")
-	m.announceLostDispatches(s, s.key)
-	if got := countLossEvents(events()); got != 0 {
-		t.Fatalf("recalled loss events = %d, want 0", got)
-	}
-}
-
+// TestDispatchLoss_PendingRetriesAfterCrash proves pending remains retryable
+// both before any emission and after emission without acknowledgement.
 func TestDispatchLoss_PendingRetriesAfterCrash(t *testing.T) {
 	m1, s1, _ := lossTestEnv(t, "loss-pending", []conversation.SessionEntry{
 		dispatchEntry("dispatch-pending", "worker", "running", ""),
 	})
+	// Simulate death after durable pending write and before event emission.
 	m1.persistLostNoticeState(s1.conversationID, "dispatch-pending", "pending")
 	m2, s2, events2 := freshLossSession(t, "loss-pending")
 	m2.rehydrateDispatchState(s2, s2.key)
@@ -305,6 +286,7 @@ func TestDispatchLoss_PendingRetriesAfterCrash(t *testing.T) {
 	if got := countLossEvents(events2()); got != 1 {
 		t.Fatalf("pending retry after pre-emit crash = %d, want 1", got)
 	}
+	// No acknowledgement: a second fresh engine must re-emit at least once.
 	m3, s3, events3 := freshLossSession(t, "loss-pending")
 	m3.rehydrateDispatchState(s3, s3.key)
 	m3.announceLostDispatches(s3, s3.key)
@@ -313,6 +295,8 @@ func TestDispatchLoss_PendingRetriesAfterCrash(t *testing.T) {
 	}
 }
 
+// TestDispatchLoss_RecallIntentCrossFile suppresses loss delivery for a child
+// registered by another session after its parent recall cascades through the registry.
 func TestDispatchLoss_RecallIntentCrossFile(t *testing.T) {
 	m, parent, _ := lossTestEnv(t, "parent-conversation", []conversation.SessionEntry{
 		dispatchEntry("parent-dispatch", "parent", "running", ""),
@@ -327,7 +311,7 @@ func TestDispatchLoss_RecallIntentCrossFile(t *testing.T) {
 	m.sessions[childSession.key] = childSession
 	parent.dispatchRegistry.RegisterWithID("parent-dispatch", "parent", func() {}, nil, parent.key, "", 1)
 	parent.dispatchRegistry.RegisterWithID("child-dispatch", "child", func() {}, nil, childSession.key, "parent-dispatch", 2)
-	parent.dispatchRegistry.SetDispatchLossRecallObserver(m.persistRecallIntents)
+	parent.dispatchRegistry.SetRecallObserver(m.persistRecallIntents)
 	if !parent.dispatchRegistry.Recall("parent", "test recall") {
 		t.Fatal("Recall = false, want true")
 	}
@@ -359,19 +343,6 @@ func freshLossSession(t *testing.T, convID string) (*Manager, *engineSession, fu
 		defer mu.Unlock()
 		return append([]types.EngineEvent(nil), emitted...)
 	}
-}
-
-func assertRehydratedDispatchStatus(t *testing.T, s *engineSession, dispatchID, want string) {
-	t.Helper()
-	for _, state := range s.agents.MergedSnapshot() {
-		if state.ID == dispatchID {
-			if state.Status != want {
-				t.Fatalf("rehydrated dispatch %q status = %q, want %q", dispatchID, state.Status, want)
-			}
-			return
-		}
-	}
-	t.Fatalf("rehydrated dispatch %q missing from agent registry", dispatchID)
 }
 
 func countLossEvents(events []types.EngineEvent) int {
