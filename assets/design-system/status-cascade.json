@@ -1,0 +1,15 @@
+{
+  "_comment": "Cross-client tab-status cascade. Order runs from highest to lowest precedence. Each client declares and tests this ordering independently.",
+  "statuses": [
+    { "name": "error", "semantics": "Dead or failed conversation.", "iosReachable": true },
+    { "name": "permission", "semantics": "Generic tool permission awaiting a response.", "iosReachable": true },
+    { "name": "running", "semantics": "Foreground conversation running or connecting.", "iosReachable": true },
+    { "name": "children", "semantics": "Background child agents still running.", "iosReachable": true },
+    { "name": "bash-background", "semantics": "Background shell command still running.", "iosReachable": true },
+    { "name": "plan-ready", "semantics": "Plan exit awaiting a response.", "iosReachable": true },
+    { "name": "question", "semantics": "Question awaiting a response.", "iosReachable": true },
+    { "name": "bash", "semantics": "User-typed shell command executing.", "iosReachable": false },
+    { "name": "unread", "semantics": "Unread conversation notification.", "iosReachable": false },
+    { "name": "idle", "semantics": "No active status.", "iosReachable": true }
+  ]
+}
