@@ -231,7 +231,7 @@ describe('openConflictAssist', () => {
     }))
     ;(globalThis as unknown as { window: Record<string, unknown> }).window = { ion: { resolveModelTier } }
     const h = harness({
-      submit: vi.fn(), setTabModel: vi.fn(),
+      submit: vi.fn(), setTabAutomaticModel: vi.fn(),
       createTabInDirectory: vi.fn().mockResolvedValue('tab-new'), tabs: [],
     })
 
@@ -247,16 +247,16 @@ describe('openConflictAssist', () => {
       fallbacks: [], configured: tier === 'standard',
     }))
     ;(globalThis as unknown as { window: Record<string, unknown> }).window = { ion: { resolveModelTier } }
-    const setTabModel = vi.fn()
+    const setTabAutomaticModel = vi.fn()
     const h = harness({
-      submit: vi.fn(), setTabModel,
+      submit: vi.fn(), setTabAutomaticModel,
       createTabInDirectory: vi.fn().mockResolvedValue('tab-new'), tabs: [],
     })
 
     await h.slice.openConflictAssist!(WT)
 
     expect(resolveModelTier.mock.calls.map(([tier]) => tier)).toEqual(['workbench-sync', 'standard'])
-    expect(setTabModel).toHaveBeenCalledWith('tab-new', 'prov/standard')
+    expect(setTabAutomaticModel).toHaveBeenCalledWith('tab-new', 'prov/standard')
   })
 
   it('uses an independent prompt override for the live operation', async () => {
@@ -264,7 +264,7 @@ describe('openConflictAssist', () => {
     ionWith()
     const submit = vi.fn()
     const h = harness({
-      submit, setTabModel: vi.fn(),
+      submit, setTabAutomaticModel: vi.fn(),
       createTabInDirectory: vi.fn().mockResolvedValue('tab-new'), tabs: [],
     })
 
@@ -277,9 +277,9 @@ describe('openConflictAssist', () => {
   it('creates a conversation in the directory and submits the exact prompt', async () => {
     ionWith()
     const submit = vi.fn()
-    const setTabModel = vi.fn()
+    const setTabAutomaticModel = vi.fn()
     const createTabInDirectory = vi.fn().mockResolvedValue('tab-new')
-    const h = harness({ submit, setTabModel, createTabInDirectory, tabs: [], activeTabId: null })
+    const h = harness({ submit, setTabAutomaticModel, createTabInDirectory, tabs: [], activeTabId: null })
 
     const tabId = await h.slice.openConflictAssist!(WT)
 
@@ -302,10 +302,10 @@ describe('openConflictAssist', () => {
     ionWith()
     const submit = vi.fn()
     const selectTab = vi.fn()
-    const setTabModel = vi.fn()
+    const setTabAutomaticModel = vi.fn()
     const createTabInDirectory = vi.fn().mockResolvedValue('tab-fresh')
     const h = harness({
-      submit, selectTab, setTabModel, createTabInDirectory,
+      submit, selectTab, setTabAutomaticModel, createTabInDirectory,
       tabs: [{ id: 'tab-existing', workingDirectory: WT }],
       activeTabId: 'tab-existing',
     })
@@ -342,9 +342,9 @@ describe('openConflictAssist', () => {
     ;(globalThis as unknown as { window: { ion: Record<string, unknown> } }).window.ion.gitOpState =
       vi.fn().mockResolvedValue({ ok: true, state: 'merging' })
     const submit = vi.fn()
-    const setTabModel = vi.fn()
+    const setTabAutomaticModel = vi.fn()
     const createTabInDirectory = vi.fn().mockResolvedValue('tab-new')
-    const h = harness({ submit, setTabModel, createTabInDirectory, tabs: [], activeTabId: null })
+    const h = harness({ submit, setTabAutomaticModel, createTabInDirectory, tabs: [], activeTabId: null })
 
     await h.slice.openConflictAssist!(WT)
 
@@ -366,10 +366,10 @@ describe('openConflictAssist', () => {
     ionWith()
     let lockedAtSubmit: boolean | undefined
     let roleAtSubmit: string | null | undefined
-    const setTabModel = vi.fn()
+    const setTabAutomaticModel = vi.fn()
     const createTabInDirectory = vi.fn().mockResolvedValue('tab-new')
     const h = harness({
-      setTabModel, createTabInDirectory,
+      setTabAutomaticModel, createTabInDirectory,
       tabs: [{ id: 'tab-new', inputLocked: false }],
       activeTabId: null,
     })
@@ -394,22 +394,22 @@ describe('openConflictAssist', () => {
   it('pins the tier model on the fresh conversation', async () => {
     ionWith({ model: 'prov/claude-sonnet-4-6' })
     const submit = vi.fn()
-    const setTabModel = vi.fn()
+    const setTabAutomaticModel = vi.fn()
     const createTabInDirectory = vi.fn().mockResolvedValue('tab-new')
-    const h = harness({ submit, setTabModel, createTabInDirectory, tabs: [], activeTabId: null })
+    const h = harness({ submit, setTabAutomaticModel, createTabInDirectory, tabs: [], activeTabId: null })
 
     await h.slice.openConflictAssist!(WT)
 
-    expect(setTabModel).toHaveBeenCalledWith('tab-new', 'prov/claude-sonnet-4-6')
+    expect(setTabAutomaticModel).toHaveBeenCalledWith('tab-new', 'prov/claude-sonnet-4-6')
   })
 
   it('forces auto mode on the fresh conversation regardless of the default', async () => {
     // A plan-mode default would park the assist writing a plan for work the
     // operator already requested verbatim.
     ionWith()
-    const setTabModel = vi.fn()
+    const setTabAutomaticModel = vi.fn()
     const createTabInDirectory = vi.fn().mockResolvedValue('tab-new')
-    const h = harness({ submit: vi.fn(), setTabModel, createTabInDirectory, tabs: [], activeTabId: null })
+    const h = harness({ submit: vi.fn(), setTabAutomaticModel, createTabInDirectory, tabs: [], activeTabId: null })
 
     await h.slice.openConflictAssist!(WT)
 
@@ -544,7 +544,7 @@ describe('openConflictAssist — resolves bench-ness from the records', () => {
     const submit = vi.fn()
     const h = harness({
       submit,
-      setTabModel: vi.fn(),
+      setTabAutomaticModel: vi.fn(),
       createTabInDirectory: vi.fn(async () => 'tab-new'),
       tabs: [{ id: 'tab-new', inputLocked: false }],
       benchWorkspaces: new Map([['/repo', [{ benchPath: '/bench/josh', sourceBranch: 'josh' }]]]),
@@ -561,7 +561,7 @@ describe('openConflictAssist — resolves bench-ness from the records', () => {
     const submit = vi.fn()
     const h = harness({
       submit,
-      setTabModel: vi.fn(),
+      setTabAutomaticModel: vi.fn(),
       createTabInDirectory: vi.fn(async () => 'tab-new'),
       tabs: [{ id: 'tab-new', inputLocked: false }],
       benchWorkspaces: new Map([['/repo', [{ benchPath: '/bench/josh', sourceBranch: 'josh' }]]]),

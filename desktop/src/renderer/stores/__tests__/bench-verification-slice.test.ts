@@ -131,7 +131,7 @@ describe('openBenchVerificationAnalysis', () => {
   it('materialises the diagnostic tree, opens a PLAN-mode locked tab, and submits the analysis prompt', async () => {
     ionWith()
     const submit = vi.fn()
-    const setTabModel = vi.fn()
+    const setTabAutomaticModel = vi.fn()
     const createTabInDirectory = vi.fn().mockResolvedValue('tab-analysis')
     const refreshedWorkspace = workspaceFixture({
       lastAssemblyFailure: 'verification',
@@ -145,7 +145,7 @@ describe('openBenchVerificationAnalysis', () => {
       state.benchWorkspaces = new Map([[REPO, [refreshedWorkspace]]])
     })
     const h = harness({
-      submit, setTabModel, createTabInDirectory,
+      submit, setTabAutomaticModel, createTabInDirectory,
       refreshBench: (...a: unknown[]) => refreshBench(...a),
       // The store's role/lock tagging maps over the EXISTING tabs array by id
       // (see git-conflict-slice.ts's set() call) — the harness must already
@@ -158,7 +158,7 @@ describe('openBenchVerificationAnalysis', () => {
 
     expect(tabId).toBe('tab-analysis')
     expect(createTabInDirectory).toHaveBeenCalledWith(BENCH_PATH, false, true)
-    expect(setTabModel).toHaveBeenCalledWith('tab-analysis', 'prov/claude-sonnet-4-6')
+    expect(setTabAutomaticModel).toHaveBeenCalledWith('tab-analysis', 'prov/claude-sonnet-4-6')
 
     // The one deliberate divergence from openConflictAssist: PLAN, not auto.
     expect(applyPermissionModeForTab).toHaveBeenCalledWith(
