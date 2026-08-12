@@ -347,12 +347,38 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
-      - name: Build iOS app
+      - name: Test iOS app
+        # `test` needs a simulator; `platform=iOS Simulator,OS=latest` lets
+        # Xcode select an available device from the runner's newest runtime,
+        # rather than pinning a device name or SDK version that could disappear.
+        #
+        # This runs the WHOLE IonRemoteTests suite, with no -only-testing
+        # filter. An earlier revision of this job listed three classes
+        # (ThemeParityTests, ThemeableSurfaceCoverageTests,
+        # StatusCascadeParityTests) on the assumption that the full suite
+        # would cost materially more wall-clock. Measured on an M4 against a
+        # cold simulator, that assumption was false: the three-class filter
+        # runs in 29s and the full suite in 62-64s across three consecutive
+        # runs, all green. Roughly 34 extra seconds buys PR enforcement for
+        # every test in the target instead of three classes, so the filter is
+        # not worth its cost and there is no exclusion list.
+        #
+        # CODE_SIGNING_ALLOWED must stay YES. The app's entitlements declare
+        # `keychain-access-groups` (ios/IonRemote/App/IonRemote.entitlements),
+        # and CODE_SIGNING_ALLOWED=NO strips the entitlement from the test
+        # host, so every SecItemAdd inside the simulator fails with a denied
+        # keychain access. That is invisible under the old three-class filter
+        # and fails OIDCTokenManagerTests.testKeychainComposedKey the moment
+        # the suite is widened. CODE_SIGNING_REQUIRED=NO plus an ad-hoc
+        # CODE_SIGN_IDENTITY keeps the runner from needing a provisioning
+        # profile while preserving the simulated entitlement.
         working-directory: ios
         run: |
           xcodebuild \
             -project IonRemote.xcodeproj \
             -scheme IonRemote \
-            -destination 'generic/platform=iOS' \
-            CODE_SIGNING_ALLOWED=NO \
-            build
+            -destination 'platform=iOS Simulator,OS=latest' \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=- \
+            test
