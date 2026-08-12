@@ -20,6 +20,12 @@ struct SettingsAppearanceView: View {
     @Environment(SessionViewModel.self) private var viewModel
     @Environment(\.appTheme) private var theme
 
+    private var selectedThemeId: String {
+        if let enforced = theme.enforcedThemeId,
+           theme.availableThemes.contains(where: { $0.id == enforced }) { return enforced }
+        return theme.selectedThemeId
+    }
+
     var body: some View {
         List {
             // ─── Theme ──────────────────────────────────────────────
@@ -40,42 +46,23 @@ struct SettingsAppearanceView: View {
                         Spacer()
                     }
                 }
-                Picker("Theme", selection: Binding(
-                    get: {
-                        // Under enforcement the picker displays the enforced
-                        // theme (when it is resolvable in the list); the
-                        // user's own selection is preserved underneath and
-                        // resumes when the policy lifts.
-                        if let enforced = theme.enforcedThemeId,
-                           theme.availableThemes.contains(where: { $0.id == enforced }) {
-                            return enforced
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: IonSpace.contentGap) {
+                        ForEach(theme.availableThemes, id: \.id) { item in
+                            ThemePreviewCard(
+                                item: item,
+                                selected: selectedThemeId == item.id,
+                                enforced: theme.enforcedThemeId != nil
+                            ) {
+                                guard theme.enforcedThemeId == nil else { return }
+                                theme.selectedThemeId = item.id
+                                DiagnosticLog.log("theme card selected", tag: "view.settings", fields: ["status": item.id])
+                            }
                         }
-                        return theme.selectedThemeId
-                    },
-                    set: { newValue in
-                        theme.selectedThemeId = newValue
-                        DiagnosticLog.log("theme picker set", tag: "view.settings", fields: [
-                            "status": newValue
-                        ])
                     }
-                )) {
-                    // Built-ins + custom themes synced from paired desktops
-                    // (only themes with an iOS component ever reach this
-                    // list — the desktop ships nothing else).
-                    ForEach(theme.availableThemes, id: \.id) { t in
-                        Text(t.displayName).tag(t.id)
-                    }
+                    .padding(.vertical, IonSpace.hairlineGap)
                 }
-                .disabled(theme.enforcedThemeId != nil)
-                .onChange(of: theme.selectedThemeId) { oldVal, newVal in
-                    DiagnosticLog.log("theme picker changed", tag: "view.settings", fields: [
-                        "reason": oldVal,
-                        "status": newVal
-                    ])
-                    DiagnosticLog.log("theme accent updated", tag: "view.settings", fields: [
-                        "status": String(describing: theme.accent)
-                    ])
-                }
+
             } header: {
                 Text("Theme")
             } footer: {
@@ -163,5 +150,51 @@ struct SettingsAppearanceView: View {
         }
         .navigationTitle("Appearance")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+
+private struct ThemePreviewCard: View {
+    let item: AppTheme
+    let selected: Bool
+    let enforced: Bool
+    let choose: () -> Void
+
+    var body: some View {
+        Button(action: choose) {
+            VStack(alignment: .leading, spacing: IonSpace.hairlineGap) {
+                ZStack(alignment: .topTrailing) {
+                    VStack(alignment: .leading, spacing: IonSpace.hairlineGap) {
+                        RoundedRectangle(cornerRadius: IonRadius.control)
+                            .fill(item.surfaceElevated)
+                            .frame(height: 44)
+                            .overlay(alignment: .leading) {
+                                VStack(alignment: .leading, spacing: IonSpace.hairlineGap) {
+                                    Capsule().fill(item.textPrimary).frame(width: 42, height: 4)
+                                    Capsule().fill(item.textTertiary).frame(width: 28, height: 3)
+                                }.padding(IonSpace.hairlineGap)
+                            }
+                        HStack(spacing: IonSpace.hairlineGap) {
+                            Circle().fill(item.statusError).frame(width: 6, height: 6)
+                            Circle().fill(item.statusRunning).frame(width: 6, height: 6)
+                            Circle().fill(item.statusDone).frame(width: 6, height: 6)
+                        }
+                    }
+                    if let logo = item.logoImage {
+                        Image(uiImage: logo).resizable().scaledToFit().frame(width: 24, height: 24)
+                    }
+                    if enforced { Image(systemName: "lock.fill").font(IonType.metadata).foregroundStyle(item.textPrimary) }
+                }
+                Text(item.displayName).font(IonType.microLabel).foregroundStyle(item.textPrimary).lineLimit(2)
+            }
+            .padding(IonSpace.hairlineGap)
+            .frame(width: 96, height: 160, alignment: .topLeading)
+            .background(item.background)
+            .clipShape(RoundedRectangle(cornerRadius: IonRadius.container))
+            .overlay(RoundedRectangle(cornerRadius: IonRadius.container).stroke(selected ? item.accent : item.borderSubtle, lineWidth: selected ? 2 : 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(enforced)
+        .accessibilityLabel(item.displayName)
     }
 }

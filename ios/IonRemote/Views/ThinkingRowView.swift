@@ -44,29 +44,21 @@ struct ThinkingRowView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: IonSpace.hairlineGap) {
             header
             if isExpanded && hasText {
                 Text(message.content)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                    .font(IonType.mono)
+                    .foregroundStyle(theme.textTertiary)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color(.secondarySystemFill).opacity(0.5))
-        )
-        .padding(.horizontal, 12)
-        .padding(.vertical, 1)
+        .padding(.leading, IonSpace.screenInset)
         .contentShape(Rectangle())
         .onTapGesture {
             guard isExpandable else { return }
-            withAnimation(IonTheme.snappySpring) { isExpanded.toggle() }
+            isExpanded.toggle()
         }
     }
 
@@ -74,28 +66,17 @@ struct ThinkingRowView: View {
 
     @ViewBuilder
     private var header: some View {
-        HStack(spacing: 8) {
-            if message.thinkingActive {
-                // Live: pulse a small activity indicator beside "Thinking…".
-                ProgressView()
-                    .controlSize(.mini)
-                Text("Thinking…")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-            } else {
-                Text(summaryLabel)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 0)
-
+        HStack(spacing: IonSpace.hairlineGap) {
+            Text(message.thinkingActive ? "Thinking…" : summaryLabel)
+                .font(IonType.meaning)
+                .foregroundStyle(theme.textTertiary)
+                .lineLimit(1)
             if isExpandable {
-                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(IonType.metadata)
+                    .foregroundStyle(theme.textTertiary)
             }
+            Spacer(minLength: 0)
         }
     }
 
@@ -103,14 +84,11 @@ struct ThinkingRowView: View {
     /// otherwise "💭 Thought" plus whatever summary detail is available.
     private var summaryLabel: String {
         if message.thinkingRedacted {
-            return "🔒 redacted reasoning"
+            return "Thought"
         }
-        var label = "💭 Thought"
+        var label = "Thought"
         if let seconds = message.thinkingElapsedSeconds {
             label += " for \(Self.formatSeconds(seconds))"
-        }
-        if let tokens = message.thinkingTotalTokens, tokens > 0 {
-            label += " (~\(tokens) tokens)"
         }
         return label
     }

@@ -1,5 +1,6 @@
-import XCTest
 import SwiftUI
+import XCTest
+
 @testable import IonRemote
 
 /// Pins the `TabRowView` SUBTITLE (text + color) priority order so it can never
@@ -26,128 +27,128 @@ import SwiftUI
 /// surfaces".
 final class TabRowSubtitlePriorityTests: XCTestCase {
 
-    // MARK: - Helpers
+  // MARK: - Helpers
 
-    // Read the cascade's own constants rather than re-literalling the hexes —
-    // these suites pin the priority ordering, not the specific palette values.
-    private let yellowColor = TabStatusRollup.childrenYellow
-    private let purpleColor = TabStatusRollup.questionPurple
+  // Read the cascade's own constants rather than re-literalling the hexes —
+  // these suites pin the priority ordering, not the specific palette values.
+  private let yellowColor = TabStatusRollup.childrenYellow
+  private let purpleColor = TabStatusRollup.questionPurple
 
-    /// A fixed now/since pair so `relativeTime` is deterministic. 2h apart →
-    /// the elapsed suffix is always "2h ago".
-    private let since = Date(timeIntervalSince1970: 1_000_000)
-    private var now: Date { since.addingTimeInterval(2 * 60 * 60) }
-    private let elapsedSuffix = "2h ago"
+  /// A fixed now/since pair so `relativeTime` is deterministic. 2h apart →
+  /// the elapsed suffix is always "2h ago".
+  private let since = Date(timeIntervalSince1970: 1_000_000)
+  private var now: Date { since.addingTimeInterval(2 * 60 * 60) }
+  private let elapsedSuffix = "2h ago"
 
-    /// Build a minimal RemoteTabState with the fields the test varies.
-    private func makeTab(
-        status: TabStatus = .idle,
-        hasRunningChildren: Bool? = nil,
-        permissionQueue: [PermissionRequest] = []
-    ) -> RemoteTabState {
-        RemoteTabState(
-            id: "tab-subtitle-test",
-            title: "Subtitle Test",
-            customTitle: nil,
-            status: status,
-            workingDirectory: "/tmp",
-            permissionMode: .auto,
-            thinkingEffort: nil,
-            permissionQueue: permissionQueue,
-            hasRunningChildren: hasRunningChildren
-        )
-    }
+  /// Build a minimal RemoteTabState with the fields the test varies.
+  private func makeTab(
+    status: TabStatus = .idle,
+    hasRunningChildren: Bool? = nil,
+    permissionQueue: [PermissionRequest] = []
+  ) -> RemoteTabState {
+    RemoteTabState(
+      id: "tab-subtitle-test",
+      title: "Subtitle Test",
+      customTitle: nil,
+      status: status,
+      workingDirectory: "/tmp",
+      permissionMode: .auto,
+      thinkingEffort: nil,
+      permissionQueue: permissionQueue,
+      hasRunningChildren: hasRunningChildren
+    )
+  }
 
-    /// A PermissionRequest representing a plan-ready (ExitPlanMode) denial.
-    private func planReadyEntry() -> PermissionRequest {
-        PermissionRequest(
-            questionId: "qid-exitplan",
-            toolName: "ExitPlanMode",
-            toolInput: nil,
-            options: []
-        )
-    }
+  /// A PermissionRequest representing a plan-ready (ExitPlanMode) denial.
+  private func planReadyEntry() -> PermissionRequest {
+    PermissionRequest(
+      questionId: "qid-exitplan",
+      toolName: "ExitPlanMode",
+      toolInput: nil,
+      options: []
+    )
+  }
 
-    /// A PermissionRequest representing a question (AskUserQuestion) denial.
-    private func questionEntry() -> PermissionRequest {
-        PermissionRequest(
-            questionId: "qid-question",
-            toolName: "AskUserQuestion",
-            toolInput: nil,
-            options: []
-        )
-    }
+  /// A PermissionRequest representing a question (AskUserQuestion) denial.
+  private func questionEntry() -> PermissionRequest {
+    PermissionRequest(
+      questionId: "qid-question",
+      toolName: "AskUserQuestion",
+      toolInput: nil,
+      options: []
+    )
+  }
 
-    /// Read the subtitle text for a tab with the deterministic now/since pair.
-    private func subtitle(for tab: RemoteTabState) -> String {
-        TabRowView(tab: tab).idleLabel(at: now, since: since)
-    }
+  /// Read the subtitle text for a tab with the deterministic now/since pair.
+  private func subtitle(for tab: RemoteTabState) -> String {
+    TabRowView(tab: tab).idleLabel(at: now, since: since)
+  }
 
-    /// Read the subtitle color for a tab.
-    private func subtitleColor(for tab: RemoteTabState) -> Color {
-        TabRowView(tab: tab).idleLabelColor
-    }
+  /// Read the subtitle color for a tab.
+  private func subtitleColor(for tab: RemoteTabState) -> Color {
+    TabRowView(tab: tab).idleLabelColor
+  }
 
-    // MARK: - Core parity test (fails on pre-fix cascade)
+  // MARK: - Core parity test (fails on pre-fix cascade)
 
-    /// idle + hasRunningChildren + ExitPlanMode entry → running-children label,
-    /// NOT plan-ready. This is the regression gate: the pre-fix cascade returned
-    /// "Plan ready · …" green because it checked hasPlanReady first and was blind
-    /// to hasRunningChildren.
-    func testRunningChildrenSubtitleOutranksPlanReady() {
-        let tab = makeTab(
-            status: .idle,
-            hasRunningChildren: true,
-            permissionQueue: [planReadyEntry()]
-        )
+  /// idle + hasRunningChildren + ExitPlanMode entry → running-children label,
+  /// NOT plan-ready. This is the regression gate: the pre-fix cascade returned
+  /// "Plan ready · …" green because it checked hasPlanReady first and was blind
+  /// to hasRunningChildren.
+  func testRunningChildrenSubtitleOutranksPlanReady() {
+    let tab = makeTab(
+      status: .idle,
+      hasRunningChildren: true,
+      permissionQueue: [planReadyEntry()]
+    )
 
-        XCTAssertEqual(
-            subtitle(for: tab),
-            "Working… · \(elapsedSuffix)",
-            "running-children must outrank plan-ready in the subtitle: expected the Working… label, not Plan ready"
-        )
-        XCTAssertEqual(
-            subtitleColor(for: tab),
-            yellowColor,
-            "running-children subtitle must be childrenYellow, not green"
-        )
-    }
+    XCTAssertEqual(
+      subtitle(for: tab),
+      "Working… · \(elapsedSuffix)",
+      "running-children must outrank plan-ready in the subtitle: expected the Working… label, not Plan ready"
+    )
+    XCTAssertEqual(
+      subtitleColor(for: tab),
+      yellowColor,
+      "running-children subtitle must be childrenYellow, not green"
+    )
+  }
 
-    // MARK: - Isolation checks
+  // MARK: - Isolation checks
 
-    /// idle + ExitPlanMode, no children → plan-ready green.
-    func testPlanReadyAloneResolvesGreenSubtitle() {
-        let tab = makeTab(
-            status: .idle,
-            hasRunningChildren: nil,
-            permissionQueue: [planReadyEntry()]
-        )
+  /// idle + ExitPlanMode, no children → plan-ready green.
+  func testPlanReadyAloneResolvesGreenSubtitle() {
+    let tab = makeTab(
+      status: .idle,
+      hasRunningChildren: nil,
+      permissionQueue: [planReadyEntry()]
+    )
 
-        XCTAssertEqual(subtitle(for: tab), "Plan ready · \(elapsedSuffix)")
-        XCTAssertEqual(subtitleColor(for: tab), .green)
-    }
+    XCTAssertEqual(subtitle(for: tab), "Plan ready · \(elapsedSuffix)")
+    XCTAssertEqual(subtitleColor(for: tab), IonDarkTheme().statusDone)
+  }
 
-    /// idle + AskUserQuestion, no children → question purple.
-    func testQuestionAloneResolvesPurpleSubtitle() {
-        let tab = makeTab(
-            status: .idle,
-            hasRunningChildren: nil,
-            permissionQueue: [questionEntry()]
-        )
+  /// idle + AskUserQuestion, no children → question purple.
+  func testQuestionAloneResolvesPurpleSubtitle() {
+    let tab = makeTab(
+      status: .idle,
+      hasRunningChildren: nil,
+      permissionQueue: [questionEntry()]
+    )
 
-        XCTAssertEqual(subtitle(for: tab), "Waiting on you · \(elapsedSuffix)")
-        XCTAssertEqual(subtitleColor(for: tab), purpleColor)
-    }
+    XCTAssertEqual(subtitle(for: tab), "Waiting on you · \(elapsedSuffix)")
+    XCTAssertEqual(subtitleColor(for: tab), purpleColor)
+  }
 
-    /// idle + hasRunningChildren, empty queue → running-children label.
-    func testRunningChildrenAloneResolvesYellowSubtitle() {
-        let tab = makeTab(
-            status: .idle,
-            hasRunningChildren: true,
-            permissionQueue: []
-        )
+  /// idle + hasRunningChildren, empty queue → running-children label.
+  func testRunningChildrenAloneResolvesYellowSubtitle() {
+    let tab = makeTab(
+      status: .idle,
+      hasRunningChildren: true,
+      permissionQueue: []
+    )
 
-        XCTAssertEqual(subtitle(for: tab), "Working… · \(elapsedSuffix)")
-        XCTAssertEqual(subtitleColor(for: tab), yellowColor)
-    }
+    XCTAssertEqual(subtitle(for: tab), "Working… · \(elapsedSuffix)")
+    XCTAssertEqual(subtitleColor(for: tab), yellowColor)
+  }
 }
