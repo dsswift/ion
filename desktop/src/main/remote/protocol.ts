@@ -14,33 +14,8 @@
 import type { TabStatus, AgentStateUpdate, StatusFields } from '../../shared/types'
 import type { RemoteTabState, RemoteMessage, TerminalInstanceInfo } from './protocol-remote-tab'
 
-/**
- * Wire shape for one entry in `desktop_settings_snapshot.schema`.
- *
- * Mirrors `ProjectableSettingSchema` from
- * `desktop/src/main/projectable-settings-types.ts`. Declared here as a
- * named interface (rather than inlined) so the recursive `itemSchema`
- * reference can name itself — TS forbids self-references inside
- * anonymous object types.
- *
- * The recursion supports list-typed settings whose records contain
- * sub-fields. Today the per-record schemas describe only scalar leaves
- * (boolean/string/number/enum), but the wire type allows arbitrary
- * nesting so a future list-of-list shape would not require a protocol
- * bump.
- */
-export interface DesktopSettingsSchemaEntry {
-  key: string
-  type: 'boolean' | 'string' | 'number' | 'enum' | 'list'
-  group: string
-  label: string
-  description: string
-  defaultValue: unknown
-  choices?: Array<{ value: string | null; label: string }>
-  range?: { min: number; max: number; step: number }
-  itemSchema?: DesktopSettingsSchemaEntry[]
-  itemType?: 'boolean' | 'string' | 'number' | 'enum'
-}
+import type { DesktopSettingsSchemaEntry } from './protocol-settings'
+export type { DesktopSettingsSchemaEntry } from './protocol-settings'
 
 // ─── Remote Tab State + message types — extracted for line-cap ───
 // All types re-exported so existing import paths remain valid.
