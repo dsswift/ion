@@ -7,13 +7,14 @@
 //   - Tab focus publishing (desktop.focus resource on tab switch)
 //   - Read-state persistence to disk (~/.ion/resource-read-state.json)
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'fs'
+import { existsSync, readFileSync, mkdirSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import { ipcMain } from 'electron'
 import { IPC } from '../shared/types'
 import { log as _log } from './logger'
 import { engineBridge, state } from './state'
+import { atomicWriteFileSync } from './utils/atomicWrite'
 import { broadcast } from './broadcast'
 import { notifyStudioActiveTab } from './studio-window-manager'
 
@@ -76,13 +77,18 @@ try {
       log('resource_read_state: loaded from disk', { count: persistedReadIds.size })
     }
   }
-} catch { /* non-fatal: start fresh */ }
+  } catch (err) {
+    log('resource_read_state: load failed; starting empty', { error: String(err) })
+  }
 
 function persistReadState(): void {
   try {
     mkdirSync(join(homedir(), '.ion'), { recursive: true })
-    writeFileSync(READ_STATE_PATH, JSON.stringify([...persistedReadIds]))
-  } catch { /* non-fatal */ }
+    atomicWriteFileSync(READ_STATE_PATH, JSON.stringify([...persistedReadIds]), 0o600)
+    log('resource_read_state: persisted', { count: persistedReadIds.size })
+  } catch (err) {
+    log('resource_read_state: persist failed', { error: String(err), count: persistedReadIds.size })
+  }
 }
 
 /** Mark a resource as read and persist to disk. */

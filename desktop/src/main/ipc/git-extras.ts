@@ -6,15 +6,15 @@
  */
 
 import { ipcMain } from 'electron'
-import { writeFileSync, unlinkSync } from 'fs'
+import { writeFileSync } from 'fs'
 import { join } from 'path'
-import { tmpdir } from 'os'
 import { IPC } from '../../shared/types'
 import { runGit } from '../git-runner'
 import { benchGuard } from '../integration/bench-guard'
 import { log as _log, error as _error } from '../logger'
 import { subscribe as gitSubscribe, unsubscribe as gitUnsubscribe } from '../git/subscriptions'
 import { repositoryManager } from '../git/repositoryManager'
+import { createOperationDir, cleanupDir } from '../utils/temp-dir'
 
 const log = (msg: string, fields?: Record<string, unknown>): void => { _log('git-extras', msg, fields) }
 const logError = (msg: string, fields?: Record<string, unknown>): void => { _error('git-extras', msg, fields) }
@@ -64,17 +64,18 @@ export function registerGitExtrasIpc(): void {
     const args = ['apply', '--whitespace=nowarn']
     if (cached) args.push('--cached')
     if (reverse) args.push('-R')
-    const tmpPatch = join(tmpdir(), `ion-patch-${process.pid}-${Date.now()}.patch`)
+    const opDir = createOperationDir('patch')
     try {
-      writeFileSync(tmpPatch, patch)
-      args.push(tmpPatch)
+      const patchFile = join(opDir, 'apply.patch')
+      writeFileSync(patchFile, patch)
+      args.push(patchFile)
       await runGit(directory, args)
       return { ok: true }
     } catch (err: any) {
       logError(`gitApplyPatch failed: ${err.message}`)
       return { ok: false, error: err.message }
     } finally {
-      try { unlinkSync(tmpPatch) } catch { /* silent-ok: best-effort temp-patch cleanup */ }
+      cleanupDir(opDir)
     }
   })
 

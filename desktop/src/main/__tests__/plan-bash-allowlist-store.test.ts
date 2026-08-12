@@ -14,10 +14,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // reads/writes it so the test never touches the real ~/.ion/engine.json.
 const store = vi.hoisted(() => ({ engineConfig: {} as Record<string, unknown> }))
 
-vi.mock('../settings-store', () => ({
-  readEngineConfig: () => JSON.parse(JSON.stringify(store.engineConfig)),
-  writeEngineConfig: (cfg: Record<string, unknown>) => { store.engineConfig = cfg },
-}))
+vi.mock('../settings-store', () => {
+  const readEngineConfig = () => JSON.parse(JSON.stringify(store.engineConfig))
+  const writeEngineConfig = (cfg: Record<string, unknown>) => { store.engineConfig = cfg }
+  return {
+    readEngineConfig,
+    writeEngineConfig,
+    updateEngineConfig: (mutator: (cfg: Record<string, any>) => boolean | void) => {
+      const cfg = readEngineConfig()
+      const result = mutator(cfg)
+      if (result === false) return false
+      writeEngineConfig(cfg)
+      return true
+    },
+  }
+})
 
 vi.mock('../logger', () => ({
   log: vi.fn(),

@@ -21,8 +21,8 @@ export function atomicWriteFileSync(
   data: string | Uint8Array,
   mode: number = 0o600,
 ): void {
-  const tmp = `${path}.tmp.${process.pid}.${Date.now()}`
-  const fd = openSync(tmp, 'w', mode)
+  const tmp = `${path}.ion-tmp.${process.pid}.${crypto.randomUUID()}`
+  const fd = openSync(tmp, 'wx', mode)
   try {
     const buf =
       typeof data === 'string'

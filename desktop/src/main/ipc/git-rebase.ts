@@ -24,9 +24,8 @@
  */
 
 import { ipcMain } from 'electron'
-import { writeFileSync, unlinkSync } from 'fs'
+import { writeFileSync } from 'fs'
 import { join } from 'path'
-import { tmpdir } from 'os'
 import { IPC } from '../../shared/types'
 import { runGit, gitExec } from '../git-runner'
 import { benchGuard, resolveBenchFor } from '../integration/bench-guard'
@@ -34,6 +33,7 @@ import { benchMutationQueue } from '../integration/bench-mutation-queue'
 import { continueBenchMerge } from '../integration/bench-merge-continue'
 import { probeOperationState } from '../git/operation-state'
 import { warn } from '../logger'
+import { createOperationDir, cleanupDir } from '../utils/temp-dir'
 
 const TAG = 'git.rebase'
 
@@ -67,23 +67,24 @@ export function registerGitRebaseIpc(): void {
   ipcMain.handle(IPC.GIT_REBASE_EXEC, async (_event, { directory, onto, commits }: { directory: string; onto: string; commits: Array<{ hash: string; action: string }> }) => {
     const refusal = benchGuard(directory, 'rebase')
     if (refusal) return refusal
+    const opDir = createOperationDir('rebase')
     try {
       const todoContent = commits
         .filter(c => c.action !== 'drop')
         .map(c => `${c.action} ${c.hash}`)
         .join('\n') + '\n'
 
-      const todoFile = join(tmpdir(), `ion-rebase-todo-${Date.now()}`)
+      const todoFile = join(opDir, 'todo')
       writeFileSync(todoFile, todoContent)
 
-      // Use GIT_SEQUENCE_EDITOR to supply our pre-built todo list
       const env = { ...process.env, GIT_SEQUENCE_EDITOR: `cat "${todoFile}" >` }
       await gitExec('git', ['rebase', '-i', onto], { cwd: directory, maxBuffer: 10 * 1024 * 1024, env })
 
-      try { unlinkSync(todoFile) } catch { /* silent-ok: best-effort rebase-todo temp-file cleanup */ }
       return { ok: true }
     } catch (err: any) {
       return { ok: false, error: err.stderr?.trim() || err.message }
+    } finally {
+      cleanupDir(opDir)
     }
   })
 

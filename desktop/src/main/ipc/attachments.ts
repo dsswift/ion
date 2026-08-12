@@ -1,9 +1,11 @@
 import { dialog, ipcMain } from 'electron'
 import { createHash } from 'crypto'
 import { execSync } from 'child_process'
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { basename, extname, join } from 'path'
+import { atomicWriteFileSync } from '../utils/atomicWrite'
+import { cleanupFile } from '../utils/temp-dir'
 import { IPC } from '../../shared/types'
 import { state, SPACES_DEBUG } from '../state'
 import { broadcast } from '../broadcast'
@@ -67,7 +69,7 @@ function saveUserImage(buf: Buffer, ext: string): string | null {
     const filePath = join(dir, `${hash}.${ext}`)
     // Content-addressed: same bytes → same name. Skip write when already present.
     if (!existsSync(filePath)) {
-      writeFileSync(filePath, buf)
+      atomicWriteFileSync(filePath, buf)
       log('attachments: user image saved', { path: filePath, bytes: buf.length })
     } else {
       log('attachments: user image already present (content-addressed); skipping write', { path: filePath })
@@ -149,23 +151,18 @@ export function registerAttachmentsIpc(): void {
     state.mainWindow.hide()
     await new Promise((r) => setTimeout(r, 300))
 
+    const tmpPath = join(require('os').tmpdir(), `ion-screenshot-${crypto.randomUUID()}.png`)
     try {
-      // screencapture needs a tmp destination; we read the bytes and move to
-      // permanent storage immediately so the file survives across reboots.
-      const tmpPath = join(require('os').tmpdir(), `ion-screenshot-tmp-${Date.now()}.png`)
-
       execSync(`/usr/sbin/screencapture -i "${tmpPath}"`, {
         timeout: 30000,
         stdio: 'ignore',
       })
 
       if (!existsSync(tmpPath)) {
-        // User cancelled the screencapture interactive selection.
         return null
       }
 
       const buf = readFileSync(tmpPath)
-      // Move to permanent content-addressed storage so the path survives restart.
       const permanentPath = saveUserImage(buf, 'png')
       if (!permanentPath) return null
 
@@ -185,6 +182,7 @@ export function registerAttachmentsIpc(): void {
       warn('attachments: screenshot capture failed', { error: String(err) })
       return null
     } finally {
+      cleanupFile(tmpPath)
       if (state.mainWindow) {
         state.mainWindow.show()
         state.mainWindow.webContents.focus()

@@ -1,4 +1,4 @@
-import { readEngineConfig, writeEngineConfig } from './settings-store'
+import { readEngineConfig, updateEngineConfig } from './settings-store'
 import { log as _log } from './logger'
 
 const TAG = 'PlanBashAllowlist'
@@ -47,10 +47,10 @@ export function readPlanBashAllowlist(): string[] {
  * key, so the operator's intent survives round-trips.
  */
 export function writePlanBashAllowlist(cmds: string[]): void {
-  const cfg = readEngineConfig()
-  const limits = (cfg.limits && typeof cfg.limits === 'object') ? cfg.limits as Record<string, unknown> : {}
-  limits.planModeAllowedBashCommands = cmds
-  cfg.limits = limits
-  writeEngineConfig(cfg)
+  updateEngineConfig((cfg) => {
+    const limits = (cfg.limits && typeof cfg.limits === 'object') ? cfg.limits as Record<string, unknown> : {}
+    limits.planModeAllowedBashCommands = cmds
+    cfg.limits = limits
+  })
   log('plan_bash_allowlist: wrote engine.json', { count: cmds.length })
 }
