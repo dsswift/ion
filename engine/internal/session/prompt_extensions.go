@@ -2,6 +2,7 @@ package session
 
 import (
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
@@ -40,17 +41,18 @@ func (m *Manager) lateLoadExtensions(s *engineSession, key string, overrides *Pr
 	m.mu.RUnlock()
 
 	group := extension.NewExtensionGroup()
-	accessor := &sessionAccessor{m: m, s: s, key: key}
-	buildIdentity := accessor.EngineBuildIdentity()
 	for _, extPath := range overrides.Extensions {
-		host, extCfg := newPerPromptExtensionHost(buildIdentity, extPath, s.config.WorkingDirectory)
+		host := extension.NewHost()
+		extCfg := &extension.ExtensionConfig{
+			ExtensionDir:     filepath.Dir(extPath),
+			WorkingDirectory: s.config.WorkingDirectory,
+		}
 		if rpcTimeout > 0 {
 			host.SetRPCTimeout(rpcTimeout)
 		}
 		if len(requiredHooks) > 0 {
 			host.RegisterRequiredHooks(requiredHooks)
 		}
-		host.SetEngineBuildIdentity(buildIdentity)
 		if err := host.Load(extPath, extCfg); err != nil {
 			stderrTail := host.StderrTail()
 			utils.LogWithFields(utils.LevelError, "session", "per-prompt extension load failed", map[string]any{"ext_path": extPath, "error": err.Error()})
@@ -120,7 +122,7 @@ func (m *Manager) fireBeforeAgentStart(s *engineSession, key string, extGroup *e
 	}
 	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: firing before_agent_start", map[string]any{"key": key})
 	basCtx := m.newExtContext(s, key)
-	agentSysPrompt, _, _ := extGroup.FireBeforeAgentStart(basCtx, m.rootBeforeAgentStartInfo("")) //nolint:errcheck // errors logged internally by fireVoid/s.fire
+	agentSysPrompt, _, _ := extGroup.FireBeforeAgentStart(basCtx, extension.AgentInfo{IsRoot: true}) //nolint:errcheck // errors logged internally by fireVoid/s.fire
 	if agentSysPrompt != "" {
 		opts.AppendSystemPrompt += "\n\n" + agentSysPrompt
 		utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: before_agent_start injected chars", map[string]any{"key": key, "count": len(agentSysPrompt)})

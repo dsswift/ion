@@ -24,6 +24,11 @@ type sessionAccessor struct {
 	m   *Manager
 	s   *engineSession
 	key string
+	// progressTarget binds this accessor to the precise run that owns a
+	// foreground Agent wait. The session's current requestID can change while a
+	// child is still producing events, so liveness credit must not look it up
+	// again at delivery time.
+	progressTarget func()
 	// suspender, when non-nil, is the DeadlineSuspender of the tool call
 	// through which this accessor was created. The Elicit path uses it to
 	// suspend the tool's finite deadline while blocked on a human. nil for
@@ -260,7 +265,17 @@ func (a *sessionAccessor) AllocatePlanFilePath(model string) string {
 // for this session's active run. Delegates to the Manager, which resolves the
 // parent backend and the session's current requestID. No-op when the session
 // has no active run or the backend cannot bump progress (CLI / test stubs).
-func (a *sessionAccessor) BumpParentProgress() { a.m.bumpParentProgress(a.s) }
+// BumpParentProgress refreshes the progress clock for this accessor's bound
+// parent run. Root dispatches created by Agent carry an immutable owner because
+// status reconciliation may replace engineSession.requestID before child output
+// arrives. Other contexts retain the current-session lookup behavior.
+func (a *sessionAccessor) BumpParentProgress() {
+	if a.progressTarget != nil {
+		a.progressTarget()
+		return
+	}
+	a.m.bumpParentProgress(a.s)
+}
 
 // EmitDispatchCountStatus re-samples the live dispatch count from the session's
 // registry and emits a corrected engine_status + engine_agent_state snapshot.

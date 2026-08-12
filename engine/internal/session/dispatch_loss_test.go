@@ -1,6 +1,7 @@
 package session
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -396,5 +397,61 @@ func TestDispatchLoss_PendingAnnouncementCannotOverwriteAcknowledgement(t *testi
 	m2.announceLostDispatches(s2, s2.key)
 	if got := countLossEvents(events()); got != 0 {
 		t.Fatalf("acknowledged loss re-announced %d times, want 0", got)
+	}
+}
+
+func TestDispatchLoss_ConcurrentPersistencePreservesEveryLifecycleRecord(t *testing.T) {
+	m, s, _ := lossTestEnv(t, "loss-concurrent-persist", nil)
+	const dispatches = 16
+
+	var registrations sync.WaitGroup
+	for i := 0; i < dispatches; i++ {
+		registrations.Add(1)
+		go func(i int) {
+			defer registrations.Done()
+			id := fmt.Sprintf("dispatch-concurrent-%d", i)
+			m.persistDispatchRegistered(s.key, s.conversationID, id, "worker", "Worker", "do work", "test-model", "", 1)
+		}(i)
+	}
+	registrations.Wait()
+
+	for i := 0; i < dispatches; i++ {
+		id := fmt.Sprintf("dispatch-concurrent-%d", i)
+		s.agents.AppendOrUpdateByID(types.AgentStateUpdate{
+			Name: fmt.Sprintf("worker-%d", i), ID: id, Status: "done",
+			Metadata: map[string]interface{}{"task": "do work", "model": "test-model"},
+		}, nil)
+	}
+	var terminals sync.WaitGroup
+	for i := 0; i < dispatches; i++ {
+		terminals.Add(1)
+		go func() {
+			defer terminals.Done()
+			m.persistTerminalDispatches(s.key, s.conversationID)
+		}()
+	}
+	terminals.Wait()
+
+	conv, err := conversation.Load(s.conversationID, "")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	statuses := make(map[string]string)
+	for _, entry := range conv.Entries {
+		if dispatch := conversation.AsAgentDispatchData(entry.Data); dispatch != nil {
+			statuses[dispatch.AgentID] = dispatch.Status
+		}
+	}
+	if len(statuses) != dispatches {
+		t.Fatalf("persisted dispatches = %d, want %d", len(statuses), dispatches)
+	}
+	for i := 0; i < dispatches; i++ {
+		id := fmt.Sprintf("dispatch-concurrent-%d", i)
+		if got := statuses[id]; got != "done" {
+			t.Errorf("%s persisted status = %q, want done", id, got)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(os.Getenv("ION_DATA_DIR"), "conversations", s.conversationID+".tree.jsonl.tmp")); !os.IsNotExist(err) {
+		t.Errorf("tree temp file remains after concurrent saves: %v", err)
 	}
 }

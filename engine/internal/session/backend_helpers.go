@@ -78,6 +78,26 @@ type progressBumpable interface {
 	BumpRunProgress(requestID string)
 }
 
+// progressTarget returns a liveness callback pinned to requestID. Unlike
+// bumpParentProgress it never reads engineSession.requestID after construction:
+// child activity from a foreground Agent must keep the original blocked run
+// alive even if status reconciliation has already cleared or replaced the
+// session's current run identity.
+func (m *Manager) progressTarget(requestID string) func() {
+	if requestID == "" {
+		return nil
+	}
+	target := m.backend
+	if h, ok := target.(*backend.HybridBackend); ok {
+		target = h.InnerApi()
+	}
+	pb, ok := target.(progressBumpable)
+	if !ok {
+		return nil
+	}
+	return func() { pb.BumpRunProgress(requestID) }
+}
+
 // bumpParentProgress refreshes the parent run's run-progress watchdog clock for
 // the given session's active run. It is the session-side half of the dispatch
 // liveness fix: a healthy child agent's events flow on the *child* backend and
