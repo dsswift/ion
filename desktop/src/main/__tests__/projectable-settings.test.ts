@@ -73,7 +73,6 @@ import {
   PROJECTABLE_GROUP_ORDER,
   PROJECTABLE_GROUP_LABELS,
   isProjectableKey,
-  validateSettingValue,
   projectableKeysWithoutDefault,
   projectCurrentSettings,
   projectableSchema,
