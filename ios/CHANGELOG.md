@@ -10,6 +10,28 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.61.0](https://github.com/dsswift/ion/compare/ios-v1.60.0...ios-v1.61.0) (2026-08-12)
+
+### Features
+
+* **desktop:** add conversation run duration footer ([41f8490](https://github.com/dsswift/ion/commit/41f8490fdd2854510a4a4544e6e8dd612ddcc6da))
+* **ios:** add design-system roles ([ad22f45](https://github.com/dsswift/ion/commit/ad22f45fb79a6eb1d48ff6712eb57f26e28d472d))
+* **ios:** add high-contrast theme pair ([bd4e70f](https://github.com/dsswift/ion/commit/bd4e70f0d9fea77b2fb19373fd04d20e0a1214d2))
+* **ios:** rebuild conversation and tab surfaces ([05101a6](https://github.com/dsswift/ion/commit/05101a6ec360b832f0cb8f95cc5ef9d186afa3d1))
+
+### Bug Fixes
+
+* **ios:** keep context ring visible at zero percent ([b06813e](https://github.com/dsswift/ion/commit/b06813edcb33eba1feeb82d1d78bc17dfd014175))
+* **ios:** migrate surfaces to semantic colors ([50866fa](https://github.com/dsswift/ion/commit/50866fa72472ca2f1dffc33e5fc6e29e0d9adc64))
+* **ios:** simplify tab-list presentation ([0427e2a](https://github.com/dsswift/ion/commit/0427e2ad9ccf6ce8273649e27edd2a22dc4a0580))
+* **ios:** enforce status-cascade parity ([fad188d](https://github.com/dsswift/ion/commit/fad188deec0580aa64b903cbe4a1a5a1c12c3907))
+* **ios:** keep thinking control available ([af2c729](https://github.com/dsswift/ion/commit/af2c729c3028579a98c6f61109563797ff325274))
+* **ios:** support partial theme-pack components ([c025b23](https://github.com/dsswift/ion/commit/c025b23d464e8cd6496af2b6c504fe135a2cfe39))
+* **ios:** derive modal boundaries from luminance ([9175a44](https://github.com/dsswift/ion/commit/9175a44118ee1cd0d6a4cabb5a90c3f85464f7b1))
+* **ios:** represent follow-system theme scheme ([db9bd3a](https://github.com/dsswift/ion/commit/db9bd3aa6e4631b52af35e2105f1cebe2cee8442))
+* **ci:** stabilize iOS simulator tests ([9fcbdd7](https://github.com/dsswift/ion/commit/9fcbdd7f170347bb1278cfb69250b7a435a42556))
+* **ci:** split iOS simulator test lanes ([9b3708e](https://github.com/dsswift/ion/commit/9b3708ebea7bdb371505428993cc48cbeedbb213))
+
 ## [1.60.0](https://github.com/dsswift/ion/compare/ios-v1.59.1...ios-v1.60.0) (2026-08-12)
 
 ### Features

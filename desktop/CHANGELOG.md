@@ -10,6 +10,26 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.81.0](https://github.com/dsswift/ion/compare/desktop-v1.80.0...desktop-v1.81.0) (2026-08-12)
+
+### Features
+
+* **desktop:** add conversation run duration footer ([41f8490](https://github.com/dsswift/ion/commit/41f8490fdd2854510a4a4544e6e8dd612ddcc6da))
+* **desktop:** add high-contrast theme palettes ([31bf824](https://github.com/dsswift/ion/commit/31bf8248daaa5d6a7b603add344e09c93dcd6162))
+* **desktop:** classify projectable iOS settings ([57208ed](https://github.com/dsswift/ion/commit/57208ed616f82b222bba88d2db6b66b3c8515f1e))
+
+### Bug Fixes
+
+* **desktop:** pause watchdog monitoring during system sleep ([dab16ef](https://github.com/dsswift/ion/commit/dab16ef58c21e847246db596f864debce65a947b))
+* **desktop:** keep context radial visible at zero percent ([96be111](https://github.com/dsswift/ion/commit/96be11118aa9b94ee07b919ccc617d7d772893c8))
+* **desktop:** enforce status-cascade parity ([c02087a](https://github.com/dsswift/ion/commit/c02087abe4df5c410fafe0723402775f076e1acb))
+* **desktop:** theme ATV shell chrome ([3e3b2ff](https://github.com/dsswift/ion/commit/3e3b2ffb7b687ac123eca5bc15590d4782e9718c))
+* **desktop:** keep thinking control available ([22f8abd](https://github.com/dsswift/ion/commit/22f8abdaaa3af85b03c1c605d27162470d10111c))
+* **desktop:** represent follow-system theme scheme ([de99354](https://github.com/dsswift/ion/commit/de99354f88f343515150a63918332bfd290e89db))
+* **desktop:** restore parent menu actions after hover ([e7173a6](https://github.com/dsswift/ion/commit/e7173a64fe0254ac84e2b35557498c1d62c5f113))
+* **desktop:** split settings protocol schema ([e116cd4](https://github.com/dsswift/ion/commit/e116cd449dc19ea4083542db6ba229ea1d4e337c))
+* **desktop:** remove stale settings validation import ([2f8f4eb](https://github.com/dsswift/ion/commit/2f8f4ebeeef7dd1083af6cdf4b23eaaebff9f939))
+
 ## [1.80.0](https://github.com/dsswift/ion/compare/desktop-v1.79.1...desktop-v1.80.0) (2026-08-12)
 
 ### Features

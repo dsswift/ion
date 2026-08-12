@@ -13,6 +13,23 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.69.0](https://github.com/dsswift/ion/compare/engine-v1.68.0...engine-v1.69.0) (2026-08-12)
+
+### Features
+
+* **engine:** add operator thinking policy ([1f5d7b8](https://github.com/dsswift/ion/commit/1f5d7b8da83cea3bf3d879b8087d34e4df2f7709))
+
+### Bug Fixes
+
+* **engine:** restore session dispatch state after loss ([163c724](https://github.com/dsswift/ion/commit/163c724a482d54b49cf2ec5ec538b80869e92284))
+* **engine:** preserve context baseline after output-only turns ([19d00a5](https://github.com/dsswift/ion/commit/19d00a5ac996ea873f06ef7e62f4dc3fbdb37c8a))
+* **engine:** restore manager build identity ([49fc0d5](https://github.com/dsswift/ion/commit/49fc0d55b5cd737d48cd7cee9a9a206cab4e02e3))
+* **engine:** preserve MCP tool images ([3f3cb36](https://github.com/dsswift/ion/commit/3f3cb36f30148297b4159eac52b212c38205d634))
+* **engine:** order OpenAI tool image results ([7c03efc](https://github.com/dsswift/ion/commit/7c03efc9d4b57cb3150573a866c2b4755c017437))
+* **engine:** persist dispatch recovery state ([db02117](https://github.com/dsswift/ion/commit/db0211760098a618d804e314fd1af867bde1ea29))
+* **engine:** restore thinking policy config ([e48eef2](https://github.com/dsswift/ion/commit/e48eef2724ce78b99340e967f31215819c321b41))
+* **engine:** stabilize integration dispatch tests ([bcd69e4](https://github.com/dsswift/ion/commit/bcd69e4556b2603531c3eaebe0b294106d170f29))
+
 ## [1.68.0](https://github.com/dsswift/ion/compare/engine-v1.67.0...engine-v1.68.0) (2026-08-12)
 
 ### Features
