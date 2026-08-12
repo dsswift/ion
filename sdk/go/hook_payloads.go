@@ -29,6 +29,9 @@ type AgentInfo struct {
 	// dispatched sub-agent. A handler that appends a persona must check it:
 	// the root firing is the conversation itself, not a delegate.
 	IsRoot bool `json:"isRoot,omitempty"`
+	// RemainingDepthBudget is the number of child dispatch levels available
+	// under the effective depth cap. It is present only on before_agent_start.
+	RemainingDepthBudget int `json:"remainingDepthBudget,omitempty"`
 }
 
 // BeforeAgentStartResult is the result of a before_agent_start handler.
