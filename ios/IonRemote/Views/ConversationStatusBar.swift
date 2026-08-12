@@ -37,14 +37,11 @@ struct ConversationStatusBar: View {
     /// Defaults to 0 for older snapshots that don't carry the field.
     var runningAgentCount: Int = 0
 
-    // Extended-thinking (per-conversation). Renders whenever the active model
-    // declares thinking efforts — extended thinking is GA, so there is no
-    // global opt-in gate. The menu's neutral entry is model-dependent:
-    // `Adaptive` for a self-regulating model, `Off` for an effort-based one,
-    // resolved from the model registry rather than passed in. The level is
-    // isolated per conversation/subtab and applied live on the next prompt.
-    // Declared after the engine params so both call sites (engine + bare) can
-    // pass these as trailing arguments in declaration order.
+    // Extended-thinking (per-conversation). Think menu always renders beside
+    // permission toggle. It disables when active model has no selectable effort
+    // levels, preserving layout and explaining unavailable capability. The
+    // neutral entry is Adaptive for self-regulating models, Off otherwise.
+    // Level is isolated per conversation/subtab and applied on next prompt.
     var thinkingEffort: String = "off"
     var onSelectThinkingEffort: (String) -> Void = { _ in }
 
@@ -254,69 +251,46 @@ struct ConversationStatusBar: View {
         return ContextUsageRing.color(for: pct)
     }
 
-    /// Effort levels the active model accepts (empty ⇒ unsupported).
-    private var thinkingEfforts: [String] {
-        availableModels.first(where: { $0.id == effectiveModel })?.thinkingEfforts ?? []
+    /// Rendering state for per-conversation thinking control. Model absent from
+    /// registry resolves disabled, never hidden.
+    var thinkingState: ThinkingControlState {
+        let model = availableModels.first(where: { $0.id == effectiveModel })
+        return ThinkingControlState.resolve(
+            thinkingMode: model?.thinkingMode,
+            thinkingEfforts: model?.thinkingEfforts
+        )
     }
 
-    /// Whether the per-conversation thinking control should render: the active
-    /// model must declare at least one reasoning effort.
-    private var showThinkingControl: Bool {
-        !thinkingEfforts.isEmpty
+    /// Status bar renders exactly the rows the shared resolver offers. Keeping
+    /// this as an alias prevents a second effort list from drifting when model
+    /// capabilities add a level.
+    private var thinkingOptions: [ThinkingControlState.Level] {
+        thinkingState.levels
     }
 
-    /// Capability mode of the active model ("adaptive" | "reasoning_effort" |
-    /// "gemini" | "budget"). Drives which neutral entry the menu offers.
-    /// Read from the model registry, which is the snapshot-delivered source of
-    /// truth for capability metadata — there is deliberately no caller-supplied
-    /// override, so the menu can never disagree with the registry.
-    private var activeThinkingMode: String? {
-        availableModels.first(where: { $0.id == effectiveModel })?.thinkingMode
-    }
-
-    /// An adaptive model reasons whether or not we ask, so "Off" would
-    /// misrepresent it — the neutral entry is "Adaptive" (model picks depth).
-    /// Mirrors thinkingOptionsForMode in desktop/src/shared/thinking-options.ts.
-    private var isAdaptiveModel: Bool { activeThinkingMode == "adaptive" }
-
-    /// Menu entries in display order: neutral first, then advertised levels.
-    private var thinkingOptions: [String] {
-        let neutral = isAdaptiveModel ? "adaptive" : "off"
-        // Ascending ladder; only the rungs this model advertises are offered.
-        // Mirrors thinkingOptionsForMode in shared/thinking-options.ts.
-        return [neutral] + ["low", "medium", "high", "xhigh", "max"].filter { thinkingEfforts.contains($0) }
-    }
-
-    /// The stored effort REPAIRED against the model in use. A conversation
-    /// seeded "adaptive" on a Claude model keeps that value after switching to
-    /// an effort-based model, where "adaptive" is not selectable — and the
-    /// engine resolves it to an empty effort and drops the directive, so the
-    /// user silently gets no reasoning. Falling back to the model's neutral
-    /// entry also keeps the label and the accent color in agreement (a stale
-    /// value otherwise rendered an accent-colored "Off"). Mirrors
-    /// resolveEffortForModel in desktop/src/shared/thinking-options.ts.
-    /// Only repairs when the model's capabilities are KNOWN: model metadata
-    /// arrives asynchronously, and repairing against an empty effort list would
-    /// discard a valid stored level.
     private var resolvedThinkingEffort: String {
-        guard !thinkingEfforts.isEmpty else { return thinkingEffort }
-        return thinkingOptions.contains(thinkingEffort) ? thinkingEffort : (thinkingOptions.first ?? "off")
+        let allowed = availableModels.first(where: { $0.id == effectiveModel })?.thinkingEfforts ?? []
+        guard !allowed.isEmpty else { return thinkingEffort }
+        return thinkingOptions.contains(where: { $0.value == thinkingEffort })
+            ? thinkingEffort
+            : (thinkingOptions.first?.value ?? "off")
     }
 
-    private var thinkingLabel: String { Self.effortLabel(resolvedThinkingEffort) }
+    private var thinkingLabel: String {
+        thinkingOptions.first(where: { $0.value == resolvedThinkingEffort })?.label ?? thinkingState.offLabel
+    }
 
-    /// Display label for an effort value. Plain `.capitalized` would render
-    /// "Xhigh"; mirrors thinkingEffortLabel in shared/thinking-options.ts.
+
+    /// Display label mirrors desktop `thinkingEffortLabel`. Kept as the
+    /// public iOS parity seam used by codec tests; menu construction itself
+    /// comes from ThinkingControlState to avoid a second capability list.
     static func effortLabel(_ effort: String) -> String {
-        switch effort {
-        case "adaptive": return "Adaptive"
-        case "low": return "Low"
-        case "medium": return "Medium"
-        case "high": return "High"
-        case "xhigh": return "Extra High"
-        case "max": return "Max"
-        default: return "Off"
-        }
+        ThinkingControlState.label(for: effort)
+    }
+
+    private var thinkingLabelColor: Color {
+        if !thinkingState.enabled { return Color(.tertiaryLabel) }
+        return resolvedThinkingEffort == "off" ? Color.secondary : theme.accent
     }
 
     var body: some View {
@@ -408,8 +382,8 @@ struct ConversationStatusBar: View {
                                 .fontWeight(.medium)
                         }
                         .foregroundStyle(mode == .plan ? theme.accent : .secondary)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
+                        .padding(.horizontal, 7) // design-geometry: 7pt nudge; off the 4pt ratio scale
+                        .padding(.vertical, 3) // design-geometry: 3pt inset; below the 4pt rhythm floor
                         .background(Capsule().fill(Color(.tertiarySystemFill)))
                     }
                     .buttonStyle(.plain)
@@ -421,45 +395,41 @@ struct ConversationStatusBar: View {
                                 .fontWeight(.medium)
                         }
                         .foregroundStyle(mode == .plan ? theme.accent : .secondary)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
+                        .padding(.horizontal, 7) // design-geometry: 7pt nudge; off the 4pt ratio scale
+                        .padding(.vertical, 3) // design-geometry: 3pt inset; below the 4pt rhythm floor
                         .background(Capsule().fill(Color(.tertiarySystemFill)))
                     }
                     .buttonStyle(.plain)
                 }
             }
 
-            // Per-conversation extended-thinking menu. Self-hides when the
-            // active model declares no reasoning efforts.
-            if showThinkingControl {
-                Menu {
-                    // thinkingOptions is already filtered to what this model
-                    // advertises, and leads with the model-appropriate neutral
-                    // entry (Adaptive for self-regulating models, else Off).
-                    ForEach(thinkingOptions, id: \.self) { level in
-                        Button {
-                            onSelectThinkingEffort(level)
-                        } label: {
-                            HStack {
-                                Text(Self.effortLabel(level))
-                                if level == resolvedThinkingEffort {
-                                    Image(systemName: "checkmark")
-                                }
+            // Per-conversation extended-thinking menu. Always renders; disabled
+            // when active model has no selectable override level.
+            Menu {
+                ForEach(thinkingOptions, id: \.value) { level in
+                    Button {
+                        onSelectThinkingEffort(level.value)
+                    } label: {
+                        HStack {
+                            Text(level.label)
+                            if level.value == resolvedThinkingEffort {
+                                Image(systemName: "checkmark")
                             }
                         }
                     }
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "brain")
-                        Text(thinkingLabel)
-                            .fontWeight(.medium)
-                    }
-                    .foregroundStyle(resolvedThinkingEffort == "off" ? Color.secondary : theme.accent)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill(Color(.tertiarySystemFill)))
                 }
+            } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: "brain")
+                    Text(thinkingLabel)
+                        .fontWeight(.medium)
+                }
+                .foregroundStyle(thinkingLabelColor)
+                .padding(.horizontal, 7) // design-geometry: 7pt nudge; off the 4pt ratio scale
+                .padding(.vertical, 3) // design-geometry: 3pt inset; below the 4pt rhythm floor
+                .background(Capsule().fill(Color(.tertiarySystemFill)))
             }
+            .disabled(!thinkingState.enabled)
 
             // Attachments button
             Button(action: onTapAttachments) {
@@ -483,8 +453,8 @@ struct ConversationStatusBar: View {
             .accessibilityLabel(contextAccessibilityLabel(pct: radialContextPercent))
         }
         .font(.caption2)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, IonSpace.contentGap)
+        .padding(.vertical, IonSpace.compactInset)
         .background(.ultraThinMaterial)
         .confirmationDialog(
             "Change Mode",

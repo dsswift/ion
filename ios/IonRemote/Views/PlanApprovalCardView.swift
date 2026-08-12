@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PlanApprovalCardView: View {
     @Environment(SessionViewModel.self) private var viewModel
+    @Environment(\.appTheme) private var theme
     let tabId: String
     let request: PermissionRequest
     @State private var showFullPlan = false
@@ -153,10 +154,10 @@ struct PlanApprovalCardView: View {
                     HStack(spacing: 6) {
                         Text("Plan Ready")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.green)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(Color.green.opacity(0.15), in: Capsule())
+                            .foregroundStyle(theme.statusDone)
+                            .padding(.horizontal, 10) // design-geometry: 10pt gap between compactGap and contentGap; off the 4pt ratio scale
+                            .padding(.vertical, IonSpace.hairlineGap)
+                            .background(theme.statusDone.opacity(0.15), in: Capsule())
                         Spacer()
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.up")
                             .font(.caption2)
@@ -173,9 +174,9 @@ struct PlanApprovalCardView: View {
                         Image(systemName: "arrow.up.left.and.arrow.down.right")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .padding(8)
+                            .padding(IonSpace.compactGap)
                     }
-                    .padding(.leading, 8)
+                    .padding(.leading, IonSpace.compactGap)
                 }
             }
 
@@ -192,12 +193,15 @@ struct PlanApprovalCardView: View {
                     }
                     .frame(maxHeight: 300)
                     .background(Color(.tertiarySystemFill))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .clipShape(RoundedRectangle(cornerRadius: IonRadius.control))
                     .mask(
                         VStack(spacing: 0) {
                             LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
                                 .frame(height: 8)
-                            Color.black
+                            // Mask geometry, not paint. `.mask` reads only alpha, so
+                            // black means "fully opaque" here and never reaches the
+                            // screen. Any theme token with alpha 1 renders identically.
+                            Color.black // theme-color-ok: mask alpha, never painted
                             LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
                                 .frame(height: 8)
                         }
@@ -224,7 +228,7 @@ struct PlanApprovalCardView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    .padding(.vertical, 8)
+                    .padding(.vertical, IonSpace.compactGap)
                 }
 
                 // Action buttons — split row when pinned, single button otherwise
@@ -260,7 +264,7 @@ struct PlanApprovalCardView: View {
                                 .frame(maxWidth: .infinity, minHeight: 44)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(Color(.systemGray3))
+                        .tint(theme.textTertiary)
                     }
                 } else {
                     Button {
@@ -270,7 +274,7 @@ struct PlanApprovalCardView: View {
                         Text("Implement")
                             .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
+                            .padding(.vertical, 14) // design-geometry: 14pt gap between contentGap and rowInset; off the 4pt ratio scale
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.green)
@@ -284,7 +288,7 @@ struct PlanApprovalCardView: View {
                         Text("Implement, clear context")
                             .font(.footnote.weight(.medium))
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
+                            .padding(.vertical, 10) // design-geometry: 10pt gap between compactGap and contentGap; off the 4pt ratio scale
                     }
                     .buttonStyle(.bordered)
                     .tint(.secondary)
@@ -359,6 +363,6 @@ struct PlanApprovalCardView: View {
         Text(MarkdownFormatter.format(content))
             .font(.caption)
             .textSelection(.enabled)
-            .padding(8)
+            .padding(IonSpace.compactGap)
     }
 }

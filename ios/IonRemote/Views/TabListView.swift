@@ -14,8 +14,10 @@ struct TabListView: View {
     @Environment(SessionViewModel.self) var viewModel
     @Environment(\.horizontalSizeClass) private var sizeClass
 
-    @State private var showSettings = false
-    @State private var showNotifications = false
+    // Internal (not private) so the same-module TabListView+Layouts extension
+    // can read them — the layout roots own the toolbars that set these.
+    @State var showSettings = false
+    @State var showNotifications = false
     // Internal (not private) so the same-module TabListView+DetailViews
     // extension can read it — see the note on `theme` above.
     @State var showNewTab = false
@@ -35,7 +37,9 @@ struct TabListView: View {
     // out, which caused the "Plain conversation" tap to appear to do nothing.
     @State private var pendingNewConversationDir: String? = nil
     @State private var pendingNewConversationPin: String? = nil
-    @State private var showPairingSheet = false
+    // Internal (not private): the DesktopPickerMenu in TabListView+Layouts'
+    // toolbars binds to it.
+    @State var showPairingSheet = false
     // When non-nil, the new-conversation profile picker is shown.
     // Holds the target directory for tab creation and optional group pin id.
     // These four are read by the TabListView+Helpers.swift extension, so they
@@ -57,11 +61,13 @@ struct TabListView: View {
     // so the same-module TabListView+DetailViews extension can read it — see the
     // note on `theme` above.
     @State var selectedTabId: String?
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    // columnVisibility, navigationPath, and flickerOpacity are internal for the
+    // same reason: TabListView+Layouts owns both size-class layout roots.
+    @State var columnVisibility: NavigationSplitViewVisibility = .all
 
     // iPhone: path-based navigation
-    @State private var navigationPath = NavigationPath()
-    @State private var flickerOpacity: Double = 1.0
+    @State var navigationPath = NavigationPath()
+    @State var flickerOpacity: Double = 1.0
 
     var body: some View {
         Group {
@@ -211,193 +217,10 @@ struct TabListView: View {
         }
     }
 
-    // MARK: - iPad Layout (NavigationSplitView)
-
-    private var iPadLayout: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            sidebarContent
-                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search tabs…")
-                .navigationTitle("")
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        HStack(spacing: IonTheme.sm) {
-                            Button {
-                                showSettings = true
-                            } label: {
-                                Image(systemName: "gearshape")
-                            }
-                            NotificationsBellButton(resourceStore: viewModel.resourceStore) {
-                                showNotifications = true
-                            }
-                        }
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        newTabButton
-                    }
-                }
-        } detail: {
-            detailView
-        }
-        .navigationSplitViewStyle(.balanced)
-        .onChange(of: viewModel.pendingNavigationTabId) { _, tabId in
-            if let tabId {
-                DiagnosticLog.log("nav ipad pending navigation", tag: "view.nav", fields: [
-                    "tab_id": String(tabId.prefix(8))
-                ])
-                selectedTabId = tabId
-                viewModel.pendingNavigationTabId = nil
-            }
-        }
-        .onChange(of: selectedTabId) { old, tabId in
-            DiagnosticLog.log("nav ipad selected tab changed", tag: "view.nav", fields: [
-                "reason": old?.prefix(8).description ?? "nil",
-                "tab_id": tabId?.prefix(8).description ?? "nil"
-            ])
-            // Notify the desktop which tab is focused so it can route
-            // intercept events to this device correctly.
-            viewModel.sendReportFocus(tabId: tabId)
-        }
-    }
-
-    // MARK: - iPhone Layout (NavigationStack)
-
-    private var iPhoneLayout: some View {
-        ZStack {
-            if theme.backgroundView != nil {
-                Color(red: 4/255, green: 14/255, blue: 28/255).ignoresSafeArea()
-            }
-            if let bg = theme.backgroundView {
-                bg.ignoresSafeArea().opacity(0.9)
-                let _ = DiagnosticLog.trace("theme background rendering", tag: "view.themebg", fields: [
-                    "status": theme.id
-                ])
-            }
-            NavigationStack(path: $navigationPath) {
-                List {
-                    tabGroupSections(selectionStyle: .navigation)
-                }
-                .scrollContentBackground(.hidden)
-                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search tabs…")
-                .navigationTitle("")
-                .toolbar {
-                    ToolbarItem(placement: .principal) {
-                        if theme.backgroundView != nil {
-                            Text("J A R V I S")
-                                .font(.headline.weight(.black))
-                                .kerning(4)
-                                .foregroundStyle(theme.accent)
-                                .shadow(color: theme.accent.opacity(0.9), radius: 4)
-                                .shadow(color: theme.accent.opacity(0.6), radius: 10)
-                                .shadow(color: theme.accent.opacity(0.3), radius: 20)
-                                .opacity(flickerOpacity)
-                        } else {
-                            DesktopPickerMenu(showPairingSheet: $showPairingSheet)
-                        }
-                    }
-                }
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        HStack(spacing: 12) {
-                            Button {
-                                showSettings = true
-                            } label: {
-                                Image(systemName: "gearshape")
-                            }
-                            ConnectionQualityView(compact: true)
-                            NotificationsBellButton(resourceStore: viewModel.resourceStore) {
-                                showNotifications = true
-                            }
-                        }
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        newTabButton
-                    }
-                }
-                .navigationDestination(for: String.self) { tabId in
-                    let tab = viewModel.tab(for: tabId)
-                    let _ = DiagnosticLog.log("nav iphone push", tag: "view.nav", fields: [
-                        "tab_id": String(tabId.prefix(8)),
-                        "agent": String(tab?.hasEngineExtension ?? false),
-                        "status": String(tab?.isTerminalOnly ?? false)
-                    ])
-                    destinationView(for: tabId)
-                        .onAppear {
-                            DiagnosticLog.log("nav iphone on appear", tag: "view.nav", fields: [
-                                "tab_id": String(tabId.prefix(8))
-                            ])
-                            viewModel.sendReportFocus(tabId: tabId)
-                        }
-                        .onDisappear {
-                            // Only clear focus if we're popping back to the list,
-                            // not when a child sheet appears over the conversation.
-                            if navigationPath.isEmpty {
-                                DiagnosticLog.log("nav iphone on disappear popped to list", tag: "view.nav", fields: [
-                                    "tab_id": String(tabId.prefix(8))
-                                ])
-                                viewModel.sendReportFocus(tabId: nil)
-                            }
-                        }
-                }
-                .refreshable {
-                    Haptic.light()
-                    viewModel.sync(intent: .userInitiated)
-                }
-                .onChange(of: viewModel.pendingNavigationTabId) { _, tabId in
-                    if let tabId {
-                        DiagnosticLog.log("nav iphone pending navigation push", tag: "view.nav", fields: [
-                            "tab_id": String(tabId.prefix(8))
-                        ])
-                        navigationPath.append(tabId)
-                        viewModel.pendingNavigationTabId = nil
-                    }
-                }
-                .overlay {
-                    emptyStateOverlay
-                }
-                .overlay {
-                    searchEmptyStateOverlay
-                }
-                .overlay(alignment: .top) {
-                    if viewModel.voiceService.isSpeaking {
-                        VoicePlaybackBar(
-                            onSkip: { viewModel.voiceService.skip() },
-                            onStopAll: { viewModel.voiceService.stop() },
-                            hasPending: viewModel.voiceService.hasPending
-                        )
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                        .animation(IonTheme.snappySpring, value: viewModel.voiceService.isSpeaking)
-                    }
-                }
-                .toolbarBackground(
-                    theme.backgroundView != nil
-                        ? Color(red: 4/255, green: 14/255, blue: 28/255).opacity(0.95)
-                        : Color.clear,
-                    for: .navigationBar
-                )
-                .toolbarColorScheme(
-                    theme.backgroundView != nil ? .dark : nil,
-                    for: .navigationBar
-                )
-                .task {
-                    while !Task.isCancelled {
-                        try? await Task.sleep(for: .seconds(Double.random(in: 3.0...9.0)))
-                        guard !Task.isCancelled else { break }
-                        withAnimation(.easeInOut(duration: 0.05)) { flickerOpacity = 0.55 }
-                        try? await Task.sleep(for: .milliseconds(60))
-                        withAnimation(.easeInOut(duration: 0.05)) { flickerOpacity = 1.0 }
-                        try? await Task.sleep(for: .milliseconds(90))
-                        withAnimation(.easeInOut(duration: 0.04)) { flickerOpacity = 0.75 }
-                        try? await Task.sleep(for: .milliseconds(50))
-                        withAnimation(.easeInOut(duration: 0.1)) { flickerOpacity = 1.0 }
-                    }
-                }
-            }
-        }
-    }
-
     // MARK: - Sidebar Content
 
-    private var sidebarContent: some View {
+    // Internal (not private): consumed by iPadLayout in TabListView+Layouts.
+    var sidebarContent: some View {
         VStack(spacing: 0) {
             // Device picker + connection quality always visible in sidebar
             HStack(spacing: 8) {
@@ -405,8 +228,8 @@ struct TabListView: View {
                 Spacer()
                 ConnectionQualityView(compact: true)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.horizontal, IonSpace.rowInset)
+            .padding(.vertical, IonSpace.compactGap)
 
             List(selection: $selectedTabId) {
                 tabGroupSections(selectionStyle: .selection)
@@ -438,8 +261,9 @@ struct TabListView: View {
 
     // MARK: - Tab Group Sections
 
+    // Internal (not private): both layout roots in TabListView+Layouts render it.
     @ViewBuilder
-    private func tabGroupSections(selectionStyle: TabSelectionStyle) -> some View {
+    func tabGroupSections(selectionStyle: TabSelectionStyle) -> some View {
         let isSearching = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         ForEach(filteredDisplayGroups, id: \.id) { group in
             Section {
@@ -460,7 +284,6 @@ struct TabListView: View {
                                             viewModel.pendingGitPaneTabId = tab.id
                                             viewModel.pendingNavigationTabId = tab.id
                                         },
-                                        engineProfiles: viewModel.engineProfiles
                                     )
                                 }
                             case .selection:
@@ -475,24 +298,30 @@ struct TabListView: View {
                                         viewModel.pendingGitPaneTabId = tab.id
                                         viewModel.pendingNavigationTabId = tab.id
                                     },
-                                    engineProfiles: viewModel.engineProfiles
                                 )
                                 .tag(tab.id)
                             }
                         }
-                        // Apply a tinted cell background only when this tab has a
-                        // pill color and the setting is enabled. We resolve the color
-                        // before calling .listRowBackground so we never pass nil/EmptyView
-                        // to it — doing so would strip the List's default cell material
-                        // from uncolored rows, leaving them solid black.
-                        .ifLet(activePillColor(for: tab)) { view, color in
-                            view.listRowBackground(
-                                color.opacity(0.12)
-                                    .overlay(alignment: .leading) {
+                        // The row fill is a theme token, applied unconditionally.
+                        // It used to be applied only for pill-colored rows, so
+                        // every other row fell through to the List's default cell
+                        // material — a system color no theme pack can reach, and
+                        // solid black in dark mode.
+                        //
+                        // A pill color contributes a 3pt leading edge only. The
+                        // full-width 0.12 wash it used to also paint made colored
+                        // conversations shout beside neutral ones, so a tinted
+                        // idle row outweighed an untinted running one. The edge
+                        // still identifies the conversation without competing
+                        // with the status dot for attention.
+                        .listRowBackground(
+                            theme.surfaceSecondary
+                                .overlay(alignment: .leading) {
+                                    if let color = activePillColor(for: tab) {
                                         color.opacity(0.65).frame(width: 3)
                                     }
-                            )
-                        }
+                                }
+                        )
                         .swipeActions(edge: .leading, allowsFullSwipe: false) {
                             Button {
                                 renameText = tab.displayTitle
@@ -544,8 +373,8 @@ struct TabListView: View {
 
     /// Returns the resolved Color for a tab's pill color when the Show Tab Colors
     /// setting is enabled and the tab has a non-empty pillColor string. Returns nil
-    /// otherwise so the caller can skip applying listRowBackground entirely (passing
-    /// nil or EmptyView to listRowBackground strips the default cell material).
+    /// otherwise, in which case the row renders the plain `surfaceSecondary` fill
+    /// with no tint overlaid.
     private func activePillColor(for tab: RemoteTabState) -> Color? {
         guard viewModel.showTabColorInTabList,
               let hex = tab.pillColor, !hex.isEmpty else { return nil }
@@ -560,8 +389,6 @@ struct TabListView: View {
             group: group,
             isCollapsed: collapsedGroupIds.contains(group.id),
             tabGroupMode: viewModel.tabGroupMode,
-            pendingPinToGroupId: $pendingPinToGroupId,
-            showNewTab: $showNewTab,
             onNewConversation: { dir, pin in
                 requestNewConversation(directory: dir, pinToGroupId: pin)
             },
@@ -591,7 +418,9 @@ struct TabListView: View {
 
 // MARK: - Tab Selection Style
 
-private enum TabSelectionStyle {
+// Internal, not private: `tabGroupSections(selectionStyle:)` takes it and is
+// called from the layout roots in TabListView+Layouts.swift.
+enum TabSelectionStyle {
     case navigation  // iPhone: NavigationLink(value:)
     case selection   // iPad: List(selection:) with .tag()
 }
