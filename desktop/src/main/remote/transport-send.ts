@@ -15,7 +15,7 @@ import { compressPayload } from './transport-compression'
 import { mark, Activity } from '../watchdog'
 import { MAX_WIRE_FRAME_BYTES } from './protocol'
 import { degradeOversizedEvent, canDegrade } from './transport-degrade'
-import { scheduleAgentStateSelfHeal } from './handlers/agent-state'
+import { scheduleAgentStateSelfHeal, noteAgentStateDeliveryFailure } from './handlers/agent-state'
 import type { RemoteEvent, WireMessage } from './protocol'
 import type { RetransmitBuffer } from './retransmit-buffer'
 
@@ -396,14 +396,17 @@ export function sendDirect(
  *
  * Recovery must not depend on the client asking: iOS needs a release to send
  * desktop_request_agent_state, and this heals a transient overflow without
- * one. A payload that is still oversized simply degrades or drops again, which
- * is logged — so a wedged condition stays visible rather than retrying
- * silently forever.
+ * one. The failure is also recorded by roster hash: the self-heal gives up
+ * when the payload it would re-send is byte-identical to the one that just
+ * failed, because that retry cannot succeed — only a new roster from the
+ * engine re-arms it. Without that record this function scheduled the retry
+ * of its own failed retry, a 2-second livelock that survived engine restarts.
  */
 function scheduleSelfHealIfAgentState(event: RemoteEvent): void {
   if (event.type !== 'desktop_agent_state') return
-  const e = event as RemoteEvent & { tabId?: string; instanceId?: string | null }
+  const e = event as RemoteEvent & { tabId?: string; instanceId?: string | null; agents?: unknown }
   if (!e.tabId) return
+  noteAgentStateDeliveryFailure(e.tabId, e.agents)
   scheduleAgentStateSelfHeal(e.tabId, e.instanceId ?? null)
 }
 

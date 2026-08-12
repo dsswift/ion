@@ -12,7 +12,9 @@ import { injectDiskResourcesIfEmpty } from './event-wiring-disk-seed'
 import { accumulateTextDelta, flushKeyDeltas, dropKeyDeltas } from './event-wiring-text-delta-batcher'
 import { projectEngineEventToWire } from './event-wiring-wire-projection'
 import { notifyAtvPermissionResolved } from './atv-window-manager'
-import { recordAgentState, recordStatusFields, recordWorkingMessage } from './agent-state-mirror'
+import { recordAgentState, recordStatusFields, recordWorkingMessage, clearAllAgentState } from './agent-state-mirror'
+import { resetAgentStateSelfHeal } from './remote/handlers/agent-state'
+import { shedAgentsMetadata } from './remote/transport-degrade'
 export { wireTabFocusHandler, wireMarkResourceReadHandler, wireDeleteResourceHandler, wireResourceGetHandler, handleResourceItemEvent } from './event-wiring-resources'
 export { wireRemoteSessionPlaneForwarding } from './event-wiring-remote'
 
@@ -27,6 +29,14 @@ function trace(msg: string, fields?: Record<string, unknown>): void {
 function broadcastNormalized(tabId: string, event: NormalizedEvent): void {
   broadcast('ion:normalized-event', tabId, event)
 }
+
+/**
+ * Main-process ingest cap for an engine_agent_state roster. Well above the
+ * engine's own 4 MiB snapshot bound, so it never fires against a healthy
+ * engine — it exists to keep a pre-clamp or misbehaving engine from feeding
+ * an unbounded roster into the mirror and the renderer store.
+ */
+const AGENT_STATE_INGEST_CAP_BYTES = 6 * 1024 * 1024
 
 export function wireSessionPlaneEvents(): void {
   sessionPlane.on('event', (tabId: string, event: NormalizedEvent) => {
@@ -98,6 +108,16 @@ export function wireEngineBridgeEvents(): void {
   engineBridge.on('reconnected', () => {
     log('engineBridge: broadcasting engine reconnect to renderers')
     broadcast('ion:engine-reconnected')
+    // Every mirrored roster is void across a reconnect: engine_agent_state is
+    // a complete snapshot, and after an engine RESTART the old session keys
+    // never emit again, so an entry kept here is stale forever (a 30.7 MB
+    // dead-session roster once looped through self-heal for 10+ hours on
+    // exactly this). Live sessions re-emit on re-registration within seconds,
+    // repopulating the mirror; an iOS resync inside that window honestly
+    // answers "no agents" instead of serving the stale copy.
+    clearAllAgentState()
+    resetAgentStateSelfHeal()
+    log('engineBridge: agent-state mirror cleared on reconnect')
   })
 
   // Track whether we've done the initial global resource subscription.
@@ -337,7 +357,23 @@ export function wireEngineBridgeEvents(): void {
     // generating the dominant share of desktop log volume. Available at
     // trace level when transport diagnosis is needed.
     if (event.type === 'engine_agent_state') {
-      const agents = Array.isArray(event.agents) ? event.agents : []
+      let agents = Array.isArray(event.agents) ? event.agents : []
+      // Ingest bound (defense in depth): the engine clamps this payload at
+      // the source, but a pre-clamp engine binary or a misbehaving build must
+      // not be able to put a multi-megabyte roster into main's mirror or the
+      // renderer store — a 30.7 MB roster OOM-killed the renderer twice. Shed
+      // metadata down to the protected identity keys BEFORE anything
+      // downstream sees the event; the event object itself is rewritten so
+      // the renderer forward and the iOS projection carry the bounded form.
+      const serializedLen = JSON.stringify(agents).length
+      if (serializedLen > AGENT_STATE_INGEST_CAP_BYTES) {
+        agents = shedAgentsMetadata(agents)
+        ;(event as any).agents = agents
+        ;(event as any).metadataOmitted = true
+        _log('main', 'agent_state ingest bound: shed oversized roster metadata', {
+          key, agents: agents.length, chars: serializedLen, cap: AGENT_STATE_INGEST_CAP_BYTES,
+        })
+      }
       // Record BEFORE forwarding. Main sees this event first, so the mirror is
       // the upstream copy; an iOS resync is answered from here rather than by
       // scraping the renderer's downstream projection back across IPC.

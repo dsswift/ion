@@ -33,6 +33,56 @@ const SELF_HEAL_DELAY_MS = 2000
 const pendingSelfHeal = new Set<string>()
 
 /**
+ * Roster hashes whose delivery already failed (degraded or dropped), per tab.
+ *
+ * This is the give-up half of self-heal, and it exists because the retry half
+ * once ran unbounded: a 30.7 MB roster for a dead session was re-serialized
+ * and re-degraded every 2 seconds across engine restarts — the self-heal's
+ * own send scheduled the next self-heal, forever. Re-sending a payload that
+ * is byte-identical to one that already failed cannot succeed; only a NEW
+ * roster from the engine can change the outcome, and its different hash is
+ * what re-arms the retry.
+ */
+const lastFailedHash = new Map<string, string>()
+
+/** Hashes already warned about, so the suppression logs once, not per tick. */
+const warnedFailedHash = new Set<string>()
+
+/** FNV-1a over the serialized roster — cheap, stable, collision-safe enough
+ * for "is this the exact payload that just failed". */
+function hashAgents(agents: unknown): string {
+  const s = JSON.stringify(agents) ?? ''
+  let h = 0x811c9dc5
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return (h >>> 0).toString(16) + ':' + s.length
+}
+
+/**
+ * Record that a roster failed to deliver at full fidelity (the transport
+ * degraded or dropped it). Called by the transport size gate.
+ */
+export function noteAgentStateDeliveryFailure(tabId: string, agents: unknown): void {
+  if (!tabId) return
+  lastFailedHash.set(tabId, hashAgents(agents))
+}
+
+/**
+ * Re-arm self-heal for a tab (or every tab) — a genuinely new roster, a tab
+ * close, or an engine reconnect voids the failure record.
+ */
+export function resetAgentStateSelfHeal(tabId?: string): void {
+  if (tabId === undefined) {
+    lastFailedHash.clear()
+    warnedFailedHash.clear()
+    return
+  }
+  lastFailedHash.delete(tabId)
+}
+
+/**
  * Handle `desktop_request_agent_state`.
  *
  * Served entirely from the main-process mirror — no renderer round-trip, which
@@ -87,6 +137,23 @@ export function scheduleAgentStateSelfHeal(tabId: string, instanceId: string | n
     if (!state.remoteTransport) return
 
     const agents = getAgentState(tabId, instanceId)
+
+    // Give-up gate: a payload identical to one that already failed will fail
+    // identically. Suppress the re-send and wait for the engine to emit a
+    // different roster — that is the only event that can change the outcome.
+    const h = hashAgents(agents)
+    if (lastFailedHash.get(tabId) === h) {
+      const warnKey = `${tabId}:${h}`
+      if (!warnedFailedHash.has(warnKey)) {
+        if (warnedFailedHash.size > 256) warnedFailedHash.clear() // bound the dedup set; re-warning is harmless
+        warnedFailedHash.add(warnKey)
+        warn('agent_state self-heal: suppressed — payload unchanged since last delivery failure', {
+          tab_id: tabId, instance_id: instanceId, agents: agents.length, hash: h,
+        })
+      }
+      return
+    }
+
     log('agent_state self-heal: re-sending roster', {
       tab_id: tabId, instance_id: instanceId, agents: agents.length,
     })

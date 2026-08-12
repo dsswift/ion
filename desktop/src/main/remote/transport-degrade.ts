@@ -50,6 +50,24 @@ const PROTECTED_AGENT_METADATA_KEYS = [
   'dispatchDepth',
 ] as const
 
+/**
+ * Strip an agents array's metadata down to the protected subset.
+ *
+ * Exported for the main-process ingest bound (event-wiring): the same shed
+ * applied there keeps an oversized roster from a misbehaving or pre-clamp
+ * engine out of the mirror and the renderer store entirely, instead of only
+ * out of the iOS wire.
+ */
+export function shedAgentsMetadata<T extends { metadata?: Record<string, unknown> }>(agents: T[]): T[] {
+  return agents.map((a) => {
+    const metadata: Record<string, unknown> = {}
+    for (const key of PROTECTED_AGENT_METADATA_KEYS) {
+      if (a.metadata && key in a.metadata) metadata[key] = a.metadata[key]
+    }
+    return { ...a, metadata }
+  })
+}
+
 /** Strip agent metadata down to the protected subset. */
 function shedAgentMetadata(event: RemoteEvent): RemoteEvent | null {
   const e = event as RemoteEvent & {
@@ -58,15 +76,7 @@ function shedAgentMetadata(event: RemoteEvent): RemoteEvent | null {
   }
   if (!Array.isArray(e.agents)) return null
 
-  const agents = e.agents.map((a) => {
-    const metadata: Record<string, unknown> = {}
-    for (const key of PROTECTED_AGENT_METADATA_KEYS) {
-      if (a.metadata && key in a.metadata) metadata[key] = a.metadata[key]
-    }
-    return { ...a, metadata }
-  })
-
-  return { ...e, agents, metadataOmitted: true } as RemoteEvent
+  return { ...e, agents: shedAgentsMetadata(e.agents), metadataOmitted: true } as RemoteEvent
 }
 
 /**
