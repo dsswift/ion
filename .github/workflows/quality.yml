@@ -341,13 +341,13 @@ jobs:
           tags: ion-engine:ci
 
   ios-build:
-    # Required PR gate. `make ios-pr-check` compiles the device target then
-    # tests shared contracts and cross-client parity on a selected simulator.
-    # The full XCTest suite runs in ios-full-test on schedule/manual dispatch.
+    # Required PR gate. Device-target compilation catches Swift, link, and
+    # packaging errors without hosted simulator startup. The full XCTest suite
+    # runs locally before push, plus nightly/manual in ios-full-test.
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
-      - name: Build iOS app and test contracts/parity
+      - name: Build iOS app
         run: make ios-pr-check
 
   ios-full-test:

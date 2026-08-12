@@ -99,20 +99,19 @@ The woken run receives the completion result (exit code, command, and a bounded 
 
 ### 3e. iOS PR parity gate
 
-The required `ios-build` CI job compiles the iOS app and runs the targeted
-contract/parity simulator suites. If any path starts with `ios/`, or the change
-touches `scripts/run-ios-tests.sh`, `Makefile`, or `quality.yml`, run its exact
-local counterpart before pushing:
+The required `ios-build` CI job compiles the device-target app. If any path
+starts with `ios/`, or the change touches `scripts/run-ios-tests.sh`, `Makefile`,
+or `quality.yml`, run the matching local gates before pushing:
 
 ```bash
 make ios-pr-check
+make ios-test
 ```
 
-This is a foreground gate. It selects a real installed simulator and runs:
-`ContractSyncTests`, `ThemeParityTests`, `ThemeableSurfaceCoverageTests`,
-`StatusCascadeParityTests`, and `SpacingRoleCoverageTests`. Do not push or open
-the PR on failure: fix it and rerun this gate. The full simulator suite is a
-nightly/manual CI lane, not a per-PR prerequisite.
+`make ios-test` runs the complete `IonRemoteTests` simulator suite locally,
+where it completes quickly after simulator availability. Do not push or open
+the PR on failure: fix it and rerun both gates. CI confirms the device build;
+the same full simulator suite also runs nightly and by manual dispatch.
 
 ---
 

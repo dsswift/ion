@@ -57,15 +57,12 @@ ios-check:
 	@cd ios && xcodebuild -project IonRemote.xcodeproj -scheme IonRemote \
 		-destination 'generic/platform=iOS' build 2>&1 | grep -E "error:|BUILD"
 
-# Required iOS PR parity gate: compile device target, then run contract and
-# cross-client design-system suites on a simulator. Full IonRemoteTests belongs
-# to the scheduled/manual CI lane because cold hosted simulators are costly.
+# Required iOS PR gate. Device-target compilation catches Swift, link, and
+# packaging errors without booting a simulator. Full IonRemoteTests belongs to
+# the scheduled/manual CI lane because hosted simulator startup is costly.
 ios-pr-check:
 	@cd ios && xcodebuild -project IonRemote.xcodeproj -scheme IonRemote \
 		-destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
-	@IOS_TEST_BUILD_SETTINGS='CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=-' \
-		IOS_TEST_ONLY='IonRemoteTests/ContractSyncTests IonRemoteTests/ThemeParityTests IonRemoteTests/ThemeableSurfaceCoverageTests IonRemoteTests/StatusCascadeParityTests IonRemoteTests/SpacingRoleCoverageTests' \
-		bash scripts/run-ios-tests.sh
 
 # Run the IonRemoteTests unit-test bundle on a real iOS Simulator. Picks the
 # newest available simulator automatically; override with the
