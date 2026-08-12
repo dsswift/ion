@@ -12,11 +12,21 @@ const ION_HOME = join(homedir(), '.ion')
 const SOCKET_PATH = join(ION_HOME, 'engine.sock')
 
 export async function stopAll(bridge: EngineBridge): Promise<void> {
-  if (bridge.conn && !bridge.conn.destroyed) {
-    bridge.conn.destroy()
-  }
+  // Block both scheduled and in-flight connections before tearing down the
+  // current socket. An in-flight socket can emit connect after conn becomes
+  // null; its connect handler must then destroy itself instead of reviving
+  // this retired bridge.
+  bridge.reconnectDisabled = true
+
+  // Nullify conn BEFORE destroying so the async close handler (which
+  // checks bridge.conn === conn) sees a stale socket and does not
+  // re-arm the reconnect loop.
+  const conn = bridge.conn
   bridge.connected = false
   bridge.conn = null
+  if (conn && !conn.destroyed) {
+    conn.destroy()
+  }
   if (bridge.reconnectTimer) {
     clearTimeout(bridge.reconnectTimer)
     bridge.reconnectTimer = null
@@ -57,11 +67,12 @@ export async function shutdownAndWait(bridge: EngineBridge, timeoutMs = 3000): P
     await new Promise(r => setTimeout(r, 50))
   }
 
-  if (bridge.conn && !bridge.conn.destroyed) {
-    bridge.conn.destroy()
-  }
+  const conn = bridge.conn
   bridge.connected = false
   bridge.conn = null
+  if (conn && !conn.destroyed) {
+    conn.destroy()
+  }
   if (bridge.reconnectTimer) {
     clearTimeout(bridge.reconnectTimer)
     bridge.reconnectTimer = null
