@@ -57,8 +57,14 @@ export function ContextIndicator() {
   const effectiveModel = modelOverride || sessionModel || preferredModel
   const windowSize = getDynamicContextWindow(effectiveModel, engineWindow)
 
-  const display = resolveContextDisplay(contextTokens, windowSize)
-  if (display === null) return null
+  // The radial is a persistent status-bar affordance, not a data-availability
+  // signal. Before the engine reports occupancy, and after a reset to zero,
+  // render its neutral empty state rather than removing its click target.
+  const display = resolveContextDisplay(contextTokens, windowSize) ?? {
+    pct: 0,
+    tokens: 0,
+    windowSize,
+  }
 
   const tooltip = `${formatTokens(display.tokens)} / ${formatTokens(display.windowSize)} tokens`
 
