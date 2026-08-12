@@ -37,7 +37,15 @@ import type { DirConversation } from '../../shared/worktree-conversations'
 interface WorktreeRowGoToTabSubmenuProps {
   anchor: { x: number; y: number }
   conversations: readonly DirConversation[]
+  /** Closes this portalled submenu while keeping its parent menu open. */
   onClose: () => void
+  /** Runs after a conversation selection, when host should close whole hierarchy. */
+  onSelect?: () => void
+  /**
+   * The button that opens this submenu. Its mousedown belongs to the parent
+   * menu interaction, not an outside dismissal of this portalled sibling.
+   */
+  triggerRef?: React.RefObject<HTMLElement | null>
   /**
    * The bounding rect of the parent menu row that triggered this submenu.
    * Same purpose as `MoveToGroupSubmenu`'s `parentRect`: lets the submenu
@@ -74,6 +82,8 @@ export function WorktreeRowGoToTabSubmenu({
   anchor,
   conversations,
   onClose,
+  onSelect,
+  triggerRef,
   parentRect,
   containerRef,
   prefer = 'rightOf',
@@ -84,7 +94,9 @@ export function WorktreeRowGoToTabSubmenu({
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+      const target = e.target as Node
+      if (ref.current?.contains(target) || triggerRef?.current?.contains(target)) return
+      onClose()
     }
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
@@ -95,7 +107,7 @@ export function WorktreeRowGoToTabSubmenu({
       window.removeEventListener('mousedown', handleClick)
       window.removeEventListener('keydown', handleKey)
     }
-  }, [onClose])
+  }, [onClose, triggerRef])
 
   const vp = zoomViewport()
   const pos = useAnchoredPopover(anchor, {
@@ -148,7 +160,8 @@ export function WorktreeRowGoToTabSubmenu({
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
           onClick={() => {
             useSessionStore.getState().selectTab(c.tabId)
-            onClose()
+            if (onSelect) onSelect()
+            else onClose()
           }}
         >
           <span style={{

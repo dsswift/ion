@@ -20,6 +20,8 @@ export interface ContextMenuItemProps {
   /** Extra side effect on pointer enter (open a submenu, close sibling
    *  submenus). Suppressed while disabled. */
   onHoverStart?: () => void
+  /** Marks a row that owns a hover submenu, so parent hover collapse ignores it. */
+  submenuTrigger?: boolean
   disabled?: boolean
   /** Text color override (e.g. `colors.accent` for "New group...",
    *  `colors.dangerFg` for destructive rows). Defaults to textPrimary;
@@ -30,12 +32,13 @@ export interface ContextMenuItemProps {
 }
 
 export const ContextMenuItem = forwardRef<HTMLButtonElement, ContextMenuItemProps>(
-  function ContextMenuItem({ onClick, onHoverStart, disabled = false, color, title, children }, ref) {
+  function ContextMenuItem({ onClick, onHoverStart, submenuTrigger = false, disabled = false, color, title, children }, ref) {
     const colors = useColors()
     const { hover, pressed, handlers } = useInteractiveState()
     return (
       <button
         ref={ref}
+        data-ion-submenu-trigger={submenuTrigger || undefined}
         title={title}
         disabled={disabled}
         onClick={disabled ? undefined : onClick}

@@ -211,6 +211,68 @@ describe('WorktreeRowMenu — "Go to tab" submenu', () => {
     expect(document.querySelector('[data-testid="worktree-row-go-to-tab-submenu"]')).toBeNull()
   })
 
+  it('keeps parent menu mounted through another item mousedown, then runs that item', async () => {
+    storeTabs = [
+      { id: 'talk-1', workingDirectory: WT, title: 'Add feature', customTitle: null, status: 'idle' },
+    ]
+    render()
+
+    const goToTab = findButton('Go to tab')
+    await act(async () => {
+      goToTab.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+    })
+    expect(document.querySelector('[data-testid="worktree-row-go-to-tab-submenu"]')).not.toBeNull()
+
+    await press(findButton('Reveal in Finder'))
+    expect(mocks.revealPath).toHaveBeenCalledWith(WT)
+    expect(closed).toBe(1)
+  })
+
+  it('closes only submenu when pointer returns to a main-menu item', async () => {
+    storeTabs = [
+      { id: 'talk-1', workingDirectory: WT, title: 'Add feature', customTitle: null, status: 'idle' },
+    ]
+    render()
+
+    const goToTab = findButton('Go to tab')
+    await act(async () => {
+      goToTab.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+    })
+    expect(document.querySelector('[data-testid="worktree-row-go-to-tab-submenu"]')).not.toBeNull()
+
+    const reveal = findButton('Reveal in Finder')
+    await act(async () => {
+      reveal.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+    })
+    expect(document.querySelector('[data-testid="worktree-row-go-to-tab-submenu"]')).toBeNull()
+    expect(document.querySelector('[data-testid="worktree-row-menu"]')).not.toBeNull()
+
+    await press(reveal)
+    expect(mocks.revealPath).toHaveBeenCalledWith(WT)
+    expect(closed).toBe(1)
+  })
+
+  it('keeps submenu open when pointer enters it before selecting a conversation', async () => {
+    storeTabs = [
+      { id: 'talk-1', workingDirectory: WT, title: 'Add feature', customTitle: null, status: 'idle' },
+    ]
+    render()
+
+    const goToTab = findButton('Go to tab')
+    await act(async () => {
+      goToTab.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+    })
+    const row = document.querySelector('[data-testid="worktree-go-to-tab-talk-1"]') as HTMLElement
+    await act(async () => {
+      row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+    })
+    expect(document.querySelector('[data-testid="worktree-row-go-to-tab-submenu"]')).not.toBeNull()
+
+    await press(row)
+    expect(mocks.selectTab).toHaveBeenCalledWith('talk-1')
+    expect(closed).toBe(1)
+  })
+
   it('skips a terminal-only tab even though it shares the worktree directory', async () => {
     storeTabs = [
       { id: 'shell-1', workingDirectory: WT, title: 'Terminal', customTitle: null, status: 'idle', tabRole: null },

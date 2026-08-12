@@ -85,7 +85,11 @@ export function WorktreeRowMenu({
   // The submenu's own root, so `useOutsideDismiss` below can treat a click
   // inside it as "inside the menu" — see the ref's doc-comment on
   // WorktreeRowGoToTabSubmenu for why this is required, not optional.
-  const goToTabSubmenuRef = useRef<HTMLDivElement>(null);
+  const goToTabSubmenuRef = useRef<HTMLDivElement>(null)
+  const closeGoToTabSubmenu = useCallback(() => {
+    setGoToTabSubmenu(null)
+    setGoToTabParentRect(null)
+  }, []);
 
   // Dismissal goes through the shared hook so the retire/land confirm dialogs
   // this menu raises are exempt from click-outside. A local handler here is what
@@ -323,6 +327,7 @@ export function WorktreeRowMenu({
                   opacity: item.disabled ? 0.55 : 1,
                 }}
                 onMouseEnter={(e) => {
+                  closeGoToTabSubmenu()
                   if (!item.disabled)
                     (e.currentTarget as HTMLElement).style.background =
                       colors.surfaceHover;
@@ -429,10 +434,11 @@ export function WorktreeRowMenu({
           conversations={goToTabConversations}
           parentRect={goToTabParentRect ?? undefined}
           containerRef={goToTabSubmenuRef}
-          onClose={() => {
-            setGoToTabSubmenu(null);
-            setGoToTabParentRect(null);
-            onClose();
+          triggerRef={goToTabItemRef}
+          onClose={closeGoToTabSubmenu}
+          onSelect={() => {
+            closeGoToTabSubmenu()
+            onClose()
           }}
         />
       )}
