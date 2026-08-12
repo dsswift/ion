@@ -270,19 +270,25 @@ struct AgentStateUpdate: Codable, Identifiable, Sendable {
 extension Array where Element == AgentStateUpdate {
     /// The (total, active, done) breakdown rendered in the agent-panel header,
     /// derived over the VISIBLE agent set (the same set the panel list renders).
-    /// Mirrors the desktop AgentPanel header memo: `active` counts running AND
-    /// suspended agents — a suspended (parked) dispatch is alive, waiting on
-    /// its children or a revive, and counting it as finished is how a live
-    /// tree once read "3 done" while its specialist still worked. `done`
-    /// counts completed agents; `error`/`idle` fold into neither count —
-    /// those states are surfaced by the row's own status dot, not a header
-    /// segment. Deriving over the visible set (not the raw agent array) keeps
-    /// the header honest against the rows shown below it.
-    var agentHeaderBreakdown: (total: Int, active: Int, done: Int) {
+    /// Mirrors the desktop AgentPanel header memo.
+    ///
+    /// `active` is `AgentDotResolver.isActive`, not the row's bare status: an
+    /// agent counts as active when it is running/suspended OR when any of its
+    /// dispatches still owns a live descendant. Reading the bare status is how
+    /// a live tree once showed "3 done" with no active segment while a
+    /// specialist under a finished dispatch was still working — the same defect
+    /// the row's background dot fixes, so the two must agree. `done` therefore
+    /// also excludes rows that are terminal but still waiting on a descendant.
+    /// `error`/`idle` fold into neither count — those are surfaced by the row's
+    /// own status dot, not a header segment.
+    ///
+    /// `allAgents` is the UNFILTERED set: descendants are deliberately absent
+    /// from the visible list, and the walk needs them.
+    func agentHeaderBreakdown(in allAgents: [AgentStateUpdate]) -> (total: Int, active: Int, done: Int) {
         var active = 0
         var done = 0
         for agent in self {
-            if agent.status == "running" || agent.status == "suspended" { active += 1 }
+            if AgentDotResolver.isActive(agent, in: allAgents) { active += 1 }
             else if agent.status == "done" { done += 1 }
         }
         return (total: count, active: active, done: done)

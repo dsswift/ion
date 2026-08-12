@@ -175,7 +175,7 @@ final class AgentHeaderBreakdownTests: XCTestCase {
             agent("d", status: "error"),
             agent("e", status: "idle"),
         ]
-        let b = agents.agentHeaderBreakdown
+        let b = agents.agentHeaderBreakdown(in: agents)
         XCTAssertEqual(b.total, 5, "total is the full visible set")
         XCTAssertEqual(b.active, 2, "only running agents are active")
         XCTAssertEqual(b.done, 1, "only done agents are done — error/idle fold into neither")
@@ -191,13 +191,13 @@ final class AgentHeaderBreakdownTests: XCTestCase {
             agent("spec", status: "running"),
             agent("old", status: "done"),
         ]
-        let b = agents.agentHeaderBreakdown
+        let b = agents.agentHeaderBreakdown(in: agents)
         XCTAssertEqual(b.active, 2, "suspended (parked) agents are active, not finished")
         XCTAssertEqual(b.done, 1)
     }
 
     func test_breakdown_empty() {
-        let b = [AgentStateUpdate]().agentHeaderBreakdown
+        let b = [AgentStateUpdate]().agentHeaderBreakdown(in: [])
         XCTAssertEqual(b.total, 0)
         XCTAssertEqual(b.active, 0)
         XCTAssertEqual(b.done, 0)

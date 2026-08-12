@@ -25,6 +25,7 @@ import { state } from './state'
 import { readSettings, writeSettings } from './settings-store'
 import { getAtvState } from './atv-state-cache'
 import { clearBeacon } from './atv-beacon'
+import { markDeepLinkConfirmationReady, markDeepLinkConfirmationUnavailable } from './deeplink/confirm'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('atv', msg, fields)
@@ -336,6 +337,8 @@ export function openAtvWindow(source = 'unknown'): void {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   win.webContents.on('will-navigate', (event) => event.preventDefault())
 
+  win.webContents.once('did-finish-load', () => markDeepLinkConfirmationReady('atv'))
+
   win.once('ready-to-show', () => {
     if (state.atvWindow === win && !win.isDestroyed()) {
       win.show()
@@ -361,6 +364,7 @@ export function openAtvWindow(source = 'unknown'): void {
   win.on('blur', () => applyAtvFocusLevel(win, false))
 
   win.on('closed', () => {
+    markDeepLinkConfirmationUnavailable('atv', 'window closed')
     if (state.atvWindow === win) {
       state.atvWindow = null
     }

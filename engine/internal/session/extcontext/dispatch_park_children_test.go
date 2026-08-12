@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
+	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/types"
 )
@@ -240,11 +241,25 @@ func TestDispatch_ParkOnChildren_SuspendReviveRoundTrip(t *testing.T) {
 // TestDispatch_EngineCancelMapsToError pins root cause J: a child run that
 // exits with the engine's "cancelled" signal (watchdog stall kill, abort)
 // WITHOUT a recall must surface as OnError with a non-zero exit code and a
-// message naming the cancellation — never as a clean OnComplete.
+// message naming the cancellation — never as a clean OnComplete. The SAME
+// terminal error must also be persisted in the child conversation: otherwise
+// the dispatch row is correctly red while its popup ends on ordinary assistant
+// prose and looks successful, the exact contradiction reported in conversation
+// 1785612472900-430418ea3e39.
 //
 // Revert bar: with OnExit discarding code/signal (the pre-fix wiring), this
-// dispatch builds ExitCode 0 and fires OnComplete — red.
+// dispatch builds ExitCode 0 and fires OnComplete. With the state transition
+// intact but AppendDispatchError removed, the callback arm passes and the child
+// history assertion goes red.
 func TestDispatch_EngineCancelMapsToError(t *testing.T) {
+	t.Setenv("ION_DATA_DIR", t.TempDir())
+	childConv := conversation.CreateConversation("conv-cancelled", "system", "model")
+	conversation.AddUserMessage(childConv, "do work")
+	conversation.AddAssistantMessageNoUsage(childConv, []types.LlmContentBlock{{Type: "text", Text: "partial work before the kill"}})
+	if err := conversation.Save(childConv, ""); err != nil {
+		t.Fatalf("seed child conversation: %v", err)
+	}
+
 	child := newScriptedChildBackend(
 		childRunScript{
 			events: []types.NormalizedEvent{
@@ -283,6 +298,20 @@ func TestDispatch_EngineCancelMapsToError(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("no terminal callback")
 	}
+
+	messages, err := conversation.LoadMessages("conv-cancelled", "")
+	if err != nil {
+		t.Fatalf("load child conversation after dispatch error: %v", err)
+	}
+	var errorRows int
+	for _, msg := range messages {
+		if msg.Role == "system" && strings.Contains(msg.Content, "Error: run cancelled by engine") {
+			errorRows++
+		}
+	}
+	if errorRows != 1 {
+		t.Fatalf("child history error rows = %d, want 1; messages=%+v", errorRows, messages)
+	}
 }
 
 // TestDispatch_NotifyChildComplete_FiresOnErrorPath pins root cause C: a
@@ -298,13 +327,17 @@ func TestDispatch_NotifyChildComplete_FiresOnErrorPath(t *testing.T) {
 	registry.RegisterWithID("parent-disp", "lead", func() {}, nil, "sess", "", 1)
 	reviveCh := make(chan struct{}, 1)
 
-	// The child errors (non-zero exit).
+	// Hold child exit until parent has armed its pending-child state. Without
+	// this barrier, a fast child can notify before SetSuspendedState and make
+	// the test depend on scheduler timing rather than the error-path contract.
+	childExit := make(chan struct{})
 	child := newScriptedChildBackend(
 		childRunScript{
 			events: []types.NormalizedEvent{
 				{Data: &types.SessionInitEvent{SessionID: "conv-err-child"}},
 			},
 			code: 1,
+			hold: childExit,
 		},
 	)
 	acc := &idTestAccessor{child: child}
@@ -321,8 +354,10 @@ func TestDispatch_NotifyChildComplete_FiresOnErrorPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dispatch error: %v", err)
 	}
-	// Park the parent on the child's ACTUAL dispatch id.
+	// Park the parent on the child's ACTUAL dispatch id before allowing the
+	// child to terminate and notify the registry.
 	registry.SetSuspendedState("parent-disp", reviveCh, []string{stub.DispatchID})
+	close(childExit)
 
 	select {
 	case <-errCh:

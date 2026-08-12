@@ -3,18 +3,16 @@ package providers
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/auth"
+	"github.com/dsswift/ion/engine/internal/awssig"
 	"github.com/dsswift/ion/engine/internal/network"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -37,11 +35,12 @@ type BedrockOptions struct {
 }
 
 type bedrockProvider struct {
-	region          string
-	accessKeyID     string
-	secretAccessKey string
-	sessionToken    string
-	client          *http.Client
+	region string
+	signer awssig.Signer
+	client *http.Client
+	// credentials resolves rotating workload credentials before every signed
+	// request. Nil means explicit/static credentials in signer are authoritative.
+	credentials func(context.Context) (awssig.Credentials, error)
 }
 
 // NewBedrockProvider creates an AWS Bedrock provider that uses the ConverseStream
@@ -50,6 +49,7 @@ type bedrockProvider struct {
 func NewBedrockProvider(opts *BedrockOptions) LlmProvider {
 	region := "us-east-1"
 	var accessKey, secretKey, sessionToken string
+	var explicitCredentials bool
 
 	if opts != nil {
 		if opts.Region != "" {
@@ -58,6 +58,7 @@ func NewBedrockProvider(opts *BedrockOptions) LlmProvider {
 		accessKey = opts.AccessKeyID
 		secretKey = opts.SecretAccessKey
 		sessionToken = opts.SessionToken
+		explicitCredentials = accessKey != "" || secretKey != "" || sessionToken != ""
 	}
 
 	if accessKey == "" {
@@ -77,13 +78,52 @@ func NewBedrockProvider(opts *BedrockOptions) LlmProvider {
 		}
 	}
 
-	return &bedrockProvider{
-		region:          region,
-		accessKeyID:     accessKey,
-		secretAccessKey: secretKey,
-		sessionToken:    sessionToken,
-		client:          &http.Client{Transport: network.GetHTTPTransport()},
+	provider := &bedrockProvider{
+		region: region,
+		signer: awssig.Signer{
+			Service: "bedrock",
+			Region:  region,
+			Creds: awssig.Credentials{
+				AccessKeyID:     accessKey,
+				SecretAccessKey: secretKey,
+				SessionToken:    sessionToken,
+			},
+		},
+		client: &http.Client{Transport: network.GetHTTPTransport()},
 	}
+	if !explicitCredentials {
+		fallbackCredentials := provider.signer.Creds
+		provider.credentials = func(ctx context.Context) (awssig.Credentials, error) {
+			credentialProvider := auth.CurrentAWSCredentialsProvider()
+			if credentialProvider == nil {
+				if fallbackCredentials.AccessKeyID == "" || fallbackCredentials.SecretAccessKey == "" {
+					return awssig.Credentials{}, fmt.Errorf("AWS credentials not configured")
+				}
+				return fallbackCredentials, nil
+			}
+			credentials, err := credentialProvider.Retrieve(ctx)
+			if err != nil {
+				return awssig.Credentials{}, err
+			}
+			return awssig.Credentials{
+				AccessKeyID: credentials.AccessKeyID, SecretAccessKey: credentials.SecretAccessKey,
+				SessionToken: credentials.SessionToken,
+			}, nil
+		}
+	}
+	return provider
+}
+
+func (p *bedrockProvider) signRequest(ctx context.Context, request *http.Request, payload []byte) error {
+	signer := p.signer
+	if p.credentials != nil {
+		credentials, err := p.credentials(ctx)
+		if err != nil {
+			return err
+		}
+		signer.Creds = credentials
+	}
+	return signer.SignRequest(request, payload)
 }
 
 func (p *bedrockProvider) ID() string { return "bedrock" }
@@ -162,8 +202,7 @@ func (p *bedrockProvider) doStream(ctx context.Context, opts types.LlmStreamOpti
 
 	req.Header.Set("Content-Type", "application/json")
 
-	// Sign with AWS Signature V4
-	if err := p.signV4(req, raw); err != nil {
+	if err := p.signRequest(ctx, req, raw); err != nil {
 		return NewProviderError(ErrAuth, fmt.Sprintf("AWS signing failed: %v", err), 0, false)
 	}
 
@@ -436,93 +475,4 @@ func classifyBedrockError(status int, body string) *ProviderError {
 		return NewProviderError(ErrPromptTooLong, msg, status, false)
 	}
 	return NewProviderError(ErrUnknown, msg, status, false)
-}
-
-// --- AWS Signature V4 ---
-
-func (p *bedrockProvider) signV4(req *http.Request, payload []byte) error {
-	if p.accessKeyID == "" || p.secretAccessKey == "" {
-		return fmt.Errorf("AWS credentials not configured")
-	}
-
-	now := time.Now().UTC()
-	datestamp := now.Format("20060102")
-	amzDate := now.Format("20060102T150405Z")
-
-	req.Header.Set("X-Amz-Date", amzDate)
-	if p.sessionToken != "" {
-		req.Header.Set("X-Amz-Security-Token", p.sessionToken)
-	}
-	req.Header.Set("Host", req.URL.Host)
-
-	// Create canonical request
-	payloadHash := sha256Hex(payload)
-
-	signedHeaders := canonicalHeaders(req)
-	canonicalReq := strings.Join([]string{
-		req.Method,
-		req.URL.Path,
-		req.URL.RawQuery,
-		canonicalHeaderString(req, signedHeaders),
-		strings.Join(signedHeaders, ";"),
-		payloadHash,
-	}, "\n")
-
-	// Create string to sign
-	credentialScope := fmt.Sprintf("%s/%s/bedrock/aws4_request", datestamp, p.region)
-	stringToSign := strings.Join([]string{
-		"AWS4-HMAC-SHA256",
-		amzDate,
-		credentialScope,
-		sha256Hex([]byte(canonicalReq)),
-	}, "\n")
-
-	// Calculate signature
-	signingKey := deriveSigningKey(p.secretAccessKey, datestamp, p.region, "bedrock")
-	signature := hex.EncodeToString(hmacSHA256(signingKey, []byte(stringToSign)))
-
-	// Set Authorization header
-	auth := fmt.Sprintf("AWS4-HMAC-SHA256 Credential=%s/%s, SignedHeaders=%s, Signature=%s",
-		p.accessKeyID, credentialScope, strings.Join(signedHeaders, ";"), signature)
-	req.Header.Set("Authorization", auth)
-
-	return nil
-}
-
-func canonicalHeaders(req *http.Request) []string {
-	var headers []string
-	for k := range req.Header {
-		headers = append(headers, strings.ToLower(k))
-	}
-	sort.Strings(headers)
-	return headers
-}
-
-func canonicalHeaderString(req *http.Request, signedHeaders []string) string {
-	var b strings.Builder
-	for _, h := range signedHeaders {
-		b.WriteString(h)
-		b.WriteString(":")
-		b.WriteString(strings.TrimSpace(req.Header.Get(h)))
-		b.WriteString("\n")
-	}
-	return b.String()
-}
-
-func sha256Hex(data []byte) string {
-	h := sha256.Sum256(data)
-	return hex.EncodeToString(h[:])
-}
-
-func hmacSHA256(key, data []byte) []byte {
-	h := hmac.New(sha256.New, key)
-	h.Write(data)
-	return h.Sum(nil)
-}
-
-func deriveSigningKey(secret, datestamp, region, service string) []byte {
-	kDate := hmacSHA256([]byte("AWS4"+secret), []byte(datestamp))
-	kRegion := hmacSHA256(kDate, []byte(region))
-	kService := hmacSHA256(kRegion, []byte(service))
-	return hmacSHA256(kService, []byte("aws4_request"))
 }

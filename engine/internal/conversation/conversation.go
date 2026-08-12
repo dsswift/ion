@@ -28,6 +28,11 @@ const (
 	EntryLabel         SessionEntryType = "label"
 	EntryCustom        SessionEntryType = "custom"
 	EntryAgentDispatch SessionEntryType = "agent_dispatch"
+	// EntryDispatchError records a terminal dispatch failure discovered after
+	// the child backend's final save (for example code 0 + signal "cancelled"
+	// mapped to an error by the dispatch lifecycle). It replays as a system-role
+	// error row in scrollback and is excluded from provider-visible context.
+	EntryDispatchError SessionEntryType = "dispatch_error"
 	// EntryPlanMarker records a plan-file-written event so the "plan created /
 	// updated" marker survives reload; it renders live via PlanFileWrittenEvent,
 	// which is not persisted.
@@ -303,7 +308,10 @@ type ToolResultEntry struct {
 	// previously had no way to express it.
 	PersistContent string               `json:"persist_content,omitempty"`
 	IsError        bool                 `json:"is_error,omitempty"`
-	Images         []*types.ImageSource `json:"images,omitempty"` // vision images to attach alongside text
+	Images         []*types.ImageSource `json:"images,omitempty"` // durable vision images to attach alongside text
+	// EphemeralImages are provider input for only this live turn. They are never
+	// copied into the entry tree or serialized into conversation history.
+	EphemeralImages []*types.ImageSource `json:"-"`
 }
 
 // ContextFile is a discovered context file on disk.
@@ -635,6 +643,7 @@ func AddAssistantMessageWithEntryID(conv *Conversation, blocks []types.LlmConten
 func AddToolResults(conv *Conversation, results []ToolResultEntry) {
 	var blocks []types.LlmContentBlock
 	var imageBlocks []types.LlmContentBlock
+	var ephemeralImageBlocks []types.LlmContentBlock
 	// persistOverrides maps a block index in `blocks` to the text that should
 	// be written to the entry tree instead of the block's live Content. Only
 	// populated for results that set PersistContent; nil-safe and empty for
@@ -668,11 +677,21 @@ func AddToolResults(conv *Conversation, results []ToolResultEntry) {
 				Source:    img,
 			})
 		}
+		for _, img := range r.EphemeralImages {
+			ephemeralImageBlocks = append(ephemeralImageBlocks, types.LlmContentBlock{
+				Type:      "image",
+				ToolUseID: r.ToolUseID,
+				Source:    img,
+				Ephemeral: true,
+			})
+		}
 	}
 	blocks = append(blocks, imageBlocks...)
+	liveBlocks := append(append([]types.LlmContentBlock(nil), blocks...), ephemeralImageBlocks...)
+
 	conv.lock()
 	defer conv.unlock()
-	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: blocks})
+	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: liveBlocks})
 
 	if conv.Entries != nil {
 		// Deep-copy blocks so MicroCompact mutations on conv.Messages

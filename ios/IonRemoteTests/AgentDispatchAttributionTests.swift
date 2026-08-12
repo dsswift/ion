@@ -7,7 +7,12 @@ import XCTest
 /// The engine stamps these onto each agent-state pill at dispatch time
 /// (dispatch_agent.go). The main conversation panel filters to root-level
 /// agents (`visibleAgents` in ConversationView) so a lead's nested specialists
-/// appear only inside the lead's dispatch preview, not the main row.
+/// appear only inside the lead's dispatch detail view, not the main row.
+///
+/// A nested specialist being absent from the visible list is exactly why the
+/// row's status dots reason over the UNFILTERED agent set — see
+/// `AgentDotModelTests` for the pins on that, including the case where a live
+/// depth-2 agent is what makes its finished lead read as waiting.
 ///
 /// **Revert test:** removing `&& $0.isRootLevel` from `visibleAgents`, or the
 /// metadata decode in `AgentStateUpdate.init(from:)`, makes

@@ -79,6 +79,18 @@ A typical MCP resource access flow:
 3. The LLM calls `ReadMcpResource` with the server name and URI to read the content.
 4. The resource content is available in the conversation for the LLM to use.
 
+## Tool result content
+
+When MCP tool returns result, engine preserves all content items from response, not only text. `ToolResult` carries both `content` text summary and optional `contentItems` array with full typed content:
+
+- **Text** (`type: "text"`) -- plain text content.
+- **Image** (`type: "image"`) -- base64 image data with MIME type, fed to model as vision input for current turn only.
+- **Audio** (`type: "audio"`) -- preserved for extension consumers; model receives safe MIME/size summary.
+- **Resource link** (`type: "resource_link"`) -- URI and metadata for resource server can read.
+- **Resource** (`type: "resource"`) -- embedded resource with URI, MIME type, and either text or base64 blob data.
+
+Extensions calling MCP tools via `ctx.callTool` (TypeScript) or `ctx.CallTool` (Go) receive full `ToolResult` with `contentItems` populated when non-text content is present. `content` remains text-only summary for consumers that do not need typed content. Base64 is neither decoded nor written to logs, telemetry, tool events, image files, or conversation persistence by default.
+
 ## MCP Server Configuration
 
 MCP servers are configured through the engine config or the `mcpConfigPath` in the extension config. Server names in tool calls must match the names in the configuration. The engine manages server lifecycle (start, connect, disconnect) independently of these tools.

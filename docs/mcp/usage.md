@@ -51,7 +51,13 @@ MCP tool names are prefixed with the server name to avoid collisions. A tool nam
 3. The MCP server executes the tool and returns the result.
 4. The engine returns the result to the LLM as tool output.
 
-MCP tool calls go through the engine's permission system. If permissions are configured, MCP tool invocations are subject to the same allow/ask/deny rules as built-in tools.
+MCP tool calls go through engine permission system. If permissions are configured, MCP tool invocations follow same allow/ask/deny rules as built-in tools.
+
+### Typed tool results
+
+MCP `tools/call` responses preserve ordered `text`, `image`, `audio`, `resource_link`, and embedded `resource` items. Extension `ctx.callTool()` consumers receive full `contentItems`, including resource URI, MIME type, text, and opaque base64 blobs. Existing `content` remains text convenience output, and `isError` preserves MCP tool-error state.
+
+Supported image items become in-memory vision input for current provider request only. Audio and non-image blobs become safe URI/MIME/size summaries for model text. Base64 data is not decoded, logged, telemetered, emitted as a tool event, written as an image file, or persisted to conversation history by default.
 
 ## MCP resources
 

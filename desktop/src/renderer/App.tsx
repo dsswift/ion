@@ -11,6 +11,7 @@ import { StatusBar } from './components/StatusBar'
 import { SettingsDialog } from './components/SettingsDialog'
 import { TerminalPanel } from './components/TerminalPanel'
 import { TerminalBigScreen } from './components/TerminalBigScreen'
+import { AppOverlays } from './components/AppOverlays'
 import { ConversationErrorBoundary } from './components/conversation'
 import { FileExplorer } from './components/FileExplorer'
 import { FileEditor } from './components/FileEditor'
@@ -18,9 +19,6 @@ import { QuickToolsTray } from './components/QuickToolsTray'
 import { PopoverLayerProvider } from './components/PopoverLayer'
 import { CommandPalette } from './components/CommandPalette'
 import { CloseTabConfirmDialog } from './components/CloseTabConfirmDialog'
-import { UpdateDialog } from './components/UpdateDialog'
-import { ConflictToasts } from './components/ConflictToasts'
-import { RemoteDirectoryPicker } from './components/RemoteDirectoryPicker'
 import { useRemoteFsStore } from './stores/remote-fs-store'
 import { useEngineEvents } from './hooks/useEngineEvents'
 import { useHealthReconciliation } from './hooks/useHealthReconciliation'
@@ -575,16 +573,10 @@ export default function App() {
           <TerminalBigScreen tabId={activeTabId} />
         )}
 
-        {/* Conflicted-sync toasts: fire at the moment a sync/land fails with
-            conflicts, from any tab. App-level because the failure is not tied
-            to the active conversation. */}
-        <ConflictToasts />
-
-        {/* Auto-update install dialog */}
-        <UpdateDialog />
-
-        {/* Engine-host filesystem picker (used when the engine is remote) */}
-        <RemoteDirectoryPicker />
+        {/* App-level singleton overlays (deep-link approval, conflict toasts,
+            update dialog, remote directory picker). See AppOverlays.tsx for why
+            each is mounted unconditionally and outside the tabsReady gate. */}
+        <AppOverlays />
       </div>
     </PopoverLayerProvider>
   )

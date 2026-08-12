@@ -296,7 +296,7 @@ func TestHTTPTransport_ReceivesEveryFrameFromOneResponse(t *testing.T) {
 // TestHTTPTransport_406SurfacesServerMessage pins that a rejection carries the
 // server's own explanation. This is what turned an opaque failure into a
 // diagnosable one during the live investigation.
-func TestHTTPTransport_406SurfacesServerMessage(t *testing.T) {
+func TestHTTPTransport_406RedactsServerBody(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotAcceptable)
 		if _, err := w.Write([]byte(`{"error":{"message":"Not Acceptable: Client must accept both application/json and text/event-stream"}}`)); err != nil {
@@ -318,7 +318,10 @@ func TestHTTPTransport_406SurfacesServerMessage(t *testing.T) {
 	if !strings.Contains(sendErr.Error(), "406") {
 		t.Errorf("error should carry the status, got %q", sendErr)
 	}
-	if !strings.Contains(sendErr.Error(), "must accept both") {
-		t.Errorf("error should carry the server's explanation, got %q", sendErr)
+	if !strings.Contains(sendErr.Error(), "bodyBytes=102") {
+		t.Errorf("error should carry only a safe body size, got %q", sendErr)
+	}
+	if strings.Contains(sendErr.Error(), "must accept both") {
+		t.Errorf("error must not copy arbitrary response content, got %q", sendErr)
 	}
 }

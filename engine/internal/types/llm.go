@@ -96,6 +96,9 @@ type LlmContentBlock struct {
 	IsError   *bool          `json:"is_error,omitempty"`
 	Thinking  string         `json:"thinking,omitempty"`
 	Source    *ImageSource   `json:"source,omitempty"`
+	// Ephemeral marks provider input that must leave in-memory history after the
+	// current stream. It is never persisted or serialized to a provider API.
+	Ephemeral bool `json:"-"`
 
 	// --- compact_boundary fields ---
 	// All optional; only meaningful when Type == "compact_boundary".

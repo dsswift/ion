@@ -62,7 +62,7 @@ export interface RawSessionMessage {
  * rows verbatim — preserving role, content, and the marker-only fields
  * (planFilePath, dedupKey, slash provenance, interceptLevel) — so the dispatch
  * preview renders the SAME markers the main transcript does through the shared
- * groupMessages / TranscriptRows path (AgentExpandedView). Tool-only fields
+ * groupMessages / TranscriptRows path (AgentDetailPanel). Tool-only fields
  * (toolName / toolId / toolInput / toolStatus) are stamped ONLY on tool rows;
  * stamping toolStatus on a system marker row is incorrect and was a prior bug.
  */

@@ -83,7 +83,7 @@ func (t *sseTransport) applyHeaders(req *http.Request) error {
 		req.Header.Set(k, v)
 	}
 	// This server's OAuth token, refreshed on expiry. Applied before the
-	// operator token so forwardUserToken remains the explicit override.
+	// configured identity token so explicit forwarding remains the override.
 	if t.oauth != nil {
 		value, err := t.oauth.Token()
 		if err != nil {
@@ -99,7 +99,7 @@ func (t *sseTransport) applyHeaders(req *http.Request) error {
 	if t.userToken != nil {
 		token, err := t.userToken()
 		if err != nil {
-			return fmt.Errorf("resolve operator token: %w", err)
+			return fmt.Errorf("resolve identity token: %w", err)
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -186,8 +186,11 @@ func (t *sseTransport) Send(msg json.RawMessage) error {
 	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // resource close
 
 	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read of error-response body
-		return fmt.Errorf("SSE send error (status %d): %s", resp.StatusCode, string(body))
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			utils.LogWithFields(utils.LevelWarn, "mcp.sse", "error response body read failed", map[string]any{"serverName": t.serverName, "error": readErr.Error()})
+		}
+		return fmt.Errorf("SSE send error (status %d, bodyBytes=%d)", resp.StatusCode, len(body))
 	}
 
 	// Some MCP servers return inline JSON-RPC responses in the POST body

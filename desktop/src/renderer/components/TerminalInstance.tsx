@@ -245,12 +245,39 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
         terminal.write(restoredBuffer)
       }
 
+      // No saved buffer means this xterm has never seen this PTY. The PTY may
+      // nevertheless have been streaming for a while: a deep-link pane opened
+      // into a background conversation, or an instance created from iOS, runs
+      // in main with no renderer attached, and its output accumulated only in
+      // the main-process scrollback. Fetch it so arriving at the tab shows the
+      // history rather than an empty pane.
+      //
+      // The fetch is async, so live chunks can arrive before it resolves.
+      // Queueing them and flushing AFTER the history keeps the transcript in
+      // chronological order — writing live data first would interleave the
+      // backlog behind output that came later.
+      let historyPending = !restoredBuffer
+      const pendingChunks: string[] = []
+      if (historyPending) {
+        void window.ion.terminalGetScrollback(key).then((history) => {
+          if (history) terminal.write(history)
+        }).catch((err) => {
+          rWarn('terminal', 'scrollback fetch failed', { key, error: String(err) })
+        }).finally(() => {
+          historyPending = false
+          for (const chunk of pendingChunks) terminal.write(chunk)
+          pendingChunks.length = 0
+        })
+      }
+
       // Cmd+Click link provider for file paths & URLs
       const unsubLinks = registerTerminalLinks(terminal, cwd, tabId)
 
       // Module-level IPC listeners -- stay active even when component is unmounted
       const unsubData = window.ion.onTerminalData((k, data) => {
-        if (k === key) terminal.write(data)
+        if (k !== key) return
+        if (historyPending) pendingChunks.push(data)
+        else terminal.write(data)
       })
       const unsubExit = window.ion.onTerminalExit((k, _exitCode) => {
         if (k !== key) return

@@ -2,8 +2,8 @@
 //
 // Bridges the TypeScript SDK's ctx.http.* surface to the engine's
 // pre-authenticated outbound HTTP implementation (http_request.go). The
-// handler is deliberately session-independent: minting an operator token
-// requires no session state, so extensions loaded outside an active
+// handler is deliberately session-independent: acquiring engine-owned
+// authentication requires no session state, so extensions loaded outside an active
 // session (schedules, webhooks) can still make authenticated calls.
 package extension
 

@@ -20,7 +20,10 @@ MCP servers are configured in the `mcpServers` map of your engine config. Each k
 | `headers` | `map[string]string` | No | Static HTTP headers for network transports |
 | `oauth` | `McpOAuthConfig` | No | Explicit OAuth 2.0 client configuration. Omit it for a server that supports discovery — see [OAuth and authorization](#oauth-and-authorization). |
 | `timeoutSeconds` | `int` | No | Per-server tool-call timeout. Unset uses the engine default. |
-| `forwardUserToken` | `bool` | No | Stamp the signed-in operator's OIDC token on every request to this server. Opt-in per server; see [Operator token forwarding](#operator-token-forwarding). |
+| `forwardIdentityToken` | `bool` | No | Stamp the configured operator or machine OAuth token on every request. Preferred identity-neutral field. |
+| `identityTokenScope` | `string` | No | Scope for `forwardIdentityToken`. |
+| `identityTokenAudience` | `string` | No | Audience/resource for `forwardIdentityToken`. |
+| `forwardUserToken` | `bool` | No | Compatibility alias for `forwardIdentityToken`; existing configs remain supported. |
 | `userTokenScope` | `string` | No | Downstream resource scope the forwarded token is minted for. Only meaningful with `forwardUserToken`. |
 | `userTokenAudience` | `string` | No | Explicit audience/resource for the forwarded token, for identity providers that bind grants to one (Auth0, RFC 8707) instead of encoding the resource in the scope. Only meaningful with `forwardUserToken`. |
 
@@ -197,13 +200,11 @@ in `headers`:
 }
 ```
 
-### Operator token forwarding
+### Identity token forwarding
 
-`forwardUserToken` makes the engine stamp the signed-in operator's own OIDC
-token on every request to a server, instead of a server-specific grant. Use it
-for a first-party service that accepts your identity provider's tokens
-directly. It is opt-in per server: not every downstream server should receive
-the operator's identity.
+`forwardIdentityToken` makes the engine stamp the configured operator or machine OAuth bearer token on every request instead of a server-specific grant. `identityTokenScope` and `identityTokenAudience` select the downstream resource. Legacy `forwardUserToken`, `userTokenScope`, and `userTokenAudience` remain permanent aliases. When `forwardIdentityToken` is true, its generic scope/audience fields define the request, including deliberate empty values that select provider defaults; otherwise legacy values apply.
+
+Use forwarding only for a first-party service that accepts the selected identity provider's tokens. It is opt-in per server. AWS SigV4 identities cannot be forwarded through MCP because this transport surface accepts a bearer header rather than a signable request API.
 
 ### When authorization fails
 

@@ -1,50 +1,40 @@
 import SwiftUI
 
-/// A single agent bar row: compact header + expandable conversation body.
+/// A single agent bar row: a compact status summary.
+///
+/// The row never expands in place — tapping it opens the full-screen detail
+/// view, which is the single way to inspect a dispatch. Everything the row
+/// renders therefore describes the agent's state right now, independent of what
+/// the detail view has open.
 struct AgentBarRow: View {
     let agent: AgentStateUpdate
-    /// Legacy: messages looked up by agent name (single-dispatch agents).
-    let messages: [Message]?
-    /// Per-conversationId message cache for dispatch pager lookups.
-    let convMessageCache: [String: [Message]]
-    let isLoadingMessages: Bool
-    let onExpand: (() -> Void)?
-    /// Called with a single conversationId to load a specific dispatch.
-    let onLoadDispatch: ((String) -> Void)?
-    /// Called after the initial dispatch loads to preload the rest.
-    let onPreloadDispatches: ((String) -> Void)?
+    /// Every agent on the conversation, unfiltered. Feeds the descendant walk
+    /// behind the status dots — a nested specialist is not in the visible row
+    /// set but still determines whether its lead reads as waiting.
+    let allAgents: [AgentStateUpdate]
     @Environment(\.appTheme) private var theme
     let onTap: (() -> Void)?
-    @State private var isExpanded = false
     @State private var now = Date()
 
     init(
         agent: AgentStateUpdate,
-        messages: [Message]? = nil,
-        conversationMessages: [String: [Message]] = [:],
-        isLoadingMessages: Bool,
-        onExpand: (() -> Void)? = nil,
-        onLoadDispatch: ((String) -> Void)? = nil,
-        onPreloadDispatches: ((String) -> Void)? = nil,
+        allAgents: [AgentStateUpdate] = [],
         onTap: (() -> Void)? = nil
     ) {
         self.agent = agent
-        self.messages = messages
-        self.convMessageCache = conversationMessages
-        self.isLoadingMessages = isLoadingMessages
-        self.onExpand = onExpand
-        self.onLoadDispatch = onLoadDispatch
-        self.onPreloadDispatches = onPreloadDispatches
+        self.allAgents = allAgents
         self.onTap = onTap
     }
 
     // Live elapsed seconds from startTime (running) or final elapsed (done).
-    // Delegates to AgentDuration so AgentExpandedContent can share the logic.
-    // When dispatches exist, the latest dispatch (default selection) provides
-    // per-dispatch duration fields, mirroring desktop's per-dispatch-first
-    // resolution (AgentExpandedView.tsx:59-61).
+    // Delegates to AgentDuration so the detail view can share the logic.
+    //
+    // The subject is the MOST RECENT dispatch — resolved by startTime, not
+    // array position, because the engine merges dispatches in slot-insertion
+    // order. This is the same subject the foreground status dot describes, so
+    // the clock and the dot beside it never report different dispatches.
     private var elapsedSeconds: Int? {
-        let latestDispatch = agent.dispatches.last
+        let latestDispatch = AgentDotResolver.mostRecentDispatch(agent.dispatches)
         let dispatchStatus = latestDispatch?.status ?? agent.status
         let dispatchStartTime = latestDispatch?.startTime ?? agent.startTime
         let dispatchElapsed = latestDispatch?.elapsed ?? agent.elapsed
@@ -57,33 +47,14 @@ struct AgentBarRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            headerRow
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    if let onTap {
-                        onTap()
-                        return
-                    }
-                    // If already expanded and loading, ignore tap to prevent
-                    // the user from collapsing and restarting the same fetch.
-                    if isExpanded && isLoadingMessages { return }
-                    withAnimation(.snappy(duration: 0.15)) { isExpanded.toggle() }
-                    if isExpanded {
-                        onExpand?()
-                        // Preload remaining dispatches after the initial expand
-                        if let lastConvId = agent.dispatches.last?.conversationId, !lastConvId.isEmpty {
-                            onPreloadDispatches?(lastConvId)
-                        }
-                    }
-                }
-            if isExpanded { expandedBody }
-        }
-        .background(theme.surfaceElevated.opacity(0.5))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { t in
-            if agent.status == "running" { now = t }
-        }
+        headerRow
+            .contentShape(Rectangle())
+            .onTapGesture { onTap?() }
+            .background(theme.surfaceElevated.opacity(0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { t in
+                if AgentDotResolver.isLiveStatus(agent.status) { now = t }
+            }
     }
 
     // MARK: - Compact header (always visible)
@@ -101,11 +72,24 @@ struct AgentBarRow: View {
                 .clipShape(Capsule())
                 .fixedSize()
 
-            // Status dot
-            Circle()
-                .fill(statusColor)
-                .frame(width: 6, height: 6)
+            // Status dot(s). One dot when the agent has a single dispatch; two
+            // overlapping dots when it has more, so a finished most-recent
+            // dispatch cannot hide an older one still waiting on a live agent.
+            switch AgentDotResolver.resolve(agent: agent, allAgents: allAgents, theme: theme) {
+            case .single(let dot):
+                Circle()
+                    .fill(dot.color)
+                    .frame(width: 6, height: 6)
+                    .padding(.leading, 2)
+            case .stack(let foreground, let background):
+                AgentStatusDotStack(
+                    foreground: foreground,
+                    background: background,
+                    ringColor: theme.surfaceElevated,
+                    size: 6
+                )
                 .padding(.leading, 2)
+            }
 
             // Live duration
             if let secs = elapsedSeconds {
@@ -126,11 +110,11 @@ struct AgentBarRow: View {
 
             Spacer(minLength: 0)
 
-            // Expand caret
+            // Open-detail chevron. Static: the row never expands in place, so
+            // this is an affordance for "this opens", not a state indicator.
             Image(systemName: "chevron.right")
                 .font(.caption2)
                 .foregroundStyle(theme.textSecondary.opacity(0.5))
-                .rotationEffect(isExpanded ? .degrees(90) : .zero)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -140,26 +124,6 @@ struct AgentBarRow: View {
     /// the last tool or streaming snippet; for completed it's a short summary.
     private var activityText: String? {
         agent.lastWork
-    }
-
-    // MARK: - Expanded body
-
-    private var expandedBody: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Divider().padding(.horizontal, 8)
-
-            ScrollView {
-                AgentExpandedContent(
-                    agent: agent,
-                    messages: messages,
-                    convMessageCache: convMessageCache,
-                    isLoadingMessages: isLoadingMessages,
-                    onLoadDispatch: onLoadDispatch,
-                    onPreloadDispatches: onPreloadDispatches
-                )
-            }
-            .frame(maxHeight: 240)
-        }
     }
 
     // MARK: - Helpers
@@ -175,19 +139,6 @@ struct AgentBarRow: View {
         }
     }
 
-    private var statusColor: Color {
-        // Mirrors the desktop getStatusDot vocabulary (agent-helpers.ts):
-        // suspended (a parked dispatch, alive and waiting on children or a
-        // revive) renders the waiting-on-children yellow, never the idle
-        // grey and never done green — the tree is not finished.
-        switch agent.status {
-        case "running": return theme.statusRunning
-        case "suspended": return theme.statusWaitingChildren
-        case "done": return theme.statusDone
-        case "error": return theme.statusError
-        default: return theme.textSecondary.opacity(0.5)
-        }
-    }
 }
 
 // MARK: - Color hex initializer

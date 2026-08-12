@@ -2,7 +2,9 @@ package types
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -60,6 +62,55 @@ func TestShellConfigResolveLoginShell(t *testing.T) {
 	if !login {
 		t.Errorf("loginShell = false, want true")
 	}
+}
+
+// TestShellConfigResolveInteractiveBash pins the InteractiveBash opt-in: it
+// upgrades the login shell to an INTERACTIVE login shell (-ilc), which is what
+// makes rc-defined shell functions (nvm and friends) callable from a Bash tool
+// call.
+//
+// The "unset" arm is the more important of the two. InteractiveBash defaults to
+// false and must stay that way for every operator who has not asked for it:
+// interactive startup runs the full rc file per command and can write prompt or
+// completion noise into tool output. A regression that flipped the default would
+// be silent and would degrade every consumer, so it is pinned explicitly.
+func TestShellConfigResolveInteractiveBash(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("login-shell semantics are POSIX-only; Windows uses PowerShell")
+	}
+
+	t.Run("enabled yields -ilc", func(t *testing.T) {
+		cfg := &ShellConfig{UseLoginShell: true, ShellPath: "/usr/bin/fakesh", InteractiveBash: true}
+		_, args, login := cfg.Resolve("echo hi")
+		if len(args) != 2 || args[0] != "-ilc" || args[1] != "echo hi" {
+			t.Errorf("args = %v, want [-ilc echo hi]", args)
+		}
+		if !login {
+			t.Errorf("loginShell = false, want true")
+		}
+	})
+
+	t.Run("unset keeps -lc (default unchanged)", func(t *testing.T) {
+		cfg := &ShellConfig{UseLoginShell: true, ShellPath: "/usr/bin/fakesh"}
+		_, args, _ := cfg.Resolve("echo hi")
+		if len(args) != 2 || args[0] != "-lc" {
+			t.Errorf("args = %v, want [-lc echo hi]", args)
+		}
+	})
+
+	t.Run("ignored when login shell is off", func(t *testing.T) {
+		// InteractiveBash is a modifier on login-shell mode, not an independent
+		// switch: without UseLoginShell there is no rc sourcing to make
+		// interactive, so the historical bash -c default must survive.
+		cfg := &ShellConfig{UseLoginShell: false, InteractiveBash: true}
+		shell, args, login := cfg.Resolve("echo hi")
+		if shell != "bash" || len(args) != 2 || args[0] != "-c" {
+			t.Errorf("shell/args = %q %v, want bash [-c echo hi]", shell, args)
+		}
+		if login {
+			t.Errorf("loginShell = true, want false")
+		}
+	})
 }
 
 // TestShellConfigResolveShellPathOrder pins the resolution order when no
@@ -182,30 +233,187 @@ func TestMergePathEntries_OrderPreservedNoDuplicates(t *testing.T) {
 // TestBuildHydrationCommand verifies that buildHydrationCommand produces the
 // correct shell and arguments without spawning a subprocess. This pins the
 // command shape the exec path will use.
-func TestBuildHydrationCommand(t *testing.T) {
+func TestBuildHydrationProbes(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("login-shell semantics are POSIX-only")
 	}
 
 	cfg := &ShellConfig{UseLoginShell: true, ShellPath: "/bin/zsh"}
-	shell, args := cfg.buildHydrationCommand()
+	probes := cfg.buildHydrationProbes()
 
-	if shell != "/bin/zsh" {
-		t.Errorf("shell = %q, want /bin/zsh", shell)
+	if len(probes) != 2 {
+		t.Fatalf("got %d probes, want 2 (interactive-login, login)", len(probes))
 	}
-	if len(args) != 2 || args[0] != "-lc" || args[1] != "echo $PATH" {
-		t.Errorf("args = %v, want [-lc echo $PATH]", args)
+
+	// Interactive FIRST. This ordering is the fix for the defect where PATH
+	// entries written by per-tool installers into .zshrc were invisible to the
+	// engine, because a login-only shell never sources that file.
+	if probes[0].label != "interactive-login" {
+		t.Errorf("probes[0].label = %q, want interactive-login", probes[0].label)
+	}
+	if len(probes[0].args) != 2 || probes[0].args[0] != "-ilc" || probes[0].args[1] != "echo $PATH" {
+		t.Errorf("probes[0].args = %v, want [-ilc echo $PATH]", probes[0].args)
+	}
+	if probes[1].label != "login" {
+		t.Errorf("probes[1].label = %q, want login", probes[1].label)
+	}
+	if len(probes[1].args) != 2 || probes[1].args[0] != "-lc" {
+		t.Errorf("probes[1].args = %v, want [-lc echo $PATH]", probes[1].args)
+	}
+	for i, p := range probes {
+		if p.shell != "/bin/zsh" {
+			t.Errorf("probes[%d].shell = %q, want /bin/zsh", i, p.shell)
+		}
+	}
+
+	// Hydration probes interactively regardless of InteractiveBash: that flag
+	// governs per-command execution, not PATH discovery. Discovery always wants
+	// the most complete answer available.
+	cfgNoInteractive := &ShellConfig{UseLoginShell: true, ShellPath: "/bin/zsh", InteractiveBash: false}
+	if got := cfgNoInteractive.buildHydrationProbes(); got[0].args[0] != "-ilc" {
+		t.Errorf("hydration must probe interactively even when InteractiveBash is false; got %v", got[0].args)
 	}
 
 	// Verify $SHELL is used when ShellPath is unset.
 	t.Setenv("SHELL", "/bin/bash")
 	cfg2 := &ShellConfig{UseLoginShell: true}
-	shell2, args2 := cfg2.buildHydrationCommand()
-	if shell2 != "/bin/bash" {
-		t.Errorf("shell = %q, want /bin/bash (from $SHELL)", shell2)
+	if got := cfg2.buildHydrationProbes()[0].shell; got != "/bin/bash" {
+		t.Errorf("shell = %q, want /bin/bash (from $SHELL)", got)
 	}
-	if len(args2) != 2 || args2[0] != "-lc" || args2[1] != "echo $PATH" {
-		t.Errorf("args = %v, want [-lc echo $PATH]", args2)
+}
+
+// TestDiscoveredNewEntries pins the probe success criterion.
+//
+// Exit code 0 is not sufficient evidence that a probe worked. The desktop's
+// equivalent probe returned the caller's own PATH for years while "succeeding"
+// on every attempt, because a quoting bug let an intermediate shell expand
+// $PATH before the target shell ran. Requiring at least one genuinely new entry
+// is what converts that silent no-op into a logged rejection.
+func TestDiscoveredNewEntries(t *testing.T) {
+	cases := []struct {
+		name       string
+		current    string
+		discovered string
+		want       bool
+	}{
+		{"adds one entry", "/usr/bin:/bin", "/usr/bin:/bin:/opt/homebrew/bin", true},
+		{"identical", "/usr/bin:/bin", "/usr/bin:/bin", false},
+		{"reordered but same set", "/usr/bin:/bin", "/bin:/usr/bin", false},
+		{"subset", "/usr/bin:/bin:/sbin", "/usr/bin", false},
+		{"empty discovery", "/usr/bin:/bin", "", false},
+		{"everything new", "", "/opt/homebrew/bin", true},
+		{"whitespace only", "/usr/bin", "  :  ", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := discoveredNewEntries(tc.current, tc.discovered); got != tc.want {
+				t.Errorf("discoveredNewEntries(%q, %q) = %v, want %v",
+					tc.current, tc.discovered, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestHydrateProcessPath_RedactsRawPathFromDiagnostics pins the diagnostics
+// boundary: callers receive enough metadata to reconstruct the failed attempt,
+// but never a raw PATH that can reveal user-specific installation locations.
+func TestHydrateProcessPath_RedactsRawPathFromDiagnostics(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("login-shell semantics are POSIX-only")
+	}
+
+	const privatePath = "/private/operator/bin:/usr/bin"
+	t.Setenv("PATH", privatePath)
+	var reports []struct {
+		level   HydrationLogLevel
+		message string
+		fields  map[string]any
+	}
+	reporter := func(level HydrationLogLevel, message string, fields map[string]any) {
+		reports = append(reports, struct {
+			level   HydrationLogLevel
+			message string
+			fields  map[string]any
+		}{level: level, message: message, fields: fields})
+	}
+
+	cfg := &ShellConfig{UseLoginShell: true, ShellPath: "/nonexistent/shell-binary"}
+	cfg.HydrateProcessPath(reporter)
+
+	if len(reports) == 0 {
+		t.Fatal("expected hydration diagnostics")
+	}
+	for _, report := range reports {
+		if strings.Contains(report.message, privatePath) || strings.Contains(fmt.Sprint(report.fields), privatePath) {
+			t.Fatalf("hydration diagnostic leaks raw PATH: %+v", report)
+		}
+	}
+	last := reports[len(reports)-1]
+	if last.level != HydrationLogLevelWarn || last.message != "process path hydration failed" {
+		t.Errorf("last report = (%q, %q), want warning process path hydration failed", last.level, last.message)
+	}
+}
+
+// TestHydrateProcessPath_SourcesInteractiveRcFile is the regression test for
+// the second PATH bug: a login-only probe never reads .zshrc.
+//
+// It writes a .zshrc into a temp HOME that exports a uniquely-named directory
+// onto PATH, then asserts hydration picks it up. zsh sources .zshrc ONLY for
+// interactive shells, so this fails against a `-lc` probe and passes against
+// `-ilc` -- which is exactly the behavioral difference under test.
+//
+// ZDOTDIR (not HOME) is what zsh consults for user rc files, so the test sets
+// both: HOME for correctness of the sandbox, ZDOTDIR for the mechanism.
+func TestHydrateProcessPath_SourcesInteractiveRcFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("login-shell semantics are POSIX-only")
+	}
+	if _, err := os.Stat("/bin/zsh"); err != nil {
+		t.Skip("/bin/zsh not present (Linux CI); interactive-rc behavior is zsh-specific")
+	}
+
+	home := t.TempDir()
+	marker := filepath.Join(home, "interactive-only-bin")
+
+	// .zshrc is read by INTERACTIVE shells only. If hydration probes with -lc,
+	// this line never executes and the marker never reaches PATH.
+	rc := "export PATH=\"" + marker + ":$PATH\"\n"
+	if err := os.WriteFile(filepath.Join(home, ".zshrc"), []byte(rc), 0o600); err != nil {
+		t.Fatalf("write .zshrc: %v", err)
+	}
+
+	before := os.Getenv("PATH")
+	t.Cleanup(func() { _ = os.Setenv("PATH", before) })
+	t.Setenv("HOME", home)
+	t.Setenv("ZDOTDIR", home)
+
+	cfg := &ShellConfig{UseLoginShell: true, ShellPath: "/bin/zsh"}
+	cfg.HydrateProcessPath(nil)
+
+	if got := os.Getenv("PATH"); !strings.Contains(got, marker) {
+		t.Errorf("hydrated PATH is missing the .zshrc-only entry %q.\n"+
+			"This means hydration used a login-only shell, which does not source .zshrc.\nPATH = %q",
+			marker, got)
+	}
+}
+
+// TestHydrateProcessPath_LeavesPathAloneWhenProbesFail confirms the fail-open
+// contract: a shell that cannot run must not damage the existing PATH. A
+// degraded PATH is a recoverable annoyance; a destroyed one breaks every
+// subsequent subprocess the engine spawns.
+func TestHydrateProcessPath_LeavesPathAloneWhenProbesFail(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("login-shell semantics are POSIX-only")
+	}
+
+	before := os.Getenv("PATH")
+	t.Cleanup(func() { _ = os.Setenv("PATH", before) })
+
+	cfg := &ShellConfig{UseLoginShell: true, ShellPath: "/nonexistent/shell-binary"}
+	cfg.HydrateProcessPath(nil)
+
+	if got := os.Getenv("PATH"); got != before {
+		t.Errorf("PATH changed after total probe failure:\n got %q\nwant %q", got, before)
 	}
 }
 
@@ -220,7 +428,7 @@ func TestHydrateProcessPath_NoOpWhenNil(t *testing.T) {
 	t.Cleanup(func() { _ = os.Setenv("PATH", before) })
 
 	var s *ShellConfig
-	s.HydrateProcessPath() // must not panic
+	s.HydrateProcessPath(nil) // must not panic
 
 	if got := os.Getenv("PATH"); got != before {
 		t.Errorf("PATH changed: got %q, want %q", got, before)
@@ -238,7 +446,7 @@ func TestHydrateProcessPath_NoOpWhenLoginShellFalse(t *testing.T) {
 	t.Cleanup(func() { _ = os.Setenv("PATH", before) })
 
 	s := &ShellConfig{UseLoginShell: false}
-	s.HydrateProcessPath()
+	s.HydrateProcessPath(nil)
 
 	if got := os.Getenv("PATH"); got != before {
 		t.Errorf("PATH changed: got %q, want %q", got, before)
@@ -259,7 +467,7 @@ func TestHydrateProcessPath_MergesLoginShellPath(t *testing.T) {
 	t.Cleanup(func() { _ = os.Setenv("PATH", before) })
 
 	cfg := &ShellConfig{UseLoginShell: true}
-	cfg.HydrateProcessPath()
+	cfg.HydrateProcessPath(nil)
 
 	after := os.Getenv("PATH")
 

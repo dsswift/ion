@@ -1,6 +1,6 @@
 import React from 'react'
 import { useColors } from '../theme'
-import { DurationDisplay } from './AgentExpandedView'
+import { DurationDisplay } from './DurationDisplay'
 import type { DispatchInfo } from './agent-panel-helpers'
 
 interface Props {
@@ -14,8 +14,8 @@ interface Props {
  * directly below the DispatchPager (or directly below the breadcrumb for
  * single-dispatch agents).
  *
- * Mirrors AgentExpandedView's infoBar block but without the inline left-pad
- * logic (the popup header always uses compact/flush alignment).
+ * The popup header always uses compact/flush alignment (no inline left-pad:
+ * that variant belonged to the inline-expand row, which no longer exists).
  */
 export function DispatchMetaBar({ dispatch, agentStatus }: Props) {
   const colors = useColors()

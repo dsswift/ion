@@ -106,29 +106,33 @@ func (h *Host) rpcCallTool(ctx *Context, id int64, raw []byte) {
 			return
 		}
 		go func() {
-			content, isError, err := ctx.CallTool(req.Params.Name, req.Params.Input)
+			result, err := ctx.CallTool(req.Params.Name, req.Params.Input)
 			if err != nil {
 				h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 				return
 			}
-			data, _ := json.Marshal(struct { //nolint:errcheck // marshal of a local RPC struct
-				Content string `json:"content"`
-				IsError bool   `json:"isError,omitempty"`
-			}{Content: content, IsError: isError})
+			data, marshalErr := json.Marshal(result)
+			if marshalErr != nil {
+				utils.LogWithFields(utils.LevelError, "extension", "ext/call_tool: marshal result failed", map[string]any{"error": marshalErr.Error()})
+				h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: marshalErr.Error()})
+				return
+			}
 			h.sendResponse(id, json.RawMessage(data), nil)
 		}()
 		return
 	}
 	go func() {
-		content, isError, err := ctx.CallToolWithContext(req.Params.Name, req.Params.Input, req.Params.Timeout)
+		result, err := ctx.CallToolWithContext(req.Params.Name, req.Params.Input, req.Params.Timeout)
 		if err != nil {
 			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 			return
 		}
-		data, _ := json.Marshal(struct { //nolint:errcheck // marshal of a local RPC struct
-			Content string `json:"content"`
-			IsError bool   `json:"isError,omitempty"`
-		}{Content: content, IsError: isError})
+		data, marshalErr := json.Marshal(result)
+		if marshalErr != nil {
+			utils.LogWithFields(utils.LevelError, "extension", "ext/call_tool: marshal result failed", map[string]any{"error": marshalErr.Error()})
+			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: marshalErr.Error()})
+			return
+		}
 		h.sendResponse(id, json.RawMessage(data), nil)
 	}()
 }

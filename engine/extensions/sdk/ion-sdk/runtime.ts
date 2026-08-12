@@ -59,6 +59,8 @@ import type {
   SteerDispatchResult,
   SteerSelfOpts,
   ToolDef,
+  ToolResult,
+  ToolContent,
   WalkContextFilesOpts,
 } from './types'
 
@@ -248,17 +250,20 @@ function buildContext(ctxData: any): IonContext {
     async setDispatchContextDefaults(policy: ContextPolicy): Promise<void> {
       await request('ext/set_dispatch_context_defaults', policy)
     },
-    async callTool(name: string, input: Record<string, unknown>) {
+    async callTool(name: string, input: Record<string, unknown>): Promise<ToolResult> {
       const result = await request('ext/call_tool', { name, input: input || {} })
+      const contentItems: ToolResult['contentItems'] = Array.isArray(result?.contentItems)
+        ? result.contentItems.filter((item: unknown): item is ToolContent => item !== null && typeof item === 'object')
+        : undefined
       return {
         content: typeof result?.content === 'string' ? result.content : '',
         isError: !!result?.isError,
+        ...(contentItems && contentItems.length > 0 ? { contentItems } : {}),
       }
     },
     // Pre-authenticated outbound HTTP. Each verb funnels into the single
-    // ext/http_request RPC; the engine mints the operator token for the
-    // declared scope and injects the Authorization header. The token never
-    // reaches this process.
+    // ext/http_request RPC; the engine applies bearer or SigV4 authentication.
+    // Raw credentials never reach this process.
     http: (() => {
       const doRequest = async (
         method: string,
@@ -270,6 +275,8 @@ function buildContext(ctxData: any): IonContext {
           url,
           scope: opts?.scope || '',
           audience: opts?.audience || '',
+          awsService: opts?.awsService || '',
+          awsRegion: opts?.awsRegion || '',
           headers: opts?.headers || undefined,
           body: opts?.body || '',
           timeoutMs: opts?.timeoutMs || 0,

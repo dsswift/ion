@@ -787,8 +787,14 @@ export interface IonHttpRequestOptions {
    *  encoding the resource in the scope string. Omit to use the
    *  provider's configured default audience. */
   audience?: string
+  /** AWS service name for Signature V4 authentication (for example `s3`,
+   *  `execute-api`, or `dynamodb`). Setting this selects the engine-owned AWS
+   *  credential provider instead of OAuth bearer authentication. */
+  awsService?: string
+  /** AWS region used in the SigV4 credential scope. Required with awsService. */
+  awsRegion?: string
   /** Request headers. `Authorization` is reserved and overwritten by the
-   *  engine-minted operator token. */
+   *  engine-owned bearer token or SigV4 signature. */
   headers?: Record<string, string>
   /** Request body, sent verbatim. */
   body?: string
@@ -816,6 +822,42 @@ export interface IonHttp {
   put(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
   patch(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
   delete(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
+}
+
+export interface EmbeddedResource {
+  uri?: string
+  mimeType?: string
+  text?: string
+  blob?: string
+}
+
+export interface ToolAnnotations {
+  audience?: string[]
+  priority?: number
+  lastModified?: string
+}
+
+/** One ordered typed item from an MCP tool result. Binary data stays base64. */
+export interface ToolContent {
+  type: string
+  text?: string
+  data?: string
+  mimeType?: string
+  resource?: EmbeddedResource
+  uri?: string
+  name?: string
+  title?: string
+  description?: string
+  size?: number
+  annotations?: ToolAnnotations
+  unknown?: unknown
+}
+
+/** Result from `ctx.callTool` or an extension tool handler. */
+export interface ToolResult {
+  content: string
+  isError?: boolean
+  contentItems?: ToolContent[]
 }
 
 export interface IonContext {
@@ -962,28 +1004,29 @@ export interface IonContext {
   callTool(
     name: string,
     input: Record<string, unknown>,
-  ): Promise<{ content: string; isError?: boolean }>
+  ): Promise<ToolResult>
 
   /**
-   * Pre-authenticated outbound HTTP as the signed-in operator.
+   * Pre-authenticated outbound HTTP using the configured operator or machine
+   * identity.
    *
-   * The engine performs the request and injects an `Authorization: Bearer`
-   * header carrying an access token minted for the `scope` you declare
-   * (from the operator's OIDC grant — one refresh token mints per-resource
-   * tokens). The raw token is NEVER exposed to extension code: you hand
-   * the engine a request, you get back status/headers/body. Any
-   * `Authorization` header you supply is overwritten — carrying the
-   * credential is the wrapper's job. Extensions that need unauthenticated
-   * HTTP should use plain fetch or the WebFetch tool; this surface always
-   * authenticates.
+   * For OAuth/OIDC sources, the engine injects an `Authorization: Bearer`
+   * header carrying an access token minted for the declared `scope` and
+   * `audience`. For native AWS workload identities, set `awsService` and
+   * `awsRegion`; the engine acquires temporary credentials and signs the
+   * request with Signature V4. Raw credentials are NEVER exposed to extension
+   * code: request options contain no credential and responses contain only
+   * status/headers/body. Any `Authorization` header supplied by the extension
+   * is overwritten. Extensions needing unauthenticated HTTP should use plain
+   * fetch or WebFetch; this surface always authenticates.
    *
    * `scope` names the downstream resource (e.g.
    * `api://<app-id>/Billing.Read`); omit it to use the base grant's scope.
    * Requests to private/reserved addresses are blocked by default; set
    * `allowPrivateNetwork: true` per request to reach intranet APIs.
    *
-   * Fails when no operator identity is configured
-   * (`auth.identityProvider` in engine.json) or no operator is signed in.
+   * Fails when no compatible identity provider is configured under
+   * `auth.identityProvider` in engine.json.
    *
    * @example
    * ```ts
@@ -1658,7 +1701,7 @@ export interface ToolDef {
   description: string
   parameters: any // JSON Schema
   planModeSafe?: boolean
-  execute: (params: any, ctx: IonContext) => Promise<{ content: string; isError?: boolean }>
+  execute: (params: any, ctx: IonContext) => Promise<ToolResult>
 }
 
 export interface CommandDef {

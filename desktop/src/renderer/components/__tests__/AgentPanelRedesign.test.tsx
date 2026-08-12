@@ -7,10 +7,11 @@
 // uses a single flat '#000000' mock that cannot distinguish tokens.
 //
 //   1. No-op click on a data-less row — a row whose agent has no dispatches, no
-//      fullOutput, and is not running does NOT expand on click. Reverting the
-//      `if (!hasContent) return` guard in toggleAgent turns this red (the row
-//      expands into AgentExpandedView's "No transcript recorded" fallback).
-//   2. A running row still expands on click — the guard does not over-block.
+//      fullOutput, and is not running does NOT open the detail panel. Reverting
+//      the `if (hasContent)` guard in toggleAgent turns this red.
+//   2. A running row DOES open the detail panel on click — the guard does not
+//      over-block. There is no preference consulted: the popup is the only
+//      interaction, so reverting to a toggle-gated branch turns this red.
 //   3. Header breakdown — "Agents · {total} · {active} active · {done} done",
 //      zero segments dropped, active carries statusRunning, done statusComplete.
 //   4. Row visual — name pill + standardized status dot (no pulse for done,
@@ -27,9 +28,10 @@ import type { AgentStateUpdate } from '../../../shared/types'
 // assertions can pin the exact theme token used.
 const COLORS = new Proxy({}, { get: (_t, p) => `var(--${String(p)})` })
 
-// agentDetailPopup=false keeps toggleAgent on the inline-expand path;
 // agentPanelDefaultOpen=true auto-opens the panel so rows render on mount.
-const prefState: Record<string, unknown> = { agentPanelDefaultOpen: true, agentDetailPopup: false }
+// NOTE: no agent-detail-mode key here — the floating detail panel is the only
+// interaction, so the panel must not read any preference to decide.
+const prefState: Record<string, unknown> = { agentPanelDefaultOpen: true }
 
 vi.mock('../../theme', () => ({ useColors: () => COLORS }))
 vi.mock('../../preferences', () => ({
@@ -37,8 +39,19 @@ vi.mock('../../preferences', () => ({
 }))
 const getConversation = vi.fn().mockResolvedValue({ messages: [] })
 vi.mock('../../stores/sessionStore', () => ({
-  useSessionStore: (selector: (s: { dispatchActivity: Record<string, unknown> }) => unknown) =>
-    selector({ dispatchActivity: {} }),
+  useSessionStore: (selector: (s: Record<string, unknown>) => unknown) =>
+    selector({
+      dispatchActivity: {},
+      agentDetailGeometry: { x: 60, y: 80, w: 600, h: 500 },
+      setAgentDetailGeometry: () => {},
+    }),
+}))
+
+// FloatingPanel renders children inline so the detail popup is assertable in
+// the test DOM without portal/measurement machinery.
+vi.mock('../FloatingPanel', () => ({
+  FloatingPanel: ({ children }: { children: React.ReactNode }) =>
+    React.createElement('div', { 'data-testid': 'floating-panel' }, children),
 }))
 
 // Import after mocks so the component graph binds the mocked modules.
@@ -46,7 +59,6 @@ import { AgentPanel } from '../AgentPanel'
 
 beforeEach(() => {
   getConversation.mockClear()
-  prefState.agentDetailPopup = false
   ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = {
     getConversation,
     log: () => {},
@@ -89,23 +101,27 @@ const runningAgent: AgentStateUpdate = {
 } as AgentStateUpdate
 
 describe('AgentPanel no-op click (iOS parity)', () => {
-  it('does NOT expand a row with no dispatches, no fullOutput, not running', () => {
+  it('does NOT open the detail panel for a row with no dispatches, no fullOutput, not running', () => {
     const { container, root } = mount([dataLessDone])
     expect(container.textContent).toContain('Lonely') // row rendered (panel auto-opened)
     clickRow(container, 'Lonely')
-    // No inline expansion → the empty-transcript body never appears, and no
-    // conversation fetch was attempted. Reverting the guard makes this appear.
-    expect(container.textContent).not.toContain('No transcript recorded for this dispatch')
+    // Nothing to show → no detail panel mounts and no conversation fetch runs.
+    // Reverting the hasContent guard makes the panel appear.
+    expect(container.querySelector('[data-testid="floating-panel"]')).toBeNull()
     expect(getConversation).not.toHaveBeenCalled()
     act(() => { root.unmount() })
   })
 
-  it('still expands a running row on click (guard does not over-block)', () => {
+  it('opens the detail panel for a running row, with no preference consulted', () => {
     const { container, root } = mount([runningAgent])
     expect(container.textContent).toContain('Worker')
-    expect(container.textContent).not.toContain('running') // pre-click: no running body
+    // Pre-click: no detail panel.
+    expect(container.querySelector('[data-testid="floating-panel"]')).toBeNull()
     clickRow(container, 'Worker')
-    expect(container.textContent).toContain('running') // post-click: expanded running body
+    // Post-click: the floating detail panel is the ONLY interaction. `prefState`
+    // deliberately carries no agent-detail-mode key, so a re-introduced
+    // preference branch would read undefined and fail to open this.
+    expect(container.querySelector('[data-testid="floating-panel"]')).toBeTruthy()
     act(() => { root.unmount() })
   })
 })
@@ -141,6 +157,35 @@ describe('AgentPanel header breakdown', () => {
   })
 })
 
+describe('AgentPanel detail subject parity', () => {
+  it('opens start-time-most-recent dispatch when array order is non-chronological', async () => {
+    getConversation.mockResolvedValue({ messages: [] })
+    const lead = {
+      name: 'dev-lead',
+      status: 'done',
+      metadata: {
+        displayName: 'Dev Lead',
+        visibility: 'always',
+        // Latest dispatch is first. Engine slot insertion order is not
+        // chronology, so array-last would load `conv-early` incorrectly.
+        dispatches: [
+          { id: 'd-late', conversationId: 'conv-late', status: 'done', startTime: 900 },
+          { id: 'd-early', conversationId: 'conv-early', status: 'done', startTime: 100 },
+        ],
+      },
+    } as AgentStateUpdate
+    const { container, root } = mount([lead])
+
+    clickRow(container, 'Dev Lead')
+    await act(async () => { await Promise.resolve() })
+
+    // Same dispatch AgentRow uses as foreground dot and duration must be first
+    // detail load. Reverting defaults to array-last requests conv-early first.
+    expect(getConversation).toHaveBeenNthCalledWith(1, 'conv-late', 0, 200)
+    act(() => { root.unmount() })
+  })
+})
+
 describe('AgentPanel row visual (pill + standardized dot, no suffix)', () => {
   it('done row: name pill + solid green dot (no pulse), no legacy status suffix', () => {
     const { container, root } = mount([dataLessDone])
@@ -172,7 +217,7 @@ describe('AgentPanel row visual (pill + standardized dot, no suffix)', () => {
       metadata: { displayName: 'Spec', dispatchParentId: 'd-parent', dispatchDepth: 2 },
     } as AgentStateUpdate
     // rootOnly renders only the lead row (child is nested), while the full
-    // agents array still feeds childAgentsOf for the yellow derivation.
+    // agents array still feeds the descendant walk for the yellow derivation.
     const { container, root } = mount([parent, child], { rootOnly: true })
 
     const dot = Array.from(container.querySelectorAll('span')).find(
@@ -180,6 +225,50 @@ describe('AgentPanel row visual (pill + standardized dot, no suffix)', () => {
     )
     expect(dot).toBeTruthy()
     expect(dot!.className).toContain('animate-pulse-dot')
+    act(() => { root.unmount() })
+  })
+
+  // REGRESSION PIN for the reported bug. A lead whose MOST RECENT dispatch is
+  // finished, while an OLDER dispatch still owns a running depth-2 specialist.
+  //
+  // Before the two-dot model this row rendered ONE solid green dot and the
+  // header read "1 done" with no active segment: the row's live derivation only
+  // consulted the selected dispatch (defaulting to the last array slot), so the
+  // specialist hanging off the older dispatch was never found. A stalled agent
+  // was indistinguishable from finished work.
+  it('recent dispatch done + older dispatch still running a child: two dots, header active', () => {
+    const lead = {
+      name: 'dev-lead',
+      status: 'done',
+      metadata: {
+        displayName: 'Dev Lead',
+        visibility: 'always',
+        dispatches: [
+          { id: 'd-old', conversationId: '', status: 'done', startTime: 100 },
+          { id: 'd-recent', conversationId: '', status: 'done', startTime: 200 },
+        ],
+      },
+    } as AgentStateUpdate
+    const spec = {
+      name: 'code-engineer',
+      status: 'running',
+      metadata: { displayName: 'Code Engineer', dispatchParentId: 'd-old', dispatchDepth: 2 },
+    } as AgentStateUpdate
+    const { container, root } = mount([lead, spec], { rootOnly: true })
+
+    const spans = Array.from(container.querySelectorAll('span'))
+    // Foreground: the most recent dispatch, finished.
+    const green = spans.find((s) => s.style.background === 'var(--statusComplete)')
+    // Background: the older dispatch, still waiting on a live agent.
+    const yellow = spans.find((s) => s.style.background === 'var(--statusWaitingChildren)')
+    expect(green).toBeTruthy()
+    expect(yellow).toBeTruthy()
+    expect(yellow!.className).toContain('animate-pulse-dot')
+    expect(green!.className).not.toContain('animate-pulse-dot')
+
+    // The header must agree with the dots: the tree is not finished.
+    expect(spans.some((s) => s.textContent?.includes('1 active'))).toBe(true)
+    expect(spans.some((s) => s.textContent?.includes('done'))).toBe(false)
     act(() => { root.unmount() })
   })
 })

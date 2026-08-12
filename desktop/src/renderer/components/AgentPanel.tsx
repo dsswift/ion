@@ -4,7 +4,7 @@ import { CaretRight, ArrowsOutSimple, ArrowsInSimple } from '@phosphor-icons/rea
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import { useSessionStore } from '../stores/sessionStore'
-import { meta, isAgentVisible, isRootLevelAgent, sortAgents, getDispatches, selectAgentDepths, dispatchKey } from './agent-panel-helpers'
+import { meta, isAgentVisible, isRootLevelAgent, sortAgents, getDispatches, selectAgentDepths, dispatchKey, isAgentActive, mostRecentDispatch } from './agent-panel-helpers'
 import { reconcileActivity } from './agent-dispatch-activity'
 import { mapConversationMessages } from './agent-conversation-mapper'
 import { AgentRow } from './AgentRow'
@@ -60,15 +60,10 @@ interface Props {
 export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFullscreen, panelHeight, onPanelHeightChange, rootOnly, subDispatch, onOpenDispatch, alwaysRender }: Props) {
   const colors = useColors()
   const agentPanelDefaultOpen = usePreferencesStore((s) => s.agentPanelDefaultOpen)
-  const agentDetailPopup = usePreferencesStore((s) => s.agentDetailPopup)
   // Live push transcript, keyed by child conversationId. Folded from
   // dispatch_activity deltas in the engine-event slice; reconciled with the
   // file-backed snapshot below.
   const dispatchActivity = useSessionStore((s) => s.dispatchActivity)
-  // Keyed by DISPATCH ID (not agent name): two dispatches of the same agent
-  // name must maintain independent expand state. Falls back to the agent name
-  // when the agent carries no dispatch (extension-roster rows, pre-fix state).
-  const [agentExpanded, setAgentExpanded] = useState<Map<string, boolean>>(new Map())
   const [panelCollapsed, setPanelCollapsed] = useState(true)
   // Keyed by conversationId — each dispatch's conversation is loaded independently
   const [convMessages, setConvMessages] = useState<Map<string, Message[]>>(new Map())
@@ -83,6 +78,14 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
   // default-open preference drives the initial state on each fresh batch.
   const userToggled = useRef(false)
   const panelRef = useRef<HTMLDivElement>(null)
+
+  // Detail defaults must identify the same dispatch as AgentRow's foreground
+  // dot and duration. Dispatch arrays retain slot-insertion order, not
+  // chronology, so array-last is only a fallback when start times are absent.
+  const defaultDispatchIndex = useCallback((dispatches: DispatchInfo[]) => {
+    const recent = mostRecentDispatch(dispatches)
+    return recent ? dispatches.findIndex((dispatch) => dispatch.id === recent.id) : -1
+  }, [])
 
   // Visibility + root scoping. Memoized so `visible` is a stable reference:
   // `filter` and `sortAgents` always produce new arrays, and effects that
@@ -113,19 +116,24 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
   // stays honest against the rows below it. Ephemeral agents drop out of
   // `visible` when they finish, so `done` counts only the always/sticky agents
   // that completed and remain clickable in the list. `error` folds into neither
-  // active nor done — it is surfaced by its own red row dot. `suspended`
-  // counts as ACTIVE: a parked dispatch is alive (waiting on children or a
-  // revive), and counting it as finished is how a live tree once read
-  // "3 done" while its specialist still worked.
+  // active nor done — it is surfaced by its own red row dot.
+  //
+  // ACTIVE is `isAgentActive`, not the row's own status: an agent counts as
+  // active when it is running/suspended OR when any of its dispatches still
+  // owns a live descendant. Reading the bare status is how a live tree once
+  // showed "3 done" with no active segment while a specialist under a finished
+  // dispatch was still working — the same defect the row's background dot
+  // fixes, so the two must agree. `done` therefore also excludes rows that are
+  // terminal but still waiting on a descendant.
   const headerCounts = React.useMemo(() => {
     let active = 0
     let done = 0
     for (const a of visible) {
-      if (a.status === 'running' || a.status === 'suspended') active++
+      if (isAgentActive(a, agents)) active++
       else if (a.status === 'done') done++
     }
     return { total: visible.length, active, done }
-  }, [visible])
+  }, [visible, agents])
 
   // When agents transition from none→some, apply the user's default
   // preference (open or collapsed). When they go back to none, reset
@@ -194,8 +202,8 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
   const loadAgentDispatch = useCallback((agent: AgentStateUpdate) => {
     const dispatches = getDispatches(agent)
     if (dispatches.length === 0) return
-    const dispKey = dispatches.at(-1)?.id ?? agent.name
-    const idx = selectedDispatch.get(dispKey) ?? dispatches.length - 1
+    const dispKey = dispatchKey(agent)
+    const idx = selectedDispatch.get(dispKey) ?? defaultDispatchIndex(dispatches)
     const convId = dispatches[idx]?.conversationId
     if (convId) {
       // Load the selected dispatch first, then preload the rest.
@@ -208,33 +216,20 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
         }
       }).catch((err) => rError('agent-panel', 'load agent dispatch conversation failed', { error: String(err) }))
     }
-  }, [selectedDispatch, loadSingleConversation])
+  }, [selectedDispatch, loadSingleConversation, defaultDispatchIndex])
 
-  // Re-fetch conversation when an expanded agent transitions to a terminal state
-  // or when its conversationIds change (new dispatch completed). This handles
-  // the case where a user expands a running agent (no conversationId yet), then
-  // the agent completes — and also re-fetches when a second dispatch adds a new
-  // conversation ID to the accumulated list.
+  // Auto-close popup when the agent disappears from the visible set.
+  // Matches on `dispatchKey`, the same identity `toggleAgent` opens with, so an
+  // agent with no dispatches yet (keyed by name) is found rather than being
+  // treated as "gone" the instant it opens.
   useEffect(() => {
-    for (const agent of visible) {
-      const isExpanded = agentExpanded.get(dispatchKey(agent))
-      const isTerminal = agent.status === 'done' || agent.status === 'error'
-      const hasAnyConvId = getDispatches(agent).some(d => d.conversationId)
-      if (isExpanded && isTerminal && hasAnyConvId) {
-        loadAgentDispatch(agent)
-      }
-    }
-  }, [visible, agentExpanded, loadAgentDispatch])
-
-  // Auto-close popup when the agent disappears from the visible set
-  useEffect(() => {
-    if (popupDispatchId && !visible.find(a => getDispatches(a).at(-1)?.id === popupDispatchId)) {
+    if (popupDispatchId && !visible.find(a => dispatchKey(a) === popupDispatchId)) {
       setPopupDispatchId(null)
     }
   }, [visible, popupDispatchId])
 
   // Live streaming for popup — re-fetch when dispatch signature changes
-  const popupAgent = popupDispatchId ? visible.find(a => getDispatches(a).at(-1)?.id === popupDispatchId) : null
+  const popupAgent = popupDispatchId ? visible.find(a => dispatchKey(a) === popupDispatchId) ?? null : null
   const popupDispatchSig = popupAgent
     ? `${getDispatches(popupAgent).map(d => d.conversationId).join(',')}|${popupAgent.status}|${getDispatches(popupAgent).length}`
     : ''
@@ -253,7 +248,7 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
   // last few deltas landed.
   const popupDispatches = popupAgent ? getDispatches(popupAgent) : []
   const popupSelIdx = popupAgent
-    ? (selectedDispatch.get(dispatchKey(popupAgent)) ?? popupDispatches.length - 1)
+    ? (selectedDispatch.get(dispatchKey(popupAgent)) ?? defaultDispatchIndex(popupDispatches))
     : -1
   const popupSelDispatch = popupSelIdx >= 0 ? popupDispatches[popupSelIdx] : undefined
   const popupSelConvId = popupSelDispatch?.conversationId || ''
@@ -282,17 +277,11 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
     prevPopupRunning.current = popupSelRunning
   }, [popupDispatchId, popupSelConvId, popupSelRunning, refetchConversation])
 
-  /** Check if any conversation is currently loading for an agent. */
-  const isAgentLoading = useCallback((agent: AgentStateUpdate): boolean => {
-    const dispatches = getDispatches(agent)
-    return dispatches.some(d => d.conversationId && convLoading.get(d.conversationId))
-  }, [convLoading])
-
-  /** Resolve dispatch data for a given agent (used by both inline and popup). */
+  /** Resolve dispatch data for a given agent (used by the row and the popup). */
   const resolveDispatchData = useCallback((agent: AgentStateUpdate) => {
     const dispatches = getDispatches(agent)
-    const dispKey = dispatches.at(-1)?.id ?? agent.name
-    const dispIdx = selectedDispatch.get(dispKey) ?? dispatches.length - 1
+    const dispKey = dispatchKey(agent)
+    const dispIdx = selectedDispatch.get(dispKey) ?? defaultDispatchIndex(dispatches)
     const activeConvId = dispatches[dispIdx]?.conversationId || ''
     const rawMsgs = activeConvId ? convMessages.get(activeConvId) : undefined
     const activeDispatch = dispatches[dispIdx]
@@ -314,7 +303,7 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
       })
     }
     return { dispatches, dispIdx, slicedMsgs: mergedMsgs, isLoading }
-  }, [selectedDispatch, convMessages, convLoading, dispatchActivity])
+  }, [selectedDispatch, convMessages, convLoading, dispatchActivity, defaultDispatchIndex])
 
   // Click-to-inspect from the Agent Team Visualizer (see the hook).
   useAgentDetailOpener(agents, (name, agent) => toggleAgent(name, agent))
@@ -339,7 +328,7 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
     if (onOpenDispatch) {
       const dispatches = getDispatches(agent)
       if (dispatches.length > 0) {
-        const idx = selectedDispatch.get(key) ?? dispatches.length - 1
+        const idx = selectedDispatch.get(key) ?? defaultDispatchIndex(dispatches)
         const dispatch = dispatches[idx]
         if (dispatch) {
           onOpenDispatch(dispatch, agent)
@@ -349,44 +338,24 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
       return
     }
 
-    // Popup mode: open floating panel instead of inline expand
-    if (agentDetailPopup) {
-      if (hasContent) {
-        // Default to the most recent dispatch if not already selected
-        const dispatches = getDispatches(agent)
-        const mostRecentDispatch = dispatches.at(-1)
-        if (dispatches.length > 0 && !selectedDispatch.has(key)) {
-          setSelectedDispatch(prev => { const next = new Map(prev); next.set(key, dispatches.length - 1); return next })
-        }
-        setPopupDispatchId(mostRecentDispatch?.id ?? name)
-        loadAgentDispatch(agent)
-      }
-      // Popup mode never falls through to inline expansion — a data-less click
-      // is a no-op here too.
-      return
-    }
-
-    // Inline expand mode (original behavior). A data-less row does not expand.
-    if (!hasContent) return
-    const isCurrentlyExpanded = agentExpanded.get(key) || false
-    // If already expanded and a conversation is loading, ignore the click.
-    // This prevents the user from accidentally collapsing the panel and
-    // restarting the same slow fetch by clicking impatiently.
-    if (isCurrentlyExpanded && isAgentLoading(agent)) return
-    const willExpand = !isCurrentlyExpanded
-    setAgentExpanded((prev) => {
-      const next = new Map(prev)
-      next.set(key, willExpand)
-      return next
-    })
-    if (willExpand) {
-      // Default to the most recent dispatch (last in array)
+    // Opening a row always means opening the floating detail panel. There is
+    // no inline-expand mode: the detail panel is the single way to inspect a
+    // dispatch, so the collapsed row stays a pure status summary.
+    if (hasContent) {
+      // Default to the most recent dispatch if not already selected
       const dispatches = getDispatches(agent)
       if (dispatches.length > 0 && !selectedDispatch.has(key)) {
-        setSelectedDispatch(prev => { const next = new Map(prev); next.set(key, dispatches.length - 1); return next })
+        setSelectedDispatch(prev => { const next = new Map(prev); next.set(key, defaultDispatchIndex(dispatches)); return next })
       }
+      // Open under `key` (dispatchKey), the identity the popup lookups match
+      // on. A running agent whose first dispatch has not registered yet is
+      // keyed by name; keying it any other way opened a panel that resolved to
+      // no agent and so never rendered.
+      setPopupDispatchId(key)
       loadAgentDispatch(agent)
     }
+    // A data-less click (roster pill, completed ephemeral with no transcript)
+    // is a no-op — there is nothing to open.
   }
 
   // Drag-to-resize handler (mechanics extracted to keep this file under cap).
@@ -514,9 +483,7 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
           >
             {visible.map((agent) => {
               const key = dispatchKey(agent)
-              const isExpanded = agentExpanded.get(key) || false
-              const { dispatches, dispIdx, slicedMsgs: loadedMsgs, isLoading } = resolveDispatchData(agent)
-              const nestDepth = agentDepths.get(getDispatches(agent).at(-1)?.id ?? '') ?? 0
+              const nestDepth = agentDepths.get(mostRecentDispatch(getDispatches(agent))?.id ?? '') ?? 0
               const nestIndent = nestDepth > 1 ? (nestDepth - 1) * 16 : 0
 
               return (
@@ -525,19 +492,8 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
                   agent={agent}
                   allAgents={agents}
                   colors={colors}
-                  isFullscreen={isFullscreen}
-                  isExpanded={isExpanded}
-                  dispatches={dispatches}
-                  dispIdx={dispIdx}
-                  loadedMessages={loadedMsgs}
-                  loading={isLoading}
                   nestIndent={nestIndent}
                   onToggle={() => toggleAgent(agent.name, agent)}
-                  onSelectDispatch={(idx) => {
-                    setSelectedDispatch(prev => { const next = new Map(prev); next.set(key, idx); return next })
-                    const convId = dispatches[idx]?.conversationId
-                    if (convId) loadSingleConversation(convId).catch((err) => rError('agent-panel', 'select dispatch load conversation failed', { conversation_id: convId, error: String(err) }))
-                  }}
                 />
               )
             })}

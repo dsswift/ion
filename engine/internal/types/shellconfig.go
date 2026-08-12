@@ -2,7 +2,6 @@ package types
 
 import (
 	"context"
-	"log/slog"
 	"os"
 	"os/exec"
 	"runtime"
@@ -29,11 +28,20 @@ import (
 //
 // When UseLoginShell is true, the engine does two things:
 //  1. It runs each Bash command through the user's actual login shell
-//     (e.g. zsh -lc), so .zprofile/.zshrc are sourced for every command.
+//     (e.g. zsh -lc), so .zprofile is sourced for every command. Adding
+//     InteractiveBash makes that an interactive login shell (zsh -ilc), which
+//     additionally sources .zshrc.
 //  2. It calls HydrateProcessPath() once at serve startup to merge the login
 //     shell's PATH into the engine process environment via os.Setenv. This
 //     ensures extension subprocesses and other engine-spawned children inherit
-//     the full PATH even though launchd strips it to a minimal set.
+//     the full PATH even though launchd strips it to a minimal set. Hydration
+//     always probes interactively FIRST, independent of InteractiveBash,
+//     because PATH discovery wants the most complete answer available.
+//
+// The .zprofile / .zshrc distinction matters and is a common source of
+// confusion: zsh sources .zprofile for login shells and .zshrc only for
+// interactive ones. A login-only shell therefore sees a DIFFERENT PATH than the
+// user's terminal, which is why hydration probes interactively first.
 //
 // Login-shell semantics apply to POSIX platforms only. On Windows the
 // PowerShell branch is unchanged: there is no analogous "login shell" concept,
@@ -45,6 +53,27 @@ type ShellConfig struct {
 	// ShellPath optionally pins the shell binary to use when UseLoginShell is
 	// true. Empty means auto-resolve: $SHELL, else /bin/zsh, else /bin/bash.
 	ShellPath string `json:"shellPath,omitempty"`
+	// InteractiveBash, when true (and UseLoginShell is also true), runs each
+	// Bash command through an INTERACTIVE login shell (-ilc) rather than a
+	// login-only one (-lc).
+	//
+	// What this buys: zsh reads .zshrc only for interactive shells, so tools
+	// that install themselves as shell FUNCTIONS rather than binaries become
+	// callable. nvm is the canonical example -- `nvm use` cannot work from a
+	// non-interactive shell because the function does not exist there.
+	//
+	// What it costs: interactive startup runs the user's full rc file for every
+	// command. Prompt frameworks (starship), completion init (compinit), and any
+	// rc-level diagnostics execute per call and may write to stdout/stderr,
+	// which can contaminate tool output. It is also slower (~130 ms on a warm
+	// macOS zsh).
+	//
+	// It is NOT needed for PATH. HydrateProcessPath already merges the
+	// interactive login shell's PATH into the engine process at startup, and
+	// every Bash subprocess inherits that through os.Environ(). Default false:
+	// the engine ships the cheap, quiet behavior and lets an operator opt into
+	// the richer one.
+	InteractiveBash bool `json:"interactiveBash,omitempty"`
 }
 
 // Resolve returns the shell binary and argument list to execute the given
@@ -67,6 +96,14 @@ func (s *ShellConfig) Resolve(command string) (shell string, args []string, logi
 
 	// Login-shell mode: resolve the user's shell and run it as a login shell
 	// so rc files are sourced. -l (login) + -c (command string).
+	//
+	// InteractiveBash adds -i. That is not cosmetic: zsh reads .zprofile for
+	// login shells but .zshrc ONLY for interactive ones, so the two modes source
+	// different files and expose different rc-defined state. See the field
+	// comment for the tradeoff.
+	if s.InteractiveBash {
+		return s.resolveShellPath(), []string{"-ilc", command}, true
+	}
 	return s.resolveShellPath(), []string{"-lc", command}, true
 }
 
@@ -105,11 +142,58 @@ func ShellConfigFrom(ctx context.Context) *ShellConfig {
 // command. Matches the 3 s timeout used in desktop/src/main/cli-env.ts.
 const hydrationTimeout = 3 * time.Second
 
-// buildHydrationCommand returns the shell binary and argument list for the
-// PATH-discovery invocation. Separated from the exec call so the command
-// construction can be unit-tested without spawning a subprocess.
-func (s *ShellConfig) buildHydrationCommand() (shell string, args []string) {
-	return s.resolveShellPath(), []string{"-lc", "echo $PATH"}
+// HydrationLogLevel classifies a PATH hydration diagnostic without coupling
+// config types to a process-wide logging implementation.
+type HydrationLogLevel string
+
+const (
+	HydrationLogLevelDebug HydrationLogLevel = "debug"
+	HydrationLogLevelInfo  HydrationLogLevel = "info"
+	HydrationLogLevelWarn  HydrationLogLevel = "warn"
+)
+
+// HydrationReporter receives PATH hydration diagnostics. The serve command
+// adapts it to the engine's canonical structured logger.
+type HydrationReporter func(level HydrationLogLevel, message string, fields map[string]any)
+
+func reportHydration(reporter HydrationReporter, level HydrationLogLevel, message string, fields map[string]any) {
+	if reporter != nil {
+		reporter(level, message, fields)
+	}
+}
+
+// hydrationProbe is one attempt at discovering the user's PATH.
+type hydrationProbe struct {
+	shell string
+	args  []string
+	// label identifies the probe in logs, so an operator can see which mode
+	// actually produced the PATH they ended up with.
+	label string
+}
+
+// buildHydrationProbes returns the PATH-discovery attempts in priority order.
+//
+// INTERACTIVE FIRST, and this ordering is the whole point. zsh sources
+// .zprofile for login shells but .zshrc only for INTERACTIVE shells, and on a
+// typical developer machine those two files hold different halves of PATH:
+// .zprofile carries what /etc/paths.d and package managers install, while
+// .zshrc carries what per-tool installers append (nvm, bun, cargo, and most
+// `curl | sh` installers write there by default). A login-only probe therefore
+// returns a PATH that looks plausible and is quietly missing entries, which is
+// exactly the defect this ordering fixes.
+//
+// The login-only probe remains as a fallback for shells or environments where
+// an interactive invocation fails (no tty, an rc file that exits non-zero under
+// -i, a restricted shell).
+//
+// Separated from the exec call so the command construction is unit-testable
+// without spawning a subprocess.
+func (s *ShellConfig) buildHydrationProbes() []hydrationProbe {
+	shell := s.resolveShellPath()
+	return []hydrationProbe{
+		{shell: shell, args: []string{"-ilc", "echo $PATH"}, label: "interactive-login"},
+		{shell: shell, args: []string{"-lc", "echo $PATH"}, label: "login"},
+	}
 }
 
 // mergePathEntries builds a merged, order-preserving, deduplicated PATH string.
@@ -139,6 +223,37 @@ func mergePathEntries(current, discovered string) string {
 	return strings.Join(ordered, ":")
 }
 
+// pathEntrySet splits a PATH string into a set of non-empty entries.
+func pathEntrySet(raw string) map[string]struct{} {
+	set := make(map[string]struct{})
+	for _, entry := range strings.Split(raw, ":") {
+		if p := strings.TrimSpace(entry); p != "" {
+			set[p] = struct{}{}
+		}
+	}
+	return set
+}
+
+// discoveredNewEntries reports whether `discovered` contains at least one PATH
+// entry that `current` does not.
+//
+// This is the probe's success criterion, and exit code 0 is NOT sufficient on
+// its own. A probe can succeed, print a well-formed PATH, and still have
+// discovered nothing -- that is precisely what happened on the desktop side,
+// where a quoting bug meant an intermediate shell expanded $PATH before the
+// target shell ever ran, so every probe "succeeded" while returning the
+// caller's own PATH back to it. Requiring new entries turns that silent
+// no-op into a visible, logged rejection.
+func discoveredNewEntries(current, discovered string) bool {
+	currentSet := pathEntrySet(current)
+	for entry := range pathEntrySet(discovered) {
+		if _, known := currentSet[entry]; !known {
+			return true
+		}
+	}
+	return false
+}
+
 // HydrateProcessPath discovers the user's login-shell PATH and merges it into
 // the engine process environment via os.Setenv so that every subprocess the
 // engine spawns (extension node hosts, esbuild, npm, child_process calls inside
@@ -150,59 +265,78 @@ func mergePathEntries(current, discovered string) string {
 // os.Environ(), causing "command not found" failures for tools installed in
 // /opt/homebrew/bin, /usr/local/bin, and similar locations.
 //
+// Probes run in the order given by buildHydrationProbes (interactive-login
+// first, see that function for why) and the first one that discovers at least
+// one new PATH entry wins. A probe that errors, returns nothing, or returns a
+// PATH already covered by the current one is reported and skipped.
+//
 // HydrateProcessPath is nil-safe and a no-op when UseLoginShell is false.
 // Call it once at serve startup, before any session or extension subprocess
-// spawns. Hydration failure (shell error, timeout) logs a WARN and leaves
-// PATH unchanged -- it does not fail startup.
-func (s *ShellConfig) HydrateProcessPath() {
-	// No-op: nil receiver.
+// spawns. Total hydration failure reports a WARN and leaves PATH unchanged -- it
+// does not fail startup, because a stripped PATH is a degraded engine while a
+// refused startup is no engine at all. Diagnostics include PATH entry counts,
+// never raw PATH values.
+func (s *ShellConfig) HydrateProcessPath(reporter HydrationReporter) {
 	if s == nil {
-		slog.Debug("engine-grounding: HydrateProcessPath no-op: ShellConfig is nil")
+		reportHydration(reporter, HydrationLogLevelDebug, "process path hydration skipped", map[string]any{"reason": "shell_config_nil"})
 		return
 	}
-	// No-op: login-shell disabled.
 	if !s.UseLoginShell {
-		slog.Debug("engine-grounding: HydrateProcessPath no-op: useLoginShell is false")
+		reportHydration(reporter, HydrationLogLevelDebug, "process path hydration skipped", map[string]any{"reason": "login_shell_disabled"})
 		return
 	}
-	// No-op on Windows: login-shell semantics don't apply.
 	if runtime.GOOS == "windows" {
-		slog.Debug("engine-grounding: HydrateProcessPath no-op: Windows platform")
+		reportHydration(reporter, HydrationLogLevelDebug, "process path hydration skipped", map[string]any{"reason": "windows_platform"})
 		return
 	}
 
-	shell, args := s.buildHydrationCommand()
 	pathBefore := os.Getenv("PATH")
-	slog.Info("engine-grounding: hydrating process PATH",
-		"shell", shell,
-		"pathBefore", pathBefore,
-	)
+	probes := s.buildHydrationProbes()
+	reportHydration(reporter, HydrationLogLevelInfo, "hydrating process path", map[string]any{
+		"count": len(probes),
+	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), hydrationTimeout)
-	defer cancel()
+	for _, probe := range probes {
+		ctx, cancel := context.WithTimeout(context.Background(), hydrationTimeout)
+		cmd := exec.CommandContext(ctx, probe.shell, probe.args...)
+		// Only stdout is captured. An interactive shell routinely writes rc
+		// diagnostics and prompt-framework output to stderr; that noise says
+		// nothing about whether the PATH we read is good.
+		out, err := cmd.Output()
+		cancel()
 
-	cmd := exec.CommandContext(ctx, shell, args...)
-	out, err := cmd.Output()
-	if err != nil {
-		slog.Warn("engine-grounding: PATH hydration failed; leaving PATH unchanged",
-			"shell", shell,
-			"error", err.Error(),
-		)
+		if err != nil {
+			reportHydration(reporter, HydrationLogLevelWarn, "process path probe failed", map[string]any{
+				"probe": probe.label, "shell": probe.shell, "error": err.Error(),
+			})
+			continue
+		}
+
+		discovered := strings.TrimRight(string(out), "\n\r")
+		if !discoveredNewEntries(pathBefore, discovered) {
+			reportHydration(reporter, HydrationLogLevelWarn, "process path probe discovered nothing new", map[string]any{
+				"probe": probe.label, "shell": probe.shell, "reason": "no_new_entries",
+			})
+			continue
+		}
+
+		merged := mergePathEntries(pathBefore, discovered)
+		if err := os.Setenv("PATH", merged); err != nil {
+			reportHydration(reporter, HydrationLogLevelWarn, "process path update failed", map[string]any{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		reportHydration(reporter, HydrationLogLevelInfo, "process path hydrated", map[string]any{
+			"probe": probe.label,
+			"shell": probe.shell,
+			"count": len(pathEntrySet(merged)),
+		})
 		return
 	}
 
-	discovered := strings.TrimRight(string(out), "\n\r")
-	merged := mergePathEntries(pathBefore, discovered)
-
-	if err := os.Setenv("PATH", merged); err != nil {
-		slog.Warn("engine-grounding: os.Setenv(PATH) failed; leaving PATH unchanged",
-			"error", err.Error(),
-		)
-		return
-	}
-
-	slog.Info("engine-grounding: process PATH hydrated",
-		"shell", shell,
-		"pathAfter", merged,
-	)
+	reportHydration(reporter, HydrationLogLevelWarn, "process path hydration failed", map[string]any{
+		"count": len(probes),
+	})
 }

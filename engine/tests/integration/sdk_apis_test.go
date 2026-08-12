@@ -169,14 +169,14 @@ rl.on("line", async (line) => {
 	ctx := &extension.Context{
 		SessionKey: "callTool-roundtrip",
 		Cwd:        "/tmp",
-		CallTool: func(toolName string, input map[string]interface{}) (string, bool, error) {
+		CallTool: func(toolName string, input map[string]interface{}) (*types.ToolResult, error) {
 			mu.Lock()
 			calls = append(calls, call{name: toolName, input: input})
 			mu.Unlock()
 			if toolName == "target" {
-				return fmt.Sprintf("ack:%v", input["ping"]), false, nil
+				return &types.ToolResult{Content: fmt.Sprintf("ack:%v", input["ping"])}, nil
 			}
-			return "", true, fmt.Errorf("unknown tool: %s", toolName)
+			return nil, fmt.Errorf("unknown tool: %s", toolName)
 		},
 	}
 
@@ -271,8 +271,8 @@ rl.on("line", async (line) => {
 	ctx := &extension.Context{
 		SessionKey: "callTool-unknown",
 		Cwd:        "/tmp",
-		CallTool: func(toolName string, _ map[string]interface{}) (string, bool, error) {
-			return "", true, errors.New("unknown tool: " + toolName)
+		CallTool: func(toolName string, _ map[string]interface{}) (*types.ToolResult, error) {
+			return nil, errors.New("unknown tool: " + toolName)
 		},
 	}
 

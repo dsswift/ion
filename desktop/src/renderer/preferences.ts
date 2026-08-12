@@ -67,7 +67,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   enableEarlyStopContinuation: saved.enableEarlyStopContinuation ?? false,
   showTodoList: saved.showTodoList,
   agentPanelDefaultOpen: saved.agentPanelDefaultOpen,
-  agentDetailPopup: saved.agentDetailPopup,
   unifiedTurnView: saved.unifiedTurnView,
   aiGeneratedTitles: saved.aiGeneratedTitles,
   hideOnExternalLaunch: saved.hideOnExternalLaunch,
@@ -297,10 +296,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setAgentPanelDefaultOpen: (enabled) => {
     set({ agentPanelDefaultOpen: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setAgentDetailPopup: (enabled) => {
-    set({ agentDetailPopup: enabled })
     saveSettings(getAllSettings(get))
   },
   setUnifiedTurnView: (enabled) => {

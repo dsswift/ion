@@ -24,7 +24,7 @@ type httpTransport struct {
 	respCh    chan json.RawMessage
 	closed    atomic.Bool
 	closeOnce sync.Once
-	// userToken, when non-nil, resolves the signed-in operator's bearer
+	// userToken, when non-nil, resolves the configured identity's bearer
 	// token (config.forwardUserToken). Resolved on EVERY request -- the
 	// connection is long-lived, so a connect-time token would expire
 	// mid-session; per-request resolution rides the identity manager's
@@ -83,7 +83,7 @@ func (t *httpTransport) applyUserToken(req *http.Request) error {
 	}
 	token, err := t.userToken()
 	if err != nil {
-		return fmt.Errorf("resolve operator token: %w", err)
+		return fmt.Errorf("resolve identity token: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	return nil
@@ -112,7 +112,7 @@ func (t *httpTransport) Send(msg json.RawMessage) error {
 			utils.LogWithFields(utils.LevelError, "mcp.http", "token refresh after rejection failed", map[string]any{
 				"url": t.baseURL, "error": refreshErr.Error(),
 			})
-			return fmt.Errorf("HTTP error (status %d): %s", status, string(body))
+			return fmt.Errorf("HTTP error (status %d, bodyBytes=%d)", status, len(body))
 		}
 		status, body, contentType, _, err = t.doRequest(msg)
 		if err != nil {
@@ -126,7 +126,7 @@ func (t *httpTransport) Send(msg json.RawMessage) error {
 	}
 
 	if status >= 400 {
-		return fmt.Errorf("HTTP error (status %d): %s", status, string(body))
+		return fmt.Errorf("HTTP error (status %d, bodyBytes=%d)", status, len(body))
 	}
 
 	// A StreamableHTTP server answers with EITHER a bare JSON object or an SSE
@@ -141,7 +141,7 @@ func (t *httpTransport) Send(msg json.RawMessage) error {
 		// which would present as an unexplained timeout.
 		utils.LogWithFields(utils.LevelWarn, "mcp.http", "response body carried no decodable JSON-RPC frame", map[string]any{
 			"contentType": contentType,
-			"bodyPrefix":  truncateForLog(body, 200),
+			"bodyBytes":   len(body),
 		})
 	}
 	for _, frame := range frames {
@@ -183,8 +183,8 @@ func (t *httpTransport) doRequest(msg json.RawMessage) (status int, body []byte,
 
 	// Per-request token resolution. Order matters: the OAuth token is applied
 	// after the static headers so a refreshed value replaces the one captured at
-	// connect, and the operator token last because forwardUserToken is the
-	// explicit override.
+	// connect, and the explicitly forwarded identity token last as the
+	// opt-in override.
 	t.applyOAuthToken(req)
 	if tokenErr := t.applyUserToken(req); tokenErr != nil {
 		return 0, nil, "", "", tokenErr
@@ -269,15 +269,6 @@ func decodeHTTPResponseFrames(contentType string, body []byte) []json.RawMessage
 	return frames
 }
 
-// truncateForLog bounds a body prefix so a diagnostic log line cannot dump a
-// multi-megabyte response into engine.jsonl.
-func truncateForLog(body []byte, max int) string {
-	if len(body) <= max {
-		return string(body)
-	}
-	return string(body[:max]) + "…"
-}
-
 func (t *httpTransport) Receive() (json.RawMessage, error) {
 	msg, ok := <-t.respCh
 	if !ok {
@@ -304,7 +295,7 @@ func (t *httpTransport) Close() error {
 				if tokenErr := t.applyUserToken(req); tokenErr != nil {
 					// Best-effort session cleanup: log and send without the
 					// token rather than leaking the server-side session.
-					utils.LogWithFields(utils.LevelInfo, "mcp.http", "operator token unavailable for session delete", map[string]any{"error": tokenErr.Error()})
+					utils.LogWithFields(utils.LevelInfo, "mcp.http", "identity token unavailable for session delete", map[string]any{"error": tokenErr.Error()})
 				}
 				resp, err := t.client.Do(req)
 				if err == nil {

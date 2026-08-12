@@ -157,7 +157,7 @@ The SDK does not provide a built-in `ctx.session.set/get` API. Module-level Maps
 
 ## Calling tools from extension code
 
-`ctx.callTool(name, input)` lets a hook handler, tool, or slash command dispatch a tool call without an LLM round trip. The call routes to the same registry the LLM uses, so it covers built-in tools, MCP-registered tools (`mcp__server__tool` form), and any tool registered by extensions in the loaded group.
+`ctx.callTool(name, input)` lets a hook handler, tool, or slash command dispatch a tool call without an LLM round trip. The call routes to the same registry the LLM uses, so it covers built-in tools, MCP-registered tools (`mcp__server__tool` form), and any tool registered by extensions in the loaded group. Its `content` field remains the text convenience output; MCP non-text content is available through optional ordered `contentItems`, including embedded-resource URI, MIME type, and base64 blob data. The engine keeps base64 out of logs, telemetry, tool events, and conversation persistence by default.
 
 ```typescript
 ion.registerCommand('recall', {

@@ -492,9 +492,9 @@ type LoggingConfig struct {
 	EgressClientShipSources []string `json:"egressClientShipSources,omitempty"`
 
 	// EgressTokenScope, when set, makes the egress forwarder authenticate
-	// each flush with the signed-in operator's OIDC bearer token minted for
+	// each flush using the configured identity provider's bearer token for
 	// this scope (e.g. "api://<app-id>/Telemetry.Write"), refreshed
-	// silently by the engine's identity manager. Merged over EgressHeaders
+	// silently by the engine's token provider. Merged over EgressHeaders
 	// (the fresh token wins over a static Authorization). Empty keeps the
 	// static-headers-only behavior.
 	EgressTokenScope string `json:"egressTokenScope,omitempty"`
@@ -523,11 +523,10 @@ type RelayConfig struct {
 	APIKey    string `json:"apiKey"`    // Bearer token for relay auth
 	ChannelID string `json:"channelId"` // 32-char hex channel identifier
 
-	// UseOidc, when true, instructs the engine to mint a fresh OIDC access
-	// token before each relay reconnect using the configured operator identity
-	// (auth.identityProvider). OidcScope and OidcAudience control the token
-	// grant. The static APIKey is used as fallback when no operator identity is
-	// configured. When UseOidc is false (the default), APIKey is always used.
+	// UseOidc, when true, instructs the engine to mint a fresh bearer access
+	// token before each relay reconnect using the configured operator or machine
+	// identity. OidcScope and OidcAudience control the token grant. Static APIKey
+	// is fallback when no bearer provider exists. False always uses APIKey.
 	UseOidc      bool   `json:"useOidc,omitempty"`
 	OidcScope    string `json:"oidcScope,omitempty"`
 	OidcAudience string `json:"oidcAudience,omitempty"`
@@ -638,11 +637,22 @@ type McpServerConfig struct {
 	Headers        map[string]string `json:"headers,omitempty"`
 	OAuth          *McpOAuthConfig   `json:"oauth,omitempty"`
 	TimeoutSeconds int               `json:"timeoutSeconds,omitempty"`
+	// ForwardIdentityToken makes the engine stamp the configured operator or
+	// machine identity's OAuth bearer token on every outbound request. This is
+	// the identity-neutral replacement for ForwardUserToken. The legacy field
+	// remains supported permanently; setting either field enables forwarding.
+	ForwardIdentityToken bool `json:"forwardIdentityToken,omitempty"`
+	// IdentityTokenScope is the downstream scope for generic identity-token
+	// forwarding. When empty, UserTokenScope remains the compatibility alias.
+	IdentityTokenScope string `json:"identityTokenScope,omitempty"`
+	// IdentityTokenAudience is the downstream audience/resource for generic
+	// identity-token forwarding. When empty, UserTokenAudience remains the
+	// compatibility alias.
+	IdentityTokenAudience string `json:"identityTokenAudience,omitempty"`
 	// ForwardUserToken makes the engine stamp the signed-in operator's
-	// OIDC bearer token on every outbound request to this server
-	// (Authorization header, refreshed per request on HTTP/SSE, at dial
-	// time on WebSocket). Opt-in per server -- not every downstream MCP
-	// server should receive the operator's identity.
+	// OIDC bearer token on every outbound request to this server. Deprecated
+	// compatibility alias for ForwardIdentityToken; never remove because
+	// existing engine.json files depend on its JSON name.
 	ForwardUserToken bool `json:"forwardUserToken,omitempty"`
 	// UserTokenScope is the downstream resource scope the forwarded token
 	// is minted for (e.g. "api://<app-id>/Erm.Access"). Empty uses the
@@ -784,6 +794,50 @@ type Credential struct {
 	Source       string `json:"source"`
 }
 
+// MachineIdentityConfig configures one non-interactive credential source. The
+// Source discriminator selects exactly one nested config. Tokens and temporary
+// cloud credentials remain engine-owned and are cached only in memory.
+type MachineIdentityConfig struct {
+	Source             string                      `json:"source"`
+	ClientSecretEnv    string                      `json:"clientSecretEnv,omitempty"`
+	ClientSecretFile   string                      `json:"clientSecretFile,omitempty"`
+	CertificatePath    string                      `json:"certificatePath,omitempty"`
+	CertificateKeyPath string                      `json:"certificateKeyPath,omitempty"`
+	FederatedTokenFile string                      `json:"federatedTokenFile,omitempty"`
+	Azure              *AzureMachineIdentityConfig `json:"azure,omitempty"`
+	GCP                *GCPMachineIdentityConfig   `json:"gcp,omitempty"`
+	AWS                *AWSMachineIdentityConfig   `json:"aws,omitempty"`
+	CredentialProcess  *CredentialProcessConfig    `json:"credentialProcess,omitempty"`
+}
+
+// AzureMachineIdentityConfig selects a system-assigned identity when ClientID
+// is empty, or a user-assigned managed identity when it is set.
+type AzureMachineIdentityConfig struct {
+	ClientID string `json:"clientId,omitempty"`
+}
+
+// GCPMachineIdentityConfig selects the attached service account and whether the
+// metadata server returns an OAuth access token or an audience-bound ID token.
+type GCPMachineIdentityConfig struct {
+	ServiceAccount string `json:"serviceAccount,omitempty"`
+	TokenType      string `json:"tokenType,omitempty"`
+}
+
+// AWSMachineIdentityConfig selects one explicit AWS workload credential source.
+type AWSMachineIdentityConfig struct {
+	Kind        string `json:"kind"`
+	RoleARN     string `json:"roleArn,omitempty"`
+	Region      string `json:"region,omitempty"`
+	STSEndpoint string `json:"stsEndpoint,omitempty"`
+}
+
+// CredentialProcessConfig runs one explicitly trusted executable directly.
+// Command[0] must be absolute; no shell interpolation is performed.
+type CredentialProcessConfig struct {
+	Command   []string `json:"command"`
+	TimeoutMs int64    `json:"timeoutMs,omitempty"`
+}
+
 // OAuthConfig configures OAuth authentication for a provider.
 type OAuthConfig struct {
 	ClientID         string   `json:"clientId"`
@@ -811,6 +865,10 @@ type OAuthConfig struct {
 	// audience: "audience" (the prevailing de-facto dialect, default) or
 	// "resource" (RFC 8707 Resource Indicators).
 	AudienceParameter string `json:"audienceParameter,omitempty"`
+	// MachineIdentity switches this provider from interactive operator login to
+	// non-interactive workload credential brokering. Nil preserves the existing
+	// PKCE/device-code/refresh-token lifecycle exactly.
+	MachineIdentity *MachineIdentityConfig `json:"machineIdentity,omitempty"`
 	// AttributionClaim names the id_token claim used as the operator's
 	// attribution identity (telemetry/egress "user" field). Empty uses the
 	// standard fallback chain: preferred_username → oid → sub.

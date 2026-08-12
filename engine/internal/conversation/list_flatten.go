@@ -117,6 +117,27 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 				MarkerKind: "clear",
 			})
 			continue
+		case EntryDispatchError:
+			// Replay a terminal dispatch failure discovered after the child
+			// backend's final save. Content starts with "Error:" so existing clients
+			// render it through their standard system-error treatment; the typed
+			// entry carries the durable semantics and keeps the data out of LLM
+			// context (buildContextPath ignores this entry type).
+			dd := asDispatchErrorData(entry.Data)
+			if dd == nil || dd.Message == "" {
+				utils.LogWithFields(utils.LevelWarn, "conversation", "flatten: malformed dispatch error dropped", map[string]any{
+					"conversation_id": conv.ID,
+					"entry_id":        entry.ID,
+				})
+				continue
+			}
+			result = append(result, types.SessionMessage{
+				ID:        rowID(entry.ID, 0),
+				Role:      "system",
+				Content:   "Error: " + dd.Message,
+				Timestamp: entry.Timestamp,
+			})
+			continue
 		case EntryMessage:
 			// falls through to the message-flattening logic below
 		default:

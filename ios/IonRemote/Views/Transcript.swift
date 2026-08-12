@@ -17,6 +17,12 @@ struct Transcript: View {
     let isRunning: Bool
     let onRewind: ((String) -> Void)?
     let agents: [AgentStateUpdate]?
+    /// Full unfiltered agent list for descendant walks and running-count
+    /// resolution. When nil, falls back to `agents` (the visible set). The
+    /// main ConversationView supplies `allAgents` so the dot resolver sees
+    /// nested specialists; popup call sites that already scope to a subtree
+    /// leave this nil.
+    var allAgents: [AgentStateUpdate]?
     let onOpenDispatch: ((DispatchInfo, AgentStateUpdate) -> Void)?
     @Binding var isNearBottom: Bool
     var forceScrollCounter: Int
@@ -151,6 +157,7 @@ struct Transcript: View {
             if let visibleAgents = agents, !visibleAgents.isEmpty || alwaysShowAgentPanel {
                 TranscriptAgentSection(
                     agents: visibleAgents,
+                    allAgents: allAgents ?? visibleAgents,
                     onOpenDispatch: onOpenDispatch,
                     isExpanded: agentPanelExpanded ?? .constant(true),
                     isFullscreen: agentPanelFullscreen ?? .constant(false)
@@ -163,8 +170,8 @@ struct Transcript: View {
 // MARK: - TranscriptAgentSection
 
 /// Embedded agent bar list for the Transcript view. Renders a collapsible
-/// panel with a chevron header, matching the pre-migration ConversationView
-/// agentSection behavior (ConversationView+Agents.swift).
+/// panel with a chevron header. Receives both the visible root-level agents
+/// and the full unfiltered list so descendant walks resolve correctly.
 ///
 /// State is threaded as bindings from ConversationView so that
 /// `agentsPanelExpanded` and `agentPanelFullscreen` on ConversationView
@@ -174,13 +181,21 @@ struct Transcript: View {
 /// as before.
 struct TranscriptAgentSection: View {
     let agents: [AgentStateUpdate]
+    /// Every agent on the conversation, unfiltered. The running count and
+    /// AgentBarRow descendant walk need nested specialists that are
+    /// deliberately excluded from `agents` (the visible, root-level set).
+    let allAgents: [AgentStateUpdate]
     let onOpenDispatch: ((DispatchInfo, AgentStateUpdate) -> Void)?
     @Binding var isExpanded: Bool
     @Binding var isFullscreen: Bool
     @Environment(\.appTheme) private var theme
 
-    private var runningCount: Int {
-        agents.filter { $0.status == "running" }.count
+    /// Rows with work still in flight. Uses the full agent list so a lead
+    /// whose own dispatches finished but which still owns a live descendant is
+    /// counted — matching the row dots rather than reading zero while a
+    /// specialist works.
+    var runningCount: Int {
+        agents.filter { AgentDotResolver.isActive($0, in: allAgents) }.count
     }
 
     var body: some View {
@@ -242,10 +257,10 @@ struct TranscriptAgentSection: View {
                         ForEach(agents) { agent in
                             AgentBarRow(
                                 agent: agent,
-                                isLoadingMessages: false,
+                                allAgents: allAgents,
                                 onTap: onOpenDispatch != nil ? {
-                                    guard let lastDispatch = agent.dispatches.last else { return }
-                                    onOpenDispatch?(lastDispatch, agent)
+                                    guard let recentDispatch = AgentDotResolver.mostRecentDispatch(agent.dispatches) else { return }
+                                    onOpenDispatch?(recentDispatch, agent)
                                 } : nil
                             )
                         }

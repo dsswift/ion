@@ -384,7 +384,7 @@ enabled, planFilePath := ctx.GetPlanMode()
 
 **`SuppressTool(name)`** -- hide a built-in tool from the model on the current turn. Use sparingly.
 
-**`CallTool(name, input)`** -- dispatch a tool call from extension code through the same registry the LLM uses. Returns `(content, isError, error)`. Subject to the session's permission policy. Does **not** fire per-tool hooks or `permission_request` (prevents re-entrant recursion into the calling extension).
+**`CallTool(name, input)`** -- dispatch a tool call from extension code through same registry LLM uses. Returns `(*types.ToolResult, error)`. `Content` and `IsError` retain text-only behavior; optional `ContentItems` preserves ordered MCP text, image, audio, resource-link, embedded-resource, and future content items. Embedded blob data remains base64 for an explicit consumer to decode. The engine feeds supported MCP images to current provider call in memory only, never logs, emits, or persists blob bytes by default. Subject to session permission policy. Does **not** fire per-tool hooks or `permission_request` (prevents re-entrant recursion into calling extension).
 
 **`SendPrompt(text, model)`** -- queue a fresh prompt on this session's agent loop. Resolves once the engine has accepted the prompt; does not wait for the LLM to finish. Pass `model=""` to use the session default.
 

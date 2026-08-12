@@ -21,6 +21,7 @@ type mockLlmProvider struct {
 	mu        sync.Mutex
 	callCount int
 	responses [][]types.LlmStreamEvent // one response per call
+	requests  []types.LlmStreamOptions // immutable snapshots, one per call
 	failAfter int                      // if > 0, fail after this many events on first call
 	failErr   error
 }
@@ -38,6 +39,7 @@ func (m *mockLlmProvider) Stream(ctx context.Context, opts types.LlmStreamOption
 	m.mu.Lock()
 	idx := m.callCount
 	m.callCount++
+	m.requests = append(m.requests, snapshotLlmStreamOptions(opts))
 	m.mu.Unlock()
 
 	go func() {
@@ -64,6 +66,30 @@ func (m *mockLlmProvider) Stream(ctx context.Context, opts types.LlmStreamOption
 	}()
 
 	return events, errc
+}
+
+// snapshotLlmStreamOptions copies message blocks before a scripted provider
+// returns. Later run-loop cleanup mutates live conversation blocks, while tests
+// need the exact provider input received for each request.
+func snapshotLlmStreamOptions(opts types.LlmStreamOptions) types.LlmStreamOptions {
+	snapshot := opts
+	snapshot.Messages = append([]types.LlmMessage(nil), opts.Messages...)
+	for i := range snapshot.Messages {
+		blocks, ok := snapshot.Messages[i].Content.([]types.LlmContentBlock)
+		if !ok {
+			continue
+		}
+		copied := append([]types.LlmContentBlock(nil), blocks...)
+		for j := range copied {
+			if copied[j].Source == nil {
+				continue
+			}
+			source := *copied[j].Source
+			copied[j].Source = &source
+		}
+		snapshot.Messages[i].Content = copied
+	}
+	return snapshot
 }
 
 // --- Event builders ---

@@ -161,16 +161,21 @@ func (s *Server) dispatchOidcIdentity(conn net.Conn, cmd *protocol.ClientCommand
 // calls without owning the grant: the refresh token never leaves the
 // engine; clients pull ephemeral access tokens on demand.
 func (s *Server) dispatchOidcToken(conn net.Conn, cmd *protocol.ClientCommand) {
-	m := s.identityManager()
-	if m == nil {
-		s.sendResult(conn, cmd, fmt.Errorf("no OIDC identity provider configured (set auth.identityProvider in engine.json)"), nil)
+	provider := auth.CurrentTokenProvider()
+	if provider == nil {
+		// Server-local fallback keeps directly-constructed embedders/tests
+		// functional; production installs the same operator in the registry.
+		provider = s.identityManager()
+	}
+	if provider == nil {
+		s.sendResult(conn, cmd, fmt.Errorf("no identity token provider available (configure auth.identityProvider in engine.json)"), nil)
 		return
 	}
 	// Bounded context (NOT serveContext: that helper parks a goroutine
 	// until shutdown, and this handler runs per client flush).
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	token, err := m.GetTokenWithAudience(ctx, cmd.OidcScope, cmd.OidcAudience)
+	token, err := provider.GetTokenWithAudience(ctx, cmd.OidcScope, cmd.OidcAudience)
 	if err != nil {
 		utils.LogWithFields(utils.LevelInfo, "server.oidc", "client token mint failed", map[string]any{
 			"tag":   cmd.OidcScope,

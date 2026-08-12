@@ -427,14 +427,6 @@ final class SessionViewModel {
         set { UserDefaults.standard.set(newValue, forKey: "showTabColorInTabList") }
     }
 
-    /// Whether tapping an agent row opens a full-screen popup (on by default).
-    var agentPanelFullScreenPopup: Bool {
-        get { UserDefaults.standard.object(forKey: "agentPanelFullScreenPopup") == nil
-              ? true
-              : UserDefaults.standard.bool(forKey: "agentPanelFullScreenPopup") }
-        set { UserDefaults.standard.set(newValue, forKey: "agentPanelFullScreenPopup") }
-    }
-
     /// APNs device token (set by AppDelegate on registration success).
     var apnsToken: String?
 

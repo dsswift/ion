@@ -508,6 +508,10 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		// Process stream events
 		assistantBlocks, stopReason, turnUsage, streamErr := b.processStream(ctx, run, events, errc)
 
+		// Ephemeral MCP image blocks are valid only for the completed provider
+		// request. Drop them before persisting assistant output or next turn.
+		conversation.DiscardEphemeralToolImages(conv)
+
 		// End LLM telemetry span
 		if llmSpan != nil {
 			errStr := ""

@@ -115,42 +115,18 @@ type Context struct {
 	// built-in tools from the LLM's tool set for subsequent runs.
 	SuppressTool func(name string)
 
-	// CallTool dispatches an extension-initiated tool call through the
-	// session's tool registry: built-in tools, MCP-registered tools, and
-	// extension-registered tools (any host in the loaded group). Returns
-	// (content, isError, error).
-	//
-	// Permissions: subject to the session's permission policy. "deny"
-	// decisions resolve with `(content, true, nil)` carrying a human-readable
-	// reason. "ask" decisions auto-deny with a clear message because
-	// extension calls cannot block on user elicitation -- the harness must
-	// configure an explicit allow rule for the specific tool/extension combo.
-	//
-	// Returns a non-nil Go error only for unknown-tool lookups (so the SDK
-	// promise rejects on programming errors). Tool-internal failures resolve
-	// as `(errorString, true, nil)`.
-	//
-	// Side effects: does NOT fire per-tool hooks (`bash_tool_call`, etc.) or
-	// `permission_request`. Both would re-enter the calling extension and
-	// create surprising recursion. Audit log entries from the permission
-	// engine still fire.
-	CallTool func(toolName string, input map[string]interface{}) (string, bool, error)
+	// CallTool dispatches an extension-initiated tool call through the session
+	// registry. Content and IsError retain text-only compatibility; ContentItems
+	// preserves additive typed MCP content for consumers that need it.
+	CallTool func(toolName string, input map[string]interface{}) (*types.ToolResult, error)
 
-	// CallToolWithContext is like CallTool but accepts an optional timeout in
-	// milliseconds. When timeoutMs is non-nil, the tool call is bounded by
-	// that deadline. This is wired by the ext/call_tool RPC handler when the
-	// extension provides a timeout parameter.
-	CallToolWithContext func(toolName string, input map[string]interface{}, timeoutMs *float64) (string, bool, error)
+	// CallToolWithContext is CallTool with an optional millisecond timeout.
+	CallToolWithContext func(toolName string, input map[string]interface{}, timeoutMs *float64) (*types.ToolResult, error)
 
-	// HTTPRequest performs an outbound HTTP request pre-authenticated as
-	// the signed-in operator: the engine mints an access token for the
-	// scope the extension declares (from the operator's OIDC grant) and
-	// injects it as the Authorization header. The raw token never crosses
-	// into extension code — params carry no credential and the response
-	// carries only status/headers/body. Fails with a clear error when no
-	// operator identity is configured or signed in. The TypeScript SDK
-	// exposes this as ctx.http.get/post/put/patch/delete via the
-	// ext/http_request RPC.
+	// HTTPRequest performs outbound HTTP authenticated by the configured
+	// operator or machine identity. Engine injects OAuth bearer or AWS SigV4
+	// authentication; params contain no credential and response contains only
+	// status/headers/body. TypeScript SDK exposes same ext/http_request path.
 	HTTPRequest func(params OperatorHTTPRequestParams) (*OperatorHTTPResponse, error)
 
 	// SendPrompt queues a fresh prompt on this session's agent loop. The

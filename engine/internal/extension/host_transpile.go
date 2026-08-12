@@ -241,15 +241,15 @@ func (h *Host) parseInitResult(raw json.RawMessage) {
 				if len(raw) == 0 || string(raw) == "null" {
 					return &types.ToolResult{Content: ""}, nil
 				}
-				// Structured image return: { content, images:[{path, mediaType}] }.
-				// When present, read + base64-encode each image into
-				// ToolResult.Images. Falls through to the text path below when the
-				// response carries no images array.
+				// Structured tool return: image paths and/or typed contentItems.
+				// Typed vision items stay ephemeral; they feed this provider turn but
+				// never become durable event or conversation payloads.
 				if result, ok := parseToolResultWithImages(raw, h.name_()); ok {
-					utils.LogWithFields(utils.LevelInfo, "extension", "tool returned structured image result", map[string]any{
-						"tag":    h.name_(),
-						"tool":   toolName,
-						"images": len(result.Images),
+					utils.LogWithFields(utils.LevelInfo, "extension", "tool returned structured result", map[string]any{
+						"tag":          h.name_(),
+						"tool":         toolName,
+						"images":       len(result.Images),
+						"contentItems": len(result.ContentItems),
 					})
 					return result, nil
 				}

@@ -337,6 +337,7 @@ Authentication and credential management.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
+| `identityProvider` | string | `""` | Key in `oauth` used for operator or machine identity brokering. |
 | `oauth` | object | `{}` | Map of provider ID to OAuth configuration. |
 | `secureStore` | object | `null` | Credential storage backend configuration. |
 | `cacheTtlMs` | int64 | `0` | How long to cache resolved credentials (milliseconds). |
@@ -352,6 +353,33 @@ Authentication and credential management.
 | `scopes` | string[] | Requested scopes. |
 | `usePkce` | bool | Enable PKCE. |
 | `redirectUri` | string | Redirect URI. |
+
+| `issuerUrl` | string | OIDC issuer used to discover endpoints. Explicit endpoint fields win. |
+| `audience` | string | Default token audience/resource. |
+| `audienceParameter` | string | `"audience"` (default) or RFC 8707 `"resource"`. |
+| `machineIdentity` | object | Optional non-interactive identity source. Presence switches this selected provider from operator login to machine identity. See [Machine identity](../deployment/machine-identity.md). |
+
+### Machine identity fields
+
+| Field | Type | Description |
+|---|---|---|
+| `source` | string | `client_secret`, `certificate`, `federated_assertion`, `azure_managed_identity`, `gcp_managed_identity`, `aws`, or `credential_process`. |
+| `clientSecretEnv` | string | Client-secret environment variable, captured and removed before subprocess launch. |
+| `clientSecretFile` | string | Client-secret file path; mutually exclusive with `clientSecretEnv`. |
+| `certificatePath` | string | PEM X.509 certificate path. May also contain its private key. |
+| `certificateKeyPath` | string | Optional separate PEM private-key path. |
+| `federatedTokenFile` | string | Rotating projected assertion path. |
+| `azure.clientId` | string | Optional user-assigned Azure identity client ID. |
+| `gcp.serviceAccount` | string | GCP attached service account; defaults to `default`. |
+| `gcp.tokenType` | string | `access_token` (default) or `id_token`. |
+| `aws.kind` | string | Explicit AWS source: `imds`, `ecs`, `eks`, `irsa`, or `env`. |
+| `aws.roleArn` | string | IRSA role ARN; falls back to `AWS_ROLE_ARN`. |
+| `aws.region` | string | STS/signing region. |
+| `aws.stsEndpoint` | string | Optional STS endpoint override. |
+| `credentialProcess.command` | string[] | Absolute executable path followed by arguments. No shell expansion. |
+| `credentialProcess.timeoutMs` | int64 | Bounded helper deadline. |
+
+Machine credentials stay engine-owned. OAuth access tokens and AWS temporary credentials are cached only in memory. Managed/federated sources persist no secret.
 
 ### Secure store fields
 
@@ -553,20 +581,43 @@ Same merge semantics as other config fields: higher-priority layers override low
 
 Controls how the `Bash` tool selects the shell used to execute commands. Omit the block to inherit the default: a non-login, non-interactive shell that sources no rc files (`bash -c` on POSIX, PowerShell `-NoProfile -Command` on Windows). This is the historical behavior.
 
-When `useLoginShell` is `true`, the engine runs each `Bash` command through the user's **login** shell (e.g. `zsh -lc`), so `.zprofile` / `.zshrc` are sourced for every command. This picks up the user's `PATH`, aliases, shell functions, and rc-exported environment that a non-login shell never sees — useful when the engine is launched from a GUI context (e.g. a macOS app bundle) that inherits a truncated `PATH`. Because each command re-sources the rc files, login-shell mode is robust to mid-session environment changes.
+When `useLoginShell` is `true`, the engine runs each `Bash` command through the user's **login** shell (e.g. `zsh -lc`), so `.zprofile` is sourced for every command. This picks up the user's `PATH` and rc-exported environment that a non-login shell never sees — useful when the engine is launched from a GUI context (e.g. a macOS app bundle) that inherits a truncated `PATH`. Because each command re-sources the rc files, login-shell mode is robust to mid-session environment changes.
 
-**POSIX only.** On Windows the PowerShell branch is unchanged; `useLoginShell` has no effect there, as Windows has no analogous "login shell" concept.
+### Login and interactive shells read different files
+
+This distinction is the usual reason a tool that works in your terminal is "not found" by the engine, so it is worth stating precisely:
+
+| Shell mode | Flags | zsh sources | bash sources |
+|---|---|---|---|
+| Login, non-interactive | `-lc` | `.zprofile`, `.zlogin` | `.bash_profile` |
+| Interactive login | `-ilc` | `.zprofile`, **`.zshrc`**, `.zlogin` | `.bash_profile`, **`.bashrc`** |
+
+A typical developer machine splits `PATH` across both. `.zprofile` tends to hold what the system and package managers install (`/etc/paths.d` via `path_helper`, Homebrew); `.zshrc` tends to hold what per-tool installers append, because `nvm`, `bun`, `cargo`, and most `curl | sh` scripts write there by default. A login-only shell therefore sees a `PATH` that looks complete and is quietly missing those entries.
+
+**`PATH` hydration always probes interactively first**, independent of `interactiveBash`. At startup the engine discovers the user's `PATH` and merges it into its own process environment, so every subprocess it spawns — extension hosts, `npm`, tool `child_process` calls — inherits the full set. Discovery wants the most complete answer available, so it tries an interactive login shell and falls back to a login-only one. The `interactiveBash` flag governs only how individual `Bash` commands are executed.
+
+**POSIX only.** On Windows the PowerShell branch is unchanged; `useLoginShell` and `interactiveBash` have no effect there, as Windows has no analogous "login shell" concept.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `useLoginShell` | bool | `false` | When `true`, run `Bash` commands through the user's login shell (sourcing rc files) instead of the default non-login `bash -c`. POSIX only. |
 | `shellPath` | string | `""` | Pins the shell binary to use when `useLoginShell` is `true`. Empty auto-resolves in order: `$SHELL`, else `/bin/zsh`, else `/bin/bash`. |
+| `interactiveBash` | bool | `false` | When `true` (and `useLoginShell` is also `true`), run each `Bash` command through an **interactive** login shell (`-ilc`), which additionally sources `.zshrc` / `.bashrc`. Ignored when `useLoginShell` is `false`. |
+
+### When to enable `interactiveBash`
+
+You do **not** need it for `PATH` — startup hydration already handles that, and every `Bash` subprocess inherits the hydrated environment.
+
+Enable it when a tool installs itself as a **shell function** rather than a binary, since a function only exists in a shell that sourced the rc file defining it. `nvm` is the canonical case: `nvm use` cannot work in a non-interactive shell at all.
+
+The cost is real, which is why it is off by default. Interactive startup runs your full rc file for every command: prompt frameworks (`starship`), completion initialisation (`compinit`), and any rc-level diagnostics execute per call, adding latency (~130 ms on a warm macOS zsh) and potentially writing to stdout/stderr, where the output can contaminate tool results. If you enable it and see stray text in command output, an rc file is writing to a stream it should not — guard that line, or turn the flag back off.
 
 ```json
 {
   "shell": {
     "useLoginShell": true,
-    "shellPath": "/bin/zsh"
+    "shellPath": "/bin/zsh",
+    "interactiveBash": true
   }
 }
 ```

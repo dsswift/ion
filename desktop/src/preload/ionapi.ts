@@ -5,6 +5,7 @@
  */
 import type { AtvApi } from './atv-api'
 import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, LandResult, SyncAllResult, WorktreeMoveResult, WorktreeInventoryEntry, WorktreeAppraisalWire, WorktreeProvisionState, WorkStage, IntegrationWorkspace, BenchAssembleResult, EngineConfig, EngineEvent, EngineHostInfo, EngineDirListing, RemoteTransportState, DiscoveredCommand, GitEvent, RepoSnapshot, NewConversationDefaultsPolicy } from '../shared/types'
+import type { DeepLinkConfirmRequest, DeepLinkConfirmResult } from '../shared/types-ipc'
 import type { EnterprisePolicy } from '../shared/types-engine'
 import type { ModelTier } from '../shared/types-model-tiers'
 import type { CustomThemeForRenderer } from '../shared/theme-pack-types'
@@ -91,6 +92,23 @@ export interface IonAPI extends AtvApi {
   terminalWrite(key: string, data: string): void
   terminalResize(key: string, cols: number, rows: number): void
   terminalDestroy(key: string): Promise<void>
+  /**
+   * Main-process scrollback for a terminal key.
+   *
+   * Non-empty when a PTY streamed output while the renderer had no xterm
+   * attached (a pane opened into a background conversation by a deep link, or
+   * an instance created from iOS). Consumed once on first mount.
+   */
+  terminalGetScrollback(key: string): Promise<string>
+  /**
+   * An untrusted ion:// deep link is awaiting approval. The callback receives
+   * everything the operator needs to decide; answer with
+   * `resolveDeepLinkConfirm`.
+   */
+  onDeepLinkConfirmRequest(callback: (request: DeepLinkConfirmRequest) => void): () => void
+  onDeepLinkConfirmSettled(callback: (id: string) => void): () => void
+  setDeepLinkConfirmAvailability(owner: 'overlay' | 'atv', available: boolean): void
+  resolveDeepLinkConfirm(result: DeepLinkConfirmResult): void
   onTerminalData(callback: (key: string, data: string) => void): () => void
   onTerminalExit(callback: (key: string, exitCode: number) => void): () => void
   executeBash(id: string, command: string, cwd: string): Promise<{ stdout: string; stderr: string; exitCode: number | null }>

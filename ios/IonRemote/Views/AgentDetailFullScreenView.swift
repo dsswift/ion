@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// Full-screen view for agent details. Presented via `.fullScreenCover`
-/// when the `agentPanelFullScreenPopup` setting is enabled.
+/// Full-screen view for agent details, presented via `.fullScreenCover` when
+/// the operator taps an agent row. This is the ONLY way to inspect a dispatch —
+/// rows are status summaries and never expand in place.
 /// Reads live agent state and conversation data from the view model
 /// so streaming updates appear in real time while the popup is open.
 ///
@@ -61,14 +62,22 @@ struct AgentDetailFullScreenView: View {
         return "\(ids)|\(agent.status)|\(agent.dispatches.count)"
     }
 
+    /// Dispatch this detail view currently represents. Preserve an explicitly
+    /// selected dispatch from a pager/deep link; otherwise default to the same
+    /// start-time-most-recent dispatch rendered by the row foreground dot.
+    private var subjectDispatch: DispatchInfo? {
+        guard let agent else { return nil }
+        return AgentDotResolver.detailSubject(agent.dispatches, dispatchId: dispatchId)
+    }
+
     private var latestDispatchConvId: String {
-        agent?.dispatches.last?.conversationId ?? ""
+        subjectDispatch?.conversationId ?? ""
     }
 
     private var latestDispatchRunning: Bool {
         guard let agent else { return false }
-        if let last = agent.dispatches.last, !last.status.isEmpty {
-            return last.status == "running"
+        if let subjectDispatch, !subjectDispatch.status.isEmpty {
+            return subjectDispatch.status == "running"
         }
         return agent.status == "running"
     }
@@ -84,9 +93,9 @@ struct AgentDetailFullScreenView: View {
     /// Conversation messages for the current agent.
     private var agentMessages: [Message] {
         guard let agent else { return [] }
-        if let lastDispatch = agent.dispatches.last,
-           !lastDispatch.conversationId.isEmpty {
-            return viewModel.agentConversationMessages[lastDispatch.conversationId] ?? []
+        if let subjectDispatch,
+           !subjectDispatch.conversationId.isEmpty {
+            return viewModel.agentConversationMessages[subjectDispatch.conversationId] ?? []
         }
         return viewModel.agentConversationMessages[dispatchId.isEmpty ? agent.name : dispatchId] ?? []
     }
@@ -102,9 +111,10 @@ struct AgentDetailFullScreenView: View {
     ///
     /// KEY INVARIANT: when the same agent name is dispatched more than once, the
     /// engine's groupByName collapses all same-name pills into ONE representative
-    /// with a merged dispatches[] array. `dispatches.last` would always point at
-    /// the most-recently-added dispatch, which is WRONG when the user tapped an
-    /// earlier one. We MUST use the `dispatchId` this view was opened with so
+    /// with a merged dispatches[] array. Array order is slot insertion order,
+    /// not chronology, so a default must resolve via `mostRecentDispatch`; an
+    /// explicitly opened `dispatchId` remains authoritative for an earlier row.
+    /// We MUST use the `dispatchId` this view was opened with so
     /// dev-lead #1 shows only its own engine-dev, not dev-lead #2's. The fallback
     /// to `dispatches.last` covers the legacy path where dispatchId was not
     /// threaded (pre-fix state or extension-roster agents with no dispatch id).
@@ -116,8 +126,8 @@ struct AgentDetailFullScreenView: View {
         let parentId: String
         if !dispatchId.isEmpty {
             parentId = dispatchId
-        } else if let last = agent.dispatches.last?.id, !last.isEmpty {
-            parentId = last
+        } else if let recent = AgentDotResolver.mostRecentDispatch(agent.dispatches)?.id, !recent.isEmpty {
+            parentId = recent
         } else {
             return nil
         }
@@ -241,11 +251,11 @@ struct AgentDetailFullScreenView: View {
     }
 
     private func refreshConversation(for agent: AgentStateUpdate) {
-        if let lastDispatch = agent.dispatches.last,
-           !lastDispatch.conversationId.isEmpty {
+        if let selectedDispatch = AgentDotResolver.detailSubject(agent.dispatches, dispatchId: dispatchId),
+           !selectedDispatch.conversationId.isEmpty {
             viewModel.refreshAgentDispatchConversation(
                 agent: agent,
-                conversationId: lastDispatch.conversationId
+                conversationId: selectedDispatch.conversationId
             )
         } else if !agent.conversationIds.isEmpty {
             viewModel.refreshAgentConversation(agent: agent)
@@ -313,8 +323,11 @@ private struct BreadcrumbDestinationView: View {
     private var childAgents: [AgentStateUpdate] {
         guard let agent = childAgent else { return [] }
         let tabId = SessionViewModel.parseEngineSessionKey(compoundKey)
-        guard let dispatchId = agent.dispatches.last?.id, !dispatchId.isEmpty else { return [] }
-        return viewModel.childAgentStates(tabId: tabId, parentDispatchId: dispatchId)
+        let parentDispatchId = entry.dispatchId.isEmpty
+            ? AgentDotResolver.mostRecentDispatch(agent.dispatches)?.id
+            : entry.dispatchId
+        guard let parentDispatchId, !parentDispatchId.isEmpty else { return [] }
+        return viewModel.childAgentStates(tabId: tabId, parentDispatchId: parentDispatchId)
     }
 
     var body: some View {

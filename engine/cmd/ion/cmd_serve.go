@@ -28,6 +28,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/titling"
 	"github.com/dsswift/ion/engine/internal/transport"
+	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -73,7 +74,18 @@ func cmdServe() {
 	// /usr/bin:/bin:/usr/sbin:/sbin; without this step, tools installed in
 	// /opt/homebrew/bin and similar locations are not found. HydrateProcessPath
 	// is nil-safe and a no-op when useLoginShell is false.
-	cfg.Shell.HydrateProcessPath()
+	cfg.Shell.HydrateProcessPath(func(level types.HydrationLogLevel, message string, fields map[string]any) {
+		switch level {
+		case types.HydrationLogLevelDebug:
+			utils.LogWithFields(utils.LevelDebug, "shell.path", message, fields)
+		case types.HydrationLogLevelInfo:
+			utils.LogWithFields(utils.LevelInfo, "shell.path", message, fields)
+		case types.HydrationLogLevelWarn:
+			utils.LogWithFields(utils.LevelWarn, "shell.path", message, fields)
+		default:
+			utils.LogWithFields(utils.LevelWarn, "shell.path", "process path hydration reporter received unknown level", map[string]any{"reason": string(level)})
+		}
+	})
 
 	// Apply a soft heap ceiling (GOMEMLIMIT) so the GC holds resident memory below
 	// the level where the OS memory-pressure killer (macOS jetsam / Linux OOM) would
@@ -210,49 +222,35 @@ func cmdServe() {
 	srv.SetVersion(version)
 	srv.SetAuthResolver(resolver)
 
-	// Engine-owned operator OIDC identity: when auth.identityProvider names
-	// an oauth entry, the engine owns the login flow, grant persistence,
-	// silent refresh, and per-scope token minting. Consumers (SDK HTTP, MCP
-	// token forwarding, authenticated egress, desktop/iOS login UI) resolve
-	// through this manager -- never through a client-held token.
+	// Engine-owned operator or machine identity. Token acquisition routes
+	// through one generic registry; only a real operator manager is attached to
+	// the server's interactive OIDC lifecycle commands.
 	if cfg.Auth != nil && cfg.Auth.IdentityProvider != "" {
-		if oauthCfg, ok := cfg.Auth.OAuth[cfg.Auth.IdentityProvider]; ok {
-			im := auth.NewIdentityManager(cfg.Auth.IdentityProvider, oauthCfg, cfg.Auth.RefreshThresholdMs)
-			srv.SetIdentityManager(im)
-			// Package-level registry: the seam the extension SDK's
-			// pre-authenticated HTTP, MCP token forwarding, and
-			// authenticated egress resolve tokens through.
-			auth.SetOperator(im)
-			utils.LogWithFields(utils.LevelInfo, "main", "operator identity manager configured", map[string]any{
-				"provider":  cfg.Auth.IdentityProvider,
-				"signed_in": im.SignedIn(),
+		im, identityErr := auth.ConfigureIdentityProviders(cfg.Auth)
+		if identityErr != nil {
+			utils.LogWithFields(utils.LevelError, "main", "identity provider configuration failed; continuing without brokered credentials", map[string]any{
+				"provider": cfg.Auth.IdentityProvider, "error": identityErr.Error(),
 			})
-			// Stamp attribution for a grant that survived restart. Live
-			// transitions (login/logout) restamp via the identity broadcast
-			// path in internal/server/dispatch_oidc.go.
+		} else if im != nil {
+			srv.SetIdentityManager(im)
 			if id := im.Identity(); id != nil {
 				utils.SetEgressUser(id.AttributionValue())
 				telemetry.SetUserIdentity(id.AttributionValue())
 			}
-		} else {
-			utils.LogWithFields(utils.LevelError, "main", "auth.identityProvider names a missing auth.oauth entry", map[string]any{
-				"provider": cfg.Auth.IdentityProvider,
-			})
 		}
 	}
 
 	// Authenticated log egress: when egressTokenScope is configured, every
-	// flush mints a fresh operator token for that scope. Installed after the
-	// identity manager so the closure resolves through the live registry.
+	// flush mints a fresh configured-identity bearer token for that scope.
 	if cfg.Logging != nil && cfg.Logging.EgressTokenScope != "" {
 		scope := cfg.Logging.EgressTokenScope
 		audience := cfg.Logging.EgressTokenAudience
 		utils.SetEgressAuthHeaderProvider(func() map[string]string {
-			op := auth.Operator()
-			if op == nil {
+			provider := auth.CurrentTokenProvider()
+			if provider == nil {
 				return nil
 			}
-			token, err := op.GetTokenWithAudience(context.Background(), scope, audience)
+			token, err := provider.GetTokenWithAudience(context.Background(), scope, audience)
 			if err != nil {
 				utils.LogWithFields(utils.LevelError, "main", "egress token mint failed; flush proceeds with static headers", map[string]any{"error": err.Error()})
 				return nil
@@ -351,23 +349,21 @@ func cmdServe() {
 			relay.SetWriteTimeout(cfg.Timeouts.RelayWrite())
 		}
 
-		// When UseOidc is set and an operator identity manager is configured,
-		// install a credential provider that mints a fresh OIDC access token
-		// before every reconnect. The static APIKey remains the fallback when
-		// no identity manager is available or UseOidc is false.
+		// When UseOidc is set and a bearer identity is configured, install a
+		// credential provider that mints a fresh token before every reconnect.
 		if cfg.Relay.UseOidc {
-			if op := auth.Operator(); op != nil {
+			if provider := auth.CurrentTokenProvider(); provider != nil {
 				oidcScope := cfg.Relay.OidcScope
 				oidcAudience := cfg.Relay.OidcAudience
 				relay.SetCredentialProvider(func(ctx context.Context) (string, error) {
-					return op.GetTokenWithAudience(ctx, oidcScope, oidcAudience)
+					return provider.GetTokenWithAudience(ctx, oidcScope, oidcAudience)
 				})
 				utils.LogWithFields(utils.LevelInfo, "relay", "OIDC credential provider installed", map[string]any{
 					"scope":    oidcScope,
 					"audience": oidcAudience,
 				})
 			} else {
-				utils.LogWithFields(utils.LevelWarn, "relay", "useOidc is true but no operator identity configured; falling back to static apiKey", nil)
+				utils.LogWithFields(utils.LevelWarn, "relay", "useOidc is true but no bearer identity is configured; falling back to static apiKey", nil)
 			}
 		}
 

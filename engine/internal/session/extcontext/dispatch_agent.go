@@ -942,6 +942,41 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				ParentDispatchId:         currentDispatchId,
 			}
 
+			// A childErr synthesized from OnExit (engine cancel / non-zero
+			// backend exit) is learned AFTER the child backend completed its final
+			// conversation save. The parent result and agent-state row correctly
+			// say "error", but without this append the child transcript ends on
+			// ordinary assistant prose and looks successful when inspected. Persist
+			// the same terminal error into the child conversation before publishing
+			// the error state so status and history become true atomically from the
+			// consumer's perspective. Recall is deliberately excluded: it is a
+			// cancelled terminal state, not an error.
+			if childErr != nil && !recalled {
+				if childSessionID == "" {
+					utils.LogWithFields(utils.LevelWarn, "server", "dispatch error has no child conversation; durable error row cannot be written", map[string]any{
+						"session_id":  key,
+						"dispatch_id": agentID,
+						"model":       agentName,
+						"error":       childErr.Error(),
+					})
+				} else if err := conversation.AppendDispatchError(childSessionID, agentID, childErr.Error()); err != nil {
+					utils.LogWithFields(utils.LevelError, "server", "dispatch error persistence failed", map[string]any{
+						"session_id":      key,
+						"conversation_id": childSessionID,
+						"dispatch_id":     agentID,
+						"model":           agentName,
+						"error":           err.Error(),
+					})
+				} else {
+					utils.LogWithFields(utils.LevelInfo, "server", "dispatch error persisted to child conversation", map[string]any{
+						"session_id":      key,
+						"conversation_id": childSessionID,
+						"dispatch_id":     agentID,
+						"model":           agentName,
+					})
+				}
+			}
+
 			// Update agent state with terminal status and conversation ID.
 			// Upsert (not plain update): after the birth-gap and death-gap fixes
 			// the slot is always present here, but if some future lifecycle gap

@@ -370,6 +370,47 @@ describe('loadPersistedSettings — AI-assisted prompt override validation', () 
   })
 })
 
+describe('loadPersistedSettings — retired preference keys are ignored', () => {
+  let originalIon: unknown
+  let originalDocument: unknown
+
+  beforeEach(() => {
+    originalIon = (globalThis as { window?: { ion?: unknown } }).window?.ion
+    originalDocument = (globalThis as { document?: unknown }).document
+    ;(globalThis as { document?: unknown }).document = {
+      documentElement: { style: {}, classList: { toggle: () => {}, add: () => {}, remove: () => {} } },
+    }
+  })
+
+  afterEach(() => {
+    ;(globalThis as { window?: { ion?: unknown } }).window = { ion: originalIon } as Window & typeof globalThis
+    ;(globalThis as { document?: unknown }).document = originalDocument
+  })
+
+  it('agentDetailPopup from legacy disk payload is not hydrated into state', async () => {
+    ;(globalThis as { window?: { ion?: unknown } }).window = {
+      ion: { loadSettings: () => Promise.resolve({ agentDetailPopup: false }) },
+    } as unknown as Window & typeof globalThis
+
+    const setStateMock = vi.fn()
+    loadPersistedSettings(
+      setStateMock,
+      () => ({ _systemIsDark: false } as unknown as PreferencesState),
+      vi.fn(),
+    )
+    await new Promise((resolve) => setImmediate(resolve))
+
+    const patch = setStateMock.mock.calls[0][0] as Record<string, unknown>
+    expect(patch).not.toHaveProperty('agentDetailPopup')
+  })
+
+  it('getAllSettings does not serialize agentDetailPopup', () => {
+    const state = syntheticState()
+    const result = getAllSettings(() => state)
+    expect(result).not.toHaveProperty('agentDetailPopup')
+  })
+})
+
 /**
  * Produce a sentinel disk value for a given default. The sentinel must
  * distinct (so we can be sure the value flowed through hydration

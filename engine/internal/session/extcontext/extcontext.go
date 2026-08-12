@@ -434,10 +434,10 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 		Elicit: func(info extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 			return sa.Elicit(info)
 		},
-		CallTool: func(toolName string, input map[string]interface{}) (string, bool, error) {
+		CallTool: func(toolName string, input map[string]interface{}) (*types.ToolResult, error) {
 			return CallToolFromExtension(context.Background(), sa, toolName, input)
 		},
-		CallToolWithContext: func(toolName string, input map[string]interface{}, timeoutMs *float64) (string, bool, error) {
+		CallToolWithContext: func(toolName string, input map[string]interface{}, timeoutMs *float64) (*types.ToolResult, error) {
 			callCtx := context.Background()
 			if timeoutMs != nil && *timeoutMs > 0 {
 				var cancel context.CancelFunc

@@ -129,7 +129,7 @@ describe('mapConversationMessages — stable IDs', () => {
 
 // ─── Deliverable 3: full marker set in the dispatch preview ──────────────────
 //
-// The dispatch preview (AgentPanel → AgentExpandedView) renders mapped messages
+// The dispatch preview (AgentPanel → AgentDetailPanel) renders mapped messages
 // through the SAME groupMessages/TranscriptRows path as the main transcript.
 // For markers to render, the mapper must forward the marker rows the engine /
 // persisted conversation carries — steer dividers, plan-lifecycle dividers, and
