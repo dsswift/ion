@@ -16,14 +16,14 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { describe, expect, it } from 'vitest'
 import { IOS_THEME_TOKEN_KEYS } from '../../shared/theme-pack-types'
-import { classicColors, darkColors, lightColors, themes, type ColorPalette } from '../theme-tokens'
+import { classicColors, darkColors, lightColors, contrastDarkColors, contrastLightColors, themes, type ColorPalette } from '../theme-tokens'
 
 interface ParityToken {
   desktopToken: string
   hex: string
 }
 interface ParityTheme {
-  preferredColorScheme: 'light' | 'dark'
+  preferredColorScheme?: 'light' | 'dark' | null
   tokens: Record<string, ParityToken>
 }
 
@@ -37,6 +37,8 @@ const PALETTES: Record<string, ColorPalette> = {
   'ion-dark': darkColors,
   'ion-light': lightColors,
   'ion-classic': classicColors,
+  'ion-contrast-dark': contrastDarkColors,
+  'ion-contrast-light': contrastLightColors,
 }
 
 /** Normalize a desktop palette value (#RGB/#RRGGBB hex or rgba()) to
@@ -63,10 +65,22 @@ const themeEntries = Object.entries(fixture).filter(
   (e): e is [string, ParityTheme] => typeof e[1] !== 'string',
 )
 
+function expectForcedColorScheme(
+  def: { forcedColorScheme?: 'light' | 'dark' },
+  theme: ParityTheme,
+): void {
+  if (theme.preferredColorScheme === null || theme.preferredColorScheme === undefined) {
+    expect(def.forcedColorScheme).toBeUndefined()
+  } else {
+    expect(def.forcedColorScheme).toBe(theme.preferredColorScheme)
+  }
+}
+
 describe('theme parity fixture (desktop side)', () => {
   it('covers exactly the shared built-in themes', () => {
     expect(themeEntries.map(([id]) => id).sort()).toEqual([
-      'ion-classic', 'ion-dark', 'ion-light',
+      'ion-classic', 'ion-contrast-dark', 'ion-contrast-light',
+      'ion-dark', 'ion-light',
     ])
   })
 
@@ -82,8 +96,16 @@ describe('theme parity fixture (desktop side)', () => {
     for (const [id, theme] of themeEntries) {
       const def = themes.find((t) => t.id === id)
       expect(def, `theme ${id} in registry`).toBeDefined()
-      expect(def!.forcedColorScheme, `theme ${id} scheme`).toBe(theme.preferredColorScheme)
+      if (theme.preferredColorScheme === null) expect(def!.forcedColorScheme).toBeUndefined()
+      else expect(def!.forcedColorScheme).toBe(theme.preferredColorScheme)
     }
+  })
+
+  it('accepts a follow-system fixture scheme without forced color scheme', () => {
+    expectForcedColorScheme({ forcedColorScheme: undefined }, {
+      preferredColorScheme: null,
+      tokens: {},
+    })
   })
 
   it('every fixture hex equals the mapped desktop palette value', () => {
