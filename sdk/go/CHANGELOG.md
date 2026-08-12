@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.3](https://github.com/dsswift/ion/compare/sdk/go-v0.1.2...sdk/go-v0.1.3) (2026-08-12)
+
+### Bug Fixes
+
+* **sdk:** report Go SDK build identity ([1dc6f89](https://github.com/dsswift/ion/commit/1dc6f8988636c7f414b24730a0440a0a101c5920))
+* **sdk:** expose lost dispatch acknowledgement ([8533f4c](https://github.com/dsswift/ion/commit/8533f4c0be0905f4b2b01d7643a472567d4f69c3))
+* **sdk:** synchronize dispatch hook contract ([b6d8ab6](https://github.com/dsswift/ion/commit/b6d8ab64fce2aafff67db26233a6163846691bda))
+
 ## [0.1.2](https://github.com/dsswift/ion/compare/sdk/go-v0.1.1...sdk/go-v0.1.2) (2026-08-12)
 
 ### Features

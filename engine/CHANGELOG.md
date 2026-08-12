@@ -13,6 +13,26 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.67.0](https://github.com/dsswift/ion/compare/engine-v1.66.0...engine-v1.67.0) (2026-08-12)
+
+### Features
+
+* **engine:** make lost-dispatch notices durable ([b1f0e60](https://github.com/dsswift/ion/commit/b1f0e6050e1e0ebdf19157db09b39d972517f1ce))
+* **engine:** add bounded session command lanes ([5f1d5c6](https://github.com/dsswift/ion/commit/5f1d5c65bcc17852c574c72dff4fdb6a990c6b5b))
+* **engine:** validate engine and SDK build identity ([8db588a](https://github.com/dsswift/ion/commit/8db588a7fa3653644e7f1d7d95dc1ccaeb94bb44))
+
+### Bug Fixes
+
+* **engine:** throttle repeated in-flight skip logs ([e22fcb2](https://github.com/dsswift/ion/commit/e22fcb2e8b12df964cd68513bcc40ada26f8122d))
+* **engine:** bound git-context subprocesses ([440fc2f](https://github.com/dsswift/ion/commit/440fc2f46bdb6811f8c2d5e0d9c8dfc6df00aaff))
+* **engine:** release session lock before prompt preparation ([cfbb13e](https://github.com/dsswift/ion/commit/cfbb13e69aba94c6a3846a7d386c2b6bef492544))
+* **engine:** default minimal server context ([6268d9c](https://github.com/dsswift/ion/commit/6268d9cc702fa02351b27f971b28d5499b314b4d))
+* **engine:** restore agent depth budget hook field ([33beae1](https://github.com/dsswift/ion/commit/33beae1311c5d6da328431a817338db0b85f34dc))
+* **engine:** preserve extension identity across dispatches ([92eb983](https://github.com/dsswift/ion/commit/92eb9831fdaafd9f1be5ea0c8eede6e41d6521fc))
+* **engine:** honor model provenance in slash commands ([b541c88](https://github.com/dsswift/ion/commit/b541c88b9105ca806e3c37ec8f45b3c4c83ca062))
+* **engine:** preserve conversation context through compaction ([efb4f75](https://github.com/dsswift/ion/commit/efb4f755ea9bc496c84b969fa68bb38f5c32b973))
+* **engine:** retain buffered lifecycle events ([268b74d](https://github.com/dsswift/ion/commit/268b74d196e067f8ebfca6f3bba08e369f699c56))
+
 ## [1.66.0](https://github.com/dsswift/ion/compare/engine-v1.65.0...engine-v1.66.0) (2026-08-12)
 
 ### Features

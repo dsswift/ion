@@ -10,6 +10,17 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.79.1](https://github.com/dsswift/ion/compare/desktop-v1.79.0...desktop-v1.79.1) (2026-08-12)
+
+### Bug Fixes
+
+* **desktop:** harden engine bridge reconnect lifecycle ([a72b730](https://github.com/dsswift/ion/commit/a72b7309272f94212d2cc355a1f5de50b2f6184b))
+* **desktop:** stamp engine identity before daemon start ([810f6bf](https://github.com/dsswift/ion/commit/810f6bf658198bcf10a1cecf4ed67b1ec3e2b3dd))
+* **desktop:** honor slash command model tiers ([5a3f360](https://github.com/dsswift/ion/commit/5a3f360f72a745d221236814c41a8403d306dd7f))
+* **desktop:** preserve model provenance across conversations ([62b2ca9](https://github.com/dsswift/ion/commit/62b2ca9ca42ff5d51ee49f58b130cee249a69845))
+* **desktop:** align workflow model test mocks ([7135828](https://github.com/dsswift/ion/commit/7135828dfd8491daddbdd4539f807eab83c0698e))
+* **desktop:** retry git fixture cleanup ([09912ea](https://github.com/dsswift/ion/commit/09912ea4719078010870acab9178f51f9b82f64e))
+
 ## [1.79.0](https://github.com/dsswift/ion/compare/desktop-v1.78.0...desktop-v1.79.0) (2026-08-12)
 
 ### Features
