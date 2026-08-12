@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/dsswift/ion/relay/internal/atomicwrite"
 )
 
 // channelOwnerEntry records which OIDC subject owns a relay channel.
@@ -157,16 +159,9 @@ func (s *channelOwnerStore) persist(channelID string, entry channelOwnerEntry) {
 		return
 	}
 	path := s.ownerPath(channelID)
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	if err := atomicwrite.File(path, data, 0o600); err != nil {
 		logger.Warn("channelOwnerStore: write failed",
 			"tag", "relay.channel_owner_store", "err", err)
-		return
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		logger.Warn("channelOwnerStore: rename failed",
-			"tag", "relay.channel_owner_store", "err", err)
-		os.Remove(tmp) //nolint:errcheck // temp cleanup after failed rename
 	}
 }
 
