@@ -95,7 +95,7 @@ func TestRunGitCtx_CancelledGitDescendantDoesNotHoldQueryOpen(t *testing.T) {
 	gitPath := filepath.Join(binDir, "git")
 	pidFile := filepath.Join(t.TempDir(), "descendant.pid")
 	t.Setenv("ION_TEST_DESCENDANT_PID", pidFile)
-	script := "#!/bin/sh\nsleep 30 &\necho $! > \"$ION_TEST_DESCENDANT_PID\"\nsleep 30\n"
+	script := "#!/bin/sh\nsleep 30 &\npid_tmp=\"$ION_TEST_DESCENDANT_PID.tmp\"\necho $! > \"$pid_tmp\"\nmv \"$pid_tmp\" \"$ION_TEST_DESCENDANT_PID\"\nsleep 30\n"
 	if err := os.WriteFile(gitPath, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
