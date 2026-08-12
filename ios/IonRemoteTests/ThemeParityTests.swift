@@ -20,7 +20,7 @@ final class ThemeParityTests: XCTestCase {
         let hex: String
     }
     private struct ParityTheme: Decodable {
-        let preferredColorScheme: String
+        let preferredColorScheme: String?
         let tokens: [String: ParityToken]
     }
 
@@ -94,7 +94,13 @@ final class ThemeParityTests: XCTestCase {
         case "statusWaitingChildren": return theme.statusWaitingChildren
         case "statusBash": return theme.statusBash
         case "statusWarning": return theme.statusWarning
+        case "statusIdle": return theme.statusIdle
+        case "worktreeDirty": return theme.worktreeDirty
         case "surfaceElevated": return theme.surfaceElevated
+        case "surfaceSecondary": return theme.surfaceSecondary
+        case "surfaceSunken": return theme.surfaceSunken
+        case "borderSubtle": return theme.borderSubtle
+        case "textTertiary": return theme.textTertiary
         case "codeBg": return theme.codeBg
         case "userBubbleTint": return theme.userBubbleTint
         case "codeKeyword": return theme.codeKeyword
@@ -111,11 +117,36 @@ final class ThemeParityTests: XCTestCase {
 
     // MARK: - Tests
 
+    private func expectedColorScheme(for parity: ParityTheme) -> ColorScheme? {
+        if parity.preferredColorScheme == "light" { return .light }
+        if parity.preferredColorScheme == "dark" { return .dark }
+        return nil
+    }
+
+    private func assertPreferredColorScheme(
+        _ actual: ColorScheme?,
+        matches parity: ParityTheme,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(actual, expectedColorScheme(for: parity), file: file, line: line)
+    }
+
+    func testAbsentFixtureSchemeDecodesToNilAndIsAccepted() throws {
+        let parity = try JSONDecoder().decode(
+            ParityTheme.self,
+            from: Data("{\"tokens\":{}}".utf8)
+        )
+        XCTAssertNil(parity.preferredColorScheme)
+        assertPreferredColorScheme(nil, matches: parity)
+    }
+
     func testFixtureCoversTheSharedThemes() throws {
         let fixture = try loadFixture()
         XCTAssertEqual(
             fixture.keys.sorted(),
-            ["ion-classic", "ion-dark", "ion-light"],
+            ["ion-classic", "ion-contrast-dark", "ion-contrast-light",
+             "ion-dark", "ion-light"],
             "fixture must cover exactly the shared built-in themes"
         )
     }
@@ -126,11 +157,7 @@ final class ThemeParityTests: XCTestCase {
             let theme = ThemeRegistry.theme(for: themeId)
             XCTAssertEqual(theme.id, themeId, "theme \(themeId) must exist in the registry")
 
-            let expectedScheme: ColorScheme? = parity.preferredColorScheme == "light" ? .light : .dark
-            XCTAssertEqual(
-                theme.preferredColorScheme, expectedScheme,
-                "\(themeId) preferredColorScheme"
-            )
+            assertPreferredColorScheme(theme.preferredColorScheme, matches: parity)
 
             for (token, entry) in parity.tokens {
                 let actual = try rgbaHex(try tokenColor(theme, token))
@@ -145,7 +172,8 @@ final class ThemeParityTests: XCTestCase {
     func testRegistryContainsTheCrossPlatformThemeSet() {
         XCTAssertEqual(
             ThemeRegistry.themes.map(\.id),
-            ["ion-dark", "ion-light", "ion-classic", "jarvis-hud"]
+            ["ion-dark", "ion-light", "ion-classic", "jarvis-hud",
+             "ion-contrast-dark", "ion-contrast-light"]
         )
     }
 
@@ -176,7 +204,7 @@ final class ThemeParityTests: XCTestCase {
             ("childrenYellow/statusWaitingChildren", TabStatusRollup.childrenYellow, dark.statusWaitingChildren),
             ("runningOrange/statusRunning", TabStatusRollup.runningOrange, dark.statusRunning),
             ("shellPink/statusBash", TabStatusRollup.shellPink, dark.statusBash),
-            ("idleGray/statusPending", TabStatusRollup.idleGray, dark.statusPending),
+            ("idleGray/statusIdle", TabStatusRollup.idleGray, dark.statusIdle),
         ]
         for (label, constant, token) in pairs {
             XCTAssertEqual(
