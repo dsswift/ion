@@ -7,6 +7,8 @@
 #   IOS_TEST_DESTINATION='platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5'
 # or pass signing build settings used by CI through IOS_TEST_BUILD_SETTINGS:
 #   IOS_TEST_BUILD_SETTINGS='CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=-'
+# or select XCTest classes through IOS_TEST_ONLY:
+#   IOS_TEST_ONLY='IonRemoteTests/ContractSyncTests IonRemoteTests/ThemeParityTests'
 # in the environment.
 #
 # Exits non-zero on test failure or if no usable simulator is found.
@@ -56,6 +58,12 @@ fi
 # duplicating this destination-selection logic.
 # shellcheck disable=SC2206
 BUILD_SETTINGS=(${IOS_TEST_BUILD_SETTINGS:-})
+# shellcheck disable=SC2206
+TEST_SELECTORS=(${IOS_TEST_ONLY:-})
+XCODE_TEST_SELECTORS=()
+for selector in "${TEST_SELECTORS[@]}"; do
+  XCODE_TEST_SELECTORS+=("-only-testing:${selector}")
+done
 LOG_FILE="$(mktemp -t ios-test.XXXXXX.log)"
 trap 'rm -f "$LOG_FILE"' EXIT
 
@@ -65,6 +73,7 @@ xcodebuild \
   -scheme IonRemote \
   -destination "$IOS_TEST_DESTINATION" \
   "${BUILD_SETTINGS[@]}" \
+  "${XCODE_TEST_SELECTORS[@]}" \
   test \
   > "$LOG_FILE" 2>&1
 STATUS=$?

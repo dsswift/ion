@@ -137,10 +137,11 @@ The iOS app is a thin client for the resource subsystem. It subscribes to resour
 
 ## Done criteria
 
-`make ios-check` is a full `xcodebuild` — a heavy gate. Do not run it repeatedly while iterating. While developing, rely on targeted `IonRemoteTests/` tests for the area you touched; the full build runs at PR time — CI builds the iOS app on every PR, and the user may run `make ios-check` locally before pushing. (It is **not** part of `make test-linux`, which is Linux-only, so `/create-pr` does not run it.) See root [`AGENTS.md`](../AGENTS.md) § "Heavy gates — never run during development".
+`make ios-check` is a device-target build. During development, run targeted `IonRemoteTests` suites for the changed area. Before a branch with iOS or iOS-gate changes is pushed, `/create-pr` runs `make ios-pr-check`: device compilation plus contract and cross-client parity suites on a simulator. The full `IonRemoteTests` simulator suite is a nightly/manual CI lane because cold hosted simulator startup is expensive. See root [`AGENTS.md`](../AGENTS.md) § "Heavy gates — never run during development".
 
 1. Wire-type or crypto or networking changes: run the relevant `IonRemoteTests/` test (scoped — fine during development).
 2. `make check-file-sizes` passes.
 3. UI changes: smoke-tested on device or simulator. Report what was tested.
-4. `make ios-check` — heavy full build. CI runs it on the PR; the user may run it locally before pushing. Don't run it repeatedly while iterating.
-5. Don't `git push`.
+4. `make ios-pr-check` — required before pushing an iOS or iOS-gate change; it compiles and runs targeted contract/parity simulator suites.
+5. `make ios-test` — full simulator suite, nightly/manual CI lane; run only when explicitly needed.
+6. Don't `git push`.

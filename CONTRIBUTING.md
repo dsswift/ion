@@ -193,7 +193,7 @@ Before opening a PR, run the relevant target from the root `Makefile`:
 | engine    | `make engine` (builds and installs) |
 | desktop   | `make desktop`                     |
 | relay     | `make relay` (builds container)    |
-| ios       | `make ios-check` (build only, no install) |
+| ios       | `make ios-pr-check` (device build plus targeted contract/parity tests) |
 | All Go tests | `make test`                     |
 
 To validate the release pipeline locally before pushing, install

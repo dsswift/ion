@@ -4,6 +4,11 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    # Full simulator suite: catches broad behavioral regressions without making
+    # every pull request wait for a cold macOS simulator.
+    - cron: '17 4 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -336,24 +341,23 @@ jobs:
           tags: ion-engine:ci
 
   ios-build:
-    # macos-26 ships Xcode 26 / the iOS 26 SDK. The iOS app contains
-    # ios/IonRemote/Services/ModernSpeechEngine.swift, which is gated
-    # @available(iOS 26, *) and references iOS-26-only symbols
-    # (SpeechAnalyzer, SpeechTranscriber, AnalyzerInput) at file scope.
-    # Those symbols do not exist in the iOS 17-18 SDK that Xcode 16 (the
-    # default on macos-15) ships, so building on macos-15 fails with
-    # exit 65 even though every use site is gated. Xcode 26 is also
-    # what our Xcode Cloud iOS job uses.
+    # Required PR gate. `make ios-pr-check` compiles the device target then
+    # tests shared contracts and cross-client parity on a selected simulator.
+    # The full XCTest suite runs in ios-full-test on schedule/manual dispatch.
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
-      - name: Test iOS app
-        # `scripts/run-ios-tests.sh` selects an installed iPhone simulator by
-        # name and runtime. A generic `OS=latest` destination is not resolvable
-        # by Xcode even when simulators are installed, producing exit 70 before
-        # any test target compiles. Keep the ad-hoc signing settings here so
-        # simulator keychain entitlements remain available to the full suite.
-        working-directory: .
+      - name: Build iOS app and test contracts/parity
+        run: make ios-pr-check
+
+  ios-full-test:
+    # Simulator startup and the entire XCTest bundle take about fifteen hosted
+    # macOS minutes. Run on schedule or explicit dispatch, not every PR.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+      - name: Test full iOS app
         env:
           IOS_TEST_BUILD_SETTINGS: CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=-
         run: bash scripts/run-ios-tests.sh
