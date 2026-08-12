@@ -127,11 +127,9 @@ extension TransportManager {
                             didRestartBrowser = false
                             // Retryable handshake — a single failed sync used
                             // to leave the fresh LAN session snapshot-less.
-                            // Detached so a slow handshake never blocks the
-                            // Bonjour observation loop.
-                            Task { [weak self] in
-                                await self?.sendSyncWithRetry(reason: "bonjour-lan-auth")
-                            }
+                            // Owned separately so a slow handshake never blocks
+                            // the Bonjour observation loop and stop() can cancel it.
+                            self.startSyncHandshake(reason: "bonjour-lan-auth")
                         }
                     } else if hosts.isEmpty, self.currentLANHost != nil {
                         // LAN host disappeared.

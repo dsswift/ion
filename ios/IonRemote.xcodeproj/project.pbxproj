@@ -198,6 +198,7 @@
 		SERIALQ0000000000000001 /* SerialAsyncQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = SERIALQ0000000000000002 /* SerialAsyncQueue.swift */; };
 		SENDDLN0000000000000001 /* SendDeadline.swift in Sources */ = {isa = PBXBuildFile; fileRef = SENDDLN0000000000000002 /* SendDeadline.swift */; };
 		TMSYNC00000000000000001 /* TransportManager+Sync.swift in Sources */ = {isa = PBXBuildFile; fileRef = TMSYNC00000000000000002 /* TransportManager+Sync.swift */; };
+		TMLIFE0000000000000001 /* TransportManager+Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = TMLIFE0000000000000002 /* TransportManager+Lifecycle.swift */; };
 		TMWDOG00000000000000001 /* TransportManager+Watchdog.swift in Sources */ = {isa = PBXBuildFile; fileRef = TMWDOG00000000000000002 /* TransportManager+Watchdog.swift */; };
 		A1B2C3D4E5F60001000224AA /* PayloadCompression.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000225AA /* PayloadCompression.swift */; };
 		A1B2C3D4E5F60001000230AA /* NormalizedEvent+Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000231AA /* NormalizedEvent+Lifecycle.swift */; };
@@ -681,6 +682,7 @@
 		SERIALQ0000000000000002 /* SerialAsyncQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SerialAsyncQueue.swift; sourceTree = "<group>"; };
 		SENDDLN0000000000000002 /* SendDeadline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendDeadline.swift; sourceTree = "<group>"; };
 		TMSYNC00000000000000002 /* TransportManager+Sync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TransportManager+Sync.swift"; sourceTree = "<group>"; };
+		TMLIFE0000000000000002 /* TransportManager+Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TransportManager+Lifecycle.swift"; sourceTree = "<group>"; };
 		TMWDOG00000000000000002 /* TransportManager+Watchdog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TransportManager+Watchdog.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000225AA /* PayloadCompression.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PayloadCompression.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000231AA /* NormalizedEvent+Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Lifecycle.swift"; sourceTree = "<group>"; };
@@ -1088,6 +1090,7 @@
 				SERIALQ0000000000000002 /* SerialAsyncQueue.swift */,
 				SENDDLN0000000000000002 /* SendDeadline.swift */,
 				TMSYNC00000000000000002 /* TransportManager+Sync.swift */,
+				TMLIFE0000000000000002 /* TransportManager+Lifecycle.swift */,
 				TMWDOG00000000000000002 /* TransportManager+Watchdog.swift */,
 				A1B2C3D4E5F60001000012AA /* BonjourBrowser.swift */,
 				A1B2C3D4E5F600010000A1AA /* TerminalOutputRouter.swift */,
@@ -1821,6 +1824,7 @@
 				SERIALQ0000000000000001 /* SerialAsyncQueue.swift in Sources */,
 				SENDDLN0000000000000001 /* SendDeadline.swift in Sources */,
 				TMSYNC00000000000000001 /* TransportManager+Sync.swift in Sources */,
+				TMLIFE0000000000000001 /* TransportManager+Lifecycle.swift in Sources */,
 				TMWDOG00000000000000001 /* TransportManager+Watchdog.swift in Sources */,
 				A1B2C3D4E5F60001000224AA /* PayloadCompression.swift in Sources */,
 				A1B2C3D4E5F60001000230AA /* NormalizedEvent+Lifecycle.swift in Sources */,
