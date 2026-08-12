@@ -368,6 +368,32 @@ func TestInitResultCarriesRegistrations(t *testing.T) {
 	}
 }
 
+func TestInitResultReportsBuildIdentity(t *testing.T) {
+	oldIdentity := BuildIdentity
+	BuildIdentity = "engine-v1.2.3-test"
+	t.Cleanup(func() { BuildIdentity = oldIdentity })
+
+	fe := newFakeEngine(t, WithName("build-identity-test"))
+	fe.start()
+	result := fe.doInit(ExtensionConfig{})
+	if got := result["buildIdentity"]; got != "engine-v1.2.3-test" {
+		t.Fatalf("buildIdentity = %v, want stamped identity", got)
+	}
+}
+
+func TestInitResultOmitsEmptyBuildIdentity(t *testing.T) {
+	oldIdentity := BuildIdentity
+	BuildIdentity = ""
+	t.Cleanup(func() { BuildIdentity = oldIdentity })
+
+	fe := newFakeEngine(t, WithName("empty-build-identity-test"))
+	fe.start()
+	result := fe.doInit(ExtensionConfig{})
+	if _, exists := result["buildIdentity"]; exists {
+		t.Fatalf("buildIdentity = %v, want omitted when unstamped", result["buildIdentity"])
+	}
+}
+
 // TestInitConfigReachesContext pins that the handshake config becomes the
 // default for every later invocation, so a handler can read
 // ctx.Config.ExtensionDir without the engine repeating it in each _ctx.

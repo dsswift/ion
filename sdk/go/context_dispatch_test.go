@@ -164,6 +164,30 @@ func TestParallelDispatchesRouteByDispatchID(t *testing.T) {
 	}
 }
 
+func TestAckDispatchLost(t *testing.T) {
+	fe := newFakeEngine(t, WithName("ack-dispatch-lost-test"))
+	fe.start()
+	fe.doInit(ExtensionConfig{})
+
+	done := make(chan error, 1)
+	go func() {
+		done <- fe.sdk.newContext(nil).AckDispatchLost(context.Background(), "dispatch-123")
+	}()
+
+	frame := fe.await(func(f map[string]any) bool {
+		return f["method"] == "ext/ack_dispatch_lost"
+	})
+	params, ok := frame["params"].(map[string]any)
+	if !ok || params["dispatchId"] != "dispatch-123" {
+		t.Fatalf("ack params = %#v, want dispatchId", frame["params"])
+	}
+	id, _ := frame["id"].(float64)
+	fe.respond(id, map[string]any{"ok": true})
+	if err := <-done; err != nil {
+		t.Fatalf("AckDispatchLost: %v", err)
+	}
+}
+
 // TestDispatchStreamingCallbacksRoute pins the lifecycle callbacks, which
 // arrive while the child runs rather than at the end.
 func TestDispatchStreamingCallbacksRoute(t *testing.T) {
