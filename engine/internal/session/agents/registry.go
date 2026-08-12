@@ -428,7 +428,7 @@ func (r *Registry) MergedSnapshot() []types.AgentStateUpdate {
 	// AppendOrUpdateByID still target individual dispatches. This projection
 	// prevents a consumer from receiving duplicate same-name rows when the
 	// orchestrator dispatches the same agent name multiple times.
-	grouped := groupByName(r.states)
+	grouped := groupByName(r.states, r.limits.normalized().MaxDispatchEntries)
 	merged = append(merged, grouped...)
 
 	// Observability: the merge is the single point where an extension roster
@@ -494,11 +494,15 @@ func statusPriority(status string) int {
 // never mutating the source slice or aliasing its metadata maps.
 //
 // For each name group:
-//   - dispatches[] arrays from every entry's metadata are merged (order preserved).
+//   - dispatches[] arrays from every entry's metadata are merged (order
+//     preserved), then bounded to the most recent maxDispatchEntries with a
+//     dispatchesTotal stamp (see capDispatches) — the merged history is a
+//     monotonic append re-serialized on every emission, so it is bounded at
+//     the projection, while the ID-keyed store keeps every record.
 //   - The most-active status wins (running > error > done > cancelled).
 //   - The most-recently-active entry's top-level metadata (task, model,
 //     displayName, lastWork) is used as the representative.
-func groupByName(states []types.AgentStateUpdate) []types.AgentStateUpdate {
+func groupByName(states []types.AgentStateUpdate, maxDispatchEntries int) []types.AgentStateUpdate {
 	if len(states) == 0 {
 		return nil
 	}
@@ -520,6 +524,7 @@ func groupByName(states []types.AgentStateUpdate) []types.AgentStateUpdate {
 		// Single entry: deep-copy metadata and emit directly.
 		if len(indices) == 1 {
 			single := copyAgentState(states[indices[0]])
+			capDispatches(single.Metadata, maxDispatchEntries)
 			// Ensure each dispatch member in the snapshot carries an explicit,
 			// non-empty dispatchId (plus dispatchParentId/dispatchDepth/status)
 			// so a consumer can address individual dispatches even for a
@@ -594,6 +599,7 @@ func groupByName(states []types.AgentStateUpdate) []types.AgentStateUpdate {
 		}
 		if len(mergedDispatches) > 0 {
 			representative.Metadata["dispatches"] = mergedDispatches
+			capDispatches(representative.Metadata, maxDispatchEntries)
 		}
 
 		// Observability: a same-name group that collapses N entries into one

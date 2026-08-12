@@ -44,10 +44,11 @@ func (m *Manager) agentMetadataLimits() agents.MetadataLimits {
 	})
 
 	return agents.MetadataLimits{
-		MaxValueBytes:    resolved.MaxValueBytes,
-		MaxEntryBytes:    resolved.MaxEntryBytes,
-		MaxSnapshotBytes: resolved.MaxSnapshotBytes,
-		MaxDepth:         resolved.MaxDepth,
+		MaxValueBytes:      resolved.MaxValueBytes,
+		MaxEntryBytes:      resolved.MaxEntryBytes,
+		MaxSnapshotBytes:   resolved.MaxSnapshotBytes,
+		MaxDepth:           resolved.MaxDepth,
+		MaxDispatchEntries: resolved.MaxDispatchEntries,
 	}
 }
 

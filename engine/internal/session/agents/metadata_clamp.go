@@ -43,6 +43,12 @@ const (
 	DefaultMaxSnapshotBytes = 4 * 1024 * 1024
 	// DefaultMaxDepth bounds recursion into nested maps and slices.
 	DefaultMaxDepth = 4
+	// DefaultMaxDispatchEntries bounds the dispatches[] history array on the
+	// emitted snapshot. The engine appends one record per dispatch and
+	// rehydrates them across restarts, so the array is a monotonic history —
+	// the tier that catches growth the byte tiers cannot see coming until it
+	// is already large.
+	DefaultMaxDispatchEntries = 50
 )
 
 // LimitsDisabled is the sentinel an operator sets to switch a tier off.
@@ -87,19 +93,21 @@ var protectedKeys = map[string]bool{
 // MetadataLimits is the resolved, ready-to-use bound set. Zero values mean
 // "use the built-in default"; LimitsDisabled means "no bound for this tier".
 type MetadataLimits struct {
-	MaxValueBytes    int
-	MaxEntryBytes    int
-	MaxSnapshotBytes int
-	MaxDepth         int
+	MaxValueBytes      int
+	MaxEntryBytes      int
+	MaxSnapshotBytes   int
+	MaxDepth           int
+	MaxDispatchEntries int
 }
 
 // DefaultMetadataLimits returns the built-in bounds.
 func DefaultMetadataLimits() MetadataLimits {
 	return MetadataLimits{
-		MaxValueBytes:    DefaultMaxValueBytes,
-		MaxEntryBytes:    DefaultMaxEntryBytes,
-		MaxSnapshotBytes: DefaultMaxSnapshotBytes,
-		MaxDepth:         DefaultMaxDepth,
+		MaxValueBytes:      DefaultMaxValueBytes,
+		MaxEntryBytes:      DefaultMaxEntryBytes,
+		MaxSnapshotBytes:   DefaultMaxSnapshotBytes,
+		MaxDepth:           DefaultMaxDepth,
+		MaxDispatchEntries: DefaultMaxDispatchEntries,
 	}
 }
 
@@ -117,6 +125,9 @@ func (l MetadataLimits) normalized() MetadataLimits {
 	}
 	if l.MaxDepth == 0 {
 		l.MaxDepth = d.MaxDepth
+	}
+	if l.MaxDispatchEntries == 0 {
+		l.MaxDispatchEntries = d.MaxDispatchEntries
 	}
 	return l
 }
@@ -152,8 +163,11 @@ func clampStates(states []types.AgentStateUpdate, limits MetadataLimits) []Clamp
 	return reports
 }
 
-// clampEntry bounds a single agent's metadata: first every value, then the
-// entry as a whole.
+// clampEntry bounds a single agent's metadata: dispatch-history retention,
+// then every value, then the entry as a whole. When the entry budget is
+// enabled, approxMapBytes(entry) ≤ MaxEntryBytes holds unconditionally on
+// return — the three-phase budget (drop unprotected, shrink protected
+// collections, replace protected values) ends in a guarantee, not a hope.
 func clampEntry(state *types.AgentStateUpdate, l MetadataLimits) *ClampReport {
 	if state.Metadata == nil {
 		return nil
@@ -162,20 +176,30 @@ func clampEntry(state *types.AgentStateUpdate, l MetadataLimits) *ClampReport {
 	rep := ClampReport{AgentName: state.Name, Scope: "value", LimitBytes: l.MaxValueBytes}
 	originalBytes := approxMapBytes(state.Metadata)
 
+	if capDispatches(state.Metadata, l.MaxDispatchEntries) {
+		rep.ClampedKeys = append(rep.ClampedKeys, "dispatches")
+	}
+
 	if l.MaxValueBytes != LimitsDisabled {
 		for _, key := range sortedKeys(state.Metadata) {
 			if clamped := clampValue(state.Metadata, key, l, 0); clamped {
-				rep.ClampedKeys = append(rep.ClampedKeys, key)
+				rep.ClampedKeys = appendUnique(rep.ClampedKeys, key)
 			}
 		}
 	}
 
 	if l.MaxEntryBytes != LimitsDisabled {
+		// Phase A: drop unprotected keys, largest first.
 		dropped := enforceEntryBudget(state.Metadata, l.MaxEntryBytes)
-		if len(dropped) > 0 {
+		// Phase B: shrink protected collection values (dispatches[] et al.).
+		shrunk := shrinkProtectedCollections(state.Metadata, l.MaxEntryBytes)
+		// Phase C: replace protected values with markers until the bound holds.
+		shrunk = append(shrunk, enforceProtectedGuarantee(state.Metadata, l.MaxEntryBytes)...)
+		if len(dropped) > 0 || len(shrunk) > 0 {
 			rep.Scope = "entry"
 			rep.LimitBytes = l.MaxEntryBytes
 			rep.DroppedKeys = dropped
+			rep.ClampedKeys = appendUnique(rep.ClampedKeys, shrunk...)
 		}
 	}
 
@@ -184,6 +208,11 @@ func clampEntry(state *types.AgentStateUpdate, l MetadataLimits) *ClampReport {
 	}
 
 	markTruncated(state.Metadata, append(append([]string{}, rep.ClampedKeys...), rep.DroppedKeys...))
+	if l.MaxEntryBytes != LimitsDisabled {
+		// The in-band truncation stamps add a few bytes of their own; the
+		// entry bound is a guarantee, so re-assert it after stamping.
+		rep.ClampedKeys = appendUnique(rep.ClampedKeys, enforceProtectedGuarantee(state.Metadata, l.MaxEntryBytes)...)
+	}
 	rep.OriginalBytes = originalBytes
 	rep.ClampedBytes = approxMapBytes(state.Metadata)
 	utils.LogWithFields(utils.LevelWarn, "session.agents", "agent_metadata_clamped", map[string]any{
@@ -322,6 +351,43 @@ func clampSnapshot(states []types.AgentStateUpdate, l MetadataLimits) *ClampRepo
 		}
 	}
 
+	// Shedding unprotected keys alone cannot enforce the bound when the mass
+	// sits under protected keys (the dispatches[] pathology). Re-clamp every
+	// entry against a proportional share of the roster budget — the same
+	// guarantee pipeline as clampEntry, so the roster bound is as hard as the
+	// entry bound. The floor keeps identity keys renderable when the roster is
+	// implausibly wide; below it the byte bound yields to "every agent stays
+	// identifiable", which is the documented never-drop-an-agent contract.
+	if total > l.MaxSnapshotBytes {
+		identityBytes := 0
+		for i := range states {
+			identityBytes += len(states[i].Name) + len(states[i].ID) + len(states[i].Status)
+		}
+		perEntry := (l.MaxSnapshotBytes - identityBytes) / len(states)
+		const perEntryFloor = 1024
+		if perEntry < perEntryFloor {
+			perEntry = perEntryFloor
+		}
+		for i := range states {
+			md := states[i].Metadata
+			if md == nil || approxMapBytes(md) <= perEntry {
+				continue
+			}
+			shrunk := shrinkProtectedCollections(md, perEntry)
+			shrunk = append(shrunk, enforceProtectedGuarantee(md, perEntry)...)
+			if len(shrunk) > 0 {
+				markTruncated(md, shrunk)
+				dropped = append(dropped, shrunk...)
+				// Re-assert after stamping, as in clampEntry.
+				enforceProtectedGuarantee(md, perEntry)
+			}
+		}
+		total = 0
+		for i := range states {
+			total += approxMapBytes(states[i].Metadata) + len(states[i].Name) + len(states[i].ID) + len(states[i].Status)
+		}
+	}
+
 	rep := &ClampReport{
 		Scope: "snapshot", DroppedKeys: dropped,
 		OriginalBytes: original, ClampedBytes: total, LimitBytes: l.MaxSnapshotBytes,
@@ -346,7 +412,12 @@ func markTruncated(md map[string]any, keys []string) {
 		return
 	}
 	md["_truncated"] = true
-	existing, _ := md["_truncatedKeys"].([]string)
+	// A non-[]string value (impossible from this file, conceivable from a
+	// producer squatting on the reserved key) resets to a fresh list.
+	existing, ok := md["_truncatedKeys"].([]string)
+	if !ok {
+		existing = nil
+	}
 	md["_truncatedKeys"] = appendUnique(existing, keys...)
 }
 

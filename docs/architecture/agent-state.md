@@ -115,7 +115,7 @@ Keys beginning with `_` are reserved by the engine (see `_truncated` below).
 
 This is not theoretical. A 36,969,872-byte `engine_agent_state` carrying only 11 agents (~3.3 MB each) was rebuilt byte-identical for over 15 hours. It exceeded the desktop's 6 MiB transport cap on all 1,873 attempts, so it was dropped every time — iOS went blind to agent state for the entire window while the desktop burned CPU rebuilding an undeliverable frame. The engine had written all 35 MB to the NDJSON socket regardless, so every external wire consumer paid for it too.
 
-Three tiers, configurable under `limits.agentStateMetadata` in `engine.json` (`0` = default, `-1` = disabled), with an enterprise ceiling that is minimum-wins:
+The tiers are configurable under `limits.agentStateMetadata` in `engine.json` (`0` = default, `-1` = disabled), with an enterprise ceiling that is minimum-wins:
 
 | Tier | Default | Catches |
 |---|---|---|
@@ -123,14 +123,19 @@ Three tiers, configurable under `limits.agentStateMetadata` in `engine.json` (`0
 | `maxEntryBytes` | 65536 | death by a thousand keys |
 | `maxSnapshotBytes` | 4 MiB | an agent-*count* explosion |
 | `maxDepth` | 4 | nested structures |
+| `maxDispatchEntries` | 50 | an unbounded dispatch *history* |
+
+`maxDispatchEntries` exists because a byte tier cannot see a history coming: `dispatches[]` accumulates one small record per Agent-tool dispatch (and rehydrates across restarts), so no single value ever trips `maxValueBytes` while the array grows without bound. The emitted snapshot keeps the most recent entries, stamps the original count as `dispatchesTotal`, and marks the cut in `_truncatedKeys`. The full history remains in conversation storage and producer persistence — a complete-snapshot event carries live status, not an archive.
+
+**The entry and snapshot bounds are hard guarantees, not best-effort.** The entry budget runs in three phases: drop unprotected keys largest-first; then shrink protected *collection* values (arrays lose their oldest elements, nested maps their largest inner keys); then, as an unconditional backstop, replace protected values with a truncation marker until the entry fits — `displayName` last, truncated rather than dropped. The snapshot budget re-applies the same pipeline per entry against a proportional share. A clamp advisory therefore always reports `clamped_bytes ≤ limit_bytes`.
 
 Rules the clamp obeys, which consumers may rely on:
 
 - **An agent is never dropped**, only metadata. Omitting an agent from a complete snapshot means "this agent is gone", so shedding one to save bytes would be a lie.
-- **Protected keys are never removed, but their values are still clamped.** Protection is about key retention, not exemption from the bound. The protected set is `displayName`, `type`, `visibility`, `invited`, `status`, `color`, `dispatchId`, `dispatchParentId`, `dispatchDepth`, `dispatches`, `conversationId`.
+- **Protected keys are never removed, but their values are shrunk as far as the budget requires.** Protection is about key retention, not exemption from the bound. The protected set is `displayName`, `type`, `visibility`, `invited`, `status`, `color`, `dispatchId`, `dispatchParentId`, `dispatchDepth`, `dispatches`, `conversationId`.
 - **`visibility` and `invited` are protected for a cross-client reason.** iOS defaults an absent `visibility` to `ephemeral` and renders ephemeral agents only while running; an absent `invited` defaults to `false`, which hides `sticky` rows. Dropping either would silently empty the agents panel — a wrong render that looks successful, which is worse than a dropped frame.
 - **Truncation is UTF-8 safe.** A byte-slice cut would emit invalid UTF-8 and make the whole frame undecodable, turning a large snapshot into no snapshot.
-- **`dispatches[]` is recursed into, not discarded**, because per-dispatch UI state is keyed on the `id` / `status` / `conversationId` inside it.
+- **`dispatches[]` keeps its most recent entries**, each recursed into rather than flattened, because per-dispatch UI state is keyed on the `id` / `status` / `conversationId` inside it. When the array is cut, `dispatchesTotal` carries the pre-cut count.
 
 ### `_truncated` / `_truncatedKeys`
 

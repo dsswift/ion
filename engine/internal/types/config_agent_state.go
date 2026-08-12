@@ -40,33 +40,45 @@ type AgentStateMetadataLimits struct {
 
 	// MaxDepth bounds recursion into nested maps and slices.
 	MaxDepth *int `json:"maxDepth,omitempty"`
+
+	// MaxDispatchEntries bounds the dispatches[] history array carried in an
+	// agent's metadata on the emitted snapshot. The engine appends one record
+	// per Agent-tool dispatch and rehydrates them across restarts, so on a
+	// long-lived session the array grows without bound while every byte of it
+	// is re-serialized on every emission. The emitted snapshot keeps the most
+	// recent entries plus a total count; the full history remains in
+	// conversation storage and producer persistence.
+	MaxDispatchEntries *int `json:"maxDispatchEntries,omitempty"`
 }
 
 // ResolvedAgentStateMetadataLimits is the flattened form the engine uses.
 type ResolvedAgentStateMetadataLimits struct {
-	MaxValueBytes    int
-	MaxEntryBytes    int
-	MaxSnapshotBytes int
-	MaxDepth         int
+	MaxValueBytes      int
+	MaxEntryBytes      int
+	MaxSnapshotBytes   int
+	MaxDepth           int
+	MaxDispatchEntries int
 }
 
 // Built-in defaults. Kept here so config resolution has a single source of
 // truth; the agents package mirrors these as its own constants for the case
 // where no config is present at all.
 const (
-	DefaultAgentStateMaxValueBytes    = 4096
-	DefaultAgentStateMaxEntryBytes    = 65536
-	DefaultAgentStateMaxSnapshotBytes = 4 * 1024 * 1024
-	DefaultAgentStateMaxDepth         = 4
+	DefaultAgentStateMaxValueBytes      = 4096
+	DefaultAgentStateMaxEntryBytes      = 65536
+	DefaultAgentStateMaxSnapshotBytes   = 4 * 1024 * 1024
+	DefaultAgentStateMaxDepth           = 4
+	DefaultAgentStateMaxDispatchEntries = 50
 )
 
 // AgentStateMetadataDefaults returns the compiled defaults.
 func AgentStateMetadataDefaults() ResolvedAgentStateMetadataLimits {
 	return ResolvedAgentStateMetadataLimits{
-		MaxValueBytes:    DefaultAgentStateMaxValueBytes,
-		MaxEntryBytes:    DefaultAgentStateMaxEntryBytes,
-		MaxSnapshotBytes: DefaultAgentStateMaxSnapshotBytes,
-		MaxDepth:         DefaultAgentStateMaxDepth,
+		MaxValueBytes:      DefaultAgentStateMaxValueBytes,
+		MaxEntryBytes:      DefaultAgentStateMaxEntryBytes,
+		MaxSnapshotBytes:   DefaultAgentStateMaxSnapshotBytes,
+		MaxDepth:           DefaultAgentStateMaxDepth,
+		MaxDispatchEntries: DefaultAgentStateMaxDispatchEntries,
 	}
 }
 
@@ -88,6 +100,9 @@ func (l *AgentStateMetadataLimits) Resolved() ResolvedAgentStateMetadataLimits {
 	}
 	if l.MaxDepth != nil && *l.MaxDepth != 0 {
 		out.MaxDepth = *l.MaxDepth
+	}
+	if l.MaxDispatchEntries != nil && *l.MaxDispatchEntries != 0 {
+		out.MaxDispatchEntries = *l.MaxDispatchEntries
 	}
 	return out
 }
