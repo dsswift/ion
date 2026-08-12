@@ -56,7 +56,8 @@ struct ConversationStatusBar: View {
     /// it does for plain conversations); when an engine instance has no status
     /// yet, these fall back to safe values so the core controls (model picker,
     /// permission toggle, attachments) stay visible and the status-dependent
-    /// chrome (status dot, context %, extension name) self-hides.
+    /// chrome (status dot, extension name) self-hides; context radial remains
+    /// mounted at neutral 0% until occupancy becomes available.
     struct EngineInputs: Equatable {
         let preferredModel: String
         let contextPercent: Double?
@@ -229,6 +230,13 @@ struct ConversationStatusBar: View {
     /// own view rather than vanishing).
     private var selectedModelWindow: Int? {
         Self.windowForModel(effectiveModel, availableModels: availableModels, engineContextWindow: engineContextWindow)
+    }
+
+    /// Presentation percentage for the persistent context ring. Missing
+    /// occupancy renders as a neutral 0% ring so a fresh, idle, completed, or
+    /// background-agent-waiting conversation never loses its tap target.
+    var radialContextPercent: Double {
+        resolvedContextPercent ?? 0
     }
 
     /// Accessible name for the context ring. Carries the true uncapped
@@ -466,17 +474,13 @@ struct ConversationStatusBar: View {
             }
             .buttonStyle(.plain)
 
-            // Context usage (only when data is available). The ring replaced
-            // the percentage text, so the accessibility label is what carries
-            // the figure — including the true uncapped value when the arc
-            // itself has saturated.
-            if let pct = resolvedContextPercent {
-                Button(action: onTapContextIndicator) {
-                    ContextUsageRing(percent: pct, color: contextColor)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(contextAccessibilityLabel(pct: pct))
+            // Context usage stays mounted through every conversation lifecycle
+            // state. When occupancy has not arrived, its neutral ring shows 0%.
+            Button(action: onTapContextIndicator) {
+                ContextUsageRing(percent: radialContextPercent, color: contextColor)
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel(contextAccessibilityLabel(pct: radialContextPercent))
         }
         .font(.caption2)
         .padding(.horizontal, 12)

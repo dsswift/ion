@@ -8,7 +8,8 @@ import XCTest
 /// conversations — even when the engine instance has no StatusFields yet. The
 /// resolver returns safe fallbacks so the core controls (model picker,
 /// permission toggle, attachments) stay visible and only the status-dependent
-/// chrome (status dot, context %, extension name) self-hides.
+/// chrome (status dot, extension name) self-hides. Context radial stays mounted
+/// at 0% so its status-drawer trigger never disappears.
 ///
 /// This is the testable seam the Phase 6 merged view consumes to render the bar
 /// unconditionally, replacing the old `statusFields != nil` gate that hid the

@@ -65,6 +65,27 @@ final class ContextUsageRingTests: XCTestCase {
 
     // MARK: - Accessibility label
 
+    func testFreshConversationRendersZeroPercentRadial() {
+        let bar = ConversationStatusBar(
+            modelOverride: nil,
+            preferredModel: "claude-sonnet-4-6",
+            contextPercent: nil,
+            contextTokens: nil,
+            engineContextWindow: nil,
+            isRunning: false,
+            permissionMode: .auto,
+            availableModels: [],
+            attachmentCount: 0,
+            onSelectModel: { _ in },
+            onToggleMode: {},
+            onTapAttachments: {},
+        )
+
+        XCTAssertNil(bar.resolvedContextPercent)
+        XCTAssertEqual(bar.radialContextPercent, 0)
+        XCTAssertEqual(bar.contextAccessibilityLabel(pct: bar.radialContextPercent), "Context usage 0 percent")
+    }
+
     func testAccessibilityLabelCarriesPercentAndTokens() {
         // No number is rendered as text any more, so the label is the sole
         // textual carrier of the figure.
