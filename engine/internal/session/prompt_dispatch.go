@@ -72,6 +72,7 @@ type PromptOverrides struct {
 	// for the wire-side contract. Additive optional field; nil/empty
 	// for prompts that don't need per-prompt additions.
 	BashAllowlistAdditionsForThisPrompt []string
+	McpAllowlistAdditionsForThisPrompt  []string
 
 	// CompactTargetPercent overrides the post-compact target as a percentage of
 	// the context window. Zero means "use engine default".

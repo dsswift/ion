@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -180,8 +181,34 @@ type jsonRPCNotification struct {
 	Params  any    `json:"params,omitempty"`
 }
 
+// validateTransportConfig rejects config that cannot reach the selected MCP transport.
+func validateTransportConfig(name string, config types.McpServerConfig) error {
+	switch config.Type {
+	case "", "stdio":
+		if config.Command == "" {
+			return fmt.Errorf("MCP server %q: type %q requires command", name, config.Type)
+		}
+	case "http", "sse":
+		parsed, err := url.Parse(config.URL)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			return fmt.Errorf("MCP server %q: type %q requires an absolute http(s) URL; got %q — did you mean type \"stdio\" with command %q?", name, config.Type, config.URL, config.URL)
+		}
+	case "ws", "websocket":
+		parsed, err := url.Parse(config.URL)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" || (parsed.Scheme != "ws" && parsed.Scheme != "wss") {
+			return fmt.Errorf("MCP server %q: type %q requires an absolute ws(s) URL; got %q", name, config.Type, config.URL)
+		}
+	}
+	return nil
+}
+
 // Connect establishes a connection to an MCP server.
 func Connect(name string, config types.McpServerConfig) (*Connection, error) {
+	if err := validateTransportConfig(name, config); err != nil {
+		utils.LogWithFields(utils.LevelError, "mcp", "MCP transport configuration rejected", map[string]any{"serverName": name, "transport": config.Type, "error": utils.ErrStr(err)})
+		return nil, err
+	}
+
 	var transport mcpTransport
 	var err error
 
@@ -352,18 +379,34 @@ func (c *Connection) initialize() error {
 func (c *Connection) listTools() ([]ToolDef, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), DefaultMetadataTimeout)
 	defer cancel()
-	resp, err := c.call(ctx, "tools/list", nil)
-	if err != nil {
-		return nil, err
-	}
 
-	var result struct {
-		Tools []ToolDef `json:"tools"`
+	const maxToolPages = 50
+	var tools []ToolDef
+	cursor := ""
+	for page := 0; page < maxToolPages; page++ {
+		var params any
+		if cursor != "" {
+			params = map[string]any{"cursor": cursor}
+		}
+		resp, err := c.call(ctx, "tools/list", params)
+		if err != nil {
+			return nil, err
+		}
+		var result struct {
+			Tools      []ToolDef `json:"tools"`
+			NextCursor string    `json:"nextCursor"`
+		}
+		if err := json.Unmarshal(resp, &result); err != nil {
+			return nil, fmt.Errorf("parse tools: %w", err)
+		}
+		tools = append(tools, result.Tools...)
+		if result.NextCursor == "" {
+			return tools, nil
+		}
+		cursor = result.NextCursor
 	}
-	if err := json.Unmarshal(resp, &result); err != nil {
-		return nil, fmt.Errorf("parse tools: %w", err)
-	}
-	return result.Tools, nil
+	utils.LogWithFields(utils.LevelWarn, "mcp", "MCP tool listing reached pagination limit", map[string]any{"serverName": c.name, "maxPages": maxToolPages})
+	return tools, nil
 }
 
 func (c *Connection) call(ctx context.Context, method string, params any) (json.RawMessage, error) {

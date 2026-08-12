@@ -125,7 +125,7 @@ func TestShouldInjectPlanModeReminderForRun_ThresholdBoundary(t *testing.T) {
 // full plan-mode prompt includes the negative-example callout for anti-pattern
 // phrases. Guards against silent regression of Fix 1.
 func TestBuildPlanModePrompt_ContainsForbiddenProseCallout(t *testing.T) {
-	result := buildPlanModePrompt("/tmp/test-plan.md", false, nil)
+	result := buildPlanModePrompt("/tmp/test-plan.md", false, nil, nil)
 	phrases := []string{
 		"Should I proceed",
 		"ExitPlanMode",
@@ -163,10 +163,10 @@ func TestBuildPlanModeSparseReminder_ContainsCanonicalPathAndNoInventClause(t *t
 	planPath := "/tmp/canonical-plan.md"
 	result := buildPlanModeSparseReminder(planPath)
 	phrases := []string{
-		planPath,                               // the exact canonical path
-		"Do not invent a new plan",             // forbids inventing a filename
+		planPath,                                // the exact canonical path
+		"Do not invent a new plan",              // forbids inventing a filename
 		"only valid plan file for this session", // anchors to this session's path
-		"prior completed cycles",               // names stale history paths explicitly
+		"prior completed cycles",                // names stale history paths explicitly
 	}
 	for _, phrase := range phrases {
 		if !strings.Contains(result, phrase) {
@@ -181,7 +181,7 @@ func TestBuildPlanModeSparseReminder_ContainsCanonicalPathAndNoInventClause(t *t
 // silent-success to error-signal: the prompt now says the engine returns an error
 // rather than silently redirecting.
 func TestBuildPlanModePrompt_ContainsNoInventClause(t *testing.T) {
-	result := buildPlanModePrompt("/tmp/test-plan.md", false, nil)
+	result := buildPlanModePrompt("/tmp/test-plan.md", false, nil, nil)
 	phrases := []string{
 		"do not invent a new plan filename",
 		"engine will return an error",
@@ -199,7 +199,7 @@ func TestBuildPlanModePrompt_ContainsNoInventClause(t *testing.T) {
 // because private reasoning never reaches the user. Appears in both the
 // Phase 1 exploration bullet and the Turn Behavior section.
 func TestBuildPlanModePrompt_ContainsVisibleLeadUpRule(t *testing.T) {
-	result := buildPlanModePrompt("/tmp/test-plan.md", false, nil)
+	result := buildPlanModePrompt("/tmp/test-plan.md", false, nil, nil)
 	phrases := []string{
 		"visible assistant text before the tool call",
 		"private reasoning is never shown to them",

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/conversation"
@@ -74,6 +75,29 @@ func unionPromptBashAllowlist(opts types.RunOptions) []string {
 		out = append(out, cmd)
 	}
 	return out
+}
+
+func effectiveMcpAllowlist(opts types.RunOptions) []string {
+	seen := make(map[string]struct{}, len(opts.PlanModeAllowedMcpTools)+len(opts.McpAllowlistAdditionsForThisPrompt))
+	var tools []string
+	for _, list := range [][]string{opts.PlanModeAllowedMcpTools, opts.McpAllowlistAdditionsForThisPrompt} {
+		for _, tool := range list {
+			if _, ok := seen[tool]; !ok {
+				seen[tool] = struct{}{}
+				tools = append(tools, tool)
+			}
+		}
+	}
+	return config.ClampPlanModeMcpToolsToEnterprise(tools)
+}
+
+func mcpToolAllowed(name string, allowlist []string) bool {
+	for _, allowed := range allowlist {
+		if name == allowed || strings.HasPrefix(name, allowed+"__") {
+			return true
+		}
+	}
+	return false
 }
 
 // resolveProvider resolves the provider for the given model and injects the
@@ -244,7 +268,7 @@ func buildSystemPrompt(opts *types.RunOptions, conv *conversation.Conversation, 
 			// declares additional commands in its frontmatter the model
 			// sees them in the prompt-time tool list.
 			_, err := os.Stat(opts.PlanFilePath)
-			planPrompt = buildPlanModePrompt(opts.PlanFilePath, err == nil, effectiveBashAllowlist(*opts))
+			planPrompt = buildPlanModePrompt(opts.PlanFilePath, err == nil, effectiveBashAllowlist(*opts), effectiveMcpAllowlist(*opts))
 		}
 		// Prepend reentry guidance when returning to plan mode after a
 		// previous exit. This tells the LLM to read the existing plan and
@@ -388,9 +412,10 @@ func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provid
 		// AskUserQuestion is injected unconditionally above; keep it through
 		// the plan-mode filter so it is still available during plan mode.
 		allowed[tools.AskUserQuestionName] = true
+		mcpAllowlist := effectiveMcpAllowlist(opts)
 		var filtered []types.LlmToolDef
 		for _, td := range toolDefs {
-			if allowed[td.Name] || td.PlanModeSafe {
+			if allowed[td.Name] || td.PlanModeSafe || (strings.HasPrefix(td.Name, "mcp__") && mcpToolAllowed(td.Name, mcpAllowlist)) {
 				filtered = append(filtered, td)
 			}
 		}

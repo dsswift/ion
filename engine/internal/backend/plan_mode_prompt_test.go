@@ -17,7 +17,7 @@ const testPlanPath = "/home/user/.ion/plans/rapid-prancing-berry.md"
 // disambiguation note. Without this note the agent can be confused by sparse-
 // reminder injections from prior planning cycles that cite different paths.
 func TestBuildPlanModePrompt_NewFile_DisambiguationNote(t *testing.T) {
-	out := buildPlanModePrompt(testPlanPath, false, nil)
+	out := buildPlanModePrompt(testPlanPath, false, nil, nil)
 	wantPhrases := []string{
 		"CURRENT planning cycle",
 		"completed cycles and are no longer active",
@@ -38,7 +38,7 @@ func TestBuildPlanModePrompt_NewFile_DisambiguationNote(t *testing.T) {
 // existing-file branch does NOT inject the new-file disambiguation note —
 // the note is only needed when the assigned file is new (not yet on disk).
 func TestBuildPlanModePrompt_ExistingFile_NoDisambiguationNote(t *testing.T) {
-	out := buildPlanModePrompt(testPlanPath, true, nil)
+	out := buildPlanModePrompt(testPlanPath, true, nil, nil)
 	if strings.Contains(out, "CURRENT planning cycle") {
 		t.Error("existing-file prompt should not contain the new-cycle disambiguation note")
 	}
@@ -56,7 +56,7 @@ func TestBuildPlanModePrompt_ExistingFile_NoDisambiguationNote(t *testing.T) {
 // the restriction as applying only to invented names.
 func TestBuildPlanModePrompt_RestrictionBullet(t *testing.T) {
 	for _, exists := range []bool{false, true} {
-		out := buildPlanModePrompt(testPlanPath, exists, nil)
+		out := buildPlanModePrompt(testPlanPath, exists, nil, nil)
 		wantPhrases := []string{
 			"ONLY valid plan file for this session",
 			"previous cycle",
@@ -73,13 +73,13 @@ func TestBuildPlanModePrompt_RestrictionBullet(t *testing.T) {
 // and read-only tool list are unaffected by the disambiguation changes.
 func TestBuildPlanModePrompt_BashSection_Unchanged(t *testing.T) {
 	// Without bash allowlist: MUST NOT call Bash restriction present.
-	out := buildPlanModePrompt(testPlanPath, false, nil)
+	out := buildPlanModePrompt(testPlanPath, false, nil, nil)
 	if !strings.Contains(out, "MUST NOT call Bash") {
 		t.Error("no-bash-allowlist prompt missing 'MUST NOT call Bash'")
 	}
 
 	// With bash allowlist: Bash (restricted) added, prefix listed.
-	outBash := buildPlanModePrompt(testPlanPath, false, []string{"gh", "go test"})
+	outBash := buildPlanModePrompt(testPlanPath, false, []string{"gh", "go test"}, nil)
 	if !strings.Contains(outBash, "Bash (restricted)") {
 		t.Error("bash-allowlist prompt missing 'Bash (restricted)'")
 	}
@@ -113,7 +113,7 @@ func TestBuildPlanModeSparseReminder_CycleNote(t *testing.T) {
 // question when a request carries no plan to present.
 func TestBuildPlanModePrompt_ThirdPath_DirectAnswer(t *testing.T) {
 	for _, exists := range []bool{false, true} {
-		out := buildPlanModePrompt(testPlanPath, exists, nil)
+		out := buildPlanModePrompt(testPlanPath, exists, nil, nil)
 		wantPhrases := []string{
 			"one of three ways",
 			"A direct answer",
@@ -134,7 +134,7 @@ func TestBuildPlanModePrompt_ThirdPath_DirectAnswer(t *testing.T) {
 // legal endings, which is the exact coercion the third path removes.
 func TestBuildPlanModePrompt_NoBinaryPhrasing(t *testing.T) {
 	for _, exists := range []bool{false, true} {
-		out := buildPlanModePrompt(testPlanPath, exists, nil)
+		out := buildPlanModePrompt(testPlanPath, exists, nil, nil)
 		badPhrases := []string{
 			"one of two ways",
 			"Do not end a turn without one of these",
@@ -173,7 +173,7 @@ func TestBuildPlanModeSparseReminder_ThirdPath(t *testing.T) {
 // defaultPlanModeTools, so this also pins that the advertised set and the
 // enforced set cannot drift apart.
 func TestBuildPlanModePrompt_AdvertisesSkill(t *testing.T) {
-	out := buildPlanModePrompt(testPlanPath, false, nil)
+	out := buildPlanModePrompt(testPlanPath, false, nil, nil)
 	if !strings.Contains(out, "Skill") {
 		t.Error("plan-mode prompt does not advertise the Skill tool")
 	}
@@ -184,10 +184,17 @@ func TestBuildPlanModePrompt_AdvertisesSkill(t *testing.T) {
 // list previously drifted from the enforced allowlist; deriving it from the
 // slice makes that impossible, and this test pins the guarantee.
 func TestBuildPlanModePrompt_ToolProseMatchesAllowlist(t *testing.T) {
-	out := buildPlanModePrompt(testPlanPath, false, nil)
+	out := buildPlanModePrompt(testPlanPath, false, nil, nil)
 	for _, tool := range defaultPlanModeTools {
 		if !strings.Contains(out, tool) {
 			t.Errorf("plan-mode prompt prose omits allowlisted tool %q", tool)
 		}
+	}
+}
+
+func TestBuildPlanModePromptNamesAllowedMcpTools(t *testing.T) {
+	out := buildPlanModePrompt(testPlanPath, false, nil, []string{"mcp__mobbin__search_screens"})
+	if !strings.Contains(out, "mcp__mobbin__search_screens") {
+		t.Fatalf("plan prompt does not name MCP allowlist: %s", out)
 	}
 }

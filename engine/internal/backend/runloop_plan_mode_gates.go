@@ -503,7 +503,7 @@ func interceptEnterPlanMode(
 	// directly), so this only fixes the prompt-text asymmetry —
 	// behavior was already correct.
 	_, err := os.Stat(planFilePath)
-	planPrompt := buildPlanModePrompt(planFilePath, err == nil, run.planModeAllowedBashCommands)
+	planPrompt := buildPlanModePrompt(planFilePath, err == nil, run.planModeAllowedBashCommands, nil)
 	resultContent := fmt.Sprintf("Plan mode entered. Plan file: %s\n\n%s", planFilePath, planPrompt)
 	// What gets PERSISTED is a one-line fact, not the framing above.
 	//

@@ -474,3 +474,28 @@ func TestCall_DeadAfterTimeout(t *testing.T) {
 		t.Errorf("expected 'dead' in error, got: %s", err)
 	}
 }
+
+func TestToolResultFromContentPreservesImagesAndStructuredContent(t *testing.T) {
+	result := toolResultFromContent("test", "screen", []mcpContentBlock{
+		{Type: "text", Text: "screen result"},
+		{Type: "image", MimeType: "image/png", Data: "aGVsbG8="},
+		{Type: "resource_link", Name: "detail", URI: "mcp://detail", MimeType: "application/json"},
+	}, nil)
+	if result.Content == "" || !strings.Contains(result.Content, "screen result") || !strings.Contains(result.Content, "mcp://detail") {
+		t.Fatalf("content = %q", result.Content)
+	}
+	if len(result.Images) != 1 || result.Images[0].MediaType != "image/png" || result.Images[0].Data != "aGVsbG8=" {
+		t.Fatalf("images = %#v", result.Images)
+	}
+	structured := toolResultFromContent("test", "structured", nil, json.RawMessage(`{"screens":2}`))
+	if structured.Content != `{"screens":2}` {
+		t.Fatalf("structured content = %q", structured.Content)
+	}
+}
+
+func TestValidateTransportConfigRejectsCommandAsHTTPURL(t *testing.T) {
+	err := validateTransportConfig("playwright", types.McpServerConfig{Type: "http", URL: "npx"})
+	if err == nil || !strings.Contains(err.Error(), "stdio") {
+		t.Fatalf("err = %v, want actionable stdio guidance", err)
+	}
+}

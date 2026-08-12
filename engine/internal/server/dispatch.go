@@ -48,7 +48,7 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "send_prompt":
 		var overrides *session.PromptOverrides
 		resolvedExts := cmd.ResolveExtensions()
-		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" || len(cmd.Attachments) > 0 || cmd.ImplementationPhase || cmd.ThinkingEffort != "" || cmd.EnterPlanModeDescription != "" || cmd.PlanModeSparseReminder != "" || cmd.PlanFilePath != "" || len(cmd.BashAllowlistAdditionsForThisPrompt) > 0 || cmd.CompactTargetPercent > 0 || cmd.CompactMicroKeepTurns > 0 || cmd.CompactEnabled != nil || cmd.CompactSummaryEnabled != nil || cmd.CompactMemoryEnabled != nil || cmd.ResolveSlash || cmd.ClientWorkspaceContext != nil {
+		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" || len(cmd.Attachments) > 0 || cmd.ImplementationPhase || cmd.ThinkingEffort != "" || cmd.EnterPlanModeDescription != "" || cmd.PlanModeSparseReminder != "" || cmd.PlanFilePath != "" || len(cmd.BashAllowlistAdditionsForThisPrompt) > 0 || len(cmd.McpAllowlistAdditionsForThisPrompt) > 0 || cmd.CompactTargetPercent > 0 || cmd.CompactMicroKeepTurns > 0 || cmd.CompactEnabled != nil || cmd.CompactSummaryEnabled != nil || cmd.CompactMemoryEnabled != nil || cmd.ResolveSlash || cmd.ClientWorkspaceContext != nil {
 			overrides = &session.PromptOverrides{
 				Model:                    cmd.Model,
 				MaxTurns:                 cmd.MaxTurns,
@@ -69,6 +69,7 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 				// three-layer configuration model (engine config → session
 				// override → per-prompt additions).
 				BashAllowlistAdditionsForThisPrompt: cmd.BashAllowlistAdditionsForThisPrompt,
+				McpAllowlistAdditionsForThisPrompt:  cmd.McpAllowlistAdditionsForThisPrompt,
 				CompactTargetPercent:                cmd.CompactTargetPercent,
 				CompactMicroKeepTurns:               cmd.CompactMicroKeepTurns,
 				CompactEnabled:                      cmd.CompactEnabled,
@@ -178,6 +179,9 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		// wire surface.
 		if cmd.PlanModeAllowedBashCommands != nil {
 			s.manager.SetPlanModeBashAllowlist(cmd.Key, cmd.PlanModeAllowedBashCommands)
+		}
+		if cmd.PlanModeAllowedMcpTools != nil {
+			s.manager.SetPlanModeMcpAllowlist(cmd.Key, cmd.PlanModeAllowedMcpTools)
 		}
 		s.sendResult(conn, cmd, nil, nil)
 

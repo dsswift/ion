@@ -215,6 +215,7 @@ type engineSession struct {
 	planMode                    bool
 	planModeTools               []string
 	planModeAllowedBashCommands []string
+	planModeAllowedMcpTools     []string
 	planFilePath                string
 	planModePromptSent          bool
 	// lostDispatches queues the dispatches rehydrateDispatchState resolved as

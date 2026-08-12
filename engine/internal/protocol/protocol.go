@@ -212,6 +212,9 @@ type ClientCommand struct {
 	// need to extend the plan-mode bash allowlist.
 	PlanModeAllowedBashCommands []string `json:"planModeAllowedBashCommands,omitempty"`
 
+	// set_plan_mode: named MCP tools or `mcp__server` prefixes permitted in plan mode.
+	PlanModeAllowedMcpTools []string `json:"planModeAllowedMcpTools,omitempty"`
+
 	// send_prompt: per-prompt bash-allowlist additions. Distinct from
 	// PlanModeAllowedBashCommands above (which is a SESSION-scoped
 	// override carried on set_plan_mode). The additions here are
@@ -234,6 +237,7 @@ type ClientCommand struct {
 	// session allowlist itself is never mutated by this field — that
 	// invariant is the entire point of the field's existence.
 	BashAllowlistAdditionsForThisPrompt []string `json:"bashAllowlistAdditionsForThisPrompt,omitempty"`
+	McpAllowlistAdditionsForThisPrompt  []string `json:"mcpAllowlistAdditionsForThisPrompt,omitempty"`
 
 	// send_prompt: signals that Text is a slash-command invocation
 	// (`/name args`) the engine should resolve and expand, rather than a plain

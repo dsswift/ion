@@ -2,14 +2,62 @@ package tools
 
 import (
 	"context"
+	"encoding/base64"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/network"
 	"github.com/dsswift/ion/engine/internal/skills"
 )
+
+type webFetchTestRoundTripper struct {
+	response *http.Response
+}
+
+func (t webFetchTestRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	return t.response, nil
+}
+
+func TestWebFetchReturnsSupportedImage(t *testing.T) {
+	image := []byte{0x89, 0x50, 0x4e, 0x47}
+	client := network.GetHTTPClient()
+	originalTransport := client.Transport
+	client.Transport = webFetchTestRoundTripper{response: &http.Response{
+		StatusCode: http.StatusOK,
+		Status:     "200 OK",
+		Header:     http.Header{"Content-Type": []string{"image/png"}},
+		Body:       io.NopCloser(strings.NewReader(string(image))),
+	}}
+	defer func() { client.Transport = originalTransport }()
+
+	result, err := executeWebFetch(context.Background(), map[string]any{
+		"url": "https://example.com/chart.png",
+	}, "/tmp")
+	if err != nil {
+		t.Fatalf("executeWebFetch() error = %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("executeWebFetch() returned error: %s", result.Content)
+	}
+	if len(result.Images) != 1 {
+		t.Fatalf("image count = %d, want 1", len(result.Images))
+	}
+	got := result.Images[0]
+	if got.Type != "base64" {
+		t.Errorf("image type = %q, want base64", got.Type)
+	}
+	if got.MediaType != "image/png" {
+		t.Errorf("image media type = %q, want image/png", got.MediaType)
+	}
+	if got.Data != base64.StdEncoding.EncodeToString(image) {
+		t.Errorf("image data = %q, want base64-encoded response body", got.Data)
+	}
+}
 
 func TestWebFetchBlockedHosts(t *testing.T) {
 	tests := []struct {
@@ -619,7 +667,6 @@ func TestRefreshSkillToolDescription(t *testing.T) {
 		t.Errorf("expected 'fresh' in description after refresh, got:\n%s", after.Description)
 	}
 }
-
 
 func TestListMcpResourcesUnknownServer(t *testing.T) {
 	result, _ := ExecuteTool(context.Background(), "ListMcpResources", map[string]any{
