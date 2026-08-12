@@ -90,11 +90,11 @@ describe('wireRemoteSessionPlaneForwarding — suppress engine-bridge-covered ev
 
   it('STILL sends desktop_task_complete for task_complete (no engine-bridge equivalent)', () => {
     sessionPlaneEmitter.emit('event', 'tab1', {
-      type: 'task_complete', result: 'done', costUsd: 0.01, reason: 'max_turns',
+      type: 'task_complete', result: 'done', costUsd: 0.01, durationMs: 12_000, reason: 'max_turns',
     })
     const sent = sentOfType('desktop_task_complete')
     expect(sent).toHaveLength(1)
-    expect(sent[0][0]).toMatchObject({ type: 'desktop_task_complete', tabId: 'tab1', reason: 'max_turns' })
+    expect(sent[0][0]).toMatchObject({ type: 'desktop_task_complete', tabId: 'tab1', durationMs: 12_000, reason: 'max_turns' })
   })
 
   it('task_complete is NOT in the isCoveredByEngineBridge suppression set — send fires exactly once', () => {

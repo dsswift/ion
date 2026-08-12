@@ -23,7 +23,7 @@ import { rDebug, rInfo, rError } from '../rendererLogger'
 import {
   groupMessages,
   MessageActions, InterruptButton,
-  QueuedMessage, EmptyState,
+  QueuedMessage, EmptyState, RunDurationFooter,
 } from './conversation'
 
 // Stable empty refs to avoid creating new array/object references on every render.
@@ -87,6 +87,7 @@ export function ConversationView({ tabId }: ConversationViewProps) {
     return k ? (s.engineWorkingMessages.get(k) || '') : ''
   })
   const tabStatus = useSessionStore(s => s.tabs.find(t => t.id === tabId)?.status)
+  const lastResult = useSessionStore(s => s.tabs.find(t => t.id === tabId)?.lastResult ?? null)
   const permissionDenied = useSessionStore(s => {
     const p = s.conversationPanes.get(tabId)
     const inst = p?.activeInstanceId ? p.instances.find(i => i.id === p.activeInstanceId) : null
@@ -276,6 +277,10 @@ export function ConversationView({ tabId }: ConversationViewProps) {
 
           {/* Grouped conversation messages via shared TranscriptRows */}
           <TranscriptRows grouped={grouped} actions={renderActions} />
+
+          {!isRunning && messages.length > 0 && lastResult && (
+            <RunDurationFooter durationMs={lastResult.durationMs} reason={lastResult.reason} />
+          )}
 
           {/* Queued prompts */}
           <AnimatePresence>

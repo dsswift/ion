@@ -142,6 +142,7 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
       ctx.updated.lastResult = {
         totalCostUsd: event.costUsd,
         durationMs: event.durationMs,
+        reason: event.reason,
         numTurns: event.numTurns,
         conversationTurns: event.conversationTurns,
         usage: event.usage,

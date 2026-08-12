@@ -123,6 +123,8 @@ export interface ProjectedRendererTab {
   runCostUsd?: number
   conversationCostUsd?: number
   conversationTurns?: number
+  lastRunDurationMs?: number
+  lastRunReason?: import('./types-events').TaskCompletionReason | (string & {})
   inputTokens?: number
   outputTokens?: number
   cacheReadTokens?: number

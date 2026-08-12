@@ -46,6 +46,7 @@ export interface RendererTabInput {
   modelOverride?: string | null
   groupPinned?: boolean
   hasRunningChildren?: boolean
+  backgroundShellCount?: number
   conversationId?: string | null
   lastActivityTs?: number
   convFingerprint?: string
@@ -63,6 +64,9 @@ export interface RendererTabInput {
    * dispatches) in USD. Undefined when the tab has never had a run.
    */
   conversationCostUsd?: number
+  conversationTurns?: number
+  lastRunDurationMs?: number
+  lastRunReason?: import('../../shared/types-events').TaskCompletionReason | (string & {})
   /** Cumulative provider-reported input tokens. Undefined on never-run tabs. */
   inputTokens?: number
   /** Cumulative output tokens. Undefined on never-run tabs. */
@@ -127,6 +131,7 @@ export function projectRendererTab(
     modelOverride: t.modelOverride || null,
     groupPinned: t.groupPinned || false,
     hasRunningChildren: t.hasRunningChildren || undefined,
+    backgroundShellCount: t.backgroundShellCount || undefined,
     conversationId: t.conversationId || undefined,
     lastActivityAt: t.lastActivityTs || undefined,
     // Omit an empty fingerprint (undefined) rather than sending ''. A tab with
@@ -140,6 +145,9 @@ export function projectRendererTab(
     totalCostUsd: t.runCostUsd,
     runCostUsd: t.runCostUsd,
     conversationCostUsd: t.conversationCostUsd,
+    conversationTurns: t.conversationTurns,
+    lastRunDurationMs: t.lastRunDurationMs,
+    lastRunReason: t.lastRunReason,
     inputTokens: t.inputTokens,
     outputTokens: t.outputTokens,
     cacheReadTokens: t.cacheReadTokens,

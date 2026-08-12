@@ -73,6 +73,17 @@ final class AgentDurationTests: XCTestCase {
         XCTAssertNil(result)
     }
 
+    // MARK: - formatMilliseconds
+
+    func test_formatMilliseconds_matchesRunDurationContract() {
+        XCTAssertEqual(AgentDuration.formatMilliseconds(-1), "<1s")
+        XCTAssertEqual(AgentDuration.formatMilliseconds(0), "<1s")
+        XCTAssertEqual(AgentDuration.formatMilliseconds(999), "<1s")
+        XCTAssertEqual(AgentDuration.formatMilliseconds(1_000), "1s")
+        XCTAssertEqual(AgentDuration.formatMilliseconds(62_007), "1m 2s")
+        XCTAssertEqual(AgentDuration.formatMilliseconds(3_661_000), "1h 1m")
+    }
+
     // MARK: - format
 
     func test_format_secondsUnder60() {

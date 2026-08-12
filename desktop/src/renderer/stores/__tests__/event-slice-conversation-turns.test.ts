@@ -86,6 +86,8 @@ describe('event-slice task_complete — conversation-lifetime turns', () => {
     expect(tab.lastResult.conversationTurns).toBe(210)
     // numTurns is preserved independently.
     expect(tab.lastResult.numTurns).toBe(2)
+    expect(tab.lastResult.durationMs).toBe(1000)
+    expect(tab.lastResult.reason).toBeUndefined()
   })
 
   it('leaves conversationTurns undefined when the event omits it (CLI backend path)', () => {
@@ -96,6 +98,7 @@ describe('event-slice task_complete — conversation-lifetime turns', () => {
       result: '',
       costUsd: 0.1,
       durationMs: 500,
+      reason: 'aborted',
       numTurns: 3,
       usage: { input_tokens: 0, output_tokens: 0 },
       sessionId: 'conv-2',
@@ -105,5 +108,6 @@ describe('event-slice task_complete — conversation-lifetime turns', () => {
     const tab = state.tabs.find((t: any) => t.id === 'tab1')
     expect(tab.lastResult.conversationTurns).toBeUndefined()
     expect(tab.lastResult.numTurns).toBe(3)
+    expect(tab.lastResult.reason).toBe('aborted')
   })
 })

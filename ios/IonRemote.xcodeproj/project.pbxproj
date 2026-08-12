@@ -111,6 +111,9 @@
 		REQCTXBD0000000000001 /* RequestContextBreakdownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = REQCTXBD0000000000002 /* RequestContextBreakdownTests.swift */; };
 		DBSTATE00000000000000A1 /* DispatchBodyState.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBSTATE00000000000000A2 /* DispatchBodyState.swift */; };
 		TRNSCRPT000000000000A1 /* Transcript.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRNSCRPT000000000000A2 /* Transcript.swift */; };
+		RUNDURROW00000000000001 /* RunDurationRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = RUNDURROW00000000000002 /* RunDurationRow.swift */; };
+		RUNDURROW00000000000003 /* RunDurationRowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RUNDURROW00000000000004 /* RunDurationRowTests.swift */; };
+		RUNDURSTATE000000000001 /* RunDurationStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RUNDURSTATE000000000002 /* RunDurationStateTests.swift */; };
 		DTELACC000000000000A1 /* SessionViewModel+DispatchTelemetryAccessors.swift in Sources */ = {isa = PBXBuildFile; fileRef = DTELACC000000000000A2 /* SessionViewModel+DispatchTelemetryAccessors.swift */; };
 		DTELENTRY0000000000A1 /* DispatchTelemetryEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = DTELENTRY0000000000A2 /* DispatchTelemetryEntry.swift */; };
 		BCRUMBT0000000000001 /* BreadcrumbDispatchLoadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCRUMBT0000000000002 /* BreadcrumbDispatchLoadTests.swift */; };
@@ -568,6 +571,9 @@
 		REQCTXBD0000000000002 /* RequestContextBreakdownTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestContextBreakdownTests.swift; sourceTree = "<group>"; };
 		DBSTATE00000000000000A2 /* DispatchBodyState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchBodyState.swift; sourceTree = "<group>"; };
 		TRNSCRPT000000000000A2 /* Transcript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transcript.swift; sourceTree = "<group>"; };
+		RUNDURROW00000000000002 /* RunDurationRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunDurationRow.swift; sourceTree = "<group>"; };
+		RUNDURROW00000000000004 /* RunDurationRowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunDurationRowTests.swift; sourceTree = "<group>"; };
+		RUNDURSTATE000000000002 /* RunDurationStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunDurationStateTests.swift; sourceTree = "<group>"; };
 		DTELACC000000000000A2 /* SessionViewModel+DispatchTelemetryAccessors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+DispatchTelemetryAccessors.swift"; sourceTree = "<group>"; };
 		DTELENTRY0000000000A2 /* DispatchTelemetryEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchTelemetryEntry.swift; sourceTree = "<group>"; };
 		BCRUMBT0000000000002 /* BreadcrumbDispatchLoadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreadcrumbDispatchLoadTests.swift; sourceTree = "<group>"; };
@@ -1114,6 +1120,7 @@
 				APDR00000000000000002 /* AgentPanelDefaultResolver.swift */,
 				DBSTATE00000000000000A2 /* DispatchBodyState.swift */,
 				TRNSCRPT000000000000A2 /* Transcript.swift */,
+				RUNDURROW00000000000002 /* RunDurationRow.swift */,
 				A1B2C3D4E5F600010000E5AA /* AgentDetailFullScreenView.swift */,
 				STATUSDWR0000000000002 /* StatusDrawerView.swift */,
 				STATUSDWRBRK000000002 /* StatusDrawerBreakdown.swift */,
@@ -1371,6 +1378,8 @@
 				NEWCONVRT000000000000004 /* NewConversationRoutingTests.swift */,
 				92ED3F076BA6484680389762 /* EngineProfileTests.swift */,
 				AGDUR0000000000000004 /* AgentDurationTests.swift */,
+				RUNDURROW00000000000004 /* RunDurationRowTests.swift */,
+				RUNDURSTATE000000000002 /* RunDurationStateTests.swift */,
 				DBSTATE00000000000000B2 /* DispatchBodyStateTests.swift */,
 				BCRUMBT0000000000002 /* BreadcrumbDispatchLoadTests.swift */,
 				DTELTEST0000000000A2 /* DispatchTelemetryTests.swift */,
@@ -1798,6 +1807,7 @@
 				APDR00000000000000001 /* AgentPanelDefaultResolver.swift in Sources */,
 				DBSTATE00000000000000A1 /* DispatchBodyState.swift in Sources */,
 				TRNSCRPT000000000000A1 /* Transcript.swift in Sources */,
+				RUNDURROW00000000000001 /* RunDurationRow.swift in Sources */,
 				DTELACC000000000000A1 /* SessionViewModel+DispatchTelemetryAccessors.swift in Sources */,
 				DTELENTRY0000000000A1 /* DispatchTelemetryEntry.swift in Sources */,
 				A1B2C3D4E5F600010000E4AA /* AgentDetailFullScreenView.swift in Sources */,
@@ -2053,6 +2063,8 @@
 				NEWCONVRT000000000000003 /* NewConversationRoutingTests.swift in Sources */,
 				3E8C1FD7961E454F81383867 /* EngineProfileTests.swift in Sources */,
 				AGDUR0000000000000003 /* AgentDurationTests.swift in Sources */,
+				RUNDURROW00000000000003 /* RunDurationRowTests.swift in Sources */,
+				RUNDURSTATE000000000001 /* RunDurationStateTests.swift in Sources */,
 				DBSTATE00000000000000B1 /* DispatchBodyStateTests.swift in Sources */,
 				BCRUMBT0000000000001 /* BreadcrumbDispatchLoadTests.swift in Sources */,
 				DTELTEST0000000000A1 /* DispatchTelemetryTests.swift in Sources */,

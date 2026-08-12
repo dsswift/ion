@@ -369,6 +369,7 @@ async function restoreSingleInstanceTab(
             worktree: st.worktree ?? null,
             lastMessagePreview: st.lastMessagePreview || null,
             lastEventAt: st.lastEventAt ?? null,
+            lastResult: st.lastResult ?? null,
             permissionMode: 'auto',
             // Override the 'connecting' that createConversationTab set for the
             // new-tab connecting indicator. On restore the session start is a

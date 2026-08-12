@@ -319,6 +319,8 @@ function coldStartSnapshot(): RemoteTabSnapshot {
         contextWindow: t.contextWindow ?? null,
         messageCount: coldMain?.messageCount ?? 0,
         queuedPrompts: t.queuedPrompts || [],
+        lastRunDurationMs: typeof t.lastResult?.durationMs === 'number' ? t.lastResult.durationMs : undefined,
+        lastRunReason: t.lastResult?.reason,
         modelOverride: coldMain?.modelOverride ?? null,
         lastActivityAt: h?.lastActivityAt || undefined,
         // Omit convFingerprint on the cold path — do NOT send ''. iOS compares

@@ -15,6 +15,10 @@ struct Transcript: View {
     /// headerSection (the "> prompt" bar).
     let pinnedPrompt: String?
     let isRunning: Bool
+    /// Settled-run metadata supplied by ConversationView. Nil while a new run
+    /// is active or before the desktop reports any completion.
+    var runDurationMs: Int? = nil
+    var runCompletionReason: TaskCompletionReason? = nil
     let onRewind: ((String) -> Void)?
     let agents: [AgentStateUpdate]?
     /// Full unfiltered agent list for descendant walks and running-count
@@ -75,8 +79,28 @@ struct Transcript: View {
         }
     }
 
-    private var chatItems: [ChatItem<ConversationView.GroupedItem>] {
-        groupedMessages.map { ChatItem(id: $0.id, payload: $0) }
+    private enum Item: Identifiable {
+        case message(ConversationView.GroupedItem)
+        case runDuration(Int, TaskCompletionReason?)
+
+        var id: String {
+            switch self {
+            case .message(let item): return item.id
+            case .runDuration: return "run-duration"
+            }
+        }
+    }
+
+    private var chatItems: [ChatItem<Item>] {
+        var items = groupedMessages.map { ChatItem(id: $0.id, payload: Item.message($0)) }
+        if !isRunning, let runDurationMs, transcriptHasContent {
+            items.append(ChatItem(id: "run-duration", payload: .runDuration(runDurationMs, runCompletionReason)))
+        }
+        return items
+    }
+
+    private var transcriptHasContent: Bool {
+        !messages.isEmpty
     }
 
     // MARK: - Body
@@ -110,28 +134,33 @@ struct Transcript: View {
                 ) { item in
                     Group {
                         switch item {
-                        case .single(let msg):
-                            if msg.role == .user && !isRunning {
-                                if let rewind = onRewind {
-                                    EngineMessageRow(message: msg, onRewind: rewind)
+                        case .message(let item):
+                            switch item {
+                            case .single(let msg):
+                                if msg.role == .user && !isRunning {
+                                    if let rewind = onRewind {
+                                        EngineMessageRow(message: msg, onRewind: rewind)
+                                    } else {
+                                        EngineMessageRow(message: msg)
+                                    }
                                 } else {
-                                    EngineMessageRow(message: msg)
+                                    if let tapPlan = onTapPlan {
+                                        EngineMessageRow(message: msg, onTapPlan: tapPlan, onOpenFile: onOpenFile)
+                                    } else {
+                                        EngineMessageRow(message: msg, onOpenFile: onOpenFile)
+                                    }
                                 }
-                            } else {
-                                if let tapPlan = onTapPlan {
-                                    EngineMessageRow(message: msg, onTapPlan: tapPlan, onOpenFile: onOpenFile)
-                                } else {
-                                    EngineMessageRow(message: msg, onOpenFile: onOpenFile)
-                                }
+                            case .toolGroup(let tools):
+                                EngineToolGroupRow(tools: tools)
+                            case .compaction(let msg):
+                                CompactionRowView(message: msg)
+                            case .thinking(let msg):
+                                ThinkingRowView(message: msg)
+                            case .agentTurn(let tools, let assistants, let isActive, let thinking):
+                                AgentTurnRow(tools: tools, assistantMessages: assistants, isActive: isActive, thinking: thinking)
                             }
-                        case .toolGroup(let tools):
-                            EngineToolGroupRow(tools: tools)
-                        case .compaction(let msg):
-                            CompactionRowView(message: msg)
-                        case .thinking(let msg):
-                            ThinkingRowView(message: msg)
-                        case .agentTurn(let tools, let assistants, let isActive, let thinking):
-                            AgentTurnRow(tools: tools, assistantMessages: assistants, isActive: isActive, thinking: thinking)
+                        case .runDuration(let durationMs, let reason):
+                            RunDurationRow(durationMs: durationMs, reason: reason)
                         }
                     }
                 }

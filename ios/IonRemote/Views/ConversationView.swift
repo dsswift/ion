@@ -343,6 +343,8 @@ struct ConversationView: View {
                 unifiedTurnView: unifiedTurnView,
                 pinnedPrompt: viewModel.enginePinnedPrompt[compoundKey],
                 isRunning: isRunning,
+                runDurationMs: viewModel.tab(for: tabId)?.lastRunDurationMs,
+                runCompletionReason: viewModel.tab(for: tabId)?.lastRunReason,
                 onRewind: { messageId in
                     viewModel.engineRewindInstance(
                         tabId: tabId,

@@ -265,6 +265,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
             ...withEffectiveBase,
             status: 'connecting' as TabStatus,
             activeRequestId: requestId,
+            lastResult: null,
             lastEventAt: Date.now(),
             currentActivity: 'Starting...',
             title,

@@ -115,8 +115,8 @@ extension SessionViewModel {
             let truncated = content.prefix(200)
             appendLiveText(tabId: tabId, "\(prefix) \(truncated)\n")
 
-        case .taskComplete(let tabId, _, _, let reason):
-            handleTaskComplete(tabId: tabId, reason: reason)
+        case .taskComplete(let tabId, _, _, let durationMs, let reason):
+            handleTaskComplete(tabId: tabId, durationMs: durationMs, reason: reason)
 
         case .permissionRequest(let tabId, let instanceId, let questionId, let toolName, let toolInput, let options):
             handlePermissionRequest(tabId: tabId, instanceId: instanceId, questionId: questionId, toolName: toolName, toolInput: toolInput, options: options)

@@ -204,6 +204,8 @@ export interface PersistedTab {
   queuedPrompts?: string[]
   /** Unsent text typed into the input bar; restored on relaunch. Absent when empty. */
   draftInput?: string
+  /** Latest completed-run metadata. Optional for files written before run footers. */
+  lastResult?: import('./types-session').RunResult | null
   /** Per-engine-instance unsent input text, keyed by `instanceId`. Only non-empty values. */
   engineDrafts?: Record<string, string>
   isTerminalOnly?: boolean

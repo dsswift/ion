@@ -274,7 +274,7 @@ export type RemoteEvent =
   // enabling rich tool descriptions during live streaming.
   | { type: 'desktop_tool_update'; tabId: string; instanceId?: string; toolId: string; partialInput: string }
   | { type: 'desktop_tool_result'; tabId: string; toolId: string; content: string; isError: boolean }
-  | { type: 'desktop_task_complete'; tabId: string; result: string; costUsd: number; reason?: import('../../shared/types-events').TaskCompletionReason | (string & {}) }
+  | { type: 'desktop_task_complete'; tabId: string; result: string; costUsd: number; durationMs?: number; reason?: import('../../shared/types-events').TaskCompletionReason | (string & {}) }
   // `instanceId` scopes engine-view permission requests to the engine
   // sub-tab (instance) that produced them, so clients can hide a plan/
   // question card when the user views a sibling sub-conversation.

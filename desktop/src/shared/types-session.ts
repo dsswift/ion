@@ -411,6 +411,8 @@ export interface RunResult {
    *  the engine sets to a per-run value (cache-aware, CliBackend delta-normalized). */
   totalCostUsd: number
   durationMs: number
+  /** Terminal reason for this run. Drives the transcript completion label. */
+  reason?: import('./types-events').TaskCompletionReason | (string & {})
   numTurns: number
   /** Conversation-lifetime prompt count (real user prompts across the whole
    *  conversation), from TaskCompleteEvent.conversationTurns. Distinct from

@@ -107,6 +107,7 @@ function persistTabs(useSessionStore: Store): void {
         ...(t.contextWindow ? { contextWindow: t.contextWindow } : {}),
         ...(t.lastMessagePreview ? { lastMessagePreview: t.lastMessagePreview } : {}),
         ...(t.lastEventAt ? { lastEventAt: t.lastEventAt } : {}),
+        ...(t.lastResult ? { lastResult: t.lastResult } : {}),
         ...(t.isTerminalOnly ? { isTerminalOnly: true } : {}),
         ...(t.inputLocked ? { inputLocked: true } : {}),
         ...(t.tabRole ? { tabRole: t.tabRole } : {}),

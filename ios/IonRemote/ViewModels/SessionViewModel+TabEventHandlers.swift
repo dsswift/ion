@@ -48,6 +48,8 @@ extension SessionViewModel {
                 // again" — clear it so the next card (delivered via snapshot/
                 // restore, not the live push) is not wrongly stripped.
                 dismissedLiveSpecialTabs.remove(tabId)
+                tabs[idx].lastRunDurationMs = nil
+                tabs[idx].lastRunReason = nil
                 for key in dismissedLiveSpecialTabs where key.hasPrefix("\(tabId):") {
                     dismissedLiveSpecialTabs.remove(key)
                 }
@@ -104,12 +106,17 @@ extension SessionViewModel {
     }
 
     @MainActor
-    func handleTaskComplete(tabId: String, reason: TaskCompletionReason? = nil) {
+    func handleTaskComplete(
+        tabId: String,
+        durationMs: Int? = nil,
+        reason: TaskCompletionReason? = nil
+    ) {
         mutateEngineInstance(tabId: tabId, instanceId: nil) { instance in
             instance.statusFields?.completionReason = reason
         }
         DiagnosticLog.log("task completion applied", tag: "session", fields: [
             "tab_id": String(tabId.prefix(8)),
+            "duration_ms": durationMs.map(String.init) ?? "absent",
             "reason": reason?.logValue ?? "absent"
         ])
         // Capture liveText before it's cleared. liveText is the accumulator for
@@ -124,6 +131,8 @@ extension SessionViewModel {
         if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
             previousStatus = tabs[idx].status
             tabs[idx].status = .completed
+            tabs[idx].lastRunDurationMs = durationMs
+            tabs[idx].lastRunReason = reason
             // Preserve ExitPlanMode/AskUserQuestion entries for plan card UI
             tabs[idx].permissionQueue.removeAll {
                 $0.toolName != "ExitPlanMode" && $0.toolName != "AskUserQuestion"
