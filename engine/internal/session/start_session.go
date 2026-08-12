@@ -470,6 +470,7 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 			EventMessage: fmt.Sprintf("Loading extension: %s", filepath.Base(filepath.Dir(extPath))),
 		})
 		host := extension.NewHost()
+		buildIdentity := m.engineBuildIdentitySnapshot()
 		if m.config != nil && m.config.Timeouts != nil {
 			host.SetRPCTimeout(m.config.Timeouts.ExtensionRpc())
 		}
@@ -483,11 +484,11 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 			host.RegisterRequiredHooks(hooks)
 		}
 
-		host.SetEngineBuildIdentity(m.engineBuildIdentity)
+		host.SetEngineBuildIdentity(buildIdentity)
 		extCfg := &extension.ExtensionConfig{
 			ExtensionDir:     filepath.Dir(extPath),
 			WorkingDirectory: config.WorkingDirectory,
-			BuildIdentity:    m.engineBuildIdentity,
+			BuildIdentity:    buildIdentity,
 		}
 		// Enterprise extension allowlist (feature 0011 / D-020, issue #308):
 		// carry the sealed allowlist into the host so Host.Load can enforce it

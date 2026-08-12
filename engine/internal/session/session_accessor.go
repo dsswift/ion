@@ -301,12 +301,9 @@ func (a *sessionAccessor) DispatchRegistry() *extcontext.DispatchRegistry {
 
 func (a *sessionAccessor) EngineConfig() *types.EngineRuntimeConfig { return a.m.config }
 
-// EngineBuildIdentity returns a locked snapshot because child host setup may
-// run concurrently with engine initialization assigning the build identity.
+// EngineBuildIdentity returns the manager snapshot used by child host setup.
 func (a *sessionAccessor) EngineBuildIdentity() string {
-	a.m.mu.RLock()
-	defer a.m.mu.RUnlock()
-	return a.m.engineBuildIdentity
+	return a.m.engineBuildIdentitySnapshot()
 }
 
 // ClaudeCompat reports the session's Claude-compatibility setting, sourced from
