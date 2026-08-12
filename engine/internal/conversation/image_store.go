@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/dsswift/ion/engine/internal/durablefile"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -95,19 +96,31 @@ func SaveImageToConversation(dir, convID, mediaType, base64Data string) (string,
 	name := hex.EncodeToString(sum[:]) + "." + ext
 	path := filepath.Join(imagesDir, name)
 
-	// Content-addressed: if the file is already present (same bytes, same name),
-	// the save is a no-op. This is what makes the live save and the reload save
-	// idempotent against each other — no duplicate write, no second file.
-	if _, statErr := os.Stat(path); statErr == nil {
-		utils.LogWithFields(utils.LevelDebug, "conversation", "image already present (content-addressed); skipping write", map[string]any{
+	// Content-addressed files converge only when the existing object is complete.
+	// A crash can leave a short file at the final hash path; existence alone
+	// would then turn that corruption into a permanent cache hit.
+	if existing, statErr := os.ReadFile(path); statErr == nil {
+		existingSum := sha256.Sum256(existing)
+		if existingSum == sum {
+			utils.LogWithFields(utils.LevelDebug, "conversation", "image already present (content-addressed); skipping write", map[string]any{
+				"conversation_id": convID,
+				"mediaType":       mediaType,
+				"path":            path,
+			})
+			return path, nil
+		}
+		utils.LogWithFields(utils.LevelWarn, "conversation", "image content-addressed path held mismatched bytes; repairing", map[string]any{
 			"conversation_id": convID,
 			"mediaType":       mediaType,
 			"path":            path,
+			"existing_bytes":  len(existing),
+			"expected_bytes":  len(data),
 		})
-		return path, nil
+	} else if !os.IsNotExist(statErr) {
+		return "", fmt.Errorf("SaveImageToConversation: inspect %s: %w", path, statErr)
 	}
 
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := durablefile.Write(path, data, 0o644); err != nil {
 		return "", fmt.Errorf("SaveImageToConversation: write %s: %w", path, err)
 	}
 

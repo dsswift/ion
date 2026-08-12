@@ -128,9 +128,9 @@ func hasCustomLabel(dir, id string) bool {
 	return strings.Contains(string(data), `"type":"label"`)
 }
 
-// deleteConversationFiles removes all files for a conversation ID.
+// deleteConversationFiles removes every file and directory owned by a conversation ID.
 func deleteConversationFiles(dir, id string) error {
-	suffixes := []string{".tree.jsonl", ".llm.jsonl", ".memory.md", ".jsonl", ".json"}
+	suffixes := []string{".tree.jsonl", ".llm.jsonl", ".memory.md", ".jsonl", ".json", ".dispatch-outbox.json"}
 	var lastErr error
 	removed := 0
 	for _, suffix := range suffixes {
@@ -144,6 +144,22 @@ func deleteConversationFiles(dir, id string) error {
 			removed++
 			utils.LogWithFields(utils.LevelDebug, "conversation.cleanup", "removed", map[string]any{"path": path})
 		}
+	}
+
+	// The transcript sidecars are not the whole conversation footprint. Images
+	// are stored under <id>/images and oversized tool results under
+	// tool-results/<id>. Leaving either behind after the transcript expires
+	// leaks durable data and lets stale paths outlive their conversation.
+	for _, path := range []string{
+		filepath.Join(dir, id),
+		filepath.Join(dir, "tool-results", id),
+	} {
+		if err := os.RemoveAll(path); err != nil {
+			lastErr = err
+			utils.LogWithFields(utils.LevelError, "conversation.cleanup", "remove owned directory failed", map[string]any{"path": path, "error": err.Error()})
+			continue
+		}
+		utils.LogWithFields(utils.LevelDebug, "conversation.cleanup", "removed owned directory", map[string]any{"path": path})
 	}
 	if removed > 0 {
 		utils.LogWithFields(utils.LevelInfo, "conversation.cleanup", "deleted", map[string]any{"conversation_id": id, "count": removed})

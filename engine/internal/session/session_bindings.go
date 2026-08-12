@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
+	"github.com/dsswift/ion/engine/internal/durablefile"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -17,6 +20,8 @@ import (
 type sessionBindings struct {
 	Bindings map[string]string `json:"bindings"`
 }
+
+var bindingsMu sync.Mutex
 
 // bindingsPath returns the path to the session-bindings sidecar file.
 // Honors ION_SESSION_BINDINGS_PATH for test isolation.
@@ -52,29 +57,18 @@ func loadBindings(path string) map[string]string {
 // saveBinding atomically persists key->conversationId to the sidecar.
 // Best-effort: I/O errors are logged and never fatal.
 func saveBinding(path, key, conversationID string) {
-	bindings := loadBindings(path)
-	bindings[key] = conversationID
-
-	sb := sessionBindings{Bindings: bindings}
-	data, err := json.Marshal(sb)
-	if err != nil {
-		utils.LogWithFields(utils.LevelInfo, "session-bindings", "marshal", map[string]any{"error": err})
-		return
-	}
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		utils.LogWithFields(utils.LevelInfo, "session-bindings", "mkdir", map[string]any{"error": err})
-		return
-	}
-
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		utils.LogWithFields(utils.LevelInfo, "session-bindings", "write tmp", map[string]any{"error": err})
-		return
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp) //nolint:errcheck // best-effort cleanup
-		utils.LogWithFields(utils.LevelInfo, "session-bindings", "rename", map[string]any{"error": err})
+	bindingsMu.Lock()
+	defer bindingsMu.Unlock()
+	if err := durablefile.Transaction(path, 5*time.Second, func(_ string) error {
+		bindings := loadBindings(path)
+		bindings[key] = conversationID
+		data, err := json.Marshal(sessionBindings{Bindings: bindings})
+		if err != nil {
+			return err
+		}
+		return durablefile.Write(path, data, 0o644)
+	}); err != nil {
+		utils.LogWithFields(utils.LevelInfo, "session-bindings", "save failed", map[string]any{"error": err.Error(), "key": key})
 		return
 	}
 	utils.LogWithFields(utils.LevelInfo, "session-bindings", "saved", map[string]any{"key": key, "conversation_id": conversationID})
@@ -92,33 +86,28 @@ func lookupBinding(path, key string) string {
 // auto-resumed for this key even while the freshly minted conversation's own
 // binding is deferred until first save. Best-effort; a missing key is a no-op.
 func deleteBinding(path, key string) {
-	bindings := loadBindings(path)
-	if _, ok := bindings[key]; !ok {
+	bindingsMu.Lock()
+	defer bindingsMu.Unlock()
+	deleted := false
+	if err := durablefile.Transaction(path, 5*time.Second, func(_ string) error {
+		bindings := loadBindings(path)
+		if _, ok := bindings[key]; !ok {
+			return nil
+		}
+		delete(bindings, key)
+		deleted = true
+		data, err := json.Marshal(sessionBindings{Bindings: bindings})
+		if err != nil {
+			return err
+		}
+		return durablefile.Write(path, data, 0o644)
+	}); err != nil {
+		utils.LogWithFields(utils.LevelInfo, "session-bindings", "delete write failed", map[string]any{"error": err.Error(), "key": key})
 		return
 	}
-	delete(bindings, key)
-
-	sb := sessionBindings{Bindings: bindings}
-	data, err := json.Marshal(sb)
-	if err != nil {
-		utils.LogWithFields(utils.LevelInfo, "session-bindings", "delete marshal", map[string]any{"error": err})
-		return
+	if deleted {
+		utils.LogWithFields(utils.LevelInfo, "session-bindings", "deleted", map[string]any{"key": key})
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		utils.LogWithFields(utils.LevelInfo, "session-bindings", "delete mkdir", map[string]any{"error": err})
-		return
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		utils.LogWithFields(utils.LevelInfo, "session-bindings", "delete write tmp", map[string]any{"error": err})
-		return
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp) //nolint:errcheck // best-effort cleanup
-		utils.LogWithFields(utils.LevelInfo, "session-bindings", "delete rename", map[string]any{"error": err})
-		return
-	}
-	utils.LogWithFields(utils.LevelInfo, "session-bindings", "deleted", map[string]any{"key": key})
 }
 
 // flushPendingBinding writes a deferred key->conversationId binding to the

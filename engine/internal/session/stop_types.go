@@ -1,6 +1,8 @@
 package session
 
 import (
+	"os"
+
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
@@ -22,6 +24,7 @@ type stoppedSessionResources struct {
 	toolServer        *backend.ToolServer
 	fsWatcherRelease  func()
 	sessionMemory     *SessionMemory
+	hookSettingsPath  string
 	purgeExtensionDir string
 	conversationID    string
 	key               string
@@ -40,6 +43,11 @@ func (m *Manager) finishStoppedSession(resources stoppedSessionResources) {
 	}
 	if resources.toolServer != nil {
 		resources.toolServer.Stop()
+	}
+	if resources.hookSettingsPath != "" {
+		if err := os.Remove(resources.hookSettingsPath); err != nil && !os.IsNotExist(err) {
+			utils.LogWithFields(utils.LevelWarn, "session", "failed to remove hook settings file", map[string]any{"path": resources.hookSettingsPath, "error": err.Error()})
+		}
 	}
 	if resources.fsWatcherRelease != nil {
 		resources.fsWatcherRelease()

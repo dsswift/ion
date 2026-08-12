@@ -47,10 +47,36 @@ func PersistAndPreview(content, toolUseID, convDir, convID string, maxChars int)
 		return content, false
 	}
 
-	// Write full content to disk
-	filePath := filepath.Join(storageDir, toolUseID+".txt")
-	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+	// Each oversized result gets an engine-generated filename. Provider-issued
+	// tool IDs are correlation data, not filesystem identities: collision or a
+	// hostile separator must never let one invocation overwrite another.
+	file, err := os.CreateTemp(storageDir, "result-*.txt")
+	if err != nil {
+		utils.LogWithFields(utils.LevelWarn, "conversation.tool_result_storage", "failed to create tool result file returning full content", map[string]any{"path": storageDir, "error": err.Error()})
+		return content, false
+	}
+	filePath := file.Name()
+	if err := file.Chmod(0o600); err != nil {
+		file.Close()        //nolint:errcheck // best-effort before removal
+		os.Remove(filePath) //nolint:errcheck // unpublished result cleanup
+		utils.LogWithFields(utils.LevelWarn, "conversation.tool_result_storage", "failed to secure tool result file returning full content", map[string]any{"path": filePath, "error": err.Error()})
+		return content, false
+	}
+	if _, err := file.WriteString(content); err != nil {
+		file.Close()        //nolint:errcheck // best-effort before removal
+		os.Remove(filePath) //nolint:errcheck // unpublished result cleanup
 		utils.LogWithFields(utils.LevelWarn, "conversation.tool_result_storage", "failed to write tool result returning full content", map[string]any{"path": filePath, "error": err.Error()})
+		return content, false
+	}
+	if err := file.Sync(); err != nil {
+		file.Close()        //nolint:errcheck // best-effort before removal
+		os.Remove(filePath) //nolint:errcheck // unpublished result cleanup
+		utils.LogWithFields(utils.LevelWarn, "conversation.tool_result_storage", "failed to sync tool result returning full content", map[string]any{"path": filePath, "error": err.Error()})
+		return content, false
+	}
+	if err := file.Close(); err != nil {
+		os.Remove(filePath) //nolint:errcheck // unpublished result cleanup
+		utils.LogWithFields(utils.LevelWarn, "conversation.tool_result_storage", "failed to close tool result returning full content", map[string]any{"path": filePath, "error": err.Error()})
 		return content, false
 	}
 

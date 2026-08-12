@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/dsswift/ion/engine/internal/durablefile"
 	"github.com/dsswift/ion/engine/internal/types"
 	"golang.org/x/text/unicode/norm"
 )
@@ -141,7 +142,7 @@ func executeEdit(ctx context.Context, input map[string]any, cwd string) (*types.
 			updated = strings.Replace(content, oldString, newString, 1)
 		}
 
-		if err := os.WriteFile(filePath, []byte(updated), 0o644); err != nil {
+		if err := durablefile.Write(filePath, []byte(updated), writeMode(filePath)); err != nil {
 			return &types.ToolResult{Content: fmt.Sprintf("Error editing file: %s", err), IsError: true}, nil
 		}
 		return &types.ToolResult{Content: fmt.Sprintf("Successfully edited %s", filePath)}, nil
@@ -169,7 +170,7 @@ func executeEdit(ctx context.Context, input map[string]any, cwd string) (*types.
 			updated = strings.Replace(normalizedContent, normalizedSearch, newString, 1)
 		}
 
-		if err := os.WriteFile(filePath, []byte(updated), 0o644); err != nil {
+		if err := durablefile.Write(filePath, []byte(updated), writeMode(filePath)); err != nil {
 			return &types.ToolResult{Content: fmt.Sprintf("Error editing file: %s", err), IsError: true}, nil
 		}
 		return &types.ToolResult{Content: fmt.Sprintf("Successfully edited %s (fuzzy match: Unicode normalization applied)", filePath)}, nil

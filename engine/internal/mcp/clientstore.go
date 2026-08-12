@@ -116,14 +116,7 @@ func (s *ClientStore) save() {
 		utils.LogWithFields(utils.LevelError, "mcp.clients", "save marshal failed", map[string]any{"path": s.path, "error": err.Error()})
 		return
 	}
-	dir := filepath.Dir(s.path)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		utils.LogWithFields(utils.LevelError, "mcp.clients", "save mkdir failed", map[string]any{"path": dir, "error": err.Error()})
-		return
-	}
-	if err := os.WriteFile(s.path, data, 0600); err != nil {
-		// A failed write means the next login re-registers a fresh client with
-		// the provider, orphaning this one. Not silent.
+	if err := utils.AtomicWriteFile(s.path, data, 0o600); err != nil {
 		utils.LogWithFields(utils.LevelError, "mcp.clients", "save write failed", map[string]any{"path": s.path, "error": err.Error()})
 	}
 }

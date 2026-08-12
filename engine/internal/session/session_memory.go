@@ -168,10 +168,6 @@ func (sm *SessionMemory) SetMemory(content string) {
 // boundary so the metadata survives session restarts.
 func (sm *SessionMemory) persistMemory(content string) {
 	path := sm.memoryFilePath()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		utils.LogWithFields(utils.LevelWarn, "session.memory", "failed to create memory dir", map[string]any{"error": err.Error()})
-		return
-	}
 
 	sm.mu.RLock()
 	frontMatter := fmt.Sprintf("---\nlastUpdateTokens: %d\nlastUpdateTurn: %d\nlastSummarizedEntryID: %s\nupdatedAt: %s\n---\n",
@@ -181,7 +177,7 @@ func (sm *SessionMemory) persistMemory(content string) {
 		time.Now().UTC().Format(time.RFC3339))
 	sm.mu.RUnlock()
 
-	if err := os.WriteFile(path, []byte(frontMatter+content), 0o644); err != nil {
+	if err := utils.AtomicWriteFile(path, []byte(frontMatter+content), 0o644); err != nil {
 		utils.LogWithFields(utils.LevelWarn, "session.memory", "failed to write memory file", map[string]any{"error": err.Error()})
 	}
 }

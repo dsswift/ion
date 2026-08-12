@@ -3,6 +3,8 @@ package tools
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -257,6 +259,8 @@ func startBackgroundBashTask(ctx context.Context, ops BackgroundBashOperations, 
 // StopBackgroundTasksForOwner kills every running background bash task owned
 // by the given session key and marks it "stopped". Called from the session
 // layer at StopSession so a session's background processes never outlive it.
+// After stopping, each task's output file is removed and the task is purged
+// from the registry -- the session is ending, so no reader will query them.
 func StopBackgroundTasksForOwner(sessionKey string) {
 	if sessionKey == "" {
 		return
@@ -265,30 +269,37 @@ func StopBackgroundTasksForOwner(sessionKey string) {
 	var stopped []string
 	var completions []TaskCompletion
 	var terminals []TaskCompletion
+	var outputFiles []string
 
 	tasksMu.Lock()
-	for _, t := range tasks {
-		if t.Kind != "bash" || t.Owner != sessionKey || t.Status != "running" {
+	for id, t := range tasks {
+		if t.Kind != "bash" || t.Owner != sessionKey {
 			continue
 		}
-		t.Status = "stopped"
-		t.CompletedAt = &now
-		if t.stop != nil {
-			// stop() signals the process group and returns immediately (no
-			// wait), so holding tasksMu here is fine. The Done-watcher
-			// goroutine then sees a non-"running" status and leaves the
-			// "stopped" stamp in place.
-			t.stop()
+		if t.Status == "running" {
+			t.Status = "stopped"
+			t.CompletedAt = &now
+			if t.stop != nil {
+				// stop() signals the process group and returns immediately (no
+				// wait), so holding tasksMu here is fine. The Done-watcher
+				// goroutine then sees a non-"running" status and leaves the
+				// "stopped" stamp in place.
+				t.stop()
+			}
+			if t.NotifyOnComplete {
+				// The Done-watcher bails out on a non-"running" status, so this
+				// path owns the notification for tasks it stops. Without it a
+				// parked orchestrator would wait forever on a task that was
+				// killed out from under it.
+				completions = append(completions, completionFor(t, nil))
+			}
+			terminals = append(terminals, completionFor(t, nil))
 		}
-		if t.NotifyOnComplete {
-			// The Done-watcher bails out on a non-"running" status, so this
-			// path owns the notification for tasks it stops. Without it a
-			// parked orchestrator would wait forever on a task that was
-			// killed out from under it.
-			completions = append(completions, completionFor(t, nil))
+		if t.OutputPath != "" {
+			outputFiles = append(outputFiles, t.OutputPath)
 		}
-		terminals = append(terminals, completionFor(t, nil))
-		stopped = append(stopped, t.ID)
+		stopped = append(stopped, id)
+		delete(tasks, id)
 	}
 	tasksMu.Unlock()
 
@@ -300,11 +311,48 @@ func StopBackgroundTasksForOwner(sessionKey string) {
 		notifyBackgroundTaskLifecycle(c, true)
 	}
 
+	for _, p := range outputFiles {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			utils.LogWithFields(utils.LevelWarn, "tools.bash", "failed to remove task output file", map[string]any{"path": p, "error": err.Error()})
+		}
+	}
+
 	if len(stopped) > 0 {
 		utils.LogWithFields(utils.LevelInfo, "tools.bash", "background tasks stopped with session", map[string]any{
-			"session_id": sessionKey, "count": len(stopped), "model": stopped, "notified": len(completions),
+			"session_id": sessionKey, "count": len(stopped), "outputs_removed": len(outputFiles), "notified": len(completions),
 		})
 	} else {
 		utils.LogWithFields(utils.LevelDebug, "tools.bash", "no background tasks to stop for session", map[string]any{"session_id": sessionKey})
+	}
+}
+
+// CleanStaleTaskOutputs removes every output file left by a prior engine
+// process. Task metadata is process-local, so a newly started engine has no
+// live task that can legitimately reference these files.
+func CleanStaleTaskOutputs() {
+	dir, err := backgroundOutputDir()
+	if err != nil {
+		utils.LogWithFields(utils.LevelWarn, "tools.bash", "stale task output cleanup skipped", map[string]any{"error": err.Error()})
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		utils.LogWithFields(utils.LevelWarn, "tools.bash", "stale task output directory read failed", map[string]any{"path": dir, "error": err.Error()})
+		return
+	}
+	removed := 0
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".out" {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			utils.LogWithFields(utils.LevelWarn, "tools.bash", "stale task output remove failed", map[string]any{"path": path, "error": err.Error()})
+			continue
+		}
+		removed++
+	}
+	if removed > 0 {
+		utils.LogWithFields(utils.LevelInfo, "tools.bash", "stale task outputs removed", map[string]any{"count": removed, "path": dir})
 	}
 }

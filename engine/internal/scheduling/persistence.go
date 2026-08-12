@@ -82,10 +82,6 @@ func (s *Scheduler) recordLastRunByName(name string, job extension.ScheduleJob, 
 		return
 	}
 	path := s.markerPathByName(name, job)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		utils.LogWithFields(utils.LevelWarn, "scheduling", "record last run mkdir failed", map[string]any{"path": filepath.Dir(path), "error": err.Error()})
-		return
-	}
 	// Read existing marker to preserve FirstSeenUtc.
 	existing, _ := s.readMarker(name, job)
 	m := lastRunMarker{
@@ -97,7 +93,7 @@ func (s *Scheduler) recordLastRunByName(name string, job extension.ScheduleJob, 
 		utils.LogWithFields(utils.LevelWarn, "scheduling", "record last run marshal failed", map[string]any{"path": path, "error": err.Error()})
 		return
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := utils.AtomicWriteFile(path, data, 0o644); err != nil {
 		utils.LogWithFields(utils.LevelWarn, "scheduling", "record last run write failed", map[string]any{"path": path, "error": err.Error()})
 		return
 	}
@@ -120,17 +116,13 @@ func (s *Scheduler) recordFirstSeenByName(name string, job extension.ScheduleJob
 		return
 	}
 	path := s.markerPathByName(name, job)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		utils.LogWithFields(utils.LevelWarn, "scheduling", "record first seen mkdir failed", map[string]any{"path": filepath.Dir(path), "error": err.Error()})
-		return
-	}
 	m := lastRunMarker{FirstSeenUtc: now.UTC().Format(time.RFC3339)}
 	data, err := json.Marshal(m)
 	if err != nil {
 		utils.LogWithFields(utils.LevelWarn, "scheduling", "record first seen marshal failed", map[string]any{"path": path, "error": err.Error()})
 		return
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := utils.AtomicWriteFile(path, data, 0o644); err != nil {
 		utils.LogWithFields(utils.LevelWarn, "scheduling", "record first seen write failed", map[string]any{"path": path, "error": err.Error()})
 		return
 	}

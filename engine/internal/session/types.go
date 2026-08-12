@@ -284,15 +284,16 @@ type engineSession struct {
 	rootDispatchCompletions []rootDispatchCompletion
 
 	// Wired subsystems (populated in StartSession)
-	extGroup       *extension.ExtensionGroup
-	mcpConns       []*mcp.Connection
-	permEngine     *permissions.Engine
-	telemetry      *telemetry.Collector
-	recorder       *recorder.Recorder
-	toolServer     *backend.ToolServer
-	procRegistry   *extension.ProcessRegistry
-	pending        *pending.Broker
-	resourceBroker *resource.Broker
+	extGroup         *extension.ExtensionGroup
+	mcpConns         []*mcp.Connection
+	permEngine       *permissions.Engine
+	telemetry        *telemetry.Collector
+	recorder         *recorder.Recorder
+	toolServer       *backend.ToolServer
+	hookSettingsPath string
+	procRegistry     *extension.ProcessRegistry
+	pending          *pending.Broker
+	resourceBroker   *resource.Broker
 
 	// mcpConnectOnce single-flights the lazy MCP connect for this session, and
 	// mcpConnectDone records (under m.mu) that it has run.

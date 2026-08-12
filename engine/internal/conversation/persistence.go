@@ -8,8 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
+	"time"
 
+	"github.com/dsswift/ion/engine/internal/durablefile"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -27,10 +28,6 @@ var ErrNotFound = errors.New("conversation not found")
 // in base64). The server and stream parsers use 8 MB; conversation lines
 // can be larger because they accumulate entire turn payloads.
 const maxScanTokenSize = 32 * 1024 * 1024
-
-// tmpSeq disambiguates concurrent temp files within one process; the pid
-// disambiguates across processes.
-var tmpSeq uint64
 
 // MigrateConversation upgrades a raw JSON map to the current schema version.
 func MigrateConversation(raw map[string]any) (*Conversation, error) {
@@ -154,21 +151,26 @@ func Save(conv *Conversation, dir string) error {
 	if dir == "" {
 		dir = DefaultConversationsDir()
 	}
-
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 
-	// Branch: v2 conversations with entries use the split format.
-	// Conversations that have never had any turns yet (brand-new, no entries)
-	// fall back to the legacy JSON path so we don't write stub files.
+	// One conversation spans two sidecars. Serialize the complete snapshot and
+	// ordered pair replacement, not individual files, so concurrent saves cannot
+	// interleave LLM/tree generations or clobber each other's snapshots.
 	conv.lock()
-	split := conv.Version >= 2 && len(conv.Entries) > 0
+	convID := conv.ID
 	conv.unlock()
-	if split {
-		return saveSplit(conv, dir)
-	}
-	return saveJSON(conv, dir)
+	lockPath := filepath.Join(dir, ".conversation-"+convID)
+	return durablefile.Transaction(lockPath, 5*time.Second, func(_ string) error {
+		conv.lock()
+		split := conv.Version >= 2 && len(conv.Entries) > 0
+		conv.unlock()
+		if split {
+			return saveSplit(conv, dir)
+		}
+		return saveJSON(conv, dir)
+	})
 }
 
 // saveSplit writes the two sidecar files atomically in order:
@@ -380,34 +382,7 @@ func saveJSON(conv *Conversation, dir string) error {
 // already truncated away by the other writer's O_TRUNC. A dispatch fan-out hit
 // this on every parallel registration.
 func writeFileSynced(path string, data []byte) error {
-	tmp := fmt.Sprintf("%s.tmp-%d-%d", path, os.Getpid(), atomic.AddUint64(&tmpSeq, 1))
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-	if err != nil {
-		return err
-	}
-	if _, err := f.Write(data); err != nil {
-		f.Close()      //nolint:errcheck // close after write error; the write error is already returned
-		os.Remove(tmp) //nolint:errcheck // temp cleanup
-		return err
-	}
-	if err := f.Sync(); err != nil {
-		f.Close()      //nolint:errcheck // close after write error; the write error is already returned
-		os.Remove(tmp) //nolint:errcheck // temp cleanup
-		return err
-	}
-	if err := f.Close(); err != nil {
-		os.Remove(tmp) //nolint:errcheck // temp cleanup
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp) //nolint:errcheck // temp cleanup
-		return err
-	}
-	if dir, err := os.Open(filepath.Dir(path)); err == nil {
-		dir.Sync()  //nolint:errcheck // best-effort directory fsync
-		dir.Close() //nolint:errcheck // directory handle close
-	}
-	return nil
+	return durablefile.Write(path, data, 0o644)
 }
 
 // LoadLlmHeaderModel reads only the model field from a conversation's

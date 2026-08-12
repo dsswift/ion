@@ -49,6 +49,23 @@ func TestCleanupStored(t *testing.T) {
 	})
 
 	t.Run("real cleanup deletes old conversations", func(t *testing.T) {
+		// Give each candidate data in both owned spill roots before cleanup.
+		// Cleanup must remove only expired conversation roots, never a sibling.
+		for _, id := range []string{"old-conv-1", "old-conv-2", "recent-conv"} {
+			if err := os.MkdirAll(filepath.Join(dir, id, "images"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, id, "images", "image.png"), []byte("image"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(filepath.Join(dir, "tool-results", id), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "tool-results", id, "result.txt"), []byte("result"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+
 		count, err := CleanupStored(dir, 14, []string{"old-excluded"}, []string{"old-active"}, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -64,12 +81,24 @@ func TestCleanupStored(t *testing.T) {
 			if _, err := os.Stat(filepath.Join(dir, id+".tree.jsonl")); !os.IsNotExist(err) {
 				t.Errorf("%s.tree.jsonl should have been deleted", id)
 			}
+			if _, err := os.Stat(filepath.Join(dir, "tool-results", id)); !os.IsNotExist(err) {
+				t.Errorf("tool-results for %s should have been deleted", id)
+			}
+			if _, err := os.Stat(filepath.Join(dir, id)); !os.IsNotExist(err) {
+				t.Errorf("image directory for %s should have been deleted", id)
+			}
 		}
 		// Protected conversations should still exist
 		for _, id := range []string{"recent-conv", "old-labeled", "old-excluded", "old-active"} {
 			if _, err := os.Stat(filepath.Join(dir, id+".llm.jsonl")); err != nil {
 				t.Errorf("%s should still exist: %v", id, err)
 			}
+		}
+		if _, err := os.Stat(filepath.Join(dir, "recent-conv", "images", "image.png")); err != nil {
+			t.Errorf("recent conversation image should remain: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "tool-results", "recent-conv", "result.txt")); err != nil {
+			t.Errorf("recent conversation tool result should remain: %v", err)
 		}
 	})
 

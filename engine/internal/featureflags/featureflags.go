@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -232,12 +231,7 @@ func (f *FeatureFlags) saveCache() {
 	if err != nil {
 		return
 	}
-	dir := filepath.Dir(f.cfg.CachePath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		utils.LogWithFields(utils.LevelInfo, "featureflags", "save cache mkdir failed", map[string]any{"path": dir, "error": err.Error()})
-		return
-	}
-	if err := os.WriteFile(f.cfg.CachePath, data, 0o644); err != nil {
+	if err := utils.AtomicWriteFile(f.cfg.CachePath, data, 0o644); err != nil {
 		utils.LogWithFields(utils.LevelInfo, "featureflags", "save cache write failed", map[string]any{"path": f.cfg.CachePath, "error": err.Error()})
 	}
 }

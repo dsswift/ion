@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/durablefile"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -303,7 +304,7 @@ func writeNotebook(filePath string, nb *notebook, msg string) (*types.ToolResult
 	if err != nil {
 		return &types.ToolResult{Content: fmt.Sprintf("Notebook error: %s", err), IsError: true}, nil
 	}
-	if err := os.WriteFile(filePath, data, 0o644); err != nil {
+	if err := durablefile.Write(filePath, data, writeMode(filePath)); err != nil {
 		return &types.ToolResult{Content: fmt.Sprintf("Notebook error: %s", err), IsError: true}, nil
 	}
 	return &types.ToolResult{Content: msg}, nil

@@ -502,3 +502,22 @@ func TestToolServer_MultipleConnections(t *testing.T) {
 		}
 	}
 }
+
+func TestStop_RemovesConfigFile(t *testing.T) {
+	ts := NewToolServer("config-cleanup-test")
+
+	configPath, err := ts.McpConfigPath("config-cleanup-test")
+	if err != nil {
+		t.Fatalf("McpConfigPath failed: %v", err)
+	}
+
+	if _, err := os.Stat(configPath); err != nil {
+		t.Fatalf("config file should exist after McpConfigPath, got: %v", err)
+	}
+
+	ts.Stop()
+
+	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
+		t.Errorf("config file should be removed after Stop, got err=%v", err)
+	}
+}

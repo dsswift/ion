@@ -25,6 +25,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/server"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/titling"
+	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/transport"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -319,6 +320,7 @@ func cmdServe() {
 	}
 
 	utils.LogWithFields(utils.LevelInfo, "main", "binding socket at", map[string]any{"sock": sock})
+	tools.CleanStaleTaskOutputs()
 	if err := srv.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to start: %s\n", err)
 		os.Exit(1)

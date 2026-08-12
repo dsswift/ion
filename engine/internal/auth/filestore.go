@@ -212,14 +212,8 @@ func (fs *FileStore) writeFile(creds *credentialFile) error {
 		return fmt.Errorf("encrypt credentials: %w", err)
 	}
 
-	// Ensure parent directory exists
-	dir := filepath.Dir(fs.path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("create credentials dir: %w", err)
-	}
-
 	encoded := hex.EncodeToString(ciphertext)
-	if err := os.WriteFile(fs.path, []byte(encoded), 0o600); err != nil {
+	if err := utils.AtomicWriteFile(fs.path, []byte(encoded), 0o600); err != nil {
 		return fmt.Errorf("write credentials file: %w", err)
 	}
 
