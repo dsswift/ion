@@ -122,6 +122,19 @@ func TestAgentInfo_IsRootOmitEmpty(t *testing.T) {
 	}
 }
 
+func TestAgentInfo_RemainingDepthBudgetJSONWire(t *testing.T) {
+	out, err := json.Marshal(AgentInfo{
+		Name:                 "lead",
+		RemainingDepthBudget: 2,
+	})
+	if err != nil {
+		t.Fatalf("marshal AgentInfo: %v", err)
+	}
+	if got := string(out); !strings.Contains(got, `"remainingDepthBudget":2`) {
+		t.Errorf("AgentInfo missing remainingDepthBudget: %s", got)
+	}
+}
+
 // TestBeforeAgentStartResult_AgentNameJSONWire pins the `agentName` wire field
 // on BeforeAgentStartResult. The Go FireBeforeAgentStart already honors an
 // agentName returned by a subprocess (TS) handler via the map path; this test

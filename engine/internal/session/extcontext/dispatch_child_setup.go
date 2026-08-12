@@ -25,14 +25,9 @@ func loadChildExtension(sa SessionAccessor, registry *DispatchRegistry, opts *ex
 		return nil
 	}
 
-	childExtHost := extension.NewHost()
+	childExtHost, extCfg := newChildExtensionHost(sa, opts, model, projectPath)
 	if cfg := sa.EngineConfig(); cfg != nil && cfg.Timeouts != nil {
 		childExtHost.SetRPCTimeout(cfg.Timeouts.ExtensionRpc())
-	}
-	extCfg := &extension.ExtensionConfig{
-		ExtensionDir:     opts.ExtensionDir,
-		Model:            model,
-		WorkingDirectory: projectPath,
 	}
 	// Make nested dispatch working-directory resolution observable: the child
 	// extension is configured with the resolved projectPath here, so log it
@@ -91,15 +86,18 @@ func loadChildExtension(sa SessionAccessor, registry *DispatchRegistry, opts *ex
 		utils.LogWithFields(utils.LevelError, "session", "child extension session_start failed", map[string]any{"error": err.Error(), "session_key": sa.SessionKey()})
 	}
 
-	// Wire before_agent_start for system prompt.
+	// Wire before_agent_start for system prompt. The hook sees the remaining
+	// dispatch budget for this child, not a heuristic derived by its harness.
+	engineMaxDepth := 0
+	if cfg := sa.EngineConfig(); cfg != nil {
+		engineMaxDepth = cfg.MaxDispatchDepth
+	}
+	effectiveCap := resolveMaxDispatchDepth(opts.MaxDispatchDepth, engineMaxDepth)
 	basCtx := NewExtContext(sa, registry, ExtContextOpts{
 		Depth:      childDepth,
 		DispatchId: childDispatchId,
 	})
-	extSysPrompt, _, err := childExtHost.FireBeforeAgentStart(basCtx, extension.AgentInfo{
-		Name: opts.Name,
-		Task: opts.Task,
-	})
+	extSysPrompt, _, err := childExtHost.FireBeforeAgentStart(basCtx, beforeAgentStartInfo(opts, childDepth, effectiveCap))
 	if err != nil {
 		// before_agent_start failure means the system prompt may be incomplete;
 		// log so the gap is diagnosable instead of the child running with a
@@ -115,6 +113,14 @@ func loadChildExtension(sa SessionAccessor, registry *DispatchRegistry, opts *ex
 	}
 
 	return childExtHost
+}
+
+func beforeAgentStartInfo(opts *extension.DispatchAgentOpts, childDepth, effectiveCap int) extension.AgentInfo {
+	return extension.AgentInfo{
+		Name:                 opts.Name,
+		Task:                 opts.Task,
+		RemainingDepthBudget: remainingDepthBudget(effectiveCap, childDepth),
+	}
 }
 
 // wireChildExtensionTools attaches the child extension's registered tools to
