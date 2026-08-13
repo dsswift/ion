@@ -18,7 +18,8 @@ All Quality workflow jobs must pass before a PR can merge:
 
 | Check name | Workflow |
 |------------|----------|
-| `Quality / engine-test` | `quality.yml` |
+| `engine-test (macos-14)` | `quality.yml` |
+| `engine-test (ubuntu-latest)` | `quality.yml` |
 | `Quality / engine-lint` | `quality.yml` |
 | `Quality / engine-vuln` | `quality.yml` |
 | `Quality / relay-test` | `quality.yml` |
@@ -31,7 +32,7 @@ All Quality workflow jobs must pass before a PR can merge:
 
 ### Path-scoped pull-request checks
 
-Quality keeps stable required-check names. On a pull request, `changes` classifies the PR diff and product jobs outside that scope are marked **skipped** rather than omitted. GitHub treats those skipped contexts as successful, while avoiding unrelated runners and package scans. `engine-test` is a stable aggregate context: engine changes run both platform matrix lanes and the aggregate validates them; out-of-scope PRs run only the aggregate's no-op confirmation, so matrix lane contexts never become indefinitely expected.
+Quality keeps stable required-check names. On a pull request, `changes` classifies the PR diff and product jobs outside that scope are marked **skipped** rather than omitted. GitHub treats those skipped contexts as successful, while avoiding unrelated runners and package scans. The required engine matrix contexts are special: when `engine/**` is untouched, `changes` publishes completed no-op check runs with the existing macOS and Ubuntu names, so branch protection receives success instead of leaving those contexts indefinitely expected.
 
 Examples: a docs-only PR runs the universal file-size gate, not engine/desktop/relay tests, package vulnerability scans, Docker, or iOS compilation; a `desktop/package-lock.json` update additionally runs the desktop audit; an iOS change runs SwiftLint and the device build. Workflow YAML changes run actionlint. The classifier mapping is pinned by `scripts/test-quality-path-scopes.sh`.
 

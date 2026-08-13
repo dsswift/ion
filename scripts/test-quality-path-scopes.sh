@@ -56,7 +56,6 @@ job_scopes = {
     "check-swiftlint": "ios",
     "dashboards": "dashboards",
     "engine-crossbuild": "engine",
-    "engine-test-platform": "engine",
     "engine-test": "engine",
     "sdk-test": "sdk",
     "relay-test": "relay",
@@ -76,8 +75,8 @@ for scope in ("engine", "relay", "sdk"):
     if workflow.count(needle) < 3:
         raise SystemExit(f"{scope}: composite lint/vulnerability steps are not fully scoped")
 
-if "needs: [changes, engine-test-platform]" not in workflow or "if: always()" not in workflow:
-    raise SystemExit("engine-test: missing stable aggregate required-check job")
+if "Report skipped engine matrix checks" not in workflow or "checks.create" not in workflow:
+    raise SystemExit("engine-test: missing no-op required-context reporter")
 
 print(f"quality path scopes: {len(cases)} cases and {len(job_scopes)} job guards passed")
 PY
