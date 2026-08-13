@@ -410,7 +410,9 @@ func (r *Registry) mergedSnapshot(maxDispatchEntries int) []types.AgentStateUpda
 	keptExt := 0
 	for _, ext := range r.lastExtStates {
 		if !superseded[ext.Name] {
-			merged = append(merged, ext)
+			// Snapshot callers serialize after this lock is released. Copy extension
+			// metadata here so a concurrent extension refresh cannot race that read.
+			merged = append(merged, copyAgentState(ext))
 			keptExt++
 		}
 	}
@@ -639,41 +641,45 @@ func dispatchesLen(meta map[string]interface{}) int {
 	return 0
 }
 
-// copyAgentState returns a shallow copy of the AgentStateUpdate with a
-// deep-copied Metadata map (top-level keys copied, dispatches slice cloned).
+// copyAgentState returns a detached snapshot safe to serialize after the
+// registry lock is released. Metadata is an open recursive map, so cloning
+// only dispatches[] is insufficient: extensions may use nested maps/slices.
 func copyAgentState(s types.AgentStateUpdate) types.AgentStateUpdate {
 	cp := s
-	if s.Metadata != nil {
-		cp.Metadata = make(map[string]interface{}, len(s.Metadata))
-		for k, v := range s.Metadata {
-			if k == "dispatches" {
-				if d, ok := v.([]interface{}); ok {
-					cloned := make([]interface{}, len(d))
-					for i, entry := range d {
-						cloned[i] = deepCopyDispatch(entry)
-					}
-					cp.Metadata[k] = cloned
-					continue
-				}
-			}
-			cp.Metadata[k] = v
-		}
-	}
+	cp.Metadata = deepCopyAgentMetadata(s.Metadata)
 	return cp
 }
 
-// deepCopyDispatch copies a single dispatch entry (map[string]interface{}).
-// If the entry is not a map, it is returned as-is.
+func deepCopyAgentMetadata(src map[string]interface{}) map[string]interface{} {
+	if src == nil {
+		return nil
+	}
+	out := make(map[string]interface{}, len(src))
+	for key, value := range src {
+		out[key] = deepCopyAgentMetadataValue(value)
+	}
+	return out
+}
+
+func deepCopyAgentMetadataValue(value interface{}) interface{} {
+	switch v := value.(type) {
+	case map[string]interface{}:
+		return deepCopyAgentMetadata(v)
+	case []interface{}:
+		out := make([]interface{}, len(v))
+		for i := range v {
+			out[i] = deepCopyAgentMetadataValue(v[i])
+		}
+		return out
+	default:
+		return value
+	}
+}
+
+// deepCopyDispatch copies a dispatch member for grouping. It delegates to the
+// generic metadata copier because nested dispatch details are also extensible.
 func deepCopyDispatch(entry interface{}) interface{} {
-	m, ok := entry.(map[string]interface{})
-	if !ok {
-		return entry
-	}
-	cp := make(map[string]interface{}, len(m))
-	for k, v := range m {
-		cp[k] = v
-	}
-	return cp
+	return deepCopyAgentMetadataValue(entry)
 }
 
 // dispatchEntryID extracts the stable "id" of a dispatch entry (the

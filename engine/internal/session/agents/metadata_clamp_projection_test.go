@@ -60,3 +60,17 @@ func TestClampSnapshotCopy_PreservesOversizedIdentityValues(t *testing.T) {
 		t.Fatalf("clamp altered routing identity: %#v", entry)
 	}
 }
+
+func TestFullMergedSnapshot_DetachesExtensionMetadata(t *testing.T) {
+	r := NewRegistry()
+	r.CacheExtStates([]types.AgentStateUpdate{{Name: "extension", Status: "idle", Metadata: map[string]any{
+		"nested": map[string]any{"value": "original"},
+	}}})
+
+	snapshot := r.FullMergedSnapshot()
+	snapshot[0].Metadata["nested"].(map[string]any)["value"] = "changed"
+	again := r.FullMergedSnapshot()
+	if got := again[0].Metadata["nested"].(map[string]any)["value"]; got != "original" {
+		t.Fatalf("full snapshot shared extension metadata: %q", got)
+	}
+}
