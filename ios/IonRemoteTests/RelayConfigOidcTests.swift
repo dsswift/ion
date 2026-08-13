@@ -1,4 +1,5 @@
 import XCTest
+import CryptoKit
 @testable import IonRemote
 
 // MARK: - Enterprise Relay Phase 1 + Phase 2: relay_config OIDC decode + credential-swap
@@ -209,46 +210,111 @@ final class RelayConfigOidcTests: XCTestCase {
         XCTAssertEqual(json["relayApiKey"] as? String, "psk")
     }
 
-    // MARK: - Credential swap triggers softReconnect
+    // MARK: - Transport rebuild classification
 
-    /// When handleRelayConfig receives a different relayApiKey, softReconnect
-    /// must be called on the view model. We pin this by verifying the transport
-    /// is torn down and rebuilt (transport changes from original to a new instance).
-    ///
-    /// SessionViewModel.softReconnect builds a new TransportManager when the
-    /// active device is not lan-direct. The test verifies the old transport
-    /// object is no longer the current transport after handleRelayConfig with
-    /// a changed key.
-    @MainActor
-    func testCredentialChangeTriggersSoftReconnect() async throws {
-        let vm = SessionViewModel()
+    private func makeTransport() -> TransportManager {
+        TransportManager(
+            relayURL: URL(string: "wss://relay.example.com")!,
+            apiKey: "sentinel-token",
+            channelId: "sentinel-channel",
+            sharedKey: SymmetricKey(size: .bits256)
+        )
+    }
 
-        // Set up a minimal paired device with a relay configuration.
-        let sharedSecret = Data(repeating: 0xAB, count: 32)
+    private func makeConfiguredDevice(
+        authMode: String,
+        token: String = "old-token",
+        clientId: String? = "client-id"
+    ) -> PairedDevice {
         var device = PairedDevice(
             id: "test-device-id",
             name: "TestMac",
             pairedAt: Date(),
             lastSeen: nil,
             channelId: "channel-abc",
-            sharedSecret: sharedSecret,
+            sharedSecret: Data(repeating: 0xAB, count: 32),
             relayURL: "wss://relay.example.com",
-            relayAPIKey: "old-token"
+            relayAPIKey: token
         )
-        device.relayAuthMode = "oidc"
+        device.relayAuthMode = authMode
+        if authMode == "oidc" {
+            device.relayOidcIssuer = "https://login.microsoftonline.com/tenant/v2.0"
+            device.relayOidcAudience = "api://client"
+            device.relayOidcRequiredScope = "api://client/Relay.Access"
+            device.relayOidcClientId = clientId
+        }
+        return device
+    }
+
+    @MainActor
+    private func configure(_ vm: SessionViewModel, device: PairedDevice, transport: TransportManager) {
         vm.pairedDevices = [device]
         vm.activeDeviceId = device.id
-        vm.relayURL = "wss://relay.example.com"
-        vm.relayAPIKey = "old-token"
+        vm.relayURL = device.relayURL ?? ""
+        vm.relayAPIKey = device.relayAPIKey ?? ""
+        vm.transport = transport
+        vm.connectionState = .connected
+    }
 
-        // Install a sentinel transport so we can detect the reconnect.
-        // softReconnect creates a new TransportManager when not lan-direct;
-        // after the call the vm.transport property must differ from sentinel.
-        // We can't build a real TransportManager without a network, so we
-        // verify that the relayAPIKey is updated to the new value.
+    /// A token sent in desktop_relay_config bootstraps recovery state for an
+    /// autonomous OIDC pairing. The live socket gets its bearer from the
+    /// registry-backed credential closure, so replacing that healthy transport
+    /// merely because the bootstrap token string changed is the production bug.
+    @MainActor
+    func testAutonomousOidcTokenRefreshPreservesLiveTransport() {
+        let vm = SessionViewModel()
+        let original = makeTransport()
+        configure(vm, device: makeConfiguredDevice(authMode: "oidc"), transport: original)
+
         vm.handleRelayConfig(
             relayUrl: "wss://relay.example.com",
-            relayApiKey: "new-token",
+            relayApiKey: "new-bootstrap-token",
+            authMode: "oidc",
+            relayOidcIssuer: "https://login.microsoftonline.com/tenant/v2.0",
+            relayOidcAudience: "api://client",
+            relayOidcRequiredScope: "api://client/Relay.Access",
+            relayOidcClientId: "client-id"
+        )
+
+        XCTAssertTrue(vm.transport === original,
+            "an autonomous OIDC bootstrap-token refresh must not replace an authenticated transport")
+        XCTAssertEqual(vm.connectionState, .connected)
+        XCTAssertEqual(vm.relayAPIKey, "new-bootstrap-token")
+        XCTAssertEqual(vm.pairedDevices.first?.relayAPIKey, "new-bootstrap-token")
+        vm.disconnect()
+    }
+
+    @MainActor
+    func testPskCredentialChangeRebuildsTransport() {
+        let vm = SessionViewModel()
+        let original = makeTransport()
+        configure(vm, device: makeConfiguredDevice(authMode: "psk", clientId: nil), transport: original)
+
+        vm.handleRelayConfig(
+            relayUrl: "wss://relay.example.com",
+            relayApiKey: "new-psk",
+            authMode: "psk",
+            relayOidcIssuer: nil,
+            relayOidcAudience: nil,
+            relayOidcRequiredScope: nil,
+            relayOidcClientId: nil
+        )
+
+        XCTAssertFalse(vm.transport === original,
+            "a PSK change alters the credential used by the socket and must rebuild it")
+        XCTAssertEqual(vm.pairedDevices.first?.relayAPIKey, "new-psk")
+        vm.disconnect()
+    }
+
+    @MainActor
+    func testLegacyOidcCredentialChangeRebuildsTransport() {
+        let vm = SessionViewModel()
+        let original = makeTransport()
+        configure(vm, device: makeConfiguredDevice(authMode: "oidc", clientId: nil), transport: original)
+
+        vm.handleRelayConfig(
+            relayUrl: "wss://relay.example.com",
+            relayApiKey: "new-bootstrap-token",
             authMode: "oidc",
             relayOidcIssuer: "https://login.microsoftonline.com/tenant/v2.0",
             relayOidcAudience: "api://client",
@@ -256,14 +322,119 @@ final class RelayConfigOidcTests: XCTestCase {
             relayOidcClientId: nil
         )
 
-        // The credential must be updated on both the vm and the device record.
-        XCTAssertEqual(vm.relayAPIKey, "new-token")
-        XCTAssertEqual(vm.pairedDevices.first?.relayAPIKey, "new-token")
-        // OIDC metadata must be persisted on the device record.
+        XCTAssertFalse(vm.transport === original,
+            "legacy OIDC without autonomous acquisition still uses the pushed credential")
+        vm.disconnect()
+    }
+
+    @MainActor
+    func testIncompleteOidcCredentialChangeRebuildsTransport() {
+        let vm = SessionViewModel()
+        let original = makeTransport()
+        var incomplete = makeConfiguredDevice(authMode: "oidc")
+        incomplete.relayOidcRequiredScope = nil
+        configure(vm, device: incomplete, transport: original)
+
+        vm.handleRelayConfig(
+            relayUrl: "wss://relay.example.com",
+            relayApiKey: "new-bootstrap-token",
+            authMode: "oidc",
+            relayOidcIssuer: "https://login.microsoftonline.com/tenant/v2.0",
+            relayOidcAudience: "api://client",
+            relayOidcRequiredScope: nil,
+            relayOidcClientId: "client-id"
+        )
+
+        XCTAssertFalse(vm.transport === original,
+            "OIDC without a complete token-manager config still uses the pushed credential")
+        vm.disconnect()
+    }
+
+    @MainActor
+    func testOmittedOidcClientIdPreservesEffectiveContextAndTransport() {
+        let vm = SessionViewModel()
+        let original = makeTransport()
+        configure(vm, device: makeConfiguredDevice(authMode: "oidc"), transport: original)
+
+        vm.handleRelayConfig(
+            relayUrl: "wss://relay.example.com",
+            relayApiKey: "new-bootstrap-token",
+            authMode: "oidc",
+            relayOidcIssuer: "https://login.microsoftonline.com/tenant/v2.0",
+            relayOidcAudience: "api://client",
+            relayOidcRequiredScope: "api://client/Relay.Access",
+            relayOidcClientId: nil
+        )
+
+        XCTAssertTrue(vm.transport === original,
+            "an omitted optional field must not look like an effective context change")
+        XCTAssertEqual(vm.pairedDevices.first?.relayOidcClientId, "client-id")
+        vm.disconnect()
+    }
+
+    @MainActor
+    func testOmittedAuthModePreservesAutonomousOidcTransport() {
+        let vm = SessionViewModel()
+        let original = makeTransport()
+        configure(vm, device: makeConfiguredDevice(authMode: "oidc"), transport: original)
+
+        vm.handleRelayConfig(
+            relayUrl: "wss://relay.example.com",
+            relayApiKey: "new-bootstrap-token",
+            authMode: nil,
+            relayOidcIssuer: "https://login.microsoftonline.com/tenant/v2.0",
+            relayOidcAudience: "api://client",
+            relayOidcRequiredScope: "api://client/Relay.Access",
+            relayOidcClientId: nil
+        )
+
+        XCTAssertTrue(vm.transport === original)
         XCTAssertEqual(vm.pairedDevices.first?.relayAuthMode, "oidc")
-        XCTAssertEqual(vm.pairedDevices.first?.relayOidcIssuer, "https://login.microsoftonline.com/tenant/v2.0")
-        XCTAssertEqual(vm.pairedDevices.first?.relayOidcAudience, "api://client")
-        XCTAssertEqual(vm.pairedDevices.first?.relayOidcRequiredScope, "api://client/Relay.Access")
+        XCTAssertEqual(vm.pairedDevices.first?.relayOidcClientId, "client-id")
+        vm.disconnect()
+    }
+
+    @MainActor
+    func testAutonomousOidcEndpointChangeRebuildsTransport() {
+        let vm = SessionViewModel()
+        let original = makeTransport()
+        configure(vm, device: makeConfiguredDevice(authMode: "oidc"), transport: original)
+
+        vm.handleRelayConfig(
+            relayUrl: "wss://new-relay.example.com",
+            relayApiKey: "new-bootstrap-token",
+            authMode: "oidc",
+            relayOidcIssuer: "https://login.microsoftonline.com/tenant/v2.0",
+            relayOidcAudience: "api://client",
+            relayOidcRequiredScope: "api://client/Relay.Access",
+            relayOidcClientId: "client-id"
+        )
+
+        XCTAssertFalse(vm.transport === original,
+            "an endpoint change must rebuild even when token acquisition is autonomous")
+        vm.disconnect()
+    }
+
+    @MainActor
+    func testAutonomousOidcContextChangeRebuildsTransport() {
+        let vm = SessionViewModel()
+        let original = makeTransport()
+        configure(vm, device: makeConfiguredDevice(authMode: "oidc"), transport: original)
+
+        vm.handleRelayConfig(
+            relayUrl: "wss://relay.example.com",
+            relayApiKey: "new-bootstrap-token",
+            authMode: "oidc",
+            relayOidcIssuer: "https://login.microsoftonline.com/tenant/v2.0",
+            relayOidcAudience: "api://client",
+            relayOidcRequiredScope: "api://client/Relay.Other",
+            relayOidcClientId: "client-id"
+        )
+
+        XCTAssertFalse(vm.transport === original,
+            "issuer, audience, scope, or client-ID changes must rebuild the credential context")
+        XCTAssertEqual(vm.pairedDevices.first?.relayOidcRequiredScope, "api://client/Relay.Other")
+        vm.disconnect()
     }
 
     // MARK: - Same credential does NOT trigger softReconnect

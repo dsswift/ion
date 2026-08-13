@@ -34,6 +34,96 @@ final class SyncRetryTests: XCTestCase {
             "The handshake must back off between attempts, not fail fast once")
     }
 
+    /// stop() owns the handshake lifetime. Once stopped, the task must cancel
+    /// promptly and no replacement handshake may be started on that manager.
+    func testStopCancelsOwnedHandshake() async {
+        let m = makeManager()
+        m.startSyncHandshake(reason: "test-stop")
+        XCTAssertNotNil(m.syncHandshakeTask, "the transport must retain active sync work")
+
+        try? await Task.sleep(for: .milliseconds(20))
+        m.stop()
+
+        XCTAssertTrue(m.isStopped)
+        XCTAssertNil(m.syncHandshakeTask, "stop must release the owned handshake")
+        let outboundAtStop = m._seqLock.withLock { $0 }
+        try? await Task.sleep(for: .milliseconds(80))
+        XCTAssertEqual(m._seqLock.withLock { $0 }, outboundAtStop,
+            "a stopped transport must not make further sync attempts")
+
+        m.startSyncHandshake(reason: "after-stop")
+        XCTAssertNil(m.syncHandshakeTask,
+            "a stopped transport must refuse new handshake work")
+    }
+
+    /// A newer sync reason replaces the old task rather than stacking another
+    /// retry loop. The generation token prevents the cancelled predecessor from
+    /// clearing the replacement when it unwinds.
+    func testNewHandshakeSupersedesPriorOwnedTask() async {
+        let m = makeManager()
+        m.startSyncHandshake(reason: "first")
+        let firstGeneration = m.syncHandshakeGeneration
+
+        m.startSyncHandshake(reason: "second")
+
+        XCTAssertGreaterThan(m.syncHandshakeGeneration, firstGeneration)
+        XCTAssertNotNil(m.syncHandshakeTask)
+        try? await Task.sleep(for: .milliseconds(20))
+        XCTAssertNotNil(m.syncHandshakeTask,
+            "the cancelled predecessor must not clear the current handshake")
+        m.stop()
+    }
+
+    /// A sync operation already queued behind another outbound operation must
+    /// re-check stop inside the queue before allocating its sequence number.
+    func testStoppedTransportRejectsQueuedSyncBeforeSeqAllocation() async throws {
+        let m = makeManager()
+        let blockerReady = OSAllocatedUnfairLockBox(false)
+        let releaseBlocker = OSAllocatedUnfairLockBox(false)
+        let blocker = m.outboundQueue.submit {
+            blockerReady.mutate { $0 = true }
+            while !releaseBlocker.value {
+                try? await Task.sleep(for: .milliseconds(2))
+            }
+        }
+        while !blockerReady.value {
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+
+        m.startSyncHandshake(reason: "queued-stop")
+        try? await Task.sleep(for: .milliseconds(10))
+        m.stop()
+        let outboundAtStop = m._seqLock.withLock { $0 }
+        releaseBlocker.mutate { $0 = true }
+        _ = try await blocker.value
+        try? await Task.sleep(for: .milliseconds(30))
+
+        XCTAssertEqual(m._seqLock.withLock { $0 }, outboundAtStop,
+            "queued work must observe stop before building a wire message")
+    }
+
+    /// Concurrent triggers must leave exactly the newest generation owned, and
+    /// stop must atomically prevent any trigger from installing more work.
+    func testConcurrentHandshakeTriggersCannotEscapeStop() async {
+        let m = makeManager()
+        await withTaskGroup(of: Void.self) { group in
+            for index in 0..<20 {
+                group.addTask { m.startSyncHandshake(reason: "race-\(index)") }
+            }
+        }
+        XCTAssertNotNil(m.syncHandshakeTask)
+
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { m.stop() }
+            for index in 0..<20 {
+                group.addTask { m.startSyncHandshake(reason: "after-stop-\(index)") }
+            }
+        }
+
+        XCTAssertTrue(m.isStopped)
+        XCTAssertNil(m.syncHandshakeTask)
+    }
+
     /// A snapshot arriving mid-handshake satisfies it: the retry loop stops
     /// and reports success even though the sends themselves keep failing.
     func testSnapshotArrivalStopsRetrying() async {

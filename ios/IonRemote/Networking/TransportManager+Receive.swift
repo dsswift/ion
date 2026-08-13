@@ -35,11 +35,10 @@ extension TransportManager {
                         // single-shot sync whose send failed used to deadlock
                         // the handshake — the ViewModel-level sync defers
                         // while `.reconnecting`, but `.connected` requires a
-                        // snapshot, which requires this sync. Detached so the
-                        // 250ms poll loop isn't blocked by the backoff.
-                        Task { [weak self] in
-                            await self?.sendSyncWithRetry(reason: "relay-connected")
-                        }
+                        // snapshot, which requires this sync. Owned separately
+                        // so the 250ms poll loop is not blocked by backoff and
+                        // stop() can cancel the handshake with the transport.
+                        self.startSyncHandshake(reason: "relay-connected")
                     }
                     self.updateState()
                 }

@@ -50,9 +50,18 @@ final class TransportManager {
 
     // MARK: - Internals
 
-    /// Set by `stop()` to prevent a deferred `start()` Task from
-    /// resurrecting a transport that was already torn down.
-    private(set) var isStopped = false
+    /// One lock owns the stop flag and sync-handshake identity together. Relay,
+    /// Bonjour, watchdog, and teardown callbacks run on independent tasks; a
+    /// generation token without this atomic boundary can still lose the current
+    /// task when a cancelled predecessor unwinds.
+    let lifecycleLock = OSAllocatedUnfairLock(initialState: (
+        stopped: false,
+        syncGeneration: UInt64(0),
+        syncTask: Optional<Task<Void, Never>>.none
+    ))
+    var isStopped: Bool { lifecycleLock.withLock { $0.stopped } }
+    var syncHandshakeTask: Task<Void, Never>? { lifecycleLock.withLock { $0.syncTask } }
+    var syncHandshakeGeneration: UInt64 { lifecycleLock.withLock { $0.syncGeneration } }
     let _seqLock = OSAllocatedUnfairLock(initialState: UInt64(0))
     /// Outbound-seq epoch (generation id) stamped on every outbound
     /// WireMessage. Seeded once per TransportManager instance from wall-clock
@@ -238,6 +247,7 @@ final class TransportManager {
         lanListenTask?.cancel()
         bonjourObservationTask?.cancel()
         relayStateTask?.cancel()
+        lifecycleLock.withLock { $0.syncTask }?.cancel()
         lanStateTask?.cancel()
         pathMonitor?.cancel()
         disconnectGraceTask?.cancel()
@@ -246,29 +256,6 @@ final class TransportManager {
     }
 
     // MARK: - Public API
-
-    /// Start all transports: relay connection, Bonjour discovery, and network monitoring.
-    func start() async {
-        guard !isStopped else { return }
-
-        await MainActor.run { self.bonjour.startBrowsing() }
-        startBonjourObservation()
-
-        if let relay {
-            DiagnosticLog.log("start: connecting relay", tag: "transport")
-            await relay.connect()
-            DiagnosticLog.log("start: relay connect returned", tag: "transport", fields: [
-                "connected": String(relay.isConnected)
-            ])
-            startRelayListener()
-            startRelayStateObservation()
-        }
-        startLANStateObservation()
-        DiagnosticLog.log("start: starting network monitor", tag: "transport", fields: [
-            "relay_connected": String(relay?.isConnected ?? false)
-        ])
-        startNetworkMonitor()
-    }
 
     /// Connect to a LAN host with challenge-response auth handshake.
     ///
@@ -357,36 +344,6 @@ final class TransportManager {
         await MainActor.run { self.bonjour.startBrowsing() }
         startBonjourObservation()
         setState(.lanPreferred)
-    }
-
-    /// Disconnect all transports and stop discovery.
-    func stop() {
-        DiagnosticLog.log("TM: stop() called")
-        isStopped = true
-
-        relayListenTask?.cancel()
-        relayListenTask = nil
-        lanListenTask?.cancel()
-        lanListenTask = nil
-        bonjourObservationTask?.cancel()
-        bonjourObservationTask = nil
-        relayStateTask?.cancel()
-        relayStateTask = nil
-        lanStateTask?.cancel()
-        lanStateTask = nil
-        pathMonitor?.cancel()
-        pathMonitor = nil
-        disconnectGraceTask?.cancel()
-        disconnectGraceTask = nil
-        resendCoalesceTask?.cancel()
-        resendCoalesceTask = nil
-        stopLANHeartbeatWatchdog()
-
-        relay?.disconnect()
-        lan.disconnect()
-        bonjour.stopBrowsing()
-        currentLANHost = nil
-        setState(.disconnected)
     }
 
     // MARK: - State machine
@@ -496,7 +453,10 @@ final class TransportManager {
             if path.status == .satisfied {
                 // Network restored. Reconnect relay if needed.
                 if let relay, !relay.isConnected, !relay.isConnecting {
-                    Task { @MainActor in await relay.connect() }
+                    Task { @MainActor [weak self, weak relay] in
+                        guard let self, let relay, !self.isStopped else { return }
+                        await relay.connect()
+                    }
                 }
                 // Restart Bonjour only when recovering from a real outage:
                 // - Skip the first callback (fires immediately on monitor.start(),
@@ -575,12 +535,15 @@ struct AuthResult: Codable {
 
 enum TransportError: Error, LocalizedError {
     case noTransportAvailable
+    case transportStopped
     case encodingFailed(Error)
 
     var errorDescription: String? {
         switch self {
         case .noTransportAvailable:
             return "No transport available (relay and LAN both disconnected)"
+        case .transportStopped:
+            return "Transport stopped before queued send could run"
         case .encodingFailed(let error):
             return "Failed to encode message: \(error.localizedDescription)"
         }

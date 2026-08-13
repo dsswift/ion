@@ -146,9 +146,7 @@ extension TransportManager {
             // re-sync so a fresh snapshot reconciles state. Retryable — see
             // TransportManager+Sync.swift.
             DiagnosticLog.log("lan watchdog fired, relay takes over", tag: "transport", fields: [:])
-            Task { [weak self] in
-                await self?.sendSyncWithRetry(reason: "lan-watchdog")
-            }
+            startSyncHandshake(reason: "lan-watchdog")
         } else {
             // No fallback transport. Signal the ViewModel the same way the
             // LAN stream-ended path does so it enters reconnecting.

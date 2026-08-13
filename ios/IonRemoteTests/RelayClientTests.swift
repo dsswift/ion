@@ -43,6 +43,35 @@ final class RelayClientTests: XCTestCase {
         XCTAssertFalse(client.isConnected)
     }
 
+    /// A disconnect while OIDC acquisition is suspended must win. Before the
+    /// post-await guard, the returning credential created a fresh WebSocket after
+    /// teardown and resurrected the transport.
+    func testDisconnectDuringCredentialFetchCannotResumeConnection() async {
+        let release = OSAllocatedUnfairLockBox(false)
+        let client = RelayClient(
+            relayURL: URL(string: "wss://relay.example.com")!,
+            apiKey: "",
+            channelId: "ch123",
+            getCredential: {
+                while !release.value {
+                    try? await Task.sleep(for: .milliseconds(2))
+                }
+                return "token"
+            }
+        )
+
+        let connect = Task { await client.connect() }
+        while !client.isConnecting {
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+        client.disconnect()
+        release.mutate { $0 = true }
+        await connect.value
+
+        XCTAssertFalse(client.isConnected)
+        XCTAssertFalse(client.isConnecting)
+    }
+
     // MARK: - Send without connection
 
     func testSendWhileDisconnectedThrows() async {

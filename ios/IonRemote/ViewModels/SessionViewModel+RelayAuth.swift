@@ -5,8 +5,8 @@ import Foundation
 // Extracted from SessionViewModel+ConnectionEvents.swift to keep that file
 // focused on unpair / LAN-auth-rejected events. handleRelayConfig handles
 // the desktop_relay_config event: it persists the updated relay URL, API
-// key, and OIDC metadata onto the active PairedDevice, then triggers a
-// softReconnect when the credential changed (OIDC token rotation).
+// key and OIDC metadata onto the active PairedDevice, then rebuilds the
+// transport only when effective socket configuration changes.
 //
 // Runs on the MainActor so it can mutate published state directly.
 
@@ -209,14 +209,28 @@ extension SessionViewModel {
         // already holds the stored config rather than "".
         let storedUrl = activeDevice?.relayURL ?? ""
         let storedApiKey = activeDevice?.relayAPIKey ?? ""
+        let previousRelayUrl = firstNonEmpty(self.relayURL, storedUrl)
+        let previousApiKey = firstNonEmpty(self.relayAPIKey, storedApiKey)
+        let previousAuthMode = activeDevice?.relayAuthMode ?? "psk"
+        // Omission means "no update" for an existing pairing. A legacy event
+        // with no prior mode still resolves to PSK for backward compatibility.
+        let effectiveAuthMode = authMode ?? activeDevice?.relayAuthMode ?? "psk"
+        let previousIssuer = activeDevice?.relayOidcIssuer
+        let previousAudience = activeDevice?.relayOidcAudience
+        let previousScope = activeDevice?.relayOidcRequiredScope
+        let previousClientId = activeDevice?.relayOidcClientId
+        let effectiveIssuer = relayOidcIssuer ?? previousIssuer
+        let effectiveAudience = relayOidcAudience ?? previousAudience
+        let effectiveScope = relayOidcRequiredScope ?? previousScope
+        let effectiveClientId = relayOidcClientId ?? previousClientId
         let effectiveUrl = firstNonEmpty(relayUrl, self.relayURL, storedUrl)
         let effectiveApiKey = firstNonEmpty(relayApiKey, self.relayAPIKey, storedApiKey)
         let hasRealToken = !relayApiKey.isEmpty
-        let credentialChanged = hasRealToken && (relayApiKey != self.relayAPIKey)
+        let credentialChanged = hasRealToken && relayApiKey != previousApiKey
 
         if !hasRealToken {
             DiagnosticLog.log("relay config carried no usable credential, keeping stored relay config", tag: "session.relay", level: .warn, fields: [
-                "auth_mode": authMode ?? "psk",
+                "auth_mode": effectiveAuthMode,
                 "has_stored_url": String(!effectiveUrl.isEmpty),
                 "has_stored_key": String(!effectiveApiKey.isEmpty)
             ])
@@ -227,13 +241,6 @@ extension SessionViewModel {
         if !effectiveUrl.isEmpty { self.relayURL = effectiveUrl }
         if !effectiveApiKey.isEmpty { self.relayAPIKey = effectiveApiKey }
 
-        // Captured BEFORE the persist block below overwrites them. `activeDevice`
-        // is computed from `pairedDevices`, so reading these afterwards would
-        // return the values just written and the change comparison would never
-        // fire.
-        let previousIssuer = activeDevice?.relayOidcIssuer
-        let previousClientId = activeDevice?.relayOidcClientId
-
         if let device = activeDevice,
            let idx = pairedDevices.firstIndex(where: { $0.id == device.id }) {
             if !effectiveUrl.isEmpty { pairedDevices[idx].relayURL = effectiveUrl }
@@ -242,17 +249,15 @@ extension SessionViewModel {
             // the auth mode and OIDC context without re-contacting the desktop.
             // This is independently useful even when no credential arrived —
             // iOS mints its own tokens from the issuer + client ID.
-            pairedDevices[idx].relayAuthMode = authMode
-            pairedDevices[idx].relayOidcIssuer = relayOidcIssuer
-            pairedDevices[idx].relayOidcAudience = relayOidcAudience
-            pairedDevices[idx].relayOidcRequiredScope = relayOidcRequiredScope
-            if let clientId = relayOidcClientId {
-                pairedDevices[idx].relayOidcClientId = clientId
-            }
+            pairedDevices[idx].relayAuthMode = effectiveAuthMode
+            pairedDevices[idx].relayOidcIssuer = effectiveIssuer
+            pairedDevices[idx].relayOidcAudience = effectiveAudience
+            pairedDevices[idx].relayOidcRequiredScope = effectiveScope
+            pairedDevices[idx].relayOidcClientId = effectiveClientId
             savePairedDevices()
             DiagnosticLog.log("relay config accepted", tag: "session.relay", fields: [
                 "device": String(device.id.prefix(8)),
-                "auth_mode": authMode ?? "psk",
+                "auth_mode": effectiveAuthMode,
                 "credential_changed": String(credentialChanged),
                 "url_written": String(!effectiveUrl.isEmpty),
                 "key_written": String(!effectiveApiKey.isEmpty)
@@ -277,28 +282,61 @@ extension SessionViewModel {
             // registration is now in play, so a prior subject refusal no longer
             // describes reality. Clear it and let the next attempt be judged on
             // its own.
-            let identityContextChanged = previousIssuer != relayOidcIssuer || previousClientId != relayOidcClientId
+            let identityContextChanged = previousIssuer != effectiveIssuer || previousClientId != effectiveClientId
             if identityContextChanged, relayIdentityMismatch.contains(device.id) {
                 relayIdentityMismatch.remove(device.id)
                 DiagnosticLog.log("relay identity context changed, clearing mismatch flag", tag: "session.relay", fields: [
                     "device": String(device.id.prefix(8)),
-                    "issuer": relayOidcIssuer ?? ""
+                    "issuer": effectiveIssuer ?? ""
                 ])
             }
         }
 
-        // When the desktop pushes a fresh OIDC token the relayApiKey changes.
-        // Reconnect with the new credential so the relay sees the updated bearer
-        // token immediately instead of waiting for the old one to expire and
-        // trigger a 4401 close.
-        if credentialChanged {
-            DiagnosticLog.log("relay credential rotated, reconnecting relay", tag: "session.relay", fields: [
-                "auth_mode": authMode ?? "psk"
+        // Resolve the transport decision from the effective pre-update and
+        // post-update configuration. A complete autonomous-OIDC pairing never
+        // authenticates its socket with relayAPIKey: RelayClient calls the
+        // registry-backed getCredential closure on every connection. A changed
+        // bootstrap token is therefore persisted recovery data, not a reason to
+        // destroy a socket that has already authenticated and delivered a
+        // snapshot. PSK and legacy OIDC pairings still use relayAPIKey directly,
+        // so their credential changes remain reconnect-worthy.
+        let updatedDevice = activeDevice
+        let endpointChanged = effectiveUrl != previousRelayUrl
+        let authModeChanged = effectiveAuthMode != previousAuthMode
+        let oidcContextChanged = effectiveIssuer != previousIssuer
+            || effectiveAudience != previousAudience
+            || effectiveScope != previousScope
+            || effectiveClientId != previousClientId
+        let autonomousOIDC = updatedDevice?.usesOIDC == true
+        let credentialRequiresReconnect = credentialChanged && !autonomousOIDC
+        let reconnectReason: String?
+        if endpointChanged {
+            reconnectReason = "endpoint_changed"
+        } else if authModeChanged {
+            reconnectReason = "auth_mode_changed"
+        } else if oidcContextChanged {
+            reconnectReason = "oidc_context_changed"
+        } else if credentialRequiresReconnect {
+            reconnectReason = "socket_credential_changed"
+        } else {
+            reconnectReason = nil
+        }
+
+        if let reconnectReason {
+            DiagnosticLog.log("relay config requires transport rebuild", tag: "session.relay", fields: [
+                "reason": reconnectReason,
+                "auth_mode": effectiveAuthMode,
+                "credential_changed": String(credentialChanged),
+                "autonomous_oidc": String(autonomousOIDC)
             ])
-            // softReconnect tears down and rebuilds the transport using the
-            // now-persisted device.relayAPIKey, so the new RelayClient picks
-            // up the fresh token from the active device record.
             softReconnect()
+        } else {
+            DiagnosticLog.log("relay config persisted without transport rebuild", tag: "session.relay", fields: [
+                "reason": credentialChanged && autonomousOIDC ? "oidc_bootstrap_token_refreshed" : "transport_config_unchanged",
+                "auth_mode": effectiveAuthMode,
+                "credential_changed": String(credentialChanged),
+                "transport_present": String(transport != nil)
+            ])
         }
     }
 }

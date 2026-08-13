@@ -19,6 +19,10 @@ extension TransportManager {
     func send(_ command: RemoteCommand) async throws {
         let payload = try JSONEncoder().encode(command)
         try await outboundQueue.enqueue { [self] in
+            // Queue tasks are independently chained to preserve FIFO. A caller
+            // cancelled while waiting cannot cancel that chain task, so teardown
+            // is checked again inside the operation before seq allocation.
+            guard !isStopped else { throw TransportError.transportStopped }
             let wire = try buildWireMessage(payload: payload)
             let wireData = try JSONEncoder().encode(wire)
 

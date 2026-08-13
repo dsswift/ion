@@ -103,6 +103,10 @@ final class TransportManagerTests: XCTestCase {
         XCTAssertNotNil(noTransport.errorDescription)
         XCTAssertTrue(noTransport.errorDescription!.contains("No transport available"))
 
+        let stopped = TransportError.transportStopped
+        XCTAssertNotNil(stopped.errorDescription)
+        XCTAssertTrue(stopped.errorDescription!.contains("stopped"))
+
         let encodingError = TransportError.encodingFailed(NSError(domain: "test", code: 1))
         XCTAssertNotNil(encodingError.errorDescription)
         XCTAssertTrue(encodingError.errorDescription!.contains("encode"))
@@ -146,6 +150,38 @@ final class TransportManagerTests: XCTestCase {
     }
 
     // MARK: - Stop resets state
+
+    func testStopDuringCredentialFetchCannotStartObservers() async {
+        let release = OSAllocatedUnfairLockBox(false)
+        let key = SymmetricKey(size: .bits256)
+        let manager = TransportManager(
+            relayURL: URL(string: "wss://relay.example.com")!,
+            apiKey: "",
+            channelId: "ch",
+            sharedKey: key,
+            getCredential: {
+                while !release.value {
+                    try? await Task.sleep(for: .milliseconds(2))
+                }
+                return "token"
+            }
+        )
+
+        let start = Task { await manager.start() }
+        while !(manager.relay?.isConnecting ?? false) {
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+        manager.stop()
+        release.mutate { $0 = true }
+        await start.value
+
+        XCTAssertTrue(manager.isStopped)
+        XCTAssertNil(manager.relayListenTask)
+        XCTAssertNil(manager.relayStateTask)
+        XCTAssertNil(manager.lanStateTask)
+        XCTAssertNil(manager.pathMonitor)
+        XCTAssertFalse(manager.relay?.isConnected ?? true)
+    }
 
     func testStopResetsToDisconnected() {
         let key = SymmetricKey(size: .bits256)

@@ -716,13 +716,14 @@ final class ContractSyncTests: XCTestCase {
         {"type":"desktop_agent_state","tabId":"t1","agents":[{"name":"coder","status":"running","metadata":{"displayName":"Coder","type":"specialist","visibility":"always","invited":true}}]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        guard case .engineAgentState(_, _, let agents, _) = event else {
+        guard case .engineAgentState(_, _, let agents, let metadataOmitted) = event else {
             XCTFail("Expected engineAgentState, got \(event)")
             return
         }
         XCTAssertEqual(agents.count, 1)
         XCTAssertEqual(agents[0].name, "coder")
         XCTAssertEqual(agents[0].status, "running")
+        XCTAssertFalse(metadataOmitted)
     }
 
     /// Pin that the engineResourceItem wire event decodes correctly. This is a

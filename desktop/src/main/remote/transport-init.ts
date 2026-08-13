@@ -50,8 +50,9 @@ function clearTokenRefreshTimer(): void {
 
 /**
  * Schedule a proactive token refresh before expiry. When the timer fires, mint
- * a fresh token and push a relay_config update to iOS so it reconnects with the
- * new credential. The 5-minute lead gives plenty of room for network latency.
+ * a fresh token and push a relay_config update to iOS as persisted bootstrap
+ * recovery data. Autonomous OIDC clients keep their authenticated live socket;
+ * legacy clients use the refreshed credential on their next reconnect.
  */
 function scheduleTokenRefresh(oidcScope: string, expiresAtMs: number): void {
   clearTokenRefreshTimer()
@@ -71,10 +72,9 @@ function scheduleTokenRefresh(oidcScope: string, expiresAtMs: number): void {
         const freshExpiry = result.data.expiresAt ?? (Date.now() + 60 * 60 * 1000)
         log('remote_transport: proactive token refresh succeeded, pushing relay_config')
 
-        // Push a fresh relay_config so iOS reconnects with a current token.
-        // sendRelayConfigToPeers mints its own token from the same scope and
-        // refuses to send when the mint fails — an empty credential would
-        // overwrite the phone's stored relay config with nothing.
+        // Push a fresh relay_config so iOS persists a current bootstrap token.
+        // Autonomous OIDC clients do not churn a healthy socket for token-only
+        // refreshes; legacy clients consume it on their next reconnect.
         await sendRelayConfigToPeers('proactive-token-refresh')
 
         // Schedule the next refresh.
