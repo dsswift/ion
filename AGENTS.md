@@ -11,25 +11,7 @@
 
 Engine, desktop, and iOS each have their own `AGENTS.md` with subsystem-specific rules.
 
-## Extension SDK source location
-
-The TypeScript SDK that extensions import lives in **two places**:
-
-| Location | Role |
-|----------|------|
-| `engine/extensions/sdk/ion-sdk/` | **Source of truth.** Edit here. |
-| `~/.ion/extensions/sdk/ion-sdk/` | **Installed copy.** Overwritten at build time. Never edit. |
-
-The **Go SDK** at `sdk/go/` (module `github.com/dsswift/ion/sdk/go`) has no such split: it is consumed by `go get`, never copied anywhere, and `install-assets` does not touch it. Edit it in place.
-
-The two SDKs are held in parity by tests, not convention — `sdk/go/parity_test.go` and `desktop/src/shared/__tests__/sdk-surface-sync.test.ts` both read generated goldens, so a hook or context method added to one SDK and not the other fails CI. After an engine-side hook change, regenerate:
-
-```bash
-cd engine && go test ./internal/extension/ -run TestSDKContractManifest -update
-cd sdk/go && go test -run TestGoSDKSurfaceManifest -update
-```
-
-The build process copies the repo source to the installed location. Any edit made only to `~/.ion/extensions/sdk/` will be lost on the next build. **Always edit `engine/extensions/sdk/ion-sdk/`** for SDK changes (types, runtime, or any other SDK file). The installed copy at `~/.ion/` is read-only from the agent's perspective.
+SDK edits have a source-of-truth split (repo source vs. build-overwritten installed copy) — moved to [`engine/AGENTS.md`](engine/AGENTS.md) § "Extension SDK source location". Read it before changing any file under `engine/extensions/sdk/ion-sdk/` or touching `~/.ion/extensions/sdk/`.
 ## File-size caps (CI hard-fails above)
 
 | Language | Cap |
@@ -140,8 +122,6 @@ The graph is a starting point, not the authority. It tells you *where* to look; 
 
 Once a graph exists the hooks keep it current — `post-commit` for your own commits, `post-checkout` for branch switches, and Ion's own `post-merge` / `post-rewrite` for pulls, rebases, and amends (`scripts/graphify-rebuild.sh`). They re-extract changed files incrementally, AST-only, in a detached process, and write files without ever staging or committing them. Every one of them exits cleanly when graphify is absent, so a contributor without it sees no failures. Set `GRAPHIFY_SKIP_HOOK=1` to skip one rebuild.
 
-A provisioned worktree links its `graphify-out/graph.json` to its primary checkout, while keeping query cache files local. Query it normally from the worktree. Never run `graphify update` or `make graph` there: graph mutation belongs only in the primary checkout. `make graph-refresh` is a compatibility no-op that creates or validates the primary graph link for worktrees provisioned from an older manifest; it never refreshes a graph there.
-
 Because the rebuild is detached, it finishes a few seconds *after* the commit that triggered it closes. The graph is therefore always a moment behind. That is by design and requires no action.
 
 **To rebuild from scratch, run `make graph`.** It moves the existing graph aside, re-extracts, and restores the old one if extraction fails — no manual `rm -rf` needed, and a failed rebuild never leaves the clone with no graph. (`make graph-refresh` re-extracts incrementally into the existing one; `make graph-ensure` is the bootstrap-only build-if-absent path.) All three are cheap and offline: extraction is pure local tree-sitter (`graphify . --code-only`, skipping the docs/PDFs/images that would need an LLM backend), then `graphify cluster-only . --no-viz --no-label` partitions communities and writes `GRAPH_REPORT.md`. No API key, nothing leaves the machine. Reach for a rebuild to purge nodes that repeated incremental updates have left stale.
@@ -193,7 +173,7 @@ CI: `.github/workflows/build.yml` (release), `.github/workflows/quality.yml` (pe
 
 ### Heavy gates — never run during development
 
-The following gates are **slow** — Docker container spin-up, full-network vulnerability scan, full multi-package race runs, full iOS simulator suite. **Never run them during normal development.** Re-running them mid-session burns wall-clock and tokens for no added safety. Required PR checks run once through `/create-pr`; the full iOS simulator suite runs nightly or by manual dispatch.
+The following gates are **slow** — Docker container spin-up, full-network vulnerability scan, full multi-package race runs, full iOS build. **Never run them during normal development.** Re-running them mid-session burns wall-clock and tokens for no added safety, because they run once, authoritatively, at PR time.
 
 | Heavy gate | Command |
 |------------|---------|
@@ -204,10 +184,9 @@ The following gates are **slow** — Docker container spin-up, full-network vuln
 | Relay tests + race | `cd relay && go test -race ./...` |
 | Desktop audit | `cd desktop && npm audit --audit-level=high --omit=dev` |
 | Full desktop suite | `cd desktop && npm test` |
-| iOS device build | `make ios-pr-check` — required before push when touching iOS, iOS test runner, `Makefile`, or `quality.yml` |
-| Full iOS simulator suite | `make ios-test` — required locally before push for those paths; scheduled/manual CI repeats it |
+| iOS build | `make ios-check` |
 
-**Required PR gates run before push, not as build feedback after it.** `/create-pr` runs the Linux parity subset (`make test-linux`) plus `make ios-pr-check` and `make ios-test` when iOS or its gate paths changed, so the pushed branch has already passed the matching behavior. CI confirms that known-good commit on hosted runners and protects merge. The hosted full iOS simulator suite runs nightly or by manual dispatch because cold simulators consume roughly fifteen minutes; local pre-push runs catch its failures without that hosted wait. The only times the agent runs a heavy gate are (a) when `/create-pr` explicitly instructs it to, or (b) when the user explicitly asks for it. Outside those cases, heavy gates are off-limits during development.
+**The heavy gates run at PR time, not during development.** CI (`quality.yml`) is the authoritative gate: it runs the full set above — race suites, integration, `govulncheck`, `npm audit`, iOS build — on **every PR**, on `ubuntu-latest`. Locally, `/create-pr` runs the **Linux parity** subset (`make test-linux`, which executes the engine unit + integration race suites and the desktop lint, typecheck, and test steps inside Linux containers) **once**, right before pushing, to catch Linux-only failures before they burn Actions minutes on a red build. The only times the agent runs a heavy gate are (a) when `/create-pr` explicitly instructs it to, or (b) when the user explicitly asks for it (e.g. to reproduce a known Linux-only failure). Outside those two cases, the heavy gates are off-limits during development — CI is what proves them green on the PR.
 
 > **Why `/create-pr` runs `make test-linux`.** Local validation runs on macOS; the blocking CI gates run on `ubuntu-latest`. `go test -race ./...` plus `go test -race -tags integration ./tests/integration/...` (the `engine-test` job), `npm run lint` (the `desktop-lint` job), and `npm test` (the `desktop-test` job) all run on Linux in CI, so a macOS-only pass is **not** sufficient — OS-sensitive failures (path semantics, file-watcher timing, locale, goroutine starvation under the Linux race detector, eager `require('electron')` under `npm ci --ignore-scripts`) slip through. `make test-linux` runs the same commands CI runs, in Linux containers, so those failures surface before the PR instead of after burning Actions minutes on a red build. `/create-pr` runs this gate automatically before pushing and pauses if Docker isn't running — the common path needs no manual step.
 >
@@ -235,7 +214,6 @@ The following gates are **slow** — Docker container spin-up, full-network vuln
 | `desktop` | `desktop/` |
 | `relay` | `relay/` |
 | `ios` | `ios/` |
-| `sdk` | `sdk/` (the public Go extension SDK module) |
 | `docs` | `docs/` |
 | `repo` | root files or cross-cutting changes |
 | `ci` | `.github/` workflows and CI config |
@@ -349,6 +327,9 @@ When a local extension or harness is referenced during investigation as the **so
 
 This holds regardless of where the harness lives or who owns it:
 
+- **In-repo** harnesses that ship with the engine (e.g. `ion-meta`, installed to end users when the engine is installed).
+- The primary **engine-development harness** I use most (`ion-dev`) — a private extension at `~/.ion/extensions/ion-dev/`, not part of the Ion repository, but the active extension I use to find bugs, exercise new engine/SDK surface, and test the engine inside the desktop.
+- Fully **private** harnesses with no relation to Ion development beyond consuming the engine (e.g. `chief-of-staff`).
 - **Any other harness installed under `~/.ion/extensions/`** that is what we are troubleshooting or enhancing.
 
 If the harness is on the machine and it is what we are troubleshooting or enhancing, its upgrade is in the plan and gets implemented and committed (at its own scope seam, in its own working tree) alongside the engine/SDK change.
@@ -563,7 +544,7 @@ jq -c 'select(.session_id=="<id>")' ~/.ion/*.jsonl
 
 **Filter one extension** (by name):
 ```bash
-jq -c 'select(.component=="extension" and .tag=="ion-canary")' ~/.ion/engine.jsonl
+jq -c 'select(.component=="extension" and .tag=="ion-meta")' ~/.ion/engine.jsonl
 ```
 
 **Filter by time range** (logs after a given timestamp):
@@ -583,7 +564,7 @@ jq -c 'select(.level=="ERROR")' ~/.ion/*.jsonl
 | One conversation | `{component=~".+"} \| json \| conversation_id = "<id>"` |
 | One session across surfaces | `{component=~".+"} \| json \| session_id = "<id>"` |
 | Errors in time range | `{level="ERROR"}` (use Grafana time picker) |
-| One extension | `{component="extension", tag="ion-canary"}` |
+| One extension | `{component="extension", tag="ion-meta"}` |
 | Trace correlation | `{component=~".+"} \| json \| trace_id = "<32-hex-id>"` |
 
 ### Rules
@@ -813,24 +794,14 @@ Well-architected tests survive innocuous refactors and fail only when real behav
 
 When a feature exists on one client and not another, or is implemented two different ways across clients, that divergence is itself a defect this rule is meant to catch. A field that flows through the snapshot to one client must have a test pinning that it reaches the other (or an explicit, documented decision that it does not apply). "One client has it, the other silently doesn't" is the class of bug that should never survive to production — pin the parity.
 
-### The forbidden completion claim
 
-Claim a feature or fix as “done,” “complete,” or “verified” only after adding and running a test that exercises the new behavior and fails if the change is removed. Compilation, type-checking, passing existing tests, and code review are necessary baseline checks, but they do not prove that the new behavior works.
-
-Before committing, confirm that this behavior-specific test exists and passes. If it does not, write and run it first; meanwhile, describe the work as “implemented but not yet behavior-tested” rather than complete.
 ## Worktrees and benches refuse the writes that cannot be reviewed
 
 Two directory kinds under `~/.ion/` refuse a class of writes based on what the
-directory *is*. Ownership follows the mechanism/opinion line: **worktree
-isolation is generic git mechanism, enforced in engine core**
-(`engine/internal/workspaces`, checked in the tool loop beside the permission
-engine); **the bench is Ion's desktop product, enforced by the desktop** — for
-the agent through the engine's client tool gate (`EngineConfig.toolGate`,
-answered by `desktop/src/main/tool-gate-responder.ts` over
-`desktop/src/main/integration/bench-tool-policy.ts`) and for the operator by
-the git IPC (`desktop/src/main/integration/bench-guard.ts`). Both fail open
-when their backing record is unreadable, because a false refusal where the
-operator is working is worse than a briefly missing guard.
+directory *is*. Both are enforced for the agent by ion-meta's `tool_call` hook
+and (for benches) for the operator by the desktop's git IPC. Both fail open when
+their backing record is unreadable, because a false refusal where the operator is
+working is worse than a briefly missing guard.
 
 **An integration bench refuses history writes.** A directory under
 `~/.ion/integration/` is a rebuildable bench: its branch is recreated from the
@@ -838,41 +809,15 @@ feature branch plus each member's pinned commit on every rebuild. A commit made
 there is destroyed by the next rebuild, and a push would publish a synthetic
 merge of other people's in-flight work. So `commit`, `push`, `pull`, `merge`,
 `rebase`, `cherry-pick`, `revert`, `reset`, `stash`, `tag`, and branch mutation
-are refused by the desktop UI (`bench-guard.ts`) and by the desktop's tool-gate
-policy (`bench-tool-policy.ts`). Reading,
+are refused by the desktop UI (`desktop/src/main/integration/bench-guard.ts`) and
+by ion-meta's tool gate (`engine/extensions/ion-meta/bench-gate.ts`). Reading,
 building, testing, and staging are unaffected. A fix diagnosed in the bench
 belongs in the member worktree that owns the file: commit it there, then update
-that member in the bench. Use the read-only `WorkspaceAttribution` tool to map
-an assembled file (or line range) back to its owner before editing — it returns
-the contributing member(s) with pinned ranges and worktree paths, an ambiguous
-verdict when several plausibly own it, and warnings instead of silent guesses.
-The desktop also injects the workspace facts (bench identity, ordered enabled
-members, exact pinned ranges) into bench-rooted conversations, so attribute
-first, then fix, validate, and commit in the owning worktree, then Update and
-reassemble. Never edit the bench or the source checkout directly — the one
-exception is completing a machinery-prepared merge resolution.
-
-**Assembly is atomic, and a conflict is resolved once.** The bench presents the
-exact enrolled combination or nothing: a member whose pinned contribution will
-not merge fails the whole assembly and the bench is wiped to an empty tree
-(gitignored build output survives), so a terminal opened there finds nothing to
-falsely test. The conflict is resolved ONCE through the desktop's resolve flow —
-the machinery re-creates the failed merge and leaves it in progress, and while
-that merge is open both gates carve out exactly the resolution surface: edits to
-the unmerged paths, plus standalone merge-driver calls. `git merge --continue`
-passes only after every unmerged path is staged and `git diff --cached --check`
-accepts staged resolution; `git merge --abort` remains available while merge is
-open. Continue cannot share tool call or model response with other work, so a
-failed edit, formatter, test, or stage command cannot be masked by later merge
-completion. Completing validated merge records resolution (`git rerere`, stored
-in main repo's `rr-cache`, so wiping bench never loses it), and every later
-assembly validates replay before committing it. Invalid replay is forgotten and
-same real conflict is reopened instead of poisoning bench history. Replay stays
-deterministic until either side's conflicting lines genuinely change.
+that member in the bench.
 
 **A bench refuses edits, and names where they belong.** The history rule above
 covers `commit`/`push`; a bench also refuses `Write`, `Edit`, and `ion_scaffold`
-(the desktop's tool-gate policy), because an edit made there is
+(`engine/extensions/ion-meta/bench-write-gate.ts`), because an edit made there is
 destroyed by the next rebuild. `Bash` stays open — building and testing are what
 a bench is for, as do staging and discarding. The refusal names the member
 worktree that owns the file, resolved by diffing each member's pinned commit
@@ -884,14 +829,13 @@ bench it hides Changes and Graph and titles the section `Integration (Bench)`.
 **A worktree refuses writes outside itself.** A conversation whose cwd is a
 registered worktree (`~/.ion/worktree-registry.json`) may not write into the base
 repo it was cut from, nor into a sibling worktree of the same repo
-(engine-core workspace containment, `engine/internal/workspaces`). This is
-**not** a cwd jail:
+(`engine/extensions/ion-meta/worktree-gate.ts`). This is **not** a cwd jail:
 `/tmp`, `~/.ion`, and unrelated repos all stay writable, and a conversation that
 is not in a worktree is unaffected. The rule exists because cross-worktree writes
 interleave several conversations in one dirty checkout, and review cannot
 attribute the hunks afterwards. A `Bash` call is judged by its command text, not
 only its cwd: every literal `cd` / `pushd` / `git -C` / `--work-tree` destination
-in the chain is checked, because a command that `cd`s into
+in the chain is checked (`bash-destination.ts`), because a command that `cd`s into
 the base repo and commits there is the exact way two commits once landed on the
 wrong branch. A dynamic destination (`cd "$VAR"`, `cd $(...)`) cannot be resolved,
 so it passes and is logged at WARN rather than guessed at — a refusal requires a
@@ -909,7 +853,7 @@ builds. Ion materialises what the project declares in the committed
 `.ion/worktree.json`: each `seed` entry is cloned (copy-on-write), built with its
 own command, or copied, and the project's `setup` command runs afterward. A clone
 is a separate inode sharing blocks, so an install inside a worktree stays
-independent of the main clone — Ion never symlinks a shared mutable dependency directory. A manifest can explicitly link a primary-owned read-mostly file such as a knowledge graph; that file is not a dependency tree and worktrees never build it.
+independent of the main clone — Ion never symlinks a shared dependency directory.
 No manifest means no provisioning. Ion refuses to seed any path git does not
 ignore, so provisioning can never dirty `git status`. Reference:
 [`docs/configuration/worktree-json.md`](docs/configuration/worktree-json.md).
