@@ -37,6 +37,7 @@ func (m *Manager) rehydrateDispatchState(s *engineSession, key string) *conversa
 	}
 
 	dispatches := conversation.AgentDispatchEntries(conv)
+	backfillDispatchTranscripts(conv, dispatches)
 	if len(dispatches) == 0 {
 		utils.LogWithFields(utils.LevelDebug, "session", "rehydratedispatchstate: no dispatch entries", map[string]any{"key": key, "conversation_id": s.conversationID})
 		return conv

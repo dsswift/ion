@@ -145,6 +145,12 @@ These are **not** redundant surfaces for one signal, which the typed-event rule 
 
 The advisory is rate-limited per `(agent, scope)`; every clamp is logged at WARN regardless, so log-based diagnosis stays complete.
 
+### Dispatch transcript durability
+
+`dispatches[].conversationId` is always a loadable Ion conversation-history key, even when the dispatched child runs on a delegated backend whose native session is stored outside Ion. Native-session child events are mirrored into Ion conversation storage under that published ID: task, assistant text, tool calls, and tool results persist incrementally, and terminal output is the fallback when a backend exposes no text stream. Engine-owned child backends already persist their own file and remain authoritative.
+
+Conversations written before this mirror existed are repaired during dispatch-state rehydration. The engine recovers full terminal output from persisted parent `agent_completion` turns or foreground Agent tool results and materializes the missing child file without rewriting the parent conversation. Clients therefore use one mechanism for live and historical dispatches: read the ID from `dispatches[]`, then call `get_conversation`.
+
 ### Persisted dispatch lifecycle precedence
 
 Dispatch registration writes a durable `running` record before a child starts. A terminal transition later writes a superseding record with the same dispatch ID, status, elapsed time, and child conversation pointer. On rehydrate, `dispatches[]` keeps one member per ID: later record fields overlay earlier ones while earlier fields absent from the terminal record remain. Therefore the nested member's `status`, `conversationId`, and `elapsed` always match the top-level rehydrated lifecycle state; a completed dispatch never reappears as a running, transcript-less member after restart.
