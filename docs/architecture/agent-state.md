@@ -145,6 +145,10 @@ These are **not** redundant surfaces for one signal, which the typed-event rule 
 
 The advisory is rate-limited per `(agent, scope)`; every clamp is logged at WARN regardless, so log-based diagnosis stays complete.
 
+### Persisted dispatch lifecycle precedence
+
+Dispatch registration writes a durable `running` record before a child starts. A terminal transition later writes a superseding record with the same dispatch ID, status, elapsed time, and child conversation pointer. On rehydrate, `dispatches[]` keeps one member per ID: later record fields overlay earlier ones while earlier fields absent from the terminal record remain. Therefore the nested member's `status`, `conversationId`, and `elapsed` always match the top-level rehydrated lifecycle state; a completed dispatch never reappears as a running, transcript-less member after restart.
+
 ### Recovering full metadata on demand
 
 A consumer that receives `_truncated` can request `get_agent_state` with its session key. The engine returns `{ agents: [...] }` as the `ServerResult.data` payload for **that requesting socket only**, using the full-fidelity registry snapshot without metadata bounds. It is deliberately a command result rather than an engine event: engine events broadcast to every attached client, and broadcasting a large retrieval response would recreate the repeated fan-out this bound prevents. One explicit local-socket request may carry tens of megabytes; repeated unsolicited snapshots may not.
