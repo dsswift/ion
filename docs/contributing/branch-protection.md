@@ -29,6 +29,14 @@ All Quality workflow jobs must pass before a PR can merge:
 | `Quality / actionlint` | `quality.yml` |
 | `Quality / docker-build` | `quality.yml` |
 
+### Path-scoped pull-request checks
+
+Quality keeps its existing job names so required-check rules remain stable. On a pull request, `changes` classifies the PR diff and product jobs outside that scope are marked **skipped** rather than omitted. GitHub treats those skipped contexts as successful, while avoiding unrelated runners and package scans.
+
+Examples: a docs-only PR runs the universal file-size gate, not engine/desktop/relay tests, package vulnerability scans, Docker, or iOS compilation; a `desktop/package-lock.json` update additionally runs the desktop audit; an iOS change runs SwiftLint and the device build. Workflow YAML changes run actionlint. The classifier mapping is pinned by `scripts/test-quality-path-scopes.sh`.
+
+Pushes to `main`, scheduled runs, and manual dispatches intentionally run every product scope. This preserves full post-merge and scheduled coverage even though pull requests get change-scoped feedback.
+
 ### Require branches to be up to date
 
 Enabled. A PR's branch must be up to date with `main` before merging. This prevents cross-PR regressions where two independently-clean PRs produce lint or build failures when combined.
@@ -45,9 +53,4 @@ If the App is not in the bypass list, release-damnit's `git push` to `main` will
 
 ## Lint strategy
 
-The `engine-lint` job runs differently depending on the trigger:
-
-- **On `pull_request`:** Differential lint via `--new-from-merge-base=origin/main`. Only reports issues on lines changed since the branch diverged from main. Fast feedback for contributors.
-- **On `push` to `main`:** Full lint with no filter. Catches cross-PR regressions that slip through differential checks (e.g., one PR adds a function, another removes its only caller → `unused` error only visible after both merge).
-
-This two-tier approach balances PR developer experience (no noise from pre-existing issues) with main branch integrity (no accumulated lint debt).
+On pull requests, the `engine-lint` context runs only when engine, relay, or Go SDK paths changed, and lints only changed package scopes. Pushes to `main`, scheduled runs, and manual dispatches run every package lint. This keeps PR feedback scoped without letting lint debt accumulate after merge.

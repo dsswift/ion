@@ -1,0 +1,38 @@
+# Shared changed-path scopes for Quality workflow and local regression checks.
+# Product jobs consume these only on pull requests; main, scheduled, and manual
+# Quality runs deliberately validate every scope.
+engine:
+  - 'engine/**'
+sdk:
+  - 'sdk/go/**'
+  - 'engine/extensions/sdk/**'
+  - 'engine/internal/extension/**'
+relay:
+  - 'relay/**'
+desktop:
+  - 'desktop/**'
+  - 'scripts/check-status-writers.sh'
+  - 'scripts/check-atv-parity.sh'
+desktop_deps:
+  - 'desktop/package.json'
+  - 'desktop/package-lock.json'
+ios:
+  - 'ios/**'
+  - 'scripts/run-ios-tests.sh'
+  - 'Makefile'
+logging:
+  - 'engine/**'
+  - 'sdk/go/**'
+  - 'relay/**'
+  - 'desktop/**'
+  - 'ios/**'
+  - 'scripts/check-logging.sh'
+  - 'scripts/test-quality-path-scopes.sh'
+dashboards:
+  - 'docs/observability/dashboards/**'
+  - 'docs/observability/grafana/provisioning/dashboards/**'
+  - 'docs/observability/queries.md'
+workflows:
+  - '.github/workflows/**'
+  - '.github/quality-paths.yml'
+  - 'scripts/test-quality-path-scopes.sh'
