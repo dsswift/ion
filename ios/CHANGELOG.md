@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.61.1](https://github.com/dsswift/ion/compare/ios-v1.61.0...ios-v1.61.1) (2026-08-13)
+
+### Bug Fixes
+
+* **ci:** split iOS simulator test lanes ([8550896](https://github.com/dsswift/ion/commit/8550896fc3b69ba92d9d7325364de4486a54cfc2))
+
 ## [1.61.0](https://github.com/dsswift/ion/compare/ios-v1.60.0...ios-v1.61.0) (2026-08-12)
 
 ### Features
