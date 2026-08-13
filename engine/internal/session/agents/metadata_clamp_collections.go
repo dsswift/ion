@@ -84,7 +84,7 @@ func enforceProtectedGuarantee(md map[string]any, budget int) []string {
 		if approxMapBytes(md) <= budget {
 			return clamped
 		}
-		if protectedIdentityValue(k) {
+		if protectedKeys[k] {
 			continue
 		}
 		if s, ok := md[k].(string); ok && s == truncationSuffix {
@@ -93,35 +93,7 @@ func enforceProtectedGuarantee(md map[string]any, budget int) []string {
 		md[k] = truncationSuffix
 		clamped = append(clamped, k)
 	}
-	// Everything but displayName is already a marker. If the entry still does
-	// not fit, displayName itself is the remaining mass: cut the string rather
-	// than violate the bound. A shortened label beats an undeliverable frame.
-	if approxMapBytes(md) > budget {
-		if s, ok := md["displayName"].(string); ok {
-			overshoot := approxMapBytes(md) - budget
-			if keep := len(s) - overshoot; keep > 0 {
-				md["displayName"] = truncateUTF8(s, keep)
-			} else {
-				md["displayName"] = truncationSuffix
-			}
-			clamped = append(clamped, "displayName")
-		}
-	}
 	return clamped
-}
-
-// protectedIdentityValue reports keys whose values are routing identity, not
-// display metadata. A wire projection may omit bulky optional fields, but it
-// must never replace these with a marker: callers type-assert dispatches and
-// follow conversation ids to durable content.
-func protectedIdentityValue(key string) bool {
-	switch key {
-	case "displayName", "type", "visibility", "invited", "status", "color",
-		"dispatchId", "dispatchParentId", "dispatchDepth", "dispatches", "conversationId":
-		return true
-	default:
-		return false
-	}
 }
 
 // shrinkArrayToFit cuts arr (stored at md[key]) from the head so the whole

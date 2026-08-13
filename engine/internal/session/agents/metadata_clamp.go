@@ -226,10 +226,13 @@ func clampEntry(state *types.AgentStateUpdate, l MetadataLimits) *ClampReport {
 // clampValue bounds one value in place, recursing into nested containers.
 // Reports whether anything changed.
 func clampValue(container map[string]any, key string, l MetadataLimits, depth int) bool {
-	// Routing identity must remain exact and type-stable. A malformed giant id
-	// can exceed a configured byte target, but replacing it makes durable state
-	// unreachable, which is worse than an over-budget on-demand projection.
-	if immutableIdentityKey(key) {
+	// Top-level protected metadata carries identity or rendering invariants and
+	// remains exact. Inside dispatches[] only routing fields are immutable: task
+	// and other display values still recurse through the normal value bound.
+	if depth == 0 && protectedKeys[key] && key != "dispatches" {
+		return false
+	}
+	if depth > 0 && dispatchIdentityValueKey(key) {
 		return false
 	}
 	switch v := container[key].(type) {
@@ -284,13 +287,11 @@ func clampValue(container map[string]any, key string, l MetadataLimits, depth in
 	return false
 }
 
-// immutableIdentityKey identifies top-level and dispatch-entry keys clients and
-// engine lifecycle code use as lookup addresses. These must never be shortened
-// or marker-replaced by an outbound projection.
-func immutableIdentityKey(key string) bool {
+// dispatchIdentityValueKey identifies fields inside dispatches[] that clients
+// use as stable lookup addresses.
+func dispatchIdentityValueKey(key string) bool {
 	switch key {
-	case "id", "conversationId", "status", "dispatchId", "dispatchParentId", "dispatchDepth",
-		"type", "visibility", "invited":
+	case "id", "conversationId", "status", "dispatchId", "dispatchParentId", "dispatchDepth":
 		return true
 	default:
 		return false

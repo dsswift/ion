@@ -91,24 +91,15 @@ func TestClampMetadata_PreservesProtectedKeys(t *testing.T) {
 	}
 }
 
-// TestClampMetadata_ProtectedKeyValuesAreStillClamped is the distinction the
-// word "protected" hides: protection means "never removed", not "never
-// bounded". Were it otherwise, one 3 MB displayName would walk straight
-// through the bound via a protected path.
-func TestClampMetadata_ProtectedKeyValuesAreStillClamped(t *testing.T) {
-	state := types.AgentStateUpdate{
-		Name:     "a",
-		Metadata: map[string]any{"displayName": bigString(3 * 1024 * 1024)},
-	}
+// TestClampMetadata_ProtectedKeyValuesRemainExact ensures a projection never
+// silently changes identity or rendering-invariant metadata to hit a byte cap.
+func TestClampMetadata_ProtectedKeyValuesRemainExact(t *testing.T) {
+	original := bigString(3 * 1024 * 1024)
+	state := types.AgentStateUpdate{Name: "a", Metadata: map[string]any{"displayName": original}}
 
 	clampEntry(&state, DefaultMetadataLimits())
-
-	got, ok := state.Metadata["displayName"].(string)
-	if !ok {
-		t.Fatal("displayName must survive as a string")
-	}
-	if len(got) > DefaultMaxValueBytes {
-		t.Errorf("protected displayName = %d bytes, want clamped to <= %d", len(got), DefaultMaxValueBytes)
+	if got, ok := state.Metadata["displayName"].(string); !ok || got != original {
+		t.Fatal("protected displayName was altered")
 	}
 }
 

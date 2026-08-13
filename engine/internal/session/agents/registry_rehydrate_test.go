@@ -22,11 +22,11 @@ func TestPopulateFromDispatchRecords(t *testing.T) {
 		ID:     "dispatch-ad-1",
 		Status: "done",
 		Metadata: map[string]interface{}{
-			"displayName":    "Agent Designer",
-			"task":           "brief me",
-			"model":          "claude-sonnet-4-6",
-			"elapsed":        32.5,
-			"conversationId": "conv-abc",
+			"displayName":     "Agent Designer",
+			"task":            "brief me",
+			"model":           "claude-sonnet-4-6",
+			"elapsed":         32.5,
+			"conversationId":  "conv-abc",
 			"conversationIds": []interface{}{"conv-abc"},
 		},
 	})
