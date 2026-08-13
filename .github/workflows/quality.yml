@@ -195,9 +195,10 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: go build ./...
 
-  engine-test:
+  engine-test-platform:
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.engine == 'true'
+    name: engine-test-platform (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -221,6 +222,31 @@ jobs:
       - name: Integration tests with race detector
         working-directory: engine
         run: go test -race -tags integration ./tests/integration/...
+
+  # Stable required context. Matrix jobs vanish when a job-level condition is
+  # false, which leaves OS-specific required contexts in GitHub's "Expected"
+  # state. This aggregate always runs, only waits on matrix jobs for engine
+  # changes, and fails if either platform failed or was cancelled.
+  engine-test:
+    needs: [changes, engine-test-platform]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm engine test coverage
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ENGINE_CHANGED: ${{ needs.changes.outputs.engine }}
+          PLATFORM_RESULT: ${{ needs.engine-test-platform.result }}
+        run: |
+          if [[ "$EVENT_NAME" != "pull_request" || "$ENGINE_CHANGED" == "true" ]]; then
+            [[ "$PLATFORM_RESULT" == "success" ]] || {
+              echo "engine platform tests ended with $PLATFORM_RESULT" >&2
+              exit 1
+            }
+            echo "engine platform test matrix passed"
+          else
+            echo "engine untouched; platform test matrix intentionally skipped"
+          fi
 
   engine-lint:
     needs: changes

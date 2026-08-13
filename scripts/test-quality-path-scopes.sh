@@ -38,6 +38,8 @@ cases = {
     "desktop-source": ("desktop/src/main/remote/protocol.ts", {"desktop", "logging"}),
     "desktop-dependency": ("desktop/package-lock.json", {"desktop", "desktop_deps", "logging"}),
     "ios": ("ios/IonRemote/Models/RemoteTabState.swift", {"ios", "logging"}),
+    "ios-docs": ("ios/AGENTS.md", {"logging"}),
+    "ios-version": ("ios/VERSION", {"logging"}),
     "dashboard": ("docs/observability/dashboards/src/quality.ts", {"dashboards"}),
 }
 
@@ -54,6 +56,7 @@ job_scopes = {
     "check-swiftlint": "ios",
     "dashboards": "dashboards",
     "engine-crossbuild": "engine",
+    "engine-test-platform": "engine",
     "engine-test": "engine",
     "sdk-test": "sdk",
     "relay-test": "relay",
@@ -72,6 +75,9 @@ for scope in ("engine", "relay", "sdk"):
     needle = f"needs.changes.outputs.{scope} == 'true'"
     if workflow.count(needle) < 3:
         raise SystemExit(f"{scope}: composite lint/vulnerability steps are not fully scoped")
+
+if "needs: [changes, engine-test-platform]" not in workflow or "if: always()" not in workflow:
+    raise SystemExit("engine-test: missing stable aggregate required-check job")
 
 print(f"quality path scopes: {len(cases)} cases and {len(job_scopes)} job guards passed")
 PY

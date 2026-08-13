@@ -17,9 +17,11 @@ desktop_deps:
   - 'desktop/package.json'
   - 'desktop/package-lock.json'
 ios:
-  - 'ios/**'
-  - 'scripts/run-ios-tests.sh'
-  - 'Makefile'
+  - 'ios/IonRemote/**'
+  - 'ios/IonRemoteTests/**'
+  - 'ios/IonRemote.xcodeproj/**'
+  - 'ios/.swiftlint.yml'
+  - 'ios/commands/install.command'
 logging:
   - 'engine/**'
   - 'sdk/go/**'

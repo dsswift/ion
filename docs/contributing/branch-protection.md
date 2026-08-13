@@ -31,7 +31,7 @@ All Quality workflow jobs must pass before a PR can merge:
 
 ### Path-scoped pull-request checks
 
-Quality keeps its existing job names so required-check rules remain stable. On a pull request, `changes` classifies the PR diff and product jobs outside that scope are marked **skipped** rather than omitted. GitHub treats those skipped contexts as successful, while avoiding unrelated runners and package scans.
+Quality keeps stable required-check names. On a pull request, `changes` classifies the PR diff and product jobs outside that scope are marked **skipped** rather than omitted. GitHub treats those skipped contexts as successful, while avoiding unrelated runners and package scans. `engine-test` is a stable aggregate context: engine changes run both platform matrix lanes and the aggregate validates them; out-of-scope PRs run only the aggregate's no-op confirmation, so matrix lane contexts never become indefinitely expected.
 
 Examples: a docs-only PR runs the universal file-size gate, not engine/desktop/relay tests, package vulnerability scans, Docker, or iOS compilation; a `desktop/package-lock.json` update additionally runs the desktop audit; an iOS change runs SwiftLint and the device build. Workflow YAML changes run actionlint. The classifier mapping is pinned by `scripts/test-quality-path-scopes.sh`.
 
