@@ -51,7 +51,45 @@ const PROTECTED_AGENT_METADATA_KEYS = [
 ] as const
 
 /**
- * Strip an agents array's metadata down to the protected subset.
+ * Identity fields kept in slim dispatch entries during stage-1 degradation.
+ * These are what the renderer needs to render a dispatch row and key popup
+ * state; the heavier fields (task, model) are shed.
+ */
+const SLIM_DISPATCH_KEYS = ['id', 'status', 'conversationId', 'startTime'] as const
+
+/**
+ * Reduce each dispatch entry to identity-only fields.
+ */
+function slimDispatch(d: Record<string, unknown>): Record<string, unknown> {
+  const slim: Record<string, unknown> = {}
+  for (const key of SLIM_DISPATCH_KEYS) {
+    if (key in d) slim[key] = d[key]
+  }
+  return slim
+}
+
+/**
+ * Stage-1 shed: protected keys + slim dispatches.
+ *
+ * Keeps the dispatch array but strips each entry to identity fields. This
+ * preserves the per-dispatch roster the renderer needs for popup state and
+ * breadcrumbs while shedding the bulk (task strings, model names, elapsed).
+ */
+function shedAgentsMetadataSlim<T extends { metadata?: Record<string, unknown> }>(agents: T[]): T[] {
+  return agents.map((a) => {
+    const metadata: Record<string, unknown> = {}
+    for (const key of PROTECTED_AGENT_METADATA_KEYS) {
+      if (a.metadata && key in a.metadata) metadata[key] = a.metadata[key]
+    }
+    if (a.metadata && Array.isArray(a.metadata.dispatches)) {
+      metadata.dispatches = (a.metadata.dispatches as Record<string, unknown>[]).map(slimDispatch)
+    }
+    return { ...a, metadata }
+  })
+}
+
+/**
+ * Stage-2 shed: protected keys only, no dispatches.
  *
  * Exported for the main-process ingest bound (event-wiring): the same shed
  * applied there keeps an oversized roster from a misbehaving or pre-clamp
@@ -68,13 +106,29 @@ export function shedAgentsMetadata<T extends { metadata?: Record<string, unknown
   })
 }
 
-/** Strip agent metadata down to the protected subset. */
-function shedAgentMetadata(event: RemoteEvent): RemoteEvent | null {
-  const e = event as RemoteEvent & {
-    type: 'desktop_agent_state'
-    agents?: Array<{ name: string; status: string; id?: string; metadata?: Record<string, unknown> }>
-  }
+type AgentStatePayload = RemoteEvent & {
+  type: 'desktop_agent_state'
+  agents?: Array<{ name: string; status: string; id?: string; metadata?: Record<string, unknown> }>
+}
+
+/**
+ * Two-stage degradation for desktop_agent_state:
+ *
+ * Stage 1 — shed large metadata values but keep slim dispatches (identity
+ * fields only). This preserves the per-dispatch roster the renderer needs.
+ *
+ * Stage 2 — strip ALL metadata to protected keys only (no dispatches).
+ * Fallback when stage 1 still exceeds the cap.
+ *
+ * Returns the degraded event with metadataOmitted stamped, or null if even
+ * stage 2 cannot fit.
+ */
+function shedAgentMetadata(event: RemoteEvent, cap?: number): RemoteEvent | null {
+  const e = event as AgentStatePayload
   if (!Array.isArray(e.agents)) return null
+
+  const stage1 = { ...e, agents: shedAgentsMetadataSlim(e.agents), metadataOmitted: true } as RemoteEvent
+  if (cap !== undefined && JSON.stringify(stage1).length <= cap) return stage1
 
   return { ...e, agents: shedAgentsMetadata(e.agents), metadataOmitted: true } as RemoteEvent
 }
@@ -83,7 +137,7 @@ function shedAgentMetadata(event: RemoteEvent): RemoteEvent | null {
  * Degraders by event type. An event type absent here cannot be degraded and
  * is dropped when oversized, as before.
  */
-export const DEGRADERS: Map<string, (event: RemoteEvent) => RemoteEvent | null> = new Map([
+export const DEGRADERS: Map<string, (event: RemoteEvent, cap?: number) => RemoteEvent | null> = new Map([
   ['desktop_agent_state', shedAgentMetadata],
 ])
 
@@ -107,7 +161,7 @@ export function degradeOversizedEvent(
   const degrader = DEGRADERS.get(event.type)
   if (!degrader) return null
 
-  const degraded = degrader(event)
+  const degraded = degrader(event, cap)
   if (!degraded) return null
 
   const plaintext = JSON.stringify(degraded)
