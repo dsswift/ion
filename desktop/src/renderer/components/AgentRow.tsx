@@ -97,6 +97,11 @@ export function AgentRow({
           >
             {meta(agent, 'displayName', agent.name)}
           </span>
+          {getDispatches(agent).length > 0 && (
+            <span style={{ fontSize: 9, color: colors.textTertiary, flexShrink: 0 }}>
+              {getDispatches(agent).length} {getDispatches(agent).length === 1 ? 'dispatch' : 'dispatches'}
+            </span>
+          )}
           {/* Standardized status dot(s) — same vocabulary as the tab and
               status-bar dots (TabStripStatusDot). One dot when the agent has a
               single dispatch; two overlapping dots when it has more, so a
