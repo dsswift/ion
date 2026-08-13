@@ -309,11 +309,14 @@ final class AgentDotModelTests: XCTestCase {
             agents: visible,
             allAgents: all,
             onOpenDispatch: nil,
+            title: "Agents",
             isExpanded: .constant(true),
             isFullscreen: .constant(false)
         )
         XCTAssertEqual(section.runningCount, 1,
                        "primary transcript header must count the visible lead as active")
+        XCTAssertEqual(section.dispatchCount, lead.dispatches.count,
+                       "primary transcript header must expose persisted dispatch history count")
 
         // The dot model must also reflect the descendant via the full list
         guard case let .stack(_, background) =

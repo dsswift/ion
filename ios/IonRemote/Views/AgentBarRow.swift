@@ -72,6 +72,13 @@ struct AgentBarRow: View {
                 .clipShape(Capsule())
                 .fixedSize()
 
+            if !agent.dispatches.isEmpty {
+                Text("\(agent.dispatches.count) \(agent.dispatches.count == 1 ? "dispatch" : "dispatches")")
+                    .font(.caption2)
+                    .foregroundStyle(theme.textSecondary)
+                    .fixedSize()
+            }
+
             // Status dot(s). One dot when the agent has a single dispatch; two
             // overlapping dots when it has more, so a finished most-recent
             // dispatch cannot hide an older one still waiting on a live agent.

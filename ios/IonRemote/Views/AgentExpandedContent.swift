@@ -155,8 +155,9 @@ struct AgentExpandedContent: View {
                 .padding(.top, pinHeader ? 8 : 0)
             }
 
-            // Dispatch picker (shown when multiple dispatches exist)
-            if agent.dispatches.count > 1 {
+            // Dispatch history remains explicit even for a singleton. Hiding it
+            // made a real persisted dispatch look like no history at all.
+            if !agent.dispatches.isEmpty {
                 dispatchPicker
             }
         }
@@ -365,7 +366,7 @@ struct AgentExpandedContent: View {
     private var dispatchPicker: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
-                Text("Dispatches:")
+                Text("Dispatches: \(agent.dispatches.count)")
                     .ionType(.microLabel)
                     .foregroundStyle(theme.textSecondary.opacity(0.5))
                 ForEach(Array(agent.dispatches.enumerated().reversed()), id: \.element.id) { idx, d in
