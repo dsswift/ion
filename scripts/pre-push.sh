@@ -119,10 +119,12 @@ if touched "^desktop/"; then
   run "desktop build"     bash -c "cd desktop && npm run build"
 fi
 
-# iOS: match the required PR compile + targeted contract/parity gate. The full
-# simulator suite runs on the nightly/manual CI lane, not every branch push.
+# iOS: compile against the device SDK and run the complete local simulator suite.
+# CI repeats only the inexpensive device build; nightly/manual CI provides a
+# second full-suite platform check without making every hosted PR wait on boot.
 if touched "^ios/|^scripts/run-ios-tests\.sh$|^Makefile$|^\.github/workflows/quality\.yml$"; then
-  run "iOS PR contracts and parity" make ios-pr-check
+  run "iOS device build" make ios-pr-check
+  run "iOS full simulator suite" make ios-test
 fi
 
 # Workflow YAML changes: actionlint mirrors CI.

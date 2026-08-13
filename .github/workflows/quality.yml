@@ -12,9 +12,56 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
+  checks: write
 
 jobs:
+  # Always present on pull requests so required Quality contexts remain visible.
+  # On pull_request, dorny/paths-filter reads the PR file list through the API.
+  # Non-PR runs validate every product scope by design, so blank filter outputs
+  # are deliberately ignored by each job condition below.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      engine: ${{ steps.filter.outputs.engine }}
+      sdk: ${{ steps.filter.outputs.sdk }}
+      relay: ${{ steps.filter.outputs.relay }}
+      desktop: ${{ steps.filter.outputs.desktop }}
+      desktop_deps: ${{ steps.filter.outputs.desktop_deps }}
+      ios: ${{ steps.filter.outputs.ios }}
+      logging: ${{ steps.filter.outputs.logging }}
+      dashboards: ${{ steps.filter.outputs.dashboards }}
+      workflows: ${{ steps.filter.outputs.workflows }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v4.0.3
+        with:
+          filters: .github/quality-paths.yml
+      - name: Report skipped engine matrix checks
+        if: github.event_name == 'pull_request' && steps.filter.outputs.engine != 'true'
+        uses: actions/github-script@v9.0.0
+        with:
+          script: |
+            for (const name of ['engine-test (macos-14)', 'engine-test (ubuntu-latest)']) {
+              await github.rest.checks.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name,
+                head_sha: context.payload.pull_request.head.sha,
+                status: 'completed',
+                conclusion: 'success',
+                output: {
+                  title: 'Engine unchanged',
+                  summary: 'Engine test matrix skipped because this pull request does not modify engine/**.',
+                },
+              })
+            }
+
   actionlint:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.workflows == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -29,6 +76,8 @@ jobs:
         run: bash scripts/check-file-sizes.sh
 
   status-writers:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -42,6 +91,8 @@ jobs:
         run: bash scripts/check-status-writers.sh
 
   atv-parity:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -53,6 +104,8 @@ jobs:
         run: bash scripts/check-atv-parity.sh
 
   check-logging:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.logging == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -65,6 +118,8 @@ jobs:
         run: bash scripts/check-logging.sh
 
   check-swiftlint:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.ios == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -89,6 +144,8 @@ jobs:
             lint --config ios/.swiftlint.yml ios/IonRemote
 
   dashboards:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.dashboards == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -113,6 +170,8 @@ jobs:
         run: npm test
 
   engine-crossbuild:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.engine == 'true'
     # Compile gate for every platform the release matrix ships
     # (.github/workflows/build.yml). No other job sets GOOS: engine-test runs
     # on ubuntu-latest and macos-14, and engine-lint runs host-native, so a
@@ -157,6 +216,8 @@ jobs:
         run: go build ./...
 
   engine-test:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.engine == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -182,6 +243,10 @@ jobs:
         run: go test -race -tags integration ./tests/integration/...
 
   engine-lint:
+    needs: changes
+    if: >-
+      github.event_name != 'pull_request' || needs.changes.outputs.engine == 'true' ||
+      needs.changes.outputs.relay == 'true' || needs.changes.outputs.sdk == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -210,22 +275,29 @@ jobs:
       # cleanup commit, not hiding the findings. The module is small
       # enough that a full lint sweep is cheap.
       - name: golangci-lint engine
+        if: github.event_name != 'pull_request' || needs.changes.outputs.engine == 'true'
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.11.3
           working-directory: engine
       - name: golangci-lint relay
+        if: github.event_name != 'pull_request' || needs.changes.outputs.relay == 'true'
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.11.3
           working-directory: relay
       - name: golangci-lint sdk
+        if: github.event_name != 'pull_request' || needs.changes.outputs.sdk == 'true'
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.11.3
           working-directory: sdk/go
 
   engine-vuln:
+    needs: changes
+    if: >-
+      github.event_name != 'pull_request' || needs.changes.outputs.engine == 'true' ||
+      needs.changes.outputs.relay == 'true' || needs.changes.outputs.sdk == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -233,19 +305,24 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: engine/go.mod
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
       - name: govulncheck (engine)
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
+        if: github.event_name != 'pull_request' || needs.changes.outputs.engine == 'true'
+        run: govulncheck ./...
         working-directory: engine
       - name: govulncheck (relay)
+        if: github.event_name != 'pull_request' || needs.changes.outputs.relay == 'true'
         run: govulncheck ./...
         working-directory: relay
       - name: govulncheck (sdk)
+        if: github.event_name != 'pull_request' || needs.changes.outputs.sdk == 'true'
         run: govulncheck ./...
         working-directory: sdk/go
 
   sdk-test:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.sdk == 'true'
     # The Go SDK's parity tests read two generated goldens — the engine's SDK
     # contract manifest and the SDK's own surface manifest — so they run from a
     # full checkout rather than from the module in isolation. This is the job
@@ -262,6 +339,8 @@ jobs:
         run: go test -race ./...
 
   relay-test:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.relay == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -274,6 +353,8 @@ jobs:
         run: go test -race ./...
 
   desktop-test:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -294,6 +375,8 @@ jobs:
         run: npm test
 
   desktop-lint:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -315,6 +398,8 @@ jobs:
         run: npm run lint
 
   desktop-audit:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop_deps == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -327,6 +412,8 @@ jobs:
         run: npm audit --audit-level=high --omit=dev
 
   docker-build:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.engine == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -341,13 +428,15 @@ jobs:
           tags: ion-engine:ci
 
   ios-build:
-    # Required PR gate. `make ios-pr-check` compiles the device target then
-    # tests shared contracts and cross-client parity on a selected simulator.
-    # The full XCTest suite runs in ios-full-test on schedule/manual dispatch.
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.ios == 'true'
+    # Required PR gate. Device-target compilation catches Swift, link, and
+    # packaging errors without hosted simulator startup. The full XCTest suite
+    # runs locally before push, plus nightly/manual in ios-full-test.
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
-      - name: Build iOS app and test contracts/parity
+      - name: Build iOS app
         run: make ios-pr-check
 
   ios-full-test:
