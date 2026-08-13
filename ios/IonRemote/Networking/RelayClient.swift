@@ -193,6 +193,14 @@ final class RelayClient {
         } else {
             bearer = apiKey
         }
+        // disconnect() may run while autonomous OIDC acquisition is suspended.
+        // Do not let the completed credential resurrect a client that teardown
+        // intentionally closed in the meantime.
+        guard !intentionallyClosed else {
+            DiagnosticLog.log("relay connect abandoned after credential fetch", tag: "relay.client", fields: [:])
+            isConnecting = false
+            return
+        }
         request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
 
         let urlSession = URLSession(configuration: .default)

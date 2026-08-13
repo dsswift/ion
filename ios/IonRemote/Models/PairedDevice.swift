@@ -90,6 +90,7 @@ struct PairedDevice: Codable, Identifiable, Sendable {
         relayAuthMode == "oidc"
             && !(relayOidcClientId ?? "").isEmpty
             && !(relayOidcIssuer ?? "").isEmpty
+            && !(relayOidcRequiredScope ?? "").isEmpty
     }
 
     /// Best available label for the bound account, or nil when no identity has

@@ -117,6 +117,9 @@ final class PairedDeviceCodableTests: XCTestCase {
         XCTAssertFalse(device.usesOIDC, "still no issuer")
 
         device.relayOidcIssuer = "https://login.example.com/tenant/v2.0"
+        XCTAssertFalse(device.usesOIDC, "still no scope")
+
+        device.relayOidcRequiredScope = "api://client/Relay.Access"
         XCTAssertTrue(device.usesOIDC)
     }
 
