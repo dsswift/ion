@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -236,6 +237,48 @@ func TestPerformCompact_MicroOnlySignal(t *testing.T) {
 	if done.MessagesBefore != done.MessagesAfter {
 		t.Errorf("micro-only pass must not drop messages: before=%d after=%d",
 			done.MessagesBefore, done.MessagesAfter)
+	}
+}
+
+func TestPerformCompact_AutoContinuesPastMicroToConfiguredTarget(t *testing.T) {
+	b := NewApiBackend()
+	events := captureEvents(b, "auto-target")
+	conv := conversation.CreateConversation("auto-target", "", "test-model")
+
+	conversation.AddUserMessage(conv, "initial prompt")
+	conversation.AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "initial reply"}}, types.LlmUsage{InputTokens: 80_000})
+	largeResult := strings.Repeat("tool result ", 1_000)
+	for i := 0; i < 10; i++ {
+		isError := false
+		conversation.AddToolResults(conv, []conversation.ToolResultEntry{{
+			ToolUseID: fmt.Sprintf("tool-%d", i), Content: largeResult, IsError: isError,
+		}})
+		conversation.AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "processed"}}, types.LlmUsage{})
+	}
+
+	// Micro-compaction clears the seven oldest tool results, taking the context
+	// below the 97K auto trigger. It remains above the configured 50K target,
+	// so automatic compaction must still insert a hard-compaction boundary.
+	run := &activeRun{requestID: "auto-target", conv: conv}
+	cp := testCompactParams()
+	cp.summaryEnabled = false
+	mustPerformCompact(t, b, performCompactParams{
+		ctx: context.Background(), run: run, conv: conv, hooks: RunHooks{},
+		contextWindow: 100_000, tokenLimit: 97_000, cp: cp, trigger: "auto",
+	})
+
+	done := lastCompactingDone(*events)
+	if done == nil {
+		t.Fatal("expected a CompactingEvent with Active=false")
+	}
+	if done.MicroOnly {
+		t.Fatal("auto compaction stopped after micro-compaction instead of reaching target")
+	}
+	if done.MessagesAfter >= done.MessagesBefore {
+		t.Errorf("hard compaction did not remove source messages: before=%d after=%d", done.MessagesBefore, done.MessagesAfter)
+	}
+	if len(conv.Messages) == 0 || !conversation.IsCompactBoundary(conv.Messages[0]) {
+		t.Fatal("auto compaction did not insert a compact boundary")
 	}
 }
 
