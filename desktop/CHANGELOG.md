@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.81.1](https://github.com/dsswift/ion/compare/desktop-v1.81.0...desktop-v1.81.1) (2026-08-13)
+
+### Bug Fixes
+
+* **ios:** prevent stopped transport resurrection ([b22d2af](https://github.com/dsswift/ion/commit/b22d2afd772d4cb06ddb633d76817f803e2343dd))
+
 ## [1.81.0](https://github.com/dsswift/ion/compare/desktop-v1.80.0...desktop-v1.81.0) (2026-08-12)
 
 ### Features

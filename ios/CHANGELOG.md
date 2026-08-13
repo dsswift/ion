@@ -10,6 +10,14 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.61.2](https://github.com/dsswift/ion/compare/ios-v1.61.1...ios-v1.61.2) (2026-08-13)
+
+### Bug Fixes
+
+* **ios:** sync agent state contract test ([42a9324](https://github.com/dsswift/ion/commit/42a932406153d7810db45fb96d89147a65122b80))
+* **ios:** stabilize relay reconnects ([cc86864](https://github.com/dsswift/ion/commit/cc8686463516fdecddac142e0a30ae26e71f871a))
+* **ios:** prevent stopped transport resurrection ([b22d2af](https://github.com/dsswift/ion/commit/b22d2afd772d4cb06ddb633d76817f803e2343dd))
+
 ## [1.61.1](https://github.com/dsswift/ion/compare/ios-v1.61.0...ios-v1.61.1) (2026-08-13)
 
 ### Bug Fixes
