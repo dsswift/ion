@@ -102,7 +102,7 @@ func classifyCommand(cmd *protocol.ClientCommand) commandClass {
 		"rewind_session", "navigate_tree", "get_tree",
 		"permission_response", "tool_gate_response",
 		"elicitation_response", "early_stop_decision_response",
-		"reconcile_state", "query_session_status",
+		"reconcile_state", "query_session_status", "get_agent_state",
 		"get_context_breakdown", "clear_conversation_file":
 		if cmd.Key != "" {
 			return classSession

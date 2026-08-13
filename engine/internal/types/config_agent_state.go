@@ -6,7 +6,8 @@ package types
 // AgentStateUpdate.Metadata is an untyped map an extension fills. Because
 // engine_agent_state is a complete snapshot, an oversized value is paid on
 // every emission rather than once, and a single extension can wedge every
-// consumer of a session. The engine therefore bounds it.
+// consumer of a session. The engine therefore bounds an outbound copy; it
+// never mutates registry state used for persistence and lifecycle mechanics.
 //
 // The bound is a mechanism, not an opinion: what belongs in metadata is the
 // consumer's business, but "one extension must not be able to make the event

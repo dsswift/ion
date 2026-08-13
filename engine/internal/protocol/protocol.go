@@ -337,6 +337,10 @@ var validCommands = map[string]bool{
 	// without waiting for the next heartbeat tick or paying the cost of
 	// a full reconcile. Phase 2 of the state-management overhaul.
 	"query_session_status": true,
+	// get_agent_state returns a full-fidelity roster in the requesting
+	// command result. It is intentionally not an engine event because events
+	// broadcast to every socket consumer.
+	"get_agent_state":      true,
 	"migrate_conversation": true,
 	"list_models":          true,
 	// resolve_model_tier: map a tier name from ~/.ion/models.json to its

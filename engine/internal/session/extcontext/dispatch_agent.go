@@ -125,7 +125,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 
 		newDispatch := map[string]interface{}{
 			"id":        agentID,
-			"task":      opts.Task,
+			"task":      dispatchTaskLabel(opts.Task),
 			"model":     model,
 			"status":    "running",
 			"startTime": start.Unix(),

@@ -1688,7 +1688,13 @@ export interface RunOnceResult<T = void> {
  * `jarvis_inbox_update` or `my-extension_persona_loaded`.
  */
 export type EngineEvent =
-  | { type: 'engine_agent_state'; agents: any[] }
+  /**
+   * Agent-state metadata is broadcast repeatedly in complete snapshots.
+   * Use short display labels (for example task / lastWork summaries), not full
+   * output or conversation content. Put durable content in conversation history
+   * or a resource item so clients can retrieve it on demand.
+   */
+  | { type: 'engine_agent_state'; agents: Array<{ name: string; status: string; metadata?: Record<string, any>; [key: string]: unknown }> }
   | { type: 'engine_status'; fields: { extensionName?: string; [key: string]: unknown }; metadata?: Record<string, unknown> }
   | { type: 'engine_working_message'; message: string; metadata?: Record<string, unknown> }
   | { type: 'engine_notify'; message: string; level: string; metadata?: Record<string, unknown> }

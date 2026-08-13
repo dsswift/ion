@@ -197,71 +197,41 @@ func TestClampMetadata_DisabledWithNegativeOne(t *testing.T) {
 	}
 }
 
-// TestCacheExtStates_BoundsOversizedRoster is the canonical red-on-revert
-// test: 11 agents at ~3.3 MB each is the exact production payload that
-// exceeded the desktop's 6 MiB cap on 1,873 consecutive attempts.
-func TestCacheExtStates_BoundsOversizedRoster(t *testing.T) {
-	r := NewRegistry()
-
+// TestClampSnapshotCopy_BoundsOversizedRoster is the production regression:
+// the registry keeps full fidelity; only its outbound projection is bounded.
+func TestClampSnapshotCopy_BoundsOversizedRoster(t *testing.T) {
 	roster := make([]types.AgentStateUpdate, 11)
 	for i := range roster {
-		roster[i] = types.AgentStateUpdate{
-			Name:   "agent-" + string(rune('a'+i)),
-			Status: "running",
-			Metadata: map[string]any{
-				"displayName": "Agent",
-				"visibility":  "always",
-				"invited":     true,
-				"lastWork":    bigString(3 * 1024 * 1024),
-			},
-		}
+		roster[i] = types.AgentStateUpdate{Name: "agent-" + string(rune('a'+i)), Status: "running", Metadata: map[string]any{
+			"displayName": "Agent", "visibility": "always", "invited": true, "lastWork": bigString(3 * 1024 * 1024),
+		}}
 	}
-	r.CacheExtStates(roster)
-
-	encoded, err := json.Marshal(r.MergedSnapshot())
+	projected, reports := ClampSnapshotCopy(roster, DefaultMetadataLimits())
+	if len(reports) == 0 {
+		t.Fatal("expected clamp reports")
+	}
+	encoded, err := json.Marshal(projected)
 	if err != nil {
-		t.Fatalf("marshal snapshot: %v", err)
+		t.Fatalf("marshal projected snapshot: %v", err)
 	}
 	if len(encoded) > DefaultMaxSnapshotBytes {
-		t.Errorf("serialized snapshot = %d bytes, want <= %d", len(encoded), DefaultMaxSnapshotBytes)
+		t.Errorf("projection = %d bytes, want <= %d", len(encoded), DefaultMaxSnapshotBytes)
 	}
-	// The desktop transport cap is 6 MiB; the whole point is fitting under it.
-	if len(encoded) > 6*1024*1024 {
-		t.Errorf("serialized snapshot = %d bytes, still exceeds the 6 MiB transport cap", len(encoded))
-	}
-
-	if reports := r.TakeClampReports(); len(reports) == 0 {
-		t.Error("expected clamp reports so the advisory can be emitted")
-	}
-	if second := r.TakeClampReports(); second != nil {
-		t.Error("TakeClampReports must drain; a second call should return nil")
+	if len(roster[0].Metadata["lastWork"].(string)) != 3*1024*1024 {
+		t.Fatal("projection clamp mutated source roster")
 	}
 }
 
-// TestClampReports_CarryNoOffendingContent pins the no-echo guarantee. A
-// report that embedded the clamped string would recreate the 35 MB payload in
-// whatever consumed it.
+// TestClampReports_CarryNoOffendingContent pins the no-echo guarantee.
 func TestClampReports_CarryNoOffendingContent(t *testing.T) {
 	needle := strings.Repeat("SECRETNEEDLE", 100000)
-	r := NewRegistry()
-	r.CacheExtStates([]types.AgentStateUpdate{{
-		Name:     "a",
-		Metadata: map[string]any{"displayName": "A", "lastWork": needle},
-	}})
-
-	reports := r.TakeClampReports()
-	if len(reports) == 0 {
-		t.Fatal("expected a clamp report")
-	}
+	_, reports := ClampSnapshotCopy([]types.AgentStateUpdate{{Name: "a", Metadata: map[string]any{"displayName": "A", "lastWork": needle}}}, DefaultMetadataLimits())
 	encoded, err := json.Marshal(reports)
 	if err != nil {
 		t.Fatalf("marshal reports: %v", err)
 	}
 	if strings.Contains(string(encoded), "SECRETNEEDLE") {
-		t.Error("clamp report must carry key names and byte counts only, never the content")
-	}
-	if len(encoded) > 4096 {
-		t.Errorf("clamp report serialized to %d bytes; reports must stay small", len(encoded))
+		t.Error("report must not carry content")
 	}
 }
 

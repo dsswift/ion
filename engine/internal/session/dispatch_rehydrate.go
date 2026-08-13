@@ -87,7 +87,7 @@ func (m *Manager) rehydrateDispatchState(s *engineSession, key string) *conversa
 		// Build a dispatch info entry for the structured dispatches array.
 		dispatchEntry := map[string]interface{}{
 			"id":     d.AgentID,
-			"task":   d.Task,
+			"task":   dispatchTaskLabel(d.Task),
 			"model":  d.Model,
 			"status": d.Status,
 		}
@@ -338,10 +338,11 @@ func (m *Manager) persistTerminalDispatches(key, convID string) {
 		if meta == nil {
 			continue
 		}
-		// Only persist entries with dispatch metadata (task field).
-		// Extension-only roster entries (idle, no task) are skipped.
-		task, _ := meta["task"].(string) //nolint:errcheck // best-effort; failure not actionable here
-		if task == "" {
+		// Dispatch identity is authoritative. `task` is descriptive metadata and
+		// must not decide whether a terminal dispatch is persisted.
+		_, hasDispatches := meta["dispatches"].([]interface{}) //nolint:errcheck // best-effort; malformed metadata is not a dispatch
+		task, _ := meta["task"].(string)                       //nolint:errcheck // best-effort; optional display data
+		if state.ID == "" || (!hasDispatches && task == "") {
 			continue
 		}
 

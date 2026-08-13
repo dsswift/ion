@@ -84,7 +84,7 @@ func enforceProtectedGuarantee(md map[string]any, budget int) []string {
 		if approxMapBytes(md) <= budget {
 			return clamped
 		}
-		if k == "displayName" {
+		if protectedIdentityValue(k) {
 			continue
 		}
 		if s, ok := md[k].(string); ok && s == truncationSuffix {
@@ -110,6 +110,20 @@ func enforceProtectedGuarantee(md map[string]any, budget int) []string {
 	return clamped
 }
 
+// protectedIdentityValue reports keys whose values are routing identity, not
+// display metadata. A wire projection may omit bulky optional fields, but it
+// must never replace these with a marker: callers type-assert dispatches and
+// follow conversation ids to durable content.
+func protectedIdentityValue(key string) bool {
+	switch key {
+	case "displayName", "type", "visibility", "invited", "status", "color",
+		"dispatchId", "dispatchParentId", "dispatchDepth", "dispatches", "conversationId":
+		return true
+	default:
+		return false
+	}
+}
+
 // shrinkArrayToFit cuts arr (stored at md[key]) from the head so the whole
 // map fits the budget, keeping the most recent tail. When even an empty array
 // cannot fit, the array is emptied and the caller's later phases handle the
@@ -131,6 +145,12 @@ func shrinkArrayToFit(md map[string]any, key string, arr []any, budget int) bool
 		return false
 	}
 	total := len(arr)
+	// dispatch identity is load-bearing. When one complete entry alone exceeds
+	// the budget, retain its newest member and allow the projection to exceed
+	// the budget rather than publishing an empty or corrupt dispatch index.
+	if key == "dispatches" && kept == 0 && total > 0 {
+		kept = 1
+	}
 	md[key] = arr[total-kept:]
 	if key == "dispatches" {
 		md[dispatchesTotalKey] = total

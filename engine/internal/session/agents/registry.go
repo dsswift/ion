@@ -17,14 +17,9 @@ type Registry struct {
 	states        []types.AgentStateUpdate
 	lastExtStates []types.AgentStateUpdate
 
-	// limits bounds metadata size on every write path. See metadata_clamp.go
-	// for why the engine keeps a backstop even though each producer is also
-	// fixed at source.
+	// limits supplies projection-time dispatch retention. Byte bounds apply only
+	// to an outbound copy; registry state remains full fidelity for persistence.
 	limits MetadataLimits
-	// clampReports accumulates until drained by TakeClampReports. The clamp
-	// runs inside the registry, which must not emit events, so whoever owns
-	// emission drains these and publishes the typed advisory.
-	clampReports []ClampReport
 }
 
 // NewRegistry creates a ready-to-use Registry with the built-in metadata
@@ -174,12 +169,10 @@ func (r *Registry) AppendOrUpdate(state types.AgentStateUpdate, updater func(*ty
 	for i := range r.states {
 		if r.states[i].Name == state.Name {
 			updater(&r.states[i])
-			r.clampOneLocked(&r.states[i])
 			return true
 		}
 	}
 	r.states = append(r.states, state)
-	r.clampOneLocked(&r.states[len(r.states)-1])
 	return false
 }
 
@@ -194,12 +187,10 @@ func (r *Registry) AppendOrUpdateByID(state types.AgentStateUpdate, updater func
 	for i := range r.states {
 		if r.states[i].ID == state.ID {
 			updater(&r.states[i])
-			r.clampOneLocked(&r.states[i])
 			return true
 		}
 	}
 	r.states = append(r.states, state)
-	r.clampOneLocked(&r.states[len(r.states)-1])
 	return false
 }
 
@@ -208,7 +199,6 @@ func (r *Registry) AppendState(state types.AgentStateUpdate) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.states = append(r.states, state)
-	r.clampOneLocked(&r.states[len(r.states)-1])
 }
 
 // UpdateState finds all states with the given name and applies the updater
@@ -221,9 +211,6 @@ func (r *Registry) UpdateState(name string, updater func(*types.AgentStateUpdate
 	for i := range r.states {
 		if r.states[i].Name == name {
 			updater(&r.states[i])
-			// Post-pass: the updater writes metadata directly, so the bound
-			// has to be applied after it runs, not before.
-			r.clampOneLocked(&r.states[i])
 		}
 	}
 }
@@ -239,9 +226,6 @@ func (r *Registry) UpdateStateByID(id string, updater func(*types.AgentStateUpda
 	for i := range r.states {
 		if r.states[i].ID == id {
 			updater(&r.states[i])
-			// Post-pass: the updater writes metadata directly, so the bound
-			// applies after it runs.
-			r.clampOneLocked(&r.states[i])
 			return
 		}
 	}
@@ -261,14 +245,12 @@ func (r *Registry) UpsertStateByID(id string, seed types.AgentStateUpdate, updat
 	for i := range r.states {
 		if r.states[i].ID == id {
 			updater(&r.states[i])
-			r.clampOneLocked(&r.states[i])
 			return
 		}
 	}
 	seed.ID = id
 	r.states = append(r.states, seed)
 	updater(&r.states[len(r.states)-1])
-	r.clampOneLocked(&r.states[len(r.states)-1])
 	utils.LogWithFields(utils.LevelWarn, "session.agents", "upsertstatebyid: slot absent, re-materialized terminal row (a lifecycle gap swept the running slot; terminal state preserved)", map[string]any{"run_id": id})
 }
 
@@ -387,6 +369,17 @@ func (r *Registry) ClearRunningStatesExceptIDsOrNames(keepIDs, keepNames map[str
 // called the generic Agent tool without a name, creating a numbered
 // entry, while the extension roster has the base name.
 func (r *Registry) MergedSnapshot() []types.AgentStateUpdate {
+	return r.mergedSnapshot(r.limits.normalized().MaxDispatchEntries)
+}
+
+// FullMergedSnapshot returns the same combined roster without the broadcast
+// dispatch-history retention cap. It is for an explicit get_agent_state pull,
+// not recurring snapshots; callers receive complete metadata on demand.
+func (r *Registry) FullMergedSnapshot() []types.AgentStateUpdate {
+	return r.mergedSnapshot(LimitsDisabled)
+}
+
+func (r *Registry) mergedSnapshot(maxDispatchEntries int) []types.AgentStateUpdate {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -428,7 +421,7 @@ func (r *Registry) MergedSnapshot() []types.AgentStateUpdate {
 	// AppendOrUpdateByID still target individual dispatches. This projection
 	// prevents a consumer from receiving duplicate same-name rows when the
 	// orchestrator dispatches the same agent name multiple times.
-	grouped := groupByName(r.states, r.limits.normalized().MaxDispatchEntries)
+	grouped := groupByName(r.states, maxDispatchEntries)
 	merged = append(merged, grouped...)
 
 	// Observability: the merge is the single point where an extension roster
@@ -627,7 +620,10 @@ func isDispatchBearing(meta map[string]interface{}) bool {
 	if meta == nil {
 		return false
 	}
-	task, _ := meta["task"].(string) //nolint:errcheck // best-effort; failure not actionable here
+	if dispatches, ok := meta["dispatches"].([]interface{}); ok && len(dispatches) > 0 {
+		return true
+	}
+	task, _ := meta["task"].(string) //nolint:errcheck // legacy extension-only shape
 	return task != ""
 }
 
@@ -751,11 +747,8 @@ func (r *Registry) CacheExtStates(states []types.AgentStateUpdate) {
 	defer r.mu.Unlock()
 	r.lastExtStates = make([]types.AgentStateUpdate, len(states))
 	copy(r.lastExtStates, states)
-	// The primary ingest for extension-supplied metadata, and the path the
-	// 35 MB production payload arrived on. Clamping here rather than at
-	// emission means the oversized value is bounded once on the way in, not
-	// re-clamped on every one of the session's emissions.
-	r.clampStatesLocked(r.lastExtStates)
+	// Keep producer data intact. The emission funnel clamps a deep copy, so
+	// persistence and state transitions never read a lossy projection.
 }
 
 // LastExtStates returns the cached extension agent states.

@@ -111,7 +111,7 @@ Keys beginning with `_` are reserved by the engine (see `_truncated` below).
 
 ## Metadata size bounds
 
-`metadata` is an open-ended map, and because this event is a **complete snapshot** an oversized value is paid on *every* emission for the life of the session rather than once. The engine therefore bounds it.
+`metadata` is an open-ended map, and because this event is a **complete snapshot** an oversized value is paid on *every* emission for the life of the session rather than once. The engine therefore bounds an **outbound deep-copy projection**. Registry state remains full fidelity for persistence, dispatch lifecycle updates, and on-demand retrieval.
 
 This is not theoretical. A 36,969,872-byte `engine_agent_state` carrying only 11 agents (~3.3 MB each) was rebuilt byte-identical for over 15 hours. It exceeded the desktop's 6 MiB transport cap on all 1,873 attempts, so it was dropped every time — iOS went blind to agent state for the entire window while the desktop burned CPU rebuilding an undeliverable frame. The engine had written all 35 MB to the NDJSON socket regardless, so every external wire consumer paid for it too.
 
@@ -127,12 +127,12 @@ The tiers are configurable under `limits.agentStateMetadata` in `engine.json` (`
 
 `maxDispatchEntries` exists because a byte tier cannot see a history coming: `dispatches[]` accumulates one small record per Agent-tool dispatch (and rehydrates across restarts), so no single value ever trips `maxValueBytes` while the array grows without bound. The emitted snapshot keeps the most recent entries, stamps the original count as `dispatchesTotal`, and marks the cut in `_truncatedKeys`. The full history remains in conversation storage and producer persistence — a complete-snapshot event carries live status, not an archive.
 
-**The entry and snapshot bounds are hard guarantees, not best-effort.** The entry budget runs in three phases: drop unprotected keys largest-first; then shrink protected *collection* values (arrays lose their oldest elements, nested maps their largest inner keys); then, as an unconditional backstop, replace protected values with a truncation marker until the entry fits — `displayName` last, truncated rather than dropped. The snapshot budget re-applies the same pipeline per entry against a proportional share. A clamp advisory therefore always reports `clamped_bytes ≤ limit_bytes`.
+**The entry and snapshot bounds preserve routing identity over a numeric ceiling.** The entry budget drops unprotected keys largest-first, then shrinks protected collections while retaining at least the newest complete dispatch entry. The final backstop can replace optional protected display metadata, but never dispatch IDs, conversation IDs, `dispatches[]`, visibility, invitation state, or type. If identity alone exceeds a configured budget, the engine logs the overage and ships a correct projection rather than a corrupt one.
 
 Rules the clamp obeys, which consumers may rely on:
 
 - **An agent is never dropped**, only metadata. Omitting an agent from a complete snapshot means "this agent is gone", so shedding one to save bytes would be a lie.
-- **Protected keys are never removed, but their values are shrunk as far as the budget requires.** Protection is about key retention, not exemption from the bound. The protected set is `displayName`, `type`, `visibility`, `invited`, `status`, `color`, `dispatchId`, `dispatchParentId`, `dispatchDepth`, `dispatches`, `conversationId`.
+- **Protected keys are never removed.** Optional display values may be shortened, but routing identity is never replaced with a marker: `dispatches[]`, dispatch IDs, conversation IDs, type, visibility, invitation state, and status retain their original types and values. This ensures a client can still address each dispatch and retrieve its durable content.
 - **`visibility` and `invited` are protected for a cross-client reason.** iOS defaults an absent `visibility` to `ephemeral` and renders ephemeral agents only while running; an absent `invited` defaults to `false`, which hides `sticky` rows. Dropping either would silently empty the agents panel — a wrong render that looks successful, which is worse than a dropped frame.
 - **Truncation is UTF-8 safe.** A byte-slice cut would emit invalid UTF-8 and make the whole frame undecodable, turning a large snapshot into no snapshot.
 - **`dispatches[]` keeps its most recent entries**, each recursed into rather than flattened, because per-dispatch UI state is keyed on the `id` / `status` / `conversationId` inside it. When the array is cut, `dispatchesTotal` carries the pre-cut count.
@@ -144,6 +144,10 @@ When the engine clamps an entry it stamps `_truncated: true` and `_truncatedKeys
 These are **not** redundant surfaces for one signal, which the typed-event rule would otherwise forbid. The event answers "a clamp happened in this session and here is how much was lost". The in-band marker answers "*this* value on *this* agent in *this* snapshot is not what the producer wrote" — which is what a consumer needs to render an ellipsis or a tooltip, and which cannot be reliably reconstructed by correlating an out-of-band event back to one field of one agent inside one snapshot.
 
 The advisory is rate-limited per `(agent, scope)`; every clamp is logged at WARN regardless, so log-based diagnosis stays complete.
+
+### Recovering full metadata on demand
+
+A consumer that receives `_truncated` can request `get_agent_state` with its session key. The engine returns `{ agents: [...] }` as the `ServerResult.data` payload for **that requesting socket only**, using the full-fidelity registry snapshot without metadata bounds. It is deliberately a command result rather than an engine event: engine events broadcast to every attached client, and broadcasting a large retrieval response would recreate the repeated fan-out this bound prevents. One explicit local-socket request may carry tens of megabytes; repeated unsolicited snapshots may not.
 
 > **iOS caveat.** iOS rebuilds the metadata map from its typed fields when it persists a tab snapshot, so unknown keys — including `_truncated` — do not survive a save/load round-trip. The marker is reliable on first receipt.
 
