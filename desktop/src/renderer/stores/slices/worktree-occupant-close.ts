@@ -5,8 +5,9 @@
  * ── Why this is a module and not inline in the retire action ─────────────────
  * Three call sites need identical behaviour: the row-menu confirmation gate
  * (`WorktreeRowMenu.requestRetire`), the store action every path funnels
- * through (`retireWorktree`), and the land-then-retire flow
- * (`finishWorktreeTab`). A second copy in any of them is a copy that drifts —
+ * through (`retireWorktree`) and bulk landed-worktree retirement. Landing
+ * seals a checkout but never removes it, so it does not use these helpers.
+ * A second copy in any retire path is a copy that drifts —
  * and the failure mode of drift here is a deleted directory under a running
  * agent, which is unrecoverable. It also keeps `worktree-inventory-slice.ts`
  * under the 600-line cap.

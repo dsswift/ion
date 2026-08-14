@@ -29,10 +29,11 @@ vi.mock('os', async () => {
 import {
   ensureWorkspace, addMember, removeMember, setMemberEnabled,
   updateMember, updateAllStale, assembleWorkspace, refreshStaleness, listWorkspaces,
-  setMemberOrder,
+  setMemberOrder, discardMemberRecordingsAndReassemble,
 } from '../integration/bench-ops'
 import { loadWorkspaces, saveWorkspaces } from '../integration/bench-store'
 import { setWorktreeStage, lookupWorktreeStage } from '../worktree/inventory'
+import { markWorktreeLanded, registerWorktree } from '../worktree/registry'
 import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
 
 const FEATURE = 'josh'
@@ -94,6 +95,21 @@ function localBench(sourceBranch = FEATURE): void {
 
 function benchPath(): string { return join(root, 'bench') }
 
+function recordResolutionFor(workspace: { benchPath: string; benchBranch: string; members: { branchName: string; pinnedSha: string }[] }, branchName: string): void {
+  git(workspace.benchPath, 'config', 'rerere.enabled', 'true')
+  git(workspace.benchPath, 'config', 'rerere.autoUpdate', 'true')
+  git(workspace.benchPath, 'switch', '-C', workspace.benchBranch, FEATURE, '--discard-changes')
+  for (const member of workspace.members) {
+    if (member.branchName === branchName) break
+    git(workspace.benchPath, 'merge', '--no-ff', '-m', member.branchName, member.pinnedSha)
+  }
+  const target = workspace.members.find((member) => member.branchName === branchName)!
+  expect(() => git(workspace.benchPath, 'merge', '--no-ff', '-m', branchName, target.pinnedSha)).toThrow()
+  writeFileSync(join(workspace.benchPath, 'shared.txt'), 'recorded resolution\n')
+  git(workspace.benchPath, 'add', 'shared.txt')
+  git(workspace.benchPath, '-c', 'core.editor=true', 'merge', '--continue')
+}
+
 describe('workspace lifecycle', () => {
   it('creates a workspace record without materialising a worktree', () => {
     const ws = ensureWorkspace(repo, FEATURE)
@@ -128,7 +144,25 @@ describe('member management', () => {
     expect(member.enabled).toBe(true)
   })
 
-  // Re-enrolling would silently advance the pin, integrating newer work the
+  it('refuses a landed worktree before creating a bench record', async () => {
+    const a = makeWorktree('a')
+    registerWorktree({
+      worktreePath: a.path,
+      repoPath: repo,
+      branchName: a.branch,
+      sourceBranch: FEATURE,
+    })
+    expect(markWorktreeLanded(a.path)).toBe(true)
+
+    const result = await addMember(repo, FEATURE, a.path, a.branch)
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: 'This worktree has already landed and cannot join an integration bench.',
+    })
+    expect(listWorkspaces(repo)).toHaveLength(0)
+  })
+
   // operator never asked to integrate.
   it('refuses a duplicate rather than silently re-pinning', async () => {
     localBench()
@@ -165,6 +199,32 @@ describe('member management', () => {
     expect(ws!.members[0].enabled).toBe(false)
   })
 }, GIT_FIXTURE_TIMEOUT)
+
+describe('targeted recorded-resolution recovery', () => {
+  it('forgets only requested member recording and persists fresh conflict reassembly', async () => {
+    localBench()
+    const a = makeWorktree('a')
+    const c = makeWorktree('c')
+    commitIn(a.path, 'shared.txt', 'from a\n', 'a shared')
+    commitIn(c.path, 'shared.txt', 'from c\n', 'c shared')
+    await addMember(repo, FEATURE, a.path, a.branch)
+    await addMember(repo, FEATURE, c.path, c.branch)
+
+    const failed = await assembleWorkspace(repo, FEATURE)
+    expect(failed.workspace!.lastAssembly).toBe('failed')
+    recordResolutionFor(failed.workspace!, c.branch)
+    const replayed = await assembleWorkspace(repo, FEATURE)
+    expect(replayed.workspace!.lastAssembly).toBe('assembled')
+
+    const recovered = await discardMemberRecordingsAndReassemble(repo, FEATURE, [c.branch])
+
+    expect(recovered.ok).toBe(true)
+    expect(recovered.forgottenCount).toBeGreaterThan(0)
+    expect(recovered.branchesWithNothingToForget).toEqual([])
+    expect(recovered.workspace).toMatchObject({ lastAssembly: 'failed', lastAssemblyFailure: 'conflict' })
+    expect(recovered.workspace!.members.find((member) => member.branchName === c.branch)!.merge).toBe('conflicted')
+  })
+})
 
 describe('rebuild never advances a pin', () => {
   // THE core guarantee, at the ops layer.

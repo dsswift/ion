@@ -124,4 +124,28 @@ describe('prepareConflictResolution', () => {
     expect(result, JSON.stringify(result)).toMatchObject({ ok: true, branchName: 'wt/c' })
     expect(git(ws.benchPath, 'diff', '--name-only', '--diff-filter=U').trim()).toBe('shared.txt')
   })
+
+  it('returns retained merge member when resolution is already open', async () => {
+    const ws = await fixture()
+    await assembleBench(ws)
+    git(ws.benchPath, 'switch', '-C', ws.benchBranch, 'main', '--discard-changes')
+    git(ws.benchPath, 'merge', '--no-ff', '-m', 'prior', ws.members[0].pinnedSha)
+    expect(() => git(ws.benchPath, 'merge', '--no-ff', '-m', 'conflict', ws.members[1].pinnedSha)).toThrow()
+
+    const result = await prepareConflictResolution(repo, 'main')
+
+    expect(result).toMatchObject({ ok: true, benchPath: ws.benchPath, branchName: 'wt/c' })
+    expect(git(ws.benchPath, 'diff', '--name-only', '--diff-filter=U').trim()).toBe('shared.txt')
+  })
+
+  it('skips landed members while recreating the unresolved merge', async () => {
+    const ws = await fixture()
+    await assembleBench(ws)
+    git(repo, 'update-ref', 'refs/heads/main', ws.members[0].pinnedSha)
+
+    const result = await prepareConflictResolution(repo, 'main')
+
+    expect(result).toMatchObject({ ok: true, benchPath: ws.benchPath, branchName: 'wt/c' })
+    expect(git(ws.benchPath, 'diff', '--name-only', '--diff-filter=U').trim()).toBe('shared.txt')
+  })
 })
