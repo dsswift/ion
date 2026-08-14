@@ -325,6 +325,6 @@ func strPtr(s string) *string {
 }
 
 func jsonBool(m map[string]any, key string) bool {
-	value, _ := m[key].(bool)
-	return value
+	value, ok := m[key].(bool)
+	return ok && value
 }
