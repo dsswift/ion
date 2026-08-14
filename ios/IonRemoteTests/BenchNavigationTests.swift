@@ -3,12 +3,15 @@ import XCTest
 
 @MainActor
 final class BenchNavigationTests: XCTestCase {
-    private func states(conversationTabId: String?) throws -> [RemoteWorktreeState] {
-        let field = conversationTabId.map { #", "benchConversationTabId":"\#($0)""# } ?? ""
+    private func states(conversations: [(id: String, role: String?)] = []) throws -> [RemoteWorktreeState] {
+        let rendered = conversations.map { conversation in
+            let role = conversation.role.map { ",\"tabRole\":\"\($0)\"" } ?? ""
+            return "{\"tabId\":\"\(conversation.id)\",\"title\":\"Bench work\",\"status\":\"running\",\"index\":1\(role)}"
+        }.joined(separator: ",")
         let json = """
         {"type":"desktop_worktree_state","states":[{"repoPath":"/repo","worktrees":[],"benches":[{
           "repoPath":"/repo","sourceBranch":"main","benchPath":"/bench","benchBranch":"ion/bench/main",
-          "baseSha":"abc","lastBuiltAt":1,"baseDrifted":false\(field)}]}]}
+          "baseSha":"abc","lastBuiltAt":1,"baseDrifted":false,"openConversations":[\(rendered)]}]}]}
         """.data(using: .utf8)!
         guard case let .worktreeState(states) = try JSONDecoder().decode(RemoteEvent.self, from: json) else {
             throw NSError(domain: "BenchNavigationTests", code: 1)
@@ -18,7 +21,7 @@ final class BenchNavigationTests: XCTestCase {
 
     func testExistingBenchConversationNavigatesWithoutPendingResolution() throws {
         let viewModel = SessionViewModel()
-        viewModel.handleWorktreeState(try states(conversationTabId: "talk-1"))
+        viewModel.handleWorktreeState(try states(conversations: [("talk-1", nil)]))
 
         viewModel.openBenchConversation(repoPath: "/repo", sourceBranch: "main")
 
@@ -28,13 +31,13 @@ final class BenchNavigationTests: XCTestCase {
 
     func testMissingBenchConversationResolvesExactlyOnceFromSnapshot() throws {
         let viewModel = SessionViewModel()
-        viewModel.handleWorktreeState(try states(conversationTabId: nil))
+        viewModel.handleWorktreeState(try states())
 
         viewModel.openBenchConversation(repoPath: "/repo", sourceBranch: "main")
         XCTAssertNotNil(viewModel.pendingBenchConversation)
         XCTAssertNil(viewModel.pendingNavigationTabId)
 
-        let created = try states(conversationTabId: "talk-2")
+        let created = try states(conversations: [("talk-2", nil)])
         viewModel.handleWorktreeState(created)
         XCTAssertEqual(viewModel.pendingNavigationTabId, "talk-2")
         XCTAssertNil(viewModel.pendingBenchConversation)
@@ -44,10 +47,41 @@ final class BenchNavigationTests: XCTestCase {
         XCTAssertNil(viewModel.pendingNavigationTabId)
     }
 
+    func testBenchActionCyclesAutoFixAndPersistentConversations() throws {
+        let viewModel = SessionViewModel()
+        viewModel.handleWorktreeState(try states(conversations: [
+            ("talk-1", "bench-conversation"),
+            ("fix-1", "conflict-auto-fix"),
+        ]))
+
+        viewModel.openBenchConversation(repoPath: "/repo", sourceBranch: "main")
+        XCTAssertEqual(viewModel.pendingNavigationTabId, "talk-1")
+        viewModel.pendingNavigationTabId = nil
+        viewModel.focusedTabId = "talk-1"
+
+        viewModel.openBenchConversation(repoPath: "/repo", sourceBranch: "main")
+        XCTAssertEqual(viewModel.pendingNavigationTabId, "fix-1")
+        viewModel.pendingNavigationTabId = nil
+        viewModel.focusedTabId = "fix-1"
+
+        viewModel.openBenchConversation(repoPath: "/repo", sourceBranch: "main")
+        XCTAssertEqual(viewModel.pendingNavigationTabId, "talk-1")
+    }
+
+    func testLoneAutoFixNavigatesWithoutCreatingSingleton() throws {
+        let viewModel = SessionViewModel()
+        viewModel.handleWorktreeState(try states(conversations: [("fix-1", "conflict-auto-fix")]))
+
+        viewModel.openBenchConversation(repoPath: "/repo", sourceBranch: "main")
+
+        XCTAssertEqual(viewModel.pendingNavigationTabId, "fix-1")
+        XCTAssertNil(viewModel.pendingBenchConversation)
+    }
+
     func testTimeoutTaskClearsPendingRequest() async throws {
         let viewModel = SessionViewModel()
         viewModel.benchConversationNavigationTimeout = .milliseconds(1)
-        viewModel.handleWorktreeState(try states(conversationTabId: nil))
+        viewModel.handleWorktreeState(try states())
         viewModel.openBenchConversation(repoPath: "/repo", sourceBranch: "main")
 
         // Await the real timeout task rather than sleeping a fixed interval:
@@ -61,7 +95,7 @@ final class BenchNavigationTests: XCTestCase {
 
     func testTimeoutClearsMatchingPendingRequest() throws {
         let viewModel = SessionViewModel()
-        viewModel.handleWorktreeState(try states(conversationTabId: nil))
+        viewModel.handleWorktreeState(try states())
         viewModel.openBenchConversation(repoPath: "/repo", sourceBranch: "main")
         let requestId = try XCTUnwrap(viewModel.pendingBenchConversation?.requestId)
 
@@ -73,7 +107,8 @@ final class BenchNavigationTests: XCTestCase {
 
     func testStaleTimeoutDoesNotCancelNewRequest() throws {
         let viewModel = SessionViewModel()
-        viewModel.handleWorktreeState(try states(conversationTabId: nil))
+        viewModel.benchConversationNavigationTimeout = .seconds(60)
+        viewModel.handleWorktreeState(try states())
         viewModel.openBenchConversation(repoPath: "/repo", sourceBranch: "main")
         let staleRequestId = try XCTUnwrap(viewModel.pendingBenchConversation?.requestId)
         viewModel.openBenchConversation(repoPath: "/repo", sourceBranch: "other")
@@ -87,7 +122,7 @@ final class BenchNavigationTests: XCTestCase {
 
     func testTransientResetCancelsPendingBenchConversation() throws {
         let viewModel = SessionViewModel()
-        viewModel.handleWorktreeState(try states(conversationTabId: nil))
+        viewModel.handleWorktreeState(try states())
         viewModel.openBenchConversation(repoPath: "/repo", sourceBranch: "main")
 
         viewModel.wipeTransientState()
@@ -113,7 +148,7 @@ final class BenchNavigationTests: XCTestCase {
 
     func testDisconnectCancelsPendingBenchConversation() throws {
         let viewModel = SessionViewModel()
-        viewModel.handleWorktreeState(try states(conversationTabId: nil))
+        viewModel.handleWorktreeState(try states())
         viewModel.openBenchConversation(repoPath: "/repo", sourceBranch: "main")
 
         viewModel.disconnect()
