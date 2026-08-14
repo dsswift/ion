@@ -70,7 +70,7 @@ describe('collectDirConversations', () => {
 
   it('skips terminal-only tabs — a terminal is not a conversation', () => {
     // RED without the isTerminalOnly skip: the terminal was counted as an open
-    // conversation by every consumer at once (hover card, `open ×N` label, iOS
+    // conversation by every consumer at once (hover card, parenthesized count label, iOS
     // projection) and was a rotation target, so "go to conversation" could land
     // the operator in a shell.
     const tabs = [
@@ -154,18 +154,16 @@ describe('describeOpenConversations', () => {
   )
 
   it('says a conversation is open, without naming a tab number', () => {
-    // The label used to read `open in tab 1`. No surface in the app shows a tab
-    // number, so the operator could not act on it, and reordering tabs made it
-    // wrong. The hover card names the conversations instead.
-    expect(describeOpenConversations(three.slice(0, 1))).toBe('open')
+    // Conversation tab position must not affect this directory-level count.
+    expect(describeOpenConversations(three.slice(0, 1))).toBe('(1)')
   })
 
-  it('names the COUNT when several are open', () => {
-    expect(describeOpenConversations(three)).toBe('open ×3')
+  it('renders the count in parentheses when several are open', () => {
+    expect(describeOpenConversations(three)).toBe('(3)')
   })
 
-  it('never emits a digit for a single conversation, whatever its tab index', () => {
-    expect(describeOpenConversations(three.slice(2, 3))).not.toMatch(/\d/)
+  it('uses the same count format at any tab position', () => {
+    expect(describeOpenConversations(three.slice(2, 3))).toBe('(1)')
   })
 
   it('says nothing when none are open', () => {

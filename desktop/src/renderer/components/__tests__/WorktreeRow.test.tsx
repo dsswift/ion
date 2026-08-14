@@ -8,17 +8,16 @@
 //      it was always the directory slug (`ion-a3f1`) — a machine string that
 //      tells the operator nothing about the work. The slug is the fallback, not
 //      the preference.
-//   2. The open-conversation hint names the COUNT when several conversations
-//      live in the worktree. Before, it said "open in tab 3" no matter how many
-//      were open, because the section did a `findIndex` and passed one id —
-//      true of one conversation and false of the row.
+//   2. The open-conversation hint shows a compact parenthesized COUNT whenever
+//      conversations live in the worktree. Before, it repeated `open` for one
+//      conversation and used a longer count label for several.
 //   3. The machine identifiers the row gave up (branch, slug, path) and the
 //      conversation list are reachable on hover, so nothing became unreachable
 //      in exchange for readability.
 //
 // Regression directions: reverting `entry.title || entry.label` to `entry.label`
-// turns (1) red; reverting the label to `open in tab ${index}` turns (2) red;
-// removing the HoverCard turns (3) red.
+// turns (1) red; replacing parenthesized count with repeated `open` turns (2)
+// red; removing the HoverCard turns (3) red.
 import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -126,15 +125,11 @@ describe('WorktreeRow — primary name', () => {
 })
 
 describe('WorktreeRow — open-conversation hint', () => {
-  it('says a conversation is open without naming a tab number', () => {
-    // The hint used to read `open in tab 3`. No surface in the app shows a tab
-    // number, so the operator could not act on it, and reordering tabs made it
-    // wrong. The hover card names the conversations instead.
+  it('shows a parenthesized count for one open conversation', () => {
     render({ entry: entry(), openConversations: [conv({ tabId: 'a', index: 3 })] })
 
     const label = container.querySelector('[data-testid="worktree-open-label-wt/ion-a3f1"]')!
-    expect(label.textContent).toBe('open')
-    expect(label.textContent).not.toMatch(/\d/)
+    expect(label.textContent).toBe('(1)')
   })
 
   it('names the COUNT when several are open', () => {
@@ -148,7 +143,7 @@ describe('WorktreeRow — open-conversation hint', () => {
     })
 
     expect(container.querySelector('[data-testid="worktree-open-label-wt/ion-a3f1"]')!.textContent)
-      .toBe('open ×3')
+      .toBe('(3)')
   })
 
   it('shows no hint at all when nothing is open', () => {
