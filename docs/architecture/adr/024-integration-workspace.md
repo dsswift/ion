@@ -110,6 +110,28 @@ and never merges, assembles, or advances a pin, so a late or briefly-wrong badge
 costs nothing. That is what makes riding the existing debounced `GitRepository`
 watcher acceptable here and unacceptable as an assembly trigger.
 
+### Overlap visualization is advisory evidence
+
+The desktop Worktree Overlap visualizer compares recorded contribution ranges for
+live worktree tips or current bench pins. It renders shared directories, files,
+and base-coordinate hunks, then predicts committed merge outcomes with
+`git merge-tree --write-tree --name-only -z`. The Git operation is in-memory:
+it never writes a checkout or an index. Its NUL-delimited conflicted-file section
+is consumed as machine data; human `CONFLICT` messages are not parsed because Git
+does not promise their stability.
+
+Uncommitted paths appear only as a marked advisory layer because they cannot
+enter a bench. The visualizer can recommend a low-friction cohort using the same
+ordered in-memory merge simulation as assembly, maximizing cleanly compatible
+members before minimizing overlap evidence and naming a concrete conflict
+counterpart for every exclusion.
+
+Applying a selected cohort is explicit and confirmed. The desktop re-runs exact
+simulation against fresh analysis, rejects duplicate or stale paths, then
+atomically persists bench membership, enabled state, and merge order. It never
+assembles the bench or advances an existing pin: those remain separate operator
+verbs.
+
 ### Member state is three orthogonal axes, not one enum
 
 A member's state was a single `MemberStatus` union mixing three independent
@@ -197,13 +219,33 @@ Legacy `review` verdicts migrate once at workspaces-file load (`good` →
 `verified`, `issue` → `bug`, never overwriting a stage the operator already
 set) and the key is stripped from the file so the migration cannot re-run.
 
+### Landing is terminal and immediately removes bench membership
+
+A successful Land writes the worktree's stored `landedAt` witness, immediately
+removes that worktree from every bench, and prunes any bench left with no
+members. No assembly runs as part of Land and no remaining member pin moves:
+the bench becomes current when the operator Syncs each remaining worktree from
+the source branch, then explicitly Updates its pin.
+
+The landed checkout remains temporarily as a **sealed review record**. Its
+conversations stay readable but are input-locked, its engine sessions stop, and
+new conversations, terminals, syncs, stages, enrollment, and edits are refused.
+The only lifecycle action is explicit Retire, which removes the directory and
+branch after the existing safety preflight. `landedAt` is terminal and never
+reverts when a stale client or external command moves the branch.
+
+This lifecycle is enforced by the desktop registry and engine workspace
+containment. A worktree recorded as landed before a rebuild receives the same
+seal during restoration. Worktrees that predate `landedAt` remain active because
+Git cannot distinguish them from a never-started checkout.
+
 ### Landing is absorption, not removal
 
 When a member's work lands into the feature branch it becomes part of the
-bench's **base**, permanently and without option. The bench reassembles from the
-feature-branch tip, so the landed work arrives with the base and needs no merge
-commit; git reports "Already up to date". The member record is then retired,
-because a member represents *pending* work and this work is no longer pending.
+bench's **base**. The next explicit assembly sources it from the feature-branch
+tip and layers only the remaining members. The landed worktree was already
+removed from the member list by Land, so assembly never needs to detect or retire
+it later.
 
 Detection is content-based, in three tiers, because the operator squashes a long
 stream of iteration commits before landing:
@@ -470,9 +512,11 @@ recordings the operator's own manual rebases produced outside Ion. Two verbs,
 both desktop-only (destroying resolution history is a deliberate desk action —
 the same posture as Retire):
 
-- **Forget resolutions for these files** — the targeted verb and the default.
-  Given the conflicting paths on the membership record, forget only the
-  recordings covering them. Costs one re-resolution, keeps the rest.
+- **Discard recordings for this worktree** — the targeted default, available from
+  every enrolled worktree row and from verification-failure suspects. It rebuilds
+  merge context through that selected member, forgets only recordings observed
+  in that live conflict, proves those paths return to an unmerged state, and
+  then reassembles. It costs one re-resolution and keeps every other recording.
 - **Discard all recorded resolutions** — the blunt verb, behind a confirmation
   naming the exact count of recordings that will be lost, because that count
   is the entire decision. Every conflict ever resolved comes back.

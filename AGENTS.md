@@ -847,6 +847,16 @@ Retire verb, which appraises what would be lost, refuses when the answer is work
 and relocates any conversation still living there so it is not left pointed at a
 deleted directory.
 
+**A landed worktree is sealed.** A successful Land records `landedAt`, immediately
+removes the worktree from every bench, and does not rebuild the remaining bench
+or advance any remaining pin. The checkout stays as a read-only review record:
+existing conversations remain readable but input-locked, engine tool writes and
+Bash are refused, and only Retire remains. Remaining worktrees receive landed
+source content through their normal Sync, then an explicit pin Update and
+assembly. `landedAt` is terminal; never infer, clear, or reverse it from live
+Git state. A record that predates `landedAt` remains active because Git cannot
+distinguish it from a worktree that never started.
+
 **A new worktree arrives provisioned.** A bare checkout has no `node_modules`, no
 git hooks, and no build caches — everything gitignored is absent, so nothing
 builds. Ion materialises what the project declares in the committed
