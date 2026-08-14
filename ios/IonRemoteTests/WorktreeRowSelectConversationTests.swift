@@ -38,6 +38,22 @@ final class WorktreeRowSelectConversationTests: XCTestCase {
         return states
     }
 
+    func testOpenConversationCountLabelUsesParenthesizedCountAndHidesZero() throws {
+        let noOpen = try XCTUnwrap(states(openConversations: []).first?.worktrees.first)
+        XCTAssertNil(noOpen.openConversationCountLabel)
+
+        let oneOpen = try XCTUnwrap(states(openConversations: [
+            (tabId: "talk-1", title: "Fix the parser"),
+        ]).first?.worktrees.first)
+        XCTAssertEqual(oneOpen.openConversationCountLabel, "(1)")
+
+        let twoOpen = try XCTUnwrap(states(openConversations: [
+            (tabId: "talk-1", title: "Fix the parser"),
+            (tabId: "talk-2", title: "Add tests"),
+        ]).first?.worktrees.first)
+        XCTAssertEqual(twoOpen.openConversationCountLabel, "(2)")
+    }
+
     func testSelectingAnOpenConversationNavigatesToItsTabId() throws {
         let viewModel = SessionViewModel()
         let states = try states(openConversations: [
