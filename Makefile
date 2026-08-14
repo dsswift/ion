@@ -68,6 +68,7 @@ ios-pr-check:
 # newest available simulator automatically; override with the
 # IOS_TEST_DESTINATION env var (see scripts/run-ios-tests.sh for format).
 ios-test:
+	@bash scripts/ios-test-retry.test.sh
 	@bash scripts/run-ios-tests.sh
 
 # Per-component test convenience wrappers. The CI workflows already exercise
