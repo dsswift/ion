@@ -112,8 +112,9 @@ func TestClampEntry_BoundInvariant_Property(t *testing.T) {
 		}
 		state := types.AgentStateUpdate{Name: fmt.Sprintf("agent-%d", trial), Metadata: md}
 		clampEntry(&state, l)
-		// A routing identity that itself exceeds a configured byte target must
-		// survive exact, so the entry ceiling is intentionally not absolute.
+		if got := approxMapBytes(state.Metadata); got > l.MaxEntryBytes {
+			t.Fatalf("trial %d: entry bound violated: %d > %d (keys: %v)", trial, got, l.MaxEntryBytes, sortedKeys(state.Metadata))
+		}
 	}
 }
 

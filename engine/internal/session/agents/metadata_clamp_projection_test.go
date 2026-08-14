@@ -25,39 +25,48 @@ func TestClampSnapshotCopy_BoundsProjectionWithoutMutatingSource(t *testing.T) {
 	}
 }
 
-func TestClampSnapshotCopy_NeverCorruptsDispatchIdentity(t *testing.T) {
+func TestClampSnapshotCopy_BoundsDispatchFieldsWithoutChangingShape(t *testing.T) {
 	limits := DefaultMetadataLimits()
-	limits.MaxEntryBytes = 128
+	limits.MaxEntryBytes = 256
 	limits.MaxValueBytes = 64
+	original := bigString(4096)
 	states := []types.AgentStateUpdate{{Name: "agent", Metadata: map[string]any{
 		"displayName": "Agent", "dispatches": []any{map[string]any{
-			"id": "dispatch-id", "conversationId": "conversation-id", "status": "done", "task": bigString(4096),
+			"id": "dispatch-id", "conversationId": "conversation-id", "status": "done", "task": original,
 		}},
 	}}}
 
 	projected, _ := ClampSnapshotCopy(states, limits)
 	dispatches, ok := projected[0].Metadata["dispatches"].([]any)
-	if !ok || len(dispatches) != 1 {
-		t.Fatalf("dispatches lost type or entries: %#v", projected[0].Metadata["dispatches"])
+	if !ok {
+		t.Fatalf("dispatches changed type: %T", projected[0].Metadata["dispatches"])
 	}
-	entry := dispatches[0].(map[string]any)
-	if entry["id"] != "dispatch-id" || entry["conversationId"] != "conversation-id" || entry["status"] != "done" {
-		t.Fatalf("dispatch identity corrupted: %#v", entry)
+	if len(dispatches) > 0 {
+		entry := dispatches[0].(map[string]any)
+		for _, key := range []string{"id", "conversationId", "status"} {
+			if _, ok := entry[key].(string); !ok {
+				t.Fatalf("%s changed shape: %#v", key, entry[key])
+			}
+		}
+		if task, _ := entry["task"].(string); len(task) > limits.MaxValueBytes {
+			t.Fatalf("task bytes = %d", len(task))
+		}
+	}
+	if states[0].Metadata["dispatches"].([]any)[0].(map[string]any)["task"] != original {
+		t.Fatal("projection mutated source dispatch")
 	}
 }
 
-func TestClampSnapshotCopy_PreservesOversizedIdentityValues(t *testing.T) {
-	identity := bigString(DefaultMaxValueBytes * 2)
-	states := []types.AgentStateUpdate{{Name: "agent", Metadata: map[string]any{
-		"displayName": "Agent", "dispatches": []any{map[string]any{
-			"id": identity, "conversationId": identity, "status": "done", "task": bigString(DefaultMaxValueBytes * 2),
-		}},
-	}}}
-
+func TestClampSnapshotCopy_ProtectedScalarIsBoundedAndSourceRemainsExact(t *testing.T) {
+	original := bigString(DefaultMaxValueBytes * 2)
+	states := []types.AgentStateUpdate{{Name: "agent", Metadata: map[string]any{"displayName": original}}}
 	projected, _ := ClampSnapshotCopy(states, DefaultMetadataLimits())
-	entry := projected[0].Metadata["dispatches"].([]any)[0].(map[string]any)
-	if entry["id"] != identity || entry["conversationId"] != identity || entry["status"] != "done" {
-		t.Fatalf("clamp altered routing identity: %#v", entry)
+	got := projected[0].Metadata["displayName"].(string)
+	if len(got) > DefaultMaxValueBytes || got == original {
+		t.Fatalf("projected displayName = %d bytes", len(got))
+	}
+	if states[0].Metadata["displayName"] != original {
+		t.Fatal("projection mutated source displayName")
 	}
 }
 

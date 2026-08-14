@@ -209,9 +209,10 @@ func clampEntry(state *types.AgentStateUpdate, l MetadataLimits) *ClampReport {
 
 	markTruncated(state.Metadata, append(append([]string{}, rep.ClampedKeys...), rep.DroppedKeys...))
 	if l.MaxEntryBytes != LimitsDisabled {
-		// The in-band truncation stamps add a few bytes of their own; the
-		// entry bound is a guarantee, so re-assert it after stamping.
+		// Stamps are part of the projection budget. Compact protected values
+		// again if required, preserving JSON value types throughout.
 		rep.ClampedKeys = appendUnique(rep.ClampedKeys, enforceProtectedGuarantee(state.Metadata, l.MaxEntryBytes)...)
+		trimTruncationMarkers(state.Metadata, l.MaxEntryBytes)
 	}
 	rep.OriginalBytes = originalBytes
 	rep.ClampedBytes = approxMapBytes(state.Metadata)
@@ -226,15 +227,9 @@ func clampEntry(state *types.AgentStateUpdate, l MetadataLimits) *ClampReport {
 // clampValue bounds one value in place, recursing into nested containers.
 // Reports whether anything changed.
 func clampValue(container map[string]any, key string, l MetadataLimits, depth int) bool {
-	// Top-level protected metadata carries identity or rendering invariants and
-	// remains exact. Inside dispatches[] only routing fields are immutable: task
-	// and other display values still recurse through the normal value bound.
-	if depth == 0 && protectedKeys[key] && key != "dispatches" {
-		return false
-	}
-	if depth > 0 && dispatchIdentityValueKey(key) {
-		return false
-	}
+	// Every string is bounded at the wire projection. Routing values remain
+	// strings, never maps/markers; a consumer sees _truncated and can recover
+	// the exact value through get_agent_state.
 	switch v := container[key].(type) {
 	case string:
 		if len(v) <= l.MaxValueBytes {
@@ -285,17 +280,6 @@ func clampValue(container map[string]any, key string, l MetadataLimits, depth in
 	}
 	// Numbers, bools, and nil are inherently bounded.
 	return false
-}
-
-// dispatchIdentityValueKey identifies fields inside dispatches[] that clients
-// use as stable lookup addresses.
-func dispatchIdentityValueKey(key string) bool {
-	switch key {
-	case "id", "conversationId", "status", "dispatchId", "dispatchParentId", "dispatchDepth":
-		return true
-	default:
-		return false
-	}
 }
 
 // enforceEntryBudget drops unprotected keys, largest first, until the entry
