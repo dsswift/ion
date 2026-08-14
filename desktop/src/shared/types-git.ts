@@ -104,6 +104,11 @@ export interface LandResult {
   conflictDirectory?: string
   /** Set when the operation succeeded but a side-effect (registry persist) failed. */
   warning?: string
+  /**
+   * Bench directories removed because disenrolling the landed worktree left them
+   * with no members. Reported so the caller can close tabs at gone paths.
+   */
+  prunedBenchPaths?: string[]
 }
 
 /**

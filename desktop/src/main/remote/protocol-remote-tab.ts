@@ -115,6 +115,8 @@ export interface RemoteTabState {
   /** Input-locked conversation (auto-generated conflict fix): clients must
    *  not offer a prompt input for this tab. See TabState.inputLocked. */
   inputLocked?: boolean
+  /** Why the tab is locked. `landed-worktree` is a sealed review session. */
+  inputLockReason?: 'automated-workflow' | 'landed-worktree'
   /** Explicit tab lifecycle role (see TabState.tabRole). Desktop-internal
    *  policy: iOS does not switch on it — it rides the snapshot so the main
    *  process can resolve the bench singleton and exclude auto-fix tabs from

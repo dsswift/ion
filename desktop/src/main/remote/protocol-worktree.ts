@@ -25,6 +25,12 @@ export interface RemoteOpenConversation {
   status: string
   /** 1-based position in the tab list, the number the desktop hint shows. */
   index: number
+  /**
+   * Optional lifecycle role. Bench lists use it to identify machine-owned
+   * Auto-fix and Analysis conversations; ordinary worktree lists omit those
+   * conversations entirely.
+   */
+  tabRole?: 'bench-conversation' | 'conflict-auto-fix' | 'verification-analysis'
 }
 
 /** One worktree, as iOS sees it. Mirrors WorktreeInventoryEntry. */
@@ -271,8 +277,17 @@ export type RemoteWorktreeCommand =
    */
   | { type: 'desktop_worktree_set_stage'; repoPath: string; worktreePath: string; stage: WorkStage | null }
   | { type: 'desktop_bench_reorder_member'; repoPath: string; sourceBranch: string; worktreePath: string; toIndex: number }
+  /**
+   * Retire every worktree in the repo already sealed by a successful Land.
+   * Mirrors the desktop's "Retire all" control in the Landed group: one
+   * confirmed batch verb, not a loop of individual retire commands, so the
+   * pre-flight (every occupant idle) and the failure semantics (stop, report
+   * how many succeeded) are identical on both clients.
+   */
+  | { type: 'desktop_worktree_retire_landed'; repoPath: string }
   | { type: 'desktop_bench_add_member'; repoPath: string; sourceBranch: string; worktreePath: string; branchName: string }
   | { type: 'desktop_bench_remove_member'; repoPath: string; sourceBranch: string; worktreePath: string }
+  | { type: 'desktop_worktree_retire'; repoPath: string; worktreePath: string }
 
 /** desktop → iOS worktree/bench events. */
 export type RemoteWorktreeEvent =
@@ -281,8 +296,10 @@ export type RemoteWorktreeEvent =
       type: 'desktop_worktree_op_result'
       ok: boolean
       /** Which verb this answers, so iOS can attribute the toast. */
-      operation: 'sync' | 'land' | 'assemble' | 'update' | 'update_all' | 'sync_all'
+      operation: 'open' | 'sync' | 'land' | 'assemble' | 'update' | 'update_all' | 'sync_all' | 'retire' | 'retire_all'
       error?: string
+      /** Tab opened or focused for an `open` result. */
+      tabId?: string
       /** Distinguishes a refusal the operator can fix from a hard failure. */
       refusedDirty?: boolean
       hasConflicts?: boolean
@@ -296,4 +313,19 @@ export type RemoteWorktreeEvent =
        * client renders the same sentence. Absent on the single-target verbs.
        */
       summary?: string
+      /**
+       * Recovery ref created when a forced retire preserved uncommitted work.
+       * Absent when the worktree was clean. Only set for `retire`.
+       */
+      recoveryRef?: string
+      /**
+       * `retire_all`'s count of worktrees actually retired before it stopped —
+       * either at the end (`ok`) or at the first failure (partial, `!ok`).
+       */
+      retired?: number
+      /**
+       * Bench directories removed because disenrolling left them with no members.
+       * Set for `land` and `retire`; absent when no bench was pruned.
+       */
+      prunedBenchPaths?: string[]
     }

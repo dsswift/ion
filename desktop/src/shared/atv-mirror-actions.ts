@@ -22,10 +22,10 @@
 
 export interface ForwardedActionSpec {
   /** Argument-count bounds accepted over the wire. */
-  minArgs: number
-  maxArgs: number
+  minArgs: number;
+  maxArgs: number;
   /** Index of a tabId/session-key argument to validate, if any. */
-  tabIdAt?: number
+  tabIdAt?: number;
 }
 
 export const FORWARDED_ACTIONS: Record<string, ForwardedActionSpec> = {
@@ -88,6 +88,7 @@ export const FORWARDED_ACTIONS: Record<string, ForwardedActionSpec> = {
   // would relocate against stale mirror state, and a double retire would race
   // the directory removal.
   retireWorktree: { minArgs: 3, maxArgs: 3 },
+  retireLandedWorktrees: { minArgs: 1, maxArgs: 1 },
   // Provisioning spawns install processes and mutates the worktree on disk.
   // Owner-only: a mirror-local run would start a second `npm ci` against the
   // same tree while the owner's is still going.
@@ -108,6 +109,9 @@ export const FORWARDED_ACTIONS: Record<string, ForwardedActionSpec> = {
   benchRerereDiscardAll: { minArgs: 1, maxArgs: 1 },
   benchUpdateMember: { minArgs: 3, maxArgs: 3 },
   benchUpdateAll: { minArgs: 2, maxArgs: 2 },
+  // One all-or-nothing replacement of a bench's enabled member set and order.
+  // Forward it rather than letting a mirror issue interleaved member mutations.
+  benchApplyOverlapFastLane: { minArgs: 4, maxArgs: 4 },
   benchAddMember: { minArgs: 4, maxArgs: 4 },
   benchRemoveMember: { minArgs: 3, maxArgs: 3 },
   benchSetEnabled: { minArgs: 4, maxArgs: 4 },
@@ -121,6 +125,7 @@ export const FORWARDED_ACTIONS: Record<string, ForwardedActionSpec> = {
   // locally through a mirror-side setWorktreeStage.
   benchSetReview: { minArgs: 4, maxArgs: 4 },
   benchSetOrder: { minArgs: 4, maxArgs: 4 },
+  sealLandedWorktree: { minArgs: 1, maxArgs: 1 },
   // AI-assisted conflict resolution creates a tab and submits a prompt —
   // owner-durable twice over; a mirror-local run would fork the conversation.
   openConflictAssist: { minArgs: 1, maxArgs: 1 },
@@ -128,8 +133,8 @@ export const FORWARDED_ACTIONS: Record<string, ForwardedActionSpec> = {
   // creates a tab and submits a prompt — owner-durable three times over, same
   // reasoning as openConflictAssist plus a git mutation neither mirror may run.
   openBenchVerificationAnalysis: { minArgs: 2, maxArgs: 2 },
-  // Targeted forget-then-reassemble — owner-durable git mutation.
-  benchDiscardVerificationRecordings: { minArgs: 3, maxArgs: 3 },
+  // Targeted forget-then-reassemble mutates shared Git state.
+  benchDiscardMemberRecordings: { minArgs: 3, maxArgs: 3 },
   forceRecoverTab: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
   autoRecoverStuckTab: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
   resumeSession: { minArgs: 1, maxArgs: 3 },
@@ -160,7 +165,7 @@ export const FORWARDED_ACTIONS: Record<string, ForwardedActionSpec> = {
   clearAttachments: { minArgs: 0, maxArgs: 0 },
   // ── Terminal instances are owner-persisted tab metadata ──
   renameTerminalInstance: { minArgs: 3, maxArgs: 3, tabIdAt: 0 },
-}
+};
 
 /**
  * Actions the mirror executes locally, with the reason each is safe.
@@ -171,25 +176,29 @@ export const FORWARDED_ACTIONS: Record<string, ForwardedActionSpec> = {
  */
 export const MIRROR_LOCAL_ACTIONS: Record<string, string> = {
   // Stateless engine pass-throughs.
-  respondPermission: 'pass-through: permission_response to engine; cross-surface reconcile via resolution push',
-  respondElicitation: 'pass-through: elicitation answer to engine',
-  respondEngineDialog: 'pass-through: dialog answer to engine',
-  interrupt: 'pass-through: abort to engine; status events update all windows',
-  markResourceRead: 'pass-through: mark_read delta via engine broker + local read-state',
-  markAllResourcesRead: 'pass-through: mark_read deltas via engine broker + local read-state',
-  deleteResource: 'local view of resource list; producer owns persistence',
+  respondPermission:
+    "pass-through: permission_response to engine; cross-surface reconcile via resolution push",
+  respondElicitation: "pass-through: elicitation answer to engine",
+  respondEngineDialog: "pass-through: dialog answer to engine",
+  interrupt: "pass-through: abort to engine; status events update all windows",
+  markResourceRead:
+    "pass-through: mark_read delta via engine broker + local read-state",
+  markAllResourcesRead:
+    "pass-through: mark_read deltas via engine broker + local read-state",
+  deleteResource: "local view of resource list; producer owns persistence",
   // Dismissing the absorbed-into-base notice is per-window UI state: the bench
   // record itself is untouched, and each window's operator dismisses their own
   // notice. Forwarding it would clear the overlay's notice from the ATV.
-  clearBenchRetired: 'per-window notice dismissal; no bench mutation',
-  benchRerereCount: 'read-only main-process query over shared git state',
-  // Conflict-alert bookkeeping mutates no git state. record/clear are driven by
-  // each window's own inventory refresh and sync results (both windows observe
-  // the same main-process truth), and dismissing a toast is per-window UI.
-  recordConflictAlert: 'ingestion: derived from inventory/sync results each window already receives',
-  clearConflictAlert: 'ingestion: derived from inventory refresh; no git mutation',
-  dismissConflictAlert: 'per-window toast dismissal; badges derive from live inventory state',
-  runQuickTool: 'pass-through: one-shot tool run',
+  clearBenchRetired: "per-window notice dismissal; no bench mutation",
+  benchRerereCount: "read-only main-process query over shared git state",
+  // Conflict-alert bookkeeping mutates no git state. Record/clear are driven by
+  // each window's own inventory refresh and sync results; both windows observe
+  // the same main-process truth.
+  recordConflictAlert:
+    "ingestion: derived from inventory/sync results each window already receives",
+  clearConflictAlert:
+    "ingestion: derived from inventory refresh; no git mutation",
+  runQuickTool: "pass-through: one-shot tool run",
   // ── Close confirmation ──
   // The close DIALOG is per-window: the operator who clicked X in a given
   // window is the one who must answer, and forwarding the intent would pop a
@@ -200,88 +209,101 @@ export const MIRROR_LOCAL_ACTIONS: Record<string, string> = {
   // are safe in the mirror — the tab list is hydrated from the owner snapshot
   // and the appraisal is a read-only main-process git call over the same
   // preload both windows share.
-  requestCloseTab: 'per-window close dialog; read-only appraisal, durable close delegates to forwarded closeTab',
-  confirmCloseTab: 'per-window dialog dismissal; the durable close routes through forwarded closeTab',
-  cancelCloseTab: 'per-window dialog dismissal; no durable state touched',
+  requestCloseTab:
+    "per-window close dialog; read-only appraisal, durable close delegates to forwarded closeTab",
+  confirmCloseTab:
+    "per-window dialog dismissal; the durable close routes through forwarded closeTab",
+  cancelCloseTab: "per-window dialog dismissal; no durable state touched",
   // Event-stream ingestion (mirror consumes the same normalized stream).
-  handleNormalizedEvent: 'ingestion: normalized-event reducer',
-  handleStatusChange: 'ingestion: tab-status reducer',
-  handleError: 'ingestion: error reducer',
-  insertRemoteUserMessage: 'ingestion: user-message echo insertion',
-  addSystemMessage: 'ingestion: local system row',
-  addEngineSystemMessage: 'ingestion: local system row',
-  loadSkeletonMessages: 'ingestion: lazy history hydration',
-  rehydrateFailedHistory: 'ingestion: retry lazy history hydration after engine reconnect',
-  initStaticInfo: 'boot: reads static info; no durable writes',
+  handleNormalizedEvent: "ingestion: normalized-event reducer",
+  handleStatusChange: "ingestion: tab-status reducer",
+  handleError: "ingestion: error reducer",
+  insertRemoteUserMessage: "ingestion: user-message echo insertion",
+  addSystemMessage: "ingestion: local system row",
+  addEngineSystemMessage: "ingestion: local system row",
+  loadSkeletonMessages: "ingestion: lazy history hydration",
+  rehydrateFailedHistory:
+    "ingestion: retry lazy history hydration after engine reconnect",
+  initStaticInfo: "boot: reads static info; no durable writes",
   // Pure read accessor: derives a canonical tail fingerprint from local store
   // state; no writes, no IPC. Safe to run in either window.
-  computeConvFingerprint: 'read-only derived value; no mutations',
-  submitRemotePrompt: 'owner-only wiring: invoked by the iOS handler, which the mirror never registers',
+  computeConvFingerprint: "read-only derived value; no mutations",
+  submitRemotePrompt:
+    "owner-only wiring: invoked by the iOS handler, which the mirror never registers",
   // Per-window UI state.
-  toggleExpanded: 'per-window UI',
-  toggleGitPanel: 'per-window UI',
-  closeGitPanel: 'per-window UI',
-  toggleStatusDrawer: 'per-window UI',
-  closeStatusDrawer: 'per-window UI',
-  openDispatchPreview: 'per-window UI',
-  toggleTallView: 'per-window UI',
-  openSettings: 'per-window UI',
-  closeSettings: 'per-window UI',
-  incOpenFloatingPanelCount: 'per-window UI',
-  decOpenFloatingPanelCount: 'per-window UI',
-  setDraftInput: 'per-window UI: drafts are deliberately window-local',
-  setEngineDraftInput: 'per-window UI: drafts are deliberately window-local',
-  clearPendingInput: 'per-window UI: drafts are deliberately window-local',
-  setEditorGeometry: 'per-window UI',
-  setPlanGeometry: 'per-window UI',
-  setResourceViewerGeometry: 'per-window UI',
-  setAgentDetailGeometry: 'per-window UI',
-  setWorktreeUncommitted: 'per-window derived cache',
-  refreshWorktreeInventory: 'read-only IPC fetch into a per-window derived cache',
-  refreshBench: 'read-only IPC fetch into a per-window derived cache',
-  refreshWorkspaceViews: 'read-only IPC fetch into a per-window derived cache (the inventory+bench pair)',
+  toggleExpanded: "per-window UI",
+  toggleGitPanel: "per-window UI",
+  closeGitPanel: "per-window UI",
+  toggleStatusDrawer: "per-window UI",
+  closeStatusDrawer: "per-window UI",
+  openDispatchPreview: "per-window UI",
+  toggleTallView: "per-window UI",
+  openSettings: "per-window UI",
+  closeSettings: "per-window UI",
+  incOpenFloatingPanelCount: "per-window UI",
+  decOpenFloatingPanelCount: "per-window UI",
+  setDraftInput: "per-window UI: drafts are deliberately window-local",
+  setEngineDraftInput: "per-window UI: drafts are deliberately window-local",
+  clearPendingInput: "per-window UI: drafts are deliberately window-local",
+  setEditorGeometry: "per-window UI",
+  setPlanGeometry: "per-window UI",
+  setResourceViewerGeometry: "per-window UI",
+  setAgentDetailGeometry: "per-window UI",
+  setWorktreeUncommitted: "per-window derived cache",
+  refreshWorktreeInventory:
+    "read-only IPC fetch into a per-window derived cache",
+  refreshBench: "read-only IPC fetch into a per-window derived cache",
+  refreshWorkspaceViews:
+    "read-only IPC fetch into a per-window derived cache (the inventory+bench pair)",
   // File explorer / editor (window-local workbench state).
-  toggleFileExplorer: 'per-window UI',
-  collapseAllExplorer: 'per-window UI',
-  setFileExplorerExpanded: 'per-window UI',
-  setFileExplorerSelected: 'per-window UI',
-  toggleFileEditor: 'per-window UI',
-  openFileInEditor: 'per-window UI',
-  closeFileEditorTab: 'per-window UI',
-  setActiveEditorFile: 'per-window UI',
-  reorderEditorFiles: 'per-window UI',
-  updateEditorContent: 'per-window editor buffer (disk write is a direct fs IPC)',
-  markEditorSaved: 'per-window UI',
-  toggleEditorPreview: 'per-window UI',
-  toggleEditorReadOnly: 'per-window UI',
-  createScratchFile: 'per-window UI',
-  focusFileEditor: 'per-window UI',
-  blurFileEditor: 'per-window UI',
+  toggleFileExplorer: "per-window UI",
+  collapseAllExplorer: "per-window UI",
+  setFileExplorerExpanded: "per-window UI",
+  setFileExplorerSelected: "per-window UI",
+  toggleFileEditor: "per-window UI",
+  openFileInEditor: "per-window UI",
+  closeFileEditorTab: "per-window UI",
+  setActiveEditorFile: "per-window UI",
+  reorderEditorFiles: "per-window UI",
+  updateEditorContent:
+    "per-window editor buffer (disk write is a direct fs IPC)",
+  markEditorSaved: "per-window UI",
+  toggleEditorPreview: "per-window UI",
+  toggleEditorReadOnly: "per-window UI",
+  createScratchFile: "per-window UI",
+  focusFileEditor: "per-window UI",
+  blurFileEditor: "per-window UI",
   // Terminals (each window owns its pty pool; the ATV shell does not mount
   // terminals today, but running one locally would be correct).
-  toggleTerminal: 'per-window terminal UI',
-  toggleTerminalTall: 'per-window terminal UI',
-  toggleTerminalBigScreen: 'per-window terminal UI',
-  toggleTerminalReadOnly: 'per-window terminal UI',
-  selectTerminalInstance: 'per-window terminal UI',
-  addTerminalInstance: 'per-window pty pool',
-  removeTerminalInstance: 'per-window pty pool',
-  getOrCreateDedicatedTerminal: 'per-window pty pool',
-  consumeTerminalPendingCommand: 'per-window terminal UI',
-  runInTerminal: 'per-window pty pool',
-  startBashCommand: 'per-window bash flow',
-  completeBashCommand: 'per-window bash flow',
-}
+  toggleTerminal: "per-window terminal UI",
+  toggleTerminalTall: "per-window terminal UI",
+  toggleTerminalBigScreen: "per-window terminal UI",
+  toggleTerminalReadOnly: "per-window terminal UI",
+  selectTerminalInstance: "per-window terminal UI",
+  addTerminalInstance: "per-window pty pool",
+  removeTerminalInstance: "per-window pty pool",
+  getOrCreateDedicatedTerminal: "per-window pty pool",
+  consumeTerminalPendingCommand: "per-window terminal UI",
+  runInTerminal: "per-window pty pool",
+  startBashCommand: "per-window bash flow",
+  completeBashCommand: "per-window bash flow",
+};
 
 /** Wire-shape validation for a forwarded action call (main process). */
 export function validForwardedAction(action: unknown, args: unknown): boolean {
-  if (typeof action !== 'string') return false
-  const spec = FORWARDED_ACTIONS[action]
-  if (!spec) return false
-  if (!Array.isArray(args) || args.length < spec.minArgs || args.length > spec.maxArgs) return false
+  if (typeof action !== "string") return false;
+  const spec = FORWARDED_ACTIONS[action];
+  if (!spec) return false;
+  if (
+    !Array.isArray(args) ||
+    args.length < spec.minArgs ||
+    args.length > spec.maxArgs
+  )
+    return false;
   if (spec.tabIdAt != null) {
-    const tabId = args[spec.tabIdAt]
-    if (typeof tabId !== 'string' || tabId.length === 0 || tabId.length > 128) return false
+    const tabId = args[spec.tabIdAt];
+    if (typeof tabId !== "string" || tabId.length === 0 || tabId.length > 128)
+      return false;
   }
-  return true
+  return true;
 }

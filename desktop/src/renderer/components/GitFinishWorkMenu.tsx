@@ -13,7 +13,7 @@ import { ConfirmDialog } from './git/ConfirmDialog'
 import { describeLandStrategy } from '../../shared/worktree-land-strategy'
 import type { WorktreeCompletionStrategy } from '../../shared/types'
 
-// ─── Finish Work context menu (right-click on finish button) ───
+// ─── Land worktree context menu (right-click on land button) ───
 
 export function FinishWorkContextMenu({ anchor, worktree, onClose }: {
   anchor: { x: number; y: number }
@@ -27,10 +27,9 @@ export function FinishWorkContextMenu({ anchor, worktree, onClose }: {
   useViewportClamp(ref, true)
   const strategy = usePreferencesStore((s) => s.worktreeCompletionStrategy)
   const activeTabId = useSessionStore((s) => s.activeTabId)
-  // Finish work is the FUSED verb: it integrates, then removes the worktree,
-  // then closes the conversation. Land — which does strictly less — already
-  // confirms through the retire appraisal, so the more destructive action was
-  // the one with no prompt. Hold the choice until it is confirmed.
+  // This action lands work, then seals the checkout for read-only review.
+  // Retire remains a separate explicit action, so landing never deletes the
+  // worktree or closes its conversations.
   const [pending, setPending] = useState<WorktreeCompletionStrategy | null>(null)
 
   // Shared dismissal: the finish-work confirm dialog is a sibling of `ref`, so a
@@ -100,15 +99,14 @@ export function FinishWorkContextMenu({ anchor, worktree, onClose }: {
 
     {pending !== null && (
       <ConfirmDialog
-        title="Finish this worktree?"
+        title="Land this worktree?"
         message={
           `${describeLandStrategy(pending, worktree.sourceBranch)}. ` +
-          `The worktree at ${worktree.worktreePath} is then removed and this conversation closes. ` +
-          `To integrate without ending the worktree, use Land from the Worktrees list instead.`
+          `${worktree.worktreePath} remains as a read-only review record after landing. ` +
+          `Retire it separately when review is complete.`
         }
-        confirmLabel="Finish work"
+        confirmLabel="Land worktree"
         cancelLabel="Cancel"
-        danger
         onConfirm={() => {
           const chosen = pending
           setPending(null)

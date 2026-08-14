@@ -52,6 +52,14 @@ export async function startRestoredSessions(
 
   await startSessionsSequentially(activeFirst, async ({ tabId, index }) => {
     const st = savedTabs[index]
+    if (st.worktree?.landedAt) {
+      rInfo('restore', 'skipped engine session start for landed worktree review', {
+        tab_id: tabId.slice(0, 8),
+        worktree_path: st.worktree.worktreePath,
+      })
+      return
+    }
+
     // Read permission mode from the restored conversation instance (the
     // authoritative location post-WI-002). Fall back to the legacy tab-level
     // field for tabs persisted before WI-002.

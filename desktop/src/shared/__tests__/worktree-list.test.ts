@@ -167,11 +167,13 @@ describe('buildWorktreeList — landed work sinks to its own band', () => {
     expect(items[0].landed).toBe(false)
   })
 
-  // Landed once, then worked on again: active, not done.
-  it('un-lands a worktree that has committed again since it landed', () => {
+  it('keeps a worktree landed after later branch movement', () => {
+    // `landedAt` is the durable witness of a successful terminal Land. A later
+    // commit cannot turn this checkout into active work again: it stays sealed
+    // until the operator explicitly retires it.
     const { items } = buildWorktreeList(
       [entry({ landedAt: LANDED_AT, unlandedCommitCount: 3 })], [], null)
-    expect(items[0].landed).toBe(false)
+    expect(items[0].landed).toBe(true)
   })
 
   it('sorts landed worktrees below active ones', () => {

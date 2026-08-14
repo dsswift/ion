@@ -168,7 +168,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // prompt (so a fast completion cannot race the lifecycle tagging), so
       // that first machine-origin submission must pass the lock it itself
       // installed. Operator and remote prompts never carry that source.
-      if (tab.inputLocked && source !== 'machine') {
+      if (tab.inputLocked && (tab.inputLockReason === 'landed-worktree' || source !== 'machine')) {
         rWarn('submit', 'blocked: conversation is input-locked (auto-generated fix conversation)', {
           tab_id: tab.id.slice(0, 8), count: text.length, source: source ?? 'local',
         })

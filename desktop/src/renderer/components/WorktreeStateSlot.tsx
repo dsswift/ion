@@ -20,14 +20,24 @@ export interface WorktreeStateSlotProps {
   state: RowStateIndicator
   /** Identifies this row's controls in tests; the branch is the stable key. */
   branchName: string
+  /** AI is resolving this worktree's native merge/rebase conflict. */
+  hasActiveWorktreeResolver?: boolean
+  /** Focus the active worktree resolver rather than opening resolution again. */
+  onFocusActiveWorktreeResolver?(): void
   /** Open the in-worktree conflict resolver. */
   onResolve?(): void
   /** Sync from the source branch. */
   onSync(): void
+  /** Flash this row's update marker while its pin update and reassembly runs. */
+  updatingPin?: boolean
+  /** A different member update is reassembling this bench; refuse competing pins. */
+  pinUpdateLocked?: boolean
   /** Advance the bench pin to this worktree's current contribution. */
   onUpdatePin?(): void
   /** Show the bench's conflict detail for this member. */
   onShowBenchConflict?(): void
+  /** Focus an existing auto-fix tab resolving this bench conflict. */
+  onFocusActiveResolver?(): void
   /** Show the bench's verification-failure detail (this member is a suspect). */
   onShowVerificationFailure?(): void
 }
@@ -52,14 +62,25 @@ export function WorktreeStateSlot(props: WorktreeStateSlotProps): React.JSX.Elem
       const files = state.conflictedCount > 0
         ? ` with ${state.conflictedCount} conflicted file${state.conflictedCount === 1 ? '' : 's'}`
         : ''
+      const resolving = !!props.hasActiveWorktreeResolver
+      const tip = resolving
+        ? 'AI resolution in progress. Click to focus.'
+        : `A ${verb} is in progress${files}. Click to resolve.`
       return (
-        <Tooltip text={`A ${verb} is in progress${files}. Click to resolve.`}>
+        <Tooltip text={tip}>
           <button
             data-testid={`worktree-conflict-${branchName}`}
-            onClick={(e) => { e.stopPropagation(); props.onResolve?.() }}
-            style={iconButtonStyle(colors.dangerFg)}
+            onClick={(e) => {
+              e.stopPropagation()
+              if (resolving) props.onFocusActiveWorktreeResolver?.()
+              else props.onResolve?.()
+            }}
+            style={{
+              ...iconButtonStyle(colors.dangerFg),
+              ...(resolving ? { animation: 'bench-conflict-flash 1.2s ease-in-out infinite' } : {}),
+            }}
           >
-            <Warning size={11} />
+            <Warning size={11} weight={resolving ? 'fill' : 'regular'} />
           </button>
         </Tooltip>
       )
@@ -72,12 +93,23 @@ export function WorktreeStateSlot(props: WorktreeStateSlotProps): React.JSX.Elem
       const files = state.paths.length > 0
         ? ` ${state.paths.length} file${state.paths.length === 1 ? '' : 's'}.`
         : ''
+      const resolving = !!state.hasActiveResolver
+      const tip = resolving
+        ? 'AI resolution in progress. Click to focus.'
+        : `This contribution conflicts, so the assembly failed and the bench is empty.${files}${withWhom} Click for detail and resolution.`
       return (
-        <Tooltip text={`This contribution conflicts, so the assembly failed and the bench is empty.${files}${withWhom} Click for detail and resolution.`}>
+        <Tooltip text={tip}>
           <button
             data-testid={`worktree-bench-conflict-${branchName}`}
-            onClick={(e) => { e.stopPropagation(); props.onShowBenchConflict?.() }}
-            style={iconButtonStyle(colors.dangerFg)}
+            onClick={(e) => {
+              e.stopPropagation()
+              if (resolving) props.onFocusActiveResolver?.()
+              else props.onShowBenchConflict?.()
+            }}
+            style={{
+              ...iconButtonStyle(colors.dangerFg),
+              ...(resolving ? { animation: 'bench-conflict-flash 1.2s ease-in-out infinite' } : {}),
+            }}
           >
             <Warning size={11} weight="fill" />
           </button>
@@ -112,18 +144,31 @@ export function WorktreeStateSlot(props: WorktreeStateSlotProps): React.JSX.Elem
         </Tooltip>
       )
 
-    case 'pin-behind':
+    case 'pin-behind': {
+      const updating = !!props.updatingPin
+      const locked = !!props.pinUpdateLocked
+      const tip = updating
+        ? 'Updating this pin and reassembling the bench.'
+        : locked
+          ? 'Another pin update is reassembling this bench. Wait for it to finish.'
+          : `The bench holds an older contribution (${state.pinnedSha.slice(0, 7)}). Click to update the pin and reassemble.`
       return (
-        <Tooltip text={`The bench holds an older contribution (${state.pinnedSha.slice(0, 7)}). Click to update the pin and reassemble.`}>
+        <Tooltip text={tip}>
           <button
             data-testid={`worktree-pin-behind-${branchName}`}
             onClick={(e) => { e.stopPropagation(); props.onUpdatePin?.() }}
-            style={iconButtonStyle(colors.warningFg)}
+            disabled={updating || locked}
+            aria-disabled={updating || locked}
+            style={{
+              ...iconButtonStyle(updating || locked ? colors.textTertiary : colors.warningFg, !updating && !locked),
+              ...(updating ? { animation: 'bench-conflict-flash 1.2s ease-in-out infinite' } : {}),
+            }}
           >
-            <ArrowCircleUp size={11} />
+            {updating ? <CircleNotch size={11} className="animate-spin" /> : <ArrowCircleUp size={11} />}
           </button>
         </Tooltip>
       )
+    }
 
     case 'needs-sync':
       return (

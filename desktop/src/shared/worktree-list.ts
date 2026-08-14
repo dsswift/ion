@@ -43,22 +43,9 @@ export interface WorktreeListItem {
   order?: number
   enrollment: EnrollmentState
   /**
-   * This worktree's work reached its source branch, and nothing new is waiting.
-   *
-   * Read from the STORED `landedAt`, never inferred. `safeToDiscard` looks like
-   * the same question and is not: it means "nothing to lose", which is equally
-   * true of a worktree that has never committed anything. Sorting on it would
-   * file every freshly created empty worktree under Landed -- exactly the wrong
-   * claim, and unrecoverable afterwards, since git cannot tell "never started"
-   * from "landed" once both are clean and fully merged.
-   *
-   * The `unlandedCommitCount === 0` half still matters: a worktree that landed
-   * and then kept committing is active again, not done.
-   *
-   * Sorted into its own band at the BOTTOM rather than removed -- it is still a
-   * real worktree with conversations in it. An ENROLLED worktree never sinks:
-   * the bench holds its pin, which is a live obligation whatever its own
-   * history.
+   * This worktree's work reached its source branch. `landedAt` is a terminal
+   * witness, not a live Git classification: once recorded it is never cleared
+   * and later branch movement must not return the checkout to active work.
    */
   landed: boolean
   /**
@@ -145,29 +132,10 @@ export function buildWorktreeList(
       membership: hit?.membership,
       order: hit?.order,
       enrollment: enrollmentOf(hit?.membership),
-      // Done means: this worktree's work reached the source branch (`landedAt`,
-      // the stored witness) and nothing has been committed since
-      // (`unlandedCommitCount`).
-      //
-      // ── Why enrollment does not veto this ────────────────────────────────
-      // It used to. The reasoning was "a bench member has a live obligation --
-      // its pin -- whatever its own landing state", which holds only while the
-      // pin carries UNLANDED work. Once the work is in the source branch the
-      // bench receives that content from its base whether or not the member is
-      // merged, so the pin has become a duplicate rather than an obligation.
-      // `bench-assemble` agrees and acts on it: `isLandedIntoSource` retires such
-      // a member and marks its pin `absorbed`. Pinning the row to the active
-      // band therefore contradicted the bench's own model and stranded a
-      // finished worktree at the top of the list until the next assembly.
-      //
-      // An `absorbed` pin is treated the same way for the same reason: the
-      // bench has already dissolved the membership.
-      //
-      // A member whose pin still holds unlanded work is NOT done, and
-      // `landedAt` cannot be set in that case -- landing is what sets it -- so
-      // the two conditions above already exclude it. Nothing needs enrollment
-      // to say so.
-      landed: !!entry.landedAt && entry.unlandedCommitCount === 0,
+      // `landedAt` is only written by a successful Land and is never cleared.
+      // Git cannot recover that witness after the fact, so no current branch
+      // count may override it.
+      landed: !!entry.landedAt,
       // Exact path equality, never a prefix test: a worktree whose name merely
       // begins with another's (`ion-a3372546` vs `ion-a33725460`) would
       // highlight the wrong row, and a nested subdirectory of a worktree is

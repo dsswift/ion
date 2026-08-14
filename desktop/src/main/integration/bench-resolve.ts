@@ -10,8 +10,9 @@ import { runGit } from '../git-runner'
 import { repositoryManager } from '../git/repositoryManager'
 import { log as _log, warn as _warn } from '../logger'
 import { loadWorkspaces, findWorkspace } from './bench-store'
-import { resolveContribution } from './bench-contribution'
+import { benchMergeInProgress } from './bench-guard'
 import { resetBenchToTree } from './bench-assemble-support'
+import { resolveContribution, isLandedIntoSource } from './bench-contribution'
 import {
   currentRererePaths,
   forgetRererePaths,
@@ -62,6 +63,15 @@ export async function prepareConflictResolution(
       bench_path: ws.benchPath,
       source_branch: sourceBranch,
     })
+    if (benchMergeInProgress(ws.benchPath)) {
+      const branchName = await retainedMergeBranch(ws.benchPath, ws.members)
+      log('resolve-once: existing resolution merge retained', {
+        bench_path: ws.benchPath,
+        source_branch: sourceBranch,
+        branch: branchName ?? '',
+      })
+      return { ok: true, benchPath: ws.benchPath, branchName }
+    }
     try {
       await resetBenchToTree(ws.benchPath, ws.benchBranch, ws.sourceBranch)
     } catch (err) {
@@ -72,6 +82,16 @@ export async function prepareConflictResolution(
 
     for (const member of ws.members) {
       if (!member.enabled || !member.pinnedSha) continue
+      // Landed members already arrive with the source base. Re-merging one can
+      // create a false conflict after its worktree has been sealed.
+      if (await isLandedIntoSource(ws.benchPath, member, ws.sourceBranch)) {
+        log('resolve-once: skipping landed member already contained in source', {
+          branch: member.branchName,
+          bench_path: ws.benchPath,
+          source_branch: ws.sourceBranch,
+        })
+        continue
+      }
       // Skip members with nothing to merge — the SAME question the assembly
       // asks, from the same module, so the two walks cannot disagree about
       // which member conflicts.
@@ -188,4 +208,21 @@ export async function prepareConflictResolution(
     log('resolve-once: no conflict remains, bench merges cleanly', { bench_path: ws.benchPath })
     return { ok: true, benchPath: ws.benchPath }
   })
+}
+
+/** Resolve retained merge's member from its exact MERGE_HEAD commit. */
+async function retainedMergeBranch(
+  benchPath: string,
+  members: Array<{ branchName: string; pinnedSha: string }>,
+): Promise<string | undefined> {
+  try {
+    const mergeHead = (await runGit(benchPath, ['rev-parse', 'MERGE_HEAD'])).trim()
+    return members.find((member) => member.pinnedSha === mergeHead)?.branchName
+  } catch (err) {
+    warn('resolve-once: could not identify retained merge member', {
+      bench_path: benchPath,
+      error: String(err),
+    })
+    return undefined
+  }
 }

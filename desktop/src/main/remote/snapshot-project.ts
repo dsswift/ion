@@ -32,6 +32,7 @@ export interface RendererTabInput {
   queuedPrompts?: string[]
   isTerminalOnly?: boolean
   inputLocked?: boolean
+  inputLockReason?: 'automated-workflow' | 'landed-worktree' | null
   tabRole?: 'bench-conversation' | 'conflict-auto-fix' | 'verification-analysis' | null
   hasEngineExtension?: boolean
   /** Engine profile id — non-null for extension-hosted tabs. iOS uses this
@@ -117,6 +118,7 @@ export function projectRendererTab(
     queuedPrompts: t.queuedPrompts || [],
     isTerminalOnly: t.isTerminalOnly || undefined,
     inputLocked: t.inputLocked || undefined,
+    inputLockReason: t.inputLockReason || undefined,
     tabRole: t.tabRole || undefined,
     hasEngineExtension: t.hasEngineExtension || undefined,
     // iOS resolves the harness badge display name by matching

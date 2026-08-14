@@ -53,12 +53,18 @@ export interface IonAPI extends AtvApi {
   getFavicon(host: string): Promise<string | null>
   /** iOS asked to open (or focus) a conversation in a worktree. */
   onRemoteOpenWorktreeConversation(callback: (arg: { worktreePath: string; newConversation: boolean }) => void): () => void
+  /** iOS asked the owner renderer to retire a landed worktree safely. */
+  onRemoteRetireWorktree(callback: (arg: { repoPath: string; worktreePath: string; branchName: string }) => void): () => void
+  /** iOS asked the owner renderer to retire every landed worktree in a repo. */
+  onRemoteRetireLandedWorktrees(callback: (arg: { repoPath: string }) => void): () => void
   /** iOS asked to open (or focus) a conversation in the integration bench. */
   onRemoteOpenBenchConversation(callback: (arg: { repoPath: string; sourceBranch: string }) => void): () => void
   /** iOS asked to open (or focus) the integration bench's dedicated terminal. */
   onRemoteOpenBenchTerminal(callback: (arg: { repoPath: string; sourceBranch: string }) => void): () => void
   /** A worktree was named (generated or renamed). Both windows re-read the row. */
   onWorktreeTitled(callback: (arg: { repoPath: string; worktreePath: string; title: string }) => void): () => void
+  /** A successful Land sealed the worktree; owners lock existing review tabs. */
+  onWorktreeLanded(callback: (arg: { repoPath: string; worktreePath: string; prunedBenchPaths: string[] }) => void): () => void
   /** Reveal a directory in the OS file manager. */
   revealPath(path: string): Promise<boolean>
 
@@ -268,7 +274,7 @@ export interface IonAPI extends AtvApi {
    * is keyed by whatever path the panel last queried.
    */
   gitWorktreeRegistration(worktreePath: string): Promise<{
-    registration: { repoPath: string; branchName: string; sourceBranch: string | null; title: string | null } | null
+    registration: { repoPath: string; branchName: string; sourceBranch: string | null; title: string | null; landedAt?: number } | null
   }>
   benchSetOrder(args: { repoPath: string; sourceBranch: string; worktreePath: string; toIndex: number }): Promise<{ workspace: IntegrationWorkspace | null }>
   benchUpdateMember(args: { repoPath: string; sourceBranch: string; worktreePath: string }): Promise<BenchAssembleResult>
@@ -291,16 +297,37 @@ export interface IonAPI extends AtvApi {
    * has moved since the failure (a pin changed, a recording was forgotten).
    */
   benchPrepareVerificationAnalysis(repoPath: string, sourceBranch: string): Promise<{ ok: boolean; benchPath?: string; error?: string }>
-  /**
-   * The bench-verification recovery dialog's targeted discard: forget the
-   * recordings for the named suspect branches, then reassemble.
-   */
-  benchDiscardVerificationRecordings(
+  /** Forget recordings for selected bench members, then reassemble unchanged pins. */
+  benchDiscardMemberRecordings(
     repoPath: string, sourceBranch: string, branchNames: string[],
-  ): Promise<BenchAssembleResult & { forgottenCount?: number }>
+  ): Promise<BenchAssembleResult & { forgottenCount?: number; branchesWithNothingToForget?: string[] }>
   benchRefreshStaleness(repoPath: string, sourceBranch: string): Promise<{ workspace: IntegrationWorkspace | null }>
   /** Clear a member's resolved conflict verdict after a proven bench merge. */
   benchReconcileResolution(directory: string): Promise<{ reconciled: boolean }>
+  /** Open the desktop-only graphical overlap view for a repository. */
+  openWorktreeOverlap(context: { repoPath: string; sourceBranch?: string }): void
+  getWorktreeOverlapContext(): Promise<{ repoPath: string; sourceBranch?: string } | null>
+  getWorktreeOverlap(basis: import('../shared/types-worktree-overlap').WorktreeOverlapBasis): Promise<{
+    analysis?: import('../shared/types-worktree-overlap').WorktreeOverlapAnalysis
+    error?: string
+  }>
+  previewWorktreeOverlap(basis: import('../shared/types-worktree-overlap').WorktreeOverlapBasis, paths: string[]): Promise<{
+    preview?: import('../shared/types-worktree-overlap').WorktreeOverlapPreview
+    error?: string
+  }>
+  previewWorktreeOverlapApply(basis: import('../shared/types-worktree-overlap').WorktreeOverlapBasis, paths: string[]): Promise<{
+    preview?: import('../shared/types-worktree-overlap').WorktreeOverlapApplyPreview
+    error?: string
+  }>
+  applyWorktreeOverlap(basis: import('../shared/types-worktree-overlap').WorktreeOverlapBasis, paths: string[]): Promise<import('../shared/types-worktree-overlap').WorktreeOverlapApplyResult>
+  solveWorktreeOverlap(basis: import('../shared/types-worktree-overlap').WorktreeOverlapBasis, keptPaths: string[]): Promise<{
+    solver?: import('../shared/types-worktree-overlap').WorktreeOverlapSolverResult
+    error?: string
+  }>
+  autoOrderWorktreeOverlap(basis: import('../shared/types-worktree-overlap').WorktreeOverlapBasis, paths: string[]): Promise<{
+    cohort?: import('../shared/types-worktree-overlap').WorktreeOverlapCohort
+    error?: string
+  }>
   /** Base staleness: has the feature branch moved ahead of this worktree? */
   gitWorktreeBaseStatus(worktreePath: string, sourceBranch: string): Promise<{ behindCount: number; behindSubjects: string[]; needsSync: boolean; hasUncommittedChanges: boolean; appraisalFailed?: boolean }>
   gitWorktreeRetire(args: { repoPath: string; worktreePath: string; branchName: string; force?: boolean }): Promise<WorktreeMoveResult>

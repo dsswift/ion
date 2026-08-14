@@ -45,6 +45,7 @@ export async function resolveRegisteredWorktree(
       branchName: registration.branchName,
       sourceBranch: registration.sourceBranch,
       repoPath: registration.repoPath,
+      landedAt: registration.landedAt ?? undefined,
     }
     rInfo('worktree.registration', 'resolved tab worktree metadata from registry', {
       worktree_path: workingDirectory,

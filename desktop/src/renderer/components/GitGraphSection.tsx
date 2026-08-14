@@ -36,7 +36,7 @@ export function GitGraphSection({
   directory: string
   onRefresh: () => void
   refreshKey: number
-  worktree?: { branchName: string; sourceBranch: string; worktreePath: string; repoPath: string } | null
+  worktree?: { branchName: string; sourceBranch: string; worktreePath: string; repoPath: string; landedAt?: number } | null
   hasUncommittedChanges: boolean
 }) {
   const colors = useColors()
@@ -436,7 +436,7 @@ export function GitGraphSection({
                   {fetchingAction === 'pull' ? <SpinnerGap size={11} className="animate-spin" /> : <ArrowDown size={11} />}
                 </button>
               </Tooltip>
-              {worktree ? (
+              {worktree && !worktree.landedAt ? (
                 <Tooltip text={hasUncommittedChanges
                     ? 'Commit all changes before finishing'
                     : strategy === 'merge-ff'
@@ -468,7 +468,7 @@ export function GitGraphSection({
                     <CheckCircle size={11} weight="fill" />
                   </button>
                 </Tooltip>
-              ) : (
+              ) : worktree?.landedAt ? null : (
                 <Tooltip text="Push">
                   <button
                     onClick={() => { void handlePush().catch((err) => rError('git', 'push failed', { error: String(err) })) }}

@@ -157,7 +157,10 @@ export async function inventoryWorktreesDetailed(
     // the operator needed to see them. Probe for an in-progress operation and
     // recover the branch git recorded (rebase-merge/head-name) before skipping.
     let branchName = wt.branch
-    const operation = await probeOperationState(wt.path)
+    const landedAt = lookupWorktreeLandedAt(wt.path)
+    const operation = landedAt == null
+      ? await probeOperationState(wt.path)
+      : { state: undefined, branch: undefined, conflictedPaths: [] as string[] }
     if (!branchName) {
       if (operation.state && operation.branch) {
         branchName = operation.branch
@@ -176,42 +179,45 @@ export async function inventoryWorktreesDetailed(
 
     const sourceBranch = lookupSourceBranch(wt.path)
     const title = lookupWorktreeTitle(wt.path)
-    const landedAt = lookupWorktreeLandedAt(wt.path)
     const stage = lookupWorktreeStage(wt.path)
 
     // Subject is a pure function of the HEAD sha, so it caches under it. A
     // listing entry without a HEAD (prunable/broken checkout) has no commit to
     // describe — skip the lookup rather than handing git an empty sha.
-    const lastCommitSubject = wt.head ? await commitSubject(wt.path, wt.head) : ''
+    const lastCommitSubject = landedAt != null || !wt.head
+      ? ''
+      : await commitSubject(wt.path, wt.head)
 
-    // Without a known source branch the land-relative facts are unanswerable.
-    // Report what IS knowable and leave the rest conservative. A mid-operation
-    // worktree also skips the appraisals: unlanded counts and needsSync are
-    // meaningless halfway through a rebase, and their git reads can fail — the
-    // operation itself is the state worth reporting.
+    // Landed is terminal: the work is on the source branch. Skip every git
+    // probe (isDirty, appraiseRefPair, probeOperationState was already run but
+    // its result is conservative-safe) and report known-terminal values.
     let unlandedCommitCount = 0
     let safeToDiscard = false
     let needsSync = false
     let isDirty = false
-    if (!operation.state) {
-      // The one per-worktree spawn that cannot be sha-cached: uncommitted
-      // state has no ref to key on.
+    if (landedAt != null) {
+      safeToDiscard = true
+    } else if (!operation.state) {
+      // Without a known source branch the land-relative facts are unanswerable.
+      // Report what IS knowable and leave the rest conservative. A mid-operation
+      // worktree also skips the appraisals: unlanded counts and needsSync are
+      // meaningless halfway through a rebase, and their git reads can fail — the
+      // operation itself is the state worth reporting.
       try {
         isDirty = (await runGit(wt.path, ['status', '--porcelain', '-uall'])).trim().length > 0
       } catch (err) {
         log('could not read status', { worktree_path: wt.path, error: String(err) })
       }
-    }
-    const sourceTip = sourceBranch ? branchTips.get(sourceBranch) : undefined
-    if (sourceBranch && sourceTip && wt.head && !operation.state) {
-      const pair = await appraiseRefPair(wt.path, wt.head, sourceTip, counters)
-      if (pair) {
-        unlandedCommitCount = pair.ahead
-        safeToDiscard = !isDirty && pair.ahead === 0
-        needsSync = pair.behind > 0 && pair.treesDiffer
+
+      const sourceTip = sourceBranch ? branchTips.get(sourceBranch) : undefined
+      if (sourceBranch && sourceTip && wt.head) {
+        const pair = await appraiseRefPair(wt.path, wt.head, sourceTip, counters)
+        if (pair) {
+          unlandedCommitCount = pair.ahead
+          safeToDiscard = !isDirty && pair.ahead === 0
+          needsSync = pair.behind > 0 && pair.treesDiffer
+        }
       }
-      // pair === null: appraisal failed → every value stays at its fail-closed
-      // default (`safeToDiscard: false`), matching appraiseWorktree's contract.
     }
 
     // Provisioning state is per-run and lives in memory, so a worktree with no

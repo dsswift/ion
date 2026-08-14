@@ -21,7 +21,7 @@ import { ensureRerereEnabled } from '../git/rerere'
 import { probeOperationState, unmergedPaths } from '../git/operation-state'
 import { retryAfterClearingBlockingUntracked } from '../git/untracked-obstruction'
 import { log as _log, warn as _warn } from '../logger'
-import { lookupWorktreeBase, setWorktreeBase } from './inventory'
+import { lookupWorktreeBase, setWorktreeBase, lookupWorktreeLandedAt } from './inventory'
 import { repairStaleBase } from './base-repair'
 import { computeReplayPlan, type ReplayPlan } from './patch-identity'
 import { invalidateWorktreeInventoryCache } from './inventory-cache'
@@ -364,6 +364,26 @@ export async function syncWorktreeFromSource(
   warning?: string
 }> {
   log('sync: starting', { worktree_path: worktreePath, source_branch: sourceBranch })
+
+  // Landed worktrees are terminal -- sync is not meaningful.
+  if (lookupWorktreeLandedAt(worktreePath) != null) {
+    warn('sync: refused, worktree already landed', { worktree_path: worktreePath })
+    return { ok: false, error: 'This worktree has already been landed. Sync is not available.' }
+  }
+
+  const existingOperation = await probeOperationState(worktreePath)
+  if (existingOperation.state) {
+    warn('sync: refused, git operation already in progress', {
+      worktree_path: worktreePath,
+      operation: existingOperation.state,
+      conflicted_paths: existingOperation.conflictedPaths.length,
+    })
+    return {
+      ok: false,
+      hasConflicts: existingOperation.conflictedPaths.length > 0,
+      error: `This worktree already has a ${existingOperation.state} in progress. Finish or abort it before syncing again.`,
+    }
+  }
 
   // Preflight: refuse a dirty tree with an actionable message rather than
   // letting git emit its own. Nothing is modified on this path.

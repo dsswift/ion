@@ -22,9 +22,10 @@ import {
   setMemberEnabled, setMemberOrder, addMember, removeMember,
   refreshStaleness, sourceBranchTip,
 } from '../../integration/bench-ops'
-import { setWorktreeStage } from '../../worktree/registry'
+import { setWorktreeStage, lookupWorktreeRegistration } from '../../worktree/registry'
 import { workStageDescriptor } from '../../../shared/types-git'
 import {
+  collectAllDirConversations,
   collectDirConversations,
   pickBenchConversation,
   pickDirTerminal,
@@ -50,12 +51,14 @@ function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, 
  * bench. Both derive from the same tab list, so it is read once and returned
  * alongside the collector rather than fetched twice.
  *
- * Built with the same `collectDirConversations` / `pickDirTerminal` the desktop
- * rows use, so the three surfaces cannot disagree about what is open where.
+ * Uses `collectDirConversations` for ordinary worktree display and its
+ * role-inclusive twin for benches. A machine auto-fix is shared bench work and
+ * must reach iOS, while worktree rows retain operator-only display semantics.
  */
 async function readTabsForProjection(): Promise<{
   tabs: Array<DirConversationSource & { inputLocked?: boolean }>
   openIn: (dir: string) => DirConversation[]
+  openAllIn: (dir: string) => DirConversation[]
 }> {
   let tabs: Array<DirConversationSource & { inputLocked?: boolean }> = []
   try {
@@ -70,8 +73,8 @@ async function readTabsForProjection(): Promise<{
       // Carried so a terminal is never counted as a conversation, and so the
       // bench terminal can be resolved at all.
       isTerminalOnly: t.isTerminalOnly ?? false,
-      // Role + lock: the singleton is resolved by role, and auto-fix
-      // conversations are excluded from openConversations by the collector.
+      // Role + lock resolve the persistent singleton and distinguish
+      // machine work in the role-inclusive bench projection.
       tabRole: t.tabRole ?? null,
       inputLocked: t.inputLocked ?? false,
     }))
@@ -80,7 +83,11 @@ async function readTabsForProjection(): Promise<{
     // bench terminal id — never correctness of the worktree state itself.
     warn('could not resolve open conversations', { error: String(err) })
   }
-  return { tabs, openIn: (dir: string) => collectDirConversations(tabs, dir) }
+  return {
+    tabs,
+    openIn: (dir: string) => collectDirConversations(tabs, dir),
+    openAllIn: (dir: string) => collectAllDirConversations(tabs, dir),
+  }
 }
 
 /** One membership, wire-shaped. Order is the caller's array position. */
@@ -112,7 +119,7 @@ function projectMembership(
  * two sections with two vocabularies.
  */
 export async function buildWorktreeState(repoPath: string): Promise<RemoteWorktreeState> {
-  const { tabs, openIn } = await readTabsForProjection()
+  const { tabs, openIn, openAllIn } = await readTabsForProjection()
   // Through the service so an iOS refresh rides the same cached crawl the
   // desktop panels just ran instead of starting a competing one.
   const inventory = await getWorktreeInventory(repoPath)
@@ -192,7 +199,10 @@ export async function buildWorktreeState(repoPath: string): Promise<RemoteWorktr
         replayedBranches: ws.lastAssemblyVerification.replayedBranches,
       },
       baseDrifted: !!tip && !!ws.baseSha && tip !== ws.baseSha,
-      openConversations: openIn(ws.benchPath),
+      // A bench is shared integration work: include its machine auto-fix and
+      // analysis conversations so iOS can name and navigate them. Worktree
+      // records above remain operator-only through openIn().
+      openConversations: openAllIn(ws.benchPath),
       benchConversationTabId: conversation && !conversation.adopted ? conversation.tab.id : undefined,
       benchTerminalTabId: terminal?.id,
       // Only the memberships with no worktree left. The rest ride their
@@ -225,8 +235,11 @@ export async function pushWorktreeState(repoPath: string): Promise<void> {
 }
 
 function sendResult(
-  operation: 'sync' | 'land' | 'assemble' | 'update' | 'update_all' | 'sync_all',
-  result: { ok: boolean; error?: string; refusedDirty?: boolean; hasConflicts?: boolean; warning?: string },
+  operation: 'open' | 'sync' | 'land' | 'assemble' | 'update' | 'update_all' | 'sync_all' | 'retire',
+  result: {
+    ok: boolean; error?: string; tabId?: string; refusedDirty?: boolean; hasConflicts?: boolean; warning?: string
+    recoveryRef?: string; prunedBenchPaths?: string[]
+  },
   summary?: string,
 ): void {
   state.remoteTransport?.send({
@@ -234,10 +247,13 @@ function sendResult(
     operation,
     ok: result.ok,
     error: result.error,
+    tabId: result.tabId,
     refusedDirty: result.refusedDirty,
     hasConflicts: result.hasConflicts,
     warning: result.warning,
     summary,
+    recoveryRef: result.recoveryRef,
+    prunedBenchPaths: result.prunedBenchPaths?.length ? result.prunedBenchPaths : undefined,
   })
 }
 
@@ -248,6 +264,16 @@ export async function handleWorktreeCommand(cmd: RemoteCommand): Promise<boolean
       return true
 
     case 'desktop_worktree_open_conversation': {
+      const registration = lookupWorktreeRegistration(cmd.worktreePath)
+      if (registration?.landedAt) {
+        warn('open worktree conversation refused: worktree has landed', {
+          worktree_path: cmd.worktreePath,
+          new_conversation: !!cmd.newConversation,
+        })
+        sendResult('open', { ok: false, error: 'This worktree has landed and is sealed for review.' })
+        await pushWorktreeState(registration.repoPath)
+        return true
+      }
       // Tab creation lives in the renderer store (it owns panes and titling),
       // so route through the owner window rather than duplicating that logic.
       // broadcast(), not webContents.send: the ATV mirror must see the same
@@ -331,6 +357,13 @@ export async function handleWorktreeCommand(cmd: RemoteCommand): Promise<boolean
         worktreeBranch: cmd.worktreeBranch,
         sourceBranch: cmd.sourceBranch,
       })
+      if (result.ok) {
+        broadcast('ion:worktree-landed', {
+          repoPath: cmd.repoPath,
+          worktreePath: cmd.worktreePath,
+          prunedBenchPaths: result.prunedBenchPaths ?? [],
+        })
+      }
       sendResult('land', result)
       await pushWorktreeState(cmd.repoPath)
       return true
@@ -420,6 +453,50 @@ export async function handleWorktreeCommand(cmd: RemoteCommand): Promise<boolean
       removeMember(cmd.repoPath, cmd.sourceBranch, cmd.worktreePath)
       await pushWorktreeState(cmd.repoPath)
       return true
+
+    case 'desktop_worktree_retire': {
+      if (!isValidProjectPath(cmd.worktreePath) || !isValidProjectPath(cmd.repoPath)) {
+        warn('retire refused: invalid path', { worktree_path: cmd.worktreePath })
+        return true
+      }
+      const registration = lookupWorktreeRegistration(cmd.worktreePath)
+      if (!registration) {
+        warn('retire refused: worktree registry record missing', { worktree_path: cmd.worktreePath })
+        sendResult('retire', { ok: false, error: 'This worktree is not registered.' })
+        return true
+      }
+      if (!registration.landedAt) {
+        warn('retire refused: worktree has not landed', { worktree_path: cmd.worktreePath })
+        sendResult('retire', { ok: false, error: 'Only a landed worktree can be retired.' })
+        return true
+      }
+      log('retire worktree requested remotely', {
+        worktree_path: cmd.worktreePath,
+        branch: registration.branchName,
+      })
+      broadcast('ion:remote-retire-worktree', {
+        repoPath: cmd.repoPath,
+        worktreePath: cmd.worktreePath,
+        branchName: registration.branchName,
+      })
+      return true
+    }
+
+    case 'desktop_worktree_retire_landed': {
+      if (!isValidProjectPath(cmd.repoPath)) {
+        warn('retire-all-landed refused: invalid path', { repo_path: cmd.repoPath })
+        return true
+      }
+      log('retire all landed worktrees requested remotely', { repo_path: cmd.repoPath })
+      // Same reason as the single-worktree retire above: the retire path
+      // (occupant pre-flight, tab closing) lives in the renderer store, so the
+      // remote command routes there rather than duplicating tab ownership in
+      // main. `ion:remote-retire-worktree` is not reused — that event carries a
+      // single worktreePath/branchName, and the batch answers with a count, not
+      // a per-worktree result.
+      broadcast('ion:remote-retire-landed-worktrees', { repoPath: cmd.repoPath })
+      return true
+    }
 
     default:
       return false

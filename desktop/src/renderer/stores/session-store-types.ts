@@ -77,9 +77,8 @@ export interface State {
   /**
    * Directories with a conflicted git operation in progress, keyed by
    * directory. Fed by sync/land failures carrying `hasConflicts` and by
-   * inventory refreshes that find an in-progress operation. The toast reads
-   * `dismissed`; row badges and banners derive from live inventory state so
-   * the truth outlives a dismissal.
+   * inventory refreshes that find an in-progress operation. Git panel banners
+   * and row controls use this immediate state before the next inventory poll.
    */
   gitConflictAlerts: Map<string, GitConflictAlert>
   /**
@@ -357,6 +356,8 @@ export interface State {
    * half-stale row. Never reassembles; refreshing reads, assembly mutates.
    */
   refreshWorkspaceViews: (repoPath: string) => Promise<void>
+  /** Seal every existing conversation in a landed worktree for read-only review. */
+  sealLandedWorktree: (worktreePath: string) => Promise<void>
   /** Open (or focus) a conversation in an existing worktree. */
   openWorktreeConversation: (worktreePath: string) => Promise<string>
   /**
@@ -390,6 +391,9 @@ export interface State {
    * that cannot see it cannot tell the operator where their work went.
    */
   retireWorktree: (repoPath: string, worktreePath: string, branchName: string) => Promise<WorktreeMoveResult>
+  /** Retire every worktree already sealed by a successful Land. The batch
+   * preflights all current occupants before deleting any checkout. */
+  retireLandedWorktrees: (repoPath: string) => Promise<{ ok: boolean; retired: number; error?: string }>
   /**
    * Re-run provisioning for a worktree whose dependency state looks wrong
    * (missing node_modules, a half-finished install). Same path creation uses.
@@ -427,15 +431,14 @@ export interface State {
    * rebuilt (the bench state moved since the failure).
    */
   openBenchVerificationAnalysis: (repoPath: string, sourceBranch: string) => Promise<string>
-  /**
-   * The bench-verification recovery dialog's targeted discard: forget the
-   * named suspect branches' recordings, then reassemble.
-   */
-  benchDiscardVerificationRecordings: (
+  /** Forget recordings for selected bench members, then reassemble unchanged pins. */
+  benchDiscardMemberRecordings: (
     repoPath: string, sourceBranch: string, branchNames: string[],
-  ) => Promise<BenchAssembleResult & { forgottenCount?: number }>
+  ) => Promise<BenchAssembleResult & { forgottenCount?: number; branchesWithNothingToForget?: string[] }>
   benchUpdateMember: (repoPath: string, sourceBranch: string, worktreePath: string) => Promise<BenchAssembleResult>
   benchUpdateAll: (repoPath: string, sourceBranch: string) => Promise<BenchAssembleResult>
+  /** Apply a confirmed overlap fast lane atomically, without assembling it. */
+  benchApplyOverlapFastLane: (repoPath: string, sourceBranch: string, basis: import('../../shared/types-worktree-overlap').WorktreeOverlapBasis, orderedPaths: string[]) => Promise<import('../../shared/types-worktree-overlap').WorktreeOverlapApplyResult>
   benchAddMember: (repoPath: string, sourceBranch: string, worktreePath: string, branchName: string) => Promise<{ ok: boolean; error?: string }>
   benchRemoveMember: (repoPath: string, sourceBranch: string, worktreePath: string) => Promise<void>
   benchSetEnabled: (repoPath: string, sourceBranch: string, worktreePath: string, enabled: boolean) => Promise<void>
@@ -453,11 +456,9 @@ export interface State {
   /** Dismiss the absorbed-into-base notice for one workspace. */
   clearBenchRetired: (repoPath: string, sourceBranch: string) => void
   /** Record a conflicted directory (sync/land failure or detected mid-operation). */
-  recordConflictAlert: (directory: string, alert: Omit<GitConflictAlert, 'dismissed' | 'recordedAt'>) => void
+  recordConflictAlert: (directory: string, alert: GitConflictAlert) => void
   /** Drop a directory's conflict alert — its operation completed or aborted. */
   clearConflictAlert: (directory: string) => void
-  /** Hide the toast for a directory; the badge stays until actually resolved. */
-  dismissConflictAlert: (directory: string) => void
   /** Open (or focus) a conversation in the conflicted directory and submit the assist prompt. */
   openConflictAssist: (directory: string) => Promise<string>
   /**

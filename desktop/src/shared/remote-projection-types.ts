@@ -97,8 +97,9 @@ export interface ProjectedRendererTab {
   messageCount: number
   queuedPrompts: string[]
   isTerminalOnly?: boolean
-  /** Input-locked conversation (auto-generated conflict fix). See TabState.inputLocked. */
+  /** Input-locked conversation (auto-generated conflict fix or sealed landed worktree). */
   inputLocked?: boolean
+  inputLockReason?: 'automated-workflow' | 'landed-worktree' | null
   /** Explicit tab lifecycle role. See TabState.tabRole. */
   tabRole?: 'bench-conversation' | 'conflict-auto-fix' | 'verification-analysis'
   hasEngineExtension?: boolean

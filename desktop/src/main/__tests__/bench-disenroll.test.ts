@@ -35,6 +35,7 @@ import {
 import { loadWorkspaces, saveWorkspaces } from '../integration/bench-store'
 import { retireWorktree } from '../worktree/relocate'
 import { landWorktree } from '../worktree/integrate'
+import { registerWorktree } from '../worktree/registry'
 import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
 
 const FEATURE = 'josh'
@@ -75,6 +76,7 @@ function makeWorktree(name: string): { path: string; branch: string } {
   writeFileSync(join(path, `${name}.txt`), `${name}\n`)
   git(path, 'add', '-A')
   git(path, 'commit', '-m', `${name} work`)
+  registerWorktree({ worktreePath: path, repoPath: repo, branchName: branch, sourceBranch: FEATURE })
   return { path, branch }
 }
 
@@ -152,6 +154,43 @@ describe('disenrollWorktree', () => {
   })
 }, GIT_FIXTURE_TIMEOUT)
 
+describe('land disenrolls immediately', () => {
+  it('removes the landed member while preserving the remaining pin without assembling', async () => {
+    localBench()
+    const a = makeWorktree('a')
+    const b = makeWorktree('b')
+    await addMember(repo, FEATURE, a.path, a.branch)
+    await addMember(repo, FEATURE, b.path, b.branch)
+    await assembleWorkspace(repo, FEATURE)
+    const before = listWorkspaces(repo)[0].members.find((m) => m.worktreePath === b.path)!
+
+    const result = await landWorktree({
+      repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: FEATURE,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.prunedBenchPaths).toEqual([])
+    const after = listWorkspaces(repo)[0]
+    expect(after.members.map((m) => m.worktreePath)).toEqual([b.path])
+    expect(after.members[0].pinnedSha).toBe(before.pinnedSha)
+  })
+
+  it('prunes the bench immediately when its only member lands', async () => {
+    localBench()
+    const a = makeWorktree('a')
+    await addMember(repo, FEATURE, a.path, a.branch)
+    await assembleWorkspace(repo, FEATURE)
+
+    const result = await landWorktree({
+      repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: FEATURE,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.prunedBenchPaths).toEqual([join(root, 'bench')])
+    expect(listWorkspaces(repo)).toEqual([])
+    expect(existsSync(join(root, 'bench'))).toBe(false)
+  })
+}, GIT_FIXTURE_TIMEOUT)
 describe('retire disenrolls automatically', () => {
   it('drops the member and prunes the empty bench, removing its worktree', async () => {
     localBench()
@@ -234,7 +273,7 @@ describe('retire disenrolls automatically', () => {
  * red as soon as the two definitions differ.
  */
 describe('retire reports and predicts the benches it prunes', () => {
-  it('returns the pruned bench path from the retire', async () => {
+  it('reports no bench prune from retire after land already pruned the bench', async () => {
     localBench()
     const a = makeWorktree('a')
     await addMember(repo, FEATURE, a.path, a.branch)
@@ -244,7 +283,9 @@ describe('retire reports and predicts the benches it prunes', () => {
     const result = await retireWorktree({ repoPath: repo, worktreePath: a.path, branchName: a.branch })
 
     expect(result.ok).toBe(true)
-    expect(result.prunedBenchPaths).toEqual([join(root, 'bench')])
+    // Land owns immediate bench removal, so Retire only removes the sealed
+    // checkout and must not report a second prune.
+    expect(result.prunedBenchPaths).toEqual([])
   })
 
   it('predicts that same path BEFORE the retire runs, without mutating anything', async () => {

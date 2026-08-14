@@ -69,6 +69,12 @@ export function createConversationTabAction(set: StoreSet, get: StoreGet) {
     // reads tab.worktree synchronously on first render to choose repo-scoped
     // inventory and bench caches, so a later patch would expose false state.
     const worktree = await resolveRegisteredWorktree(workingDirectory, opts.worktree)
+    if (worktree?.landedAt && !opts.reuseTabId) {
+      rError('engine.create', 'conversation creation refused: worktree has landed', {
+        worktree_path: worktree.worktreePath,
+      })
+      throw new Error('This worktree has already landed and is sealed for review. Retire it when review is complete.')
+    }
 
     // Resolve extensions: explicit list > profile lookup > empty (plain tab)
     const { engineProfiles, tabGroupMode, tabGroups } = prefs
@@ -141,6 +147,8 @@ export function createConversationTabAction(set: StoreSet, get: StoreGet) {
       hasChosenDirectory: true,
       groupId,
       worktree,
+      inputLockReason: worktree?.landedAt ? 'landed-worktree' : null,
+      inputLocked: !!worktree?.landedAt,
       // engineProfileId is the derivation source for tabHasExtensions(). Set it
       // only when the tab actually runs with extensions (isEngine=true). When
       // extensions are provided without a profileId (direct extension list), use
@@ -176,6 +184,10 @@ export function createConversationTabAction(set: StoreSet, get: StoreGet) {
           }
         : {}),
     }))
+
+    // A persisted tab opened for landed-worktree review keeps its history but
+    // must never start or wake an engine session again.
+    if (worktree?.landedAt) return tabId
 
     // Start the engine session for both tab kinds so the engine mints+binds the
     // conversation id at creation time (it is returned by start_session and
