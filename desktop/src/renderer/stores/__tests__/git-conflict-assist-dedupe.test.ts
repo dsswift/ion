@@ -81,7 +81,7 @@ describe('openConflictAssist — deduplication', () => {
     const selectTab = vi.fn()
     const createTabInDirectory = vi.fn().mockResolvedValue('tab-new')
     const h = harness({
-      submit: vi.fn(), selectTab, setTabModel: vi.fn(), createTabInDirectory,
+      submit: vi.fn(), selectTab, setTabAutomaticModel: vi.fn(), createTabInDirectory,
       tabs: [{ id: 'tab-existing', tabRole: 'conflict-auto-fix', workingDirectory: WT }],
     })
 
@@ -97,7 +97,7 @@ describe('openConflictAssist — deduplication', () => {
     const selectTab = vi.fn()
     const createTabInDirectory = vi.fn().mockResolvedValue('tab-new')
     const h = harness({
-      submit: vi.fn(), selectTab, setTabModel: vi.fn(), createTabInDirectory,
+      submit: vi.fn(), selectTab, setTabAutomaticModel: vi.fn(), createTabInDirectory,
       tabs: [{ id: 'tab-other', tabRole: 'conflict-auto-fix', workingDirectory: '/bench/other' }],
     })
 
@@ -113,7 +113,7 @@ describe('openConflictAssist — deduplication', () => {
     let resolveCreate!: (id: string) => void
     const createTabInDirectory = vi.fn(() => new Promise<string>((r) => { resolveCreate = r }))
     const h = harness({
-      submit: vi.fn(), setTabModel: vi.fn(), createTabInDirectory,
+      submit: vi.fn(), setTabAutomaticModel: vi.fn(), createTabInDirectory,
       tabs: [{ id: 'tab-new', inputLocked: false }],
     })
 
@@ -133,7 +133,7 @@ describe('openConflictAssist — deduplication', () => {
     ionWith()
     const createTabInDirectory = vi.fn().mockResolvedValue('tab-1')
     const h = harness({
-      submit: vi.fn(), setTabModel: vi.fn(), createTabInDirectory,
+      submit: vi.fn(), setTabAutomaticModel: vi.fn(), createTabInDirectory,
       tabs: [{ id: 'tab-1', inputLocked: false }],
     })
 

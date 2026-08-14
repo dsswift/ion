@@ -3,7 +3,7 @@ import { execFileSync } from 'child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { recommendWorktreeCohort, solveWorktreeOverlap } from '../overlap-recommendation'
+import { recommendWorktreeCohort, reorderCurrentSelection, solveWorktreeOverlap } from '../overlap-recommendation'
 import type { WorktreeOverlapAnalysis } from '../../../shared/types-worktree-overlap'
 
 function git(dir: string, args: string[]): string { return execFileSync('git', args, { cwd: dir, encoding: 'utf8' }) }
@@ -51,9 +51,14 @@ describe('reorderCurrentSelection bounds', () => {
       const paths: string[] = []
       for (let index = 0; index < 13; index++) { const branch = `branch-${index}`; git(repo, ['branch', branch]); git(repo, ['checkout', '-q', branch]); writeFileSync(join(repo, `${branch}.ts`), `${branch}\n`); git(repo, ['add', '.']); git(repo, ['commit', '-qm', branch]); paths.push(branch) }
       const analysis: WorktreeOverlapAnalysis = { repoPath: repo, sourceBranch: 'main', basis: 'live', computedAt: 0, footprints: paths.map(footprint), incompletePaths: [], pairs: [], recommendation: { kind: 'exact', orderedPaths: [], alternatives: [], blockers: [], pairScope: [] } }
-      const result = await solveWorktreeOverlap(analysis, [])
-      const reordered = await (await import('../overlap-recommendation')).reorderCurrentSelection(analysis, git(repo, ['rev-parse', 'main']).trim(), paths, result.current.kind)
+      const reordered = await reorderCurrentSelection(
+        analysis,
+        git(repo, ['rev-parse', 'main']).trim(),
+        paths,
+        'anchored',
+      )
       expect(reordered.orderedPaths).toEqual(paths)
+      expect(reordered.kind).toBe('anchored')
       expect(reordered.note).toContain('at most 12')
     } finally { rmSync(repo, { recursive: true, force: true }) }
   }, 30_000)
