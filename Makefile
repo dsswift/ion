@@ -141,7 +141,9 @@ test-all: check-file-sizes check-contracts check-status-writers check-atv-parity
 # subset is worse than no gate: it green-lights the exact failures it is
 # supposed to catch.
 
-GO_VERSION := $(shell awk '/^go / {print $$2}' engine/go.mod)
+# Match actions/setup-go's go-version-file behavior: prefer the exact toolchain
+# directive used by CI and release builds, with the language version as fallback.
+GO_VERSION := $(shell awk '/^toolchain go/ {sub(/^toolchain go/, ""); print; found=1; exit} /^go / && !fallback {fallback=$$2} END {if (!found) print fallback}' engine/go.mod)
 
 # Prebaked-image + named-volume plumbing for the Linux parity gate.
 #

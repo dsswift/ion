@@ -2,7 +2,7 @@ module github.com/dsswift/ion/relay
 
 go 1.25.0
 
-toolchain go1.26.4
+toolchain go1.26.6
 
 require (
 	github.com/coder/websocket v1.8.15

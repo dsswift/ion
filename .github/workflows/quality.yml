@@ -68,6 +68,15 @@ jobs:
       - name: Run actionlint
         uses: raven-actions/actionlint@v2
 
+  go-toolchains:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check Go toolchain alignment
+        run: bash scripts/check-go-toolchains.sh
+      - name: Test Go toolchain alignment check
+        run: bash scripts/check-go-toolchains.test.sh
+
   file-size:
     runs-on: ubuntu-latest
     steps:
