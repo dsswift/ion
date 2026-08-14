@@ -69,13 +69,16 @@ let root: ReturnType<typeof createRoot>
 const onToggleEnrollment = vi.fn()
 const onToggleIncluded = vi.fn()
 const onUpdatePin = vi.fn()
+const onResolve = vi.fn()
+const onFocusActiveWorktreeResolver = vi.fn()
 const onSetStage = vi.fn()
 
 function render(props: Partial<Parameters<typeof WorktreeRow>[0]> = {}): void {
   act(() => {
     root.render(React.createElement(WorktreeRow, {
       entry: entry(),
-      onOpen: () => {}, onSync: () => {}, onMenu: () => {}, onResolve: () => {},
+      onOpen: () => {}, onSync: () => {}, onMenu: () => {}, onResolve,
+      onFocusActiveWorktreeResolver,
       onToggleEnrollment, onToggleIncluded, onUpdatePin, onSetStage,
       ...props,
     }))
@@ -339,6 +342,30 @@ describe('WorktreeRow — membership drives the state slot', () => {
     expect(onUpdatePin).toHaveBeenCalledTimes(1)
   })
 
+  it('flashes its pin while update runs and locks other stale pins', () => {
+    render({ membership: member({ pin: 'behind' }), order: 1, updatingPin: true })
+    const active = q(`worktree-pin-behind-${BRANCH}`)!
+    expect(active.innerHTML).toContain('animate-spin')
+    expect(active.style.animation).toContain('bench-conflict-flash')
+    expect(active).toHaveProperty('disabled', true)
+
+    render({ membership: member({ pin: 'behind' }), order: 1, pinUpdateLocked: true })
+    const locked = q(`worktree-pin-behind-${BRANCH}`)! as HTMLButtonElement
+    expect(locked.disabled).toBe(true)
+    expect(locked.style.color).toContain('textTertiary')
+  })
+
+  it('flashes a native conflict while its auto-fix resolves it', () => {
+    render({
+      entry: entry({ operationState: 'rebasing', conflictedPaths: ['a.ts'] }),
+      hasActiveWorktreeResolver: true,
+    })
+    const marker = q(`worktree-conflict-${BRANCH}`)!
+    expect(marker.style.animation).toContain('bench-conflict-flash')
+    act(() => { (marker as HTMLButtonElement).click() })
+    expect(onFocusActiveWorktreeResolver).toHaveBeenCalledTimes(1)
+    expect(onResolve).not.toHaveBeenCalled()
+  })
   it('shows a bench conflict above a stale base', () => {
     render({
       entry: entry({ needsSync: true }),
