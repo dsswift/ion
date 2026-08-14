@@ -224,6 +224,27 @@ describe('AgentPanel stable popup subject', () => {
     expect(selectedButtons.some(b => b.textContent?.includes('#2'))).toBe(true)
     act(() => { root.unmount() })
   })
+
+  it('does not repoint an open popup when its dispatch disappears', async () => {
+    const initial = {
+      name: 'agent', status: 'done', metadata: { displayName: 'Agent', visibility: 'always', dispatches: [
+        { id: 'opened', conversationId: 'conv-opened', status: 'done', startTime: 100 },
+      ] },
+    } as AgentStateUpdate
+    const { container, root } = mount([initial])
+    clickRow(container, 'Agent')
+    await act(async () => { await Promise.resolve() })
+    getConversation.mockClear()
+
+    const replacement = {
+      ...initial, metadata: { ...initial.metadata, dispatches: [
+        { id: 'replacement', conversationId: 'conv-replacement', status: 'done', startTime: 200 },
+      ] },
+    } as AgentStateUpdate
+    act(() => { root.render(<AgentPanel agents={[replacement]} />) })
+    expect(getConversation).not.toHaveBeenCalledWith('conv-replacement', 0, 200)
+    act(() => { root.unmount() })
+  })
 })
 
 describe('AgentPanel row visual (pill + standardized dot, no suffix)', () => {

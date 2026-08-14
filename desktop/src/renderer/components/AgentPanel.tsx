@@ -257,7 +257,7 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
   // last few deltas landed.
   const popupDispatches = popupAgent ? getDispatches(popupAgent) : []
   const popupSelIdx = popupAgent
-    ? Math.max(0, popupDispatches.findIndex(d => d.id === popupSubject?.dispatchId))
+    ? popupDispatches.findIndex(d => d.id === popupSubject?.dispatchId)
     : -1
   const popupSelDispatch = popupSelIdx >= 0 ? popupDispatches[popupSelIdx] : undefined
   const popupSelConvId = popupSelDispatch?.conversationId || ''

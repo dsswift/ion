@@ -52,7 +52,9 @@ export function AgentRow({
   // dispatch — so the clock and the dot beside it never describe different
   // dispatches. Falls back to the agent's own metadata for a roster row that
   // carries no dispatch at all.
-  const recent = mostRecentDispatch(getDispatches(agent))
+  const dispatches = getDispatches(agent)
+  const dispatchCount = dispatches.length
+  const recent = mostRecentDispatch(dispatches)
   const durStartTime = recent?.startTime ?? (agent.metadata?.startTime as number | undefined)
   const durElapsed = recent?.elapsed ?? (agent.metadata?.elapsed as number | undefined)
   const durStatus = recent?.status || agent.status
@@ -97,9 +99,9 @@ export function AgentRow({
           >
             {meta(agent, 'displayName', agent.name)}
           </span>
-          {getDispatches(agent).length > 0 && (
+          {dispatchCount > 0 && (
             <span style={{ fontSize: 9, color: colors.textTertiary, flexShrink: 0 }}>
-              {getDispatches(agent).length} {getDispatches(agent).length === 1 ? 'dispatch' : 'dispatches'}
+              {dispatchCount} {dispatchCount === 1 ? 'dispatch' : 'dispatches'}
             </span>
           )}
           {/* Standardized status dot(s) — same vocabulary as the tab and
