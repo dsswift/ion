@@ -101,7 +101,7 @@ extension TabListNewTabSheet {
                             Spacer()
                             ViewThatFits(in: .horizontal) {
                                 HStack(spacing: 6) {
-                                    benchAction(bench.benchConversationTabId == nil ? "Talk" : "Go to",
+                                    benchAction(bench.conversationActionTitle,
                                                 icon: "bubble.left") {
                                         viewModel.openBenchConversation(repoPath: state.repoPath,
                                                                         sourceBranch: bench.sourceBranch)
@@ -124,7 +124,7 @@ extension TabListNewTabSheet {
                             }
                         }
                     }
-                    ForEach(state.worktrees) { wt in
+                    ForEach(state.worktrees.filter { !$0.isLanded }) { wt in
                         Button {
                             isPresented = false
                             viewModel.openWorktreeConversation(worktreePath: wt.worktreePath)
@@ -142,8 +142,8 @@ extension TabListNewTabSheet {
                                 if wt.needsSync {
                                     Text("base moved").font(.caption2).foregroundStyle(.orange)
                                 }
-                                if !wt.openConversations.isEmpty {
-                                    Text("open").font(.caption2).foregroundStyle(.tint)
+                                if let openConversationCountLabel = wt.openConversationCountLabel {
+                                    Text(openConversationCountLabel).font(.caption2).foregroundStyle(.tint)
                                 }
                             }
                         }

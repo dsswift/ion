@@ -153,6 +153,13 @@ enum RemoteCommand: Codable, Sendable {
     /// a `sync_all` op result carrying a pre-worded `summary`.
     case worktreeSyncAll(repoPath: String)
     case worktreeLand(repoPath: String, worktreePath: String, worktreeBranch: String, sourceBranch: String)
+    case worktreeRetire(repoPath: String, worktreePath: String)
+    /// Retire every worktree in the repo already sealed by a successful Land —
+    /// mirrors the desktop's "Retire all" batch control. One command rather
+    /// than a client-side loop of `worktreeRetire`, so the pre-flight (every
+    /// occupant idle) and the stop-and-report-count failure semantics are the
+    /// desktop's, not reimplemented here.
+    case worktreeRetireLanded(repoPath: String)
     case benchOpenConversation(repoPath: String, sourceBranch: String)
     /// Open (or focus) the bench's ONE dedicated terminal tab. Distinct from
     /// `benchOpenConversation`: a shell and a conversation are different things
@@ -337,6 +344,8 @@ enum RemoteCommand: Codable, Sendable {
         case worktreeSync = "desktop_worktree_sync"
         case worktreeSyncAll = "desktop_worktree_sync_all"
         case worktreeLand = "desktop_worktree_land"
+        case worktreeRetire = "desktop_worktree_retire"
+        case worktreeRetireLanded = "desktop_worktree_retire_landed"
         case benchOpenConversation = "desktop_bench_open_conversation"
         case benchOpenTerminal = "desktop_bench_open_terminal"
         case benchAssemble = "desktop_bench_assemble"

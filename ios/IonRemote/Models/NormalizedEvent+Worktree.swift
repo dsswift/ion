@@ -25,10 +25,14 @@ extension RemoteEvent {
             let ok = try container.decode(Bool.self, forKey: .ok)
             let rawOp = try container.decode(String.self, forKey: .operation)
             let error = try container.decodeIfPresent(String.self, forKey: .error)
+            let tabId = try container.decodeIfPresent(String.self, forKey: .tabId)
+            let recoveryRef = try container.decodeIfPresent(String.self, forKey: .recoveryRef)
+            let prunedBenchPaths = try container.decodeIfPresent([String].self, forKey: .prunedBenchPaths)
             let refusedDirty = try container.decodeIfPresent(Bool.self, forKey: .refusedDirty)
             let hasConflicts = try container.decodeIfPresent(Bool.self, forKey: .hasConflicts)
             let warning = try container.decodeIfPresent(String.self, forKey: .warning)
             let summary = try container.decodeIfPresent(String.self, forKey: .summary)
+            let retired = try container.decodeIfPresent(Int.self, forKey: .retired)
             return .worktreeOpResult(result: RemoteWorktreeOpResult(
                 ok: ok,
                 // An unrecognised operation from a newer desktop degrades to
@@ -36,10 +40,14 @@ extension RemoteEvent {
                 // sees the ok/error outcome, which is the actionable part.
                 operation: RemoteWorktreeOpResult.Operation(rawValue: rawOp) ?? .assemble,
                 error: error,
+                tabId: tabId,
+                recoveryRef: recoveryRef,
+                prunedBenchPaths: prunedBenchPaths,
                 refusedDirty: refusedDirty,
                 hasConflicts: hasConflicts,
                 warning: warning,
-                summary: summary))
+                summary: summary,
+                retired: retired))
 
         default:
             return nil
@@ -60,10 +68,14 @@ extension RemoteEvent {
             try container.encode(result.ok, forKey: .ok)
             try container.encode(result.operation.rawValue, forKey: .operation)
             try container.encodeIfPresent(result.error, forKey: .error)
+            try container.encodeIfPresent(result.tabId, forKey: .tabId)
+            try container.encodeIfPresent(result.recoveryRef, forKey: .recoveryRef)
+            try container.encodeIfPresent(result.prunedBenchPaths, forKey: .prunedBenchPaths)
             try container.encodeIfPresent(result.refusedDirty, forKey: .refusedDirty)
             try container.encodeIfPresent(result.hasConflicts, forKey: .hasConflicts)
             try container.encodeIfPresent(result.warning, forKey: .warning)
             try container.encodeIfPresent(result.summary, forKey: .summary)
+            try container.encodeIfPresent(result.retired, forKey: .retired)
             return true
 
         default:

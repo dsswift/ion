@@ -72,6 +72,15 @@ extension RemoteCommand {
             try container.encode(worktreeBranch, forKey: .worktreeBranch)
             try container.encode(sourceBranch, forKey: .sourceBranch)
 
+        case .worktreeRetire(let repoPath, let worktreePath):
+            try container.encode(TypeKey.worktreeRetire, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+            try container.encode(worktreePath, forKey: .worktreePath)
+
+        case .worktreeRetireLanded(let repoPath):
+            try container.encode(TypeKey.worktreeRetireLanded, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+
         case .benchOpenConversation(let repoPath, let sourceBranch):
             try container.encode(TypeKey.benchOpenConversation, forKey: .type)
             try container.encode(repoPath, forKey: .repoPath)
