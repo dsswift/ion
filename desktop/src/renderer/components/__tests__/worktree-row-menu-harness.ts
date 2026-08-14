@@ -37,6 +37,13 @@ export function entry(over: Partial<WorktreeInventoryEntry> = {}): WorktreeInven
   }
 }
 
+export const LANDED_ENTRY: WorktreeInventoryEntry = entry({
+  isDirty: false,
+  unlandedCommitCount: 0,
+  safeToDiscard: true,
+  landedAt: 1_700_000_000_000,
+})
+
 /**
  * Appraisal fixtures, typed against the real wire shape so they cannot drift
  * from it. A partial stand-in is not safe here: the menu reads the path and

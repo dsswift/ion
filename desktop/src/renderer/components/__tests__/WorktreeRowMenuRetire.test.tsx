@@ -102,7 +102,7 @@ vi.mock('../../rendererLogger', () => ({
 
 import { PopoverLayerProvider } from '../PopoverLayer'
 import { WorktreeRowMenu } from '../WorktreeRowMenu'
-import { CLEAN_APPRAISAL, DIRTY_APPRAISAL, REPO, WT, entry, press } from './worktree-row-menu-harness'
+import { CLEAN_APPRAISAL, DIRTY_APPRAISAL, LANDED_ENTRY, REPO, WT, entry, press } from './worktree-row-menu-harness'
 
 let container: HTMLDivElement
 let root: ReturnType<typeof createRoot>
@@ -145,6 +145,10 @@ function renderWith(over: Partial<WorktreeInventoryEntry>): void {
 
 function render(): void {
   renderWith({})
+}
+
+function renderLanded(): void {
+  renderWith(LANDED_ENTRY)
 }
 
 beforeEach(() => {
@@ -276,7 +280,7 @@ describe('WorktreeRowMenu — retire', () => {
 describe('WorktreeRowMenu — retiring a landed worktree', () => {
   it('still confirms when the appraisal says nothing would be lost', async () => {
     mocks.appraise.mockResolvedValue(CLEAN_APPRAISAL)
-    render()
+    renderLanded()
 
     await press('Retire worktree')
 
@@ -287,7 +291,7 @@ describe('WorktreeRowMenu — retiring a landed worktree', () => {
 
   it('says the work has landed rather than leaving the reason blank', async () => {
     mocks.appraise.mockResolvedValue(CLEAN_APPRAISAL)
-    render()
+    renderLanded()
 
     await press('Retire worktree')
 
@@ -297,7 +301,7 @@ describe('WorktreeRowMenu — retiring a landed worktree', () => {
 
   it('retires only after the operator confirms', async () => {
     mocks.appraise.mockResolvedValue(CLEAN_APPRAISAL)
-    render()
+    renderLanded()
 
     await press('Retire worktree')
     expect(mocks.retireWorktree).not.toHaveBeenCalled()
@@ -308,7 +312,7 @@ describe('WorktreeRowMenu — retiring a landed worktree', () => {
 
   it('keeps the worktree when the operator declines', async () => {
     mocks.appraise.mockResolvedValue(CLEAN_APPRAISAL)
-    render()
+    renderLanded()
 
     await press('Retire worktree')
     await press('Keep it')

@@ -37,6 +37,12 @@ export function useWorktreeRowMenuVerbs({
   const strategy = usePreferencesStore((s) => s.worktreeCompletionStrategy);
   const [busy, setBusy] = useState(false);
   const [confirmRetire, setConfirmRetire] = useState<string | null>(null);
+  const [confirmDiscardRecordings, setConfirmDiscardRecordings] = useState<
+    string | null
+  >(null);
+  const [discardRecordingsOutcome, setDiscardRecordingsOutcome] = useState<
+    string | null
+  >(null);
   // A land refusal (diverged branch, conflict) is actionable and must be shown,
   // not swallowed into the log while the menu closes as if it had worked.
   const [landError, setLandError] = useState<string | null>(null);
@@ -74,13 +80,10 @@ export function useWorktreeRowMenuVerbs({
           has_conflicts: !!result.hasConflicts,
           error: result.error ?? "",
         });
-        // A CONFLICT is not the same as a refusal. A refusal (diverged branch,
-        // dirty tree) is answered by this dialog and nothing is left behind; a
-        // conflict stops the merge halfway and leaves a checkout that needs
-        // resolving, which must reach the toast and the row badge exactly as a
-        // conflicted sync does. Without this the land path repeated the defect
-        // the sync path was fixed for: an actionable failure visible only in
-        // the log.
+        // A conflict is not a refusal. A refusal (diverged branch or dirty
+        // tree) is answered by this dialog and leaves nothing behind. A conflict
+        // stops merge halfway, leaving a checkout that needs resolution. Record
+        // it for Git panel banner while inventory refresh updates row controls.
         //
         // Keyed on the directory the LAND reported, not on this worktree: the
         // merge runs in whichever checkout holds the source branch (usually the
@@ -91,9 +94,9 @@ export function useWorktreeRowMenuVerbs({
           useSessionStore
             .getState()
             .recordConflictAlert(result.conflictDirectory, {
-              source: "land",
-              kind: "conflict",
-              message: result.error,
+              operationState: result.conflictDirectory === entry.worktreePath
+                ? 'rebasing'
+                : 'merging',
               label:
                 result.conflictDirectory === entry.worktreePath
                   ? entry.title || entry.label
@@ -109,7 +112,9 @@ export function useWorktreeRowMenuVerbs({
       rInfo("worktree.menu", "landed", {
         branch: entry.branchName,
         mode: result.mode ?? "",
+        pruned_benches: result.prunedBenchPaths?.length ?? 0,
       });
+      await useSessionStore.getState().sealLandedWorktree(entry.worktreePath);
       onRefresh();
       // Success dismisses the menu. The refusal path above returns early and
       // leaves it mounted on purpose, because the error dialog it raised is a
@@ -249,6 +254,69 @@ export function useWorktreeRowMenuVerbs({
     }
   }
 
+  async function doDiscardRecordings(): Promise<void> {
+    if (!enrolled) return;
+    setBusy(true);
+    try {
+      const result = await useSessionStore
+        .getState()
+        .benchDiscardMemberRecordings(repoPath, enrolled.sourceBranch, [
+          enrolled.membership.branchName,
+        ]);
+      const forgotten = result.forgottenCount ?? 0;
+      const noMatch =
+        result.branchesWithNothingToForget?.includes(
+          enrolled.membership.branchName,
+        ) ?? false;
+      if (!result.ok) {
+        rWarn("worktree.menu", "discard member recordings failed", {
+          branch: enrolled.membership.branchName,
+          error: result.error ?? "",
+        });
+        setDiscardRecordingsOutcome(
+          result.error ??
+            "Could not discard this worktree’s recorded resolutions.",
+        );
+        return;
+      }
+      if (noMatch || forgotten === 0) {
+        rInfo("worktree.menu", "no matching member recording to discard", {
+          branch: enrolled.membership.branchName,
+          outcome: result.workspace?.lastAssembly ?? "unknown",
+        });
+        setDiscardRecordingsOutcome(
+          `No recorded resolution matched ${enrolled.membership.branchName}. The bench reassembled without deleting any other recording.`,
+        );
+        return;
+      }
+      const needsResolution =
+        result.workspace?.lastAssembly === "failed" &&
+        result.workspace.lastAssemblyFailure === "conflict";
+      rInfo("worktree.menu", "discarded member recordings", {
+        branch: enrolled.membership.branchName,
+        forgotten_count: forgotten,
+        outcome: result.workspace?.lastAssembly ?? "unknown",
+        fresh_conflict: needsResolution,
+      });
+      setDiscardRecordingsOutcome(
+        needsResolution
+          ? `Discarded ${forgotten} recorded resolution${forgotten === 1 ? "" : "s"} for ${enrolled.membership.branchName}. The bench now has a fresh conflict to resolve; all other recordings remain.`
+          : `Discarded ${forgotten} recorded resolution${forgotten === 1 ? "" : "s"} for ${enrolled.membership.branchName}. The bench reassembled; all other recordings remain.`,
+      );
+    } catch (err) {
+      rError("worktree.menu", "discard member recordings threw", {
+        branch: enrolled.membership.branchName,
+        error: String(err),
+      });
+      setDiscardRecordingsOutcome(
+        `Could not discard this worktree’s recorded resolutions: ${String(err)}`,
+      );
+    } finally {
+      setBusy(false);
+      onRefresh();
+    }
+  }
+
   /**
    * Enroll this worktree in its bench, creating the bench if it does not exist.
    *
@@ -368,6 +436,7 @@ export function useWorktreeRowMenuVerbs({
     requestRetire,
     doRetire,
     doAddToBench,
+    doDiscardRecordings,
     doRename,
     moveInBench,
     enrolled,
@@ -380,6 +449,10 @@ export function useWorktreeRowMenuVerbs({
     busy,
     confirmRetire,
     setConfirmRetire,
+    confirmDiscardRecordings,
+    setConfirmDiscardRecordings,
+    discardRecordingsOutcome,
+    setDiscardRecordingsOutcome,
     retireOutcome,
     setRetireOutcome,
     landError,

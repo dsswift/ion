@@ -4,9 +4,8 @@
  *
  * Reads live inventory state (worktrees with `operationState`) plus the
  * alert map (sync/land failures, which can fire before the next inventory
- * poll). Dismissing a toast does NOT hide this banner: the banner is a live
- * statement of repository state and stays until the operation completes or
- * aborts.
+ * poll). Banner is a live statement of repository state and stays until the
+ * operation completes or aborts.
  */
 import React, { useState } from 'react'
 import { Warning } from '@phosphor-icons/react'

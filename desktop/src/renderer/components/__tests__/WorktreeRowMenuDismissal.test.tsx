@@ -35,6 +35,7 @@ const mocks = vi.hoisted(() => ({
   recordConflictAlert: vi.fn(),
   newWorktreeConversation: vi.fn(async () => undefined),
   setWorktreeStage: vi.fn(async () => undefined),
+  sealLandedWorktree: vi.fn(async () => undefined),
 }))
 
 // Icons are deliberately NOT mocked. The previous mock was a hand-maintained
@@ -80,6 +81,7 @@ vi.mock('../../stores/sessionStore', () => ({
         recordConflictAlert: mocks.recordConflictAlert,
         newWorktreeConversation: mocks.newWorktreeConversation,
         setWorktreeStage: mocks.setWorktreeStage,
+        sealLandedWorktree: mocks.sealLandedWorktree,
         // The retire pre-flight reads these to answer "is anything in this
         // worktree still working". No tabs open means nothing is active, which
         // is the state every dismissal test wants.
@@ -149,6 +151,7 @@ beforeEach(() => {
   mocks.benchAddMember.mockClear()
   mocks.newWorktreeConversation.mockClear()
   mocks.setWorktreeStage.mockClear()
+  mocks.sealLandedWorktree.mockClear()
   mocks.gitWorktreeLand.mockClear()
   mocks.gitWorktreeLand.mockResolvedValue({ ok: true, mode: 'fast-forward' })
   ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = {
@@ -250,6 +253,7 @@ describe('WorktreeRowMenu — uniform dismissal', () => {
     // success path has to dismiss explicitly. It previously never did.
     expect(closed).toBe(1)
     expect(menuGone()).toBe(true)
+    expect(mocks.sealLandedWorktree).toHaveBeenCalledWith(WT)
   })
 
   it('keeps the menu mounted when a Land is refused, to show the error', async () => {

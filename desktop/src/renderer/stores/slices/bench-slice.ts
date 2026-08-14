@@ -9,14 +9,19 @@
  * rules) rather than in component handlers, which would run in whichever window
  * hosts them and decide against stale mirror state.
  */
-import type { StoreSet, StoreGet, State } from '../session-store-types'
-import type { BenchAssembleResult, IntegrationWorkspace } from '../../../shared/types'
-import { rInfo, rWarn, rDebug } from '../../rendererLogger'
+import type { StoreSet, StoreGet, State } from "../session-store-types";
+import type {
+  BenchAssembleResult,
+  IntegrationWorkspace,
+} from "../../../shared/types";
+import { rInfo, rWarn, rDebug } from "../../rendererLogger";
 import {
+  collectAllDirConversations,
   pickBenchConversation,
+  pickNextConversation,
   pickDirTerminal,
   benchTerminalTitle,
-} from '../../../shared/worktree-conversations'
+} from "../../../shared/worktree-conversations";
 
 /**
  * In-flight singleton creation, keyed by bench path. Concurrent opens (overlay
@@ -26,112 +31,178 @@ import {
  * store state: it is owner-window-local machinery (the same pattern as
  * resume-slice-hydration), and the mirror never executes this action.
  */
-const inflightBenchConversations = new Map<string, Promise<string | null>>()
+const inflightBenchConversations = new Map<string, Promise<string | null>>();
 
 export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
     refreshBench: async (repoPath) => {
-      if (!repoPath || repoPath === '~') return
+      if (!repoPath || repoPath === "~") return;
       try {
-        const { workspaces, tips } = await window.ion.benchList(repoPath)
+        const { workspaces, tips } = await window.ion.benchList(repoPath);
         // Refresh staleness for each workspace so the view is correct the
         // moment it renders (view-readiness), not a beat later.
-        const refreshed: IntegrationWorkspace[] = []
+        const refreshed: IntegrationWorkspace[] = [];
         for (const ws of workspaces) {
-          const { workspace } = await window.ion.benchRefreshStaleness(repoPath, ws.sourceBranch)
-          refreshed.push(workspace ?? ws)
+          const { workspace } = await window.ion.benchRefreshStaleness(
+            repoPath,
+            ws.sourceBranch,
+          );
+          refreshed.push(workspace ?? ws);
         }
         set((s) => ({
           benchWorkspaces: new Map(s.benchWorkspaces).set(repoPath, refreshed),
           benchSourceTips: new Map(s.benchSourceTips).set(repoPath, tips),
-        }))
-        rDebug('bench', 'refreshed', { repo_path: repoPath, count: refreshed.length })
+        }));
+        rDebug("bench", "refreshed", {
+          repo_path: repoPath,
+          count: refreshed.length,
+        });
       } catch (err) {
-        rWarn('bench', 'refresh failed', { repo_path: repoPath, error: String(err) })
+        rWarn("bench", "refresh failed", {
+          repo_path: repoPath,
+          error: String(err),
+        });
       }
     },
 
     /**
-     * Open (or focus) the bench's ONE persistent operator conversation.
+     * Open or cycle bench conversations.
      *
-     * Singleton semantics: every entry point (git panel button, ATV, iOS
-     * command) lands on the same tab, resolved by its stored role — never by
-     * rotation through whatever conversations share the directory. Closing the
-     * tab ends the singleton; the next open creates a fresh one. A pre-role
-     * legacy conversation already open in the bench is adopted (stamped with
-     * the role) at most once instead of duplicated.
+     * Every entry point (git panel button, ATV, iOS command) cycles the
+     * non-terminal tabs living in this bench, including an in-progress machine
+     * auto-fix. The persistent `bench-conversation` role still identifies the
+     * operator singleton created only when no conversation is open. A pre-role
+     * legacy conversation is adopted when the cycle first reaches it.
      *
      * Concurrent opens serialize per bench through `inflightBenchConversations`
      * so two near-simultaneous requests cannot both observe "no singleton" and
      * create twins.
      */
     openBenchConversation: async (repoPath, sourceBranch) => {
-      const workspaces = get().benchWorkspaces.get(repoPath) ?? []
-      const ws = workspaces.find((w) => w.sourceBranch === sourceBranch)
+      const workspaces = get().benchWorkspaces.get(repoPath) ?? [];
+      const ws = workspaces.find((w) => w.sourceBranch === sourceBranch);
       if (!ws) {
-        rWarn('bench', 'no workspace to open', { repo_path: repoPath, source_branch: sourceBranch })
-        return null
+        rWarn("bench", "no workspace to open", {
+          repo_path: repoPath,
+          source_branch: sourceBranch,
+        });
+        return null;
       }
 
-      const found = pickBenchConversation(get().tabs, ws.benchPath)
-      if (found) {
-        if (found.adopted) {
-          // Stamp the role so every later resolution is by identity, not by
-          // the legacy directory heuristic. One adoption maximum by
-          // construction: the next call resolves via the role.
+      // The bench bar owns shared integration work, including a running
+      // machine auto-fix. Cycle every non-terminal conversation in this bench
+      // before creating the persistent operator singleton. Worktree rows stay
+      // operator-only; only a bench makes machine work visible navigation.
+      const found = pickBenchConversation(get().tabs, ws.benchPath);
+      const matches = collectAllDirConversations(get().tabs, ws.benchPath);
+      const next = pickNextConversation(matches, get().activeTabId);
+      if (next) {
+        if (found?.adopted && next.tabId === found.tab.id) {
+          // A legacy operator conversation becomes the durable singleton the
+          // first time the bench action reaches it, without stealing any
+          // machine-owned auto-fix slot that shares this directory.
           set((s) => ({
-            tabs: s.tabs.map((t) => (t.id === found.tab.id ? { ...t, tabRole: 'bench-conversation' as const } : t)),
-          }))
+            tabs: s.tabs.map((t) =>
+              t.id === found.tab.id
+                ? { ...t, tabRole: "bench-conversation" as const }
+                : t,
+            ),
+          }));
         }
-        rInfo('bench', 'focusing bench conversation', {
+        rInfo("bench", "focusing bench conversation", {
           bench_path: ws.benchPath,
-          tab_id: found.tab.id.slice(0, 8),
-          adopted: String(found.adopted),
-        })
-        get().selectTab(found.tab.id)
-        return found.tab.id
+          tab_id: next.tabId.slice(0, 8),
+          tab_role: next.tabRole ?? "operator",
+          match_count: matches.length,
+          adopted: String(
+            found?.adopted === true && next.tabId === found.tab.id,
+          ),
+        });
+        get().selectTab(next.tabId);
+        return next.tabId;
       }
 
       // Serialize creation per bench: a second caller arriving while the first
       // is still creating awaits the same promise and focuses the result.
-      const inflight = inflightBenchConversations.get(ws.benchPath)
+      const inflight = inflightBenchConversations.get(ws.benchPath);
       if (inflight) {
-        rInfo('bench', 'awaiting in-flight bench conversation creation', { bench_path: ws.benchPath })
-        const tabId = await inflight
-        if (tabId) get().selectTab(tabId)
-        return tabId
+        rInfo("bench", "awaiting in-flight bench conversation creation", {
+          bench_path: ws.benchPath,
+        });
+        const tabId = await inflight;
+        if (tabId) get().selectTab(tabId);
+        return tabId;
       }
 
       const creation = (async (): Promise<string | null> => {
         // Re-check under the "lock": a singleton may have appeared between the
         // first check and this task starting (e.g. restoration finishing).
-        const recheck = pickBenchConversation(get().tabs, ws.benchPath)
-        if (recheck) {
-          get().selectTab(recheck.tab.id)
-          return recheck.tab.id
+        const recheckMatches = collectAllDirConversations(
+          get().tabs,
+          ws.benchPath,
+        );
+        const recheckNext = pickNextConversation(
+          recheckMatches,
+          get().activeTabId,
+        );
+        if (recheckNext) {
+          const recheckSingleton = pickBenchConversation(
+            get().tabs,
+            ws.benchPath,
+          );
+          if (
+            recheckSingleton?.adopted &&
+            recheckNext.tabId === recheckSingleton.tab.id
+          ) {
+            set((s) => ({
+              tabs: s.tabs.map((t) =>
+                t.id === recheckSingleton.tab.id
+                  ? { ...t, tabRole: "bench-conversation" as const }
+                  : t,
+              ),
+            }));
+          }
+          rInfo("bench", "focusing bench conversation after creation recheck", {
+            bench_path: ws.benchPath,
+            tab_id: recheckNext.tabId.slice(0, 8),
+            tab_role: recheckNext.tabRole ?? "operator",
+            match_count: recheckMatches.length,
+          });
+          get().selectTab(recheckNext.tabId);
+          return recheckNext.tabId;
         }
 
         // The bench worktree may not exist on disk until the first assembly, so
         // materialise it before opening a conversation that would otherwise land
         // in a missing directory.
-        if (!(await ensureBenchDirectory(repoPath, ws, get))) return null
+        if (!(await ensureBenchDirectory(repoPath, ws, get))) return null;
 
-        rInfo('bench', 'creating bench conversation', { bench_path: ws.benchPath })
+        rInfo("bench", "creating bench conversation", {
+          bench_path: ws.benchPath,
+        });
         // useWorktree=false: the bench IS a worktree already and must never get
         // one nested inside it. It is also deliberately not enrolled as a member
         // of itself.
-        const tabId = await get().createTabInDirectory(ws.benchPath, false, true)
+        const tabId = await get().createTabInDirectory(
+          ws.benchPath,
+          false,
+          true,
+        );
         set((s) => ({
-          tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, tabRole: 'bench-conversation' as const } : t)),
-        }))
-        return tabId
-      })()
+          tabs: s.tabs.map((t) =>
+            t.id === tabId
+              ? { ...t, tabRole: "bench-conversation" as const }
+              : t,
+          ),
+        }));
+        return tabId;
+      })();
 
-      inflightBenchConversations.set(ws.benchPath, creation)
+      inflightBenchConversations.set(ws.benchPath, creation);
       try {
-        return await creation
+        return await creation;
       } finally {
-        inflightBenchConversations.delete(ws.benchPath)
+        inflightBenchConversations.delete(ws.benchPath);
       }
     },
 
@@ -150,57 +221,66 @@ export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
      * opens a fresh one, with nothing to reconcile.
      */
     openBenchTerminal: async (repoPath, sourceBranch) => {
-      const workspaces = get().benchWorkspaces.get(repoPath) ?? []
-      const ws = workspaces.find((w) => w.sourceBranch === sourceBranch)
+      const workspaces = get().benchWorkspaces.get(repoPath) ?? [];
+      const ws = workspaces.find((w) => w.sourceBranch === sourceBranch);
       if (!ws) {
-        rWarn('bench', 'no workspace for terminal', { repo_path: repoPath, source_branch: sourceBranch })
-        return null
+        rWarn("bench", "no workspace for terminal", {
+          repo_path: repoPath,
+          source_branch: sourceBranch,
+        });
+        return null;
       }
 
-      const title = benchTerminalTitle(sourceBranch)
-      const existing = pickDirTerminal(get().tabs, ws.benchPath, title)
+      const title = benchTerminalTitle(sourceBranch);
+      const existing = pickDirTerminal(get().tabs, ws.benchPath, title);
       if (existing) {
-        rInfo('bench', 'focusing existing bench terminal', {
+        rInfo("bench", "focusing existing bench terminal", {
           bench_path: ws.benchPath,
           tab_id: existing.id.slice(0, 8),
           adopted: String(existing.customTitle !== title),
-        })
-        get().selectTab(existing.id)
+        });
+        get().selectTab(existing.id);
         // Tier-2 hit: a terminal that was already in the bench directory but
         // not named by Ion. Name it so the next press matches on tier 1 — but
         // only when the operator has not titled it themselves, because their
         // name is the one thing here we must never overwrite.
-        if (!existing.customTitle) get().renameTab(existing.id, title)
-        return existing.id
+        if (!existing.customTitle) get().renameTab(existing.id, title);
+        return existing.id;
       }
 
       // No terminal yet, so the directory has to be real before one opens in
       // it. A shell whose cwd does not exist is the defect, not a fallback.
-      if (!(await ensureBenchDirectory(repoPath, ws, get))) return null
+      if (!(await ensureBenchDirectory(repoPath, ws, get))) return null;
 
-      const tabId = await get().createTerminalTab(ws.benchPath)
-      get().renameTab(tabId, title)
-      rInfo('bench', 'opened bench terminal', {
+      const tabId = await get().createTerminalTab(ws.benchPath);
+      get().renameTab(tabId, title);
+      rInfo("bench", "opened bench terminal", {
         bench_path: ws.benchPath,
         tab_id: tabId.slice(0, 8),
-      })
-      return tabId
+      });
+      return tabId;
     },
 
     benchAssemble: async (repoPath, sourceBranch) => {
-      rInfo('bench', 'assemble requested', { source_branch: sourceBranch })
-      const result = await window.ion.benchAssemble(repoPath, sourceBranch)
+      rInfo("bench", "assemble requested", { source_branch: sourceBranch });
+      const result = await window.ion.benchAssemble(repoPath, sourceBranch);
       if (!result.ok) {
         // A typed refusal is the machinery protecting an in-flight state (an
         // open resolution merge, a dirty bench) — expected, not a failure.
-        if (result.refusal) rInfo('bench', 'assemble refused', { refusal: result.refusal, detail: result.error ?? '' })
-        else rWarn('bench', 'assemble failed', { error: result.error ?? '' })
-      } else if (result.workspace?.lastAssembly === 'failed') {
-        rWarn('bench', 'assembly failed atomically', { error: result.workspace.lastAssemblyError ?? '' })
+        if (result.refusal)
+          rInfo("bench", "assemble refused", {
+            refusal: result.refusal,
+            detail: result.error ?? "",
+          });
+        else rWarn("bench", "assemble failed", { error: result.error ?? "" });
+      } else if (result.workspace?.lastAssembly === "failed") {
+        rWarn("bench", "assembly failed atomically", {
+          error: result.workspace.lastAssemblyError ?? "",
+        });
       }
-      recordRetired(set, repoPath, sourceBranch, result)
-      await get().refreshBench(repoPath)
-      return result
+      recordRetired(set, repoPath, sourceBranch, result);
+      await get().refreshBench(repoPath);
+      return result;
     },
 
     /**
@@ -211,101 +291,218 @@ export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
      * reassemble instead and return null so no dialog opens over a clean bench.
      */
     benchResolveConflict: async (repoPath, sourceBranch) => {
-      rInfo('bench', 'resolve conflict requested', { source_branch: sourceBranch })
-      const prepared = await window.ion.benchResolveConflict(repoPath, sourceBranch)
+      rInfo("bench", "resolve conflict requested", {
+        source_branch: sourceBranch,
+      });
+      const prepared = await window.ion.benchResolveConflict(
+        repoPath,
+        sourceBranch,
+      );
       if (!prepared.ok) {
-        rWarn('bench', 'resolve preparation failed', { error: prepared.error ?? '' })
-        return null
+        rWarn("bench", "resolve preparation failed", {
+          error: prepared.error ?? "",
+        });
+        return null;
       }
       if (!prepared.branchName) {
         // No merge was left open: recordings (or a pin change) already cover
         // the conflict, so a plain assembly completes the job.
-        rInfo('bench', 'no conflict remains, reassembling', { source_branch: sourceBranch })
-        await get().benchAssemble(repoPath, sourceBranch)
-        return null
+        rInfo("bench", "no conflict remains, reassembling", {
+          source_branch: sourceBranch,
+        });
+        await get().benchAssemble(repoPath, sourceBranch);
+        return null;
       }
-      rInfo('bench', 'merge left in progress for resolution', {
-        bench_path: prepared.benchPath ?? '',
+      rInfo("bench", "merge left in progress for resolution", {
+        bench_path: prepared.benchPath ?? "",
         branch: prepared.branchName,
-      })
-      return prepared.benchPath ?? null
+      });
+      return prepared.benchPath ?? null;
     },
 
     benchRerereCount: async (directory) => {
-      const result = await window.ion.benchRerereCount(directory)
-      if (!result.ok) throw new Error(result.error ?? 'Could not count conflict recordings')
-      return result.count
+      const result = await window.ion.benchRerereCount(directory);
+      if (!result.ok)
+        throw new Error(result.error ?? "Could not count conflict recordings");
+      return result.count;
     },
 
     benchRerereForget: async (directory, paths) => {
-      const result = await window.ion.benchRerereForget(directory, paths)
-      if (!result.ok) throw new Error(result.error ?? 'Could not forget conflict recordings')
-      rInfo('bench', 'forgot selected conflict recordings', { directory, count: result.count })
-      return result.count
+      const result = await window.ion.benchRerereForget(directory, paths);
+      if (!result.ok)
+        throw new Error(result.error ?? "Could not forget conflict recordings");
+      rInfo("bench", "forgot selected conflict recordings", {
+        directory,
+        count: result.count,
+      });
+      return result.count;
     },
 
     benchRerereDiscardAll: async (directory) => {
-      const result = await window.ion.benchRerereDiscardAll(directory)
-      if (!result.ok) throw new Error(result.error ?? 'Could not discard conflict recordings')
-      rInfo('bench', 'discarded all conflict recordings', { directory, count: result.count })
-      return result.count
+      const result = await window.ion.benchRerereDiscardAll(directory);
+      if (!result.ok)
+        throw new Error(
+          result.error ?? "Could not discard conflict recordings",
+        );
+      rInfo("bench", "discarded all conflict recordings", {
+        directory,
+        count: result.count,
+      });
+      return result.count;
+    },
+
+    /**
+     * Forget only recordings associated with selected member branches, then
+     * reassemble unchanged pins. This is one forwarded action so the ATV never
+     * decides against its mirror snapshot while a shared Git mutation runs.
+     */
+    benchDiscardMemberRecordings: async (
+      repoPath,
+      sourceBranch,
+      branchNames,
+    ) => {
+      rInfo("bench", "discard member recordings requested", {
+        repo_path: repoPath,
+        source_branch: sourceBranch,
+        branches: branchNames,
+      });
+      const result = await window.ion.benchDiscardMemberRecordings(
+        repoPath,
+        sourceBranch,
+        branchNames,
+      );
+      if (!result.ok) {
+        rWarn("bench", "discard member recordings failed", {
+          repo_path: repoPath,
+          source_branch: sourceBranch,
+          error: result.error ?? "",
+        });
+      } else {
+        rInfo("bench", "discard member recordings completed", {
+          repo_path: repoPath,
+          source_branch: sourceBranch,
+          branches: branchNames,
+          forgotten_count: result.forgottenCount ?? 0,
+          nothing_to_forget: result.branchesWithNothingToForget ?? [],
+          outcome: result.workspace?.lastAssembly ?? "unknown",
+        });
+      }
+      await get().refreshBench(repoPath);
+      return result;
     },
 
     benchUpdateMember: async (repoPath, sourceBranch, worktreePath) => {
-      rInfo('bench', 'update member', { worktree_path: worktreePath })
-      const result = await window.ion.benchUpdateMember({ repoPath, sourceBranch, worktreePath })
-      if (!result.ok) rWarn('bench', 'update member failed', { error: result.error ?? '' })
-      if (result.warning) rWarn('bench', 'update predicts a collision', { warning: result.warning })
-      recordRetired(set, repoPath, sourceBranch, result)
-      await get().refreshBench(repoPath)
-      return result
+      rInfo("bench", "update member", { worktree_path: worktreePath });
+      const result = await window.ion.benchUpdateMember({
+        repoPath,
+        sourceBranch,
+        worktreePath,
+      });
+      if (!result.ok)
+        rWarn("bench", "update member failed", { error: result.error ?? "" });
+      if (result.warning)
+        rWarn("bench", "update predicts a collision", {
+          warning: result.warning,
+        });
+      recordRetired(set, repoPath, sourceBranch, result);
+      await get().refreshBench(repoPath);
+      return result;
     },
 
     benchUpdateAll: async (repoPath, sourceBranch) => {
-      rInfo('bench', 'update all stale', { source_branch: sourceBranch })
-      const result = await window.ion.benchUpdateAll(repoPath, sourceBranch)
-      if (!result.ok) rWarn('bench', 'update all failed', { error: result.error ?? '' })
-      if (result.warning) rWarn('bench', 'update-all predicts a collision', { warning: result.warning })
-      recordRetired(set, repoPath, sourceBranch, result)
-      await get().refreshBench(repoPath)
+      rInfo("bench", "update all stale", { source_branch: sourceBranch });
+      const result = await window.ion.benchUpdateAll(repoPath, sourceBranch);
+      if (!result.ok)
+        rWarn("bench", "update all failed", { error: result.error ?? "" });
+      if (result.warning)
+        rWarn("bench", "update-all predicts a collision", {
+          warning: result.warning,
+        });
+      recordRetired(set, repoPath, sourceBranch, result);
+      await get().refreshBench(repoPath);
+      return result;
+    },
+
+    benchApplyOverlapFastLane: async (repoPath, sourceBranch, basis, orderedPaths) => {
+      // One owner-side action: applying a recommendation is a single durable
+      // member-set replacement, never a mirror-side loop of enable/reorder calls.
+      const result = await window.ion.applyWorktreeOverlap(basis, orderedPaths)
+      if (!result.ok) rWarn('bench', 'overlap fast lane refused', { repo_path: repoPath, source_branch: sourceBranch, error: result.error ?? '' })
+      await get().refreshWorkspaceViews(repoPath)
       return result
     },
 
-    benchAddMember: async (repoPath, sourceBranch, worktreePath, branchName) => {
-      const result = await window.ion.benchAddMember({ repoPath, sourceBranch, worktreePath, branchName })
-      if (!result.ok) rWarn('bench', 'add member refused', { branch: branchName, error: result.error ?? '' })
-      await get().refreshBench(repoPath)
-      return result
+    benchAddMember: async (
+      repoPath,
+      sourceBranch,
+      worktreePath,
+      branchName,
+    ) => {
+      const result = await window.ion.benchAddMember({
+        repoPath,
+        sourceBranch,
+        worktreePath,
+        branchName,
+      });
+      if (!result.ok)
+        rWarn("bench", "add member refused", {
+          branch: branchName,
+          error: result.error ?? "",
+        });
+      await get().refreshBench(repoPath);
+      return result;
     },
 
     benchRemoveMember: async (repoPath, sourceBranch, worktreePath) => {
-      rInfo('bench', 'remove member', { worktree_path: worktreePath })
-      await window.ion.benchRemoveMember({ repoPath, sourceBranch, worktreePath })
-      await get().refreshBench(repoPath)
+      rInfo("bench", "remove member", { worktree_path: worktreePath });
+      await window.ion.benchRemoveMember({
+        repoPath,
+        sourceBranch,
+        worktreePath,
+      });
+      await get().refreshBench(repoPath);
     },
 
     benchSetEnabled: async (repoPath, sourceBranch, worktreePath, enabled) => {
-      await window.ion.benchSetEnabled({ repoPath, sourceBranch, worktreePath, enabled })
-      await get().refreshBench(repoPath)
+      await window.ion.benchSetEnabled({
+        repoPath,
+        sourceBranch,
+        worktreePath,
+        enabled,
+      });
+      await get().refreshBench(repoPath);
     },
 
     benchSetOrder: async (repoPath, sourceBranch, worktreePath, toIndex) => {
-      rInfo('bench', 'member order set', { worktree_path: worktreePath, to_index: toIndex })
-      await window.ion.benchSetOrder({ repoPath, sourceBranch, worktreePath, toIndex })
-      await get().refreshBench(repoPath)
+      rInfo("bench", "member order set", {
+        worktree_path: worktreePath,
+        to_index: toIndex,
+      });
+      await window.ion.benchSetOrder({
+        repoPath,
+        sourceBranch,
+        worktreePath,
+        toIndex,
+      });
+      await get().refreshBench(repoPath);
     },
 
     clearBenchRetired: (repoPath, sourceBranch) => {
-      rDebug('bench', 'absorbed notice dismissed', { repo_path: repoPath, source_branch: sourceBranch })
+      rDebug("bench", "absorbed notice dismissed", {
+        repo_path: repoPath,
+        source_branch: sourceBranch,
+      });
       set((s) => {
-        const forRepo = s.benchRetired.get(repoPath)
-        if (!forRepo || !forRepo.has(sourceBranch)) return {}
-        const nextForRepo = new Map(forRepo)
-        nextForRepo.delete(sourceBranch)
-        return { benchRetired: new Map(s.benchRetired).set(repoPath, nextForRepo) }
-      })
+        const forRepo = s.benchRetired.get(repoPath);
+        if (!forRepo || !forRepo.has(sourceBranch)) return {};
+        const nextForRepo = new Map(forRepo);
+        nextForRepo.delete(sourceBranch);
+        return {
+          benchRetired: new Map(s.benchRetired).set(repoPath, nextForRepo),
+        };
+      });
     },
-  }
+  };
 }
 
 /**
@@ -330,27 +527,28 @@ async function ensureBenchDirectory(
   ws: IntegrationWorkspace,
   get: StoreGet,
 ): Promise<boolean> {
-  const neverBuilt = ws.lastBuiltAt === 0
+  const neverBuilt = ws.lastBuiltAt === 0;
   // Only worth an IPC round trip when the record claims a build happened.
-  const missing = neverBuilt || !(await window.ion.fsExists(ws.benchPath)).exists
-  if (!missing) return true
+  const missing =
+    neverBuilt || !(await window.ion.fsExists(ws.benchPath)).exists;
+  if (!missing) return true;
 
-  rInfo('bench', 'materialising bench directory before use', {
+  rInfo("bench", "materialising bench directory before use", {
     repo_path: repoPath,
     source_branch: ws.sourceBranch,
     bench_path: ws.benchPath,
-    reason: neverBuilt ? 'never_built' : 'directory_gone',
-  })
-  const built = await window.ion.benchAssemble(repoPath, ws.sourceBranch)
+    reason: neverBuilt ? "never_built" : "directory_gone",
+  });
+  const built = await window.ion.benchAssemble(repoPath, ws.sourceBranch);
   if (!built.ok) {
-    rWarn('bench', 'bench build failed; nothing opened', {
+    rWarn("bench", "bench build failed; nothing opened", {
       source_branch: ws.sourceBranch,
-      error: built.error ?? '',
-    })
-    return false
+      error: built.error ?? "",
+    });
+    return false;
   }
-  await get().refreshBench(repoPath)
-  return true
+  await get().refreshBench(repoPath);
+  return true;
 }
 
 /**
@@ -369,19 +567,19 @@ function recordRetired(
   sourceBranch: string,
   result: BenchAssembleResult,
 ): void {
-  const absorbed = result.retired ?? []
+  const absorbed = result.retired ?? [];
   if (absorbed.length > 0) {
-    rInfo('bench', 'members absorbed into base', {
+    rInfo("bench", "members absorbed into base", {
       repo_path: repoPath,
       source_branch: sourceBranch,
       count: absorbed.length,
-      branches: absorbed.map((m) => m.branchName).join(','),
-    })
+      branches: absorbed.map((m) => m.branchName).join(","),
+    });
   }
   set((s) => {
-    const forRepo = new Map(s.benchRetired.get(repoPath) ?? [])
-    if (absorbed.length > 0) forRepo.set(sourceBranch, absorbed)
-    else forRepo.delete(sourceBranch)
-    return { benchRetired: new Map(s.benchRetired).set(repoPath, forRepo) }
-  })
+    const forRepo = new Map(s.benchRetired.get(repoPath) ?? []);
+    if (absorbed.length > 0) forRepo.set(sourceBranch, absorbed);
+    else forRepo.delete(sourceBranch);
+    return { benchRetired: new Map(s.benchRetired).set(repoPath, forRepo) };
+  });
 }

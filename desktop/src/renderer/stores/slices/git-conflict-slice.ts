@@ -1,41 +1,17 @@
 /**
- * Git conflict alerts — the store model behind "a sync failed and you need to
- * know".
+ * Git conflict state — immediate conflict visibility for Git panel and
+ * worktree rows.
  *
- * ── Why this exists ─────────────────────────────────────────────────────────
- * A conflicted sync used to fail into the log file and nowhere else: the
- * result carried `hasConflicts: true` and an operator-facing message, and the
- * UI discarded both. The operator pressed "Sync from josh", saw nothing, and
- * reasonably believed it succeeded — while the worktree sat mid-rebase with
- * its work invisible. This slice is where that signal becomes visible state.
+ * A sync or land can report a conflict before the next inventory refresh. This
+ * slice records that in-progress operation so the persistent Git panel banner
+ * can offer resolution immediately. Inventory refresh clears state when the
+ * operation completes or aborts.
  *
- * ── Sources ─────────────────────────────────────────────────────────────────
- * Alerts are keyed by DIRECTORY (the checkout that is conflicted), fed by:
- *   - sync/land results with `hasConflicts` (recorded by syncWorktree and the
- *     land path the moment they fail);
- *   - inventory refreshes that find a worktree with `operationState` set
- *     (covers a conflict that happened outside Ion, or before a restart).
- *
- * An alert clears when the directory's operation completes or aborts — the
- * inventory refresh notices `operationState` is gone — or when the operator
- * dismisses the toast. Dismissing hides the TOAST only; the row badge and
- * panel banner derive from live inventory state, not from this map, so the
- * truth stays visible until the conflict is actually resolved.
- *
- * ── AI Assisted ─────────────────────────────────────────────────────────────
- * `openConflictAssist` is ONE store action (ATV multi-step rule): create a
- * FRESH conversation in the conflicted directory, then submit the fixed
- * prompt. Always a new tab — commandeering an existing conversation would
- * interrupt it and let its context sway the fix. A component handler chaining
- * these calls would run in whichever window hosts it and decide against stale
- * mirror state.
- *
- * The assist prefers the Desktop-managed `workbench-sync` tier and logs a
- * fallback to `standard` when it is unconfigured. It refuses only when both
- * are absent. The fresh conversation is pinned to the resolved model and
- * forced into auto mode — a plan-mode default would park the fix writing a plan.
+ * `openConflictAssist` remains one store action: create a fresh conversation in
+ * conflicted directory, then submit its fixed resolution prompt. Components must
+ * not chain these calls, because ATV mirror state can be stale between steps.
  */
-import type { StoreSet, StoreGet, State, GitConflictAlert } from '../session-store-types'
+import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { rInfo, rDebug, rWarn } from '../../rendererLogger'
 import { usePreferencesStore } from '../../preferences'
 import { applyPermissionModeForTab } from './tab-slice-permission-mode'
@@ -46,6 +22,7 @@ import {
   renderAiAssistTemplate,
   type AiAssistWorkflowId,
 } from '../../../shared/ai-assist-workflows'
+import { findActiveAutoFix, getInflight, setInflight, clearInflight } from './conflict-assist-dedupe'
 
 /**
  * The exact prompt the AI Assisted button sends, parameterized by the
@@ -111,56 +88,25 @@ export const CONFLICT_ASSIST_PROMPT = conflictAssistPrompt(null)
 
 export function createGitConflictSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
-    /**
-     * Record that a directory is conflicted. Called from the sync/land failure
-     * paths (source 'sync' / 'land') and from inventory refreshes that find an
-     * in-progress operation (source 'detected').
-     *
-     * Re-recording the same directory updates the message but keeps the alert
-     * un-dismissed only if it was not already dismissed — a poll must not
-     * resurrect a toast the operator closed.
-     */
+    /** Record an in-progress operation before inventory's next refresh. */
     recordConflictAlert: (directory, alert) => {
       set((s) => {
-        const existing = s.gitConflictAlerts.get(directory)
-        const next: GitConflictAlert = {
-          ...alert,
-          // A fresh sync/land failure is new information and re-raises the
-          // toast; a periodic 'detected' record keeps a prior dismissal.
-          dismissed: alert.source === 'detected' ? (existing?.dismissed ?? false) : false,
-          recordedAt: Date.now(),
-        }
-        rInfo('git.conflicts', 'conflict alert recorded', {
+        rInfo('git.conflicts', 'conflict state recorded', {
           directory,
-          source: alert.source,
           operation: alert.operationState ?? '',
-          re_raised: !next.dismissed,
         })
-        return { gitConflictAlerts: new Map(s.gitConflictAlerts).set(directory, next) }
+        return { gitConflictAlerts: new Map(s.gitConflictAlerts).set(directory, alert) }
       })
     },
 
-    /** Drop a directory's alert entirely — its operation completed or aborted. */
+    /** Drop conflict state when operation completes or aborts. */
     clearConflictAlert: (directory) => {
       set((s) => {
         if (!s.gitConflictAlerts.has(directory)) return {}
-        rDebug('git.conflicts', 'conflict alert cleared', { directory })
+        rDebug('git.conflicts', 'conflict state cleared', { directory })
         const next = new Map(s.gitConflictAlerts)
         next.delete(directory)
         return { gitConflictAlerts: next }
-      })
-    },
-
-    /** Hide the toast for a directory. The row badge stays until resolved. */
-    dismissConflictAlert: (directory) => {
-      set((s) => {
-        const existing = s.gitConflictAlerts.get(directory)
-        if (!existing || existing.dismissed) return {}
-        rDebug('git.conflicts', 'conflict toast dismissed', { directory })
-        return {
-          gitConflictAlerts: new Map(s.gitConflictAlerts)
-            .set(directory, { ...existing, dismissed: true }),
-        }
       })
     },
 
@@ -177,6 +123,39 @@ export function createGitConflictSlice(set: StoreSet, get: StoreGet): Partial<St
      * development conversation stays untouched.
      */
     openConflictAssist: async (directory) => {
+      const existing = findActiveAutoFix(get().tabs, directory)
+      if (existing) {
+        rInfo('git.conflicts', 'assist: reusing existing auto-fix tab', {
+          directory, tab_id: existing.slice(0, 8),
+        })
+        get().selectTab(existing)
+        return existing
+      }
+
+      const pending = getInflight(directory)
+      if (pending) {
+        rDebug('git.conflicts', 'assist: awaiting in-flight creation for directory', { directory })
+        return pending
+      }
+
+      const creation = (async () => {
+        try {
+          return await openConflictAssistInner(directory, set, get)
+        } finally {
+          clearInflight(directory)
+        }
+      })()
+      setInflight(directory, creation)
+      return creation
+    },
+  }
+}
+
+async function openConflictAssistInner(
+  directory: string,
+  set: StoreSet,
+  get: StoreGet,
+): Promise<string> {
       const tier = await resolveWorkbenchTier({ workflow: 'conflict-resolution', directory })
       if (!tier.ok) throw new Error(tier.error)
 
@@ -247,7 +226,12 @@ export function createGitConflictSlice(set: StoreSet, get: StoreGet): Partial<St
       // conversation stays readable and abortable; submit() and the InputBar
       // both honor the flag, and role + lock persist across restarts.
       set((s) => ({
-        tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, tabRole: 'conflict-auto-fix' as const, inputLocked: true } : t)),
+        tabs: s.tabs.map((t) => (t.id === tabId ? {
+          ...t,
+          tabRole: 'conflict-auto-fix' as const,
+          inputLocked: true,
+          inputLockReason: 'automated-workflow' as const,
+        } : t)),
       }))
 
       const prompt = rendered.prompt
@@ -264,6 +248,4 @@ export function createGitConflictSlice(set: StoreSet, get: StoreGet): Partial<St
         input_locked: true,
       })
       return tabId
-    },
-  }
 }

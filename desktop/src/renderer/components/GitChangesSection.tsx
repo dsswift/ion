@@ -436,8 +436,8 @@ export function GitChangesSection({
         </FloatingPanel>
       )}
 
-      {/* Conflict resolution: the 3-way dialog (one resolution UI everywhere —
-          the same dialog the worktree rows and conflict toasts open). */}
+      {/* Conflict resolution: one 3-way dialog shared by Git panel and
+          worktree rows. */}
       {showResolver && (
         <ConflictsDialog
           directory={directory}
