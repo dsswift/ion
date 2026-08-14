@@ -236,6 +236,12 @@ type Conversation struct {
 	// inferring it from a global mode.
 	Backend string `json:"backend,omitempty"`
 
+	// DispatchTranscriptMirror marks an Ion-owned mirror of a native child
+	// session. Native backends may reuse their external session ID; a later
+	// dispatch must append to this mirror, while a genuine engine-owned child
+	// conversation remains authoritative and disables mirror recording.
+	DispatchTranscriptMirror bool `json:"dispatchTranscriptMirror,omitempty"`
+
 	// NativeSessions maps a delegated-CLI backend kind ("claude-code",
 	// "codex", "grok", "cursor") to the native-session cursor captured at
 	// the exit of the last run this conversation completed on that backend.

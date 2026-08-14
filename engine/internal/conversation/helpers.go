@@ -323,3 +323,8 @@ func jsonFloat(m map[string]any, key string, def float64) float64 {
 func strPtr(s string) *string {
 	return &s
 }
+
+func jsonBool(m map[string]any, key string) bool {
+	value, _ := m[key].(bool)
+	return value
+}

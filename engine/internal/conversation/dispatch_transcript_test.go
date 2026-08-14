@@ -47,3 +47,45 @@ func TestDispatchTranscriptRecorder_PersistsTextAndTools(t *testing.T) {
 		t.Fatalf("history = %+v", messages.Messages)
 	}
 }
+
+func TestDispatchTranscriptRecorder_AppendsWhenNativeSessionIDIsReused(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	first := NewDispatchTranscriptRecorder("first task", "model-a")
+	first.SetConversationID("reused-native")
+	first.Close("first output")
+	second := NewDispatchTranscriptRecorder("second task", "model-a")
+	second.SetConversationID("reused-native")
+	second.Close("second output")
+
+	messages, err := LoadMessagesPaginated("reused-native", "", 0, 0)
+	if err != nil {
+		t.Fatalf("LoadMessagesPaginated: %v", err)
+	}
+	if len(messages.Messages) != 4 {
+		t.Fatalf("messages = %d, want two task/output pairs", len(messages.Messages))
+	}
+	if messages.Messages[0].Content != "first task" || messages.Messages[3].Content != "second output" {
+		t.Fatalf("history = %+v", messages.Messages)
+	}
+}
+
+func TestDispatchTranscriptRecorder_DoesNotAppendEngineOwnedConversation(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	conv := CreateConversation("engine-owned-child", "", "model-a")
+	AddUserMessage(conv, "engine task")
+	if err := Save(conv, ""); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	recorder := NewDispatchTranscriptRecorder("mirror task", "model-a")
+	recorder.SetConversationID("engine-owned-child")
+	recorder.Close("mirror output")
+	messages, err := LoadMessagesPaginated("engine-owned-child", "", 0, 0)
+	if err != nil {
+		t.Fatalf("LoadMessagesPaginated: %v", err)
+	}
+	if len(messages.Messages) != 1 || messages.Messages[0].Content != "engine task" {
+		t.Fatalf("engine-owned history changed: %+v", messages.Messages)
+	}
+}

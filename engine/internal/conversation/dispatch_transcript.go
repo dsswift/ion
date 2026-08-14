@@ -44,8 +44,19 @@ func (r *DispatchTranscriptRecorder) SetConversationID(conversationID string) {
 		return
 	}
 	r.convID = conversationID
-	if _, err := Load(conversationID, ""); err == nil {
-		r.disabled = true
+	if existing, err := Load(conversationID, ""); err == nil {
+		if !existing.DispatchTranscriptMirror {
+			r.disabled = true
+			utils.LogWithFields(utils.LevelDebug, "conversation.dispatch_transcript", "engine-owned dispatch transcript remains authoritative", map[string]any{
+				"conversation_id": conversationID,
+			})
+			return
+		}
+		r.conv = existing
+		if r.task != "" {
+			AddUserMessage(r.conv, r.task)
+		}
+		r.saveLocked("resume_mirror")
 		return
 	} else if !errors.Is(err, ErrNotFound) {
 		r.disabled = true
@@ -55,6 +66,7 @@ func (r *DispatchTranscriptRecorder) SetConversationID(conversationID string) {
 		return
 	}
 	r.conv = CreateConversation(conversationID, "", r.model)
+	r.conv.DispatchTranscriptMirror = true
 	if r.task != "" {
 		AddUserMessage(r.conv, r.task)
 	}
