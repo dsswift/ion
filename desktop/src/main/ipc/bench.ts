@@ -17,12 +17,23 @@ import { prepareConflictResolution } from '../integration/bench-resolve'
 import { reconcileCompletedBenchResolution } from '../integration/bench-resolution-completion'
 import { benchForPath } from '../integration/bench-attribution-support'
 import { countRerereRecordings, discardAllRerereRecordings, forgetRerereRecordings } from '../integration/bench-rerere-purge'
-import { prepareVerificationAnalysis, discardVerificationRecordingsAndReassemble } from '../integration/bench-ops'
+import { prepareVerificationAnalysis, discardMemberRecordingsAndReassemble } from '../integration/bench-ops'
 import { isValidProjectPath } from '../ipc-validation'
 
 const TAG = 'bench.ipc'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
 function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, msg, fields) }
+
+function validMemberBranchNames(branchNames: unknown): branchNames is string[] {
+  return Array.isArray(branchNames) && branchNames.length > 0 && branchNames.every(validMemberBranchName)
+}
+
+function validMemberBranchName(branch: unknown): branch is string {
+  return typeof branch === 'string'
+    && branch.length > 0
+    && branch.length <= 512
+    && !/[\0\r\n]/.test(branch)
+}
 
 export function registerBenchIpc(): void {
   ipcMain.handle(IPC.BENCH_LIST, async (_e, { repoPath }: { repoPath: string }) => {
@@ -164,12 +175,22 @@ export function registerBenchIpc(): void {
   )
 
   ipcMain.handle(
-    IPC.BENCH_DISCARD_VERIFICATION_RECORDINGS,
+    IPC.BENCH_DISCARD_MEMBER_RECORDINGS,
     async (_e, { repoPath, sourceBranch, branchNames }:
       { repoPath: string; sourceBranch: string; branchNames: string[] }) => {
-      log('discard verification recordings requested', { source_branch: sourceBranch, branches: branchNames })
-      const result = await discardVerificationRecordingsAndReassemble(repoPath, sourceBranch, branchNames)
-      if (!result.ok) warn('discard verification recordings failed', { source_branch: sourceBranch, error: result.error ?? '' })
+      if (!isValidProjectPath(repoPath) || !validMemberBranchNames(branchNames)) {
+        warn('discard member recordings rejected invalid arguments', {
+          repo_path: repoPath, source_branch: sourceBranch,
+        })
+        return { ok: false, error: 'Invalid bench recording recovery request.' }
+      }
+      log('discard member recordings requested', {
+        repo_path: repoPath, source_branch: sourceBranch, branches: branchNames,
+      })
+      const result = await discardMemberRecordingsAndReassemble(repoPath, sourceBranch, branchNames)
+      if (!result.ok) warn('discard member recordings failed', {
+        repo_path: repoPath, source_branch: sourceBranch, error: result.error ?? '',
+      })
       return result
     },
   )
