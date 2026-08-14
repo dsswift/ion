@@ -16,6 +16,7 @@ import { useRepoState } from '../stores/git'
 import { GitChangesSection } from './GitChangesSection'
 import { GitGraphSection } from './GitGraphSection'
 import { WorktreeListSection } from './WorktreeListSection'
+import { WorktreeOverlapLauncher } from './WorktreeOverlapLauncher'
 import { GitConflictBanner } from './GitConflictBanner'
 import { CommitForm } from './git/CommitForm'
 import {
@@ -530,6 +531,8 @@ export function GitPanel() {
               {benchBehindCount} behind
             </span>
           )}
+          <div style={{ flex: 1 }} />
+          <WorktreeOverlapLauncher repoPath={repoRootPath} sourceBranch={benchContext?.sourceBranch} />
         </div>
         {worktreesOpen && (
           <div style={{ height: bodyOf('worktrees'), minHeight: 0, display: 'flex', flexDirection: 'column' }}>

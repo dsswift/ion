@@ -180,7 +180,7 @@ export function applyAtvActivationPolicy(atvOpen: boolean): void {
   } catch {
     // Unreadable settings: keep the default (present).
   }
-  const regular = atvOpen && allowed
+  const regular = (atvOpen || isWorktreeOverlapWindowOpen()) && allowed
   try {
     app.setActivationPolicy(regular ? 'regular' : 'accessory')
     if (!regular && app.dock) app.dock.hide()
@@ -193,6 +193,11 @@ export function applyAtvActivationPolicy(atvOpen: boolean): void {
 /** True when a live ATV window exists (used by the app 'activate' router). */
 export function isAtvWindowOpen(): boolean {
   return state.atvWindow != null && !state.atvWindow.isDestroyed()
+}
+
+/** True when the other standard desktop window keeps Ion in regular mode. */
+function isWorktreeOverlapWindowOpen(): boolean {
+  return state.worktreeOverlapWindow != null && !state.worktreeOverlapWindow.isDestroyed()
 }
 
 /**

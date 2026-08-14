@@ -9,6 +9,7 @@ import { terminalManager } from './terminal-manager-instance'
 import { stopTabSnapshotPolling } from './remote/snapshot-polling'
 import { createTray, createWindow, installContentSecurityPolicy, snapshotWindowState, showWindow, toggleWindow } from './window-manager'
 import { focusAtvWindow, isAtvWindowOpen, openAtvWindow, toggleAtvWindow, applyAtvPin, isAtvPinned } from './atv-window-manager'
+import { focusWorktreeOverlapWindow } from './worktree-overlap-window'
 import { resolveSurfacePlan } from './surface-launch'
 import { requestPermissions } from './permissions-preflight'
 import { claimSingleInstance, setupDeepLinks, consumeLaunchUrl, bindDeepLinkRenderer } from './deeplink-setup'
@@ -506,6 +507,7 @@ export function setupAppLifecycle(): void {
     // overlay. With no ATV open, keep the historical overlay behavior.
     app.on('activate', () => {
       if (isAtvWindowOpen()) focusAtvWindow('app activate')
+      else if (state.worktreeOverlapWindow && !state.worktreeOverlapWindow.isDestroyed()) focusWorktreeOverlapWindow('app activate')
       else showWindow('app activate')
     })
   }).catch((err) => error('app_lifecycle: whenReady startup failed', { error: String(err) }))

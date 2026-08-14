@@ -18,6 +18,7 @@ import React, { useMemo } from 'react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { WorktreeListSection } from '../components/WorktreeListSection'
+import { WorktreeOverlapLauncher } from '../components/WorktreeOverlapLauncher'
 
 export function AtvWorktreeDockPane(): React.JSX.Element {
   const colors = useColors()
@@ -46,13 +47,13 @@ export function AtvWorktreeDockPane(): React.JSX.Element {
     // would ever reach its own scroll threshold. Same shape as the overlay's git
     // panel, where each pane body clips and the section inside it scrolls.
     <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-      <SectionHeading label="Worktrees" colors={colors} />
+      <SectionHeading label="Worktrees" colors={colors} trailing={<WorktreeOverlapLauncher repoPath={repoPath} />} />
       <WorktreeListSection repoPath={repoPath} refreshKey={activeTabId ? 1 : 0} />
     </div>
   )
 }
 
-function SectionHeading({ label, colors }: { label: string; colors: ReturnType<typeof useColors> }): React.JSX.Element {
+function SectionHeading({ label, colors, trailing }: { label: string; colors: ReturnType<typeof useColors>; trailing?: React.ReactNode }): React.JSX.Element {
   return (
     <div
       style={{
@@ -65,9 +66,11 @@ function SectionHeading({ label, colors }: { label: string; colors: ReturnType<t
         // The two sections below grow; the headings must not, or they would
         // give up their height to them.
         flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}
     >
-      {label}
+      <span>{label}</span>
+      {trailing}
     </div>
   )
 }

@@ -70,6 +70,8 @@ interface MutableState {
   tabSnapshotInterval: ReturnType<typeof setInterval> | null
   /** The Agent Team Visualizer window (single instance; null when closed). */
   atvWindow: BrowserWindow | null
+  /** The desktop-only Worktree Overlap visualizer window. */
+  worktreeOverlapWindow: BrowserWindow | null
   /**
    * Last active tab reported by the main renderer's active-tab notifier.
    * Seeds the ATV window's target tab on open, before any live tab switch.
@@ -100,6 +102,7 @@ export const state: MutableState = {
   terminalOutputFlushTimer: null,
   tabSnapshotInterval: null,
   atvWindow: null,
+  worktreeOverlapWindow: null,
   atvActiveTabId: null,
   atvActiveProfileId: null,
   rendererSnapshotCache: null,

@@ -7,6 +7,7 @@ import { broadcast } from './broadcast'
 import { terminalManager } from './terminal-manager-instance'
 import { openAtvWindow, reassertAtvActivationPolicy } from './atv-window-manager'
 import { restartEngineDaemon } from './engine-bootstrap'
+import { preserveWorktreeOverlapWindow } from './worktree-overlap-window'
 import { resolveSurfacePlan } from './surface-launch'
 import { readSettings } from './settings-store'
 import { attemptRendererRecovery, resetRendererCrashGuard } from './renderer-crash-guard'
@@ -365,6 +366,7 @@ export function showWindow(source = 'unknown'): void {
   }
   state.mainWindow.show()
   state.mainWindow.webContents.focus()
+  preserveWorktreeOverlapWindow()
   broadcast(IPC.WINDOW_SHOWN)
   if (SPACES_DEBUG) scheduleToggleSnapshots(toggleId, 'show')
 }
