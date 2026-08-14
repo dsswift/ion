@@ -47,6 +47,9 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     /// Input-locked conversation (auto-generated conflict fix): the input bar
     /// is replaced with a notice and no prompt can be sent. Nil decodes false.
     var inputLocked: Bool?
+    /// Distinguishes machine workflow locks from sealed landed-worktree review.
+    /// Older desktops omit it, which preserves the established automated-fix copy.
+    var inputLockReason: String?
     var hasEngineExtension: Bool?
     var terminalInstances: [TerminalInstanceInfo]?
     var activeTerminalInstanceId: String?

@@ -70,6 +70,18 @@ final class UnifiedSubmitPathTests: XCTestCase {
         XCTAssertEqual(vm.conversationMessages("plain").last?.role, .user)
     }
 
+    func testInputLockedTabRejectsSubmitWithoutOptimisticMessage() {
+        let vm = SessionViewModel()
+        var tab = makeTab(id: "locked", engine: false)
+        tab.inputLocked = true
+        vm.tabs = [tab]
+
+        vm.submit(tabId: "locked", text: "must not send")
+
+        XCTAssertEqual(vm.tabs.first?.status, .idle)
+        XCTAssertTrue(vm.conversationMessages("locked").isEmpty)
+    }
+
     /// The DATA seam: an extension-backed tab carries an `instanceId`, a plain
     /// tab does not. This is the only per-tab difference in the submit path.
     func testResolveSubmitInstanceIdIsTheOnlyPerTabDifference() {
