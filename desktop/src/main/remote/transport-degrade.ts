@@ -123,21 +123,27 @@ type AgentStatePayload = RemoteEvent & {
  * Returns the degraded event with metadataOmitted stamped, or null if even
  * stage 2 cannot fit.
  */
-function shedAgentMetadata(event: RemoteEvent, cap?: number): RemoteEvent | null {
+type DegradedCandidate = { event: RemoteEvent; plaintext: string }
+
+function shedAgentMetadata(event: RemoteEvent, cap: number): DegradedCandidate | null {
   const e = event as AgentStatePayload
   if (!Array.isArray(e.agents)) return null
 
   const stage1 = { ...e, agents: shedAgentsMetadataSlim(e.agents), metadataOmitted: true } as RemoteEvent
-  if (cap !== undefined && JSON.stringify(stage1).length <= cap) return stage1
+  const stage1Plaintext = JSON.stringify(stage1)
+  if (stage1Plaintext.length <= cap) return { event: stage1, plaintext: stage1Plaintext }
 
-  return { ...e, agents: shedAgentsMetadata(e.agents), metadataOmitted: true } as RemoteEvent
+  const stage2 = { ...e, agents: shedAgentsMetadata(e.agents), metadataOmitted: true } as RemoteEvent
+  const stage2Plaintext = JSON.stringify(stage2)
+  if (stage2Plaintext.length > cap) return null
+  return { event: stage2, plaintext: stage2Plaintext }
 }
 
 /**
  * Degraders by event type. An event type absent here cannot be degraded and
  * is dropped when oversized, as before.
  */
-export const DEGRADERS: Map<string, (event: RemoteEvent, cap?: number) => RemoteEvent | null> = new Map([
+export const DEGRADERS: Map<string, (event: RemoteEvent, cap: number) => DegradedCandidate | null> = new Map([
   ['desktop_agent_state', shedAgentMetadata],
 ])
 
@@ -161,11 +167,5 @@ export function degradeOversizedEvent(
   const degrader = DEGRADERS.get(event.type)
   if (!degrader) return null
 
-  const degraded = degrader(event, cap)
-  if (!degraded) return null
-
-  const plaintext = JSON.stringify(degraded)
-  if (plaintext.length > cap) return null
-
-  return { event: degraded, plaintext }
+  return degrader(event, cap)
 }

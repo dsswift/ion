@@ -66,6 +66,18 @@ export class EngineControlPlane extends EventEmitter {
       handleEngineEvent(ctx, tabId, tab, event)
     })
 
+    this.bridge.on('agent-state-recovered', (key: string, event: EngineEvent) => {
+      const tab = this.tabs.get(key)
+      if (!tab) return
+      const ctx: EventEmitterContext = {
+        bridge: this.bridge,
+        emit: (eventName, ...args) => { this.emit(eventName, ...args) },
+        setStatus: (tabId, newStatus) => this._setStatus(tabId, newStatus),
+        checkDrain: () => this._checkDrain(),
+      }
+      handleEngineEvent(ctx, key, tab, event)
+    })
+
     this.bridge.on('reconnected', () => {
       for (const tab of this.tabs.values()) {
         if (tab.engineSessionStarted) {

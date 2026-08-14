@@ -6,6 +6,7 @@ import { startSession as startSessionImpl, reRegisterSessions as reRegisterSessi
 import { sendReconcileState as sendReconcileStateImpl, sendQuerySessionStatus as sendQuerySessionStatusImpl } from './engine-bridge-state-sync'
 import { stopAll as stopAllImpl, shutdownAndWait as shutdownAndWaitImpl } from './engine-bridge-lifecycle'
 import { buildSendPromptMessage, buildSendPromptLogLine } from './engine-bridge-prompts'
+import { installAgentStateRecovery } from './engine-bridge-agent-state'
 import * as conv from './engine-bridge-conversations'
 import * as prov from './engine-bridge-providers'
 import type { EngineConfig, EngineEvent, ImageAttachmentPayload, DiscoveredCommand } from '../shared/types'
@@ -70,6 +71,7 @@ export class EngineBridge extends EventEmitter {
 
   constructor() {
     super()
+    installAgentStateRecovery(this)
   }
 
   // ─── Connection lifecycle ───
@@ -312,6 +314,11 @@ export class EngineBridge extends EventEmitter {
   async request<T>(cmd: string, payload: Record<string, unknown> = {}): Promise<{ ok: boolean; error?: string; data?: T }> {
     await this.connect()
     return this._sendWithData<T>({ cmd, ...payload })
+  }
+
+  async getAgentState(key: string): Promise<{ ok: boolean; error?: string; agents?: import('../shared/types').AgentStateUpdate[] }> {
+    const result = await this.request<{ agents?: import('../shared/types').AgentStateUpdate[] }>('get_agent_state', { key })
+    return { ok: result.ok, error: result.error, agents: result.data?.agents }
   }
 
   /** Track the conversation ID for a session so it can be restored on reconnect. */
