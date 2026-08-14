@@ -114,4 +114,29 @@ describe('DirContextMenu move submenu', () => {
     })
     expect(onCreateTab).toHaveBeenCalledOnce()
   })
+
+  it('keeps move submenu open while pointer crosses parent-menu padding, then selects its target', () => {
+    act(() => {
+      root.render(
+        <DirContextMenu
+          anchor={{ x: 10, y: 10 }}
+          dirName="project"
+          tabId="tab-1"
+          tabGroupId="group-1"
+          onCreateTab={() => {}}
+          onClose={() => {}}
+        />,
+      )
+    })
+
+    const move = findButton('Move to group')
+    act(() => { move.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })) })
+
+    const parentMenu = [...portalTarget.querySelectorAll('[data-ion-ui]')]
+      .find((menu) => menu.contains(move))!
+    act(() => { parentMenu.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })) })
+
+    act(() => { findButton('Elsewhere').click() })
+    expect(moveTabToGroup).toHaveBeenCalledWith('tab-1', 'group-2')
+  })
 })

@@ -28,6 +28,7 @@ let gitChanges: ReturnType<typeof vi.fn>
 let tabGroupMode: 'auto' | 'manual'
 let tabGroups: Array<{ id: string; label: string }>
 let moveTabToGroup: ReturnType<typeof vi.fn>
+let moveTabToGroupAndPin: ReturnType<typeof vi.fn>
 
 vi.mock('@phosphor-icons/react', () => ({
   Plus: () => null, GitFork: () => null, FolderOpen: () => null, GitBranch: () => null,
@@ -70,10 +71,12 @@ vi.mock('../../stores/sessionStore', () => ({
   useSessionStore: Object.assign(
     (selector: (state: {
       moveTabToGroup: () => void
+      moveTabToGroupAndPin: () => void
       toggleTabGroupPin: () => void
       conversationPanes: Map<string, unknown>
     }) => unknown) => selector({
       moveTabToGroup: moveTabToGroup as () => void,
+      moveTabToGroupAndPin: moveTabToGroupAndPin as () => void,
       toggleTabGroupPin: () => {},
       conversationPanes: panes,
     }),
@@ -105,7 +108,10 @@ function paneWith(inst: Record<string, unknown>) {
   ])
 }
 
-function renderMenu(over: Partial<TabState> = {}, options: { onRename?: () => void; onClose?: () => void } = {}) {
+function renderMenu(
+  over: Partial<TabState> = {},
+  options: { onRename?: () => void; onClose?: () => void; groupTabs?: TabState[] } = {},
+) {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
@@ -118,6 +124,7 @@ function renderMenu(over: Partial<TabState> = {}, options: { onRename?: () => vo
         onNewTabInDir={() => {}}
         onFinishWork={() => {}}
         onClose={options.onClose ?? (() => {})}
+        groupTabs={options.groupTabs}
       />,
     )
   })
@@ -144,6 +151,7 @@ beforeEach(() => {
   tabGroupMode = 'auto'
   tabGroups = []
   moveTabToGroup = vi.fn()
+  moveTabToGroupAndPin = vi.fn()
   gitChanges = vi.fn()
   window.ion = {
     gitIsRepo: vi.fn().mockResolvedValue({ isRepo: true }),
@@ -198,6 +206,46 @@ describe('TabContextMenu convert to worktree', () => {
       rename.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
     expect(onRename).toHaveBeenCalledOnce()
+
+    act(() => { root.unmount() })
+    container.remove()
+  })
+
+  it.each([
+    ['Move to group', undefined],
+    ['Move to group and pin', undefined],
+    ['Move all to group', [baseTab, { ...baseTab, id: 'tab-2' }]],
+  ] as Array<[string, TabState[] | undefined]>)('keeps %s submenu open while pointer crosses parent-menu padding', async (label, groupTabs) => {
+    tabGroupMode = 'manual'
+    tabGroups = [{ id: 'group-2', label: 'Elsewhere' }]
+    gitChanges.mockResolvedValue({ files: [] })
+    const { container, root } = renderMenu(
+      { groupId: 'group-1' },
+      { groupTabs },
+    )
+
+    await settle()
+
+    const move = [...portalTarget.querySelectorAll('button')]
+      .find((button) => button.textContent?.trim() === label)!
+    act(() => { move.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })) })
+
+    const parentMenu = [...portalTarget.querySelectorAll('[data-ion-ui]')]
+      .find((menu) => menu.contains(move))!
+    act(() => { parentMenu.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })) })
+
+    const target = [...portalTarget.querySelectorAll('button')]
+      .find((button) => button.textContent?.trim() === 'Elsewhere')!
+    expect(target).toBeDefined()
+    act(() => { target.click() })
+
+    if (label === 'Move all to group') {
+      expect(portalTarget.textContent).toContain('Move all tabs?')
+    } else if (label === 'Move to group and pin') {
+      expect(moveTabToGroupAndPin).toHaveBeenCalledWith('tab-1', 'group-2')
+    } else {
+      expect(moveTabToGroup).toHaveBeenCalledWith('tab-1', 'group-2')
+    }
 
     act(() => { root.unmount() })
     container.remove()

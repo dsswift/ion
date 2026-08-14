@@ -99,7 +99,10 @@ export function DirContextMenu({
     <motion.div
       ref={(node) => { (ref as React.MutableRefObject<HTMLDivElement | null>).current = node; pos.ref(node) }}
       onMouseOver={(e) => {
-        if (!(e.target as HTMLElement).closest('[data-ion-submenu-trigger]')) closeMoveSubmenus()
+        const parentItem = (e.target as HTMLElement).closest('button')
+        if (parentItem && ref.current?.contains(parentItem) && !parentItem.hasAttribute('data-ion-submenu-trigger')) {
+          closeMoveSubmenus()
+        }
       }}
       data-ion-ui
       initial={{ opacity: 0, scale: 0.9 }}
