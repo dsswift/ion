@@ -6,6 +6,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/utils"
+	"github.com/dsswift/ion/engine/internal/workspaces"
 )
 
 // BuildChildAgentSpawner returns a tools.AgentSpawner closure suitable for
@@ -41,10 +42,11 @@ func BuildChildAgentSpawner(
 	registry *DispatchRegistry,
 	childDepth int,
 	childDispatchId string,
+	parentWorkspaceChecker ...*workspaces.Checker,
 ) tools.AgentSpawner {
 	// Build the dispatch function for this child's depth. When the child
 	// invokes the Agent tool, the grandchild will be at childDepth+1.
-	dispatchFn := BuildDispatchAgentFunc(sa, registry, childDepth, childDispatchId)
+	dispatchFn := BuildDispatchAgentFunc(sa, registry, childDepth, childDispatchId, parentWorkspaceChecker...)
 
 	utils.LogWithFields(utils.LevelInfo, "server", "child spawner wired", map[string]any{"child_depth": childDepth, "child_dispatch_id": childDispatchId, "session_key": sa.SessionKey()})
 

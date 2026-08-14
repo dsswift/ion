@@ -14,6 +14,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/session/agents"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
+	"github.com/dsswift/ion/engine/internal/workspaces"
 )
 
 // BuildDispatchAgentFunc returns the DispatchAgent closure. currentDepth is
@@ -24,7 +25,11 @@ import (
 // terminal outcome via OnComplete/OnError/OnRecall callbacks.
 // Phase 2 lifecycle callbacks fire from OnNormalized; Phase 3 telemetry
 // (engine_dispatch_start/end) emit on the parent session's event stream.
-func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, currentDepth int, currentDispatchId string) func(extension.DispatchAgentOpts) (*extension.DispatchAgentResult, error) {
+func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, currentDepth int, currentDispatchId string, parentWorkspaceChecker ...*workspaces.Checker) func(extension.DispatchAgentOpts) (*extension.DispatchAgentResult, error) {
+	var workspaceChecker *workspaces.Checker
+	if len(parentWorkspaceChecker) > 0 {
+		workspaceChecker = parentWorkspaceChecker[0]
+	}
 	return func(opts extension.DispatchAgentOpts) (*extension.DispatchAgentResult, error) {
 		// --- Depth guard ---
 		childDepth := currentDepth + 1
@@ -262,6 +267,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		childExtHost := loadChildExtension(sa, registry, &opts, model, projectPath, childDepth, agentID)
 		if childExtHost != nil {
 			childCfg = &backend.RunConfig{
+				WorkspaceChecker: workspaceChecker,
 				Hooks: backend.RunHooks{
 					OnToolCall: func(info backend.ToolCallInfo) (*backend.ToolCallResult, error) {
 						// Build the suspend closure for tool-call contexts so the
@@ -314,7 +320,10 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			dispatchDefaultModel = engCfg.DefaultModel
 		}
 		if childCfg == nil {
-			childCfg = &backend.RunConfig{DefaultModel: dispatchDefaultModel}
+			childCfg = &backend.RunConfig{
+				DefaultModel:     dispatchDefaultModel,
+				WorkspaceChecker: workspaceChecker,
+			}
 		} else if childCfg.DefaultModel == "" {
 			childCfg.DefaultModel = dispatchDefaultModel
 		}
@@ -326,7 +335,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 
 		// Wire AgentSpawner so the child can dispatch grandchildren via the
 		// engine Agent tool (see dispatch_child_spawner.go for rationale).
-		childCfg.AgentSpawner = BuildChildAgentSpawner(sa, registry, childDepth, agentID)
+		childCfg.AgentSpawner = BuildChildAgentSpawner(sa, registry, childDepth, agentID, childCfg.WorkspaceChecker)
 
 		// Park-on-children: report this child's own live (non-detached)
 		// dispatches at ITS turn boundary, so a lead that fire-and-forgets a

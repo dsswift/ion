@@ -147,44 +147,46 @@ func (w *WorktreeContext) format() string {
 		fmt.Fprintf(&b, "\nWorktree label: %s\n", w.Title)
 	}
 	if w.Landed {
-		b.WriteString("\nThis worktree's work has already landed in its source branch.\n")
+		b.WriteString("\nThis worktree is SEALED — its work has already landed in the source branch. All writes, edits, and Bash mutations are refused. The worktree is read-only. To continue work on this area, create a new worktree from the updated source branch.\n")
+	} else {
+		b.WriteString("\nWrites are confined to this worktree. Writing into the base repository or into another worktree of the same repository is refused, because it would interleave several conversations' work in one checkout and review could not attribute the changes afterwards. Directories outside this repository entirely are unaffected.\n")
 	}
 
-	b.WriteString("\nWrites are confined to this worktree. Writing into the base repository or into another worktree of the same repository is refused, because it would interleave several conversations' work in one checkout and review could not attribute the changes afterwards. Directories outside this repository entirely are unaffected.\n")
-
-	// The branch-attachment invariant. Stated as an END STATE, never as a verb
-	// blocklist: this worktree's history verbs (rebase, reset, stash, amend,
-	// push) are exactly what the operator's own amend and squash workflows are
-	// built from, and an earlier revision that forbade them broke all three.
-	// What must not happen is the worktree being LEFT off its branch — the
-	// failure that made a mid-rebase checkout vanish from the operator's panel.
-	// Enforcement lives in two places (a narrow pre-execution refusal for
-	// operations that change which branch the worktree holds, and a
-	// post-execution attachment check that reports a detached HEAD or an
-	// interrupted operation), so this text only has to state the obligation.
-	b.WriteString("\nThis worktree holds one conversation's branch")
-	if w.BranchName != "" {
-		fmt.Fprintf(&b, " (%s)", w.BranchName)
-	}
-	b.WriteString(". Committing, amending, rebasing, resetting, stashing, cherry-picking, branch management, and pushing are all fine here. Switching the checkout to a different branch, deliberately detaching HEAD, and removing or moving the checkout are refused. End every turn with HEAD attached")
-	if w.BranchName != "" {
-		fmt.Fprintf(&b, " to %s", w.BranchName)
-	}
-	b.WriteString(": if a rebase or merge stops on a conflict, finish it (`--continue`) or unwind it (`--abort`) before you are done — a worktree left detached is reported as missing and a later sync reads the wrong commit.\n")
-
-	if len(w.Siblings) > 0 {
-		b.WriteString("\nOther worktrees of this repository (not writable from here):\n")
-		for _, s := range w.Siblings {
-			fmt.Fprintf(&b, "- %s", s.WorktreePath)
-			if s.BranchName != "" {
-				fmt.Fprintf(&b, " (%s)", s.BranchName)
-			}
-			if s.Title != "" {
-				fmt.Fprintf(&b, " — %s", s.Title)
-			}
-			b.WriteString("\n")
+	if !w.Landed {
+		// The branch-attachment invariant. Stated as an END STATE, never as a verb
+		// blocklist: this worktree's history verbs (rebase, reset, stash, amend,
+		// push) are exactly what the operator's own amend and squash workflows are
+		// built from, and an earlier revision that forbade them broke all three.
+		// What must not happen is the worktree being LEFT off its branch — the
+		// failure that made a mid-rebase checkout vanish from the operator's panel.
+		// Enforcement lives in two places (a narrow pre-execution refusal for
+		// operations that change which branch the worktree holds, and a
+		// post-execution attachment check that reports a detached HEAD or an
+		// interrupted operation), so this text only has to state the obligation.
+		b.WriteString("\nThis worktree holds one conversation's branch")
+		if w.BranchName != "" {
+			fmt.Fprintf(&b, " (%s)", w.BranchName)
 		}
-		b.WriteString("\nUse WorktreeList, WorktreeCommits, and WorktreeDiff to inspect what a sibling worktree has already built — commit history, diffs, unlanded work — without opening its directory. Check before starting work that might duplicate or conflict with what a sibling is already doing.\n")
+		b.WriteString(". Committing, amending, rebasing, resetting, stashing, cherry-picking, branch management, and pushing are all fine here. Switching the checkout to a different branch, deliberately detaching HEAD, and removing or moving the checkout are refused. End every turn with HEAD attached")
+		if w.BranchName != "" {
+			fmt.Fprintf(&b, " to %s", w.BranchName)
+		}
+		b.WriteString(": if a rebase or merge stops on a conflict, finish it (`--continue`) or unwind it (`--abort`) before you are done — a worktree left detached is reported as missing and a later sync reads the wrong commit.\n")
+
+		if len(w.Siblings) > 0 {
+			b.WriteString("\nOther worktrees of this repository (not writable from here):\n")
+			for _, s := range w.Siblings {
+				fmt.Fprintf(&b, "- %s", s.WorktreePath)
+				if s.BranchName != "" {
+					fmt.Fprintf(&b, " (%s)", s.BranchName)
+				}
+				if s.Title != "" {
+					fmt.Fprintf(&b, " — %s", s.Title)
+				}
+				b.WriteString("\n")
+			}
+			b.WriteString("\nUse WorktreeList, WorktreeCommits, and WorktreeDiff to inspect what a sibling worktree has already built — commit history, diffs, unlanded work — without opening its directory. Check before starting work that might duplicate or conflict with what a sibling is already doing.\n")
+		}
 	}
 	return b.String()
 }

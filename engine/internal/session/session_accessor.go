@@ -15,6 +15,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
+	"github.com/dsswift/ion/engine/internal/workspaces"
 )
 
 // sessionAccessor adapts *Manager + *engineSession to the
@@ -300,6 +301,19 @@ func (a *sessionAccessor) DispatchRegistry() *extcontext.DispatchRegistry {
 }
 
 func (a *sessionAccessor) EngineConfig() *types.EngineRuntimeConfig { return a.m.config }
+
+// WorkspaceChecker returns the root run's selected containment checker for
+// extension-originated dispatches that bypass the root AgentSpawner.
+func (a *sessionAccessor) WorkspaceChecker() *workspaces.Checker {
+	var security *types.SecurityConfig
+	if a.m.config != nil {
+		security = a.m.config.Security
+	}
+	if !security.WorkspaceContainmentEnabled() {
+		return nil
+	}
+	return a.m.workspaceChecker()
+}
 
 // EngineBuildIdentity returns the manager snapshot used by child host setup.
 func (a *sessionAccessor) EngineBuildIdentity() string {

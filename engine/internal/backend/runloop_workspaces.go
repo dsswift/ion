@@ -59,12 +59,14 @@ func (b *ApiBackend) recordWorkspaceRefusal(
 	results []conversation.ToolResultEntry,
 	i int,
 ) {
-	utils.LogWithFields(utils.LevelInfo, "workspaces", "tool call refused by workspace containment", map[string]any{
-		"tool":   block.Name,
-		"kind":   string(refusal.Kind),
-		"target": refusal.Target,
-		"cwd":    cwd,
-		"run_id": run.requestID,
+	utils.LogWithFields(utils.LevelInfo, "workspaces", "workspace containment decision", map[string]any{
+		"decision": "deny",
+		"reason":   refusal.Reason,
+		"tool":     block.Name,
+		"kind":     string(refusal.Kind),
+		"target":   refusal.Target,
+		"cwd":      cwd,
+		"run_id":   run.requestID,
 	})
 
 	if permDenyFn != nil {

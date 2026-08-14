@@ -12,6 +12,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
+	"github.com/dsswift/ion/engine/internal/workspaces"
 )
 
 // wireAgentSpawner installs the AgentSpawner closure on runCfg for the
@@ -42,7 +43,7 @@ import (
 // lifecycle.
 func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel string, extGroup *extension.ExtensionGroup, runCfg *backend.RunConfig) {
 	capturedRunID, _ := s.runIdentitySnapshot()
-	runCfg.AgentSpawner = m.buildRootAgentSpawner(s, key, parentModel, extGroup, m.progressTarget(capturedRunID))
+	runCfg.AgentSpawner = m.buildRootAgentSpawner(s, key, parentModel, extGroup, m.progressTarget(capturedRunID), runCfg.WorkspaceChecker)
 }
 
 // buildRootAgentSpawner returns the depth-0 AgentSpawner used by BOTH the
@@ -54,11 +55,7 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 // telemetry, child tool wiring (BuildDelegatedChildToolServer), and a
 // grandchild-capable spawner — instead of the old bare synchronous child run
 // that surfaced no agent and left the child tool-orphaned.
-func (m *Manager) buildRootAgentSpawner(s *engineSession, key string, parentModel string, extGroup *extension.ExtensionGroup, progressTargets ...func()) tools.AgentSpawner {
-	var progressTarget func()
-	if len(progressTargets) > 0 {
-		progressTarget = progressTargets[0]
-	}
+func (m *Manager) buildRootAgentSpawner(s *engineSession, key string, parentModel string, extGroup *extension.ExtensionGroup, progressTarget func(), workspaceChecker *workspaces.Checker) tools.AgentSpawner {
 	capturedModel := parentModel
 	capturedKey := key
 	capturedExtGroup := extGroup
@@ -184,7 +181,7 @@ func (m *Manager) buildRootAgentSpawner(s *engineSession, key string, parentMode
 		// it. This matches the CLI-hook agent-spec path (prompt_cli_hooks.go)
 		// and is the engine-consistent behavior.
 		acc := &sessionAccessor{m: m, s: s, key: capturedKey, progressTarget: progressTarget}
-		dispatchFn := extcontext.BuildDispatchAgentFunc(acc, s.dispatchRegistry, 0, "")
+		dispatchFn := extcontext.BuildDispatchAgentFunc(acc, s.dispatchRegistry, 0, "", workspaceChecker)
 		dispatchOpts := extension.DispatchAgentOpts{
 			Name:          agentName,
 			Task:          prompt,
