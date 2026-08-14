@@ -6,8 +6,6 @@ const TAG = 'EngineBridgeAgentState'
 function debug(msg: string, fields?: Record<string, unknown>): void { _debug(TAG, msg, fields) }
 function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, msg, fields) }
 
-type AgentStateResult = { agents?: AgentStateUpdate[] }
-
 /** Returns a stable bounded-roster fingerprint without retaining oversized values. */
 export function agentStateFingerprint(agents: AgentStateUpdate[]): string {
   return agents.map(agent => {
