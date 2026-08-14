@@ -443,7 +443,9 @@ export function InputBar() {
     return (
       <div ref={wrapperRef} data-ion-ui data-testid="input-locked-notice" className="flex items-center w-full" style={{ minHeight: 50 }}>
         <span style={{ fontSize: 12, color: colors.textTertiary, paddingLeft: 2 }}>
-          Automated fix conversation — input is disabled. Continue the work in its worktree.
+          {tab.inputLockReason === 'landed-worktree'
+            ? 'Landed worktree review — input is disabled. Retire this worktree when review is complete.'
+            : 'Automated fix conversation — input is disabled. Continue the work in its worktree.'}
         </span>
       </div>
     )

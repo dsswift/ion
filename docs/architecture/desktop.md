@@ -217,7 +217,7 @@ rejected alternatives are in
 
 | Concern | Location |
 |---|---|
-| Land / sync preflight and primitives | `main/worktree/integrate.ts` |
+| Land / sync preflight and primitives | `main/worktree/integrate.ts`, `main/worktree/sync.ts` |
 | Retire / re-attach | `main/worktree/relocate.ts` |
 | Discard appraisal + work preservation | `main/worktree/safety.ts` |
 | Close decision (never destructive) | `shared/worktree-close-decision.ts` |
@@ -253,6 +253,11 @@ mounts the overlay's own components rather than bespoke widgets.
 
 ### Invariants worth knowing before changing this code
 
+- **Landing is terminal.** `landedAt` is the stored, irreversible witness of a
+  successful Land. Land immediately removes the member from every bench without
+  rebuilding or advancing remaining pins; the sealed checkout is review-only
+  until explicit Retire. Remaining worktrees receive landed content through
+  normal Sync, then explicit pin Update/assembly.
 - **Assembly merges pins, never tips**, and never advances a pin. Only
   `updateMember` / `updateAllStale` in `bench-ops.ts` advance one. Breaking this
   means an assembly for one member drags in another's half-finished work.

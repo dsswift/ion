@@ -18,7 +18,7 @@ interface Props {
  */
 export function DispatchPager({ dispatches, selectedIndex, onSelect, compact }: Props) {
   const colors = useColors()
-  if (dispatches.length <= 1) return null
+  if (dispatches.length === 0) return null
 
   const selected = dispatches[selectedIndex]
 
@@ -27,7 +27,7 @@ export function DispatchPager({ dispatches, selectedIndex, onSelect, compact }: 
       {/* Pill row — reversed so newest dispatch appears first (leftmost) */}
       <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'center' }}>
         <span style={{ fontSize: 9, color: colors.textTertiary, marginRight: 2 }}>
-          Dispatches:
+          Dispatches: {dispatches.length}
         </span>
         {[...dispatches].reverse().map((d, ri) => {
           // ri is the reversed index; map back to the original array index.

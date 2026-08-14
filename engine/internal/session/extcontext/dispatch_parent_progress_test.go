@@ -13,6 +13,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/resource"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/workspaces"
 )
 
 // bumpCountingAccessor is a minimal SessionAccessor that records how many times
@@ -27,7 +28,8 @@ type bumpCountingAccessor struct {
 	// allocPlanPath is returned by AllocatePlanFilePath. When empty the method
 	// returns a default plan-shaped path so plan-mode dispatch tests observe a
 	// realistic allocated value.
-	allocPlanPath string
+	allocPlanPath    string
+	workspaceChecker *workspaces.Checker
 }
 
 func (a *bumpCountingAccessor) BumpParentProgress()              { a.bumpCount.Add(1) }
@@ -88,6 +90,7 @@ func (a *bumpCountingAccessor) ExtGroup() *extension.ExtensionGroup             
 func (a *bumpCountingAccessor) ExtConfig() *extension.ExtensionConfig                { return nil }
 func (a *bumpCountingAccessor) ProcRegistry() *extension.ProcessRegistry             { return nil }
 func (a *bumpCountingAccessor) EngineConfig() *types.EngineRuntimeConfig             { return nil }
+func (a *bumpCountingAccessor) WorkspaceChecker() *workspaces.Checker                { return a.workspaceChecker }
 func (a *bumpCountingAccessor) ClaudeCompat() bool                                   { return false }
 func (a *bumpCountingAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
 func (a *bumpCountingAccessor) ResolveTier(_ string) string                          { return "" }

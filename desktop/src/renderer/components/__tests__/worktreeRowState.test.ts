@@ -156,6 +156,17 @@ describe('resolveRowState — one rung at a time', () => {
   })
 })
 
+describe('resolveRowState — landed worktree sealed', () => {
+  it('does not surface stale status for a sealed landed worktree', () => {
+    const state = resolveRowState({
+      entry: entry({ landedAt: 1, needsSync: true, operationState: 'rebasing', conflictedPaths: ['a.ts'] }),
+      membership: member({ merge: 'conflicted', pin: 'behind' }),
+    })
+    expect(state.kind).toBe('none')
+    expect(resolveRowWords({ entry: entry({ landedAt: 1, needsSync: true }) })).toEqual([])
+  })
+})
+
 describe('resolveRowState — the case the collapsed enum could not express', () => {
   const input = {
     entry: entry({ needsSync: true }),

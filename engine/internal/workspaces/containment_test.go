@@ -294,6 +294,116 @@ func TestWorkspaceNilCheckerPassesEverything(t *testing.T) {
 	}
 }
 
+// ─── Landed worktree sealing ────────────────────────────────────────────────
+
+func landedRegistry(t *testing.T, dir string) {
+	t.Helper()
+	writeWorktreeRegistry(t, dir, []WorktreeEntry{
+		{WorktreePath: minePath, RepoPath: repoPath, BranchName: "wt/mine", LandedAt: 1700000500000},
+		{WorktreePath: sibling, RepoPath: repoPath},
+	})
+}
+
+func TestLandedWorktreeRefusesWriteInsideOwnWorktree(t *testing.T) {
+	dir := t.TempDir()
+	landedRegistry(t, dir)
+	c := NewCheckerAt(dir)
+
+	r := c.Check("Write", writeInput(filepath.Join(minePath, "x.go")), minePath)
+
+	if r == nil {
+		t.Fatal("a landed worktree must refuse Write even inside itself")
+	}
+	if r.Kind != RefusalLandedWorktree {
+		t.Fatalf("kind = %s, want landed_worktree", r.Kind)
+	}
+	if !contains(r.Reason, "sealed") {
+		t.Errorf("reason must say sealed: %s", r.Reason)
+	}
+}
+
+func TestLandedWorktreeRefusesEditInsideOwnWorktree(t *testing.T) {
+	dir := t.TempDir()
+	landedRegistry(t, dir)
+	c := NewCheckerAt(dir)
+
+	r := c.Check("Edit", writeInput(filepath.Join(minePath, "y.go")), minePath)
+
+	if r == nil || r.Kind != RefusalLandedWorktree {
+		t.Fatalf("Edit in landed worktree must be refused, got %+v", r)
+	}
+}
+
+func TestLandedWorktreeRefusesNotebookEdit(t *testing.T) {
+	dir := t.TempDir()
+	landedRegistry(t, dir)
+	c := NewCheckerAt(dir)
+
+	r := c.Check("NotebookEdit", writeInput(filepath.Join(minePath, "n.ipynb")), minePath)
+
+	if r == nil || r.Kind != RefusalLandedWorktree {
+		t.Fatalf("NotebookEdit in landed worktree must be refused, got %+v", r)
+	}
+}
+
+func TestLandedWorktreeRefusesBash(t *testing.T) {
+	dir := t.TempDir()
+	landedRegistry(t, dir)
+	c := NewCheckerAt(dir)
+
+	r := c.Check("Bash", bashInput("echo hi"), minePath)
+
+	if r == nil || r.Kind != RefusalLandedWorktree {
+		t.Fatalf("Bash in landed worktree must be refused, got %+v", r)
+	}
+}
+
+func TestLandedWorktreePassesReadTools(t *testing.T) {
+	dir := t.TempDir()
+	landedRegistry(t, dir)
+	c := NewCheckerAt(dir)
+
+	for _, tool := range []string{"Read", "Grep", "Glob", "Agent"} {
+		if r := c.Check(tool, writeInput(filepath.Join(minePath, "x.go")), minePath); r != nil {
+			t.Fatalf("read tool %s refused in landed worktree: %+v", tool, r)
+		}
+	}
+}
+
+func TestUnlandedWorktreePassesWriteInsideItself(t *testing.T) {
+	dir := t.TempDir()
+	landedRegistry(t, dir)
+	c := NewCheckerAt(dir)
+
+	// sibling has no LandedAt -- writing inside it must pass.
+	if r := c.Check("Write", writeInput(filepath.Join(sibling, "ok.go")), sibling); r != nil {
+		t.Fatalf("unlanded sibling must allow writes inside itself: %+v", r)
+	}
+}
+
+func TestLandedWorktreeFailsOpenOnMissingRegistry(t *testing.T) {
+	c := NewCheckerAt(t.TempDir())
+
+	if r := c.Check("Write", writeInput(filepath.Join(minePath, "x.go")), minePath); r != nil {
+		t.Fatalf("missing registry must fail open (no landed refusal): %+v", r)
+	}
+}
+
+func TestLandedWorktreeReasonIncludesBranch(t *testing.T) {
+	dir := t.TempDir()
+	landedRegistry(t, dir)
+	c := NewCheckerAt(dir)
+
+	r := c.Check("Write", writeInput(filepath.Join(minePath, "x.go")), minePath)
+
+	if r == nil {
+		t.Fatal("expected landed refusal")
+	}
+	if !contains(r.Reason, "wt/mine") {
+		t.Errorf("reason must include branch name: %s", r.Reason)
+	}
+}
+
 func contains(s, sub string) bool {
 	return len(s) >= len(sub) && (s == sub || len(sub) == 0 || indexOf(s, sub) >= 0)
 }

@@ -37,6 +37,7 @@ func (m *Manager) rehydrateDispatchState(s *engineSession, key string) *conversa
 	}
 
 	dispatches := conversation.AgentDispatchEntries(conv)
+	backfillDispatchTranscripts(conv, dispatches)
 	if len(dispatches) == 0 {
 		utils.LogWithFields(utils.LevelDebug, "session", "rehydratedispatchstate: no dispatch entries", map[string]any{"key": key, "conversation_id": s.conversationID})
 		return conv
@@ -87,7 +88,7 @@ func (m *Manager) rehydrateDispatchState(s *engineSession, key string) *conversa
 		// Build a dispatch info entry for the structured dispatches array.
 		dispatchEntry := map[string]interface{}{
 			"id":     d.AgentID,
-			"task":   d.Task,
+			"task":   dispatchTaskLabel(d.Task),
 			"model":  d.Model,
 			"status": d.Status,
 		}
@@ -104,7 +105,7 @@ func (m *Manager) rehydrateDispatchState(s *engineSession, key string) *conversa
 		// carries duplicate instances (the amplification bug) collapses to the
 		// distinct set on load instead of re-seeding the duplication.
 		if len(d.Dispatches) > 0 {
-			metadata["dispatches"] = dedupDispatchesByID(nil, d.Dispatches)
+			metadata["dispatches"] = mergeDispatchesByID(nil, d.Dispatches)
 		} else {
 			metadata["dispatches"] = []interface{}{dispatchEntry}
 		}
@@ -162,9 +163,9 @@ func (m *Manager) rehydrateDispatchState(s *engineSession, key string) *conversa
 			// back to unioning the bare dispatchEntry.
 			existingDispatches, _ := existing.Metadata["dispatches"].([]interface{}) //nolint:errcheck // best-effort; failure not actionable here
 			if len(d.Dispatches) > 0 {
-				existing.Metadata["dispatches"] = dedupDispatchesByID(existingDispatches, d.Dispatches)
+				existing.Metadata["dispatches"] = mergeDispatchesByID(existingDispatches, d.Dispatches)
 			} else {
-				existing.Metadata["dispatches"] = dedupDispatchesByID(existingDispatches, []map[string]interface{}{dispatchEntry})
+				existing.Metadata["dispatches"] = mergeDispatchesByID(existingDispatches, []map[string]interface{}{dispatchEntry})
 			}
 		})
 	}
@@ -258,39 +259,73 @@ func (m *Manager) announceLostDispatches(s *engineSession, key string) {
 	m.emitAgentSnapshot(key, agentSnapshotReasonRehydrate, true, s.agents.MergedSnapshot())
 }
 
-// dedupDispatchesByID unions an existing []interface{} dispatches slice with a
-// freshly-loaded []map[string]interface{} slice, keying on each entry's stable
-// "id" so an instance appears exactly once. First-seen order is preserved:
-// existing entries keep their position, new ids are appended in load order.
-// Entries with no usable "id" are always kept (they cannot be de-duplicated)
-// so malformed members survive rather than being silently dropped. The result
-// is a fresh []interface{} suitable for assignment into agent metadata.
-func dedupDispatchesByID(existing []interface{}, loaded []map[string]interface{}) []interface{} {
+// mergeDispatchesByID overlays later persisted members onto earlier members
+// with the same stable id. First-seen order stays stable, but field values use
+// last-write-wins semantics, matching the parent AgentStateUpdate lifecycle:
+// registration records say running, terminal records later add done/error,
+// conversationId, and elapsed. Rehydration must never restore the stale
+// registration member just because it appeared first in the conversation file.
+//
+// Members without a usable id remain append-only. They cannot be correlated
+// safely, so attempting to merge them would invent identity and hide malformed
+// source data.
+func mergeDispatchesByID(existing []interface{}, loaded []map[string]interface{}) []interface{} {
 	out := make([]interface{}, 0, len(existing)+len(loaded))
-	seen := make(map[string]bool, len(existing)+len(loaded))
+	indices := make(map[string]int, len(existing)+len(loaded))
 
-	for _, e := range existing {
-		if m, ok := e.(map[string]interface{}); ok {
-			if id, ok := m["id"].(string); ok && id != "" {
-				if seen[id] {
-					continue
-				}
-				seen[id] = true
-			}
+	appendOrOverlay := func(member map[string]interface{}) {
+		id, ok := member["id"].(string)
+		if !ok || id == "" {
+			out = append(out, cloneDispatchMember(member))
+			return
 		}
-		out = append(out, e)
+		if index, seen := indices[id]; seen {
+			prior, ok := out[index].(map[string]interface{})
+			if !ok {
+				// Preserve malformed existing data and append the addressable
+				// later member rather than replacing an unknown shape.
+				indices[id] = len(out)
+				out = append(out, cloneDispatchMember(member))
+				return
+			}
+			statusBefore, _ := prior["status"].(string)       //nolint:errcheck // diagnostic only
+			convBefore, _ := prior["conversationId"].(string) //nolint:errcheck // diagnostic only
+			merged := cloneDispatchMember(prior)
+			for key, value := range member {
+				merged[key] = value
+			}
+			out[index] = merged
+			statusAfter, _ := merged["status"].(string)       //nolint:errcheck // diagnostic only
+			convAfter, _ := merged["conversationId"].(string) //nolint:errcheck // diagnostic only
+			utils.LogWithFields(utils.LevelDebug, "session", "rehydratedispatchstate: later dispatch member superseded earlier member", map[string]any{
+				"dispatch_id":             id,
+				"status_changed":          statusBefore != statusAfter,
+				"conversation_id_changed": convBefore != convAfter,
+			})
+			return
+		}
+		indices[id] = len(out)
+		out = append(out, cloneDispatchMember(member))
 	}
 
-	for _, m := range loaded {
-		if id, ok := m["id"].(string); ok && id != "" {
-			if seen[id] {
-				continue
-			}
-			seen[id] = true
+	for _, entry := range existing {
+		if member, ok := entry.(map[string]interface{}); ok {
+			appendOrOverlay(member)
+			continue
 		}
-		out = append(out, m)
+		out = append(out, entry)
 	}
+	for _, member := range loaded {
+		appendOrOverlay(member)
+	}
+	return out
+}
 
+func cloneDispatchMember(member map[string]interface{}) map[string]interface{} {
+	out := make(map[string]interface{}, len(member))
+	for key, value := range member {
+		out[key] = value
+	}
 	return out
 }
 
@@ -338,10 +373,11 @@ func (m *Manager) persistTerminalDispatches(key, convID string) {
 		if meta == nil {
 			continue
 		}
-		// Only persist entries with dispatch metadata (task field).
-		// Extension-only roster entries (idle, no task) are skipped.
-		task, _ := meta["task"].(string) //nolint:errcheck // best-effort; failure not actionable here
-		if task == "" {
+		// Dispatch identity is authoritative. `task` is descriptive metadata and
+		// must not decide whether a terminal dispatch is persisted.
+		_, hasDispatches := meta["dispatches"].([]interface{}) //nolint:errcheck // best-effort; malformed metadata is not a dispatch
+		task, _ := meta["task"].(string)                       //nolint:errcheck // best-effort; optional display data
+		if state.ID == "" || (!hasDispatches && task == "") {
 			continue
 		}
 

@@ -8,14 +8,27 @@
  * from the entry, the bench membership, and a set of callbacks, so the item
  * list can be reasoned about (and tested) without mounting a portal.
  */
-import React from 'react'
-import { ArrowLineDown, ArrowsClockwise, ChatCircle, Flask, FolderOpen, Package, PencilSimple, Trash, XCircle } from '@phosphor-icons/react'
-import { describeLandStrategy } from '../../shared/worktree-land-strategy'
-import { workStageIcon, workStageColor } from './WorktreeStageSlot'
-import { WORK_STAGES, type WorkStage } from '../../shared/types-git'
-import type { ColorPalette } from '../theme/palette-dark'
-import type { IntegrationMember, WorktreeInventoryEntry } from '../../shared/types'
-import type { WorktreeCompletionStrategy } from '../../shared/types'
+import React from "react";
+import {
+  ArrowLineDown,
+  ArrowsClockwise,
+  ChatCircle,
+  Flask,
+  FolderOpen,
+  Package,
+  PencilSimple,
+  Trash,
+  XCircle,
+} from "@phosphor-icons/react";
+import { describeLandStrategy } from "../../shared/worktree-land-strategy";
+import { workStageIcon, workStageColor } from "./WorktreeStageSlot";
+import { WORK_STAGES, type WorkStage } from "../../shared/types-git";
+import type { ColorPalette } from "../theme/palette-dark";
+import type {
+  IntegrationMember,
+  WorktreeInventoryEntry,
+} from "../../shared/types";
+import type { WorktreeCompletionStrategy } from "../../shared/types";
 
 /**
  * One row in the menu.
@@ -26,13 +39,13 @@ import type { WorktreeCompletionStrategy } from '../../shared/types'
  * the menu component and would unmount with it.
  */
 export interface WorktreeMenuItem {
-  label: string
-  icon: React.ReactNode
-  disabled?: boolean
-  hint?: string
+  label: string;
+  icon: React.ReactNode;
+  disabled?: boolean;
+  hint?: string;
   /** Item renders its own UI in place of the menu; it handles its own exit. */
-  keepsMenuOpen?: boolean
-  run(): void
+  keepsMenuOpen?: boolean;
+  run(): void;
 }
 
 /**
@@ -40,31 +53,32 @@ export interface WorktreeMenuItem {
  * stays free of store access, IPC, and dialog state.
  */
 export interface WorktreeMenuActions {
-  onNewConversation(): void
-  onBeginRename(): void
-  onAddToBench(): void
-  onSetStage(stage: WorkStage | null): void
-  onMoveInBench(toIndex: number): void
-  onSync(): void
-  onLand(): void
-  onReveal(): void
-  onReprovision(): void
-  onRequestRetire(): void
+  onNewConversation(): void;
+  onBeginRename(): void;
+  onAddToBench(): void;
+  onSetStage(stage: WorkStage | null): void;
+  onMoveInBench(toIndex: number): void;
+  onSync(): void;
+  onLand(): void;
+  onReveal(): void;
+  onReprovision(): void;
+  onRequestDiscardRecordings(): void;
+  onRequestRetire(): void;
 }
 
 export interface WorktreeMenuItemsInput {
-  entry: WorktreeInventoryEntry
-  colors: ColorPalette
-  strategy: WorktreeCompletionStrategy
+  entry: WorktreeInventoryEntry;
+  colors: ColorPalette;
+  strategy: WorktreeCompletionStrategy;
   /** Bench membership for this worktree, when it is enrolled in one. */
-  enrolled: { membership: IntegrationMember; sourceBranch: string } | undefined
+  enrolled: { membership: IntegrationMember; sourceBranch: string } | undefined;
   /** Position of this worktree in its bench's merge order; -1 when unenrolled. */
-  benchIndex: number
+  benchIndex: number;
   /** Number of members in this worktree's bench; 0 when unenrolled. */
-  benchSize: number
+  benchSize: number;
   /** True when this worktree is already a member of any bench for the repo. */
-  alreadyInBench: boolean
-  actions: WorktreeMenuActions
+  alreadyInBench: boolean;
+  actions: WorktreeMenuActions;
 }
 
 /**
@@ -75,15 +89,17 @@ export interface WorktreeMenuItemsInput {
  * Disable rather than guess.
  */
 export function landRefusalReason(entry: WorktreeInventoryEntry): string {
-  if (!entry.sourceBranch) return 'Source branch unknown'
-  if (entry.isDirty) return 'Commit changes first'
-  if (entry.unlandedCommitCount === 0) return 'Nothing to land'
-  return ''
+  if (!entry.sourceBranch) return "Source branch unknown";
+  if (entry.isDirty) return "Commit changes first";
+  if (entry.unlandedCommitCount === 0) return "Nothing to land";
+  return "";
 }
 
 /** True when the land verb can run against this worktree. */
 export function canLandWorktree(entry: WorktreeInventoryEntry): boolean {
-  return !!entry.sourceBranch && entry.unlandedCommitCount > 0 && !entry.isDirty
+  return (
+    !!entry.sourceBranch && entry.unlandedCommitCount > 0 && !entry.isDirty
+  );
 }
 
 /**
@@ -99,35 +115,67 @@ export function canLandWorktree(entry: WorktreeInventoryEntry): boolean {
  * the menu. A menu still on screen after a click reads as "the click did
  * nothing" — which is exactly what was reported for retire.
  */
-export function buildWorktreeMenuItems(input: WorktreeMenuItemsInput): WorktreeMenuItem[] {
-  const { entry, colors, strategy, enrolled, benchIndex, benchSize, alreadyInBench, actions } = input
-  const canLand = canLandWorktree(entry)
-  const landReason = landRefusalReason(entry)
+export function buildWorktreeMenuItems(
+  input: WorktreeMenuItemsInput,
+): WorktreeMenuItem[] {
+  const {
+    entry,
+    colors,
+    strategy,
+    enrolled,
+    benchIndex,
+    benchSize,
+    alreadyInBench,
+    actions,
+  } = input;
+  const landed = !!entry.landedAt;
+  if (landed) {
+    return [{
+      label: "Retire worktree",
+      icon: <Trash size={12} color={colors.textSecondary} />,
+      keepsMenuOpen: true,
+      run: actions.onRequestRetire,
+    }];
+  }
+
+  const canLand = canLandWorktree(entry);
+  const landReason = landRefusalReason(entry);
 
   return [
     {
       // The row CLICK opens or cycles existing conversations; this creates an
       // additional one. Two distinct verbs, so the second gets a menu entry
       // rather than a second gutter button that looks like the first.
-      label: 'New conversation here',
+      label: "New conversation here",
       icon: <ChatCircle size={12} color={colors.accent} />,
       run: actions.onNewConversation,
     },
     {
-      label: entry.title ? 'Rename worktree' : 'Name this worktree',
+      label: entry.title ? "Rename worktree" : "Name this worktree",
       icon: <PencilSimple size={12} color={colors.textSecondary} />,
       // Named lazily from the first prompt, so a worktree that has not been
       // prompted in yet still needs a manual way to get a name.
-      hint: entry.title ? '' : 'Not named yet',
+      hint: entry.title ? "" : "Not named yet",
       // Swaps the menu body for the inline editor.
       keepsMenuOpen: true,
       run: actions.onBeginRename,
     },
     {
-      label: alreadyInBench ? 'Already in the bench' : 'Add to integration bench',
-      icon: <Flask size={12} color={alreadyInBench || !entry.sourceBranch ? colors.textTertiary : colors.accent} />,
+      label: alreadyInBench
+        ? "Already in the bench"
+        : "Add to integration bench",
+      icon: (
+        <Flask
+          size={12}
+          color={
+            alreadyInBench || !entry.sourceBranch
+              ? colors.textTertiary
+              : colors.accent
+          }
+        />
+      ),
       disabled: alreadyInBench || !entry.sourceBranch,
-      hint: !entry.sourceBranch ? 'Source branch unknown' : '',
+      hint: !entry.sourceBranch ? "Source branch unknown" : "",
       run: actions.onAddToBench,
     },
     // Workflow stages. The gutter chip is the fast path; the menu is where the
@@ -136,76 +184,127 @@ export function buildWorktreeMenuItems(input: WorktreeMenuItemsInput): WorktreeM
     // plus a dedicated Clear entry when a stage is set, because "remove the
     // marker" should not require knowing the toggle convention.
     ...WORK_STAGES.map((s) => {
-      const isActive = entry.stage === s.id
+      const isActive = entry.stage === s.id;
       return {
         label: isActive ? `Stage: ${s.label} ✓` : `Stage: ${s.label}`,
         icon: (
-          <span style={{ display: 'inline-flex', color: isActive ? workStageColor(s.id, colors) : colors.textSecondary }}>
+          <span
+            style={{
+              display: "inline-flex",
+              color: isActive
+                ? workStageColor(s.id, colors)
+                : colors.textSecondary,
+            }}
+          >
             {workStageIcon(s.id, 12, isActive)}
           </span>
         ),
-        run: () => { actions.onSetStage(isActive ? null : s.id) },
-      }
+        run: () => {
+          actions.onSetStage(isActive ? null : s.id);
+        },
+      };
     }),
-    ...(entry.stage ? [{
-      label: 'Clear stage',
-      icon: <XCircle size={12} color={colors.textSecondary} />,
-      run: () => { actions.onSetStage(null) },
-    }] : []),
+    ...(entry.stage
+      ? [
+          {
+            label: "Clear stage",
+            icon: <XCircle size={12} color={colors.textSecondary} />,
+            run: () => {
+              actions.onSetStage(null);
+            },
+          },
+        ]
+      : []),
     // Keyboard-reachable reorder. Dragging the rail is the direct gesture, but
     // a drag is not available to every operator or every input device.
-    ...(enrolled ? [
-      {
-        label: 'Move earlier in the merge',
-        icon: <ArrowLineDown size={12} color={colors.textSecondary} style={{ transform: 'rotate(180deg)' }} />,
-        disabled: benchIndex <= 0,
-        hint: benchIndex <= 0 ? 'Already first' : '',
-        run: () => { actions.onMoveInBench(benchIndex - 1) },
-      },
-      {
-        label: 'Move later in the merge',
-        icon: <ArrowLineDown size={12} color={colors.textSecondary} />,
-        disabled: benchIndex < 0 || benchIndex >= benchSize - 1,
-        hint: benchIndex >= benchSize - 1 ? 'Already last' : '',
-        run: () => { actions.onMoveInBench(benchIndex + 1) },
-      },
-    ] : []),
+    ...(enrolled
+      ? [
+          {
+            label: "Move earlier in the merge",
+            icon: (
+              <ArrowLineDown
+                size={12}
+                color={colors.textSecondary}
+                style={{ transform: "rotate(180deg)" }}
+              />
+            ),
+            disabled: benchIndex <= 0,
+            hint: benchIndex <= 0 ? "Already first" : "",
+            run: () => {
+              actions.onMoveInBench(benchIndex - 1);
+            },
+          },
+          {
+            label: "Move later in the merge",
+            icon: <ArrowLineDown size={12} color={colors.textSecondary} />,
+            disabled: benchIndex < 0 || benchIndex >= benchSize - 1,
+            hint: benchIndex >= benchSize - 1 ? "Already last" : "",
+            run: () => {
+              actions.onMoveInBench(benchIndex + 1);
+            },
+          },
+        ]
+      : []),
     {
-      label: `Sync from ${entry.sourceBranch ?? 'source'}`,
+      label: `Sync from ${entry.sourceBranch ?? "source"}`,
       icon: <ArrowsClockwise size={12} color={colors.textSecondary} />,
       disabled: !entry.sourceBranch || entry.isDirty,
-      hint: !entry.sourceBranch ? 'Source branch unknown' : entry.isDirty ? 'Commit changes first' : '',
+      hint: !entry.sourceBranch
+        ? "Source branch unknown"
+        : entry.isDirty
+          ? "Commit changes first"
+          : "",
       run: actions.onSync,
     },
     {
-      label: `Land into ${entry.sourceBranch ?? 'source'}`,
-      icon: <ArrowLineDown size={12} color={canLand ? colors.worktreeGreen : colors.textTertiary} />,
+      label: `Land into ${entry.sourceBranch ?? "source"}`,
+      icon: (
+        <ArrowLineDown
+          size={12}
+          color={canLand ? colors.worktreeGreen : colors.textTertiary}
+        />
+      ),
       disabled: !canLand,
       // Name the strategy that will actually run, so the operator is not
       // guessing which of the three shapes this click produces.
-      hint: landReason ?? (entry.sourceBranch ? describeLandStrategy(strategy, entry.sourceBranch) : undefined),
+      hint:
+        landReason ??
+        (entry.sourceBranch
+          ? describeLandStrategy(strategy, entry.sourceBranch)
+          : undefined),
       // A land REFUSAL raises an error dialog owned by the menu component, so
       // the menu must survive the click; `doLand` closes it on the success path.
       keepsMenuOpen: true,
       run: actions.onLand,
     },
     {
-      label: 'Reveal in Finder',
+      label: "Reveal in Finder",
       icon: <FolderOpen size={12} color={colors.textSecondary} />,
       run: actions.onReveal,
     },
     {
-      label: 'Re-provision',
+      label: "Re-provision",
       icon: <Package size={12} color={colors.textSecondary} />,
       run: actions.onReprovision,
     },
+    ...(enrolled
+      ? [
+          {
+            label: "Discard recorded resolutions",
+            icon: <Trash size={12} color={colors.dangerFg} />,
+            // Confirmation and result replace menu body, so component must remain mounted.
+            keepsMenuOpen: true,
+            run: actions.onRequestDiscardRecordings,
+          },
+        ]
+      : []),
     {
-      label: 'Retire worktree',
+      label: "Retire worktree",
       icon: <Trash size={12} color={colors.textSecondary} />,
       // Owns the confirmation dialog and the busy guard, so it stays mounted;
       // the body is withdrawn by `dialogUp` in the component.
       keepsMenuOpen: true,
       run: actions.onRequestRetire,
     },
-  ]
+  ];
 }

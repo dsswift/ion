@@ -116,6 +116,45 @@ final class WorktreeOpResultWireTests: XCTestCase {
         XCTAssertEqual(result.summary, "2 synced, 1 skipped (unknown source)")
     }
 
+    func testOpResultRetireDecodes() throws {
+        let json = """
+        {"type":"desktop_worktree_op_result","ok":true,"operation":"retire"}
+        """.data(using: .utf8)!
+
+        let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
+
+        guard case let .worktreeOpResult(result) = event else { return XCTFail("wrong case") }
+        XCTAssertTrue(result.ok)
+        XCTAssertEqual(result.operation, .retire)
+    }
+
+    /// `retire_all` decodes with its `retired` count, on both a full success
+    /// and a partial-batch failure -- the count is the only signal that tells
+    /// the operator whether ANYTHING was retired before the batch stopped.
+    func testOpResultRetireAllCarriesRetiredCount() throws {
+        let ok = """
+        {"type":"desktop_worktree_op_result","ok":true,"operation":"retire_all","retired":3}
+        """.data(using: .utf8)!
+
+        let okEvent = try JSONDecoder().decode(RemoteEvent.self, from: ok)
+        guard case let .worktreeOpResult(okResult) = okEvent else { return XCTFail("wrong case") }
+        XCTAssertTrue(okResult.ok)
+        XCTAssertEqual(okResult.operation, .retireAll)
+        XCTAssertEqual(okResult.retired, 3)
+
+        let partial = """
+        {"type":"desktop_worktree_op_result","ok":false,"operation":"retire_all",
+         "error":"disk busy","retired":1}
+        """.data(using: .utf8)!
+
+        let partialEvent = try JSONDecoder().decode(RemoteEvent.self, from: partial)
+        guard case let .worktreeOpResult(partialResult) = partialEvent else { return XCTFail("wrong case") }
+        XCTAssertFalse(partialResult.ok)
+        XCTAssertEqual(partialResult.operation, .retireAll)
+        XCTAssertEqual(partialResult.retired, 1)
+        XCTAssertEqual(partialResult.error, "disk busy")
+    }
+
     /// The summary survives a round-trip, so a relayed frame loses nothing.
     func testSyncAllSummaryRoundTrips() throws {
         let original = RemoteEvent.worktreeOpResult(result: RemoteWorktreeOpResult(
@@ -128,5 +167,102 @@ final class WorktreeOpResultWireTests: XCTestCase {
         guard case let .worktreeOpResult(result) = decoded else { return XCTFail("wrong case") }
         XCTAssertEqual(result.operation, .syncAll)
         XCTAssertEqual(result.summary, "All worktrees already current")
+    }
+}
+
+extension WorktreeOpResultWireTests {
+    /// Open results identify exact tab desktop created or focused. The phone must
+    /// navigate by this authoritative id, never guess from worktree state.
+    func testOpenResultCarriesTabIdAndFailure() throws {
+        let success = #"{"type":"desktop_worktree_op_result","ok":true,"operation":"open","tabId":"tab-123"}"#
+            .data(using: .utf8)!
+        let failure = #"{"type":"desktop_worktree_op_result","ok":false,"operation":"open","error":"This worktree has landed and is sealed for review."}"#
+            .data(using: .utf8)!
+
+        guard case let .worktreeOpResult(opened) = try JSONDecoder().decode(RemoteEvent.self, from: success) else {
+            return XCTFail("wrong success case")
+        }
+        XCTAssertTrue(opened.ok)
+        XCTAssertEqual(opened.operation, .open)
+        XCTAssertEqual(opened.tabId, "tab-123")
+
+        guard case let .worktreeOpResult(refused) = try JSONDecoder().decode(RemoteEvent.self, from: failure) else {
+            return XCTFail("wrong failure case")
+        }
+        XCTAssertFalse(refused.ok)
+        XCTAssertEqual(refused.operation, .open)
+        XCTAssertEqual(refused.error, "This worktree has landed and is sealed for review.")
+        XCTAssertNil(refused.tabId)
+    }
+
+    /// Retire recovery and bench pruning are distinct facts. Losing either
+    /// strand leaves phone unable to tell operator what desktop preserved.
+    func testRetireResultCarriesRecoveryAndPrunedBenches() throws {
+        let json = #"{"type":"desktop_worktree_op_result","ok":true,"operation":"retire","recoveryRef":"refs/ion/recovery/abc","prunedBenchPaths":["/bench/a","/bench/b"]}"#
+            .data(using: .utf8)!
+
+        guard case let .worktreeOpResult(result) = try JSONDecoder().decode(RemoteEvent.self, from: json) else {
+            return XCTFail("wrong case")
+        }
+        XCTAssertEqual(result.recoveryRef, "refs/ion/recovery/abc")
+        XCTAssertEqual(result.prunedBenchPaths, ["/bench/a", "/bench/b"])
+    }
+
+    @MainActor
+    func testOpenResultNavigatesAndLandedRefusalDoesNot() {
+        let viewModel = SessionViewModel()
+        viewModel.handleWorktreeOpResult(RemoteWorktreeOpResult(
+            ok: true, operation: .open, error: nil, tabId: "tab-123"))
+        XCTAssertEqual(viewModel.pendingNavigationTabId, "tab-123")
+
+        viewModel.pendingNavigationTabId = nil
+        viewModel.handleWorktreeOpResult(RemoteWorktreeOpResult(
+            ok: false, operation: .open,
+            error: "This worktree has landed and is sealed for review."))
+        XCTAssertNil(viewModel.pendingNavigationTabId)
+        XCTAssertEqual(viewModel.gitToast?.message, "This worktree has landed and is sealed for review.")
+        XCTAssertTrue(viewModel.gitToast?.isError == true)
+    }
+
+    func testUnknownConversationRoleUsesHonestFallbackLabel() {
+        let unknown = RemoteOpenConversation(tabId: "tab", title: "", status: "idle", index: 1,
+                                             tabRole: "future-role")
+        let absent = RemoteOpenConversation(tabId: "tab", title: "", status: "idle", index: 1,
+                                            tabRole: nil)
+        let known = RemoteOpenConversation(tabId: "tab", title: "", status: "idle", index: 1,
+                                           tabRole: "conflict-auto-fix")
+
+        XCTAssertEqual(unknown.roleLabel, "Other")
+        XCTAssertNil(absent.roleLabel)
+        XCTAssertEqual(known.roleLabel, "Auto-fix")
+    }
+
+    func testInputLockReasonsRenderDistinctOperatorNotices() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("IonRemote/Views/ConversationView+InputBar.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("Landed worktree review — input is disabled."))
+        XCTAssertTrue(source.contains("Automated fix conversation — input is disabled."))
+        XCTAssertTrue(source.contains("inputLockReason == \"landed-worktree\""))
+    }
+
+    func testTabRowRetireRequiresConfirmationBeforeDispatch() throws {
+        let source = try tabRowContextMenuSource()
+
+        XCTAssertTrue(source.contains("@State private var confirmRetire = false"))
+        XCTAssertTrue(source.contains("confirmRetire = true"))
+        XCTAssertTrue(source.contains(".confirmationDialog(\"Retire this worktree?\""))
+        XCTAssertTrue(source.contains("viewModel.retireWorktree(worktree, repoPath: state.repoPath)"))
+    }
+
+    private func tabRowContextMenuSource() throws -> String {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("IonRemote/Views/TabRowContextMenu.swift")
+        return try String(contentsOf: url, encoding: .utf8)
     }
 }

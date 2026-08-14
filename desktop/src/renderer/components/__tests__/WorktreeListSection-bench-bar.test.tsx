@@ -155,49 +155,73 @@ describe('WorktreeListSection — the bench bar', () => {
   })
 })
 
-describe('WorktreeListSection — reaching a bench-verification auto-fix conversation', () => {
-  // The reported defect: a conflict-auto-fix conversation running against the
-  // bench (created by analyzeBenchVerificationFailure) is invisible to
-  // openBenchConversation's singleton resolution (pickBenchConversation
-  // matches only tabRole 'bench-conversation') and to benchConversations (the
-  // operator-only collector feeding the "open ×N" hint and hover card). Before
-  // this fix there was NO path from the bench bar to that conversation at all
-  // — see worktree-inventory-slice.test.ts and bench-conversation-singleton.test.ts
-  // for the store-level pins of the singleton exclusion this button routes
-  // around.
-  it('offers a "Go to tab" button that lists the auto-fix conversation the chat button cannot reach', () => {
+describe('WorktreeListSection — bench auto-fix visibility and navigation', () => {
+  it('marks an auto-fix open in the bench bar and cycles it through Conversation', async () => {
     storeState.benchWorkspaces = new Map([[REPO, [workspace([member('a')])]]])
     storeState.tabs = [
-      { id: 'fix-1', workingDirectory: BENCH_PATH, title: 'Diagnose verification failure', customTitle: null, status: 'running', tabRole: 'conflict-auto-fix' } as never,
-    ]
+      { id: 'talk-1', workingDirectory: BENCH_PATH, title: 'Bench conversation', customTitle: null, status: 'idle', tabRole: 'bench-conversation' },
+      { id: 'fix-1', workingDirectory: BENCH_PATH, title: 'Resolve merge', customTitle: null, status: 'running', tabRole: 'conflict-auto-fix' },
+    ] as never
+    render()
+
+    expect(q('bench-open-label')!.textContent).toBe('(2) · Auto-fix')
+    expect(q('bench-open-conversation')!.parentElement!.getAttribute('data-tooltip'))
+      .toBe('Cycle through conversations open in this bench')
+
+    await act(async () => { q('bench-open-conversation')!.click() })
+    expect(storeState.openBenchConversation).toHaveBeenCalledWith(REPO, 'josh')
+  })
+
+  it('keeps direct picker selection for an exact auto-fix conversation', () => {
+    storeState.benchWorkspaces = new Map([[REPO, [workspace([member('a')])]]])
+    storeState.tabs = [
+      { id: 'fix-1', workingDirectory: BENCH_PATH, title: 'Resolve merge', customTitle: null, status: 'running', tabRole: 'conflict-auto-fix' },
+    ] as never
     render()
 
     const button = q('bench-go-to-tab')
     expect(button).not.toBeNull()
-
     act(() => { button!.click() })
 
-    // The submenu portals into `document.body` (the mocked PopoverLayer), a
-    // SIBLING of `host`, not a descendant — `q()` only searches inside `host`,
-    // so this needs the document directly.
     const row = document.querySelector('[data-testid="worktree-go-to-tab-fix-1"]')
     expect(row).not.toBeNull()
-    expect(row!.textContent).toContain('Diagnose verification failure')
-
+    expect(row!.textContent).toContain('Auto-fix')
     act(() => { (row as HTMLElement).click() })
-
     expect(storeState.selectTab).toHaveBeenCalledWith('fix-1')
   })
 
-  it('is absent when nothing is open in the bench', () => {
+  it('is absent when no non-terminal conversation is open in the bench', () => {
     storeState.benchWorkspaces = new Map([[REPO, [workspace([member('a')])]]])
-    storeState.tabs = []
+    storeState.tabs = [{ id: 'shell', workingDirectory: BENCH_PATH, isTerminalOnly: true }] as never
     render()
 
     expect(q('bench-go-to-tab')).toBeNull()
+    expect(q('bench-open-label')).toBeNull()
   })
 })
 
+describe('WorktreeListSection — assembly-safe toolbar', () => {
+  it('keeps existing bench conversation navigation but hides mutating bench controls while assembling', async () => {
+    storeState.benchWorkspaces = new Map([[REPO, [workspace([member('a')])]]])
+    storeState.tabs = [{ id: 'talk-1', workingDirectory: BENCH_PATH, title: 'Bench', customTitle: null, status: 'idle', tabRole: 'bench-conversation' }] as never
+    render()
+
+    // Trigger the normal assembly action and hold its promise open so the bar
+    // enters the real `busy === assemble` state.
+    let resolve!: (value: unknown) => void
+    storeState.benchAssemble.mockReturnValue(new Promise((done) => { resolve = done }))
+    act(() => { q('bench-assemble')!.click() })
+
+    expect(q('bench-assembly-progress')).not.toBeNull()
+    expect(q('bench-open-terminal')).toBeNull()
+    expect(q('bench-discard-recordings')).toBeNull()
+    expect(q('bench-assemble')).toBeNull()
+    act(() => { q('bench-open-conversation')!.click() })
+    expect(storeState.selectTab).toHaveBeenCalledWith('talk-1')
+    expect(storeState.openBenchConversation).not.toHaveBeenCalled()
+    await act(async () => { resolve({ ok: true }); await Promise.resolve() })
+  })
+})
 describe('WorktreeListSection — the bench-conflict badge opens the right dialog', () => {
   // The regression pinned here: the badge used to call
   // `setResolving(benchPath)`, mounting the ConflictsDialog on a directory

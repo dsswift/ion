@@ -24,7 +24,7 @@ import { forgetRecordingsForBranches } from './bench-recording-recovery'
 import { dryRunCollision } from './bench-dry-run'
 import { captureContribution, contributedTreeHash } from './bench-snapshot'
 import { isInsideBench } from './bench-guard'
-import { advanceWorktreeStageOnPinChange } from '../worktree/registry'
+import { advanceWorktreeStageOnPinChange, lookupWorktreeLandedAt } from '../worktree/registry'
 import type { IntegrationWorkspace, BenchAssembleResult, PinState } from '../../shared/types'
 
 const TAG = 'bench.ops'
@@ -75,6 +75,10 @@ export async function addMember(
   worktreePath: string,
   branchName: string,
 ): Promise<{ ok: boolean; error?: string; workspace?: IntegrationWorkspace }> {
+  if (lookupWorktreeLandedAt(worktreePath) != null) {
+    warn('add member refused: worktree already landed', { worktree_path: worktreePath })
+    return { ok: false, error: 'This worktree has already landed and cannot join an integration bench.' }
+  }
   const ws = ensureWorkspace(repoPath, sourceBranch)
   if (ws.members.some((m) => m.worktreePath === worktreePath)) {
     return { ok: false, error: 'This worktree is already a member of the bench.' }
@@ -510,26 +514,26 @@ export async function prepareVerificationAnalysis(
 }
 
 /**
- * The bench-verification recovery dialog's "Discard recordings and
- * reassemble" verb: forget the recordings for the named suspect branches,
- * then run a normal assembly and persist its outcome.
+ * General member-recording recovery: forget the recordings for named members,
+ * then run a normal assembly and persist its outcome. Both the verification
+ * dialog and a selected worktree row invoke this same precise recovery.
  */
-export async function discardVerificationRecordingsAndReassemble(
+export async function discardMemberRecordingsAndReassemble(
   repoPath: string,
   sourceBranch: string,
   branchNames: string[],
-): Promise<BenchAssembleResult & { forgottenCount?: number }> {
+): Promise<BenchAssembleResult & { forgottenCount?: number; branchesWithNothingToForget?: string[] }> {
   const ws = findWorkspace(loadWorkspaces(), repoPath, sourceBranch)
   if (!ws) return { ok: false, error: 'No integration workspace for this branch.' }
 
   const forgotten = await forgetRecordingsForBranches(ws, branchNames)
   if (!forgotten.ok) {
-    warn('discard-verification-recordings: forget failed', {
+    warn('discard-member-recordings: forget failed', {
       repo_path: repoPath, source_branch: sourceBranch, branches: branchNames, error: forgotten.error,
     })
     return { ok: false, error: forgotten.error }
   }
-  log('discard-verification-recordings: forgot recordings, reassembling', {
+  log('discard-member-recordings: forgot recordings, reassembling', {
     repo_path: repoPath,
     source_branch: sourceBranch,
     branches: branchNames,
@@ -537,7 +541,11 @@ export async function discardVerificationRecordingsAndReassemble(
     nothing_to_forget: forgotten.branchesWithNothingToForget,
   })
   const result = await assembleAndPersist(ws)
-  return { ...result, forgottenCount: forgotten.forgottenPaths.length }
+  return {
+    ...result,
+    forgottenCount: forgotten.forgottenPaths.length,
+    branchesWithNothingToForget: forgotten.branchesWithNothingToForget,
+  }
 }
 
 /** Resolve the bench worktree path for a repo/branch, if a workspace exists. */

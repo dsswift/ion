@@ -17,20 +17,30 @@ import { rError } from "../rendererLogger";
 export function WorktreeRowMenuDialogs({
   landError,
   retireOutcome,
-  confirmRetire,
-  busy,
-  setLandError,
   setRetireOutcome,
+  confirmDiscardRecordings,
+  setConfirmDiscardRecordings,
+  discardRecordingsOutcome,
+  setDiscardRecordingsOutcome,
+  busy,
+  doDiscardRecordings,
+  confirmRetire,
+  setLandError,
   setConfirmRetire,
   doRetire,
   onClose,
 }: {
   landError: string | null;
-  retireOutcome: string | null;
-  confirmRetire: string | null;
-  busy: boolean;
   setLandError: (value: string | null) => void;
+  retireOutcome: string | null;
   setRetireOutcome: (value: string | null) => void;
+  confirmDiscardRecordings: string | null;
+  setConfirmDiscardRecordings: (value: string | null) => void;
+  discardRecordingsOutcome: string | null;
+  setDiscardRecordingsOutcome: (value: string | null) => void;
+  busy: boolean;
+  doDiscardRecordings: () => Promise<void>;
+  confirmRetire: string | null;
   setConfirmRetire: (value: string | null) => void;
   doRetire: () => Promise<void>;
   onClose: () => void;
@@ -52,6 +62,48 @@ export function WorktreeRowMenuDialogs({
           }}
         />
       )}
+
+      {discardRecordingsOutcome !== null && (
+        <ConfirmDialog
+          title="Recorded resolutions"
+          message={discardRecordingsOutcome}
+          acknowledge
+          onConfirm={() => {
+            setDiscardRecordingsOutcome(null);
+            setConfirmDiscardRecordings(null);
+            onClose();
+          }}
+          onCancel={() => {
+            setDiscardRecordingsOutcome(null);
+            setConfirmDiscardRecordings(null);
+            onClose();
+          }}
+        />
+      )}
+
+      {discardRecordingsOutcome === null &&
+        confirmDiscardRecordings !== null && (
+          <ConfirmDialog
+            title="Discard this worktree’s recorded resolutions?"
+            message={`Discard only recorded conflict resolutions for ${confirmDiscardRecordings}? Other worktrees’ recorded resolutions stay intact. A fresh conflict may need resolution when the bench reassembles.`}
+            confirmLabel="Discard resolutions"
+            cancelLabel="Keep resolutions"
+            danger
+            busy={busy}
+            busyLabel="Discarding recorded resolutions…"
+            onConfirm={() => {
+              void doDiscardRecordings().catch((err) =>
+                rError("worktree.menu", "discard recordings threw", {
+                  error: String(err),
+                }),
+              );
+            }}
+            onCancel={() => {
+              setConfirmDiscardRecordings(null);
+              onClose();
+            }}
+          />
+        )}
 
       {retireOutcome !== null && (
         <ConfirmDialog

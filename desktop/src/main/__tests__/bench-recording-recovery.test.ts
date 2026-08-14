@@ -44,6 +44,8 @@ function makeRepo(): string {
   git(dir, 'config', 'user.name', 'Dev')
   git(dir, 'config', 'commit.gpgsign', 'false')
   writeFileSync(join(dir, 'base.txt'), 'base\n')
+  writeFileSync(join(dir, 'first.txt'), 'base first\n')
+  writeFileSync(join(dir, 'second.txt'), 'base second\n')
   writeFileSync(join(dir, '.gitignore'), 'node_modules/\n')
   git(dir, 'add', '-A')
   git(dir, 'commit', '-m', 'base')
@@ -77,7 +79,12 @@ async function enroll(wt: { path: string; branch: string }): Promise<Integration
 }
 
 /** Resolve-once the way the desktop's resolve flow does, recording into rerere. */
-function resolveOnceInBench(ws: IntegrationWorkspace, conflictedSha: string, resolution: string): void {
+function resolveOnceInBench(
+  ws: IntegrationWorkspace,
+  conflictedSha: string,
+  path: string,
+  resolution: string,
+): void {
   git(ws.benchPath, 'config', 'rerere.enabled', 'true')
   git(ws.benchPath, 'config', 'rerere.autoUpdate', 'true')
   git(ws.benchPath, 'switch', '-C', ws.benchBranch, 'main', '--discard-changes')
@@ -89,8 +96,8 @@ function resolveOnceInBench(ws: IntegrationWorkspace, conflictedSha: string, res
     git(ws.benchPath, 'merge', '--no-ff', '-m', 'resolve once', conflictedSha)
     throw new Error('expected the merge to conflict')
   } catch {
-    writeFileSync(join(ws.benchPath, 'shared.txt'), resolution)
-    git(ws.benchPath, 'add', 'shared.txt')
+    writeFileSync(join(ws.benchPath, path), resolution)
+    git(ws.benchPath, 'add', path)
     git(ws.benchPath, '-c', 'core.editor=true', 'merge', '--continue')
   }
 }
@@ -118,7 +125,7 @@ describe('forgetRecordingsForBranches', () => {
 
     // Resolve once (poisoned on purpose): textually clean but not what a real
     // resolution would produce.
-    resolveOnceInBench(ws, ws.members[1].pinnedSha, 'poisoned resolution\n')
+    resolveOnceInBench(ws, ws.members[1].pinnedSha, 'shared.txt', 'poisoned resolution\n')
 
     // Reassembling now replays the recording and "succeeds" mechanically.
     const replayed = await assembleBench(ws)
@@ -139,6 +146,56 @@ describe('forgetRecordingsForBranches', () => {
     expect(git(ws.benchPath, 'diff', '--name-only', '--diff-filter=U').trim()).toBe('shared.txt')
   })
 
+  it('forgets one member while an unrelated recording still replays', async () => {
+    const a = makeWorktree('a', 'first.txt', 'from a\n')
+    const b = makeWorktree('b', 'first.txt', 'from b\n')
+    const c = makeWorktree('c', 'second.txt', 'from c\n')
+    const d = makeWorktree('d', 'second.txt', 'from d\n')
+    const ws = workspaceFor([await enroll(a), await enroll(b), await enroll(c), await enroll(d)])
+
+    // Record the first conflict, then a later independent conflict. The second
+    // resolve starts from the first recording's replayed state, just as a real
+    // bench assembly does when several members collide in sequence.
+    await assembleBench(ws)
+    resolveOnceInBench(ws, ws.members[1].pinnedSha, 'first.txt', 'first resolution\n')
+    // Continue from first resolved state to create independent later recording.
+    git(ws.benchPath, 'merge', '--no-ff', '-m', 'second prior', ws.members[2].pinnedSha)
+    expect(() => git(ws.benchPath, 'merge', '--no-ff', '-m', 'second resolve', ws.members[3].pinnedSha)).toThrow()
+    writeFileSync(join(ws.benchPath, 'second.txt'), 'second resolution\n')
+    git(ws.benchPath, 'add', 'second.txt')
+    git(ws.benchPath, '-c', 'core.editor=true', 'merge', '--continue')
+    const replayed = await assembleBench(ws)
+    expect(replayed.workspace!.lastAssembly).toBe('assembled')
+
+    const forgotten = await forgetRecordingsForBranches(replayed.workspace!, ['wt/b'])
+    expect(forgotten.forgottenPaths).toEqual(['first.txt'])
+
+    // The selected recording is gone: its same merge needs a real resolution.
+    git(ws.benchPath, 'switch', '-C', ws.benchBranch, 'main', '--discard-changes')
+    git(ws.benchPath, 'merge', '--no-ff', '-m', 'first prior', ws.members[0].pinnedSha)
+    expect(() => git(ws.benchPath, 'merge', '--no-ff', '-m', 'first fresh', ws.members[1].pinnedSha)).toThrow()
+    git(ws.benchPath, 'merge', '--abort')
+
+    // Recreate only the known first resolution, then reach the later member.
+    // Its merge completes by rerere without reopening, proving the targeted
+    // forget left the unrelated second recording intact.
+    git(ws.benchPath, 'switch', '-C', ws.benchBranch, 'main', '--discard-changes')
+    git(ws.benchPath, 'merge', '--no-ff', '-m', 'first prior', ws.members[0].pinnedSha)
+    try {
+      git(ws.benchPath, 'merge', '--no-ff', '-m', 'first manual', ws.members[1].pinnedSha)
+    } catch {
+      writeFileSync(join(ws.benchPath, 'first.txt'), 'first resolution\n')
+      git(ws.benchPath, 'add', 'first.txt')
+      git(ws.benchPath, '-c', 'core.editor=true', 'merge', '--continue')
+    }
+    git(ws.benchPath, 'merge', '--no-ff', '-m', 'second prior', ws.members[2].pinnedSha)
+    expect(() => git(ws.benchPath, 'merge', '--no-ff', '-m', 'second replay', ws.members[3].pinnedSha)).toThrow()
+    // `git merge` retains its conflict exit status even when rerere staged the
+    // answer. No write occurs here: `merge --continue` succeeds only because
+    // the unrelated second recording survived the first member's deletion.
+    git(ws.benchPath, '-c', 'core.editor=true', 'merge', '--continue')
+  })
+
   it('reports nothing to forget for a branch that merges cleanly on replay', async () => {
     const a = makeWorktree('a')
     const ws = workspaceFor([await enroll(a)])
@@ -156,7 +213,7 @@ describe('forgetRecordingsForBranches', () => {
     const c = makeWorktree('c', 'shared.txt', 'from c\n')
     const ws = workspaceFor([await enroll(a), await enroll(c)])
     await assembleBench(ws)
-    resolveOnceInBench(ws, ws.members[1].pinnedSha, 'poisoned resolution\n')
+    resolveOnceInBench(ws, ws.members[1].pinnedSha, 'shared.txt', 'poisoned resolution\n')
     const replayed = await assembleBench(ws)
 
     const result = await forgetRecordingsForBranches(replayed.workspace!, ['wt/does-not-exist'])
@@ -169,7 +226,7 @@ describe('forgetRecordingsForBranches', () => {
     const c = makeWorktree('c', 'shared.txt', 'from c\n')
     const ws = workspaceFor([await enroll(a), await enroll(c)])
     await assembleBench(ws)
-    resolveOnceInBench(ws, ws.members[1].pinnedSha, 'poisoned resolution\n')
+    resolveOnceInBench(ws, ws.members[1].pinnedSha, 'shared.txt', 'poisoned resolution\n')
     const replayed = await assembleBench(ws)
     mkdirSync(join(ws.benchPath, 'node_modules'), { recursive: true })
     writeFileSync(join(ws.benchPath, 'node_modules', '.probe'), 'expensive build output\n')

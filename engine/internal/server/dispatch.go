@@ -322,6 +322,12 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		s.manager.QuerySessionStatus(cmd.Key)
 		s.sendResult(conn, cmd, nil, nil)
 
+	case "get_agent_state":
+		// Full fidelity is explicit and request-driven. Return it to this
+		// connection only: broadcasting a 35 MB response would recreate the
+		// fan-out the bounded engine_agent_state snapshot prevents.
+		s.sendResult(conn, cmd, nil, protocol.AgentStateResponse{Agents: s.manager.GetAgentState(cmd.Key)})
+
 	case "get_context_breakdown":
 		// On-demand context breakdown. Reconstructs the full assembly
 		// pipeline (system prompt + tools + conversation) outside any

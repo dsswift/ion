@@ -7,7 +7,7 @@
 // ── The defect ──────────────────────────────────────────────────────────────
 // The row's click-cycle and this submenu both used to build their conversation
 // list from `collectDirConversations`, which deliberately excludes
-// `conflict-auto-fix` tabs (correct for the "open ×N" hint and the hover card,
+// `conflict-auto-fix` tabs (correct for the parenthesized count hint and hover card,
 // which must not count a machine conversation as an operator one). But that
 // meant an in-progress auto-fix conversation was invisible to BOTH the row
 // click and this submenu — if it moved tab groups, or the operator just needed
@@ -173,7 +173,7 @@ describe('WorktreeRowMenu — "Go to tab" submenu', () => {
 
   it('lists an open conflict-auto-fix conversation', async () => {
     // The regression pin: an auto-fix tab is invisible to the row's own
-    // "open ×N" hint (collectDirConversations excludes it), but must still
+    // parenthesized count hint (collectDirConversations excludes it), but must still
     // appear here (collectAllDirConversations does not).
     storeTabs = [
       { id: 'fix-1', workingDirectory: WT, title: 'Resolve conflict', customTitle: null, status: 'running', tabRole: 'conflict-auto-fix' },
@@ -184,6 +184,7 @@ describe('WorktreeRowMenu — "Go to tab" submenu', () => {
     await press(findButton('Go to tab'))
 
     expect(document.body.textContent ?? '').toContain('Resolve conflict')
+    expect(document.body.textContent ?? '').toContain('Auto-fix')
     expect(document.body.textContent ?? '').toContain('Add feature')
   })
 

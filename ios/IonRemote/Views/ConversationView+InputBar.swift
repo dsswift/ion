@@ -87,7 +87,9 @@ extension ConversationView {
                 Image(systemName: "lock")
                     .font(.system(size: 10)) // design-type: SF Symbol lock glyph sized as icon geometry, not text
                     .foregroundStyle(.tertiary)
-                Text("Automated fix conversation — input is disabled. Continue the work in its worktree.")
+                Text(viewModel.tab(for: tabId)?.inputLockReason == "landed-worktree"
+                    ? "Landed worktree review — input is disabled. Retire this worktree when review is complete."
+                    : "Automated fix conversation — input is disabled. Continue the work in its worktree.")
                     .ionType(.microLabel)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)

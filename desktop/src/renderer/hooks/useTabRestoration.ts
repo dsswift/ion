@@ -62,13 +62,16 @@ export function useTabRestoration() {
         for (let i = 0; i < saved.tabs.length; i++) {
           useSessionStore.setState({ initProgress: `Restoring tab ${i + 1} of ${saved.tabs.length}…` })
           let st = saved.tabs[i]
-          // Heal legacy/additional tabs that persisted a managed worktree path
-          // without worktree metadata. Do this before routing any restore path:
-          // every path must render and start with one authoritative identity.
-          const registeredWorktree = st.isTerminalOnly
-            ? (st.worktree ?? null)
-            : await resolveRegisteredWorktree(st.workingDirectory, st.worktree)
-          if (!st.worktree && registeredWorktree) {
+          // Re-read the registry even when persisted metadata exists: landedAt is
+          // terminal state written after the tab was persisted, and a restart
+          // must seal that prior conversation before it can start another run.
+          // A missing/unreadable registry falls back to persisted identity so a
+          // transient IPC failure cannot orphan a review transcript.
+          const registryWorktree = await resolveRegisteredWorktree(st.workingDirectory)
+          const registeredWorktree = registryWorktree ?? st.worktree ?? null
+          if (registeredWorktree && (
+            !st.worktree || registeredWorktree.landedAt !== st.worktree.landedAt
+          )) {
             st = { ...st, worktree: registeredWorktree }
             saved.tabs[i] = st
           }
@@ -93,6 +96,13 @@ export function useTabRestoration() {
             // `workingDirectory` there is what put worktree conversations back
             // in the base repo on every restart.
             worktreeAliveByIndex.set(i, restoredWorktree !== null)
+
+            if (restoredWorktree?.landedAt) {
+              // The tab is not in the store until resume/skeleton creation below;
+              // lock metadata is applied in those branches, and this marks the
+              // engine-start pass to skip the review-only session.
+              worktreeAliveByIndex.set(i, false)
+            }
 
             if (isActiveTab) {
               // Active tab: load messages eagerly via resumeSession
@@ -195,6 +205,9 @@ export function useTabRestoration() {
                 pillColor: st.pillColor || null,
                 pillIcon: st.pillIcon || null,
                 inputLocked: st.inputLocked ?? false,
+                inputLockReason: restoredWorktree?.landedAt
+                  ? 'landed-worktree'
+                  : st.inputLockReason ?? null,
                 tabRole: st.tabRole ?? null,
                 forkedFromSessionId: st.forkedFromSessionId || null,
                 worktree: restoredWorktree,
@@ -329,6 +342,9 @@ export function useTabRestoration() {
                         pillColor: st.pillColor || null,
                         pillIcon: st.pillIcon || null,
                         inputLocked: st.inputLocked ?? false,
+                        inputLockReason: st.worktree?.landedAt
+                          ? 'landed-worktree'
+                          : st.inputLockReason ?? null,
                         tabRole: st.tabRole ?? null,
                         forkedFromSessionId: st.forkedFromSessionId || null,
                         worktree: st.worktree || null,

@@ -33,6 +33,7 @@ vi.mock('../slices/tab-slice-permission-mode', () => ({
 import { createGitConflictSlice, conflictAssistPrompt, CONFLICT_ASSIST_PROMPT } from '../slices/git-conflict-slice'
 import { CONFLICT_ASSIST_TIER } from '../../../shared/types-model-tiers'
 import { createWorktreeInventorySlice } from '../slices/worktree-inventory-slice'
+import { clearInflight } from '../slices/conflict-assist-dedupe'
 import type { State, GitConflictAlert } from '../session-store-types'
 
 const WT = '/home/dev/.ion/worktrees/proj-a1'
@@ -79,98 +80,62 @@ function harness(extra: Record<string, unknown> = {}): Harness {
 beforeEach(() => {
   vi.clearAllMocks()
   preferenceState.aiAssistPromptOverrides = {}
+  clearInflight(WT)
+  clearInflight('/bench/other')
 })
 
-describe('a failed sync records a visible alert', () => {
-  it('records source sync with the operator-facing message', async () => {
-    const h = harness()
-    ;(globalThis as unknown as { window: Record<string, unknown> }).window = {
-      ion: {
-        gitWorktreeSync: vi.fn().mockResolvedValue({
-          ok: false, hasConflicts: true, error: 'Syncing from josh hit a conflict.',
-        }),
-        gitWorktreeInventory: vi.fn().mockResolvedValue({ worktrees: [] }),
-      },
-    }
-
-    await h.slice.syncWorktree!(WT, 'josh', '/repo')
-
-    const alert = h.alerts().get(WT)
-    expect(alert).toBeDefined()
-    expect(alert!.source).toBe('sync')
-    expect(alert!.operationState).toBe('rebasing')
-    expect(alert!.message).toContain('hit a conflict')
-    expect(alert!.dismissed).toBe(false)
-  })
-
-  it('records a REFUSAL alert for a dirty worktree, with the remediation message', async () => {
-    // The live incident: sync refused (dirty), logged, and nothing shown — the
-    // spinner stopped and the operator was left guessing. A refusal is now an
-    // alert of kind 'refusal': toast with the message, no Resolve button
-    // (nothing is in progress to resolve).
-    const h = harness()
-    ;(globalThis as unknown as { window: Record<string, unknown> }).window = {
-      ion: {
-        gitWorktreeSync: vi.fn().mockResolvedValue({
-          ok: false, refusedDirty: true,
-          error: 'This worktree has uncommitted changes, so it cannot be synced.',
-        }),
-        gitWorktreeInventory: vi.fn().mockResolvedValue({ worktrees: [] }),
-      },
-    }
-    await h.slice.syncWorktree!(WT, 'josh', '/repo')
-
-    const alert = h.alerts().get(WT)
-    expect(alert).toBeDefined()
-    expect(alert!.kind).toBe('refusal')
-    expect(alert!.source).toBe('sync')
-    expect(alert!.operationState).toBeUndefined()
-    expect(alert!.message).toContain('uncommitted changes')
-  })
-
-  it('clears a refusal alert only when the worktree goes CLEAN', async () => {
-    // No git state says "was refused", so the refusal must survive the very
-    // next inventory refresh (which reports no operation in progress) while
-    // the worktree is still dirty — and clear once it is clean.
-    const entry = (isDirty: boolean) => ({
-      worktreePath: WT, branchName: 'wt/a1', label: 'proj-a1', sourceBranch: 'josh',
-      head: 'abc', lastCommitSubject: 'x', isDirty, unlandedCommitCount: 0,
-      needsSync: true, safeToDiscard: false,
-    })
-    const h = harness()
-    h.slice.recordConflictAlert!(WT, { source: 'sync', kind: 'refusal', message: 'dirty' })
-
-    ;(globalThis as unknown as { window: Record<string, unknown> }).window = {
-      ion: { gitWorktreeInventory: vi.fn().mockResolvedValue({ worktrees: [entry(true)] }) },
-    }
-    await h.slice.refreshWorktreeInventory!('/repo')
-    expect(h.alerts().get(WT)?.kind).toBe('refusal') // survives while dirty
-
-    ;(globalThis as unknown as { window: { ion: Record<string, unknown> } }).window.ion
-      .gitWorktreeInventory = vi.fn().mockResolvedValue({ worktrees: [entry(false)] })
-    await h.slice.refreshWorktreeInventory!('/repo')
-    expect(h.alerts().has(WT)).toBe(false) // clean clears it
-  })
-})
-
-describe('inventory refresh drives detection and clearing', () => {
-  const entry = (operationState?: string) => ({
+describe('sync and inventory conflict state', () => {
+  const entry = (operationState?: 'rebasing' | 'merging' | 'cherry-picking') => ({
     worktreePath: WT, branchName: 'wt/a1', label: 'proj-a1', sourceBranch: 'josh',
     head: 'abc', lastCommitSubject: 'x', isDirty: false, unlandedCommitCount: 0,
     needsSync: false, safeToDiscard: false, operationState,
   })
 
-  it('records a detected mid-operation worktree', async () => {
+  it('records a failed sync conflict immediately for the Git panel resolver', async () => {
     const h = harness()
     ;(globalThis as unknown as { window: Record<string, unknown> }).window = {
-      ion: { gitWorktreeInventory: vi.fn().mockResolvedValue({ worktrees: [entry('rebasing')] }) },
+      ion: {
+        gitWorktreeSync: vi.fn().mockResolvedValue({ ok: false, hasConflicts: true }),
+        gitWorktreeInventory: vi.fn().mockResolvedValue({ worktrees: [] }),
+      },
     }
-    await h.slice.refreshWorktreeInventory!('/repo')
-    expect(h.alerts().get(WT)?.source).toBe('detected')
-    expect(h.alerts().get(WT)?.operationState).toBe('rebasing')
+
+    await h.slice.syncWorktree!(WT, 'josh', '/repo')
+
+    expect(h.alerts().get(WT)).toEqual({
+      operationState: 'rebasing',
+      label: 'proj-a1',
+    })
   })
 
-  it('clears the alert when the operation completes', async () => {
+  it('does not create conflict state for a dirty sync refusal', async () => {
+    const h = harness()
+    ;(globalThis as unknown as { window: Record<string, unknown> }).window = {
+      ion: {
+        gitWorktreeSync: vi.fn().mockResolvedValue({
+          ok: false, refusedDirty: true, error: 'uncommitted changes',
+        }),
+        gitWorktreeInventory: vi.fn().mockResolvedValue({ worktrees: [] }),
+      },
+    }
+
+    await h.slice.syncWorktree!(WT, 'josh', '/repo')
+
+    expect(h.alerts().has(WT)).toBe(false)
+  })
+
+  it('records an in-progress operation found by inventory refresh', async () => {
+    const h = harness()
+    ;(globalThis as unknown as { window: Record<string, unknown> }).window = {
+      ion: { gitWorktreeInventory: vi.fn().mockResolvedValue({ worktrees: [entry('merging')] }) },
+    }
+
+    await h.slice.refreshWorktreeInventory!('/repo')
+
+    expect(h.alerts().get(WT)).toEqual({ operationState: 'merging', label: 'proj-a1' })
+  })
+
+  it('clears conflict state when inventory reports operation completed', async () => {
     const h = harness()
     ;(globalThis as unknown as { window: Record<string, unknown> }).window = {
       ion: { gitWorktreeInventory: vi.fn().mockResolvedValue({ worktrees: [entry('rebasing')] }) },
@@ -179,34 +144,26 @@ describe('inventory refresh drives detection and clearing', () => {
     expect(h.alerts().has(WT)).toBe(true)
 
     ;(globalThis as unknown as { window: { ion: Record<string, unknown> } }).window.ion
-      .gitWorktreeInventory = vi.fn().mockResolvedValue({ worktrees: [entry(undefined)] })
+      .gitWorktreeInventory = vi.fn().mockResolvedValue({ worktrees: [entry()] })
     await h.slice.refreshWorktreeInventory!('/repo')
+
     expect(h.alerts().has(WT)).toBe(false)
   })
 
-  it('a detection poll does not resurrect a dismissed toast', async () => {
+  it('clears a resolved repo-root land conflict outside worktree inventory', async () => {
     const h = harness()
+    h.slice.recordConflictAlert!('/repo', { operationState: 'merging', label: 'repo' })
     ;(globalThis as unknown as { window: Record<string, unknown> }).window = {
-      ion: { gitWorktreeInventory: vi.fn().mockResolvedValue({ worktrees: [entry('rebasing')] }) },
+      ion: {
+        gitWorktreeInventory: vi.fn().mockResolvedValue({ worktrees: [] }),
+        gitOpState: vi.fn().mockResolvedValue({ ok: true, state: null }),
+      },
     }
-    await h.slice.refreshWorktreeInventory!('/repo')
-    h.slice.dismissConflictAlert!(WT)
-    expect(h.alerts().get(WT)?.dismissed).toBe(true)
 
     await h.slice.refreshWorktreeInventory!('/repo')
-    expect(h.alerts().get(WT)?.dismissed).toBe(true)
-  })
 
-  it('a fresh sync failure re-raises a dismissed toast', () => {
-    const h = harness()
-    h.slice.recordConflictAlert!(WT, { source: 'detected', operationState: 'rebasing' })
-    h.slice.dismissConflictAlert!(WT)
-    expect(h.alerts().get(WT)?.dismissed).toBe(true)
-
-    // A new failure IS new information: the operator acted (synced) and it
-    // failed again — that must not stay hidden behind an old dismissal.
-    h.slice.recordConflictAlert!(WT, { source: 'sync', operationState: 'rebasing' })
-    expect(h.alerts().get(WT)?.dismissed).toBe(false)
+    expect(window.ion.gitOpState).toHaveBeenCalledWith('/repo')
+    expect(h.alerts().has('/repo')).toBe(false)
   })
 })
 
@@ -420,70 +377,37 @@ describe('openConflictAssist', () => {
 })
 
 /**
- * A failed LAND must be as visible as a failed sync.
- *
- * `LandResult.hasConflicts` was produced by the land path and rendered by the
- * toast ("Land hit conflicts"), but nothing ever recorded it — so a land that
- * stopped halfway through a merge was visible only in the log file, which is
- * the exact defect the sync path was fixed for.
- *
- * The directory matters and is not the worktree. A land merges in whichever
- * checkout holds the source branch (usually the base repo); only an optional
- * pre-sync conflict lands in the worktree. Keying the alert on the worktree
- * would open the resolution dialog on a clean tree.
+ * A failed LAND must record conflict state at checkout where merge stopped.
  *
  * Regression direction: removing the `recordConflictAlert` call from
- * WorktreeRowMenu.doLand turns these red. They exercise the same store action
- * that component calls.
+ * WorktreeRowMenu.doLand turns these red. They exercise same store action used
+ * by component.
  */
-describe('a failed land records a visible alert', () => {
+describe('a failed land records conflict state', () => {
   const HOLDER = '/repo'
 
-  it('keys the alert on the holder checkout the merge conflicted in', () => {
+  it('keys state on holder checkout where merge conflicted', () => {
     const h = harness()
 
     h.slice.recordConflictAlert!(HOLDER, {
-      source: 'land',
-      kind: 'conflict',
-      message: 'Merge conflict landing wt/a1 into josh. Resolve it in /repo, then land again.',
+      operationState: 'merging',
       label: 'repo',
     })
 
-    const alert = h.alerts().get(HOLDER)
-    expect(alert).toBeDefined()
-    expect(alert!.source).toBe('land')
-    expect(alert!.kind).toBe('conflict')
-    expect(alert!.message).toContain('Merge conflict landing')
-    // Not dismissed: a fresh failure raises the toast.
-    expect(alert!.dismissed).toBe(false)
-    // The worktree itself is clean — no alert belongs there.
+    expect(h.alerts().get(HOLDER)).toEqual({ operationState: 'merging', label: 'repo' })
     expect(h.alerts().has(WT)).toBe(false)
   })
 
-  it('keys a pre-sync land conflict on the worktree, which is where it happened', () => {
+  it('keys a pre-sync land conflict on worktree where it happened', () => {
     const h = harness()
 
     h.slice.recordConflictAlert!(WT, {
-      source: 'land',
-      kind: 'conflict',
-      message: 'Sync from josh failed: conflict',
+      operationState: 'rebasing',
       label: 'proj-a1',
     })
 
-    expect(h.alerts().get(WT)!.source).toBe('land')
+    expect(h.alerts().get(WT)?.operationState).toBe('rebasing')
     expect(h.alerts().has(HOLDER)).toBe(false)
-  })
-
-  it('offers Resolve for a land conflict, unlike a dirty refusal', () => {
-    const h = harness()
-
-    h.slice.recordConflictAlert!(HOLDER, { source: 'land', kind: 'conflict' })
-    h.slice.recordConflictAlert!(WT, { source: 'sync', kind: 'refusal' })
-
-    // `kind` is what the toast switches on to decide whether Resolve makes
-    // sense: a conflict has an operation to resolve, a refusal never started.
-    expect(h.alerts().get(HOLDER)!.kind).toBe('conflict')
-    expect(h.alerts().get(WT)!.kind).toBe('refusal')
   })
 })
 

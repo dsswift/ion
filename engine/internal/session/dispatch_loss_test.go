@@ -183,6 +183,19 @@ func TestDispatchLoss_NoFalseLossForCompletedDispatch(t *testing.T) {
 	if status != "done" {
 		t.Fatalf("resolved status = %q, want done (last-entry-wins supersession)", status)
 	}
+	for _, st := range snap {
+		if st.ID != "dispatch-worker-1" {
+			continue
+		}
+		dispatches, ok := st.Metadata["dispatches"].([]interface{})
+		if !ok || len(dispatches) != 1 {
+			t.Fatalf("rehydrated dispatches = %#v, want one terminal member", st.Metadata["dispatches"])
+		}
+		member := dispatches[0].(map[string]interface{})
+		if member["status"] != "done" {
+			t.Errorf("nested dispatch status = %#v, want done", member["status"])
+		}
+	}
 
 	m.announceLostDispatches(s, s.key)
 	for _, ev := range events() {

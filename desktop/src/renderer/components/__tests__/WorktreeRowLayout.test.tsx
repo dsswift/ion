@@ -11,8 +11,8 @@
 //     and had no `minWidth: 0`, so its automatic minimum was the label's full
 //     intrinsic width: the ellipsis never engaged and the row overflowed. That
 //     overflow is what produced the horizontal scrollbar.
-//   - The open control rendered `open in tab 3` — a tab index the UI shows
-//     nowhere else, spending horizontal room the name needed.
+//   - The open indicator renders compact `(N)` text instead of a redundant word,
+//     preserving horizontal room the name needs.
 import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -162,9 +162,9 @@ describe('WorktreeRow — no conversation bubble', () => {
     expect(q(`worktree-open-${BRANCH}`)).toBeNull()
   })
 
-  it('still reports how many conversations are open, as text', () => {
+  it('still reports how many conversations are open as a compact count', () => {
     render(entry(), { openConversations: [conv(), conv(), conv()] })
-    expect(q(`worktree-open-label-${BRANCH}`)!.textContent).toBe('open ×3')
+    expect(q(`worktree-open-label-${BRANCH}`)!.textContent).toBe('(3)')
   })
 
   it('opens or cycles from a click anywhere on the row', () => {

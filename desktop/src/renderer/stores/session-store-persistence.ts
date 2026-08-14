@@ -110,6 +110,7 @@ function persistTabs(useSessionStore: Store): void {
         ...(t.lastResult ? { lastResult: t.lastResult } : {}),
         ...(t.isTerminalOnly ? { isTerminalOnly: true } : {}),
         ...(t.inputLocked ? { inputLocked: true } : {}),
+        ...(t.inputLockReason ? { inputLockReason: t.inputLockReason } : {}),
         ...(t.tabRole ? { tabRole: t.tabRole } : {}),
         ...(isEngine ? { hasEngineExtension: true, engineProfileId: t.engineProfileId } : {}),
         ...(pane && pane.instances.length > 0 ? { terminalInstances: pane.instances } : {}),

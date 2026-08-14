@@ -1,12 +1,10 @@
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
-import { bumpMsgCounter } from '../session-store-helpers'
-import { commitInstance } from '../conversation-instance'
+import { landFlagsForStrategy } from '../../../shared/worktree-land-strategy'
 import { rDebug, rInfo, rWarn } from '../../rendererLogger'
 import { seedWorktreeFromTab } from './event-slice-titling'
 import { evaluateSessionBusyGuard, formatSessionBusyRefusal } from './session-busy-guard'
 import { setTabWorkingDirectory } from './tab-working-directory'
-import { closeOccupants, resolveRetireBlockers } from './worktree-occupant-close'
 
 export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -181,22 +179,8 @@ export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State
     },
 
     /**
-     * Land this worktree's work and then retire the worktree.
-     *
-     * ── Why the guard pre-flight is the FIRST thing here ─────────────────────
-     * This action ends in a retire, which deletes the worktree directory. Every
-     * conversation living there — not just this tab — is closed by that, and
-     * `closeTab` refuses a tab that is still running (see session-busy-guard.ts).
-     * Checking after the land would be too late in the worst way: the work would
-     * already be merged into the source branch and the worktree half-removed,
-     * with no way to answer "so is this finished or not?". So the check runs
-     * before anything is landed, pushed, or removed, and the refusal names the
-     * conversations so the operator can decide whether to interrupt or wait.
-     *
-     * ── Why it closes ALL occupants, not just `tabId` ────────────────────────
-     * This used to end in `closeTab(tabId)`, which left every sibling
-     * conversation in the same worktree pointed at a deleted directory — the
-     * same defect the retire path had.
+     * Land this worktree and leave it sealed for review. Retire is deliberately
+     * separate: landing must never erase the checkout the operator may inspect.
      */
     finishWorktreeTab: async (tabId, strategyOverride) => {
       const tab = get().tabs.find((t) => t.id === tabId)
@@ -204,111 +188,26 @@ export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State
 
       const strategy = strategyOverride || usePreferencesStore.getState().worktreeCompletionStrategy
       const { repoPath, worktreePath, branchName, sourceBranch } = tab.worktree
-
-      // Which other directories would the closing retire delete? Same source of
-      // truth as the retire itself, so the check cannot miss a bench.
-      let benchPaths: string[] = []
-      try {
-        const preview = await window.ion.gitWorktreeRetirePreview(worktreePath)
-        benchPaths = preview.prunedBenchPaths ?? []
-      } catch (err) {
-        rWarn('worktree', 'retire preview failed; checking the worktree only', {
-          worktree_path: worktreePath, error: String(err),
-        })
-      }
-
-      const blockers = resolveRetireBlockers(get, worktreePath, benchPaths)
-      if (blockers) {
-        // Nothing landed, nothing pushed, nothing removed. Report through the
-        // same system-message channel the refused-retire arms below use.
-        set((s) => ({
-          conversationPanes: commitInstance(s.conversationPanes, tabId, (inst) => ({
-            ...inst,
-            messages: [...inst.messages, { id: `msg-${bumpMsgCounter()}`, role: 'system' as const, content: blockers.error, timestamp: Date.now() }],
-          })),
-        }))
-        rWarn('worktree', 'finish refused: active work in the worktree', {
-          tab_id: tabId.slice(0, 8), worktree_path: worktreePath, active_count: blockers.active.length,
+      const flags = landFlagsForStrategy(strategy)
+      const result = await window.ion.gitWorktreeLand({
+        repoPath,
+        worktreePath,
+        worktreeBranch: branchName,
+        sourceBranch,
+        noFf: flags.noFf,
+        syncFirst: flags.syncFirst,
+        requireFastForward: flags.requireFastForward,
+      })
+      if (!result.ok) {
+        rWarn('worktree', 'land refused from finish-work command', {
+          tab_id: tabId.slice(0, 8),
+          worktree_path: worktreePath,
+          error: result.error ?? '',
         })
         return
       }
-
-      if (strategy === 'merge-ff' || strategy === 'merge') {
-        const noFf = strategy === 'merge'
-        const result = await window.ion.gitWorktreeMerge(repoPath, branchName, sourceBranch, noFf)
-        if (!result.ok) {
-          const msg = result.hasConflicts
-            ? `Merge conflict: resolve manually in ${repoPath} then close this tab.`
-            : `Merge failed: ${result.error}`
-          // System message appends onto the active conversation instance now.
-          set((s) => ({
-            conversationPanes: commitInstance(s.conversationPanes, tabId, (inst) => ({
-              ...inst,
-              messages: [...inst.messages, { id: `msg-${bumpMsgCounter()}`, role: 'system' as const, content: msg, timestamp: Date.now() }],
-            })),
-          }))
-          return
-        }
-        // Retire through the appraised path, never a blind force-remove. The
-        // land above succeeded, so the worktree SHOULD be safe to retire — but
-        // "should" is not a guarantee: an agent may have written files between
-        // the land and this call. retireWorktree asks git what would actually
-        // be lost and refuses when the answer is "work", so a surprise leaves
-        // an extra directory behind instead of destroying changes.
-        const retire = await window.ion.gitWorktreeRetire({ repoPath, worktreePath, branchName })
-        if (!retire.ok) {
-          set((s) => ({
-            conversationPanes: commitInstance(s.conversationPanes, tabId, (inst) => ({
-              ...inst,
-              messages: [...inst.messages, { id: `msg-${bumpMsgCounter()}`, role: 'system' as const, content: `Landed successfully. The worktree was kept: ${retire.error}`, timestamp: Date.now() }],
-            })),
-          }))
-          rWarn('worktree', 'retire refused after land; worktree kept', { worktreePath, error: retire.error ?? '' })
-          return
-        }
-        // Close EVERY conversation in the retired directories, not just this
-        // tab: the worktree (and any bench the retire pruned) is gone, so a
-        // sibling conversation left open would be pointed at nothing.
-        await closeOccupants(set, get, [worktreePath, ...(retire.prunedBenchPaths ?? [])], retire.workingDirectory)
-      } else {
-        const pushResult = await window.ion.gitWorktreePush(worktreePath, sourceBranch)
-        if (!pushResult.ok) {
-          // System message appends onto the active conversation instance now.
-          set((s) => ({
-            conversationPanes: commitInstance(s.conversationPanes, tabId, (inst) => ({
-              ...inst,
-              messages: [...inst.messages, { id: `msg-${bumpMsgCounter()}`, role: 'system' as const, content: `Push failed: ${pushResult.error}`, timestamp: Date.now() }],
-            })),
-          }))
-          return
-        }
-        if (pushResult.remoteUrl && pushResult.remoteBranch) {
-          const url = pushResult.remoteUrl
-            .replace(/\.git$/, '')
-            .replace(/^git@([^:]+):/, 'https://$1/')
-          window.ion.openExternal(`${url}/compare/${sourceBranch}...${pushResult.remoteBranch}`).catch((err) => rWarn('worktree', 'openExternal compare URL failed', { error: String(err) }))
-        }
-        // Retire through the appraised path, never a blind force-remove. The
-        // land above succeeded, so the worktree SHOULD be safe to retire — but
-        // "should" is not a guarantee: an agent may have written files between
-        // the land and this call. retireWorktree asks git what would actually
-        // be lost and refuses when the answer is "work", so a surprise leaves
-        // an extra directory behind instead of destroying changes.
-        const retire = await window.ion.gitWorktreeRetire({ repoPath, worktreePath, branchName })
-        if (!retire.ok) {
-          set((s) => ({
-            conversationPanes: commitInstance(s.conversationPanes, tabId, (inst) => ({
-              ...inst,
-              messages: [...inst.messages, { id: `msg-${bumpMsgCounter()}`, role: 'system' as const, content: `Landed successfully. The worktree was kept: ${retire.error}`, timestamp: Date.now() }],
-            })),
-          }))
-          rWarn('worktree', 'retire refused after land; worktree kept', { worktreePath, error: retire.error ?? '' })
-          return
-        }
-        // Same as the merge arm: the directories are gone, so every conversation
-        // in them closes — a `closeTab(tabId)` here would orphan the siblings.
-        await closeOccupants(set, get, [worktreePath, ...(retire.prunedBenchPaths ?? [])], retire.workingDirectory)
-      }
+      await get().sealLandedWorktree(worktreePath)
+      await get().refreshWorkspaceViews(repoPath)
     },
   }
 }

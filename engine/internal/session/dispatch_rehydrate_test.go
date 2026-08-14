@@ -587,5 +587,94 @@ func TestPersistRehydrateLoop_LengthStable(t *testing.T) {
 		if got := distinctLen(); got != 3 {
 			t.Fatalf("cycle %d: expected dispatches length fixed at 3, got %d (amplification)", cycle, got)
 		}
+		for _, state := range s.agents.MergedSnapshot() {
+			if state.Name != "dev-lead" {
+				continue
+			}
+			members, _ := state.Metadata["dispatches"].([]interface{})
+			for _, member := range members {
+				dispatch := member.(map[string]interface{})
+				if dispatch["status"] != "done" {
+					t.Errorf("cycle %d: dispatch status = %#v, want done", cycle, dispatch["status"])
+				}
+				if dispatch["conversationId"] == "" {
+					t.Errorf("cycle %d: dispatch lost conversationId: %#v", cycle, dispatch)
+				}
+			}
+		}
+	}
+}
+
+func TestMergeDispatchesByID_LaterLifecycleFieldsWinAndOlderFieldsSurvive(t *testing.T) {
+	running := map[string]interface{}{
+		"id": "dispatch-1", "status": "running", "task": "durable task", "model": "model-a", "startTime": float64(100),
+	}
+	terminal := map[string]interface{}{
+		"id": "dispatch-1", "status": "done", "conversationId": "child-conversation", "elapsed": float64(42),
+	}
+
+	merged := mergeDispatchesByID([]interface{}{running}, []map[string]interface{}{terminal})
+	if len(merged) != 1 {
+		t.Fatalf("merged members = %d, want 1", len(merged))
+	}
+	member := merged[0].(map[string]interface{})
+	if got := member["status"]; got != "done" {
+		t.Errorf("status = %q, want later terminal status done", got)
+	}
+	if got := member["conversationId"]; got != "child-conversation" {
+		t.Errorf("conversationId = %q, want terminal pointer", got)
+	}
+	if got := member["elapsed"]; got != float64(42) {
+		t.Errorf("elapsed = %#v, want terminal elapsed", got)
+	}
+	for key, want := range map[string]interface{}{"task": "durable task", "model": "model-a", "startTime": float64(100)} {
+		if got := member[key]; got != want {
+			t.Errorf("%s = %#v, want earlier stable field %#v", key, got, want)
+		}
+	}
+}
+
+func TestRehydrateDispatchState_TerminalMemberSupersedesRegistrationMember(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	convDir := home + "/.ion/conversations"
+	const convID = "rehydrate-terminal-member"
+	const dispatchID = "dispatch-terminal-1"
+	const childConvID = "child-conversation-1"
+
+	conv := conversation.CreateConversation(convID, "sys", "model")
+	conversation.AddUserMessage(conv, "hello")
+	conv.Entries = append(conv.Entries,
+		conversation.SessionEntry{ID: dispatchID, ParentID: nil, Type: conversation.EntryAgentDispatch, Timestamp: 1000, Data: conversation.AgentDispatchData{
+			AgentName: "worker", AgentID: dispatchID, DisplayName: "Worker", Task: "durable task", Model: "model-a", Status: "running",
+		}},
+		conversation.SessionEntry{ID: dispatchID + "-done", ParentID: nil, Type: conversation.EntryAgentDispatch, Timestamp: 2000, Data: conversation.AgentDispatchData{
+			AgentName: "worker", AgentID: dispatchID, DisplayName: "Worker", Task: "durable task", Model: "model-a", Status: "done", Elapsed: 42,
+			ConversationID: childConvID, ConversationIDs: []string{childConvID},
+			Dispatches: []map[string]interface{}{{"id": dispatchID, "status": "done", "conversationId": childConvID, "elapsed": float64(42), "task": "durable task", "model": "model-a", "startTime": float64(100)}},
+		}},
+	)
+	if err := conversation.Save(conv, convDir); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	m := newTestManager(t)
+	s := &engineSession{key: "k", conversationID: convID, agents: agents.NewRegistry(), dispatchRegistry: extcontext.NewDispatchRegistry(), pending: pending.New()}
+	m.sessions["k"] = s
+	m.rehydrateDispatchState(s, "k")
+
+	snap := s.agents.MergedSnapshot()
+	if len(snap) != 1 || snap[0].Status != "done" {
+		t.Fatalf("top-level snapshot = %+v, want one done worker", snap)
+	}
+	dispatches, ok := snap[0].Metadata["dispatches"].([]interface{})
+	if !ok || len(dispatches) != 1 {
+		t.Fatalf("dispatches = %#v, want one member", snap[0].Metadata["dispatches"])
+	}
+	member := dispatches[0].(map[string]interface{})
+	for key, want := range map[string]interface{}{"id": dispatchID, "status": "done", "conversationId": childConvID, "elapsed": float64(42), "task": "durable task", "model": "model-a", "startTime": float64(100)} {
+		if got := member[key]; got != want {
+			t.Errorf("dispatch %s = %#v, want %#v", key, got, want)
+		}
 	}
 }

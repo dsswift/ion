@@ -20,14 +20,14 @@
  * same x, every control is at a stable position, and the name is the only thing
  * that ellipsises.
  *
- * ── Why iOS does not mirror this ────────────────────────────────────────────
+ * ── Why iOS layout differs ─────────────────────────────────────────────────
  * `ios/IonRemote/Views/WorktreeRowView.swift` keeps its trailing badges
- * deliberately. The shared vocabulary (dirty dot, `n↑`, base-moved, provision
- * state) is identical on both sides and no snapshot field moved; only the
- * arrangement differs, because the failure this fixes is desktop-only. A
- * SwiftUI List row is full-width and truncates rather than scrolling, and iOS's
- * verbs are swipe actions and a context menu, not inline buttons — so there is
- * no unreachable control there to rescue.
+ * deliberately. Shared vocabulary, including parenthesized conversation counts,
+ * dirty dot, `n↑`, base-moved, and provision state, is identical on both sides;
+ * no snapshot field moved. Only arrangement differs because this failure is
+ * desktop-only. A SwiftUI List row is full-width and truncates rather than
+ * scrolling, and iOS's verbs are swipe actions and a context menu, not inline
+ * buttons — so there is no unreachable control there to rescue.
  */
 import React from 'react'
 
@@ -115,14 +115,26 @@ export interface WorktreeRowProps {
   onOpen(): void
   onSync(): void
   onMenu(anchor: { x: number; y: number }): void
+  /** AI is resolving this row's native merge/rebase conflict. */
+  hasActiveWorktreeResolver?: boolean
+  /** Focus this worktree's active machine resolver. */
+  onFocusActiveWorktreeResolver?(): void
   /** Open the conflict-resolution dialog. Offered when `operationState` is set. */
   onResolve?(): void
   /** Add to / remove from the bench. */
   onToggleEnrollment?(): void
   /** Flip included/excluded on an already-enrolled worktree. */
   onToggleIncluded?(): void
+  /** True while this row's pin update and bench reassembly are in flight. */
+  updatingPin?: boolean
+  /** Another member's pin update owns this bench reassembly. */
+  pinUpdateLocked?: boolean
   /** Advance the bench pin to this worktree's current contribution. */
   onUpdatePin?(): void
+  /** True while this bench's shared conflict resolver is active. */
+  hasActiveResolver?: boolean
+  /** Focus the active bench resolver instead of opening another conflict dialog. */
+  onFocusActiveResolver?(): void
   /** Reveal the bench's conflict detail for this member. */
   onShowBenchConflict?(): void
   /**
@@ -176,12 +188,19 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
   // The human title when the worktree has earned one, else the directory slug.
   // The slug is never a good name -- it is just the only one available before
   // the first prompt names the work.
+  const isLanded = !!entry.landedAt
   const displayName = entry.title || entry.label
   const openLabel = describeOpenConversations(openConversations)
 
   // WHICH indicator the state slot shows, and which facts it could not show,
   // are both decided by one pure function so the row and its tests agree.
-  const rowState = resolveRowState({ entry, membership: props.membership, syncing, verificationSuspect: props.verificationSuspect })
+  const rowState = resolveRowState({
+    entry,
+    membership: props.membership,
+    syncing,
+    verificationSuspect: props.verificationSuspect,
+    hasActiveResolver: props.hasActiveResolver,
+  })
   const words = resolveRowWords({ entry, membership: props.membership, syncing, verificationSuspect: props.verificationSuspect })
   const enrollment: EnrollmentState = props.membership
     ? (props.membership.enabled ? 'included' : 'excluded')
@@ -250,35 +269,39 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
           {/* Bench membership leads the gutter: it is the only control that
               changes what the BUILD contains, and grouping enrolled rows at the
               top of the list makes its column read as the bench's stack. */}
-          <WorktreeEnrollmentSlot
-            enrollment={enrollment}
-            order={props.order}
-            railStarts={!!props.railStarts}
-            railContinues={!!props.railContinues}
-            branchName={entry.branchName}
-            width={SLOT.bench}
-            onToggleEnrollment={() => props.onToggleEnrollment?.()}
-            onToggleIncluded={() => props.onToggleIncluded?.()}
-          />
+          {isLanded ? <Slot width={SLOT.bench} /> : (
+            <WorktreeEnrollmentSlot
+              enrollment={enrollment}
+              order={props.order}
+              railStarts={!!props.railStarts}
+              railContinues={!!props.railContinues}
+              branchName={entry.branchName}
+              width={SLOT.bench}
+              onToggleEnrollment={() => props.onToggleEnrollment?.()}
+              onToggleIncluded={() => props.onToggleIncluded?.()}
+            />
+          )}
 
           {/* Activity: the aggregate of this worktree's conversations, in the
               app's existing dot vocabulary -- same colours, same pulse, same
               cascade as the tab and group pills. Idle worktrees render the
               hollow grey ring, so only the ones doing something advertise it. */}
           <Slot width={SLOT.activity}>
-            <Tooltip text={activityLabel(openConversations.length, !!activity?.pulse)}>
-              <span
-                data-testid={`worktree-activity-${entry.branchName}`}
-                className={activity?.pulse ? 'animate-pulse' : undefined}
-                style={{
-                  width: SLOT.activity, height: SLOT.activity, borderRadius: SLOT.activity / 2,
-                  flexShrink: 0,
-                  background: activity ? activity.bg : 'transparent',
-                  border: activity ? 'none' : `1px solid ${colors.statusIdle}`,
-                  boxShadow: activity?.glow ? `0 0 5px ${activity.glowColor}` : 'none',
-                }}
-              />
-            </Tooltip>
+            {!isLanded && (
+              <Tooltip text={activityLabel(openConversations.length, !!activity?.pulse)}>
+                <span
+                  data-testid={`worktree-activity-${entry.branchName}`}
+                  className={activity?.pulse ? 'animate-pulse' : undefined}
+                  style={{
+                    width: SLOT.activity, height: SLOT.activity, borderRadius: SLOT.activity / 2,
+                    flexShrink: 0,
+                    background: activity ? activity.bg : 'transparent',
+                    border: activity ? 'none' : `1px solid ${colors.statusIdle}`,
+                    boxShadow: activity?.glow ? `0 0 5px ${activity.glowColor}` : 'none',
+                  }}
+                />
+              </Tooltip>
+            )}
           </Slot>
 
           {/* Dirty: uncommitted work. Its own indicator, because it answers a
@@ -294,7 +317,7 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
               cannot do at this size -- or at all, for an operator who cannot
               separate the hues. */}
           <Slot width={SLOT.dirty}>
-            {entry.isDirty && (
+            {!isLanded && entry.isDirty && (
               <Tooltip text="Uncommitted changes. Sync and land are blocked until they are committed or stashed.">
                 <span
                   data-testid={`worktree-dirty-${entry.branchName}`}
@@ -314,7 +337,7 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
               branch does not have yet. Right-aligned so the digits line up
               down the list rather than jittering with the count's width. */}
           <Slot width={SLOT.unlanded} justify="flex-end">
-            {entry.unlandedCommitCount > 0 && (
+            {!isLanded && entry.unlandedCommitCount > 0 && (
               <Tooltip text={`${entry.unlandedCommitCount} commit${entry.unlandedCommitCount === 1 ? '' : 's'} not yet landed`}>
                 <span
                   data-testid={`worktree-unlanded-${entry.branchName}`}
@@ -330,15 +353,22 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
               and why each rung outranks the next. Every fact the slot cannot
               show reaches line 2 below, so the summary never hides anything. */}
           <Slot width={SLOT.state}>
-            <WorktreeStateSlot
+            {!isLanded && (
+              <WorktreeStateSlot
               state={rowState}
               branchName={entry.branchName}
+              hasActiveWorktreeResolver={props.hasActiveWorktreeResolver}
+              onFocusActiveWorktreeResolver={props.onFocusActiveWorktreeResolver}
               onResolve={props.onResolve}
               onSync={props.onSync}
+              updatingPin={props.updatingPin}
+              pinUpdateLocked={props.pinUpdateLocked}
               onUpdatePin={props.onUpdatePin}
               onShowBenchConflict={props.onShowBenchConflict}
+              onFocusActiveResolver={props.onFocusActiveResolver}
               onShowVerificationFailure={props.onShowVerificationFailure}
-            />
+              />
+            )}
           </Slot>
 
         </div>
@@ -373,9 +403,8 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
           </span>
         </HoverCard>
 
-        {/* Open-or-focus sits next to the name it qualifies. With several
-            conversations open it names the COUNT, not one of the tabs:
-            "open in tab 3" would be true of one of them and false of the row. */}
+        {/* Parenthesized count sits next to the name it qualifies. It says how
+            many conversations are open without repeating a redundant `open`. */}
         {openLabel && (
           <span
             data-testid={`worktree-open-label-${entry.branchName}`}
@@ -407,10 +436,10 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
           <WorktreeStageSlot
             stage={entry.stage}
             branchName={entry.branchName}
-            onSetStage={props.onSetStage}
+            onSetStage={isLanded ? undefined : props.onSetStage}
           />
         </div>
-        {words.map((word) => (
+        {!isLanded && words.map((word) => (
           <span
             key={word}
             data-testid={`worktree-word-${entry.branchName}-${word.replace(/[^a-z]+/gi, '-')}`}
@@ -432,17 +461,21 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
             Monospace because it is machine text being matched character by
             character against another surface, which is exactly when monospace
             earns its place over the row's prose font. */}
-        <span
-          data-testid={`worktree-id-${entry.branchName}`}
-          style={{ fontSize: 9, color: colors.textTertiary, fontFamily: 'monospace', flexShrink: 0 }}
-        >
-          {entry.label}
-        </span>
-        <span style={{ fontSize: 9, color: colors.textMuted, flexShrink: 0 }}>·</span>
-        <span style={{ fontSize: 9, color: colors.textTertiary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1, minWidth: 0 }}>
-          {entry.lastCommitSubject || 'no commits yet'}
-        </span>
-        {!entry.sourceBranch && (
+        {!isLanded && (
+          <>
+            <span
+              data-testid={`worktree-id-${entry.branchName}`}
+              style={{ fontSize: 9, color: colors.textTertiary, fontFamily: 'monospace', flexShrink: 0 }}
+            >
+              {entry.label}
+            </span>
+            <span style={{ fontSize: 9, color: colors.textMuted, flexShrink: 0 }}>·</span>
+            <span style={{ fontSize: 9, color: colors.textTertiary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1, minWidth: 0 }}>
+              {entry.lastCommitSubject || 'no commits yet'}
+            </span>
+          </>
+        )}
+        {!isLanded && !entry.sourceBranch && (
           <Tooltip text="Ion did not create this worktree, so its source branch is unknown. Land and sync will ask.">
             <span
               data-testid={`worktree-unknown-source-${entry.branchName}`}

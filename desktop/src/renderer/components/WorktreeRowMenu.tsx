@@ -50,6 +50,7 @@ export function WorktreeRowMenu({
     requestRetire,
     doRetire,
     doAddToBench,
+    doDiscardRecordings,
     doRename,
     moveInBench,
     enrolled,
@@ -63,6 +64,10 @@ export function WorktreeRowMenu({
     setRetireOutcome,
     landError,
     setLandError,
+    confirmDiscardRecordings,
+    setConfirmDiscardRecordings,
+    discardRecordingsOutcome,
+    setDiscardRecordingsOutcome,
     renaming,
     setRenaming,
     draftTitle,
@@ -70,7 +75,7 @@ export function WorktreeRowMenu({
   } = useWorktreeRowMenuVerbs({ entry, repoPath, onClose, onRefresh });
   // "Go to tab" hover submenu. ALL-INCLUSIVE list (see collectAllDirConversations'
   // doc-comment) so an in-progress conflict-auto-fix conversation is reachable
-  // here even though it is invisible to the row's own "open ×N" hint.
+  // here even though it is invisible to the row's parenthesized count hint.
   const [goToTabSubmenu, setGoToTabSubmenu] = useState<{
     x: number;
     y: number;
@@ -214,6 +219,10 @@ export function WorktreeRowMenu({
             }),
           );
       },
+      onRequestDiscardRecordings: () => {
+        if (!enrolled) return;
+        setConfirmDiscardRecordings(enrolled.membership.branchName);
+      },
       onRequestRetire: () => {
         void requestRetire().catch((err) =>
           rError("worktree.menu", "retire appraisal threw", {
@@ -231,7 +240,11 @@ export function WorktreeRowMenu({
   // MOUNTED (it owns the dialog state and the busy guard); only its body is
   // withdrawn.
   const dialogUp =
-    confirmRetire !== null || retireOutcome !== null || landError !== null;
+    confirmRetire !== null ||
+    retireOutcome !== null ||
+    landError !== null ||
+    confirmDiscardRecordings !== null ||
+    discardRecordingsOutcome !== null;
 
   // Measured placement. `anchor` is the raw right-click point, and a row near
   // the bottom of the git panel put most of the menu below the window edge —
@@ -448,9 +461,14 @@ export function WorktreeRowMenu({
         setLandError={setLandError}
         retireOutcome={retireOutcome}
         setRetireOutcome={setRetireOutcome}
+        confirmDiscardRecordings={confirmDiscardRecordings}
+        setConfirmDiscardRecordings={setConfirmDiscardRecordings}
+        discardRecordingsOutcome={discardRecordingsOutcome}
+        setDiscardRecordingsOutcome={setDiscardRecordingsOutcome}
+        busy={busy}
+        doDiscardRecordings={doDiscardRecordings}
         confirmRetire={confirmRetire}
         setConfirmRetire={setConfirmRetire}
-        busy={busy}
         doRetire={doRetire}
         onClose={onClose}
       />

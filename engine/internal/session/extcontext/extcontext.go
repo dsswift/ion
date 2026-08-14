@@ -505,7 +505,7 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 	}
 
 	// Wire engine-native agent dispatch.
-	ctx.DispatchAgent = BuildDispatchAgentFunc(sa, registry, depth, dispatchId)
+	ctx.DispatchAgent = BuildDispatchAgentFunc(sa, registry, depth, dispatchId, workspaceCheckerFor(sa))
 
 	// Wire recall support for background dispatches.
 	if registry != nil {

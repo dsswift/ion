@@ -114,3 +114,16 @@ func (m *Manager) TestGetPlanModeBashAllowlist(key string) (cmds []string, ok bo
 	}
 	return s.planModeAllowedBashCommands, true
 }
+
+// TestAppendAgentState seeds an engine-managed agent state for integration
+// tests that must exercise the public server command path.
+func (m *Manager) TestAppendAgentState(key string, state types.AgentStateUpdate) bool {
+	m.mu.RLock()
+	s, ok := m.sessions[key]
+	m.mu.RUnlock()
+	if !ok {
+		return false
+	}
+	s.agents.AppendState(state)
+	return true
+}

@@ -266,6 +266,7 @@ export async function pollRendererTabStates(): Promise<RemoteTabStatesPayload> {
               // offer a prompt input on any client, including via this
               // fallback projection.
               inputLocked: t.inputLocked || undefined,
+              inputLockReason: t.inputLockReason || undefined,
               tabRole: t.tabRole || undefined,
               hasEngineExtension: tabHasExtensions(t) || undefined,
               // iOS resolves the harness badge display name by matching

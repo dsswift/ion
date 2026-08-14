@@ -240,7 +240,7 @@ func (m *Manager) wireAgentToolServer(s *engineSession, key string, opts *types.
 // spawner blocks until the child completes, matching the ion_agent tool's
 // synchronous result contract.
 func (m *Manager) buildAgentToolHandler(s *engineSession, key, parentModel string) backend.ToolHandler {
-	spawner := m.buildRootAgentSpawner(s, key, parentModel, s.extGroup)
+	spawner := m.buildRootAgentSpawner(s, key, parentModel, s.extGroup, nil, nil)
 	return func(input map[string]interface{}) (*types.ToolResult, error) {
 		prompt, _ := input["prompt"].(string)           //nolint:errcheck // best-effort; failure not actionable here
 		name, _ := input["name"].(string)               //nolint:errcheck // best-effort; failure not actionable here

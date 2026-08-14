@@ -70,8 +70,10 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
   const [convLoading, setConvLoading] = useState<Map<string, boolean>>(new Map())
   // Track which dispatch index is selected, keyed by DISPATCH ID (see above).
   const [selectedDispatch, setSelectedDispatch] = useState<Map<string, number>>(new Map())
-  // Popup state — which dispatch (by dispatch id) is shown in the floating panel
-  const [popupDispatchId, setPopupDispatchId] = useState<string | null>(null)
+  // Popup subject stays tied to the exact dispatch the operator opened. Agent
+  // snapshots can reorder history or add a newer dispatch; deriving the popup
+  // from dispatchKey(agent) would silently repoint an open panel.
+  const [popupSubject, setPopupSubject] = useState<{ agentName: string; dispatchId: string } | null>(null)
   const prevVisibleCount = useRef(0)
   // Tracks whether the user manually toggled the panel this "session"
   // (since agents last appeared). Reset when agents go from 0→N so the
@@ -128,11 +130,13 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
   const headerCounts = React.useMemo(() => {
     let active = 0
     let done = 0
+    let dispatches = 0
     for (const a of visible) {
+      dispatches += getDispatches(a).length
       if (isAgentActive(a, agents)) active++
       else if (a.status === 'done') done++
     }
-    return { total: visible.length, active, done }
+    return { total: visible.length, dispatches, active, done }
   }, [visible, agents])
 
   // When agents transition from none→some, apply the user's default
@@ -199,11 +203,12 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
 
   /** Load the conversation for the selected dispatch of an agent,
    *  then lazily preload the remaining dispatches in the background. */
-  const loadAgentDispatch = useCallback((agent: AgentStateUpdate) => {
+  const loadAgentDispatch = useCallback((agent: AgentStateUpdate, preferredDispatchId?: string) => {
     const dispatches = getDispatches(agent)
     if (dispatches.length === 0) return
     const dispKey = dispatchKey(agent)
-    const idx = selectedDispatch.get(dispKey) ?? defaultDispatchIndex(dispatches)
+    const preferredIndex = preferredDispatchId ? dispatches.findIndex(d => d.id === preferredDispatchId) : -1
+    const idx = preferredIndex >= 0 ? preferredIndex : (selectedDispatch.get(dispKey) ?? defaultDispatchIndex(dispatches))
     const convId = dispatches[idx]?.conversationId
     if (convId) {
       // Load the selected dispatch first, then preload the rest.
@@ -223,18 +228,22 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
   // agent with no dispatches yet (keyed by name) is found rather than being
   // treated as "gone" the instant it opens.
   useEffect(() => {
-    if (popupDispatchId && !visible.find(a => dispatchKey(a) === popupDispatchId)) {
-      setPopupDispatchId(null)
-    }
-  }, [visible, popupDispatchId])
+    if (!popupSubject) return
+    const owner = visible.find(a => a.name === popupSubject.agentName)
+    const stillOwnsDispatch = owner && (popupSubject.dispatchId === '' || getDispatches(owner).some(d => d.id === popupSubject.dispatchId))
+    if (!stillOwnsDispatch) setPopupSubject(null)
+  }, [visible, popupSubject])
 
-  // Live streaming for popup — re-fetch when dispatch signature changes
-  const popupAgent = popupDispatchId ? visible.find(a => dispatchKey(a) === popupDispatchId) ?? null : null
+  // Resolve by stable agent name + exact dispatch id. Never repoint an open
+  // popup just because a newer dispatch became the agent's most recent member.
+  const popupAgent = popupSubject
+    ? visible.find(a => a.name === popupSubject.agentName && (popupSubject.dispatchId === '' || getDispatches(a).some(d => d.id === popupSubject.dispatchId))) ?? null
+    : null
   const popupDispatchSig = popupAgent
     ? `${getDispatches(popupAgent).map(d => d.conversationId).join(',')}|${popupAgent.status}|${getDispatches(popupAgent).length}`
     : ''
   useEffect(() => {
-    if (popupAgent) loadAgentDispatch(popupAgent)
+    if (popupAgent) loadAgentDispatch(popupAgent, popupSubject?.dispatchId)
   }, [popupDispatchSig]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Slow reconcile for the open popup — the live transcript is carried in real
@@ -248,7 +257,7 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
   // last few deltas landed.
   const popupDispatches = popupAgent ? getDispatches(popupAgent) : []
   const popupSelIdx = popupAgent
-    ? (selectedDispatch.get(dispatchKey(popupAgent)) ?? defaultDispatchIndex(popupDispatches))
+    ? popupDispatches.findIndex(d => d.id === popupSubject?.dispatchId)
     : -1
   const popupSelDispatch = popupSelIdx >= 0 ? popupDispatches[popupSelIdx] : undefined
   const popupSelConvId = popupSelDispatch?.conversationId || ''
@@ -261,27 +270,28 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
     : false
   const RECONCILE_INTERVAL_MS = 12000
   useEffect(() => {
-    if (!popupDispatchId || !popupSelConvId || !popupSelRunning) return
+    if (!popupSubject || !popupSelConvId || !popupSelRunning) return
     const timer = setInterval(() => {
       refetchConversation(popupSelConvId).catch((err) => rDebug('agent-panel', 'popup reconcile refetch failed', { conversation_id: popupSelConvId, error: String(err) }))
     }, RECONCILE_INTERVAL_MS)
     return () => clearInterval(timer)
-  }, [popupDispatchId, popupSelConvId, popupSelRunning, refetchConversation])
+  }, [popupSubject, popupSelConvId, popupSelRunning, refetchConversation])
   // One final reconcile when the running dispatch transitions to terminal, so
   // the popup converges on the complete persisted transcript.
   const prevPopupRunning = useRef(false)
   useEffect(() => {
-    if (popupDispatchId && popupSelConvId && prevPopupRunning.current && !popupSelRunning) {
+    if (popupSubject && popupSelConvId && prevPopupRunning.current && !popupSelRunning) {
       refetchConversation(popupSelConvId).catch((err) => rDebug('agent-panel', 'final popup reconcile refetch failed', { conversation_id: popupSelConvId, error: String(err) }))
     }
     prevPopupRunning.current = popupSelRunning
-  }, [popupDispatchId, popupSelConvId, popupSelRunning, refetchConversation])
+  }, [popupSubject, popupSelConvId, popupSelRunning, refetchConversation])
 
   /** Resolve dispatch data for a given agent (used by the row and the popup). */
-  const resolveDispatchData = useCallback((agent: AgentStateUpdate) => {
+  const resolveDispatchData = useCallback((agent: AgentStateUpdate, preferredDispatchId?: string) => {
     const dispatches = getDispatches(agent)
     const dispKey = dispatchKey(agent)
-    const dispIdx = selectedDispatch.get(dispKey) ?? defaultDispatchIndex(dispatches)
+    const preferredIndex = preferredDispatchId ? dispatches.findIndex(d => d.id === preferredDispatchId) : -1
+    const dispIdx = preferredIndex >= 0 ? preferredIndex : (selectedDispatch.get(dispKey) ?? defaultDispatchIndex(dispatches))
     const activeConvId = dispatches[dispIdx]?.conversationId || ''
     const rawMsgs = activeConvId ? convMessages.get(activeConvId) : undefined
     const activeDispatch = dispatches[dispIdx]
@@ -351,7 +361,8 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
       // on. A running agent whose first dispatch has not registered yet is
       // keyed by name; keying it any other way opened a panel that resolved to
       // no agent and so never rendered.
-      setPopupDispatchId(key)
+      const selectedIndex = selectedDispatch.get(key) ?? defaultDispatchIndex(dispatches)
+      setPopupSubject({ agentName: agent.name, dispatchId: dispatches[selectedIndex]?.id ?? '' })
       loadAgentDispatch(agent)
     }
     // A data-less click (roster pill, completed ephemeral with no transcript)
@@ -372,7 +383,7 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
   const effectiveHeight = panelHeight ?? DEFAULT_PANEL_HEIGHT
 
   // Resolve popup data (outside the render loop, using the same logic)
-  const popupData = popupAgent ? resolveDispatchData(popupAgent) : null
+  const popupData = popupAgent ? resolveDispatchData(popupAgent, popupSubject?.dispatchId) : null
 
   return (
     <div
@@ -437,7 +448,8 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
           batch reads "Agents · 5 · 5 active" and a finished one "Agents · 5 ·
           5 done". Counts are derived over `visible` (see headerCounts memo).
         */}
-        <span>Agents · {headerCounts.total}</span>
+        <span>{subDispatch ? 'Child agents' : 'Agents'} · {headerCounts.total}</span>
+        <span>· {headerCounts.dispatches} {headerCounts.dispatches === 1 ? 'dispatch' : 'dispatches'}</span>
         {headerCounts.active > 0 && (
           <span style={{ color: colors.statusRunning, fontWeight: 600 }}>· {headerCounts.active} active</span>
         )}
@@ -510,11 +522,13 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
           dispatches={popupData.dispatches}
           selectedDispatch={popupData.dispIdx}
           onSelectDispatch={(idx) => {
+            const selected = popupData.dispatches[idx]
             setSelectedDispatch(prev => { const next = new Map(prev); next.set(dispatchKey(popupAgent), idx); return next })
-            const convId = popupData.dispatches[idx]?.conversationId
+            if (selected) setPopupSubject({ agentName: popupAgent.name, dispatchId: selected.id })
+            const convId = selected?.conversationId
             if (convId) loadSingleConversation(convId).catch((err) => rError('agent-panel', 'popup select dispatch load conversation failed', { conversation_id: convId, error: String(err) }))
           }}
-          onClose={() => setPopupDispatchId(null)}
+          onClose={() => setPopupSubject(null)}
           dispatchTelemetry={dispatchTelemetry}
           allAgents={agents}
         />

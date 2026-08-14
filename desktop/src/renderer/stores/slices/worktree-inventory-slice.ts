@@ -13,6 +13,7 @@ import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { rInfo, rWarn, rDebug } from '../../rendererLogger'
 import { closeOccupants, resolveRetireBlockers } from './worktree-occupant-close'
 import { legacyReviewToStage } from '../../../shared/types-git'
+import { isWithinRepo } from '../../../shared/repo-containment'
 import { collectAllDirConversations, pickNextConversation } from '../../../shared/worktree-conversations'
 import { resolveRegisteredWorktree } from '../worktree-registration'
 
@@ -31,28 +32,54 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
         set((s) => ({
           worktreeInventory: new Map(s.worktreeInventory).set(repoPath, worktrees),
         }))
-        // Alerts ride the same refresh, with kind-aware lifecycles:
-        //  - conflicts: recorded while an operation is in progress (covers
-        //    conflicts raised outside a sync click — a restart, a manual
-        //    rebase), cleared when the operation finishes;
-        //  - refusals ("dirty worktree, sync declined"): no git state says
-        //    "was refused", so they clear when the worktree goes CLEAN or a
-        //    sync succeeds — clearing them on "no operation" would wipe the
-        //    alert on the very refresh that follows the refusal.
+        // Conflict state rides same refresh. An in-progress operation can have
+        // started outside Ion or before restart, and must reach Git panel before
+        // user opens a row. State clears when operation ends.
+        const inventoryPaths = new Set(worktrees.map((wt) => wt.worktreePath))
         for (const wt of worktrees) {
+          if (wt.landedAt) {
+            void get().sealLandedWorktree(wt.worktreePath).catch((err) => rWarn(
+              'worktree.inventory',
+              'could not seal landed worktree conversations',
+              { worktree_path: wt.worktreePath, error: String(err) },
+            ))
+            continue
+          }
           if (wt.operationState) {
             get().recordConflictAlert(wt.worktreePath, {
-              source: 'detected',
               operationState: wt.operationState,
               label: wt.label,
             })
           } else {
-            const alert = get().gitConflictAlerts.get(wt.worktreePath)
-            if (alert?.kind === 'refusal') {
-              if (!wt.isDirty) get().clearConflictAlert(wt.worktreePath)
+            get().clearConflictAlert(wt.worktreePath)
+          }
+        }
+        // A land conflict can stop in repo root, which is not an inventory row.
+        // Re-probe those alert directories or banner would survive resolution.
+        for (const [directory, alert] of get().gitConflictAlerts) {
+          if (inventoryPaths.has(directory) || !isWithinRepo(directory, repoPath)) continue
+          try {
+            const operation = await window.ion.gitOpState(directory)
+            if (!operation.ok) {
+              rWarn('worktree.inventory', 'could not refresh non-worktree conflict state', {
+                repo_path: repoPath,
+                directory,
+                error: operation.error ?? '',
+              })
+            } else if (operation.state) {
+              get().recordConflictAlert(directory, {
+                operationState: operation.state,
+                label: alert.label,
+              })
             } else {
-              get().clearConflictAlert(wt.worktreePath)
+              get().clearConflictAlert(directory)
             }
+          } catch (err) {
+            rWarn('worktree.inventory', 'non-worktree conflict state probe threw', {
+              repo_path: repoPath,
+              directory,
+              error: String(err),
+            })
           }
         }
         rDebug('worktree.inventory', 'refreshed', { repo_path: repoPath, count: worktrees.length })
@@ -101,10 +128,39 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
       })
     },
 
+    sealLandedWorktree: async (worktreePath) => {
+      const tabs = get().tabs.filter((tab) => tab.workingDirectory === worktreePath)
+      if (tabs.length === 0) return
+      set((s) => ({
+        tabs: s.tabs.map((tab) => tab.workingDirectory === worktreePath && !tab.isTerminalOnly
+          ? {
+            ...tab,
+            inputLocked: true,
+            inputLockReason: 'landed-worktree' as const,
+            worktree: tab.worktree ? { ...tab.worktree, landedAt: tab.worktree.landedAt ?? Date.now() } : null,
+          }
+          : tab),
+      }))
+      for (const tab of tabs) {
+        if (tab.isTerminalOnly) {
+          get().closeTab(tab.id)
+          continue
+        }
+        try {
+          await window.ion.engineStop(tab.id)
+          rInfo('worktree.inventory', 'sealed landed review session', {
+            worktree_path: worktreePath, tab_id: tab.id.slice(0, 8),
+          })
+        } catch (err) {
+          rWarn('worktree.inventory', 'could not stop sealed review session', {
+            worktree_path: worktreePath, tab_id: tab.id.slice(0, 8), error: String(err),
+          })
+        }
+      }
+    },
+
     /**
      * Create an ADDITIONAL conversation in a worktree, always a new one.
-     *
-     * ── Why this is a store action and not a component handler ───────────────
      * Creating the tab is only half the job: the tab must also be given its
      * `worktree` metadata, or it reads as a plain directory conversation. That
      * matters well beyond the lifecycle verbs — the git panel resolves which
@@ -119,6 +175,13 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
      * attachment cannot be forgotten by a caller again.
      */
     newWorktreeConversation: async (worktreePath) => {
+      const worktree = await resolveRegisteredWorktree(worktreePath)
+      if (worktree?.landedAt) {
+        rWarn('worktree.inventory', 'new conversation refused: worktree has landed', {
+          worktree_path: worktreePath,
+        })
+        throw new Error('This worktree has already landed and is sealed for review. Retire it when review is complete.')
+      }
       rInfo('worktree.inventory', 'opening new conversation in worktree', { worktree_path: worktreePath })
       // createTabInDirectory with useWorktree=false: the worktree already
       // exists, so this must NOT create another one inside it.
@@ -144,7 +207,6 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
       // The registry records the true repo at creation and is the only
       // authoritative source. A heuristic scan over a cache keyed for display is
       // exactly the substitution that drifts.
-      const worktree = await resolveRegisteredWorktree(worktreePath)
       if (worktree) {
         set((s) => ({
           tabs: s.tabs.map((t) => t.id === tabId
@@ -297,6 +359,31 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
       return result
     },
 
+    retireLandedWorktrees: async (repoPath) => {
+      const landed = (get().worktreeInventory.get(repoPath) ?? [])
+        .filter((entry) => !!entry.landedAt)
+      if (landed.length === 0) return { ok: true, retired: 0 }
+
+      // Preflight every directory before removing any one. A partial bulk retire
+      // would leave a misleading "all" outcome and is never safer than refusing
+      // before disk state changes.
+      for (const entry of landed) {
+        const blockers = resolveRetireBlockers(get, entry.worktreePath, [])
+        if (blockers) return { ok: false, retired: 0, error: blockers.error }
+      }
+
+      let retired = 0
+      for (const entry of landed) {
+        const result = await get().retireWorktree(repoPath, entry.worktreePath, entry.branchName)
+        if (!result.ok) {
+          return { ok: false, retired, error: result.error ?? 'Could not retire a landed worktree.' }
+        }
+        retired++
+      }
+      rInfo('worktree.inventory', 'retired landed worktrees', { repo_path: repoPath, retired })
+      return { ok: true, retired }
+    },
+
     /**
      * Re-run provisioning for a worktree, then refresh so the row reflects the
      * new state.
@@ -365,25 +452,13 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
           has_conflicts: !!result.hasConflicts,
           error: result.error ?? '',
         })
-        // A failed sync used to fail into the log and nowhere else; the
-        // operator believed it succeeded. Record it so the toast and the row
-        // badge fire at the moment of failure. Two shapes:
-        //  - conflicts: an operation is stuck; the ConflictsDialog resolves it;
-        //  - dirty refusals: nothing started; the remediation is the message
-        //    (commit or stash) and there is nothing to "resolve".
+        // A conflict leaves an in-progress operation. Record it immediately
+        // so Git panel banner can open ConflictsDialog before inventory refresh.
+        // Dirty refusals start no operation; disabled row tooltip already gives
+        // remediation, while this logged failure remains observable.
         if (result.hasConflicts) {
           get().recordConflictAlert(worktreePath, {
-            source: 'sync',
-            kind: 'conflict',
             operationState: 'rebasing',
-            message: result.error,
-            label: worktreePath.split('/').filter(Boolean).pop(),
-          })
-        } else if (result.refusedDirty) {
-          get().recordConflictAlert(worktreePath, {
-            source: 'sync',
-            kind: 'refusal',
-            message: result.error,
             label: worktreePath.split('/').filter(Boolean).pop(),
           })
         }

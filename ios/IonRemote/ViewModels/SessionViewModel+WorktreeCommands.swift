@@ -80,16 +80,27 @@ extension SessionViewModel {
              intent: .userInitiated)
     }
 
-    /// Focus existing singleton immediately. When missing, ask desktop to create
-    /// it and resolve navigation from later authoritative worktree snapshot.
+    /// Cycle through authoritative bench conversations already in this snapshot.
+    /// Machine Auto-fix and Analysis tabs share the bench directory and must be
+    /// visible navigation targets here. Only an empty list asks desktop to create
+    /// the persistent operator singleton.
     func openBenchConversation(repoPath: String, sourceBranch: String) {
-        if let tabId = worktreeStates[repoPath]?.benches
-            .first(where: { $0.sourceBranch == sourceBranch })?.benchConversationTabId {
-            cancelPendingBenchConversation(reason: "superseded by existing singleton")
-            send(.benchOpenConversation(repoPath: repoPath, sourceBranch: sourceBranch), intent: .userInitiated)
-            navigateToTab(tabId)
-            DiagnosticLog.log("focused existing bench conversation", tag: "worktree",
-                              fields: ["repo_path": repoPath, "source_branch": sourceBranch, "tab_id": tabId])
+        // A missing snapshot row is treated as an empty conversation list. The
+        // request still reaches desktop, which may have a fresher bench record
+        // and will answer creation through the next authoritative snapshot.
+        let conversations = worktreeStates[repoPath]?.benches
+            .first(where: { $0.sourceBranch == sourceBranch })?.openConversations ?? []
+        if !conversations.isEmpty {
+            cancelPendingBenchConversation(reason: "superseded by open bench conversation")
+            let current = conversations.firstIndex { $0.tabId == focusedTabId }
+            let target = current.map { conversations[($0 + 1) % conversations.count] } ?? conversations[0]
+            navigateToTab(target.tabId)
+            DiagnosticLog.log("focused open bench conversation", tag: "worktree",
+                              fields: ["repo_path": repoPath,
+                                       "source_branch": sourceBranch,
+                                       "tab_id": target.tabId,
+                                       "tab_role": target.tabRole ?? "operator",
+                                       "match_count": String(conversations.count)])
             return
         }
 
@@ -183,6 +194,22 @@ extension SessionViewModel {
              intent: .userInitiated)
     }
 
+    func retireWorktree(_ worktree: RemoteWorktree, repoPath: String) {
+        worktreeBusyPath = worktree.worktreePath
+        send(.worktreeRetire(repoPath: repoPath, worktreePath: worktree.worktreePath),
+             intent: .userInitiated)
+    }
+
+    /// Retire every worktree in the repo already sealed by a successful Land —
+    /// mirrors the desktop's "Retire all" batch control in the Landed group.
+    /// The confirmation gate lives in the view; this only sends the command.
+    func retireAllLandedWorktrees(repoPath: String) {
+        benchBusy = true
+        DiagnosticLog.log("retire all landed worktrees requested", tag: "worktree",
+                          fields: ["repo_path": repoPath])
+        send(.worktreeRetireLanded(repoPath: repoPath), intent: .userInitiated)
+    }
+
     // MARK: - Bench verbs
 
     func assembleBench(repoPath: String, sourceBranch: String) {
@@ -238,16 +265,17 @@ extension SessionViewModel {
             worktreeStates[state.repoPath] = state
         }
         if let pending = pendingBenchConversation,
-           let tabId = states.first(where: { $0.repoPath == pending.repoPath })?.benches
-            .first(where: { $0.sourceBranch == pending.sourceBranch })?.benchConversationTabId {
+           let conversation = states.first(where: { $0.repoPath == pending.repoPath })?.benches
+            .first(where: { $0.sourceBranch == pending.sourceBranch })?.openConversations.first {
             pending.timeoutTask?.cancel()
             pendingBenchConversation = nil
-            navigateToTab(tabId)
+            navigateToTab(conversation.tabId)
             DiagnosticLog.log("bench conversation navigation resolved", tag: "worktree",
                               fields: ["repo_path": pending.repoPath,
                                        "source_branch": pending.sourceBranch,
                                        "request_id": pending.requestId.uuidString,
-                                       "tab_id": tabId])
+                                       "tab_id": conversation.tabId,
+                                       "tab_role": conversation.tabRole ?? "operator"])
         }
         // Any state push means the operation that triggered it has finished.
         worktreeBusyPath = nil
@@ -260,6 +288,12 @@ extension SessionViewModel {
         worktreeBusyPath = nil
         benchBusy = false
         if result.ok {
+            if result.operation == .open, let tabId = result.tabId {
+                navigateToTab(tabId)
+                DiagnosticLog.log("worktree conversation navigation resolved", tag: "worktree",
+                                  fields: ["tab_id": tabId])
+                return
+            }
             // A dry-run collision prediction outranks the plain success line:
             // the operation worked, but the next assembly will conflict, and
             // the operator decides now whether to resolve or keep working.
@@ -267,6 +301,13 @@ extension SessionViewModel {
                 gitToast = GitToast(message: warning, isError: true)
                 DiagnosticLog.log("pin update predicts a collision", tag: "worktree", level: .warn,
                                   fields: ["operation": result.operation.rawValue, "warning": warning])
+            } else if let retired = result.retired, result.operation == .retireAll {
+                // No pre-worded summary for the batch: the count is the whole
+                // story ("3 landed worktrees retired." / a plural-safe zero).
+                let message = retired == 1 ? "1 landed worktree retired." : "\(retired) landed worktrees retired."
+                gitToast = GitToast(message: message, isError: false)
+                DiagnosticLog.log("retire-all-landed finished", tag: "worktree",
+                                  fields: ["retired": String(retired)])
             } else if let summary = result.summary, !summary.isEmpty {
                 // sync_all pre-words its per-worktree counts on the desktop so
                 // every client says the same sentence. Conflicts surviving the
@@ -275,6 +316,12 @@ extension SessionViewModel {
                 DiagnosticLog.log("sync-all finished", tag: "worktree",
                                   fields: ["summary": summary,
                                            "has_conflicts": String(result.hasConflicts ?? false)])
+            } else if result.operation == .retire, let recoveryRef = result.recoveryRef {
+                gitToast = GitToast(message: "Worktree retired. Recovery saved at \(recoveryRef).", isError: false)
+            } else if result.operation == .retire, let pruned = result.prunedBenchPaths, !pruned.isEmpty {
+                let count = pruned.count
+                let noun = count == 1 ? "bench" : "benches"
+                gitToast = GitToast(message: "Worktree retired. \(count) empty \(noun) removed.", isError: false)
             } else {
                 gitToast = GitToast(message: Self.successMessage(for: result.operation), isError: false)
             }
@@ -283,9 +330,16 @@ extension SessionViewModel {
         // A refusal the operator can fix reads differently from a hard failure,
         // and the recovery differs too -- so do not collapse them. sync_all's
         // failure carries its summary when one exists (partial outcomes are
-        // more useful than a bare "failed").
-        let message = result.error ?? result.summary
-            ?? "\(Self.successMessage(for: result.operation)) failed."
+        // more useful than a bare "failed"); retire_all's failure carries the
+        // count already retired for the same reason -- a batch that stopped
+        // partway through is not the same outcome as one that never started.
+        let message: String
+        if result.operation == .retireAll, let retired = result.retired, retired > 0 {
+            message = "\(result.error ?? "Retire all landed worktrees failed.") (\(retired) already retired.)"
+        } else {
+            message = result.error ?? result.summary
+                ?? "\(Self.successMessage(for: result.operation)) failed."
+        }
         gitToast = GitToast(message: message, isError: true)
         DiagnosticLog.log("worktree operation failed", tag: "worktree", level: .warn,
                           fields: [
@@ -298,12 +352,15 @@ extension SessionViewModel {
 
     private static func successMessage(for op: RemoteWorktreeOpResult.Operation) -> String {
         switch op {
+        case .open: return "Worktree conversation opened."
         case .sync: return "Synced from the source branch."
         case .land: return "Landed into the source branch."
+        case .retire: return "Worktree retired."
         case .assemble: return "Bench assembled."
         case .update: return "Member updated and bench assembled."
         case .updateAll: return "All stale members updated and bench assembled."
         case .syncAll: return "All worktrees synced."
+        case .retireAll: return "Landed worktrees retired."
         }
     }
 }

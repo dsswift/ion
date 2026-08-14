@@ -304,11 +304,20 @@ of the bench still builds. A bad member never costs you the working bench.
 
 ### After a land
 
-When a member's work lands into the source branch it becomes part of the bench's
-base permanently. The bench reassembles from the source tip, so the work arrives
-with the base and the member is retired from the list. Nothing is lost: the
-content is in the feature branch, which is where a pull request into the trunk
-reads from.
+Land is a terminal transition for that worktree. It records the landing, removes
+the worktree from every bench immediately, and leaves the checkout as a sealed,
+read-only review record. Existing conversations remain readable, but no new
+conversation, terminal, Sync, Update, stage, or bench action can run there.
+**Retire worktree** is its only remaining lifecycle action.
+
+Land does not reassemble the bench or advance any other pin. Sync each remaining
+worktree from the source branch, then use Update or Update all & assemble when
+its new committed contribution is ready. This brings landed source content into
+remaining worktrees natively rather than retaining a duplicate bench member.
+
+When an explicit assembly runs, landed content comes from the source branch
+base and the remaining members layer on top. Nothing is lost: the content is in
+the feature branch, which is where a pull request into the trunk reads from.
 
 This works even when you squash a dozen iteration commits into one before
 landing, and even after **Land & retire** deletes the branch.
@@ -350,9 +359,9 @@ landing, and even after **Land & retire** deletes the branch.
 | A bench vanished | Its last member was retired, so it was pruned. | Enroll a worktree; it comes back. |
 | A member shows `behind` and Update changes nothing | You amended or reworded — same content, new sha. | Nothing to do; the badge clears on the next evaluation. |
 | The header says fewer are "building" than have diamonds | Excluded members are enrolled but skipped, so they are not in the build. | Expected. The badge reports the size of the build; hover it for the excluded count. |
-| A worktree I just landed is still at the top of the list | Fixed. Landedness now outranks bench membership: a member whose work reached the source branch sinks even before the next assembly retires it. | Nothing to do. |
+| A worktree I just landed is still at the top of the list | Landedness is stored and terminal. The row moves into Landed immediately and leaves every bench. | Review it, then Retire when finished. |
 | A worktree I have never committed in is not under Landed | Correct: landed means work *reached the source branch*. An empty worktree has shipped nothing. | Nothing to do. It joins the band the first time you land from it. |
-| A worktree I landed long ago is not under Landed | Landing is recorded when the land verb runs, and yours predates that. It cannot be recovered afterwards — git cannot tell "never started" from "landed". | Nothing to do; it will show as active until you retire it. |
+| A worktree I landed long ago is not under Landed | Its landing predates the stored `landedAt` witness. Git cannot safely distinguish it from a never-started checkout. | It remains active until you retire it. |
 | A row shows both `excluded` and `behind` | Both are true: it is skipped in the merge AND holds newer work than its pin. | Expected. Re-including it will merge the old pin until you Update. |
 | Assemble refused | The bench tree is dirty or a bench conversation is running. | Discard the bench edits or export them to the member. |
 | A worktree is missing from the list | It was created outside Ion. | It still appears, but with "source unknown" — land and sync are disabled because Ion cannot know what it was cut from. |

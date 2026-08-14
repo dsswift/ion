@@ -32,7 +32,7 @@ export type RowStateIndicator =
   /** A rebase/merge/cherry-pick is in progress IN the worktree. Click resolves. */
   | { kind: 'operation-conflict'; operation: string; conflictedCount: number }
   /** The bench could not merge this member's pinned contribution. */
-  | { kind: 'bench-conflict'; paths: string[]; conflictsWith: string[] }
+  | { kind: 'bench-conflict'; paths: string[]; conflictsWith: string[]; hasActiveResolver?: boolean }
   /**
    * This member's merge came from a REPLAYED recording in an assembly that
    * then failed project verification. The member IS in the failed tree (its
@@ -65,6 +65,8 @@ export interface RowStateInput {
    * === 'conflicted'`, which ranks above this).
    */
   verificationSuspect?: { command: string }
+  /** A machine resolver is actively working in this bench. */
+  hasActiveResolver?: boolean
 }
 
 /**
@@ -96,6 +98,8 @@ export interface RowStateInput {
 export function resolveRowState(input: RowStateInput): RowStateIndicator {
   const { entry, membership, syncing } = input
 
+  if (entry.landedAt) return { kind: 'none' }
+
   if (entry.operationState) {
     return {
       kind: 'operation-conflict',
@@ -109,6 +113,7 @@ export function resolveRowState(input: RowStateInput): RowStateIndicator {
       kind: 'bench-conflict',
       paths: membership.conflictPaths ?? [],
       conflictsWith: membership.conflictsWith ?? [],
+      hasActiveResolver: input.hasActiveResolver || undefined,
     }
   }
 
@@ -160,6 +165,7 @@ export function resolveRowState(input: RowStateInput): RowStateIndicator {
  */
 export function resolveRowWords(input: RowStateInput): string[] {
   const { entry, membership, syncing } = input
+  if (entry.landedAt) return []
   const shown = resolveRowState(input)
   const words: string[] = []
 

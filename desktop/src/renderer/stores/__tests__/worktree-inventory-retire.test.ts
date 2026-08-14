@@ -19,7 +19,7 @@ vi.mock('../../rendererLogger', () => ({
 }))
 
 import {
-  harness, ion, resetIon, REPO, WT_A, WT_B, WT_A_SIBLING, BENCH,
+  harness, ion, resetIon, entry, REPO, WT_A, WT_B, WT_A_SIBLING, BENCH,
   runningPane, agentsPane, shellPane, idlePane,
 } from './helpers/worktree-inventory-harness'
 
@@ -368,5 +368,67 @@ describe('retireWorktree', () => {
       expect(res.ok).toBe(false)
       expect(ion.gitWorktreeRetire).not.toHaveBeenCalled()
     })
+  })
+})
+
+describe('retireLandedWorktrees', () => {
+  it('is a no-op when nothing in this repo has landed', async () => {
+    const { state } = harness()
+    state.worktreeInventory.set(REPO, [entry({ worktreePath: WT_A, landedAt: undefined })])
+
+    const res = await state.retireLandedWorktrees(REPO)
+
+    expect(res).toEqual({ ok: true, retired: 0 })
+    expect(ion.gitWorktreeRetire).not.toHaveBeenCalled()
+  })
+
+  it('retires every landed worktree in the repo and leaves active ones alone', async () => {
+    const { state } = harness()
+    state.worktreeInventory.set(REPO, [
+      entry({ worktreePath: WT_A, branchName: 'wt/a3f1', landedAt: 1000 }),
+      entry({ worktreePath: WT_B, branchName: 'wt/7b0c', landedAt: 2000 }),
+      entry({ worktreePath: '/Users/test/.ion/worktrees/project-active', branchName: 'wt/active', landedAt: undefined }),
+    ])
+
+    const res = await state.retireLandedWorktrees(REPO)
+
+    expect(res).toEqual({ ok: true, retired: 2 })
+    expect(ion.gitWorktreeRetire).toHaveBeenCalledTimes(2)
+    expect(ion.gitWorktreeRetire).toHaveBeenCalledWith(expect.objectContaining({ worktreePath: WT_A, branchName: 'wt/a3f1' }))
+    expect(ion.gitWorktreeRetire).toHaveBeenCalledWith(expect.objectContaining({ worktreePath: WT_B, branchName: 'wt/7b0c' }))
+  })
+
+  it('refuses the whole batch, retiring nothing, when any landed worktree has active work', async () => {
+    const { state } = harness({
+      tabs: [{ id: 'busy', workingDirectory: WT_B }],
+      panes: new Map([['busy', runningPane]]),
+    })
+    state.worktreeInventory.set(REPO, [
+      entry({ worktreePath: WT_A, branchName: 'wt/a3f1', landedAt: 1000 }),
+      entry({ worktreePath: WT_B, branchName: 'wt/7b0c', landedAt: 2000 }),
+    ])
+
+    const res = await state.retireLandedWorktrees(REPO)
+
+    expect(res.ok).toBe(false)
+    expect(res.retired).toBe(0)
+    expect(ion.gitWorktreeRetire).not.toHaveBeenCalled()
+  })
+
+  it('stops and reports the count already retired if a later retire in the batch fails', async () => {
+    const { state } = harness()
+    state.worktreeInventory.set(REPO, [
+      entry({ worktreePath: WT_A, branchName: 'wt/a3f1', landedAt: 1000 }),
+      entry({ worktreePath: WT_B, branchName: 'wt/7b0c', landedAt: 2000 }),
+    ])
+    ion.gitWorktreeRetire
+      .mockResolvedValueOnce({ ok: true, workingDirectory: REPO, prunedBenchPaths: [] })
+      .mockResolvedValueOnce({ ok: false, error: 'disk busy' })
+
+    const res = await state.retireLandedWorktrees(REPO)
+
+    expect(res.ok).toBe(false)
+    expect(res.retired).toBe(1)
+    expect(res.error).toBe('disk busy')
   })
 })

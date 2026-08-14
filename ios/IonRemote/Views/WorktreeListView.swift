@@ -11,6 +11,7 @@ import SwiftUI
 struct WorktreeListView: View {
     @Environment(SessionViewModel.self) private var viewModel
     let repoPath: String
+    @State private var confirmRetireAllLanded = false
 
     private var state: RemoteWorktreeState? { viewModel.worktreeState(for: repoPath) }
 
@@ -154,7 +155,7 @@ struct WorktreeListView: View {
     @ViewBuilder
     private func benchVerbs(_ bench: RemoteBench) -> some View {
         let behind = state?.behindMemberCount(of: bench) ?? 0
-        let talkTitle = bench.benchConversationTabId == nil ? "Talk" : "Go to"
+        let talkTitle = bench.conversationActionTitle
         let terminalTitle = bench.benchTerminalTabId == nil ? "Terminal" : "Go to terminal"
         let assembleTitle = behind > 0 ? "Update all & assemble" : "Assemble"
 
@@ -287,7 +288,8 @@ struct WorktreeListView: View {
                                 worktreePath: wt.worktreePath, stage: stage?.rawValue)
                         },
                         onNewConversation: { viewModel.newWorktreeConversation(worktreePath: wt.worktreePath) },
-                        onSelectConversation: { viewModel.navigateToTab($0) })
+                        onSelectConversation: { viewModel.navigateToTab($0) },
+                        onRetire: { viewModel.retireWorktree(wt, repoPath: repoPath) })
                 }
             }
         } header: {
@@ -296,7 +298,28 @@ struct WorktreeListView: View {
             // The desktop draws a divider before the landed rows; a List section
             // cannot, so the count says it instead. Same fact, native shape.
             if landedCount > 0 {
-                Text("\(landedCount) landed, listed last — nothing left to commit or land.")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("\(landedCount) landed, listed last — nothing left to commit or land.")
+                    Button(role: .destructive) {
+                        confirmRetireAllLanded = true
+                    } label: {
+                        Label("Retire all landed · \(landedCount)", systemImage: "trash")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(viewModel.benchBusy)
+                }
+                .confirmationDialog("Retire all landed worktrees?",
+                                    isPresented: $confirmRetireAllLanded,
+                                    titleVisibility: .visible) {
+                    Button("Retire \(landedCount)", role: .destructive) {
+                        viewModel.retireAllLandedWorktrees(repoPath: repoPath)
+                        Haptic.medium()
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Retire \(landedCount) sealed worktree\(landedCount == 1 ? "" : "s")? Their review conversations and terminals will close.")
+                }
             }
         }
     }

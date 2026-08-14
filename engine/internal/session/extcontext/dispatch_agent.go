@@ -14,6 +14,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/session/agents"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
+	"github.com/dsswift/ion/engine/internal/workspaces"
 )
 
 // BuildDispatchAgentFunc returns the DispatchAgent closure. currentDepth is
@@ -24,7 +25,11 @@ import (
 // terminal outcome via OnComplete/OnError/OnRecall callbacks.
 // Phase 2 lifecycle callbacks fire from OnNormalized; Phase 3 telemetry
 // (engine_dispatch_start/end) emit on the parent session's event stream.
-func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, currentDepth int, currentDispatchId string) func(extension.DispatchAgentOpts) (*extension.DispatchAgentResult, error) {
+func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, currentDepth int, currentDispatchId string, parentWorkspaceChecker ...*workspaces.Checker) func(extension.DispatchAgentOpts) (*extension.DispatchAgentResult, error) {
+	var workspaceChecker *workspaces.Checker
+	if len(parentWorkspaceChecker) > 0 {
+		workspaceChecker = parentWorkspaceChecker[0]
+	}
 	return func(opts extension.DispatchAgentOpts) (*extension.DispatchAgentResult, error) {
 		// --- Depth guard ---
 		childDepth := currentDepth + 1
@@ -125,7 +130,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 
 		newDispatch := map[string]interface{}{
 			"id":        agentID,
-			"task":      opts.Task,
+			"task":      dispatchTaskLabel(opts.Task),
 			"model":     model,
 			"status":    "running",
 			"startTime": start.Unix(),
@@ -237,6 +242,10 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 
 		// Create child backend matching the parent session's backend type.
 		child := sa.NewChildBackend()
+		var transcript *conversation.DispatchTranscriptRecorder
+		if backend.ResolveChildCapabilities(child, model).ContextModel == backend.ContextModelNativeSession {
+			transcript = conversation.NewDispatchTranscriptRecorder(opts.Task, model)
+		}
 		var childCfg *backend.RunConfig
 
 		// childReqID is declared here (before childCfg is built) so the
@@ -258,6 +267,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		childExtHost := loadChildExtension(sa, registry, &opts, model, projectPath, childDepth, agentID)
 		if childExtHost != nil {
 			childCfg = &backend.RunConfig{
+				WorkspaceChecker: workspaceChecker,
 				Hooks: backend.RunHooks{
 					OnToolCall: func(info backend.ToolCallInfo) (*backend.ToolCallResult, error) {
 						// Build the suspend closure for tool-call contexts so the
@@ -310,7 +320,10 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			dispatchDefaultModel = engCfg.DefaultModel
 		}
 		if childCfg == nil {
-			childCfg = &backend.RunConfig{DefaultModel: dispatchDefaultModel}
+			childCfg = &backend.RunConfig{
+				DefaultModel:     dispatchDefaultModel,
+				WorkspaceChecker: workspaceChecker,
+			}
 		} else if childCfg.DefaultModel == "" {
 			childCfg.DefaultModel = dispatchDefaultModel
 		}
@@ -322,7 +335,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 
 		// Wire AgentSpawner so the child can dispatch grandchildren via the
 		// engine Agent tool (see dispatch_child_spawner.go for rationale).
-		childCfg.AgentSpawner = BuildChildAgentSpawner(sa, registry, childDepth, agentID)
+		childCfg.AgentSpawner = BuildChildAgentSpawner(sa, registry, childDepth, agentID, childCfg.WorkspaceChecker)
 
 		// Park-on-children: report this child's own live (non-detached)
 		// dispatches at ITS turn boundary, so a lead that fire-and-forgets a
@@ -494,6 +507,8 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				}
 			}
 
+			transcript.Record(ev)
+
 			// Phase 2: Structured lifecycle callbacks. Guarded by lifecycleMu
 			// because this callback runs concurrently across the parallel tool
 			// errgroup (see lifecycleMu declaration); fireLifecycleCallbacks
@@ -531,6 +546,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				// id idempotently with the final status/elapsed.
 				if e.SessionID != "" && childSessionID == "" {
 					childSessionID = e.SessionID
+					transcript.SetConversationID(childSessionID)
 					// Tell the activity emitter the child conversation id so its
 					// pushed deltas carry the reconcile key.
 					activity.SetConversationID(childSessionID)
@@ -946,6 +962,10 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				Depth:                    childDepth,
 				ParentDispatchId:         currentDispatchId,
 			}
+			// Seal the Ion-readable child transcript before publishing terminal
+			// state so get_conversation is never asked to load an absent file.
+			transcript.SetConversationID(childSessionID)
+			transcript.Close(output)
 
 			// A childErr synthesized from OnExit (engine cancel / non-zero
 			// backend exit) is learned AFTER the child backend completed its final

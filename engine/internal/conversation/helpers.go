@@ -188,6 +188,12 @@ func asMessageData(data any) *MessageData {
 	return nil
 }
 
+// AsMessageData coerces persisted message data from typed or decoded-map
+// forms. Exported for session-level dispatch transcript recovery.
+func AsMessageData(data any) *MessageData {
+	return asMessageData(data)
+}
+
 func asCompactionData(data any) *CompactionData {
 	switch d := data.(type) {
 	case CompactionData:
@@ -316,4 +322,9 @@ func jsonFloat(m map[string]any, key string, def float64) float64 {
 
 func strPtr(s string) *string {
 	return &s
+}
+
+func jsonBool(m map[string]any, key string) bool {
+	value, ok := m[key].(bool)
+	return ok && value
 }

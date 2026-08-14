@@ -42,7 +42,8 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/renderer/index.html'),
-          atv: resolve(__dirname, 'src/renderer/atv.html')
+          atv: resolve(__dirname, 'src/renderer/atv.html'),
+          'worktree-overlap': resolve(__dirname, 'src/renderer/worktree-overlap.html')
         }
       }
     }

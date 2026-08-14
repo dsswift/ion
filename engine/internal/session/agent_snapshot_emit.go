@@ -64,12 +64,15 @@ func (m *Manager) emitAgentSnapshot(key, reason string, force bool, snapshot []t
 	// No session (teardown races, some test harnesses): no gate state exists,
 	// so emit unconditionally rather than dropping an authoritative frame.
 	if s == nil || s.agentEmitter == nil {
-		m.publishAgentSnapshot(key, reason, force, snapshot)
+		projected, reports := agents.ClampSnapshotCopy(snapshot, m.agentMetadataLimits())
+		m.publishAgentSnapshot(key, reason, force, projected, reports)
 		return
 	}
 
+	metadataLimits := m.agentMetadataLimits()
+	projected, reports := agents.ClampSnapshotCopy(snapshot, metadataLimits)
 	limits := m.agentStateEmitLimits()
-	decision := s.agentEmitter.decide(snapshot, reason, force, limits,
+	decision := s.agentEmitter.decide(projected, reason, force, limits,
 		func(flushReason string, coalesced int) {
 			// Trailing edge: re-read the CURRENT snapshot rather than reusing
 			// the one that opened the window, so the coalesced emission
@@ -85,23 +88,24 @@ func (m *Manager) emitAgentSnapshot(key, reason string, force bool, snapshot []t
 			utils.LogWithFields(utils.LevelDebug, "session", "agent_state: flushing coalesced burst", map[string]any{
 				"key": key, "reason": flushReason, "absorbed": coalesced,
 			})
-			m.publishAgentSnapshot(key, flushReason, false, latest)
+			projectedLatest, latestReports := agents.ClampSnapshotCopy(latest, metadataLimits)
+			m.publishAgentSnapshot(key, flushReason, false, projectedLatest, latestReports)
 		})
 
 	switch decision {
 	case emitSuppress, emitDefer:
 		return
 	default:
-		m.publishAgentSnapshot(key, reason, force, snapshot)
+		m.publishAgentSnapshot(key, reason, force, projected, reports)
 	}
 }
 
 // publishAgentSnapshot performs the actual emission, past every gate.
-func (m *Manager) publishAgentSnapshot(key, reason string, force bool, snapshot []types.AgentStateUpdate) {
+func (m *Manager) publishAgentSnapshot(key, reason string, force bool, snapshot []types.AgentStateUpdate, reports []agents.ClampReport) {
 	// Publish any clamp advisories BEFORE the snapshot they describe, so a
 	// consumer that reacts to the advisory has it in hand by the time the
 	// clamped payload arrives rather than one frame late.
-	m.emitClampAdvisories(key)
+	m.emitClampAdvisories(key, reports)
 
 	utils.LogWithFields(utils.LevelInfo, "session", "agent_snapshot_emitted", map[string]any{
 		"key": key, "count": len(snapshot), "reason": reason, "force": force,
@@ -131,16 +135,11 @@ const clampAdvisoryInterval = 60 * time.Second
 // Every clamp is logged at WARN unconditionally by the clamp itself; the rate
 // limit applies only to the wire event. Diagnosing from logs therefore stays
 // complete even when the event stream is throttled.
-func (m *Manager) emitClampAdvisories(key string) {
+func (m *Manager) emitClampAdvisories(key string, reports []agents.ClampReport) {
 	m.mu.RLock()
 	s, ok := m.sessions[key]
 	m.mu.RUnlock()
-	if !ok || s == nil {
-		return
-	}
-
-	reports := s.agents.TakeClampReports()
-	if len(reports) == 0 {
+	if !ok || s == nil || len(reports) == 0 {
 		return
 	}
 

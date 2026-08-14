@@ -155,8 +155,9 @@ describe('AgentDetailPanel', () => {
     // DispatchMetaBar shows model and duration
     expect(container.textContent).toContain('claude-opus-4-20250514')
     expect(container.textContent).toContain('Duration:')
-    // DispatchPager returns null for single dispatch — no "Dispatches:" label
-    expect(container.textContent).not.toContain('Dispatches:')
+    // Singleton history remains explicit instead of hiding the dispatch count.
+    expect(container.textContent).toContain('Dispatches: 1')
+    expect(container.textContent).toContain('#1')
     unmount()
   })
 

@@ -219,6 +219,9 @@ func saveSplit(conv *Conversation, dir string) error {
 	if conv.Backend != "" {
 		llmHeader["backend"] = conv.Backend
 	}
+	if conv.DispatchTranscriptMirror {
+		llmHeader["dispatchTranscriptMirror"] = true
+	}
 
 	// Determine which messages to write:
 	//   - nil Messages means explicitly cleared — write nothing (header only).
@@ -253,6 +256,9 @@ func saveSplit(conv *Conversation, dir string) error {
 	// history format without opening the llm file.
 	if conv.Backend != "" {
 		treeHeader["backend"] = conv.Backend
+	}
+	if conv.DispatchTranscriptMirror {
+		treeHeader["dispatchTranscriptMirror"] = true
 	}
 	// Persist the per-provider native-session cursors (additive, omitted when
 	// empty). The tree header is the natural home: cursors are position-tagged
@@ -640,7 +646,8 @@ func loadSplit(id, llmPath, treePath string) (*Conversation, error) {
 		ParentID:          jsonString(llmHeader, "parentId"),
 		// Backend discriminator (additive). Legacy headers without the field
 		// decode "" — treated as api by consumers.
-		Backend: jsonString(llmHeader, "backend"),
+		Backend:                  jsonString(llmHeader, "backend"),
+		DispatchTranscriptMirror: jsonBool(llmHeader, "dispatchTranscriptMirror"),
 		// LLM context from .llm.jsonl body — verbatim, NOT rebuilt from Entries
 		Messages: messages,
 		// Tree fields from .tree.jsonl

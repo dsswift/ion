@@ -16,7 +16,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { singleFlight } from '../utils/single-flight'
-import { Plus } from '@phosphor-icons/react'
+import { Plus, Trash } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { WorktreeRow } from './WorktreeRow'
@@ -28,7 +28,8 @@ import { BenchVerificationDialog } from './git/BenchVerificationDialog'
 import { ConfirmDialog } from './git/ConfirmDialog'
 import { WorktreeRowMenu } from './WorktreeRowMenu'
 import { rError } from '../rendererLogger'
-import { collectDirConversations, collectAllDirConversations, pickBenchConversation, pickDirTerminal, benchTerminalTitle } from '../../shared/worktree-conversations'
+import { findActiveAutoFix } from '../stores/slices/conflict-assist-dedupe'
+import { collectDirConversations, collectAllDirConversations, pickDirTerminal, pickNextConversation, benchTerminalTitle } from '../../shared/worktree-conversations'
 import { buildWorktreeList } from '../../shared/worktree-list'
 import { getGroupStatusColor } from './TabStripShared'
 import { useBenchReorder } from '../hooks/useBenchReorder'
@@ -64,6 +65,7 @@ export function WorktreeListSection({
   const activeTabId = useSessionStore((s) => s.activeTabId)
 
   const [syncing, setSyncing] = useState<string | null>(null)
+  const [updatingPin, setUpdatingPin] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [menu, setMenu] = useState<{ entry: WorktreeInventoryEntry; anchor: { x: number; y: number } } | null>(null)
   const [resolving, setResolving] = useState<string | null>(null)
@@ -86,6 +88,8 @@ export function WorktreeListSection({
   const [verificationFailure, setVerificationFailure] = useState<IntegrationWorkspace | null>(null)
   const [selectedBench, setSelectedBench] = useState<string | null>(null)
   const [discardCount, setDiscardCount] = useState<number | null>(null)
+  const [confirmRetireLanded, setConfirmRetireLanded] = useState(false)
+  const [retiringLanded, setRetiringLanded] = useState(false)
 
   // One refresh in flight at a time (see singleFlight). Without this, a tick
   // that fires while the previous fetch is still running queues another full
@@ -177,15 +181,11 @@ export function WorktreeListSection({
   const enrolledCount = items.filter((i) => i.order !== undefined).length
   const behindCount = items.filter((i) => i.membership?.pin === 'behind').length
 
-  // The bench's singleton operator conversation, resolved the same way the
-  // remote projection resolves it: only a ROLE-TAGGED tab counts as open.
-  // An adoptable legacy candidate is deliberately not "open" — adoption is a
-  // decision the store makes at open time, so treating it as open here would
-  // label the button "Go to" for a tab the next press might not choose.
-  // `benchPath ?? ''` is safe: pickBenchConversation returns null on an empty
-  // path, which is also the correct answer when no bench is selected.
-  const benchConversationFound = pickBenchConversation(tabs, active?.benchPath ?? '')
-  const benchConversationOpen = !!benchConversationFound && !benchConversationFound.adopted
+  // Bench controls expose every non-terminal tab sharing the bench directory:
+  // a machine auto-fix is live integration work and must be visible here.
+  const benchConversations = collectAllDirConversations(tabs, active?.benchPath ?? '')
+  const activeResolverTabId = active?.benchPath ? findActiveAutoFix(tabs, active.benchPath) : null
+  const activeWorktreeResolver = useCallback((worktreePath: string) => findActiveAutoFix(tabs, worktreePath), [tabs])
 
   /**
    * Aggregate conversation status for one worktree, or undefined when nothing
@@ -269,8 +269,7 @@ export function WorktreeListSection({
         <BenchBar
           workspaces={benches}
           active={active}
-          benchConversations={collectDirConversations(tabs, active.benchPath)}
-          allBenchConversations={collectAllDirConversations(tabs, active.benchPath)}
+          benchConversations={benchConversations}
           baseDrifted={!!tips?.[active.sourceBranch] && tips[active.sourceBranch] !== active.baseSha}
           orphans={orphans}
           absorbed={retired.get(active.sourceBranch) ?? []}
@@ -278,7 +277,7 @@ export function WorktreeListSection({
           benchTerminalOpen={
             !!pickDirTerminal(tabs, active.benchPath, benchTerminalTitle(active.sourceBranch))
           }
-          benchConversationOpen={benchConversationOpen}
+          benchConversationOpen={benchConversations.length > 0}
           busy={busy}
           onSelectWorkspace={setSelectedBench}
           onOpenTerminal={() => run('terminal', async () => {
@@ -287,6 +286,10 @@ export function WorktreeListSection({
           onOpenConversation={() => run('conversation', async () => {
             await useSessionStore.getState().openBenchConversation(repoPath, active.sourceBranch)
           })}
+          onCycleConversation={() => {
+            const next = pickNextConversation(benchConversations, useSessionStore.getState().activeTabId)
+            if (next) useSessionStore.getState().selectTab(next.tabId)
+          }}
           onAssemble={() => run('assemble', async () => {
             const store = useSessionStore.getState()
             // Update-all when something is behind, plain assembly otherwise.
@@ -357,6 +360,19 @@ export function WorktreeListSection({
                   <span style={{ flexShrink: 0 }}>
                     Landed · {items.filter((it) => it.landed).length}
                   </span>
+                  <button
+                    data-testid="worktree-retire-landed"
+                    onClick={() => setConfirmRetireLanded(true)}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 3,
+                      padding: '1px 4px', background: 'transparent',
+                      border: `1px solid ${colors.containerBorder}`,
+                      borderRadius: 3, color: colors.textSecondary,
+                      cursor: 'pointer', fontSize: 9,
+                    }}
+                  >
+                    <Trash size={9} /> Retire all
+                  </button>
                   <span style={{ flex: 1, height: 1, background: colors.containerBorder }} />
                 </div>
               )}
@@ -377,6 +393,8 @@ export function WorktreeListSection({
               railContinues={enrolled && i + 1 < enrolledCount}
               active={item.active}
               syncing={syncing === entry.worktreePath}
+              updatingPin={updatingPin === entry.worktreePath}
+              pinUpdateLocked={updatingPin !== null && updatingPin !== entry.worktreePath}
               onOpen={() => {
                 void useSessionStore.getState()
                   .openWorktreeConversation(entry.worktreePath)
@@ -384,6 +402,11 @@ export function WorktreeListSection({
               }}
               onSync={() => handleSync(entry)}
               onMenu={(anchor) => setMenu({ entry, anchor })}
+              hasActiveWorktreeResolver={!!activeWorktreeResolver(entry.worktreePath) && !!entry.operationState}
+              onFocusActiveWorktreeResolver={() => {
+                const tabId = activeWorktreeResolver(entry.worktreePath)
+                if (tabId) useSessionStore.getState().selectTab(tabId)
+              }}
               onResolve={() => setResolving(entry.worktreePath)}
               onToggleEnrollment={() => toggleEnrollment(entry, enrolled)}
               onToggleIncluded={() => {
@@ -394,14 +417,20 @@ export function WorktreeListSection({
                 })
               }}
               onUpdatePin={() => {
-                if (!benchBranch) return
-                run(entry.worktreePath, async () => {
-                  await useSessionStore.getState().benchUpdateMember(repoPath, benchBranch, entry.worktreePath)
-                })
+                if (!benchBranch || updatingPin !== null) return
+                setUpdatingPin(entry.worktreePath)
+                void useSessionStore.getState().benchUpdateMember(repoPath, benchBranch, entry.worktreePath)
+                  .catch((err) => rError('worktree.list', 'update pin failed', { worktree_path: entry.worktreePath, error: String(err) }))
+                  .finally(() => {
+                    setUpdatingPin(null)
+                    refresh()
+                  })
+              }}
+              hasActiveResolver={!!activeResolverTabId && item.membership?.merge === 'conflicted'}
+              onFocusActiveResolver={() => {
+                if (activeResolverTabId) useSessionStore.getState().selectTab(activeResolverTabId)
               }}
               onShowBenchConflict={() => {
-                // The membership record IS the read model; there is no
-                // in-progress operation on disk to probe (see the state doc).
                 if (item.membership && active) {
                   setBenchConflict({ member: item.membership, sourceBranch: active.sourceBranch })
                 }
@@ -451,6 +480,31 @@ export function WorktreeListSection({
         <span>New worktree</span>
       </button>
       </div>
+
+      {confirmRetireLanded && (
+        <ConfirmDialog
+          title="Retire all landed worktrees?"
+          message={`Retire ${items.filter((item) => item.landed).length} sealed worktree${items.filter((item) => item.landed).length === 1 ? '' : 's'}? Their review conversations and terminals will close.`}
+          confirmLabel="Retire all"
+          danger
+          busy={retiringLanded}
+          busyLabel="Retiring landed worktrees…"
+          onCancel={() => { if (!retiringLanded) setConfirmRetireLanded(false) }}
+          onConfirm={() => {
+            setRetiringLanded(true)
+            void useSessionStore.getState().retireLandedWorktrees(repoPath)
+              .then((result) => {
+                if (!result.ok) rError('worktree.list', 'retire landed worktrees refused', { error: result.error ?? '' })
+                else setConfirmRetireLanded(false)
+              })
+              .catch((err) => rError('worktree.list', 'retire landed worktrees failed', { error: String(err) }))
+              .finally(() => {
+                setRetiringLanded(false)
+                refresh()
+              })
+          }}
+        />
+      )}
 
       {discardCount !== null && active && (
         <ConfirmDialog

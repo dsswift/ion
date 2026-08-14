@@ -26,7 +26,7 @@ func TestRootAgentDispatch_DefaultReturnsBeforeChildCompletes(t *testing.T) {
 	s := mgr.sessions[key]
 	mgr.mu.RUnlock()
 
-	spawner := mgr.buildRootAgentSpawner(s, key, "claude-sonnet", nil)
+	spawner := mgr.buildRootAgentSpawner(s, key, "claude-sonnet", nil, nil, nil)
 	returned := make(chan string, 1)
 	go func() {
 		out, err := spawner(s.rootContext(), "", "finish later", "", "/tmp", "")

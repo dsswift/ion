@@ -29,6 +29,10 @@ extension DiagnosticLog {
             log("CMD: worktreeSyncAll repo=\(repoPath.suffix(30))", tag: "ipc", level: .info)
         case .worktreeLand(_, let worktreePath, let worktreeBranch, let sourceBranch):
             log("CMD: worktreeLand wt=\(worktreePath.suffix(30)) branch=\(worktreeBranch) source=\(sourceBranch)", tag: "ipc", level: .info)
+        case .worktreeRetire(_, let worktreePath):
+            log("CMD: worktreeRetire wt=\(worktreePath.suffix(30))", tag: "ipc", level: .info)
+        case .worktreeRetireLanded(let repoPath):
+            log("CMD: worktreeRetireLanded repo=\(repoPath.suffix(30))", tag: "ipc", level: .info)
         case .benchOpenConversation(_, let sourceBranch):
             log("CMD: benchOpenConversation source=\(sourceBranch)", tag: "ipc", level: .info)
         case .benchOpenTerminal(_, let sourceBranch):

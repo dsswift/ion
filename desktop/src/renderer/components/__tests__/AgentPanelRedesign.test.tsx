@@ -157,6 +157,19 @@ describe('AgentPanel header breakdown', () => {
   })
 })
 
+describe('AgentPanel dispatch history counts', () => {
+  it('shows conversation dispatch total and per-row dispatch count', () => {
+    const first = { name: 'agent-1', status: 'done', metadata: { displayName: 'Agent 1', visibility: 'always', dispatches: [{ id: 'd1', status: 'done', conversationId: 'c1' }] } } as AgentStateUpdate
+    const second = { name: 'agent-2', status: 'done', metadata: { displayName: 'Agent 2', visibility: 'always', dispatches: [{ id: 'd2', status: 'done', conversationId: 'c2' }, { id: 'd3', status: 'done', conversationId: 'c3' }] } } as AgentStateUpdate
+    const { container, root } = mount([first, second])
+    expect(container.textContent).toContain('Agents · 2')
+    expect(container.textContent).toContain('3 dispatches')
+    expect(container.textContent).toContain('1 dispatch')
+    expect(container.textContent).toContain('2 dispatches')
+    act(() => { root.unmount() })
+  })
+})
+
 describe('AgentPanel detail subject parity', () => {
   it('opens start-time-most-recent dispatch when array order is non-chronological', async () => {
     getConversation.mockResolvedValue({ messages: [] })
@@ -182,6 +195,54 @@ describe('AgentPanel detail subject parity', () => {
     // Same dispatch AgentRow uses as foreground dot and duration must be first
     // detail load. Reverting defaults to array-last requests conv-early first.
     expect(getConversation).toHaveBeenNthCalledWith(1, 'conv-late', 0, 200)
+    act(() => { root.unmount() })
+  })
+})
+
+describe('AgentPanel stable popup subject', () => {
+  it('keeps the opened dispatch selected when history reorders and a newer dispatch arrives', async () => {
+    const initial = {
+      name: 'agent', status: 'done', metadata: { displayName: 'Agent', visibility: 'always', dispatches: [
+        { id: 'opened', conversationId: 'conv-opened', status: 'done', startTime: 100 },
+      ] },
+    } as AgentStateUpdate
+    const { container, root } = mount([initial])
+    clickRow(container, 'Agent')
+    await act(async () => { await Promise.resolve() })
+    expect(getConversation).toHaveBeenCalledWith('conv-opened', 0, 200)
+
+    const refreshed = {
+      ...initial, metadata: { ...initial.metadata, dispatches: [
+        { id: 'newer', conversationId: 'conv-newer', status: 'running', startTime: 200 },
+        { id: 'opened', conversationId: 'conv-opened', status: 'done', startTime: 100 },
+      ] },
+    } as AgentStateUpdate
+    act(() => { root.render(<AgentPanel agents={[refreshed]} />) })
+    expect(container.textContent).toContain('Dispatches: 2')
+    // Opened subject stays #2 (its original dispatch), not the newer #1.
+    const selectedButtons = Array.from(container.querySelectorAll('button')).filter(b => b.style.fontWeight === '600')
+    expect(selectedButtons.some(b => b.textContent?.includes('#2'))).toBe(true)
+    act(() => { root.unmount() })
+  })
+
+  it('does not repoint an open popup when its dispatch disappears', async () => {
+    const initial = {
+      name: 'agent', status: 'done', metadata: { displayName: 'Agent', visibility: 'always', dispatches: [
+        { id: 'opened', conversationId: 'conv-opened', status: 'done', startTime: 100 },
+      ] },
+    } as AgentStateUpdate
+    const { container, root } = mount([initial])
+    clickRow(container, 'Agent')
+    await act(async () => { await Promise.resolve() })
+    getConversation.mockClear()
+
+    const replacement = {
+      ...initial, metadata: { ...initial.metadata, dispatches: [
+        { id: 'replacement', conversationId: 'conv-replacement', status: 'done', startTime: 200 },
+      ] },
+    } as AgentStateUpdate
+    act(() => { root.render(<AgentPanel agents={[replacement]} />) })
+    expect(getConversation).not.toHaveBeenCalledWith('conv-replacement', 0, 200)
     act(() => { root.unmount() })
   })
 })

@@ -11,8 +11,8 @@
 // Two defects are pinned here, each by its own route into the same wrong answer:
 //
 // 1. `collectDirConversations` matched on working directory alone, so a terminal
-//    in a worktree or bench directory was counted as an open CONVERSATION -- in
-//    the hover card, in the `open xN` labels, and as a rotation target for "go to
+//    in a worktree or bench directory appeared as an open CONVERSATION in the
+//    hover card, parenthesized count labels, and rotation target for "go to
 //    conversation", which could land the operator in a shell.
 // 2. `activityFor` filtered by directory only, and its `length === 0` check is
 //    what selects the hollow "nothing open here" ring. `getGroupStatusColor`
@@ -102,7 +102,7 @@ describe('the bench open label', () => {
     ]
     h.render()
 
-    expect(q('bench-open-label')!.textContent).toBe('open')
+    expect(q('bench-open-label')!.textContent).toBe('(1)')
   })
 })
 

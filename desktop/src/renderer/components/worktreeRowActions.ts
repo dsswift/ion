@@ -90,13 +90,10 @@ export function buildWorktreeRowActions(
           has_conflicts: !!result.hasConflicts,
           error: result.error ?? "",
         });
-        // A CONFLICT is not the same as a refusal. A refusal (diverged branch,
-        // dirty tree) is answered by this dialog and nothing is left behind; a
-        // conflict stops the merge halfway and leaves a checkout that needs
-        // resolving, which must reach the toast and the row badge exactly as a
-        // conflicted sync does. Without this the land path repeated the defect
-        // the sync path was fixed for: an actionable failure visible only in
-        // the log.
+        // A conflict is not a refusal. A refusal (diverged branch or dirty
+        // tree) is answered by this dialog and leaves nothing behind. A conflict
+        // stops merge halfway, leaving a checkout that needs resolution. Record
+        // it for Git panel banner while inventory refresh updates row controls.
         //
         // Keyed on the directory the LAND reported, not on this worktree: the
         // merge runs in whichever checkout holds the source branch (usually the
@@ -107,9 +104,9 @@ export function buildWorktreeRowActions(
           useSessionStore
             .getState()
             .recordConflictAlert(result.conflictDirectory, {
-              source: "land",
-              kind: "conflict",
-              message: result.error,
+              operationState: result.conflictDirectory === entry.worktreePath
+                ? 'rebasing'
+                : 'merging',
               label:
                 result.conflictDirectory === entry.worktreePath
                   ? entry.title || entry.label

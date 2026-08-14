@@ -129,7 +129,7 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "earlyStopRequestId")
 	case "tool_gate_response":
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "gateRequestId")
-	case "reconcile_state", "query_session_status":
+	case "reconcile_state", "query_session_status", "get_agent_state":
 		return hasNonEmptyString(raw, "key")
 	case "migrate_conversation":
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "text") && hasNonEmptyString(raw, "message")

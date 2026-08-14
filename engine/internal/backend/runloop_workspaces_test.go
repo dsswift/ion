@@ -15,6 +15,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 	"github.com/dsswift/ion/engine/internal/workspaces"
 )
 
@@ -129,6 +130,74 @@ func TestExecuteTools_WorkspaceContainmentPassesOwnWorktree(t *testing.T) {
 	}
 	if failureCategories(telem)["workspace_containment"] {
 		t.Error("no workspace_containment failure expected for an allowed write")
+	}
+}
+
+// TestExecuteTools_WorkspaceContainmentRefusesLandedWorktreeWrite pins the
+// sealed-worktree enforcement: a Write inside a landed worktree must come back
+// as an error result with workspace_containment, even though the target is
+// inside the conversation's own worktree.
+func TestExecuteTools_WorkspaceContainmentRefusesLandedWorktreeWrite(t *testing.T) {
+	dir := t.TempDir()
+	repo := "/repo/project"
+	worktree := "/wt/project-landed"
+	payload := map[string]any{"version": 1, "entries": []map[string]any{
+		{"worktreePath": worktree, "repoPath": repo, "landedAt": 1700000500000},
+	}}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "worktree-registry.json"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	checker := workspaces.NewCheckerAt(dir)
+
+	b := NewApiBackend()
+	var emitted []types.NormalizedEvent
+	b.OnNormalized(func(_ string, ev types.NormalizedEvent) { emitted = append(emitted, ev) })
+	var decisionFields map[string]any
+	utils.SetTestSink(func(_ utils.LogLevel, tag, msg string, fields map[string]any, _, _ string) {
+		if tag == "workspaces" && msg == "workspace containment decision" {
+			decisionFields = fields
+		}
+	})
+	t.Cleanup(func() { utils.SetTestSink(nil) })
+	telem := &mockTelemetry{}
+	run := &activeRun{
+		requestID: "ws-landed-req",
+		conv:      &conversation.Conversation{ID: "conv-ws-landed"},
+		cfg:       &RunConfig{Telemetry: telem, WorkspaceChecker: checker},
+	}
+	blocks := []types.LlmContentBlock{{
+		Name:  "Write",
+		ID:    "tc-ws-landed",
+		Input: map[string]interface{}{"file_path": worktree + "/x.go", "content": "x"},
+	}}
+
+	results, err := b.executeTools(context.Background(), run, blocks, worktree)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(results) != 1 || !results[0].IsError {
+		t.Fatalf("expected one error result for landed worktree, got %+v", results)
+	}
+	if !strings.Contains(results[0].Content, "sealed") {
+		t.Errorf("refusal must mention sealed: %s", results[0].Content)
+	}
+	if !failureCategories(telem)["workspace_containment"] {
+		t.Error("expected workspace_containment failure category")
+	}
+	if decisionFields["decision"] != "deny" || decisionFields["kind"] != string(workspaces.RefusalLandedWorktree) || decisionFields["target"] != worktree || decisionFields["run_id"] != "ws-landed-req" || decisionFields["reason"] != results[0].Content {
+		t.Errorf("sealed refusal log fields = %+v", decisionFields)
+	}
+	if len(emitted) != 1 {
+		t.Fatalf("expected one refusal ToolResultEvent, got %+v", emitted)
+	}
+	resultEvent, ok := emitted[0].Data.(*types.ToolResultEvent)
+	if !ok || !resultEvent.IsError || resultEvent.ToolID != "tc-ws-landed" {
+		t.Errorf("sealed refusal must emit error ToolResultEvent for tc-ws-landed, got %+v", emitted[0].Data)
 	}
 }
 

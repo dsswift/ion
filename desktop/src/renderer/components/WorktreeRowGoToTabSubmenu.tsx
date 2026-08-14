@@ -6,7 +6,7 @@
  * `collectAllDirConversations`, not the operator-only `collectDirConversations`
  * every display surface uses) — so a `conflict-auto-fix` conversation that
  * moved tab groups, or one the operator just wants to check on, is reachable
- * from here even though it is invisible to the row's "open ×N" hint and the
+ * from here even though it is invisible to the row's parenthesized count hint and
  * hover card. See the module doc-comment in `shared/worktree-conversations.ts`
  * for why the two collectors are kept deliberately separate.
  *
@@ -32,7 +32,7 @@ import { usePopoverLayer } from './PopoverLayer'
 import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
 import { zoomViewport } from '../viewport-zoom'
 import { statusColor } from './WorktreeConversationsCard'
-import type { DirConversation } from '../../shared/worktree-conversations'
+import { conversationRoleLabel, type DirConversation } from '../../shared/worktree-conversations'
 
 interface WorktreeRowGoToTabSubmenuProps {
   anchor: { x: number; y: number }
@@ -169,6 +169,11 @@ export function WorktreeRowGoToTabSubmenu({
             background: statusColor(c.status, colors),
           }} />
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</span>
+          {conversationRoleLabel(c.tabRole) && (
+            <span style={{ color: colors.accent, fontSize: 10, flexShrink: 0 }}>
+              {conversationRoleLabel(c.tabRole)}
+            </span>
+          )}
         </button>
       ))}
     </motion.div>,

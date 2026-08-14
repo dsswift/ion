@@ -7,8 +7,7 @@
 // to the log only, and the badge stayed. The row now says up front that the
 // sync is blocked: the icon drops to the disabled colour, a `blocked` marker
 // renders beside it, and the tooltip carries the remediation (commit or
-// stash). Clicking still fires the sync so the refusal toast (with the same
-// message) appears — the row is honest, not inert.
+// stash). The row is honest and inert: no guaranteed-refusal request runs.
 import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -86,11 +85,8 @@ describe('WorktreeRow — sync affordance vs dirty state', () => {
     expect(tips.some((t) => t.includes('uncommitted changes') && t.includes('Commit or stash'))).toBe(true)
   })
 
-  // Reverses an earlier decision, deliberately. ba62fca6 let the click through
-  // so the refusal TOAST could deliver the remediation, which was right when the
-  // alternative was an inert button with no explanation. The row now carries that
-  // remediation in its tooltip before the click, so firing a verb guaranteed to
-  // refuse only spends a round trip restating what the row already says.
+  // Row carries remediation in its tooltip before click, so firing a verb
+  // guaranteed to refuse only spends a round trip restating row state.
   it('refuses the click when dirty, because the tooltip already carries the remediation', () => {
     render(entry({ isDirty: true }))
 

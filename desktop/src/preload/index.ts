@@ -120,6 +120,19 @@ const api: IonAPI = {
     ipcRenderer.on('ion:remote-open-worktree-conversation', handler)
     return () => ipcRenderer.removeListener('ion:remote-open-worktree-conversation', handler)
   },
+  onRemoteRetireWorktree: (callback) => {
+    const handler = (
+      _e: Electron.IpcRendererEvent,
+      arg: { repoPath: string; worktreePath: string; branchName: string },
+    ) => callback(arg)
+    ipcRenderer.on('ion:remote-retire-worktree', handler)
+    return () => ipcRenderer.removeListener('ion:remote-retire-worktree', handler)
+  },
+  onRemoteRetireLandedWorktrees: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, arg: { repoPath: string }) => callback(arg)
+    ipcRenderer.on('ion:remote-retire-landed-worktrees', handler)
+    return () => ipcRenderer.removeListener('ion:remote-retire-landed-worktrees', handler)
+  },
   onRemoteOpenBenchConversation: (callback) => {
     const handler = (_e: Electron.IpcRendererEvent, arg: { repoPath: string; sourceBranch: string }) => callback(arg)
     ipcRenderer.on('ion:remote-open-bench-conversation', handler)
@@ -139,6 +152,14 @@ const api: IonAPI = {
     ) => callback(arg)
     ipcRenderer.on('ion:worktree-titled', handler)
     return () => ipcRenderer.removeListener('ion:worktree-titled', handler)
+  },
+  onWorktreeLanded: (callback) => {
+    const handler = (
+      _e: Electron.IpcRendererEvent,
+      arg: { repoPath: string; worktreePath: string; prunedBenchPaths: string[] },
+    ) => callback(arg)
+    ipcRenderer.on('ion:worktree-landed', handler)
+    return () => ipcRenderer.removeListener('ion:worktree-landed', handler)
   },
   executeBash: (id, command, cwd) => ipcRenderer.invoke(IPC.EXECUTE_BASH, { id, command, cwd }),
   cancelBash: (id) => ipcRenderer.send(IPC.CANCEL_BASH, id),
@@ -273,8 +294,16 @@ const api: IonAPI = {
   benchRerereDiscardAll: (directory) => ipcRenderer.invoke(IPC.BENCH_RERERE_DISCARD_ALL, { directory }),
   benchPrepareVerificationAnalysis: (repoPath, sourceBranch) =>
     ipcRenderer.invoke(IPC.BENCH_PREPARE_VERIFICATION_ANALYSIS, { repoPath, sourceBranch }),
-  benchDiscardVerificationRecordings: (repoPath, sourceBranch, branchNames) =>
-    ipcRenderer.invoke(IPC.BENCH_DISCARD_VERIFICATION_RECORDINGS, { repoPath, sourceBranch, branchNames }),
+  benchDiscardMemberRecordings: (repoPath, sourceBranch, branchNames) =>
+    ipcRenderer.invoke(IPC.BENCH_DISCARD_MEMBER_RECORDINGS, { repoPath, sourceBranch, branchNames }),
+  openWorktreeOverlap: (context) => ipcRenderer.send(IPC.WORKTREE_OVERLAP_OPEN, context),
+  getWorktreeOverlapContext: () => ipcRenderer.invoke(IPC.WORKTREE_OVERLAP_CONTEXT),
+  getWorktreeOverlap: (basis) => ipcRenderer.invoke(IPC.WORKTREE_OVERLAP_ANALYZE, basis),
+  previewWorktreeOverlap: (basis, paths) => ipcRenderer.invoke(IPC.WORKTREE_OVERLAP_PREVIEW, basis, paths),
+  previewWorktreeOverlapApply: (basis, paths) => ipcRenderer.invoke(IPC.WORKTREE_OVERLAP_APPLY_PREVIEW, basis, paths),
+  applyWorktreeOverlap: (basis, paths) => ipcRenderer.invoke(IPC.WORKTREE_OVERLAP_APPLY, basis, paths),
+  solveWorktreeOverlap: (basis, keptPaths) => ipcRenderer.invoke(IPC.WORKTREE_OVERLAP_SOLVE, basis, keptPaths),
+  autoOrderWorktreeOverlap: (basis, paths) => ipcRenderer.invoke(IPC.WORKTREE_OVERLAP_AUTO_ORDER, basis, paths),
   benchRefreshStaleness: (repoPath, sourceBranch) => ipcRenderer.invoke(IPC.BENCH_REFRESH_STALENESS, { repoPath, sourceBranch }),
   benchReconcileResolution: (directory) => ipcRenderer.invoke(IPC.BENCH_RECONCILE_RESOLUTION, { directory }),
   gitWorktreeAppraise: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_APPRAISE, { worktreePath, sourceBranch }),

@@ -440,6 +440,7 @@ export function lookupWorktreeRegistration(worktreePath: string): {
   branchName: string
   sourceBranch: string | null
   title: string | null
+  landedAt?: number
 } | null {
   const entry = loadRegistry().find((e) => e.worktreePath === worktreePath)
   if (!entry) return null
@@ -448,6 +449,7 @@ export function lookupWorktreeRegistration(worktreePath: string): {
     branchName: entry.branchName,
     sourceBranch: entry.sourceBranch,
     title: entry.title ?? null,
+    landedAt: entry.landedAt,
   }
 }
 

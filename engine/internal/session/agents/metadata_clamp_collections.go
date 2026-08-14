@@ -74,40 +74,57 @@ func shrinkProtectedCollections(md map[string]any, budget int) []string {
 	return shrunk
 }
 
-// enforceProtectedGuarantee is Phase C: the unconditional backstop. Replace
-// the largest protected values with the truncation marker until the entry
-// fits, saving displayName for last and truncating (never dropping) it if it
-// alone still exceeds the budget. After this phase the entry ALWAYS fits.
+// enforceProtectedGuarantee is Phase C: compact protected values while
+// preserving their JSON types. The caller already recorded the affected keys;
+// get_agent_state supplies their exact values on demand. Scalars become the
+// UTF-8-safe truncation string, maps become empty maps, and dispatches keeps a
+// valid array (empty only when even its newest complete member cannot fit).
 func enforceProtectedGuarantee(md map[string]any, budget int) []string {
 	var clamped []string
-	for _, k := range protectedKeysBySize(md) {
+	for _, key := range protectedKeysBySize(md) {
 		if approxMapBytes(md) <= budget {
 			return clamped
 		}
-		if k == "displayName" {
-			continue
-		}
-		if s, ok := md[k].(string); ok && s == truncationSuffix {
-			continue
-		}
-		md[k] = truncationSuffix
-		clamped = append(clamped, k)
-	}
-	// Everything but displayName is already a marker. If the entry still does
-	// not fit, displayName itself is the remaining mass: cut the string rather
-	// than violate the bound. A shortened label beats an undeliverable frame.
-	if approxMapBytes(md) > budget {
-		if s, ok := md["displayName"].(string); ok {
-			overshoot := approxMapBytes(md) - budget
-			if keep := len(s) - overshoot; keep > 0 {
-				md["displayName"] = truncateUTF8(s, keep)
-			} else {
-				md["displayName"] = truncationSuffix
+		switch value := md[key].(type) {
+		case string:
+			if value == truncationSuffix {
+				continue
 			}
-			clamped = append(clamped, "displayName")
+			md[key] = truncationSuffix
+		case []any:
+			// Keep the newest addressable member when possible. If it alone
+			// exceeds the entry budget, an empty array is the only type-safe
+			// bounded projection; _truncated tells consumers to pull full state.
+			if len(value) > 1 {
+				md[key] = value[len(value)-1:]
+			} else {
+				md[key] = []any{}
+			}
+		case map[string]any:
+			md[key] = map[string]any{}
+		default:
+			// Bool/number values are bounded already.
+			continue
 		}
+		clamped = append(clamped, key)
 	}
 	return clamped
+}
+
+// trimTruncationMarkers keeps marker overhead from violating an otherwise
+// satisfied entry budget. _truncated remains the recovery signal; key detail is
+// retained only while it fits the bounded broadcast.
+func trimTruncationMarkers(md map[string]any, budget int) {
+	for approxMapBytes(md) > budget {
+		keys, ok := md["_truncatedKeys"].([]string)
+		if !ok || len(keys) == 0 {
+			break
+		}
+		md["_truncatedKeys"] = keys[:len(keys)-1]
+	}
+	if keys, ok := md["_truncatedKeys"].([]string); ok && len(keys) == 0 {
+		delete(md, "_truncatedKeys")
+	}
 }
 
 // shrinkArrayToFit cuts arr (stored at md[key]) from the head so the whole
@@ -131,6 +148,12 @@ func shrinkArrayToFit(md map[string]any, key string, arr []any, budget int) bool
 		return false
 	}
 	total := len(arr)
+	// dispatch identity is load-bearing. When one complete entry alone exceeds
+	// the budget, retain its newest member and allow the projection to exceed
+	// the budget rather than publishing an empty or corrupt dispatch index.
+	if key == "dispatches" && kept == 0 && total > 0 {
+		kept = 1
+	}
 	md[key] = arr[total-kept:]
 	if key == "dispatches" {
 		md[dispatchesTotalKey] = total

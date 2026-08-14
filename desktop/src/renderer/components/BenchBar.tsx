@@ -22,7 +22,7 @@ import { WorktreeConversationsCard } from './WorktreeConversationsCard'
 import { WorktreeRowGoToTabSubmenu } from './WorktreeRowGoToTabSubmenu'
 import { useSessionStore } from '../stores/sessionStore'
 import { zoomRect } from '../viewport-zoom'
-import { describeOpenConversations, type DirConversation } from '../../shared/worktree-conversations'
+import { describeBenchOpenConversations, type DirConversation } from '../../shared/worktree-conversations'
 import type { IntegrationWorkspace, IntegrationMember } from '../../shared/types'
 import type { OrphanMembership } from '../../shared/worktree-list'
 
@@ -39,18 +39,8 @@ function relativeTime(ms: number): string {
 export interface BenchBarProps {
   workspaces: readonly IntegrationWorkspace[]
   active: IntegrationWorkspace
-  /** Conversations open in the BENCH directory, distinct from its members'. */
+  /** Every non-terminal conversation in this bench, including machine auto-fix work. */
   benchConversations: readonly DirConversation[]
-  /**
-   * Every conversation open in the bench directory, ALL-INCLUSIVE — includes a
-   * `conflict-auto-fix` conversation (from bench-verification analysis) that
-   * `benchConversations` deliberately excludes. Feeds the "Go to tab" picker
-   * below the chat button; `benchConversations` keeps display surfaces
-   * (the "open ×N" hint, the hover card) operator-only. See the module
-   * doc-comment in `shared/worktree-conversations.ts` for why the two lists
-   * are kept separate.
-   */
-  allBenchConversations: readonly DirConversation[]
   /** True when the source branch has moved past the bench's base. */
   baseDrifted: boolean
   /** Memberships whose worktree is gone: rendered as a footnote, never as rows. */
@@ -65,16 +55,14 @@ export interface BenchBarProps {
    * boolean rather than a count.
    */
   benchTerminalOpen: boolean
-  /**
-   * True when the bench's ONE persistent operator conversation (the singleton,
-   * tabRole 'bench-conversation') is already open, so the tooltip can say
-   * "go to" rather than "open".
-   */
+  /** True when any non-terminal conversation is open in this bench. */
   benchConversationOpen: boolean
   busy: string | null
   onSelectWorkspace(sourceBranch: string): void
   onOpenTerminal(): void
   onOpenConversation(): void
+  /** Cycle an already-open bench conversation while assembly is mutating disk. */
+  onCycleConversation?(): void
   onAssemble(): void
   onDiscardRecordings(): void
   onDismissAbsorbed(): void
@@ -90,16 +78,23 @@ export interface BenchBarProps {
 export function BenchBar(props: BenchBarProps): React.JSX.Element {
   const colors = useColors()
   const { workspaces, active, baseDrifted, busy, behindCount } = props
-  const openLabel = describeOpenConversations(props.benchConversations)
-  // "Go to tab" picker anchored under the chat button — the only path to a
-  // conflict-auto-fix conversation running in the bench, which
-  // openBenchConversation's singleton resolution can never reach (see
-  // WorktreeRowGoToTabSubmenu's doc-comment on the two-collector split).
+  const openLabel = describeBenchOpenConversations(props.benchConversations)
+  const assemblyInProgress = busy === 'assemble'
+  const canNavigateConversation = props.benchConversations.length > 0
+  const openConversationTooltip = assemblyInProgress
+    ? (canNavigateConversation
+        ? 'Cycle through conversations already open in this bench while it assembles'
+        : 'The bench is assembling. A conversation can be opened after it finishes.')
+    : (props.benchConversationOpen
+        ? 'Cycle through conversations open in this bench'
+        : 'Open the bench conversation to diagnose builds and route fixes')
+  // Direct picker anchored under the chat button. The primary conversation
+  // action cycles this list; picker selects an exact tab.
   // Anchor is captured at click time (measured once, like WorktreeRowMenu's
   // submenu anchors) rather than recomputed every render.
   const [goToTabAnchor, setGoToTabAnchor] = useState<{ x: number; y: number } | null>(null)
   const chatButtonRef = useRef<HTMLButtonElement>(null)
-  const allConversations = props.allBenchConversations
+  const allConversations = props.benchConversations
 
   return (
     <div style={{ flexShrink: 0 }}>
@@ -142,7 +137,7 @@ export function BenchBar(props: BenchBarProps): React.JSX.Element {
                 { label: 'members', value: `${active.members.filter((m) => m.enabled).length} enabled of ${active.members.length}` },
                 { label: 'path', value: active.benchPath },
               ]}
-              conversations={props.benchConversations}
+              conversations={allConversations}
               onSelectConversation={(tabId) => useSessionStore.getState().selectTab(tabId)}
               emptyNoun="bench"
             />
@@ -208,33 +203,26 @@ export function BenchBar(props: BenchBarProps): React.JSX.Element {
             failures are diagnosed here, attribution routes the fix to the
             member worktree that owns it, and mechanical containment refuses
             bench/source edits — so the conversation is safe to offer. One tab
-            per bench (tabRole 'bench-conversation'); every press focuses it. */}
-        <Tooltip text={props.benchConversationOpen
-          ? 'Go to the bench conversation'
-          : 'Open the bench conversation to diagnose builds and route fixes'}>
+            per bench (tabRole 'bench-conversation'). When an auto-fix or analysis
+            tab also exists, every press cycles the bench's open conversations. */}
+        <Tooltip text={openConversationTooltip}>
           <button
             data-testid="bench-open-conversation"
-            onClick={props.onOpenConversation}
-            disabled={busy !== null}
+            onClick={assemblyInProgress ? props.onCycleConversation : props.onOpenConversation}
+            disabled={assemblyInProgress ? !canNavigateConversation : busy !== null}
             style={{
               display: 'inline-flex', alignItems: 'center', padding: 2,
               background: 'transparent', border: 'none',
               color: props.benchConversationOpen ? colors.accent : colors.textTertiary,
-              cursor: busy ? 'default' : 'pointer',
+              cursor: assemblyInProgress && !canNavigateConversation ? 'default' : 'pointer',
             }}
           >
             {busy === 'conversation' ? <CircleNotch size={12} className="animate-spin" /> : <ChatCircle size={12} />}
           </button>
         </Tooltip>
 
-        {/* "Go to tab" picker — the only path to a bench-verification
-            conflict-auto-fix conversation. openBenchConversation's singleton
-            resolution can never find one (it matches only tabRole
-            'bench-conversation'), so without this the operator had no way
-            back into a diagnosis conversation running against the bench.
-            ALL-INCLUSIVE list (allBenchConversations), shown whenever
-            anything at all is open here -- same threshold the worktree row's
-            equivalent menu item uses. */}
+        {/* Direct picker for a named bench conversation. The primary button
+            cycles this same list; this picker selects a particular tab. */}
         {allConversations.length > 0 && (
           <Tooltip text="Go to a conversation open in the bench">
             <button
@@ -247,12 +235,12 @@ export function BenchBar(props: BenchBarProps): React.JSX.Element {
                   return { x: rect?.left ?? 0, y: rect?.bottom ?? 0 }
                 })
               }}
-              disabled={busy !== null}
+              disabled={!assemblyInProgress && busy !== null}
               style={{
                 display: 'inline-flex', alignItems: 'center', padding: 2,
                 background: 'transparent', border: 'none',
                 color: colors.textTertiary,
-                cursor: busy ? 'default' : 'pointer',
+                cursor: !assemblyInProgress && busy ? 'default' : 'pointer',
               }}
             >
               <CaretDown size={10} />
@@ -260,6 +248,8 @@ export function BenchBar(props: BenchBarProps): React.JSX.Element {
           </Tooltip>
         )}
 
+        {!assemblyInProgress && (
+          <>
         {/* Building and testing in the bench is shell work, and the generic
             new-terminal path stacks a fresh tab per press. This always lands on
             the SAME tab for this bench; the terminal strip's `+` multiplexes
@@ -309,6 +299,18 @@ export function BenchBar(props: BenchBarProps): React.JSX.Element {
             {busy === 'assemble' ? <CircleNotch size={12} className="animate-spin" /> : <ArrowsClockwise size={12} />}
           </button>
         </Tooltip>
+          </>
+        )}
+        {assemblyInProgress && (
+          <span
+            data-testid="bench-assembly-progress"
+            aria-live="polite"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 9, color: colors.textTertiary }}
+          >
+            <CircleNotch size={12} className="animate-spin" />
+            assembling
+          </span>
+        )}
       </div>
 
       {goToTabAnchor && (

@@ -35,6 +35,10 @@ struct WorktreeRowView: View {
     /// menu. Absent (no-op row, just a name) when the host doesn't wire
     /// navigation -- mirrors `onNewConversation`'s optionality.
     var onSelectConversation: ((String) -> Void)?
+    /// Retire a landed worktree. Absent when the host doesn't offer retire.
+    var onRetire: (() -> Void)?
+
+    @State private var confirmRetire = false
 
     private var membership: RemoteMembership? { worktree.membership }
 
@@ -74,6 +78,76 @@ struct WorktreeRowView: View {
     }
 
     var body: some View {
+        if worktree.isLanded {
+            landedBody
+        } else {
+            activeBody
+        }
+    }
+
+    // MARK: - Landed row
+
+    private var landedBody: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.caption2)
+                .foregroundStyle(.green)
+
+            Text(worktree.displayName)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+            Text(worktree.branchName)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+
+            Spacer(minLength: 4)
+
+            Text("landed")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
+            if busy { ProgressView().controlSize(.mini) }
+        }
+        .contextMenu {
+            if !worktree.openConversations.isEmpty {
+                Section("Open here") {
+                    ForEach(worktree.openConversations) { conversation in
+                        if let onSelectConversation {
+                            Button {
+                                onSelectConversation(conversation.tabId)
+                            } label: {
+                                Text(conversation.title)
+                            }
+                        } else {
+                            Text(conversation.title)
+                        }
+                    }
+                }
+            }
+            if let onRetire {
+                Button(role: .destructive) {
+                    confirmRetire = true
+                } label: {
+                    Label("Retire worktree", systemImage: "trash")
+                }
+            }
+        }
+        .confirmationDialog("Retire this worktree?",
+                            isPresented: $confirmRetire,
+                            titleVisibility: .visible) {
+            Button("Retire", role: .destructive) { onRetire?() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The worktree directory and its branch will be removed. All work in this worktree has already landed.")
+        }
+    }
+
+    // MARK: - Active row
+
+    private var activeBody: some View {
         Button(action: onOpen) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -159,7 +233,7 @@ struct WorktreeRowView: View {
                             .font(.caption2)
                             .foregroundStyle(.red)
                     }
-                    // The operator's workflow stage — same glyph vocabulary as
+                    // The operator's workflow stage -- same glyph vocabulary as
                     // the desktop's gutter chip, set from the context menu.
                     if let stage = worktree.stage {
                         Image(systemName: stage.systemImage)
@@ -238,12 +312,10 @@ struct WorktreeRowView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                    // Names the COUNT when several conversations live in the
-                    // worktree. A single "open" could not distinguish one from
-                    // four, which is exactly what the operator wants to know.
-                    if !worktree.openConversations.isEmpty {
-                        Text(worktree.openConversations.count == 1
-                             ? "open" : "open · \(worktree.openConversations.count)")
+                    // Compact parenthesized count distinguishes one worktree's
+                    // active conversations without repeating a redundant word.
+                    if let openConversationCountLabel = worktree.openConversationCountLabel {
+                        Text(openConversationCountLabel)
                             .font(.caption2)
                             .foregroundStyle(.tint)
                     }
@@ -334,12 +406,12 @@ struct WorktreeRowView: View {
             }
             if let m = membership {
                 // The bench conflict's detail. Resolution is desktop-only (a
-                // 3-pane merge does not translate to a phone), but the FACTS —
-                // which files, which member — ride the wire already, and a bare
+                // 3-pane merge does not translate to a phone), but the FACTS --
+                // which files, which member -- ride the wire already, and a bare
                 // red triangle with no explanation was the parity gap: the
                 // desktop names them, so the phone does too.
                 if m.merge == .conflicted {
-                    Section("Bench conflict — assembly failed") {
+                    Section("Bench conflict -- assembly failed") {
                         ForEach(m.conflictPaths ?? [], id: \.self) { path in
                             Text(path)
                         }
@@ -376,7 +448,7 @@ struct WorktreeRowView: View {
             }
             // Workflow stage. Outside the membership block on purpose: the
             // stage is worktree-scoped (the desktop stores it in the registry),
-            // so an unenrolled worktree carries it too — `plan` happens before
+            // so an unenrolled worktree carries it too -- `plan` happens before
             // any enrollment exists. Selecting the active stage clears it,
             // matching the desktop's strip.
             if let onSetStage {

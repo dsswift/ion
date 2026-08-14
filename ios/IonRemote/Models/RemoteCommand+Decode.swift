@@ -464,6 +464,15 @@ extension RemoteCommand {
                 worktreeBranch: try container.decode(String.self, forKey: .worktreeBranch),
                 sourceBranch: try container.decode(String.self, forKey: .sourceBranch))
 
+        case .worktreeRetire:
+            self = .worktreeRetire(
+                repoPath: try container.decode(String.self, forKey: .repoPath),
+                worktreePath: try container.decode(String.self, forKey: .worktreePath))
+
+        case .worktreeRetireLanded:
+            self = .worktreeRetireLanded(
+                repoPath: try container.decode(String.self, forKey: .repoPath))
+
         case .benchOpenConversation:
             self = .benchOpenConversation(
                 repoPath: try container.decode(String.self, forKey: .repoPath),

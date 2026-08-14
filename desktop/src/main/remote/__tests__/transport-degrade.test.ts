@@ -34,6 +34,44 @@ function agentStateEvent(metadataBytes: number, agentCount = 11): RemoteEvent {
   } as unknown as RemoteEvent
 }
 
+function agentStateWithDispatches(
+  metadataBytes: number,
+  dispatchCount: number,
+  agentCount = 3,
+): RemoteEvent {
+  const bulk = 'x'.repeat(metadataBytes)
+  return {
+    type: 'desktop_agent_state',
+    tabId: 'tab-1',
+    instanceId: null,
+    agents: Array.from({ length: agentCount }, (_, i) => ({
+      name: `agent-${i}`,
+      status: i === 0 ? 'running' : 'done',
+      id: `d-${i}`,
+      metadata: {
+        displayName: `Agent ${i}`,
+        type: 'specialist',
+        visibility: 'always',
+        invited: true,
+        color: '#fff',
+        dispatchId: `d-${i}`,
+        dispatchParentId: '',
+        dispatchDepth: 1,
+        lastWork: bulk,
+        task: bulk,
+        dispatches: Array.from({ length: dispatchCount }, (_, j) => ({
+          id: `dispatch-${i}-${j}`,
+          task: bulk,
+          model: 'claude-sonnet-4-6',
+          conversationId: `conv-${i}-${j}`,
+          status: j === 0 ? 'running' : 'done',
+          startTime: 1700000000 + j,
+        })),
+      },
+    })),
+  } as unknown as RemoteEvent
+}
+
 describe('degradeOversizedEvent', () => {
   // The production shape: 11 agents at ~3.3 MB each, 35 MB total, over the
   // 6 MiB cap on all 1,873 attempts.
@@ -111,6 +149,79 @@ describe('degradeOversizedEvent', () => {
 
     expect((event as any).agents[0].metadata.lastWork.length).toBe(before)
     expect((event as any).metadataOmitted).toBeUndefined()
+  })
+})
+
+describe('two-stage degradation with dispatches', () => {
+  it('stage 1 preserves slim dispatches when the result fits under the cap', () => {
+    const event = agentStateWithDispatches(1_000_000, 5)
+    const original = JSON.stringify(event).length
+    expect(original).toBeGreaterThan(MAX_PLAINTEXT_BYTES)
+
+    const result = degradeOversizedEvent(event, MAX_PLAINTEXT_BYTES)
+
+    expect(result).not.toBeNull()
+    const degraded = result!.event as any
+    expect(degraded.metadataOmitted).toBe(true)
+
+    for (const a of degraded.agents) {
+      expect(a.metadata.dispatches).toBeDefined()
+      expect(a.metadata.dispatches).toHaveLength(5)
+
+      for (const d of a.metadata.dispatches) {
+        expect(d.id).toBeTruthy()
+        expect(d.status).toBeTruthy()
+        expect(d.conversationId).toBeTruthy()
+        expect(d.startTime).toEqual(expect.any(Number))
+        expect(d.task).toBeUndefined()
+        expect(d.model).toBeUndefined()
+        expect(d.elapsed).toBeUndefined()
+      }
+    }
+  })
+
+  it('stage 2 strips dispatches entirely when stage 1 still exceeds cap', () => {
+    const event = agentStateWithDispatches(10, 200_000, 1)
+    const original = JSON.stringify(event).length
+    expect(original).toBeGreaterThan(MAX_PLAINTEXT_BYTES)
+
+    const result = degradeOversizedEvent(event, MAX_PLAINTEXT_BYTES)
+
+    expect(result).not.toBeNull()
+    const degraded = result!.event as any
+    expect(degraded.metadataOmitted).toBe(true)
+
+    for (const a of degraded.agents) {
+      expect(a.metadata.dispatches).toBeUndefined()
+      expect(a.metadata.displayName).toBeTruthy()
+      expect(a.metadata.type).toBe('specialist')
+    }
+  })
+
+  it('stamps metadataOmitted on both stages', () => {
+    const smallDispatches = agentStateWithDispatches(1_000_000, 2)
+    const result1 = degradeOversizedEvent(smallDispatches, MAX_PLAINTEXT_BYTES)
+    expect((result1!.event as any).metadataOmitted).toBe(true)
+
+    const hugeIdentity = agentStateEvent(3 * 1024 * 1024)
+    const result2 = degradeOversizedEvent(hugeIdentity, MAX_PLAINTEXT_BYTES)
+    expect((result2!.event as any).metadataOmitted).toBe(true)
+  })
+
+  it('preserves protected keys alongside slim dispatches in stage 1', () => {
+    const event = agentStateWithDispatches(1_000_000, 3)
+    const result = degradeOversizedEvent(event, MAX_PLAINTEXT_BYTES)!
+    const degraded = result.event as any
+
+    for (const a of degraded.agents) {
+      expect(a.metadata.displayName).toBeTruthy()
+      expect(a.metadata.visibility).toBe('always')
+      expect(a.metadata.invited).toBe(true)
+      expect(a.metadata.type).toBe('specialist')
+      expect(a.metadata.dispatchId).toBeTruthy()
+      expect(a.metadata.lastWork).toBeUndefined()
+      expect(a.metadata.task).toBeUndefined()
+    }
   })
 })
 

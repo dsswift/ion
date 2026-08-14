@@ -22,6 +22,10 @@ const (
 	// RefusalWorktreeHistory — a Git operation would change which branch a
 	// registered feature worktree holds, or remove the checkout itself.
 	RefusalWorktreeHistory RefusalKind = "worktree_history"
+	// RefusalLandedWorktree — the worktree's work has already landed in its
+	// source branch, so the checkout is sealed: no writes, no edits, no Bash
+	// mutations. Reads and unrelated directories are unaffected.
+	RefusalLandedWorktree RefusalKind = "landed_worktree"
 )
 
 // Refusal is the typed verdict for a refused tool call. Reason is the complete
@@ -159,6 +163,10 @@ func (c *Checker) Check(tool string, input map[string]interface{}, cwd string) *
 	}
 
 	containment := c.Resolve(cwd)
+
+	if r := c.checkLanded(containment); r != nil {
+		return r
+	}
 
 	if isBash(tool) {
 		cmd, ok := input["command"].(string)
@@ -355,6 +363,40 @@ func worktreeReason(target, owner, worktreePath string) string {
 	return fmt.Sprintf(
 		"Refused: %s is inside %s. This conversation is isolated to the worktree %s; writing outside it would interleave several conversations' work in one checkout, and review could not attribute the changes afterwards. Make the change under %s instead.",
 		target, owner, worktreePath, worktreePath)
+}
+
+// checkLanded returns a refusal when the cwd is inside a worktree whose work
+// has already landed. A landed worktree is sealed: every gated tool is refused,
+// not just cross-worktree writes. The caller has already verified the tool is
+// gated.
+func (c *Checker) checkLanded(containment Containment) *Refusal {
+	wc := containment.Worktree
+	if wc == nil {
+		return nil
+	}
+	entries := c.reg.Worktrees()
+	for _, e := range entries {
+		if e.WorktreePath == wc.WorktreePath && e.Landed() {
+			return &Refusal{
+				Kind:   RefusalLandedWorktree,
+				Target: wc.WorktreePath,
+				Reason: landedWorktreeReason(wc),
+			}
+		}
+	}
+	return nil
+}
+
+// landedWorktreeReason builds the refusal message for a write into a sealed
+// worktree whose work has already landed.
+func landedWorktreeReason(wc *WorktreeContainment) string {
+	branch := wc.BranchName
+	if branch == "" {
+		branch = "its branch"
+	}
+	return fmt.Sprintf(
+		"Refused: this worktree (%s) is sealed — %s has already landed in the source branch. Writes, edits, and Bash mutations are no longer allowed here because any change would diverge from the landed state. The worktree is read-only. To continue work on this area, create a new worktree from the updated source branch.",
+		wc.WorktreePath, branch)
 }
 
 // worktreeHistoryReason builds the refusal for an operation that would change

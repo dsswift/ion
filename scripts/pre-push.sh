@@ -83,6 +83,8 @@ run() {
 # files outside the changed set (e.g. an editor accidentally rewriting a
 # whole file's whitespace).
 run "file-size cap" bash scripts/check-file-sizes.sh
+run "Go toolchain alignment" bash scripts/check-go-toolchains.sh
+run "Go toolchain regression checks" bash scripts/check-go-toolchains.test.sh
 
 # Dashboards-as-code drift + overcount audit. Runs when the query module,
 # recipes, or the committed dashboard JSONs are touched. Cheap (Node native

@@ -8,6 +8,8 @@ import { describe, it, expect } from 'vitest'
 import {
   collectDirConversations,
   collectAllDirConversations,
+  conversationRoleLabel,
+  describeBenchOpenConversations,
   pickBenchConversation,
   type DirConversationSource,
 } from '../worktree-conversations'
@@ -118,6 +120,9 @@ describe('collectAllDirConversations — the navigation-only, role-inclusive twi
     ]
     const out = collectAllDirConversations(tabs, BENCH)
     expect(out.map((c) => c.tabId)).toEqual(['talk', 'fix', 'verify', 'plain'])
+    expect(out.map((c) => c.tabRole)).toEqual([
+      'bench-conversation', 'conflict-auto-fix', 'verification-analysis', undefined,
+    ])
   })
 
   it('still skips terminal-only tabs — a shell is never a conversation, regardless of role', () => {
@@ -127,5 +132,24 @@ describe('collectAllDirConversations — the navigation-only, role-inclusive twi
 
   it('returns an empty array for an empty directory path', () => {
     expect(collectAllDirConversations([tab({ id: 'a', workingDirectory: '' })], '')).toEqual([])
+  })
+})
+
+describe('bench machine-work labels', () => {
+  it('labels a single machine conversation with count and role', () => {
+    const matches = collectAllDirConversations([
+      tab({ id: 'fix', tabRole: 'conflict-auto-fix' }),
+    ], BENCH)
+    expect(describeBenchOpenConversations(matches)).toBe('(1) · Auto-fix')
+  })
+
+  it('labels several machine conversations with count and roles', () => {
+    const matches = collectAllDirConversations([
+      tab({ id: 'fix', tabRole: 'conflict-auto-fix' }),
+      tab({ id: 'verify', tabRole: 'verification-analysis' }),
+    ], BENCH)
+    expect(describeBenchOpenConversations(matches)).toBe('(2) · Auto-fix + Analysis')
+    expect(conversationRoleLabel('conflict-auto-fix')).toBe('Auto-fix')
+    expect(conversationRoleLabel('verification-analysis')).toBe('Analysis')
   })
 })

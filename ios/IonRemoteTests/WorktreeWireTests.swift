@@ -55,7 +55,9 @@ final class WorktreeWireTests: XCTestCase {
               "baseDrifted": true,
               "orphans": [],
               "openConversations": [
-                {"tabId": "tab-9", "title": "Bench build", "status": "idle", "index": 9}
+                {"tabId": "tab-9", "title": "Bench build", "status": "idle", "index": 9},
+                {"tabId": "tab-fix", "title": "Resolve merge", "status": "running", "index": 10, "tabRole": "conflict-auto-fix"},
+                {"tabId": "tab-analysis", "title": "Inspect verification", "status": "idle", "index": 11, "tabRole": "verification-analysis"}
               ],
               "benchConversationTabId": "tab-talk",
               "benchTerminalTabId": "tab-term"
@@ -98,7 +100,10 @@ final class WorktreeWireTests: XCTestCase {
         XCTAssertEqual(bench.lastAssembly, "failed")
         XCTAssertEqual(bench.lastAssemblyError,
                        "wt/a3f1 conflicts on 1 file. The bench is empty until this is resolved.")
-        XCTAssertEqual(bench.openConversations.map(\.tabId), ["tab-9"])
+        XCTAssertEqual(bench.openConversations.map(\.tabId), ["tab-9", "tab-fix", "tab-analysis"])
+        XCTAssertEqual(bench.openConversations[1].roleLabel, "Auto-fix")
+        XCTAssertEqual(bench.openConversations[2].roleLabel, "Analysis")
+        XCTAssertEqual(bench.conversationActionTitle, "Go to · Analysis + Auto-fix")
         XCTAssertEqual(bench.benchConversationTabId, "tab-talk")
         XCTAssertTrue(bench.orphans.isEmpty)
         // The bench's dedicated terminal, which is what lets the row say
@@ -165,6 +170,7 @@ final class WorktreeWireTests: XCTestCase {
         // reading, never a decode failure that would blank the bench view.
         XCTAssertEqual(bench.orphans, [])
         XCTAssertNil(bench.benchConversationTabId)
+        XCTAssertNil(bench.openConversations.first?.tabRole)
         // Likewise no `benchTerminalTabId`. Absent means "no terminal open",
         // which the row renders as "Open terminal" -- never as an error.
         XCTAssertNil(bench.benchTerminalTabId)

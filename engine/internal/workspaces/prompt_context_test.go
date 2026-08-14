@@ -154,6 +154,51 @@ func TestPromptContextReportsLandedWorktree(t *testing.T) {
 	}
 }
 
+func TestPromptContextLandedWorktreeIsSealedAndReadOnly(t *testing.T) {
+	dir := t.TempDir()
+	writeWorktreeRegistry(t, dir, []WorktreeEntry{
+		{WorktreePath: minePath, RepoPath: repoPath, BranchName: "wt/mine",
+			SourceBranch: "main", LandedAt: 1700000500000},
+		{WorktreePath: sibling, RepoPath: repoPath, BranchName: "wt/other"},
+	})
+	prose := NewCheckerAt(dir).PromptContextFor(minePath).Format()
+
+	for _, want := range []string{"SEALED", "read-only", "refused"} {
+		if !strings.Contains(prose, want) {
+			t.Errorf("landed prose must contain %q:\n%s", want, prose)
+		}
+	}
+
+	// Active-worktree sections must NOT appear for a sealed worktree.
+	for _, absent := range []string{
+		"Writes are confined to this worktree",
+		"End every turn with HEAD attached",
+		"WorktreeList",
+	} {
+		if strings.Contains(prose, absent) {
+			t.Errorf("landed prose must NOT contain active-worktree text %q:\n%s", absent, prose)
+		}
+	}
+}
+
+func TestPromptContextUnlandedWorktreeHasActiveText(t *testing.T) {
+	dir := t.TempDir()
+	writeWorktreeRegistry(t, dir, []WorktreeEntry{
+		{WorktreePath: minePath, RepoPath: repoPath, BranchName: "wt/mine", SourceBranch: "main"},
+	})
+	prose := NewCheckerAt(dir).PromptContextFor(minePath).Format()
+
+	if strings.Contains(prose, "SEALED") {
+		t.Errorf("unlanded worktree must not say SEALED:\n%s", prose)
+	}
+	if !strings.Contains(prose, "Writes are confined to this worktree") {
+		t.Errorf("unlanded worktree must have active confinement text:\n%s", prose)
+	}
+	if !strings.Contains(prose, "End every turn with HEAD attached") {
+		t.Errorf("unlanded worktree must have attachment invariant:\n%s", prose)
+	}
+}
+
 // ─── The struct is the contract ──────────────────────────────────────────────
 
 // Every fact the formatter renders must be reachable as a field, because a

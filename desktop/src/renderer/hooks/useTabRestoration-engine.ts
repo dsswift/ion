@@ -359,6 +359,9 @@ async function restoreSingleInstanceTab(
             // must stay input-locked and role-tagged, or the operator could
             // type into a machine conversation after relaunch.
             inputLocked: st.inputLocked ?? false,
+            inputLockReason: st.worktree?.landedAt
+              ? 'landed-worktree'
+              : st.inputLockReason ?? null,
             tabRole: st.tabRole ?? null,
             pillColor: st.pillColor || null,
             groupId: st.groupId || null,

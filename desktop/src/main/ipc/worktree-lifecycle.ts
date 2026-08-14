@@ -12,6 +12,7 @@
  * (a retire that proceeded after a failed land would destroy unlanded work).
  */
 import { ipcMain } from 'electron'
+import { broadcast } from '../broadcast'
 import { IPC } from '../../shared/types'
 import { log as _log, warn as _warn } from '../logger'
 import { landWorktree, syncWorktreeFromSource } from '../worktree/integrate'
@@ -41,6 +42,11 @@ export function registerWorktreeLifecycleIpc(): void {
         warn('land refused', { worktree_branch: worktreeBranch, source_branch: sourceBranch, has_conflicts: !!result.hasConflicts, error: result.error ?? '' })
       } else {
         log('land ok', { worktree_branch: worktreeBranch, source_branch: sourceBranch, mode: result.mode ?? '', sha: (result.sha ?? '').slice(0, 7) })
+        broadcast('ion:worktree-landed', {
+          repoPath,
+          worktreePath,
+          prunedBenchPaths: result.prunedBenchPaths ?? [],
+        })
       }
       return result
     },
@@ -105,6 +111,7 @@ export function registerWorktreeLifecycleIpc(): void {
         worktree_path: worktreePath,
         repo_path: registration.repoPath,
         source_branch: registration.sourceBranch ?? 'unknown',
+        landed: !!registration.landedAt,
       })
       return { registration }
     },

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
+	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/resource"
@@ -97,9 +98,9 @@ func (a *idTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) e
 func (a *idTestAccessor) SendPromptDegradedSteer(text string, model string, bash []string, kind string) error {
 	return a.SendPromptWithKind(text, model, bash, kind)
 }
-func (a *idTestAccessor) SteerSelfMainLoop(_ string) bool                            { return false }
-func (a *idTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool                 { return false }
-func (a *idTestAccessor) ParkSelfMainLoop() bool                                     { return false }
+func (a *idTestAccessor) SteerSelfMainLoop(_ string) bool            { return false }
+func (a *idTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
+func (a *idTestAccessor) ParkSelfMainLoop() bool                     { return false }
 func (a *idTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
@@ -692,7 +693,7 @@ func (d *lifecycleChildBackend) FlushConversations()                    {}
 func (d *lifecycleChildBackend) Capabilities() backend.BackendCapabilities {
 	return backend.BackendCapabilities{
 		Kind:         "mock",
-		ContextModel: backend.ContextModelEngineOwned,
+		ContextModel: backend.ContextModelNativeSession,
 		PlanMode:     true,
 		Steering:     true,
 	}
@@ -717,3 +718,29 @@ func (d *lifecycleChildBackend) StartRun(requestID string, _ types.RunOptions) {
 	}()
 }
 func (a *idTestAccessor) DispatchRegistry() *DispatchRegistry { return nil }
+
+func TestDispatchTerminalMaterializesNativeChildTranscript(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	child := &lifecycleChildBackend{convID: "native-child-transcript"}
+	acc := &idTestAccessor{child: child}
+	dispatch := BuildDispatchAgentFunc(acc, nil, 0, "")
+
+	result, err := dispatch(extension.DispatchAgentOpts{Name: "worker", Task: "inspect code", Model: "model-a", WaitForCompletion: true})
+	if err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if result == nil || result.SessionID != "native-child-transcript" {
+		t.Fatalf("result = %+v", result)
+	}
+	messages, err := conversation.LoadMessagesPaginated("native-child-transcript", "", 0, 0)
+	if err != nil {
+		t.Fatalf("LoadMessagesPaginated: %v", err)
+	}
+	if len(messages.Messages) != 3 {
+		t.Fatalf("messages = %d, want user + tool + assistant", len(messages.Messages))
+	}
+	if messages.Messages[0].Content != "inspect code" || messages.Messages[2].Content != "hello" {
+		t.Fatalf("transcript = %+v", messages.Messages)
+	}
+}

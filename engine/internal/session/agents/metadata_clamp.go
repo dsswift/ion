@@ -209,9 +209,10 @@ func clampEntry(state *types.AgentStateUpdate, l MetadataLimits) *ClampReport {
 
 	markTruncated(state.Metadata, append(append([]string{}, rep.ClampedKeys...), rep.DroppedKeys...))
 	if l.MaxEntryBytes != LimitsDisabled {
-		// The in-band truncation stamps add a few bytes of their own; the
-		// entry bound is a guarantee, so re-assert it after stamping.
+		// Stamps are part of the projection budget. Compact protected values
+		// again if required, preserving JSON value types throughout.
 		rep.ClampedKeys = appendUnique(rep.ClampedKeys, enforceProtectedGuarantee(state.Metadata, l.MaxEntryBytes)...)
+		trimTruncationMarkers(state.Metadata, l.MaxEntryBytes)
 	}
 	rep.OriginalBytes = originalBytes
 	rep.ClampedBytes = approxMapBytes(state.Metadata)
@@ -226,6 +227,9 @@ func clampEntry(state *types.AgentStateUpdate, l MetadataLimits) *ClampReport {
 // clampValue bounds one value in place, recursing into nested containers.
 // Reports whether anything changed.
 func clampValue(container map[string]any, key string, l MetadataLimits, depth int) bool {
+	// Every string is bounded at the wire projection. Routing values remain
+	// strings, never maps/markers; a consumer sees _truncated and can recover
+	// the exact value through get_agent_state.
 	switch v := container[key].(type) {
 	case string:
 		if len(v) <= l.MaxValueBytes {
@@ -522,44 +526,40 @@ func sortedKeys(md map[string]any) []string {
 	return keys
 }
 
-// --- Registry plumbing ---
-//
-// These live here rather than in registry.go so the clamp mechanism is one
-// readable unit, and because registry.go is close to the 800-line cap.
-
-// SetLimits replaces the metadata bounds on a live registry, for the case
-// where configuration resolves after the session's registry already exists.
-func (r *Registry) SetLimits(limits MetadataLimits) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.limits = limits
+// ClampSnapshotCopy returns a bounded emission projection without mutating the
+// registry-owned source state. Metadata is an open map used by persistence and
+// dispatch lifecycle updates, so byte limits apply only at the wire boundary.
+func ClampSnapshotCopy(states []types.AgentStateUpdate, limits MetadataLimits) ([]types.AgentStateUpdate, []ClampReport) {
+	out := make([]types.AgentStateUpdate, len(states))
+	for i := range states {
+		out[i] = states[i]
+		out[i].Metadata = deepCopyMetadata(states[i].Metadata)
+	}
+	return out, clampStates(out, limits)
 }
 
-// TakeClampReports drains the clamp reports accumulated since the last call.
-// The registry cannot emit events, so the emission funnel drains this and
-// publishes each report as a typed advisory.
-func (r *Registry) TakeClampReports() []ClampReport {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if len(r.clampReports) == 0 {
+func deepCopyMetadata(src map[string]any) map[string]any {
+	if src == nil {
 		return nil
 	}
-	out := r.clampReports
-	r.clampReports = nil
+	out := make(map[string]any, len(src))
+	for key, value := range src {
+		out[key] = deepCopyMetadataValue(value)
+	}
 	return out
 }
 
-// clampStatesLocked bounds the given states and records any reports.
-// Caller must hold r.mu.
-func (r *Registry) clampStatesLocked(states []types.AgentStateUpdate) {
-	if reports := clampStates(states, r.limits); len(reports) > 0 {
-		r.clampReports = append(r.clampReports, reports...)
-	}
-}
-
-// clampOneLocked bounds a single state in place. Caller must hold r.mu.
-func (r *Registry) clampOneLocked(state *types.AgentStateUpdate) {
-	if rep := clampEntry(state, r.limits.normalized()); rep != nil {
-		r.clampReports = append(r.clampReports, *rep)
+func deepCopyMetadataValue(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		return deepCopyMetadata(v)
+	case []any:
+		out := make([]any, len(v))
+		for i := range v {
+			out[i] = deepCopyMetadataValue(v[i])
+		}
+		return out
+	default:
+		return value
 	}
 }

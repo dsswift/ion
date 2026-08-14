@@ -1,5 +1,4 @@
 import React from 'react'
-import { ConflictToasts } from './ConflictToasts'
 import { UpdateDialog } from './UpdateDialog'
 import { RemoteDirectoryPicker } from './RemoteDirectoryPicker'
 import { DeepLinkConfirmDialog } from './DeepLinkConfirmDialog'
@@ -11,8 +10,6 @@ import { DeepLinkConfirmDialog } from './DeepLinkConfirmDialog'
  * it has something to show, and is deliberately NOT tied to the active
  * conversation:
  *
- *   - ConflictToasts — a sync/land can fail with conflicts in any tab, so the
- *     notification cannot belong to the one being viewed.
  *   - UpdateDialog — the app is updating, not a conversation.
  *   - RemoteDirectoryPicker — used while choosing a directory on a remote engine
  *     host, before any tab exists for it.
@@ -30,7 +27,6 @@ export function AppOverlays(): React.JSX.Element {
   return (
     <>
       <DeepLinkConfirmDialog />
-      <ConflictToasts />
       <UpdateDialog />
       <RemoteDirectoryPicker />
     </>

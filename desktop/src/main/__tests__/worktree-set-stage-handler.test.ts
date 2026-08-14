@@ -76,6 +76,8 @@ import {
 } from '../worktree/registry'
 
 import { handleWorktreeCommand } from '../remote/handlers/worktree'
+import { landWorktree } from '../worktree/integrate'
+import { broadcast } from '../broadcast'
 
 let home: string
 
@@ -174,5 +176,40 @@ describe('desktop_worktree_set_stage handler', () => {
     expect(sentResults).toHaveLength(1)
     expect(sentResults[0].ok).toBe(false)
     expect(sentResults[0].error).toBe('Could not save the registry.')
+  })
+})
+
+describe('desktop_worktree remote lifecycle', () => {
+  it('broadcasts sealed worktree after remote land succeeds', async () => {
+    vi.mocked(landWorktree).mockResolvedValue({ ok: true, mode: 'merge', sha: 'abc' })
+
+    await handleWorktreeCommand({
+      type: 'desktop_worktree_land', repoPath: '/repo', worktreePath: '/wt/landed',
+      worktreeBranch: 'wt/landed', sourceBranch: 'main',
+    } as Parameters<typeof handleWorktreeCommand>[0])
+
+    expect(broadcast).toHaveBeenCalledWith('ion:worktree-landed', {
+      repoPath: '/repo', worktreePath: '/wt/landed', prunedBenchPaths: [],
+    })
+  })
+
+  it('refuses opening a landed worktree and refreshes its state', async () => {
+    registerWorktree({
+      repoPath: '/repo', worktreePath: '/wt/landed', branchName: 'wt/landed', sourceBranch: 'main',
+    })
+    // Preserve terminal landed fact, as real land operation does.
+    const registry = await import('../worktree/registry')
+    const mark = registry.markWorktreeLanded('/wt/landed')
+    expect(mark).toBe(true)
+
+    await handleWorktreeCommand({
+      type: 'desktop_worktree_open_conversation', worktreePath: '/wt/landed', newConversation: false,
+    } as Parameters<typeof handleWorktreeCommand>[0])
+
+    expect(sentResults).toContainEqual(expect.objectContaining({
+      type: 'desktop_worktree_op_result', operation: 'open', ok: false,
+      error: 'This worktree has landed and is sealed for review.',
+    }))
+    expect(sentResults).toContainEqual(expect.objectContaining({ type: 'desktop_worktree_state' }))
   })
 })

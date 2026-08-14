@@ -147,7 +147,10 @@ export function TabContextMenu({
       <motion.div
         ref={(node) => { (ref as React.MutableRefObject<HTMLDivElement | null>).current = node; pos.ref(node) }}
         onMouseOver={(e) => {
-          if (!(e.target as HTMLElement).closest('[data-ion-submenu-trigger]')) closeMoveSubmenus()
+          const parentItem = (e.target as HTMLElement).closest('button')
+          if (parentItem && ref.current?.contains(parentItem) && !parentItem.hasAttribute('data-ion-submenu-trigger')) {
+            closeMoveSubmenus()
+          }
         }}
         data-ion-ui
         initial={{ opacity: 0, scale: 0.9 }}
@@ -184,13 +187,13 @@ export function TabContextMenu({
           <span>Rename tab and worktree</span>
         </ContextMenuItem>
       )}
-      {onForkTab && (
+      {onForkTab && !tab.worktree?.landedAt && (
         <ContextMenuItem onClick={() => { onForkTab(); onClose() }}>
           <GitFork size={14} color={colors.textSecondary} />
           <span>Fork conversation</span>
         </ContextMenuItem>
       )}
-      {tab.workingDirectory && (
+      {tab.workingDirectory && !tab.worktree?.landedAt && (
         <ContextMenuItem onClick={() => { onNewTabInDir(); onClose() }}>
           <FolderOpen size={14} color={colors.textSecondary} />
           <span>New tab in directory</span>
@@ -205,7 +208,7 @@ export function TabContextMenu({
           <span>{convert.label}</span>
         </ContextMenuItem>
       )}
-      {tab.worktree && (
+      {tab.worktree && !tab.worktree.landedAt && (
         <ContextMenuItem
           disabled={!!finishWorkDisabled}
           onClick={() => { onFinishWork(); onClose() }}

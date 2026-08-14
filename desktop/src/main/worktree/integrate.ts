@@ -45,7 +45,8 @@
 import { runGit } from '../git-runner'
 import { repositoryManager } from '../git/repositoryManager'
 import { log as _log, warn as _warn } from '../logger'
-import { markWorktreeLanded } from './inventory'
+import { markWorktreeLanded, lookupWorktreeLandedAt } from './inventory'
+import { disenrollWorktree } from '../integration/bench-ops'
 import type { LandResult } from '../../shared/types'
 
 const TAG = 'worktree.land'
@@ -185,6 +186,13 @@ export async function landWorktreeUnqueued(opts: LandOptions): Promise<LandResul
     require_fast_forward: !!requireFastForward,
   })
 
+  // ── Gate 0: landed is terminal ────────────────────────────────────────────
+  const alreadyLandedAt = lookupWorktreeLandedAt(worktreePath)
+  if (alreadyLandedAt != null) {
+    warn('land: refused, worktree already landed', { worktree_path: worktreePath, landed_at: alreadyLandedAt })
+    return { ok: false, error: 'This worktree has already been landed. Land is a terminal operation.' }
+  }
+
   // ── Gate 1: the worktree must be committed ────────────────────────────────
   // Landing uncommitted work is not possible (there is no commit to merge),
   // and silently landing a subset would be worse than refusing.
@@ -238,8 +246,10 @@ export async function landWorktreeUnqueued(opts: LandOptions): Promise<LandResul
         : 'Land succeeded but the registry could not be updated.'
       if (landWarning) {
         warn('land: ref advanced but registry persist failed', { worktree_path: worktreePath })
+        return { ok: true, mode: 'ref-advance', sha, warning: landWarning }
       }
-      return { ok: true, mode: 'ref-advance', sha, warning: landWarning }
+      const prunedBenchPaths = await disenrollAfterLand(repoPath, worktreePath)
+      return { ok: true, mode: 'ref-advance', sha, prunedBenchPaths }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       // git refuses a non-fast-forward ref update itself. That is the honest
@@ -301,8 +311,10 @@ export async function landWorktreeUnqueued(opts: LandOptions): Promise<LandResul
       : 'Land succeeded but the registry could not be updated.'
     if (mergeWarning) {
       warn('land: merged but registry persist failed', { worktree_path: worktreePath })
+      return { ok: true, mode: requireFastForward ? 'fast-forward' : 'merge', sha, warning: mergeWarning }
     }
-    return { ok: true, mode: requireFastForward ? 'fast-forward' : 'merge', sha, warning: mergeWarning }
+    const prunedBenchPaths = await disenrollAfterLand(repoPath, worktreePath)
+    return { ok: true, mode: requireFastForward ? 'fast-forward' : 'merge', sha, prunedBenchPaths }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     // Ask git whether this is actually a conflict rather than pattern-matching
@@ -335,4 +347,41 @@ export async function landWorktreeUnqueued(opts: LandOptions): Promise<LandResul
     }
     return { ok: false, error: msg }
   }
+}
+
+/**
+ * After a successful land, disenroll the worktree from every bench and remove
+ * any bench left empty. Same pattern as retire (relocate.ts), split out so both
+ * success paths share a single call.
+ */
+async function disenrollAfterLand(repoPath: string, worktreePath: string): Promise<string[]> {
+  let result: { removedFrom: number; prunedBenches: string[] }
+  try {
+    result = disenrollWorktree(worktreePath)
+  } catch (err) {
+    // The source branch already contains the work. Preserve the sealed registry
+    // witness and report cleanup separately instead of lying that nothing landed.
+    warn('land: bench disenrollment failed after successful integration', {
+      worktree_path: worktreePath,
+      error: String(err),
+    })
+    return []
+  }
+  const { removedFrom, prunedBenches } = result
+  if (removedFrom > 0) {
+    log('land: disenrolled from bench(es)', {
+      worktree_path: worktreePath,
+      benches: removedFrom,
+      pruned: prunedBenches.length,
+    })
+  }
+  for (const benchPath of prunedBenches) {
+    try {
+      await runGit(repoPath, ['worktree', 'remove', benchPath, '--force'])
+      log('land: removed pruned bench worktree', { bench_path: benchPath })
+    } catch (err) {
+      log('land: pruned bench worktree removal skipped', { bench_path: benchPath, error: String(err) })
+    }
+  }
+  return prunedBenches
 }

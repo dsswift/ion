@@ -22,6 +22,8 @@ final class WorktreeWireCommandTests: XCTestCase {
             (.worktreeSyncAll(repoPath: "/repo"), "desktop_worktree_sync_all"),
             (.worktreeLand(repoPath: "/repo", worktreePath: "/wt", worktreeBranch: "wt/a", sourceBranch: "josh"),
              "desktop_worktree_land"),
+            (.worktreeRetire(repoPath: "/repo", worktreePath: "/wt"), "desktop_worktree_retire"),
+            (.worktreeRetireLanded(repoPath: "/repo"), "desktop_worktree_retire_landed"),
             (.benchOpenConversation(repoPath: "/repo", sourceBranch: "josh"), "desktop_bench_open_conversation"),
             (.benchOpenTerminal(repoPath: "/repo", sourceBranch: "josh"), "desktop_bench_open_terminal"),
             (.benchAssemble(repoPath: "/repo", sourceBranch: "josh"), "desktop_bench_assemble"),
@@ -151,8 +153,10 @@ final class WorktreeWireCommandTests: XCTestCase {
         XCTAssertTrue(byPath("/wt/done").isLanded)
     }
 
-    /// A worktree that landed and then kept committing is active again.
-    func testCommittingAfterLandingLeavesTheFinishedGroup() throws {
+    /// `isLanded` is strictly `landedAt != nil`. A worktree with `landedAt` set
+    /// is landed even if new commits appeared afterwards -- the desktop clears
+    /// `landedAt` itself when the worktree resumes active work.
+    func testLandedAtAloneDeterminesIsLanded() throws {
         let json = """
         {"type":"desktop_worktree_state","states":[{"repoPath":"/repo","worktrees":[{
           "worktreePath":"/wt/a","branchName":"wt/a","label":"a","sourceBranch":"josh",
@@ -163,7 +167,40 @@ final class WorktreeWireCommandTests: XCTestCase {
         let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
 
         guard case let .worktreeState(states) = event else { return XCTFail("wrong case") }
-        XCTAssertFalse(states[0].worktrees[0].isLanded)
+        XCTAssertTrue(states[0].worktrees[0].isLanded)
+    }
+
+    func testRetireCommandRoundTrips() throws {
+        let cmd = RemoteCommand.worktreeRetire(repoPath: "/repo", worktreePath: "/wt/done")
+
+        let data = try JSONEncoder().encode(cmd)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(json["repoPath"] as? String, "/repo")
+        XCTAssertEqual(json["worktreePath"] as? String, "/wt/done")
+
+        let decoded = try JSONDecoder().decode(RemoteCommand.self, from: data)
+        guard case let .worktreeRetire(repo, path) = decoded else {
+            return XCTFail("decoded to the wrong case: \(decoded)")
+        }
+        XCTAssertEqual(repo, "/repo")
+        XCTAssertEqual(path, "/wt/done")
+    }
+
+    /// The batch retire command carries only `repoPath` — no `worktreePath`,
+    /// since it acts on every landed worktree in the repo rather than one.
+    func testRetireLandedCommandRoundTrips() throws {
+        let cmd = RemoteCommand.worktreeRetireLanded(repoPath: "/repo")
+
+        let data = try JSONEncoder().encode(cmd)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(json["repoPath"] as? String, "/repo")
+        XCTAssertNil(json["worktreePath"])
+
+        let decoded = try JSONDecoder().decode(RemoteCommand.self, from: data)
+        guard case let .worktreeRetireLanded(repo) = decoded else {
+            return XCTFail("decoded to the wrong case: \(decoded)")
+        }
+        XCTAssertEqual(repo, "/repo")
     }
 
     /// A cleared stage must encode as an explicit null. `encodeIfPresent`

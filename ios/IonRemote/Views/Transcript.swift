@@ -202,6 +202,7 @@ struct Transcript: View {
                     agents: visibleAgents,
                     allAgents: allAgents ?? visibleAgents,
                     onOpenDispatch: onOpenDispatch,
+                    title: alwaysShowAgentPanel ? "Child agents" : "Agents",
                     isExpanded: agentPanelExpanded ?? .constant(true),
                     isFullscreen: agentPanelFullscreen ?? .constant(false)
                 )
@@ -229,6 +230,7 @@ struct TranscriptAgentSection: View {
     /// deliberately excluded from `agents` (the visible, root-level set).
     let allAgents: [AgentStateUpdate]
     let onOpenDispatch: ((DispatchInfo, AgentStateUpdate) -> Void)?
+    let title: String
     @Binding var isExpanded: Bool
     @Binding var isFullscreen: Bool
     @Environment(\.appTheme) private var theme
@@ -239,6 +241,10 @@ struct TranscriptAgentSection: View {
     /// specialist works.
     var runningCount: Int {
         agents.filter { AgentDotResolver.isActive($0, in: allAgents) }.count
+    }
+
+    var dispatchCount: Int {
+        agents.reduce(0) { $0 + $1.dispatches.count }
     }
 
     var body: some View {
@@ -257,9 +263,9 @@ struct TranscriptAgentSection: View {
                     HStack(spacing: 4) {
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                             .font(.caption2)
-                        Text("Agents")
+                        Text(title)
                             .font(.caption.weight(.semibold))
-                        Text("(\(agents.count))")
+                        Text("(\(agents.count) agents · \(dispatchCount) \(dispatchCount == 1 ? "dispatch" : "dispatches"))")
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                         if runningCount > 0 {

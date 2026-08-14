@@ -2,7 +2,7 @@ import { EventEmitter } from 'events'
 import { EngineBridge } from './engine-bridge'
 import { resolveRemoteWorkingDirectory } from './engine-control-plane-remote-dir'
 import { log as _log, warn as _warn, error as _error } from './logger'
-import { handleEngineEvent, type TabEntry, type EventEmitterContext } from './engine-control-plane-events'
+import { handleEngineEvent, type TabEntry } from './engine-control-plane-events'
 import { makeEmptyTab, registerNewTab, registerAdoptedTab, resetTabEntry, restartTabEntry } from './engine-control-plane-tab'
 import { relocateTabSession, type RelocateResult } from './engine-control-plane-relocate'
 import { reconcileSessionWorkingDirectory } from './engine-control-plane-cwd'
@@ -15,6 +15,7 @@ import { resolveClaudeCompat } from './engine-control-plane-config'
 import { toolGateSessionConfig } from './tool-gate-responder'
 import { benchClientWorkspaceContext } from './integration/bench-prompt-context'
 import { resolveAtvPermission } from './atv-state-cache'
+import { installRecoveredAgentStateListener, makeEventContext } from './engine-control-plane-recovered-agent-state'
 import type {
   EngineConfig,
   ThinkingConfig,
@@ -53,18 +54,12 @@ export class EngineControlPlane extends EventEmitter {
     this.bridge = bridge
 
     this.bridge.on('event', (key: string, event: EngineEvent) => {
-      const tabId = key
-      const tab = this.tabs.get(tabId)
+      const tab = this.tabs.get(key)
       if (!tab) return
-
-      const ctx: EventEmitterContext = {
-        bridge: this.bridge,
-        emit: (eventName, ...args) => { this.emit(eventName, ...args) },
-        setStatus: (tabId, newStatus) => this._setStatus(tabId, newStatus),
-        checkDrain: () => this._checkDrain(),
-      }
-      handleEngineEvent(ctx, tabId, tab, event)
+      handleEngineEvent(makeEventContext(this.bridge, (eventName, ...args) => this.emit(eventName, ...args), (tabId, newStatus) => this._setStatus(tabId, newStatus), () => this._checkDrain()), key, tab, event)
     })
+
+    installRecoveredAgentStateListener(this.bridge, this.tabs, () => makeEventContext(this.bridge, (eventName, ...args) => this.emit(eventName, ...args), (tabId, newStatus) => this._setStatus(tabId, newStatus), () => this._checkDrain()))
 
     this.bridge.on('reconnected', () => {
       for (const tab of this.tabs.values()) {

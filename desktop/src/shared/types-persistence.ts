@@ -211,6 +211,8 @@ export interface PersistedTab {
   isTerminalOnly?: boolean
   /** Input-locked conversation (auto-generated conflict fix). See TabState.inputLocked. */
   inputLocked?: boolean
+  /** Why input is locked. Absent legacy locks are automated workflow locks. */
+  inputLockReason?: 'automated-workflow' | 'landed-worktree'
   /** Explicit tab lifecycle role. See TabState.tabRole. Absent = null (default). */
   tabRole?: 'bench-conversation' | 'conflict-auto-fix' | 'verification-analysis'
   /**

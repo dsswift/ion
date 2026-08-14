@@ -718,6 +718,30 @@ Request an immediate `engine_session_status` emission for a session. The status 
 
 ---
 
+### get_agent_state
+
+Request the current **full-fidelity** agent roster for one session. This is a
+requester-only recovery query for consumers that received a bounded
+`engine_agent_state` snapshot marked with `_truncated` or `dispatchesTotal`.
+It does not emit an event and is not a replacement-snapshot broadcast.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"get_agent_state"` | yes | Command discriminator |
+| `key` | string | yes | Session key |
+| `requestId` | string | yes | Correlates the requester-only result |
+
+```json
+{"cmd":"get_agent_state","key":"abc-123","requestId":"r31"}
+```
+
+**Response:** `ServerResult` with `data.agents: AgentStateUpdate[]`. Values and
+dispatch history in this result are not subject to the recurring broadcast
+metadata bounds. Clients use it only to replace a bounded local roster after an
+explicit recovery request; they must not forward it to fan-out transports.
+
+---
+
 ### get_context_breakdown
 
 Request an on-demand context breakdown for a session. The engine reconstructs the full assembly pipeline (system prompt + tools + conversation messages) outside any active run and emits `engine_context_breakdown` on the event stream.

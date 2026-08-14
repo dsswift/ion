@@ -61,6 +61,13 @@ func resolveChildRoute(child RunBackend, model string) RunBackend {
 	return child
 }
 
+// ResolveChildCapabilities reports the concrete per-model route a dispatched
+// child will use. Session mechanics use this to separate engine-owned
+// conversation persistence from native-session transcript mirroring.
+func ResolveChildCapabilities(child RunBackend, model string) BackendCapabilities {
+	return resolveChildRoute(child, model).Capabilities()
+}
+
 // BuildDelegatedChildToolServer wires a per-child ToolServer for a dispatched
 // child that will be served by a delegated-CLI backend, so the CLI child gets
 // the same ion tools an API child receives through its RunConfig — the

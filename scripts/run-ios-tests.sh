@@ -11,12 +11,17 @@
 #   IOS_TEST_ONLY='IonRemoteTests/ContractSyncTests IonRemoteTests/ThemeParityTests'
 # in the environment.
 #
-# Exits non-zero on test failure or if no usable simulator is found.
+# Exits non-zero on test failure or if no usable simulator is found. A simulator
+# process launch denial gets one reset-and-retry because XCTest has not started.
 
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/../ios" && pwd)"
+# shellcheck source=scripts/ios-test-retry.sh
+source "$(dirname "$0")/ios-test-retry.sh"
 cd "$PROJECT_DIR"
+
+SIMULATOR_UDID=""
 
 # Pick a destination unless one was explicitly provided.
 if [[ -z "${IOS_TEST_DESTINATION:-}" ]]; then
@@ -40,8 +45,9 @@ if [[ -z "${IOS_TEST_DESTINATION:-}" ]]; then
   # Extract the runtime version and the device name (everything between the
   # leading whitespace and the " (UDID) (State)" trailer).
   DEVICE_RUNTIME="$(echo "$DEVICE_LINE" | sed -E 's/^-- iOS ([0-9.]+) --\|.*/\1/')"
-  DEVICE_NAME="$(echo "$DEVICE_LINE" | sed -E 's/^.*\|[[:space:]]+(.+) \([0-9A-Fa-f-]+\) \([^)]+\)[[:space:]]*$/\1/')"
-  if [[ -z "$DEVICE_RUNTIME" || -z "$DEVICE_NAME" || "$DEVICE_LINE" == "$DEVICE_NAME" ]]; then
+  DEVICE_NAME="$(echo "$DEVICE_LINE" | sed -E 's/^.*\|[[:space:]]+(.+) \(([0-9A-Fa-f-]+)\) \([^)]+\)[[:space:]]*$/\1/')"
+  SIMULATOR_UDID="$(echo "$DEVICE_LINE" | sed -E 's/^.*\|[[:space:]]+.+ \(([0-9A-Fa-f-]+)\) \([^)]+\)[[:space:]]*$/\1/')"
+  if [[ -z "$DEVICE_RUNTIME" || -z "$DEVICE_NAME" || -z "$SIMULATOR_UDID" || "$DEVICE_LINE" == "$DEVICE_NAME" || "$DEVICE_LINE" == "$SIMULATOR_UDID" ]]; then
     echo "❌ Could not parse simulator info from line:" >&2
     echo "   $DEVICE_LINE" >&2
     exit 1
@@ -50,34 +56,48 @@ if [[ -z "${IOS_TEST_DESTINATION:-}" ]]; then
   echo "→ ios-test using: ${IOS_TEST_DESTINATION}"
 fi
 
-# Run the test bundle. We want both readable output (per-test status,
-# totals, errors) AND a faithful exit code. Approach: log everything to a
-# temp file, grep the interesting lines to stdout, then exit with
-# xcodebuild's real status. IOS_TEST_BUILD_SETTINGS is intentionally split by
-# the shell so CI can preserve simulator keychain entitlements without
-# duplicating this destination-selection logic.
-# shellcheck disable=SC2206
-BUILD_SETTINGS=(${IOS_TEST_BUILD_SETTINGS:-})
-# shellcheck disable=SC2206
-TEST_SELECTORS=(${IOS_TEST_ONLY:-})
-XCODE_TEST_SELECTORS=()
-for selector in "${TEST_SELECTORS[@]}"; do
-  XCODE_TEST_SELECTORS+=("-only-testing:${selector}")
-done
+# Build xcodebuild arguments with positional parameters, rather than expanding an
+# empty array. macOS Bash 3 treats an empty array as unset under `set -u`, which
+# made the nightly full-suite path fail before Xcode when IOS_TEST_ONLY was not
+# provided.
+set -- \
+  xcodebuild \
+  -project IonRemote.xcodeproj \
+  -scheme IonRemote \
+  -destination "$IOS_TEST_DESTINATION"
+
+if [[ -n "${IOS_TEST_BUILD_SETTINGS:-}" ]]; then
+  # shellcheck disable=SC2206
+  BUILD_SETTINGS=(${IOS_TEST_BUILD_SETTINGS})
+  set -- "$@" "${BUILD_SETTINGS[@]}"
+fi
+
+if [[ -n "${IOS_TEST_ONLY:-}" ]]; then
+  # shellcheck disable=SC2206
+  TEST_SELECTORS=(${IOS_TEST_ONLY})
+  for selector in "${TEST_SELECTORS[@]}"; do
+    set -- "$@" "-only-testing:${selector}"
+  done
+fi
+
 LOG_FILE="$(mktemp -t ios-test.XXXXXX.log)"
 trap 'rm -f "$LOG_FILE"' EXIT
 
-set +e
-xcodebuild \
-  -project IonRemote.xcodeproj \
-  -scheme IonRemote \
-  -destination "$IOS_TEST_DESTINATION" \
-  "${BUILD_SETTINGS[@]}" \
-  "${XCODE_TEST_SELECTORS[@]}" \
-  test \
-  > "$LOG_FILE" 2>&1
-STATUS=$?
-set -e
+run_ios_test() {
+  set +e
+  "$@" test > "$LOG_FILE" 2>&1
+  local status=$?
+  set -e
+  return "$status"
+}
+
+STATUS=0
+run_ios_test "$@" || STATUS=$?
+if [[ $STATUS -ne 0 ]] && ios_test_prepare_launch_retry "$LOG_FILE" "$SIMULATOR_UDID"; then
+  : > "$LOG_FILE"
+  STATUS=0
+  run_ios_test "$@" || STATUS=$?
+fi
 
 # Surface per-test results, error lines, and the final status banner.
 grep -E "^Test Suite |^Test case |error:|\*\* TEST|^[[:space:]]*Executed " "$LOG_FILE" || true

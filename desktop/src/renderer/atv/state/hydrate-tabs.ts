@@ -103,6 +103,7 @@ export function tabsFromSnapshot(
       // affordances: a locked auto-fix tab must not offer a prompt input in
       // the ATV, and role-aware surfaces (bench singleton) must agree.
       inputLocked: st.inputLocked ?? false,
+      inputLockReason: st.inputLockReason ?? null,
       tabRole: st.tabRole ?? null,
       ...(st.engineProfileId ? { engineProfileId: st.engineProfileId } : {}),
     } as TabState)

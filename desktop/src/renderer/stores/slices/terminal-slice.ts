@@ -4,6 +4,7 @@ import { destroyTerminalInstance } from '../../components/TerminalPanel'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { makeLocalTab, isReusableBlankTerminalTab } from '../session-store-helpers'
 import { rWarn } from '../../rendererLogger'
+import { resolveRegisteredWorktree } from '../worktree-registration'
 
 // ─── Tall-suspend helpers ─────────────────────────────────────────────────────
 
@@ -195,6 +196,13 @@ export function createTerminalSlice(set: StoreSet, get: StoreGet): Partial<State
       const homeDir = get().staticInfo?.homePath || '~'
       const defaultBase = usePreferencesStore.getState().defaultBaseDirectory
       const startDir = dir || defaultBase || homeDir
+      const worktree = await resolveRegisteredWorktree(startDir)
+      if (worktree?.landedAt) {
+        rWarn('terminal', 'terminal creation refused: worktree has landed', {
+          worktree_path: worktree.worktreePath,
+        })
+        throw new Error('This worktree has already landed and is sealed for review. Retire it when review is complete.')
+      }
 
       const existingBlank = get().tabs.find((t) => isReusableBlankTerminalTab(t, startDir))
       if (existingBlank) {

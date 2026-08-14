@@ -20,7 +20,7 @@
  * ── Two collectors, not one, because DISPLAY and NAVIGATION ask different
  *    questions ─────────────────────────────────────────────────────────────
  * `collectDirConversations` excludes machine-driven `conflict-auto-fix` tabs —
- * correct for every DISPLAY surface (the "open ×N" hint, the hover card, the
+ * correct for every DISPLAY surface (the parenthesized count hint, the hover card, the
  * iOS wire projection, the bench singleton), which must never count or name a
  * machine conversation as if the operator opened it. But the row-click CYCLE
  * and the row menu's "Go to tab" submenu are navigation, not display: an
@@ -49,6 +49,8 @@
  */
 
 /** The minimal tab shape this module needs. Structural, so every caller fits. */
+export type ConversationTabRole = 'bench-conversation' | 'conflict-auto-fix' | 'verification-analysis'
+
 export interface DirConversationSource {
   id: string
   title: string
@@ -69,7 +71,7 @@ export interface DirConversationSource {
    * so the collector can exclude machine-driven auto-fix conversations and so
    * the bench singleton can be resolved by stored identity.
    */
-  tabRole?: 'bench-conversation' | 'conflict-auto-fix' | 'verification-analysis' | null
+  tabRole?: ConversationTabRole | null
 }
 
 /** One conversation open in a directory, as every surface renders it. */
@@ -79,12 +81,12 @@ export interface DirConversation {
   title: string
   status: string
   /**
-   * 1-based position in the FULL tab list — the same number the row hint has
-   * always shown ("open in tab 3"). Deliberately the global index rather than
-   * an index within the match list: the operator counts tabs in the tab strip,
-   * not within a worktree.
+   * 1-based position in the FULL tab list. Navigation menus use it to preserve
+   * tab order; it is never rendered as a row label.
    */
   index: number
+  /** Lifecycle role, retained where a host needs to identify machine work. */
+  tabRole?: ConversationTabRole
 }
 
 /**
@@ -97,7 +99,7 @@ export interface DirConversation {
  * **Terminal-only tabs are not conversations and are skipped.** A terminal in a
  * worktree or bench directory used to be counted as an open conversation by
  * every consumer of this function at once: it appeared in the hover card
- * (`WorktreeConversationsCard`), inflated the `open ×N` row and bench labels
+ * (`WorktreeConversationsCard`), inflated the parenthesized row and bench count labels
  * (`describeOpenConversations`), rode the iOS `openConversations` projection,
  * and — worst — was a rotation target for `pickNextConversation`, so the git
  * panel's "go to conversation" could land the operator in a shell. Terminals in
@@ -114,7 +116,7 @@ export function collectDirConversations(
     if (tab.workingDirectory !== dirPath) return
     if (tab.isTerminalOnly) return
     // Machine-driven conversations (conflict auto-fix, verification analysis)
-    // are not operator conversations: they must not inflate the "open ×N" hint,
+    // are not operator conversations: they must not inflate displayed counts,
     // appear in the hover card, ride the iOS openConversations projection, or
     // be a rotation/focus target. Their lifecycle is owned by the machinery
     // that created them.
@@ -124,6 +126,7 @@ export function collectDirConversations(
       title: tab.customTitle || tab.title,
       status: tab.status,
       index: i + 1,
+      ...(tab.tabRole ? { tabRole: tab.tabRole } : {}),
     })
   })
   return out
@@ -145,10 +148,11 @@ export function collectDirConversations(
  * them (a rotation into a shell is the exact defect that guard exists to
  * prevent).
  *
- * Do not wire this into a display surface (hover card, "open ×N" hint, the
- * iOS wire projection, the bench singleton). Those must stay on
- * `collectDirConversations` or the auto-fix exclusion they depend on is
- * silently defeated.
+ * Do not wire this into an ordinary WORKTREE display surface (row hover card,
+ * parenthesized count hint, or worktree iOS projection). Those must stay on
+ * `collectDirConversations`. The BENCH is deliberately different: its bar,
+ * picker, and iOS projection use this full list because machine work running in
+ * the shared bench must be visible and reachable there.
  */
 export function collectAllDirConversations(
   tabs: readonly DirConversationSource[],
@@ -164,6 +168,7 @@ export function collectAllDirConversations(
       title: tab.customTitle || tab.title,
       status: tab.status,
       index: i + 1,
+      ...(tab.tabRole ? { tabRole: tab.tabRole } : {}),
     })
   })
   return out
@@ -228,18 +233,38 @@ export function pickNextConversation(
 /**
  * The row hint for a set of open conversations.
  *
- * Never names a TAB NUMBER. The hint used to read "open in tab 3", which cited
- * an index no surface in the app displays -- the tab strip shows titles and
- * pills, so the operator had no way to act on the number. It also became wrong
- * the moment tabs were reordered. The count is the part that is both true and
- * usable, and the hover card lists the conversations by name for the rest.
+ * The parenthesized count is the part that is both true and compact; the hover
+ * card lists conversations by name for the rest.
  *
  * Empty → null, so the caller renders nothing at all rather than an empty pill.
  */
 export function describeOpenConversations(matches: readonly DirConversation[]): string | null {
   if (matches.length === 0) return null
-  if (matches.length === 1) return 'open'
-  return `open ×${matches.length}`
+  return `(${matches.length})`
+}
+
+/** Compact, stable label for a machine-owned conversation role. */
+export function conversationRoleLabel(role: ConversationTabRole | null | undefined): string | null {
+  switch (role) {
+    case 'conflict-auto-fix': return 'Auto-fix'
+    case 'verification-analysis': return 'Analysis'
+    default: return null
+  }
+}
+
+/**
+ * Bench-specific open indicator. Unlike a worktree row, a bench must expose
+ * its machine work: an auto-fix or verification analysis changes whether the
+ * operator should inspect or cycle the shared integration conversations.
+ */
+export function describeBenchOpenConversations(matches: readonly DirConversation[]): string | null {
+  const open = describeOpenConversations(matches)
+  if (!open) return null
+  const roles = [...new Set(matches
+    .map((conversation) => conversationRoleLabel(conversation.tabRole))
+    .filter((role): role is string => role !== null))]
+  if (roles.length === 0) return open
+  return `${open} · ${roles.join(' + ')}`
 }
 
 /**

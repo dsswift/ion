@@ -24,8 +24,22 @@ struct RemoteOpenConversation: Codable, Identifiable, Hashable {
     var status: String
     /// 1-based position in the tab list, matching the desktop's row hint.
     var index: Int
+    /// Lifecycle role supplied by desktop. Keep raw String so a newer desktop's
+    /// role still decodes and remains navigable on an older phone.
+    var tabRole: String?
 
     var id: String { tabId }
+
+    /// Compact truth about machine-owned bench work. Unknown roles deliberately
+    /// stay unlabeled rather than being misidentified as operator work.
+    var roleLabel: String? {
+        switch tabRole {
+        case "conflict-auto-fix": "Auto-fix"
+        case "verification-analysis": "Analysis"
+        case .some: "Other"
+        case .none: nil
+        }
+    }
 }
 
 /// One worktree for a project.
@@ -93,6 +107,13 @@ struct RemoteWorktree: Codable, Identifiable, Hashable {
     /// The name to show: the human title when there is one, else the slug.
     var displayName: String { title?.isEmpty == false ? title! : label }
 
+    /// The compact parenthesized count shown beside this worktree. Nil keeps
+    /// rows with no open conversation free of redundant status text.
+    var openConversationCountLabel: String? {
+        guard !openConversations.isEmpty else { return nil }
+        return "(\(openConversations.count))"
+    }
+
     var id: String { worktreePath }
 
     /// Mirrors GitOperationState in desktop/src/shared/types-git.ts.
@@ -155,7 +176,7 @@ struct RemoteWorktree: Codable, Identifiable, Hashable {
     /// obligation only while it holds unlanded work; once the work is in the
     /// source branch the bench takes that content from its base, and the desktop's
     /// assembly retires the member outright.
-    var isLanded: Bool { landedAt != nil && unlandedCommitCount == 0 }
+    var isLanded: Bool { landedAt != nil }
 
     /// Enrollment as one value, for a row that renders three visually distinct
     /// states. Nil membership is `none` -- NOT the same as `excluded`, which is
@@ -280,6 +301,17 @@ struct RemoteBench: Codable, Identifiable, Hashable {
 
     var hasBeenBuilt: Bool { lastBuiltAt > 0 }
 
+    /// Role-aware label for bench Conversation actions. Machine work is visible
+    /// because it runs against shared integration state, unlike hidden machine
+    /// worktree conversations.
+    var conversationActionTitle: String {
+        guard !openConversations.isEmpty else { return "Talk" }
+        let labels = Array(Set(openConversations.compactMap(\.roleLabel))).sorted()
+        guard !labels.isEmpty else { return "Go to" }
+        let roleText = labels.joined(separator: " + ")
+        return openConversations.count == 1 ? "\(roleText) open" : "Go to · \(roleText)"
+    }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         repoPath = try c.decode(String.self, forKey: .repoPath)
@@ -355,14 +387,21 @@ struct RemoteWorktreeState: Codable, Identifiable, Hashable {
 /// Result of a worktree/bench verb, so a toast can attribute the outcome.
 struct RemoteWorktreeOpResult: Codable, Hashable {
     enum Operation: String, Codable {
-        case sync, land, assemble, update
+        case open, sync, land, retire, assemble, update
         case updateAll = "update_all"
         case syncAll = "sync_all"
+        case retireAll = "retire_all"
     }
 
     var ok: Bool
     var operation: Operation
     var error: String?
+    /// Tab opened or focused by an `open` result.
+    var tabId: String?
+    /// Recovery ref created by a forced retire that preserved dirty work.
+    var recoveryRef: String?
+    /// Benches removed because the worktree's departure left them empty.
+    var prunedBenchPaths: [String]?
     /// A refusal the operator can resolve (commit or stash), distinct from a
     /// hard failure -- the message and the recovery differ.
     var refusedDirty: Bool?
@@ -375,4 +414,8 @@ struct RemoteWorktreeOpResult: Codable, Hashable {
     /// client renders the same sentence ("3 synced, 1 conflicted, ..."). Nil
     /// on the single-target verbs and from an older desktop.
     var summary: String?
+    /// `retire_all`'s count of worktrees actually retired before it stopped —
+    /// either at the end (`ok`) or at the first failure (partial, `!ok`). Nil
+    /// on every other operation and from an older desktop.
+    var retired: Int?
 }

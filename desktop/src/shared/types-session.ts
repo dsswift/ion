@@ -221,6 +221,10 @@ export interface TabState {
    * new prompts.
    */
   inputLocked: boolean
+  /** Why input is locked. `landed-worktree` seals review-only conversations and
+   * blocks even machine-origin prompts; automated workflows admit their one
+   * initial `source: 'machine'` prompt. */
+  inputLockReason?: 'automated-workflow' | 'landed-worktree' | null
   /**
    * Explicit lifecycle role for tabs that share one directory. A bench can
    * simultaneously hold the persistent operator conversation, its dedicated
@@ -752,6 +756,8 @@ export interface WorktreeInfo {
   sourceBranch: string
   /** Original repo root path */
   repoPath: string
+  /** Terminal witness written by successful Land; absent before then. */
+  landedAt?: number
 }
 
 export interface WorktreeStatus {

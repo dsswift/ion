@@ -26,6 +26,8 @@ import { useTrayMenuListeners } from './hooks/useTrayMenuListeners'
 import { useTabRestoration } from './hooks/useTabRestoration'
 import { useEnginePermissionDenialBackfill } from './hooks/useEnginePermissionDenialBackfill'
 import { useClickThrough } from './hooks/useClickThrough'
+import { useWorktreeRendererListeners } from './hooks/useWorktreeRendererListeners'
+import { useWorktreeRemoteCommandListeners } from './hooks/useWorktreeRemoteCommandListeners'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useWindowHeight, useInputRowHeight } from './hooks/useWindowGeometry'
 import { useSessionStore, editorDirForTab } from './stores/sessionStore'
@@ -35,7 +37,7 @@ import { useUpdateStore } from './stores/update-store'
 import { setupModelSync } from './stores/model-store'
 import { initActiveTabNotifier } from './lib/active-tab-notifier'
 import { initRemoteProjectionPush } from './stores/remote-projection-push'
-import { rWarn, rError, rInfo } from './rendererLogger'
+import { rWarn, rError } from './rendererLogger'
 
 
 const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
@@ -47,6 +49,8 @@ export default function App() {
   useTabRestoration()
   useEnginePermissionDenialBackfill()
   useClickThrough()
+  useWorktreeRendererListeners()
+  useWorktreeRemoteCommandListeners()
 
   // Publish the active tab to the main process (desktop.focus resource +
   // Agent Team Visualizer targeting) on startup and on every change.
@@ -61,52 +65,9 @@ export default function App() {
     return initRemoteProjectionPush()
   }, [])
 
-  // iOS asked to open a conversation in a worktree or the bench. The store
-  // actions own the open-or-focus decision, so both clients behave identically.
-  useEffect(() => {
-    return window.ion.onRemoteOpenWorktreeConversation(({ worktreePath, newConversation }) => {
-      const store = useSessionStore.getState()
-      // Two verbs, one command. Open-or-cycle is the default; the explicit
-      // "new conversation" path skips the duplicate check because a SECOND
-      // conversation in the same worktree is precisely what was asked for.
-      const opened = newConversation
-        ? store.newWorktreeConversation(worktreePath)
-        : store.openWorktreeConversation(worktreePath)
-      void opened.catch((err) => rError('remote', 'open worktree conversation failed', {
-        error: String(err), new_conversation: String(!!newConversation),
-      }))
-    })
-  }, [])
-
-  useEffect(() => {
-    return window.ion.onRemoteOpenBenchConversation(({ repoPath, sourceBranch }) => {
-      void useSessionStore.getState().openBenchConversation(repoPath, sourceBranch)
-        .catch((err) => rError('remote', 'open bench conversation failed', { error: String(err) }))
-    })
-  }, [])
-
-  // A shell in the bench, rather than a conversation about it. The store action
-  // owns the one-terminal-per-bench decision, so the phone and the git panel
-  // land on the same tab.
-  useEffect(() => {
-    return window.ion.onRemoteOpenBenchTerminal(({ repoPath, sourceBranch }) => {
-      void useSessionStore.getState().openBenchTerminal(repoPath, sourceBranch)
-        .catch((err) => rError('remote', 'open bench terminal failed', { error: String(err) }))
-    })
-  }, [])
-
-  // A worktree was named (generated from its first prompt, or renamed by the
-  // operator). Re-read the inventory so the row shows the name immediately
-  // rather than at the next panel refresh. Both windows subscribe — the event
-  // arrives via broadcast(), so the overlay and the ATV mirror rename together.
-  useEffect(() => {
-    return window.ion.onWorktreeTitled(({ repoPath, worktreePath, title }) => {
-      rInfo('worktree', 'worktree titled', { repo_path: repoPath, worktree_path: worktreePath, title })
-      if (!repoPath) return
-      void useSessionStore.getState().refreshWorktreeInventory(repoPath)
-        .catch((err) => rError('worktree', 'inventory refresh after titling failed', { error: String(err) }))
-    })
-  }, [])
+  // iOS asked to open a conversation in a worktree or the bench, retire a
+  // worktree, or open a bench conversation/terminal — see
+  // `useWorktreeRemoteCommandListeners` for all of these.
 
   // Conversation-picker selections from the ATV window: switch the desktop
   // tab so both surfaces stay on the same conversation.
@@ -573,8 +534,8 @@ export default function App() {
           <TerminalBigScreen tabId={activeTabId} />
         )}
 
-        {/* App-level singleton overlays (deep-link approval, conflict toasts,
-            update dialog, remote directory picker). See AppOverlays.tsx for why
+        {/* App-level singleton overlays (deep-link approval, update dialog,
+            remote directory picker). See AppOverlays.tsx for why
             each is mounted unconditionally and outside the tabsReady gate. */}
         <AppOverlays />
       </div>

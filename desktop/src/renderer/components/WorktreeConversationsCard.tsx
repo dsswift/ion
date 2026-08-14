@@ -17,7 +17,7 @@
  */
 import React from 'react'
 import { useColors } from '../theme'
-import type { DirConversation } from '../../shared/worktree-conversations'
+import { conversationRoleLabel, type DirConversation } from '../../shared/worktree-conversations'
 
 export interface WorktreeConversationsCardProps {
   /** Human title when the worktree has one; the caller falls back to the slug. */
@@ -120,6 +120,11 @@ export function WorktreeConversationsCard({
               }}>
                 {c.title}
               </span>
+              {conversationRoleLabel(c.tabRole) && (
+                <span style={{ fontSize: 9, color: colors.accent, flexShrink: 0 }}>
+                  {conversationRoleLabel(c.tabRole)}
+                </span>
+              )}
               {/* The status dot is the only trailing detail worth the space.
                   This used to print `tab {c.index}` -- a number the tab strip
                   never shows, so the operator could not act on it, and one that
