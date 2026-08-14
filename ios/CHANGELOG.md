@@ -10,6 +10,19 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.62.0](https://github.com/dsswift/ion/compare/ios-v1.61.2...ios-v1.62.0) (2026-08-14)
+
+### Features
+
+* **ios:** expose bench auto-fix conversations ([8bd4d3a](https://github.com/dsswift/ion/commit/8bd4d3af55b2a7da8b1b59a7697a3f99bcc91bb3))
+* **ios:** show worktree conversation counts ([00345b1](https://github.com/dsswift/ion/commit/00345b142dc1ed103b2994cd37ab8b3be755c598))
+* **ios:** seal landed worktrees ([c427a85](https://github.com/dsswift/ion/commit/c427a85c00003474ef41c4c07d8c6dfc9582527e))
+* **ios:** retire landed worktrees ([1834585](https://github.com/dsswift/ion/commit/1834585b490cc73b5da528131ad3ea59b69bda4c))
+
+### Bug Fixes
+
+* **ios:** restore visible dispatch history ([0415a07](https://github.com/dsswift/ion/commit/0415a07e70e1c561acb8e5c8029792fac81bd9a0))
+
 ## [1.61.2](https://github.com/dsswift/ion/compare/ios-v1.61.1...ios-v1.61.2) (2026-08-13)
 
 ### Bug Fixes

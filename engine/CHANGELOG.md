@@ -13,6 +13,25 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.70.0](https://github.com/dsswift/ion/compare/engine-v1.69.0...engine-v1.70.0) (2026-08-14)
+
+### Features
+
+* **engine:** document full agent-state recovery ([dd268dd](https://github.com/dsswift/ion/commit/dd268dd2583c69da3a5e58fe4e343e422945202e))
+* **engine:** contain landed worktree context ([989ed52](https://github.com/dsswift/ion/commit/989ed52a6b8508a5dd80d8a634e6ea27293bb64f))
+
+### Bug Fixes
+
+* **engine:** preserve agent state beyond broadcast bounds ([4d8898c](https://github.com/dsswift/ion/commit/4d8898cc519e3c28faa8fc0c891b9eef904bc780))
+* **engine:** keep protected metadata exact ([6af9ab7](https://github.com/dsswift/ion/commit/6af9ab7f227e294ff9794ea10b81ca3110247633))
+* **engine:** detach full agent-state responses ([975dc50](https://github.com/dsswift/ion/commit/975dc50b5a7451162432dfdef3e21305cb11d1da))
+* **engine:** restore terminal dispatch members ([564933c](https://github.com/dsswift/ion/commit/564933c53457063b1207447a29f5fd89508ff1cf))
+* **engine:** persist dispatched child transcripts ([510ecab](https://github.com/dsswift/ion/commit/510ecab9a5586d46cb5c1b092a9e616de7ab5c61))
+* **engine:** bound protected agent metadata ([ef3ca7a](https://github.com/dsswift/ion/commit/ef3ca7aa615d5ab0843878f8472f48a86ad3bff3))
+* **engine:** retain reused native dispatch transcripts ([9983b42](https://github.com/dsswift/ion/commit/9983b422972ab9fee4b97a26bb48a5c004df4442))
+* **engine:** decode transcript mirror ownership ([335e096](https://github.com/dsswift/ion/commit/335e096eb13ad98cc247c69a32b59275fe34ad59))
+* **repo:** align secure Go toolchains ([acf315f](https://github.com/dsswift/ion/commit/acf315f5b182bad0b6a085c3d990f1632e376a69))
+
 ## [1.69.0](https://github.com/dsswift/ion/compare/engine-v1.68.0...engine-v1.69.0) (2026-08-12)
 
 ### Features

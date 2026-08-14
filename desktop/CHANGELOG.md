@@ -10,6 +10,31 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.82.0](https://github.com/dsswift/ion/compare/desktop-v1.81.1...desktop-v1.82.0) (2026-08-14)
+
+### Features
+
+* **desktop:** resolve worktree conflicts in place ([5af9d9a](https://github.com/dsswift/ion/commit/5af9d9a6c2b548a07bd4f87db2cfe3a0ad3efdb8))
+* **desktop:** expose bench auto-fix conversations ([a176e7a](https://github.com/dsswift/ion/commit/a176e7a9660754022bd6be627487cfdadfc65470))
+* **desktop:** show worktree conversation counts ([3f97956](https://github.com/dsswift/ion/commit/3f97956568eddd3cd9c2459e682d8234c459ef55))
+* **desktop:** visualize worktree overlap ([cd55c78](https://github.com/dsswift/ion/commit/cd55c7864a36790100d7c6b1b5eb9921c2fdcb1a))
+* **desktop:** seal landed worktrees ([c49d541](https://github.com/dsswift/ion/commit/c49d54106c46b65721b97eeb1b7f17df7fafe190))
+* **desktop:** retire landed worktrees ([e2c5f6b](https://github.com/dsswift/ion/commit/e2c5f6b93a5dc810c4c3ec5215b180fed6d9ebd5))
+* **desktop:** signal active worktree resolvers ([e4da36f](https://github.com/dsswift/ion/commit/e4da36f6da9c1b4f5497fb76944324e2a0ef2492))
+* **desktop:** dedupe conflict assists ([05d0c8e](https://github.com/dsswift/ion/commit/05d0c8e6fba7f5cf43ff7a9b0439ea57ce830aea))
+
+### Bug Fixes
+
+* **desktop:** retain dispatch identity in degraded rosters ([fb0a6be](https://github.com/dsswift/ion/commit/fb0a6bec34d30f46d804468608cbe2376dd27275))
+* **desktop:** restore visible dispatch history ([6358424](https://github.com/dsswift/ion/commit/63584242566815e8285fdabb01b1502fab912bf1))
+* **desktop:** preserve open dispatch subject ([9522d9f](https://github.com/dsswift/ion/commit/9522d9f8a22563f46d1f1857928bc3d7c17b405f))
+* **desktop:** recover bounded agent-state rosters ([3128032](https://github.com/dsswift/ion/commit/3128032e9ae59d7d4769bfafc3723280bcd5ab9d))
+* **desktop:** route recovered agent state locally ([0dad610](https://github.com/dsswift/ion/commit/0dad61020a520a6a5e09b9f1234db5af040000a6))
+* **desktop:** preserve tab submenu across menu gap ([d5c1614](https://github.com/dsswift/ion/commit/d5c161459a4cdf09776ffcb54f5d0ce3651ca1b0))
+* **desktop:** remove recovery lint failure ([7707294](https://github.com/dsswift/ion/commit/770729447ef1ab696ef18878e2344c228f1e0cc2))
+* **desktop:** remove floating conflict popups ([4f26277](https://github.com/dsswift/ion/commit/4f262776bc8aa0f93cd57e3339f6e62703c35486))
+* **desktop:** stabilize linux parity tests ([c04490a](https://github.com/dsswift/ion/commit/c04490ab5edb4082c3ae9ebf6fd8001cda06a091))
+
 ## [1.81.1](https://github.com/dsswift/ion/compare/desktop-v1.81.0...desktop-v1.81.1) (2026-08-13)
 
 ### Bug Fixes

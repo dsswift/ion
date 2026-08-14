@@ -10,6 +10,12 @@ clients to Ion Engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.7.1](https://github.com/dsswift/ion/compare/relay-v1.7.0...relay-v1.7.1) (2026-08-14)
+
+### Bug Fixes
+
+* **repo:** align secure Go toolchains ([acf315f](https://github.com/dsswift/ion/commit/acf315f5b182bad0b6a085c3d990f1632e376a69))
+
 ## [1.7.0](https://github.com/dsswift/ion/compare/relay-v1.6.0...relay-v1.7.0) (2026-08-11)
 
 ### Features
