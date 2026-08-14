@@ -2,46 +2,59 @@ package server
 
 import (
 	"encoding/json"
-	"net"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/protocol"
+	"github.com/dsswift/ion/engine/internal/types"
 )
 
 func TestGetAgentState_ReturnsFullRosterOnlyToRequester(t *testing.T) {
-	client, peer := net.Pipe()
-	defer client.Close()
-	defer peer.Close()
+	srv := newShortPathTestServer(t, newMockBackend())
+	requester := dialServer(t, srv)
+	defer requester.Close()
+	observer := dialServer(t, srv)
+	defer observer.Close()
+	const key = "full-agent-state"
+	startSession(t, requester, key, "start-full-agent-state")
+	original := strings.Repeat("x", 8192)
+	dispatches := make([]any, 60)
+	for i := range dispatches {
+		dispatches[i] = map[string]any{"id": string(rune('a' + i)), "status": "done"}
+	}
+	if ok := srv.SessionManager().TestAppendAgentState(key, types.AgentStateUpdate{Name: "agent", Status: "done", Metadata: map[string]any{"displayName": "Agent", "lastWork": original, "dispatches": dispatches}}); !ok {
+		t.Fatal("failed to seed session agent state")
+	}
 
-	server := &Server{}
-	command := &protocol.ClientCommand{Cmd: "get_agent_state", RequestID: "request", Key: "session"}
-	roster := map[string]any{"agents": []any{map[string]any{"name": "agent", "metadata": map[string]any{"lastWork": strings.Repeat("x", 8192)}}}}
-
-	done := make(chan struct{})
-	go func() {
-		server.sendResult(client, command, nil, roster)
-		close(done)
-	}()
-	buf := make([]byte, 16384)
-	n, err := peer.Read(buf)
+	sendJSON(t, requester, map[string]any{"cmd": "get_agent_state", "key": key, "requestId": "full-roster"})
+	result := findResult(t, readLines(t, requester, 8, time.Second))
+	if result == nil || !result.OK {
+		t.Fatalf("get_agent_state result = %#v", result)
+	}
+	raw, err := json.Marshal(result.Data)
 	if err != nil {
-		t.Fatalf("read result: %v", err)
+		t.Fatalf("marshal data: %v", err)
 	}
-	<-done
+	var payload protocol.AgentStateResponse
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if len(payload.Agents) != 1 {
+		t.Fatalf("agents = %d, want 1", len(payload.Agents))
+	}
+	if got := payload.Agents[0].Metadata["lastWork"].(string); got != original {
+		t.Fatal("response was bounded instead of full fidelity")
+	}
+	if got := len(payload.Agents[0].Metadata["dispatches"].([]any)); got != 60 {
+		t.Fatalf("dispatches = %d, want 60", got)
+	}
 
-	var result protocol.ServerResult
-	if err := json.Unmarshal(buf[:n], &result); err != nil {
-		t.Fatalf("decode result: %v", err)
-	}
-	if result.RequestID != "request" || !result.OK {
-		t.Fatalf("unexpected result: %#v", result)
-	}
-	data, err := json.Marshal(result.Data)
-	if err != nil {
-		t.Fatalf("marshal result data: %v", err)
-	}
-	if !strings.Contains(string(data), strings.Repeat("x", 128)) {
-		t.Fatal("request result lost full roster content")
+	observer.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	lines := readLines(t, observer, 1, 100*time.Millisecond)
+	for _, line := range lines {
+		if strings.Contains(line, "full-roster") {
+			t.Fatalf("full roster leaked to observer: %s", line)
+		}
 	}
 }

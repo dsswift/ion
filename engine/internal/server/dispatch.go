@@ -326,7 +326,7 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		// Full fidelity is explicit and request-driven. Return it to this
 		// connection only: broadcasting a 35 MB response would recreate the
 		// fan-out the bounded engine_agent_state snapshot prevents.
-		s.sendResult(conn, cmd, nil, map[string]any{"agents": s.manager.GetAgentState(cmd.Key)})
+		s.sendResult(conn, cmd, nil, protocol.AgentStateResponse{Agents: s.manager.GetAgentState(cmd.Key)})
 
 	case "get_context_breakdown":
 		// On-demand context breakdown. Reconstructs the full assembly
