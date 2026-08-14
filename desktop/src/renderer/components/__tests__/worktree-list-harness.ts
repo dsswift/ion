@@ -31,6 +31,9 @@ export interface HarnessTab {
   workingDirectory: string
   isTerminalOnly?: boolean
   customTitle?: string | null
+  title?: string
+  status?: string
+  tabRole?: 'bench-conversation' | 'conflict-auto-fix' | 'verification-analysis' | null
   /** Worktree metadata, when the tab was created through the worktree flow. */
   worktree?: { worktreePath: string; repoPath: string } | null
 }

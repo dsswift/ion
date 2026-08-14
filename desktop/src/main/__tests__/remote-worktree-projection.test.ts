@@ -320,12 +320,16 @@ describe('buildWorktreeState — membership rides the worktree', () => {
     expect(state.benches[0].orphans[0].sourceBranch).toBe('josh')
   })
 
-  it('projects conversations open in the bench directory itself', async () => {
+  it('projects bench auto-fix and analysis work, but keeps worktrees operator-only', async () => {
     mocks.worktrees = [inventoryEntry({ worktreePath: WT_B, label: 'ion-7b0c' })]
     mocks.workspaces = [workspace]
     mocks.tabs = [
       tab({ id: 'bench-1', workingDirectory: BENCH, title: 'Bench build' }),
+      tab({ id: 'bench-fix', workingDirectory: BENCH, title: 'Resolve merge', tabRole: 'conflict-auto-fix' }),
+      tab({ id: 'bench-analysis', workingDirectory: BENCH, title: 'Check verification', tabRole: 'verification-analysis' }),
+      tab({ id: 'bench-shell', workingDirectory: BENCH, isTerminalOnly: true }),
       tab({ id: 'member-1', workingDirectory: WT_B, title: 'Relay auth work' }),
+      tab({ id: 'member-fix', workingDirectory: WT_B, title: 'Member fix', tabRole: 'conflict-auto-fix' }),
     ]
     const build = await loadBuilder()
 
@@ -333,11 +337,14 @@ describe('buildWorktreeState — membership rides the worktree', () => {
 
     expect(state.benches[0].openConversations).toEqual([
       { tabId: 'bench-1', title: 'Bench build', status: 'idle', index: 1 },
+      { tabId: 'bench-fix', title: 'Resolve merge', status: 'idle', index: 2, tabRole: 'conflict-auto-fix' },
+      { tabId: 'bench-analysis', title: 'Check verification', status: 'idle', index: 3, tabRole: 'verification-analysis' },
     ])
     // A member's conversations ride its WORKTREE record now, which is the only
-    // place that worktree appears.
+    // place that worktree appears. Machine work stays hidden from that ordinary
+    // display projection; the bench alone exposes machine integration work.
     expect(state.worktrees[0].openConversations).toEqual([
-      { tabId: 'member-1', title: 'Relay auth work', status: 'idle', index: 2 },
+      { tabId: 'member-1', title: 'Relay auth work', status: 'idle', index: 5 },
     ])
   })
 })

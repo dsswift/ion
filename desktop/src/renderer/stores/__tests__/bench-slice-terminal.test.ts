@@ -42,6 +42,7 @@ interface Tab {
   status: string
   workingDirectory: string
   isTerminalOnly?: boolean
+  tabRole?: 'bench-conversation' | 'conflict-auto-fix' | 'verification-analysis' | null
 }
 
 function tab(over: Partial<Tab> & { id: string }): Tab {
@@ -339,6 +340,27 @@ describe('openBenchConversation — the same existence guard', () => {
     const h = harness({ exists: false, rebuildOk: false })
 
     expect(await h.slice.openBenchConversation!(REPO, BRANCH)).toBeNull()
+    expect(h.createTabInDirectory).not.toHaveBeenCalled()
+  })
+
+  it('focuses a lone auto-fix instead of creating a persistent conversation', async () => {
+    const h = harness({ tabs: [tab({ id: 'fix', isTerminalOnly: false, tabRole: 'conflict-auto-fix' })] })
+
+    expect(await h.slice.openBenchConversation!(REPO, BRANCH)).toBe('fix')
+    expect(h.selectTab).toHaveBeenCalledWith('fix')
+    expect(h.createTabInDirectory).not.toHaveBeenCalled()
+  })
+
+  it('cycles persistent and auto-fix bench conversations with wraparound', async () => {
+    const h = harness({ tabs: [
+      tab({ id: 'talk', isTerminalOnly: false, tabRole: 'bench-conversation' }),
+      tab({ id: 'fix', isTerminalOnly: false, tabRole: 'conflict-auto-fix' }),
+    ] })
+
+    expect(await h.slice.openBenchConversation!(REPO, BRANCH)).toBe('talk')
+    // The harness mirrors selectTab's active-tab effect so next press rotates.
+    expect(await h.slice.openBenchConversation!(REPO, BRANCH)).toBe('fix')
+    expect(await h.slice.openBenchConversation!(REPO, BRANCH)).toBe('talk')
     expect(h.createTabInDirectory).not.toHaveBeenCalled()
   })
 
