@@ -379,6 +379,14 @@ describe('IonSDK and the Go SDK expose the same registration surface', () => {
   })
 })
 
+// ─── Init-handshake parity ───
+
+describe('init handshake surface', () => {
+  it('publishes subprocess hook declarations', () => {
+    expect(engineContract.initResult).toContain('hooks')
+  })
+})
+
 // ─── Wire constants ───
 
 describe('wire constants', () => {
