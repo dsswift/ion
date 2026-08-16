@@ -17,6 +17,36 @@ import XCTest
 @MainActor
 final class ResourceStoreMarkAllReadTests: XCTestCase {
 
+    private var storage: ResourceStoreStorage!
+
+    override func setUp() {
+        super.setUp()
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("resource-store-tests-\(UUID().uuidString)", isDirectory: true)
+        try! FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let suiteName = "resource-store-tests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        storage = ResourceStoreStorage(
+            itemsFileURL: directory.appendingPathComponent("items.json"),
+            defaults: defaults,
+            readIdsKey: "readIds",
+            defaultsSuiteName: suiteName
+        )
+    }
+
+    override func tearDown() {
+        if let suiteName = storage.defaultsSuiteName {
+            storage.defaults.removePersistentDomain(forName: suiteName)
+        }
+        try? FileManager.default.removeItem(at: storage.itemsFileURL.deletingLastPathComponent())
+        storage = nil
+        super.tearDown()
+    }
+
+    private func makeStore() -> ResourceStore {
+        ResourceStore(storage: storage)
+    }
+
     private func makeRawItem(id: String, kind: String = "briefing") -> [String: AnyCodable] {
         [
             "id": AnyCodable(id),
@@ -27,7 +57,7 @@ final class ResourceStoreMarkAllReadTests: XCTestCase {
     }
 
     func testMarkAllReadUnionsEveryId() {
-        let store = ResourceStore()
+        let store = makeStore()
         store.wipe()
         store.markAllRead(["a", "b", "c"])
         XCTAssertTrue(store.readIds.contains("a"))
@@ -36,7 +66,7 @@ final class ResourceStoreMarkAllReadTests: XCTestCase {
     }
 
     func testMarkAllReadPreservesExistingReadIds() {
-        let store = ResourceStore()
+        let store = makeStore()
         store.wipe()
         store.markRead("existing")
         store.markAllRead(["new-1", "new-2"])
@@ -46,7 +76,7 @@ final class ResourceStoreMarkAllReadTests: XCTestCase {
     }
 
     func testMarkAllReadDropsUnreadCountToZero() {
-        let store = ResourceStore()
+        let store = makeStore()
         store.wipe()
         store.applySnapshot(kind: "briefing", rawItems: [
             makeRawItem(id: "g-1"),
@@ -59,7 +89,7 @@ final class ResourceStoreMarkAllReadTests: XCTestCase {
     }
 
     func testMarkAllReadEmptyListIsNoOp() {
-        let store = ResourceStore()
+        let store = makeStore()
         store.wipe()
         store.markRead("x")
         let before = store.readIds
