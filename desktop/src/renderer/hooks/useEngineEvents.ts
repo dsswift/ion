@@ -7,6 +7,7 @@ import {
 } from './engine-event-frame-queue'
 import { FORWARDED_ACTIONS } from '../../shared/atv-mirror-actions'
 import { rTrace, rWarn, rDebug } from '../rendererLogger'
+import { markEventArrival } from '../stores/event-liveness'
 
 /**
  * Subscribes to the single normalized-event stream (ion:normalized-event) and
@@ -74,6 +75,7 @@ export function useEngineEvents() {
 
     rDebug('event.stream', 'registering onEvent handler')
     const unsubEvent = window.ion.onEvent((tabId, event) => {
+      markEventArrival(tabId)
       received += 1
       // stream_reset: the engine is retrying — text queued behind the reset
       // would be appended after the reset cleared it, so drop it now.
@@ -85,6 +87,7 @@ export function useEngineEvents() {
     })
 
     const unsubStatus = window.ion.onTabStatusChange((tabId, newStatus, oldStatus) => {
+      markEventArrival(tabId)
       // Queued rather than applied directly: a status transition and the event
       // that caused it arrive on different IPC channels, and applying one
       // ahead of the other would show a status the conversation had not
@@ -94,6 +97,7 @@ export function useEngineEvents() {
     })
 
     const unsubError = window.ion.onError((tabId, error) => {
+      markEventArrival(tabId)
       enqueueError(queueRef.current, tabId, error)
       schedule()
     })

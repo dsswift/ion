@@ -7,6 +7,7 @@ import { activeInstance } from './conversation-instance'
 import { EXTERNALIZE_SCHEMA_VERSION } from '../../shared/types-persistence'
 import type { useSessionStore as UseSessionStoreType } from './sessionStore'
 import { rError } from '../rendererLogger'
+import { lastArrivalAt, pruneEventLiveness } from './event-liveness'
 
 type Store = typeof UseSessionStoreType
 
@@ -222,25 +223,32 @@ async function persistSessionChains(useSessionStore: Store): Promise<void> {
 
 const WATCHDOG_INTERVAL_MS = 5_000
 
-function scanForStuckTabs(useSessionStore: Store): void {
+export function scanForStuckTabs(useSessionStore: Store): void {
+  const { tabs, autoRecoverStuckTab } = useSessionStore.getState()
   const { tabRecoveryEnabled, tabRecoveryTimeoutSec } = usePreferencesStore.getState()
-  if (!tabRecoveryEnabled) return
+  if (!tabRecoveryEnabled) {
+    pruneEventLiveness(tabs.map((tab) => tab.id))
+    return
+  }
   const thresholdMs = tabRecoveryTimeoutSec * 1000
   const now = Date.now()
-  const { tabs, autoRecoverStuckTab } = useSessionStore.getState()
   for (const t of tabs) {
     if (t.status !== 'running' && t.status !== 'connecting') continue
     if (!t.activeRequestId) continue
     if (t.lastEventAt === null) continue
-    if (now - t.lastEventAt <= thresholdMs) continue
-    // Auto-heal: recreate the engine session in-process and resubmit the last
-    // prompt so the work continues without user involvement (the user expected
-    // background work to keep running). Bounded internally; falls back to a
-    // plain reset + honest message after the attempt cap. This replaces the old
-    // behavior of aborting and telling the user to "resume" — which they could
-    // not meaningfully do, and which abandoned the work.
+    // Renderer state advances only after requestAnimationFrame applies an event.
+    // IPC arrivals remain liveness evidence while frames are suspended, so use
+    // arrival time as a floor rather than mistaking hidden-window rendering for
+    // an engine stall.
+    const lastSeen = Math.max(t.lastEventAt, lastArrivalAt(t.id) ?? 0)
+    if (now - lastSeen <= thresholdMs) continue
+    // Auto-heal: a running tab has made no transport-visible progress. Bounded
+    // internally; falls back to a plain reset + honest message after the attempt
+    // cap. This replaces the old behavior of aborting and telling the user to
+    // "resume" — which they could not meaningfully do, and which abandoned work.
     autoRecoverStuckTab(t.id)
   }
+  pruneEventLiveness(tabs.map((tab) => tab.id))
 }
 
 export function setupPersistence(useSessionStore: Store): void {
