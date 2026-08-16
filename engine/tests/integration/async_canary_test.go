@@ -28,6 +28,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/asyncreg"
 	"github.com/dsswift/ion/engine/internal/extension"
+	"github.com/dsswift/ion/engine/internal/types"
 )
 
 // asyncCanaryEntry resolves the absolute path of the async-canary
@@ -59,6 +60,41 @@ func loadAsyncCanary(t *testing.T) *extension.Host {
 		t.Fatalf("load async-canary: %v", err)
 	}
 	return host
+}
+
+func TestAsyncCanary_ScheduleMissedReachesSubprocess(t *testing.T) {
+	host := loadAsyncCanary(t)
+	if errs := host.CommitPendingAsyncDecls(); len(errs) != 0 {
+		t.Fatalf("commit: %v", errs)
+	}
+
+	var fired string
+	host.SetPersistentScheduleControl(func(jobID string) error { fired = jobID; return nil }, nil)
+	probe := findTool(t, host, "async_canary_arm_missed_probe")
+	ctx := &extension.Context{SessionKey: "missed-probe"}
+	if _, err := probe.Execute(map[string]any{"delayMs": 20}, ctx); err != nil {
+		t.Fatalf("arm: %v", err)
+	}
+
+	result := make(chan types.EngineEvent, 1)
+	host.SetPersistentEmit(func(ev types.EngineEvent) {
+		if ev.Type == "async_canary_missed_probe" {
+			result <- ev
+		}
+	})
+	host.FireScheduleMissed(ctx, extension.ScheduleMissedInfo{ID: "async-canary-missed-probe", Kind: "daily", MissedSlotUtc: "2026-08-13T22:00:00Z"})
+
+	select {
+	case ev := <-result:
+		if ev.EventMessage != "persistent fire succeeded" {
+			t.Fatalf("probe event=%+v", ev)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("subprocess schedule_missed handler never emitted probe result")
+	}
+	if fired != "async-canary-missed-probe" {
+		t.Fatalf("persistent fire=%q", fired)
+	}
 }
 
 // Test 1: static init registrations land in the registry.

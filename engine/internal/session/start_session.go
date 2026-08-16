@@ -641,6 +641,15 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 		host.SetPersistentAckDispatchLost(func(dispatchID string) {
 			m.persistLostNoticeState(s.conversationID, dispatchID, "sent")
 		})
+
+		// Deferred schedule_missed handlers batch slots after their hook RPC
+		// returns. Keep schedule control tied to this host's bound session.
+		host.SetPersistentScheduleControl(
+			func(jobID string) error { return m.fireScheduleForSession(capturedKey, jobID) },
+			func(jobID string) ([]extension.ScheduleStatusEntry, error) {
+				return m.scheduleStatusForSession(capturedKey, jobID)
+			},
+		)
 		s.dispatchRegistry.SetDispatchLossRecallObserver(m.persistRecallIntents)
 
 		// Persistent recall for ext/recall_agent when the parent run is idle.

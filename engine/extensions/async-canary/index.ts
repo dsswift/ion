@@ -16,6 +16,29 @@ import { createIon, log } from '../sdk/ion-sdk'
 
 const ion = createIon()
 
+// ── Deferred schedule_missed probe ──────────────────────────────────────────
+// The shared schedule_missed handler below returns before this timer calls
+// ctx.fireSchedule, proving persistent schedule control survives hook lifetime.
+let missedProbeJobId = ''
+let missedProbeDelayMs = 0
+
+ion.schedule.interval({
+  id: 'async-canary-missed-probe',
+  intervalMs: 86400000,
+  handler: async () => {},
+})
+
+ion.registerTool({
+  name: 'async_canary_arm_missed_probe',
+  description: 'Configure the deferred schedule_missed persistent-control probe',
+  parameters: { type: 'object', properties: { delayMs: { type: 'number' } }, required: ['delayMs'] },
+  execute: async (params: any) => {
+    missedProbeJobId = 'async-canary-missed-probe'
+    missedProbeDelayMs = Number(params?.delayMs ?? 10)
+    return { content: 'armed' }
+  },
+})
+
 // ── Slow-handler probe: schedule-fire-timeout test fixture ────────────────────
 //
 // This schedule never auto-fires (intervalMs is enormous). The integration
@@ -117,6 +140,61 @@ ion.registerTool({
     slowHandlerArmed = true
     return { content: 'armed' }
   },
+})
+
+// ── Deterministic manual missed-slot canary ────────────────────────────────
+// Two daily jobs let the Go integration harness prove latest-slot selection.
+// schedule_missed returns after scheduling the debounce, so ctx.fireSchedule
+// must resolve through persistent schedule control rather than a live hook ctx.
+const MISSED_CANARY_IDS = new Set(['async-canary-missed-early', 'async-canary-missed-late'])
+const missedCanarySlots = new Map<string, string>()
+let missedCanaryTimer: ReturnType<typeof setTimeout> | null = null
+const MISSED_CANARY_DEBOUNCE_MS = 20
+
+ion.schedule.daily({
+  id: 'async-canary-missed-early',
+  time: '09:00',
+  tz: 'UTC',
+  catchUp: 'manual',
+  handler: async (ctx, _control, meta) => {
+    ctx.emit({ type: 'async_canary_missed_result', message: 'handler fired', metadata: { id: 'async-canary-missed-early', backfill: String(meta?.backfill), missedSlotUtc: meta?.missedSlotUtc ?? '' } } as any)
+  },
+})
+ion.schedule.daily({
+  id: 'async-canary-missed-late',
+  time: '10:00',
+  tz: 'UTC',
+  catchUp: 'manual',
+  handler: async (ctx, _control, meta) => {
+    ctx.emit({ type: 'async_canary_missed_result', message: 'handler fired', metadata: { id: 'async-canary-missed-late', backfill: String(meta?.backfill), missedSlotUtc: meta?.missedSlotUtc ?? '' } } as any)
+  },
+})
+
+ion.on('schedule_missed', (ctx, info: any) => {
+  if (info?.id === missedProbeJobId) {
+    const slot = String(info.missedSlotUtc ?? '')
+    setTimeout(() => {
+      void ctx.fireSchedule(missedProbeJobId).then(
+        () => ctx.emit({ type: 'async_canary_missed_probe', message: 'persistent fire succeeded', metadata: { slot } } as any),
+        (err) => ctx.emit({ type: 'async_canary_missed_probe', message: String(err?.message ?? err), metadata: { slot } } as any),
+      )
+    }, missedProbeDelayMs)
+    return
+  }
+  if (!MISSED_CANARY_IDS.has(String(info?.id ?? ''))) return
+  missedCanarySlots.set(String(info.id), String(info.missedSlotUtc))
+  ctx.emit({ type: 'async_canary_missed_probe', message: 'receipt', metadata: { id: String(info.id), missedSlotUtc: String(info.missedSlotUtc) } } as any)
+  if (missedCanaryTimer) clearTimeout(missedCanaryTimer)
+  missedCanaryTimer = setTimeout(() => {
+    const entries = [...missedCanarySlots.entries()]
+    missedCanarySlots.clear()
+    let winner = entries[0]
+    for (const entry of entries) if (entry[1] > winner[1]) winner = entry
+    void ctx.fireSchedule(winner[0]).then(
+      () => ctx.emit({ type: 'async_canary_missed_probe', message: 'selected', metadata: { id: winner[0], missedSlotUtc: winner[1] } } as any),
+      (err) => ctx.emit({ type: 'async_canary_missed_probe', message: String(err?.message ?? err), metadata: { id: winner[0], missedSlotUtc: winner[1] } } as any),
+    )
+  }, MISSED_CANARY_DEBOUNCE_MS)
 })
 
 // Static webhook registration. The handler simply echoes back the

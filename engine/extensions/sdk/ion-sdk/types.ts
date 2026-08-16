@@ -2952,6 +2952,8 @@ export interface ScheduleDaily {
   timeoutMs?: number
   /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
   concurrency?: 'single' | 'all'
+  /** Missed-slot policy. `manual` fires schedule_missed for extension batching. */
+  catchUp?: 'auto' | 'manual' | 'none'
   enabled?: () => boolean | Promise<boolean>
   handler: ScheduleHandler
 }
@@ -2965,6 +2967,8 @@ export interface ScheduleWeekly {
   timeoutMs?: number
   /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
   concurrency?: 'single' | 'all'
+  /** Missed-slot policy. `manual` fires schedule_missed for extension batching. */
+  catchUp?: 'auto' | 'manual' | 'none'
   enabled?: () => boolean | Promise<boolean>
   handler: ScheduleHandler
 }
@@ -3096,6 +3100,8 @@ export interface ScheduleJob {
   enabledRefName?: string
   /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
   concurrency?: 'single' | 'all'
+  /** Missed daily/weekly slot policy. Omit for historic engine default behavior. */
+  catchUp?: 'auto' | 'manual' | 'none'
 }
 
 /** Handle returned by ion.schedule.daily/weekly/interval/once. */

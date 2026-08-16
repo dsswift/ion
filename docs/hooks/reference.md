@@ -835,7 +835,7 @@ Same extension type only. The engine enforces this by comparing extension names;
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
-| `schedule_missed` | Scheduler detects a daily/weekly slot was missed while the engine was down | `ScheduleMissedInfo{ID, Kind, MissedSlotUtc, HadMarker, RanWithinScope}` | ignored | Observation-only. The extension decides whether to backfill via `ctx.fireSchedule(id)`. When no handler is registered, the scheduler auto-catches-up (existing behavior). |
+| `schedule_missed` | Scheduler detects a daily/weekly slot was missed during engine downtime or an in-process suspend/resume gap | `ScheduleMissedInfo{ID, Kind, MissedSlotUtc, HadMarker, RanWithinScope}` | ignored | Observation-only. Delivered to Go and subprocess SDK handlers that registered this hook. Omitted `catchUp` auto-fires only when no handler is registered; the extension decides whether to backfill via `ctx.fireSchedule(id)` when it is. |
 
 ### Payload Types
 

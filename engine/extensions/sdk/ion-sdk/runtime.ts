@@ -753,6 +753,7 @@ async function handleRequest(
         webhooks: pending.webhooks,
         schedules: pending.schedules,
         resources: resourcePending.resources,
+        hooks: Array.from(hooks.keys()).sort(),
         buildIdentity: buildIdentity.identity,
       })
       return

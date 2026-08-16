@@ -5,6 +5,45 @@ import (
 	"time"
 )
 
+func TestCatchUp_PerJobPolicy(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 5, 25, 11, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		policy   string
+		hook     bool
+		decision bool
+		stagger  bool
+	}{
+		{policy: "manual", hook: true, decision: true},
+		{policy: "auto", hook: true, stagger: true},
+		{policy: "none", hook: true},
+	} {
+		s := New(Config{PersistDir: dir})
+		job := stubDailyJob("policy-" + tc.policy)
+		job.CatchUp = tc.policy
+		s.recordLastRunByName("ext-a", job, now.Add(-48*time.Hour))
+		next, decision := s.computeBootstrapNextRun("ext-a", job, now, time.UTC, s.catchUpPolicy(job, tc.hook))
+		if tc.policy == "manual" {
+			if decision == nil {
+				t.Fatalf("manual policy did not defer")
+			}
+			continue
+		}
+		if decision != nil {
+			t.Fatalf("policy %s unexpectedly deferred", tc.policy)
+		}
+		if tc.stagger != next.Equal(now.Add(CatchUpStagger)) {
+			t.Fatalf("policy %s next=%v", tc.policy, next)
+		}
+		if tc.policy == "none" {
+			want := time.Date(2026, 5, 26, 9, 30, 0, 0, time.UTC)
+			if !next.Equal(want) {
+				t.Fatalf("none policy next=%v, want normal next slot %v", next, want)
+			}
+		}
+	}
+}
+
 // TestCatchUp_MissedDailySchedulesCatchUp simulates an engine restart
 // after a missed daily slot. We pre-populate a last-run marker
 // dated two days ago, then call computeBootstrapNextRun and verify
@@ -23,7 +62,7 @@ func TestCatchUp_MissedDailySchedulesCatchUp(t *testing.T) {
 	s.recordLastRunByName("ext-a", job, twoDaysAgo)
 
 	loc := s.loadTz(jobTz(job))
-	next, decision := s.computeBootstrapNextRun("ext-a", job, now, loc, false)
+	next, decision := s.computeBootstrapNextRun("ext-a", job, now, loc, s.catchUpPolicy(job, false))
 
 	// Catch-up scheduled "now + 30s" stagger.
 	stagger := next.Sub(now)
@@ -49,7 +88,7 @@ func TestCatchUp_NoMissedSlotSchedulesNormalNextRun(t *testing.T) {
 	s.recordLastRunByName("ext-a", job, thisMorning)
 
 	loc := s.loadTz(jobTz(job))
-	next, decision := s.computeBootstrapNextRun("ext-a", job, now, loc, false)
+	next, decision := s.computeBootstrapNextRun("ext-a", job, now, loc, s.catchUpPolicy(job, false))
 
 	want := time.Date(2026, 5, 26, 9, 30, 0, 0, time.UTC)
 	if !next.Equal(want) {
@@ -74,7 +113,7 @@ func TestCatchUp_CatchUpDisabledByConfig(t *testing.T) {
 	s.recordLastRunByName("ext-a", job, twoDaysAgo)
 
 	loc := s.loadTz(jobTz(job))
-	next, decision := s.computeBootstrapNextRun("ext-a", job, now, loc, false)
+	next, decision := s.computeBootstrapNextRun("ext-a", job, now, loc, s.catchUpPolicy(job, false))
 
 	want := time.Date(2026, 5, 26, 9, 30, 0, 0, time.UTC)
 	if !next.Equal(want) {
@@ -98,7 +137,7 @@ func TestCatchUp_IntervalNoMarkerSchedulesNextRun(t *testing.T) {
 	job := stubIntervalJob("int", 60_000) // 1 minute
 
 	loc := s.loadTz(jobTz(job))
-	next, decision := s.computeBootstrapNextRun("ext-a", job, now, loc, false)
+	next, decision := s.computeBootstrapNextRun("ext-a", job, now, loc, s.catchUpPolicy(job, false))
 
 	// No marker → exactly now + intervalMs.
 	want := now.Add(60 * time.Second)
@@ -127,7 +166,7 @@ func TestCatchUp_IntervalCatchesUpWhenOverdue(t *testing.T) {
 	s.recordLastRunByName("ext-a", job, now.Add(-5*time.Hour))
 
 	loc := s.loadTz(jobTz(job))
-	next, _ := s.computeBootstrapNextRun("ext-a", job, now, loc, false)
+	next, _ := s.computeBootstrapNextRun("ext-a", job, now, loc, s.catchUpPolicy(job, false))
 
 	want := now.Add(CatchUpStagger)
 	if !next.Equal(want) {
@@ -151,7 +190,7 @@ func TestCatchUp_IntervalResumesCadenceWhenNotOverdue(t *testing.T) {
 	s.recordLastRunByName("ext-a", job, lastRun)
 
 	loc := s.loadTz(jobTz(job))
-	next, decision := s.computeBootstrapNextRun("ext-a", job, now, loc, false)
+	next, decision := s.computeBootstrapNextRun("ext-a", job, now, loc, s.catchUpPolicy(job, false))
 
 	want := lastRun.Add(2 * time.Hour)
 	if !next.Equal(want) {
@@ -174,7 +213,7 @@ func TestCatchUp_FirstSightingDoesNotCatchUp(t *testing.T) {
 	job := stubDailyJob("d")
 
 	loc := s.loadTz(jobTz(job))
-	next, decision := s.computeBootstrapNextRun("ext-a", job, now, loc, false)
+	next, decision := s.computeBootstrapNextRun("ext-a", job, now, loc, s.catchUpPolicy(job, false))
 
 	// No marker: first sighting. Should record FirstSeen and NOT catch up.
 	want := time.Date(2026, 5, 26, 9, 30, 0, 0, time.UTC)
@@ -214,7 +253,7 @@ func TestCatchUp_NoLastRunMarkerButKnownJobCatchesUp(t *testing.T) {
 	s.recordFirstSeenByName("ext-a", job, yesterday)
 
 	loc := s.loadTz(jobTz(job))
-	next, decision := s.computeBootstrapNextRun("ext-a", job, now, loc, false)
+	next, decision := s.computeBootstrapNextRun("ext-a", job, now, loc, s.catchUpPolicy(job, false))
 
 	// Should auto-catch-up: next = now + stagger.
 	stagger := next.Sub(now)
@@ -242,7 +281,7 @@ func TestCatchUp_NoMarkerWithHookEmitsMissedNoAutoFire(t *testing.T) {
 	s.recordFirstSeenByName("ext-a", job, yesterday)
 
 	loc := s.loadTz(jobTz(job))
-	next, decision := s.computeBootstrapNextRun("ext-a", job, now, loc, true)
+	next, decision := s.computeBootstrapNextRun("ext-a", job, now, loc, s.catchUpPolicy(job, true))
 
 	// Normal next slot (NOT stagger).
 	want := time.Date(2026, 5, 26, 9, 30, 0, 0, time.UTC)
@@ -277,7 +316,7 @@ func TestCatchUp_MarkerMissedWithHookDefers(t *testing.T) {
 	s.recordLastRunByName("ext-a", job, twoDaysAgo)
 
 	loc := s.loadTz(jobTz(job))
-	next, decision := s.computeBootstrapNextRun("ext-a", job, now, loc, true)
+	next, decision := s.computeBootstrapNextRun("ext-a", job, now, loc, s.catchUpPolicy(job, true))
 
 	want := time.Date(2026, 5, 26, 9, 30, 0, 0, time.UTC)
 	if !next.Equal(want) {
@@ -308,7 +347,7 @@ func TestCatchUp_RegistrationAnchorBlocksPreExistenceSlot(t *testing.T) {
 	s.recordFirstSeenByName("ext-a", job, noon)
 
 	loc := s.loadTz(jobTz(job))
-	next, decision := s.computeBootstrapNextRun("ext-a", job, now, loc, false)
+	next, decision := s.computeBootstrapNextRun("ext-a", job, now, loc, s.catchUpPolicy(job, false))
 
 	// Today's 09:30 is NOT after noon (the anchor), so no catch-up.
 	want := time.Date(2026, 5, 26, 9, 30, 0, 0, time.UTC)
@@ -335,7 +374,7 @@ func TestCatchUp_WeeklyMissedSlot(t *testing.T) {
 	s.recordLastRunByName("ext-a", job, lastFri)
 
 	loc := s.loadTz(jobTz(job))
-	next, decision := s.computeBootstrapNextRun("ext-a", job, now, loc, false)
+	next, decision := s.computeBootstrapNextRun("ext-a", job, now, loc, s.catchUpPolicy(job, false))
 
 	// Monday 2026-05-25 09:30 was the most recent slot before now;
 	// it's after lastFri -> catch-up triggered.

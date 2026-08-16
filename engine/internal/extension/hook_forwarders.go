@@ -38,9 +38,10 @@ func (h *Host) registerHookForwarders() {
 		// harness is a subprocess, so an in-process-only firing would never
 		// reach the consumer the hook exists for.
 		HookDispatchLost,
-		// Async-trigger deregistration hooks (observation-only;
-		// veto would let one extension trap another's resources).
-		HookWebhookDeregistered, HookScheduleDeregistered,
+		// Async-trigger deregistration and missed-slot hooks are observation-only.
+		// They must reach subprocess extensions: schedule_missed is where a
+		// harness applies its own catch-up policy.
+		HookWebhookDeregistered, HookScheduleDeregistered, HookScheduleMissed,
 		// Cross-session messaging: forward the session_message hook
 		// to the subprocess so ion.on('session_message', ...) fires.
 		HookSessionMessage,

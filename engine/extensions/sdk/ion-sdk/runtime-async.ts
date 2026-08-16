@@ -197,6 +197,7 @@ export const scheduleApi: ScheduleApi = {
       timeoutMs: opts.timeoutMs,
       enabledRefName: stashEnabled(opts.id, opts.enabled),
       ...(opts.concurrency !== undefined ? { concurrency: opts.concurrency } : {}),
+      ...(opts.catchUp !== undefined ? { catchUp: opts.catchUp } : {}),
     }, opts.handler)
   },
   weekly(opts) {
@@ -209,6 +210,7 @@ export const scheduleApi: ScheduleApi = {
       timeoutMs: opts.timeoutMs,
       enabledRefName: stashEnabled(opts.id, opts.enabled),
       ...(opts.concurrency !== undefined ? { concurrency: opts.concurrency } : {}),
+      ...(opts.catchUp !== undefined ? { catchUp: opts.catchUp } : {}),
     }, opts.handler)
   },
   interval(opts) {

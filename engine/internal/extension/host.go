@@ -89,6 +89,13 @@ type Host struct {
 	// hook_forwarder_audit.go.
 	forwarders forwarderAudit
 
+	// declaredHooks is the hook set the subprocess reported in its init
+	// handshake. It is intentionally separate from SDK handlers: engine-installed
+	// forwarders transport every possible hook but do not mean the subprocess
+	// registered a callback. Guarded by notifMu.
+	declaredHooksInitialized bool
+	declaredHooks            map[string]struct{}
+
 	// notifMu guards the callbacks the readLoop reads when dispatching
 	// extension-initiated notifications (ext/emit, ext/send_message). Kept
 	// separate from h.mu so the readLoop never contends with Load: Load
@@ -111,6 +118,12 @@ type Host struct {
 	// from background dispatches fire after the run exits). Set by the
 	// session manager alongside persistentEmit.
 	persistentPublishResource func(kind string, delta types.ResourceDelta) error
+
+	// persistentScheduleFire and persistentScheduleStatus preserve schedule
+	// control after a hook returns and its ctxStack frame is popped. A deferred
+	// schedule_missed handler uses these to batch slots before backfilling.
+	persistentScheduleFire   func(jobID string) error
+	persistentScheduleStatus func(jobID string) ([]ScheduleStatusEntry, error)
 
 	// persistentRecall is a session-scoped fallback for ext/recall_agent when
 	// no hook/run context is active (i.e. the parent run is idle). The registry
@@ -316,6 +329,18 @@ func (h *Host) SetPersistentPublishResource(fn func(string, types.ResourceDelta)
 	h.notifMu.Lock()
 	defer h.notifMu.Unlock()
 	h.persistentPublishResource = fn
+}
+
+// SetPersistentScheduleControl wires session-scoped schedule control for
+// deferred extension work after its originating hook context has returned.
+func (h *Host) SetPersistentScheduleControl(
+	fire func(jobID string) error,
+	status func(jobID string) ([]ScheduleStatusEntry, error),
+) {
+	h.notifMu.Lock()
+	defer h.notifMu.Unlock()
+	h.persistentScheduleFire = fire
+	h.persistentScheduleStatus = status
 }
 
 // SetPersistentRecall sets the fallback recall function used when no run

@@ -121,12 +121,12 @@ func (h *Host) rpcDeregisterScheduleReq(_ *Context, id int64, raw []byte) {
 	h.rpcDeregisterSchedule(id, raw)
 }
 
-func (h *Host) rpcFireSchedule(_ *Context, id int64, raw []byte) {
-	h.handleFireSchedule(id, raw)
+func (h *Host) rpcFireSchedule(ctx *Context, id int64, raw []byte) {
+	h.handleFireSchedule(ctx, id, raw)
 }
 
-func (h *Host) rpcGetScheduleStatus(_ *Context, id int64, raw []byte) {
-	h.handleGetScheduleStatus(id, raw)
+func (h *Host) rpcGetScheduleStatus(ctx *Context, id int64, raw []byte) {
+	h.handleGetScheduleStatus(ctx, id, raw)
 }
 
 func (h *Host) rpcRunOnceCheck(_ *Context, id int64, raw []byte) {

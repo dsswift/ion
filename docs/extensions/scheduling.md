@@ -89,6 +89,24 @@ daily/weekly catch-up survives engine restarts. The directory and
 files are recreated on demand; deleting them is safe and only loses
 the catch-up dedup signal.
 
+Daily and weekly jobs may override this default with `catchUp`:
+
+```ts
+ion.schedule.daily({
+  id: 'morning-summary',
+  time: '09:00',
+  catchUp: 'manual', // extension batches missed slots before choosing one
+  handler: async () => {},
+})
+```
+
+`'auto'` runs a missed slot through the engine, `'manual'` emits
+`engine_schedule_missed` and calls `schedule_missed`, and `'none'` advances
+cadence without a backfill. Omit the field for existing
+`catchUpEnabled` behavior: jobs auto-catch up unless their extension registered a
+`schedule_missed` handler, which receives the decision instead. `catchUp` applies only to daily
+and weekly jobs.
+
 ## Job shapes
 
 ### Daily
@@ -374,9 +392,11 @@ so consumers can distinguish it from an explicit cancel.
 
 ## Catch-up on restart
 
-For daily/weekly jobs only, when the engine starts and discovers a
-scheduled slot was missed while it was down, the behavior depends on
-whether the extension registered a `schedule_missed` hook handler.
+For daily/weekly jobs only, when the engine starts **or resumes after a
+suspend gap** and discovers a scheduled slot was missed, the behavior depends
+on the job's `catchUp` policy (or, when omitted, whether the extension
+registered a `schedule_missed` hook handler). A fire in the scheduled
+wall-clock minute is live; a later overdue tick is treated as missed.
 
 ### Default behavior (no `schedule_missed` handler)
 
@@ -387,11 +407,15 @@ Interval jobs do **not** catch up; they simply fire at `now + intervalMs`.
 ### Extension-decided catch-up (`schedule_missed` handler registered)
 
 When a `schedule_missed` hook handler is registered, the scheduler does
-NOT auto-fire the missed slot. Instead:
+NOT auto-fire the missed slot. Instead it emits `engine_schedule_missed` and
+fires the hook in both Go and TypeScript subprocess extensions. The handler
+may debounce or otherwise defer its decision: `ctx.fireSchedule(id)` and
+`ctx.getScheduleStatus()` retain their session-scoped capability after the
+hook callback returns.
 
-1. Emits `engine_schedule_missed` with the missed slot details.
-2. Fires the `schedule_missed` hook with `ScheduleMissedInfo`.
-3. The handler decides whether to backfill by calling `ctx.fireSchedule(id)`.
+The engine emits `engine_schedule_missed`, fires `schedule_missed` with
+`ScheduleMissedInfo`, then lets the handler decide whether to backfill through
+`ctx.fireSchedule(id)`.
 
 This lets an extension with multiple daily schedules (e.g. morning briefing
 and evening summary) fire only the most recent missed one, or skip catch-up
@@ -417,11 +441,26 @@ real slot was missed.
 | `FirstSeenUtc` only (no `LastRunUtc`), before last slot | registered | Emit `engine_schedule_missed` + fire `schedule_missed` hook |
 | No marker at all | any | First sighting: record `FirstSeenUtc`, normal next slot |
 
-### `ctx.fireSchedule(id)`
+### Deterministic catch-up tests
+
+Daily/weekly missed-slot behavior differs from interval cadence recovery. Test
+manual catch-up with an injected scheduler clock and a persisted marker
+directory: bootstrap before the slots, then restart or advance the same clock
+past them. The async-canary integration regression covers both shapes without
+wall-clock sleeps:
+
+```bash
+cd engine
+go test -race -tags integration ./tests/integration/ -run TestSchedulerMissedCanary
+```
+
 
 Triggers an immediate fire of the named schedule job. Reuses the engine's
 existing fire machinery: in-flight guard, single-concurrency arbitration,
-last-run recording, `engine_schedule_fired` event emission.
+last-run recording, `engine_schedule_fired` event emission. It remains valid
+from deferred work a schedule hook started after the hook returned: the host
+uses its session-scoped schedule-control callback when no live hook context is
+on the stack.
 
 The handler receives a `ScheduleFireMeta` as its third argument with
 `backfill: true` so it can distinguish a backfill from a live tick fire.
@@ -486,11 +525,11 @@ time) or already handled (marker after the slot time).
 
 ## In-process dedup
 
-A `sync.Map` in the engine prevents overlapping fires of the same
-job: if a handler is still running when its next tick arrives, the
-tick logs a skip and waits for the previous fire to complete. This
-guarantees a single in-flight invocation per job, regardless of
-handler latency.
+A `sync.Map` in the engine prevents overlapping fires. For
+`concurrency: 'single'`, identity is `(extension name, job id)`, so host
+replacement cannot overlap an in-flight predecessor. `concurrency: 'all'`
+keeps a distinct in-flight slot per host. If a handler is still running when
+its next tick arrives, the tick logs a skip and waits for completion.
 
 Cross-subprocess arbitration (multiple engine processes sharing the
 same job set) is intentionally out of scope — the engine runs as a

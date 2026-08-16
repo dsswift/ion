@@ -683,6 +683,7 @@
   "initResult": [
     "buildIdentity",
     "commands",
+    "hooks",
     "name",
     "resources",
     "schedules",

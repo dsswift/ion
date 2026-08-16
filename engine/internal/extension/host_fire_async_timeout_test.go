@@ -181,48 +181,26 @@ func TestFireAsyncTimeout_NilCtx_DispatchNotAvailable(t *testing.T) {
 	}
 }
 
-// TestFireAsyncTimeout_NilCtx_FireScheduleNotAvailable pins Consequence A
-// for the ext/fire_schedule path (host_rpc_schedule.go:48-52).
-//
-// DEFECT CHARACTERISATION — the behaviour asserted here is the defect.
-//
-// METHOD: hand-simulation via simulateFireAsyncEarlyReturn.
-//
-// Same mechanism as TestFireAsyncTimeout_NilCtx_DispatchNotAvailable, but for
-// the ext/fire_schedule RPC.  Code -32603 "fire schedule not available" is the
-// expected nil-ctx response from that handler.
-func TestFireAsyncTimeout_NilCtx_FireScheduleNotAvailable(t *testing.T) {
+// TestFireAsyncTimeout_NilCtx_FireScheduleUsesPersistentFallback proves the
+// scheduled-handler timeout path preserves deferred schedule control through
+// the host's session-scoped fallback.
+func TestFireAsyncTimeout_NilCtx_FireScheduleUsesPersistentFallback(t *testing.T) {
 	h := NewHost()
 	ch := attachStdout(h)
+	called := ""
+	h.SetPersistentScheduleControl(func(id string) error { called = id; return nil }, nil)
 
-	ctx := &Context{
-		Cwd:        "/test",
-		SessionKey: "session-sched-2",
-		FireSchedule: func(id string) error {
-			return nil
-		},
-	}
-
-	// Hand-simulate FireAsync early return (timeout arm).
+	ctx := &Context{Cwd: "/test", SessionKey: "session-sched-2"}
 	cleanup := simulateFireAsyncEarlyReturn(h, ctx)
 	defer cleanup()
-
-	// Simulate handler issuing ext/fire_schedule while its ctx is already gone.
 	h.handleExtRequest("ext/fire_schedule", 99, fireSchedulePayload(t, "my-job-id"))
 
 	resp := readResponse(t, ch, time.Second)
-
-	// DEFECT ASSERTION: nil ctx → -32603 "fire schedule not available".
-	errObj, hasErr := resp["error"].(map[string]interface{})
-	if !hasErr {
-		t.Fatalf("expected JSON-RPC error response, got result=%v", resp["result"])
+	if resp["error"] != nil {
+		t.Fatalf("response=%#v", resp)
 	}
-	if code := errObj["code"]; code != float64(-32603) {
-		t.Errorf("expected code -32603 (fire schedule not available), got %v", code)
-	}
-	msg, _ := errObj["message"].(string)
-	if !strings.Contains(msg, "fire schedule not available") {
-		t.Errorf("expected 'fire schedule not available' in error message, got %q", msg)
+	if called != "my-job-id" {
+		t.Fatalf("persistent fire=%q", called)
 	}
 }
 
@@ -363,14 +341,14 @@ func TestFireAsync_DurationContractInconsistency(t *testing.T) {
 //
 // TypeScript side (source-confirmed; see runtime.ts:778):
 //
-//	pending.reject(new Error(msg.error.message || 'RPC error'))
+//		pending.reject(new Error(msg.error.message || 'RPC error'))
 //
-//   - Only msg.error.message reaches the Error constructor.
-//   - The JSON-RPC code (-32000) is DROPPED.
-//   - The handler's catch block sees: Error { message: "dispatch not available" }
-//   - The handler CANNOT distinguish a fire-timeout capability loss from an ordinary
-//     dispatch failure, because the error message is identical in both cases and the
-//     code is not preserved.
+//	  - Only msg.error.message reaches the Error constructor.
+//	  - The JSON-RPC code (-32000) is DROPPED.
+//	  - The handler's catch block sees: Error { message: "dispatch not available" }
+//	  - The handler CANNOT distinguish a fire-timeout capability loss from an ordinary
+//	    dispatch failure, because the error message is identical in both cases and the
+//	    code is not preserved.
 func TestFireAsyncTimeout_TSPromiseRejection_CodeLoss(t *testing.T) {
 	h := NewHost()
 	ch := attachStdout(h)
@@ -429,7 +407,6 @@ func TestFireAsyncTimeout_TSPromiseRejection_CodeLoss(t *testing.T) {
 		// Correct: no cancel or timeout notification was sent.
 	}
 }
-
 
 // Tests for the scheduled-handler context-lifetime defect.
 //

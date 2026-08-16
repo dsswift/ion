@@ -216,6 +216,9 @@ func (h *Host) parseInitResult(raw json.RawMessage) error {
 		// Resource kinds declared at init time (optional). The session
 		// wires them into the broker after the extension is fully loaded.
 		Resources []types.ResourceDeclaration `json:"resources,omitempty"`
+		// Hooks is the subprocess's registered callback set. It is additive
+		// handshake metadata, distinct from engine-installed transport forwarders.
+		Hooks []string `json:"hooks,omitempty"`
 		// Build identity reported by the SDK subprocess. Compared against
 		// the engine's own build identity to detect mixed-build runtimes.
 		BuildIdentity string `json:"buildIdentity,omitempty"`
@@ -232,6 +235,7 @@ func (h *Host) parseInitResult(raw json.RawMessage) error {
 	if result.Name != "" {
 		h.setName(result.Name)
 	}
+	h.setDeclaredHooks(result.Hooks)
 
 	for _, t := range result.Tools {
 		toolName := t.Name // capture for closure
