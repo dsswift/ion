@@ -65,6 +65,7 @@ Send a user message to an active session.
 | `extensionDir`              | string   | no       | Override extension directory         |
 | `noExtensions`              | boolean  | no       | Disable extensions for this run      |
 | `requestId`                 | string   | no       | Correlates with ServerResult         |
+| `deliveryId`                | string   | no       | Stable client idempotency key. The engine accepts one prompt per session/conversation delivery ID, persists it with the user turn, and returns an already-accepted result for duplicate retries without starting another run. |
 | `planMode`                  | boolean  | no       | Start this run in plan mode. See [Plan Mode](../sessions/lifecycle.md#plan-mode). |
 | `planModeTools`             | string[] | no       | Override the tool allowlist for this plan-mode run. Defaults to `["Read","Grep","Glob","Agent","WebFetch","WebSearch"]`. |
 | `planFilePath`              | string   | no       | Path of the plan file for this plan-mode run. The engine enforces write-only access to this file while plan mode is active. |
@@ -87,7 +88,7 @@ Send a user message to an active session.
 {"cmd":"send_prompt","key":"abc-123","text":"List all files in the current directory","requestId":"r2"}
 ```
 
-**Response:** `ServerResult` with `ok: true`. Session events stream as broadcast `ServerEvent` messages.
+**Response:** `ServerResult` with `ok: true`. For `send_prompt`, `data` is `{accepted:true, alreadyAccepted:false}` when a run was accepted. A retry with an already persisted or in-flight `deliveryId` returns `{accepted:false, alreadyAccepted:true}` with `ok: true` and starts no run. Other failures return `ok: false`. Session events stream as broadcast `ServerEvent` messages.
 
 ---
 
@@ -882,7 +883,7 @@ Mint a short-lived access token for the requested scope and return it in the res
 {"cmd":"oidc_token","oidcScope":"api://app-id/Telemetry.Write","requestId":"r43"}
 ```
 
-**Response:** `ServerResult` with `data: { accessToken: string }`. The token is bounded (30 s mint deadline) and returned only to the requesting connection.
+**Response:** `ServerResult` with `data: { accessToken: string, expiresAt?: number }`. `expiresAt`, when supplied by the token provider, is Unix milliseconds. The token is bounded (30 s mint deadline) and returned only to the requesting connection.
 
 ---
 
