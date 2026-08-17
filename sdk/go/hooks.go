@@ -140,6 +140,9 @@ const (
 
 	// Cross-session messaging.
 	HookNameSessionMessage = "session_message"
+
+	// Run recovery.
+	HookNameBeforeRunRecovery = "before_run_recovery"
 )
 
 // Hook is a typed hook descriptor: P is the payload the engine sends, R the

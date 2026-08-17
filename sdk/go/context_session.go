@@ -152,6 +152,16 @@ func (c *Context) GetScheduleStatus(ctx context.Context, id string) ([]ScheduleS
 	return out, nil
 }
 
+// SetRunRecovery applies an extension-owned recovery policy to this session.
+// Enabled must be set. The setting overrides session and engine defaults for
+// later runs; it does not change an active run's journal.
+func (c *Context) SetRunRecovery(ctx context.Context, config RunRecoveryConfig) error {
+	if config.Enabled == nil {
+		return fmt.Errorf("ion: SetRunRecovery requires Enabled")
+	}
+	return c.sdk.call(ctx, "ext/set_run_recovery", config, nil)
+}
+
 // EnterPlanMode puts the session into plan mode.
 func (c *Context) EnterPlanMode(ctx context.Context) error {
 	return c.sdk.call(ctx, "ext/set_plan_mode",

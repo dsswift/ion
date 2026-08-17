@@ -312,6 +312,11 @@ var HookScheduleDeregistered = Hook[AsyncRegistrationInfo, NoResult]{Name: HookN
 // the engine was down.
 var HookScheduleMissed = Hook[ScheduleMissedInfo, NoResult]{Name: HookNameScheduleMissed}
 
+// --- Run recovery ---
+
+// HookBeforeRunRecovery fires before the engine resumes a journaled run.
+var HookBeforeRunRecovery = Hook[BeforeRunRecoveryInfo, BeforeRunRecoveryResult]{Name: HookNameBeforeRunRecovery}
+
 // --- Cross-session messaging ---
 
 // HookSessionMessage fires when another session of this extension sends a
@@ -385,6 +390,7 @@ func allHookDescriptors() []descriptorInfo {
 		descriptorOf(HookScheduleRegistered), descriptorOf(HookScheduleDeregistered),
 		descriptorOf(HookScheduleMissed),
 
+		descriptorOf(HookBeforeRunRecovery),
 		descriptorOf(HookSessionMessage),
 	}
 }
