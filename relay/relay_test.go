@@ -55,6 +55,9 @@ func startTestRelay(t *testing.T, apiKey string) (*httptest.Server, *Hub) {
 		resp := map[string]any{
 			"psk":  len(auth.apiKey) > 0,
 			"oidc": auth.oidc != nil,
+			"capabilities": map[string]any{
+				"mobileForwardAck": true,
+			},
 		}
 		_ = json.NewEncoder(w).Encode(resp)
 	})
@@ -667,5 +670,185 @@ func TestSessionIDHeaderLogging(t *testing.T) {
 	}
 	if sid, ok := withoutSessionLine["session_id"]; ok {
 		t.Errorf("expected session_id absent in log line, but got %v", sid)
+	}
+}
+
+// --- Forward ACK tests (relay:forwarded / relay:peer-unavailable) ---
+
+// readControlType reads one message from conn and returns the parsed type field.
+func readControlType(t *testing.T, conn *websocket.Conn, label string) map[string]any {
+	t.Helper()
+	data := readExpected(t, conn, label)
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("%s: unmarshal: %v (raw: %s)", label, err, data)
+	}
+	return m
+}
+
+func TestMobileForwardedAck(t *testing.T) {
+	apiKey := "test-key-fwd-ack"
+	server, _ := startTestRelay(t, apiKey)
+
+	ionConn := dialWS(t, server, "chan-fwd-ack", "ion", apiKey)
+	mobileConn := dialWS(t, server, "chan-fwd-ack", "mobile", apiKey)
+
+	// Drain peer-reconnected on ion.
+	readExpected(t, ionConn, "ion-ctrl")
+
+	// Mobile sends a WireMessage with seq.
+	ctx := context.Background()
+	frame := `{"seq":42,"ts":1000,"nonce":"abc","ciphertext":"xyz"}`
+	if err := mobileConn.Write(ctx, websocket.MessageText, []byte(frame)); err != nil {
+		t.Fatalf("mobile write: %v", err)
+	}
+
+	// Ion receives the forwarded frame verbatim (encryption blindness).
+	ionData := readExpected(t, ionConn, "ion-data")
+	if string(ionData) != frame {
+		t.Errorf("ion got %s, want %s", ionData, frame)
+	}
+
+	// Mobile receives relay:forwarded with matching seq.
+	ack := readControlType(t, mobileConn, "mobile-ack")
+	if ack["type"] != "relay:forwarded" {
+		t.Errorf("type = %v, want relay:forwarded", ack["type"])
+	}
+	if seq, ok := ack["seq"].(float64); !ok || int64(seq) != 42 {
+		t.Errorf("seq = %v, want 42", ack["seq"])
+	}
+	if _, hasReason := ack["reason"]; hasReason {
+		t.Errorf("relay:forwarded should not have reason, got %v", ack["reason"])
+	}
+}
+
+func TestMobilePeerUnavailableNoPeer(t *testing.T) {
+	apiKey := "test-key-no-peer"
+	server, _ := startTestRelay(t, apiKey)
+
+	// Mobile connects alone -- no ion peer.
+	mobileConn := dialWS(t, server, "chan-no-peer", "mobile", apiKey)
+
+	ctx := context.Background()
+	frame := `{"seq":7,"ts":2000,"payload":"{\"type\":\"desktop_snapshot\"}"}`
+	if err := mobileConn.Write(ctx, websocket.MessageText, []byte(frame)); err != nil {
+		t.Fatalf("mobile write: %v", err)
+	}
+
+	nak := readControlType(t, mobileConn, "mobile-nak")
+	if nak["type"] != "relay:peer-unavailable" {
+		t.Errorf("type = %v, want relay:peer-unavailable", nak["type"])
+	}
+	if seq, ok := nak["seq"].(float64); !ok || int64(seq) != 7 {
+		t.Errorf("seq = %v, want 7", nak["seq"])
+	}
+	if nak["reason"] != "no_peer" {
+		t.Errorf("reason = %v, want no_peer", nak["reason"])
+	}
+}
+
+func TestMobileNoAckWithoutSeq(t *testing.T) {
+	apiKey := "test-key-no-seq"
+	server, _ := startTestRelay(t, apiKey)
+
+	ionConn := dialWS(t, server, "chan-no-seq", "ion", apiKey)
+	mobileConn := dialWS(t, server, "chan-no-seq", "mobile", apiKey)
+
+	// Drain peer-reconnected on ion.
+	readExpected(t, ionConn, "ion-ctrl")
+
+	// Mobile sends a frame without seq (or seq=0). No ACK expected.
+	ctx := context.Background()
+	if err := mobileConn.Write(ctx, websocket.MessageText, []byte(`{"msg":"no-seq"}`)); err != nil {
+		t.Fatalf("mobile write: %v", err)
+	}
+
+	// Ion should receive the forwarded data.
+	ionData := readExpected(t, ionConn, "ion-data")
+	if string(ionData) != `{"msg":"no-seq"}` {
+		t.Errorf("ion got %s", ionData)
+	}
+
+	// Mobile should NOT receive an ACK. Timeout confirms absence.
+	readCtx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	_, _, err := mobileConn.Read(readCtx)
+	if err == nil {
+		t.Error("expected no message on mobile (no seq), but got one")
+	}
+}
+
+func TestIonFrameNoAck(t *testing.T) {
+	apiKey := "test-key-ion-no-ack"
+	server, _ := startTestRelay(t, apiKey)
+
+	ionConn := dialWS(t, server, "chan-ion-no-ack", "ion", apiKey)
+	mobileConn := dialWS(t, server, "chan-ion-no-ack", "mobile", apiKey)
+
+	// Drain peer-reconnected on ion.
+	readExpected(t, ionConn, "ion-ctrl")
+
+	// Ion sends a frame WITH seq. Ion should NOT get an ACK (ACKs are mobile-only).
+	ctx := context.Background()
+	frame := `{"seq":99,"ts":3000,"payload":"hello"}`
+	if err := ionConn.Write(ctx, websocket.MessageText, []byte(frame)); err != nil {
+		t.Fatalf("ion write: %v", err)
+	}
+
+	// Mobile receives forwarded data.
+	mobileData := readExpected(t, mobileConn, "mobile-data")
+	if string(mobileData) != frame {
+		t.Errorf("mobile got %s", mobileData)
+	}
+
+	// Ion should NOT receive an ACK.
+	readCtx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	_, _, err := ionConn.Read(readCtx)
+	if err == nil {
+		t.Error("expected no ACK on ion, but got a message")
+	}
+}
+
+func TestMobileMultipleSeqsAcked(t *testing.T) {
+	apiKey := "test-key-multi-seq"
+	server, _ := startTestRelay(t, apiKey)
+
+	ionConn := dialWS(t, server, "chan-multi-seq", "ion", apiKey)
+	mobileConn := dialWS(t, server, "chan-multi-seq", "mobile", apiKey)
+
+	// Drain peer-reconnected on ion.
+	readExpected(t, ionConn, "ion-ctrl")
+
+	ctx := context.Background()
+	seqs := []int64{1, 2, 3}
+
+	for _, seq := range seqs {
+		frame := fmt.Sprintf(`{"seq":%d,"ts":1000,"ciphertext":"enc"}`, seq)
+		if err := mobileConn.Write(ctx, websocket.MessageText, []byte(frame)); err != nil {
+			t.Fatalf("mobile write seq=%d: %v", seq, err)
+		}
+	}
+
+	// Drain forwarded frames on ion.
+	for i := range seqs {
+		readExpected(t, ionConn, fmt.Sprintf("ion-data-%d", i))
+	}
+
+	// Read ACKs on mobile, verify each seq is present.
+	gotSeqs := map[int64]bool{}
+	for range seqs {
+		ack := readControlType(t, mobileConn, "mobile-ack")
+		if ack["type"] != "relay:forwarded" {
+			t.Errorf("type = %v, want relay:forwarded", ack["type"])
+		}
+		if s, ok := ack["seq"].(float64); ok {
+			gotSeqs[int64(s)] = true
+		}
+	}
+	for _, seq := range seqs {
+		if !gotSeqs[seq] {
+			t.Errorf("missing ACK for seq=%d", seq)
+		}
 	}
 }

@@ -129,6 +129,23 @@ type pushFailedControl struct {
 	ResourceId string `json:"resourceId,omitempty"` // resource ID from the originating push message
 }
 
+// forwardAck is the wire shape for relay:forwarded / relay:peer-unavailable
+// control frames sent back to the mobile peer after it sends a data frame.
+// Seq echoes the outer WireMessage.seq so the mobile client can correlate
+// the ACK with the frame it sent. The relay reads only the outer envelope
+// and never inspects payload or ciphertext (encryption blindness).
+type forwardAck struct {
+	Type   string `json:"type"`             // "relay:forwarded" | "relay:peer-unavailable"
+	Seq    int64  `json:"seq"`              // outer WireMessage seq from the mobile frame
+	Reason string `json:"reason,omitempty"` // present on peer-unavailable: "no_peer" | "write_failed"
+}
+
+// wireEnvelopeSeq extracts only the seq field from a WireMessage envelope.
+// Returns (seq, true) on success. The relay never reads deeper than this.
+type wireEnvelopeSeq struct {
+	Seq int64 `json:"seq"`
+}
+
 func sendControl(conn *websocket.Conn, msgType string, timeout time.Duration, log *slog.Logger) {
 	msg, _ := json.Marshal(controlMessage{Type: msgType}) //nolint:errcheck // marshal of a trivial fixed struct cannot fail
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -278,10 +295,55 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 
 		if peer != nil {
 			writeCtx, writeCancel := context.WithTimeout(context.Background(), h.WriteTimeout)
-			if err := peer.Write(writeCtx, msgType, data); err != nil {
-				connLog.Warn("forward error", "tag", "relay.forward_error", "err", err)
-			}
+			writeErr := peer.Write(writeCtx, msgType, data)
 			writeCancel()
+			if writeErr != nil {
+				connLog.Warn("forward error", "tag", "relay.forward_error", "err", writeErr)
+			}
+
+			if role == "mobile" {
+				var env wireEnvelopeSeq
+				if jsonErr := json.Unmarshal(data, &env); jsonErr == nil && env.Seq > 0 {
+					if writeErr == nil {
+						connLog.Debug("forward ack sent",
+							"tag", "relay.forward_ack",
+							"seq", env.Seq,
+							"outcome", "forwarded",
+						)
+						sendControlPayload(conn, forwardAck{
+							Type: "relay:forwarded",
+							Seq:  env.Seq,
+						}, h.WriteTimeout, connLog)
+					} else {
+						connLog.Warn("forward ack: peer write failed",
+							"tag", "relay.forward_ack",
+							"seq", env.Seq,
+							"outcome", "peer-unavailable",
+							"reason", "write_failed",
+						)
+						sendControlPayload(conn, forwardAck{
+							Type:   "relay:peer-unavailable",
+							Seq:    env.Seq,
+							Reason: "write_failed",
+						}, h.WriteTimeout, connLog)
+					}
+				}
+			}
+		} else if role == "mobile" {
+			var env wireEnvelopeSeq
+			if jsonErr := json.Unmarshal(data, &env); jsonErr == nil && env.Seq > 0 {
+				connLog.Debug("forward ack: no peer connected",
+					"tag", "relay.forward_ack",
+					"seq", env.Seq,
+					"outcome", "peer-unavailable",
+					"reason", "no_peer",
+				)
+				sendControlPayload(conn, forwardAck{
+					Type:   "relay:peer-unavailable",
+					Seq:    env.Seq,
+					Reason: "no_peer",
+				}, h.WriteTimeout, connLog)
+			}
 		} else if role == "ion" && pusher != nil {
 			// Mobile peer not connected; check if this message requests a push.
 			var msg relayMessage
