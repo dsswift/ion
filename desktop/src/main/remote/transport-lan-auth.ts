@@ -1,10 +1,16 @@
 import type { LANServer } from './lan-server'
 import { createAuthNonce, verifyAuthProof } from './crypto'
-import { log as _log } from '../logger'
+import { decodeSharedSecret, describeSecretFailure } from './device-secret'
+import { LAN_CLOSE_SECRET_UNUSABLE, LAN_CLOSE_UNKNOWN_DEVICE } from './protocol'
+import { log as _log, error as _error } from '../logger'
 import type { WireMessage, AuthChallenge, AuthResponse, AuthResult, PairedDevice } from './protocol'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('RemoteTransport', msg, fields)
+}
+
+function error(msg: string, fields?: Record<string, unknown>): void {
+  _error('RemoteTransport', msg, fields)
 }
 
 export interface LanAuthCtx {
@@ -41,7 +47,7 @@ export function startLanAuth(ctx: LanAuthCtx, connectionId: string): void {
       ctx.lanAuthPending.delete(connectionId)
       const ip = ctx.lan?.getClientIp(connectionId)
       if (ip) ctx.lan?.recordAuthFailure(ip)
-      ctx.lan?.disconnectClient(connectionId, 4003, 'auth timeout')
+      ctx.lan?.disconnectClient(connectionId, LAN_CLOSE_UNKNOWN_DEVICE, 'auth timeout')
     }
   }, 10_000)
 
@@ -78,17 +84,44 @@ export function handleLanAuthResponse(ctx: LanAuthCtx, msg: WireMessage, connect
     log('lan_auth: unknown device', { device_id: authResp.deviceId })
     sendAuthResult(ctx, connectionId, false, 'unknown device')
     if (ip) ctx.lan?.recordAuthFailure(ip)
-    ctx.lan?.disconnectClient(connectionId, 4003, 'unknown device')
+    ctx.lan?.disconnectClient(connectionId, LAN_CLOSE_UNKNOWN_DEVICE, 'unknown device')
     return
   }
 
-  const secret = Buffer.from(device.sharedSecret, 'base64')
+  const decoded = decodeSharedSecret(device.sharedSecret)
+  if (!decoded.ok) {
+    // The stored secret is unusable — a DESKTOP-side fault (most commonly a
+    // safeStorage grant lost across a reinstall), not a bad actor. Two things
+    // follow from that attribution:
+    //
+    //  1. No `recordAuthFailure(ip)`. Charging the phone's IP an exponential
+    //     backoff for our own corrupt record is what produced the observed
+    //     "auth-blocked fail_count=2" — the cooldown then obstructed the very
+    //     re-pair that repairs it. A well-formed secret that fails HMAC below
+    //     still gets the penalty; that one is a genuine bad proof.
+    //  2. A distinct close code, so iOS can tell "your pairing is broken,
+    //     re-pair" apart from "unknown device". Both are definitive
+    //     rejections in the 4000-4999 range, but only this one is
+    //     self-repairable without the user re-entering a PIN.
+    error('lan_auth: stored pairing secret unusable, refusing and requesting re-pair', {
+      device_id: authResp.deviceId,
+      device_name: device.name,
+      reason: decoded.reason,
+      detail: describeSecretFailure(decoded.reason),
+      decoded_bytes: decoded.byteLength,
+    })
+    sendAuthResult(ctx, connectionId, false, 'pairing secret unusable')
+    ctx.lan?.disconnectClient(connectionId, LAN_CLOSE_SECRET_UNUSABLE, 'pairing secret unusable')
+    return
+  }
+
+  const secret = decoded.secret
   const valid = verifyAuthProof(pending.nonce, authResp.proof, secret)
   if (!valid) {
     log('lan_auth: invalid proof', { device_id: authResp.deviceId })
     sendAuthResult(ctx, connectionId, false, 'invalid proof')
     if (ip) ctx.lan?.recordAuthFailure(ip)
-    ctx.lan?.disconnectClient(connectionId, 4003, 'invalid proof')
+    ctx.lan?.disconnectClient(connectionId, LAN_CLOSE_UNKNOWN_DEVICE, 'invalid proof')
     return
   }
 

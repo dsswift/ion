@@ -334,11 +334,11 @@ export class EngineControlPlane extends EventEmitter {
     return result
   }
 
-  async submitPrompt(tabId: string, requestId: string, options: RunOptions): Promise<void> {
+  async submitPrompt(tabId: string, requestId: string, options: RunOptions): Promise<{ ok: boolean; error?: string; data?: { accepted?: boolean; alreadyAccepted?: boolean } }> {
     const tab = this.tabs.get(tabId)
     if (!tab) {
       warn('submit_prompt: unknown tab', { tab_id: tabId })
-      return
+      return { ok: false, error: 'Unknown tab' }
     }
 
     log('submit_prompt', { tab_id: tabId, request_id: requestId, model: options.model ?? 'default', session_id: options.sessionId ?? 'new', prompt_count: tab.promptCount + 1 })
@@ -384,15 +384,12 @@ export class EngineControlPlane extends EventEmitter {
         elapsedMs: 0,
         toolCallCount: 0,
       } as EnrichedError)
-      return
+      return { ok: false, error: dirCheck.message }
     }
 
     // A LIVE session keeps the working directory it was started with — the
     // engine pins it at start_session and no wire command changes it. So a
     // prompt whose project path differs from the started directory must
-    // RELOCATE the session, not silently run in the old one. Without this the
-    // `if (!tab.engineSessionStarted)` guard below drops the prompt's directory
-    // on the floor, which is how worktree conversations ended up sharing the
     // base checkout. See engine-control-plane-cwd.ts for the full framing.
     //
     // Awaited: the prompt must land on the reconciled session, not the one it
@@ -435,7 +432,7 @@ export class EngineControlPlane extends EventEmitter {
           elapsedMs: 0,
           toolCallCount: 0,
         } as EnrichedError)
-        return
+        return { ok: false, error: result.error || 'Failed to start engine session' }
       }
     }
 
@@ -468,6 +465,7 @@ export class EngineControlPlane extends EventEmitter {
         toolCallCount: tab.toolCallCount,
       } as EnrichedError)
     }
+    return result
   }
 
   cancel(requestId: string): boolean {
@@ -493,7 +491,7 @@ export class EngineControlPlane extends EventEmitter {
   }
 
   async retry(tabId: string, requestId: string, options: RunOptions): Promise<void> {
-    return this.submitPrompt(tabId, requestId, options)
+    await this.submitPrompt(tabId, requestId, options)
   }
 
   respondToPermission(tabId: string, questionId: string, optionId: string): boolean {

@@ -7,9 +7,10 @@
  */
 
 import { RelayClient } from './relay-client'
-import { log as _log, warn as _warn } from '../logger'
+import { log as _log, warn as _warn, error as _error } from '../logger'
 import type { WireMessage, PairedDevice } from './protocol'
 import type { RelayFailure } from './relay-failure'
+import { decodeSharedSecret, describeSecretFailure } from './device-secret'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('RemoteTransport', msg, fields)
@@ -17,6 +18,10 @@ function log(msg: string, fields?: Record<string, unknown>): void {
 
 function warn(msg: string, fields?: Record<string, unknown>): void {
   _warn('RemoteTransport', msg, fields)
+}
+
+function error(msg: string, fields?: Record<string, unknown>): void {
+  _error('RemoteTransport', msg, fields)
 }
 
 /** The slice of RemoteTransport the relay wiring needs. */
@@ -43,7 +48,23 @@ export function connectRelayForDevice(ctx: RelayWiringCtx, device: PairedDevice)
     return
   }
 
-  ctx.setDeviceSecret(device.id, Buffer.from(device.sharedSecret, 'base64'))
+  const decoded = decodeSharedSecret(device.sharedSecret)
+  if (!decoded.ok) {
+    // Connecting the relay with an unusable secret is the worst of both
+    // worlds: the relay socket authenticates fine (it validates OIDC identity,
+    // not the pairing secret), so the device looks connected, while every
+    // E2E payload inside fails to decrypt. Refuse the connection instead.
+    error('transport: refusing relay connect, pairing secret unusable', {
+      device_id: device.id,
+      device_name: device.name,
+      reason: decoded.reason,
+      detail: describeSecretFailure(decoded.reason),
+      decoded_bytes: decoded.byteLength,
+    })
+    return
+  }
+
+  ctx.setDeviceSecret(device.id, decoded.secret)
 
   const relay = new RelayClient({
     relayUrl: ctx.relayUrl,

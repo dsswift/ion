@@ -257,7 +257,7 @@ export class EngineBridge extends EventEmitter {
    * Treat external callers as a code-review concern, not a compile-time
    * one.
    */
-  _sendWithResult(msg: any): Promise<{ ok: boolean; error?: string }> {
+  _sendWithResult<T = unknown>(msg: any): Promise<{ ok: boolean; error?: string; data?: T }> {
     const requestId = `bridge-${++this.requestCounter}-${Date.now()}`
     msg.requestId = requestId
 
@@ -273,7 +273,7 @@ export class EngineBridge extends EventEmitter {
       this.requestCallbacks.set(requestId, (result) => {
         clearTimeout(timer)
         this.consecutiveTimeouts = 0
-        resolve({ ok: result.ok, error: result.error })
+        resolve({ ok: result.ok, error: result.error, data: result.data as T })
       })
 
       this._send(msg)
@@ -341,12 +341,12 @@ export class EngineBridge extends EventEmitter {
     return entry ? { ...entry.config } : undefined
   }
 
-  async sendPrompt(key: string, text: string, model?: string, appendSystemPrompt?: string, imageAttachments?: ImageAttachmentPayload[], implementationPhase?: boolean, enterPlanModeDescription?: string, planModeSparseReminder?: string, planFilePath?: string, bashAllowlistAdditionsForThisPrompt?: string[], thinkingEffort?: string, resolveSlash?: boolean, clientWorkspaceContext?: ClientWorkspaceContext): Promise<{ ok: boolean; error?: string }> {
+  async sendPrompt(key: string, text: string, model?: string, appendSystemPrompt?: string, imageAttachments?: ImageAttachmentPayload[], implementationPhase?: boolean, enterPlanModeDescription?: string, planModeSparseReminder?: string, planFilePath?: string, bashAllowlistAdditionsForThisPrompt?: string[], thinkingEffort?: string, resolveSlash?: boolean, clientWorkspaceContext?: ClientWorkspaceContext, deliveryId?: string): Promise<{ ok: boolean; error?: string; data?: { accepted?: boolean; alreadyAccepted?: boolean } }> {
     // Message construction and the diagnostic log line live in
     // engine-bridge-prompts.ts so this file stays under the 600-line cap
     // as the send_prompt wire surface grows. See that sibling for the
     // per-field omitempty pattern and the bash-additions log convention.
-    const args = { key, text, model, appendSystemPrompt, imageAttachments, implementationPhase, enterPlanModeDescription, planModeSparseReminder, planFilePath, bashAllowlistAdditionsForThisPrompt, thinkingEffort, resolveSlash, clientWorkspaceContext }
+    const args = { key, text, model, appendSystemPrompt, imageAttachments, implementationPhase, enterPlanModeDescription, planModeSparseReminder, planFilePath, bashAllowlistAdditionsForThisPrompt, thinkingEffort, resolveSlash, clientWorkspaceContext, deliveryId }
     log(buildSendPromptLogLine(args))
     await this.connect()
     return this._sendWithResult(buildSendPromptMessage(args))

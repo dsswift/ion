@@ -30,6 +30,7 @@ import type { EngineBridge } from './engine-bridge'
 export interface SendResult {
   ok: boolean
   error?: string
+  data?: { accepted?: boolean; alreadyAccepted?: boolean }
 }
 
 /**
@@ -57,6 +58,7 @@ export function bridgeSendAdapter(bridge: EngineBridge) {
       opts.thinkingEffort,
       opts.resolveSlash,
       opts.clientWorkspaceContext,
+      opts.deliveryId,
     )
 }
 

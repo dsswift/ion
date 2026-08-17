@@ -557,6 +557,7 @@ export type RemoteEvent =
   // the full plan body or to build the copy payload. hasMore=true signals
   // more data available at offset+content.length. content is UTF-8 text.
   | { type: 'desktop_plan_content'; questionId: string; planFilePath: string; offset: number; content: string; totalBytes: number; hasMore: boolean }
+  | { type: 'desktop_prompt_result'; tabId: string; clientMsgId: string; status: 'accepted' | 'rejected'; error?: string }
 
 // ─── Envelope / auth / pairing types ───
 // RelayControlMessage, MAX_WIRE_FRAME_BYTES, WireMessage, AuthChallenge,
@@ -564,6 +565,11 @@ export type RemoteEvent =
 // moved to protocol-envelope.ts at the 600-line cap split; re-exported so
 // existing import paths remain valid.
 export { MAX_WIRE_FRAME_BYTES } from './protocol-envelope'
+export {
+  LAN_CLOSE_UNPAIR,
+  LAN_CLOSE_UNKNOWN_DEVICE,
+  LAN_CLOSE_SECRET_UNUSABLE,
+} from './protocol-envelope'
 export type {
   RelayControlMessage,
   WireMessage,

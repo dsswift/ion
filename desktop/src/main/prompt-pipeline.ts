@@ -348,6 +348,7 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
       broadcast(IPC.REMOTE_ENGINE_PROMPT, {
         tabId: p.tabId,
         text: p.text,
+        reqId: p.reqId,
         appendSystemPrompt: p.appendSystemPrompt,
         imageAttachments: p.imageAttachments,
         // Forward raw attachments so the renderer's remoteEnginePromptHandler

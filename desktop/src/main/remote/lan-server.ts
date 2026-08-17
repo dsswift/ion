@@ -34,6 +34,8 @@ export interface LANServerOptions {
    * just its own process.
    */
   advertise?: boolean
+  /** Stable desktop hardware identity for Bonjour TXT record advertisement. */
+  desktopId?: string
 }
 
 /**
@@ -73,6 +75,7 @@ export class LANServer extends EventEmitter {
     this.bonjour = new BonjourAdvertiser({
       port: this.port,
       advertise: options.advertise !== false,
+      desktopId: options.desktopId,
     })
   }
 
@@ -326,6 +329,7 @@ export class LANServer extends EventEmitter {
             publicKey: msg.publicKey,
             deviceName: msg.deviceName,
             recovery: !!msg.recovery,
+            mobileDeviceId: msg.mobileDeviceId || undefined,
             respond: (response: Record<string, unknown>) => {
               // A successful pairing (response carries the desktop public key)
               // proves the peer at this IP is legitimate — clear any auth

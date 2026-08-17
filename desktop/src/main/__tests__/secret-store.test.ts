@@ -265,6 +265,41 @@ describe('safeStorage encryption (tier 1)', () => {
     mockIsPackaged = false
     expect(decryptFromDisk(encrypted)).toBe('')
   })
+
+  // Regression: a v1 value that safeStorage is AVAILABLE for but cannot
+  // decrypt (the Keychain grant is bound to the code signature, so a desktop
+  // reinstall invalidates it) previously fell through a bare `catch { return
+  // value }` and handed the CIPHERTEXT back as though it were plaintext.
+  //
+  // That was undetectable downstream: `Buffer.from('enc:v1:…', 'base64')` does
+  // not throw — Node's base64 decoder silently skips characters outside the
+  // alphabet — so a paired device's sharedSecret decoded to a wrong-length,
+  // wrong-value key. HMAC accepts any key length (LAN auth failed as "invalid
+  // proof") and AES-GCM rejected it ("decryption failed"), with the device
+  // still present and apparently valid in the registry.
+  it('clears a v1 value safeStorage cannot decrypt, never returns ciphertext', () => {
+    // safeStorage is available but this ciphertext is not one it wrote —
+    // exactly the post-reinstall state.
+    const foreign = 'enc:v1:' + Buffer.from('not-a-value-this-keychain-wrote').toString('base64')
+
+    const decrypted = decryptFromDisk(foreign)
+
+    expect(decrypted).toBe('')
+    // The specific defect: the prefixed ciphertext must never come back.
+    expect(decrypted).not.toBe(foreign)
+    expect(decrypted.startsWith('enc:')).toBe(false)
+  })
+
+  it('clears an undecryptable device sharedSecret rather than leaking ciphertext', () => {
+    const foreign = 'enc:v1:' + Buffer.from('stale-keychain-blob').toString('base64')
+
+    const out = decryptSensitiveSettings({
+      pairedDevices: [{ id: 'dev-1', name: 'iPhone', sharedSecret: foreign }],
+    })
+
+    // An empty secret is detectable by the decode guard; ciphertext is not.
+    expect(out.pairedDevices[0].sharedSecret).toBe('')
+  })
 })
 
 // ---------------------------------------------------------------------------

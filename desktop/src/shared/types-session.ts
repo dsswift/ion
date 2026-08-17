@@ -441,6 +441,8 @@ export interface RunOptions {
   appendSystemPrompt?: string
   /** Origin of the prompt — 'remote' skips iOS forwarding (already echoed) */
   source?: 'desktop' | 'remote'
+  /** Stable client delivery identity. Reused on retries to make engine acceptance idempotent. */
+  deliveryId?: string
   /** Max output tokens per LLM turn */
   maxTokens?: number
   /** Extended thinking config (per-session default). See ThinkingConfig. */

@@ -54,6 +54,9 @@ export interface BonjourAdvertiserOptions {
    * mutating the developer's live Bonjour environment.
    */
   advertise: boolean
+  /** Stable desktop hardware identity (IOPlatformUUID) published as a TXT
+   *  record so iOS can identify which desktop it discovered before pairing. */
+  desktopId?: string
 }
 
 /**
@@ -66,6 +69,7 @@ export interface BonjourAdvertiserOptions {
 export class BonjourAdvertiser {
   private port: number
   private advertise: boolean
+  private desktopId: string | undefined
   private dnssdProc: ChildProcess | null = null
   /**
    * True when we killed the dns-sd child ourselves (stop / unadvertise). The
@@ -90,6 +94,7 @@ export class BonjourAdvertiser {
   constructor(options: BonjourAdvertiserOptions) {
     this.port = options.port
     this.advertise = options.advertise
+    this.desktopId = options.desktopId
   }
 
   /** Register the service, sweeping any stale registration of it first. */
@@ -126,11 +131,13 @@ export class BonjourAdvertiser {
     this.respawnScheduled = false
 
     const name = this._serviceName()
-    log('lan_server: bonjour spawning dns-sd', { name, port: this.port })
+    log('lan_server: bonjour spawning dns-sd', { name, port: this.port, desktop_id: this.desktopId })
     try {
-      this.dnssdProc = spawn('/usr/bin/dns-sd', [
-        '-R', name, '_ion._tcp', 'local', String(this.port),
-      ], { stdio: 'pipe' })
+      const dnssdArgs = ['-R', name, '_ion._tcp', 'local', String(this.port)]
+      if (this.desktopId) {
+        dnssdArgs.push(`desktopId=${this.desktopId}`)
+      }
+      this.dnssdProc = spawn('/usr/bin/dns-sd', dnssdArgs, { stdio: 'pipe' })
 
       this.dnssdProc.stdout?.on('data', (data: Buffer) => {
         const text = data.toString().trim()

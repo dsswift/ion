@@ -49,7 +49,11 @@ vi.mock('../crypto', () => ({
 }))
 // The frame-build pipeline (transport-frame-pipeline.ts) imports the pure
 // encrypt primitive from crypto-core, not from crypto — mock it identically.
-vi.mock('../crypto-core', () => ({
+// Partial mock: stub only `encrypt`, keep the real constants. KEY_LENGTH is
+// read by device-secret.ts to validate a stored shared secret, so a total mock
+// makes every device registration throw "No KEY_LENGTH export is defined".
+vi.mock('../crypto-core', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../crypto-core')>()),
   encrypt: (wire: Buffer) => ({ nonce: 'n', ciphertext: Buffer.from(wire).toString('base64') }),
 }))
 

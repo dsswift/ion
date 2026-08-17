@@ -14,7 +14,15 @@ import { RelayClient } from './relay-client'
 import type { RelayFailure } from './relay-failure'
 import { firstRelayFailure, retryAllRelays } from './transport-relay-failure'
 import { LANServer } from './lan-server'
+import { getMachineIdentity } from '../machine-identity'
 import { startLanAuth, handleLanAuthResponse, type LanAuthCtx } from './transport-lan-auth'
+import {
+  addDevice as addDeviceOp,
+  removeDevice as removeDeviceOp,
+  disconnectDevice as disconnectDeviceOp,
+  type DeviceRegistryCtx,
+} from './transport-device-registry'
+import { LAN_CLOSE_UNKNOWN_DEVICE } from './protocol'
 import { log as _log } from '../logger'
 import { RetransmitBuffer, replayRange } from './retransmit-buffer'
 import { InboundDedup } from './transport-dedup'
@@ -203,12 +211,15 @@ export class RemoteTransport extends EventEmitter {
 
   private async _startLan(): Promise<void> {
     log('transport: lan config', { port: this.config.lanPort })
-    this.lan = new LANServer({ port: this.config.lanPort })
+    this.lan = new LANServer({
+      port: this.config.lanPort,
+      desktopId: getMachineIdentity()?.machineId,
+    })
 
     // Raw connection: start auth handshake before emitting peer-connected.
     this.lan.on('raw-client-connected', (_ws: any, connectionId: string) => {
       log('transport: lan raw client connected, auth handshake', { connection_id: connectionId })
-      this._startLanAuth(connectionId)
+      startLanAuth(this._lanAuthCtx(), connectionId)
     })
 
     this.lan.on('client-disconnected', (connectionId: string, code: number, _reason: string) => {
@@ -245,7 +256,7 @@ export class RemoteTransport extends EventEmitter {
       // If not yet authenticated, only accept auth_response messages.
       const deviceId = this.lanDeviceMap.get(connectionId)
       if (!deviceId) {
-        this._handleLanAuthResponse(msg, connectionId)
+        handleLanAuthResponse(this._lanAuthCtx(), msg, connectionId)
         return
       }
       this._handleIncoming(msg, deviceId)
@@ -338,60 +349,48 @@ export class RemoteTransport extends EventEmitter {
 
   /** Add a newly paired device. Creates relay connection and stores secret. */
   addDevice(device: PairedDevice): void {
-    log('transport: adding device', { device_id: device.id, device_name: device.name })
-    const secret = Buffer.from(device.sharedSecret, 'base64')
-    this.deviceSecrets.set(device.id, secret)
-    this._syncWorkerSecrets()
-
-    // Disconnect old relay if exists (channel may have changed on re-pair).
-    const oldRelay = this.relays.get(device.id)
-    if (oldRelay) {
-      oldRelay.disconnect()
-      this.relays.delete(device.id)
-    }
-
-    if (this.config.relayUrl && (this.config.relayApiKey || this.config.getCredential)) {
-      this._connectRelayForDevice(device)
-    }
+    addDeviceOp(this._deviceRegistryCtx(), device)
   }
 
   /** Remove a device. Disconnects relay and LAN client. */
   removeDevice(deviceId: string): void {
-    log('transport: removing device', { device_id: deviceId })
-    const relay = this.relays.get(deviceId)
-    if (relay) {
-      relay.disconnect()
-      this.relays.delete(deviceId)
-    }
-    this.deviceSecrets.delete(deviceId)
-    this._syncWorkerSecrets()
-    this.dedup.remove(deviceId)
-    this.seqs.delete(deviceId)
-    this.inboundEpoch.remove(deviceId)
-    // Buffered frames for an unpaired device are dead weight (up to 2MB +
-    // hundreds of frames each) — the device can never request them again.
-    this.retransmit.clearDevice(deviceId)
-
-    // Disconnect any LAN client for this device.
-    const lanConnectionId = this._getLanConnectionForDevice(deviceId)
-    if (lanConnectionId) {
-      this.lan?.disconnectClient(lanConnectionId, 4003, 'device removed')
-      this.lanDeviceMap.delete(lanConnectionId)
-    }
-
-    this._recomputeState()
+    removeDeviceOp(this._deviceRegistryCtx(), deviceId)
   }
 
   /** Forcibly disconnect a specific device by its deviceId. */
-  disconnectDevice(deviceId: string, code = 4003, reason = 'device revoked'): void {
-    log('transport: disconnecting device', { device_id: deviceId, code, reason })
-    // Disconnect LAN client for this device.
-    const lanConnectionId = this._getLanConnectionForDevice(deviceId)
-    if (lanConnectionId) {
-      this.lan?.disconnectClient(lanConnectionId, code, reason)
-      this.lanDeviceMap.delete(lanConnectionId)
+  disconnectDevice(deviceId: string, code = LAN_CLOSE_UNKNOWN_DEVICE, reason = 'device revoked'): void {
+    disconnectDeviceOp(this._deviceRegistryCtx(), deviceId, code, reason)
+  }
+
+  /** Narrow callback surface the device-registry operations act through. */
+  private _deviceRegistryCtx(): DeviceRegistryCtx {
+    return {
+      deviceSecrets: this.deviceSecrets,
+      syncWorkerSecrets: () => this._syncWorkerSecrets(),
+      disconnectRelay: (deviceId) => {
+        const relay = this.relays.get(deviceId)
+        if (relay) {
+          relay.disconnect()
+          this.relays.delete(deviceId)
+        }
+      },
+      connectRelay: (device) => this._connectRelayForDevice(device),
+      relayConfigured: () =>
+        !!this.config.relayUrl && (!!this.config.relayApiKey || !!this.config.getCredential),
+      clearDeviceState: (deviceId) => {
+        this.dedup.remove(deviceId)
+        this.seqs.delete(deviceId)
+        this.inboundEpoch.remove(deviceId)
+        // Buffered frames for an unpaired device are dead weight (up to 2MB +
+        // hundreds of frames each) — the device can never request them again.
+        this.retransmit.clearDevice(deviceId)
+      },
+      getLanConnectionForDevice: (deviceId) => this._getLanConnectionForDevice(deviceId),
+      disconnectLanClient: (connectionId, code, reason) =>
+        this.lan?.disconnectClient(connectionId, code, reason),
+      forgetLanConnection: (connectionId) => { this.lanDeviceMap.delete(connectionId) },
+      recomputeState: () => this._recomputeState(),
     }
-    this._recomputeState()
   }
 
   /** Return device IDs of all currently connected devices. */
@@ -589,11 +588,4 @@ export class RemoteTransport extends EventEmitter {
     }
   }
 
-  private _startLanAuth(connectionId: string): void {
-    startLanAuth(this._lanAuthCtx(), connectionId)
-  }
-
-  private _handleLanAuthResponse(msg: WireMessage, connectionId: string): void {
-    handleLanAuthResponse(this._lanAuthCtx(), msg, connectionId)
-  }
 }

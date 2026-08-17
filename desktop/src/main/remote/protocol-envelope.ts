@@ -84,6 +84,37 @@ export interface AuthResult {
 
 export type AuthMessage = AuthChallenge | AuthResponse | AuthResult
 
+// ─── LAN WebSocket close codes ───
+//
+// Application close codes (4000-4999) are DEFINITIVE identity verdicts: iOS
+// classifies any code in this range as `.rejected` rather than `.transient`
+// (see LANAuthOutcome.resolve). Protocol codes outside the range (e.g. 1008
+// auth cooldown) carry no verdict and are treated as transient. Adding a code
+// here is a desktop↔iOS wire change and must ship with its iOS counterpart in
+// the same PR (lockstep).
+
+/** iOS-initiated unpair. Sent by the client, not the desktop. */
+export const LAN_CLOSE_UNPAIR = 4000
+
+/**
+ * The desktop does not recognise this device, or has revoked it. Terminal:
+ * the client must pair afresh (with a PIN); there is nothing to recover.
+ */
+export const LAN_CLOSE_UNKNOWN_DEVICE = 4003
+
+/**
+ * The desktop KNOWS this device but cannot use its stored pairing secret —
+ * the record decrypted to ciphertext or to a non-32-byte value, typically
+ * because the OS keychain grant was lost across a desktop reinstall.
+ *
+ * Distinct from `LAN_CLOSE_UNKNOWN_DEVICE` because the fault is on the desktop
+ * side and is self-repairable: the desktop still holds the device's
+ * `mobileDeviceId`, so the client can perform a codeless recovery re-pair over
+ * the LAN and restore the connection with no user action. iOS routes this code
+ * to that repair rather than to the "pairing rejected" screen.
+ */
+export const LAN_CLOSE_SECRET_UNUSABLE = 4004
+
 // ─── Paired device record ───
 
 export interface PairedDevice {
@@ -96,6 +127,9 @@ export interface PairedDevice {
   sharedSecret: string
   /** APNs device token for push notifications */
   apnsToken?: string
+  /** Stable hardware UUID from the iOS device (IOPlatformUUID equivalent).
+   *  Used for recovery re-pair dedup instead of the mutable deviceName. */
+  mobileDeviceId?: string
   /**
    * Per-desktop display override cached on the iOS side. Not authoritative —
    * the desktop owns the value via the top-level `remoteDisplay` settings
