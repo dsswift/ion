@@ -29,7 +29,32 @@ extension TransportManager {
             if state == .lanPreferred, lan.isConnected {
                 try await lan.send(data: wireData)
             } else if let relay, relay.isConnected {
-                try await relay.send(data: wireData)
+                switch relayCapabilities.ackMode {
+                case .strict:
+                    // A socket write only proves URLSession accepted bytes. Wait
+                    // for the relay's sequence-correlated forward outcome.
+                    relayDeliveryAcks.begin(sequence: wire.seq)
+                    let receipt = Task { await relayDeliveryAcks.wait(for: wire.seq) }
+                    do {
+                        try await relay.send(data: wireData)
+                        let outcome = try await withSendDeadline(seconds: transportSendDeadlineSeconds) {
+                            await receipt.value
+                        }
+                        switch outcome {
+                        case .forwarded:
+                            break
+                        case .unavailable(let reason):
+                            throw TransportError.relayPeerUnavailable(reason)
+                        }
+                    } catch {
+                        relayDeliveryAcks.cancel(sequence: wire.seq, reason: "send_failed")
+                        receipt.cancel()
+                        throw error
+                    }
+
+                case .legacy, .unavailable:
+                    try await relay.send(data: wireData)
+                }
             } else {
                 throw TransportError.noTransportAvailable
             }

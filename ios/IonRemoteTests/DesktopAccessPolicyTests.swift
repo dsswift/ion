@@ -42,6 +42,28 @@ final class DesktopAccessPolicyTests: XCTestCase {
         XCTAssertTrue(DesktopAccessPolicy.recoveryMessage(for: record).contains("repair"))
     }
 
+    func testVerifyingAllowsViewingData() {
+        let record = DesktopAccessRecord(status: .verifying, reason: .none, changedAt: now, lastAuthorizedAt: now)
+        XCTAssertTrue(DesktopAccessPolicy.mayViewDesktopData(record))
+        XCTAssertTrue(DesktopAccessPolicy.mayNavigate(record))
+        XCTAssertFalse(DesktopAccessPolicy.mayMutate(record))
+        XCTAssertTrue(DesktopAccessPolicy.isVerifying(record))
+    }
+
+    func testVerifyingNormalizesToTransientOnLaunch() {
+        let record = DesktopAccessRecord(status: .verifying, reason: .none, changedAt: now, lastAuthorizedAt: now)
+        let normalized = DesktopAccessPolicy.normalizedForLaunch(record)
+        XCTAssertEqual(normalized.status, .transientlyDisconnected)
+        XCTAssertEqual(normalized.lastAuthorizedAt, now)
+    }
+
+    func testIsVerifyingFalseForOtherStatuses() {
+        XCTAssertFalse(DesktopAccessPolicy.isVerifying(nil))
+        XCTAssertFalse(DesktopAccessPolicy.isVerifying(.startup()))
+        let authorized = DesktopAccessRecord(status: .authorized, reason: .none, changedAt: now, lastAuthorizedAt: now)
+        XCTAssertFalse(DesktopAccessPolicy.isVerifying(authorized))
+    }
+
     func testNoTimeThresholdChangesAuthority() {
         let old = DesktopAccessRecord(status: .transientlyDisconnected, reason: .none, changedAt: .distantPast, lastAuthorizedAt: .distantPast)
         XCTAssertTrue(DesktopAccessPolicy.mayViewDesktopData(old), "Age is disclosure, not authority")

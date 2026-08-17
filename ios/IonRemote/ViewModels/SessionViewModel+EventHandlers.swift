@@ -50,6 +50,9 @@ extension SessionViewModel {
         case .lanAuthRejected:
             handleLANAuthRejected()
 
+        case .lanSecretUnusable:
+            handleLANSecretUnusable()
+
         case .snapshot(let snapshotTabs, let recentDirs, let snapshotGroupMode, let snapshotGroups, let snapshotPreferredModel, let snapshotEngineDefaultModel, let snapshotAvailableModels, let snapshotCustomName, let snapshotCustomIcon, let snapshotRemoteDisplayUpdatedAt, let snapshotResources):
             handleSnapshot(snapshotTabs: snapshotTabs, recentDirs: recentDirs, groupMode: snapshotGroupMode, groups: snapshotGroups, preferredModel: snapshotPreferredModel, engineDefaultModel: snapshotEngineDefaultModel, availableModels: snapshotAvailableModels)
             applySnapshotRemoteDisplay(customName: snapshotCustomName, customIcon: snapshotCustomIcon, updatedAt: snapshotRemoteDisplayUpdatedAt)
@@ -575,6 +578,9 @@ extension SessionViewModel {
             // handleContextBreakdown lives in SessionViewModel+EngineEvents.swift
             // to keep this file under the 600-line cap.
             handleContextBreakdown(tabId: tabId, instanceId: instanceId, payload: payload)
+
+        case .promptResult(let tabId, let clientMsgId, let status, let error):
+            handlePromptResult(tabId: tabId, clientMsgId: clientMsgId, status: status, error: error)
         }
     }
 

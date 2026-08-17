@@ -39,6 +39,12 @@ extension SessionViewModel {
     @MainActor
     func lockDesktop(deviceId: String, status: DesktopAccessRecord.Status = .authenticationRequired, reason: DesktopAccessRecord.Reason, source: String) {
         let prior = pairedDevices.first(where: { $0.id == deviceId })?.desktopAccess
+        if prior?.status == .verifying && reason != .wrongAccount {
+            DiagnosticLog.log("lock suppressed during verification", tag: "session.access", fields: [
+                "device": String(deviceId.prefix(8)), "reason": reason.rawValue, "source": source
+            ])
+            return
+        }
         setDesktopAccess(DesktopAccessRecord(status: status, reason: reason, changedAt: Date(), lastAuthorizedAt: prior?.lastAuthorizedAt), deviceId: deviceId, source: source)
         if deviceId == activeDevice?.id {
             // ContentView replaces the whole desktop-owned subtree, including
@@ -107,6 +113,10 @@ extension SessionViewModel {
 
     var activeDesktopIsLocked: Bool {
         !mayViewActiveDesktopData
+    }
+
+    var activeDesktopIsVerifying: Bool {
+        DesktopAccessPolicy.isVerifying(activeDevice?.desktopAccess)
     }
 
 

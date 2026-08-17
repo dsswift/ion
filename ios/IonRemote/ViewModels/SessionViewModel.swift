@@ -89,6 +89,20 @@ final class SessionViewModel {
 
     var tabs: [RemoteTabState] = []
     var tabIds: Set<String> = []
+    /// True once a desktop tab snapshot has been applied in this app run.
+    ///
+    /// Gates stale-destination detection. Before the first snapshot, an empty
+    /// `tabIds` means "we have not been told yet", NOT "the tab is gone" — and
+    /// the navigation stack can restore before that snapshot lands. Without
+    /// this flag a validity check would eject the user from a live conversation
+    /// during the pre-snapshot window, which is a worse failure than the stale
+    /// shell it replaces and looks identical from the outside.
+    ///
+    /// Deliberately not derived from `connectionState`: that flips `.connected`
+    /// on reconnect paths too, and on a reconnect it can be `.connected` while
+    /// `tabs` still holds the previous session's list. Only an applied snapshot
+    /// makes tab absence authoritative.
+    var hasAppliedTabSnapshot = false
     /// Mirror of each tab's conversation message count. Kept in sync by the
     /// unified conversation accessors (SessionViewModel+Conversation.swift) and
     /// mutateEngineInstance. Views observe this for scroll-to-bottom triggers.
@@ -290,6 +304,19 @@ final class SessionViewModel {
     /// the UI offers "Switch Account" instead of spinning a backoff ladder.
     var relayIdentityMismatch: Set<String> = []
 
+    /// Automatic pairing-repair attempts made per device id, for the LAN
+    /// close-4004 path (`handleLANSecretUnusable`).
+    ///
+    /// The repair runs with no user interaction, so an unbounded retry would be
+    /// an invisible loop: the phone would keep rediscovering the desktop and
+    /// re-pairing while the user sees only a stalled connection. The counter
+    /// caps that, after which the desktop is locked and manual re-pairing is
+    /// surfaced. A successful repair clears the entry.
+    var pairingRepairAttempts: [String: Int] = [:]
+
+    /// Cap on consecutive automatic pairing repairs for one device id.
+    static let maxPairingRepairAttempts = 3
+
     /// Blocks deferred until the transport reaches `.connected` (i.e. the
     /// first snapshot has arrived and confirmed the round-trip works).
     /// Populated by `runWhenConnected(_:)` and drained inside
@@ -437,6 +464,7 @@ final class SessionViewModel {
     // MARK: - Connection Quality
 
     let connectionQuality = ConnectionQuality()
+    let connectionHealth = ConnectionHealth()
 
     // MARK: - Transport
 
@@ -468,73 +496,6 @@ final class SessionViewModel {
     /// Matches how `resolveNewConversationAction` reads `defaultId`.
     var defaultEngineProfileId: String {
         (desktopSettings?.currentValue(for: "defaultEngineProfileId")?.value as? String) ?? ""
-    }
-
-    /// Tabs grouped by working directory basename, preserving original order within each group.
-    /// Duplicate basenames are disambiguated with the parent directory name.
-    var tabsByDirectory: [(directory: String, fullPath: String, tabs: [RemoteTabState])] {
-        var order: [String] = []
-        var groups: [String: [RemoteTabState]] = [:]
-        for tab in tabs {
-            let key = tab.workingDirectory
-            if groups[key] == nil {
-                order.append(key)
-            }
-            groups[key, default: []].append(tab)
-        }
-
-        var basenameCounts: [String: Int] = [:]
-        for path in order {
-            let base = (path as NSString).lastPathComponent
-            basenameCounts[base, default: 0] += 1
-        }
-
-        return order.map { fullPath in
-            let base = (fullPath as NSString).lastPathComponent
-            let label: String
-            if base.isEmpty || fullPath == "/" || fullPath == "~" {
-                label = "Home"
-            } else if basenameCounts[base, default: 0] > 1 {
-                let parent = ((fullPath as NSString).deletingLastPathComponent as NSString).lastPathComponent
-                label = "\(base) (\(parent))"
-            } else {
-                label = base
-            }
-            return (directory: label, fullPath: fullPath, tabs: groups[fullPath]!)
-        }
-    }
-
-    /// Groups for display: manual groups when desktop is in manual mode,
-    /// otherwise auto-grouped by working directory.
-    /// Each tuple: (label, identifier for ForEach, icon name, directory for new-tab, tabs).
-    var displayGroups: [(label: String, id: String, icon: String, directory: String?, tabs: [RemoteTabState])] {
-        if tabGroupMode == "manual", !tabGroups.isEmpty {
-            return tabsByManualGroup
-        }
-        return tabsByDirectory.map { group in
-            (label: group.directory, id: group.fullPath, icon: "folder", directory: group.fullPath, tabs: group.tabs)
-        }
-    }
-
-    /// Tabs grouped by manual group definitions from the desktop.
-    private var tabsByManualGroup: [(label: String, id: String, icon: String, directory: String?, tabs: [RemoteTabState])] {
-        let sorted = tabGroups.sorted { $0.order < $1.order }
-        let defaultGroup = sorted.first(where: \.isDefault) ?? sorted.first
-        var groupMap: [String: [RemoteTabState]] = [:]
-        for g in sorted { groupMap[g.id] = [] }
-        for tab in tabs {
-            if let gid = tab.groupId, groupMap[gid] != nil {
-                groupMap[gid]!.append(tab)
-            } else if let dg = defaultGroup {
-                groupMap[dg.id, default: []].append(tab)
-            }
-        }
-        return sorted.compactMap { g in
-            let gTabs = groupMap[g.id] ?? []
-            guard !gTabs.isEmpty else { return nil }
-            let dir = gTabs.first?.workingDirectory
-            return (label: g.label, id: g.id, icon: "tray.2.fill", directory: dir, tabs: gTabs)
-        }
     }
 
     // MARK: - Voice

@@ -157,7 +157,97 @@ final class NormalizedEventStreamTests: XCTestCase {
         }
     }
 
-    // MARK: - Prompt command
+    // MARK: - Prompt result
+
+    func testDecodePromptResultAccepted() throws {
+        let json = """
+        {"type":"desktop_prompt_result","tabId":"t1","clientMsgId":"msg-abc","status":"accepted"}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .promptResult(let tabId, let clientMsgId, let status, let error) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(clientMsgId, "msg-abc")
+            XCTAssertEqual(status, "accepted")
+            XCTAssertNil(error)
+        } else {
+            XCTFail("Expected promptResult, got \(event)")
+        }
+    }
+
+    func testDecodePromptResultRejected() throws {
+        let json = """
+        {"type":"desktop_prompt_result","tabId":"t2","clientMsgId":"msg-xyz","status":"rejected","error":"no main window"}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .promptResult(let tabId, let clientMsgId, let status, let error) = event {
+            XCTAssertEqual(tabId, "t2")
+            XCTAssertEqual(clientMsgId, "msg-xyz")
+            XCTAssertEqual(status, "rejected")
+            XCTAssertEqual(error, "no main window")
+        } else {
+            XCTFail("Expected promptResult, got \(event)")
+        }
+    }
+
+    func testRoundTripPromptResult() throws {
+        let original = RemoteEvent.promptResult(tabId: "t5", clientMsgId: "msg-rt", status: "rejected", error: "timeout")
+        let data = try encoder.encode(original)
+        let decoded = try decoder.decode(RemoteEvent.self, from: data)
+        if case .promptResult(let tabId, let clientMsgId, let status, let error) = decoded {
+            XCTAssertEqual(tabId, "t5")
+            XCTAssertEqual(clientMsgId, "msg-rt")
+            XCTAssertEqual(status, "rejected")
+            XCTAssertEqual(error, "timeout")
+        } else {
+            XCTFail("Round-trip promptResult failed")
+        }
+    }
+
+    @MainActor
+    func testPromptResultEventUsesFullDeliveryHandler() {
+        let vm = SessionViewModel()
+        vm.tabs = [RemoteTabState(
+            id: "t-delivery", title: "Delivery", customTitle: nil, status: .connecting,
+            workingDirectory: "/tmp", permissionMode: .auto, thinkingEffort: nil,
+            permissionQueue: [], hasEngineExtension: false
+        )]
+        var optimistic = Message(id: "msg-delivery", role: .user, content: "hello", timestamp: 1)
+        optimistic.deliveryState = .queued
+        vm.setConversationMessages(tabId: "t-delivery", [optimistic])
+
+        vm.handleEvent(.promptResult(
+            tabId: "t-delivery", clientMsgId: "msg-delivery", status: "rejected", error: "desktop unavailable"
+        ))
+
+        guard case .rejected(let error)? = vm.conversationMessages("t-delivery").first?.deliveryState else {
+            return XCTFail("rejected prompt result did not update delivery state")
+        }
+        XCTAssertEqual(error, "desktop unavailable")
+        XCTAssertEqual(vm.tabs.first?.status, .idle)
+        XCTAssertTrue(vm.toastMessages.contains { $0.style == .error && $0.title == "Message not delivered" })
+    }
+
+    @MainActor
+    func testPromptResultAcceptedClearsDeliveryIndicator() {
+        let vm = SessionViewModel()
+        vm.tabs = [RemoteTabState(
+            id: "t-accepted", title: "Accepted", customTitle: nil, status: .connecting,
+            workingDirectory: "/tmp", permissionMode: .auto, thinkingEffort: nil,
+            permissionQueue: [], hasEngineExtension: false
+        )]
+        var optimistic = Message(id: "msg-accepted", role: .user, content: "hello", timestamp: 1)
+        optimistic.deliveryState = .queued
+        vm.setConversationMessages(tabId: "t-accepted", [optimistic])
+
+        vm.handleEvent(.promptResult(tabId: "t-accepted", clientMsgId: "msg-accepted", status: "accepted", error: nil))
+
+        guard case .accepted? = vm.conversationMessages("t-accepted").first?.deliveryState else {
+            return XCTFail("accepted prompt result did not update delivery state")
+        }
+        XCTAssertEqual(vm.tabs.first?.status, .connecting)
+        XCTAssertTrue(vm.toastMessages.isEmpty)
+    }
+
 
     func testEncodePrompt() throws {
         let cmd = RemoteCommand.prompt(tabId: "t1", text: "What is this?")

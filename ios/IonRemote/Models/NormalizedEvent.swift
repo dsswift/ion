@@ -74,6 +74,14 @@ enum RemoteEvent: Sendable {
     /// transport — the ViewModel routes to the pairing screen (.authFailed)
     /// without wiping pairedDevices, and the transport stops retrying.
     case lanAuthRejected
+    /// Synthesized by TransportManager when the desktop refuses LAN auth with
+    /// close 4004: it KNOWS this device but cannot use its stored pairing
+    /// secret (typically its OS keychain grant was lost across a reinstall,
+    /// leaving the stored secret undecryptable). Unlike `lanAuthRejected` the
+    /// pairing is NOT dead — the desktop still holds this phone's
+    /// `mobileDeviceId`, so the ViewModel runs a codeless recovery re-pair over
+    /// the LAN and reconnects with no PIN and no user action.
+    case lanSecretUnusable
     /// Heartbeat from the desktop with sender timestamp and queue depth.
     case heartbeat(senderTs: Double, buffered: Int)
     /// Answer to a requestResend whose frame range was evicted from the
@@ -511,6 +519,12 @@ enum RemoteEvent: Sendable {
         contextBreakdown: ContextBreakdownPayload
     )
 
+    /// Prompt acceptance acknowledgement (desktop_prompt_result). Sent by the
+    /// desktop after `window.ion.prompt` resolves (accepted) or an early
+    /// failure prevents delivery (rejected). iOS correlates via clientMsgId
+    /// to update the optimistic user bubble's delivery state.
+    case promptResult(tabId: String, clientMsgId: String, status: String, error: String?)
+
     // MARK: - Codable keys
 
     enum TypeKey: String, Codable {
@@ -535,6 +549,7 @@ enum RemoteEvent: Sendable {
         case peerDisconnected = "peer_disconnected"
         case transportReconnecting = "transport_reconnecting"
         case lanAuthRejected = "lan_auth_rejected"
+        case lanSecretUnusable = "lan_secret_unusable"
         case heartbeat = "desktop_heartbeat"
         case resendUnavailable = "desktop_resend_unavailable"
         case error = "desktop_error"
@@ -633,6 +648,7 @@ enum RemoteEvent: Sendable {
         /// from the engine's context analysis. Lockstep parity with engine_context_breakdown
         /// (plan modest-leaping-waffle.md §9).
         case desktopContextBreakdown = "desktop_context_breakdown"
+        case promptResult = "desktop_prompt_result"
     }
 
     // CodingKeys and the init(from:)/encode(to:) requirements must live in
@@ -653,6 +669,9 @@ enum RemoteEvent: Sendable {
         // desktop_tab_created echo of the iOS create command's correlation id,
         // consumed by the confirm-or-resend delivery loop (create-tab reliability).
         case clientCmdId
+        // desktop_prompt_result correlation id — echoes the clientMsgId the iOS
+        // client sent on desktop_prompt so the delivery state can be updated.
+        case clientMsgId
         case runCostUsd, totalCostUsd, groupId  // desktop_tab_meta delta fields (title is already below); runCostUsd is canonical, totalCostUsd is deprecated compat alias
         // desktop_tab_meta volatile conversation fields (B6-1): pushed by the
         // desktop's poll tick when they change so the full snapshot need not

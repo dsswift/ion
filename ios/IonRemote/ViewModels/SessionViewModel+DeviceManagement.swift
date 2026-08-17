@@ -196,9 +196,14 @@ extension SessionViewModel {
             throw error
         }
         relayIdentityMismatch.remove(device.id)
-        DiagnosticLog.log("oidc account switch succeeded", tag: "session.relay", fields: [
+        DiagnosticLog.log("oidc account switch succeeded, entering verification", tag: "session.relay", fields: [
             "device": String(device.id.prefix(8))
         ])
+        setDesktopAccess(DesktopAccessRecord(
+            status: .verifying, reason: .none,
+            changedAt: Date(),
+            lastAuthorizedAt: pairedDevices.first(where: { $0.id == device.id })?.desktopAccess?.lastAuthorizedAt
+        ), deviceId: device.id, source: "switch_account_verifying")
         if device.id == activeDevice?.id {
             softReconnect()
         }

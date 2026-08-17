@@ -7,7 +7,9 @@ struct DesktopAccessRecoveryView: View {
     @Environment(\.appTheme) private var theme
     @State private var showSettings = false
     @State private var showAuthenticationContext = false
+    @State private var switching = false
     @State private var switchError: String?
+    @State private var repairing = false
 
     var body: some View {
         NavigationStack {
@@ -37,11 +39,29 @@ struct DesktopAccessRecoveryView: View {
                 Button {
                     showAuthenticationContext = true
                 } label: {
-                    Label(viewModel.activeDevice?.oidcIssuerHost == "login.microsoftonline.com" ? "Continue to Microsoft" : "Continue to Sign In", systemImage: "person.crop.circle.badge.plus")
-                        .frame(maxWidth: .infinity)
+                    HStack {
+                        Label(viewModel.activeDevice?.oidcIssuerHost == "login.microsoftonline.com" ? "Continue to Microsoft" : "Continue to Sign In", systemImage: "person.crop.circle.badge.plus")
+                        if switching { Spacer(); ProgressView() }
+                    }
+                    .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(switching || repairing)
                 .padding(.horizontal, 28) // design-geometry: recovery card inset between sectionGap and screenInset
+                if viewModel.activeDevice?.desktopAccess?.reason == .wrongAccount {
+                    Button {
+                        repairActivePairing()
+                    } label: {
+                        HStack {
+                            Label("Repair Pairing", systemImage: "arrow.triangle.2.circlepath")
+                            if repairing { Spacer(); ProgressView() }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(switching || repairing)
+                    .padding(.horizontal, 28) // design-geometry: recovery card inset between sectionGap and screenInset
+                }
                 Button("Open Settings") { showSettings = true }
                 if viewModel.pairedDevices.count > 1 {
                     Menu("Switch Desktop") {
@@ -66,11 +86,12 @@ struct DesktopAccessRecoveryView: View {
                         record: viewModel.activeDesktopAccess,
                         onContinue: {
                             showAuthenticationContext = false
+                            switching = true
                             Task {
+                                defer { switching = false }
                                 do {
                                     try await viewModel.switchOIDCAccount(device: device)
                                 } catch OIDCTokenError.interactiveCancelled {
-                                    // User chose not to continue in the provider sheet.
                                     DiagnosticLog.log("recovery account switch cancelled", tag: "view.desktop_access", fields: ["device": String(device.id.prefix(8))])
                                 } catch {
                                     DiagnosticLog.log("recovery account switch failed", tag: "view.desktop_access", level: .error, fields: ["device": String(device.id.prefix(8)), "error": error.localizedDescription])
@@ -84,6 +105,18 @@ struct DesktopAccessRecoveryView: View {
                         }
                     )
                 }
+            }
+        }
+    }
+
+    private func repairActivePairing() {
+        guard let device = viewModel.activeDevice else { return }
+        repairing = true
+        Task {
+            defer { repairing = false }
+            let success = await viewModel.repairPairing(device: device)
+            if !success {
+                switchError = "Could not find this desktop on the local network. Make sure both devices are on the same Wi-Fi network."
             }
         }
     }

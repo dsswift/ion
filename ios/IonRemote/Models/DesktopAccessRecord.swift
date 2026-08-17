@@ -11,6 +11,7 @@ struct DesktopAccessRecord: Codable, Sendable, Equatable {
     enum Status: String, Codable, Sendable {
         case startup
         case authorized
+        case verifying
         case transientlyDisconnected
         case authenticationRequired
         case rejected

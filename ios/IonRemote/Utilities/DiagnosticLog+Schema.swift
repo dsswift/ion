@@ -20,12 +20,14 @@ extension DiagnosticLog {
         let msg: String
         let session_id: String?
         let conversation_id: String?
+        let pairing_id: String?
         let fields: [String: String]
 
         enum CodingKeys: String, CodingKey {
             case ts, level, component, tag, msg
             case session_id
             case conversation_id
+            case pairing_id
             case fields
         }
 
@@ -45,6 +47,9 @@ extension DiagnosticLog {
             }
             if let conversation_id, !conversation_id.isEmpty {
                 try c.encode(conversation_id, forKey: .conversation_id)
+            }
+            if let pairing_id, !pairing_id.isEmpty {
+                try c.encode(pairing_id, forKey: .pairing_id)
             }
             // fields is REQUIRED and always present ({} when empty).
             try c.encode(fields, forKey: .fields)
@@ -70,6 +75,7 @@ extension DiagnosticLog {
             msg: entry.message,
             session_id: currentSessionId,
             conversation_id: currentConversationId,
+            pairing_id: currentPairingId,
             fields: merged
         )
         guard let data = try? jsonEncoder.encode(line),
@@ -97,6 +103,15 @@ extension DiagnosticLog {
     static func setConversationId(_ id: String?) {
         shared.writeQueue.async { [weak shared] in
             shared?._setConversationIdOnQueue(id)
+        }
+    }
+
+    /// Set the active pairing id (the paired desktop's device id) stamped onto
+    /// subsequent log lines. Pass nil to clear (e.g. on disconnect).
+    /// Omitted-when-nil at emit time.
+    static func setPairingId(_ id: String?) {
+        shared.writeQueue.async { [weak shared] in
+            shared?._setPairingIdOnQueue(id)
         }
     }
 }

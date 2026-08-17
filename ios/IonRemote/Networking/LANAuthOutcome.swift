@@ -21,9 +21,25 @@ enum LANAuthOutcome: Equatable, Sendable {
     /// with `success: false`, or an application close code (4000–4999, e.g.
     /// 4003 "unknown device" / "device removed").
     case rejected
+    /// The desktop KNOWS this device but cannot use its stored pairing secret
+    /// (close 4004). The fault is on the desktop side — typically its OS
+    /// keychain grant was lost across a reinstall, leaving the stored secret
+    /// undecryptable — and it is self-repairable: the desktop still holds this
+    /// phone's `mobileDeviceId`, so a codeless recovery re-pair over the LAN
+    /// restores the connection with no PIN and no user action.
+    ///
+    /// Deliberately NOT folded into `.rejected`: that path locks the desktop
+    /// and sends the user to the pairing screen, which would demand manual
+    /// re-pairing for a fault the two devices can resolve between themselves.
+    case secretUnusable
     /// No verdict from the desktop: socket error, auth-cooldown close (1008),
     /// the auth timeout, or the stream ending without an `auth_result`.
     case transient
+
+    /// Application close code for "known device, unusable stored secret".
+    /// Mirrors `LAN_CLOSE_SECRET_UNUSABLE` in the desktop's
+    /// `protocol-envelope.ts` — lockstep wire constant.
+    static let closeCodeSecretUnusable = 4004
 
     /// Combine the auth-stream outcome with the WebSocket close code observed
     /// when the socket dropped.
@@ -31,10 +47,15 @@ enum LANAuthOutcome: Equatable, Sendable {
     /// The stream outcome alone cannot see *why* a connection died — the
     /// `for await` just ends. The close code disambiguates: the desktop uses
     /// application codes 4000–4999 for identity-level refusals (4003 =
-    /// unknown/removed device), which are definitive even without an
-    /// `auth_result` frame. Policy/protocol closes (1008 auth cooldown) and
-    /// plain socket failures (no close frame at all → `nil`) carry no verdict
-    /// and stay transient.
+    /// unknown/removed device, 4004 = known device with an unusable stored
+    /// secret), which are definitive even without an `auth_result` frame.
+    /// Policy/protocol closes (1008 auth cooldown) and plain socket failures
+    /// (no close frame at all → `nil`) carry no verdict and stay transient.
+    ///
+    /// 4004 is checked before the generic 4000–4999 rejection band, and it
+    /// also overrides an explicit `auth_result success=false` — the desktop
+    /// sends both (the frame, then the close), and the close code carries the
+    /// more specific reason.
     ///
     /// - Parameters:
     ///   - streamOutcome: what the auth message loop concluded (`.success`,
@@ -43,11 +64,16 @@ enum LANAuthOutcome: Equatable, Sendable {
     ///   - closeCode: raw WebSocket close code from the dropped socket, or
     ///     `nil` when the connection failed without a close frame.
     static func resolve(streamOutcome: LANAuthOutcome, closeCode: Int?) -> LANAuthOutcome {
+        if closeCode == closeCodeSecretUnusable {
+            return .secretUnusable
+        }
         switch streamOutcome {
         case .success:
             return .success
         case .rejected:
             return .rejected
+        case .secretUnusable:
+            return .secretUnusable
         case .transient:
             if let code = closeCode, (4000...4999).contains(code) {
                 return .rejected

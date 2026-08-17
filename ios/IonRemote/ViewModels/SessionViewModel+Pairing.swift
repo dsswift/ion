@@ -65,6 +65,7 @@ extension SessionViewModel {
                     "code": code,
                     "publicKey": publicKeyB64,
                     "deviceName": deviceName,
+                    "mobileDeviceId": MobileInstallationIdentity.id(),
                 ]
                 let requestData = try JSONSerialization.data(withJSONObject: pairingRequest)
                 try await ws.send(.string(String(data: requestData, encoding: .utf8)!))
@@ -99,8 +100,9 @@ extension SessionViewModel {
                     ?? "ws://\(host):\(port)"
                 let relayApiKey = (json["relayApiKey"] as? String).flatMap { $0.isEmpty ? nil : $0 }
                     ?? "lan-direct"
+                let desktopId = json["desktopId"] as? String
 
-                let device = PairedDevice(
+                var device = PairedDevice(
                     id: channelId.prefix(16).description,
                     name: name,
                     pairedAt: Date(),
@@ -110,6 +112,7 @@ extension SessionViewModel {
                     relayURL: relayUrl,
                     relayAPIKey: relayApiKey
                 )
+                device.desktopId = desktopId
 
                 ws.cancel(with: .normalClosure, reason: nil)
                 session.invalidateAndCancel()
@@ -155,6 +158,7 @@ extension SessionViewModel {
                 "code": "",
                 "publicKey": publicKeyB64,
                 "deviceName": deviceName,
+                "mobileDeviceId": MobileInstallationIdentity.id(),
                 "recovery": true,
             ]
             let requestData = try JSONSerialization.data(withJSONObject: pairingRequest)
@@ -190,8 +194,9 @@ extension SessionViewModel {
                 ?? "ws://\(host):\(port)"
             let relayApiKey = (json["relayApiKey"] as? String).flatMap { $0.isEmpty ? nil : $0 }
                 ?? "lan-direct"
+            let desktopId = json["desktopId"] as? String
 
-            let device = PairedDevice(
+            var device = PairedDevice(
                 id: channelId.prefix(16).description,
                 name: name,
                 pairedAt: Date(),
@@ -201,6 +206,7 @@ extension SessionViewModel {
                 relayURL: relayUrl,
                 relayAPIKey: relayApiKey
             )
+            device.desktopId = desktopId
 
             ws.cancel(with: .normalClosure, reason: nil)
             session.invalidateAndCancel()

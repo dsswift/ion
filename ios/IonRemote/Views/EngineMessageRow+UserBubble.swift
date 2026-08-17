@@ -14,7 +14,51 @@ extension EngineMessageRow {
         // with the desktop's CollapsibleUserBody). The context-menu Copy on
         // the row still copies the full message.content.
         CollapsibleUserText(text: text) {
-            userBubbleCore(text: text, isBash: isBash)
+            VStack(alignment: .leading, spacing: 4) {
+                userBubbleCore(text: text, isBash: isBash)
+                if let deliveryState = message.deliveryState {
+                    promptDeliveryLabel(deliveryState)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    func deliveryStateLabel(_ state: PromptDeliveryState) -> some View {
+        switch state {
+        case .queued:
+            HStack(spacing: 4) {
+                ProgressView()
+                    .controlSize(.mini)
+                Text("Sending")
+                    .font(.caption2)
+            }
+            .foregroundStyle(.secondary)
+        case .accepted:
+            EmptyView()
+        case .rejected(let error):
+            HStack(spacing: 4) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption2)
+                Text(error ?? "Not delivered")
+                    .font(.caption2)
+                    .lineLimit(1)
+            }
+            .foregroundStyle(theme.statusError)
+        }
+    }
+
+    @ViewBuilder
+    private func promptDeliveryLabel(_ state: PromptDeliveryState) -> some View {
+        switch state {
+        case .queued:
+            Label("Waiting for desktop", systemImage: "clock.arrow.circlepath")
+                .foregroundStyle(theme.textSecondary)
+        case .accepted:
+            EmptyView()
+        case .rejected(let error):
+            Label(error ?? "Desktop rejected message", systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(theme.statusError)
         }
     }
 

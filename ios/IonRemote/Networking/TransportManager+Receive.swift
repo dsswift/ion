@@ -150,6 +150,26 @@ extension TransportManager {
                 // frames carry a NEWER epoch and the epoch check below resets
                 // the dedup — the epoch is the only reset trigger.
                 updateState()
+            } else if type == "relay:forwarded" {
+                let seq = (json["seq"] as? NSNumber)?.uint64Value ?? 0
+                guard seq > 0 else {
+                    DiagnosticLog.log("relay forwarded control missing sequence", tag: "transport.receive", level: .warn, fields: [:])
+                    return
+                }
+                relayDeliveryAcks.resolve(sequence: seq, outcome: .forwarded)
+            } else if type == "relay:peer-unavailable" {
+                let seq = (json["seq"] as? NSNumber)?.uint64Value ?? 0
+                let reason = json["reason"] as? String ?? "peer_unavailable"
+                guard seq > 0 else {
+                    DiagnosticLog.log("relay peer-unavailable control missing sequence", tag: "transport.receive", level: .warn, fields: ["reason": reason])
+                    return
+                }
+                relayDeliveryAcks.resolve(sequence: seq, outcome: .unavailable(reason: reason))
+                DiagnosticLog.log("relay desktop peer unavailable", tag: "transport.receive", level: .warn, fields: [
+                    "seq": String(seq),
+                    "reason": reason,
+                ])
+                startDisconnectGracePeriod(force: true)
             } else if type == "relay:push-failed" {
                 let reason = json["reason"] as? String ?? "unknown"
                 let resourceId = json["resourceId"] as? String ?? ""

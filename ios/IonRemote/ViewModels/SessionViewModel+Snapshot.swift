@@ -77,6 +77,7 @@ extension SessionViewModel {
             resendPendingCreates()
         }
         connectionQuality.transportState = transport?.state ?? .disconnected
+        connectionHealth.recordLiveSync()
         if !recentDirs.isEmpty {
             recentDirectories = recentDirs
         }
@@ -185,6 +186,11 @@ extension SessionViewModel {
         }
         tabs = merged
         tabIds = Set(merged.map(\.id))
+        // From here on, a tab id absent from `tabIds` is authoritative: the
+        // desktop has told us its full tab list at least once. Views use this
+        // to distinguish "conversation was closed" from "not synced yet"
+        // before dropping a stale navigation destination.
+        hasAppliedTabSnapshot = true
         // Reconcile idle-since timestamps with snapshot state
         let mergedIds = Set(merged.map(\.id))
         for tab in merged {

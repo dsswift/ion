@@ -69,6 +69,12 @@ struct PairedDevice: Codable, Identifiable, Sendable {
     /// account switch. Displayed as historical context, never as signed-in state.
     var relayOidcPreviousAccount: String?
 
+    /// Stable identity of the paired desktop, received in the pairing response.
+    /// Used for Bonjour matching when the desktop publishes its id in the TXT
+    /// record, replacing the hostname-based heuristic. Optional so Keychain
+    /// blobs written before this field existed decode unchanged.
+    var desktopId: String?
+
     /// User-supplied override for the desktop's display name. Empty/whitespace
     /// is treated as "no override" and the original `name` (host name) is used.
     var customName: String?

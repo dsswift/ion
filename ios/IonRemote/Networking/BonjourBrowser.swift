@@ -18,6 +18,19 @@ struct DiscoveredService: Identifiable, Hashable {
     let name: String
     let host: String
     let port: UInt16
+    /// Key-value pairs from the Bonjour TXT record. Carries the desktop's
+    /// stable identity (`desktopId`) when the desktop advertises one, enabling
+    /// identity-based matching instead of hostname-based.
+    let metadata: [String: String]
+
+    init(id: String, kind: ServiceKind, name: String, host: String, port: UInt16, metadata: [String: String] = [:]) {
+        self.id = id
+        self.kind = kind
+        self.name = name
+        self.host = host
+        self.port = port
+        self.metadata = metadata
+    }
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
@@ -134,7 +147,8 @@ final class BonjourBrowser {
             }
 
             let instanceName = extractInstanceName(from: result)
-            resolveEndpoint(result.endpoint, id: endpointID, instanceName: instanceName, kind: kind)
+            let metadata = extractMetadata(from: result)
+            resolveEndpoint(result.endpoint, id: endpointID, instanceName: instanceName, kind: kind, metadata: metadata)
         }
     }
 
@@ -145,14 +159,23 @@ final class BonjourBrowser {
         return "Unknown"
     }
 
-    private func resolveEndpoint(_ endpoint: NWEndpoint, id: String, instanceName: String, kind: ServiceKind) {
-        resolveEndpointWithIPv4(endpoint, id: id, instanceName: instanceName, kind: kind)
+    private func extractMetadata(from result: NWBrowser.Result) -> [String: String] {
+        guard case .bonjour(let txtRecord) = result.metadata else { return [:] }
+        var dict: [String: String] = [:]
+        for (key, value) in txtRecord.dictionary {
+            dict[key] = value
+        }
+        return dict
+    }
+
+    private func resolveEndpoint(_ endpoint: NWEndpoint, id: String, instanceName: String, kind: ServiceKind, metadata: [String: String]) {
+        resolveEndpointWithIPv4(endpoint, id: id, instanceName: instanceName, kind: kind, metadata: metadata)
     }
 
     /// Try resolving with IPv4 preference first. URLSession can't handle IPv6
     /// link-local zone IDs in URLs, so IPv4 is more reliable for LAN WebSockets.
     /// Falls back to any-IP resolution if IPv4 fails.
-    private func resolveEndpointWithIPv4(_ endpoint: NWEndpoint, id: String, instanceName: String, kind: ServiceKind) {
+    private func resolveEndpointWithIPv4(_ endpoint: NWEndpoint, id: String, instanceName: String, kind: ServiceKind, metadata: [String: String]) {
         let params = NWParameters.tcp
         if let ip = params.defaultProtocolStack.internetProtocol as? NWProtocolIP.Options {
             ip.version = .v4
@@ -171,7 +194,7 @@ final class BonjourBrowser {
                     return
                 }
 
-                if let resolved = self.extractHostPort(from: innerEndpoint, id: id, instanceName: instanceName, kind: kind) {
+                if let resolved = self.extractHostPort(from: innerEndpoint, id: id, instanceName: instanceName, kind: kind, metadata: metadata) {
                     if !self.discoveredHosts.contains(where: { $0.id == id }) {
                         self.discoveredHosts.append(resolved)
                     }
@@ -184,7 +207,7 @@ final class BonjourBrowser {
                 // IPv4 resolution failed -- fall back to any IP version.
                 connection.cancel()
                 self.connections.removeValue(forKey: id)
-                self.resolveEndpointAnyIP(endpoint, id: id, instanceName: instanceName, kind: kind)
+                self.resolveEndpointAnyIP(endpoint, id: id, instanceName: instanceName, kind: kind, metadata: metadata)
 
             case .cancelled:
                 self.connections.removeValue(forKey: id)
@@ -198,7 +221,7 @@ final class BonjourBrowser {
     }
 
     /// Fallback: resolve without IP version constraint.
-    private func resolveEndpointAnyIP(_ endpoint: NWEndpoint, id: String, instanceName: String, kind: ServiceKind) {
+    private func resolveEndpointAnyIP(_ endpoint: NWEndpoint, id: String, instanceName: String, kind: ServiceKind, metadata: [String: String]) {
         let connection = NWConnection(to: endpoint, using: .tcp)
         connections[id] = connection
 
@@ -213,7 +236,7 @@ final class BonjourBrowser {
                     return
                 }
 
-                if let resolved = self.extractHostPort(from: innerEndpoint, id: id, instanceName: instanceName, kind: kind) {
+                if let resolved = self.extractHostPort(from: innerEndpoint, id: id, instanceName: instanceName, kind: kind, metadata: metadata) {
                     if !self.discoveredHosts.contains(where: { $0.id == id }) {
                         self.discoveredHosts.append(resolved)
                     }
@@ -237,7 +260,8 @@ final class BonjourBrowser {
         from endpoint: NWEndpoint,
         id: String,
         instanceName: String,
-        kind: ServiceKind
+        kind: ServiceKind,
+        metadata: [String: String]
     ) -> DiscoveredService? {
         switch endpoint {
         case .hostPort(let host, let port):
@@ -265,7 +289,8 @@ final class BonjourBrowser {
                 kind: kind,
                 name: instanceName,
                 host: hostString,
-                port: port.rawValue
+                port: port.rawValue,
+                metadata: metadata
             )
 
         default:
