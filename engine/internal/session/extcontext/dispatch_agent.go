@@ -854,6 +854,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 							drained = registry.DrainChildResults(agentID)
 						}
 						runOpts.Prompt = buildReviveResumePrompt(drained)
+						runOpts.InjectionKind = reviveInjectionKind(drained)
 						utils.LogWithFields(utils.LevelInfo, "server", "dispatch revived, resuming LLM run with child results", map[string]any{
 							"model":           opts.Name,
 							"session_id":      key,

@@ -29,6 +29,7 @@ func TestIsMachineToMachineIsExhaustive(t *testing.T) {
 		InjectionKindBackgroundTaskCompletion: true,
 		InjectionKindCheckIn:                  true,
 		InjectionKindRevive:                   true,
+		InjectionKindRunRecovery:              true,
 		InjectionKindSteer:                    false,
 	}
 
@@ -112,6 +113,7 @@ func TestInjectionKindWireValues(t *testing.T) {
 		InjectionKindBackgroundTaskCompletion: "background_task_completion",
 		InjectionKindCheckIn:                  "checkin",
 		InjectionKindRevive:                   "revive",
+		InjectionKindRunRecovery:              "run_recovery",
 		InjectionKindSteer:                    "steer",
 	}
 	for k, s := range want {

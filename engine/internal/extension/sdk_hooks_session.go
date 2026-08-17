@@ -72,3 +72,51 @@ func (s *SDK) FireCompactSummaryRequest(ctx *Context, info CompactSummaryRequest
 	}
 	return "", false
 }
+
+// FireBeforeRunRecovery fires the before_run_recovery hook and resolves the
+// combined result from every handler. Per-field "last non-nil wins" merging:
+// Action and Instruction are resolved independently across handlers.
+//
+// Returns nil when no handler expressed an opinion (engine uses default
+// recovery behavior).
+func (s *SDK) FireBeforeRunRecovery(ctx *Context, info BeforeRunRecoveryInfo) *BeforeRunRecoveryResult {
+	results := s.fire(HookBeforeRunRecovery, ctx, info)
+	if len(results) == 0 {
+		return nil
+	}
+	var out BeforeRunRecoveryResult
+	anySet := false
+	for _, r := range results {
+		var v *BeforeRunRecoveryResult
+		switch typed := r.(type) {
+		case BeforeRunRecoveryResult:
+			v = &typed
+		case *BeforeRunRecoveryResult:
+			v = typed
+		case map[string]interface{}:
+			tmp := BeforeRunRecoveryResult{}
+			if a, ok := typed["action"].(string); ok {
+				tmp.Action = a
+			}
+			if inst, ok := typed["instruction"].(string); ok {
+				tmp.Instruction = inst
+			}
+			v = &tmp
+		}
+		if v == nil {
+			continue
+		}
+		if v.Action != "" {
+			out.Action = v.Action
+			anySet = true
+		}
+		if v.Instruction != "" {
+			out.Instruction = v.Instruction
+			anySet = true
+		}
+	}
+	if !anySet {
+		return nil
+	}
+	return &out
+}

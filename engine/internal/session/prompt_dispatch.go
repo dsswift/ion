@@ -239,7 +239,11 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// compaction's own save. Enqueue instead; the compaction goroutine drains
 	// one queued prompt when it finishes (mirroring handleRunExit). See
 	// dispatchCompact and engineSession.compactInFlight.
-	if s.requestID != "" || s.compactInFlight {
+	// Recovery claims this slot before its goroutine calls SendPrompt. User input
+	// queues behind it, while the engine-authored continuation itself may enter.
+	isRecoveryContinuation := overrides != nil && overrides.InjectionKind == string(types.InjectionKindRunRecovery)
+	isRecoveryWake := overrides != nil && isRecoveryWakeKind(overrides.InjectionKind)
+	if s.requestID != "" || s.compactInFlight || (s.recoveryInProgress && !isRecoveryContinuation && !isRecoveryWake) {
 		if s.requestID == "" && s.compactInFlight {
 			utils.LogWithFields(utils.LevelInfo, "session", "sendprompt: enqueued behind in-flight compaction (compactinflight=true, no active run)", map[string]any{"key": key})
 		}
@@ -623,6 +627,12 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	}
 
 	m.mu.Lock()
+	current, stillActive := m.sessions[key]
+	if !stillActive || current != s || current.requestID != requestID {
+		m.mu.Unlock()
+		utils.LogWithFields(utils.LevelWarn, "session", "prompt dispatch abandoned after session changed", map[string]any{"key": key, "run_id": requestID})
+		return fmt.Errorf("session %q stopped before prompt dispatch", key)
+	}
 	s.setCurrentModel(opts.Model)
 	s.lastContextWindow = promptCtxWindow
 	// Clear any retained permission denials from a prior task_complete —
@@ -637,6 +647,37 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	}
 	lastPct := s.lastContextPct
 	lastTokens := s.lastContextTokens
+
+	// Commit the journal outside Manager.mu. A full conversation save can fsync
+	// megabytes; holding the manager lock here stalls every other session.
+	journalNeeded := opts.InjectionKind != string(types.InjectionKindRunRecovery) &&
+		!s.recoveryInProgress && m.recoveryEnabled(&s.config)
+	m.mu.Unlock()
+	if journalNeeded {
+		entryID, recorded := m.recordRunRecovery(s, key, requestID, opts, overrides)
+		if !recorded {
+			m.mu.Lock()
+			if current, ok := m.sessions[key]; ok && current == s {
+				current.clearRunIdentityFor(requestID)
+				m.unbindRunLocked(requestID)
+			}
+			m.mu.Unlock()
+			return fmt.Errorf("could not persist recovery journal for session %q", key)
+		}
+		opts.PrePersistedUserEntryID = entryID
+	}
+	m.mu.Lock()
+	current, stillActive = m.sessions[key]
+	if !stillActive || current != s || current.requestID != requestID {
+		conversationID := s.conversationID
+		m.mu.Unlock()
+		// StopSession can delete the session while journal fsync runs. Remove
+		// only this dispatch's journal so a stopped run cannot resurrect on the
+		// next engine start, while a replacement journal remains intact.
+		m.clearRunRecovery(conversationID, key, requestID, "dispatch_stopped_before_start")
+		utils.LogWithFields(utils.LevelWarn, "session", "prompt dispatch abandoned after recovery journal commit", map[string]any{"key": key, "run_id": requestID})
+		return fmt.Errorf("session %q stopped before prompt dispatch", key)
+	}
 	m.mu.Unlock()
 
 	m.emit(key, types.EngineEvent{
@@ -683,6 +724,21 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// We dispatch through m.backend here (not resolvedBackend) so the
 	// hybrid layer sees the call and can record its routing table entry
 	// before forwarding.
+	// StartRun may schedule work immediately, and callbacks acquire Manager.mu.
+	// Validate ownership under the lock, then release it before launch. The run
+	// identity and routing binding remain committed, so a synchronous callback
+	// resolves normally instead of deadlocking on this manager.
+	m.mu.Lock()
+	current, stillActive = m.sessions[key]
+	if !stillActive || current != s || current.requestID != requestID {
+		m.mu.Unlock()
+		utils.LogWithFields(utils.LevelWarn, "session", "prompt dispatch abandoned before backend start", map[string]any{"key": key, "run_id": requestID})
+		return fmt.Errorf("session %q stopped before backend start", key)
+	}
+	launchAck := make(chan struct{})
+	s.launchingRunID = requestID
+	s.launchAck = launchAck
+	m.mu.Unlock()
 	if hybrid, ok := m.backend.(*backend.HybridBackend); ok {
 		hybrid.StartRunWithConfig(requestID, opts, runCfg)
 	} else if apiBackend, ok := m.backend.(*backend.ApiBackend); ok {
@@ -690,6 +746,13 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	} else {
 		m.backend.StartRun(requestID, opts)
 	}
+	m.mu.Lock()
+	if current, ok := m.sessions[key]; ok && current == s && current.launchAck == launchAck {
+		current.launchingRunID = ""
+		current.launchAck = nil
+	}
+	close(launchAck)
+	m.mu.Unlock()
 	return nil
 }
 

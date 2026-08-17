@@ -21,7 +21,11 @@ import (
 // any Elicit reached through it waits under session lifecycle only (the
 // non-tool path: hooks, commands, schedules).
 func (m *Manager) newExtContext(s *engineSession, key string) *extension.Context {
-	return extcontext.NewExtContext(&sessionAccessor{m: m, s: s, key: key}, s.dispatchRegistry)
+	ctx := extcontext.NewExtContext(&sessionAccessor{m: m, s: s, key: key}, s.dispatchRegistry)
+	ctx.SetRunRecovery = func(config *types.RunRecoveryConfig) {
+		(&sessionAccessor{m: m, s: s, key: key}).SetRunRecovery(config)
+	}
+	return ctx
 }
 
 // newExtContextWithSuspender builds a per-tool-call extension context whose
@@ -29,7 +33,11 @@ func (m *Manager) newExtContext(s *engineSession, key string) *extension.Context
 // suspender may be nil (non-tool callers); the accessor then behaves exactly
 // like newExtContext.
 func (m *Manager) newExtContextWithSuspender(s *engineSession, key string, suspender types.DeadlineSuspender) *extension.Context {
-	return extcontext.NewExtContext(&sessionAccessor{m: m, s: s, key: key, suspender: suspender}, s.dispatchRegistry)
+	ctx := extcontext.NewExtContext(&sessionAccessor{m: m, s: s, key: key, suspender: suspender}, s.dispatchRegistry)
+	ctx.SetRunRecovery = func(config *types.RunRecoveryConfig) {
+		(&sessionAccessor{m: m, s: s, key: key, suspender: suspender}).SetRunRecovery(config)
+	}
+	return ctx
 }
 
 // Elicit raises an elicitation request and waits for the response. When this

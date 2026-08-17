@@ -227,7 +227,7 @@ func buildUserContentBlocks(prompt string, attachments []types.ImageAttachment) 
 	return blocks
 }
 
-// appendInboundUserMessage appends the inbound user turn to the conversation,
+// AppendInboundUserMessage appends the inbound user turn to the conversation,
 // handling the three shapes the prompt can take:
 //
 //   - Resolved slash command (opts.ResolvedSlashCommand set): opts.Prompt is the
@@ -253,7 +253,10 @@ func buildUserContentBlocks(prompt string, attachments []types.ImageAttachment) 
 // the tree entry id.
 //
 // Extracted from RunAgentLoop to keep runloop.go under the file-size cap.
-func appendInboundUserMessage(conv *conversation.Conversation, opts *types.RunOptions) *conversation.SessionEntry {
+// AppendInboundUserMessage is exported for session-owned pre-persistence. It
+// must remain the only path deciding how a RunOptions prompt becomes a durable
+// user entry, otherwise recovery can lose attachment blocks or provenance.
+func AppendInboundUserMessage(conv *conversation.Conversation, opts *types.RunOptions) *conversation.SessionEntry {
 	// Duplicate-turn sentinel: a user turn byte-identical to the current leaf
 	// means the same input was dispatched twice (e.g. a client re-submitting
 	// after a stop/restart recovery — the forensic case behind this check was

@@ -107,6 +107,12 @@ type EngineConfig struct {
 	// A per-prompt override on ClientCommand takes precedence over this
 	// session-level value.
 	ClientWorkspaceContext *ClientWorkspaceContext `json:"clientWorkspaceContext,omitempty"`
+
+	// RunRecovery overrides the engine-wide RunRecoveryConfig for this
+	// session. Nil means inherit from EngineRuntimeConfig. A session that
+	// sets Enabled=false disables journaling for its runs regardless of
+	// the global setting.
+	RunRecovery *RunRecoveryConfig `json:"runRecovery,omitempty"`
 }
 
 // Per-prompt thinking-effort sentinels carried on

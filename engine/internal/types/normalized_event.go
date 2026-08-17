@@ -101,6 +101,8 @@ func (e *NormalizedEvent) UnmarshalJSON(data []byte) error {
 		target = &CapabilityUnsupportedEvent{}
 	case EventRunStalled:
 		target = &RunStalledEvent{}
+	case EventRunRecovery:
+		target = &RunRecoveryEvent{}
 	case EventTaskSuspend:
 		target = &TaskSuspendEvent{}
 	case EventBackgroundTaskComplete:

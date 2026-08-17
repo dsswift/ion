@@ -394,6 +394,13 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 	// the first status rather than showing 0% until the first prompt.
 	m.emitStatusSnapshot(key, "start_session")
 
+	// Start recovery after every session subsystem is initialized, so its
+	// continuation receives the same tools, hooks, skills, and cursors as a
+	// normal prompt. The journal itself decides whether work is pending.
+	if m.recoverInterruptedRun(s, key) {
+		utils.LogWithFields(utils.LevelInfo, "session.recovery", "recovery continuation queued", map[string]any{"key": key, "conversation_id": s.conversationID})
+	}
+
 	return &StartSessionResult{Existed: false, ConversationID: s.conversationID}, nil
 }
 

@@ -67,6 +67,7 @@ func (h *Host) registerHookForwarders() {
 	h.registerBeforePlanModeEnterForwarder()
 	h.registerBeforePlanModeExitForwarder()
 	h.registerBeforePlanModeAutoExitForwarder()
+	h.registerBeforeRunRecoveryForwarder()
 
 	// Block-checking hooks: parse result.block and result.reason.
 	h.registerBlockForwarder(HookToolCall)
@@ -525,6 +526,39 @@ func (h *Host) registerBeforePlanModeAutoExitForwarder() {
 			Suppress:     result.Suppress,
 			PlanFilePath: result.PlanFilePath,
 			Reason:       result.Reason,
+		}, nil
+	})
+}
+
+// registerBeforeRunRecoveryForwarder registers a handler for
+// before_run_recovery that parses {"action": "string", "instruction": "string"}
+// and returns a BeforeRunRecoveryResult.
+func (h *Host) registerBeforeRunRecoveryForwarder() {
+	h.noteForwarder(HookBeforeRunRecovery, hookResultStructured)
+	h.sdk.On(HookBeforeRunRecovery, func(ctx *Context, payload interface{}) (interface{}, error) {
+		raw, err := h.callHook("hook/"+HookBeforeRunRecovery, ctx, payload)
+		if err != nil {
+			logHookErr(HookBeforeRunRecovery, err)
+			return nil, nil
+		}
+		emitHookEvents(ctx, raw)
+		if len(raw) == 0 || string(raw) == "null" {
+			return nil, nil
+		}
+		var result struct {
+			Action      string `json:"action"`
+			Instruction string `json:"instruction"`
+		}
+		if err := json.Unmarshal(raw, &result); err != nil {
+			utils.LogWithFields(utils.LevelInfo, "extension", "hook/: bad result", map[string]any{"hook_before_run_recovery": HookBeforeRunRecovery, "error": err})
+			return nil, nil
+		}
+		if result.Action == "" && result.Instruction == "" {
+			return nil, nil
+		}
+		return BeforeRunRecoveryResult{
+			Action:      result.Action,
+			Instruction: result.Instruction,
 		}, nil
 	})
 }

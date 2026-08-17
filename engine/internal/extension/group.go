@@ -668,3 +668,32 @@ func (g *ExtensionGroup) FireDispatchLost(ctx *Context, info DispatchLostInfo) {
 		h.SDK().FireDispatchLost(ctx, info)
 	}
 }
+
+// FireBeforeRunRecovery fans the before_run_recovery hook out to every host
+// and folds the per-host results into a single decision. Per-field "last
+// non-nil wins" mirrors the per-host SDK resolution.
+//
+// Returns nil when no host expressed an opinion.
+func (g *ExtensionGroup) FireBeforeRunRecovery(ctx *Context, info BeforeRunRecoveryInfo) *BeforeRunRecoveryResult {
+	utils.LogWithFields(utils.LevelInfo, "extension_group", "firebeforerunrecovery: dispatching to host(s)", map[string]any{"count": len(g.hosts), "recovery_id": info.RecoveryID, "conversation_id": info.ConversationID, "attempt": info.Attempt, "max_attempts": info.MaxAttempts})
+	var out BeforeRunRecoveryResult
+	anySet := false
+	for _, h := range g.hosts {
+		v := h.SDK().FireBeforeRunRecovery(ctx, info)
+		if v == nil {
+			continue
+		}
+		if v.Action != "" {
+			out.Action = v.Action
+			anySet = true
+		}
+		if v.Instruction != "" {
+			out.Instruction = v.Instruction
+			anySet = true
+		}
+	}
+	if !anySet {
+		return nil
+	}
+	return &out
+}

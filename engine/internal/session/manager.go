@@ -9,7 +9,6 @@ import (
 	"github.com/dsswift/ion/engine/internal/resource"
 	"github.com/dsswift/ion/engine/internal/scheduling"
 	"github.com/dsswift/ion/engine/internal/telemetry"
-	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 	"github.com/dsswift/ion/engine/internal/webhooks"
@@ -49,6 +48,10 @@ type Manager struct {
 	// Production callers must never set this -- it has no setter on the
 	// public API.
 	childBackendOverride func() backend.RunBackend
+
+	// recoveryCoordinator bounds provider work when many restored sessions have
+	// active journals. It is lazy because plain sessions never need it.
+	recoveryCoordinator *recoveryCoordinator
 
 	// Status-heartbeat fields. heartbeatStop is closed by Shutdown to
 	// terminate the per-Manager goroutine that periodically re-emits
@@ -118,6 +121,11 @@ type Manager struct {
 	// validate that the SDK subprocess was built from the same release.
 	// Guarded by m.mu.
 	engineBuildIdentity string
+
+	// shuttingDown is set by Shutdown before StopAll so StopSession can
+	// distinguish a server shutdown (preserve active-run journals) from an
+	// explicit stop (clear journal).
+	shuttingDown bool
 }
 
 // SetProcessTelemetry installs the process-level telemetry collector used for
@@ -376,6 +384,12 @@ func (m *Manager) StopSession(key string) error {
 		m.mu.Unlock()
 		return fmt.Errorf("session %q not found", key)
 	}
+	// StartRun launches without Manager.mu so callbacks cannot deadlock. Record
+	// an in-flight launch for cancellation after backend registration. StopSession
+	// never waits here: a backend is allowed to synchronously invoke a callback,
+	// and waiting from that callback would deadlock its StartRun frame.
+	launchAck := s.launchAck
+	launchingRunID := s.launchingRunID
 
 	// Cancel the session's cancellation root so every descendant
 	// operation (backend run, dispatched agents, in-flight llmCall) is
@@ -400,6 +414,14 @@ func (m *Manager) StopSession(key string) error {
 		// requestID, under the lock StopSession already holds.
 		m.unbindRunLocked(s.requestID)
 		s.clearRunIdentity()
+	} else if launchingRunID != "" {
+		// Backend registration is outside Manager.mu. Cancel immediately after
+		// StartRun acknowledges, even though this session has been removed.
+		go func(runID string, ack <-chan struct{}) {
+			<-ack
+			m.backend.Cancel(runID)
+			utils.LogWithFields(utils.LevelInfo, "session", "stopsession: cancelled run registered after stop", map[string]any{"key": key, "run_id": runID})
+		}(launchingRunID, launchAck)
 	}
 
 	// Drop pending prompts
@@ -411,13 +433,13 @@ func (m *Manager) StopSession(key string) error {
 	}
 
 	// Capture subsystems before deleting session
-	extGroup := s.extGroup
-	mcpConns := s.mcpConns
-	telemCollector := s.telemetry
-	sessionRecorder := s.recorder
-	toolServer := s.toolServer
-	fsWatcherRelease := s.fsWatcherRelease
-	sm := s.sessionMemory
+	resources := stoppedSessionResources{
+		extGroup: s.extGroup, mcpConns: s.mcpConns, telemetry: s.telemetry,
+		recorder: s.recorder, toolServer: s.toolServer,
+		fsWatcherRelease: s.fsWatcherRelease, sessionMemory: s.sessionMemory,
+		conversationID: s.conversationID,
+		key:            key, session: s,
+	}
 
 	delete(m.sessions, key)
 
@@ -430,77 +452,18 @@ func (m *Manager) StopSession(key string) error {
 	// runOnce entries for that extension. The debounce window only applies
 	// while at least one session of the extension is alive. We check while
 	// still holding the write lock so the count is authoritative.
-	var purgeExtDir string
 	if s.extGroup != nil && !s.extGroup.IsEmpty() {
 		if hosts := s.extGroup.Hosts(); len(hosts) > 0 {
 			extDir := hosts[0].ExtensionDir()
 			if extDir != "" && m.extensionDirSessionCount(extDir) == 0 {
-				purgeExtDir = extDir
+				resources.purgeExtensionDir = extDir
 			}
 		}
 	}
 
 	m.mu.Unlock()
 
-	if purgeExtDir != "" {
-		m.runOnce.purgeExtension(purgeExtDir)
-	}
-
-	// Kill any background Bash tasks (run_in_background) this session owns —
-	// they run detached from run contexts, so the registry is the only
-	// teardown path. Every kill is logged inside.
-	tools.StopBackgroundTasksForOwner(key)
-
-	// Drop the outstanding-set bookkeeping and any park state. The call above
-	// kills the processes; this clears what the session was tracking, so a
-	// late completion finds nothing to revive.
-	m.clearOutstandingBackgroundTasks(key)
-
-	// Stop session memory background summarizer before other cleanup so
-	// any in-flight goroutine drains cleanly.
-	if sm != nil {
-		sm.Stop()
-	}
-
-	// Cleanup outside lock
-	if toolServer != nil {
-		toolServer.Stop()
-	}
-	// Release the workspace watcher BEFORE firing session_end / closing the
-	// extension group so any in-flight watcher callbacks drain into a
-	// still-live group, and no late callback races with extGroup.Close().
-	if fsWatcherRelease != nil {
-		fsWatcherRelease()
-		utils.LogWithFields(utils.LevelInfo, "session", "stopsession: released watcher", map[string]any{"key": key})
-	}
-	if extGroup != nil && !extGroup.IsEmpty() {
-		ctx := m.newExtContext(s, key)
-		extGroup.FireSessionEnd(ctx) //nolint:errcheck // errors logged internally by fireVoid/s.fire
-		// Remove every host from the async-trigger subsystems before
-		// Close() takes them down. Avoids the scheduler tick loop
-		// holding a stale host pointer.
-		for _, h := range extGroup.Hosts() {
-			m.unwireHostAsync(h)
-		}
-		extGroup.Close()
-	}
-	for _, conn := range mcpConns {
-		conn.Close() //nolint:errcheck // resource close
-	}
-	if telemCollector != nil {
-		// Close the collector: stops the periodic flush goroutine, performs a
-		// final drain, and waits for the goroutine to exit cleanly. This
-		// supersedes the earlier bare Flush() call — Close() includes the final
-		// flush and is safe to call even when no goroutine was started (the
-		// no-target path returns immediately). A failing target is logged at
-		// ERROR, rate-limited to once per distinct cause.
-		telemCollector.Close()
-	}
-	if sessionRecorder != nil {
-		sessionRecorder.Close() //nolint:errcheck // resource close
-	}
-
-	m.emit(key, types.EngineEvent{Type: "engine_dead"})
+	m.finishStoppedSession(resources)
 	return nil
 }
 
@@ -559,6 +522,8 @@ func (m *Manager) Shutdown() {
 	if m.lockWatch != nil {
 		m.lockWatch.stop()
 	}
+
+	m.PrepareForProcessShutdown()
 
 	m.StopAll() //nolint:errcheck // best-effort stop; not-found is benign
 	m.asyncMu.Lock()

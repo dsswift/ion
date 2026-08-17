@@ -59,6 +59,7 @@ const (
 	// CapabilityUnsupportedEvent in normalized_event_capability.go.
 	EventCapabilityUnsupported = "capability_unsupported"
 	EventRunStalled            = "run_stalled"
+	EventRunRecovery           = "run_recovery"
 	// EventTaskSuspend is the engine-internal signal that ends an LLM run
 	// without completing the dispatch. The agent's LLM run exits (saving
 	// tokens, showing as idle in the UI) but its parent's OnComplete callback

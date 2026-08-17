@@ -3,6 +3,7 @@ package conversation
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -253,6 +254,18 @@ type Conversation struct {
 	// .tree.jsonl header (additive, omitempty) so continuity survives an
 	// engine restart. See session/native_session.go for capture/decide.
 	NativeSessions map[string]NativeSessionCursor `json:"nativeSessions,omitempty"`
+
+	// ActiveRun is a durable journal for one accepted root run. It shares the
+	// tree header's atomic write with the transcript, so recovery never has to
+	// reconcile a sidecar against conversation history after a daemon restart.
+	// Nil means no work is pending recovery.
+	ActiveRun *RunJournalEntry `json:"activeRun,omitempty"`
+	// RecoveryRepairVersion records completion of precise legacy recovery
+	// repairs. Optional for old conversations; zero means repair has not run.
+	RecoveryRepairVersion int `json:"recoveryRepairVersion,omitempty"`
+	// _recoveryRepairPending is set while decoding an old file. Load persists the
+	// version through UpdateOnDisk before returning so later loads skip the sweep.
+	_recoveryRepairPending bool
 
 	// _isLegacy is set by Load when reading a legacy .jsonl or .json file.
 	// Save reads this flag to decide whether to unlink the legacy file after
@@ -577,6 +590,16 @@ func toContentBlocks(content any) []types.LlmContentBlock {
 		return []types.LlmContentBlock{textBlock(c)}
 	case []types.LlmContentBlock:
 		return c
+	case []any:
+		data, err := json.Marshal(c)
+		if err != nil {
+			return []types.LlmContentBlock{textBlock(fmt.Sprint(c))}
+		}
+		var blocks []types.LlmContentBlock
+		if err := json.Unmarshal(data, &blocks); err != nil {
+			return []types.LlmContentBlock{textBlock(fmt.Sprint(c))}
+		}
+		return blocks
 	default:
 		return []types.LlmContentBlock{textBlock(fmt.Sprint(c))}
 	}

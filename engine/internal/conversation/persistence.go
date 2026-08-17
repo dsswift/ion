@@ -245,11 +245,12 @@ func saveSplit(conv *Conversation, dir string) error {
 		leafSnap = *conv.LeafID
 	}
 	treeHeader := map[string]any{
-		"meta":             true,
-		"id":               conv.ID,
-		"version":          conv.Version,
-		"leafId":           leafSnap,
-		"workingDirectory": conv.WorkingDirectory,
+		"meta":                  true,
+		"id":                    conv.ID,
+		"version":               conv.Version,
+		"leafId":                leafSnap,
+		"workingDirectory":      conv.WorkingDirectory,
+		"recoveryRepairVersion": conv.RecoveryRepairVersion,
 	}
 	// Mirror the backend discriminator onto the tree header too: consumers
 	// that only read the tree file (rendering/branching) can still assert the
@@ -270,6 +271,10 @@ func saveSplit(conv *Conversation, dir string) error {
 			nsSnap[k] = v
 		}
 		treeHeader["nativeSessions"] = nsSnap
+	}
+	if conv.ActiveRun != nil {
+		activeRun := *conv.ActiveRun
+		treeHeader["activeRun"] = activeRun
 	}
 	isLegacy := conv._isLegacy
 	conv.unlock()
@@ -464,6 +469,13 @@ func LoadLlmHeaderModel(id, dir string) (string, error) {
 // (e.g. a mid-migration crash left an orphan), Load falls through to the legacy
 // probe. The orphan is overwritten on the next Save.
 func Load(id, dir string) (*Conversation, error) {
+	return load(id, dir, true)
+}
+
+// load is the internal variant used by UpdateOnDisk. Its repair persistence is
+// disabled under the per-conversation lock because re-entering that lock would
+// deadlock. The enclosing transaction saves the marked conversation instead.
+func load(id, dir string, persistRepair bool) (*Conversation, error) {
 	if dir == "" {
 		dir = DefaultConversationsDir()
 	}
@@ -477,7 +489,14 @@ func Load(id, dir string) (*Conversation, error) {
 	_, llmErr := os.Stat(llmPath)
 	_, treeErr := os.Stat(treePath)
 	if llmErr == nil && treeErr == nil {
-		return loadSplit(id, llmPath, treePath)
+		conv, err := loadSplit(id, llmPath, treePath)
+		if err != nil {
+			return nil, err
+		}
+		if persistRepair {
+			persistRecoveryRepairIfNeeded(conv, dir)
+		}
+		return conv, nil
 	}
 
 	// Probe 2: legacy .jsonl
@@ -487,6 +506,9 @@ func Load(id, dir string) (*Conversation, error) {
 			return nil, err
 		}
 		conv._isLegacy = true
+		if persistRepair {
+			persistRecoveryRepairIfNeeded(conv, dir)
+		}
 		utils.LogWithFields(utils.LevelInfo, "conversation", "load legacy will migrate on next save", map[string]any{
 			"conversation_id": conv.ID, "count": len(conv.Entries), "max": len(conv.Messages),
 		})
@@ -509,6 +531,9 @@ func Load(id, dir string) (*Conversation, error) {
 		return nil, err
 	}
 	conv._isLegacy = true
+	if persistRepair {
+		persistRecoveryRepairIfNeeded(conv, dir)
+	}
 	utils.LogWithFields(utils.LevelInfo, "conversation", "load v1json will migrate on next save", map[string]any{
 		"conversation_id": conv.ID, "count": len(conv.Entries), "max": len(conv.Messages),
 	})
@@ -679,8 +704,13 @@ func loadSplit(id, llmPath, treePath string) (*Conversation, error) {
 		}
 	}
 
+	decodeTreeHeaderRecovery(conv, treeHeader)
+
 	if err := rehydrateEntries(conv); err != nil {
 		return nil, err
+	}
+	if repairLegacyRecoveryState(conv) {
+		utils.LogWithFields(utils.LevelInfo, "conversation.recovery_repair", "legacy recovery content repaired in memory", map[string]any{"conversation_id": conv.ID})
 	}
 
 	// Validate and repair the tree linkage before anything walks it — a
@@ -702,86 +732,4 @@ func loadSplit(id, llmPath, treePath string) (*Conversation, error) {
 	})
 	rehydrateMessageUsage(conv)
 	return conv, nil
-}
-
-// loadFromJSONL parses a legacy .jsonl conversation file (header + entries).
-// After parsing, it reconstructs Messages via BuildContextPath. This is the
-// legacy code path only — new-format loads use loadSplit, which reads Messages
-// verbatim from .llm.jsonl and never calls BuildContextPath.
-func loadFromJSONL(data []byte) (*Conversation, error) {
-	lines, err := scanNonEmptyLines(data)
-	if err != nil {
-		return nil, err
-	}
-	if len(lines) == 0 {
-		return nil, errors.New("empty JSONL")
-	}
-
-	var header map[string]any
-	if err := json.Unmarshal([]byte(lines[0]), &header); err != nil {
-		return nil, fmt.Errorf("invalid JSONL header: %w", err)
-	}
-	if _, ok := header["meta"]; !ok {
-		return nil, errors.New("invalid JSONL header: missing meta field")
-	}
-
-	var entries []SessionEntry
-	for i := 1; i < len(lines); i++ {
-		var entry SessionEntry
-		if err := json.Unmarshal([]byte(lines[i]), &entry); err != nil {
-			return nil, fmt.Errorf("invalid entry at line %d: %w", i+1, err)
-		}
-		entries = append(entries, entry)
-	}
-
-	conv := &Conversation{
-		ID:                jsonString(header, "id"),
-		System:            jsonString(header, "system"),
-		Model:             jsonString(header, "model"),
-		Messages:          []types.LlmMessage{},
-		TotalInputTokens:  int(jsonFloat(header, "totalInputTokens", 0)),
-		TotalOutputTokens: int(jsonFloat(header, "totalOutputTokens", 0)),
-		TotalCost:         jsonFloat(header, "totalCost", 0),
-		CreatedAt:         int64(jsonFloat(header, "createdAt", float64(nowMillis()))),
-		Version:           int(jsonFloat(header, "version", 2)),
-		ParentID:          jsonString(header, "parentId"),
-		Entries:           entries,
-	}
-
-	if leafID, ok := header["leafId"].(string); ok {
-		conv.LeafID = &leafID
-	}
-
-	if err := rehydrateEntries(conv); err != nil {
-		return nil, err
-	}
-
-	// Validate and repair linkage before the context-path rebuild below walks
-	// the tree (see validateAndRepairTree).
-	validateAndRepairTree(conv)
-
-	// Legacy path only: rebuild Messages from the entry tree. The new-format
-	// path (loadSplit) trusts .llm.jsonl verbatim to avoid re-leaking cleared
-	// history — this is the root cause of issue #146.
-	conv.Messages = BuildContextPath(conv)
-	rehydrateMessageUsage(conv)
-	return conv, nil
-}
-
-// scanNonEmptyLines splits JSONL bytes into non-empty trimmed lines using a
-// buffered scanner with a 32 MB per-line limit (maxScanTokenSize).
-func scanNonEmptyLines(data []byte) ([]string, error) {
-	scanner := bufio.NewScanner(strings.NewReader(string(data)))
-	scanner.Buffer(make([]byte, 0, 64*1024), maxScanTokenSize)
-	var lines []string
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line != "" {
-			lines = append(lines, line)
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-	return lines, nil
 }

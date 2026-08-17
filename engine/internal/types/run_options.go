@@ -352,6 +352,12 @@ type RunOptions struct {
 	// In-process run field.
 	ResolvedSlashModelEffective string `json:"-"`
 
+	// PrePersistedUserEntryID identifies a user turn the session layer wrote with
+	// its active-run journal before backend dispatch. The API runloop reuses that
+	// canonical entry instead of appending the same prompt again after restart.
+	// Internal-only: it never crosses the wire.
+	PrePersistedUserEntryID string `json:"-"`
+
 	// InjectionKind classifies an engine-side injected user turn so the
 	// backend can stamp it on the persisted conversation entry. "agent_completion"
 	// marks a machine-to-machine dispatch callback rather than a user-authored

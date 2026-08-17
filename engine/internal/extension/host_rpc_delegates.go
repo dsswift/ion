@@ -103,6 +103,12 @@ func (h *Host) rpcGetPlanMode(_ *Context, id int64, raw []byte) {
 	h.handleGetPlanMode(id, raw)
 }
 
+// --- Run recovery ---
+
+func (h *Host) rpcSetRunRecovery(ctx *Context, id int64, raw []byte) {
+	h.handleSetRunRecovery(ctx, id, raw)
+}
+
 // --- Async triggers ---
 
 func (h *Host) rpcRegisterWebhookReq(_ *Context, id int64, raw []byte) {

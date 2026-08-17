@@ -687,6 +687,46 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 		utils.LogWithFields(utils.LevelInfo, "session", "suspended exit (park; no reap, no engine_dead)", map[string]any{"key": key, "code_str": codeStr, "sig_str": sigStr})
 	}
 
+	// A completed or terminal run cannot revive after restart. A suspended root
+	// keeps its durable journal, but drops the dispatch gate so its engine-owned
+	// wake can start the next continuation. Snapshot and mutate lifecycle only
+	// under Manager.mu; journal fsync stays outside that lock.
+	if exitSession != nil {
+		m.mu.Lock()
+		current, live := m.sessions[key]
+		isCurrent := live && current == exitSession
+		recoveryActive := isCurrent && current.recoveryInProgress
+		recoveryID, recoveryAttempt, recoveryMaxAttempts := "", 0, 0
+		conversationID := ""
+		if recoveryActive {
+			recoveryID, recoveryAttempt, recoveryMaxAttempts = current.recoveryID, current.recoveryAttempt, current.recoveryMaxAttempts
+			conversationID = current.conversationID
+			if suspendedExit {
+				// Keep ownership claimed across park/wake. SendPrompt admits only
+				// classified engine wakes while this lifecycle remains active.
+				utils.LogWithFields(utils.LevelInfo, "session.recovery", "recovery parked; keeping lifecycle claim for wake", map[string]any{"key": key, "recovery_id": recoveryID})
+			}
+		}
+		m.mu.Unlock()
+
+		if recoveryActive && !suspendedExit {
+			phase, reason := "completed", ""
+			if cleanCancel || abnormalExit {
+				phase, reason = "failed", fmt.Sprintf("run exit code=%s signal=%s", codeStr, sigStr)
+			}
+			if !m.clearRunRecovery(conversationID, key, recoveryID, "run_exit") {
+				utils.LogWithFields(utils.LevelError, "session.recovery", "could not persist terminal recovery cleanup", map[string]any{"key": key, "conversation_id": conversationID, "phase": phase})
+				phase, reason = "failed", "could not persist terminal recovery cleanup"
+			}
+			m.emitRunRecovery(key, recoveryID, phase, recoveryAttempt, recoveryMaxAttempts, reason)
+			m.mu.Lock()
+			if current, ok := m.sessions[key]; ok && current == exitSession && current.recoveryID == recoveryID {
+				clearRecoveryLifecycle(current)
+			}
+			m.mu.Unlock()
+		}
+	}
+
 	// Auto-respawn any extension hosts whose subprocess died during the
 	// run. Now that the run has finished we can rebuild safely without
 	// mid-turn hook interleaving.

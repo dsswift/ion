@@ -10,9 +10,9 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 )
 
-// TestSDKBuildIdentity_RealTypeScriptInit proves the TypeScript runtime reads
-// its installed build stamp during the real init handshake. A mismatch would
-// make Host.Load fail before the registered tool reaches the engine.
+// TestSDKBuildIdentity_RealTypeScriptInit proves the TypeScript runtime reports
+// its installed build stamp for provenance without coupling extension loading
+// to the engine build that happens to host it.
 func TestSDKBuildIdentity_RealTypeScriptInit(t *testing.T) {
 	requireEsbuild(t)
 
@@ -75,8 +75,11 @@ func TestSDKBuildIdentity_RealTypeScriptInit(t *testing.T) {
 	if err := mismatchedHost.Load(entry, &extension.ExtensionConfig{
 		ExtensionDir:     extDir,
 		WorkingDirectory: extDir,
-	}); err == nil {
-		t.Fatal("Load accepted TypeScript SDK identity that differs from engine identity")
+	}); err != nil {
+		t.Fatalf("independently deployed TypeScript SDK was rejected: %v", err)
+	}
+	if !hasToolNamed(mismatchedHost.Tools(), "identity_probe") {
+		t.Fatal("mismatched SDK identity prevented compatible tool registration")
 	}
 }
 

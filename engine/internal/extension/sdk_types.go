@@ -292,6 +292,10 @@ type Context struct {
 	// plan-mode semantics.
 	SetPlanMode func(enabled bool, source string)
 
+	// SetRunRecovery applies an extension-owned per-session recovery override.
+	// It is available from session_start after session defaults resolve.
+	SetRunRecovery func(config *types.RunRecoveryConfig)
+
 	// GetPlanMode returns the current plan-mode state for this session:
 	// (enabled, planFilePath). planFilePath is non-empty whenever a plan file
 	// has been allocated for the session (even if plan mode is currently off —

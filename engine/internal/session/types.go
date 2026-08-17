@@ -53,6 +53,12 @@ type engineSession struct {
 	// restart-safe authority once a run writes its first turn.
 	acceptedDeliveryIDs map[string]struct{}
 
+	// Recovery lifecycle is set only for a run reconstructed from an active
+	// conversation journal. Ordinary user runs must not emit recovery events.
+	recoveryInProgress  bool
+	recoveryID          string
+	recoveryAttempt     int
+	recoveryMaxAttempts int
 	// clampAdvisoryMu guards lastClampAdvisory. Its own lock rather than
 	// m.mu: the advisory drain runs inside the emit path, which already takes
 	// m.mu.RLock via m.emit, so reusing m.mu risks a lock-order inversion for
@@ -107,6 +113,13 @@ type engineSession struct {
 	// clear compares against its own requestID and abstains when a newer
 	// dispatch owns the marker. Guarded by m.mu.
 	dispatchingRunID string
+
+	// launchingRunID bridges final manager validation to backend registration.
+	// StartRun executes without Manager.mu so callbacks cannot deadlock. A stop
+	// that arrives in this window waits for launchAck, then cancels the registered
+	// run through its normal teardown path. Guarded by Manager.mu.
+	launchingRunID string
+	launchAck      chan struct{}
 
 	// rootCtx is the per-session cancellation root. Every cancellable
 	// operation spawned on behalf of this session derives its own

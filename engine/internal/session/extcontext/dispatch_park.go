@@ -3,6 +3,8 @@ package extcontext
 import (
 	"fmt"
 	"strings"
+
+	"github.com/dsswift/ion/engine/internal/types"
 )
 
 // buildReviveResumePrompt composes the user-turn prompt a parked dispatch is
@@ -17,6 +19,15 @@ import (
 // may have been revived by a bare-suspend sendPrompt or a race where its
 // child's result was consumed elsewhere; it should reassess rather than
 // replay.
+// reviveInjectionKind classifies a parked-dispatch wake at source so the
+// backend persists the same provenance across live and historical paths.
+func reviveInjectionKind(results []ChildResultRecord) string {
+	if len(results) == 0 {
+		return string(types.InjectionKindRevive)
+	}
+	return string(types.InjectionKindAgentCompletion)
+}
+
 func buildReviveResumePrompt(results []ChildResultRecord) string {
 	if len(results) == 0 {
 		return "[SYSTEM] You have been revived from a parked state. The work you were waiting on has settled, but no child results were recorded — check your dispatch state (or the conversation above) and continue from where you left off. Do NOT restart the task from the beginning; your earlier work is in this conversation."

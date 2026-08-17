@@ -35,6 +35,10 @@ func MergeConfigs(enterprise *types.EnterpriseConfig, configs ...*types.EngineRu
 				dup.Profiles = make([]types.EngineProfileConfig, len(cfg.Profiles))
 				copy(dup.Profiles, cfg.Profiles)
 			}
+			if cfg.RunRecovery != nil {
+				cp := *cfg.RunRecovery
+				dup.RunRecovery = &cp
+			}
 			result = &dup
 			continue
 		}

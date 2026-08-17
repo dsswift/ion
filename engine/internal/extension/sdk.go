@@ -196,6 +196,14 @@ const (
 	// The receiving extension can react: abort, inject context, emit
 	// a harness message, or ignore.
 	HookSessionMessage = "session_message"
+
+	// Run recovery hook. Fires before the engine re-executes a
+	// recovered run (e.g. after a crash or daemon restart). The handler
+	// receives recovery metadata and may return an action: "recover"
+	// (proceed, optionally with a replacement instruction) or "skip"
+	// (abandon the recovery attempt). Influence hook; last non-nil
+	// structured result wins per field.
+	HookBeforeRunRecovery = "before_run_recovery"
 )
 
 // SDK is the extension hook registry. It manages hook handlers, tools,

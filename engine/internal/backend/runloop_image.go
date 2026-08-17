@@ -55,13 +55,19 @@ func (b *ApiBackend) runImageLoop(ctx context.Context, run *activeRun, opts type
 	}
 	run.conv = conv
 
-	// Persist the user prompt turn so the conversation reflects what was asked.
-	appendInboundUserMessage(conv, &opts)
-	if saveErr := conversation.Save(conv, ""); saveErr != nil {
-		utils.LogWithFields(utils.LevelInfo, "backend.image", "failed to save conversation after user message", map[string]any{
-			"run_id": run.requestID,
-			"error":  utils.ErrStr(saveErr),
-		})
+	// Persist the user prompt turn unless session recovery committed its canonical
+	// turn before backend launch. This matches runLoop and prevents image prompts
+	// from duplicating the user row after an interrupted-run recovery.
+	if opts.PrePersistedUserEntryID == "" {
+		AppendInboundUserMessage(conv, &opts)
+		if saveErr := conversation.Save(conv, ""); saveErr != nil {
+			utils.LogWithFields(utils.LevelInfo, "backend.image", "failed to save conversation after user message", map[string]any{
+				"run_id": run.requestID,
+				"error":  utils.ErrStr(saveErr),
+			})
+		}
+	} else {
+		utils.LogWithFields(utils.LevelInfo, "backend.image", "reusing session-persisted user turn", map[string]any{"run_id": run.requestID, "entry_id": opts.PrePersistedUserEntryID})
 	}
 
 	// Emit session_init so downstream consumers (desktop, iOS) can key on

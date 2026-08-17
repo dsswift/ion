@@ -1541,6 +1541,13 @@ export interface IonContext {
    * off — the path is preserved across toggles until the session is reset).
    */
   getPlanMode(): Promise<PlanModeState>
+
+  /**
+   * Configure restart recovery for later runs in this session. The engine only
+   * resumes work interrupted by engine process loss. Provider errors and normal
+   * terminal exits are not retried.
+   */
+  setRunRecovery(config: RunRecoveryConfig): Promise<void>
 }
 
 /** Describes a session as returned by ctx.sessions.list(). */
@@ -1635,6 +1642,12 @@ export interface ElicitResult {
 /**
  * Options for {@link IonContext.runOnce}.
  */
+export interface RunRecoveryConfig {
+  /** Required by current engines. Omit only when supporting older SDK callers. */
+  enabled?: boolean
+  maxAttempts?: number
+}
+
 export interface RunOnceOpts {
   /**
    * Debounce window in milliseconds. After a successful execution, the
@@ -2612,6 +2625,10 @@ export interface HookPayloadMap {
   webhook_deregistered: AsyncRegistrationInfo
   schedule_registered: AsyncRegistrationInfo
   schedule_deregistered: AsyncRegistrationInfo
+
+  // Run recovery -- fires before the engine re-executes a recovered run
+  // after a crash or daemon restart.
+  before_run_recovery: BeforeRunRecoveryInfo
 }
 
 /**
@@ -3184,4 +3201,34 @@ export interface NotifyOpts {
   /** When set, the engine emits the notification on the target session's
    *  event stream instead of the caller's. The target must exist. */
   targetSessionKey?: string
+}
+
+// ---------------------------------------------------------------------------
+// Run recovery hook types
+// ---------------------------------------------------------------------------
+
+/** Payload for the `before_run_recovery` hook. */
+export interface BeforeRunRecoveryInfo {
+  /** Engine-issued identifier for this recovery attempt. */
+  recoveryId: string
+  /** Conversation whose run is being recovered. */
+  conversationId: string
+  /** 1-based recovery attempt number for this run. */
+  attempt: number
+  /** Configured ceiling on recovery retries. */
+  maxAttempts: number
+  /** Original user prompt that initiated the recovered run. */
+  prompt?: string
+  /** Model that was in use when the run was interrupted. */
+  model?: string
+  /** Session key within the conversation. */
+  sessionKey?: string
+}
+
+/** Result from a `before_run_recovery` handler. */
+export interface BeforeRunRecoveryResult {
+  /** "recover" (proceed) or "skip" (abandon). Empty means no opinion. */
+  action?: 'recover' | 'skip'
+  /** Optional replacement instruction for the recovered run's context. */
+  instruction?: string
 }
