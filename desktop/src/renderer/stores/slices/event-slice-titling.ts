@@ -100,7 +100,11 @@ export function maybeSendTimeTitle(
     }
     renameTab(tabId, title)
     seedWorktreeTitle(workingDirectory, title)
-  }).catch(() => { /* keep truncated fallback */ })
+  }).catch((err) => {
+    rWarn('event.title', 'AI title generation failed; keeping truncated fallback', {
+      tab_id: tabId.slice(0, 8), error: String(err),
+    })
+  })
 }
 
 /**
