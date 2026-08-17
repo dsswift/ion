@@ -319,6 +319,10 @@ func (p *anthropicProvider) buildRequestBody(opts types.LlmStreamOptions) map[st
 			"budget_tokens": budgetTokens,
 		}
 	case "none":
+		if opts.DisableThinking {
+			utils.LogWithFields(utils.LevelDebug, "Thinking", "build request body self-engaged thinking disabled by caller", map[string]any{"model": opts.Model})
+			break
+		}
 		// Self-engaged adaptive thinking (no consumer directive): adaptive
 		// models reason on their own even when the consumer sent no thinking
 		// config — but without a directive the API defaults display to

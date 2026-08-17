@@ -32,6 +32,10 @@ type LlmStreamOptions struct {
 	ServerTools []map[string]any `json:"serverTools,omitempty"` // opaque server-side tools (e.g. web_search_20250305)
 	MaxTokens   int              `json:"maxTokens,omitempty"`
 	Thinking    *ThinkingConfig  `json:"thinking,omitempty"`
+	// DisableThinking suppresses provider-side reasoning for lightweight,
+	// mechanical calls such as title generation. It is internal-only request
+	// metadata and never crosses the engine wire, SDK, or persistence boundary.
+	DisableThinking bool `json:"-"`
 	// Temperature is the sampling temperature for the request. Pointer so
 	// "unset" (nil → provider default applies) is distinct from an explicit
 	// 0.0 (fully deterministic). Providers that support a temperature

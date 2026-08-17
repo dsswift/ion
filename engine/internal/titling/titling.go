@@ -4,6 +4,7 @@ package titling
 import (
 	"context"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/dsswift/ion/engine/internal/modelconfig"
 	"github.com/dsswift/ion/engine/internal/providers"
@@ -11,7 +12,11 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-const maxInputChars = 2000
+const (
+	maxInputChars  = 2000
+	titleMaxChars  = 40
+	titleMaxTokens = 256
+)
 
 // authResolver is an optional hook that resolves and injects the API key for a
 // provider before the titling LLM call. Without this, the provider may not have
@@ -65,34 +70,70 @@ func GenerateTitle(ctx context.Context, firstMessage string) (string, error) {
 		{Role: "user", Content: "Generate a short title for this message:\n\n" + input},
 	}
 
+	// Title generation is bounded even if a model ignores its narrow prompt. It
+	// also explicitly disables provider reasoning: a title needs no deliberation,
+	// and reserving its tiny output budget for hidden reasoning was the root cause
+	// of missing visible titles.
 	opts := types.LlmStreamOptions{
-		Model:     model,
-		System:    systemPrompt,
-		Messages:  messages,
-		MaxTokens: 20,
+		Model:           model,
+		System:          systemPrompt,
+		Messages:        messages,
+		MaxTokens:       titleMaxTokens,
+		Thinking:        &types.ThinkingConfig{Enabled: false},
+		DisableThinking: true,
 	}
 
 	events, errc := provider.Stream(ctx, opts)
 
 	var response strings.Builder
+	var outputTokens int
+	stopReason := ""
 	for ev := range events {
 		if ev.Delta != nil && ev.Delta.Text != "" {
 			response.WriteString(ev.Delta.Text)
 		}
+		if ev.Delta != nil && ev.Delta.StopReason != nil {
+			stopReason = *ev.Delta.StopReason
+		}
+		if ev.DeltaUsage != nil {
+			outputTokens = ev.DeltaUsage.OutputTokens
+		}
 	}
 	if errc != nil {
 		if err := <-errc; err != nil {
-			utils.LogWithFields(utils.LevelWarn, "titling", "llm error", map[string]any{"error": err.Error()})
+			utils.LogWithFields(utils.LevelWarn, "titling", "llm error", map[string]any{"model": model, "error": err.Error()})
 			return "", nil
 		}
+	}
+
+	if stopReason == "max_tokens" || stopReason == "length" {
+		utils.LogWithFields(utils.LevelWarn, "titling", "title generation incomplete", map[string]any{
+			"model": model, "stop_reason": stopReason, "output_tokens": outputTokens,
+		})
+		return "", nil
 	}
 
 	title := strings.TrimSpace(response.String())
 	// Strip surrounding quotes if the model wrapped the title
 	title = strings.Trim(title, "\"'")
 	title = strings.TrimSpace(title)
+	if title == "" {
+		utils.LogWithFields(utils.LevelWarn, "titling", "title generation empty", map[string]any{
+			"model": model, "stop_reason": stopReason, "output_tokens": outputTokens,
+		})
+		return "", nil
+	}
+	titleChars := utf8.RuneCountInString(title)
+	if titleChars > titleMaxChars {
+		utils.LogWithFields(utils.LevelWarn, "titling", "title generation too long", map[string]any{
+			"model": model, "count": titleChars, "max": titleMaxChars,
+		})
+		return "", nil
+	}
 
-	utils.LogWithFields(utils.LevelInfo, "titling", "generated title", map[string]any{"reason": title})
+	utils.LogWithFields(utils.LevelInfo, "titling", "generated title", map[string]any{
+		"model": model, "title": title, "stop_reason": stopReason, "output_tokens": outputTokens,
+	})
 	return title, nil
 }
 

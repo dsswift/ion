@@ -55,6 +55,15 @@ func RegisterProvider(p LlmProvider) {
 	providerRegistry[p.ID()] = p
 }
 
+// UnregisterProvider removes a provider from the global registry. It exists for
+// test cleanup and provider lifecycle replacement; callers that remove a provider
+// must also unregister any model entries that resolve to it.
+func UnregisterProvider(id string) {
+	mu.Lock()
+	defer mu.Unlock()
+	delete(providerRegistry, id)
+}
+
 // GetProvider returns a registered provider by ID.
 func GetProvider(id string) LlmProvider {
 	mu.RLock()

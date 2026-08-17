@@ -169,6 +169,18 @@ func TestAnthropicBuildRequestBody_ThinkingOmittedWhenDisabled(t *testing.T) {
 	}
 }
 
+func TestAnthropicBuildRequestBody_TitleOptOutSuppressesAdaptiveThinking(t *testing.T) {
+	registerThinkingTestModels()
+	p := &anthropicProvider{}
+	body := p.buildRequestBody(types.LlmStreamOptions{
+		Model:           "test-adaptive",
+		DisableThinking: true,
+	})
+	if _, ok := body["thinking"]; ok {
+		t.Errorf("thinking present with caller opt-out; body=%v", body)
+	}
+}
+
 func TestOpenAIBuildRequestBody_ReasoningEffort(t *testing.T) {
 	registerThinkingTestModels()
 	p := &openaiProvider{}
