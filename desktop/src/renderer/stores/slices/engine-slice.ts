@@ -153,6 +153,21 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
         if (result?.conversationId) {
           _captureMintedConversationId(set, tabId, result.conversationId)
         }
+        // The session is online, so 'connecting' has been answered: the tab is
+        // idle and awaiting a prompt. Clear it HERE rather than waiting for a
+        // control-plane transition — a freshly started session has no run, so
+        // the plane's entry rests at 'idle' and its _setStatus no-ops, meaning no
+        // tab-status-change ever arrives. Without this the tab shows a connecting
+        // indicator with a blocked composer until the operator's first prompt
+        // finally forces a transition (observed: 7 minutes on a new worktree
+        // conversation, and indefinitely on a tab nobody typed into).
+        //
+        // Guarded on 'connecting' so a status the engine already delivered wins:
+        // a run that started between engineStart resolving and this callback
+        // must not be knocked back to idle.
+        set((state) => ({
+          tabs: setTabStatus(state.tabs, tabId, 'idle', (t) => t.status === 'connecting'),
+        }))
       }).catch((err: any) => {
         rError('engine.session', 'start threw', { error: err.message })
         set((state) => {

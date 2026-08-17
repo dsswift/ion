@@ -127,8 +127,6 @@ export interface TabState {
    * auto-resuming and surfaces an honest, actionable message instead. Not
    * persisted — recovery is a live-session concern that resets on restart.
    */
-  autoRecoveryAttempts?: number
-  autoRecoveryWindowStartedAt?: number | null
   hasUnread: boolean
   currentActivity: string
   attachments: FileAttachment[]

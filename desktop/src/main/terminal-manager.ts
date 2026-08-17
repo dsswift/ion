@@ -2,9 +2,15 @@ import { IPC } from '../shared/types'
 import { getCliEnv } from './cli-env'
 import { getDeepLinkToken } from './deeplink/token'
 import { homedir } from 'os'
+import { basename } from 'path'
 import { existsSync } from 'fs'
 import { terminalScrollback } from './state'
+import { debug as _debug } from './logger'
 import type { IPty } from 'node-pty'
+
+function debug(msg: string, fields?: Record<string, unknown>): void {
+  _debug('terminal', msg, fields)
+}
 
 /**
  * Split a terminal key into its tab and instance ids.
@@ -41,13 +47,24 @@ export type PtySpawner = (
   options: { name: string; cols: number; rows: number; cwd: string; env: Record<string, string> },
 ) => IPty
 
+/** Read node-pty's foreground-process title without spawning a subprocess. */
+export type ProcessProbe = (term: Pick<IPty, 'process'>, shell: string) => boolean
+
+function hasForegroundChildProcess(term: Pick<IPty, 'process'>, shell: string): boolean {
+  return basename(term.process) !== basename(shell)
+}
+
 export class TerminalManager {
   private sessions = new Map<string, IPty>()
+  private activeKeys = new Set<string>()
+  private activityTimers = new Map<string, ReturnType<typeof setTimeout>>()
   private broadcast: (channel: string, ...args: unknown[]) => void
   private spawner: PtySpawner | null
+  private processProbe: ProcessProbe
 
-  constructor(broadcast: (channel: string, ...args: unknown[]) => void, spawner?: PtySpawner) {
+  constructor(broadcast: (channel: string, ...args: unknown[]) => void, spawner?: PtySpawner, processProbe?: ProcessProbe) {
     this.broadcast = broadcast
+    this.processProbe = processProbe ?? hasForegroundChildProcess
     // Production passes nothing and gets node-pty; tests inject a spy.
     this.spawner = spawner ?? null
   }
@@ -102,14 +119,60 @@ export class TerminalManager {
 
     term.onExit(({ exitCode }: { exitCode: number }) => {
       this.sessions.delete(key)
+      this.stopActivityWatch(key)
+      this.setActivity(key, false)
       this.broadcast(IPC.TERMINAL_EXIT, key, exitCode)
     })
 
     this.sessions.set(key, term)
+    this.startActivityWatch(key, term, shell)
   }
 
   write(key: string, data: string): void {
     this.sessions.get(key)?.write(data)
+  }
+
+  activeTabIds(): string[] {
+    return [...new Set([...this.activeKeys].map((key) => splitTerminalKey(key)[0]))]
+  }
+
+  private setActivity(key: string, active: boolean): void {
+    const wasActive = this.activeKeys.has(key)
+    if (active === wasActive) return
+
+    const [tabId] = splitTerminalKey(key)
+    const wasTabActive = this.activeTabIds().includes(tabId)
+    if (active) this.activeKeys.add(key)
+    else this.activeKeys.delete(key)
+    const isTabActive = this.activeTabIds().includes(tabId)
+
+    // Renderers show activity per tab. Do not mark a tab idle while another PTY
+    // in that tab still has a foreground child process.
+    if (wasTabActive === isTabActive) return
+    this.broadcast(IPC.TERMINAL_ACTIVITY, { key, tabId, active: isTabActive })
+    debug('terminal activity changed', { key, tab_id: tabId, active: isTabActive })
+  }
+
+  private startActivityWatch(key: string, term: IPty, shell: string): void {
+    this.stopActivityWatch(key)
+    const refresh = (): void => {
+      if (this.sessions.get(key) !== term) return
+      try {
+        this.setActivity(key, this.processProbe(term, shell))
+      } catch (err: unknown) {
+        debug('terminal activity probe failed', { key, error: String(err) })
+      }
+      if (this.sessions.get(key) === term) {
+        this.activityTimers.set(key, setTimeout(refresh, 500))
+      }
+    }
+    refresh()
+  }
+
+  private stopActivityWatch(key: string): void {
+    const timer = this.activityTimers.get(key)
+    if (timer) clearTimeout(timer)
+    this.activityTimers.delete(key)
   }
 
   resize(key: string, cols: number, rows: number): void {
@@ -124,6 +187,8 @@ export class TerminalManager {
     const term = this.sessions.get(key)
     if (term) {
       this.sessions.delete(key)
+      this.stopActivityWatch(key)
+      this.setActivity(key, false)
       terminalScrollback.delete(key)
       try {
         term.kill()

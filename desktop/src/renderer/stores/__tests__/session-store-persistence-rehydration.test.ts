@@ -23,7 +23,6 @@ vi.mock('../../preferences', () => ({
   usePreferencesStore: {
     getState: () => ({
       tabRecoveryEnabled: false,
-      tabRecoveryTimeoutSec: 60,
       expandOnTabSwitch: true,
       keepTerminalOnCollapse: false,
       keepExplorerOnCollapse: false,
@@ -110,7 +109,6 @@ function makeStoreStub(initialState: Partial<any> = {}) {
     terminalPanes: new Map(),
     conversationPanes: new Map(),
     tabRecoveryEnabled: false,
-    tabRecoveryTimeoutSec: 60,
     rehydrating: false,
     tabsReady: false,
     fileEditorStates_stub: new Map(),

@@ -432,9 +432,8 @@ function sentinelFor(key: string, defaultValue: unknown): unknown {
   if (typeof defaultValue === 'boolean') return !defaultValue
   if (typeof defaultValue === 'number') {
     // Stay within validated ranges (uiZoom is clamped 0.5..2.0,
-    // tabRecoveryTimeoutSec is clamped 30..600, editorFontSize 8..24).
+    // editorFontSize is clamped 8..24).
     if (key === 'uiZoom') return 1.2
-    if (key === 'tabRecoveryTimeoutSec') return 90
     if (key === 'editorFontSize') return 14
     return 42
   }

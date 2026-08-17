@@ -26,6 +26,8 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 const runningChildrenIds = new Set<string>()
 const runningShellIds = new Set<string>()
 
+// Control which tab IDs have an executing terminal command via this settable set.
+const terminalCommandIds = new Set<string>()
 // Control getWaitingState return value per tab ID.
 const waitingStateMap = new Map<string, 'plan-ready' | 'question' | null>()
 
@@ -39,6 +41,7 @@ const permissionModeMap = new Map<string, 'plan' | 'auto'>()
 vi.mock('../TabStripShared', () => ({
   anyEngineInstanceHasRunningChildren: (tabId: string) => runningChildrenIds.has(tabId),
   anyEngineInstanceHasRunningShells: (tabId: string) => runningShellIds.has(tabId),
+  isAnyTerminalCommandRunning: (tabId: string) => terminalCommandIds.has(tabId),
   getWaitingState: (tab: any) => waitingStateMap.get(tab.id) ?? null,
 }))
 
@@ -69,7 +72,7 @@ function makeTab(id: string, status: string, overrides: Record<string, unknown> 
 // ─── globalRunningTier tests ──────────────────────────────────────────────────
 
 describe('WorkspaceStatusIndicator.globalRunningTier', () => {
-  afterEach(() => { runningChildrenIds.clear(); runningShellIds.clear() })
+  afterEach(() => { runningChildrenIds.clear(); runningShellIds.clear(); terminalCommandIds.clear() })
 
   it('returns idle for an empty tab list', () => {
     expect(globalRunningTier([])).toBe('idle')
@@ -85,11 +88,20 @@ describe('WorkspaceStatusIndicator.globalRunningTier', () => {
     expect(globalRunningTier(tabs)).toBe('running')
   })
 
-  it('returns running when any tab status is connecting', () => {
-    const tabs = [makeTab('t1', 'idle'), makeTab('t2', 'connecting')]
-    expect(globalRunningTier(tabs)).toBe('running')
+  it('returns idle when tabs are only connecting', () => {
+    expect(globalRunningTier([makeTab('t1', 'connecting')])).toBe('idle')
   })
 
+  it('returns running when a terminal command executes', () => {
+    terminalCommandIds.add('terminal-tab')
+    expect(globalRunningTier([makeTab('terminal-tab', 'idle', { isTerminalOnly: true })], terminalCommandIds)).toBe('running')
+    const counts = computeStatusCounts([makeTab('terminal-tab', 'idle', { isTerminalOnly: true })], terminalCommandIds)
+    expect(counts.runningTabs.map((tab) => tab.id)).toEqual(['terminal-tab'])
+  })
+
+  it('does not treat an idle terminal prompt as workspace work', () => {
+    expect(globalRunningTier([makeTab('terminal-tab', 'idle', { isTerminalOnly: true })])).toBe('idle')
+  })
   it('running wins over waiting children (foreground beats background)', () => {
     runningChildrenIds.add('t1')
     const tabs = [makeTab('t1', 'idle'), makeTab('t2', 'running')]
@@ -126,6 +138,7 @@ describe('WorkspaceStatusIndicator.computeStatusCounts', () => {
   afterEach(() => {
     runningChildrenIds.clear()
     runningShellIds.clear()
+    terminalCommandIds.clear()
     waitingStateMap.clear()
     permissionQueueMap.clear()
     permissionModeMap.clear()
@@ -279,14 +292,29 @@ describe('WorkspaceStatusIndicator.computeStatusCounts', () => {
 
   // ── name lists for active-work buckets ────────────────────────────────────
 
-  it('runningTabs collects running AND connecting tabs, in order', () => {
+  it('runningTabs collects ONLY running tabs; connecting has its own list', () => {
     const tabs = [
       makeTab('t1', 'running'),
       makeTab('t2', 'idle'),
       makeTab('t3', 'connecting'),
     ]
     const c = computeStatusCounts(tabs)
-    expect(c.runningTabs.map((t) => t.id)).toEqual(['t1', 't3'])
+    expect(c.runningTabs.map((t) => t.id)).toEqual(['t1'])
+    expect(c.connectingTabs.map((t) => t.id)).toEqual(['t3'])
+  })
+
+  it('every non-zero foreground count has the same number of names', () => {
+    // The wedge this pins: a Running count rendering with no conversations
+    // under it because connecting names were pushed into the running list.
+    const tabs = [
+      makeTab('t1', 'running'),
+      makeTab('t2', 'running'),
+      makeTab('t3', 'connecting'),
+      makeTab('t4', 'connecting'),
+    ]
+    const c = computeStatusCounts(tabs)
+    expect(c.runningTabs).toHaveLength(c.running)
+    expect(c.connectingTabs).toHaveLength(c.connecting)
   })
 
   it('waitingTabs collects only tabs with running children', () => {
@@ -321,7 +349,7 @@ describe('WorkspaceStatusIndicator.computeStatusCounts', () => {
   it('falls back to title when customTitle is null', () => {
     const tabs = [makeTab('t1', 'connecting', { title: 'auto-name', customTitle: null })]
     const c = computeStatusCounts(tabs)
-    expect(c.runningTabs[0].title).toBe('auto-name')
+    expect(c.connectingTabs[0].title).toBe('auto-name')
   })
 
   // ── name lists for idle-ish (collapsible) buckets ──────────────────────────
@@ -403,12 +431,13 @@ describe('WorkspaceStatusIndicator.computeStatusCounts', () => {
     expect(c.questionTabs[0].mode).toBe('plan')
   })
 
-  it('mixed modes on running tabs are resolved per tab', () => {
+  it('mixed modes are resolved per tab across running and connecting lists', () => {
     permissionModeMap.set('t1', 'plan')
     permissionModeMap.set('t3', 'auto')
     const tabs = [makeTab('t1', 'running'), makeTab('t2', 'running'), makeTab('t3', 'connecting')]
     const c = computeStatusCounts(tabs)
-    expect(c.runningTabs.map((t) => t.mode)).toEqual(['plan', 'auto', 'auto'])
+    expect(c.runningTabs.map((t) => t.mode)).toEqual(['plan', 'auto'])
+    expect(c.connectingTabs.map((t) => t.mode)).toEqual(['auto'])
   })
 })
 

@@ -99,6 +99,28 @@ describe('EngineControlPlane.ensureSession', () => {
     )
   })
 
+  it('sets the normal-session recovery override from desktop settings', async () => {
+    const tabId = cp.createTab()
+    await cp.ensureSession(tabId, { workingDirectory: '/w', conversationId: 'conv-recovery' })
+
+    expect(mockBridge.startSession).toHaveBeenCalledWith(
+      tabId,
+      expect.objectContaining({ runRecovery: { enabled: true } }),
+    )
+  })
+
+  it('leaves harness recovery policy to the engine and extension', async () => {
+    const tabId = cp.createTab()
+    await cp.ensureSession(tabId, {
+      workingDirectory: '/w', conversationId: 'conv-harness', extensions: ['/ext/harness'],
+    })
+
+    expect(mockBridge.startSession).toHaveBeenCalledWith(
+      tabId,
+      expect.not.objectContaining({ runRecovery: expect.anything() }),
+    )
+  })
+
   it('is idempotent — a second call does not start again', async () => {
     const tabId = cp.createTab()
     await cp.ensureSession(tabId, { workingDirectory: '/w', conversationId: 'conv-abc' })
@@ -157,5 +179,49 @@ describe('EngineControlPlane.ensureSession', () => {
     expect(mockBenchCtx).toHaveBeenCalledWith('/Users/test/regular-project')
     const config = mockBridge.startSession.mock.calls[0][1]
     expect(config.clientWorkspaceContext).toBeUndefined()
+  })
+
+  // ── Status resync ─────────────────────────────────────────────────────────
+  //
+  // Every client of this plane writes an optimistic 'connecting' before asking
+  // for a session, and clears it only on an inbound tab-status-change. A tab
+  // whose entry has rested at 'idle' since createTab gets no transition when its
+  // session comes online (_setStatus no-ops on an unchanged status), so without
+  // an explicit resync the client's 'connecting' is never answered: an eager
+  // restore or a fresh worktree conversation renders an indefinite connecting
+  // spinner with a blocked composer while the plane believes the tab is idle.
+
+  it('re-asserts the current status when the session comes online', async () => {
+    const seen: Array<[string, string, string]> = []
+    const tabId = cp.createTab()
+    cp.on('tab-status-change', (id: string, next: string, prev: string) => { seen.push([id, next, prev]) })
+
+    await cp.ensureSession(tabId, { workingDirectory: '/w', conversationId: 'conv-resync' })
+
+    expect(seen).toEqual([[tabId, 'idle', 'idle']])
+  })
+
+  it('re-asserts the current status on the already-started no-op path', async () => {
+    const tabId = cp.createTab()
+    await cp.ensureSession(tabId, { workingDirectory: '/w', conversationId: 'conv-resync-2' })
+
+    const seen: Array<[string, string, string]> = []
+    cp.on('tab-status-change', (id: string, next: string, prev: string) => { seen.push([id, next, prev]) })
+    await cp.ensureSession(tabId, { workingDirectory: '/w', conversationId: 'conv-resync-2' })
+
+    expect(mockBridge.startSession).toHaveBeenCalledOnce()
+    expect(seen).toEqual([[tabId, 'idle', 'idle']])
+  })
+
+  it('does not emit a resync for a start failure — the status is not authoritative', async () => {
+    mockBridge.startSession.mockResolvedValue({ ok: false, error: 'boom' })
+    const seen: string[] = []
+    const tabId = cp.createTab()
+    cp.on('tab-status-change', (_id: string, next: string) => { seen.push(next) })
+
+    const res = await cp.ensureSession(tabId, { workingDirectory: '/w', conversationId: 'conv-fail' })
+
+    expect(res.ok).toBe(false)
+    expect(seen).toEqual([])
   })
 })

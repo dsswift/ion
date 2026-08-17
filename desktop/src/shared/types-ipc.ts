@@ -273,6 +273,8 @@ export const IPC = {
 
   // Terminal PTY
   // Terminal PTY
+  TERMINAL_ACTIVE_TABS: "ion:terminal-active-tabs",
+  TERMINAL_ACTIVITY: "ion:terminal-activity",
   TERMINAL_CREATE: "ion:terminal-create",
   TERMINAL_DATA: "ion:terminal-data",
   TERMINAL_RESIZE: "ion:terminal-resize",

@@ -97,11 +97,13 @@ export function anyEngineInstanceHasRunningChildren(tabId: string): boolean {
   return false
 }
 
+export function isAnyTerminalCommandRunning(tabId: string): boolean {
+  return useSessionStore.getState().terminalActiveTabIds.has(tabId)
+}
+
 /**
  * Total background shell commands a tab is waiting on, summed across its
  * engine instances.
- *
- * The shell counterpart to `effectiveRunningChildrenCount`. Unlike that
  * helper there is only ONE data source (`statusFields.backgroundShells`), so
  * this sums across instances rather than taking a max: two instances running
  * background commands are waiting on genuinely different processes, whereas

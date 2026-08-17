@@ -106,7 +106,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   defaultTallConversation: saved.defaultTallConversation,
   defaultTallTerminal: saved.defaultTallTerminal,
   tabRecoveryEnabled: saved.tabRecoveryEnabled,
-  tabRecoveryTimeoutSec: saved.tabRecoveryTimeoutSec,
   planModelSplitEnabled: saved.planModelSplitEnabled,
   planModeModel: saved.planModeModel,
   implementModeModel: saved.implementModeModel,
@@ -124,11 +123,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setTabRecoveryEnabled: (enabled) => {
     set({ tabRecoveryEnabled: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setTabRecoveryTimeoutSec: (sec) => {
-    const clamped = Math.max(30, Math.min(600, Math.round(sec)))
-    set({ tabRecoveryTimeoutSec: clamped })
     saveSettings(getAllSettings(get))
   },
   // Theme selection is the single control: every built-in theme declares

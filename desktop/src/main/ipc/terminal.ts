@@ -22,6 +22,8 @@ export function registerTerminalIpc(): void {
     terminalManager.resize(key, cols, rows)
   })
 
+  ipcMain.handle(IPC.TERMINAL_ACTIVE_TABS, () => terminalManager.activeTabIds())
+
   ipcMain.handle(IPC.TERMINAL_DESTROY, (_event, { key }: { key: string }) => {
     log('terminal_destroy', { key })
     terminalManager.destroy(key)

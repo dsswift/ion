@@ -271,4 +271,40 @@ describe('engine-slice — session-limit rejection surfaces actionable message (
     const notifs = state.engineNotifications.get('tab2') ?? []
     expect(notifs.some((n: any) => String(n.message).startsWith('Extension error'))).toBe(true)
   })
+
+  it('clears its own connecting once the session is online (REGRESSION)', async () => {
+    // addEngineInstance sets 'connecting' for the indicator. Nothing else clears
+    // it on the success path: a freshly started session has no run, so the
+    // control plane's entry rests at 'idle' and its _setStatus no-ops, meaning no
+    // tab-status-change ever arrives. Before this fix the tab kept the connecting
+    // indicator with a blocked composer until the operator's first prompt forced
+    // a transition — observed live at 7 minutes on a new worktree conversation.
+    const { state, slice } = buildHarness()
+    const startMock = (globalThis as any).window.ion.engineStart as ReturnType<typeof vi.fn>
+    startMock.mockClear()
+    startMock.mockResolvedValueOnce({ ok: true })
+
+    slice.addEngineInstance!('tab1')
+    expect(state.tabs.find((t: any) => t.id === 'tab1').status).toBe('connecting')
+
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(state.tabs.find((t: any) => t.id === 'tab1').status).toBe('idle')
+  })
+
+  it('does not knock back a run that started before engineStart resolved', async () => {
+    // The clear is guarded on 'connecting': an engine status delivered between
+    // engineStart resolving and its callback is authoritative and must win.
+    const { state, slice } = buildHarness()
+    const startMock = (globalThis as any).window.ion.engineStart as ReturnType<typeof vi.fn>
+    startMock.mockClear()
+    startMock.mockResolvedValueOnce({ ok: true })
+
+    slice.addEngineInstance!('tab2')
+    state.tabs = state.tabs.map((t: any) => (t.id === 'tab2' ? { ...t, status: 'running' } : t))
+
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(state.tabs.find((t: any) => t.id === 'tab2').status).toBe('running')
+  })
 })

@@ -71,6 +71,24 @@ export function handleStreamSignalEvent(
       } as NormalizedEvent)
       return true
 
+    case 'engine_run_recovery':
+      log('run_recovery', {
+        tab_id: tabId,
+        recovery_id: event.runRecoveryId,
+        phase: event.runRecoveryPhase,
+        attempt: event.runRecoveryAttempt ?? 0,
+        max_attempts: event.runRecoveryMaxAttempts ?? 0,
+      })
+      ctx.emit('event', tabId, {
+        type: 'run_recovery',
+        recoveryId: event.runRecoveryId,
+        phase: event.runRecoveryPhase,
+        attempt: event.runRecoveryAttempt,
+        maxAttempts: event.runRecoveryMaxAttempts,
+        reason: event.runRecoveryReason,
+      } as NormalizedEvent)
+      return true
+
     case 'engine_task_suspended':
       // A run ended without completing. Either a dispatched agent called
       // ctx.suspend()/suspendUntilAll() and is parked waiting for child

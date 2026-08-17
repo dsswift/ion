@@ -30,8 +30,6 @@ export function TabsPanelsCategory() {
   const setKeepStatusDrawerOnCollapse = usePreferencesStore((s) => s.setKeepStatusDrawerOnCollapse)
   const tabRecoveryEnabled = usePreferencesStore((s) => s.tabRecoveryEnabled)
   const setTabRecoveryEnabled = usePreferencesStore((s) => s.setTabRecoveryEnabled)
-  const tabRecoveryTimeoutSec = usePreferencesStore((s) => s.tabRecoveryTimeoutSec)
-  const setTabRecoveryTimeoutSec = usePreferencesStore((s) => s.setTabRecoveryTimeoutSec)
 
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
@@ -493,43 +491,16 @@ export function TabsPanelsCategory() {
         onChange={setKeepStatusDrawerOnCollapse}
       />
 
-      <SettingHeading>Tab Recovery</SettingHeading>
+      <SettingHeading>Conversation Recovery</SettingHeading>
 
       <SettingToggle
-        label="Auto-recover Stuck Tabs"
-        description="Automatically recover tabs that appear idle for too long with no engine activity."
+        label="Automatic Conversation Recovery"
+        description="Automatically resume interrupted conversations after the engine restarts. Slow or silent live runs are never replayed or cancelled."
         checked={tabRecoveryEnabled}
         onChange={setTabRecoveryEnabled}
       />
 
-      {tabRecoveryEnabled && (
-        <SettingSection
-          label="Idle Threshold (seconds)"
-          description="How long a tab must be idle before it is force-recovered. Minimum 30s, maximum 600s."
-        >
-          <input
-            type="number"
-            min={30}
-            max={600}
-            step={10}
-            value={tabRecoveryTimeoutSec}
-            onChange={(e) => {
-              const val = parseInt(e.target.value, 10)
-              if (!isNaN(val)) setTabRecoveryTimeoutSec(val)
-            }}
-            style={{
-              width: 80,
-              padding: '5px 8px',
-              fontSize: 13,
-              background: colors.surfacePrimary,
-              border: `1px solid ${colors.containerBorder}`,
-              borderRadius: 6,
-              color: colors.textPrimary,
-              outline: 'none',
-            }}
-          />
-        </SettingSection>
-      )}
+
     </>
   )
 }

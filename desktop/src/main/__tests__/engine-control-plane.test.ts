@@ -36,6 +36,7 @@ vi.mock('../session-meta', () => ({
 
 // Capture the event handler registered by EngineControlPlane's constructor
 let capturedEventHandler: ((key: string, event: any) => void) | null = null
+let capturedAbortDeliveredHandler: ((key: string) => void) | null = null
 
 const mockBridge = {
   startSession: vi.fn().mockResolvedValue({ ok: true }),
@@ -54,6 +55,9 @@ const mockBridge = {
   on: vi.fn((event: string, handler: any) => {
     if (event === 'event') {
       capturedEventHandler = handler
+    }
+    if (event === 'abort-delivered') {
+      capturedAbortDeliveredHandler = handler
     }
   }),
   emit: vi.fn(),
@@ -511,6 +515,34 @@ describe('EngineControlPlane', () => {
         tabId,
         expect.objectContaining({ sessionId: 'original-conv-id' }),
       )
+    })
+  })
+
+  describe('deferred interrupt settlement', () => {
+    it('settles a tab to completed when its deferred abort reaches the engine', async () => {
+      // D2: the operator interrupts while the socket is down. The bridge
+      // delivers the abort on reconnect; the tab must leave running/connecting
+      // immediately rather than waiting for the renderer's 5s force-recovery.
+      const tabId = cp.createTab()
+      await cp.submitPrompt(tabId, 'req-1', makeRunOptions())
+      expect(cp.getTabStatus(tabId)!.status).not.toBe('completed')
+
+      const statusChanges: Array<[string, string]> = []
+      cp.on('tab-status-change', (id: string, next: string) => statusChanges.push([id, next]))
+
+      expect(capturedAbortDeliveredHandler).toBeTruthy()
+      capturedAbortDeliveredHandler!(tabId)
+
+      const tab = cp.getTabStatus(tabId)!
+      expect(tab.status).toBe('completed')
+      expect(tab.activeRequestId).toBeNull()
+      expect(tab.engineSessionStarted).toBe(false)
+      expect(statusChanges).toContainEqual([tabId, 'completed'])
+    })
+
+    it('ignores an abort delivered for a tab the control plane does not track', () => {
+      expect(capturedAbortDeliveredHandler).toBeTruthy()
+      expect(() => capturedAbortDeliveredHandler!('unknown-tab')).not.toThrow()
     })
   })
 })

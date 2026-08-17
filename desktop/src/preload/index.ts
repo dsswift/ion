@@ -82,6 +82,12 @@ const api: IonAPI = {
   terminalResize: (key, cols, rows) => ipcRenderer.send(IPC.TERMINAL_RESIZE, { key, cols, rows }),
   terminalDestroy: (key) => ipcRenderer.invoke(IPC.TERMINAL_DESTROY, { key }),
   terminalGetScrollback: (key) => ipcRenderer.invoke(IPC.TERMINAL_GET_SCROLLBACK, { key }),
+  terminalActiveTabs: () => ipcRenderer.invoke(IPC.TERMINAL_ACTIVE_TABS),
+  onTerminalActivity: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, activity: { key: string; tabId: string; active: boolean }) => callback(activity)
+    ipcRenderer.on(IPC.TERMINAL_ACTIVITY, handler)
+    return () => ipcRenderer.removeListener(IPC.TERMINAL_ACTIVITY, handler)
+  },
   onTerminalData: (callback) => {
     const handler = (_e: Electron.IpcRendererEvent, key: string, data: string) => callback(key, data)
     ipcRenderer.on(IPC.TERMINAL_INCOMING, handler)

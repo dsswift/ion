@@ -279,6 +279,7 @@ export function handleEngineEvent(
     case 'engine_compacting':
     case 'engine_tool_stalled':
     case 'engine_run_stalled':
+    case 'engine_run_recovery':
     case 'engine_steer_injected':
     case 'engine_steer_degraded':
     case 'engine_prompt_injected':

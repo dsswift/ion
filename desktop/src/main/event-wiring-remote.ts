@@ -287,17 +287,21 @@ export function wireRemoteSessionPlaneForwarding(): void {
       toolInput, options: data.options,
     }, true, { title: pushTitle, body: pushBody })
     if (data.toolName !== 'AskUserQuestion' && data.toolName !== 'ExitPlanMode') {
-      const resolveOnIdle = (changedTabId: string, status: string) => {
+      const resolveOnTerminalTransition = (changedTabId: string, status: string, previousStatus?: string) => {
         if (changedTabId !== tabId) return
+        // A status resync has equal current/previous values. It restores an
+        // optimistic client, not a run outcome, so it cannot resolve a live
+        // permission request.
+        if (previousStatus === status) return
         if (status === 'idle' || status === 'failed' || status === 'dead') {
-          sessionPlane.off('tab-status-change', resolveOnIdle)
+          sessionPlane.off('tab-status-change', resolveOnTerminalTransition)
           state.remoteTransport?.send({
             type: 'desktop_permission_resolved', tabId,
             questionId: data.questionId,
           })
         }
       }
-      sessionPlane.on('tab-status-change', resolveOnIdle)
+      sessionPlane.on('tab-status-change', resolveOnTerminalTransition)
     }
     })().catch((err) => warn('remote: remote-permission forwarding failed', { tab_id: tabId, error: String(err) }))
   })
@@ -316,7 +320,11 @@ export function wireRemoteSessionPlaneForwarding(): void {
     const pushMeta = pushOnIdle
       ? { title: 'Task completed', body: lastMessagePreview.get(tabId) || 'Tab is now idle' }
       : undefined
-    state.remoteTransport.send({ type: 'desktop_tab_status', tabId, status: newStatus as any }, pushOnIdle, pushMeta)
+    const resync = oldStatus === newStatus
+    state.remoteTransport.send({
+      type: 'desktop_tab_status', tabId, status: newStatus as any,
+      ...(resync ? { resync: true } : {}),
+    }, pushOnIdle, pushMeta)
   })
 
   // Push a desktop_tab_meta delta whenever the tab title changes. Tab titles

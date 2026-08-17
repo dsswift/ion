@@ -60,8 +60,9 @@ export class EngineBridge extends EventEmitter {
    */
   _reRegisterGeneration = 0
   private _drainScheduled = false
+  private sessionGeneration = 0
   // Package-internal (used by engine-bridge-start-session.ts and other siblings).
-  activeSessions = new Map<string, { config: EngineConfig; conversationId?: string }>()
+  activeSessions = new Map<string, { config: EngineConfig; conversationId?: string; generation?: number }>()
   /** Client-side key aliases: oldKey → newKey. Rewrites incoming event keys. */
   private keyAliases = new Map<string, string>()
   /** Tracks last `engine_status` receipt per key for stale-sweep polling. */
@@ -234,15 +235,20 @@ export class EngineBridge extends EventEmitter {
   // engine-bridge-state-sync.ts). Not `private` so the state-sync RPCs
   // can dispatch without forcing every helper back into this already-
   // cap-bound file. Same convention as _sendWithResult / _sendWithData.
-  _send(msg: any): void {
+  _send(msg: any): boolean {
     if (!this.conn || this.conn.destroyed) {
       warn('_send: dropped, no connection', { cmd: msg?.cmd, key: msg?.key })
-      return
+      return false
     }
     try {
-      this.conn.write(JSON.stringify(msg) + '\n')
+      const accepted = this.conn.write(JSON.stringify(msg) + '\n')
+      if (!accepted) {
+        warn('_send: backpressure', { cmd: msg?.cmd, key: msg?.key })
+      }
+      return true
     } catch (err: any) {
       error('_send: write failed', { cmd: msg?.cmd, key: msg?.key, error: err.message })
+      return false
     }
   }
 
@@ -352,15 +358,67 @@ export class EngineBridge extends EventEmitter {
     return this._sendWithResult(buildSendPromptMessage(args))
   }
 
+  /**
+   * Deferred interrupts keyed by session key and the connection generation that
+   * must deliver them. A reconnect can fail while flushing; entries stay here
+   * until both abort writes reach a live socket. Live-write failure uses the
+   * current generation, so only a later connection can retry it.
+   */
+  pendingAborts = new Map<string, number>()
+
+  nextSessionGeneration(): number { return ++this.sessionGeneration }
+
+  retirePendingAbort(key: string): void { this.pendingAborts.delete(key) }
+
   sendAbort(key: string): void {
     const alive = !!(this.conn && !this.conn.destroyed)
     log('send_abort', { key, connected: this.connected, alive })
     if (!alive) {
-      warn('send_abort: socket dead, scheduling reconnect', { key })
+      const sessionGeneration = this.activeSessions.get(key)?.generation ?? this._reRegisterGeneration
+      this.pendingAborts.set(key, sessionGeneration)
+      warn('send_abort: socket dead, deferring abort to reconnect', { key, pending: this.pendingAborts.size, session_generation: sessionGeneration })
       this._scheduleReconnect()
       return
     }
-    this._send({ cmd: 'abort', key })
+    if (this._send({ cmd: 'abort', key })) {
+      this.pendingAborts.delete(key)
+      return
+    }
+    const sessionGeneration = this.activeSessions.get(key)?.generation ?? this._reRegisterGeneration
+    this.pendingAborts.set(key, sessionGeneration)
+    warn('send_abort: write failed, deferring abort to reconnect', { key, pending: this.pendingAborts.size, session_generation: sessionGeneration })
+    this.conn?.destroy()
+    this._scheduleReconnect()
+  }
+
+  /**
+   * Deliver deferred interrupts before re-registering sessions.
+   *
+   * Do not clear an entry until both writes reached this connection. A socket
+   * can die between writes; keeping the entry lets the next generation retry
+   * instead of silently resurrecting work the operator aborted.
+   */
+  flushPendingAborts(): void {
+    if (this.pendingAborts.size === 0) return
+    const generation = this._reRegisterGeneration
+    log('flush_pending_aborts', { count: this.pendingAborts.size, generation })
+    for (const [key, requestedGeneration] of this.pendingAborts) {
+      const activeGeneration = this.activeSessions.get(key)?.generation
+      if (activeGeneration !== undefined && activeGeneration !== requestedGeneration) {
+        this.pendingAborts.delete(key)
+        continue
+      }
+      if (activeGeneration === undefined && requestedGeneration >= generation) continue
+      const abortSent = this._send({ cmd: 'abort', key })
+      const subtreeAbortSent = abortSent && this._send({ cmd: 'abort_agent', key, agentName: '', subtree: true })
+      if (!subtreeAbortSent) {
+        warn('flush_pending_aborts: retaining undelivered abort', { key, requested_generation: requestedGeneration, generation })
+        continue
+      }
+      this.pendingAborts.delete(key)
+      this.activeSessions.delete(key)
+      this.emit('abort-delivered', key)
+    }
   }
 
   sendSteer(key: string, message: string): void {
@@ -386,6 +444,7 @@ export class EngineBridge extends EventEmitter {
   async stopSession(key: string): Promise<void> {
     log('stop_session', { key })
     this.activeSessions.delete(key)
+    this.retirePendingAbort(key)
     this._send({ cmd: 'stop_session', key })
   }
 
@@ -495,7 +554,10 @@ export class EngineBridge extends EventEmitter {
 
   stopByPrefix(prefix: string): void {
     for (const key of this.activeSessions.keys()) {
-      if (key.startsWith(prefix)) this.activeSessions.delete(key)
+      if (key.startsWith(prefix)) {
+        this.activeSessions.delete(key)
+        this.retirePendingAbort(key)
+      }
     }
     this._send({ cmd: 'stop_by_prefix', prefix })
   }

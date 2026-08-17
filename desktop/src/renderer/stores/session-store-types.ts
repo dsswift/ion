@@ -37,6 +37,7 @@ export interface State {
    */
   statusDrawerDispatchId: string | null
   terminalOpenTabIds: Set<string>
+  terminalActiveTabIds: Set<string>
   terminalPendingCommands: Map<string, string>
   terminalPanes: Map<string, TerminalPaneState>
   terminalTallTabId: string | null
@@ -332,17 +333,6 @@ export interface State {
   handleStatusChange: (tabId: string, newStatus: string, oldStatus: string) => void
   handleError: (tabId: string, error: EnrichedError) => void
   forceRecoverTab: (tabId: string, reason: string) => void
-  /**
-   * Auto-recover a stalled tab WITHOUT user involvement: recreate the engine
-   * session in-process (resetTabSession → next prompt re-StartSessions) and
-   * resubmit the last user prompt, so a tab the user left running keeps
-   * running. Bounded by autoRecoveryAttempts within a rolling window — once the
-   * cap is hit it falls back to forceRecoverTab with an honest message. This is
-   * the watchdog path; it is distinct from forceRecoverTab (the user-interrupt
-   * fallback, which intentionally abandons the run because the user asked to
-   * stop). Returns true if an auto-resume was attempted, false if it fell back.
-   */
-  autoRecoverStuckTab: (tabId: string) => boolean
   moveTabToGroup: (tabId: string, groupId: string) => void
   moveTabToGroupAndPin: (tabId: string, groupId: string) => void
   setTabGroupId: (tabId: string, groupId: string | null) => void

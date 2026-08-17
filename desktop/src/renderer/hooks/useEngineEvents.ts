@@ -7,7 +7,6 @@ import {
 } from './engine-event-frame-queue'
 import { FORWARDED_ACTIONS } from '../../shared/atv-mirror-actions'
 import { rTrace, rWarn, rDebug } from '../rendererLogger'
-import { markEventArrival } from '../stores/event-liveness'
 
 /**
  * Subscribes to the single normalized-event stream (ion:normalized-event) and
@@ -23,6 +22,39 @@ import { markEventArrival } from '../stores/event-liveness'
  * with one state update per chunk during streaming.
  */
 export function useEngineEvents() {
+  useEffect(() => {
+    let live = true
+    const seenActivity = new Set<string>()
+    void window.ion.terminalActiveTabs()
+      .then((tabIds) => {
+        if (!live) return
+        useSessionStore.setState((s) => {
+          // Activity events can arrive before this asynchronous snapshot. Keep
+          // those newer observations instead of letting an old snapshot erase
+          // live tab activity.
+          const terminalActiveTabIds = new Set(tabIds)
+          for (const tabId of seenActivity) {
+            if (s.terminalActiveTabIds.has(tabId)) terminalActiveTabIds.add(tabId)
+            else terminalActiveTabIds.delete(tabId)
+          }
+          return { terminalActiveTabIds }
+        })
+      })
+      .catch((err) => rWarn('terminal', 'active terminal snapshot failed', { error: String(err) }))
+    const unsubscribe = window.ion.onTerminalActivity(({ tabId, active }) => {
+      seenActivity.add(tabId)
+      useSessionStore.setState((s) => {
+        const terminalActiveTabIds = new Set(s.terminalActiveTabIds)
+        if (active) terminalActiveTabIds.add(tabId)
+        else terminalActiveTabIds.delete(tabId)
+        return { terminalActiveTabIds }
+      })
+    })
+    return () => {
+      live = false
+      unsubscribe()
+    }
+  }, [])
   const handleNormalizedEvent = useSessionStore((s) => s.handleNormalizedEvent)
   const handleStatusChange = useSessionStore((s) => s.handleStatusChange)
   const handleError = useSessionStore((s) => s.handleError)
@@ -75,7 +107,6 @@ export function useEngineEvents() {
 
     rDebug('event.stream', 'registering onEvent handler')
     const unsubEvent = window.ion.onEvent((tabId, event) => {
-      markEventArrival(tabId)
       received += 1
       // stream_reset: the engine is retrying — text queued behind the reset
       // would be appended after the reset cleared it, so drop it now.
@@ -87,7 +118,6 @@ export function useEngineEvents() {
     })
 
     const unsubStatus = window.ion.onTabStatusChange((tabId, newStatus, oldStatus) => {
-      markEventArrival(tabId)
       // Queued rather than applied directly: a status transition and the event
       // that caused it arrive on different IPC channels, and applying one
       // ahead of the other would show a status the conversation had not
@@ -97,7 +127,6 @@ export function useEngineEvents() {
     })
 
     const unsubError = window.ion.onError((tabId, error) => {
-      markEventArrival(tabId)
       enqueueError(queueRef.current, tabId, error)
       schedule()
     })
