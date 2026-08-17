@@ -281,6 +281,76 @@ final class ContractSyncEngineEventsTests: XCTestCase {
         )
     }
 
+    // MARK: - RunRecoveryEvent decode + field-set
+
+    func testRunRecoveryDecode() throws {
+        let manifest = try loadManifest()
+        guard let goFields = manifest.normalizedEvents["run_recovery"] else {
+            XCTFail("run_recovery not found in Go manifest")
+            return
+        }
+
+        let json = """
+        {
+            "type": "desktop_run_recovery",
+            "tabId": "t1",
+            "instanceId": "i1",
+            "runRecoveryId": "rec-001",
+            "runRecoveryPhase": "failed",
+            "runRecoveryAttempt": 2,
+            "runRecoveryMaxAttempts": 3,
+            "runRecoveryReason": "context limit exceeded"
+        }
+        """.data(using: .utf8)!
+
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineRunRecovery(let tabId, let instanceId, let recoveryId, let phase, let attempt, let maxAttempts, let reason) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+            XCTAssertEqual(recoveryId, "rec-001")
+            XCTAssertEqual(phase, "failed")
+            XCTAssertEqual(attempt, 2)
+            XCTAssertEqual(maxAttempts, 3)
+            XCTAssertEqual(reason, "context limit exceeded")
+        } else {
+            XCTFail("Expected engineRunRecovery, got \(event)")
+        }
+
+        let swiftHandled: Set<String> = [
+            "recoveryId", "phase", "attempt", "maxAttempts", "reason",
+        ]
+        let goSet = Set(goFields ?? [])
+        let unhandled = goSet.subtracting(swiftHandled)
+        XCTAssert(
+            unhandled.isEmpty,
+            "Go run_recovery has fields not tracked in Swift test: \(unhandled.sorted())"
+        )
+    }
+
+    func testRunRecoveryDecodeMinimal() throws {
+        let json = """
+        {
+            "type": "desktop_run_recovery",
+            "tabId": "t2",
+            "runRecoveryId": "rec-002",
+            "runRecoveryPhase": "started"
+        }
+        """.data(using: .utf8)!
+
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineRunRecovery(let tabId, let instanceId, let recoveryId, let phase, let attempt, let maxAttempts, let reason) = event {
+            XCTAssertEqual(tabId, "t2")
+            XCTAssertNil(instanceId)
+            XCTAssertEqual(recoveryId, "rec-002")
+            XCTAssertEqual(phase, "started")
+            XCTAssertNil(attempt)
+            XCTAssertNil(maxAttempts)
+            XCTAssertNil(reason)
+        } else {
+            XCTFail("Expected engineRunRecovery, got \(event)")
+        }
+    }
+
     // MARK: - ModelFallbackEvent field-set
 
     /// The engine emits engine_model_fallback when the provider falls back

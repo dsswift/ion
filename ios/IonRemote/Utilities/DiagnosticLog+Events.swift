@@ -28,8 +28,8 @@ extension DiagnosticLog {
         case .tabClosed(let tabId):
             log("EVENT: tabClosed id=\(tabId.prefix(8))", tag: "session", level: .info)
 
-        case .tabStatus(let tabId, let status):
-            log("EVENT: tabStatus id=\(tabId.prefix(8)) status=\(status.rawValue)", tag: "session", level: .info)
+        case .tabStatus(let tabId, let status, let resync):
+            log("EVENT: tabStatus id=\(tabId.prefix(8)) status=\(status.rawValue) resync=\(resync)", tag: "session", level: .info)
 
         case .tabMeta(let tabId, let title, let totalCostUsd, let groupId, let convFingerprint, _, _, let messageCount):
             log("EVENT: tabMeta id=\(tabId.prefix(8)) title=\(title?.prefix(20) ?? "-") runCostUsd=\(totalCostUsd.map { String(format: "%.4f", $0) } ?? "-") group=\(groupId ?? "-") fp=\(convFingerprint?.suffix(12) ?? "-") count=\(messageCount.map(String.init) ?? "-")",
@@ -130,6 +130,8 @@ extension DiagnosticLog {
             log("EVENT: engineToolStalled tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") tool=\(toolName) toolId=\(toolId.prefix(8))", tag: "session", level: .info)
         case .engineRunStalled(let tabId, let instId, let stalledDuration, let lastActivity):
             log("EVENT: engineRunStalled tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") stalledFor=\(Int(stalledDuration))s lastActivity=\(lastActivity ?? "nil")", tag: "session", level: .info)
+        case .engineRunRecovery(let tabId, let instId, let recoveryId, let phase, let attempt, let maxAttempts, _):
+            log("EVENT: engineRunRecovery tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") recoveryId=\(recoveryId.prefix(8)) phase=\(phase) attempt=\(attempt ?? 0)/\(maxAttempts ?? 0)", tag: "session", level: .info)
         case .engineSteerInjected(let tabId, let instId, let messageLength):
             log("EVENT: engineSteerInjected tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") messageLength=\(messageLength)", tag: "session", level: .info)
         case .engineSteerDegraded(let tabId, let instId, let messageLength):

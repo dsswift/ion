@@ -70,15 +70,37 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         {"type":"desktop_tab_status","tabId":"t1","status":"running"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .tabStatus(let tabId, let status) = event {
+        if case .tabStatus(let tabId, let status, let resync) = event {
             XCTAssertEqual(tabId, "t1")
             XCTAssertEqual(status, .running)
+            XCTAssertFalse(resync)
         } else {
             XCTFail("Expected tabStatus, got \(event)")
         }
     }
 
-    func testDecodeAllTabStatusValues() throws {
+    func testDecodeTabStatusResync() throws {
+        let json = """
+        {"type":"desktop_tab_status","tabId":"t1","status":"idle","resync":true}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .tabStatus(let tabId, let status, let resync) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(status, .idle)
+            XCTAssertTrue(resync)
+        } else {
+            XCTFail("Expected resync tabStatus, got \(event)")
+        }
+    }
+
+    func testEncodeTabStatusResync() throws {
+        let event = RemoteEvent.tabStatus(tabId: "t1", status: .idle, resync: true)
+        let data = try encoder.encode(event)
+        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        XCTAssertEqual(json["type"] as? String, "desktop_tab_status")
+        XCTAssertEqual(json["resync"] as? Bool, true)
+    }
+    func testDecodeAllTabStatuses() throws {
         let statuses: [(String, TabStatus)] = [
             ("connecting", .connecting),
             ("idle", .idle),
@@ -92,8 +114,9 @@ final class NormalizedEventLifecycleTests: XCTestCase {
             {"type":"desktop_tab_status","tabId":"t1","status":"\(raw)"}
             """.data(using: .utf8)!
             let event = try decoder.decode(RemoteEvent.self, from: json)
-            if case .tabStatus(_, let status) = event {
+            if case .tabStatus(_, let status, let resync) = event {
                 XCTAssertEqual(status, expected, "Status mismatch for '\(raw)'")
+                XCTAssertFalse(resync)
             } else {
                 XCTFail("Expected tabStatus for '\(raw)'")
             }

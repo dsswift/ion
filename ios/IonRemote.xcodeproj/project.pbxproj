@@ -468,6 +468,7 @@
 		A1B2C3D4E5F60003000301AA /* FileEditorReopenTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60003000302AA /* FileEditorReopenTests.swift */; };
 		B2C3D4E5F600BB991009B01AA /* SessionViewModel+ImplementPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F600BB991009B00AA /* SessionViewModel+ImplementPlan.swift */; };
 		B2C3D4E5F600BB991009BA1AA /* SessionViewModel+EngineRunStalled.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F600BB991009BA0AA /* SessionViewModel+EngineRunStalled.swift */; };
+		B2C3D4E5F600BB991009BB1AA /* SessionViewModel+EngineRunRecovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F600BB991009BB0AA /* SessionViewModel+EngineRunRecovery.swift */; };
 		B2C3D4E5F600BB991010E001AA /* SessionViewModel+EngineCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F600BB991010E000AA /* SessionViewModel+EngineCommands.swift */; };
 		B2C3D4E5F600BB991010E0015B /* SessionViewModel+Submit.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F600BB991010E0005B /* SessionViewModel+Submit.swift */; };
 		B2C3D4E5F600BB991010F001AA /* SessionViewModel+KeyboardUtilityBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F600BB991010F000AA /* SessionViewModel+KeyboardUtilityBar.swift */; };
@@ -973,6 +974,7 @@
 		A1B2C3D4E5F60003000302AA /* FileEditorReopenTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileEditorReopenTests.swift; sourceTree = "<group>"; };
 		B2C3D4E5F600BB991009B00AA /* SessionViewModel+ImplementPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ImplementPlan.swift"; sourceTree = "<group>"; };
 		B2C3D4E5F600BB991009BA0AA /* SessionViewModel+EngineRunStalled.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineRunStalled.swift"; sourceTree = "<group>"; };
+		B2C3D4E5F600BB991009BB0AA /* SessionViewModel+EngineRunRecovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineRunRecovery.swift"; sourceTree = "<group>"; };
 		B2C3D4E5F600BB991010E000AA /* SessionViewModel+EngineCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineCommands.swift"; sourceTree = "<group>"; };
 		B2C3D4E5F600BB991010E0005B /* SessionViewModel+Submit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Submit.swift"; sourceTree = "<group>"; };
 		B2C3D4E5F600BB991010F000AA /* SessionViewModel+KeyboardUtilityBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+KeyboardUtilityBar.swift"; sourceTree = "<group>"; };
@@ -1308,6 +1310,7 @@
 				A1B2C3D4E5F60001009A00AA /* SessionViewModel+TabGroupCommands.swift */,
 				B2C3D4E5F600BB991009B00AA /* SessionViewModel+ImplementPlan.swift */,
 				B2C3D4E5F600BB991009BA0AA /* SessionViewModel+EngineRunStalled.swift */,
+				B2C3D4E5F600BB991009BB0AA /* SessionViewModel+EngineRunRecovery.swift */,
 				A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */,
 				A1B2C3D4E5F60001FF0022AA /* SessionViewModel+ConversationHelpers.swift */,
 				A1B2C3D4E5F60001CE0007AA /* SessionViewModel+ConnectionEvents.swift */,
@@ -1861,6 +1864,7 @@
 				A1B2C3D4E5F60001009A01AA /* SessionViewModel+TabGroupCommands.swift in Sources */,
 				B2C3D4E5F600BB991009B01AA /* SessionViewModel+ImplementPlan.swift in Sources */,
 				B2C3D4E5F600BB991009BA1AA /* SessionViewModel+EngineRunStalled.swift in Sources */,
+				B2C3D4E5F600BB991009BB1AA /* SessionViewModel+EngineRunRecovery.swift in Sources */,
 				A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */,
 				A1B2C3D4E5F60001FF0023AA /* SessionViewModel+ConversationHelpers.swift in Sources */,
 				A1B2C3D4E5F60001CE0006AA /* SessionViewModel+ConnectionEvents.swift in Sources */,

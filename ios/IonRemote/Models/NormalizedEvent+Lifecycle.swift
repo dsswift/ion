@@ -49,7 +49,8 @@ extension RemoteEvent {
         case .tabStatus:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let status = try container.decode(TabStatus.self, forKey: .status)
-            return .tabStatus(tabId: tabId, status: status)
+            let resync = try container.decodeIfPresent(Bool.self, forKey: .resync) ?? false
+            return .tabStatus(tabId: tabId, status: status, resync: resync)
 
         case .tabMeta:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -175,10 +176,13 @@ extension RemoteEvent {
             try container.encode(tabId, forKey: .tabId)
             return true
 
-        case .tabStatus(let tabId, let status):
+        case .tabStatus(let tabId, let status, let resync):
             try container.encode(TypeKey.tabStatus, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encode(status, forKey: .status)
+            if resync {
+                try container.encode(true, forKey: .resync)
+            }
             return true
 
         case .tabMeta(let tabId, let title, let totalCostUsd, let groupId, let convFingerprint, let lastActivityAt, let lastMessage, let messageCount):

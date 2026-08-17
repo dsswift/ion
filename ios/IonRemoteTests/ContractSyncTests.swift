@@ -186,8 +186,8 @@ final class ContractSyncTests: XCTestCase {
         "agent_state", "compacting", "context_breakdown", "dialog", "engine_plan_content",
         "error", "harness_message", "image_content", "message_end", "notify",
         "permission_request", "plan_mode_auto_exit", "plan_mode_changed", "plan_proposal",
-        "prompt_injected", "rate_limit", "session_dead", "steer_injected", "steer_degraded", "task_complete",
-        "task_update", "text_chunk", "thinking_block_end", "thinking_block_start",
+        "prompt_injected", "rate_limit", "run_recovery", "session_dead", "steer_injected", "steer_degraded",
+        "task_complete", "task_update", "text_chunk", "thinking_block_end", "thinking_block_start",
         "thinking_delta", "tool_call", "tool_call_complete", "tool_call_update",
         "tool_result", "usage", "working_message",
     ]

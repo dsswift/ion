@@ -15,7 +15,9 @@ enum RemoteEvent: Sendable {
     case snapshot(tabs: [RemoteTabState], recentDirectories: [String], tabGroupMode: String?, tabGroups: [RemoteTabGroup]?, preferredModel: String?, engineDefaultModel: String?, availableModels: [RemoteModelEntry]?, customName: String?, customIcon: String?, remoteDisplayUpdatedAt: Date?, resources: [String: [[String: AnyCodable]]]?)
     case tabCreated(tab: RemoteTabState, clientCmdId: String?)
     case tabClosed(tabId: String)
-    case tabStatus(tabId: String, status: TabStatus)
+    /// `resync` reasserts status after client-side optimistic state diverged.
+    /// It is not a run lifecycle transition.
+    case tabStatus(tabId: String, status: TabStatus, resync: Bool)
     /// Lightweight tab-row metadata delta. Emitted event-driven on title, cost,
     /// conversationInstances, or groupId change, AND by the desktop's 5 s
     /// snapshot poll tick for the hash-excluded volatile conversation fields
@@ -127,6 +129,11 @@ enum RemoteEvent: Sendable {
     /// follow-up engine_task_complete + engine_dead/idle events. See
     /// the Go-side RunStalledEvent doc for the watchdog contract.
     case engineRunStalled(tabId: String, instanceId: String?, stalledDuration: Double, lastActivity: String?)
+    /// Lifecycle signal for interrupted-run recovery. The engine emits
+    /// one event per phase transition: started, completed, skipped,
+    /// exhausted, or failed. Successful recovery (started → completed)
+    /// is quiet on iOS; unsuccessful outcomes surface a system notice.
+    case engineRunRecovery(tabId: String, instanceId: String?, recoveryId: String, phase: String, attempt: Int?, maxAttempts: Int?, reason: String?)
     /// Engine drained a mid-turn steer message into the conversation as
     /// a user turn before the next LLM call. The desktop renders a
     /// "Steer applied" divider into the engineMessages scrollback; iOS
@@ -569,6 +576,7 @@ enum RemoteEvent: Sendable {
         case engineToolComplete = "desktop_tool_complete"
         case engineToolStalled = "desktop_tool_stalled"
         case engineRunStalled = "desktop_run_stalled"
+        case engineRunRecovery = "desktop_run_recovery"
         case engineSteerInjected = "desktop_steer_injected"
         case engineSteerDegraded = "desktop_steer_degraded"
         case enginePromptInjected = "desktop_prompt_injected"
@@ -660,7 +668,7 @@ enum RemoteEvent: Sendable {
     // see RemoteTabGroup.swift.)
     enum CodingKeys: String, CodingKey {
         case type
-        case tabs, tab, tabId, status, text, toolName, toolId
+        case tabs, tab, tabId, status, resync, text, toolName, toolId
         // Worktree + integration bench payload keys. `warning` carries the
         // pin-update dry-run's collision prediction on desktop_worktree_op_result;
         // `summary` carries sync_all's pre-worded per-worktree counts; `retired`
@@ -764,6 +772,13 @@ enum RemoteEvent: Sendable {
         // iOS observes only and may render the advisory event as a
         // diagnostic indicator separate from a generic engine_error.
         case runStalledDuration, runStalledLastActivity
+        // engine_run_recovery — interrupted-run recovery lifecycle.
+        // Mirrors the Go-side RunRecoveryEvent json tags. The wire
+        // carries the engine's own field names (recoveryId, phase,
+        // attempt, maxAttempts, reason) unchanged through the generic
+        // spread in event-wiring-wire-projection.ts.
+        case runRecoveryId, runRecoveryPhase
+        case runRecoveryAttempt, runRecoveryMaxAttempts, runRecoveryReason
         // engine_plan_proposal — workflow event for plan-mode proposals.
         // The engine emits these field names (no instanceId; the proposal
         // is always at the tab level, not per-instance).

@@ -38,6 +38,20 @@ final class RunDurationStateTests: XCTestCase {
         XCTAssertNil(viewModel.tab(for: "run-tab")?.lastRunReason)
     }
 
+    @MainActor
+    func testStatusResyncUpdatesStatusWithoutClearingRunMetadata() {
+        let viewModel = SessionViewModel()
+        var tab = makeTab(status: .running)
+        tab.lastRunDurationMs = 12_000
+        tab.lastRunReason = .normal
+        viewModel.tabs = [tab]
+
+        viewModel.handleTabStatus(tabId: "run-tab", status: .idle, resync: true)
+
+        XCTAssertEqual(viewModel.tab(for: "run-tab")?.status, .idle)
+        XCTAssertEqual(viewModel.tab(for: "run-tab")?.lastRunDurationMs, 12_000)
+        XCTAssertEqual(viewModel.tab(for: "run-tab")?.lastRunReason, .normal)
+    }
     func testRunDurationLabelUsesReasonAndSharedFormatter() {
         XCTAssertEqual(RunDurationRow(durationMs: 1_000, reason: .normal).label, "Completed in 1s")
         XCTAssertEqual(RunDurationRow(durationMs: 1_000, reason: .aborted).label, "Stopped after 1s")
