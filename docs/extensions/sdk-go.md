@@ -346,7 +346,7 @@ Every RPC-backed method takes a `context.Context` first. This is not decoration:
 | Tools               | `CallTool`, `SuppressTool`                                                                                                             |
 | Dispatch            | `DispatchAgent`, `RecallAgent`, `SteerDispatch`, `SteerDispatchByName`, `SteerSelf`, `ListDispatchState`, `AnswerDispatchQuestion`, `AckDispatchLost` |
 | Agents              | `DiscoverAgents`, `RegisterAgentSpec`, `DeregisterAgentSpec`, `SetDispatchContextDefaults`                                             |
-| Session             | `Elicit`, `GetContextUsage`, `SearchHistory`, `GetSessionMemory`, `SetSessionMemory`, `WalkContextFiles`, `Suspend`, `SuspendUntilAll` |
+| Session             | `Elicit`, `GetContextUsage`, `SearchHistory`, `GetSessionMemory`, `SetSessionMemory`, `SetRunRecovery`, `WalkContextFiles`, `Suspend`, `SuspendUntilAll` |
 | Plan mode           | `EnterPlanMode`, `ExitPlanMode`, `GetPlanMode`                                                                                         |
 | Cross-session       | `Sessions().List`, `Sessions().Send`, `Intercept`                                                                                      |
 | Schedules           | `FireSchedule`, `GetScheduleStatus`                                                                                                    |
@@ -363,6 +363,16 @@ ion.OnHook(sdk, ion.HookDispatchLost,
 		// Record or deliver the loss first.
 		return ion.NoResult{}, ctx.AckDispatchLost(context.Background(), info.DispatchID)
 	})
+```
+
+`SetRunRecovery` applies extension policy to later runs in this session. Set `Enabled` explicitly. `MaxAttempts: 0` uses the engine default. This policy wins over `start_session` and `engine.json` values, but does not change a journal already created for an active run.
+
+```go
+enabled := true
+err := ctx.SetRunRecovery(context.Background(), ion.RunRecoveryConfig{
+    Enabled:     &enabled,
+    MaxAttempts: 3,
+})
 ```
 
 At the root session the engine omits `Depth` and `DispatchID`, so their zero values (`0` and `""`) _are_ the root shape rather than missing data. It omits `RunID` and `TraceID` when no prompt-to-completion run is active, so both are `""` for lifecycle hooks, schedules, and webhooks outside a run.

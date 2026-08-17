@@ -20,6 +20,27 @@ Ion ships with no default model. Before the engine can run a prompt, you must ei
 | `defaultModel` | string | `""` | Model identifier used when no `--model` override is passed. Required. The engine errors out if neither this field nor `--model` is set. |
 | `logLevel` | string | `""` | Log verbosity. One of `"debug"`, `"info"`, `"warn"`, `"error"`. Empty string uses the engine default. |
 
+## runRecovery
+
+Durable interrupted-run recovery. Omit block to preserve historical behavior: recovery off unless a client or extension enables it for session. Engine journals accepted recoverable work before dispatch. After engine restart, it resumes from durable checkpoint without appending original user prompt again.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | boolean | unset (`false` when no higher layer enables it) | Enable recovery default for sessions. |
+| `maxAttempts` | integer | `2` after recovery is enabled | Maximum restart recovery attempts for one run. |
+| `maxConcurrent` | integer | `2` | Maximum interrupted-run continuations the engine starts at one time after restart. This engine-wide cap uses FIFO admission; session and extension overrides cannot change it. |
+Policy precedence, low to high: `engine.json`, `start_session` `EngineConfig.runRecovery`, extension `ext/set_run_recovery`. Session policy affects later runs only. It does not change an active run's journal.
+
+```json
+{
+  "runRecovery": {
+    "enabled": true,
+    "maxAttempts": 3,
+    "maxConcurrent": 2
+  }
+}
+```
+
 ## providers
 
 Map of provider name to credentials. Keys are provider identifiers (e.g., `"anthropic"`, `"openai"`, `"groq"`).

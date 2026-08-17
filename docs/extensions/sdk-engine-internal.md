@@ -16,6 +16,8 @@ To write an extension in Go, see **[Go SDK](sdk-go.md)** — the public module a
 
 The engine-internal SDK is the native extension system the engine uses for itself. In-process extensions register hooks, tools, commands, and capabilities directly on it. Subprocess extensions — including every one built with the public Go SDK or the TypeScript SDK — communicate over JSON-RPC, and the host forwards their calls through this same registry.
 
+The engine and extension SDK deploy independently. During init, the SDK reports its build identity for provenance and diagnostics; a different identity is logged but never blocks extension loading. Compatibility is resolved at the surface actually used: unsupported extension-to-engine JSON-RPC methods return standard `-32601` (`method not found`), and SDK consumers can degrade or report that specific unavailable capability. Extensions therefore do not need rebuilding merely because the engine or desktop was updated.
+
 ## SDK
 
 The central registry for hooks, tools, commands, and capabilities.
@@ -378,6 +380,13 @@ Searches the full persisted record (including pre-compaction messages), not just
 
 ```go
 enabled, planFilePath := ctx.GetPlanMode()
+```
+
+**`SetRunRecovery(config)`** -- apply extension-owned durable recovery policy to later runs in this session. `config.Enabled` is required. A non-nil session override wins over `start_session` and `engine.json`; it does not modify an active run's existing journal. `MaxAttempts == 0` uses engine default.
+
+```go
+enabled := true
+ctx.SetRunRecovery(&types.RunRecoveryConfig{Enabled: &enabled, MaxAttempts: 3})
 ```
 
 **`Elicit(info)`** -- ask the user a structured question via the connected client. Blocks the calling hook until the client replies or times out. The wire protocol promotes this to `engine_elicitation_request` / `elicitation_response` so socket-only consumers can present the prompt.

@@ -903,6 +903,19 @@ Advisory workflow signal emitted once per run when the engine's progress watchdo
 | `runStalledDuration` | number | Seconds since last progress event |
 | `runStalledLastActivity` | string | Description of the most recent progress event (optional) |
 
+#### engine_run_recovery
+
+Lifecycle event for an interrupted root run recovered from its durable conversation journal. The engine owns journal persistence, attempt accounting, and safe checkpoint reconstruction; a client may render an unsuccessful outcome, but must not replay the original user prompt. `phase` is `started`, `completed`, `skipped`, `exhausted`, or `failed`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_run_recovery"` | Event type |
+| `runRecoveryId` | string | Durable recovery identity |
+| `runRecoveryPhase` | string | Lifecycle phase |
+| `runRecoveryAttempt` | number | Attempt being reported |
+| `runRecoveryMaxAttempts` | number | Resolved durable attempt cap |
+| `runRecoveryReason` | string | Human-readable skip/failure explanation, when present |
+
 #### engine_task_suspended
 
 A run ended without completing: either a dispatched agent suspended on child completions, or the engine parked a session at a turn boundary on outstanding background bash commands. `engine_task_complete` (and the idle `engine_status`) fires only when the run truly finishes after revival, so a consumer that treats this as a completion will report the run done too early.
@@ -980,6 +993,7 @@ The kinds are enumerated in `engine/internal/types/injection_kind.go`, which is 
 | `slash_command` | yes | The expanded body of a slash command whose display turn is persisted separately as the raw invocation. The body is redundant with that display turn. |
 | `checkin` | yes | A scheduled heartbeat delivered to a session that went idle with work still running — a harness asking its own orchestrator to inspect outstanding dispatches. |
 | `revive` | yes | A harness re-entering its own loop after an external signal. Distinct from `agent_completion` so a consumer can tell "here is a child's result" from "keep going". |
+| `run_recovery` | yes | Engine-generated continuation after restart recovery. The original user turn is already durable and is not rendered again. |
 | `steer` | **no** | A steer message injected mid-turn onto a live run. The common case is a human typing into a running turn, which is as user-authored as a turn gets; the kind records *how* the turn arrived, not that it should be hidden. A machine-originated steer passes its own kind instead. |
 
 An empty kind means the injection is a genuine extension-initiated turn with no special classification, and is never machine-authored: silently hiding content the engine could not identify is worse than showing a turn a consumer did not expect. Consumers must treat an unrecognized kind as unclassified rather than failing to decode — the vocabulary grows additively.

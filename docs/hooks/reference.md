@@ -831,6 +831,35 @@ type PeerExtensionInfo struct {
 
 Same extension type only. The engine enforces this by comparing extension names; cross-type messaging returns an error to the sender.
 
+## Interrupted Run Recovery
+
+| Hook | When | Payload | Return | Effect |
+|------|------|---------|--------|--------|
+| `before_run_recovery` | Before engine resumes a journaled root run after restart | `BeforeRunRecoveryInfo{RecoveryID, ConversationID, Attempt, MaxAttempts, Prompt, Model, SessionKey}` | `BeforeRunRecoveryResult{Action, Instruction}` | `Action: "recover"` proceeds and `Action: "skip"` abandons recovery. Empty fields defer to engine policy. `Instruction` replaces generic continuation instruction. |
+
+The hook runs after engine resolves recovery policy and durably increments attempt count. It does not replay original user prompt. The resumed run must inspect uncertain external effects before retrying work.
+
+### Payload Types
+
+**BeforeRunRecoveryInfo**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `recoveryId` | `string` | Durable recovery identity. |
+| `conversationId` | `string` | Conversation containing interrupted run. |
+| `attempt` | `int` | One-based recovery attempt. |
+| `maxAttempts` | `int` | Resolved recovery attempt limit. |
+| `prompt` | `string` | Original prompt, when retained by engine. |
+| `model` | `string` | Interrupted run model, when known. |
+| `sessionKey` | `string` | Session key, when known. |
+
+**BeforeRunRecoveryResult**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `action` | `string` | `"recover"` or `"skip"`. Empty has no opinion. |
+| `instruction` | `string` | Replacement continuation instruction. Empty retains engine instruction. |
+
 ## Schedule Missed
 
 | Hook | When | Payload | Return | Effect |
