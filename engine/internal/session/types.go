@@ -48,6 +48,10 @@ type engineSession struct {
 	key       string
 	config    types.EngineConfig
 	requestID string // empty when no active run
+	// acceptedDeliveryIDs makes duplicate deliveryId checks atomic before the
+	// user turn has been persisted. Persisted conversation entries remain the
+	// restart-safe authority once a run writes its first turn.
+	acceptedDeliveryIDs map[string]struct{}
 
 	// clampAdvisoryMu guards lastClampAdvisory. Its own lock rather than
 	// m.mu: the advisory drain runs inside the emit path, which already takes

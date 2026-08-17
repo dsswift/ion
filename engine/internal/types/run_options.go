@@ -383,6 +383,13 @@ type RunOptions struct {
 	// persisted steer marker is what a consumer reads on reload.
 	SteerDegraded bool `json:"-"`
 
+	// DeliveryID is a client-supplied idempotency key threaded from
+	// ClientCommand.DeliveryId through PromptOverrides. When non-empty, the
+	// backend stamps it on the persisted user-message entry (MessageData.DeliveryIDs)
+	// so future idempotency checks match. In-process only (json:"-"): it never
+	// crosses the wire; it is persistence metadata.
+	DeliveryID string `json:"-"`
+
 	// ParentCtx is the session's cancellation root. When non-nil, the
 	// backend derives the run's cancellation context from it
 	// (context.WithCancel(ParentCtx)) instead of context.Background(), so

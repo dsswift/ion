@@ -122,6 +122,87 @@ type PromptOverrides struct {
 	// drainSteer writes for the live-run path. Orthogonal to InjectionKind —
 	// see the RunOptions field comment.
 	SteerDegraded bool
+
+	// DeliveryId is a client-supplied idempotency key. When non-empty the
+	// dispatch layer checks the persisted conversation for an existing
+	// message carrying this ID before calling SendPrompt. A duplicate
+	// short-circuits with no run started and no error. The ID is threaded
+	// onto the persisted user-message entry via RunOptions so retries are
+	// durable across engine restarts. Empty preserves legacy semantics.
+	DeliveryId string
+}
+
+// ReserveDeliveryID atomically reserves an idempotency key for a prompt. It
+// first checks this process's in-flight reservations, then the persisted
+// conversation for a prior accepted delivery. A false result means the ID is
+// already reserved or persisted and the caller must not start another run.
+func (m *Manager) ReserveDeliveryID(key, deliveryID string) bool {
+	if deliveryID == "" {
+		return true
+	}
+	m.mu.Lock()
+	s, ok := m.sessions[key]
+	if !ok {
+		m.mu.Unlock()
+		return true
+	}
+	if s.acceptedDeliveryIDs == nil {
+		s.acceptedDeliveryIDs = make(map[string]struct{})
+	}
+	if _, reserved := s.acceptedDeliveryIDs[deliveryID]; reserved {
+		m.mu.Unlock()
+		return false
+	}
+	convID := s.conversationID
+	m.mu.Unlock()
+
+	conv, err := conversation.Load(convID, "")
+	if err == nil && conversation.HasDeliveryID(conv, deliveryID) {
+		return false
+	}
+	if err != nil {
+		utils.LogWithFields(utils.LevelDebug, "session", "delivery-id persisted check unavailable", map[string]any{
+			"key": key, "delivery_id": deliveryID, "conversation": convID, "error": err.Error(),
+		})
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok = m.sessions[key]
+	if !ok {
+		return true
+	}
+	if s.acceptedDeliveryIDs == nil {
+		s.acceptedDeliveryIDs = make(map[string]struct{})
+	}
+	if _, reserved := s.acceptedDeliveryIDs[deliveryID]; reserved {
+		return false
+	}
+	s.acceptedDeliveryIDs[deliveryID] = struct{}{}
+	return true
+}
+
+// ReleaseDeliveryID abandons a reservation when prompt dispatch fails before
+// acceptance. Persisted entries remain the restart-safe authority after a run
+// starts successfully.
+func (m *Manager) ReleaseDeliveryID(key, deliveryID string) {
+	if deliveryID == "" {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s, ok := m.sessions[key]; ok {
+		delete(s.acceptedDeliveryIDs, deliveryID)
+	}
+}
+
+// deliveryIDFromOverrides extracts the caller-owned reservation key for a
+// dispatch branch that exits before any backend run can persist it.
+func deliveryIDFromOverrides(overrides *PromptOverrides) string {
+	if overrides == nil {
+		return ""
+	}
+	return overrides.DeliveryId
 }
 
 // SendPrompt dispatches a prompt to the session's backend run.
@@ -264,6 +345,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 			s.clearRunIdentity()
 			m.unbindRunLocked(requestID)
 			m.mu.Unlock()
+			m.ReleaseDeliveryID(key, deliveryIDFromOverrides(overrides))
 			m.emitUnknownCommand(key, failedCmd)
 			return nil
 		}
@@ -359,6 +441,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		s.clearRunIdentity()
 		m.unbindRunLocked(requestID)
 		m.mu.Unlock()
+		m.ReleaseDeliveryID(key, deliveryIDFromOverrides(overrides))
 		reason := fmt.Sprintf("plan mode is not supported on the %s backend", caps.Kind)
 		utils.LogWithFields(utils.LevelWarn, "session", "prompt_dispatch: capability gate declined prompt", map[string]any{
 			"key": key, "model": opts.Model, "backend": caps.Kind, "capability": "plan_mode",
@@ -409,6 +492,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 			s.clearRunIdentity()
 			m.unbindRunLocked(requestID)
 			m.mu.Unlock()
+			m.ReleaseDeliveryID(key, deliveryIDFromOverrides(overrides))
 			m.emit(key, types.EngineEvent{
 				Type:         "engine_error",
 				EventMessage: fmt.Sprintf("model %q not allowed by enterprise policy", opts.Model),
@@ -486,6 +570,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		s.clearRunIdentityFor(requestID)
 		m.unbindRunLocked(requestID)
 		m.mu.Unlock()
+		m.ReleaseDeliveryID(key, deliveryIDFromOverrides(overrides))
 		// Forked to a sub-agent — no inline run started on the parent, so
 		// the parent run identity and routing binding are both cleared.
 		return nil

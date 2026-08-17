@@ -284,9 +284,10 @@ func appendInboundUserMessage(conv *conversation.Conversation, opts *types.RunOp
 // degraded-steer marker applies to every shape rather than only the
 // kind-bearing one.
 func appendInboundUserEntry(conv *conversation.Conversation, opts *types.RunOptions) *conversation.SessionEntry {
+	var entry *conversation.SessionEntry
 	switch {
 	case opts.ResolvedSlashCommand != "":
-		return conversation.AddUserMessageWithInvocation(conv, opts.Prompt, conversation.SlashInvocation{
+		entry = conversation.AddUserMessageWithInvocation(conv, opts.Prompt, conversation.SlashInvocation{
 			Command:        opts.ResolvedSlashCommand,
 			Args:           opts.ResolvedSlashArgs,
 			Source:         opts.ResolvedSlashSource,
@@ -294,15 +295,23 @@ func appendInboundUserEntry(conv *conversation.Conversation, opts *types.RunOpti
 			ModelEffective: opts.ResolvedSlashModelEffective,
 		})
 	case len(opts.Attachments) > 0:
-		return conversation.AddUserMessage(conv, buildUserContentBlocks(opts.Prompt, opts.Attachments))
+		entry = conversation.AddUserMessage(conv, buildUserContentBlocks(opts.Prompt, opts.Attachments))
 	case opts.InjectionKind != "":
 		// Engine-injected prompt with a semantic classification (e.g.
 		// "agent_completion" for a dispatch callback). Stamp the kind on the
 		// persisted entry so consumers can classify the turn on historical reload.
-		return conversation.AddUserMessageWithKind(conv, opts.Prompt, opts.InjectionKind)
+		entry = conversation.AddUserMessageWithKind(conv, opts.Prompt, opts.InjectionKind)
 	default:
-		return conversation.AddUserMessage(conv, opts.Prompt)
+		entry = conversation.AddUserMessage(conv, opts.Prompt)
 	}
+
+	if opts.DeliveryID != "" && entry != nil {
+		if md, ok := entry.Data.(conversation.MessageData); ok {
+			md.DeliveryIDs = append(md.DeliveryIDs, opts.DeliveryID)
+			entry.Data = md
+		}
+	}
+	return entry
 }
 
 // appendDegradedSteerMarker persists the steer marker for a ctx.steerSelf

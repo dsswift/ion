@@ -46,9 +46,28 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		s.sendResult(conn, cmd, err, result)
 
 	case "send_prompt":
+		if !s.manager.ReserveDeliveryID(cmd.Key, cmd.DeliveryId) {
+			utils.LogWithFields(utils.LevelInfo, "server", "send_prompt: idempotent duplicate, skipping run", map[string]any{
+				"key":         cmd.Key,
+				"delivery_id": cmd.DeliveryId,
+			})
+			s.sendResult(conn, cmd, nil, map[string]any{
+				"accepted":        false,
+				"alreadyAccepted": true,
+			})
+			break
+		}
+		reservedDelivery := cmd.DeliveryId
+		var err error
+		defer func() {
+			if err != nil {
+				s.manager.ReleaseDeliveryID(cmd.Key, reservedDelivery)
+			}
+		}()
+
 		var overrides *session.PromptOverrides
 		resolvedExts := cmd.ResolveExtensions()
-		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" || len(cmd.Attachments) > 0 || cmd.ImplementationPhase || cmd.ThinkingEffort != "" || cmd.EnterPlanModeDescription != "" || cmd.PlanModeSparseReminder != "" || cmd.PlanFilePath != "" || len(cmd.BashAllowlistAdditionsForThisPrompt) > 0 || len(cmd.McpAllowlistAdditionsForThisPrompt) > 0 || cmd.CompactTargetPercent > 0 || cmd.CompactMicroKeepTurns > 0 || cmd.CompactEnabled != nil || cmd.CompactSummaryEnabled != nil || cmd.CompactMemoryEnabled != nil || cmd.ResolveSlash || cmd.ClientWorkspaceContext != nil {
+		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" || len(cmd.Attachments) > 0 || cmd.ImplementationPhase || cmd.ThinkingEffort != "" || cmd.EnterPlanModeDescription != "" || cmd.PlanModeSparseReminder != "" || cmd.PlanFilePath != "" || len(cmd.BashAllowlistAdditionsForThisPrompt) > 0 || len(cmd.McpAllowlistAdditionsForThisPrompt) > 0 || cmd.CompactTargetPercent > 0 || cmd.CompactMicroKeepTurns > 0 || cmd.CompactEnabled != nil || cmd.CompactSummaryEnabled != nil || cmd.CompactMemoryEnabled != nil || cmd.ResolveSlash || cmd.ClientWorkspaceContext != nil || cmd.DeliveryId != "" {
 			overrides = &session.PromptOverrides{
 				Model:                    cmd.Model,
 				MaxTurns:                 cmd.MaxTurns,
@@ -77,17 +96,15 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 				CompactMemoryEnabled:                cmd.CompactMemoryEnabled,
 				ResolveSlash:                        cmd.ResolveSlash,
 				ClientWorkspaceContext:              cmd.ClientWorkspaceContext,
+				DeliveryId:                          cmd.DeliveryId,
 			}
 		}
-		err := s.manager.SendPrompt(cmd.Key, cmd.Text, overrides)
+		err = s.manager.SendPrompt(cmd.Key, cmd.Text, overrides)
+		resultData := map[string]any{"accepted": err == nil, "alreadyAccepted": false}
 		if err == nil {
-			// A prompt is an active-use claim: re-bind ownership so a client
-			// that resumed a session by prompting (without a fresh
-			// start_session) is recorded as an owner and cancels any pending
-			// reap.
 			s.ownership.claim(conn, cmd.Key)
 		}
-		s.sendResult(conn, cmd, err, nil)
+		s.sendResult(conn, cmd, err, resultData)
 
 	case "abort":
 		// Fire-and-forget: no response sent (matches TS behavior).

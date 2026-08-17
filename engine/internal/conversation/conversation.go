@@ -439,6 +439,29 @@ func AddUserMessageWithDeliveryIDs(conv *Conversation, content any, kind string,
 	return true
 }
 
+// HasDeliveryID scans the conversation's persisted entries for a message
+// carrying the given delivery ID. Used by the dispatch layer to enforce
+// idempotent prompt submission before a run starts.
+func HasDeliveryID(conv *Conversation, id string) bool {
+	if id == "" {
+		return false
+	}
+	conv.lock()
+	defer conv.unlock()
+	for _, entry := range conv.Entries {
+		message, ok := entry.Data.(MessageData)
+		if !ok {
+			continue
+		}
+		for _, did := range message.DeliveryIDs {
+			if did == id {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // AddUserMessageWithKind is the kind-aware variant of AddUserMessage. It
 // stamps InjectionKind on the persisted entry, plus the MachineAuthored flag
 // derived from it, so consumers can classify the injection on historical
