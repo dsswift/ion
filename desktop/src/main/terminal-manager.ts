@@ -146,9 +146,11 @@ export class TerminalManager {
     else this.activeKeys.delete(key)
     const isTabActive = this.activeTabIds().includes(tabId)
 
-    // Renderers show activity per tab. Do not mark a tab idle while another PTY
-    // in that tab still has a foreground child process.
-    if (wasTabActive === isTabActive) return
+    // Renderers show activity per tab. A new active PTY still emits its own
+    // identity so observers can associate it with the pane that started it. Do
+    // not mark a tab idle while another PTY in that tab has a foreground child
+    // process.
+    if (!active && wasTabActive === isTabActive) return
     this.broadcast(IPC.TERMINAL_ACTIVITY, { key, tabId, active: isTabActive })
     debug('terminal activity changed', { key, tab_id: tabId, active: isTabActive })
   }
