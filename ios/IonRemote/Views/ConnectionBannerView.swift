@@ -42,7 +42,7 @@ struct ConnectionBannerView: View {
         freshness: ConnectionHealth.Freshness,
         health: ConnectionHealth
     ) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: IonSpace.compactGap) {
             Image(systemName: icon(state: state, freshness: freshness))
                 .font(.caption)
                 .foregroundStyle(iconColor(state: state, freshness: freshness))
@@ -66,12 +66,12 @@ struct ConnectionBannerView: View {
                     .controlSize(.small)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, IonSpace.contentGap)
+        .padding(.vertical, IonSpace.compactGap)
         .background(bannerBackground(state: state, freshness: freshness))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .padding(.horizontal, 12)
-        .padding(.top, 4)
+        .clipShape(RoundedRectangle(cornerRadius: IonRadius.control))
+        .padding(.horizontal, IonSpace.contentGap)
+        .padding(.top, IonSpace.hairlineGap)
     }
 
     // MARK: - Helpers

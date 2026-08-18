@@ -24,9 +24,7 @@ struct StaleConversationPlaceholderView: View {
     var body: some View {
         VStack(spacing: 12) {
             Image(systemName: hasAppliedTabSnapshot ? "questionmark.folder" : "arrow.trianglehead.2.clockwise")
-                // design-type: SF Symbol empty-state glyph sized as icon
-                // geometry, not text.
-                .font(.system(size: 40))
+                .font(.system(size: 40)) // design-type: SF Symbol empty-state glyph sized as icon geometry, not text
                 .foregroundStyle(.tertiary)
             Text(hasAppliedTabSnapshot ? "Conversation unavailable" : "Syncing conversation…")
                 .font(.title3.weight(.semibold))
