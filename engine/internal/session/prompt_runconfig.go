@@ -231,6 +231,7 @@ func (m *Manager) buildRunConfig(
 	}
 
 	m.wireExternalTools(s, key, extGroup, mcpConns, runCfg)
+	runCfg.McpConnections = append([]*mcp.Connection(nil), mcpConns...)
 	// Client-declared tools (EngineConfig.ToolGate.ClientTools) join the tool
 	// list after MCP and extension tools so their router wrap sees the full
 	// prior routing chain. See wireClientTools in session/tool_gate.go.
@@ -622,13 +623,13 @@ func (m *Manager) wireExternalTools(s *engineSession, key string, extGroup *exte
 				if conn.Name() == serverName {
 					mcpTimeout := m.mcpCallTimeout()
 					callCtx, callCancel := context.WithTimeout(parent, mcpTimeout)
-					mcpResult, err := conn.CallToolResult(callCtx, toolName, input)
+					mcpResult, err := conn.CallTool(callCtx, toolName, input)
 					callCancel()
 					if err != nil {
 						utils.LogWithFields(utils.LevelError, "session", "mcp tool call failed", map[string]any{"serverName": serverName, "toolName": toolName, "conversation_id": key, "error": utils.ErrStr(err)})
 						return nil, err
 					}
-					return mcpResult.ToToolResult(serverName, toolName), nil
+					return mcpResult, nil
 				}
 			}
 			utils.LogWithFields(utils.LevelWarn, "session", "mcp server not connected", map[string]any{"serverName": serverName, "toolName": toolName, "conversation_id": key})

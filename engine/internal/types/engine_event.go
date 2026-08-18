@@ -323,13 +323,21 @@ type EngineEvent struct {
 	// engine_elicitation_request, engine_elicitation_response
 	// RequestID identifies the elicitation; clients echo it back via the
 	// elicitation_response command. Schema, Url, and Mode describe what to
-	// render. Response/Cancelled describe the user's reply (engine_elicitation_response).
+	// render. Source/Server/Message/Action carry optional extension-provided
+	// metadata for richer card rendering. Response/Cancelled/Declined describe
+	// the user's reply (engine_elicitation_response). Declined is the ternary
+	// middle: "no, but continue" vs Cancelled "no, and abort".
 	ElicitRequestID string                 `json:"requestId,omitempty"`
 	ElicitSchema    map[string]interface{} `json:"schema,omitempty"`
 	ElicitURL       string                 `json:"url,omitempty"`
 	ElicitMode      string                 `json:"elicitMode,omitempty"`
+	ElicitSource    string                 `json:"elicitSource,omitempty"`
+	ElicitServer    string                 `json:"elicitServer,omitempty"`
+	ElicitMessage   string                 `json:"elicitMessage,omitempty"`
+	ElicitAction    string                 `json:"elicitAction,omitempty"`
 	ElicitResponse  map[string]interface{} `json:"response,omitempty"`
 	ElicitCancelled bool                   `json:"cancelled,omitempty"`
+	ElicitDeclined  bool                   `json:"elicitDeclined,omitempty"`
 
 	// engine_oidc_login_url — delivered to the client that issued
 	// oidc_begin_login. Exactly one of the two shapes is populated:

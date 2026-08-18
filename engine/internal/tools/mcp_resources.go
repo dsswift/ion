@@ -61,7 +61,7 @@ func executeListMcpResources(ctx context.Context, input map[string]any, _ string
 		return &types.ToolResult{Content: "Error: ListMcpResources cancelled.", IsError: true}, nil
 	}
 
-	resources, err := mcp.ListMcpResources(server)
+	resources, err := mcp.ListMcpResourcesForContext(ctx, server)
 	if err != nil {
 		return &types.ToolResult{Content: fmt.Sprintf("Error: %s", err), IsError: true}, nil
 	}
@@ -94,7 +94,7 @@ func executeReadMcpResource(ctx context.Context, input map[string]any, _ string)
 		return &types.ToolResult{Content: "Error: ReadMcpResource cancelled.", IsError: true}, nil
 	}
 
-	content, err := mcp.ReadMcpResource(server, uri)
+	content, err := mcp.ReadMcpResourceForContext(ctx, server, uri)
 	if err != nil {
 		return &types.ToolResult{Content: fmt.Sprintf("Error: %s", err), IsError: true}, nil
 	}

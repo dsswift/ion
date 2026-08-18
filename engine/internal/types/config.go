@@ -758,6 +758,16 @@ type McpOAuthConfig struct {
 	Scope        string `json:"scope,omitempty"`
 	RedirectURI  string `json:"redirect_uri,omitempty"`
 	UsePKCE      bool   `json:"use_pkce,omitempty"`
+	// ClientMetadataURI is a URI pointing to an OAuth Client ID Metadata
+	// Document. When set, the engine fetches client metadata from this URI
+	// instead of using dynamic client registration. Takes precedence over
+	// DCR but yields to an explicit client_id in this block.
+	ClientMetadataURI string `json:"client_metadata_uri,omitempty"`
+	// Resource is the RFC 8707 resource indicator for this MCP server.
+	// When set, it is sent as the `resource` parameter on authorization,
+	// token-exchange, and refresh requests. When empty, the engine uses
+	// the resource URL from RFC 9728 protected-resource discovery.
+	Resource string `json:"resource,omitempty"`
 }
 
 // CompactionConfig controls context window compaction behavior.

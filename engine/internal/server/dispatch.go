@@ -253,7 +253,7 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "elicitation_response":
 		// Fire-and-forget: no response sent. Resolves a pending elicitation
 		// raised by ion.elicit() / ctx.Elicit() so the extension Promise resolves.
-		s.manager.HandleElicitationResponse(cmd.Key, cmd.ElicitRequestID, cmd.ElicitResponse, cmd.ElicitCancelled)
+		s.manager.HandleElicitationResponse(cmd.Key, cmd.ElicitRequestID, cmd.ElicitResponse, cmd.ElicitCancelled, cmd.ElicitDeclined)
 
 	case "early_stop_decision_response":
 		// Fire-and-forget: no response sent. Resolves a pending early-stop

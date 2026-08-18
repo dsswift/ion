@@ -2117,6 +2117,14 @@ export interface ElicitationRequestInfo {
   schema?: Record<string, unknown>
   url?: string
   mode: string
+  /** Origin: extension or MCP server. */
+  source?: string
+  /** MCP server name when source is mcp. */
+  server?: string
+  /** Human-readable MCP reason for the request. */
+  message?: string
+  /** Action when this payload reflects a resolved request. */
+  action?: 'accept' | 'decline' | 'cancel'
 }
 
 /** Payload for `elicitation_result`. */
@@ -2124,6 +2132,8 @@ export interface ElicitationResultInfo {
   request_id: string
   response?: Record<string, unknown>
   cancelled: boolean
+  /** User explicitly declined rather than dismissing. */
+  declined?: boolean
 }
 
 /** Payload for `capability_match`. */

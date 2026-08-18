@@ -45,6 +45,9 @@ type ClientRegistration struct {
 	Scope        string    `json:"scope,omitempty"`
 	RedirectURI  string    `json:"redirect_uri,omitempty"`
 	RegisteredAt time.Time `json:"registered_at,omitempty"`
+	// Resource is the RFC 8707 resource indicator this client was
+	// registered for. Stored so refresh and re-login include it.
+	Resource string `json:"resource,omitempty"`
 }
 
 // ClientStore manages per-server OAuth client registrations with file

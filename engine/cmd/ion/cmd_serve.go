@@ -15,10 +15,8 @@ import (
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/compaction"
 	"github.com/dsswift/ion/engine/internal/config"
-	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/featureflags"
 	"github.com/dsswift/ion/engine/internal/filelock"
-	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/modelconfig"
 	"github.com/dsswift/ion/engine/internal/network"
 	"github.com/dsswift/ion/engine/internal/plugins"
@@ -165,13 +163,7 @@ func cmdServe() {
 
 	resolver := auth.NewResolver(cfg.Auth)
 
-	// Wire configurable timeouts into MCP and extension subsystems.
-	if cfg.Timeouts != nil {
-		mcp.SetDefaultCallTimeout(cfg.Timeouts.McpCall())
-		mcp.SetDefaultMetadataTimeout(cfg.Timeouts.McpMetadata())
-		mcp.SetDefaultWriteTimeout(cfg.Timeouts.McpWrite())
-		extension.ConfiguredDefaultTimeout = cfg.Timeouts.HookDefault()
-	}
+	configureSubsystemTimeouts(cfg.Timeouts)
 
 	for name, pcfg := range cfg.Providers {
 		if pcfg.APIKey != "" {

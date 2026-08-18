@@ -15,11 +15,6 @@ func TestNewToolServer_CreatesWithSessionID(t *testing.T) {
 	if ts == nil {
 		t.Fatal("NewToolServer returned nil")
 	}
-	// The socket filename is derived from a SHA-256 digest of the session
-	// key, not the raw key — session keys are opaque and may contain
-	// characters (colon, slash, space) that are illegal or dangerous in a
-	// socket path. The raw key must therefore NOT appear in the path, and
-	// the derived filename must carry the digest-based prefix.
 	if strings.Contains(ts.SocketPath(), "test-session-123") {
 		t.Errorf("socket path must not contain the raw session ID, got: %s", ts.SocketPath())
 	}
@@ -52,7 +47,6 @@ func TestStartStop_Lifecycle(t *testing.T) {
 		t.Fatalf("Start failed: %v", err)
 	}
 
-	// Socket file should exist while running.
 	sockPath := ts.SocketPath()
 	if _, err := os.Stat(sockPath); err != nil {
 		t.Errorf("socket file should exist after Start, got: %v", err)
@@ -60,7 +54,6 @@ func TestStartStop_Lifecycle(t *testing.T) {
 
 	ts.Stop()
 
-	// Socket file should be cleaned up after stop.
 	if _, err := os.Stat(sockPath); !os.IsNotExist(err) {
 		t.Errorf("socket file should be removed after Stop")
 	}
@@ -104,10 +97,6 @@ func TestMcpServerName_Constant(t *testing.T) {
 	}
 }
 
-// TestMcpServerSpec_AcpStdioShape pins the inline MCP-server spec the ACP
-// backends (grok, cursor) pass on session/new: name + command + args + env,
-// bridging to the tool server's Unix socket via socat. env must be present —
-// grok's stdio McpServer serde rejects the entry without it.
 func TestMcpServerSpec_AcpStdioShape(t *testing.T) {
 	ts := NewToolServer("spec-test")
 	spec := ts.McpServerSpec()
@@ -139,7 +128,7 @@ func sendJSONRPC(t *testing.T, conn net.Conn, method string, id interface{}, par
 		"method":  method,
 	}
 	if params != nil {
-		data, _ := json.Marshal(params)
+		data, _ := json.Marshal(params) //nolint:errcheck // test helper
 		req["params"] = json.RawMessage(data)
 	}
 	encoder := json.NewEncoder(conn)
@@ -152,6 +141,32 @@ func sendJSONRPC(t *testing.T, conn net.Conn, method string, id interface{}, par
 		t.Fatalf("failed to read %s response: %v", method, err)
 	}
 	return resp
+}
+
+// initializeSession performs the MCP initialize handshake on conn. The SDK
+// server requires this before it will accept tools/list, tools/call, or ping.
+func initializeSession(t *testing.T, conn net.Conn) {
+	t.Helper()
+	resp := sendJSONRPC(t, conn, "initialize", 0, map[string]interface{}{
+		"protocolVersion": "2024-11-05",
+		"capabilities":    map[string]interface{}{},
+		"clientInfo": map[string]interface{}{
+			"name":    "test-client",
+			"version": "1.0.0",
+		},
+	})
+	if resp["error"] != nil {
+		t.Fatalf("initialize returned error: %v", resp["error"])
+	}
+
+	notif := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  "notifications/initialized",
+	}
+	encoder := json.NewEncoder(conn)
+	if err := encoder.Encode(notif); err != nil {
+		t.Fatalf("failed to send notifications/initialized: %v", err)
+	}
 }
 
 func TestToolServer_MCPInitializeHandshake(t *testing.T) {
@@ -171,7 +186,6 @@ func TestToolServer_MCPInitializeHandshake(t *testing.T) {
 	}
 	defer conn.Close()
 
-	// Step 1: Send initialize
 	resp := sendJSONRPC(t, conn, "initialize", 1, map[string]interface{}{
 		"protocolVersion": "2024-11-05",
 		"capabilities":    map[string]interface{}{},
@@ -184,9 +198,6 @@ func TestToolServer_MCPInitializeHandshake(t *testing.T) {
 	result, ok := resp["result"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("expected result object, got: %v", resp)
-	}
-	if result["protocolVersion"] != "2024-11-05" {
-		t.Errorf("expected echoed protocolVersion, got: %v", result["protocolVersion"])
 	}
 	caps, ok := result["capabilities"].(map[string]interface{})
 	if !ok {
@@ -203,8 +214,6 @@ func TestToolServer_MCPInitializeHandshake(t *testing.T) {
 		t.Errorf("serverInfo.name should be %q, got: %v", McpServerName, info["name"])
 	}
 
-	// Step 2: Send notifications/initialized (notification, no id)
-	// This is a notification so we send it without expecting a response.
 	notif := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"method":  "notifications/initialized",
@@ -214,7 +223,6 @@ func TestToolServer_MCPInitializeHandshake(t *testing.T) {
 		t.Fatalf("failed to send notifications/initialized: %v", err)
 	}
 
-	// Step 3: Verify tools/list works after handshake
 	resp = sendJSONRPC(t, conn, "tools/list", 2, nil)
 	listResult, ok := resp["result"].(map[string]interface{})
 	if !ok {
@@ -242,6 +250,8 @@ func TestToolServer_Ping(t *testing.T) {
 		t.Fatalf("failed to connect: %v", err)
 	}
 	defer conn.Close()
+
+	initializeSession(t, conn)
 
 	resp := sendJSONRPC(t, conn, "ping", 1, nil)
 	if resp["error"] != nil {
@@ -278,6 +288,8 @@ func TestToolServer_ToolMetadataInList(t *testing.T) {
 		t.Fatalf("failed to connect: %v", err)
 	}
 	defer conn.Close()
+
+	initializeSession(t, conn)
 
 	resp := sendJSONRPC(t, conn, "tools/list", 1, nil)
 	result := resp["result"].(map[string]interface{})
@@ -322,30 +334,15 @@ func TestToolServer_JSONRPCToolsList(t *testing.T) {
 		t.Fatalf("Start failed: %v", err)
 	}
 
-	// Connect to the socket.
 	conn, err := net.Dial("unix", ts.SocketPath())
 	if err != nil {
 		t.Fatalf("failed to connect to socket: %v", err)
 	}
 	defer conn.Close()
 
-	// Send tools/list request.
-	req := map[string]interface{}{
-		"jsonrpc": "2.0",
-		"id":      1,
-		"method":  "tools/list",
-	}
-	encoder := json.NewEncoder(conn)
-	if err := encoder.Encode(req); err != nil {
-		t.Fatalf("failed to send request: %v", err)
-	}
+	initializeSession(t, conn)
 
-	// Read response.
-	var resp map[string]interface{}
-	decoder := json.NewDecoder(conn)
-	if err := decoder.Decode(&resp); err != nil {
-		t.Fatalf("failed to read response: %v", err)
-	}
+	resp := sendJSONRPC(t, conn, "tools/list", 1, nil)
 
 	if resp["jsonrpc"] != "2.0" {
 		t.Errorf("expected jsonrpc 2.0, got: %v", resp["jsonrpc"])
@@ -371,30 +368,17 @@ func TestToolServer_JSONRPCToolsList(t *testing.T) {
 	}
 }
 
-// TestToolServer_NotificationsInitialized_RejectsWithID verifies the
-// protocol guard added for `notifications/initialized`. Per JSON-RPC
-// 2.0 §4.1 and MCP, notifications MUST NOT carry an `id` field.
-//
-// The handler accepts the malformed message (a request-shaped frame
-// with method=notifications/initialized) and treats it as a
-// notification — no response is sent. The behavior under test:
-//
-//   - The server does NOT send a response to the malformed notification
-//     (sending a response would itself violate JSON-RPC because
-//     notifications never get responses).
-//   - Subsequent normal traffic (e.g. tools/list) still works — the
-//     malformed notification does not desync the channel or wedge
-//     the handler loop.
-//
-// The protocol-violation log line is emitted at INFO via utils.Log;
-// the test does not assert on log output (utils log capture is not
-// wired into the backend tests) but does pin the no-response and
-// post-violation-still-works contract.
-func TestToolServer_NotificationsInitialized_RejectsWithID(t *testing.T) {
-	ts := NewToolServer("notif-id-test")
-	ts.RegisterTool("echo", func(input map[string]interface{}) (*types.ToolResult, error) {
-		return &types.ToolResult{Content: "echoed"}, nil
-	}, "Echo tool", nil)
+func TestToolServer_ToolsCall(t *testing.T) {
+	ts := NewToolServer("call-test")
+	ts.RegisterTool("greet", func(input map[string]interface{}) (*types.ToolResult, error) {
+		name, _ := input["name"].(string) //nolint:errcheck // test
+		return &types.ToolResult{Content: "Hello, " + name}, nil
+	}, "Greet a user", map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"name": map[string]interface{}{"type": "string"},
+		},
+	})
 	defer ts.Stop()
 
 	if err := ts.Start(); err != nil {
@@ -403,49 +387,83 @@ func TestToolServer_NotificationsInitialized_RejectsWithID(t *testing.T) {
 
 	conn, err := net.Dial("unix", ts.SocketPath())
 	if err != nil {
-		t.Fatalf("failed to connect to socket: %v", err)
+		t.Fatalf("failed to connect: %v", err)
 	}
 	defer conn.Close()
 
-	// Send a malformed notification: method=notifications/initialized
-	// WITH an id field. A well-behaved client never does this; the
-	// handler must log + ignore, not respond.
-	malformed := map[string]interface{}{
-		"jsonrpc": "2.0",
-		"id":      42, // <-- the violation: notifications must omit id
-		"method":  "notifications/initialized",
-	}
-	encoder := json.NewEncoder(conn)
-	if err := encoder.Encode(malformed); err != nil {
-		t.Fatalf("failed to send malformed notification: %v", err)
-	}
+	initializeSession(t, conn)
 
-	// Verify no response was sent for the malformed notification.
-	// We probe by sending a follow-up tools/list request and reading
-	// its response — if the server had erroneously responded to the
-	// notification, we'd see that response here instead of the
-	// tools/list reply. sendJSONRPC reads exactly one response frame
-	// and asserts its shape (tools array), so this dual-purpose
-	// check confirms both invariants in one round-trip.
-	resp := sendJSONRPC(t, conn, "tools/list", 99, nil)
-	if resp["id"] != float64(99) {
-		t.Errorf("expected response.id=99 for tools/list, got %v — possibly a stray response to the malformed notification", resp["id"])
-	}
+	resp := sendJSONRPC(t, conn, "tools/call", 1, map[string]interface{}{
+		"name":      "greet",
+		"arguments": map[string]interface{}{"name": "World"},
+	})
+
 	result, ok := resp["result"].(map[string]interface{})
 	if !ok {
-		t.Fatalf("expected tools/list result, got: %v", resp)
+		t.Fatalf("expected result object, got: %v", resp)
 	}
-	tools, ok := result["tools"].([]interface{})
-	if !ok || len(tools) != 1 {
-		t.Errorf("tools/list after malformed notification must still work, got: %v", result)
+
+	content, ok := result["content"].([]interface{})
+	if !ok || len(content) == 0 {
+		t.Fatalf("expected content array with items, got: %v", result["content"])
+	}
+
+	first := content[0].(map[string]interface{})
+	if first["text"] != "Hello, World" {
+		t.Errorf("expected 'Hello, World', got: %v", first["text"])
 	}
 }
 
-// TestToolServer_NotificationsInitialized_ProperlyOmittedID verifies
-// the happy path: a notification with no `id` field is accepted
-// silently and the channel stays usable.
-func TestToolServer_NotificationsInitialized_ProperlyOmittedID(t *testing.T) {
-	ts := NewToolServer("notif-no-id-test")
+func TestToolServer_ToolsCall_ErrorResult(t *testing.T) {
+	ts := NewToolServer("call-err-test")
+	ts.RegisterTool("fail", func(input map[string]interface{}) (*types.ToolResult, error) {
+		return &types.ToolResult{Content: "something went wrong", IsError: true}, nil
+	}, "Always fails", nil)
+	defer ts.Stop()
+
+	if err := ts.Start(); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+
+	conn, err := net.Dial("unix", ts.SocketPath())
+	if err != nil {
+		t.Fatalf("failed to connect: %v", err)
+	}
+	defer conn.Close()
+
+	initializeSession(t, conn)
+
+	resp := sendJSONRPC(t, conn, "tools/call", 1, map[string]interface{}{
+		"name": "fail",
+	})
+
+	result, ok := resp["result"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected result, got: %v", resp)
+	}
+
+	isError, _ := result["isError"].(bool) //nolint:errcheck // test
+	if !isError {
+		t.Error("expected isError=true for failing tool")
+	}
+}
+
+func TestToolServer_HasTool(t *testing.T) {
+	ts := NewToolServer("hastool-test")
+	ts.RegisterTool("present", func(input map[string]interface{}) (*types.ToolResult, error) {
+		return &types.ToolResult{Content: "ok"}, nil
+	}, "Present tool", nil)
+
+	if !ts.HasTool("present") {
+		t.Error("HasTool should return true for registered tool")
+	}
+	if ts.HasTool("absent") {
+		t.Error("HasTool should return false for unregistered tool")
+	}
+}
+
+func TestToolServer_MultipleConnections(t *testing.T) {
+	ts := NewToolServer("multi-conn-test")
 	ts.RegisterTool("echo", func(input map[string]interface{}) (*types.ToolResult, error) {
 		return &types.ToolResult{Content: "echoed"}, nil
 	}, "Echo tool", nil)
@@ -455,30 +473,32 @@ func TestToolServer_NotificationsInitialized_ProperlyOmittedID(t *testing.T) {
 		t.Fatalf("Start failed: %v", err)
 	}
 
-	conn, err := net.Dial("unix", ts.SocketPath())
+	conn1, err := net.Dial("unix", ts.SocketPath())
 	if err != nil {
-		t.Fatalf("failed to connect to socket: %v", err)
+		t.Fatalf("failed to connect (1): %v", err)
 	}
-	defer conn.Close()
+	defer conn1.Close()
 
-	// Send a properly-shaped notification: no `id` field at all.
-	proper := map[string]interface{}{
-		"jsonrpc": "2.0",
-		"method":  "notifications/initialized",
+	conn2, err := net.Dial("unix", ts.SocketPath())
+	if err != nil {
+		t.Fatalf("failed to connect (2): %v", err)
 	}
-	encoder := json.NewEncoder(conn)
-	if err := encoder.Encode(proper); err != nil {
-		t.Fatalf("failed to send proper notification: %v", err)
-	}
+	defer conn2.Close()
 
-	// Subsequent request must still work.
-	resp := sendJSONRPC(t, conn, "tools/list", 1, nil)
-	result, ok := resp["result"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("expected tools/list result, got: %v", resp)
-	}
-	tools, ok := result["tools"].([]interface{})
-	if !ok || len(tools) != 1 {
-		t.Errorf("tools/list after proper notification must work, got: %v", result)
+	initializeSession(t, conn1)
+	initializeSession(t, conn2)
+
+	resp1 := sendJSONRPC(t, conn1, "tools/list", 1, nil)
+	resp2 := sendJSONRPC(t, conn2, "tools/list", 1, nil)
+
+	for i, resp := range []map[string]interface{}{resp1, resp2} {
+		result, ok := resp["result"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("conn %d: expected result object", i+1)
+		}
+		tools, ok := result["tools"].([]interface{})
+		if !ok || len(tools) != 1 {
+			t.Errorf("conn %d: expected 1 tool, got: %v", i+1, result["tools"])
+		}
 	}
 }

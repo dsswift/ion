@@ -1,9 +1,11 @@
 package backend
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // McpServerName is the MCP server name used in config and --allowedTools.
@@ -26,6 +29,10 @@ type ToolServer struct {
 	sockPath string
 	key      string
 	running  bool
+
+	server *mcp.Server
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
 // toolEntry stores a tool's handler alongside its MCP metadata so
@@ -44,7 +51,7 @@ type ToolHandler func(input map[string]interface{}) (*types.ToolResult, error)
 // contract, cmd.Key is accepted verbatim from any harness), so a raw key
 // can contain characters that are illegal or dangerous in a socket path:
 // most importantly a colon, which socat parses as an address-option
-// delimiter in UNIX-CONNECT:<path> — a colon-bearing key silently kills
+// delimiter in UNIX-CONNECT:<path> -- a colon-bearing key silently kills
 // every MCP/extension tool. It can also be arbitrarily long, blowing the
 // platform sun_path limit. A SHA-256 hex digest is collision-resistant
 // and length-bounded (fixed 64 chars, immune to sun_path overflow) where
@@ -61,10 +68,23 @@ func NewToolServer(sessionID string) *ToolServer {
 	sockDir := filepath.Join(home, ".ion", "mcp")
 	os.MkdirAll(sockDir, 0o700) //nolint:errcheck // dir creation; failure surfaces on listen below
 
+	srv := mcp.NewServer(
+		&mcp.Implementation{
+			Name:    McpServerName,
+			Version: "1.0.0",
+		},
+		&mcp.ServerOptions{
+			Capabilities: &mcp.ServerCapabilities{
+				Tools: &mcp.ToolCapabilities{},
+			},
+		},
+	)
+
 	return &ToolServer{
 		tools:    make(map[string]toolEntry),
 		key:      sessionID,
 		sockPath: filepath.Join(sockDir, fmt.Sprintf("sock-%s", socketToken(sessionID))),
+		server:   srv,
 	}
 }
 
@@ -77,6 +97,71 @@ func (ts *ToolServer) RegisterTool(name string, handler ToolHandler, description
 		description: description,
 		inputSchema: inputSchema,
 	}
+
+	schema := inputSchema
+	if schema == nil {
+		schema = map[string]interface{}{"type": "object"}
+	}
+	// The SDK validates schemas at registration. Extension tool declarations may
+	// omit type even though their runtime inputs are objects, so normalize every
+	// schema into a concrete object before handing it to the server.
+	kind, isString := schema["type"].(string)
+	if !isString || kind != "object" {
+		copySchema := make(map[string]interface{}, len(schema)+1)
+		for key, value := range schema {
+			copySchema[key] = value
+		}
+		copySchema["type"] = "object"
+		schema = copySchema
+	}
+	desc := description
+	if desc == "" {
+		desc = "Extension tool: " + name
+	}
+
+	wrappedHandler := func(h ToolHandler) mcp.ToolHandler {
+		return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			var args map[string]interface{}
+			if req.Params != nil && len(req.Params.Arguments) > 0 {
+				if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+					utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "tools/call args decode failed", map[string]any{"name": name, "error": err.Error()})
+					return nil, fmt.Errorf("invalid arguments: %w", err)
+				}
+			}
+			if args == nil {
+				args = make(map[string]interface{})
+			}
+
+			utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "tools/call: invoking", map[string]any{"name": name})
+			result, err := h(args)
+			if err != nil {
+				utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "tool error", map[string]any{
+					"name":  name,
+					"error": utils.ErrStr(err),
+				})
+				return &mcp.CallToolResult{
+					Content: []mcp.Content{&mcp.TextContent{Text: "Error: " + err.Error()}},
+					IsError: true,
+				}, nil
+			}
+
+			utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "tool completed", map[string]any{
+				"name":     name,
+				"is_error": result.IsError,
+			})
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: result.Content}},
+				IsError: result.IsError,
+			}, nil
+		}
+	}(handler)
+
+	ts.server.AddTool(&mcp.Tool{
+		Name:        name,
+		Description: desc,
+		InputSchema: schema,
+	}, wrappedHandler)
+
 	utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "registered tool ( chars, )", map[string]any{
 		"name":   name,
 		"desc":   len(description),
@@ -89,7 +174,6 @@ func (ts *ToolServer) Start() error {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
-	// Clean up stale socket
 	os.Remove(ts.sockPath) //nolint:errcheck // stale socket cleanup; absent is fine
 
 	listener, err := net.Listen("unix", ts.sockPath)
@@ -97,10 +181,16 @@ func (ts *ToolServer) Start() error {
 		return fmt.Errorf("tool server listen failed: %w", err)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	ts.listener = listener
+	ts.cancel = cancel
 	ts.running = true
 
-	go ts.acceptLoop()
+	ts.wg.Add(1)
+	go func() {
+		defer ts.wg.Done()
+		ts.acceptLoop(ctx)
+	}()
 	utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "started for at", map[string]any{
 		"key":       ts.key,
 		"sock_path": ts.sockPath,
@@ -111,12 +201,16 @@ func (ts *ToolServer) Start() error {
 // Stop shuts down the tool server and cleans up.
 func (ts *ToolServer) Stop() {
 	ts.mu.Lock()
-	defer ts.mu.Unlock()
-
+	if ts.cancel != nil {
+		ts.cancel()
+	}
 	ts.running = false
 	if ts.listener != nil {
 		ts.listener.Close() //nolint:errcheck // listener teardown
 	}
+	ts.mu.Unlock()
+
+	ts.wg.Wait()
 	os.Remove(ts.sockPath) //nolint:errcheck // stale socket cleanup; absent is fine
 }
 
@@ -167,9 +261,9 @@ func (ts *ToolServer) McpConfigPath(sessionID string) (string, error) {
 // McpServerSpec returns the tool server as a single structured MCP-server
 // entry, for delegated CLIs that take per-session MCP servers as inline params
 // rather than a config-file path. The ACP backends (grok, cursor) pass this on
-// `session/new`. The shape is the ACP stdio `McpServer` variant — the grok
+// `session/new`. The shape is the ACP stdio `McpServer` variant -- the grok
 // agent's serde requires `env` to be present (an empty array is accepted), so
-// it is always included. Same socat→Unix-socket bridge as McpConfigPath.
+// it is always included. Same socat->Unix-socket bridge as McpConfigPath.
 func (ts *ToolServer) McpServerSpec() map[string]interface{} {
 	return map[string]interface{}{
 		"name":    McpServerName,
@@ -182,7 +276,7 @@ func (ts *ToolServer) McpServerSpec() map[string]interface{} {
 	}
 }
 
-func (ts *ToolServer) acceptLoop() {
+func (ts *ToolServer) acceptLoop(ctx context.Context) {
 	for {
 		conn, err := ts.listener.Accept()
 		if err != nil {
@@ -194,200 +288,38 @@ func (ts *ToolServer) acceptLoop() {
 			}
 			continue
 		}
-		go ts.handleConnection(conn)
+		ts.wg.Add(1)
+		go func() {
+			defer ts.wg.Done()
+			ts.handleConnection(ctx, conn)
+		}()
 	}
 }
 
-func (ts *ToolServer) handleConnection(conn net.Conn) {
-	defer func() { conn.Close() }() //nolint:errcheck // connection close
+func (ts *ToolServer) handleConnection(ctx context.Context, conn net.Conn) {
+	defer conn.Close() //nolint:errcheck // connection close
 
-	decoder := json.NewDecoder(conn)
-	encoder := json.NewEncoder(conn)
-
-	// send wraps encoder.Encode so a failed write to the CLI (broken pipe,
-	// closed connection) is logged instead of silently dropping the reply,
-	// which would leave the CLI hanging on a tool call with no explanation.
-	send := func(method string, id interface{}, payload map[string]interface{}) {
-		if err := encoder.Encode(payload); err != nil {
-			utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "reply encode failed", map[string]any{"method": method, "id": id, "error": err.Error()})
-		}
+	transport := &mcp.IOTransport{
+		Reader: io.NopCloser(conn),
+		Writer: &nopWriteCloser{conn},
 	}
 
-	for {
-		var req struct {
-			JSONRPC string          `json:"jsonrpc"`
-			ID      interface{}     `json:"id"`
-			Method  string          `json:"method"`
-			Params  json.RawMessage `json:"params"`
-		}
+	connCtx, connCancel := context.WithCancel(ctx)
+	defer connCancel()
 
-		if err := decoder.Decode(&req); err != nil {
-			return
-		}
+	ss, err := ts.server.Connect(connCtx, transport, nil)
+	if err != nil {
+		utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "MCP session connect failed", map[string]any{"error": err.Error()})
+		return
+	}
 
-		utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "received", map[string]any{
-			"method": req.Method,
-			"id":     req.ID,
-		})
-
-		switch req.Method {
-		case "initialize":
-			// MCP handshake: echo protocol version, declare tools capability.
-			var params struct {
-				ProtocolVersion string `json:"protocolVersion"`
-			}
-			if err := json.Unmarshal(req.Params, &params); err != nil {
-				utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "initialize params decode failed", map[string]any{"id": req.ID, "error": err.Error()})
-			}
-			utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "MCP initialize", map[string]any{
-				"protocol_version": params.ProtocolVersion,
-			})
-			send(req.Method, req.ID, map[string]interface{}{
-				"jsonrpc": "2.0",
-				"id":      req.ID,
-				"result": map[string]interface{}{
-					"protocolVersion": params.ProtocolVersion,
-					"capabilities": map[string]interface{}{
-						"tools": map[string]interface{}{},
-					},
-					"serverInfo": map[string]interface{}{
-						"name":    McpServerName,
-						"version": "1.0.0",
-					},
-				},
-			})
-
-		case "notifications/initialized":
-			// MCP notification: per JSON-RPC 2.0 §4.1 and the MCP spec,
-			// notifications MUST NOT carry an `id` field. A well-
-			// behaved client never sends one; if a client mistakenly
-			// does, log the protocol violation but still treat the
-			// message as a notification (no response). Returning an
-			// error response to a notification would itself be a
-			// protocol violation (responses go to requests, not
-			// notifications), so we cannot tell the bad client.
-			//
-			// req.ID is `interface{}`; JSON-decoded null and absent
-			// fields both leave it nil. A non-nil ID means the JSON
-			// payload carried a concrete value (number/string), which
-			// signals the violation.
-			if req.ID != nil {
-				utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "protocol violation: notifications/initialized carried (JSON-RPC notifications must omit id). Ignoring id; no response sent.", map[string]any{
-					"id": req.ID,
-				})
-			} else {
-				utils.Debug("ToolServer", "received notifications/initialized (no-op)")
-			}
-			continue
-
-		case "ping":
-			send(req.Method, req.ID, map[string]interface{}{
-				"jsonrpc": "2.0",
-				"id":      req.ID,
-				"result":  map[string]interface{}{},
-			})
-
-		case "tools/list":
-			ts.mu.Lock()
-			var toolList []map[string]interface{}
-			for name, entry := range ts.tools {
-				schema := entry.inputSchema
-				if schema == nil {
-					schema = map[string]interface{}{"type": "object"}
-				}
-				desc := entry.description
-				if desc == "" {
-					desc = "Extension tool: " + name
-				}
-				toolList = append(toolList, map[string]interface{}{
-					"name":        name,
-					"description": desc,
-					"inputSchema": schema,
-				})
-			}
-			ts.mu.Unlock()
-
-			utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "tools/list: returning tools", map[string]any{
-				"count": len(toolList),
-			})
-			send(req.Method, req.ID, map[string]interface{}{
-				"jsonrpc": "2.0",
-				"id":      req.ID,
-				"result":  map[string]interface{}{"tools": toolList},
-			})
-
-		case "tools/call":
-			var params struct {
-				Name      string                 `json:"name"`
-				Arguments map[string]interface{} `json:"arguments"`
-			}
-			if err := json.Unmarshal(req.Params, &params); err != nil {
-				// A decode failure yields an empty name, producing a misleading
-				// "tool not found" with no cause. Log the real reason.
-				utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "tools/call params decode failed", map[string]any{"id": req.ID, "error": err.Error()})
-			}
-
-			ts.mu.Lock()
-			entry, exists := ts.tools[params.Name]
-			ts.mu.Unlock()
-
-			if !exists {
-				utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "tool not found", map[string]any{
-					"name": params.Name,
-				})
-				send(req.Method, req.ID, map[string]interface{}{
-					"jsonrpc": "2.0",
-					"id":      req.ID,
-					"error":   map[string]interface{}{"code": -32601, "message": "tool not found: " + params.Name},
-				})
-				continue
-			}
-
-			utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "tools/call: invoking", map[string]any{
-				"name": params.Name,
-			})
-			result, err := entry.handler(params.Arguments)
-			if err != nil {
-				utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "tool error", map[string]any{
-					"name":  params.Name,
-					"error": utils.ErrStr(err),
-				})
-				send(req.Method, req.ID, map[string]interface{}{
-					"jsonrpc": "2.0",
-					"id":      req.ID,
-					"result": map[string]interface{}{
-						"content": []map[string]interface{}{
-							{"type": "text", "text": "Error: " + err.Error()},
-						},
-						"isError": true,
-					},
-				})
-			} else {
-				utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "tool completed", map[string]any{
-					"name":     params.Name,
-					"is_error": result.IsError,
-				})
-				send(req.Method, req.ID, map[string]interface{}{
-					"jsonrpc": "2.0",
-					"id":      req.ID,
-					"result": map[string]interface{}{
-						"content": []map[string]interface{}{
-							{"type": "text", "text": result.Content},
-						},
-						"isError": result.IsError,
-					},
-				})
-			}
-
-		default:
-			utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "unknown method", map[string]any{
-				"method": req.Method,
-			})
-			send(req.Method, req.ID, map[string]interface{}{
-				"jsonrpc": "2.0",
-				"id":      req.ID,
-				"error":   map[string]interface{}{"code": -32601, "message": "method not found"},
-			})
-		}
+	if waitErr := ss.Wait(); waitErr != nil {
+		utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "MCP session ended", map[string]any{"error": waitErr.Error()})
 	}
 }
+
+type nopWriteCloser struct {
+	io.Writer
+}
+
+func (nopWriteCloser) Close() error { return nil }

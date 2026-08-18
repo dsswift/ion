@@ -308,8 +308,11 @@ func TestConnect_SendsStoredTokenWithoutOAuthConfigBlock(t *testing.T) {
 			t.Errorf("decode rpc request: %v", err)
 		}
 		result := map[string]any{}
-		if req.Method == "tools/list" {
-			result["tools"] = []map[string]any{{"name": "search", "description": "d"}}
+		switch req.Method {
+		case "initialize":
+			result = map[string]any{"protocolVersion": "2025-11-25", "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": map[string]any{"name": "fixture", "version": "1"}}
+		case "tools/list":
+			result["tools"] = []map[string]any{{"name": "search", "description": "d", "inputSchema": map[string]any{"type": "object"}}}
 		}
 		writeJSON(t, w, map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": result})
 	}))
@@ -643,7 +646,7 @@ func TestPortFromRedirectURI(t *testing.T) {
 // expires_in does not land as the zero time, which IsExpired would read as
 // already-expired and would make every request attempt a doomed refresh.
 func TestTokenFromGrant_MissingExpiryGetsFallback(t *testing.T) {
-	token := tokenFromGrant(&auth.TokenResponse{AccessToken: "a", RefreshToken: "r"})
+	token := tokenFromGrant(&auth.TokenResponse{AccessToken: "a", RefreshToken: "r"}, "", "")
 	if token.ExpiresAt.IsZero() {
 		t.Fatal("expiry must not be the zero time")
 	}

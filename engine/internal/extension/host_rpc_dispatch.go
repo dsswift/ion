@@ -133,6 +133,10 @@ func (h *Host) rpcElicit(ctx *Context, id int64, raw []byte) {
 			Schema    map[string]interface{} `json:"schema,omitempty"`
 			URL       string                 `json:"url,omitempty"`
 			Mode      string                 `json:"mode,omitempty"`
+			Source    string                 `json:"source,omitempty"`
+			Server    string                 `json:"server,omitempty"`
+			Message   string                 `json:"message,omitempty"`
+			Action    string                 `json:"action,omitempty"`
 		} `json:"params"`
 	}
 	if err := json.Unmarshal(raw, &req); err != nil {
@@ -149,6 +153,10 @@ func (h *Host) rpcElicit(ctx *Context, id int64, raw []byte) {
 			Schema:    req.Params.Schema,
 			URL:       req.Params.URL,
 			Mode:      req.Params.Mode,
+			Source:    req.Params.Source,
+			Server:    req.Params.Server,
+			Message:   req.Params.Message,
+			Action:    req.Params.Action,
 		})
 		if err != nil {
 			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})

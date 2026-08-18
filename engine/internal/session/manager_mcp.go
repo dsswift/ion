@@ -12,11 +12,13 @@ package session
 //     next daemon restart.
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"sync"
 
 	ionconfig "github.com/dsswift/ion/engine/internal/config"
+	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -113,7 +115,18 @@ func (m *Manager) ensureMcpConnections(s *engineSession, key string) {
 		})
 
 		for name, mcpCfg := range mcpServers {
-			conn, err := mcp.Connect(name, mcpCfg)
+			conn, err := mcp.ConnectWithOptions(name, mcpCfg, mcp.ConnectionOptions{
+				Elicit: func(_ context.Context, request mcp.ElicitationRequest) (mcp.ElicitationReply, error) {
+					response, cancelled, err := m.elicit(s, key, extension.ElicitationRequestInfo{
+						Schema: request.Schema, URL: request.URL, Mode: request.Mode,
+						Source: "mcp", Server: request.ServerName, Message: request.Message,
+					})
+					if err != nil || cancelled {
+						return mcp.ElicitationReply{Action: "cancel"}, err
+					}
+					return mcp.ElicitationReply{Action: "accept", Response: response}, nil
+				},
+			})
 			if err != nil {
 				// A whole server's tools going away is an error, not info, and
 				// missed by ERROR-level log sweeps at Info. Key by serverName;
@@ -191,10 +204,12 @@ func (m *Manager) McpServerStatuses(projectDir string) []types.McpServerStatus {
 
 	// Aggregate live connections by server name across all sessions.
 	connected := make(map[string]int)
+	connectedConns := make(map[string]*mcp.Connection)
 	for _, key := range m.SessionKeys() {
 		for _, conn := range m.mcpConnectionsFor(key) {
 			if count := len(conn.Tools()); count >= connected[conn.Name()] {
 				connected[conn.Name()] = count
+				connectedConns[conn.Name()] = conn
 			}
 		}
 	}
@@ -217,6 +232,12 @@ func (m *Manager) McpServerStatuses(projectDir string) []types.McpServerStatus {
 			Connected:     isConnected,
 			Authenticated: mcp.IsAuthenticated(name),
 			ToolCount:     toolCount,
+		}
+		if isConnected {
+			if conn := connectedConns[name]; conn != nil {
+				status.ProtocolVersion = conn.ProtocolVersion()
+				status.Capabilities = flattenedMcpCapabilities(conn.Capabilities())
+			}
 		}
 		if !isConnected {
 			status.LastError = mcpConnectError(name)

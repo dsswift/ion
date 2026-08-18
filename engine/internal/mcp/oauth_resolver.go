@@ -233,6 +233,7 @@ func effectiveOAuthConfig(serverName string, oauthConfig *OAuthConfig) *OAuthCon
 		Scope:        reg.Scope,
 		RedirectURI:  reg.RedirectURI,
 		UsePKCE:      true,
+		Resource:     reg.Resource,
 	}
 }
 

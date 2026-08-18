@@ -51,9 +51,12 @@ type ClientCommand struct {
 	Fallbacks []string `json:"fallbacks,omitempty"`
 
 	// elicitation_response: client reply to an engine_elicitation_request event.
+	// ElicitDeclined is the ternary middle: "no, but continue" vs
+	// ElicitCancelled "no, and abort".
 	ElicitRequestID string                 `json:"elicitRequestId,omitempty"`
 	ElicitResponse  map[string]interface{} `json:"elicitResponse,omitempty"`
 	ElicitCancelled bool                   `json:"elicitCancelled,omitempty"`
+	ElicitDeclined  bool                   `json:"elicitDeclined,omitempty"`
 
 	// early_stop_decision_response: client reply to an
 	// engine_early_stop_decision_request event. All fields are optional; an

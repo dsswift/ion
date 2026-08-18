@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 
+	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/permissions"
 	"github.com/dsswift/ion/engine/internal/sandbox"
 	"github.com/dsswift/ion/engine/internal/tools"
@@ -366,10 +367,11 @@ type RunConfig struct {
 	// field on the floor — this router lives behind the compiler-enforced
 	// internal/ boundary and is not a published contract, so the signature
 	// change is an internal refactor.
-	McpToolRouter func(ctx context.Context, name string, input map[string]interface{}) (*types.ToolResult, error)
-	AgentSpawner  tools.AgentSpawner
-	Telemetry     TelemetryCollector
-	Timeouts      *types.TimeoutsConfig
+	McpConnections []*mcp.Connection
+	McpToolRouter  func(ctx context.Context, name string, input map[string]interface{}) (*types.ToolResult, error)
+	AgentSpawner   tools.AgentSpawner
+	Telemetry      TelemetryCollector
+	Timeouts       *types.TimeoutsConfig
 
 	// BackgroundTaskOwner is the session key stamped onto tool contexts so
 	// background Bash tasks (run_in_background) are attributed to their

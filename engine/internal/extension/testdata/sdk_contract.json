@@ -252,9 +252,13 @@
     "elicitation_request": {
       "payloadKind": "object",
       "payloadFields": [
+        "action",
+        "message",
         "mode",
         "request_id",
         "schema",
+        "server",
+        "source",
         "url"
       ],
       "result": "content"
@@ -263,6 +267,7 @@
       "payloadKind": "object",
       "payloadFields": [
         "cancelled",
+        "declined",
         "request_id",
         "response"
       ],

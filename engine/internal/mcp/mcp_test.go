@@ -1,48 +1,14 @@
 package mcp
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
-	"io"
-	"net/http"
-	"strings"
 	"testing"
 	"time"
 
+	mcpgo "github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/dsswift/ion/engine/internal/types"
 )
-
-// mockTransport implements mcpTransport for testing.
-type mockTransport struct {
-	sent     []json.RawMessage
-	recvMsgs []json.RawMessage
-	recvIdx  int
-	closed   bool
-}
-
-func (m *mockTransport) Send(msg json.RawMessage) error {
-	m.sent = append(m.sent, msg)
-	return nil
-}
-
-func (m *mockTransport) Receive() (json.RawMessage, error) {
-	if m.recvIdx >= len(m.recvMsgs) {
-		// Synthesize an error without calling Unmarshal with an invalid
-		// pointer (govet flags that as an InvalidUnmarshalError-prone
-		// pattern even though we're using it intentionally).
-		return nil, errors.New("mockTransport: no more messages")
-	}
-	msg := m.recvMsgs[m.recvIdx]
-	m.recvIdx++
-	return msg, nil
-}
-
-func (m *mockTransport) Close() error {
-	m.closed = true
-	return nil
-}
 
 func mustMarshal(v any) json.RawMessage {
 	b, _ := json.Marshal(v)
@@ -87,6 +53,18 @@ func TestConnection_Tools(t *testing.T) {
 	}
 }
 
+func TestConnection_Tools_ReturnsDefensiveCopy(t *testing.T) {
+	conn := &Connection{
+		name:  "test",
+		tools: []ToolDef{{Name: "original"}},
+	}
+	tools := conn.Tools()
+	tools[0].Name = "mutated"
+	if conn.Tools()[0].Name != "original" {
+		t.Error("Tools() should return a copy, not a reference to internal slice")
+	}
+}
+
 func TestConnection_Name(t *testing.T) {
 	conn := &Connection{name: "test-server"}
 	if conn.Name() != "test-server" {
@@ -94,18 +72,40 @@ func TestConnection_Name(t *testing.T) {
 	}
 }
 
-func TestConnection_Close(t *testing.T) {
-	mt := &mockTransport{}
-	conn := &Connection{
-		name:      "test",
-		transport: mt,
+func TestConnection_ProtocolVersion(t *testing.T) {
+	conn := &Connection{protocolVersion: "2025-03-26"}
+	if conn.ProtocolVersion() != "2025-03-26" {
+		t.Errorf("got %q", conn.ProtocolVersion())
 	}
+}
 
+func TestConnection_Capabilities_DefensiveCopy(t *testing.T) {
+	conn := &Connection{capabilities: map[string]any{"tools": true}}
+	caps := conn.Capabilities()
+	caps["injected"] = true
+	if _, found := conn.Capabilities()["injected"]; found {
+		t.Error("Capabilities() should return a defensive copy")
+	}
+}
+
+func TestConnection_Close_WithCleanup(t *testing.T) {
+	called := false
+	conn := &Connection{
+		name:  "test",
+		close: func() error { called = true; return nil },
+	}
 	if err := conn.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	if !mt.closed {
-		t.Error("expected transport to be closed")
+	if !called {
+		t.Error("expected cleanup function to be called")
+	}
+}
+
+func TestConnection_Close_NilSession(t *testing.T) {
+	conn := &Connection{name: "bare"}
+	if err := conn.Close(); err != nil {
+		t.Fatalf("Close on bare connection: %v", err)
 	}
 }
 
@@ -113,13 +113,6 @@ func TestConnect_UnsupportedTransport(t *testing.T) {
 	_, err := Connect("test", types.McpServerConfig{Type: "grpc"})
 	if err == nil {
 		t.Fatal("expected error for unsupported transport")
-	}
-}
-
-func TestConnect_WebSocketMissingURL(t *testing.T) {
-	_, err := Connect("test", types.McpServerConfig{Type: "ws"})
-	if err == nil {
-		t.Fatal("expected error for missing URL")
 	}
 }
 
@@ -144,31 +137,16 @@ func TestConnect_SSEMissingURL(t *testing.T) {
 	}
 }
 
-func TestJSONRPCRequest_Marshal(t *testing.T) {
-	req := jsonRPCRequest{
-		JSONRPC: "2.0",
-		ID:      1,
-		Method:  "tools/list",
-	}
-	data, err := json.Marshal(req)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-
-	var parsed map[string]any
-	json.Unmarshal(data, &parsed)
-	if parsed["jsonrpc"] != "2.0" {
-		t.Errorf("expected jsonrpc 2.0")
-	}
-	if parsed["method"] != "tools/list" {
-		t.Errorf("expected method tools/list")
+func TestConnect_WebSocketMissingURL(t *testing.T) {
+	_, err := Connect("test", types.McpServerConfig{Type: "ws"})
+	if err == nil {
+		t.Fatal("expected error for websocket transport without URL")
 	}
 }
 
-// --- New tests ported from TS ---
+// --- Resource type parsing (pure JSON, no transport) ---
 
 func TestListResources_ParseMultiple(t *testing.T) {
-	// Simulate a resources/list response with multiple resources.
 	respBody := mustMarshal(map[string]any{
 		"resources": []map[string]any{
 			{"uri": "file:///a.txt", "name": "A", "mimeType": "text/plain"},
@@ -198,7 +176,6 @@ func TestListResources_ParseMultiple(t *testing.T) {
 }
 
 func TestResourceContent_TextAndBlob(t *testing.T) {
-	// Text content.
 	textResp := mustMarshal(map[string]any{
 		"contents": []map[string]any{
 			{"uri": "file:///a.txt", "text": "hello world", "mimeType": "text/plain"},
@@ -214,7 +191,6 @@ func TestResourceContent_TextAndBlob(t *testing.T) {
 		t.Errorf("expected text content 'hello world', got %+v", textResult.Contents)
 	}
 
-	// Blob content (base64).
 	blobResp := mustMarshal(map[string]any{
 		"contents": []map[string]any{
 			{"uri": "file:///img.png", "blob": "iVBORw0KGgo=", "mimeType": "image/png"},
@@ -230,7 +206,6 @@ func TestResourceContent_TextAndBlob(t *testing.T) {
 		t.Errorf("expected blob data, got %q", blobResult.Contents[0].Blob)
 	}
 
-	// Empty response.
 	emptyResp := mustMarshal(map[string]any{"contents": []map[string]any{}})
 	var emptyResult struct {
 		Contents []McpResourceContent `json:"contents"`
@@ -243,10 +218,12 @@ func TestResourceContent_TextAndBlob(t *testing.T) {
 	}
 }
 
+// --- OAuth / token tests ---
+
 func TestOAuthStore_SetGetToken(t *testing.T) {
 	store := &OAuthStore{
 		tokens: make(map[string]*OAuthToken),
-		path:   "/dev/null", // Don't persist during test.
+		path:   "/dev/null",
 	}
 
 	tok := &OAuthToken{
@@ -264,7 +241,6 @@ func TestOAuthStore_SetGetToken(t *testing.T) {
 		t.Errorf("AccessToken = %q, want at-123", got.AccessToken)
 	}
 
-	// Missing server returns nil.
 	if store.GetToken("nonexistent") != nil {
 		t.Error("expected nil for nonexistent server")
 	}
@@ -279,223 +255,318 @@ func TestOAuthStore_ExpiredToken(t *testing.T) {
 	tok := &OAuthToken{
 		AccessToken: "expired-tok",
 		TokenType:   "Bearer",
-		ExpiresAt:   time.Now().Add(-10 * time.Minute), // Expired.
+		ExpiresAt:   time.Now().Add(-10 * time.Minute),
 	}
 	store.SetToken("server-b", tok)
 
-	// GetToken should return nil for expired token.
 	if store.GetToken("server-b") != nil {
 		t.Error("expected nil for expired token")
 	}
 }
 
 func TestIsExpired(t *testing.T) {
-	// Nil token is expired.
 	if !IsExpired(nil) {
 		t.Error("nil token should be expired")
 	}
 
-	// Token expiring in 30 seconds is within the 60-second buffer, so expired.
 	soon := &OAuthToken{ExpiresAt: time.Now().Add(30 * time.Second)}
 	if !IsExpired(soon) {
 		t.Error("token within buffer should be considered expired")
 	}
 
-	// Token expiring in 2 minutes is valid.
 	later := &OAuthToken{ExpiresAt: time.Now().Add(2 * time.Minute)}
 	if IsExpired(later) {
 		t.Error("token expiring in 2 min should not be expired")
 	}
 }
 
-// PKCE verifier/challenge generation is not tested here: this package no
-// longer implements it. auth.StartPKCEFlow owns the whole authorization-code +
-// PKCE grant (verifier, S256 challenge, loopback callback, code exchange), and
-// login_test.go pins that the authorization URL MCP login produces carries
-// code_challenge_method=S256. The former GeneratePKCEChallenge here had no
-// production caller and would have drifted from the real implementation.
+// --- convertToolResult (replaces old toolResultFromContent) ---
 
-func TestHTTPTransport_SessionIDTracking(t *testing.T) {
-	ht := &httpTransport{
-		baseURL: "http://localhost:9999",
-		headers: map[string]string{},
-		client:  &http.Client{},
-		respCh:  make(chan json.RawMessage, 8),
+func TestConvertToolResult_Nil(t *testing.T) {
+	result := convertToolResult(nil)
+	if result.Content == "" {
+		t.Error("nil result should produce non-empty error content")
 	}
-
-	// Session ID starts empty.
-	ht.mu.Lock()
-	if ht.sessionID != "" {
-		t.Error("sessionID should start empty")
+	if !result.IsError {
+		t.Error("nil result should be marked as error")
 	}
-	ht.mu.Unlock()
-
-	// Simulate setting a session ID (as would happen from response header).
-	ht.mu.Lock()
-	ht.sessionID = "sess-abc"
-	ht.mu.Unlock()
-
-	ht.mu.Lock()
-	if ht.sessionID != "sess-abc" {
-		t.Errorf("sessionID = %q, want sess-abc", ht.sessionID)
-	}
-	ht.mu.Unlock()
 }
 
-func TestConnectionRegistry(t *testing.T) {
-	conn := &Connection{name: "reg-test", tools: []ToolDef{{Name: "t1"}}}
+func TestConvertToolResult_TextOnly(t *testing.T) {
+	result := convertToolResult(&mcpgo.CallToolResult{
+		Content: []mcpgo.Content{
+			&mcpgo.TextContent{Text: "hello"},
+			&mcpgo.TextContent{Text: "world"},
+		},
+	})
+	if result.Content != "hello\nworld" {
+		t.Errorf("content = %q, want 'hello\\nworld'", result.Content)
+	}
+	if result.IsError {
+		t.Error("should not be marked error")
+	}
+	if len(result.ContentItems) != 2 {
+		t.Fatalf("expected 2 content items, got %d", len(result.ContentItems))
+	}
+	if result.ContentItems[0].Type != "text" || result.ContentItems[0].Text != "hello" {
+		t.Errorf("content item[0] = %+v", result.ContentItems[0])
+	}
+}
 
-	// Register and retrieve.
-	registerConnection("reg-test", conn)
-	got := getConnection("reg-test")
+func TestConvertToolResult_ImageContent(t *testing.T) {
+	imgData := []byte("fakepngdata")
+	result := convertToolResult(&mcpgo.CallToolResult{
+		Content: []mcpgo.Content{
+			&mcpgo.ImageContent{Data: imgData, MIMEType: "image/png"},
+		},
+	})
+	if len(result.ContentItems) != 1 {
+		t.Fatalf("expected 1 content item, got %d", len(result.ContentItems))
+	}
+	if result.ContentItems[0].Type != "image" {
+		t.Errorf("type = %q, want image", result.ContentItems[0].Type)
+	}
+	if result.ContentItems[0].MimeType != "image/png" {
+		t.Errorf("mimeType = %q", result.ContentItems[0].MimeType)
+	}
+	if len(result.EphemeralImages) != 1 {
+		t.Errorf("expected 1 ephemeral image, got %d", len(result.EphemeralImages))
+	}
+}
+
+func TestConvertToolResult_EmbeddedResourceText(t *testing.T) {
+	result := convertToolResult(&mcpgo.CallToolResult{
+		Content: []mcpgo.Content{
+			&mcpgo.EmbeddedResource{Resource: &mcpgo.ResourceContents{
+				URI: "file:///readme.md", MIMEType: "text/plain", Text: "# Hello",
+			}},
+		},
+	})
+	if len(result.ContentItems) != 1 || result.ContentItems[0].Type != "resource" {
+		t.Fatalf("content items = %+v", result.ContentItems)
+	}
+	if result.ContentItems[0].Resource == nil {
+		t.Fatal("resource should not be nil")
+	}
+	if result.ContentItems[0].Resource.Text != "# Hello" {
+		t.Errorf("resource text = %q", result.ContentItems[0].Resource.Text)
+	}
+}
+
+func TestConvertToolResult_EmbeddedResourceNilResource(t *testing.T) {
+	result := convertToolResult(&mcpgo.CallToolResult{
+		Content: []mcpgo.Content{
+			&mcpgo.EmbeddedResource{Resource: nil},
+		},
+	})
+	if len(result.ContentItems) != 0 {
+		t.Errorf("nil embedded resource should be skipped, got %d items", len(result.ContentItems))
+	}
+}
+
+func TestConvertToolResult_ResourceLink(t *testing.T) {
+	result := convertToolResult(&mcpgo.CallToolResult{
+		Content: []mcpgo.Content{
+			&mcpgo.ResourceLink{URI: "mcp://detail", Name: "detail", Description: "details page", MIMEType: "application/json"},
+		},
+	})
+	if len(result.ContentItems) != 1 || result.ContentItems[0].Type != "resource_link" {
+		t.Fatalf("content items = %+v", result.ContentItems)
+	}
+	if result.ContentItems[0].URI != "mcp://detail" {
+		t.Errorf("URI = %q", result.ContentItems[0].URI)
+	}
+	if result.ContentItems[0].Description != "details page" {
+		t.Errorf("Description = %q", result.ContentItems[0].Description)
+	}
+}
+
+func TestConvertToolResult_StructuredContent(t *testing.T) {
+	structured := map[string]any{"screens": float64(2)}
+	result := convertToolResult(&mcpgo.CallToolResult{
+		Content:           []mcpgo.Content{&mcpgo.TextContent{Text: "base text"}},
+		StructuredContent: structured,
+	})
+	if result.Content != "base text\n{\"screens\":2}" {
+		t.Errorf("content = %q", result.Content)
+	}
+}
+
+func TestConvertToolResult_EmptyContent(t *testing.T) {
+	result := convertToolResult(&mcpgo.CallToolResult{Content: nil})
+	if result.Content == "" {
+		t.Error("empty content should produce fallback message")
+	}
+}
+
+func TestConvertToolResult_IsError(t *testing.T) {
+	result := convertToolResult(&mcpgo.CallToolResult{
+		IsError: true,
+		Content: []mcpgo.Content{&mcpgo.TextContent{Text: "something failed"}},
+	})
+	if !result.IsError {
+		t.Error("IsError should propagate")
+	}
+}
+
+// --- capabilitiesMap ---
+
+func TestCapabilitiesMap_Nil(t *testing.T) {
+	out := capabilitiesMap(nil)
+	if out != nil {
+		t.Errorf("expected nil for nil input, got %v", out)
+	}
+}
+
+func TestCapabilitiesMap_RoundTrip(t *testing.T) {
+	input := map[string]any{"tools": map[string]any{"listChanged": true}}
+	out := capabilitiesMap(input)
+	if out == nil {
+		t.Fatal("expected non-nil output")
+	}
+	tools, ok := out["tools"].(map[string]any)
+	if !ok {
+		t.Fatalf("tools not a map: %T", out["tools"])
+	}
+	if tools["listChanged"] != true {
+		t.Errorf("listChanged = %v", tools["listChanged"])
+	}
+}
+
+// --- callContext timeout ---
+
+func TestCallContext_DefaultTimeout(t *testing.T) {
+	conn := &Connection{name: "test"}
+	ctx, cancel := conn.callContext(t.Context())
+	defer cancel()
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		t.Fatal("expected deadline on context")
+	}
+	remaining := time.Until(deadline)
+	if remaining < DefaultCallTimeout-time.Second || remaining > DefaultCallTimeout+time.Second {
+		t.Errorf("expected ~%v timeout, got %v remaining", DefaultCallTimeout, remaining)
+	}
+}
+
+func TestCallContext_CustomTimeout(t *testing.T) {
+	conn := &Connection{name: "test", callTimeout: 10 * time.Second}
+	ctx, cancel := conn.callContext(t.Context())
+	defer cancel()
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		t.Fatal("expected deadline on context")
+	}
+	remaining := time.Until(deadline)
+	if remaining < 9*time.Second || remaining > 11*time.Second {
+		t.Errorf("expected ~10s timeout, got %v remaining", remaining)
+	}
+}
+
+// --- joinNonEmpty ---
+
+func TestJoinNonEmpty(t *testing.T) {
+	cases := []struct {
+		input []string
+		want  string
+	}{
+		{nil, ""},
+		{[]string{}, ""},
+		{[]string{"a"}, "a"},
+		{[]string{"a", "b"}, "a\nb"},
+		{[]string{"a", "", "b"}, "a\nb"},
+		{[]string{"", ""}, ""},
+	}
+	for _, tc := range cases {
+		got := joinNonEmpty(tc.input)
+		if got != tc.want {
+			t.Errorf("joinNonEmpty(%v) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+// --- newSDKTransport validation ---
+
+func TestNewSDKTransport_EmptyDefaultsToStdio(t *testing.T) {
+	_, _, err := newSDKTransport("test", types.McpServerConfig{Type: "", Command: "echo"})
+	if err != nil {
+		t.Fatalf("expected stdio fallback for empty type, got: %v", err)
+	}
+}
+
+func TestNewSDKTransport_HTTPReturnsStreamable(t *testing.T) {
+	transport, cleanup, err := newSDKTransport("test", types.McpServerConfig{Type: "http", URL: "http://localhost:9999/mcp"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if transport == nil {
+		t.Fatal("expected non-nil transport")
+	}
+	if cleanup == nil {
+		t.Fatal("expected non-nil cleanup")
+	}
+}
+
+func TestNewSDKTransport_SSEReturnsTransport(t *testing.T) {
+	transport, _, err := newSDKTransport("test", types.McpServerConfig{Type: "sse", URL: "http://localhost:9999/sse"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if transport == nil {
+		t.Fatal("expected non-nil transport")
+	}
+}
+
+// --- ClientStore ---
+
+func TestClientStore_SetGetDelete(t *testing.T) {
+	store := &ClientStore{
+		clients: make(map[string]*ClientRegistration),
+		path:    "/dev/null",
+	}
+
+	reg := &ClientRegistration{
+		ClientID: "cid-123",
+		AuthURL:  "https://auth.example.com/authorize",
+		TokenURL: "https://auth.example.com/token",
+	}
+	store.Set("server-x", reg)
+
+	got := store.Get("server-x")
 	if got == nil {
-		t.Fatal("expected registered connection")
+		t.Fatal("expected registration")
 	}
-	if got.Name() != "reg-test" {
-		t.Errorf("name = %q, want reg-test", got.Name())
-	}
-
-	// Unregister and verify gone.
-	unregisterConnection("reg-test")
-	if getConnection("reg-test") != nil {
-		t.Error("expected nil after unregister")
-	}
-}
-
-// slowTransport blocks on Receive until closed.
-type slowTransport struct {
-	sent   []json.RawMessage
-	done   chan struct{}
-	closed bool
-}
-
-func (s *slowTransport) Send(msg json.RawMessage) error {
-	s.sent = append(s.sent, msg)
-	return nil
-}
-
-func (s *slowTransport) Receive() (json.RawMessage, error) {
-	<-s.done // Block until closed.
-	return nil, io.EOF
-}
-
-func (s *slowTransport) Close() error {
-	if !s.closed {
-		s.closed = true
-		close(s.done)
-	}
-	return nil
-}
-
-func TestCall_Timeout(t *testing.T) {
-	st := &slowTransport{done: make(chan struct{})}
-	defer st.Close()
-
-	conn := &Connection{
-		name:        "timeout-test",
-		transport:   st,
-		callTimeout: 100 * time.Millisecond,
-		dead:        make(chan struct{}),
+	if got.ClientID != "cid-123" {
+		t.Errorf("ClientID = %q", got.ClientID)
 	}
 
-	_, err := conn.call(context.Background(), "tools/list", nil)
-	if err == nil {
-		t.Fatal("expected timeout error, got nil")
+	if store.Get("nonexistent") != nil {
+		t.Error("expected nil for missing server")
 	}
-	if !strings.Contains(err.Error(), "timeout") {
-		t.Errorf("expected timeout in error, got: %s", err)
+
+	store.Delete("server-x")
+	if store.Get("server-x") != nil {
+		t.Error("expected nil after delete")
 	}
 }
 
-// errorTransport returns an error from Receive.
-type errorTransport struct {
-	sent    []json.RawMessage
-	recvErr error
-}
-
-func (e *errorTransport) Send(msg json.RawMessage) error {
-	e.sent = append(e.sent, msg)
-	return nil
-}
-
-func (e *errorTransport) Receive() (json.RawMessage, error) {
-	return nil, e.recvErr
-}
-
-func (e *errorTransport) Close() error {
-	return nil
-}
-
-func TestCall_ReceiveError(t *testing.T) {
-	et := &errorTransport{recvErr: fmt.Errorf("connection reset")}
-
-	conn := &Connection{
-		name:        "error-test",
-		transport:   et,
-		callTimeout: 5 * time.Second,
-		dead:        make(chan struct{}),
+func TestClientStore_NamesLegacyAdapter(t *testing.T) {
+	store := &ClientStore{
+		clients: make(map[string]*ClientRegistration),
+		path:    "/dev/null",
 	}
+	store.Set("alpha", &ClientRegistration{ClientID: "a"})
+	store.Set("beta", &ClientRegistration{ClientID: "b"})
 
-	_, err := conn.call(context.Background(), "tools/list", nil)
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	names := store.Names()
+	if len(names) != 2 {
+		t.Fatalf("expected 2 names, got %d", len(names))
 	}
-	if !strings.Contains(err.Error(), "connection reset") {
-		t.Errorf("expected 'connection reset' in error, got: %s", err)
+	found := map[string]bool{}
+	for _, n := range names {
+		found[n] = true
 	}
-}
-
-func TestCall_DeadAfterTimeout(t *testing.T) {
-	st := &slowTransport{done: make(chan struct{})}
-	defer st.Close()
-
-	conn := &Connection{
-		name:        "dead-test",
-		transport:   st,
-		callTimeout: 50 * time.Millisecond,
-		dead:        make(chan struct{}),
-	}
-
-	// First call should timeout and mark connection dead.
-	_, err := conn.call(context.Background(), "tools/list", nil)
-	if err == nil {
-		t.Fatal("expected timeout error")
-	}
-	if !strings.Contains(err.Error(), "timeout") {
-		t.Errorf("expected 'timeout' in error, got: %s", err)
-	}
-
-	// Second call should immediately fail with dead connection error.
-	_, err = conn.call(context.Background(), "tools/list", nil)
-	if err == nil {
-		t.Fatal("expected dead connection error")
-	}
-	if !strings.Contains(err.Error(), "dead") {
-		t.Errorf("expected 'dead' in error, got: %s", err)
-	}
-}
-
-func TestToolResultFromContentPreservesImagesAndStructuredContent(t *testing.T) {
-	result := toolResultFromContent("test", "screen", []mcpContentBlock{
-		{Type: "text", Text: "screen result"},
-		{Type: "image", MimeType: "image/png", Data: "aGVsbG8="},
-		{Type: "resource_link", Name: "detail", URI: "mcp://detail", MimeType: "application/json"},
-	}, nil)
-	if result.Content == "" || !strings.Contains(result.Content, "screen result") || !strings.Contains(result.Content, "mcp://detail") {
-		t.Fatalf("content = %q", result.Content)
-	}
-	if len(result.Images) != 1 || result.Images[0].MediaType != "image/png" || result.Images[0].Data != "aGVsbG8=" {
-		t.Fatalf("images = %#v", result.Images)
-	}
-	structured := toolResultFromContent("test", "structured", nil, json.RawMessage(`{"screens":2}`))
-	if structured.Content != `{"screens":2}` {
-		t.Fatalf("structured content = %q", structured.Content)
-	}
-}
-
-func TestValidateTransportConfigRejectsCommandAsHTTPURL(t *testing.T) {
-	err := validateTransportConfig("playwright", types.McpServerConfig{Type: "http", URL: "npx"})
-	if err == nil || !strings.Contains(err.Error(), "stdio") {
-		t.Fatalf("err = %v, want actionable stdio guidance", err)
+	if !found["alpha"] || !found["beta"] {
+		t.Errorf("names = %v", names)
 	}
 }

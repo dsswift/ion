@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
+	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/permissions"
 	"github.com/dsswift/ion/engine/internal/sandbox"
 	"github.com/dsswift/ion/engine/internal/tools"
@@ -484,6 +485,10 @@ func (b *ApiBackend) executeTools(
 			// turns by drainNestedContext.
 			if run.touchedSink != nil {
 				toolCtx = types.WithTouchedPathSink(toolCtx, run.touchedSink)
+			}
+
+			if run.cfg != nil && len(run.cfg.McpConnections) > 0 {
+				toolCtx = mcp.WithConnections(toolCtx, run.cfg.McpConnections)
 			}
 
 			var toolResult *types.ToolResult

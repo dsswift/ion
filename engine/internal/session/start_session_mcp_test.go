@@ -43,7 +43,10 @@ func mcpTestServer(t *testing.T, toolName string) *httptest.Server {
 			return
 		}
 		result := map[string]any{}
-		if req.Method == "tools/list" {
+		switch req.Method {
+		case "initialize":
+			result = map[string]any{"protocolVersion": "2025-11-25", "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": map[string]any{"name": "fixture", "version": "1"}}
+		case "tools/list":
 			result["tools"] = []map[string]any{
 				{"name": toolName, "description": "fixture tool", "inputSchema": map[string]any{"type": "object"}},
 			}
@@ -167,12 +170,13 @@ func TestFirstDispatch_ConnectsOnlyOnce(t *testing.T) {
 			t.Errorf("decode: %v", err)
 			return
 		}
-		if req.Method == "initialize" {
-			initializeCount++
-		}
 		result := map[string]any{}
-		if req.Method == "tools/list" {
-			result["tools"] = []map[string]any{{"name": "x", "inputSchema": map[string]any{}}}
+		switch req.Method {
+		case "initialize":
+			initializeCount++
+			result = map[string]any{"protocolVersion": "2025-11-25", "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": map[string]any{"name": "fixture", "version": "1"}}
+		case "tools/list":
+			result["tools"] = []map[string]any{{"name": "x", "inputSchema": map[string]any{"type": "object"}}}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": result}); err != nil {

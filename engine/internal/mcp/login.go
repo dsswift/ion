@@ -144,6 +144,7 @@ func ResolveClient(serverName string, cfg types.McpServerConfig, scopeOverride, 
 			TokenURL:     cfg.OAuth.TokenURL,
 			Scope:        scope,
 			RedirectURI:  cfg.OAuth.RedirectURI,
+			Resource:     cfg.OAuth.Resource,
 		}
 		// A configured client_id with no endpoints is still resolvable when
 		// the server publishes metadata — discovery fills the gaps rather
@@ -166,11 +167,25 @@ func ResolveClient(serverName string, cfg types.McpServerConfig, scopeOverride, 
 				reg.Scope = discoveredScope
 			}
 			reg.Issuer = meta.Issuer
+			if reg.Resource == "" {
+				reg.Resource = resourceFromDiscovery(serverName, cfg.URL)
+			}
 		}
 		utils.LogWithFields(utils.LevelInfo, "mcp.login", "using operator-configured oauth client", map[string]any{
 			"serverName": serverName, "clientId": reg.ClientID,
 			"authUrl": reg.AuthURL, "tokenUrl": reg.TokenURL, "scope": reg.Scope,
 		})
+		return reg, nil
+	}
+
+	// 1.5. Client ID Metadata Document (CIMD): a pre-registered client whose
+	// metadata lives at a URI the operator configured. Takes precedence over
+	// stored DCR and fresh DCR, but yields to an explicit client_id.
+	if cfg.OAuth != nil && cfg.OAuth.ClientMetadataURI != "" {
+		reg, cimdErr := fetchClientMetadataDocument(serverName, cfg, scopeOverride)
+		if cimdErr != nil {
+			return nil, fmt.Errorf("mcp login %s: client metadata document: %w", serverName, cimdErr)
+		}
 		return reg, nil
 	}
 
@@ -208,7 +223,14 @@ func ResolveClient(serverName string, cfg types.McpServerConfig, scopeOverride, 
 	if scopeOverride != "" {
 		scope = scopeOverride
 	}
-	return RegisterClient(serverName, meta, redirectURI, scope)
+	reg, regErr := RegisterClient(serverName, meta, redirectURI, scope)
+	if regErr != nil {
+		return nil, regErr
+	}
+	if reg.Resource == "" {
+		reg.Resource = resourceFromDiscovery(serverName, cfg.URL)
+	}
+	return reg, nil
 }
 
 // BeginLogin starts an interactive OAuth login for an MCP server. It returns
@@ -269,14 +291,16 @@ func BeginLogin(serverName string, cfg types.McpServerConfig, scopeOverride stri
 	}
 
 	flow, err := auth.StartPKCEFlow(auth.PKCEFlowConfig{
-		ClientID:     reg.ClientID,
-		ClientSecret: reg.ClientSecret,
-		AuthURL:      reg.AuthURL,
-		TokenURL:     reg.TokenURL,
-		Scope:        reg.Scope,
-		RedirectHost: loginRedirectHost,
-		RedirectPort: flowPort,
-		RedirectPath: flowPath,
+		ClientID:       reg.ClientID,
+		ClientSecret:   reg.ClientSecret,
+		AuthURL:        reg.AuthURL,
+		TokenURL:       reg.TokenURL,
+		Scope:          reg.Scope,
+		RedirectHost:   loginRedirectHost,
+		RedirectPort:   flowPort,
+		RedirectPath:   flowPath,
+		Resource:       reg.Resource,
+		ExpectedIssuer: reg.Issuer,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("mcp login %s: start pkce flow: %w", serverName, err)
@@ -294,7 +318,7 @@ func BeginLogin(serverName string, cfg types.McpServerConfig, scopeOverride stri
 		select {
 		case tok := <-flow.Token:
 			store := getOAuthStore()
-			store.SetToken(serverName, tokenFromGrant(tok))
+			store.SetToken(serverName, tokenFromGrant(tok, reg.Issuer, reg.Resource))
 			clearGrantFailure(serverName)
 			// Persist the endpoints the grant was minted against so a later
 			// refresh needs neither discovery nor engine.json.
@@ -324,7 +348,7 @@ func BeginLogin(serverName string, cfg types.McpServerConfig, scopeOverride stri
 // A grant with no expires_in gets a conservative one-hour expiry rather than
 // the zero time, which IsExpired would read as "already expired" and would
 // make every request attempt a refresh.
-func tokenFromGrant(tok *auth.TokenResponse) *OAuthToken {
+func tokenFromGrant(tok *auth.TokenResponse, issuer, resource string) *OAuthToken {
 	expiresAt := tok.ExpiresAt
 	if expiresAt.IsZero() {
 		expiresAt = time.Now().Add(time.Hour)
@@ -339,6 +363,8 @@ func tokenFromGrant(tok *auth.TokenResponse) *OAuthToken {
 		TokenType:    tokenType,
 		ExpiresAt:    expiresAt,
 		Scope:        tok.Scope,
+		Issuer:       issuer,
+		Resource:     resource,
 	}
 }
 
@@ -399,6 +425,20 @@ func GrantExpiredReason(serverName string) string {
 		return grantErr.Code
 	}
 	return "the stored authorization could not be renewed"
+}
+
+// resourceFromDiscovery returns the RFC 9728 resource identifier for a server
+// URL. When discovery fails or the document carries no resource field, it
+// returns "" and the flow proceeds without RFC 8707 resource binding.
+func resourceFromDiscovery(serverName, serverURL string) string {
+	if serverURL == "" {
+		return ""
+	}
+	prm, err := DiscoverProtectedResource(serverName, serverURL)
+	if err != nil || prm == nil {
+		return ""
+	}
+	return prm.Resource
 }
 
 // annotateAuthFailure enriches a connect-path error that is really an
