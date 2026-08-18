@@ -151,12 +151,15 @@ extension RemoteCommand {
             try container.encode(tabId, forKey: .tabId)
             try container.encode(questionId, forKey: .questionId)
             try container.encode(optionId, forKey: .optionId)
-        case .respondElicitation(let tabId, let requestId, let response, let cancelled):
+        case .respondElicitation(let tabId, let requestId, let response, let cancelled, let declined):
             try container.encode(TypeKey.respondElicitation, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encode(requestId, forKey: .requestId)
             try container.encodeIfPresent(response, forKey: .response)
             try container.encode(cancelled, forKey: .cancelled)
+            if declined {
+                try container.encode(true, forKey: .declined)
+            }
         case .setPermissionMode(let tabId, let mode):
             try container.encode(TypeKey.setPermissionMode, forKey: .type)
             try container.encode(tabId, forKey: .tabId)

@@ -8,6 +8,7 @@ import SwiftUI
 /// just Ion Dev's dispatch approval.
 struct ElicitationCardView: View {
     @Environment(\.appTheme) private var theme
+    @Environment(\.openURL) private var openURL
     @Environment(SessionViewModel.self) private var viewModel
     let tabId: String
     let request: ElicitationRequest
@@ -22,6 +23,27 @@ struct ElicitationCardView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(heading)
                 .font(.headline)
+
+            if let message = request.message, !message.isEmpty {
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundStyle(theme.textSecondary)
+            }
+
+            if request.mode == "url", let value = request.url, let url = URL(string: value) {
+                Text(url.host ?? value)
+                    .font(.subheadline.weight(.semibold))
+                Text(value)
+                    .ionType(.mono)
+                    .textSelection(.enabled)
+                    .lineLimit(3)
+
+                Button("Open website") {
+                    Haptic.medium()
+                    openURL(url)
+                }
+                .buttonStyle(.bordered)
+            }
 
             if let schema = request.schema, !schema.isEmpty {
                 ScrollView {
@@ -45,6 +67,17 @@ struct ElicitationCardView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(theme.accent)
+
+                Button {
+                    Haptic.medium()
+                    viewModel.respondElicitation(tabId: tabId, requestId: request.requestId, approved: false, declined: true)
+                } label: {
+                    Text("Decline")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, IonSpace.contentGap)
+                }
+                .buttonStyle(.bordered)
 
                 Button {
                     Haptic.medium()

@@ -77,12 +77,13 @@ extension SessionViewModel {
     /// empty approval payload; false sends cancelled. The desktop routes this to
     /// the engine's `elicitation_response`, unblocking the parked run. Optimistically
     /// remove the entry from the local queue so the card dismisses immediately.
-    func respondElicitation(tabId: String, requestId: String, approved: Bool) {
+    func respondElicitation(tabId: String, requestId: String, approved: Bool, declined: Bool = false) {
         send(.respondElicitation(
             tabId: tabId,
             requestId: requestId,
             response: approved ? [:] : nil,
-            cancelled: !approved
+            cancelled: !approved && !declined,
+            declined: declined
         ), intent: .userInitiated)
         if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
             tabs[idx].elicitationQueue?.removeAll { $0.requestId == requestId }

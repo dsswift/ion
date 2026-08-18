@@ -411,6 +411,11 @@ struct ElicitationRequest: Codable, Identifiable, Sendable {
     let schema: [String: AnyCodable]?
     /// Optional deep-link URL for web flows.
     let url: String?
+    /// Origin and MCP context are additive desktop snapshot fields.
+    var source: String?
+    var server: String?
+    var message: String?
+    var action: String?
 
     var id: String { requestId }
 }

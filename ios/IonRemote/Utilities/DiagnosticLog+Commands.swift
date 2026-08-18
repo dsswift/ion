@@ -78,8 +78,8 @@ extension DiagnosticLog {
         case .respondPermission(let tabId, let qId, let optId):
             log("CMD: respondPermission tabId=\(tabId.prefix(8)) qId=\(qId.prefix(8)) opt=\(optId)", tag: "ipc", level: .info)
 
-        case .respondElicitation(let tabId, let requestId, _, let cancelled):
-            log("CMD: respondElicitation tabId=\(tabId.prefix(8)) requestId=\(requestId.prefix(12)) cancelled=\(cancelled)", tag: "ipc", level: .info)
+        case .respondElicitation(let tabId, let requestId, _, let cancelled, let declined):
+            log("CMD: respondElicitation tabId=\(tabId.prefix(8)) requestId=\(requestId.prefix(12)) cancelled=\(cancelled) declined=\(declined)", tag: "ipc", level: .info)
 
         case .setPermissionMode(let tabId, let mode):
             log("CMD: setPermissionMode tabId=\(tabId.prefix(8)) mode=\(mode.rawValue)", tag: "ipc", level: .info)

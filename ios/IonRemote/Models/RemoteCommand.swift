@@ -60,7 +60,7 @@ enum RemoteCommand: Codable, Sendable {
     /// the user declined; `response` carries the approval payload (empty object
     /// on a plain approve). Lockstep desktop↔iOS wire — mirrors the desktop's
     /// `desktop_respond_elicitation` command.
-    case respondElicitation(tabId: String, requestId: String, response: [String: AnyCodable]?, cancelled: Bool)
+    case respondElicitation(tabId: String, requestId: String, response: [String: AnyCodable]?, cancelled: Bool, declined: Bool = false)
     case setPermissionMode(tabId: String, mode: PermissionMode)
     /// Per-conversation extended-thinking effort change. effort is one of
     /// "off"|"low"|"medium"|"high". The desktop applies it to the same
@@ -405,6 +405,7 @@ enum RemoteCommand: Codable, Sendable {
         // checked against the full enum above before adding.
         case oldPath, newPath
         case attachments, dataUrl, name, correlationId, orderedIds, implementationPhase
+        case requestId, response, cancelled, declined
         case enabled, systemPrompt, stage, toIndex, newConversation
         case logs, pairingId, nextSeq
         case sourceTabId, targetTabId
@@ -452,11 +453,9 @@ enum RemoteCommand: Codable, Sendable {
         // setThinkingEffort payload. `tabId` is shared above; `effort` is the
         // canonical wire key ("off"|"low"|"medium"|"high"), unique here.
         case effort
-        // respondElicitation payload. `tabId` is shared above. `requestId`
-        // identifies the elicitation; `response` carries the approval payload
-        // (type-erased map, distinct from the shared `value` key); `cancelled`
-        // is the decline flag. All three are unique to this command.
-        case requestId, response, cancelled
+        // respondElicitation payload fields are declared above with the shared
+        // attachment keys because requestId, response, cancelled, and declined
+        // are used only by this command.
         // requestResend payload — the inclusive wire-frame seq range to replay.
         case fromSeq, toSeq
     }

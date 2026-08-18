@@ -71,7 +71,8 @@ extension RemoteCommand {
             let requestId = try container.decode(String.self, forKey: .requestId)
             let response = try container.decodeIfPresent([String: AnyCodable].self, forKey: .response)
             let cancelled = try container.decode(Bool.self, forKey: .cancelled)
-            self = .respondElicitation(tabId: tabId, requestId: requestId, response: response, cancelled: cancelled)
+            let declined = try container.decodeIfPresent(Bool.self, forKey: .declined) ?? false
+            self = .respondElicitation(tabId: tabId, requestId: requestId, response: response, cancelled: cancelled, declined: declined)
 
         case .setPermissionMode:
             let tabId = try container.decode(String.self, forKey: .tabId)
