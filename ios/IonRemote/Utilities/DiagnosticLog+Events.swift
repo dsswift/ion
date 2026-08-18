@@ -28,8 +28,8 @@ extension DiagnosticLog {
         case .tabClosed(let tabId):
             log("EVENT: tabClosed id=\(tabId.prefix(8))", tag: "session", level: .info)
 
-        case .tabStatus(let tabId, let status):
-            log("EVENT: tabStatus id=\(tabId.prefix(8)) status=\(status.rawValue)", tag: "session", level: .info)
+        case .tabStatus(let tabId, let status, let resync):
+            log("EVENT: tabStatus id=\(tabId.prefix(8)) status=\(status.rawValue) resync=\(resync)", tag: "session", level: .info)
 
         case .tabMeta(let tabId, let title, let totalCostUsd, let groupId, let convFingerprint, _, _, let messageCount):
             log("EVENT: tabMeta id=\(tabId.prefix(8)) title=\(title?.prefix(20) ?? "-") runCostUsd=\(totalCostUsd.map { String(format: "%.4f", $0) } ?? "-") group=\(groupId ?? "-") fp=\(convFingerprint?.suffix(12) ?? "-") count=\(messageCount.map(String.init) ?? "-")",
@@ -87,6 +87,9 @@ extension DiagnosticLog {
         case .lanAuthRejected:
             log("EVENT: lanAuthRejected", tag: "session", level: .warn)
 
+        case .lanSecretUnusable:
+            log("EVENT: lanSecretUnusable (desktop pairing secret unusable, repairing)", tag: "session", level: .warn)
+
         case .inputPrefill(let tabId, let text, let switchTo, let instanceId):
             log("EVENT: inputPrefill tabId=\(tabId.prefix(8)) len=\(text.count) switchTo=\(switchTo) instance=\(instanceId?.prefix(8) ?? "nil")", tag: "session", level: .info)
 
@@ -127,6 +130,8 @@ extension DiagnosticLog {
             log("EVENT: engineToolStalled tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") tool=\(toolName) toolId=\(toolId.prefix(8))", tag: "session", level: .info)
         case .engineRunStalled(let tabId, let instId, let stalledDuration, let lastActivity):
             log("EVENT: engineRunStalled tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") stalledFor=\(Int(stalledDuration))s lastActivity=\(lastActivity ?? "nil")", tag: "session", level: .info)
+        case .engineRunRecovery(let tabId, let instId, let recoveryId, let phase, let attempt, let maxAttempts, _):
+            log("EVENT: engineRunRecovery tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") recoveryId=\(recoveryId.prefix(8)) phase=\(phase) attempt=\(attempt ?? 0)/\(maxAttempts ?? 0)", tag: "session", level: .info)
         case .engineSteerInjected(let tabId, let instId, let messageLength):
             log("EVENT: engineSteerInjected tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") messageLength=\(messageLength)", tag: "session", level: .info)
         case .engineSteerDegraded(let tabId, let instId, let messageLength):
@@ -395,6 +400,9 @@ extension DiagnosticLog {
             let unaccounted = payload.unaccounted.map { " unaccounted=\($0)" } ?? ""
             let occupancy = payload.occupancyTokens.map(String.init) ?? "nil"
             log("EVENT: desktopContextBreakdown tab=\(tabId.prefix(8)) inst=\(instanceId?.prefix(8) ?? "nil") cats=\(payload.categories.count) occupancy=\(occupancy)/\(payload.contextWindow) total=\(payload.totalTokens) \(reconciled)\(unaccounted)", tag: "session", level: .info)
+
+        case .promptResult(let tabId, let clientMsgId, let status, let error):
+            log("EVENT: promptResult tab=\(tabId.prefix(8)) msgId=\(clientMsgId.prefix(8)) status=\(status) err=\(error ?? "nil")", tag: "session", level: .info)
         }
     }
 }

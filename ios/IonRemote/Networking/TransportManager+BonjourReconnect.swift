@@ -53,6 +53,24 @@ extension TransportManager {
             ])
             eventContinuation.yield(.lanAuthRejected)
 
+        case .secretUnusable:
+            // NOT `lanAuthRejectedDefinitively`. The desktop knows this device
+            // and the fault is on its side (undecryptable stored secret), so
+            // the pairing is repairable without user action. Pause LAN attempts
+            // with a normal backoff and yield the repair signal; the ViewModel
+            // performs a codeless recovery re-pair, which builds a NEW
+            // transport — so this one never needs to retry into the same
+            // refusal.
+            currentLANHost = nil
+            let delay = lanReconnectBackoff.recordFailure()
+            nextLANAttemptAllowedAt = Date().addingTimeInterval(delay)
+            DiagnosticLog.log("lan auth refused, desktop secret unusable, requesting repair", tag: "transport.auth", level: .warn, fields: [
+                "host": host,
+                "port": String(port),
+                "device_id": deviceId.map { String($0.prefix(8)) } ?? "nil"
+            ])
+            eventContinuation.yield(.lanSecretUnusable)
+
         case .transient:
             currentLANHost = nil
             let delay = lanReconnectBackoff.recordFailure()
@@ -147,11 +165,18 @@ extension TransportManager {
     }
 
     /// Find the Bonjour host that matches the active paired device.
-    /// When `deviceName` is set, only the host with a matching Bonjour service
-    /// name is returned. This prevents connecting to the wrong desktop when
-    /// multiple Ion instances are on the network.
+    /// Match a discovered LAN host to this device's paired desktop.
+    ///
+    /// Priority: desktopId from TXT record (stable across hostname changes),
+    /// then hostname, then first available ion host.
     func matchingLANHost(_ hosts: [DiscoveredService]) -> DiscoveredService? {
         let ionHosts = hosts.filter { $0.kind == .ionDirect }
+
+        if let expectedId = pairedDesktopId, !expectedId.isEmpty {
+            let idMatch = ionHosts.first { $0.metadata["desktopId"] == expectedId }
+            if let idMatch { return idMatch }
+        }
+
         if let name = deviceName {
             let match = ionHosts.first { $0.name == name }
             if match == nil && !ionHosts.isEmpty {
@@ -162,7 +187,6 @@ extension TransportManager {
             }
             return match
         }
-        // Fallback: no name filter (single desktop / legacy).
         return ionHosts.first
     }
 }

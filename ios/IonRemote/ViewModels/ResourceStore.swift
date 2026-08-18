@@ -41,6 +41,24 @@ struct ResourceDelta {
     }
 }
 
+
+/// Persistence dependencies for ResourceStore. Production uses Documents and
+/// standard defaults; tests inject isolated locations and a private suite.
+struct ResourceStoreStorage {
+    let itemsFileURL: URL
+    let defaults: UserDefaults
+    let readIdsKey: String
+    let defaultsSuiteName: String?
+
+    static let live = ResourceStoreStorage(
+        itemsFileURL: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("resource-store-items.json"),
+        defaults: .standard,
+        readIdsKey: "resourceStore.readIds",
+        defaultsSuiteName: nil
+    )
+}
+
 // MARK: - ResourceStore
 
 /// Observable store for workspace-level resources. Accumulates snapshot
@@ -55,6 +73,8 @@ struct ResourceDelta {
 final class ResourceStore {
 
     // MARK: - State
+
+    private let storage: ResourceStoreStorage
 
     /// Resources keyed by kind. Each kind maps to its item array.
     var items: [String: [ResourceItem]] = [:]
@@ -80,12 +100,13 @@ final class ResourceStore {
 
     // MARK: - Init
 
-    init() {
-        readIds = Self.loadReadIds()
-        items = Self.loadItems()
+    init(storage: ResourceStoreStorage = .live) {
+        self.storage = storage
+        readIds = loadReadIds()
+        items = loadItems()
         DiagnosticLog.log("resource store restored", tag: "resource.store", fields: [
             "count": String(readIds.count),
-            "reason": items.keys.joined(separator: ",")
+            "kind": items.keys.joined(separator: ",")
         ])
     }
 
@@ -102,7 +123,7 @@ final class ResourceStore {
         let globalCount = parsed.filter { $0.conversationId == nil || $0.conversationId?.isEmpty == true }.count
         let scopedCount = parsed.filter { $0.conversationId != nil && $0.conversationId?.isEmpty == false }.count
         DiagnosticLog.log("resource store apply snapshot", tag: "resource.store", fields: [
-            "reason": kind,
+            "kind": kind,
             "count": String(parsed.count),
             "global": String(globalCount),
             "scoped": String(scopedCount)
@@ -126,17 +147,29 @@ final class ResourceStore {
             }
             return item
         }
-        items[kind] = finalItems
+        // Normalize: deduplicate by ID so duplicate-ID items from a buggy
+        // producer or a race between snapshot and delta never stack. Last
+        // occurrence wins (consistent with desktop resource-slice).
+        var seenIds = Set<String>()
+        var deduped: [ResourceItem] = []
+        for item in finalItems.reversed() {
+            if seenIds.insert(item.id).inserted {
+                deduped.append(item)
+            }
+        }
+        deduped.reverse()
+        items[kind] = deduped
         // Desktop snapshot is authoritative for read state of items in this kind.
         // Remove local read IDs for items in this snapshot, then add back only
         // those the desktop says are read. Read IDs for other kinds are preserved.
-        let kindItemIds = Set(parsed.map { $0.id })
-        var snapshotReadIds: Set<String> = []
-        for (idx, dict) in rawItems.enumerated() {
-            if let isRead = dict["read"]?.value as? Bool, isRead {
-                snapshotReadIds.insert(parsed[idx].id)
-            }
+        let kindItemIds = Set(deduped.map { $0.id })
+        let finalReadById = rawItems.reduce(into: [String: Bool]()) { reads, raw in
+            guard let id = raw["id"]?.value as? String else { return }
+            reads[id] = raw["read"]?.value as? Bool ?? false
         }
+        let snapshotReadIds = Set(deduped.compactMap { item in
+            finalReadById[item.id] == true ? item.id : nil
+        })
         readIds = readIds.filter { !kindItemIds.contains($0) }.union(snapshotReadIds)
         saveItems()
         saveReadIds()
@@ -144,11 +177,25 @@ final class ResourceStore {
 
     /// Apply an incremental delta (create/update/delete/mark_read).
     func applyDelta(kind: String, rawDelta: [String: AnyCodable]) {
-        guard let delta = ResourceDelta(from: rawDelta) else { return }
+        guard let delta = ResourceDelta(from: rawDelta) else {
+            DiagnosticLog.log("resource store delta parse failed", tag: "resource.store", level: .warn, fields: [
+                "kind": kind
+            ])
+            return
+        }
+        DiagnosticLog.log("resource store apply delta", tag: "resource.store", fields: [
+            "kind": kind,
+            "op": delta.op,
+            "item_id": delta.item.id
+        ])
         var current = items[kind] ?? []
         switch delta.op {
         case "create":
-            current.append(delta.item)
+            if let idx = current.firstIndex(where: { $0.id == delta.item.id }) {
+                current[idx] = delta.item
+            } else {
+                current.append(delta.item)
+            }
         case "update":
             if let idx = current.firstIndex(where: { $0.id == delta.item.id }) {
                 current[idx] = delta.item
@@ -197,8 +244,8 @@ final class ResourceStore {
         saveItems()
         saveReadIds()
         DiagnosticLog.log("resource store delete item", tag: "resource.store", fields: [
-            "reason": kind,
-            "resource_id": String(resourceId.prefix(12))
+            "kind": kind,
+            "item_id": resourceId
         ])
     }
 
@@ -225,29 +272,21 @@ final class ResourceStore {
         items = [:]
         readIds = []
         contentResponseIds = []
-        Self.deletePersistedItems()
-        Self.deletePersistedReadIds()
+        deletePersistedItems()
+        deletePersistedReadIds()
         DiagnosticLog.log("RESOURCE-STORE: wiped")
     }
 
     // MARK: - Persistence
 
-    private static let readIdsKey = "resourceStore.readIds"
-    private static let itemsFileName = "resource-store-items.json"
-
-    private static var itemsFileURL: URL {
-        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        return dir.appendingPathComponent(itemsFileName)
-    }
-
     private func saveReadIds() {
-        UserDefaults.standard.set(Array(readIds), forKey: Self.readIdsKey)
+        storage.defaults.set(Array(readIds), forKey: storage.readIdsKey)
     }
 
     private func saveItems() {
         do {
             let data = try JSONEncoder().encode(items)
-            try data.write(to: Self.itemsFileURL, options: .atomic)
+            try data.write(to: storage.itemsFileURL, options: .atomic)
         } catch {
             DiagnosticLog.log("resource store save items failed", tag: "resource.store", level: .error, fields: [
                 "error": error.localizedDescription
@@ -255,21 +294,21 @@ final class ResourceStore {
         }
     }
 
-    private static func loadReadIds() -> Set<String> {
-        let arr = UserDefaults.standard.stringArray(forKey: readIdsKey) ?? []
+    private func loadReadIds() -> Set<String> {
+        let arr = storage.defaults.stringArray(forKey: storage.readIdsKey) ?? []
         return Set(arr)
     }
 
-    private static func loadItems() -> [String: [ResourceItem]] {
-        guard let data = try? Data(contentsOf: itemsFileURL) else { return [:] }
+    private func loadItems() -> [String: [ResourceItem]] {
+        guard let data = try? Data(contentsOf: storage.itemsFileURL) else { return [:] }
         return (try? JSONDecoder().decode([String: [ResourceItem]].self, from: data)) ?? [:]
     }
 
-    private static func deletePersistedItems() {
-        try? FileManager.default.removeItem(at: itemsFileURL)
+    private func deletePersistedItems() {
+        try? FileManager.default.removeItem(at: storage.itemsFileURL)
     }
 
-    private static func deletePersistedReadIds() {
-        UserDefaults.standard.removeObject(forKey: readIdsKey)
+    private func deletePersistedReadIds() {
+        storage.defaults.removeObject(forKey: storage.readIdsKey)
     }
 }

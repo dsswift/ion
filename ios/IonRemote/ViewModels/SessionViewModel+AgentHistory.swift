@@ -173,16 +173,13 @@ extension SessionViewModel {
         // observed) on the main thread was watchdog-kill territory. We await
         // the background export and hop back to the main actor only to send.
         Task { @MainActor [weak self] in
-            let (logs, nextSeq) = await DiagnosticLog.exportIncrementalSince(sinceSeq: sinceSeq)
+            let pairingId = self?.activeDeviceId ?? "unknown"
+            let (logs, nextSeq) = await DiagnosticLog.exportIncrementalSince(sinceSeq: sinceSeq, pairingId: pairingId)
             guard let self else { return }
-            // pairingId is the ECDH channel ID — it identifies which desktop pairing
-            // collected these logs (the desktop → iOS wire identity). The stable
-            // per-device hardware identity (device_id) is stamped directly on every
-            // log line by iOS; it does not need to cross the wire separately.
-            let pairingId = self.activeDeviceId ?? "unknown"
             DiagnosticLog.log("diagnostic export", tag: "session", level: .debug, fields: [
                 "since_seq": String(sinceSeq),
-                "next_seq": String(nextSeq)
+                "next_seq": String(nextSeq),
+                "pairing_id": pairingId
             ])
             self.send(.diagnosticLogsResponse(logs: logs, pairingId: pairingId, nextSeq: nextSeq), intent: .automaticEssential)
         }

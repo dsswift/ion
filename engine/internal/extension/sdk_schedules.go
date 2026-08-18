@@ -81,6 +81,12 @@ type ScheduleJob struct {
 	// "single" (default when empty): one instance fires per tick.
 	// "all": every instance fires independently.
 	Concurrency string `json:"concurrency,omitempty"`
+	// CatchUp controls how a missed daily or weekly slot is reconciled.
+	// "auto" fires it through the engine, "manual" emits schedule_missed
+	// so the extension decides, and "none" advances without backfill. Empty
+	// preserves the historic engine-config plus hook-presence behavior.
+	// Ignored for interval and once schedules.
+	CatchUp string `json:"catchUp,omitempty"`
 }
 
 // ID satisfies the asyncreg.Declaration interface. Schedule jobs use
@@ -135,6 +141,16 @@ func (j ScheduleJob) Validate() error {
 		// valid
 	default:
 		return fmt.Errorf("unknown schedule concurrency %q (use \"single\" or \"all\")", j.Concurrency)
+	}
+	if j.Kind == ScheduleDaily || j.Kind == ScheduleWeekly {
+		switch j.CatchUp {
+		case "", "auto", "manual", "none":
+			// valid
+		default:
+			return fmt.Errorf("unknown schedule catchUp %q (use \"auto\", \"manual\", or \"none\")", j.CatchUp)
+		}
+	} else if j.CatchUp != "" {
+		return fmt.Errorf("schedule catchUp is only valid for daily or weekly jobs")
 	}
 	return nil
 }

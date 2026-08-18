@@ -469,6 +469,21 @@ Enter or exit plan mode for the current session. Emits `engine_plan_mode_changed
 
 Response: `{"jsonrpc":"2.0","id":100020,"result":{"ok":true}}`
 
+### ext/set_run_recovery
+
+Set extension-owned recovery policy for later runs in current session. This policy overrides `start_session` and `engine.json` values. `enabled` is required. `maxAttempts: 0` uses engine default. This call does not change journal for active run.
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `enabled` | boolean | yes | Enable or disable durable recovery for later runs in this session. |
+| `maxAttempts` | number | no | Maximum durable restart attempts. `0` or omitted uses engine default. |
+
+```json
+{"jsonrpc":"2.0","id":100022,"method":"ext/set_run_recovery","params":{"enabled":true,"maxAttempts":3}}
+```
+
+Response: `{"jsonrpc":"2.0","id":100022,"result":{"ok":true}}`
+
 ### ext/get_plan_mode
 
 Query the current plan-mode state for this session.

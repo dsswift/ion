@@ -470,6 +470,13 @@ func TestAuthConfigEndpoint_PSKOnly(t *testing.T) {
 	if body["oidc"] != false {
 		t.Errorf("expected oidc=false, got %v", body["oidc"])
 	}
+	caps, ok := body["capabilities"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected capabilities object, got %v", body["capabilities"])
+	}
+	if caps["mobileForwardAck"] != true {
+		t.Errorf("expected capabilities.mobileForwardAck=true, got %v", caps["mobileForwardAck"])
+	}
 }
 
 func TestAuthConfigEndpoint_OIDCMode(t *testing.T) {
@@ -486,15 +493,20 @@ func TestAuthConfigEndpoint_OIDCMode(t *testing.T) {
 	auth := NewAuthMiddleware("psk-key", oidcCfg)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/auth/config", func(w http.ResponseWriter, r *http.Request) {
+		type capabilitiesBlock struct {
+			MobileForwardAck bool `json:"mobileForwardAck"`
+		}
 		type authConfigResponse struct {
-			OIDC          bool   `json:"oidc"`
-			Issuer        string `json:"issuer,omitempty"`
-			Audience      string `json:"audience,omitempty"`
-			RequiredScope string `json:"requiredScope,omitempty"`
-			PSK           bool   `json:"psk"`
+			OIDC          bool              `json:"oidc"`
+			Issuer        string            `json:"issuer,omitempty"`
+			Audience      string            `json:"audience,omitempty"`
+			RequiredScope string            `json:"requiredScope,omitempty"`
+			PSK           bool              `json:"psk"`
+			Capabilities  capabilitiesBlock `json:"capabilities"`
 		}
 		resp := authConfigResponse{
-			PSK: len(auth.apiKey) > 0,
+			PSK:          len(auth.apiKey) > 0,
+			Capabilities: capabilitiesBlock{MobileForwardAck: true},
 		}
 		if auth.oidc != nil {
 			resp.OIDC = true
@@ -539,6 +551,82 @@ func TestAuthConfigEndpoint_OIDCMode(t *testing.T) {
 	}
 	if body["requiredScope"] != "relay.use" {
 		t.Errorf("expected requiredScope=relay.use, got %v", body["requiredScope"])
+	}
+	caps, ok := body["capabilities"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected capabilities object, got %v", body["capabilities"])
+	}
+	if caps["mobileForwardAck"] != true {
+		t.Errorf("expected capabilities.mobileForwardAck=true, got %v", caps["mobileForwardAck"])
+	}
+}
+
+func TestAuthConfigEndpoint_CapabilitiesConsistentAcrossModes(t *testing.T) {
+	key := genRSAKey(t)
+	oidcSrv := startFakeOIDCServer(t, &key.PublicKey)
+	oidcCfg, err := NewOIDCConfig(oidcSrv.URL, "aud", "")
+	if err != nil {
+		t.Fatalf("NewOIDCConfig: %v", err)
+	}
+
+	modes := []struct {
+		name   string
+		apiKey string
+		oidc   *OIDCConfig
+	}{
+		{"psk_only", "key", nil},
+		{"oidc_only", "", oidcCfg},
+		{"dual_mode", "key", oidcCfg},
+	}
+
+	for _, mode := range modes {
+		t.Run(mode.name, func(t *testing.T) {
+			server, _ := startTestRelay(t, mode.apiKey)
+			if mode.oidc != nil {
+				hub := NewHub()
+				auth := NewAuthMiddleware(mode.apiKey, mode.oidc)
+				mux := http.NewServeMux()
+				mux.HandleFunc("GET /v1/auth/config", func(w http.ResponseWriter, r *http.Request) {
+					type capabilitiesBlock struct {
+						MobileForwardAck bool `json:"mobileForwardAck"`
+					}
+					type authConfigResponse struct {
+						OIDC         bool              `json:"oidc"`
+						PSK          bool              `json:"psk"`
+						Capabilities capabilitiesBlock `json:"capabilities"`
+					}
+					resp := authConfigResponse{
+						PSK:          len(auth.apiKey) > 0,
+						OIDC:         auth.oidc != nil,
+						Capabilities: capabilitiesBlock{MobileForwardAck: true},
+					}
+					w.Header().Set("Content-Type", "application/json")
+					_ = json.NewEncoder(w).Encode(resp)
+				})
+				srv := httptest.NewServer(mux)
+				t.Cleanup(func() { hub.CloseAll(); srv.Close() })
+				server = srv
+			}
+
+			resp, err := http.Get(server.URL + "/v1/auth/config")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+
+			var body map[string]any
+			if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+
+			caps, ok := body["capabilities"].(map[string]any)
+			if !ok {
+				t.Fatalf("capabilities missing or wrong type: %v", body["capabilities"])
+			}
+			if caps["mobileForwardAck"] != true {
+				t.Errorf("expected mobileForwardAck=true, got %v", caps["mobileForwardAck"])
+			}
+		})
 	}
 }
 

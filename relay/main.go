@@ -133,15 +133,20 @@ func main() {
 
 	// GET /v1/auth/config — unauthenticated; tells clients which auth modes are active.
 	mux.HandleFunc("GET /v1/auth/config", func(w http.ResponseWriter, r *http.Request) {
+		type capabilitiesBlock struct {
+			MobileForwardAck bool `json:"mobileForwardAck"`
+		}
 		type authConfigResponse struct {
-			OIDC          bool   `json:"oidc"`
-			Issuer        string `json:"issuer,omitempty"`
-			Audience      string `json:"audience,omitempty"`
-			RequiredScope string `json:"requiredScope,omitempty"`
-			PSK           bool   `json:"psk"`
+			OIDC          bool              `json:"oidc"`
+			Issuer        string            `json:"issuer,omitempty"`
+			Audience      string            `json:"audience,omitempty"`
+			RequiredScope string            `json:"requiredScope,omitempty"`
+			PSK           bool              `json:"psk"`
+			Capabilities  capabilitiesBlock `json:"capabilities"`
 		}
 		resp := authConfigResponse{
-			PSK: len(auth.apiKey) > 0,
+			PSK:          len(auth.apiKey) > 0,
+			Capabilities: capabilitiesBlock{MobileForwardAck: true},
 		}
 		if auth.oidc != nil {
 			resp.OIDC = true
@@ -149,6 +154,12 @@ func main() {
 			resp.Audience = auth.oidc.Audience
 			resp.RequiredScope = auth.oidc.RequiredScope
 		}
+		logger.Info("serving auth config",
+			"tag", "relay.auth_config",
+			"psk", resp.PSK,
+			"oidc", resp.OIDC,
+			"capabilities_mobile_forward_ack", resp.Capabilities.MobileForwardAck,
+		)
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			logger.Warn("auth config encode error", "tag", "relay.auth_config_error", "err", err)

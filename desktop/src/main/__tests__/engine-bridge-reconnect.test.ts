@@ -204,6 +204,93 @@ describe('scheduleReconnect timer respects reconnectDisabled', () => {
   })
 })
 
+// ── Deferred interrupt survives reconnect ──
+
+describe('interrupt issued while the socket is down', () => {
+  it('records the abort instead of dropping it, then delivers it on reconnect', async () => {
+    connectResults = [true]
+    await bridge.connect()
+    const firstConn = lastCreatedConn!
+
+    // Socket dies; the operator hits interrupt before reconnect completes.
+    firstConn.destroyed = true
+    bridge.sendAbort('tab-1')
+    expect(bridge.pendingAborts.has('tab-1')).toBe(true)
+    expect(firstConn.write).not.toHaveBeenCalled()
+
+    const delivered: string[] = []
+    bridge.on('abort-delivered', (key: string) => delivered.push(key))
+
+    // Reconnect: the deferred abort goes out and the session is retired.
+    bridge.activeSessions.set('tab-1', { config: {} as never, conversationId: 'conv-1' } as never)
+    connectResults = [true]
+    bridge.connected = false
+    bridge.conn = null
+    bridge.reconnectAttempts = 1
+    await bridge.connect()
+
+    const sent = (lastCreatedConn!.write.mock.calls as Array<[string]>).map(([line]) => JSON.parse(line))
+    expect(sent.some((m) => m.cmd === 'abort' && m.key === 'tab-1')).toBe(true)
+    expect(sent.some((m) => m.cmd === 'abort_agent' && m.key === 'tab-1' && m.subtree === true)).toBe(true)
+    expect(bridge.pendingAborts.size).toBe(0)
+    expect(bridge.activeSessions.has('tab-1')).toBe(false)
+    expect(delivered).toEqual(['tab-1'])
+  })
+
+  it('coalesces repeated interrupts on the same key into one pending abort', async () => {
+    connectResults = [true]
+    await bridge.connect()
+    lastCreatedConn!.destroyed = true
+
+    bridge.sendAbort('tab-1')
+    bridge.sendAbort('tab-1')
+    bridge.sendAbort('tab-1')
+
+    expect([...bridge.pendingAborts.keys()]).toEqual(['tab-1'])
+  })
+
+  it('retains a deferred abort when either reconnect write fails', () => {
+    bridge._reRegisterGeneration = 2
+    bridge.pendingAborts.set('tab-1', 1)
+    bridge.activeSessions.set('tab-1', { config: {} as never, conversationId: 'conv-1' } as never)
+    const delivered: string[] = []
+    bridge.on('abort-delivered', (key: string) => delivered.push(key))
+    vi.spyOn(bridge, '_send').mockReturnValue(false)
+
+    bridge.flushPendingAborts()
+
+    expect(bridge.pendingAborts.get('tab-1')).toBe(1)
+    expect(bridge.activeSessions.has('tab-1')).toBe(true)
+    expect(delivered).toEqual([])
+  })
+
+  it('delivers a retained abort only on a newer connection generation', () => {
+    bridge._reRegisterGeneration = 2
+    bridge.pendingAborts.set('tab-1', 2)
+    const send = vi.spyOn(bridge, '_send').mockReturnValue(true)
+
+    bridge.flushPendingAborts()
+    expect(send).not.toHaveBeenCalled()
+    expect(bridge.pendingAborts.has('tab-1')).toBe(true)
+
+    bridge._reRegisterGeneration = 3
+    bridge.flushPendingAborts()
+    expect(bridge.pendingAborts.has('tab-1')).toBe(false)
+  })
+
+  it('does not re-register a session whose interrupt is still pending', () => {
+    bridge.activeSessions.set('tab-aborted', { config: {} as never, conversationId: 'conv-a' } as never)
+    bridge.activeSessions.set('tab-live', { config: {} as never, conversationId: 'conv-b' } as never)
+    bridge.pendingAborts.set('tab-aborted', bridge._reRegisterGeneration)
+
+    const sendWithResult = vi.spyOn(bridge, '_sendWithResult').mockResolvedValue({ ok: true })
+    reRegisterSessions(bridge)
+
+    const keys = sendWithResult.mock.calls.map(([msg]) => (msg as { key: string }).key)
+    expect(keys).toEqual(['tab-live'])
+  })
+})
+
 // ── reRegisterSessions generation cancellation ──
 
 describe('reRegisterSessions generation cancellation', () => {

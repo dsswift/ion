@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { IPC } from '../../shared/types'
+import { takeRemotePromptDelivery } from '../remote/prompt-delivery'
 import type { RunOptions } from '../../shared/types'
 import { log as _log, warn as _warn, setSessionContext } from '../logger'
 import { state, sessionPlane, engineBridge, activeAssistantMessages, lastMessagePreview, lastForwardedTabStatus, lastForwardedTabMeta, extensionCommandRegistry, DEBUG_MODE } from '../state'
@@ -184,6 +185,8 @@ export function registerSessionIpc(): void {
       })
     }
 
+    const remoteDelivery = takeRemotePromptDelivery(requestId)
+
     try {
       // Hand off to the unified prompt pipeline. The pipeline decides:
       //   - bash shortcut (! prefix, remote-source only)
@@ -224,9 +227,26 @@ export function registerSessionIpc(): void {
         // loop (the text is still a slash). See processIncomingPrompt.
         resolveSlash: options.resolveSlash,
       })
+      if (remoteDelivery) {
+        state.remoteTransport?.sendToDevice(remoteDelivery.deviceId, {
+          type: 'desktop_prompt_result',
+          tabId: remoteDelivery.tabId,
+          clientMsgId: requestId,
+          status: 'accepted',
+        })
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       log('prompt: error', { error: msg })
+      if (remoteDelivery) {
+        state.remoteTransport?.sendToDevice(remoteDelivery.deviceId, {
+          type: 'desktop_prompt_result',
+          tabId: remoteDelivery.tabId,
+          clientMsgId: requestId,
+          status: 'rejected',
+          error: msg,
+        })
+      }
       throw err
     }
   })

@@ -1,21 +1,10 @@
 import XCTest
 @testable import IonRemote
 
-/// Regression test for the "reconnecting forever" incident: the desktop
-/// definitively rejected this device's identity (close 4003 "unknown device")
-/// during Bonjour auto-reconnect, but the app sat on "reconnecting" forever
-/// because nothing surfaced the rejection to the ViewModel.
-///
-/// The fixed contract, pinned here: the transport's `.lanAuthRejected` event
-/// sets `connectionState == .authFailed` (which routes to the pairing screen
-/// in IonRemoteApp), tears the transport down, cancels the reconnect safety
-/// timer (so it cannot softReconnect the same dead identity behind the
-/// pairing screen) — and leaves `pairedDevices` untouched (the `.authFailed`
-/// route must never repeat the pairing-wipe incident, see
-/// SessionViewModelLanAuthTransientTests).
-///
-/// On the unfixed code `.lanAuthRejected` does not exist and the state stays
-/// `.reconnecting` — the `.authFailed` assertion fails.
+/// Regression test for LAN-pairing rejection while the relay path remains
+/// independently authenticated. LAN and relay validate different credentials;
+/// a LAN-only pairing failure must never overwrite relay/OIDC access state or
+/// turn a successful account login into a loop.
 @MainActor
 final class SessionViewModelLanAuthRejectedTests: XCTestCase {
 
@@ -48,30 +37,23 @@ final class SessionViewModelLanAuthRejectedTests: XCTestCase {
         )
     }
 
-    func testLanAuthRejectedLocksActivePairingAndKeepsPairings() {
+    func testLanAuthRejectedKeepsPairingAvailableForRelayRecovery() {
         let vm = SessionViewModel()
         let device = makeDevice(id: "device-rejected-test")
         let bystander = makeDevice(id: "device-bystander")
         vm.pairedDevices = [device, bystander]
         vm.activeDeviceId = device.id
-        // Simulate the live incident's shape: the app was stuck reconnecting
-        // with an armed safety timer when the definitive rejection arrived.
         vm.connectionState = .reconnecting
-        vm.startReconnectSafetyTimer()
 
         vm.handleEvent(.lanAuthRejected)
 
-        XCTAssertEqual(vm.activeDesktopAccess.status, .rejected)
-        XCTAssertEqual(vm.activeDesktopAccess.reason, .pairingRejected,
-            "A definitive identity rejection must lock this pairing without treating transport state as authorization")
-        XCTAssertFalse(vm.mayViewActiveDesktopData,
-            "Cached desktop data must be hidden until this pairing authenticates again")
+        XCTAssertNotEqual(vm.activeDesktopAccess.status, .rejected,
+            "A LAN-only rejection must not overwrite independent relay/OIDC authentication")
+        XCTAssertNotEqual(vm.activeDesktopAccess.reason, .pairingRejected)
         XCTAssertEqual(vm.pairedDevices.map(\.id), [device.id, bystander.id],
-            "A rejected pairing must remain available for repair, switch, or unpair")
-        XCTAssertNil(vm.transport,
-            "Transport must be torn down so nothing keeps retrying the dead identity")
-        XCTAssertNil(vm.reconnectSafetyTask,
-            "The reconnect safety timer must be cancelled — it would softReconnect the dead identity behind the pairing screen")
+            "LAN rejection must not remove or lock a pairing before relay verification")
+        XCTAssertNotNil(vm.reconnectSafetyTask,
+            "Transport recovery remains active after a LAN-only rejection")
 
         vm.disconnect()
     }

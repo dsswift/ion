@@ -145,7 +145,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
      */
     submit: (tabId, text, opts = {}) => {
       const { tabs, staticInfo } = get()
-      const { projectPath, extraAttachments, appendSystemPrompt, implementationPhase, imageAttachments, remoteAttachments, source, resolveSlash } = opts
+      const { projectPath, extraAttachments, appendSystemPrompt, implementationPhase, imageAttachments, remoteAttachments, source, resolveSlash, requestId: clientRequestId } = opts
       const tab = tabs.find((t) => t.id === tabId)
       if (!tab) return
       const resolvedPath = projectPath || (tab.hasChosenDirectory ? tab.workingDirectory : (staticInfo?.homePath || tab.workingDirectory || '~'))
@@ -180,7 +180,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       get().applySendAutoGroupMove(tab.id)
 
       const isBusy = tab.status === 'running'
-      const requestId = crypto.randomUUID()
+      const requestId = clientRequestId || crypto.randomUUID()
 
       const msgAttachments: Attachment[] = [
         ...tab.attachments,
@@ -407,6 +407,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         // renderer-local marker (the auto-fix lock passage) and is NOT a
         // remote origin, so it forwards as a local prompt.
         source: source === 'remote' ? 'remote' : undefined,
+        deliveryId: source === 'remote' ? requestId : undefined,
         // Forward the engine-resolve-slash flag from REMOTE_ENGINE_PROMPT so
         // the pipeline short-circuits to submitAsPrompt instead of
         // re-dispatching the extension command (which corrupts the
@@ -423,7 +424,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       })
     },
 
-    submitRemotePrompt: (tabId, prompt, imageAttachments, resolveSlash, remoteAttachments) => {
+    submitRemotePrompt: (tabId, prompt, imageAttachments, resolveSlash, remoteAttachments, reqId) => {
       const { tabs, staticInfo } = get()
       const preferredModel = usePreferencesStore.getState().preferredModel
       const tab = tabs.find((t) => t.id === tabId)
@@ -452,7 +453,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         ? tab.workingDirectory
         : (staticInfo?.homePath || tab.workingDirectory || '~')
 
-      const requestId = crypto.randomUUID()
+      const requestId = reqId || crypto.randomUUID()
       const isBusy = tab.status === 'running'
 
       // Per-conversation state lives on the active instance; snapshot it before
@@ -564,6 +565,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           : remoteInst?.modelOverride || preferredModel || undefined,
         addDirs: tab.additionalDirs.length > 0 ? tab.additionalDirs : undefined,
         source: 'remote',
+        deliveryId: requestId,
         extensions: remoteExtensions,
         imageAttachments,
         thinkingEffort: remoteThinkingEffort,

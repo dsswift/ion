@@ -17,6 +17,7 @@ import type { WireMessage, RelayControlMessage } from './protocol'
 import {
   classifyCredentialError,
   classifyCloseCode,
+  CLOSE_CODE_TOKEN_EXPIRED,
   UNKNOWN_FAILURE_ESCALATE_AFTER,
   type RelayFailure,
 } from './relay-failure'
@@ -32,9 +33,7 @@ function error(msg: string, fields?: Record<string, unknown>): void {
 const BACKOFF_BASE = 1000
 const BACKOFF_MAX = 30000
 const JITTER_MAX = 1000
-
-/** Close code sent by the relay when the bearer token is rejected or expired. */
-const CLOSE_CODE_TOKEN_EXPIRED = 4401
+const TOKEN_EXPIRED_ESCALATE_AFTER = 5
 
 export interface RelayClientOptions {
   relayUrl: string
@@ -48,7 +47,7 @@ export interface RelayClientOptions {
   /**
    * OIDC credential factory (OIDC mode). When present, called before each
    * connect attempt to mint a fresh bearer token. On failure the connect is
-   * deferred to the next backoff window — no tight loop. When absent, the
+   * deferred to the next backoff window -- no tight loop. When absent, the
    * static apiKey is used.
    */
   getCredential?: () => Promise<string>
@@ -67,7 +66,7 @@ export class RelayClient extends EventEmitter {
   private reconnectAttempt = 0
   /**
    * Set when a failure cannot be fixed by retrying. While latched, no
-   * reconnect is scheduled — the loop that produced one attempt every ~14
+   * reconnect is scheduled -- the loop that produced one attempt every ~14
    * seconds for an unsigned-in user is exactly what this stops. Cleared by
    * retry(), which the settings UI and a credential change both call.
    */
@@ -77,6 +76,23 @@ export class RelayClient extends EventEmitter {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private intentionallyClosed = false
   private _connected = false
+
+  /**
+   * Monotonically increasing generation counter. Incremented at the start of
+   * each _doConnect and by disconnect(); callbacks capture the generation and
+   * bail when it no longer matches, preventing a stale socket's
+   * close/open/message events from mutating the state of a newer connection.
+   */
+  private generation = 0
+
+  /**
+   * Consecutive 4401 (token-expired) close codes. When the engine returns a
+   * cached stale token, every reconnect mints the same expired credential and
+   * the relay closes with 4401 again. After TOKEN_EXPIRED_ESCALATE_AFTER
+   * consecutive 4401s, escalate to permanent so the operator sees the failure
+   * instead of a silent retry loop. Reset on any non-4401 close.
+   */
+  private tokenExpiredCount = 0
 
   constructor(options: RelayClientOptions) {
     super()
@@ -93,6 +109,8 @@ export class RelayClient extends EventEmitter {
   }
 
   private async _doConnect(): Promise<void> {
+    const gen = ++this.generation
+
     if (this.ws) {
       try { this.ws.close() } catch { /* ignore */ }
       this.ws = null
@@ -106,11 +124,21 @@ export class RelayClient extends EventEmitter {
       try {
         bearer = await getCredential()
       } catch (err) {
+        if (this.intentionallyClosed || gen !== this.generation) return
         this._handleFailure(classifyCredentialError(err as Error), 'credential')
         return
       }
     } else {
       bearer = apiKey
+    }
+
+    // Guard: disconnect() or a newer _doConnect() fired while awaiting credential.
+    if (this.intentionallyClosed || gen !== this.generation) {
+      log('relay_client: connect abandoned after credential', {
+        intentionally_closed: this.intentionallyClosed,
+        generation_stale: gen !== this.generation,
+      })
+      return
     }
 
     // Normalize URL: ensure wss:// or ws:// prefix and /v1/channel/ path.
@@ -121,15 +149,20 @@ export class RelayClient extends EventEmitter {
     }
     const url = `${base}/v1/channel/${channelId}?role=ion`
 
-    log('relay_client: connecting', { url: url.replace(/\/v1\/channel\/.*/, '/v1/channel/***'), auth_mode: getCredential ? 'oidc' : 'psk' })
+    log('relay_client: connecting', { url: url.replace(/\/v1\/channel\/.*/, '/v1/channel/***'), auth_mode: getCredential ? 'oidc' : 'psk', generation: gen })
 
-    this.ws = new WebSocket(url, {
+    const ws = new WebSocket(url, {
       headers: {
         'Authorization': `Bearer ${bearer}`,
       },
     })
+    this.ws = ws
 
-    this.ws.on('open', () => {
+    ws.on('open', () => {
+      if (gen !== this.generation) {
+        log('relay_client: stale open callback ignored', { stale_gen: gen, current_gen: this.generation })
+        return
+      }
       log('connected')
       this._connected = true
       this.reconnectAttempt = 0
@@ -138,7 +171,8 @@ export class RelayClient extends EventEmitter {
       this.emit('connected')
     })
 
-    this.ws.on('message', (raw: Buffer | string) => {
+    ws.on('message', (raw: Buffer | string) => {
+      if (gen !== this.generation) return
       try {
         const data = JSON.parse(raw.toString())
 
@@ -154,22 +188,38 @@ export class RelayClient extends EventEmitter {
       }
     })
 
-    this.ws.on('close', (code, reason) => {
+    ws.on('close', (code, reason) => {
+      if (gen !== this.generation) {
+        log('relay_client: stale close callback ignored', { stale_gen: gen, current_gen: this.generation, code })
+        return
+      }
       log('relay_client: disconnected', { code, reason: reason?.toString() || '' })
       this._connected = false
       this.ws = null
       this.emit('disconnected')
 
       if (code === CLOSE_CODE_TOKEN_EXPIRED) {
-        // Token rejected or expired. The backoff handles reconnect timing;
-        // on the next _doConnect, getCredential() will mint a fresh token.
+        this.tokenExpiredCount++
+        if (this.tokenExpiredCount >= TOKEN_EXPIRED_ESCALATE_AFTER) {
+          error('relay_client: repeated token expiry, escalating to permanent', {
+            consecutive_4401: this.tokenExpiredCount,
+          })
+          this._handleFailure({
+            class: 'permanent',
+            reason: 'token_stale',
+            detail: `Token rejected ${this.tokenExpiredCount} consecutive times. The credential may be cached and stale.`,
+          }, 'close')
+          return
+        }
         log('relay_client: token expired (4401), reconnecting via backoff')
+      } else {
+        this.tokenExpiredCount = 0
       }
 
       this._handleFailure(classifyCloseCode(code, reason?.toString() || ''), 'close')
     })
 
-    this.ws.on('error', (err) => {
+    ws.on('error', (err) => {
       log('relay_client: error', { error: err.message })
       // 'close' event will follow, triggering reconnect.
     })
@@ -190,6 +240,7 @@ export class RelayClient extends EventEmitter {
 
   disconnect(): void {
     this.intentionallyClosed = true
+    this.generation++
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
@@ -211,8 +262,8 @@ export class RelayClient extends EventEmitter {
    * Permanent failures latch and emit 'failed' instead of scheduling a
    * reconnect: retrying a missing sign-in or a rejected scope cannot succeed,
    * and doing it forever hides the actual problem behind a spinner. Transient
-   * failures keep the existing backoff. Unknown failures keep retrying —
-   * misclassifying a transient as permanent is the worse mistake — but
+   * failures keep the existing backoff. Unknown failures keep retrying --
+   * misclassifying a transient as permanent is the worse mistake -- but
    * escalate to ERROR once they stop looking like a blip.
    */
   private _handleFailure(failure: RelayFailure, source: 'credential' | 'close'): void {
@@ -255,6 +306,7 @@ export class RelayClient extends EventEmitter {
     log('relay_client: clearing permanent failure, retrying', { reason: this.permanentFailure.reason })
     this.permanentFailure = null
     this.unknownFailureCount = 0
+    this.tokenExpiredCount = 0
     this.reconnectAttempt = 0
     void this._doConnect()
   }

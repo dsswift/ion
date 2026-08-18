@@ -273,8 +273,24 @@ export function decryptFromDisk(value: string): string {
     try {
       const buf = Buffer.from(value.slice(ENC_V1_PREFIX.length), 'base64')
       return getElectron()!.safeStorage.decryptString(buf)
-    } catch {
-      return value
+    } catch (err) {
+      // Returning `value` here (the prior behavior) handed the CIPHERTEXT back
+      // to the caller as though it were plaintext. Nothing downstream could
+      // detect that: `Buffer.from('enc:v1:<base64>', 'base64')` does not throw
+      // — Node's base64 decoder silently skips characters outside the
+      // alphabet — so a paired device's sharedSecret decoded to a
+      // wrong-length, wrong-value key. HMAC accepts any key length, so LAN
+      // auth failed as "invalid proof", and AES-GCM failed as "Decryption
+      // failed (wrong key, tampered, or wrong nonce)" — with the device still
+      // present and apparently valid in the registry. The Keychain grant is
+      // bound to the code signature, so a desktop reinstall is enough to make
+      // decryptString throw here.
+      //
+      // An undecryptable value is unrecoverable: return '' like the v2/v3
+      // branches below, and log it, because this branch's silence is what made
+      // the resulting pairing failure undiagnosable from the logs.
+      error('safeStorage decrypt failed; value cleared — re-pair the device or re-enter in settings', { error: String(err) })
+      return ''
     }
   }
 

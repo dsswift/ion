@@ -302,6 +302,9 @@ func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) 
 		if overrides.SteerDegraded {
 			opts.SteerDegraded = true
 		}
+		if overrides.DeliveryId != "" {
+			opts.DeliveryID = overrides.DeliveryId
+		}
 	}
 
 	if s.config.SystemHint != "" {

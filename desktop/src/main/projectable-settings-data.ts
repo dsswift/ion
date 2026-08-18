@@ -476,22 +476,12 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
     iosSurface: 'phone-critical',
     type: 'boolean',
     group: 'tabs',
-    label: 'Auto-recover stuck tabs',
+    label: 'Automatic conversation recovery',
     description:
-      'Automatically attempt to recover tabs that appear stuck (no engine events for a period).',
+      'Automatically resume interrupted conversations after the engine restarts. Slow or silent live runs are never replayed or cancelled.',
     defaultValue: true,
   },
-  {
-    key: 'tabRecoveryTimeoutSec',
-    iosSurface: 'phone-critical',
-    type: 'number',
-    group: 'tabs',
-    label: 'Tab recovery timeout (sec)',
-    description:
-      'Idle threshold in seconds before a stuck tab is force-recovered. Only applies when auto-recovery is enabled.',
-    defaultValue: 120,
-    range: { min: 10, max: 600, step: 10 },
-  },
+
 
   // ═══════════════════════════════════════════════════════════════════
   // GIT

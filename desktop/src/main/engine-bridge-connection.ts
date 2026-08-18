@@ -132,6 +132,9 @@ function connectSocket(bridge: EngineBridge): Promise<void> {
       log('Connected to engine server')
       resolve()
       if (wasReconnect) {
+        // Deferred interrupts go out FIRST: an aborted key must be retired
+        // before re-registration can restart it (see flushPendingAborts).
+        bridge.flushPendingAborts()
         bridge.emit('reconnected')
         bridge._reRegisterSessions()
       }

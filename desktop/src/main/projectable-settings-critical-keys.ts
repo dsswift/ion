@@ -9,5 +9,4 @@ export const CONNECTION_CRITICAL_KEYS = [
   'soundEnabled',
   'streamThinkingToRemote',
   'tabRecoveryEnabled',
-  'tabRecoveryTimeoutSec',
 ] as const

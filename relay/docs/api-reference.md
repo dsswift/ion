@@ -37,7 +37,10 @@ token before connecting.
   "issuer": "https://login.microsoftonline.com/{tenant}/v2.0",
   "audience": "api://<relay-app-id>",
   "requiredScope": "Relay.Access",
-  "psk": false
+  "psk": false,
+  "capabilities": {
+    "mobileForwardAck": true
+  }
 }
 ```
 
@@ -50,6 +53,8 @@ Fields:
 | `audience` | string | Expected `aud` claim. Present only when `oidc` is `true`. |
 | `requiredScope` | string | Required scope, if configured. Omitted when no scope check is active. |
 | `psk` | bool | `true` if PSK (shared key) mode is active. |
+| `capabilities` | object | Relay feature capabilities. Always present. |
+| `capabilities.mobileForwardAck` | bool | `true` when the relay sends `relay:forwarded` / `relay:peer-unavailable` ACKs back to mobile peers. |
 
 Both `oidc` and `psk` can be `true` simultaneously when the relay is
 running in dual-mode for migration purposes.

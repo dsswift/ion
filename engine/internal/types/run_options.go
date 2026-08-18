@@ -352,6 +352,12 @@ type RunOptions struct {
 	// In-process run field.
 	ResolvedSlashModelEffective string `json:"-"`
 
+	// PrePersistedUserEntryID identifies a user turn the session layer wrote with
+	// its active-run journal before backend dispatch. The API runloop reuses that
+	// canonical entry instead of appending the same prompt again after restart.
+	// Internal-only: it never crosses the wire.
+	PrePersistedUserEntryID string `json:"-"`
+
 	// InjectionKind classifies an engine-side injected user turn so the
 	// backend can stamp it on the persisted conversation entry. "agent_completion"
 	// marks a machine-to-machine dispatch callback rather than a user-authored
@@ -382,6 +388,13 @@ type RunOptions struct {
 	// In-process only (json:"-"): it never crosses the wire, because the
 	// persisted steer marker is what a consumer reads on reload.
 	SteerDegraded bool `json:"-"`
+
+	// DeliveryID is a client-supplied idempotency key threaded from
+	// ClientCommand.DeliveryId through PromptOverrides. When non-empty, the
+	// backend stamps it on the persisted user-message entry (MessageData.DeliveryIDs)
+	// so future idempotency checks match. In-process only (json:"-"): it never
+	// crosses the wire; it is persistence metadata.
+	DeliveryID string `json:"-"`
 
 	// ParentCtx is the session's cancellation root. When non-nil, the
 	// backend derives the run's cancellation context from it

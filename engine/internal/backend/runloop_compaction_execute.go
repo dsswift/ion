@@ -20,15 +20,20 @@ func (b *ApiBackend) performCompact(p performCompactParams) error {
 
 	cleared := conversation.MicroCompact(p.conv, p.cp.microKeepTurns)
 	usageAfterMicro := conversation.GetContextUsage(p.conv, p.contextWindow)
-	shouldHardTruncate := usageAfterMicro.Tokens > p.tokenLimit || p.trigger == "user"
+
+	// Auto compaction begins near the context limit but must reclaim enough
+	// headroom to reach its configured post-compaction target. Stopping merely
+	// because micro-compaction crossed back below the trigger leaves the next
+	// call at nearly the same pressure and defeats targetPercent. User-triggered
+	// and reactive passes always continue to turn-safe hard truncation.
+	contextTargetTokens := int(float64(p.contextWindow) * p.cp.targetPercent / 100.0)
+	shouldHardTruncate := p.trigger == "user" || p.trigger == "reactive" || usageAfterMicro.Tokens > contextTargetTokens
 
 	targetTokens := 0
-	contextTargetTokens := 0
 	targetBasis := "none"
 	var cut conversation.TokenBudgetCut
 	if shouldHardTruncate {
 		targetBasis = "window"
-		contextTargetTokens = int(float64(p.contextWindow) * p.cp.targetPercent / 100.0)
 		messageEstimate := conversation.EstimateTokenBudgetInput(p.conv.Messages, p.cp.estimationPadding)
 		// Preserve window-relative semantics for auto/reactive while translating
 		// the total-context target into the message-only budget this trimmer can

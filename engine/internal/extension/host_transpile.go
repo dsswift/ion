@@ -188,7 +188,7 @@ func ensureNodeModules(extDir string) error {
 }
 
 // parseInitResult extracts tools and commands from the subprocess init response,
-// validates build identity, and registers them on the SDK.
+// records build provenance, and registers the declared surfaces on the SDK.
 func (h *Host) parseInitResult(raw json.RawMessage) error {
 	if len(raw) == 0 || string(raw) == "null" {
 		return nil
@@ -216,6 +216,9 @@ func (h *Host) parseInitResult(raw json.RawMessage) error {
 		// Resource kinds declared at init time (optional). The session
 		// wires them into the broker after the extension is fully loaded.
 		Resources []types.ResourceDeclaration `json:"resources,omitempty"`
+		// Hooks is the subprocess's registered callback set. It is additive
+		// handshake metadata, distinct from engine-installed transport forwarders.
+		Hooks []string `json:"hooks,omitempty"`
 		// Build identity reported by the SDK subprocess. Compared against
 		// the engine's own build identity to detect mixed-build runtimes.
 		BuildIdentity string `json:"buildIdentity,omitempty"`
@@ -225,13 +228,16 @@ func (h *Host) parseInitResult(raw json.RawMessage) error {
 		return fmt.Errorf("decode init result: %w", err)
 	}
 
-	if err := h.validateBuildIdentity(result.BuildIdentity); err != nil {
-		return err
-	}
+	// Build identity is provenance, not a compatibility gate. Extensions and
+	// engines deploy independently; unsupported ext/* calls already negotiate at
+	// use time through JSON-RPC -32601. Keep both identities in logs so operators
+	// can diagnose mixed installs without preventing otherwise-compatible code.
+	h.observeBuildIdentity(result.BuildIdentity)
 
 	if result.Name != "" {
 		h.setName(result.Name)
 	}
+	h.setDeclaredHooks(result.Hooks)
 
 	for _, t := range result.Tools {
 		toolName := t.Name // capture for closure
@@ -310,32 +316,28 @@ func (h *Host) parseInitResult(raw json.RawMessage) error {
 	return nil
 }
 
-// validateBuildIdentity checks the SDK-reported build identity against the
-// engine's own. Mismatch (both non-empty, different) is a hard reject. Missing
-// (SDK returns empty) is a warning for backward compat with older SDKs.
-func (h *Host) validateBuildIdentity(sdkIdentity string) error {
+// observeBuildIdentity records SDK/engine provenance. Identity mismatch is
+// expected when independently deployed extensions use an older or newer SDK;
+// compatibility is decided by actual JSON-RPC methods, not commit equality.
+func (h *Host) observeBuildIdentity(sdkIdentity string) {
 	engineID := h.engineBuildIdentity
 	fields := map[string]any{
 		"engine_build_identity": engineID,
 		"sdk_build_identity":    sdkIdentity,
-		"extension":             h.name,
+		"extension":             h.name_(),
 	}
 
 	if engineID == "" || engineID == "dev" {
-		utils.LogWithFields(utils.LevelDebug, "extension", "build identity check skipped: development engine build", fields)
-		return nil
+		utils.LogWithFields(utils.LevelDebug, "extension", "build identity unavailable for engine provenance", fields)
+		return
 	}
-
 	if sdkIdentity == "" {
-		utils.LogWithFields(utils.LevelWarn, "extension", "SDK did not report build identity; allowing for backward compatibility", fields)
-		return nil
+		utils.LogWithFields(utils.LevelWarn, "extension", "SDK did not report build identity; compatibility will be resolved per RPC", fields)
+		return
 	}
-
 	if sdkIdentity != engineID {
-		utils.LogWithFields(utils.LevelError, "extension", "build identity mismatch: engine and SDK built from different releases", fields)
-		return fmt.Errorf("build identity mismatch: engine=%q sdk=%q", engineID, sdkIdentity)
+		utils.LogWithFields(utils.LevelWarn, "extension", "engine and SDK build identities differ; allowing extension and resolving compatibility per RPC", fields)
+		return
 	}
-
 	utils.LogWithFields(utils.LevelDebug, "extension", "build identity verified", fields)
-	return nil
 }

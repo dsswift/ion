@@ -163,7 +163,7 @@ func startOIDCRelay(t *testing.T, oidcCfg *OIDCConfig) (*httptest.Server, *Hub, 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/auth/config", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"oidc":true,"psk":false}`))
+		_, _ = w.Write([]byte(`{"oidc":true,"psk":false,"capabilities":{"mobileForwardAck":true}}`))
 	})
 	mux.HandleFunc("GET /v1/channel/{channelId}", func(w http.ResponseWriter, r *http.Request) {
 		identity, ok := auth.Validate(r)

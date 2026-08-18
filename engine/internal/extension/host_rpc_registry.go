@@ -67,6 +67,7 @@ var extRequestHandlers = map[string]extRequestHandler{
 	"ext/intercept":          (*Host).rpcIntercept,
 	"ext/set_plan_mode":      (*Host).rpcSetPlanMode,
 	"ext/get_plan_mode":      (*Host).rpcGetPlanMode,
+	"ext/set_run_recovery":   (*Host).rpcSetRunRecovery,
 
 	// Async triggers: webhooks, schedules, run-once dedup.
 	"ext/register_webhook":    (*Host).rpcRegisterWebhookReq,

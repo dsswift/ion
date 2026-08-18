@@ -1094,6 +1094,25 @@ await ctx.setSessionMemory(`${existing}\n\n- deploy target is staging`)
 
 `getSessionMemory` returns an empty string when the conversation has no memory yet, or when the extension is running outside a session (a schedule or webhook firing).
 
+## Interrupted-run recovery
+
+`ctx.setRunRecovery()` sets extension-owned recovery policy for later runs in current session. `enabled` is required by current engines. It remains optional in TypeScript for compatibility with older callers, but an omitted value is rejected by current engines. `maxAttempts` is optional. `0` or omission uses engine default. This policy overrides `start_session` and `engine.json` values. It does not change journal for active run. Recovery applies only after engine process interruption, not provider failures, timeouts, or normal terminal exits.
+
+```typescript
+await ctx.setRunRecovery({ enabled: true, maxAttempts: 3 })
+```
+
+`before_run_recovery` runs after engine increments durable attempt count and before it resumes journaled root run. Return `action: 'skip'` to abandon recovery. Return `instruction` to replace engine continuation instruction. Empty result leaves engine policy unchanged.
+
+```typescript
+ion.on('before_run_recovery', async (_ctx, info) => {
+  if (info.attempt > info.maxAttempts) return { action: 'skip' }
+  return { instruction: 'Inspect external state before you retry interrupted work.' }
+})
+```
+
+Recovery resumes durable checkpoint. It does not append original user prompt again. External tool effects interrupted by process loss can be unknown.
+
 ## Durable lost-dispatch acknowledgement
 
 `dispatch_lost` can be delivered again after an extension or engine restart until acknowledged. After durably recording recovery work for `info.dispatch_id`, call `await ctx.ackDispatchLost(info.dispatch_id)`. This RPC is retry-safe: repeated calls for same dispatch ID succeed, so retry after transport uncertainty. Acknowledge only after local recovery state is durable.

@@ -6,7 +6,7 @@ import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
 import { zoomViewport } from '../viewport-zoom'
 import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
-import { anyEngineInstanceHasRunningChildren, anyEngineInstanceHasRunningShells, getWaitingState } from './TabStripShared'
+import { anyEngineInstanceHasRunningChildren, anyEngineInstanceHasRunningShells, getWaitingState, isAnyTerminalCommandRunning } from './TabStripShared'
 import { activeInstance, effectivePermissionMode } from '../stores/conversation-instance'
 import { Tooltip } from './git/Tooltip'
 import { Chevron } from './Chevron'
@@ -37,10 +37,16 @@ import type { TabState } from '../../shared/types'
 /** Derive the two-tier global running state from the full tab list.
  *  Calls anyEngineInstanceHasRunningChildren for the waiting tier.
  *  Exported for unit testing (the pure folding logic, not the component). */
-export function globalRunningTier(tabs: TabState[]): 'running' | 'waiting' | 'idle' {
+export function globalRunningTier(
+  tabs: TabState[],
+  terminalActiveTabIds?: ReadonlySet<string>,
+): 'running' | 'waiting' | 'idle' {
   let hasWaiting = false
   for (const tab of tabs) {
-    if (tab.status === 'running' || tab.status === 'connecting') return 'running'
+    const terminalRunning = terminalActiveTabIds
+      ? terminalActiveTabIds.has(tab.id)
+      : isAnyTerminalCommandRunning(tab.id)
+    if (tab.status === 'running' || terminalRunning) return 'running'
     if (anyEngineInstanceHasRunningChildren(tab.id) || anyEngineInstanceHasRunningShells(tab.id)) {
       hasWaiting = true
     }
@@ -77,7 +83,10 @@ function tabDisplayTitle(tab: TabState): string {
  *  so the list and the count can never drift.
  *
  *  Exported for unit testing (pure folding logic). */
-export function computeStatusCounts(tabs: TabState[]): {
+export function computeStatusCounts(
+  tabs: TabState[],
+  terminalActiveTabIds?: ReadonlySet<string>,
+): {
   running: number
   connecting: number
   waitingChildren: number
@@ -89,6 +98,7 @@ export function computeStatusCounts(tabs: TabState[]): {
   idle: number
   dead: number
   runningTabs: WorkspaceTabRef[]
+  connectingTabs: WorkspaceTabRef[]
   waitingTabs: WorkspaceTabRef[]
   waitingShellTabs: WorkspaceTabRef[]
   questionTabs: WorkspaceTabRef[]
@@ -102,6 +112,7 @@ export function computeStatusCounts(tabs: TabState[]): {
   const c = {
     running: 0, connecting: 0, waitingChildren: 0, waitingShells: 0, questions: 0, planReady: 0, bash: 0, unread: 0, idle: 0, dead: 0,
     runningTabs: [] as WorkspaceTabRef[],
+    connectingTabs: [] as WorkspaceTabRef[],
     waitingTabs: [] as WorkspaceTabRef[],
     waitingShellTabs: [] as WorkspaceTabRef[],
     questionTabs: [] as WorkspaceTabRef[],
@@ -120,10 +131,13 @@ export function computeStatusCounts(tabs: TabState[]): {
     mode: effectivePermissionMode(tab, conversationPanes),
   })
   for (const tab of tabs) {
-    if (tab.isTerminalOnly) continue
+    const terminalRunning = terminalActiveTabIds
+      ? terminalActiveTabIds.has(tab.id)
+      : isAnyTerminalCommandRunning(tab.id)
+    if (tab.isTerminalOnly && !terminalRunning) continue
     if (tab.status === 'dead' || tab.status === 'failed') { c.dead++; c.deadTabs.push(ref(tab)); continue }
-    if (tab.status === 'running') { c.running++; c.runningTabs.push(ref(tab)); continue }
-    if (tab.status === 'connecting') { c.connecting++; c.runningTabs.push(ref(tab)); continue }
+    if (tab.status === 'running' || terminalRunning) { c.running++; c.runningTabs.push(ref(tab)); continue }
+    if (tab.status === 'connecting') { c.connecting++; c.connectingTabs.push(ref(tab)); continue }
     if (anyEngineInstanceHasRunningChildren(tab.id)) { c.waitingChildren++; c.waitingTabs.push(ref(tab)); continue }
     // Background bash commands the session is holding for. Ranked directly
     // after agents, matching getTabStatusColor's cascade.
@@ -152,7 +166,7 @@ export function computeStatusCounts(tabs: TabState[]): {
 // gets its own module instance, so expansion is per-window — acceptable for a
 // glance affordance, not synced state.
 
-export type WorkspaceCategoryId = 'question' | 'plan-ready' | 'bash' | 'unread' | 'idle' | 'dead'
+export type WorkspaceCategoryId = 'connecting' | 'question' | 'plan-ready' | 'bash' | 'unread' | 'idle' | 'dead'
 
 const expandedCategories = new Set<WorkspaceCategoryId>()
 
@@ -170,9 +184,10 @@ export function WorkspaceStatusIndicator() {
   // RunningChildren reads the store but is not reactive on its own; the
   // component re-renders when conversationPanes identity changes).
   const tabs = useSessionStore((s) => s.tabs)
+  const terminalActiveTabIds = useSessionStore((s) => s.terminalActiveTabIds ?? new Set<string>())
   useSessionStore((s) => s.conversationPanes)
 
-  const tier = globalRunningTier(tabs)
+  const tier = globalRunningTier(tabs, terminalActiveTabIds)
 
   const [open, setOpen] = useState(false)
   // The trigger's own rect, captured on click. The measured on-screen position
@@ -215,7 +230,7 @@ export function WorkspaceStatusIndicator() {
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  const counts = open ? computeStatusCounts(tabs) : null
+  const counts = open ? computeStatusCounts(tabs, terminalActiveTabIds) : null
 
   // Measured placement. The dot lives in the tab strip, which sits at the
   // BOTTOM of the overlay glass and at the TOP of the ATV window, so a fixed
@@ -226,7 +241,7 @@ export function WorkspaceStatusIndicator() {
     // Every input that changes the popover's rendered height: whether it is
     // open at all, how many tab rows the categories list, and which categories
     // the operator has expanded.
-    deps: [open, tabs.length, expansionVersion],
+    deps: [open, tabs.length, terminalActiveTabIds.size, expansionVersion],
   })
   const vp = zoomViewport()
 
@@ -277,12 +292,17 @@ export function WorkspaceStatusIndicator() {
         Workspace
       </div>
       <WorkspaceCountRow label="Running" count={counts.running} color={colors.statusRunning} colors={colors} />
-      <WorkspaceCountRow label="Connecting" count={counts.connecting} color={colors.statusRunning} colors={colors} />
-      {/* Clickable names for actively-working (foreground) tabs — running + connecting.
-          Active buckets stay always-expanded: they are the "working now" signal. */}
+      {/* Clickable names for actively-running (foreground) tabs. Running is the
+          only always-expanded foreground bucket: it is the "working now" signal,
+          and its names come from the same branch that increments its count so
+          a non-zero count can never render without its conversations. */}
       {counts.runningTabs.map((t) => (
         <WorkspaceTabRow key={t.id} tab={t} onNavigate={handleNavigate} colors={colors} />
       ))}
+      {/* Connecting is a handshake, not work. It is excluded from the global dot
+          (globalRunningTier) and collapsed here so a stale connect can never read
+          as an active conversation. Its names are its own list. */}
+      <WorkspaceCollapsibleRow categoryId="connecting" label="Connecting" count={counts.connecting} color={colors.statusIdle} colors={colors} tabs={counts.connectingTabs} onToggle={handleToggleCategory} onNavigate={handleNavigate} />
       <WorkspaceCountRow label="Awaiting agents" count={counts.waitingChildren} color={colors.statusWaitingChildren} colors={colors} />
       {/* Clickable names for tabs awaiting background agents. */}
       {counts.waitingTabs.map((t) => (

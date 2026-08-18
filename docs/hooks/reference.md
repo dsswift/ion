@@ -831,11 +831,40 @@ type PeerExtensionInfo struct {
 
 Same extension type only. The engine enforces this by comparing extension names; cross-type messaging returns an error to the sender.
 
+## Interrupted Run Recovery
+
+| Hook | When | Payload | Return | Effect |
+|------|------|---------|--------|--------|
+| `before_run_recovery` | Before engine resumes a journaled root run after restart | `BeforeRunRecoveryInfo{RecoveryID, ConversationID, Attempt, MaxAttempts, Prompt, Model, SessionKey}` | `BeforeRunRecoveryResult{Action, Instruction}` | `Action: "recover"` proceeds and `Action: "skip"` abandons recovery. Empty fields defer to engine policy. `Instruction` replaces generic continuation instruction. |
+
+The hook runs after engine resolves recovery policy and durably increments attempt count. It does not replay original user prompt. The resumed run must inspect uncertain external effects before retrying work.
+
+### Payload Types
+
+**BeforeRunRecoveryInfo**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `recoveryId` | `string` | Durable recovery identity. |
+| `conversationId` | `string` | Conversation containing interrupted run. |
+| `attempt` | `int` | One-based recovery attempt. |
+| `maxAttempts` | `int` | Resolved recovery attempt limit. |
+| `prompt` | `string` | Original prompt, when retained by engine. |
+| `model` | `string` | Interrupted run model, when known. |
+| `sessionKey` | `string` | Session key, when known. |
+
+**BeforeRunRecoveryResult**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `action` | `string` | `"recover"` or `"skip"`. Empty has no opinion. |
+| `instruction` | `string` | Replacement continuation instruction. Empty retains engine instruction. |
+
 ## Schedule Missed
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
-| `schedule_missed` | Scheduler detects a daily/weekly slot was missed while the engine was down | `ScheduleMissedInfo{ID, Kind, MissedSlotUtc, HadMarker, RanWithinScope}` | ignored | Observation-only. The extension decides whether to backfill via `ctx.fireSchedule(id)`. When no handler is registered, the scheduler auto-catches-up (existing behavior). |
+| `schedule_missed` | Scheduler detects a daily/weekly slot was missed during engine downtime or an in-process suspend/resume gap | `ScheduleMissedInfo{ID, Kind, MissedSlotUtc, HadMarker, RanWithinScope}` | ignored | Observation-only. Delivered to Go and subprocess SDK handlers that registered this hook. Omitted `catchUp` auto-fires only when no handler is registered; the extension decides whether to backfill via `ctx.fireSchedule(id)` when it is. |
 
 ### Payload Types
 

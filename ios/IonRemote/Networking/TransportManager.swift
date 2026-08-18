@@ -41,6 +41,13 @@ final class TransportManager {
     /// Used to filter Bonjour discovery to the correct host when multiple
     /// Ion instances are on the network.
     var deviceName: String?
+    /// Stable identity of the paired desktop. When set, Bonjour matching
+    /// checks the discovered service's TXT record `desktopId` before falling
+    /// back to hostname matching via `deviceName`.
+    var pairedDesktopId: String?
+    /// Base URL of the relay (wss://...). Stored for the capability probe
+    /// which runs an HTTP GET against the same host.
+    let relayBaseURL: URL?
     private let getCredential: (() async throws -> String)?
     private let onTokenRejected: (() -> Void)?
     /// Fired when the relay refuses this pairing because the channel is owned by
@@ -179,6 +186,15 @@ final class TransportManager {
     /// Strict-FIFO queue serializing outbound seq allocation + socket write so
     /// wire order always equals seq order. See TransportManager+Send.swift.
     let outboundQueue = SerialAsyncQueue()
+    /// Correlates mobile relay writes with relay forwarding outcomes. A relay
+    /// socket is not proof the selected desktop is online; only relay:forwarded
+    /// confirms this exact encrypted frame crossed to that desktop peer.
+    let relayDeliveryAcks = RelayDeliveryAcks()
+
+    /// Relay capability negotiation. Probed before/alongside the relay
+    /// WebSocket connection to determine whether the relay supports
+    /// delivery ACKs (strict) or is legacy/unavailable.
+    let relayCapabilities = RelayCapabilities()
 
     /// Strict-FIFO queue serializing INBOUND frame processing. The relay and
     /// LAN listen tasks both used to call `handleIncomingData` directly from
@@ -208,6 +224,7 @@ final class TransportManager {
          getCredential: (() async throws -> String)? = nil,
          onTokenRejected: (() -> Void)? = nil,
          onIdentityMismatch: (() -> Void)? = nil) {
+        self.relayBaseURL = relayURL
         self.relay = RelayClient(relayURL: relayURL, apiKey: apiKey, channelId: channelId, apnsToken: apnsToken,
                                  getCredential: getCredential, onTokenRejected: onTokenRejected,
                                  onIdentityMismatch: onIdentityMismatch)
@@ -227,6 +244,7 @@ final class TransportManager {
 
     /// Create a transport for direct LAN connections only (no relay).
     init(sharedKey: SymmetricKey, deviceId: String) {
+        self.relayBaseURL = nil
         self.relay = nil
         self.lan = LANClient()
         self.bonjour = BonjourBrowser()
@@ -536,6 +554,7 @@ struct AuthResult: Codable {
 enum TransportError: Error, LocalizedError {
     case noTransportAvailable
     case transportStopped
+    case relayPeerUnavailable(String)
     case encodingFailed(Error)
 
     var errorDescription: String? {
@@ -544,6 +563,8 @@ enum TransportError: Error, LocalizedError {
             return "No transport available (relay and LAN both disconnected)"
         case .transportStopped:
             return "Transport stopped before queued send could run"
+        case .relayPeerUnavailable(let reason):
+            return "Selected desktop is unavailable through relay: \(reason)"
         case .encodingFailed(let error):
             return "Failed to encode message: \(error.localizedDescription)"
         }

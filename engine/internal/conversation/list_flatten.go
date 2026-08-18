@@ -195,8 +195,8 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 							"tool_use_id":     b.ToolUseID,
 						})
 					}
-				case "image":
-					// A persisted image block. Two provenances share this
+				case "image", "document":
+					// A persisted media block. Two provenances share this
 					// block type, discriminated by the entry's tool_result
 					// blocks (isToolResultCarrier above):
 					//
@@ -333,8 +333,8 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 						Timestamp: entry.Timestamp,
 					})
 					entryRowIdx++
-				case "image":
-					// Provider-generated image persisted on the assistant
+				case "image", "document":
+					// Provider-generated media persisted on the assistant
 					// entry (image-generation models via runImageLoop, or
 					// inline image output from chat models like GPT-4o).
 					// Re-derive the content-addressed on-disk path from the

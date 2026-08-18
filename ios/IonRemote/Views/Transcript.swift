@@ -55,6 +55,16 @@ struct Transcript: View {
     /// conversation shows no empty panel. Mirrors the desktop `alwaysRender`.
     var alwaysShowAgentPanel: Bool = false
     @Environment(\.appTheme) private var theme
+    /// Local scroll-to-bottom requests, summed with the host's
+    /// `forceScrollCounter` before going down to ChatCollectionView.
+    ///
+    /// The scroll-to-bottom button needs to scroll NOW. Setting `isNearBottom`
+    /// alone cannot do it: that binding is output-only (the VC publishes its
+    /// live position through it), so nothing acts on a write. Previously the
+    /// button relied on the next snapshot apply happening to notice the flag,
+    /// which never arrives on an idle conversation — the button did nothing
+    /// until the next event. A force-scroll tick is the explicit request.
+    @State private var localForceScroll = 0
 
     // MARK: - Grouping
 
@@ -97,12 +107,29 @@ struct Transcript: View {
             case .runDuration: return "run-duration"
             }
         }
+
+        var contentHash: Int {
+            var hasher = Hasher()
+            switch self {
+            case .message(let item):
+                hasher.combine(0)
+                hasher.combine(item.contentHash)
+            case .runDuration(let durationMs, let reason):
+                hasher.combine(1)
+                hasher.combine(durationMs)
+                hasher.combine(reason?.logValue)
+            }
+            return hasher.finalize()
+        }
     }
 
     private var chatItems: [ChatItem<Item>] {
-        var items = groupedMessages.map { ChatItem(id: $0.id, payload: Item.message($0)) }
+        var items = groupedMessages.map {
+            ChatItem(id: $0.id, contentHash: $0.contentHash, payload: Item.message($0))
+        }
         if !isRunning, let runDurationMs, transcriptHasContent {
-            items.append(ChatItem(id: "run-duration", payload: .runDuration(runDurationMs, runCompletionReason)))
+            let item = Item.runDuration(runDurationMs, runCompletionReason)
+            items.append(ChatItem(id: item.id, contentHash: item.contentHash, payload: item))
         }
         return items
     }
@@ -135,7 +162,7 @@ struct Transcript: View {
                 ChatCollectionView(
                     items: chatItems,
                     isNearBottom: $isNearBottom,
-                    forceScrollCounter: forceScrollCounter,
+                    forceScrollCounter: forceScrollCounter + localForceScroll,
                     spacing: 8,
                     horizontalInset: 12,
                     onReachedTop: onReachedTop
@@ -181,7 +208,10 @@ struct Transcript: View {
 
                 if !isNearBottom {
                     Button {
-                        isNearBottom = true
+                        // Request an actual scroll. The VC clears isNearBottom
+                        // itself once it arrives at the bottom, which hides this
+                        // button — so the flag is never set by hand here.
+                        localForceScroll += 1
                     } label: {
                         Image(systemName: "chevron.down")
                             .font(.system(size: 14, weight: .semibold)) // design-type: SF Symbol chevron glyph sized as icon geometry, not text

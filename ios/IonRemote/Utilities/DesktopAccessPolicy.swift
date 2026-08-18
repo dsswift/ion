@@ -9,17 +9,20 @@ import Foundation
 enum DesktopAccessPolicy {
     static func normalizedForLaunch(_ record: DesktopAccessRecord?) -> DesktopAccessRecord {
         guard var record else { return .startup() }
-        if record.status == .authorized {
+        switch record.status {
+        case .authorized, .verifying:
             record.status = .transientlyDisconnected
             record.reason = .none
             record.changedAt = Date()
+        default:
+            break
         }
         return record
     }
 
     static func mayViewDesktopData(_ record: DesktopAccessRecord?) -> Bool {
         switch (record ?? .startup()).status {
-        case .startup, .authorized, .transientlyDisconnected:
+        case .startup, .authorized, .verifying, .transientlyDisconnected:
             return true
         case .authenticationRequired, .rejected:
             return false
@@ -32,6 +35,10 @@ enum DesktopAccessPolicy {
 
     static func mayMutate(_ record: DesktopAccessRecord?) -> Bool {
         record?.status == .authorized
+    }
+
+    static func isVerifying(_ record: DesktopAccessRecord?) -> Bool {
+        record?.status == .verifying
     }
 
     static func recoveryTitle(for record: DesktopAccessRecord?) -> String {

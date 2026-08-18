@@ -106,6 +106,8 @@ export interface IonAPI extends AtvApi {
    * an instance created from iOS). Consumed once on first mount.
    */
   terminalGetScrollback(key: string): Promise<string>
+  terminalActiveTabs(): Promise<string[]>
+  onTerminalActivity(callback: (activity: { key: string; tabId: string; active: boolean }) => void): () => void
   /**
    * An untrusted ion:// deep link is awaiting approval. The callback receives
    * everything the operator needs to decide; answer with

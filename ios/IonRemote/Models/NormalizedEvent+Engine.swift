@@ -77,6 +77,17 @@ extension RemoteEvent {
             try container.encodeIfPresent(lastActivity, forKey: .runStalledLastActivity)
             return true
 
+        case .engineRunRecovery(let tabId, let instanceId, let recoveryId, let phase, let attempt, let maxAttempts, let reason):
+            try container.encode(TypeKey.engineRunRecovery, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            try container.encode(recoveryId, forKey: .runRecoveryId)
+            try container.encode(phase, forKey: .runRecoveryPhase)
+            try container.encodeIfPresent(attempt, forKey: .runRecoveryAttempt)
+            try container.encodeIfPresent(maxAttempts, forKey: .runRecoveryMaxAttempts)
+            try container.encodeIfPresent(reason, forKey: .runRecoveryReason)
+            return true
+
         case .engineSteerInjected(let tabId, let instanceId, let messageLength):
             try container.encode(TypeKey.engineSteerInjected, forKey: .type)
             try container.encode(tabId, forKey: .tabId)

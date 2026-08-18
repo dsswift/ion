@@ -136,7 +136,6 @@ export const FORWARDED_ACTIONS: Record<string, ForwardedActionSpec> = {
   // Targeted forget-then-reassemble mutates shared Git state.
   benchDiscardMemberRecordings: { minArgs: 3, maxArgs: 3 },
   forceRecoverTab: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
-  autoRecoverStuckTab: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
   resumeSession: { minArgs: 1, maxArgs: 3 },
   resumeSessionWithChain: { minArgs: 1, maxArgs: 3 },
   // ── Conversation / prompt pipeline (owner does the optimistic insert,

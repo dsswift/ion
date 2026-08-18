@@ -506,10 +506,22 @@ func TestDispatch_ReviveResumesConversation_NeverReplays(t *testing.T) {
 	if !strings.Contains(opts[1].Prompt, "do NOT restart") {
 		t.Errorf("run 2 prompt %q does not carry the no-restart instruction", opts[1].Prompt)
 	}
+	if opts[1].InjectionKind != string(types.InjectionKindAgentCompletion) {
+		t.Errorf("run 2 InjectionKind = %q, want %q", opts[1].InjectionKind, types.InjectionKindAgentCompletion)
+	}
 
 	// The drained results must not be re-delivered on a later revive.
 	if again := registry.DrainChildResults(parentID); len(again) != 0 {
 		t.Errorf("child results not cleared after drain: %v", again)
+	}
+}
+
+func TestDispatch_ReviveWithoutResultsUsesReviveInjectionKind(t *testing.T) {
+	if got := reviveInjectionKind(nil); got != string(types.InjectionKindRevive) {
+		t.Fatalf("bare revive injection kind = %q, want %q", got, types.InjectionKindRevive)
+	}
+	if got := reviveInjectionKind([]ChildResultRecord{{ChildID: "child"}}); got != string(types.InjectionKindAgentCompletion) {
+		t.Fatalf("completion revive injection kind = %q, want %q", got, types.InjectionKindAgentCompletion)
 	}
 }
 

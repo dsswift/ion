@@ -152,6 +152,7 @@ extension SessionViewModel {
         // that races the desktop echo preserves it via the isLive boundary
         // rather than a timestamp estimate.
         optimistic.isLive = true
+        optimistic.deliveryState = .queued
         // Mid-turn steer: the tab was already running when the user sent this,
         // so the desktop routes it through the engine's steer path rather than
         // opening a new turn. Mark it pending until the engine confirms the

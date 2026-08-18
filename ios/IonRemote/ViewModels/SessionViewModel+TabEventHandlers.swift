@@ -32,10 +32,22 @@ extension SessionViewModel {
     }
 
     @MainActor
-    func handleTabStatus(tabId: String, status: TabStatus) {
+    func handleTabStatus(tabId: String, status: TabStatus, resync: Bool = false) {
         if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
             let previousStatus = tabs[idx].status
             tabs[idx].status = status
+            if resync {
+                if status == .running || status == .connecting {
+                    tabIdleSince.removeValue(forKey: tabId)
+                } else if tabIdleSince[tabId] == nil {
+                    tabIdleSince[tabId] = Date()
+                }
+                DiagnosticLog.log("tab status resync applied", tag: "session.tabevents", fields: [
+                    "tab_id": String(tabId.prefix(16)),
+                    "status": status.rawValue
+                ])
+                return
+            }
             if status == .running {
                 // A new task started — any previous ExitPlanMode/AskUserQuestion
                 // entries are stale (plan was implemented or user moved on).

@@ -16,14 +16,23 @@ extension TransportManager {
 
         if let relay {
             DiagnosticLog.log("start: connecting relay", tag: "transport")
-            await relay.connect()
+
+            if let relayBaseURL {
+                async let probeResult = relayCapabilities.probe(relayURL: relayBaseURL)
+                async let connectResult: () = relay.connect()
+                _ = await (probeResult, connectResult)
+            } else {
+                await relay.connect()
+            }
+
             guard !isStopped else {
                 DiagnosticLog.log("transport start abandoned after relay connect", tag: "transport", fields: [:])
                 relay.disconnect()
                 return
             }
             DiagnosticLog.log("start: relay connect returned", tag: "transport", fields: [
-                "connected": String(relay.isConnected)
+                "connected": String(relay.isConnected),
+                "ack_mode": relayCapabilities.ackMode.rawValue
             ])
             startRelayListener()
             startRelayStateObservation()
@@ -72,6 +81,8 @@ extension TransportManager {
         stopLANHeartbeatWatchdog()
 
         relay?.disconnect()
+        relayDeliveryAcks.cancelAll(reason: "transport_stopped")
+        relayCapabilities.reset()
         lan.disconnect()
         bonjour.stopBrowsing()
         currentLANHost = nil

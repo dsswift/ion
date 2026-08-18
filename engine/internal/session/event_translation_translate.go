@@ -299,6 +299,16 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 			RunStalledLastActivity: e.LastActivity,
 		}
 
+	case *types.RunRecoveryEvent:
+		return types.EngineEvent{
+			Type:                   "engine_run_recovery",
+			RunRecoveryID:          e.RecoveryID,
+			RunRecoveryPhase:       e.Phase,
+			RunRecoveryAttempt:     e.Attempt,
+			RunRecoveryMaxAttempts: e.MaxAttempts,
+			RunRecoveryReason:      e.Reason,
+		}
+
 	case *types.SteerInjectedEvent:
 		// Surface mid-turn steer captures as a typed engine event so
 		// clients can render a confirmation (divider, toast, log line).

@@ -220,29 +220,6 @@ async function persistSessionChains(useSessionStore: Store): Promise<void> {
   }
 }
 
-const WATCHDOG_INTERVAL_MS = 5_000
-
-function scanForStuckTabs(useSessionStore: Store): void {
-  const { tabRecoveryEnabled, tabRecoveryTimeoutSec } = usePreferencesStore.getState()
-  if (!tabRecoveryEnabled) return
-  const thresholdMs = tabRecoveryTimeoutSec * 1000
-  const now = Date.now()
-  const { tabs, autoRecoverStuckTab } = useSessionStore.getState()
-  for (const t of tabs) {
-    if (t.status !== 'running' && t.status !== 'connecting') continue
-    if (!t.activeRequestId) continue
-    if (t.lastEventAt === null) continue
-    if (now - t.lastEventAt <= thresholdMs) continue
-    // Auto-heal: recreate the engine session in-process and resubmit the last
-    // prompt so the work continues without user involvement (the user expected
-    // background work to keep running). Bounded internally; falls back to a
-    // plain reset + honest message after the attempt cap. This replaces the old
-    // behavior of aborting and telling the user to "resume" — which they could
-    // not meaningfully do, and which abandoned the work.
-    autoRecoverStuckTab(t.id)
-  }
-}
-
 export function setupPersistence(useSessionStore: Store): void {
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   useSessionStore.subscribe((state, prev) => {
@@ -324,8 +301,6 @@ export function setupPersistence(useSessionStore: Store): void {
     }
   })
 
-  setInterval(() => scanForStuckTabs(useSessionStore), WATCHDOG_INTERVAL_MS)
-  window.addEventListener('focus', () => scanForStuckTabs(useSessionStore))
 
   useSessionStore.subscribe((state, prev) => {
     if (prev.isExpanded && !state.isExpanded) {

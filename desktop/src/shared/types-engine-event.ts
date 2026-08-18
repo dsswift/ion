@@ -204,6 +204,7 @@ export type EngineEvent =
   // RunStall threshold. The authoritative completion signal is the follow-up
   // task_complete; this event is for observability only.
   | { type: 'engine_run_stalled'; runStalledDuration: number; runStalledLastActivity?: string }
+  | { type: 'engine_run_recovery'; runRecoveryId: string; runRecoveryPhase: 'started' | 'completed' | 'skipped' | 'exhausted' | 'failed' | string; runRecoveryAttempt?: number; runRecoveryMaxAttempts?: number; runRecoveryReason?: string }
   // engine_task_suspended — a run ended without completing, because it is parked.
   // Two producers. A dispatched agent that called ctx.suspend() /
   // ctx.suspendUntilAll() is waiting on child completions or a revive message;

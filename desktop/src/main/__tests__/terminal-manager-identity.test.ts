@@ -49,6 +49,7 @@ function recordingSpawner() {
   return (file: string, args: string[], options: { env: Record<string, string> }) => {
     mocks.spawn(file, args, options)
     return {
+      pid: 123, process: '/bin/zsh',
       onData: () => {}, onExit: () => {}, write: () => {},
       resize: () => {}, kill: () => {},
     } as never
@@ -99,5 +100,118 @@ describe('TerminalManager PTY identity', () => {
     expect(spawnedEnv(1).ION_DESKTOP_TERMINAL_INSTANCE_ID).toBe('inst-2')
     // Same conversation for both.
     expect(spawnedEnv(1).ION_DESKTOP_TAB_ID).toBe('tab-abc')
+  })
+
+  it('keeps tab activity true until every PTY in that tab becomes idle', () => {
+    vi.useFakeTimers()
+    const events: Array<{ channel: string; payload: unknown }> = []
+    let spawned = 0
+    const mgr = new TerminalManager(
+      (channel, payload) => events.push({ channel, payload }),
+      () => {
+        spawned += 1
+        return {
+          pid: spawned, process: spawned === 2 ? 'build' : '/bin/zsh',
+          onData: () => {}, onExit: () => {}, write: () => {},
+          resize: () => {}, kill: () => {},
+        } as never
+      },
+    )
+    mgr.create('tab-activity:inst-1', '/repo')
+    mgr.create('tab-activity:inst-2', '/repo')
+
+    expect(events).toContainEqual({
+      channel: 'ion:terminal-activity',
+      payload: { key: 'tab-activity:inst-2', tabId: 'tab-activity', active: true },
+    })
+
+    mgr.destroy('tab-activity:inst-1')
+    expect(events).not.toContainEqual({
+      channel: 'ion:terminal-activity',
+      payload: { key: 'tab-activity:inst-1', tabId: 'tab-activity', active: false },
+    })
+
+    mgr.destroy('tab-activity:inst-2')
+    expect(events).toContainEqual({
+      channel: 'ion:terminal-activity',
+      payload: { key: 'tab-activity:inst-2', tabId: 'tab-activity', active: false },
+    })
+    vi.useRealTimers()
+  })
+
+  it('uses node-pty foreground-process title without process lookup', () => {
+    const events: Array<{ channel: string; payload: unknown }> = []
+    const mgr = new TerminalManager(
+      (channel, payload) => events.push({ channel, payload }),
+      () => ({
+        pid: 123, process: '/usr/local/bin/build',
+        onData: () => {}, onExit: () => {}, write: () => {},
+        resize: () => {}, kill: () => {},
+      }) as never,
+    )
+
+    mgr.create('tab-activity:inst-1', '/repo')
+
+    expect(events).toContainEqual({
+      channel: 'ion:terminal-activity',
+      payload: { key: 'tab-activity:inst-1', tabId: 'tab-activity', active: true },
+    })
+    mgr.destroy('tab-activity:inst-1')
+  })
+
+  it('self-schedules one future activity check after each probe', () => {
+    vi.useFakeTimers()
+    let probeCalls = 0
+    const mgr = new TerminalManager(
+      () => {},
+      recordingSpawner(),
+      () => {
+        probeCalls += 1
+        return false
+      },
+    )
+
+    mgr.create('tab-activity:inst-1', '/repo')
+    expect(probeCalls).toBe(1)
+    expect(vi.getTimerCount()).toBe(1)
+    vi.advanceTimersByTime(500)
+    expect(probeCalls).toBe(2)
+    expect(vi.getTimerCount()).toBe(1)
+
+    mgr.destroy('tab-activity:inst-1')
+    expect(vi.getTimerCount()).toBe(0)
+    vi.useRealTimers()
+  })
+
+  it('stops activity watch on terminal exit and destroy', () => {
+    vi.useFakeTimers()
+    let probeCalls = 0
+    let onExit: ((event: { exitCode: number }) => void) | undefined
+    const mgr = new TerminalManager(
+      () => {},
+      () => ({
+        pid: 123, process: '/bin/zsh',
+        onData: () => {},
+        onExit: (listener: (event: { exitCode: number }) => void) => { onExit = listener },
+        write: () => {}, resize: () => {}, kill: () => {},
+      }) as never,
+      () => {
+        probeCalls += 1
+        return false
+      },
+    )
+
+    mgr.create('tab-exit:inst-1', '/repo')
+    expect(probeCalls).toBe(1)
+    onExit?.({ exitCode: 0 })
+    vi.advanceTimersByTime(1000)
+    expect(probeCalls).toBe(1)
+
+    mgr.create('tab-destroy:inst-1', '/repo')
+    expect(probeCalls).toBe(2)
+    mgr.destroy('tab-destroy:inst-1')
+    vi.advanceTimersByTime(1000)
+    expect(probeCalls).toBe(2)
+    vi.useRealTimers()
   })
 })

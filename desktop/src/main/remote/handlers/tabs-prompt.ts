@@ -6,6 +6,7 @@ import { encodeAttachments } from '../attachment-encoder'
 import { IS_REMOTE } from '../../engine-bridge'
 import { getVoiceSystemPrompt } from './engine'
 import { performUnifiedInterrupt } from '../../engine-control-plane-interrupt'
+import { registerRemotePromptDelivery } from '../prompt-delivery'
 import type { RemoteCommand } from '../protocol'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -40,6 +41,23 @@ export async function resolveTabProjectPath(tabId: string): Promise<string | und
   }
 }
 
+function sendPromptResult(
+  deviceId: string,
+  tabId: string,
+  clientMsgId: string | undefined,
+  status: 'accepted' | 'rejected',
+  error?: string,
+): void {
+  if (!clientMsgId) return
+  state.remoteTransport?.sendToDevice(deviceId, {
+    type: 'desktop_prompt_result',
+    tabId,
+    clientMsgId,
+    status,
+    ...(error ? { error } : {}),
+  })
+}
+
 export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_prompt' }>, deviceId: string): Promise<void> {
   // Capture the user-echo timestamp ONCE, before any await. handlePrompt awaits
   // several executeJavaScript round-trips (instance resolution, model override,
@@ -62,6 +80,7 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
     // ── Engine tab path (formerly handleEnginePrompt) ──────────────────
     if (!state.mainWindow) {
       log('handlePrompt (engine): no mainWindow, ignoring')
+      sendPromptResult(deviceId, cmd.tabId, cmd.clientMsgId, 'rejected', 'no main window')
       return
     }
     const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
@@ -88,6 +107,7 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
       `)
       if (!instanceId) {
         log('handlePrompt (engine): failed to create engine instance')
+        sendPromptResult(deviceId, cmd.tabId, cmd.clientMsgId, 'rejected', 'failed to create engine instance')
         return
       }
       // Notify iOS about the new instance
@@ -222,6 +242,7 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
       log('handle_prompt: plan file path query failed', { tab_id: cmd.tabId, error: (err as Error).message })
     }
 
+    registerRemotePromptDelivery(engineReqId, deviceId, cmd.tabId)
     await processIncomingPrompt({
       tabId: cmd.tabId,
       text: rewrittenText,
@@ -297,6 +318,7 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
   const projectPath = await resolveTabProjectPath(cmd.tabId)
   // Fire-and-forget the unified pipeline. Errors are logged inside the
   // pipeline; we never want a thrown error here to crash the transport.
+  registerRemotePromptDelivery(reqId, deviceId, cmd.tabId)
   void processIncomingPrompt({
     tabId: cmd.tabId,
     text: cmd.text,

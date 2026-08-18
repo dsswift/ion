@@ -676,6 +676,9 @@ function buildContext(ctxData: any): IonContext {
       const r = await request('ext/get_schedule_status', { id: id ?? '' })
       return Array.isArray(r) ? r as import('./types').ScheduleStatus[] : []
     },
+    async setRunRecovery(config: import('./types').RunRecoveryConfig): Promise<void> {
+      await request('ext/set_run_recovery', config)
+    },
     async enterPlanMode(): Promise<void> {
       await request('ext/set_plan_mode', { enabled: true, source: 'extension' })
     },
@@ -753,6 +756,7 @@ async function handleRequest(
         webhooks: pending.webhooks,
         schedules: pending.schedules,
         resources: resourcePending.resources,
+        hooks: Array.from(hooks.keys()).sort(),
         buildIdentity: buildIdentity.identity,
       })
       return

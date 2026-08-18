@@ -81,6 +81,7 @@ export function handleCrossNormalizedEvent(
   }
   if (event.type === 'resource_snapshot') {
     const items: ResourceItem[] = event.resourceItems ?? []
+    rDebug('event.resource', 'resource snapshot', { kind: event.resourceKind, count: String(items.length), sub_id: event.resourceSubId ?? '' })
     set((state) =>
       applyResourceSnapshot(
         { resources: state.resources, resourceSubscriptions: state.resourceSubscriptions, readResourceIds: state.readResourceIds },
@@ -93,6 +94,7 @@ export function handleCrossNormalizedEvent(
   }
   if (event.type === 'resource_delta') {
     if (event.resourceDelta) {
+      rDebug('event.resource', 'resource delta', { kind: event.resourceKind, op: event.resourceDelta.op, item_id: event.resourceDelta.item?.id ?? '' })
       set((state) =>
         applyResourceDelta(
           { resources: state.resources, resourceSubscriptions: state.resourceSubscriptions, readResourceIds: state.readResourceIds },

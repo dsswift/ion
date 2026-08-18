@@ -7,15 +7,16 @@ import { makeEmptyTab, registerNewTab, registerAdoptedTab, resetTabEntry, restar
 import { relocateTabSession, type RelocateResult } from './engine-control-plane-relocate'
 import { reconcileSessionWorkingDirectory } from './engine-control-plane-cwd'
 import { sendPromptWithRecovery, bridgeSendAdapter } from './engine-control-plane-send'
-import { buildHealthReport, anyTabRunning } from './engine-control-plane-status'
+import { buildHealthReport, anyTabRunning, resyncStatus, applyStatus, type StatusEmit } from './engine-control-plane-status'
 import { performUnifiedInterrupt } from './engine-control-plane-interrupt'
 import * as historyReads from './engine-control-plane-history'
 import { resolveSessionThinkingConfig } from './settings-store'
-import { resolveClaudeCompat } from './engine-control-plane-config'
+import { resolveClaudeCompat, resolveRunRecoveryConfig } from './engine-control-plane-config'
 import { toolGateSessionConfig } from './tool-gate-responder'
 import { benchClientWorkspaceContext } from './integration/bench-prompt-context'
 import { resolveAtvPermission } from './atv-state-cache'
 import { installRecoveredAgentStateListener, makeEventContext } from './engine-control-plane-recovered-agent-state'
+import { installAbortDeliveredListener, installReconnectResetListener } from './engine-control-plane-reconnect'
 import type {
   EngineConfig,
   ThinkingConfig,
@@ -61,19 +62,8 @@ export class EngineControlPlane extends EventEmitter {
 
     installRecoveredAgentStateListener(this.bridge, this.tabs, () => makeEventContext(this.bridge, (eventName, ...args) => this.emit(eventName, ...args), (tabId, newStatus) => this._setStatus(tabId, newStatus), () => this._checkDrain()))
 
-    this.bridge.on('reconnected', () => {
-      for (const tab of this.tabs.values()) {
-        if (tab.engineSessionStarted) {
-          log('reset_session_flag after reconnect', { tab_id: tab.tabId, conversation_id: tab.conversationId ?? '' })
-          tab.engineSessionStarted = false
-          // conversationId is intentionally preserved here. The bridge's
-          // _reRegisterSessions will re-send start_session with this id so
-          // the engine resumes the original conversation, not a fresh one.
-          // The B1 guard in handleStatusEvent ensures the post-restart
-          // pre-mint idle event does not clobber it.
-        }
-      }
-    })
+    installAbortDeliveredListener(this.bridge, this.tabs, (tabId, newStatus) => this._setStatus(tabId, newStatus))
+    installReconnectResetListener(this.bridge, this.tabs)
   }
 
   createTab(): string {
@@ -281,6 +271,9 @@ export class EngineControlPlane extends EventEmitter {
 
     if (tab.engineSessionStarted) {
       log('ensure_session: already started, no-op', { tab_id: tabId, conversation_id: tab.conversationId ?? '' })
+      // Still re-assert the status. A caller that reached this branch has an
+      // optimistic 'connecting' on its own tab and no transition is coming.
+      this._resyncStatus(tabId, 'ensure_session_already_started')
       return { ok: true }
     }
 
@@ -298,6 +291,9 @@ export class EngineControlPlane extends EventEmitter {
       // explicit opts.thinking still wins for a caller that has one.
       thinking: opts.thinking ?? resolveSessionThinkingConfig(),
       claudeCompat: resolveClaudeCompat(),
+      // Desktop preference owns plain desktop conversations. Extension-backed
+      // sessions keep the engine default until their harness selects policy.
+      ...(opts.extensions?.length ? {} : { runRecovery: resolveRunRecoveryConfig() }),
       // Client tool gate: bench containment policy + bench client tools. Declared
       // on every session because bench involvement can begin mid-session; policy
       // resolves the workspace fresh per call.
@@ -328,17 +324,20 @@ export class EngineControlPlane extends EventEmitter {
       log('ensure_session: captured minted conversationId', { tab_id: tabId, conversation_id: result.conversationId })
     }
     log('ensure_session: live', { tab_id: tabId, conversation_id: tab.conversationId ?? '' })
+    // The session is online: re-assert the plane's status so no consumer is left
+    // holding an optimistic 'connecting' that no transition will ever clear.
+    this._resyncStatus(tabId, 'ensure_session_live')
     if (tab.permissionMode === 'plan') {
       this.bridge.sendSetPlanMode(tabId, true, undefined, 'session_start')
     }
     return result
   }
 
-  async submitPrompt(tabId: string, requestId: string, options: RunOptions): Promise<void> {
+  async submitPrompt(tabId: string, requestId: string, options: RunOptions): Promise<{ ok: boolean; error?: string; data?: { accepted?: boolean; alreadyAccepted?: boolean } }> {
     const tab = this.tabs.get(tabId)
     if (!tab) {
       warn('submit_prompt: unknown tab', { tab_id: tabId })
-      return
+      return { ok: false, error: 'Unknown tab' }
     }
 
     log('submit_prompt', { tab_id: tabId, request_id: requestId, model: options.model ?? 'default', session_id: options.sessionId ?? 'new', prompt_count: tab.promptCount + 1 })
@@ -384,15 +383,12 @@ export class EngineControlPlane extends EventEmitter {
         elapsedMs: 0,
         toolCallCount: 0,
       } as EnrichedError)
-      return
+      return { ok: false, error: dirCheck.message }
     }
 
     // A LIVE session keeps the working directory it was started with — the
     // engine pins it at start_session and no wire command changes it. So a
     // prompt whose project path differs from the started directory must
-    // RELOCATE the session, not silently run in the old one. Without this the
-    // `if (!tab.engineSessionStarted)` guard below drops the prompt's directory
-    // on the floor, which is how worktree conversations ended up sharing the
     // base checkout. See engine-control-plane-cwd.ts for the full framing.
     //
     // Awaited: the prompt must land on the reconciled session, not the one it
@@ -435,12 +431,11 @@ export class EngineControlPlane extends EventEmitter {
           elapsedMs: 0,
           toolCallCount: 0,
         } as EnrichedError)
-        return
+        return { ok: false, error: result.error || 'Failed to start engine session' }
       }
     }
 
     this._setStatus(tabId, 'running')
-
     // Send + one lost-session recovery live in a sibling module; see
     // engine-control-plane-send.ts for why the recovery re-send drops
     // attachments. Status transitions and error emission stay here.
@@ -468,6 +463,7 @@ export class EngineControlPlane extends EventEmitter {
         toolCallCount: tab.toolCallCount,
       } as EnrichedError)
     }
+    return result
   }
 
   cancel(requestId: string): boolean {
@@ -493,7 +489,7 @@ export class EngineControlPlane extends EventEmitter {
   }
 
   async retry(tabId: string, requestId: string, options: RunOptions): Promise<void> {
-    return this.submitPrompt(tabId, requestId, options)
+    await this.submitPrompt(tabId, requestId, options)
   }
 
   respondToPermission(tabId: string, questionId: string, optionId: string): boolean {
@@ -574,14 +570,17 @@ export class EngineControlPlane extends EventEmitter {
     }
   }
 
-  private _setStatus(tabId: string, newStatus: TabStatus): void {
-    const tab = this.tabs.get(tabId)
-    if (!tab) return
-    const oldStatus = tab.status
-    if (oldStatus === newStatus) return
-    log('status_transition', { tab_id: tabId, from: oldStatus, to: newStatus })
-    tab.status = newStatus
+  /** Status seam lives in engine-control-plane-status.ts; see resyncStatus there. */
+  private _emitStatus: StatusEmit = (tabId, newStatus, oldStatus) => {
     this.emit('tab-status-change', tabId, newStatus, oldStatus)
+  }
+
+  private _resyncStatus(tabId: string, reason: string): void {
+    resyncStatus(this.tabs, tabId, reason, this._emitStatus)
+  }
+
+  private _setStatus(tabId: string, newStatus: TabStatus): void {
+    applyStatus(this.tabs, tabId, newStatus, this._emitStatus)
   }
 
   private _checkDrain(): void {

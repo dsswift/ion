@@ -138,7 +138,12 @@ func (m *Manager) persistCliTurn(key, convID string) {
 	// between this load and its save would otherwise be erased by it.
 	leaf := ""
 	appendTurn := func(conv *conversation.Conversation) (bool, error) {
-		conversation.AddUserMessage(conv, userText)
+		// Recovery-enabled sessions persist their canonical user turn before the
+		// delegated CLI starts. On exit only append CLI output: writing userText
+		// again would duplicate the exact turn recovery relies on.
+		if journal := conversation.ActiveRunRecovery(conv); journal == nil || journal.UserEntryID == "" {
+			conversation.AddUserMessage(conv, userText)
+		}
 		if assistantText != "" {
 			// No usage annotation: the CLI reported no provider accounting for
 			// this turn, and a zero-valued LlmUsage{} would poison the occupancy

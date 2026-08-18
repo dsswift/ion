@@ -138,6 +138,54 @@ final class PairedDeviceCodableTests: XCTestCase {
         XCTAssertEqual(device.oidcAccountLabel, "user@example.com")
     }
 
+    // MARK: - desktopId backward compat + round trip
+
+    func testPreDesktopIdBlobDecodes() throws {
+        let json = """
+        [{
+            "id": "device-old",
+            "name": "OldMac",
+            "pairedAt": 750000000,
+            "channelId": "channel-old",
+            "sharedSecret": "\(Data(repeating: 0x11, count: 32).base64EncodedString())",
+            "relayURL": "wss://relay.example.com",
+            "relayAPIKey": "psk"
+        }]
+        """.data(using: .utf8)!
+
+        let devices = try decoder.decode([PairedDevice].self, from: json)
+        let device = try XCTUnwrap(devices.first)
+        XCTAssertNil(device.desktopId)
+    }
+
+    func testDesktopIdSurvivesRoundTrip() throws {
+        var device = PairedDevice(
+            id: "device-did", name: "DesktopIdMac", pairedAt: Date(),
+            lastSeen: nil, channelId: "channel-did",
+            sharedSecret: Data(repeating: 0x22, count: 32),
+            relayURL: "wss://relay.example.com", relayAPIKey: "key"
+        )
+        device.desktopId = "stable-uuid-1234"
+
+        let restored = try decoder.decode(
+            [PairedDevice].self, from: encoder.encode([device])
+        )
+        let out = try XCTUnwrap(restored.first)
+        XCTAssertEqual(out.desktopId, "stable-uuid-1234")
+    }
+
+    func testDesktopIdNilWhenNotSet() throws {
+        let device = PairedDevice(
+            id: "d", name: "n", pairedAt: Date(), lastSeen: nil,
+            channelId: "c", sharedSecret: Data(repeating: 1, count: 32),
+            relayURL: "", relayAPIKey: ""
+        )
+        let restored = try decoder.decode(
+            [PairedDevice].self, from: encoder.encode([device])
+        )
+        XCTAssertNil(try XCTUnwrap(restored.first).desktopId)
+    }
+
     func testIssuerHostExtraction() {
         var device = PairedDevice(
             id: "d", name: "n", pairedAt: Date(), lastSeen: nil,

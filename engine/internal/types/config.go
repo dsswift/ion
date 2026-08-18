@@ -304,6 +304,11 @@ type EngineRuntimeConfig struct {
 	// engine.json can omit the block and inherit the compiled defaults. See
 	// types.BackgroundTasksDefaults().
 	BackgroundTasks *BackgroundTasksConfig `json:"backgroundTasks,omitempty"`
+	// RunRecovery configures the active-run journal that lets the engine
+	// detect and recover from mid-run crashes. Pointer so engine.json can
+	// omit the block entirely (nil = recovery off, the historical behavior).
+	// See types.RunRecoveryConfig.
+	RunRecovery *RunRecoveryConfig `json:"runRecovery,omitempty"`
 	LogLevel        string                 `json:"logLevel,omitempty"` // "trace", "debug", "info", "warn", "error"
 	// Logging controls structured log output format, destination, and
 	// rotation. Pointer so engine.json can omit the block and inherit the

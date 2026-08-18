@@ -122,6 +122,87 @@ type PromptOverrides struct {
 	// drainSteer writes for the live-run path. Orthogonal to InjectionKind —
 	// see the RunOptions field comment.
 	SteerDegraded bool
+
+	// DeliveryId is a client-supplied idempotency key. When non-empty the
+	// dispatch layer checks the persisted conversation for an existing
+	// message carrying this ID before calling SendPrompt. A duplicate
+	// short-circuits with no run started and no error. The ID is threaded
+	// onto the persisted user-message entry via RunOptions so retries are
+	// durable across engine restarts. Empty preserves legacy semantics.
+	DeliveryId string
+}
+
+// ReserveDeliveryID atomically reserves an idempotency key for a prompt. It
+// first checks this process's in-flight reservations, then the persisted
+// conversation for a prior accepted delivery. A false result means the ID is
+// already reserved or persisted and the caller must not start another run.
+func (m *Manager) ReserveDeliveryID(key, deliveryID string) bool {
+	if deliveryID == "" {
+		return true
+	}
+	m.mu.Lock()
+	s, ok := m.sessions[key]
+	if !ok {
+		m.mu.Unlock()
+		return true
+	}
+	if s.acceptedDeliveryIDs == nil {
+		s.acceptedDeliveryIDs = make(map[string]struct{})
+	}
+	if _, reserved := s.acceptedDeliveryIDs[deliveryID]; reserved {
+		m.mu.Unlock()
+		return false
+	}
+	convID := s.conversationID
+	m.mu.Unlock()
+
+	conv, err := conversation.Load(convID, "")
+	if err == nil && conversation.HasDeliveryID(conv, deliveryID) {
+		return false
+	}
+	if err != nil {
+		utils.LogWithFields(utils.LevelDebug, "session", "delivery-id persisted check unavailable", map[string]any{
+			"key": key, "delivery_id": deliveryID, "conversation": convID, "error": err.Error(),
+		})
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok = m.sessions[key]
+	if !ok {
+		return true
+	}
+	if s.acceptedDeliveryIDs == nil {
+		s.acceptedDeliveryIDs = make(map[string]struct{})
+	}
+	if _, reserved := s.acceptedDeliveryIDs[deliveryID]; reserved {
+		return false
+	}
+	s.acceptedDeliveryIDs[deliveryID] = struct{}{}
+	return true
+}
+
+// ReleaseDeliveryID abandons a reservation when prompt dispatch fails before
+// acceptance. Persisted entries remain the restart-safe authority after a run
+// starts successfully.
+func (m *Manager) ReleaseDeliveryID(key, deliveryID string) {
+	if deliveryID == "" {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s, ok := m.sessions[key]; ok {
+		delete(s.acceptedDeliveryIDs, deliveryID)
+	}
+}
+
+// deliveryIDFromOverrides extracts the caller-owned reservation key for a
+// dispatch branch that exits before any backend run can persist it.
+func deliveryIDFromOverrides(overrides *PromptOverrides) string {
+	if overrides == nil {
+		return ""
+	}
+	return overrides.DeliveryId
 }
 
 // SendPrompt dispatches a prompt to the session's backend run.
@@ -158,7 +239,11 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// compaction's own save. Enqueue instead; the compaction goroutine drains
 	// one queued prompt when it finishes (mirroring handleRunExit). See
 	// dispatchCompact and engineSession.compactInFlight.
-	if s.requestID != "" || s.compactInFlight {
+	// Recovery claims this slot before its goroutine calls SendPrompt. User input
+	// queues behind it, while the engine-authored continuation itself may enter.
+	isRecoveryContinuation := overrides != nil && overrides.InjectionKind == string(types.InjectionKindRunRecovery)
+	isRecoveryWake := overrides != nil && isRecoveryWakeKind(overrides.InjectionKind)
+	if s.requestID != "" || s.compactInFlight || (s.recoveryInProgress && !isRecoveryContinuation && !isRecoveryWake) {
 		if s.requestID == "" && s.compactInFlight {
 			utils.LogWithFields(utils.LevelInfo, "session", "sendprompt: enqueued behind in-flight compaction (compactinflight=true, no active run)", map[string]any{"key": key})
 		}
@@ -264,6 +349,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 			s.clearRunIdentity()
 			m.unbindRunLocked(requestID)
 			m.mu.Unlock()
+			m.ReleaseDeliveryID(key, deliveryIDFromOverrides(overrides))
 			m.emitUnknownCommand(key, failedCmd)
 			return nil
 		}
@@ -359,6 +445,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		s.clearRunIdentity()
 		m.unbindRunLocked(requestID)
 		m.mu.Unlock()
+		m.ReleaseDeliveryID(key, deliveryIDFromOverrides(overrides))
 		reason := fmt.Sprintf("plan mode is not supported on the %s backend", caps.Kind)
 		utils.LogWithFields(utils.LevelWarn, "session", "prompt_dispatch: capability gate declined prompt", map[string]any{
 			"key": key, "model": opts.Model, "backend": caps.Kind, "capability": "plan_mode",
@@ -409,6 +496,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 			s.clearRunIdentity()
 			m.unbindRunLocked(requestID)
 			m.mu.Unlock()
+			m.ReleaseDeliveryID(key, deliveryIDFromOverrides(overrides))
 			m.emit(key, types.EngineEvent{
 				Type:         "engine_error",
 				EventMessage: fmt.Sprintf("model %q not allowed by enterprise policy", opts.Model),
@@ -486,6 +574,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		s.clearRunIdentityFor(requestID)
 		m.unbindRunLocked(requestID)
 		m.mu.Unlock()
+		m.ReleaseDeliveryID(key, deliveryIDFromOverrides(overrides))
 		// Forked to a sub-agent — no inline run started on the parent, so
 		// the parent run identity and routing binding are both cleared.
 		return nil
@@ -538,6 +627,12 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	}
 
 	m.mu.Lock()
+	current, stillActive := m.sessions[key]
+	if !stillActive || current != s || current.requestID != requestID {
+		m.mu.Unlock()
+		utils.LogWithFields(utils.LevelWarn, "session", "prompt dispatch abandoned after session changed", map[string]any{"key": key, "run_id": requestID})
+		return fmt.Errorf("session %q stopped before prompt dispatch", key)
+	}
 	s.setCurrentModel(opts.Model)
 	s.lastContextWindow = promptCtxWindow
 	// Clear any retained permission denials from a prior task_complete —
@@ -552,6 +647,37 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	}
 	lastPct := s.lastContextPct
 	lastTokens := s.lastContextTokens
+
+	// Commit the journal outside Manager.mu. A full conversation save can fsync
+	// megabytes; holding the manager lock here stalls every other session.
+	journalNeeded := opts.InjectionKind != string(types.InjectionKindRunRecovery) &&
+		!s.recoveryInProgress && m.recoveryEnabled(&s.config)
+	m.mu.Unlock()
+	if journalNeeded {
+		entryID, recorded := m.recordRunRecovery(s, key, requestID, opts, overrides)
+		if !recorded {
+			m.mu.Lock()
+			if current, ok := m.sessions[key]; ok && current == s {
+				current.clearRunIdentityFor(requestID)
+				m.unbindRunLocked(requestID)
+			}
+			m.mu.Unlock()
+			return fmt.Errorf("could not persist recovery journal for session %q", key)
+		}
+		opts.PrePersistedUserEntryID = entryID
+	}
+	m.mu.Lock()
+	current, stillActive = m.sessions[key]
+	if !stillActive || current != s || current.requestID != requestID {
+		conversationID := s.conversationID
+		m.mu.Unlock()
+		// StopSession can delete the session while journal fsync runs. Remove
+		// only this dispatch's journal so a stopped run cannot resurrect on the
+		// next engine start, while a replacement journal remains intact.
+		m.clearRunRecovery(conversationID, key, requestID, "dispatch_stopped_before_start")
+		utils.LogWithFields(utils.LevelWarn, "session", "prompt dispatch abandoned after recovery journal commit", map[string]any{"key": key, "run_id": requestID})
+		return fmt.Errorf("session %q stopped before prompt dispatch", key)
+	}
 	m.mu.Unlock()
 
 	m.emit(key, types.EngineEvent{
@@ -598,6 +724,21 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// We dispatch through m.backend here (not resolvedBackend) so the
 	// hybrid layer sees the call and can record its routing table entry
 	// before forwarding.
+	// StartRun may schedule work immediately, and callbacks acquire Manager.mu.
+	// Validate ownership under the lock, then release it before launch. The run
+	// identity and routing binding remain committed, so a synchronous callback
+	// resolves normally instead of deadlocking on this manager.
+	m.mu.Lock()
+	current, stillActive = m.sessions[key]
+	if !stillActive || current != s || current.requestID != requestID {
+		m.mu.Unlock()
+		utils.LogWithFields(utils.LevelWarn, "session", "prompt dispatch abandoned before backend start", map[string]any{"key": key, "run_id": requestID})
+		return fmt.Errorf("session %q stopped before backend start", key)
+	}
+	launchAck := make(chan struct{})
+	s.launchingRunID = requestID
+	s.launchAck = launchAck
+	m.mu.Unlock()
 	if hybrid, ok := m.backend.(*backend.HybridBackend); ok {
 		hybrid.StartRunWithConfig(requestID, opts, runCfg)
 	} else if apiBackend, ok := m.backend.(*backend.ApiBackend); ok {
@@ -605,6 +746,13 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	} else {
 		m.backend.StartRun(requestID, opts)
 	}
+	m.mu.Lock()
+	if current, ok := m.sessions[key]; ok && current == s && current.launchAck == launchAck {
+		current.launchingRunID = ""
+		current.launchAck = nil
+	}
+	close(launchAck)
+	m.mu.Unlock()
 	return nil
 }
 

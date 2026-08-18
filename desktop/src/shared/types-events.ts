@@ -228,6 +228,7 @@ export type NormalizedEvent =
   // CapabilityUnsupportedEvent (engine/internal/types/normalized_event_capability.go).
   | { type: 'capability_unsupported'; capability: string; backend: string; reason: string }
   | { type: 'run_stalled'; stalledDuration: number; lastActivity?: string }
+  | { type: 'run_recovery'; recoveryId: string; phase: 'started' | 'completed' | 'skipped' | 'exhausted' | 'failed' | string; attempt?: number; maxAttempts?: number; reason?: string }
   // Extended-thinking events (issue #158), normalized-stream layer. These are
   // the bare-name desktop-internal events the renderer consumes for PLAIN
   // conversations. The control plane (engine-control-plane-events.ts)

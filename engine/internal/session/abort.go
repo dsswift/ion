@@ -17,6 +17,8 @@ func (m *Manager) SendAbort(key string) {
 		return
 	}
 	rid := s.requestID
+	recoveryID := s.recoveryID
+	conversationID := s.conversationID
 	// Discard any prompts queued behind the in-flight run. Pressing Stop
 	// means "abandon the pending work", so prompts the user queued *before*
 	// the abort must not be resurrected when the cancelled run unwinds and
@@ -33,6 +35,14 @@ func (m *Manager) SendAbort(key string) {
 	if dropped := len(s.promptQueue); dropped > 0 {
 		utils.LogWithFields(utils.LevelInfo, "session", "sendabort: dropping queued prompt(s) for", map[string]any{"dropped": dropped, "key": key})
 		s.promptQueue = nil
+	}
+	m.mu.Unlock()
+
+	// Explicit abort is an operator decision, never a restart-recovery signal.
+	m.clearRunRecovery(conversationID, key, recoveryID, "explicit_abort")
+	m.mu.Lock()
+	if current, exists := m.sessions[key]; exists && current == s {
+		clearRecoveryLifecycle(current)
 	}
 	m.mu.Unlock()
 

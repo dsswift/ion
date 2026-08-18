@@ -88,6 +88,17 @@ export interface ThinkingConfig {
   persist?: boolean
 }
 
+export interface RunRecoveryConfig {
+  /** Explicit per-session recovery decision. Absent inherits engine.json. */
+  enabled?: boolean
+  /** Durable automatic-recovery limit. Absent inherits engine config. */
+  maxAttempts?: number
+}
+
+export interface RunRecoveryRuntimeConfig extends RunRecoveryConfig {
+  /** Process-wide cap for restart recovery launches. Only engine.json owns it. */
+  maxConcurrent?: number
+}
 export interface EngineConfig {
   profileId: string
   extensions: string[]
@@ -145,6 +156,7 @@ export interface EngineConfig {
    */
   toolGate?: ToolGateConfig
   clientWorkspaceContext?: ClientWorkspaceContext
+  runRecovery?: RunRecoveryConfig
 }
 
 export interface ClientWorkspaceContext {

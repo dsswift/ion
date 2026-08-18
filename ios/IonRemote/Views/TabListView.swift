@@ -65,8 +65,15 @@ struct TabListView: View {
     // same reason: TabListView+Layouts owns both size-class layout roots.
     @State var columnVisibility: NavigationSplitViewVisibility = .all
 
-    // iPhone: path-based navigation
-    @State var navigationPath = NavigationPath()
+    // iPhone: path-based navigation.
+    //
+    // Typed as [String] rather than NavigationPath so the pushed tab ids are
+    // readable. A NavigationPath is write-only (append/removeLast), which meant
+    // nothing could tell whether a pushed destination still referred to a live
+    // tab — a conversation closed on the desktop left its id on the stack and
+    // ConversationView rendered a titleless, stateless shell for it. The stack
+    // has to be inspectable to be revalidated.
+    @State var navigationPath: [String] = []
     @State var flickerOpacity: Double = 1.0
 
     var body: some View {

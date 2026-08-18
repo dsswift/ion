@@ -221,6 +221,14 @@ type EngineEvent struct {
 	Signal     *string  `json:"signal,omitempty"`
 	StderrTail []string `json:"stderrTail,omitempty"`
 
+	// engine_run_recovery — lifecycle of a root run reconstructed from a
+	// durable active-run journal after engine restart.
+	RunRecoveryID          string `json:"runRecoveryId,omitempty"`
+	RunRecoveryPhase       string `json:"runRecoveryPhase,omitempty"`
+	RunRecoveryAttempt     int    `json:"runRecoveryAttempt,omitempty"`
+	RunRecoveryMaxAttempts int    `json:"runRecoveryMaxAttempts,omitempty"`
+	RunRecoveryReason      string `json:"runRecoveryReason,omitempty"`
+
 	// engine_permission_request
 	QuestionID    string          `json:"questionId,omitempty"`
 	PermToolName  string          `json:"permToolName,omitempty"`

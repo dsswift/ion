@@ -340,6 +340,7 @@ func (s *Server) Stop() error {
 			s.ownership.stopAll()
 		}
 
+		s.manager.PrepareForProcessShutdown()
 		if err := s.manager.StopAll(); err != nil {
 			// Sessions refusing to stop during shutdown are otherwise invisible.
 			utils.LogWithFields(utils.LevelInfo, "server", "StopAll during shutdown returned error", map[string]any{"error": err.Error()})

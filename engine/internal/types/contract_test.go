@@ -74,6 +74,7 @@ func normalizedEventVariants() map[string]NormalizedEventData {
 		EventModelFallback:          &ModelFallbackEvent{},
 		EventCapabilityUnsupported:  &CapabilityUnsupportedEvent{},
 		EventRunStalled:             &RunStalledEvent{},
+		EventRunRecovery:            &RunRecoveryEvent{},
 		EventTaskSuspend:            &TaskSuspendEvent{},
 		EventBackgroundTaskComplete: &BackgroundTaskCompleteEvent{},
 		EventPlanContent:            &PlanContentEvent{},

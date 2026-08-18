@@ -103,6 +103,12 @@ func (h *Host) rpcGetPlanMode(_ *Context, id int64, raw []byte) {
 	h.handleGetPlanMode(id, raw)
 }
 
+// --- Run recovery ---
+
+func (h *Host) rpcSetRunRecovery(ctx *Context, id int64, raw []byte) {
+	h.handleSetRunRecovery(ctx, id, raw)
+}
+
 // --- Async triggers ---
 
 func (h *Host) rpcRegisterWebhookReq(_ *Context, id int64, raw []byte) {
@@ -121,12 +127,12 @@ func (h *Host) rpcDeregisterScheduleReq(_ *Context, id int64, raw []byte) {
 	h.rpcDeregisterSchedule(id, raw)
 }
 
-func (h *Host) rpcFireSchedule(_ *Context, id int64, raw []byte) {
-	h.handleFireSchedule(id, raw)
+func (h *Host) rpcFireSchedule(ctx *Context, id int64, raw []byte) {
+	h.handleFireSchedule(ctx, id, raw)
 }
 
-func (h *Host) rpcGetScheduleStatus(_ *Context, id int64, raw []byte) {
-	h.handleGetScheduleStatus(id, raw)
+func (h *Host) rpcGetScheduleStatus(ctx *Context, id int64, raw []byte) {
+	h.handleGetScheduleStatus(ctx, id, raw)
 }
 
 func (h *Host) rpcRunOnceCheck(_ *Context, id int64, raw []byte) {

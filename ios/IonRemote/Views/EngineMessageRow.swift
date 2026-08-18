@@ -202,6 +202,10 @@ struct EngineMessageRow: View {
                     .frame(maxWidth: cap, alignment: .trailing)
                 }
 
+                if let deliveryState = message.deliveryState {
+                    deliveryStateLabel(deliveryState)
+                }
+
                 Text(relativeTimestamp)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)

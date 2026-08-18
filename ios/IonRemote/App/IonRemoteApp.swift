@@ -31,6 +31,11 @@ struct IonRemoteApp: App {
                         "reason": themeManager.selectedThemeId,
                         "status": String(describing: themeManager.accent)
                     ])
+                    // Cached tabs bypass ContentView's empty-state retry task.
+                    // Start the selected pairing's transport here so cold launch
+                    // converges whether cache exists or not; no UI surface owns
+                    // connection recovery.
+                    viewModel.resumeTransport()
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     switch newPhase {

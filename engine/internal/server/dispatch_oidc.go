@@ -181,7 +181,14 @@ func (s *Server) dispatchOidcToken(conn net.Conn, cmd *protocol.ClientCommand) {
 	// until shutdown, and this handler runs per client flush).
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	token, err := provider.GetTokenWithAudience(ctx, cmd.OidcScope, cmd.OidcAudience)
+	var token string
+	var expiresAt time.Time
+	var err error
+	if expiring, ok := provider.(auth.ExpiringTokenProvider); ok {
+		token, expiresAt, err = expiring.GetTokenWithAudienceExpiry(ctx, cmd.OidcScope, cmd.OidcAudience)
+	} else {
+		token, err = provider.GetTokenWithAudience(ctx, cmd.OidcScope, cmd.OidcAudience)
+	}
 	if err != nil {
 		utils.LogWithFields(utils.LevelInfo, "server.oidc", "client token mint failed", map[string]any{
 			"tag":   cmd.OidcScope,
@@ -190,8 +197,12 @@ func (s *Server) dispatchOidcToken(conn net.Conn, cmd *protocol.ClientCommand) {
 		s.sendResult(conn, cmd, err, nil)
 		return
 	}
-	utils.LogWithFields(utils.LevelInfo, "server.oidc", "client token minted", map[string]any{"tag": cmd.OidcScope})
-	s.sendResult(conn, cmd, nil, map[string]any{"accessToken": token})
+	utils.LogWithFields(utils.LevelInfo, "server.oidc", "client token minted", map[string]any{"tag": cmd.OidcScope, "expires_at": expiresAt})
+	result := map[string]any{"accessToken": token}
+	if !expiresAt.IsZero() {
+		result["expiresAt"] = expiresAt.UnixMilli()
+	}
+	s.sendResult(conn, cmd, nil, result)
 }
 
 // oidcIdentityEvent builds the complete identity snapshot event.

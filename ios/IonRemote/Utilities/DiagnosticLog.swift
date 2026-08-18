@@ -131,9 +131,15 @@ final class DiagnosticLog: @unchecked Sendable {
     /// Access synchronized via `writeQueue`.
     private(set) var currentConversationId: String?
 
+    /// The paired desktop's device id. Stamped on every log line so on-device
+    /// logs are attributable to a specific pairing. Nil when not connected.
+    /// Access synchronized via `writeQueue`.
+    private(set) var currentPairingId: String?
+
     /// writeQueue-internal mutators used by the schema extension setters.
     func _setSessionIdOnQueue(_ id: String?) { currentSessionId = id }
     func _setConversationIdOnQueue(_ id: String?) { currentConversationId = id }
+    func _setPairingIdOnQueue(_ id: String?) { currentPairingId = id }
 
     // MARK: - Device identity + per-line sequence
 
@@ -312,16 +318,20 @@ final class DiagnosticLog: @unchecked Sendable {
     /// seq regression) resets the cursor and rescans everything, so
     /// correctness never depends on the cursor. Output format is byte-identical
     /// to the pre-cursor implementation (the desktop parses it).
-    static func exportIncrementalSince(sinceSeq: Int) async -> (logs: String, nextSeq: Int) {
+    static func exportIncrementalSince(sinceSeq: Int, pairingId: String? = nil) async -> (logs: String, nextSeq: Int) {
         await withCheckedContinuation { continuation in
             shared.writeQueue.async {
-                continuation.resume(returning: shared._exportIncrementalOnQueue(sinceSeq: sinceSeq))
+                continuation.resume(returning: shared._exportIncrementalOnQueue(sinceSeq: sinceSeq, pairingId: pairingId))
             }
         }
     }
 
     /// writeQueue-confined incremental export. See `exportIncrementalSince`.
-    private func _exportIncrementalOnQueue(sinceSeq: Int) -> (logs: String, nextSeq: Int) {
+    /// When `pairingId` is non-nil, only lines stamped with that pairing are
+    /// returned. Lines with no pairing_id (pre-upgrade) are excluded from
+    /// filtered exports. The seq cursor advances over ALL lines (including
+    /// filtered-out ones) so it remains globally monotonic.
+    private func _exportIncrementalOnQueue(sinceSeq: Int, pairingId: String? = nil) -> (logs: String, nextSeq: Int) {
         // Cursor validity: the cursor skips bytes whose lines were already
         // scanned; every skipped line has seq ≤ exportScannedMaxSeq. A skipped
         // line qualifies for this pull only when its seq > sinceSeq, so the
@@ -367,8 +377,13 @@ final class DiagnosticLog: @unchecked Sendable {
                 guard let seq = Self.parseSeq(line) else { continue }
                 if seq > exportScannedMaxSeq { exportScannedMaxSeq = seq }
                 if seq > sinceSeq {
-                    newLines.append(line)
+                    // Advance maxSeq over all qualifying lines regardless of
+                    // the pairing filter -- the cursor is global.
                     if seq > maxSeq { maxSeq = seq }
+                    if let filterPairing = pairingId {
+                        guard Self.parsePairingId(line) == filterPairing else { continue }
+                    }
+                    newLines.append(line)
                 }
             }
             exportFileOffsets[name] = end
@@ -394,6 +409,15 @@ final class DiagnosticLog: @unchecked Sendable {
         if let n = fields["seq"] as? Int { return n }
         if let s = fields["seq"] as? String { return Int(s) }
         return nil
+    }
+
+    /// Extract `pairing_id` from a single JSONL line. Returns nil when the line
+    /// is unparseable or carries no pairing_id (pre-upgrade lines or lines
+    /// emitted while no desktop was paired).
+    static func parsePairingId(_ line: String) -> String? {
+        guard let data = line.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return obj["pairing_id"] as? String
     }
 
     /// Format only the current session's log.

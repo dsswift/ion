@@ -35,7 +35,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const prefs = vi.hoisted(() => ({
   current: {
     tabRecoveryEnabled: false,
-    tabRecoveryTimeoutSec: 60,
     expandOnTabSwitch: true,
     keepTerminalOnCollapse: false,
     keepExplorerOnCollapse: false,
@@ -121,7 +120,6 @@ function makeStoreStub(initial: Record<string, unknown> = {}) {
 beforeEach(() => {
   prefs.current = {
     tabRecoveryEnabled: false,
-    tabRecoveryTimeoutSec: 60,
     expandOnTabSwitch: true,
     keepTerminalOnCollapse: false,
     keepExplorerOnCollapse: false,

@@ -15,7 +15,9 @@ enum RemoteEvent: Sendable {
     case snapshot(tabs: [RemoteTabState], recentDirectories: [String], tabGroupMode: String?, tabGroups: [RemoteTabGroup]?, preferredModel: String?, engineDefaultModel: String?, availableModels: [RemoteModelEntry]?, customName: String?, customIcon: String?, remoteDisplayUpdatedAt: Date?, resources: [String: [[String: AnyCodable]]]?)
     case tabCreated(tab: RemoteTabState, clientCmdId: String?)
     case tabClosed(tabId: String)
-    case tabStatus(tabId: String, status: TabStatus)
+    /// `resync` reasserts status after client-side optimistic state diverged.
+    /// It is not a run lifecycle transition.
+    case tabStatus(tabId: String, status: TabStatus, resync: Bool)
     /// Lightweight tab-row metadata delta. Emitted event-driven on title, cost,
     /// conversationInstances, or groupId change, AND by the desktop's 5 s
     /// snapshot poll tick for the hash-excluded volatile conversation fields
@@ -74,6 +76,14 @@ enum RemoteEvent: Sendable {
     /// transport — the ViewModel routes to the pairing screen (.authFailed)
     /// without wiping pairedDevices, and the transport stops retrying.
     case lanAuthRejected
+    /// Synthesized by TransportManager when the desktop refuses LAN auth with
+    /// close 4004: it KNOWS this device but cannot use its stored pairing
+    /// secret (typically its OS keychain grant was lost across a reinstall,
+    /// leaving the stored secret undecryptable). Unlike `lanAuthRejected` the
+    /// pairing is NOT dead — the desktop still holds this phone's
+    /// `mobileDeviceId`, so the ViewModel runs a codeless recovery re-pair over
+    /// the LAN and reconnects with no PIN and no user action.
+    case lanSecretUnusable
     /// Heartbeat from the desktop with sender timestamp and queue depth.
     case heartbeat(senderTs: Double, buffered: Int)
     /// Answer to a requestResend whose frame range was evicted from the
@@ -119,6 +129,11 @@ enum RemoteEvent: Sendable {
     /// follow-up engine_task_complete + engine_dead/idle events. See
     /// the Go-side RunStalledEvent doc for the watchdog contract.
     case engineRunStalled(tabId: String, instanceId: String?, stalledDuration: Double, lastActivity: String?)
+    /// Lifecycle signal for interrupted-run recovery. The engine emits
+    /// one event per phase transition: started, completed, skipped,
+    /// exhausted, or failed. Successful recovery (started → completed)
+    /// is quiet on iOS; unsuccessful outcomes surface a system notice.
+    case engineRunRecovery(tabId: String, instanceId: String?, recoveryId: String, phase: String, attempt: Int?, maxAttempts: Int?, reason: String?)
     /// Engine drained a mid-turn steer message into the conversation as
     /// a user turn before the next LLM call. The desktop renders a
     /// "Steer applied" divider into the engineMessages scrollback; iOS
@@ -511,6 +526,12 @@ enum RemoteEvent: Sendable {
         contextBreakdown: ContextBreakdownPayload
     )
 
+    /// Prompt acceptance acknowledgement (desktop_prompt_result). Sent by the
+    /// desktop after `window.ion.prompt` resolves (accepted) or an early
+    /// failure prevents delivery (rejected). iOS correlates via clientMsgId
+    /// to update the optimistic user bubble's delivery state.
+    case promptResult(tabId: String, clientMsgId: String, status: String, error: String?)
+
     // MARK: - Codable keys
 
     enum TypeKey: String, Codable {
@@ -535,6 +556,7 @@ enum RemoteEvent: Sendable {
         case peerDisconnected = "peer_disconnected"
         case transportReconnecting = "transport_reconnecting"
         case lanAuthRejected = "lan_auth_rejected"
+        case lanSecretUnusable = "lan_secret_unusable"
         case heartbeat = "desktop_heartbeat"
         case resendUnavailable = "desktop_resend_unavailable"
         case error = "desktop_error"
@@ -554,6 +576,7 @@ enum RemoteEvent: Sendable {
         case engineToolComplete = "desktop_tool_complete"
         case engineToolStalled = "desktop_tool_stalled"
         case engineRunStalled = "desktop_run_stalled"
+        case engineRunRecovery = "desktop_run_recovery"
         case engineSteerInjected = "desktop_steer_injected"
         case engineSteerDegraded = "desktop_steer_degraded"
         case enginePromptInjected = "desktop_prompt_injected"
@@ -633,6 +656,7 @@ enum RemoteEvent: Sendable {
         /// from the engine's context analysis. Lockstep parity with engine_context_breakdown
         /// (plan modest-leaping-waffle.md §9).
         case desktopContextBreakdown = "desktop_context_breakdown"
+        case promptResult = "desktop_prompt_result"
     }
 
     // CodingKeys and the init(from:)/encode(to:) requirements must live in
@@ -644,7 +668,7 @@ enum RemoteEvent: Sendable {
     // see RemoteTabGroup.swift.)
     enum CodingKeys: String, CodingKey {
         case type
-        case tabs, tab, tabId, status, text, toolName, toolId
+        case tabs, tab, tabId, status, resync, text, toolName, toolId
         // Worktree + integration bench payload keys. `warning` carries the
         // pin-update dry-run's collision prediction on desktop_worktree_op_result;
         // `summary` carries sync_all's pre-worded per-worktree counts; `retired`
@@ -653,6 +677,9 @@ enum RemoteEvent: Sendable {
         // desktop_tab_created echo of the iOS create command's correlation id,
         // consumed by the confirm-or-resend delivery loop (create-tab reliability).
         case clientCmdId
+        // desktop_prompt_result correlation id — echoes the clientMsgId the iOS
+        // client sent on desktop_prompt so the delivery state can be updated.
+        case clientMsgId
         case runCostUsd, totalCostUsd, groupId  // desktop_tab_meta delta fields (title is already below); runCostUsd is canonical, totalCostUsd is deprecated compat alias
         // desktop_tab_meta volatile conversation fields (B6-1): pushed by the
         // desktop's poll tick when they change so the full snapshot need not
@@ -745,6 +772,13 @@ enum RemoteEvent: Sendable {
         // iOS observes only and may render the advisory event as a
         // diagnostic indicator separate from a generic engine_error.
         case runStalledDuration, runStalledLastActivity
+        // engine_run_recovery — interrupted-run recovery lifecycle.
+        // Mirrors the Go-side RunRecoveryEvent json tags. The wire
+        // carries the engine's own field names (recoveryId, phase,
+        // attempt, maxAttempts, reason) unchanged through the generic
+        // spread in event-wiring-wire-projection.ts.
+        case runRecoveryId, runRecoveryPhase
+        case runRecoveryAttempt, runRecoveryMaxAttempts, runRecoveryReason
         // engine_plan_proposal — workflow event for plan-mode proposals.
         // The engine emits these field names (no instanceId; the proposal
         // is always at the tab level, not per-instance).

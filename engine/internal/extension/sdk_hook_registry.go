@@ -190,5 +190,8 @@ func hookSpecs() map[string]hookSpec {
 
 		// --- Cross-session messaging ---
 		HookSessionMessage: {Payload: SessionMessageInfo{}, Result: hookResultNone},
+
+		// --- Run recovery ---
+		HookBeforeRunRecovery: {Payload: BeforeRunRecoveryInfo{}, Result: hookResultStructured, ResultType: BeforeRunRecoveryResult{}},
 	}
 }

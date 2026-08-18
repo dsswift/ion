@@ -34,7 +34,7 @@ All compaction triggers use the same two-step flow:
 
 Replaces `tool_result` content (>100 chars) with `[cleared]` in messages older than the most recent N user turns (default 3, configurable via `microCompactKeep`). Image blocks are never cleared. If pass 1 clears nothing, a second pass truncates long assistant text blocks (>200 chars) in the same message range.
 
-After micro-compaction, the engine re-checks context usage. If it is below the limit, the pass is **micro-only**: compacted `LlmContent` overrides persist on existing tree entries, no `EntryCompaction` boundary is inserted, and every source message remains in provider context and transcript history.
+After micro-compaction, the engine re-checks context usage against the configured post-compaction target. If micro-compaction reaches that target, the pass is **micro-only**: compacted `LlmContent` overrides persist on existing tree entries, no `EntryCompaction` boundary is inserted, and every source message remains in provider context and transcript history. If usage remains above the target, the engine continues to hard truncation even when micro-compaction has already brought usage below the auto-compact trigger; crossing the trigger alone does not create sufficient headroom.
 
 ### Step 2: Token-budget truncation with summary
 

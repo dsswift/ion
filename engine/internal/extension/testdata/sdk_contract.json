@@ -141,6 +141,23 @@
       "payloadKind": "none",
       "result": "none"
     },
+    "before_run_recovery": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "attempt",
+        "conversationId",
+        "maxAttempts",
+        "model",
+        "prompt",
+        "recoveryId",
+        "sessionKey"
+      ],
+      "result": "structured",
+      "resultFields": [
+        "action",
+        "instruction"
+      ]
+    },
     "capability_discover": {
       "payloadKind": "none",
       "result": "string"
@@ -665,6 +682,7 @@
     "ext/send_to_session",
     "ext/set_dispatch_context_defaults",
     "ext/set_plan_mode",
+    "ext/set_run_recovery",
     "ext/set_session_memory",
     "ext/steer_dispatch",
     "ext/steer_dispatch_by_name",
@@ -683,6 +701,7 @@
   "initResult": [
     "buildIdentity",
     "commands",
+    "hooks",
     "name",
     "resources",
     "schedules",

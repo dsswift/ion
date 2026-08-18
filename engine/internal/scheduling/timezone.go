@@ -195,7 +195,7 @@ func weekdayFromName(s string) time.Weekday {
 func (s *Scheduler) bootstrapNextRun(h *extension.Host, job extension.ScheduleJob, now time.Time) {
 	name := hostName(h)
 	loc := s.loadTz(jobTz(job))
-	hasMissedHook := h != nil && h.HasScheduleMissedHandler()
+	policy := s.catchUpPolicy(job, h != nil && h.HasScheduleMissedHandler())
 
 	// Sibling-cadence inheritance for interval jobs: if a sibling host for the
 	// same (extensionName, jobID) already has a nextRun entry, inherit it. This
@@ -218,7 +218,7 @@ func (s *Scheduler) bootstrapNextRun(h *extension.Host, job extension.ScheduleJo
 		}
 	}
 
-	next, decision := s.computeBootstrapNextRun(name, job, now, loc, hasMissedHook)
+	next, decision := s.computeBootstrapNextRun(name, job, now, loc, policy)
 	key := hostJobKey{host: h, id: job.JobID}
 	extKey := extensionJobKey{name: h.Name(), id: job.JobID}
 
@@ -229,36 +229,9 @@ func (s *Scheduler) bootstrapNextRun(h *extension.Host, job extension.ScheduleJo
 	utils.LogWithFields(utils.LevelDebug, "scheduling", "bootstrap next run", map[string]any{"model": name, "schedule_job_id": job.JobID, "reason": next.String()})
 
 	if decision != nil {
-		// Emit the engine_schedule_missed event.
-		s.emitScheduleMissed(job, decision.Slot, decision.HadMarker)
-		// Fire the schedule_missed hook with a resolved ctx.
-		s.mu.RLock()
-		resolve := s.resolve
-		s.mu.RUnlock()
-		if resolve != nil && h != nil {
-			go func() {
-				ctx, err := resolve(h)
-				if err != nil || ctx == nil {
-					// resolve may return (nil, nil); guard so the error field is
-					// a real reason and never a serialized null.
-					errMsg := "nil context"
-					if err != nil {
-						errMsg = err.Error()
-					}
-					utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap schedule missed hook resolve failed", map[string]any{"model": name, "schedule_job_id": job.JobID, "error": errMsg})
-					return
-				}
-				info := extension.ScheduleMissedInfo{
-					ID:             job.JobID,
-					Kind:           string(job.Kind),
-					MissedSlotUtc:  decision.Slot.UTC().Format(time.RFC3339),
-					HadMarker:      decision.HadMarker,
-					RanWithinScope: s.lastRunWithinScopeByName(name, job, now, loc),
-				}
-				h.FireScheduleMissed(ctx, info)
-				utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap schedule missed hook fired", map[string]any{"model": name, "schedule_job_id": job.JobID, "slot": info.MissedSlotUtc})
-			}()
-		}
+		// Persist exact slot before invoking extension policy. ctx.fireSchedule
+		// later consumes this value and forwards it as ScheduleFireMeta.
+		s.recordMissedSlot(h, job, decision.Slot, decision.HadMarker)
 	}
 }
 
@@ -266,20 +239,16 @@ func (s *Scheduler) bootstrapNextRun(h *extension.Host, job extension.ScheduleJo
 // bootstrapNextRun, factored out so catchup_test.go can exercise the
 // decision tree without needing a real *extension.Host.
 //
-// When hasMissedHook is true and a missed slot is detected, the method
-// returns (normal next slot, non-nil decision) so the caller can emit
-// the event and fire the hook. When hasMissedHook is false and a missed
-// slot is detected, auto-catch-up fires (next = now + stagger).
+// Manual policy returns (normal next slot, non-nil decision) so the caller
+// can emit the event and fire the hook. Auto policy schedules a catch-up fire;
+// none advances directly to the normal next slot.
 //
 // First-sighting flood guard: when no marker exists at all, the method
 // records FirstSeenUtc and does NOT catch up on this pass. A job first
 // seen at noon will not catch up this morning's slot.
-func (s *Scheduler) computeBootstrapNextRun(name string, job extension.ScheduleJob, now time.Time, loc *time.Location, hasMissedHook bool) (time.Time, *scheduleMissedDecision) {
+func (s *Scheduler) computeBootstrapNextRun(name string, job extension.ScheduleJob, now time.Time, loc *time.Location, policy string) (time.Time, *scheduleMissedDecision) {
 	next := nextRunFor(job, now, loc)
-
-	// Catch-up is disabled when persistence is off or CatchUpEnabled is
-	// explicitly false. In that case every kind uses the naive next-run.
-	if !s.shouldCatchUp() {
+	if policy == "none" {
 		return next, nil
 	}
 
@@ -352,7 +321,7 @@ func (s *Scheduler) computeBootstrapNextRun(name string, job extension.ScheduleJ
 	if lastSlot.After(anchor) {
 		// The most recent slot is after the anchor: missed.
 		hadMarker := marker.LastRunUtc != ""
-		if hasMissedHook {
+		if policy == "manual" {
 			// Extension decides: schedule normal next, emit decision.
 			utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap missed slot deferred to hook", map[string]any{"model": name, "schedule_job_id": job.JobID, "reason": lastSlot.String()})
 			return next, &scheduleMissedDecision{Slot: lastSlot, HadMarker: hadMarker}

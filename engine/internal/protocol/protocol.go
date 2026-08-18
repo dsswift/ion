@@ -269,6 +269,15 @@ type ClientCommand struct {
 	CompactSummaryEnabled *bool   `json:"compactSummaryEnabled,omitempty"`
 	CompactMemoryEnabled  *bool   `json:"compactMemoryEnabled,omitempty"`
 
+	// send_prompt: client-supplied delivery identifier for idempotent prompt
+	// submission. When non-empty the engine checks the conversation's persisted
+	// entries for an existing message carrying this ID before starting a run.
+	// If found, the prompt is silently de-duplicated (no run, no error) and the
+	// server result carries {"accepted":false,"alreadyAccepted":true}. When
+	// absent (the default) the engine's legacy fire-and-forget semantics apply.
+	// Additive optional field -- non-breaking.
+	DeliveryId string `json:"deliveryId,omitempty"`
+
 	// resource_subscribe / resource_unsubscribe
 	//
 	// ResourceKind names the resource kind to subscribe to. The sentinel

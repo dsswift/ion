@@ -159,20 +159,28 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	// duplicate the client's own input and force a dedup contract on every
 	// consumer; it also surfaced extension-injected turns (ctx.sendMessage) as
 	// phantom user bubbles. See the removal of engine_user_turn.
-	userEntry := appendInboundUserMessage(conv, &opts)
+	var userEntry *conversation.SessionEntry
+	if opts.PrePersistedUserEntryID == "" {
+		userEntry = AppendInboundUserMessage(conv, &opts)
+		// Persist immediately: if the engine dies mid-stream, the user prompt
+		// must survive so the user does not lose what they just typed.
+		if err := conversation.Save(conv, ""); err != nil {
+			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation after AddUserMessage", map[string]any{
+				"error": utils.ErrStr(err),
+			})
+		}
+	} else {
+		userEntry = &conversation.SessionEntry{ID: opts.PrePersistedUserEntryID}
+		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "reusing session-persisted user turn", map[string]any{
+			"run_id": run.requestID, "entry_id": opts.PrePersistedUserEntryID,
+		})
+	}
 	// The run-opening user turn's canonical entry id rides every
 	// message_end of this run (UsageEvent.UserEntryID) so consumers can
 	// re-key their optimistic user row to the persisted identity.
 	runUserEntryID := ""
 	if userEntry != nil {
 		runUserEntryID = userEntry.ID
-	}
-	// Persist immediately: if the engine dies mid-stream, the user prompt
-	// must survive so the user does not lose what they just typed.
-	if err := conversation.Save(conv, ""); err != nil {
-		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation after AddUserMessage", map[string]any{
-			"error": utils.ErrStr(err),
-		})
 	}
 
 	// Announce the persisted user turn's canonical entry id NOW — before any

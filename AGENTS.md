@@ -210,16 +210,19 @@ The following gates are **slow** — Docker container spin-up, full-network vuln
 
 | Scope | Path trigger |
 |-------|-------------|
-| `engine` | `engine/` |
+| `engine` | `engine/` (includes the TypeScript SDK at `engine/extensions/sdk/`, which ships with the engine) |
+| `sdk` | `sdk/` — the standalone Go SDK, released on its own line as `sdk/go` |
 | `desktop` | `desktop/` |
 | `relay` | `relay/` |
 | `ios` | `ios/` |
 | `docs` | `docs/` |
-| `repo` | root files or cross-cutting changes |
-| `ci` | `.github/` workflows and CI config |
+| `repo` | root files, cross-cutting changes, and `.github/` |
+| `ci` | CI config, when you want it distinguished from `repo` |
 | `deps` | dependency-only updates (Dependabot / manual bumps) |
 
-- `ci` and `deps` are in `commitlint.config.js` but not in `.commit.json` (the commit binary does not auto-scope them; use them via `git commit -m` directly when appropriate).
+- `.commit.json` at the repo root is the source of truth for path→scope resolution; `commitlint.config.js` is the source of truth for which scopes are legal in a message. Tools and commands derive scope from `.commit.json` — never from a hardcoded copy.
+- A scope exists in `.commit.json` when the path is its own release unit (see `release-please-config.json`: `engine`, `desktop`, `relay`, `ios`, `sdk/go`) or needs to stay out of component commits (`docs`). Everything else falls through to `defaultScope` (`repo`).
+- `ci` and `deps` are in `commitlint.config.js` but not in `.commit.json` (the commit binary does not auto-scope them; `.github/` resolves to `repo`. Use `ci`/`deps` via `git commit -m` directly when appropriate).
 - Pick the scope matching the primary path touched. If files span multiple scopes, use the scope of the *primary* change.
 - Examples: `feat(engine): add streaming support`, `fix(desktop): correct tab order`, `chore(repo): update ci workflow`.
 - Subject ≤ 65 chars, lowercase, imperative, no period. (This 65-char target is a self-imposed stylistic guideline, not the enforced limit: commitlint's `header-max-length` from `@commitlint/config-conventional` is 100. The tighter target leaves ample headroom for the ` (#N)` issue suffix.)

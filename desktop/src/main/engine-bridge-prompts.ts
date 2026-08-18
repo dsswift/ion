@@ -44,6 +44,8 @@ export interface SendPromptArgs {
    */
   resolveSlash?: boolean
   clientWorkspaceContext?: ClientWorkspaceContext
+  /** Stable caller delivery identity for idempotent engine acceptance. */
+  deliveryId?: string
 }
 
 /**
@@ -111,6 +113,7 @@ export function buildSendPromptMessage(args: SendPromptArgs): Record<string, unk
   // absent value means "plain message" (unchanged behavior).
   if (args.resolveSlash) msg.resolveSlash = true
   if (args.clientWorkspaceContext) msg.clientWorkspaceContext = args.clientWorkspaceContext
+  if (args.deliveryId) msg.deliveryId = args.deliveryId
   return msg
 }
 

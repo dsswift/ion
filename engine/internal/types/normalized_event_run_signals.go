@@ -40,6 +40,19 @@ type RunStalledEvent struct {
 
 func (RunStalledEvent) eventType() string { return EventRunStalled }
 
+// RunRecoveryEvent reports lifecycle of an interrupted root run restored from
+// its durable conversation journal. Consumers render unsuccessful phases by
+// policy; successful recovery needs no duplicate transcript content.
+type RunRecoveryEvent struct {
+	RecoveryID  string `json:"recoveryId"`
+	Phase       string `json:"phase"`
+	Attempt     int    `json:"attempt,omitempty"`
+	MaxAttempts int    `json:"maxAttempts,omitempty"`
+	Reason      string `json:"reason,omitempty"`
+}
+
+func (RunRecoveryEvent) eventType() string { return EventRunRecovery }
+
 // SteerInjectedEvent is emitted when a mid-turn steer message is injected into
 // the conversation before the next LLM call. Clients can use this to confirm
 // that a steer message sent while the agent was running was successfully

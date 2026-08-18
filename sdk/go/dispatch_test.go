@@ -3,6 +3,7 @@ package ion
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -332,6 +333,12 @@ func TestInitResultCarriesRegistrations(t *testing.T) {
 		PlanModeSafe: true,
 	})
 	fe.sdk.RegisterCommand("greet", CommandDef{Description: "say hello"})
+	OnHook(fe.sdk, HookTurnEnd, func(_ *Context, _ TurnInfo) (NoResult, error) {
+		return NoResult{}, nil
+	})
+	OnHook(fe.sdk, HookSessionStart, func(_ *Context, _ NoPayload) (NoResult, error) {
+		return NoResult{}, nil
+	})
 
 	fe.start()
 	result := fe.doInit(ExtensionConfig{ExtensionDir: "/ext", Model: "m", WorkingDirectory: "/w"})
@@ -365,6 +372,14 @@ func TestInitResultCarriesRegistrations(t *testing.T) {
 	greet, _ := commands["greet"].(map[string]any)
 	if greet["description"] != "say hello" {
 		t.Errorf("commands.greet.description = %v, want 'say hello'", greet["description"])
+	}
+
+	hooks, ok := result["hooks"].([]any)
+	if !ok {
+		t.Fatalf("hooks = %+v, want an array", result["hooks"])
+	}
+	if !reflect.DeepEqual(hooks, []any{HookNameSessionStart, HookNameTurnEnd}) {
+		t.Errorf("hooks = %+v, want sorted registered hook names", hooks)
 	}
 }
 

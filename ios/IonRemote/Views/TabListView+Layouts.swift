@@ -15,6 +15,9 @@ extension TabListView {
     var iPadLayout: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebarContent
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    ConnectionBannerView()
+                }
                 // Both split-view columns paint the theme surface themselves.
                 // The columns resolve their backgrounds separately, so a single
                 // modifier on the NavigationSplitView would leave the other
@@ -64,6 +67,16 @@ extension TabListView {
             // intercept events to this device correctly.
             viewModel.sendReportFocus(tabId: tabId)
         }
+        // Same stale-destination rule as the iPhone stack. The detail pane
+        // already renders "Select a tab" for an unresolvable selection, but the
+        // dead id was kept silently; clearing it keeps selection state honest
+        // and makes the event observable in the logs.
+        .onChange(of: viewModel.tabIds) { _, _ in
+            clearStaleDetailSelection(reason: "tabs_changed")
+        }
+        .onChange(of: viewModel.hasAppliedTabSnapshot) { _, _ in
+            clearStaleDetailSelection(reason: "snapshot_applied")
+        }
     }
 
     // MARK: - iPhone Layout (NavigationStack)
@@ -88,6 +101,9 @@ extension TabListView {
                     tabGroupSections(selectionStyle: .navigation)
                 }
                 .scrollContentBackground(.hidden)
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    ConnectionBannerView()
+                }
                 .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search tabs…")
                 .navigationTitle("")
                 .toolbar {
@@ -175,6 +191,25 @@ extension TabListView {
                         navigationPath.append(tabId)
                         viewModel.pendingNavigationTabId = nil
                     }
+                }
+                // Drop a pushed conversation the moment it stops existing.
+                //
+                // Watches tabIds (not tabs) so it fires on membership change
+                // only, and covers both routes a tab can vanish by: a live
+                // desktop_tab_closed while the user is looking at it, and a
+                // snapshot that arrives after resume without the tab. Returning
+                // the user to the list is the intended behaviour — the previous
+                // code kept the dead id on the stack, so ConversationView
+                // rendered an untitled empty shell and the user had to back out
+                // and re-find the conversation by hand.
+                .onChange(of: viewModel.tabIds) { _, _ in
+                    pruneStaleNavigationDestinations(reason: "tabs_changed")
+                }
+                // The snapshot flag is what makes absence authoritative, so a
+                // stack restored before the first snapshot is re-checked the
+                // moment one lands.
+                .onChange(of: viewModel.hasAppliedTabSnapshot) { _, _ in
+                    pruneStaleNavigationDestinations(reason: "snapshot_applied")
                 }
                 .overlay {
                     emptyStateOverlay

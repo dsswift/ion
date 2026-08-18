@@ -4,10 +4,18 @@ import UIKit
 // MARK: - ChatItem
 
 /// Identity wrapper for diffable data source. Hashes by `id` only so the
-/// data source tracks item identity, not content. Content updates are
-/// handled via snapshot `reconfigureItems`.
+/// data source tracks item identity, not content — folding content into
+/// identity would make every streamed chunk read as delete+insert and destroy
+/// the scroll position.
+///
+/// Content changes ride `contentHash` instead: `ChatCollectionVC` diffs it
+/// against the previous apply and reconfigures only the rows that actually
+/// moved. It is excluded from `==`/`hash(into:)` for the reason above, so two
+/// items with the same id are "the same row" to UIKit no matter their content.
 struct ChatItem<Payload>: Hashable {
     let id: String
+    /// Hash of every field the row renders. NOT part of identity.
+    let contentHash: Int
     let payload: Payload
 
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
@@ -22,10 +30,18 @@ struct ChatItem<Payload>: Hashable {
 /// with a single UIKit component that:
 /// - Tracks `isNearBottom` via `UIScrollViewDelegate` (no KVO, no superview walking)
 /// - Scrolls to bottom reliably (no estimated-height overshoot)
-/// - Auto-tails during streaming when the user is near the bottom
+/// - Auto-tails during streaming ONLY when the user is at the bottom
+/// - Holds the user's reading position steady when they are scrolled back
 /// - Uses `UIHostingConfiguration` to render SwiftUI row views
+///
+/// Scroll-position ownership: the VC is authoritative. `isNearBottom` is an
+/// OUTPUT binding (it drives the host's scroll-to-bottom button) and is never
+/// read back to decide whether to tail — see `shouldAutoTail`.
 struct ChatCollectionView<Payload, RowContent: View>: UIViewControllerRepresentable {
     let items: [ChatItem<Payload>]
+    /// Output-only: the VC publishes its live near-bottom state here for the
+    /// host's scroll-to-bottom button. Writing to it does NOT request a scroll
+    /// (use `forceScrollCounter` for that).
     @Binding var isNearBottom: Bool
     /// Monotonically increasing counter. Incrementing forces a scroll-to-bottom
     /// regardless of `isNearBottom` (used by the STB button and submit actions).
@@ -66,11 +82,10 @@ struct ChatCollectionView<Payload, RowContent: View>: UIViewControllerRepresenta
         let forceScroll = forceScrollCounter != context.coordinator.lastForceScroll
         context.coordinator.lastForceScroll = forceScrollCounter
 
-        vc.applySnapshot(
-            items: items,
-            isNearBottom: isNearBottom,
-            forceScroll: forceScroll
-        )
+        // isNearBottom is deliberately NOT passed: the VC decides tailing from
+        // its own live geometry, because this binding's value is one async hop
+        // stale and would re-open the yank-to-bottom window.
+        vc.applySnapshot(items: items, forceScroll: forceScroll)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -102,10 +117,16 @@ final class ChatCollectionVC<Payload, RowContent: View>:
     /// from firing loadMoreMessages on every delegate callback.
     private var topZoneLatched = false
 
-    private var pendingSnapshot: (items: [ChatItem<Payload>], isNearBottom: Bool, forceScroll: Bool)?
+    private var pendingSnapshot: (items: [ChatItem<Payload>], forceScroll: Bool)?
     private var hasAppliedInitialSnapshot = false
     private let spacing: CGFloat
     private let horizontalInset: CGFloat
+
+    /// Content hash of each item as of the last apply, keyed by item id. Diffed
+    /// on every apply so only genuinely-changed rows are reconfigured. Empty
+    /// before the first apply, which is why the first apply reconfigures
+    /// nothing (every id is an insert).
+    private var appliedContentHashes: [String: Int] = [:]
 
     /// Live user-interaction state read directly from the scroll view.
     ///
@@ -174,7 +195,7 @@ final class ChatCollectionVC<Payload, RowContent: View>:
 
         if let pending = pendingSnapshot {
             pendingSnapshot = nil
-            applySnapshot(items: pending.items, isNearBottom: pending.isNearBottom, forceScroll: pending.forceScroll)
+            applySnapshot(items: pending.items, forceScroll: pending.forceScroll)
         }
     }
 
@@ -198,11 +219,10 @@ final class ChatCollectionVC<Payload, RowContent: View>:
 
     func applySnapshot(
         items: [ChatItem<Payload>],
-        isNearBottom: Bool,
         forceScroll: Bool
     ) {
         guard dataSource != nil else {
-            pendingSnapshot = (items, isNearBottom, forceScroll)
+            pendingSnapshot = (items, forceScroll)
             return
         }
 
@@ -219,39 +239,146 @@ final class ChatCollectionVC<Payload, RowContent: View>:
         }
         uniqueItems.reverse()
 
+        // Decide tailing from LIVE geometry, before the apply changes it. The
+        // previous implementation read the round-tripped `isNearBottom` binding,
+        // which lags one async hop behind the user's scroll: any apply landing
+        // inside that window saw a stale `true` and yanked them to the bottom.
+        let tailing = shouldAutoTail(
+            nearBottom: computeNearBottom(),
+            isUserInteracting: isUserInteracting,
+            isInitial: isInitial,
+            forceScroll: forceScroll
+        )
+
+        // Capture the reading position BEFORE the apply. Only meaningful when
+        // we are not about to scroll to the bottom anyway.
+        let anchor = tailing ? nil : captureAnchor()
+
         var snapshot = NSDiffableDataSourceSnapshot<ChatSection, ChatItem<Payload>>()
         snapshot.appendSections([.main])
         snapshot.appendItems(uniqueItems, toSection: .main)
 
-        // Always reconfigure all existing items so hosting configs rebuild
-        // with fresh data (streaming content, status changes).
-        let existing = dataSource.snapshot().itemIdentifiers
-        let toReconfigure = uniqueItems.filter { existing.contains($0) }
-        if !toReconfigure.isEmpty {
-            snapshot.reconfigureItems(toReconfigure)
+        // Reconfigure ONLY rows whose rendered content changed. Reconfiguring
+        // everything (the previous behavior) rebuilt every visible row's
+        // UIHostingConfiguration on every apply; with
+        // selfSizingInvalidation = .enabledIncludingConstraints that re-measures
+        // each one, and a re-measure above the viewport shifts what the user is
+        // reading. During streaming exactly one row changes.
+        let plan = itemsNeedingReconfigure(
+            previousHashes: appliedContentHashes,
+            current: uniqueItems.map { (id: $0.id, contentHash: $0.contentHash) }
+        )
+        appliedContentHashes = plan.nextHashes
+        if !plan.changedIds.isEmpty {
+            // Reconfigure requests must reference items present in the CURRENT
+            // data source; a changed id that is somehow absent would trap.
+            let existing = Set(dataSource.snapshot().itemIdentifiers.map { $0.id })
+            let toReconfigure = uniqueItems.filter {
+                plan.changedIds.contains($0.id) && existing.contains($0.id)
+            }
+            if !toReconfigure.isEmpty {
+                snapshot.reconfigureItems(toReconfigure)
+            }
         }
+        DiagnosticLog.trace("chat scroll apply", tag: "view.chatscroll", fields: [
+            "count": String(uniqueItems.count),
+            "max": String(plan.changedIds.count),
+            "status": String(tailing),
+            "reason": anchor == nil ? "no-anchor" : "anchored"
+        ])
 
         dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
             guard let self else { return }
-            if isInitial || forceScroll {
+            if tailing {
                 self.scrollToBottom(animated: false)
-            } else if isNearBottom {
-                if self.isUserInteracting {
-                    // Auto-tail only when the user is near the bottom AND
-                    // not actively scrolling. If they're dragging/decelerating
-                    // through history we must not yank them back down.
-                    // Logged so a wedged-interaction state is visible in
-                    // diagnostics instead of silently suppressing the tail.
-                    DiagnosticLog.trace("chat scroll tail skipped interacting", tag: "view.chatscroll", fields: [
-                        "reason": String(self.collectionView.isTracking),
-                        "status": String(self.collectionView.isDragging),
-                        "count": String(self.collectionView.isDecelerating)
-                    ])
-                } else {
-                    self.scrollToBottom(animated: false)
-                }
+            } else if let anchor {
+                self.restoreAnchor(anchor)
+            } else {
+                // Not tailing and nothing to anchor on (empty transcript, or no
+                // visible row yet). Logged rather than silently doing nothing so
+                // an unexplained jump is diagnosable.
+                DiagnosticLog.trace("chat scroll hold no anchor", tag: "view.chatscroll", fields: [
+                    "reason": String(self.collectionView.isTracking),
+                    "status": String(self.collectionView.isDragging),
+                    "count": String(self.collectionView.isDecelerating)
+                ])
             }
         }
+    }
+
+    // MARK: - Reading-position anchor
+
+    /// The row the user is reading, plus where its top edge sits on screen.
+    private struct ScrollAnchor {
+        let id: String
+        /// Frame `minY` minus `contentOffset.y` — i.e. the row's top edge in
+        /// viewport coordinates, which is what must stay constant.
+        let topInViewport: CGFloat
+    }
+
+    /// Record the topmost visible row and its on-screen top edge.
+    ///
+    /// Uses a real row rather than an estimate: a diffable apply preserves
+    /// `contentOffset`, not the reading position, so any insertion or height
+    /// correction ABOVE the viewport slides the user's content. Measuring one
+    /// concrete row makes the correction exact for all of those cases.
+    private func captureAnchor() -> ScrollAnchor? {
+        guard let cv = collectionView else { return nil }
+        let offset = cv.contentOffset.y
+        // indexPathsForVisibleItems is unordered; take the topmost.
+        let visible = cv.indexPathsForVisibleItems.sorted()
+        for indexPath in visible {
+            guard let item = dataSource.itemIdentifier(for: indexPath),
+                  let frame = cv.layoutAttributesForItem(at: indexPath)?.frame else { continue }
+            return ScrollAnchor(id: item.id, topInViewport: frame.minY - offset)
+        }
+        return nil
+    }
+
+    /// Put the anchor row back where it was, shifting `contentOffset` by however
+    /// far the row moved during the apply.
+    private func restoreAnchor(_ anchor: ScrollAnchor) {
+        guard let cv = collectionView else { return }
+        // Resolve pending self-sizing so the anchor's post-apply frame is real
+        // and not a stale estimate.
+        cv.layoutIfNeeded()
+        guard let indexPath = currentIndexPath(forItemId: anchor.id),
+              let frame = cv.layoutAttributesForItem(at: indexPath)?.frame else {
+            // The anchor row is gone from this snapshot (e.g. a heal replaced
+            // it). Leaving the offset untouched is the least-wrong option:
+            // there is no row left to hold steady.
+            DiagnosticLog.trace("chat scroll anchor row missing", tag: "view.chatscroll", fields: [
+                "reason": String(anchor.id.prefix(16))
+            ])
+            return
+        }
+        let minOffset = -cv.adjustedContentInset.top
+        let maxOffset = max(
+            cv.contentSize.height - cv.bounds.height + cv.adjustedContentInset.bottom,
+            minOffset
+        )
+        let target = anchoredOffset(
+            previousAnchorTop: anchor.topInViewport,
+            newAnchorTop: frame.minY,
+            minOffset: minOffset,
+            maxOffset: maxOffset
+        )
+        let delta = target - cv.contentOffset.y
+        guard abs(delta) > 0.5 else { return }
+        DiagnosticLog.trace("chat scroll anchor restored", tag: "view.chatscroll", fields: [
+            "reason": String(anchor.id.prefix(16)),
+            "count": String(format: "%.1f", delta),
+            "status": String(format: "%.1f", target)
+        ])
+        cv.setContentOffset(CGPoint(x: 0, y: target), animated: false)
+    }
+
+    /// Index path of an item id in the CURRENT data source, or nil if the id is
+    /// no longer present.
+    private func currentIndexPath(forItemId id: String) -> IndexPath? {
+        let identifiers = dataSource.snapshot().itemIdentifiers
+        guard let idx = identifiers.firstIndex(where: { $0.id == id }) else { return nil }
+        return IndexPath(item: idx, section: 0)
     }
 
     // MARK: - Scroll
@@ -295,8 +422,12 @@ final class ChatCollectionVC<Payload, RowContent: View>:
 
     // MARK: - UIScrollViewDelegate
 
+    /// Distance-to-bottom test, read from live scroll-view geometry.
+    ///
+    /// This is the authoritative tail input (see `shouldAutoTail`). Returns
+    /// `true` before the view exists so the very first populate still tails.
     private func computeNearBottom() -> Bool {
-        let cv = collectionView!
+        guard let cv = collectionView else { return true }
         let distance = cv.contentSize.height - cv.contentOffset.y
             - cv.bounds.height + cv.adjustedContentInset.bottom
         return distance < 100

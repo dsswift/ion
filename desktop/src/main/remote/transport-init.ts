@@ -6,6 +6,7 @@ import { readSettings, writeSettings } from '../settings-store'
 import { RemoteTransport } from './transport'
 import { handleRemoteCommand } from './command-handler'
 import { handlePairRequest } from './pairing-handler'
+import { decodeSharedSecret, describeSecretFailure } from './device-secret'
 import { revokeDeviceLocally } from './revoke'
 import { startTabSnapshotPolling, stopTabSnapshotPolling } from './snapshot-polling'
 import { getRemoteTabStates } from './snapshot'
@@ -35,8 +36,8 @@ function error(msg: string, fields?: Record<string, unknown>): void {
 // Token refresh timer
 // ---------------------------------------------------------------------------
 
-/** How many ms before token expiry to mint a fresh token (5 minutes). */
-const TOKEN_REFRESH_LEAD_MS = 5 * 60 * 1000
+/** How long before token expiry to rotate relay sockets. */
+const TOKEN_REFRESH_LEAD_MS = 30 * 1000
 
 /** Module-level token refresh timer. Cleared when transport is torn down. */
 let tokenRefreshTimer: ReturnType<typeof setTimeout> | null = null
@@ -69,15 +70,19 @@ function scheduleTokenRefresh(oidcScope: string, expiresAtMs: number): void {
           warn('remote_transport: proactive token refresh failed, relay will reconnect on expiry', { error: result.error ?? 'no token' })
           return
         }
-        const freshExpiry = result.data.expiresAt ?? (Date.now() + 60 * 60 * 1000)
-        log('remote_transport: proactive token refresh succeeded, pushing relay_config')
+        const freshExpiry = result.data.expiresAt
+        if (!freshExpiry) {
+          warn('remote_transport: proactive token refresh returned no expiry; relay will reconnect on expiry')
+          return
+        }
+        log('remote_transport: proactive token refresh succeeded, rotating relay sockets')
 
-        // Push a fresh relay_config so iOS persists a current bootstrap token.
-        // Autonomous OIDC clients do not churn a healthy socket for token-only
-        // refreshes; legacy clients consume it on their next reconnect.
+        // Relay auth happens during WebSocket upgrade. Existing sockets keep
+        // their old bearer until relay closes them, so refresh must rebuild the
+        // per-device relay clients now rather than only persisting bootstrap
+        // config for iOS.
+        state.remoteTransport?.updateConfig({ getCredential: buildGetCredential(oidcScope) })
         await sendRelayConfigToPeers('proactive-token-refresh')
-
-        // Schedule the next refresh.
         scheduleTokenRefresh(oidcScope, freshExpiry)
       } catch (err) {
         warn('remote_transport: proactive token refresh threw', { error: String(err) })
@@ -148,6 +153,28 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
   const pairedDevices = settings.pairedDevices as any[] | undefined
   log('remote_transport: paired devices', { count: pairedDevices?.length || 0, has_relay: !!relayUrl, auth_mode: authMode })
 
+  // Quarantine scan: report any stored pairing whose secret cannot be decoded
+  // BEFORE a device tries to connect. Without this the operator only learns a
+  // pairing is dead when the phone next fails to authenticate, and the failure
+  // surfaces as "invalid proof" / "decryption failed" — symptoms that point at
+  // the client rather than at this machine's secret store. The auth-time guard
+  // in transport-lan-auth stays regardless: records can be written mid-session.
+  for (const device of pairedDevices || []) {
+    if (!device || typeof device !== 'object') continue
+    const decoded = decodeSharedSecret(device.sharedSecret)
+    if (!decoded.ok) {
+      error('remote_transport: stored pairing secret unusable, device needs re-pair', {
+        device_id: device.id,
+        device_name: device.name,
+        reason: decoded.reason,
+        detail: describeSecretFailure(decoded.reason),
+        decoded_bytes: decoded.byteLength,
+        // Present ⇒ the device can recover over LAN with no PIN.
+        has_mobile_device_id: !!device.mobileDeviceId,
+      })
+    }
+  }
+
   // Build credential factory when in OIDC mode.
   let getCredential: (() => Promise<string>) | undefined
   if (authMode === 'oidc' && oidcAudience && oidcRequiredScope) {
@@ -174,13 +201,22 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
         const s = readSettings()
         const devices = Array.isArray(s.pairedDevices) ? s.pairedDevices : []
         return devices.find((d: any) => d.id === deviceId) || null
-      } catch { return null }
+      } catch (err) {
+        // A swallowed failure here reads downstream as "unknown device" and
+        // the client is told to re-pair over what may be a transient read
+        // error. Never silent.
+        warn('remote_transport: paired-device lookup failed', { device_id: deviceId, error: String(err) })
+        return null
+      }
     },
     getAllPairedDevices: () => {
       try {
         const s = readSettings()
         return Array.isArray(s.pairedDevices) ? s.pairedDevices : []
-      } catch { return [] }
+      } catch (err) {
+        warn('remote_transport: paired-device list read failed', { error: String(err) })
+        return []
+      }
     },
   })
 

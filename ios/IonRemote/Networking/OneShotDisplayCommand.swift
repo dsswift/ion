@@ -97,6 +97,7 @@ enum OneShotDisplayCommand {
             ])
             tm = TransportManager(sharedKey: sharedKey, deviceId: device.id)
             tm.deviceName = device.name
+            tm.pairedDesktopId = device.desktopId
             isLANOnly = true
             lanHost = host
             lanPort = UInt16(port)
@@ -128,6 +129,7 @@ enum OneShotDisplayCommand {
             )
             tm.deviceId = device.id
             tm.deviceName = device.name
+            tm.pairedDesktopId = device.desktopId
             isLANOnly = false
         }
 

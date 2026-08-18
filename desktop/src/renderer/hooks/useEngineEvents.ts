@@ -22,6 +22,39 @@ import { rTrace, rWarn, rDebug } from '../rendererLogger'
  * with one state update per chunk during streaming.
  */
 export function useEngineEvents() {
+  useEffect(() => {
+    let live = true
+    const seenActivity = new Set<string>()
+    void window.ion.terminalActiveTabs()
+      .then((tabIds) => {
+        if (!live) return
+        useSessionStore.setState((s) => {
+          // Activity events can arrive before this asynchronous snapshot. Keep
+          // those newer observations instead of letting an old snapshot erase
+          // live tab activity.
+          const terminalActiveTabIds = new Set(tabIds)
+          for (const tabId of seenActivity) {
+            if (s.terminalActiveTabIds.has(tabId)) terminalActiveTabIds.add(tabId)
+            else terminalActiveTabIds.delete(tabId)
+          }
+          return { terminalActiveTabIds }
+        })
+      })
+      .catch((err) => rWarn('terminal', 'active terminal snapshot failed', { error: String(err) }))
+    const unsubscribe = window.ion.onTerminalActivity(({ tabId, active }) => {
+      seenActivity.add(tabId)
+      useSessionStore.setState((s) => {
+        const terminalActiveTabIds = new Set(s.terminalActiveTabIds)
+        if (active) terminalActiveTabIds.add(tabId)
+        else terminalActiveTabIds.delete(tabId)
+        return { terminalActiveTabIds }
+      })
+    })
+    return () => {
+      live = false
+      unsubscribe()
+    }
+  }, [])
   const handleNormalizedEvent = useSessionStore((s) => s.handleNormalizedEvent)
   const handleStatusChange = useSessionStore((s) => s.handleStatusChange)
   const handleError = useSessionStore((s) => s.handleError)
@@ -118,7 +151,7 @@ export function useEngineEvents() {
     // forwards so the optimistic user message renders inline image previews — the
     // rewritten prompt only carries the pathless "(content attached)" marker form.
     const remoteUserMsgHandler = (_e: any, data: { tabId: string; requestId: string; prompt: string; timestamp: number; imageAttachments?: ImageAttachmentPayload[]; attachments?: Array<{ type: string; name: string; path: string }>; resolveSlash?: boolean }) => {
-      useSessionStore.getState().submitRemotePrompt(data.tabId, data.prompt, data.imageAttachments, data.resolveSlash, data.attachments)
+      useSessionStore.getState().submitRemotePrompt(data.tabId, data.prompt, data.imageAttachments, data.resolveSlash, data.attachments, data.requestId)
     }
     window.ion.on(IPC.REMOTE_USER_MESSAGE, remoteUserMsgHandler)
 
@@ -219,8 +252,8 @@ export function useEngineEvents() {
     // IPC.PROMPT handler skips its redundant desktop_message_added echo — the
     // canonical echo was already sent by tabs-prompt.ts; a second echo with a
     // renderer-generated id would cause a duplicate user bubble on iOS.
-    const remoteEnginePromptHandler = (_e: any, data: { tabId: string; text: string; appendSystemPrompt?: string; imageAttachments?: ImageAttachmentPayload[]; attachments?: Array<{ type: string; name: string; path: string }>; resolveSlash?: boolean }) => {
-      useSessionStore.getState().submit(data.tabId, data.text, { appendSystemPrompt: data.appendSystemPrompt, imageAttachments: data.imageAttachments, remoteAttachments: data.attachments, source: 'remote', resolveSlash: data.resolveSlash })
+    const remoteEnginePromptHandler = (_e: any, data: { tabId: string; text: string; reqId?: string; appendSystemPrompt?: string; imageAttachments?: ImageAttachmentPayload[]; attachments?: Array<{ type: string; name: string; path: string }>; resolveSlash?: boolean }) => {
+      useSessionStore.getState().submit(data.tabId, data.text, { appendSystemPrompt: data.appendSystemPrompt, imageAttachments: data.imageAttachments, remoteAttachments: data.attachments, source: 'remote', resolveSlash: data.resolveSlash, requestId: data.reqId })
     }
     window.ion.on(IPC.REMOTE_ENGINE_PROMPT, remoteEnginePromptHandler)
 

@@ -160,6 +160,12 @@ struct Message: Codable, Identifiable, Sendable {
     /// rather than promising text that does not exist.
     var thinkingRedacted: Bool = false
 
+    /// Local UI state only -- NOT a wire protocol field, NOT persisted.
+    /// Tracks whether the desktop has acknowledged a remotely-submitted prompt
+    /// (queued while awaiting desktop_prompt_result, then accepted/rejected).
+    /// Only meaningful on user messages created by the iOS submit path.
+    var deliveryState: PromptDeliveryState? = nil
+
     var isUser: Bool { role == .user }
     var isAssistant: Bool { role == .assistant }
     var isTool: Bool { role == .tool }
@@ -213,6 +219,12 @@ enum ToolStatus: String, Codable, Sendable {
 
 enum MessageSource: String, Codable, Sendable {
     case desktop, remote
+}
+
+enum PromptDeliveryState: Sendable {
+    case queued
+    case accepted
+    case rejected(error: String?)
 }
 
 // MARK: - Engine JSON decoding

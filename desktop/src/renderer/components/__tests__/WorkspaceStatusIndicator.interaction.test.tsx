@@ -52,6 +52,7 @@ vi.mock('../../stores/conversation-instance', () => ({
 vi.mock('../TabStripShared', () => ({
   anyEngineInstanceHasRunningChildren: () => false,
   anyEngineInstanceHasRunningShells: () => false,
+  isAnyTerminalCommandRunning: () => false,
   getWaitingState: (tab: any) => h.waitingStates.get(tab.id) ?? null,
 }))
 // Portal target: render popover + tooltip content into the test container's body.

@@ -1,6 +1,7 @@
 package ion
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -505,4 +506,43 @@ func containsString(haystack []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+// TestSetRunRecoverySendsConfig pins the public Go SDK method to its engine
+// RPC and preserves both supported policy fields on the wire.
+func TestSetRunRecoverySendsConfig(t *testing.T) {
+	fe := newFakeEngine(t)
+	fe.start()
+	fe.doInit(ExtensionConfig{})
+
+	enabled := true
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- fe.sdk.newContext(nil).SetRunRecovery(context.Background(), RunRecoveryConfig{
+			Enabled:     &enabled,
+			MaxAttempts: 3,
+		})
+	}()
+
+	request := fe.awaitMethod("ext/set_run_recovery")
+	params, ok := request["params"].(map[string]any)
+	if !ok {
+		t.Fatalf("params = %#v, want object", request["params"])
+	}
+	if params["enabled"] != true || params["maxAttempts"] != float64(3) {
+		t.Errorf("params = %#v, want enabled=true and maxAttempts=3", params)
+	}
+	fe.respond(request["id"].(float64), map[string]any{"ok": true})
+	if err := <-errCh; err != nil {
+		t.Fatalf("SetRunRecovery: %v", err)
+	}
+}
+
+// TestSetRunRecoveryRequiresEnabled prevents a malformed request that engine
+// rejects after extension code has already attempted policy selection.
+func TestSetRunRecoveryRequiresEnabled(t *testing.T) {
+	ctx := New().newContext(nil)
+	if err := ctx.SetRunRecovery(context.Background(), RunRecoveryConfig{}); err == nil {
+		t.Fatal("SetRunRecovery without Enabled succeeded")
+	}
 }

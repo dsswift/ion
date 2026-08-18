@@ -26,7 +26,8 @@ import { maybeApplyPlanModeGroupMove } from './event-slice-plan-mode-move'
 import { handleTaskEvent } from './event-slice-task'
 import { maybeCloseAutoFixTab, retryAutoFixCloseOnTerminalChildren } from './event-slice-auto-fix-lifecycle'
 import { handleErrorAction } from './event-slice-error'
-import { rTrace, rWarn } from '../../rendererLogger'
+import { rInfo, rTrace, rWarn } from '../../rendererLogger'
+import { setTabStatus } from './tab-status-transition'
 import { sameTab, sameInstance, preserveArrayIdentity, shouldStampLastEventAt } from '../store-identity'
 
 /** Compact a multi-line message into a single ~80-char preview for the tab strip. */
@@ -587,6 +588,22 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               updated.currentActivity = 'Still running...'
               break
 
+            case 'run_recovery':
+              // Successful recovery stays quiet. Failed/skipped/exhausted
+              // recovery is actionable, so retain a durable system notice.
+              if (event.phase === 'failed' || event.phase === 'skipped' || event.phase === 'exhausted') {
+                messages = [
+                  ...messages,
+                  {
+                    id: nextMsgId(),
+                    role: 'system' as const,
+                    content: `Automatic recovery ${event.phase}${event.reason ? `: ${event.reason}` : ''}`,
+                    timestamp: Date.now(),
+                  },
+                ]
+              }
+              break
+
             case 'context_breakdown':
               // Cache the per-category breakdown on the instance so the Status
               // Drawer can render it synchronously on open.
@@ -720,7 +737,27 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
       }
     },
 
-    handleStatusChange: (tabId, newStatus) => {
+    handleStatusChange: (tabId, newStatus, oldStatus) => {
+      // A resync, not a transition: the control plane emits old === new when it
+      // re-asserts the status it already holds (_resyncStatus, fired when a
+      // session comes online). It carries no run-lifecycle meaning — it exists
+      // only to answer a client that wrote an optimistic 'connecting' locally
+      // and would otherwise never hear back. Converge the status and stop;
+      // running the terminal-transition side effects below would clear a
+      // restored plan-ready card and a live permission queue on a tab that did
+      // not just finish a run.
+      const isResync = oldStatus === newStatus
+      if (isResync) {
+        set((s) => {
+          const cur = s.tabs.find((t) => t.id === tabId)
+          if (!cur || cur.status === newStatus) return {}
+          rInfo('event.session', 'status resync converged renderer tab', {
+            tab_id: tabId, from: cur.status, to: newStatus,
+          })
+          return { tabs: setTabStatus(s.tabs, tabId, newStatus as TabStatus) }
+        })
+        return
+      }
       if (newStatus === 'dead') {
         rWarn('event.session', 'tab status dead', { tab_id: tabId })
       }

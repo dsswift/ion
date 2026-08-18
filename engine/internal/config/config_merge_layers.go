@@ -261,4 +261,24 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 		cp := *src.ThinkingPolicy
 		dst.ThinkingPolicy = &cp
 	}
+
+	// RunRecovery: merge field-by-field so a layer can override a single
+	// sub-field (e.g. just `enabled`) without nuking the others. Mirrors
+	// the EarlyStopContinue treatment.
+	if src.RunRecovery != nil {
+		if dst.RunRecovery == nil {
+			cp := *src.RunRecovery
+			dst.RunRecovery = &cp
+		} else {
+			if src.RunRecovery.Enabled != nil {
+				dst.RunRecovery.Enabled = src.RunRecovery.Enabled
+			}
+			if src.RunRecovery.MaxAttempts != 0 {
+				dst.RunRecovery.MaxAttempts = src.RunRecovery.MaxAttempts
+			}
+			if src.RunRecovery.MaxConcurrent != 0 {
+				dst.RunRecovery.MaxConcurrent = src.RunRecovery.MaxConcurrent
+			}
+		}
+	}
 }

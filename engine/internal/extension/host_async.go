@@ -360,11 +360,34 @@ func (h *Host) CommitPendingAsyncDecls() []error {
 	return errs
 }
 
-// HasScheduleMissedHandler returns true when any extension on this host has
-// registered a schedule_missed hook handler. Used by the scheduler at
-// bootstrap time to decide between auto-catch-up and extension-decided
-// catch-up.
+// setDeclaredHooks replaces the callback set reported by a subprocess init
+// handshake. Older SDKs omit the declaration, which is equivalent to an empty
+// set: preserve legacy auto catch-up rather than counting engine forwarders.
+func (h *Host) setDeclaredHooks(hooks []string) {
+	declaredHooks := make(map[string]struct{}, len(hooks))
+	for _, hook := range hooks {
+		declaredHooks[hook] = struct{}{}
+	}
+	h.notifMu.Lock()
+	h.declaredHooks = declaredHooks
+	h.declaredHooksInitialized = true
+	h.notifMu.Unlock()
+	utils.LogWithFields(utils.LevelDebug, "extension", "subprocess hook declarations updated", map[string]any{
+		"model": h.name_(), "count": len(declaredHooks),
+	})
+}
+
+// HasScheduleMissedHandler reports a callback the extension itself registered.
+// Subprocess hosts use their init declaration because SDK forwarders are always
+// installed for transport; in-process hosts retain direct SDK handler lookup.
 func (h *Host) HasScheduleMissedHandler() bool {
+	h.notifMu.RLock()
+	initialized := h.declaredHooksInitialized
+	_, declared := h.declaredHooks[HookScheduleMissed]
+	h.notifMu.RUnlock()
+	if initialized {
+		return declared
+	}
 	return h.sdk.HasHandlers(HookScheduleMissed)
 }
 

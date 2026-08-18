@@ -36,6 +36,7 @@ vi.mock('../session-meta', () => ({
 
 // Capture the event handler registered by EngineControlPlane's constructor
 let capturedEventHandler: ((key: string, event: any) => void) | null = null
+let capturedAbortDeliveredHandler: ((key: string) => void) | null = null
 
 const mockBridge = {
   startSession: vi.fn().mockResolvedValue({ ok: true }),
@@ -54,6 +55,9 @@ const mockBridge = {
   on: vi.fn((event: string, handler: any) => {
     if (event === 'event') {
       capturedEventHandler = handler
+    }
+    if (event === 'abort-delivered') {
+      capturedAbortDeliveredHandler = handler
     }
   }),
   emit: vi.fn(),
@@ -313,11 +317,15 @@ describe('EngineControlPlane', () => {
         expect.objectContaining({ workingDirectory: '/Users/test/project' }),
       )
       expect(mockBridge.sendPrompt).toHaveBeenCalledOnce()
-      // trailing optionals (model, appendSystemPrompt, imageAttachments,
-      // implementationPhase, enterPlanModeDescription, planModeSparseReminder,
-      // planFilePath, bashAllowlistAdditionsForThisPrompt, thinkingEffort,
-      // resolveSlash, clientWorkspaceContext) are all undefined for a plain prompt.
-      expect(mockBridge.sendPrompt).toHaveBeenCalledWith(tabId, 'hi', undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined)
+      // Assert the arguments this test is about, then assert that EVERY
+      // trailing optional is undefined for a plain prompt — without pinning
+      // how many there are. The previous spelling listed one `undefined` per
+      // parameter, so adding an optional parameter to sendPrompt broke this
+      // test for a reason unrelated to what it verifies.
+      const [calledTabId, calledText, ...calledRest] = mockBridge.sendPrompt.mock.calls[0]
+      expect(calledTabId).toBe(tabId)
+      expect(calledText).toBe('hi')
+      expect(calledRest.every((arg: unknown) => arg === undefined)).toBe(true)
     })
 
     it('passes sessionId through EngineConfig', async () => {
@@ -344,7 +352,11 @@ describe('EngineControlPlane', () => {
       // startSession should still have been called only once
       expect(mockBridge.startSession).toHaveBeenCalledOnce()
       expect(mockBridge.sendPrompt).toHaveBeenCalledTimes(2)
-      expect(mockBridge.sendPrompt).toHaveBeenLastCalledWith(tabId, 'second', undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined)
+      const lastCall = mockBridge.sendPrompt.mock.calls.at(-1)!
+      const [secondTabId, secondText, ...secondRest] = lastCall
+      expect(secondTabId).toBe(tabId)
+      expect(secondText).toBe('second')
+      expect(secondRest.every((arg: unknown) => arg === undefined)).toBe(true)
     })
 
     it('emits error when startSession fails', async () => {
@@ -373,21 +385,15 @@ describe('EngineControlPlane', () => {
         }),
       )
 
-      expect(mockBridge.sendPrompt).toHaveBeenCalledWith(
-        tabId,
-        '/spec-issue expanded args',
-        undefined,
-        'Analyze the GitHub issue and create a spec.',
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-      )
+      // Pin the two arguments under test (prompt text, appendSystemPrompt) by
+      // position, and require the remaining optionals to be undefined without
+      // counting them.
+      const [askTabId, askText, askModel, askAppend, ...askRest] = mockBridge.sendPrompt.mock.calls[0]
+      expect(askTabId).toBe(tabId)
+      expect(askText).toBe('/spec-issue expanded args')
+      expect(askModel).toBeUndefined()
+      expect(askAppend).toBe('Analyze the GitHub issue and create a spec.')
+      expect(askRest.every((arg: unknown) => arg === undefined)).toBe(true)
     })
   })
 
@@ -509,6 +515,34 @@ describe('EngineControlPlane', () => {
         tabId,
         expect.objectContaining({ sessionId: 'original-conv-id' }),
       )
+    })
+  })
+
+  describe('deferred interrupt settlement', () => {
+    it('settles a tab to completed when its deferred abort reaches the engine', async () => {
+      // D2: the operator interrupts while the socket is down. The bridge
+      // delivers the abort on reconnect; the tab must leave running/connecting
+      // immediately rather than waiting for the renderer's 5s force-recovery.
+      const tabId = cp.createTab()
+      await cp.submitPrompt(tabId, 'req-1', makeRunOptions())
+      expect(cp.getTabStatus(tabId)!.status).not.toBe('completed')
+
+      const statusChanges: Array<[string, string]> = []
+      cp.on('tab-status-change', (id: string, next: string) => statusChanges.push([id, next]))
+
+      expect(capturedAbortDeliveredHandler).toBeTruthy()
+      capturedAbortDeliveredHandler!(tabId)
+
+      const tab = cp.getTabStatus(tabId)!
+      expect(tab.status).toBe('completed')
+      expect(tab.activeRequestId).toBeNull()
+      expect(tab.engineSessionStarted).toBe(false)
+      expect(statusChanges).toContainEqual([tabId, 'completed'])
+    })
+
+    it('ignores an abort delivered for a tab the control plane does not track', () => {
+      expect(capturedAbortDeliveredHandler).toBeTruthy()
+      expect(() => capturedAbortDeliveredHandler!('unknown-tab')).not.toThrow()
     })
   })
 })

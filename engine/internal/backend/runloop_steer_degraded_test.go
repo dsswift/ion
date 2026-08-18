@@ -31,7 +31,7 @@ func TestAppendInbound_DegradedSteer_PersistsMarker(t *testing.T) {
 	conv := conversation.CreateConversation("test-degraded-steer", "sys", "model")
 	prompt := "[SYSTEM] Dispatch check-in\n\nYou have been idle."
 
-	entry := appendInboundUserMessage(conv, &types.RunOptions{
+	entry := AppendInboundUserMessage(conv, &types.RunOptions{
 		Prompt:        prompt,
 		InjectionKind: string(types.InjectionKindCheckIn),
 		SteerDegraded: true,
@@ -79,7 +79,7 @@ func TestAppendInbound_DegradedSteer_PersistsMarker(t *testing.T) {
 func TestAppendInbound_DegradedSteer_KindlessStillMarks(t *testing.T) {
 	conv := conversation.CreateConversation("test-degraded-kindless", "sys", "model")
 
-	appendInboundUserMessage(conv, &types.RunOptions{
+	AppendInboundUserMessage(conv, &types.RunOptions{
 		Prompt:        "actually, check the other branch too",
 		SteerDegraded: true,
 	})
@@ -107,7 +107,7 @@ func TestAppendInbound_InjectionKinds_NoMarkerWithoutDegradation(t *testing.T) {
 		t.Run(string(kind), func(t *testing.T) {
 			conv := conversation.CreateConversation("test-no-marker", "sys", "model")
 
-			appendInboundUserMessage(conv, &types.RunOptions{
+			AppendInboundUserMessage(conv, &types.RunOptions{
 				Prompt:        "payload body",
 				InjectionKind: string(kind),
 			})
@@ -125,7 +125,7 @@ func TestAppendInbound_InjectionKinds_NoMarkerWithoutDegradation(t *testing.T) {
 func TestAppendInbound_OrdinaryPrompt_NoSteerMarker(t *testing.T) {
 	conv := conversation.CreateConversation("test-ordinary", "sys", "model")
 
-	appendInboundUserMessage(conv, &types.RunOptions{Prompt: "what should I work on?"})
+	AppendInboundUserMessage(conv, &types.RunOptions{Prompt: "what should I work on?"})
 
 	for _, e := range conv.Entries {
 		if e.Type == conversation.EntrySteerMarker {
@@ -145,7 +145,7 @@ func TestAppendInbound_OrdinaryPrompt_NoSteerMarker(t *testing.T) {
 func TestAppendInbound_DegradedSteer_MarksAcrossAppendShapes(t *testing.T) {
 	t.Run("with attachments", func(t *testing.T) {
 		conv := conversation.CreateConversation("test-degraded-attach", "sys", "model")
-		appendInboundUserMessage(conv, &types.RunOptions{
+		AppendInboundUserMessage(conv, &types.RunOptions{
 			Prompt:        "look at this",
 			SteerDegraded: true,
 			Attachments:   []types.ImageAttachment{{Path: "/tmp/a.png", MediaType: "image/png"}},
@@ -157,7 +157,7 @@ func TestAppendInbound_DegradedSteer_MarksAcrossAppendShapes(t *testing.T) {
 
 	t.Run("with slash invocation", func(t *testing.T) {
 		conv := conversation.CreateConversation("test-degraded-slash", "sys", "model")
-		appendInboundUserMessage(conv, &types.RunOptions{
+		AppendInboundUserMessage(conv, &types.RunOptions{
 			Prompt:               "expanded body",
 			SteerDegraded:        true,
 			ResolvedSlashCommand: "/align",

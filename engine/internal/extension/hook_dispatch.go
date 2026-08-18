@@ -148,6 +148,11 @@ func (h *Host) FireSlashCommandResolved(ctx *Context, info SlashResolvedInfo) (s
 	return h.sdk.FireSlashCommandResolved(ctx, info)
 }
 
+// FireBeforeRunRecovery delegates to the SDK.
+func (h *Host) FireBeforeRunRecovery(ctx *Context, info BeforeRunRecoveryInfo) *BeforeRunRecoveryResult {
+	return h.sdk.FireBeforeRunRecovery(ctx, info)
+}
+
 // RegisterRequiredHooks prepends enterprise-mandated hooks. Each HookDef
 // maps an event name to a shell command handler. The handler receives the
 // hook payload as JSON on stdin and returns an optional result on stdout.

@@ -394,6 +394,13 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 	// the first status rather than showing 0% until the first prompt.
 	m.emitStatusSnapshot(key, "start_session")
 
+	// Start recovery after every session subsystem is initialized, so its
+	// continuation receives the same tools, hooks, skills, and cursors as a
+	// normal prompt. The journal itself decides whether work is pending.
+	if m.recoverInterruptedRun(s, key) {
+		utils.LogWithFields(utils.LevelInfo, "session.recovery", "recovery continuation queued", map[string]any{"key": key, "conversation_id": s.conversationID})
+	}
+
 	return &StartSessionResult{Existed: false, ConversationID: s.conversationID}, nil
 }
 
@@ -641,6 +648,15 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 		host.SetPersistentAckDispatchLost(func(dispatchID string) {
 			m.persistLostNoticeState(s.conversationID, dispatchID, "sent")
 		})
+
+		// Deferred schedule_missed handlers batch slots after their hook RPC
+		// returns. Keep schedule control tied to this host's bound session.
+		host.SetPersistentScheduleControl(
+			func(jobID string) error { return m.fireScheduleForSession(capturedKey, jobID) },
+			func(jobID string) ([]extension.ScheduleStatusEntry, error) {
+				return m.scheduleStatusForSession(capturedKey, jobID)
+			},
+		)
 		s.dispatchRegistry.SetDispatchLossRecallObserver(m.persistRecallIntents)
 
 		// Persistent recall for ext/recall_agent when the parent run is idle.

@@ -61,13 +61,6 @@ export function applyResourceSnapshot(
   subId: string,
   items: ResourceItem[],
 ): ResourceState {
-  // Collect IDs flagged as read in this snapshot batch.
-  const newReadIds = items.filter((item) => item.read).map((item) => item.id)
-  const readResourceIds =
-    newReadIds.length > 0
-      ? new Set([...state.readResourceIds, ...newReadIds])
-      : state.readResourceIds
-
   // Guard: protect disk-seeded items from being lost to partial or empty snapshots.
   //
   // Multiple sessions fire engine_resource_snapshot on connect. If the extension's
@@ -95,6 +88,28 @@ export function applyResourceSnapshot(
     merged = [...survivingExisting, ...items]
   }
 
+  // Normalize: deduplicate by ID so duplicate-ID items from a buggy producer
+  // or a race between snapshot and delta never stack. Last occurrence wins.
+  const seen = new Set<string>()
+  const normalized: ResourceItem[] = []
+  for (let i = merged.length - 1; i >= 0; i--) {
+    if (!seen.has(merged[i].id)) {
+      seen.add(merged[i].id)
+      normalized.push(merged[i])
+    }
+  }
+  normalized.reverse()
+  merged = normalized
+
+  // Snapshot read state is authoritative for every retained item in this kind.
+  // Remove prior flags before applying final normalized values, otherwise an
+  // earlier duplicate marked read survives a final unread occurrence.
+  const readResourceIds = new Set(state.readResourceIds)
+  for (const item of merged) readResourceIds.delete(item.id)
+  for (const item of merged) {
+    if (item.read) readResourceIds.add(item.id)
+  }
+
   return {
     ...state,
     resources: { ...state.resources, [kind]: merged },
@@ -113,9 +128,13 @@ export function applyResourceDelta(
   let updated: ResourceItem[]
 
   switch (delta.op) {
-    case 'create':
-      updated = [...current, delta.item]
+    case 'create': {
+      const existingIdx = current.findIndex((item) => item.id === delta.item.id)
+      updated = existingIdx >= 0
+        ? current.map((item, i) => (i === existingIdx ? delta.item : item))
+        : [...current, delta.item]
       break
+    }
     case 'update':
       updated = current.map((item) => (item.id === delta.item.id ? delta.item : item))
       break

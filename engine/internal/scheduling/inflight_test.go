@@ -70,8 +70,7 @@ func TestScheduler_StalledFire_SlotReclaimed_JobRefires(t *testing.T) {
 		t.Fatal("fire never reached the session resolver")
 	}
 
-	key := hostJobKey{host: h, id: job.JobID}
-	if _, held := s.inFlight.Load(key); !held {
+	if _, held := s.inFlight.Load(s.fireKey(h, job)); !held {
 		t.Fatal("expected the stalled fire to hold its in-flight claim")
 	}
 
@@ -79,14 +78,14 @@ func TestScheduler_StalledFire_SlotReclaimed_JobRefires(t *testing.T) {
 	// overlapping fire is the thing the claim exists to prevent.
 	clock.advance(time.Second)
 	s.tickOnce()
-	if _, held := s.inFlight.Load(key); !held {
+	if _, held := s.inFlight.Load(s.fireKey(h, job)); !held {
 		t.Fatal("claim reclaimed before the stall deadline elapsed")
 	}
 
 	// Past fireTimeout + StallGrace: the watchdog reclaims.
 	clock.advance(5*time.Second + StallGrace)
 	s.tickOnce()
-	if _, held := s.inFlight.Load(key); held {
+	if _, held := s.inFlight.Load(s.fireKey(h, job)); held {
 		t.Fatal("stalled claim was not reclaimed after the stall deadline")
 	}
 

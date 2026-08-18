@@ -12,7 +12,22 @@ extension TabListView {
 
     @ViewBuilder
     func destinationView(for tabId: String) -> some View {
-        if viewModel.tab(for: tabId)?.isTerminalOnly == true {
+        if viewModel.tab(for: tabId) == nil {
+            // The tab is not in the current list. Render a neutral placeholder
+            // rather than ConversationView, which derives everything through
+            // optional chaining and degrades into an untitled, message-less
+            // shell that reads as a real-but-broken conversation.
+            //
+            // This is a safety net, not the primary fix: when absence is
+            // authoritative (a snapshot has been applied) the stale destination
+            // is popped off the stack by pruneStaleNavigationDestinations and
+            // this view is not reached. It covers the pre-snapshot window,
+            // where the tab may simply not have synced yet and popping would
+            // wrongly eject the user from a live conversation.
+            StaleConversationPlaceholderView(
+                hasAppliedTabSnapshot: viewModel.hasAppliedTabSnapshot
+            )
+        } else if viewModel.tab(for: tabId)?.isTerminalOnly == true {
             RemoteTerminalView(tabId: tabId)
         } else {
             // One unified conversation view for every non-terminal tab — plain

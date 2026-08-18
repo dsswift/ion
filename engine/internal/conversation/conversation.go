@@ -3,6 +3,7 @@ package conversation
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -254,6 +255,18 @@ type Conversation struct {
 	// engine restart. See session/native_session.go for capture/decide.
 	NativeSessions map[string]NativeSessionCursor `json:"nativeSessions,omitempty"`
 
+	// ActiveRun is a durable journal for one accepted root run. It shares the
+	// tree header's atomic write with the transcript, so recovery never has to
+	// reconcile a sidecar against conversation history after a daemon restart.
+	// Nil means no work is pending recovery.
+	ActiveRun *RunJournalEntry `json:"activeRun,omitempty"`
+	// RecoveryRepairVersion records completion of precise legacy recovery
+	// repairs. Optional for old conversations; zero means repair has not run.
+	RecoveryRepairVersion int `json:"recoveryRepairVersion,omitempty"`
+	// _recoveryRepairPending is set while decoding an old file. Load persists the
+	// version through UpdateOnDisk before returning so later loads skip the sweep.
+	_recoveryRepairPending bool
+
 	// _isLegacy is set by Load when reading a legacy .jsonl or .json file.
 	// Save reads this flag to decide whether to unlink the legacy file after
 	// writing the new split format. Not JSON-tagged — never persisted.
@@ -439,6 +452,29 @@ func AddUserMessageWithDeliveryIDs(conv *Conversation, content any, kind string,
 	return true
 }
 
+// HasDeliveryID scans the conversation's persisted entries for a message
+// carrying the given delivery ID. Used by the dispatch layer to enforce
+// idempotent prompt submission before a run starts.
+func HasDeliveryID(conv *Conversation, id string) bool {
+	if id == "" {
+		return false
+	}
+	conv.lock()
+	defer conv.unlock()
+	for _, entry := range conv.Entries {
+		message, ok := entry.Data.(MessageData)
+		if !ok {
+			continue
+		}
+		for _, did := range message.DeliveryIDs {
+			if did == id {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // AddUserMessageWithKind is the kind-aware variant of AddUserMessage. It
 // stamps InjectionKind on the persisted entry, plus the MachineAuthored flag
 // derived from it, so consumers can classify the injection on historical
@@ -554,6 +590,16 @@ func toContentBlocks(content any) []types.LlmContentBlock {
 		return []types.LlmContentBlock{textBlock(c)}
 	case []types.LlmContentBlock:
 		return c
+	case []any:
+		data, err := json.Marshal(c)
+		if err != nil {
+			return []types.LlmContentBlock{textBlock(fmt.Sprint(c))}
+		}
+		var blocks []types.LlmContentBlock
+		if err := json.Unmarshal(data, &blocks); err != nil {
+			return []types.LlmContentBlock{textBlock(fmt.Sprint(c))}
+		}
+		return blocks
 	default:
 		return []types.LlmContentBlock{textBlock(fmt.Sprint(c))}
 	}
@@ -743,29 +789,4 @@ func UpdateCost(conv *Conversation, costUsd float64) {
 	conv.lock()
 	defer conv.unlock()
 	conv.TotalCost += costUsd
-}
-
-// SetAssistantMeta annotates the most recent assistant entry with model and
-// stop reason metadata. This is called after AddAssistantMessage so callers
-// that don't need metadata don't have to change.
-func SetAssistantMeta(conv *Conversation, model, stopReason string) {
-	conv.lock()
-	defer conv.unlock()
-	if conv.Entries == nil {
-		return
-	}
-	// Walk backwards to find the last assistant entry.
-	for i := len(conv.Entries) - 1; i >= 0; i-- {
-		if conv.Entries[i].Type != EntryMessage {
-			continue
-		}
-		md := asMessageData(conv.Entries[i].Data)
-		if md == nil || md.Role != "assistant" {
-			continue
-		}
-		md.Model = model
-		md.StopReason = stopReason
-		conv.Entries[i].Data = *md
-		return
-	}
 }

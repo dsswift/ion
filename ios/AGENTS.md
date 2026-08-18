@@ -25,7 +25,7 @@ cd ios && xcodebuild -project IonRemote.xcodeproj -scheme IonRemote \
 
 # Run unit tests on a simulator destination:
 cd ios && xcodebuild test -project IonRemote.xcodeproj -scheme IonRemote \
-  -destination 'platform=iOS Simulator,name=iPhone 15'
+  -destination 'platform=iOS Simulator,name=iPhone 17'
 ```
 
 Interactive: open `ios/IonRemote.xcodeproj` in Xcode. ⌘U runs tests.

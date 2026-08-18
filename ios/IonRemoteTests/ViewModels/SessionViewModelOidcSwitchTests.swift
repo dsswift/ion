@@ -216,6 +216,74 @@ final class SessionViewModelOidcSwitchTests: XCTestCase {
         XCTAssertFalse(vm.mayViewActiveDesktopData)
     }
 
+    // MARK: - Verification state
+
+    @MainActor
+    func testLockSuppressedDuringVerification() {
+        let vm = makeViewModel()
+        vm.activeDeviceId = workId
+        vm.setDesktopAccess(DesktopAccessRecord(
+            status: .verifying, reason: .none, changedAt: Date(), lastAuthorizedAt: nil
+        ), deviceId: workId, source: "test")
+
+        vm.lockDesktop(deviceId: workId, reason: .noCredential, source: "silent_oidc_exhausted")
+        XCTAssertEqual(vm.activeDesktopAccess.status, .verifying,
+            "transport auth failures must not relock during verification")
+    }
+
+    @MainActor
+    func testWrongAccountLocksFromVerifying() {
+        let vm = makeViewModel()
+        vm.activeDeviceId = workId
+        vm.setDesktopAccess(DesktopAccessRecord(
+            status: .verifying, reason: .none, changedAt: Date(), lastAuthorizedAt: nil
+        ), deviceId: workId, source: "test")
+
+        vm.lockDesktop(deviceId: workId, status: .rejected, reason: .wrongAccount, source: "relay_subject_mismatch")
+        XCTAssertEqual(vm.activeDesktopAccess.status, .rejected)
+        XCTAssertEqual(vm.activeDesktopAccess.reason, .wrongAccount,
+            "fresh 403 wrongAccount must lock even during verification")
+    }
+
+    @MainActor
+    func testSnapshotAuthorizesFromVerifying() {
+        let vm = makeViewModel()
+        vm.activeDeviceId = workId
+        vm.setDesktopAccess(DesktopAccessRecord(
+            status: .verifying, reason: .none, changedAt: Date(), lastAuthorizedAt: nil
+        ), deviceId: workId, source: "test")
+
+        vm.authorizeDesktop(deviceId: workId)
+        XCTAssertEqual(vm.activeDesktopAccess.status, .authorized,
+            "successful snapshot must promote verifying to authorized")
+    }
+
+    @MainActor
+    func testTransientDisconnectDoesNotDemoteVerifying() {
+        let vm = makeViewModel()
+        vm.activeDeviceId = workId
+        vm.setDesktopAccess(DesktopAccessRecord(
+            status: .verifying, reason: .none, changedAt: Date(), lastAuthorizedAt: nil
+        ), deviceId: workId, source: "test")
+
+        vm.markActiveDesktopTransientlyDisconnected(source: "transport_lost")
+        XCTAssertEqual(vm.activeDesktopAccess.status, .verifying,
+            "transport loss must not demote verifying to transientlyDisconnected")
+    }
+
+    @MainActor
+    func testVerifyingPreservesDataVisibility() {
+        let vm = makeViewModel()
+        vm.activeDeviceId = workId
+        vm.setDesktopAccess(DesktopAccessRecord(
+            status: .verifying, reason: .none, changedAt: Date(), lastAuthorizedAt: nil
+        ), deviceId: workId, source: "test")
+
+        XCTAssertTrue(vm.mayViewActiveDesktopData)
+        XCTAssertFalse(vm.activeDesktopIsLocked)
+        XCTAssertTrue(vm.activeDesktopIsVerifying)
+    }
+
     // MARK: - Sign out
 
     @MainActor

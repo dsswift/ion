@@ -89,6 +89,20 @@ func TestFireWebhookDeregistered_IsObservationOnly(t *testing.T) {
 	}
 }
 
+func TestFireScheduleMissed_IsObservationOnly(t *testing.T) {
+	sdk := NewSDK()
+	var got ScheduleMissedInfo
+	sdk.On(HookScheduleMissed, func(_ *Context, payload interface{}) (interface{}, error) {
+		got = payload.(ScheduleMissedInfo)
+		return "ignored", nil
+	})
+	info := ScheduleMissedInfo{ID: "evening", Kind: "daily", MissedSlotUtc: "2026-08-13T22:00:00Z", HadMarker: true}
+	sdk.FireScheduleMissed(&Context{SessionKey: "schedule-test"}, info)
+	if got != info {
+		t.Fatalf("got %+v, want %+v", got, info)
+	}
+}
+
 func TestFireScheduleRegistered_VetoSymmetric(t *testing.T) {
 	sdk := NewSDK()
 	sdk.On(HookScheduleRegistered, func(_ *Context, _ interface{}) (interface{}, error) {

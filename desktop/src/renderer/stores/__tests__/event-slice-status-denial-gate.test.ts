@@ -133,15 +133,16 @@ describe('handleStatusChange — permissionDenied transition gate', () => {
     expect(mainInstance(state.conversationPanes, 'tab1')?.permissionDenied).toBeNull()
   })
 
-  it('still clears the permissionQueue on a passive idle tick (queue is run-scoped)', () => {
+  it('preserves the permissionQueue on a passive idle tick', () => {
     const { state, slice } = buildHarness('idle', PLAN_DENIAL)
-    // Seed a queue entry, then fire the passive idle tick.
+    // A passive resync carries no run-lifecycle meaning. The queue can still
+    // belong to an active restored interaction, so only a true transition may
+    // clear it.
     const pane = state.conversationPanes.get('tab1')!
     pane.instances[0].permissionQueue = [{ questionId: 'q1', toolTitle: 'X', options: [] }]
     slice.handleStatusChange!('tab1', 'idle', 'idle')
     const inst = mainInstance(state.conversationPanes, 'tab1')
-    expect(inst?.permissionQueue).toEqual([])
-    // Denial still preserved alongside the queue clear.
+    expect(inst?.permissionQueue).toEqual([{ questionId: 'q1', toolTitle: 'X', options: [] }])
     expect(inst?.permissionDenied).toEqual(PLAN_DENIAL)
   })
 })

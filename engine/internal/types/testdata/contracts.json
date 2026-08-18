@@ -157,6 +157,13 @@
       "resetsAt",
       "status"
     ],
+    "run_recovery": [
+      "attempt",
+      "maxAttempts",
+      "phase",
+      "reason",
+      "recoveryId"
+    ],
     "run_stalled": [
       "lastActivity",
       "stalledDuration"
@@ -418,6 +425,11 @@
     "result",
     "retryAfterMs",
     "retryable",
+    "runRecoveryAttempt",
+    "runRecoveryId",
+    "runRecoveryMaxAttempts",
+    "runRecoveryPhase",
+    "runRecoveryReason",
     "runStalledDuration",
     "runStalledLastActivity",
     "schema",
@@ -496,6 +508,7 @@
       "parentConversationId",
       "pinned",
       "profileId",
+      "runRecovery",
       "sessionId",
       "systemHint",
       "thinking",

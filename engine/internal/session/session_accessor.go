@@ -442,6 +442,19 @@ func (a *sessionAccessor) SetPlanMode(enabled bool, source string) {
 	a.m.SetPlanMode(a.key, enabled, nil, source, "")
 }
 
+func (a *sessionAccessor) SetRunRecovery(config *types.RunRecoveryConfig) {
+	if config == nil {
+		return
+	}
+	copy := *config
+	a.m.mu.Lock()
+	a.s.config.RunRecovery = &copy
+	a.m.mu.Unlock()
+	utils.LogWithFields(utils.LevelInfo, "session.recovery", "extension set recovery policy", map[string]any{
+		"key": a.key, "enabled": copy.Enabled != nil && *copy.Enabled, "max_attempts": copy.MaxAttempts,
+	})
+}
+
 // GetPlanModeState returns (enabled, planFilePath) for this session.
 func (a *sessionAccessor) GetPlanModeState() (bool, string) {
 	return a.m.GetPlanModeState(a.key)

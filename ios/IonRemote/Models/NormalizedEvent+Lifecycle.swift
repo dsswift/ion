@@ -49,7 +49,8 @@ extension RemoteEvent {
         case .tabStatus:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let status = try container.decode(TabStatus.self, forKey: .status)
-            return .tabStatus(tabId: tabId, status: status)
+            let resync = try container.decodeIfPresent(Bool.self, forKey: .resync) ?? false
+            return .tabStatus(tabId: tabId, status: status, resync: resync)
 
         case .tabMeta:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -130,6 +131,13 @@ extension RemoteEvent {
             let sinceSeq = try container.decodeIfPresent(Int.self, forKey: .sinceSeq) ?? 0
             return .requestDiagnosticLogs(sinceSeq: sinceSeq)
 
+        case .promptResult:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let clientMsgId = try container.decode(String.self, forKey: .clientMsgId)
+            let status = try container.decode(String.self, forKey: .status)
+            let error = try container.decodeIfPresent(String.self, forKey: .error)
+            return .promptResult(tabId: tabId, clientMsgId: clientMsgId, status: status, error: error)
+
         default:
             return nil
         }
@@ -168,10 +176,13 @@ extension RemoteEvent {
             try container.encode(tabId, forKey: .tabId)
             return true
 
-        case .tabStatus(let tabId, let status):
+        case .tabStatus(let tabId, let status, let resync):
             try container.encode(TypeKey.tabStatus, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encode(status, forKey: .status)
+            if resync {
+                try container.encode(true, forKey: .resync)
+            }
             return true
 
         case .tabMeta(let tabId, let title, let totalCostUsd, let groupId, let convFingerprint, let lastActivityAt, let lastMessage, let messageCount):
@@ -253,6 +264,14 @@ extension RemoteEvent {
             if sinceSeq > 0 {
                 try container.encode(sinceSeq, forKey: .sinceSeq)
             }
+            return true
+
+        case .promptResult(let tabId, let clientMsgId, let status, let error):
+            try container.encode(TypeKey.promptResult, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(clientMsgId, forKey: .clientMsgId)
+            try container.encode(status, forKey: .status)
+            try container.encodeIfPresent(error, forKey: .error)
             return true
 
         default:

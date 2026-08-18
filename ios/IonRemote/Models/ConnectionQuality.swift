@@ -128,7 +128,7 @@ final class ConnectionQuality {
     // MARK: - Private
 
     private var relaySignalLevel: SignalLevel {
-        guard let latest = samples.last else { return .good }
+        guard let latest = samples.last else { return .none }
 
         let elapsed = Date().timeIntervalSince(latest.receivedAt)
         if elapsed > 45 { return .none }

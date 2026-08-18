@@ -15,6 +15,8 @@ extension SessionViewModel {
             return
         }
 
+        DiagnosticLog.setPairingId(device.id)
+
         // Resolve this pairing's OIDC credential callbacks before the first
         // connection attempt. They are pinned to this device's ID, so a phone
         // paired with desktops in different tenants never authenticates one
@@ -73,10 +75,14 @@ extension SessionViewModel {
         )
         tm.deviceId = device.id
         tm.deviceName = device.name
+        tm.pairedDesktopId = device.desktopId
         self.transport = tm
         connectionState = .connecting
 
-        Task { await tm.start() }
+        Task { [weak self] in
+            await tm.start()
+            self?.connectionHealth.updateRelayAckMode(tm.relayCapabilities.ackMode)
+        }
         startListening()
     }
 
@@ -102,6 +108,7 @@ extension SessionViewModel {
         let sharedKey = SymmetricKey(data: device.sharedSecret)
         let tm = TransportManager(sharedKey: sharedKey, deviceId: device.id)
         tm.deviceName = device.name
+        tm.pairedDesktopId = device.desktopId
         self.transport = tm
         connectionState = .connecting
 
@@ -149,6 +156,18 @@ extension SessionViewModel {
                     }
                     self.transport?.stop()
                     self.transport = nil
+                }
+            case .secretUnusable:
+                // Desktop-side fault (close 4004): it knows this device but
+                // its stored secret is unusable. Repairable without the user —
+                // same handler the auto-reconnect loop routes to.
+                DiagnosticLog.log("lan connect refused, desktop secret unusable", tag: "session.lifecycle", level: .warn, fields: [
+                    "reason": device.name
+                ])
+                await MainActor.run {
+                    self.transport?.stop()
+                    self.transport = nil
+                    self.handleLANSecretUnusable()
                 }
             case .transient:
                 // NOT .authFailed: the desktop never rejected this identity —
@@ -231,8 +250,12 @@ extension SessionViewModel {
         )
         tm.deviceId = device.id
         tm.deviceName = device.name
+        tm.pairedDesktopId = device.desktopId
         self.transport = tm
-        Task { await tm.start() }
+        Task { [weak self] in
+            await tm.start()
+            self?.connectionHealth.updateRelayAckMode(tm.relayCapabilities.ackMode)
+        }
         startListening()
         startReconnectSafetyTimer()
     }
@@ -297,6 +320,7 @@ extension SessionViewModel {
         let sharedKey = SymmetricKey(data: device.sharedSecret)
         let tm = TransportManager(sharedKey: sharedKey, deviceId: device.id)
         tm.deviceName = device.name
+        tm.pairedDesktopId = device.desktopId
         self.transport = tm
         // NOT .connecting: there is no relay handshake to await, and a
         // lingering .connecting state suppresses the disconnected view's
@@ -304,7 +328,10 @@ extension SessionViewModel {
         // auth; until then the app is honestly disconnected.
         connectionState = .disconnected
 
-        Task { await tm.start() }
+        Task { [weak self] in
+            await tm.start()
+            self?.connectionHealth.updateRelayAckMode(tm.relayCapabilities.ackMode)
+        }
         startListening()
         startReconnectSafetyTimer()
     }
@@ -389,6 +416,7 @@ extension SessionViewModel {
         // session/conversation context. Omitted-when-nil per schema.
         DiagnosticLog.setSessionId(nil)
         DiagnosticLog.setConversationId(nil)
+        DiagnosticLog.setPairingId(nil)
         reconnectSafetyTask?.cancel()
         reconnectSafetyTask = nil
         // Clear any commands deferred via `runWhenConnected` — a hard
@@ -424,10 +452,12 @@ extension SessionViewModel {
     func startReconnectSafetyTimer() {
         reconnectSafetyTask?.cancel()
         reconnectSafetyTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(30))
-            guard !Task.isCancelled, let self else { return }
-            if self.connectionState == .reconnecting || self.connectionState == .disconnected {
-                self.softReconnect()
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                guard !Task.isCancelled, let self else { return }
+                if self.connectionState == .reconnecting || self.connectionState == .disconnected {
+                    self.softReconnect()
+                }
             }
         }
     }
@@ -482,6 +512,7 @@ extension SessionViewModel {
         tabGroups = []
         connectionQuality.reset()
         connectionQuality.transportState = .disconnected
+        connectionHealth.reset()
         // Wipe resource store so stale items from the old desktop don't
         // bleed into the new pairing. Persistence files are deleted so the
         // next launch also starts clean for this device.
@@ -517,6 +548,7 @@ extension SessionViewModel {
         if !cached.recentDirectories.isEmpty {
             recentDirectories = cached.recentDirectories
         }
+        connectionHealth.recordCacheRestore(cachedAt: cached.cachedAt)
     }
 
 }

@@ -19,8 +19,12 @@ type PermissionAskable interface {
 	SetPermissionAskCallback(cb PermissionAskCallback)
 }
 
+// Callback contract: backends copy registered callbacks while holding their
+// own mutex, release that mutex, then invoke callbacks. StartRun may schedule
+// asynchronous work immediately, so callers must never hold an unrelated
+// manager mutex across StartRun.
+//
 // RunBackend abstracts the LLM execution backend.
-// Both ApiBackend (direct API) and ClaudeCodeBackend (Claude CLI wrapper) implement this.
 type RunBackend interface {
 	StartRun(requestID string, options types.RunOptions)
 	Cancel(requestID string) bool

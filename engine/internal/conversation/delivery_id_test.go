@@ -21,3 +21,38 @@ func TestAddUserMessageWithDeliveryIDs_IsIdempotent(t *testing.T) {
 		t.Fatalf("delivery IDs = %v, want [completion-1]", entry.DeliveryIDs)
 	}
 }
+
+func TestHasDeliveryID_MatchesExisting(t *testing.T) {
+	conv := CreateConversation("has-delivery-match", "system", "model")
+	AddUserMessageWithDeliveryIDs(conv, "hello", "", []string{"prompt-abc"})
+
+	if !HasDeliveryID(conv, "prompt-abc") {
+		t.Fatal("HasDeliveryID should return true for existing ID")
+	}
+}
+
+func TestHasDeliveryID_NoMatch(t *testing.T) {
+	conv := CreateConversation("has-delivery-nomatch", "system", "model")
+	AddUserMessageWithDeliveryIDs(conv, "hello", "", []string{"prompt-abc"})
+
+	if HasDeliveryID(conv, "prompt-xyz") {
+		t.Fatal("HasDeliveryID should return false for non-existing ID")
+	}
+}
+
+func TestHasDeliveryID_EmptyID(t *testing.T) {
+	conv := CreateConversation("has-delivery-empty", "system", "model")
+	AddUserMessageWithDeliveryIDs(conv, "hello", "", []string{"prompt-abc"})
+
+	if HasDeliveryID(conv, "") {
+		t.Fatal("HasDeliveryID should return false for empty ID")
+	}
+}
+
+func TestHasDeliveryID_EmptyConversation(t *testing.T) {
+	conv := CreateConversation("has-delivery-empty-conv", "system", "model")
+
+	if HasDeliveryID(conv, "prompt-abc") {
+		t.Fatal("HasDeliveryID should return false on empty conversation")
+	}
+}

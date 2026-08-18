@@ -73,6 +73,12 @@ const (
 	// consumer can tell "here is a child's result" from "keep going".
 	InjectionKindRevive InjectionKind = "revive"
 
+	// InjectionKindRunRecovery is the engine-authored continuation injected after
+	// an interrupted run rehydrates from its durable journal. The original user
+	// turn is already in the transcript; this message tells the model to inspect
+	// state before retrying potentially completed external work.
+	InjectionKindRunRecovery InjectionKind = "run_recovery"
+
 	// InjectionKindSteer is a steer message injected mid-turn onto a live run.
 	//
 	// NOT machine-authored by default: the overwhelmingly common steer is a
@@ -101,7 +107,8 @@ func (k InjectionKind) IsMachineToMachine() bool {
 		InjectionKindSlashCommand,
 		InjectionKindBackgroundTaskCompletion,
 		InjectionKindCheckIn,
-		InjectionKindRevive:
+		InjectionKindRevive,
+		InjectionKindRunRecovery:
 		return true
 	case InjectionKindNone, InjectionKindSteer:
 		return false
@@ -127,5 +134,6 @@ var AllInjectionKinds = []InjectionKind{
 	InjectionKindBackgroundTaskCompletion,
 	InjectionKindCheckIn,
 	InjectionKindRevive,
+	InjectionKindRunRecovery,
 	InjectionKindSteer,
 }

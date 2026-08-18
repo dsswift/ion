@@ -76,7 +76,38 @@ describe('wireRemoteSessionPlaneForwarding — push-on-idle is run→idle only',
     expect((call![2] as any)?.title).toBe('Task completed')
   })
 
-  it('still forwards the tab_status payload regardless of push flag', () => {
+  it('does not resolve a live generic permission on an equal-status resync', async () => {
+    sessionPlaneEmitter.emit('remote-permission', 'tab1', {
+      questionId: 'q1', toolName: 'Bash', options: [],
+    })
+    await Promise.resolve()
+    sessionPlaneEmitter.emit('tab-status-change', 'tab1', 'idle', 'idle')
+
+    expect(mockSend.mock.calls.some(
+      ([event]) => (event as { type?: string }).type === 'desktop_permission_resolved',
+    )).toBe(false)
+  })
+
+  it('resolves a live generic permission on a terminal status transition', async () => {
+    sessionPlaneEmitter.emit('remote-permission', 'tab1', {
+      questionId: 'q1', toolName: 'Bash', options: [],
+    })
+    await Promise.resolve()
+    sessionPlaneEmitter.emit('tab-status-change', 'tab1', 'idle', 'running')
+
+    expect(mockSend.mock.calls.some(
+      ([event]) => (event as { type?: string; questionId?: string }).type === 'desktop_permission_resolved'
+        && (event as { questionId?: string }).questionId === 'q1',
+    )).toBe(true)
+  })
+
+  it('marks an equal-status reassertion as a resync', () => {
+    sessionPlaneEmitter.emit('tab-status-change', 'tab1', 'idle', 'idle')
+    const call = tabStatusSend()
+    expect(call![0]).toEqual({ type: 'desktop_tab_status', tabId: 'tab1', status: 'idle', resync: true })
+  })
+
+  it('does not mark a status transition as a resync', () => {
     sessionPlaneEmitter.emit('tab-status-change', 'tab1', 'idle', 'connecting')
     const call = tabStatusSend()
     expect(call![0]).toEqual({ type: 'desktop_tab_status', tabId: 'tab1', status: 'idle' })

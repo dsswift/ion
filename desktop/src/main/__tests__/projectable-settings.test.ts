@@ -413,8 +413,6 @@ describe('projectableSchema / projectableGroups', () => {
   it('range is carried through for number entries that declare one', () => {
     const schema = projectableSchema()
     expect(schema.find((e) => e.key === 'uiZoom')).toBeUndefined()
-    const timeout = schema.find((e) => e.key === 'tabRecoveryTimeoutSec')
-    expect(timeout?.range).toEqual({ min: 10, max: 600, step: 10 })
   })
 
   it('dynamic group-id enums inject the current tabGroups as choices', () => {

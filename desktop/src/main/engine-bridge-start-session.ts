@@ -73,7 +73,10 @@ export async function startSession(
   // Register BEFORE dispatch so _reRegisterSessions on socket recovery
   // sees this session even if start_session is still in flight at the
   // moment of a reconnect.
-  bridge.activeSessions.set(key, { config, conversationId: entry?.conversationId })
+  // A replacement start is a new lifecycle. Any deferred abort targeted at
+  // an earlier lifecycle must never cancel this new session under same key.
+  bridge.retirePendingAbort(key)
+  bridge.activeSessions.set(key, { config, conversationId: entry?.conversationId, generation: bridge.nextSessionGeneration() })
 
   await bridge.connect()
   // _sendWithData (not _sendWithResult): the engine mints/binds the conversation
@@ -126,7 +129,15 @@ const RE_REGISTER_BATCH_SIZE = 5
 
 export function reRegisterSessions(bridge: EngineBridge): void {
   const generation = bridge._reRegisterGeneration
-  const entries = [...bridge.activeSessions]
+  // A key with a pending interrupt is NOT re-registered. A successful flush
+  // retires it; a failed flush deliberately retains it for the next connection.
+  // Either way, restarting it here would resurrect cancelled work.
+  const entries = [...bridge.activeSessions].filter(([key, entry]) => {
+    const pendingGeneration = bridge.pendingAborts.get(key)
+    // Legacy in-memory entries have no lifecycle generation. A matching
+    // connection-generation marker still represents a deferred interrupt.
+    return pendingGeneration === undefined || (entry.generation !== undefined && pendingGeneration !== entry.generation)
+  })
   log('re-register: starting', { count: entries.length, generation })
 
   void (async () => {
