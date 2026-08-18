@@ -35,8 +35,11 @@ export function createPermissionsSlice(set: StoreSet, _get: StoreGet): Partial<S
       })
     },
 
-    respondElicitation: (tabId, requestId, response, cancelled) => {
-      window.ion.respondElicitation(tabId, requestId, response, cancelled).catch((err) => {
+    respondElicitation: (tabId, requestId, response, cancelled, declined = false) => {
+      const delivery = declined
+        ? window.ion.respondElicitation(tabId, requestId, response, cancelled, true)
+        : window.ion.respondElicitation(tabId, requestId, response, cancelled)
+      delivery.catch((err) => {
         rError('permissions', 'respondElicitation failed', { tab_id: tabId, error: String(err) })
       })
 

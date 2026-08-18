@@ -510,9 +510,9 @@ export class EngineControlPlane extends EventEmitter {
     return true
   }
 
-  respondToElicitation(tabId: string, requestId: string, response: Record<string, unknown> | undefined, cancelled: boolean): boolean {
+  respondToElicitation(tabId: string, requestId: string, response: Record<string, unknown> | undefined, cancelled: boolean, declined = false): boolean {
     if (!this.tabs.has(tabId)) { log('respond_to_elicitation: dropped, unknown tab', { tab_id: tabId, request_id: requestId, cancelled }); return false }
-    this.bridge.sendElicitationResponse(tabId, requestId, response, cancelled)
+    this.bridge.sendElicitationResponse(tabId, requestId, response, cancelled, declined)
     return true
   }
 

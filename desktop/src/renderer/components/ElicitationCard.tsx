@@ -62,10 +62,16 @@ export function ElicitationCard({ tabId, elicitation, queueLength = 1 }: Props) 
     setResponded(false)
   }, [elicitation.requestId])
 
-  const respond = (cancelled: boolean) => {
+  const respond = (kind: 'accept' | 'decline' | 'cancel') => {
     if (responded) return // Prevent double-send
     setResponded(true)
-    respondElicitation(tabId, elicitation.requestId, cancelled ? undefined : {}, cancelled)
+    respondElicitation(
+      tabId,
+      elicitation.requestId,
+      kind === 'accept' ? {} : undefined,
+      kind === 'cancel',
+      kind === 'decline',
+    )
   }
 
   const { title, rows } = formatSchema(elicitation.schema)
@@ -124,7 +130,7 @@ export function ElicitationCard({ tabId, elicitation, queueLength = 1 }: Props) 
 
           <div className="flex items-center gap-2 flex-wrap">
             <button
-              onClick={() => respond(false)}
+              onClick={() => respond('accept')}
               disabled={responded}
               className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1"
               style={{
@@ -143,7 +149,20 @@ export function ElicitationCard({ tabId, elicitation, queueLength = 1 }: Props) 
             </button>
 
             <button
-              onClick={() => respond(true)}
+              onClick={() => respond('decline')}
+              disabled={responded}
+              className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1"
+              style={{
+                background: colors.containerBg,
+                color: colors.textSecondary,
+                border: `1px solid ${colors.permissionDenyBorder}`,
+              }}
+            >
+              <XCircle size={13} /> Decline
+            </button>
+
+            <button
+              onClick={() => respond('cancel')}
               disabled={responded}
               className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1"
               style={{

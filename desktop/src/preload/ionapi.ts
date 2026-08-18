@@ -75,7 +75,7 @@ export interface IonAPI extends AtvApi {
   transcribeAudio(audioBase64: string): Promise<{ error: string | null; transcript: string | null }>
   getDiagnostics(): Promise<any>
   respondPermission(tabId: string, questionId: string, optionId: string): Promise<boolean>
-  respondElicitation(tabId: string, requestId: string, response: Record<string, unknown> | undefined, cancelled: boolean): Promise<boolean>
+  respondElicitation(tabId: string, requestId: string, response: Record<string, unknown> | undefined, cancelled: boolean, declined?: boolean): Promise<boolean>
   approveDeniedTools(tabId: string, toolNames: string[]): Promise<boolean>
   initSession(tabId: string): void
   ensureEngineSession(args: { tabId: string; workingDirectory: string; conversationId?: string | null; permissionMode?: 'auto' | 'plan' }): Promise<{ ok: boolean; error?: string; conversationId?: string }>

@@ -463,14 +463,16 @@ export class EngineBridge extends EventEmitter {
     requestId: string,
     response: Record<string, unknown> | undefined,
     cancelled: boolean,
+    declined = false,
   ): void {
-    log('send_elicitation_response', { key, request_id: requestId, cancelled })
+    log('send_elicitation_response', { key, request_id: requestId, cancelled, declined })
     this._send({
       cmd: 'elicitation_response',
       key,
       elicitRequestId: requestId,
       elicitResponse: response,
       elicitCancelled: cancelled,
+      elicitDeclined: declined,
     })
   }
 

@@ -48,6 +48,10 @@ export interface ProjectedElicitationEntry {
   mode?: string
   schema?: Record<string, unknown>
   url?: string
+  source?: string
+  server?: string
+  message?: string
+  action?: string
 }
 
 /** Per-sub-conversation instance projection (drives iOS EngineInstanceBar). */

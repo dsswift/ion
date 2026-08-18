@@ -265,6 +265,10 @@ export function handleEngineEvent(
         mode: event.elicitMode || '',
         schema: event.schema,
         url: event.url,
+        source: event.elicitSource,
+        server: event.elicitServer,
+        message: event.elicitMessage,
+        action: event.elicitAction,
       } as NormalizedEvent)
       break
 

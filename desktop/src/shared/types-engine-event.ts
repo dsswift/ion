@@ -54,6 +54,8 @@ export interface McpServerStatus {
   connected: boolean
   authenticated: boolean
   toolCount?: number
+  protocolVersion?: string
+  capabilities?: string[]
   lastError?: string
 }
 
@@ -70,7 +72,7 @@ export type EngineEvent =
   // hook to answer). `mode` selects the renderer ("approval", "select", ...);
   // `schema` describes what is being requested. Mirrors the Go fields
   // ElicitRequestID/ElicitSchema/ElicitURL/ElicitMode in engine_event.go.
-  | { type: 'engine_elicitation_request'; requestId: string; schema?: Record<string, unknown>; url?: string; elicitMode?: string }
+  | { type: 'engine_elicitation_request'; requestId: string; schema?: Record<string, unknown>; url?: string; elicitMode?: string; elicitSource?: string; elicitServer?: string; elicitMessage?: string; elicitAction?: string }
   // `metadata` is an opaque pass-through map the harness sets via ctx.emit
   // that the engine forwards verbatim. The desktop renderer honors
   // `metadata.dedupKey` (string) to suppress repeated harness messages

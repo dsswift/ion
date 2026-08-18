@@ -273,7 +273,7 @@ export type NormalizedEvent =
   // `engine_elicitation_request` event by engine-control-plane-events.ts so
   // the single normalized reducer (event-slice.ts) can push it onto the
   // active instance's elicitationQueue.
-  | { type: 'elicitation_request'; requestId: string; mode: string; schema?: Record<string, unknown>; url?: string }
+  | { type: 'elicitation_request'; requestId: string; mode: string; schema?: Record<string, unknown>; url?: string; source?: string; server?: string; message?: string; action?: string }
   | { type: 'extension_died'; extensionName: string }
   | { type: 'extension_respawned'; extensionName: string; attemptNumber: number }
   | { type: 'extension_dead_permanent'; extensionName: string; attemptNumber: number }

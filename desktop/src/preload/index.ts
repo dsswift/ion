@@ -60,8 +60,8 @@ const api: IonAPI = {
   getDiagnostics: () => ipcRenderer.invoke(IPC.GET_DIAGNOSTICS),
   respondPermission: (tabId, questionId, optionId) =>
     ipcRenderer.invoke(IPC.RESPOND_PERMISSION, { tabId, questionId, optionId }),
-  respondElicitation: (tabId, requestId, response, cancelled) =>
-    ipcRenderer.invoke(IPC.RESPOND_ELICITATION, { tabId, requestId, response, cancelled }),
+  respondElicitation: (tabId, requestId, response, cancelled, declined) =>
+    ipcRenderer.invoke(IPC.RESPOND_ELICITATION, { tabId, requestId, response, cancelled, declined }),
   approveDeniedTools: (tabId: string, toolNames: string[]) =>
     ipcRenderer.invoke(IPC.APPROVE_DENIED_TOOLS, { tabId, toolNames }),
   initSession: (tabId) => ipcRenderer.send(IPC.INIT_SESSION, tabId),

@@ -76,6 +76,14 @@ export interface ElicitationRequest {
   schema?: Record<string, unknown>
   /** Optional deep-link URL for web flows. */
   url?: string
+  /** Extension or subsystem that raised the elicitation. */
+  source?: string
+  /** MCP/tool server name, when the elicitation originates from one. */
+  server?: string
+  /** Human-readable description of what the elicitation is asking. */
+  message?: string
+  /** Label for the primary approval action (e.g. "Install", "Connect"). */
+  action?: string
 }
 
 export interface FileAttachment {

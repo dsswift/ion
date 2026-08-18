@@ -294,6 +294,8 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'connected',
     'lastError',
     'name',
+    'protocolVersion',
+    'capabilities',
     'toolCount',
     'transport',
     'url',

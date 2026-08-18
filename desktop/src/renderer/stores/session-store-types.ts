@@ -307,7 +307,7 @@ export interface State {
   interrupt: (tabId: string) => void
   submitRemoteBash: (tabId: string, command: string) => void
   respondPermission: (tabId: string, questionId: string, optionId: string) => void
-  respondElicitation: (tabId: string, requestId: string, response: Record<string, unknown> | undefined, cancelled: boolean) => void
+  respondElicitation: (tabId: string, requestId: string, response: Record<string, unknown> | undefined, cancelled: boolean, declined?: boolean) => void
   addDirectory: (dir: string) => void
   removeDirectory: (dir: string) => void
   setBaseDirectory: (dir: string) => void
