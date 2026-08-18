@@ -1084,6 +1084,8 @@ Broadcast to all clients on every state transition — `mcp_add`, `mcp_remove`, 
 | `mcpServers[].connected` | boolean | Whether at least one live session holds a connection |
 | `mcpServers[].authenticated` | boolean | Whether a usable (unexpired) OAuth token is stored |
 | `mcpServers[].toolCount` | int | Tools the live connection exposed; `0` when not connected (optional) |
+| `mcpServers[].protocolVersion` | string | MCP revision negotiated for the live connection (optional) |
+| `mcpServers[].capabilities` | string[] | Advertised server capability and extension identifiers, sorted for stable snapshots (optional) |
 | `mcpServers[].lastError` | string | Most recent connection failure (optional) |
 
 **`connected` and `authenticated` are independent — do not collapse them.** A server can be connected without authentication (it requires none), or authenticated but not connected, which means a stored token is being refused. That second combination is precisely the state an operator must act on, and a single derived "ok" indicator would hide it. `lastError` is what makes a failing server diagnosable from a client with no access to the engine host's log file.

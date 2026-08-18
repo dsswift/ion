@@ -8,6 +8,8 @@ sidebar_position: 1
 
 Ion Engine includes a built-in MCP (Model Context Protocol) client. MCP is an open protocol that lets AI agents connect to external data sources and tools through a standardized interface. The engine connects to MCP servers, discovers their resources and tools, and makes them available to the LLM during sessions.
 
+Ion negotiates every MCP revision supported by its protocol SDK: `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25`, and `2026-07-28`. New servers use stateless `2026-07-28`; existing servers continue through the legacy initialize handshake. See [ADR-029](../architecture/adr/029-dual-era-mcp-sdk.md) for capability and transport decisions.
+
 ## What MCP provides
 
 MCP servers expose two things:

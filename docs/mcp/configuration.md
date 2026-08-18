@@ -1,6 +1,6 @@
 ---
 title: MCP Configuration
-description: MCP server configuration reference -- stdio, SSE, environment variables, OAuth, and examples.
+description: MCP server configuration reference -- stdio, Streamable HTTP, WebSocket, environment variables, and OAuth.
 sidebar_position: 2
 ---
 
@@ -27,10 +27,7 @@ MCP servers are configured in the `mcpServers` map of your engine config. Each k
 | `userTokenScope` | `string` | No | Downstream resource scope the forwarded token is minted for. Only meaningful with `forwardUserToken`. |
 | `userTokenAudience` | `string` | No | Explicit audience/resource for the forwarded token, for identity providers that bind grants to one (Auth0, RFC 8707) instead of encoding the resource in the scope. Only meaningful with `forwardUserToken`. |
 
-The transport is what decides whether `command` or `url` applies. `stdio` spawns
-a subprocess; `http`, `sse`, and `ws` connect to a remote endpoint. `http` is
-StreamableHTTP, the current MCP network transport, and is the right default for
-a new remote server; `sse` is the older protocol and is selected explicitly.
+`http` is Streamable HTTP. It negotiates the current stateless MCP protocol and falls back to a legacy initialize handshake when the endpoint reports a legacy peer. `sse` is the explicitly selected deprecated HTTP+SSE transport for servers that expose no Streamable HTTP endpoint. `ws` is custom MCP-over-WebSocket support for servers that require it; static and forwarded-token headers apply at dial time, so a changed credential reconnects before it can take effect.
 
 ## stdio transport
 
@@ -127,10 +124,9 @@ engine stores the resulting grant. Nothing goes in `engine.json` — no
    `/.well-known/oauth-authorization-server`, falling back to
    `/.well-known/openid-configuration`, for the authorization, token, and
    registration endpoints.
-3. **Dynamic client registration (RFC 7591).** If the server supports it, the
-   engine registers itself as a public client and stores the issued `client_id`
-   in `~/.ion/mcp-clients.json`. This is why no `client_id` needs configuring:
-   for these servers, none exists until registration runs.
+3. **Client registration.** The engine prefers a configured Client ID Metadata
+   Document, then an explicit pre-registered client, then a stored registration,
+   and finally deprecated dynamic registration when the server supports it.
 4. **Authorization code + PKCE.** The engine runs the flow, receives the
    redirect on a loopback callback it owns, and exchanges the code itself. The
    token lands in `~/.ion/mcp-tokens.json` and is refreshed silently.
@@ -166,13 +162,25 @@ over discovery:
 Then run `ion mcp login internal-api` as usual.
 
 `auth_url` and `token_url` may be omitted when the server publishes metadata:
-the engine fills them in from discovery and uses your `client_id`.
+the engine fills them in from discovery and uses the selected client
+registration.
+
+### Scope step-up and binding
+
+The engine binds an MCP grant to its discovered authorization-server issuer and
+protected-resource URI. It never reuses a bound grant for a different issuer or
+resource. When a server returns an insufficient-scope Bearer challenge, Ion
+collects the requested scopes, starts a bounded reauthorization flow, and
+emits the authorization URL as typed engine data. Headless clients can present
+that URL themselves; desktop may open it. A refresh token is not retried as a
+substitute for user consent to new scope.
 
 #### OAuth fields
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `client_id` | `string` | Yes | OAuth client ID |
+| `client_id` | `string` | No | OAuth client ID. Required only when neither a Client ID Metadata Document nor dynamic registration supplies one. |
+| `client_id_metadata_document_url` | `string` | No | Client ID Metadata Document URL. Preferred over pre-registered and dynamically-registered client data. |
 | `client_secret` | `string` | No | Client secret. Omit for a public client using PKCE. Sent on the token exchange when present, because some providers issue a secret and then reject an exchange that omits it. |
 | `auth_url` | `string` | No | Authorization endpoint. Discovered when omitted. |
 | `token_url` | `string` | No | Token endpoint. Discovered when omitted. |

@@ -552,7 +552,7 @@ Tune every internal timeout and retry limit. All duration fields are in millisec
 | `bashBlockingSleepMs` | int64 | `2000` (2 s) | Threshold at which a **leading** `sleep N` in a foreground `Bash` command is refused instead of executed. Only a bare integer sleep at the head of the command is inspected — `sleep 0.5`, `make && sleep 5`, and a sleep inside a loop, pipeline, or subshell all run normally, as does any sleep under `run_in_background`. The refusal names the background + notify path. Set a **negative** value to disable the gate. |
 | `mcpCallMs` | int64 | `60000` (60 s) | MCP tool call timeout. How long the engine waits for an MCP server to return a tool result. |
 | `mcpMetadataMs` | int64 | `30000` (30 s) | MCP metadata operation timeout (`initialize`, `listTools`, `listResources`, `readResource`). |
-| `mcpWriteMs` | int64 | `30000` (30 s) | MCP WebSocket write timeout. How long a write to an MCP server's WebSocket can block. |
+| `mcpWriteMs` | int64 | `30000` (30 s) | Legacy MCP WebSocket write timeout. Retained for configuration compatibility; MCP WebSocket transport is no longer supported, so this setting has no effect. |
 | `webFetchMs` | int64 | `30000` (30 s) | HTTP request timeout for the `WebFetch` tool. |
 | `globMs` | int64 | `60000` (60 s) | Filesystem walk timeout for the `Glob` tool. |
 | `sshDefaultMs` | int64 | `120000` (2 min) | Default timeout for SSH operations. |
