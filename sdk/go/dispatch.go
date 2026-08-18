@@ -19,6 +19,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -93,6 +94,7 @@ type initResult struct {
 	Webhooks      []WebhookRoute         `json:"webhooks,omitempty"`
 	Schedules     []ScheduleJob          `json:"schedules,omitempty"`
 	Resources     []ResourceDeclaration  `json:"resources,omitempty"`
+	Hooks         []string               `json:"hooks,omitempty"`
 	BuildIdentity string                 `json:"buildIdentity,omitempty"`
 }
 
@@ -138,7 +140,12 @@ func (s *SDK) handleInit(id *int64, params json.RawMessage) {
 	for name, def := range s.commands {
 		commands[name] = wireCommand{Description: def.Description}
 	}
-	hookCount := len(s.hooks)
+	hooks := make([]string, 0, len(s.hooks))
+	for name := range s.hooks {
+		hooks = append(hooks, name)
+	}
+	sort.Strings(hooks)
+	hookCount := len(hooks)
 	s.mu.RUnlock()
 
 	// Sort so the handshake is deterministic — a respawn produces the same
@@ -160,6 +167,7 @@ func (s *SDK) handleInit(id *int64, params json.RawMessage) {
 		Webhooks:      webhooks,
 		Schedules:     schedules,
 		Resources:     resources,
+		Hooks:         hooks,
 		BuildIdentity: BuildIdentity,
 	}
 
