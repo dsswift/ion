@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.4](https://github.com/dsswift/ion/compare/sdk/go-v0.1.3...sdk/go-v0.1.4) (2026-08-18)
+
+### Features
+
+* **sdk:** expose run recovery controls ([c86fa15](https://github.com/dsswift/ion/commit/c86fa1504667c4ed05df99cae274cd5b50afb850))
+
+### Bug Fixes
+
+* **sdk:** report registered hooks in handshake ([3197724](https://github.com/dsswift/ion/commit/31977243c65ea9bfc7e08462292e43c06c17b001))
+
 ## [0.1.3](https://github.com/dsswift/ion/compare/sdk/go-v0.1.2...sdk/go-v0.1.3) (2026-08-12)
 
 ### Bug Fixes

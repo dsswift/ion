@@ -10,6 +10,22 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.83.0](https://github.com/dsswift/ion/compare/desktop-v1.82.0...desktop-v1.83.0) (2026-08-18)
+
+### Features
+
+* **desktop:** resource duplicate-ID idempotency ([d1d7a09](https://github.com/dsswift/ion/commit/d1d7a0923428ece581d98d6055b6988c1c924153))
+* **desktop:** recover interrupted conversations ([3bd26e0](https://github.com/dsswift/ion/commit/3bd26e09b63c241bae3525cf6e88d4e33444e4ca))
+
+### Bug Fixes
+
+* **desktop:** prevent false stalled-tab recovery ([e3cda1d](https://github.com/dsswift/ion/commit/e3cda1dd0e482b8a13c4cb4c9c3a7b1c5a37377a))
+* **desktop:** harden remote prompt delivery ([3ff16e7](https://github.com/dsswift/ion/commit/3ff16e74454e68ef4f75d4567797900f87fd18d2))
+* **desktop:** cover scheduled job catch-up ([a6ff6b0](https://github.com/dsswift/ion/commit/a6ff6b036eb74e2dc1e5a6b459c6b1d5b608c98e))
+* **desktop:** sync schedule SDK surface ([9d214ee](https://github.com/dsswift/ion/commit/9d214eebaeadfa93c954e761785f96bf3cab90aa))
+* **desktop:** emit activity for newly active terminal panes ([ea5a17e](https://github.com/dsswift/ion/commit/ea5a17ef5297ccc17256b516a85ef640d8b5848d))
+* **desktop:** preserve queue on status resync ([6026d37](https://github.com/dsswift/ion/commit/6026d37abcda013d395d1a57ef5a06189f0d8332))
+
 ## [1.82.0](https://github.com/dsswift/ion/compare/desktop-v1.81.1...desktop-v1.82.0) (2026-08-14)
 
 ### Features

@@ -13,6 +13,18 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.71.0](https://github.com/dsswift/ion/compare/engine-v1.70.0...engine-v1.71.0) (2026-08-18)
+
+### Features
+
+* **engine:** add automatic run recovery ([1ededa2](https://github.com/dsswift/ion/commit/1ededa22caa9b18c099cb2c9867a80952daa57f3))
+
+### Bug Fixes
+
+* **engine:** compact to target after micro pass ([103317b](https://github.com/dsswift/ion/commit/103317b22b74e1f70567155c6344c87bfed874d0))
+* **engine:** make prompt delivery idempotent ([4f5a9f3](https://github.com/dsswift/ion/commit/4f5a9f33aafd03538177a6cdfcac7abffe5308e2))
+* **engine:** deliver missed schedule catch-up ([067c4e9](https://github.com/dsswift/ion/commit/067c4e95186fd6e4499b553559ac50aab7edbc1c))
+
 ## [1.70.0](https://github.com/dsswift/ion/compare/engine-v1.69.0...engine-v1.70.0) (2026-08-14)
 
 ### Features

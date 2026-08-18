@@ -10,6 +10,19 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.63.0](https://github.com/dsswift/ion/compare/ios-v1.62.0...ios-v1.63.0) (2026-08-18)
+
+### Features
+
+* **ios:** resource duplicate-ID idempotency ([b390db3](https://github.com/dsswift/ion/commit/b390db3ce93e090942e7426680593f585d67c451))
+* **ios:** show recovered conversation state ([81a9f2b](https://github.com/dsswift/ion/commit/81a9f2bd4262eaec65a06a390a43d7923cb03104))
+
+### Bug Fixes
+
+* **ios:** anchor conversation scroll position during updates ([21d50e9](https://github.com/dsswift/ion/commit/21d50e9434272f38183649158fd3043fb2b593a1))
+* **ios:** harden remote connectivity ([22396e9](https://github.com/dsswift/ion/commit/22396e9d1b00fa125c04c2a0c843fb0f57682220))
+* **ios:** use shared connection banner design roles ([7de6a60](https://github.com/dsswift/ion/commit/7de6a6082fe5470304c24cf2b03ef09829f7b93f))
+
 ## [1.62.0](https://github.com/dsswift/ion/compare/ios-v1.61.2...ios-v1.62.0) (2026-08-14)
 
 ### Features

@@ -10,6 +10,12 @@ clients to Ion Engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.7.2](https://github.com/dsswift/ion/compare/relay-v1.7.1...relay-v1.7.2) (2026-08-18)
+
+### Bug Fixes
+
+* **relay:** harden mobile forwarding ([3d7f77c](https://github.com/dsswift/ion/commit/3d7f77cd77deb4457665ebcd739ca4ea35eb1c4a))
+
 ## [1.7.1](https://github.com/dsswift/ion/compare/relay-v1.7.0...relay-v1.7.1) (2026-08-14)
 
 ### Bug Fixes
