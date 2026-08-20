@@ -201,8 +201,8 @@ func (h *Host) callHook(method string, ctx *Context, payload interface{}) (json.
 	}
 	wrapped := h.buildHookEnvelope(ctx, payload)
 
-	h.ctxStack.Push(ctx)
-	defer h.ctxStack.Pop()
+	tok := h.ctxStack.Push(ctx)
+	defer h.ctxStack.Pop(tok)
 
 	// Snapshot the telemetry sink under notifMu (identical discipline to the
 	// persistentEmit callbacks the readLoop reads). A nil sink means telemetry
