@@ -13,6 +13,12 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.71.1](https://github.com/dsswift/ion/compare/engine-v1.71.0...engine-v1.71.1) (2026-08-20)
+
+### Bug Fixes
+
+* **engine:** make ctxStack release identity-scoped, not blind top-of-stack ([2217315](https://github.com/dsswift/ion/commit/22173157bb3ec37c83873890f0ef8bcb3873aad4))
+
 ## [1.71.0](https://github.com/dsswift/ion/compare/engine-v1.70.0...engine-v1.71.0) (2026-08-18)
 
 ### Features
