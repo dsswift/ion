@@ -71,8 +71,8 @@ func (h *Host) FireAsync(kind asyncreg.Kind, id string, ctx *Context, payload in
 	// is the single piece that retires the cache-a-ctx workaround from
 	// #132 — the handler runs under the same ctxStack discipline as
 	// a real hook.
-	h.ctxStack.Push(ctx)
-	defer h.ctxStack.Pop()
+	tok := h.ctxStack.Push(ctx)
+	defer h.ctxStack.Pop(tok)
 
 	utils.LogWithFields(utils.LevelDebug, "extension", "fireasync", map[string]any{"model": h.name_(), "kind": kind, "run_id": id, "timeout": timeout})
 	resp, err := h.callWithTimeout("engine/fire_async", envelope, timeout)

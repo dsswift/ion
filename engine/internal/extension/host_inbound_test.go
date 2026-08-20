@@ -168,7 +168,7 @@ func TestInboundNotification_CapturesActiveContext(t *testing.T) {
 
 	emitted := make(chan types.EngineEvent, 1)
 	ctx := &Context{Emit: func(event types.EngineEvent) { emitted <- event }}
-	h.ctxStack.Push(ctx)
+	ctxTok := h.ctxStack.Push(ctx)
 	responseRead := make(chan *jsonrpcResponse, 1)
 	h.pendMu.Lock()
 	h.pending[42] = responseRead
@@ -195,7 +195,7 @@ func TestInboundNotification_CapturesActiveContext(t *testing.T) {
 	// The response proves readLoop already captured the preceding notification.
 	// The worker remains blocked, so popping now distinguishes captured context
 	// from a context lookup deferred until dispatch.
-	h.ctxStack.Pop()
+	h.ctxStack.Pop(ctxTok)
 	close(releaseBlock)
 
 	select {

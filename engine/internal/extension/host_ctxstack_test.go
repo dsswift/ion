@@ -32,22 +32,22 @@ func TestCtxStack_PushPopLIFO(t *testing.T) {
 		t.Errorf("fresh stack must have Current()==nil, got %v", cs.Current())
 	}
 
-	cs.Push(ctxA)
+	tokA := cs.Push(ctxA)
 	if cs.Current() != ctxA {
 		t.Errorf("after Push(A), Current() must be A, got %v", cs.Current())
 	}
 
-	cs.Push(ctxB)
+	tokB := cs.Push(ctxB)
 	if cs.Current() != ctxB {
 		t.Errorf("after Push(A,B), Current() must be B (top of stack), got %v", cs.Current())
 	}
 
-	cs.Pop()
+	cs.Pop(tokB)
 	if cs.Current() != ctxA {
 		t.Errorf("after Pop(), Current() must revert to A, got %v", cs.Current())
 	}
 
-	cs.Pop()
+	cs.Pop(tokA)
 	if cs.Current() != nil {
 		t.Errorf("after all Pops, Current() must be nil, got %v", cs.Current())
 	}
@@ -61,8 +61,9 @@ func TestCtxStack_PushPopLIFO(t *testing.T) {
 func TestCtxStack_PopOnEmpty_NoOp(t *testing.T) {
 	var cs ctxStack
 
-	// Calling Pop on a fresh, empty stack must not panic.
-	cs.Pop()
+	// Calling Pop on a fresh, empty stack must not panic. The zero-value
+	// token never matches a real Push (nextID starts at 1).
+	cs.Pop(0)
 
 	if cs.Current() != nil {
 		t.Errorf("Pop on empty stack must leave Current()==nil, got %v", cs.Current())
@@ -98,14 +99,14 @@ func TestCtxStack_ConcurrentPushPop(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			ctx := &Context{Cwd: "/g" + string(rune(id))}
-			cs.Push(ctx)
+			tok := cs.Push(ctx)
 			// Current() must always return a non-nil value while at
 			// least one Push has happened (this goroutine's own,
 			// even if other goroutines have already popped theirs).
 			if got := cs.Current(); got == nil {
 				t.Errorf("goroutine %d: Current() returned nil after Push", id)
 			}
-			cs.Pop()
+			cs.Pop(tok)
 		}(i)
 	}
 	wg.Wait()
@@ -139,8 +140,8 @@ func TestCtxStack_ConcurrentReadsUnderContention(t *testing.T) {
 			case <-done:
 				return
 			default:
-				cs.Push(ctx)
-				cs.Pop()
+				tok := cs.Push(ctx)
+				cs.Pop(tok)
 			}
 		}
 	}()
@@ -204,8 +205,8 @@ func TestCtxStack_PopReleasesReference(t *testing.T) {
 	func() {
 		ctx := &Context{Cwd: "/gc-release"}
 		runtime.SetFinalizer(ctx, func(*Context) { finalized <- struct{}{} })
-		cs.Push(ctx)
-		cs.Pop()
+		tok := cs.Push(ctx)
+		cs.Pop(tok)
 		// Local 'ctx' goes out of scope here.
 	}()
 
@@ -246,7 +247,7 @@ func TestCtxStack_SessionMismatchLogged(t *testing.T) {
 	// can't easily assert on the log line here without wiring an
 	// observer; the primary assertion is behavioral (the push
 	// succeeded and Current() returns the new top).
-	cs.Push(ctxB)
+	tokB := cs.Push(ctxB)
 
 	if cs.Current() != ctxB {
 		t.Errorf("after mismatched push, Current() must still return the new top, got %v", cs.Current())
@@ -254,7 +255,7 @@ func TestCtxStack_SessionMismatchLogged(t *testing.T) {
 
 	// Same-session push must not trigger the guard. Pop ctxB and
 	// push a fresh same-session ctxA-prime; behavior unchanged.
-	cs.Pop()
+	cs.Pop(tokB)
 	ctxAprime := &Context{Cwd: "/a2", SessionKey: "session-a"}
 	cs.Push(ctxAprime)
 	if cs.Current() != ctxAprime {
@@ -274,15 +275,59 @@ func TestCtxStack_EmptyOrZeroSessionKey_NoFalsePositive(t *testing.T) {
 
 	// Sequence: push no-key, then push with-key. Guard must skip the
 	// comparison because the top is empty-key.
-	cs.Push(ctxNoKey)
-	cs.Push(ctxWithKey)
-	cs.Pop()
-	cs.Pop()
+	tok1 := cs.Push(ctxNoKey)
+	tok2 := cs.Push(ctxWithKey)
+	cs.Pop(tok2)
+	cs.Pop(tok1)
 
 	// Reverse: push with-key, then push no-key. Guard must also skip.
 	cs.Push(ctxWithKey)
 	cs.Push(ctxNoKey)
 	if cs.Current() != ctxNoKey {
 		t.Errorf("Current() must reflect the most recent push, got %v", cs.Current())
+	}
+}
+
+// TestCtxStack_ThirdPushBetweenPushAndPop_DoesNotStealPop is the
+// regression test for the concurrency defect this file's identity-scoped
+// Pop was written to close.
+//
+// Real-world trigger (confirmed against conversation 1787163503581-aad5b50ac3d6
+// engine logs): a long-running ext/dispatch_agent tool call (A) pushes its
+// Context and is still in flight when an unrelated hook call (B) — e.g. a
+// schedule cancel fired from before_prompt — pushes its own Context, runs,
+// and pops. That much is properly nested (B on top, B pops itself) and is
+// fine even with a blind top-of-stack Pop. The actual defect needs one more
+// overlap: a THIRD operation (C) pushes while B is still active, so by the
+// time B releases, B is no longer on top — C is. A token-less Pop() has no
+// way to say "release B specifically"; it always removes whatever is on
+// top, which here is C's still-in-flight entry. That silently corrupts C
+// (C's own subsequent ext/* RPCs would then resolve against nothing, or
+// against A's entry once C's own eventual Pop removes it) — this is the
+// same class of interleaving that produced the "-32000 dispatch not
+// available" observed on the conversation's dispatch_agent call.
+//
+// Identity-scoped Pop closes it: Pop(token) always removes exactly the
+// entry its own Push produced, wherever it now sits in the stack.
+func TestCtxStack_ThirdPushBetweenPushAndPop_DoesNotStealPop(t *testing.T) {
+	var cs ctxStack
+
+	ctxB := &Context{Cwd: "/b", SessionKey: "session-1"}
+	ctxC := &Context{Cwd: "/c", SessionKey: "session-1"}
+
+	tokB := cs.Push(ctxB)
+	tokC := cs.Push(ctxC) // C pushes while B is still active; C is now on top.
+
+	// B releases its own entry. Under a blind top-of-stack Pop this would
+	// remove C's entry instead.
+	cs.Pop(tokB)
+
+	if got := cs.Current(); got != ctxC {
+		t.Fatalf("Current() after B's targeted pop = %v, want ctxC (C's entry must survive B releasing its own)", got)
+	}
+
+	cs.Pop(tokC)
+	if got := cs.Current(); got != nil {
+		t.Errorf("Current() after all pops = %v, want nil", got)
 	}
 }

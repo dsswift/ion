@@ -39,17 +39,55 @@ import (
 //     required positional parameter of NewExtContext, which makes that state
 //     unrepresentable rather than merely unlikely.
 //
+// Identity-scoped release (not blind top-of-stack pop): Push returns an
+// opaque ctxToken, and Pop takes that token back. Pop removes exactly the
+// entry it was handed — by scanning for its token, not by assuming it is
+// still on top — and never touches any other entry. This matters because
+// concurrent Push/Pop pairs from unrelated operations (a tool call, a hook
+// firing, a FireAsync schedule/webhook dispatch) are not guaranteed to
+// nest in strict LIFO order. A blind Pop() removes whatever is on top
+// regardless of who pushed it: if operation A pushes, operation B pushes
+// after it, and A returns (and pops) before B does, a blind Pop would
+// evict B's still-in-use context instead of A's, leaving B to resolve
+// Current() against the wrong (or, once enough interleavings compound,
+// a nil) entry on its next ext/* RPC. That is the exact mechanism behind
+// the "-32000 dispatch not available" defect characterized in
+// host_fire_async_timeout_test.go and schedule_fire_timeout_test.go: it
+// was previously pinned only for the FireAsync-timeout early-Pop case,
+// but the same blind-pop hazard applies to ANY overlapping, non-nested
+// Push/Pop pair on the same Host — including an ordinary tool-call Push
+// racing an unrelated hook-call Push/Pop (e.g. a schedule cancel fired
+// from before_prompt while a dispatch_agent tool call is still in
+// flight). Identity-scoped Pop closes the whole hazard class: a Pop can
+// only ever remove the one entry its own Push produced.
+//
 // Extracted from host.go per the engine/AGENTS.md "same-package
 // multi-file is the idiom" rule and the precedent of host_async.go,
 // host_dispose.go, host_fire_async.go, etc. The `Host` struct's
 // `ctxStack` field declaration stays on the Host type in host.go; this
 // file owns the ctxStack type and its operations.
 type ctxStack struct {
-	mu    sync.Mutex
-	stack []*Context
+	mu     sync.Mutex
+	stack  []ctxStackEntry
+	nextID uint64
 }
 
-// Push adds a context to the top of the stack.
+// ctxToken identifies one Push call's entry so Pop can release exactly
+// that entry regardless of where it now sits in the stack (or whether it
+// has already been removed). The zero value never matches a real push
+// (nextID starts counting at 1), so a caller that forgets to capture the
+// token from Push and passes the zero value is a guaranteed no-op rather
+// than an accidental pop of someone else's entry.
+type ctxToken uint64
+
+// ctxStackEntry pairs a pushed Context with the token that identifies it.
+type ctxStackEntry struct {
+	token ctxToken
+	ctx   *Context
+}
+
+// Push adds a context to the top of the stack and returns a token that
+// must be passed to Pop to release exactly this entry.
 //
 // Invariant guard: every Context pushed on a given Host's stack must
 // belong to the same engine session. The interchangeability argument in
@@ -67,28 +105,35 @@ type ctxStack struct {
 //
 // The guard does NOT refuse the push (no return value to refuse with;
 // callers of Push expect it to succeed). It only logs.
-func (cs *ctxStack) Push(ctx *Context) {
+func (cs *ctxStack) Push(ctx *Context) ctxToken {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	if n := len(cs.stack); n > 0 && cs.stack[n-1] != nil && ctx != nil {
-		if cs.stack[n-1].SessionKey != ctx.SessionKey && cs.stack[n-1].SessionKey != "" && ctx.SessionKey != "" {
+	if n := len(cs.stack); n > 0 && cs.stack[n-1].ctx != nil && ctx != nil {
+		if cs.stack[n-1].ctx.SessionKey != ctx.SessionKey && cs.stack[n-1].ctx.SessionKey != "" && ctx.SessionKey != "" {
 			utils.LogWithFields(utils.LevelError, "extension", "ctx stack invariant violated pushing ctx for different session", map[string]any{
-				"session_id": ctx.SessionKey, "reason": cs.stack[n-1].SessionKey, "count": n,
+				"session_id": ctx.SessionKey, "reason": cs.stack[n-1].ctx.SessionKey, "count": n,
 			})
 		}
 	}
-	cs.stack = append(cs.stack, ctx)
+	cs.nextID++
+	token := ctxToken(cs.nextID)
+	cs.stack = append(cs.stack, ctxStackEntry{token: token, ctx: ctx})
+	return token
 }
 
-// Pop removes the topmost context from the stack. Safe to call on an
-// empty stack (no-op).
-func (cs *ctxStack) Pop() {
+// Pop removes the entry identified by token, wherever it sits in the
+// stack. Safe to call with an already-removed or zero-value token
+// (no-op) — this can happen legitimately when a deferred Pop runs after
+// the entry was already released some other way.
+func (cs *ctxStack) Pop(token ctxToken) {
 	cs.mu.Lock()
-	if n := len(cs.stack); n > 0 {
-		cs.stack[n-1] = nil // release for GC
-		cs.stack = cs.stack[:n-1]
+	defer cs.mu.Unlock()
+	for i := len(cs.stack) - 1; i >= 0; i-- {
+		if cs.stack[i].token == token {
+			cs.stack = append(cs.stack[:i], cs.stack[i+1:]...)
+			return
+		}
 	}
-	cs.mu.Unlock()
 }
 
 // Current returns the topmost context, or nil when the stack is empty.
@@ -96,7 +141,7 @@ func (cs *ctxStack) Current() *Context {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 	if n := len(cs.stack); n > 0 {
-		return cs.stack[n-1]
+		return cs.stack[n-1].ctx
 	}
 	return nil
 }

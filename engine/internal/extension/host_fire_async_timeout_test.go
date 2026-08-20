@@ -114,8 +114,8 @@ func fireSchedulePayload(t *testing.T, id string) []byte {
 // the real mechanism against a live subprocess. Use simulateFireAsyncEarlyReturn
 // only for unit-level consequence tests where subprocess I/O is not required.
 func simulateFireAsyncEarlyReturn(h *Host, ctx *Context) func() {
-	h.ctxStack.Push(ctx)
-	h.ctxStack.Pop() // mirrors the deferred Pop on FireAsync's timeout return
+	tok := h.ctxStack.Push(ctx)
+	h.ctxStack.Pop(tok) // mirrors the deferred Pop on FireAsync's timeout return
 	return func() {
 		if got := h.ctxStack.Current(); got != nil {
 			panic("stack not empty after simulated early return")
@@ -232,13 +232,13 @@ func TestFireAsyncTimeout_PushGuard_DoesNotFireOnEarlyPop(t *testing.T) {
 	ctxB := &Context{Cwd: "/sched2", SessionKey: "session-x"}
 
 	// Simulate FireAsync: push, then immediately pop (timeout early return).
-	cs.Push(ctxA)
-	cs.Pop()
+	tokA := cs.Push(ctxA)
+	cs.Pop(tokA)
 
 	// Stack is now empty.  The guard only fires if a mismatched SessionKey
 	// is pushed while another context is already present.  An empty-stack
 	// push is always silent regardless of SessionKey.
-	cs.Push(ctxB) // no guard log fires — empty stack
+	tokB := cs.Push(ctxB) // no guard log fires — empty stack
 
 	if got := cs.Current(); got != ctxB {
 		t.Errorf("expected ctxB on stack after push, got %v", got)
@@ -250,7 +250,7 @@ func TestFireAsyncTimeout_PushGuard_DoesNotFireOnEarlyPop(t *testing.T) {
 	// cannot happen here because ctxA was already legitimately popped.
 	// This test documents the gap: the guard does not protect against
 	// fire-timeout-induced capability loss.
-	cs.Pop()
+	cs.Pop(tokB)
 	if got := cs.Current(); got != nil {
 		t.Errorf("expected nil after final pop, got %v", got)
 	}

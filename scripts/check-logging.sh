@@ -340,8 +340,8 @@ check_os_logger_swift() {
 if [[ "$SCOPE" == "all" || "$SCOPE" == "engine" ]]; then
   ENGINE_GO=()
   while IFS= read -r f; do ENGINE_GO+=("$f"); done < <(find_go engine/)
-  check_go_interp engine "${ENGINE_GO[@]}"
-  check_non_canon "${ENGINE_GO[@]}"
+  check_go_interp engine ${ENGINE_GO[@]+"${ENGINE_GO[@]}"}
+  check_non_canon ${ENGINE_GO[@]+"${ENGINE_GO[@]}"}
 fi
 
 # Relay Go
@@ -356,35 +356,35 @@ if [[ "$SCOPE" == "all" || "$SCOPE" == "relay" ]]; then
       -o -type f -name '*.go' ! -name '*_test.go' ! -name 'logger.go' -print
   )
 
-  check_relay_go_interp "${RELAY_GO[@]}"
-  check_relay_flat "${RELAY_NON_LOGGER[@]}"
-  check_non_canon "${RELAY_GO[@]}"
+  check_relay_go_interp ${RELAY_GO[@]+"${RELAY_GO[@]}"}
+  check_relay_flat ${RELAY_NON_LOGGER[@]+"${RELAY_NON_LOGGER[@]}"}
+  check_non_canon ${RELAY_GO[@]+"${RELAY_GO[@]}"}
 fi
 
 # Desktop renderer console.*
 if [[ "$SCOPE" == "all" || "$SCOPE" == "renderer" ]]; then
   RENDERER_TS=()
   while IFS= read -r f; do RENDERER_TS+=("$f"); done < <(find_ts desktop/src/renderer/)
-  check_renderer_console "${RENDERER_TS[@]}"
+  check_renderer_console ${RENDERER_TS[@]+"${RENDERER_TS[@]}"}
 fi
 
 # Desktop TS interpolated msg (main + renderer)
 if [[ "$SCOPE" == "all" || "$SCOPE" == "ts" ]]; then
   DESKTOP_TS=()
   while IFS= read -r f; do DESKTOP_TS+=("$f"); done < <(find_ts desktop/src/)
-  check_ts_interp "${DESKTOP_TS[@]}"
-  check_non_canon "${DESKTOP_TS[@]}"
-  check_silent_catch_ts "${DESKTOP_TS[@]}"
+  check_ts_interp ${DESKTOP_TS[@]+"${DESKTOP_TS[@]}"}
+  check_non_canon ${DESKTOP_TS[@]+"${DESKTOP_TS[@]}"}
+  check_silent_catch_ts ${DESKTOP_TS[@]+"${DESKTOP_TS[@]}"}
 fi
 
 # iOS Swift interpolation
 if [[ "$SCOPE" == "all" || "$SCOPE" == "swift" ]]; then
   IOS_SWIFT=()
   while IFS= read -r f; do IOS_SWIFT+=("$f"); done < <(find_swift ios/)
-  check_swift_interp "${IOS_SWIFT[@]}"
-  check_non_canon "${IOS_SWIFT[@]}"
-  check_silent_catch_swift "${IOS_SWIFT[@]}"
-  check_os_logger_swift "${IOS_SWIFT[@]}"
+  check_swift_interp ${IOS_SWIFT[@]+"${IOS_SWIFT[@]}"}
+  check_non_canon ${IOS_SWIFT[@]+"${IOS_SWIFT[@]}"}
+  check_silent_catch_swift ${IOS_SWIFT[@]+"${IOS_SWIFT[@]}"}
+  check_os_logger_swift ${IOS_SWIFT[@]+"${IOS_SWIFT[@]}"}
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────

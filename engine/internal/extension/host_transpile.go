@@ -281,8 +281,8 @@ func (h *Host) parseInitResult(raw json.RawMessage) error {
 		h.sdk.RegisterCommand(name, CommandDefinition{
 			Description: def.Description,
 			Execute: func(args string, ctx *Context) error {
-				h.ctxStack.Push(ctx)
-				defer h.ctxStack.Pop()
+				tok := h.ctxStack.Push(ctx)
+				defer h.ctxStack.Pop(tok)
 				_, err := h.call("command/"+cmdName, map[string]string{"args": args})
 				return err
 			},
