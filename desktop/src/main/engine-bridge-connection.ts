@@ -114,7 +114,7 @@ function connectSocket(bridge: EngineBridge): Promise<void> {
 
     conn.on('connect', () => {
       if (bridge.reconnectDisabled) {
-        // stopAll can run while a socket is still connecting. Never publish
+        // disconnect can run while a socket is still connecting. Never publish
         // that late connection onto a bridge that teardown already retired.
         conn.destroy()
         reject(new Error('Engine bridge connection was stopped during connect.'))

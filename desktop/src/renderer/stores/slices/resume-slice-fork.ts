@@ -3,6 +3,7 @@ import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { makeLocalTab, nextMsgId } from '../session-store-helpers'
 import { makeMainPane, activeInstance, effectivePermissionMode, effectiveThinkingEffort } from '../conversation-instance'
 import { buildRestoredDenied } from './resume-slice-restore-denied'
+import { stageableAttachments } from '../../../shared/staged-attachments'
 import { rInfo } from '../../rendererLogger'
 
 /**
@@ -71,6 +72,9 @@ export function createForkSlice(set: StoreSet, get: StoreGet): Partial<State> {
           additionalDirs: [...source.additionalDirs],
           pillColor: source.pillColor,
           pillIcon: source.pillIcon,
+          // A fork continues the same conversation kind. Dropping this made an
+          // extension-hosted fork silently become a Plain tab on its next send.
+          engineProfileId: source.engineProfileId,
         }
         // Carry the source instance's permission mode and thinking effort onto
         // the new pane instance — a fork continues the source conversation, so
@@ -132,9 +136,15 @@ export function createForkSlice(set: StoreSet, get: StoreGet): Partial<State> {
           additionalDirs: [...source.additionalDirs],
           pillColor: source.pillColor,
           pillIcon: source.pillIcon,
+          // A fork continues the same conversation kind. Dropping this made an
+          // extension-hosted fork silently become a Plain tab on its next send.
+          engineProfileId: source.engineProfileId,
           // pendingInput stays on the tab (one-shot InputBar pre-fill); draftInput
-          // is seeded onto the instance below.
+          // is seeded onto the instance below. The forked turn's attachments are
+          // restaged with it — a fork that pre-fills the text but drops the
+          // images produces a prompt the user cannot resend as it was.
           pendingInput: targetMessage.content,
+          attachments: stageableAttachments(targetMessage.attachments),
         }
         // Carry the source instance's permission mode and thinking effort onto
         // the new pane instance — a fork continues the source conversation, so

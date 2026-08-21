@@ -3,7 +3,7 @@
  *
  * Pins the fixes for:
  *  - stale socket close/error events re-arming the reconnect loop after
- *    stopAll (conn nullified before destroy; close handler checks identity)
+ *    disconnect (conn nullified before destroy; close handler checks identity)
  *  - consecutiveTimeouts carrying across connections (reset on connect)
  *  - stale request-timeout timers bumping consecutiveTimeouts after
  *    _failPendingRequests already settled them (has() guard)
@@ -67,7 +67,7 @@ vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error
 import { createConnection } from 'net'
 import { EngineBridge } from '../engine-bridge'
 import { scheduleReconnect } from '../engine-bridge-connection'
-import { stopAll } from '../engine-bridge-lifecycle'
+import { disconnect } from '../engine-bridge-lifecycle'
 import { reRegisterSessions } from '../engine-bridge-start-session'
 
 let bridge: EngineBridge
@@ -89,22 +89,22 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-// ── stopAll: stale close does not re-arm ──
+// ── disconnect: stale close does not re-arm ──
 
-describe('stopAll settles cleanly without reconnect storm', () => {
+describe('disconnect settles cleanly without reconnect storm', () => {
   it('async close event from destroyed socket does not schedule a reconnect', async () => {
     connectResults = [true]
     await bridge.connect()
     const oldConn = lastCreatedConn!
     expect(bridge.connected).toBe(true)
 
-    await stopAll(bridge)
+    await disconnect(bridge)
 
     expect(bridge.conn).toBeNull()
     expect(bridge.connected).toBe(false)
 
     // Simulate the async close event from the old socket firing after
-    // stopAll has already nullified bridge.conn.
+    // disconnect has already nullified bridge.conn.
     oldConn._fireClose()
 
     expect(bridge.reconnectTimer).toBeNull()
@@ -115,7 +115,7 @@ describe('stopAll settles cleanly without reconnect storm', () => {
     await bridge.connect()
     const oldConn = lastCreatedConn!
 
-    await stopAll(bridge)
+    await disconnect(bridge)
 
     const err = Object.assign(new Error('ECONNRESET'), { code: 'ECONNRESET' }) as NodeJS.ErrnoException
     oldConn._fireError(err)
@@ -124,13 +124,13 @@ describe('stopAll settles cleanly without reconnect storm', () => {
   })
 
   it('destroys a socket that connects after teardown instead of reviving bridge state', async () => {
-    // Keep the connect event pending so stopAll runs while doConnect is live.
+    // Keep the connect event pending so disconnect runs while doConnect is live.
     const pendingConn = makeMockConn()
     vi.mocked(createConnection).mockImplementationOnce(() => pendingConn as any)
 
     const connecting = bridge.connect()
     await Promise.resolve()
-    await stopAll(bridge)
+    await disconnect(bridge)
 
     pendingConn._fireConnect()
 

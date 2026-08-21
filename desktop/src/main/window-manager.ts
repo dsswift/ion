@@ -2,10 +2,10 @@ import { app, BrowserWindow, dialog, globalShortcut, Menu, nativeImage, screen, 
 import { join } from 'path'
 import { IPC } from '../shared/types'
 import { log as _log, debug as _debug, info as _info, warn as _warn, error as _error, trace as _trace, flushLogs } from './logger'
-import { state, SPACES_DEBUG, sessionPlane, engineBridge } from './state'
+import { enterprisePolicyCache, state, SPACES_DEBUG, sessionPlane, engineBridge } from './state'
 import { broadcast } from './broadcast'
 import { terminalManager } from './terminal-manager-instance'
-import { openAtvWindow, reassertAtvActivationPolicy } from './atv-window-manager'
+import { openStudioWindow, reassertStudioActivationPolicy } from './studio-window-manager'
 import { restartEngineDaemon } from './engine-bootstrap'
 import { preserveWorktreeOverlapWindow } from './worktree-overlap-window'
 import { resolveSurfacePlan } from './surface-launch'
@@ -14,6 +14,10 @@ import { attemptRendererRecovery, resetRendererCrashGuard } from './renderer-cra
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
+}
+
+function debug(msg: string, fields?: Record<string, unknown>): void {
+  _debug('main', msg, fields)
 }
 
 function error(msg: string, fields?: Record<string, unknown>): void {
@@ -97,7 +101,7 @@ export function installContentSecurityPolicy(): void {
 /**
  * Create the overlay window (the session-store OWNER renderer — it always
  * exists, even when its glass surface never shows). `showOnReady` is false
- * when the launch surface is the ATV: the renderer boots hidden and the
+ * when the launch surface is the Studio window: the renderer boots hidden and the
  * glass appears only when summoned (Alt+Space / tray).
  */
 export function createWindow(showOnReady = true): void {
@@ -136,10 +140,10 @@ export function createWindow(showOnReady = true): void {
 
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   // visibleOnFullScreen flips the app to the 'accessory' activation policy
-  // as a side effect. Harmless while no ATV window exists (accessory is the
-  // overlay's resting policy), but with the ATV open it silently removes
+  // as a side effect. Harmless while no Studio window exists (accessory is the
+  // overlay's resting policy), but with the Studio window open it silently removes
   // Ion from the Dock/Cmd-Tab — so every call re-asserts the correct policy.
-  reassertAtvActivationPolicy()
+  reassertStudioActivationPolicy()
   // Use 'modal-panel' rather than 'screen-saver' here. 'modal-panel' sits
   // above normal apps (browsers, VSCode — CGWindowLevel 0) so the overlay
   // covers them in tall mode, but it stays BELOW macOS TCC/permission dialogs
@@ -238,19 +242,26 @@ export function createWindow(showOnReady = true): void {
             await win.webContents.executeJavaScript(
               'window.__ionForceFlushTabs && window.__ionForceFlushTabs()',
             )
-          } catch {
-            // Window may already be destroyed or renderer unresponsive.
+          } catch (err) {
+            debug('window_manager: tab flush skipped, window gone or renderer unresponsive', { error: String(err) })
           }
         }
+        // Order matters, and only for Quit All: stop the sessions while the
+        // socket is still live, THEN boot out the daemon. Reversed, every
+        // stop_session is written to a dead socket.
+        state.forceQuit = true
+        terminalManager.destroyAll()
+        // The dialog's own promise: Quit Desktop keeps engine sessions running.
+        // Passing `shutdownEngine` here is what makes that text true — the
+        // desktop drops its socket and the engine's ownership grace window
+        // decides the rest, so relaunching reattaches to work still in flight.
+        sessionPlane.shutdown({ stopSessions: shutdownEngine })
         if (shutdownEngine) {
           log('Quit All: shutting down engine process')
           await engineBridge.shutdownAndWait().catch((err: Error) => {
             log('window_manager: engine shutdown error, proceeding with quit', { error: err.message })
           })
         }
-        state.forceQuit = true
-        terminalManager.destroyAll()
-        sessionPlane.shutdown()
         globalShortcut.unregisterAll()
         if (state.tray) {
           state.tray.destroy()
@@ -284,17 +295,17 @@ export function createTray(): void {
   trayIcon.setTemplateImage(true)
   state.tray = new Tray(trayIcon)
   state.tray.setToolTip('Ion')
-  // Both surfaces get a tray launcher — the tray is the one entry point that
-  // works in every window state. Disabled surfaces (surfacePolicy) lose
-  // their item entirely.
-  const plan = resolveSurfacePlan(readSettings())
+  // Single-UI exclusivity: only the ACTIVE conversation UI gets a tray
+  // launcher — the inactive UI's item is ABSENT, never greyed. The tray is
+  // rebuilt on every live activeUi switch (active-ui.ts).
+  const plan = resolveSurfacePlan(readSettings(), enterprisePolicyCache.policy)
   state.tray.setContextMenu(
     Menu.buildFromTemplate([
       ...(plan.overlayEnabled
         ? [{ label: 'Show Overlay', accelerator: 'Alt+Space', click: () => toggleWindow('tray menu') }]
         : []),
-      ...(plan.atvEnabled
-        ? [{ label: 'Show Visualizer', ...(plan.atvShortcut ? { accelerator: plan.atvShortcut } : {}), click: () => openAtvWindow('tray menu') }]
+      ...(plan.studioEnabled
+        ? [{ label: 'Show Ion Studio', accelerator: 'Alt+Space', click: () => openStudioWindow('tray menu') }]
         : []),
       { type: 'separator' },
       { label: 'Settings...', click: () => {
@@ -356,9 +367,9 @@ export function showWindow(source = 'unknown'): void {
 
   state.mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   // Re-assert the activation policy: visibleOnFullScreen silently flips the
-  // app to 'accessory', which (while the ATV is open) removed Ion from
-  // Cmd-Tab and sent the ATV window behind other apps on EVERY overlay show.
-  reassertAtvActivationPolicy()
+  // app to 'accessory', which (while the Studio window is open) removed Ion from
+  // Cmd-Tab and sent the Studio window behind other apps on EVERY overlay show.
+  reassertStudioActivationPolicy()
 
   if (SPACES_DEBUG) {
     log('[spaces] showWindow move to display', { toggle_id: toggleId, source, display_id: display.id })

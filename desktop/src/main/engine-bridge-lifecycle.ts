@@ -11,7 +11,17 @@ function warn(msg: string, fields?: Record<string, unknown>): void { _warn('engi
 const ION_HOME = join(homedir(), '.ion')
 const SOCKET_PATH = join(ION_HOME, 'engine.sock')
 
-export async function stopAll(bridge: EngineBridge): Promise<void> {
+/**
+ * Drop the desktop's socket to the engine daemon.
+ *
+ * Named `stopAll` until it was found to be the reason `EngineControlPlane
+ * .shutdown()` ended every conversation on "Quit Desktop": the name promised
+ * session teardown, so a shutdown path that called it plus a per-tab
+ * `stopSession` loop read as belt-and-suspenders instead of as one wrong
+ * decision. It stops nothing. It closes a socket, and the engine's ownership
+ * grace window is what decides the fate of the sessions behind it.
+ */
+export async function disconnect(bridge: EngineBridge): Promise<void> {
   // Block both scheduled and in-flight connections before tearing down the
   // current socket. An in-flight socket can emit connect after conn becomes
   // null; its connect handler must then destroy itself instead of reviving

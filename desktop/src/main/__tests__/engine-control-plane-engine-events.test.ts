@@ -43,7 +43,7 @@ const mockBridge = {
   updateSessionConversationId: vi.fn(),
   stopByPrefix: vi.fn(),
   stopSession: vi.fn().mockResolvedValue(undefined),
-  stopAll: vi.fn(),
+  disconnect: vi.fn(),
   on: vi.fn((event: string, handler: any) => {
     if (event === 'event') {
       capturedEventHandler = handler
@@ -162,6 +162,21 @@ describe('EngineControlPlane — engine event handling', () => {
       expect(tab?.status).toBe('dead')
     })
 
+    it('engine_status idle with pending work maps to waiting without task_complete', async () => {
+      const tabId = cp.createTab()
+      await cp.submitPrompt(tabId, 'req-1', makeRunOptions())
+
+      const events: any[] = []
+      cp.on('event', (tid: string, ev: any) => events.push({ tid, ev }))
+
+      capturedEventHandler!(tabId, {
+        type: 'engine_status',
+        fields: { state: 'idle', backgroundAgents: 1, hasPendingWork: true },
+      })
+
+      expect(cp.getTabStatus(tabId)?.status).toBe('waiting')
+      expect(events.find((entry) => entry.ev.type === 'task_complete')).toBeUndefined()
+    })
     it('engine_status idle emits task_complete', async () => {
       const tabId = cp.createTab()
       await cp.submitPrompt(tabId, 'req-1', makeRunOptions())

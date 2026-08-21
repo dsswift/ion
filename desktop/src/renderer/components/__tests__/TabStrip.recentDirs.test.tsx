@@ -147,8 +147,12 @@ vi.mock('../TabStripShared', () => ({
 }))
 
 // The zoom helpers moved out of TabStripShared into renderer/viewport-zoom so
-// every popover can reach them without importing a tab-strip module.
+// every popover can reach them without importing a tab-strip module. The mock
+// must cover the module's whole surface: a partial factory makes any newly
+// consumed helper an "export is not defined" failure at import time.
 vi.mock('../../viewport-zoom', () => ({
+  zoomPoint: (p: { x: number; y: number }) => p,
+  zoomDelta: (d: { x: number; y: number }) => d,
   zoomRect: (r: DOMRect) => r,
   zoomViewport: () => ({ width: window.innerWidth, height: window.innerHeight }),
 }))
