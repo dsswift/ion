@@ -341,8 +341,14 @@ jobs:
         working-directory: desktop
         run: npm ci
 
+      - name: Set desktop release version
+        working-directory: desktop
+        run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version
+
       - name: Build app
         working-directory: desktop
+        env:
+          ION_DESKTOP_VERSION: ${{ steps.version.outputs.version }}
         run: npx electron-vite build --mode production
 
       - name: Import signing certificates
@@ -393,10 +399,6 @@ jobs:
           echo "APPLE_SIGNING_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
           INSTALLER_IDENTITY=$(security find-identity -v "$KEYCHAIN" | grep "Developer ID Installer" | head -1 | sed 's/.*"\(.*\)".*/\1/')
           echo "APPLE_INSTALLER_IDENTITY=$INSTALLER_IDENTITY" >> "$GITHUB_ENV"
-
-      - name: Set version in package.json
-        working-directory: desktop
-        run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version
 
       - name: Build and package
         working-directory: desktop
@@ -450,6 +452,10 @@ jobs:
           else
             echo "APPLE_INSTALLER_IDENTITY not set — pkg is UNSIGNED (not usable for MDM push until APPLE_INSTALLER_CERT_BASE64 is added)"
           fi
+
+          APP="release/mac-universal/Ion.app"
+          [ -d "$APP" ] || { echo "ERROR: no universal Ion.app produced"; exit 1; }
+          node scripts/check-release-version.js "${{ steps.version.outputs.version }}" "$APP" "$PKG"
 
       - name: Upload to release
         env:

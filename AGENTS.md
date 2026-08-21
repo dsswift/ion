@@ -351,14 +351,14 @@ The trigger is any moment where the honest description of a plan is "the SDK can
 
 This is not license to gold-plate every extension task into an engine change. Most harness work is genuinely harness work. The rule fires specifically when a feature is *blocked by* an engine/SDK limitation and I own the engine: in that case the engine enhancement is the plan, and the workaround is the defect to avoid. When I ask for cutting-edge extension features, assume engine/SDK enhancements are in scope and surface them rather than defaulting to a harness-local hack. If there is a genuine reason the engine change is out of scope (published-contract break needing my approval, or the capability truly belongs in the harness), say so and let me decide — never silently pick the workaround.
 
-## Cross-client parity (overlay ↔ ATV)
+## Cross-client parity (overlay ↔ Studio)
 
-The desktop has two clients in one process: the overlay glass and the ATV shell (`desktop/src/renderer/atv/`). Same parity obligation as desktop ↔ iOS: a feature that exists in both must be the same in both. Full architecture: [ADR-021](docs/architecture/adr/021-atv-shell-mirror-store.md).
+The desktop has two clients in one process: the overlay glass and the Ion Studio shell (`desktop/src/renderer/studio/`). Same parity obligation as desktop ↔ iOS: a feature that exists in both must be the same in both. Full architecture: [ADR-021](docs/architecture/adr/021-studio-shell-mirror-store.md).
 
-- **Reuse is the parity system.** A shared surface is ONE component reading the same store, mounted in both windows (the ATV runs the session store in mirror mode). Never build a bespoke ATV widget for something the overlay already has a component for; bespoke is only for canvas-coupled surfaces (marquee, inspector, control bar).
-- **New store action** → classify it in `desktop/src/shared/atv-mirror-actions.ts` (forwarded vs mirror-local, with justification); the mirror-parity test fails otherwise.
-- **New main-process event push** → route through `broadcast()`; `make check-atv-parity` (CI) fails direct `webContents.send` outside the owner-only allowlist.
-- **Checklist for overlay UI/state changes:** does the surface exist in the ATV shell? Shared component → done by construction. Not shared → mount it in the ATV, or state why it is overlay-only. The inverse holds for ATV changes.
+- **Reuse is the parity system.** A shared surface is ONE component reading the same store, mounted in both windows (the Studio shell runs the session store in mirror mode). Never build a bespoke Studio widget for something the overlay already has a component for; bespoke is only for canvas-coupled surfaces (marquee, inspector, control bar).
+- **New store action** → classify it in `desktop/src/shared/studio-mirror-actions.ts` (forwarded vs mirror-local, with justification); the mirror-parity test fails otherwise.
+- **New main-process event push** → route through `broadcast()`; `make check-studio-parity` (CI) fails direct `webContents.send` outside the owner-only allowlist.
+- **Checklist for overlay UI/state changes:** does the surface exist in the Studio shell? Shared component → done by construction. Not shared → mount it in Studio, or state why it is overlay-only. The inverse holds for Studio changes.
 
 ## Cross-platform parity (desktop ↔ iOS)
 
@@ -389,6 +389,7 @@ Desktop and iOS are co-equal clients. When a desktop change touches a feature th
 | Integration bench (git panel IntegrationSection) | Bench sections in WorktreeListView | `desktop_worktree_state` → `RemoteWorktreeState.benches`. Pins, staleness, and conflict attribution are all main-process values. |
 | Worktree lifecycle verbs (land / sync / retire) | Tab-row context menu + worktree row swipe actions | `desktop_worktree_*` / `desktop_bench_*` commands; results ride `desktop_worktree_op_result` so a refusal reads differently from a failure. |
 | Base-moved indicator (WorktreeRow) | Tab row indicator (TabRowView) | `RemoteWorktree.needsSync`. Only set when a sync would actually change the worktree — never for a no-op. |
+| Inbox view (Studio InboxSidebar / classifier) | Inbox view (TabListView Inbox mode, InboxRowView) | `snapshot.ts` → `RemoteTabState.inboxState`/`unread`/`snoozedUntil`/`settledAt`/`wokeAt`/`lastActivityAt`/`idleSince`. The desktop computes the classification (shared/inbox-classify.ts); clients render, never derive. Inbox actions ride `desktop_tab_settle`/`_unsettle`/`_snooze`/`_unsnooze`/`_mark_unread`. View mode (tabs vs inbox) is per-device on both platforms, never synced. |
 | Theme registry + picker (AppearanceCategory) | Theme picker (SettingsAppearanceView) | Built-in themes are compiled into both clients and pinned identical by the parity fixture (`assets/theme-parity.json`, asserted by `theme-parity.test.ts` on desktop and `ThemeParityTests.swift` on iOS) — a shared-theme palette edit must update the fixture and the Swift theme in the same change. Custom theme packs sync their iOS components via `desktop_theme_manifest` (sendSync + on pack-set change) with lazy asset fetch (`desktop_request_theme_asset`); enterprise lock rides `desktop_settings_snapshot.themePolicy`. Theme selection is per-device (never synced). Authoring guide: `docs/design/theme-packs.md`. |
 
 ### When to skip iOS
