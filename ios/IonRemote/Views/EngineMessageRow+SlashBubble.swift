@@ -67,26 +67,28 @@ extension Message {
         return parseSlashCommand(fallbackText)
     }
 
-    /// Format model provenance badge text from the engine-resolved alias and
-    /// effective model name. Returns e.g. "Standard · GPT-5.6 Terra" when both
-    /// are present, just one when only one is set, or nil when neither exists.
+    /// Format command-owned model provenance. A selector appears only when its
+    /// resolved model started the run, yielding `Fast · GPT 5.6 Luna`. A direct
+    /// model selector repeats its effective model and renders once. Provider
+    /// fallback leaves only the serving model; its relationship is a separate
+    /// model-fallback signal.
     var slashModelDisplay: String? {
         let alias = slashModelAlias.map { value in
             guard let first = value.first else { return value }
             return first.uppercased() + value.dropFirst()
         }
         let bareModel = slashModelEffective?.split(separator: "/").last.map(String.init)
-        let model = bareModel.flatMap(formatSlashModelLabel)
-        switch (alias, model) {
-        case let (alias?, model?):
-            return "\(alias) · \(model)"
-        case let (alias?, nil):
-            return alias
-        case let (nil, model?):
-            return model
-        case (nil, nil):
+        guard let bareModel else {
             return nil
         }
+        let model = formatSlashModelLabel(bareModel)
+        guard let alias else {
+            return model
+        }
+        if alias.caseInsensitiveCompare(bareModel) == .orderedSame {
+            return model
+        }
+        return "\(alias) · \(model)"
     }
 }
 

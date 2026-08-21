@@ -101,7 +101,7 @@ extension ConversationView {
                         AttachmentImageCache.shared.store(data: bytes, forKey: result.path)
                     }
                     pendingAttachments[idx] = PendingAttachment(
-                        id: result.id, type: pendingAttachments[idx].type, name: result.name, path: result.path, isUploading: false, correlationId: cid
+                        id: result.id, type: pendingAttachments[idx].type, name: result.name, path: result.path, isUploading: false, correlationId: cid, contentHash: result.contentHash
                     )
                 }
             }

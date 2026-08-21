@@ -30,30 +30,7 @@ struct AgentStatusDotStack: View {
         .fixedSize()
     }
 
-    @ViewBuilder
     private func dot(_ layer: AgentDot) -> some View {
-        Circle()
-            .fill(layer.color)
-            .frame(width: size, height: size)
-            .modifier(PulseModifier(active: layer.pulses))
-            .shadow(color: layer.glows ? layer.color.opacity(0.6) : .clear, radius: layer.glows ? 3 : 0)
-    }
-}
-
-/// Slow opacity pulse for a live dot. Mirrors the desktop `.animate-pulse-dot`
-/// class so a running/waiting agent reads the same on both clients.
-private struct PulseModifier: ViewModifier {
-    let active: Bool
-    @State private var dimmed = false
-
-    func body(content: Content) -> some View {
-        if active {
-            content
-                .opacity(dimmed ? 0.45 : 1.0)
-                .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: dimmed)
-                .onAppear { dimmed = true }
-        } else {
-            content
-        }
+        AgentStatusDot(dot: layer, size: size)
     }
 }

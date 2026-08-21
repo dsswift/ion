@@ -8,9 +8,10 @@ struct PendingAttachment: Identifiable {
     let path: String
     var isUploading: Bool
     var correlationId: String = ""
+    var contentHash: String? = nil
 
     var commandAttachment: CommandAttachment {
-        CommandAttachment(type: type, name: name, path: path)
+        CommandAttachment(type: type, name: name, path: path, contentHash: contentHash)
     }
 }
 

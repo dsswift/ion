@@ -16,6 +16,16 @@ struct AgentTurnRow: View {
     @State private var isExpanded = false
     @Environment(\.appTheme) private var theme
 
+    private var activeProgress: (currentToolDescription: String, usedCount: Int)? {
+        activeToolProgress(tools)
+    }
+
+    private var activeLabel: String {
+        guard let activeProgress else { return "Running tools\u{2026}" }
+        let countLabel = "Used \(activeProgress.usedCount) tool\(activeProgress.usedCount == 1 ? "" : "s")"
+        return "Running \(activeProgress.currentToolDescription) · \(countLabel)"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             // Thinking block — rendered above assistant text when present.
@@ -63,7 +73,7 @@ struct AgentTurnRow: View {
                                 .foregroundStyle(compositeColor)
                         }
                         Text(isActive
-                            ? "Running tools\u{2026}"
+                            ? activeLabel
                             : settledLabel)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(theme.textSecondary)

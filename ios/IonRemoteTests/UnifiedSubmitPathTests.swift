@@ -82,6 +82,22 @@ final class UnifiedSubmitPathTests: XCTestCase {
         XCTAssertTrue(vm.conversationMessages("locked").isEmpty)
     }
 
+    /// Settled conversations are input-locked with reason "settled". The
+    /// submit guard must block them identically to other lock reasons.
+    func testSettledLockedTabRejectsSubmit() {
+        let vm = SessionViewModel()
+        var tab = makeTab(id: "settled", engine: false)
+        tab.inputLocked = true
+        tab.inputLockReason = "settled"
+        vm.tabs = [tab]
+
+        vm.submit(tabId: "settled", text: "must not send")
+
+        XCTAssertEqual(vm.tabs.first?.status, .idle,
+            "settled lock must block submit identically to other lock reasons")
+        XCTAssertTrue(vm.conversationMessages("settled").isEmpty)
+    }
+
     /// The DATA seam: an extension-backed tab carries an `instanceId`, a plain
     /// tab does not. This is the only per-tab difference in the submit path.
     func testResolveSubmitInstanceIdIsTheOnlyPerTabDifference() {

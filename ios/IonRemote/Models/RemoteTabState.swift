@@ -44,6 +44,12 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     var convFingerprint: String?
     var queuedPrompts: [String]?
     var isTerminalOnly: Bool?
+    /// Explicit tab lifecycle role ('bench-conversation' | 'conflict-auto-fix'
+    /// | 'verification-analysis'). Raw String so a newer desktop's role still
+    /// decodes. The inbox uses it to find a worktree's live auto-fix resolver
+    /// (flashing indicator + reactivation block) — the same identity the
+    /// desktop's findActiveAutoFix reads.
+    var tabRole: String?
     /// Input-locked conversation (auto-generated conflict fix): the input bar
     /// is replaced with a notice and no prompt can be sent. Nil decodes false.
     var inputLocked: Bool?
@@ -62,8 +68,47 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     /// The current conversation/session ID for this tab. CLI tabs populate
     /// this directly; engine tabs use `StatusFields.sessionId` instead.
     var conversationId: String?
-    /// Unix ms timestamp of the last status-changing activity (from desktop snapshot).
+    /// Unix ms timestamp of the last GENUINE activity (user message, turn
+    /// start, completion — never reconnect/heartbeat). The desktop snapshot's
+    /// sort key; iOS never sorts, so list order follows implicitly.
     var lastActivityAt: Double?
+    /// Unix ms of the last running→idle transition (renderer-observed).
+    var idleSince: Double?
+    /// Immutable creation timestamp — the "Newest created" inbox sort key.
+    /// Nil from an older desktop or a pre-field tab; sorts treat nil as 0.
+    var createdAt: Double?
+    /// Explicit worktree identity when the tab lives in a managed worktree.
+    /// Grouping keys off THIS (repoPath / worktreePath), never path-prefix
+    /// guessing — a freshly created worktree the inventory has not crawled
+    /// yet still groups under its source repository, exactly as the desktop
+    /// navigator does. Nil for repo-root conversations.
+    var worktree: RemoteTabWorktreeRef?
+    /// Desktop-derived inbox classification ('active' | 'snoozed' |
+    /// 'settled'). iOS renders, NEVER re-derives (no Swift classifier —
+    /// parity rule). Nil/absent decodes as active.
+    var inboxState: String?
+    /// Inbox unread (manual marker || completion newer than last visit).
+    var unread: Bool?
+    /// Snooze wake time (ms) while snoozed.
+    var snoozedUntil: Double?
+    /// When the desktop files a conversation, this records why: "settled" for
+    /// an operator action, "auto" for the desktop auto-settle policy, and
+    /// "active" for an explicit operator override. Both settled values have
+    /// identical lifecycle behavior. iOS shows a subdued Auto marker only for
+    /// automatic settlement. Nil/absent preserves older desktop snapshots.
+    var settledOverride: String?
+    /// When the conversation was settled (settled-shelf ordering).
+    var settledAt: Double?
+    /// When false, the settled conversation's worktree was retired. The record
+    /// remains in history but cannot be opened or resumed.
+    var canRestoreSettled: Bool?
+    /// Woke-pill moment (expired snooze not yet visited).
+    var wokeAt: Double?
+    /// Inbox pin timestamp and fractional ordering key from desktop.
+    var pinnedAt: Double?
+    var pinOrderKey: String?
+    /// Background agent work outranks monitor-only background shells.
+    var backgroundLiveness: String?
     /// Custom pill background color hex string (e.g. "#f08c4a"). Nil means use theme default.
     var pillColor: String?
     /// Custom pill icon key (e.g. "diamond", "star"). Nil means use the default status dot.
@@ -86,6 +131,9 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     /// with the pill simply not showing the shell state until upgraded. See
     /// AGENTS.md § "Common parity surfaces".
     var backgroundShellCount: Int?
+    /// Exact desktop projection of engine pending work. Waiting work can exist
+    /// before a child or shell has a visible row.
+    var hasPendingWork: Bool?
     /// Engine profile ID for this tab. Non-nil when the tab was created with
     /// a specific engine profile (i.e. `hasEngineExtension == true`). Used
     /// by `TabRowView` to resolve the profile display name for the harness
@@ -128,6 +176,12 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     var cacheReadTokens: Int?
     /// Cumulative cache-creation tokens (Anthropic prompt caching). Optional.
     var cacheCreationTokens: Int?
+    /// Desktop-stamped execution host. iOS renders this durable fact in Inbox
+    /// previews and never substitutes the paired desktop name.
+    var executionHost: String?
+    /// Desktop-stamped stable execution machine identity. It remains opaque to
+    /// clients so remote execution can use a different identity scheme later.
+    var executionMachineId: String?
 
     var displayTitle: String {
         customTitle ?? title
@@ -142,6 +196,20 @@ struct TerminalInstanceInfo: Codable, Identifiable, Sendable {
     var kind: String
     var readOnly: Bool
     var cwd: String
+}
+
+// MARK: - RemoteTabWorktreeRef
+
+/// The worktree a tab lives in, as stamped by the desktop. Mirrors
+/// `RemoteTabState.worktree` in protocol-remote-tab.ts (a subset of the
+/// desktop's WorktreeInfo).
+struct RemoteTabWorktreeRef: Codable, Hashable, Sendable {
+    var worktreePath: String
+    var branchName: String
+    var sourceBranch: String
+    var repoPath: String
+    /// Terminal witness written by a successful Land; nil before then.
+    var landedAt: Double?
 }
 
 // MARK: - EngineInstanceModelFallback
@@ -201,12 +269,17 @@ struct ConversationInstanceInfo: Codable, Identifiable, Sendable {
     /// desktop promotes the active instance's denial into that queue).
     var waitingState: String? = nil
     /// Per-engine-instance running state, decoded from the desktop snapshot.
-    /// `true` when the instance's engine state is `running`, `connecting`,
-    /// or `starting`. `EngineInstanceBar` renders a pulsing orange dot when
-    /// this is true and no `waitingState` is set. The parent tab's overall
-    /// status is aggregated by the snapshot — if any instance is running,
-    /// `RemoteTabState.status` is promoted to `.running`.
+    /// `true` when the instance's engine state is `running` or `connecting`.
+    /// `EngineInstanceBar` renders a pulsing orange dot when this is true and
+    /// no `waitingState` is set. Startup is carried separately in `isStarting`
+    /// because it uses the still idle status color and never pulses.
     var isRunning: Bool? = nil
+    /// Per-engine-instance engine-startup state, decoded from the desktop
+    /// snapshot. Startup is semantically distinct from a running turn:
+    /// `EngineInstanceBar` renders a still `statusIdle` dot while the parent
+    /// tab rollup returns `.starting` rather than `.running`.
+    /// Nil/absent means false for snapshots from older desktops.
+    var isStarting: Bool? = nil
     /// Per-engine-instance dispatched-agent count, decoded from the
     /// desktop snapshot. > 0 when the instance has background agents
     /// in the `running` status — even if the orchestrator itself is
@@ -221,6 +294,9 @@ struct ConversationInstanceInfo: Codable, Identifiable, Sendable {
     /// `runningAgentCount`; drives the per-instance "waiting on N background
     /// shell(s)" indicator in EngineInstanceBar. Nil/absent means zero.
     var backgroundShellCount: Int? = nil
+    /// Exact engine status verdict for work accepted but not yet visible as a
+    /// foreground run, child row, or shell row.
+    var hasPendingWork: Bool? = nil
     /// Per-engine-instance model-fallback indicator. Non-nil when the
     /// desktop's engineModelFallbacks map holds an entry for this
     /// `tabId:instanceId` — i.e. the engine emitted ModelFallbackEvent
@@ -291,8 +367,10 @@ struct ConversationInstanceInfo: Codable, Identifiable, Sendable {
         case label
         case waitingState
         case isRunning
+        case isStarting
         case runningAgentCount
         case backgroundShellCount
+        case hasPendingWork
         case modelFallback
         case conversationIds
         case thinkingEffort
@@ -319,8 +397,10 @@ extension ConversationInstanceInfo {
         )
         waitingState = try container.decodeIfPresent(String.self, forKey: .waitingState)
         isRunning = try container.decodeIfPresent(Bool.self, forKey: .isRunning)
+        isStarting = try container.decodeIfPresent(Bool.self, forKey: .isStarting)
         runningAgentCount = try container.decodeIfPresent(Int.self, forKey: .runningAgentCount)
         backgroundShellCount = try container.decodeIfPresent(Int.self, forKey: .backgroundShellCount)
+        hasPendingWork = try container.decodeIfPresent(Bool.self, forKey: .hasPendingWork)
         modelFallback = try container.decodeIfPresent(EngineInstanceModelFallback.self, forKey: .modelFallback)
         conversationIds = try container.decodeIfPresent([String].self, forKey: .conversationIds)
         thinkingEffort = try container.decodeIfPresent(String.self, forKey: .thinkingEffort)
@@ -334,8 +414,10 @@ extension ConversationInstanceInfo {
         try container.encode(label, forKey: .label)
         try container.encodeIfPresent(waitingState, forKey: .waitingState)
         try container.encodeIfPresent(isRunning, forKey: .isRunning)
+        try container.encodeIfPresent(isStarting, forKey: .isStarting)
         try container.encodeIfPresent(runningAgentCount, forKey: .runningAgentCount)
         try container.encodeIfPresent(backgroundShellCount, forKey: .backgroundShellCount)
+        try container.encodeIfPresent(hasPendingWork, forKey: .hasPendingWork)
         try container.encodeIfPresent(modelFallback, forKey: .modelFallback)
         try container.encodeIfPresent(conversationIds, forKey: .conversationIds)
         try container.encodeIfPresent(thinkingEffort, forKey: .thinkingEffort)

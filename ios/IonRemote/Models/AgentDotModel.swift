@@ -26,6 +26,22 @@ enum AgentDotModel: Equatable {
 
 enum AgentDotResolver {
 
+    /// Higher tiers sort first and win a historical-dispatch fold. Shell waits
+    /// sit below dispatched-child waits: both are active, but a child tree is
+    /// more actionable than detached background Bash work.
+    enum Tier: Int, Comparable {
+        case idle = 0
+        case done = 1
+        case running = 2
+        case shell = 3
+        case children = 4
+        case error = 5
+
+        static func < (lhs: Tier, rhs: Tier) -> Bool {
+            lhs.rawValue < rhs.rawValue
+        }
+    }
+
     /// Statuses that mean "this agent is alive", as opposed to terminal.
     ///
     /// `suspended` is the engine's park state (dispatch_agent.go sets it when a
@@ -35,12 +51,50 @@ enum AgentDotResolver {
         status == "running" || status == "suspended"
     }
 
+    static func tier(status: String, hasLiveDescendant: Bool, waitingOn: String?) -> Tier {
+        if status == "error" { return .error }
+        if hasLiveDescendant || status == "suspended" && waitingOn != "shell" { return .children }
+        if waitingOn == "shell" { return .shell }
+        if status == "running" { return .running }
+        if status == "done" { return .done }
+        return .idle
+    }
+
+    /// Sort visible root rows by current dispatch tier, then visibility and name.
+    /// Shared resolver keeps panel order aligned with status-dot precedence.
+    static func sortedAgents(_ agents: [AgentStateUpdate], allAgents: [AgentStateUpdate]) -> [AgentStateUpdate] {
+        agents.sorted { lhs, rhs in
+            let lhsTier = tier(for: lhs, in: allAgents)
+            let rhsTier = tier(for: rhs, in: allAgents)
+            if lhsTier != rhsTier { return lhsTier > rhsTier }
+            let visibilityOrder: [String: Int] = ["always": 0, "sticky": 1, "ephemeral": 2]
+            let lhsVisibility = visibilityOrder[lhs.visibility] ?? 9
+            let rhsVisibility = visibilityOrder[rhs.visibility] ?? 9
+            if lhsVisibility != rhsVisibility { return lhsVisibility < rhsVisibility }
+            return lhs.displayName.localizedCompare(rhs.displayName) == .orderedAscending
+        }
+    }
+
+    private static func tier(for agent: AgentStateUpdate, in allAgents: [AgentStateUpdate]) -> Tier {
+        guard let dispatch = mostRecentDispatch(agent.dispatches) else {
+            return tier(status: agent.status, hasLiveDescendant: false, waitingOn: nil)
+        }
+        let status = dispatch.status.isEmpty ? agent.status : dispatch.status
+        return tier(
+            status: status,
+            hasLiveDescendant: hasLiveDescendant(ofDispatch: dispatch.id, in: allAgents),
+            waitingOn: dispatch.waitingOn
+        )
+    }
+
     /// Resolve the dot for one status, given whether a live descendant hangs
     /// off the dispatch being described.
     ///
     ///   error                          → statusError, solid
-    ///   live descendant, or suspended  → statusWaitingChildren, pulsing + glow
-    ///   running                        → statusRunning, pulsing
+    ///   live descendant                 → statusWaitingChildren, pulsing + glow
+    ///   waiting on shell                → statusBash, pulsing
+    ///   suspended                       → statusWaitingChildren, pulsing + glow
+    ///   running                         → statusRunning, pulsing
     ///   done                           → statusDone, solid
     ///   else (idle / cancelled / …)    → muted, solid
     ///
@@ -50,21 +104,23 @@ enum AgentDotResolver {
     static func resolveDot(
         status: String,
         hasLiveDescendant: Bool,
+        waitingOn: String?,
         theme: AppTheme
     ) -> AgentDot {
-        if status == "error" {
-            return AgentDot(color: theme.statusError, pulses: false, glows: false, priority: 4)
+        switch tier(status: status, hasLiveDescendant: hasLiveDescendant, waitingOn: waitingOn) {
+        case .error:
+            return AgentDot(color: theme.statusError, pulses: false, glows: false, priority: Tier.error.rawValue)
+        case .children:
+            return AgentDot(color: theme.statusWaitingChildren, pulses: true, glows: true, priority: Tier.children.rawValue)
+        case .shell:
+            return AgentDot(color: theme.statusBash, pulses: true, glows: false, priority: Tier.shell.rawValue)
+        case .running:
+            return AgentDot(color: theme.statusRunning, pulses: true, glows: false, priority: Tier.running.rawValue)
+        case .done:
+            return AgentDot(color: theme.statusDone, pulses: false, glows: false, priority: Tier.done.rawValue)
+        case .idle:
+            return AgentDot(color: theme.textSecondary.opacity(0.5), pulses: false, glows: false, priority: Tier.idle.rawValue)
         }
-        if hasLiveDescendant || status == "suspended" {
-            return AgentDot(color: theme.statusWaitingChildren, pulses: true, glows: true, priority: 3)
-        }
-        if status == "running" {
-            return AgentDot(color: theme.statusRunning, pulses: true, glows: false, priority: 2)
-        }
-        if status == "done" {
-            return AgentDot(color: theme.statusDone, pulses: false, glows: false, priority: 1)
-        }
-        return AgentDot(color: theme.textSecondary.opacity(0.5), pulses: false, glows: false, priority: 0)
     }
 
     /// Whether any agent anywhere BELOW the given dispatch is still alive.
@@ -170,34 +226,55 @@ enum AgentDotResolver {
     ) -> AgentDotModel {
         let dispatches = agent.dispatches
         if dispatches.isEmpty {
-            return .single(resolveDot(status: agent.status, hasLiveDescendant: false, theme: theme))
+            return .single(resolveDot(status: agent.status, hasLiveDescendant: false, waitingOn: nil, theme: theme))
         }
 
         let recent = mostRecentDispatch(dispatches)
-        let foreground = dot(for: recent, agent: agent, allAgents: allAgents, theme: theme)
+        let foreground = resolveDispatchDot(
+            agent: agent,
+            dispatch: recent,
+            allAgents: allAgents,
+            theme: theme
+        )
 
         let previous = dispatches.filter { $0.id != recent?.id }
         guard let first = previous.first else { return .single(foreground) }
 
-        var background = dot(for: first, agent: agent, allAgents: allAgents, theme: theme)
+        var background = resolveDispatchDot(
+            agent: agent,
+            dispatch: first,
+            allAgents: allAgents,
+            theme: theme
+        )
         for d in previous.dropFirst() {
-            let candidate = dot(for: d, agent: agent, allAgents: allAgents, theme: theme)
+            let candidate = resolveDispatchDot(
+                agent: agent,
+                dispatch: d,
+                allAgents: allAgents,
+                theme: theme
+            )
             if candidate.priority > background.priority { background = candidate }
         }
         return .stack(foreground: foreground, background: background)
     }
 
-    /// Dot for a single dispatch. A member with no status of its own (freshly
-    /// minted, or a legacy row) falls back to the agent's status.
-    private static func dot(
-        for dispatch: DispatchInfo?,
+    /// Dot for one dispatch. Picker and row use this exact resolver so each
+    /// dispatch chip reports same liveness, pulse, and glow semantics as stack.
+    /// A member with no status of its own falls back to agent status.
+    static func resolveDispatchDot(
         agent: AgentStateUpdate,
+        dispatch: DispatchInfo?,
         allAgents: [AgentStateUpdate],
         theme: AppTheme
     ) -> AgentDot {
         let dispatchStatus = dispatch?.status ?? ""
         let status = dispatchStatus.isEmpty ? agent.status : dispatchStatus
         let live = dispatch.map { hasLiveDescendant(ofDispatch: $0.id, in: allAgents) } ?? false
-        return resolveDot(status: status, hasLiveDescendant: live, theme: theme)
+        return resolveDot(
+            status: status,
+            hasLiveDescendant: live,
+            waitingOn: dispatch?.waitingOn,
+            theme: theme
+        )
     }
 }

@@ -57,6 +57,15 @@
 		STALECONVPH000000000001 /* StaleConversationPlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = STALECONVPH000000000002 /* StaleConversationPlaceholderView.swift */; };
 		FE01AA02BC03DD04EE05FF04 /* TabListView+DetailViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE01AA02BC03DD04EE05FF03 /* TabListView+DetailViews.swift */; };
 		FE01AA02BC03DD04EE05FF06 /* TabListView+Layouts.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE01AA02BC03DD04EE05FF05 /* TabListView+Layouts.swift */; };
+		FE11AA22BC33DD44EE55FF02 /* TabListView+Inbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE11AA22BC33DD44EE55FF01 /* TabListView+Inbox.swift */; };
+		FE11AA22BC33DD44EE55FF04 /* InboxRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE11AA22BC33DD44EE55FF03 /* InboxRowView.swift */; };
+		C0DE0000000000000000000D /* InboxSettledHistorySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE0000000000000000000E /* InboxSettledHistorySheet.swift */; };
+		C0DE00000000000000000001 /* InboxNavigator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000002 /* InboxNavigator.swift */; };
+		C0DE00000000000000000003 /* InboxConversationPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000004 /* InboxConversationPreview.swift */; };
+		C0DE00000000000000000005 /* InboxWorktreeGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000006 /* InboxWorktreeGroup.swift */; };
+		C0DE00000000000000000007 /* InboxBenchGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000008 /* InboxBenchGroup.swift */; };
+		WTPROJIDENT000000000001 /* WorktreeProjectIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = WTPROJIDENT000000000002 /* WorktreeProjectIdentity.swift */; };
+		WTPROJIDENT000000000003 /* WorktreeProjectIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WTPROJIDENT000000000004 /* WorktreeProjectIdentityTests.swift */; };
 		A1B2C3D4E5F6000100001BAA /* PermissionCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100001CAA /* PermissionCardView.swift */; };
 		E11C17CA0001000000000B01 /* ElicitationCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E11C17CA0001000000000C01 /* ElicitationCardView.swift */; };
 		A1B2C3D4E5F6000100001DAA /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100001EAA /* PairingView.swift */; };
@@ -66,8 +75,10 @@
 		A1B2C3D4E5F600010004AB01 /* WorktreeWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010003AB01 /* WorktreeWireTests.swift */; };
 		A1B2C3D4E5F600010004AB02 /* WorktreeWireCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010003AB02 /* WorktreeWireCommandTests.swift */; };
 		F3B1C2D3E4F5061728394A01 /* BenchNavigationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3B1C2D3E4F5061728394A02 /* BenchNavigationTests.swift */; };
+		F3B1C2D3E4F5061728394F71 /* BenchEphemeralLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3B1C2D3E4F5061728394F72 /* BenchEphemeralLifecycleTests.swift */; };
 		F3B1C2D3E4F5061728394B01 /* WorktreeRowSelectConversationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3B1C2D3E4F5061728394B02 /* WorktreeRowSelectConversationTests.swift */; };
 		A1B2C3D4E5F600010004AB77 /* WorktreeOpResultWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010003AB77 /* WorktreeOpResultWireTests.swift */; };
+		A1B2C3D4E5F600010004AB78 /* WorktreePipelineWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010003AB78 /* WorktreePipelineWireTests.swift */; };
 		A1B2C3D4E5F600010004AC91 /* WorktreeCloseWarningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010003AC91 /* WorktreeCloseWarningTests.swift */; };
 		A1B2C3D4E5F60001000027AA /* E2ECryptoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */; };
 		A1B2C3D4E5F60001000029AA /* TransportManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */; };
@@ -107,6 +118,7 @@
 		A1B2C3D4E5F600010000D2AA /* AnsiParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000D3AA /* AnsiParser.swift */; };
 		A1B2C3D4E5F600010000E0AA /* AgentBarRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000E1AA /* AgentBarRow.swift */; };
 		AGSDS00000000000000001 /* AgentStatusDotStack.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGSDS00000000000000002 /* AgentStatusDotStack.swift */; };
+		AGSDT00000000000000001 /* AgentStatusDot.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGSDT00000000000000002 /* AgentStatusDot.swift */; };
 		A1B2C3D4E5F600010000E2AA /* AgentExpandedContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000E3AA /* AgentExpandedContent.swift */; };
 		APDR00000000000000001 /* AgentPanelDefaultResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = APDR00000000000000002 /* AgentPanelDefaultResolver.swift */; };
 		STATUSDWR0000000000001 /* StatusDrawerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = STATUSDWR0000000000002 /* StatusDrawerView.swift */; };
@@ -145,6 +157,7 @@
 		A1B2C3D4E5F60001000202AA /* SessionViewModel+Pairing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */; };
 		PAIRREPAIRTEST000000001 /* PairingRepairTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PAIRREPAIRTEST000000002 /* PairingRepairTests.swift */; };
 		A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */; };
+		FE11AA22BC33DD44EE55FF06 /* SessionViewModel+InboxCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE11AA22BC33DD44EE55FF05 /* SessionViewModel+InboxCommands.swift */; };
 		A1B2C3D4E5F60001000204FE /* SessionViewModel+ConversationLoadGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000205FE /* SessionViewModel+ConversationLoadGate.swift */; };
 		A1B2C3D4E5F6000100049A03 /* SessionViewModel+WorktreeCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A03 /* SessionViewModel+WorktreeCommands.swift */; };
 		A1B2C3D4E5F6000100049A04 /* SessionViewModel+WorktreeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A04 /* SessionViewModel+WorktreeState.swift */; };
@@ -225,6 +238,7 @@
 		PLAN0IMPLEMENT00001 /* PlanImplementWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLAN0IMPLEMENT00002 /* PlanImplementWireTests.swift */; };
 		IMPL0UNPIN00000001 /* ImplementAndUnpinOrderingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = IMPL0UNPIN00000002 /* ImplementAndUnpinOrderingTests.swift */; };
 		A1B2C3D4E5F60001000244AA /* NormalizedEventLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000245AA /* NormalizedEventLifecycleTests.swift */; };
+		STEER0EVENT0000001 /* NormalizedEventSteerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = STEER0EVENT0000002 /* NormalizedEventSteerTests.swift */; };
 		A1B2C3D4E5F60001000246AA /* NormalizedEventTerminalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000247AA /* NormalizedEventTerminalTests.swift */; };
 		A1B2C3D4E5F60001000248AA /* ContractSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000249AA /* ContractSyncTests.swift */; };
 		IONSPACET000000000001 /* IonSpaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = IONSPACET000000000002 /* IonSpaceTests.swift */; };
@@ -235,7 +249,6 @@
 		C0DE57A6E00000000000A001 /* WorkStage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE57A6E00000000000F001 /* WorkStage.swift */; };
 		A1B2C3D4E5F6000100049A02 /* NormalizedEvent+Worktree.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A02 /* NormalizedEvent+Worktree.swift */; };
 		A1B2C3D4E5F60001000303AA /* NormalizedEvent+Git.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000302AA /* NormalizedEvent+Git.swift */; };
-		A1B2C3D4E5F6000100049A05 /* WorktreeListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A05 /* WorktreeListView.swift */; };
 		A1B2C3D4E5F6000100049A06 /* WorktreeRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A06 /* WorktreeRowView.swift */; };
 		A1B2C3D4E5F6000100049C01 /* WorktreeCloseWarning.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039C01 /* WorktreeCloseWarning.swift */; };
 		A1B2C3D4E5F60001000305AA /* GitPaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000304AA /* GitPaneView.swift */; };
@@ -440,6 +453,7 @@
 		THEMEMIGRTST0000000002 /* ThemeManagerMigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = THEMEMIGRTST0000000001 /* ThemeManagerMigrationTests.swift */; };
 		THEMESTORETST000000002 /* SyncedThemeStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = THEMESTORETST000000001 /* SyncedThemeStoreTests.swift */; };
 		THEMEWIRETST0000000002 /* ThemeSyncWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = THEMEWIRETST0000000001 /* ThemeSyncWireTests.swift */; };
+		GITDIFFWIRE00000000002 /* GitDiffWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = GITDIFFWIRE00000000001 /* GitDiffWireTests.swift */; };
 		IONGEOGATETST0000000002 /* IonGeometrySourceGatesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = IONGEOGATETST0000000001 /* IonGeometrySourceGatesTests.swift */; };
 		SYNCTHMINHTST0000000002 /* SyncedThemeInheritanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SYNCTHMINHTST0000000001 /* SyncedThemeInheritanceTests.swift */; };
 		THEMEENFTST00000000002 /* ThemeEnforcementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = THEMEENFTST00000000001 /* ThemeEnforcementTests.swift */; };
@@ -456,6 +470,7 @@
 		A1B2C3D4E5F60001FF0011AA /* FrontmatterSplitter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0010AA /* FrontmatterSplitter.swift */; };
 		A1B2C3D4E5F60001FF0013AA /* FrontmatterSplitterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0012AA /* FrontmatterSplitterTests.swift */; };
 		A1B2C3D4E5F60001FF0021AA /* RemoteCommand+Decode.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0020AA /* RemoteCommand+Decode.swift */; };
+		A1B2C3D4E5F60001FF0021AB /* RemoteCommand+DecodeWorktree.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0020AB /* RemoteCommand+DecodeWorktree.swift */; };
 		A1B2C3D4E5F60001FF0023AA /* SessionViewModel+ConversationHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0022AA /* SessionViewModel+ConversationHelpers.swift */; };
 		A1B2C3D4E5F60001FF0025AA /* NormalizedEvent+EngineDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0024AA /* NormalizedEvent+EngineDecoder.swift */; };
 		A1B2C3D4E5F60003000201AA /* ModelFallbackSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60003000202AA /* ModelFallbackSnapshotTests.swift */; };
@@ -486,6 +501,8 @@
 		EMRSUPP000000000000001 /* EngineMessageRow+Support.swift in Sources */ = {isa = PBXBuildFile; fileRef = EMRSUPP000000000000002 /* EngineMessageRow+Support.swift */; };
 		SSVMDT000000000000001 /* SessionViewModel+DispatchTranscript.swift in Sources */ = {isa = PBXBuildFile; fileRef = SSVMDT000000000000002 /* SessionViewModel+DispatchTranscript.swift */; };
 		RTSDECODE000000000001 /* RemoteTabStateDecodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTSDECODE000000000002 /* RemoteTabStateDecodeTests.swift */; };
+		C0DE00000000000000000009 /* InboxNavigatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE0000000000000000000A /* InboxNavigatorTests.swift */; };
+		C0DE0000000000000000000B /* InboxSnapshotWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE0000000000000000000C /* InboxSnapshotWireTests.swift */; };
 		C0DEC0DE000000000001 /* FileIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000000 /* FileIcon.swift */; };
 		C0DEC0DE000000000003 /* FilePathDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000002 /* FilePathDetector.swift */; };
 		C0DEC0DE000000000005 /* IonCodeTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000004 /* IonCodeTheme.swift */; };
@@ -561,6 +578,15 @@
 		STALECONVPH000000000002 /* StaleConversationPlaceholderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaleConversationPlaceholderView.swift; sourceTree = "<group>"; };
 		FE01AA02BC03DD04EE05FF03 /* TabListView+DetailViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TabListView+DetailViews.swift"; sourceTree = "<group>"; };
 		FE01AA02BC03DD04EE05FF05 /* TabListView+Layouts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TabListView+Layouts.swift"; sourceTree = "<group>"; };
+		FE11AA22BC33DD44EE55FF01 /* TabListView+Inbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TabListView+Inbox.swift"; sourceTree = "<group>"; };
+		FE11AA22BC33DD44EE55FF03 /* InboxRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxRowView.swift; sourceTree = "<group>"; };
+		C0DE00000000000000000002 /* InboxNavigator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxNavigator.swift; sourceTree = "<group>"; };
+		C0DE00000000000000000004 /* InboxConversationPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxConversationPreview.swift; sourceTree = "<group>"; };
+		C0DE0000000000000000000E /* InboxSettledHistorySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxSettledHistorySheet.swift; sourceTree = "<group>"; };
+		C0DE00000000000000000006 /* InboxWorktreeGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxWorktreeGroup.swift; sourceTree = "<group>"; };
+		C0DE00000000000000000008 /* InboxBenchGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxBenchGroup.swift; sourceTree = "<group>"; };
+		WTPROJIDENT000000000002 /* WorktreeProjectIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeProjectIdentity.swift; sourceTree = "<group>"; };
+		WTPROJIDENT000000000004 /* WorktreeProjectIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeProjectIdentityTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100001CAA /* PermissionCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionCardView.swift; sourceTree = "<group>"; };
 		E11C17CA0001000000000C01 /* ElicitationCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElicitationCardView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100001EAA /* PairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingView.swift; sourceTree = "<group>"; };
@@ -570,8 +596,10 @@
 		A1B2C3D4E5F600010003AB01 /* WorktreeWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeWireTests.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010003AB02 /* WorktreeWireCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeWireCommandTests.swift"; sourceTree = "<group>"; };
 		F3B1C2D3E4F5061728394A02 /* BenchNavigationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchNavigationTests.swift; sourceTree = "<group>"; };
+		F3B1C2D3E4F5061728394F72 /* BenchEphemeralLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchEphemeralLifecycleTests.swift; sourceTree = "<group>"; };
 		F3B1C2D3E4F5061728394B02 /* WorktreeRowSelectConversationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeRowSelectConversationTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010003AB77 /* WorktreeOpResultWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeOpResultWireTests.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010003AB78 /* WorktreePipelineWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreePipelineWireTests.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010003AC91 /* WorktreeCloseWarningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeCloseWarningTests.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2ECryptoTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManagerTests.swift; sourceTree = "<group>"; };
@@ -614,6 +642,7 @@
 		A1B2C3D4E5F600010000D3AA /* AnsiParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnsiParser.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000E1AA /* AgentBarRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentBarRow.swift; sourceTree = "<group>"; };
 		AGSDS00000000000000002 /* AgentStatusDotStack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentStatusDotStack.swift; sourceTree = "<group>"; };
+		AGSDT00000000000000002 /* AgentStatusDot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentStatusDot.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000E3AA /* AgentExpandedContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentExpandedContent.swift; sourceTree = "<group>"; };
 		APDR00000000000000002 /* AgentPanelDefaultResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentPanelDefaultResolver.swift; sourceTree = "<group>"; };
 		STATUSDWR0000000000002 /* StatusDrawerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusDrawerView.swift; sourceTree = "<group>"; };
@@ -652,6 +681,7 @@
 		A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Pairing.swift"; sourceTree = "<group>"; };
 		PAIRREPAIRTEST000000002 /* PairingRepairTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingRepairTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Commands.swift"; sourceTree = "<group>"; };
+		FE11AA22BC33DD44EE55FF05 /* SessionViewModel+InboxCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+InboxCommands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000205FE /* SessionViewModel+ConversationLoadGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ConversationLoadGate.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100039A03 /* SessionViewModel+WorktreeCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+WorktreeCommands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100039A04 /* SessionViewModel+WorktreeState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+WorktreeState.swift"; sourceTree = "<group>"; };
@@ -732,6 +762,7 @@
 		PLAN0IMPLEMENT00002 /* PlanImplementWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanImplementWireTests.swift; sourceTree = "<group>"; };
 		IMPL0UNPIN00000002 /* ImplementAndUnpinOrderingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImplementAndUnpinOrderingTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000245AA /* NormalizedEventLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventLifecycleTests.swift; sourceTree = "<group>"; };
+		STEER0EVENT0000002 /* NormalizedEventSteerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventSteerTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000247AA /* NormalizedEventTerminalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventTerminalTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000249AA /* ContractSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractSyncTests.swift; sourceTree = "<group>"; };
 		IONSPACET000000000002 /* IonSpaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IonSpaceTests.swift; sourceTree = "<group>"; };
@@ -937,6 +968,7 @@
 		THEMEMIGRTST0000000001 /* ThemeManagerMigrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeManagerMigrationTests.swift; sourceTree = "<group>"; };
 		THEMESTORETST000000001 /* SyncedThemeStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncedThemeStoreTests.swift; sourceTree = "<group>"; };
 		THEMEWIRETST0000000001 /* ThemeSyncWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeSyncWireTests.swift; sourceTree = "<group>"; };
+		GITDIFFWIRE00000000001 /* GitDiffWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitDiffWireTests.swift; sourceTree = "<group>"; };
 		IONGEOGATETST0000000001 /* IonGeometrySourceGatesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IonGeometrySourceGatesTests.swift; sourceTree = "<group>"; };
 		SYNCTHMINHTST0000000001 /* SyncedThemeInheritanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncedThemeInheritanceTests.swift; sourceTree = "<group>"; };
 		THEMEENFTST00000000001 /* ThemeEnforcementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeEnforcementTests.swift; sourceTree = "<group>"; };
@@ -952,6 +984,7 @@
 		A1B2C3D4E5F60001FF0010AA /* FrontmatterSplitter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrontmatterSplitter.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0012AA /* FrontmatterSplitterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrontmatterSplitterTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0020AA /* RemoteCommand+Decode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RemoteCommand+Decode.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001FF0020AB /* RemoteCommand+DecodeWorktree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RemoteCommand+DecodeWorktree.swift"; sourceTree = "<group>"; };
 		SENDINT00000000000000002 /* SendIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendIntent.swift; sourceTree = "<group>"; };
 		ESSNKY00000000000000002 /* RemoteCommand+EssentialKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RemoteCommand+EssentialKey.swift"; sourceTree = "<group>"; };
 		KINDNM00000000000000002 /* RemoteCommand+KindName.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RemoteCommand+KindName.swift"; sourceTree = "<group>"; };
@@ -992,6 +1025,8 @@
 		EMRSUPP000000000000002 /* EngineMessageRow+Support.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EngineMessageRow+Support.swift"; sourceTree = "<group>"; };
 		SSVMDT000000000000002 /* SessionViewModel+DispatchTranscript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+DispatchTranscript.swift"; sourceTree = "<group>"; };
 		RTSDECODE000000000002 /* RemoteTabStateDecodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTabStateDecodeTests.swift; sourceTree = "<group>"; };
+		C0DE0000000000000000000A /* InboxNavigatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxNavigatorTests.swift; sourceTree = "<group>"; };
+		C0DE0000000000000000000C /* InboxSnapshotWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxSnapshotWireTests.swift; sourceTree = "<group>"; };
 		C0DEC0DE000000000000 /* FileIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileIcon.swift; sourceTree = "<group>"; };
 		C0DEC0DE000000000002 /* FilePathDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePathDetector.swift; sourceTree = "<group>"; };
 		C0DEC0DE000000000004 /* IonCodeTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IonCodeTheme.swift; sourceTree = "<group>"; };
@@ -1083,6 +1118,7 @@
 				CTXBDPAY0000000000002 /* ContextBreakdownPayload.swift */,
 				A1B2C3D4E5F60001D70007AA /* DesktopSettingsModel.swift */,
 				A1B2C3D4E5F6000100039A01 /* WorktreeTypes.swift */,
+				WTPROJIDENT000000000002 /* WorktreeProjectIdentity.swift */,
 				C0DE57A6E00000000000F001 /* WorkStage.swift */,
 				A1B2C3D4E5F6000100039A02 /* NormalizedEvent+Worktree.swift */,
 				A1B2C3D4E5F60001000302AA /* NormalizedEvent+Git.swift */,
@@ -1095,6 +1131,7 @@
 				A1B2C3D4E5F60001000008AA /* RemoteCommand.swift */,
 				A1B2C3D4E5F60001005307AA /* RemoteCommand+Encode.swift */,
 				A1B2C3D4E5F60001FF0020AA /* RemoteCommand+Decode.swift */,
+				A1B2C3D4E5F60001FF0020AB /* RemoteCommand+DecodeWorktree.swift */,
 				ESSNKY00000000000000002 /* RemoteCommand+EssentialKey.swift */,
 				KINDNM00000000000000002 /* RemoteCommand+KindName.swift */,
 				RMDECERR000000000000002 /* RemoteEventDecodeError.swift */,
@@ -1171,6 +1208,13 @@
 				STALECONVPH000000000002 /* StaleConversationPlaceholderView.swift */,
 				FE01AA02BC03DD04EE05FF03 /* TabListView+DetailViews.swift */,
 				FE01AA02BC03DD04EE05FF05 /* TabListView+Layouts.swift */,
+				FE11AA22BC33DD44EE55FF01 /* TabListView+Inbox.swift */,
+				FE11AA22BC33DD44EE55FF03 /* InboxRowView.swift */,
+				C0DE00000000000000000002 /* InboxNavigator.swift */,
+				C0DE00000000000000000004 /* InboxConversationPreview.swift */,
+				C0DE0000000000000000000E /* InboxSettledHistorySheet.swift */,
+				C0DE00000000000000000006 /* InboxWorktreeGroup.swift */,
+				C0DE00000000000000000008 /* InboxBenchGroup.swift */,
 				A1B2C3D4E5F60001009B00AA /* TabListNewTabSheet.swift */,
 				A1B2C3D4E5F60001009C00AA /* TabListGroupHeader.swift */,
 				TABSTATUSROLLUP0000002 /* TabStatusRollup.swift */,
@@ -1219,6 +1263,7 @@
 				A1B2C3D4E5F600010000F5AA /* EngineInstanceBar.swift */,
 				A1B2C3D4E5F600010000E1AA /* AgentBarRow.swift */,
 				AGSDS00000000000000002 /* AgentStatusDotStack.swift */,
+				AGSDT00000000000000002 /* AgentStatusDot.swift */,
 				A1B2C3D4E5F600010000E3AA /* AgentExpandedContent.swift */,
 				APDR00000000000000002 /* AgentPanelDefaultResolver.swift */,
 				DBSTATE00000000000000A2 /* DispatchBodyState.swift */,
@@ -1234,7 +1279,6 @@
 				A1B2C3D4E5F6000100400EDD /* ContextUsageRing.swift */,
 				A1B2C3D4E5F600010040AE01 /* ModelPickerSheet.swift */,
 				A1B2C3D4E5F6000100400EDE /* ConversationContextStrip.swift */,
-				A1B2C3D4E5F6000100039A05 /* WorktreeListView.swift */,
 				A1B2C3D4E5F6000100039A06 /* WorktreeRowView.swift */,
 				A1B2C3D4E5F6000100039C01 /* WorktreeCloseWarning.swift */,
 				A1B2C3D4E5F60001000304AA /* GitPaneView.swift */,
@@ -1299,6 +1343,7 @@
 				A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */,
 				A1B2C3D4E5F60001009200AA /* SessionViewModel+RemoteDisplay.swift */,
 				A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */,
+				FE11AA22BC33DD44EE55FF05 /* SessionViewModel+InboxCommands.swift */,
 				A1B2C3D4E5F60001000205FE /* SessionViewModel+ConversationLoadGate.swift */,
 				A1B2C3D4E5F6000100039A03 /* SessionViewModel+WorktreeCommands.swift */,
 				A1B2C3D4E5F6000100039A04 /* SessionViewModel+WorktreeState.swift */,
@@ -1358,6 +1403,7 @@
 				THEMEMIGRTST0000000001 /* ThemeManagerMigrationTests.swift */,
 				THEMESTORETST000000001 /* SyncedThemeStoreTests.swift */,
 				THEMEWIRETST0000000001 /* ThemeSyncWireTests.swift */,
+				GITDIFFWIRE00000000001 /* GitDiffWireTests.swift */,
 				IONGEOGATETST0000000001 /* IonGeometrySourceGatesTests.swift */,
 				SYNCTHMINHTST0000000001 /* SyncedThemeInheritanceTests.swift */,
 				THEMEENFTST00000000001 /* ThemeEnforcementTests.swift */,
@@ -1372,6 +1418,7 @@
 				PLAN0IMPLEMENT00002 /* PlanImplementWireTests.swift */,
 				IMPL0UNPIN00000002 /* ImplementAndUnpinOrderingTests.swift */,
 				A1B2C3D4E5F60001000245AA /* NormalizedEventLifecycleTests.swift */,
+				STEER0EVENT0000002 /* NormalizedEventSteerTests.swift */,
 				A1B2C3D4E5F60001000247AA /* NormalizedEventTerminalTests.swift */,
 				A1B2C3D4E5F60001000249AA /* ContractSyncTests.swift */,
 				IONSPACET000000000002 /* IonSpaceTests.swift */,
@@ -1438,6 +1485,9 @@
 				A1B2C3D4E5F60001F00017AB /* ThinkingControlStateTests.swift */,
 				E11C17CA0001F00013AB0001 /* ElicitationCodecTests.swift */,
 				RTSDECODE000000000002 /* RemoteTabStateDecodeTests.swift */,
+				C0DE0000000000000000000A /* InboxNavigatorTests.swift */,
+				C0DE0000000000000000000C /* InboxSnapshotWireTests.swift */,
+				WTPROJIDENT000000000004 /* WorktreeProjectIdentityTests.swift */,
 				CTXBDTST0000000000002 /* ContextBreakdownDecodeTests.swift */,
 				CTXOCCTST00000000002 /* ContextOccupancyTests.swift */,
 				REQCTXBD0000000000002 /* RequestContextBreakdownTests.swift */,
@@ -1459,8 +1509,10 @@
 				A1B2C3D4E5F600010003AB01 /* WorktreeWireTests.swift */,
 				A1B2C3D4E5F600010003AB02 /* WorktreeWireCommandTests.swift */,
 				F3B1C2D3E4F5061728394A02 /* BenchNavigationTests.swift */,
+				F3B1C2D3E4F5061728394F72 /* BenchEphemeralLifecycleTests.swift */,
 				F3B1C2D3E4F5061728394B02 /* WorktreeRowSelectConversationTests.swift */,
 				A1B2C3D4E5F600010003AB77 /* WorktreeOpResultWireTests.swift */,
+				A1B2C3D4E5F600010003AB78 /* WorktreePipelineWireTests.swift */,
 				A1B2C3D4E5F600010003AC91 /* WorktreeCloseWarningTests.swift */,
 				A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */,
 				A1B2C3D4E5F60001FF0004AA /* MarkdownFormatterFixtures.swift */,
@@ -1777,6 +1829,7 @@
 				A1B2C3D4E5F60001000007AA /* RemoteCommand.swift in Sources */,
 				A1B2C3D4E5F60001005306AA /* RemoteCommand+Encode.swift in Sources */,
 				A1B2C3D4E5F60001FF0021AA /* RemoteCommand+Decode.swift in Sources */,
+				A1B2C3D4E5F60001FF0021AB /* RemoteCommand+DecodeWorktree.swift in Sources */,
 				A1B2C3D4E5F60001000009AA /* PairedDevice.swift in Sources */,
 				THEMESYNCPAY0000000002 /* SyncedThemePayload.swift in Sources */,
 				THEMESYNCSTORE00000002 /* SyncedThemeStore.swift in Sources */,
@@ -1814,6 +1867,14 @@
 				STALECONVPH000000000001 /* StaleConversationPlaceholderView.swift in Sources */,
 				FE01AA02BC03DD04EE05FF04 /* TabListView+DetailViews.swift in Sources */,
 				FE01AA02BC03DD04EE05FF06 /* TabListView+Layouts.swift in Sources */,
+				FE11AA22BC33DD44EE55FF02 /* TabListView+Inbox.swift in Sources */,
+				FE11AA22BC33DD44EE55FF04 /* InboxRowView.swift in Sources */,
+				C0DE00000000000000000001 /* InboxNavigator.swift in Sources */,
+				C0DE00000000000000000003 /* InboxConversationPreview.swift in Sources */,
+				C0DE0000000000000000000D /* InboxSettledHistorySheet.swift in Sources */,
+				C0DE00000000000000000005 /* InboxWorktreeGroup.swift in Sources */,
+				C0DE00000000000000000007 /* InboxBenchGroup.swift in Sources */,
+				WTPROJIDENT000000000001 /* WorktreeProjectIdentity.swift in Sources */,
 				A1B2C3D4E5F60001009B01AA /* TabListNewTabSheet.swift in Sources */,
 				A1B2C3D4E5F60001009C01AA /* TabListGroupHeader.swift in Sources */,
 				TABSTATUSROLLUP0000001 /* TabStatusRollup.swift in Sources */,
@@ -1853,6 +1914,7 @@
 				A1B2C3D4E5F60001000202AA /* SessionViewModel+Pairing.swift in Sources */,
 				A1B2C3D4E5F60001009201AA /* SessionViewModel+RemoteDisplay.swift in Sources */,
 				A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */,
+				FE11AA22BC33DD44EE55FF06 /* SessionViewModel+InboxCommands.swift in Sources */,
 				A1B2C3D4E5F60001000204FE /* SessionViewModel+ConversationLoadGate.swift in Sources */,
 				A1B2C3D4E5F6000100049A03 /* SessionViewModel+WorktreeCommands.swift in Sources */,
 				A1B2C3D4E5F6000100049A04 /* SessionViewModel+WorktreeState.swift in Sources */,
@@ -1925,7 +1987,6 @@
 				A1B2C3D4E5F6000100049A02 /* NormalizedEvent+Worktree.swift in Sources */,
 				A1B2C3D4E5F60001000303AA /* NormalizedEvent+Git.swift in Sources */,
 				A1B2C3D4E5F60001000301AA /* GitTypes.swift in Sources */,
-				A1B2C3D4E5F6000100049A05 /* WorktreeListView.swift in Sources */,
 				A1B2C3D4E5F6000100049A06 /* WorktreeRowView.swift in Sources */,
 				A1B2C3D4E5F6000100049C01 /* WorktreeCloseWarning.swift in Sources */,
 				A1B2C3D4E5F60001000305AA /* GitPaneView.swift in Sources */,
@@ -1955,6 +2016,7 @@
 				A1B2C3D4E5F600010000D2AA /* AnsiParser.swift in Sources */,
 				A1B2C3D4E5F600010000E0AA /* AgentBarRow.swift in Sources */,
 				AGSDS00000000000000001 /* AgentStatusDotStack.swift in Sources */,
+				AGSDT00000000000000001 /* AgentStatusDot.swift in Sources */,
 				A1B2C3D4E5F600010000E2AA /* AgentExpandedContent.swift in Sources */,
 				APDR00000000000000001 /* AgentPanelDefaultResolver.swift in Sources */,
 				DBSTATE00000000000000A1 /* DispatchBodyState.swift in Sources */,
@@ -2081,6 +2143,7 @@
 				THEMEMIGRTST0000000002 /* ThemeManagerMigrationTests.swift in Sources */,
 				THEMESTORETST000000002 /* SyncedThemeStoreTests.swift in Sources */,
 				THEMEWIRETST0000000002 /* ThemeSyncWireTests.swift in Sources */,
+				GITDIFFWIRE00000000002 /* GitDiffWireTests.swift in Sources */,
 				IONGEOGATETST0000000002 /* IonGeometrySourceGatesTests.swift in Sources */,
 				SYNCTHMINHTST0000000002 /* SyncedThemeInheritanceTests.swift in Sources */,
 				THEMEENFTST00000000002 /* ThemeEnforcementTests.swift in Sources */,
@@ -2110,6 +2173,7 @@
 				PLAN0IMPLEMENT00001 /* PlanImplementWireTests.swift in Sources */,
 				IMPL0UNPIN00000001 /* ImplementAndUnpinOrderingTests.swift in Sources */,
 				A1B2C3D4E5F60001000244AA /* NormalizedEventLifecycleTests.swift in Sources */,
+				STEER0EVENT0000001 /* NormalizedEventSteerTests.swift in Sources */,
 				A1B2C3D4E5F60001000246AA /* NormalizedEventTerminalTests.swift in Sources */,
 				A1B2C3D4E5F60003000201AA /* ModelFallbackSnapshotTests.swift in Sources */,
 				A1B2C3D4E5F60003000201BB /* SnapshotBackgroundShellMergeTests.swift in Sources */,
@@ -2176,6 +2240,9 @@
 				A1B2C3D4E5F60001F00016AB /* ThinkingControlStateTests.swift in Sources */,
 				E11C17CA0001F00012AB0001 /* ElicitationCodecTests.swift in Sources */,
 				RTSDECODE000000000001 /* RemoteTabStateDecodeTests.swift in Sources */,
+				C0DE00000000000000000009 /* InboxNavigatorTests.swift in Sources */,
+				C0DE0000000000000000000B /* InboxSnapshotWireTests.swift in Sources */,
+				WTPROJIDENT000000000003 /* WorktreeProjectIdentityTests.swift in Sources */,
 				CTXBDTST0000000000001 /* ContextBreakdownDecodeTests.swift in Sources */,
 				CTXOCCTST00000000001 /* ContextOccupancyTests.swift in Sources */,
 				REQCTXBD0000000000001 /* RequestContextBreakdownTests.swift in Sources */,
@@ -2197,8 +2264,10 @@
 				A1B2C3D4E5F600010004AB01 /* WorktreeWireTests.swift in Sources */,
 				A1B2C3D4E5F600010004AB02 /* WorktreeWireCommandTests.swift in Sources */,
 				F3B1C2D3E4F5061728394A01 /* BenchNavigationTests.swift in Sources */,
+				F3B1C2D3E4F5061728394F71 /* BenchEphemeralLifecycleTests.swift in Sources */,
 				F3B1C2D3E4F5061728394B01 /* WorktreeRowSelectConversationTests.swift in Sources */,
 				A1B2C3D4E5F600010004AB77 /* WorktreeOpResultWireTests.swift in Sources */,
+				A1B2C3D4E5F600010004AB78 /* WorktreePipelineWireTests.swift in Sources */,
 				A1B2C3D4E5F600010004AC91 /* WorktreeCloseWarningTests.swift in Sources */,
 				A1B2C3D4E5F60001000027AA /* E2ECryptoTests.swift in Sources */,
 				A1B2C3D4E5F60001FF0005AA /* MarkdownFormatterFixtures.swift in Sources */,

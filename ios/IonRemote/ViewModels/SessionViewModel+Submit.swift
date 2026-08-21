@@ -126,7 +126,8 @@ extension SessionViewModel {
                     id: UUID().uuidString,
                     type: AttachmentType(rawValue: att.type) ?? .file,
                     name: att.name,
-                    path: att.path
+                    path: att.path,
+                    contentHash: att.contentHash
                 )
             }
         } else {

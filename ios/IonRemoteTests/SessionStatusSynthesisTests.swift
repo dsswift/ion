@@ -38,6 +38,7 @@ final class SessionStatusSynthesisTests: XCTestCase {
             hasInflightRun: hasInflightRun,
             backgroundAgentCount: backgroundAgentCount,
             backgroundShellCount: backgroundShellCount,
+            hasPendingWork: nil,
             permissionDenialsPending: permissionDenialsPending,
             model: model,
             contextPercent: contextPercent,
@@ -223,13 +224,14 @@ final class SessionStatusMergeTests: XCTestCase {
                 label: "t", state: "running", sessionId: "s", team: nil, model: "m",
                 contextPercent: 10, contextWindow: 200_000, contextTokens: 20_000, runCostUsd: nil,
                 conversationCostUsd: nil, permissionDenials: nil, extensionName: nil,
-                backgroundAgents: nil, backgroundShells: nil, numTurns: 3, conversationTurns: 9
+                backgroundAgents: nil, backgroundShells: nil, hasPendingWork: nil, numTurns: 3, conversationTurns: 9
             )
         }
 
         let ss = SessionStatus(
             key: "t", state: "idle", stateSince: nil, lastEmittedAt: 1,
             hasInflightRun: false, backgroundAgentCount: nil, backgroundShellCount: nil,
+            hasPendingWork: nil,
             permissionDenialsPending: nil,
             model: "m", contextPercent: 10, contextWindow: 200_000, contextTokens: 20_000,
             runCostUsd: nil, conversationCostUsd: nil, sessionId: "s", extensionName: nil
@@ -259,7 +261,7 @@ final class SessionStatusMergeTests: XCTestCase {
                 contextPercent: 22, contextWindow: 1_000_000, contextTokens: 223_791,
                 runCostUsd: nil, conversationCostUsd: nil, permissionDenials: nil,
                 extensionName: nil, backgroundAgents: nil, backgroundShells: nil,
-                numTurns: nil, conversationTurns: nil
+                hasPendingWork: nil, numTurns: nil, conversationTurns: nil
             )
         }
 
@@ -267,6 +269,7 @@ final class SessionStatusMergeTests: XCTestCase {
         let ss = SessionStatus(
             key: "t", state: "idle", stateSince: nil, lastEmittedAt: 1,
             hasInflightRun: false, backgroundAgentCount: nil, backgroundShellCount: nil,
+            hasPendingWork: nil,
             permissionDenialsPending: nil,
             model: "m", contextPercent: nil, contextWindow: nil, contextTokens: nil,
             runCostUsd: nil, conversationCostUsd: nil, sessionId: "s", extensionName: nil

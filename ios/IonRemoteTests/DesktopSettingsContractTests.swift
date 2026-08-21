@@ -60,6 +60,7 @@ final class DesktopSettingsContractTests: XCTestCase {
             XCTAssertEqual(settings.count, 3)
             XCTAssertEqual(settings["enableEarlyStopContinuation"]?.value as? Bool, true)
             XCTAssertEqual(settings["aiGeneratedTitles"]?.value as? Bool, false)
+            XCTAssertEqual(settings["editorFontSize"]?.doubleValue, 14)
             XCTAssertEqual(schema.count, 2)
             XCTAssertEqual(schema[0].key, "enableEarlyStopContinuation")
             XCTAssertEqual(schema[0].type, .boolean)

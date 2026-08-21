@@ -47,9 +47,15 @@ final class AgentDotModelTests: XCTestCase {
         return try! JSONDecoder().decode(AgentStateUpdate.self, from: data)
     }
 
-    private func dispatch(_ id: String, _ status: String, startTime: Double? = nil) -> [String: Any] {
+    private func dispatch(
+        _ id: String,
+        _ status: String,
+        startTime: Double? = nil,
+        waitingOn: String? = nil
+    ) -> [String: Any] {
         var d: [String: Any] = ["id": id, "task": "t", "model": "m", "conversationId": "", "status": status]
         if let startTime { d["startTime"] = startTime }
+        if let waitingOn { d["waitingOn"] = waitingOn }
         return d
     }
 
@@ -131,6 +137,35 @@ final class AgentDotModelTests: XCTestCase {
         }
         XCTAssertEqual(foreground.color, theme.statusError)
         XCTAssertEqual(background.color, theme.statusDone)
+    }
+
+    // MARK: - Per-dispatch resolver
+
+    func test_perDispatchResolver_preservesDispatchLivenessAndPulse() {
+        let lead = makeAgent(name: "dev-lead", status: "done", dispatches: [
+            dispatch("d-old", "done", startTime: 100),
+            dispatch("d-recent", "done", startTime: 200),
+        ])
+        let specialist = makeAgent(name: "code-engineer", status: "running", parentDispatchId: "d-old")
+
+        let oldDot = AgentDotResolver.resolveDispatchDot(
+            agent: lead,
+            dispatch: lead.dispatches.first { $0.id == "d-old" },
+            allAgents: [lead, specialist],
+            theme: theme
+        )
+        let recentDot = AgentDotResolver.resolveDispatchDot(
+            agent: lead,
+            dispatch: lead.dispatches.first { $0.id == "d-recent" },
+            allAgents: [lead, specialist],
+            theme: theme
+        )
+
+        XCTAssertEqual(oldDot.color, theme.statusWaitingChildren)
+        XCTAssertTrue(oldDot.pulses)
+        XCTAssertTrue(oldDot.glows)
+        XCTAssertEqual(recentDot.color, theme.statusDone)
+        XCTAssertFalse(recentDot.pulses)
     }
 
     // MARK: - Most-recent resolution
@@ -257,6 +292,51 @@ final class AgentDotModelTests: XCTestCase {
         XCTAssertEqual(background.color, theme.statusError,
                        "terminal error must outrank waiting descendant in the historical fold")
         XCTAssertFalse(background.pulses)
+    }
+
+    // MARK: - Shell wait tier
+
+    func test_dispatchInfo_roundTripsWaitingOn() throws {
+        let encoded = """
+        {"id":"shell","task":"t","model":"m","conversationId":"c","status":"suspended","waitingOn":"shell"}
+        """.data(using: .utf8)!
+        let dispatch = try JSONDecoder().decode(DispatchInfo.self, from: encoded)
+        XCTAssertEqual(dispatch.waitingOn, "shell")
+
+        let roundTrip = try JSONEncoder().encode(dispatch)
+        let decoded = try JSONDecoder().decode(DispatchInfo.self, from: roundTrip)
+        XCTAssertEqual(decoded.waitingOn, "shell")
+    }
+
+    func test_shellWait_rendersPulsingBashDot() {
+        let agent = makeAgent(name: "shell-worker", status: "suspended", dispatches: [
+            dispatch("d-shell", "suspended", startTime: 100, waitingOn: "shell"),
+        ])
+        guard case let .single(dot) = AgentDotResolver.resolve(agent: agent, allAgents: [agent], theme: theme) else {
+            return XCTFail("expected a single dot")
+        }
+        XCTAssertEqual(dot.color, theme.statusBash)
+        XCTAssertTrue(dot.pulses)
+        XCTAssertFalse(dot.glows)
+    }
+
+    func test_sort_placesChildWaitBeforeShellWaitBeforeRunning() {
+        let childWait = makeAgent(name: "children", status: "done", dispatches: [
+            dispatch("d-children", "done", startTime: 100),
+        ])
+        let child = makeAgent(name: "child", status: "running", parentDispatchId: "d-children")
+        let shellWait = makeAgent(name: "shell", status: "suspended", dispatches: [
+            dispatch("d-shell", "suspended", startTime: 100, waitingOn: "shell"),
+        ])
+        let running = makeAgent(name: "running", status: "running", dispatches: [
+            dispatch("d-running", "running", startTime: 100),
+        ])
+        let all = [running, shellWait, childWait, child]
+
+        XCTAssertEqual(
+            AgentDotResolver.sortedAgents([running, shellWait, childWait], allAgents: all).map(\.name),
+            ["children", "shell", "running"]
+        )
     }
 
     // MARK: - Header breakdown parity

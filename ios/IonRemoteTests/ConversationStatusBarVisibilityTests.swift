@@ -39,6 +39,7 @@ final class ConversationStatusBarVisibilityTests: XCTestCase {
             extensionName: extensionName,
             backgroundAgents: nil,
             backgroundShells: nil,
+            hasPendingWork: nil,
             numTurns: nil,
             conversationTurns: nil
         )

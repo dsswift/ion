@@ -26,19 +26,8 @@ extension ConversationView {
     /// Root-level, visible agents in panel order. Nested specialists are
     /// deliberately excluded — they surface inside their lead's detail view.
     var visibleAgents: [AgentStateUpdate] {
-        allAgents
-            .filter { $0.isVisible && $0.isRootLevel }
-            .sorted { a, b in
-                let statusOrder: [String: Int] = ["running": 0, "done": 1, "error": 1, "cancelled": 1, "idle": 2]
-                let visOrder: [String: Int] = ["always": 0, "sticky": 1, "ephemeral": 2]
-                let sa = statusOrder[a.status] ?? 2
-                let sb = statusOrder[b.status] ?? 2
-                if sa != sb { return sa < sb }
-                let va = visOrder[a.visibility] ?? 9
-                let vb = visOrder[b.visibility] ?? 9
-                if va != vb { return va < vb }
-                return a.displayName.localizedCompare(b.displayName) == .orderedAscending
-            }
+        let roots = allAgents.filter { $0.isVisible && $0.isRootLevel }
+        return AgentDotResolver.sortedAgents(roots, allAgents: allAgents)
     }
 
     /// Rows with work still in flight. Counts an agent whose own dispatches are

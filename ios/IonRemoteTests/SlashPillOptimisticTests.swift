@@ -181,15 +181,15 @@ final class SlashPillOptimisticTests: XCTestCase {
             tabId: "tab-model",
             instanceId: nil,
             entryId: "entry-align",
-            slashModelAlias: "standard",
-            slashModelEffective: "dci-marketing/gpt-5.6-terra"
+            slashModelAlias: "fast",
+            slashModelEffective: "dci-marketing/gpt-5.6-luna"
         )
 
         let message = vm.conversationMessages("tab-model").first
         XCTAssertEqual(message?.id, "entry-align")
-        XCTAssertEqual(message?.slashModelAlias, "standard")
-        XCTAssertEqual(message?.slashModelEffective, "dci-marketing/gpt-5.6-terra")
-        XCTAssertEqual(message?.slashModelDisplay, "Standard · GPT 5.6 Terra")
+        XCTAssertEqual(message?.slashModelAlias, "fast")
+        XCTAssertEqual(message?.slashModelEffective, "dci-marketing/gpt-5.6-luna")
+        XCTAssertEqual(message?.slashModelDisplay, "Fast · GPT 5.6 Luna")
     }
 
     func testSlashWithoutConfiguredModelHasNoProvenanceDisplay() {
@@ -221,6 +221,17 @@ final class SlashPillOptimisticTests: XCTestCase {
 
         message.slashModelEffective = "gpt-5.6-terra"
         XCTAssertEqual(message.slashModelDisplay, "GPT 5.6 Terra")
+
+        message.slashModelAlias = "claude-opus-5"
+        message.slashModelEffective = "claude-opus-5"
+        XCTAssertEqual(message.slashModelDisplay, "Opus 5")
+
+        message.slashModelAlias = "fast"
+        message.slashModelEffective = "dci-marketing/gpt-5.6-luna"
+        XCTAssertEqual(message.slashModelDisplay, "Fast · GPT 5.6 Luna")
+
+        message.slashModelEffective = nil
+        XCTAssertNil(message.slashModelDisplay)
     }
 
     func testSlashModelDisplayUsesAttachmentCapsule() throws {

@@ -84,9 +84,7 @@ struct AgentBarRow: View {
             // dispatch cannot hide an older one still waiting on a live agent.
             switch AgentDotResolver.resolve(agent: agent, allAgents: allAgents, theme: theme) {
             case .single(let dot):
-                Circle()
-                    .fill(dot.color)
-                    .frame(width: 6, height: 6)
+                AgentStatusDot(dot: dot, size: 6)
                     .padding(.leading, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
             case .stack(let foreground, let background):
                 AgentStatusDotStack(
