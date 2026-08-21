@@ -89,6 +89,25 @@ final class EngineInstanceCollapseTests: XCTestCase {
         XCTAssertNil(resolvedId, "Empty instance list with no active id must resolve nil, not crash")
     }
 
+    // MARK: - Per-instance startup state
+
+    func testStartingInstanceUsesAStillStartupIndicator() {
+        let instance = ConversationInstanceInfo(id: "main", label: "Main", isStarting: true)
+
+        XCTAssertEqual(EngineInstanceBar.statusIndicator(for: instance), .starting)
+    }
+
+    func testRunningInstanceOutranksStarting() {
+        let instance = ConversationInstanceInfo(
+            id: "main",
+            label: "Main",
+            isRunning: true,
+            isStarting: true
+        )
+
+        XCTAssertEqual(EngineInstanceBar.statusIndicator(for: instance), .running)
+    }
+
     // MARK: - 3. Instance-management TypeKeys absent from enum
 
     func testEngineAddInstanceTypeKeyAbsent() {
