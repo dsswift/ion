@@ -41,6 +41,14 @@ Policy precedence, low to high: `engine.json`, `start_session` `EngineConfig.run
 }
 ```
 
+### Run journal lifecycle
+
+The engine clears a run journal when that run reaches any terminal exit. A
+journal stays only while work is still live, including a parked root run with
+signal `suspended`; that parked run needs its journal for its engine-owned wake.
+Journal cleanup is keyed to the run identity, so a late exit cannot clear a
+newer queued run's journal.
+
 ## providers
 
 Map of provider name to credentials. Keys are provider identifiers (e.g., `"anthropic"`, `"openai"`, `"groq"`).
@@ -128,7 +136,7 @@ Both roots make a repository self-describing: clone it and the project's config 
 
 Engine-wide configuration for the **early-stop continuation** mechanism. When the model emits `end_turn` (or `stop`) before reaching the configured output-token target, the engine can ask a harness-supplied hook whether to nudge the model to keep working and re-run the turn instead of completing the run. This addresses the "stream death / mid-thought stop" problem where some models voluntarily end a turn before the work is done.
 
-The feature is **off by default**. The engine provides the mechanism (cumulative output-token tracking, `before_early_stop_decision` and `early_stop_continued` hooks, the re-run-turn machinery) but ships no opinion about whether to nudge or what text to nudge with. A harness consumer must opt in — either by setting `enabled: true` in this block, by passing `RunOptions.EarlyStopEnabled = &true` per dispatch, or by wiring a `before_early_stop_decision` handler that returns `ForceContinue: &true`. Whichever turns the feature on, the harness must also supply a `ContinueMessage` via the hook — without one, the engine logs the no-op and falls through to normal completion.
+The feature is **off by default**. The engine provides the mechanism (cumulative output-token tracking, `before_early_stop_decision` and `early_stop_continued` hooks, the re-run-turn machinery) but ships no opinion about whether to nudge or what text to nudge with. A continuation consumes the operator's tokens and pre-empts their choice to accept a stopped run and decide what to do next. A harness consumer must opt in — either by setting `enabled: true` in this block, by passing `RunOptions.EarlyStopEnabled = &true` per dispatch, or by wiring a `before_early_stop_decision` handler that returns `ForceContinue: &true`. Whichever turns the feature on, the harness must also supply a `ContinueMessage` via the hook — without one, the engine logs the no-op and falls through to normal completion.
 
 See [ADR-002: Engine vs Harness for Early-Stop Continuation](../architecture/adr/002-engine-vs-harness-early-stop.md) for the full rationale behind the default-off, harness-owned-policy design.
 
@@ -359,6 +367,7 @@ Authentication and credential management.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `identityProvider` | string | `""` | Key in `oauth` used for operator or machine identity brokering. |
+| `requireOperatorIdentity` | bool | `false` | Refuse session creation until the selected interactive OIDC provider has a usable operator grant. Invalid with `machineIdentity`. |
 | `oauth` | object | `{}` | Map of provider ID to OAuth configuration. |
 | `secureStore` | object | `null` | Credential storage backend configuration. |
 | `cacheTtlMs` | int64 | `0` | How long to cache resolved credentials (milliseconds). |
