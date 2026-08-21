@@ -32,7 +32,7 @@ extension ConversationView {
     /// the visibility logic is unit-testable without instantiating the view.
     /// Migrated from the dead InputBar.swift (see Fix 3 retirement commit).
     static func computeCanAbort(status: TabStatus?, hasRunningChildren: Bool?) -> Bool {
-        let running = status == .running || status == .connecting
+        let running = status == .running || status == .connecting || status == .waiting
         return running || (hasRunningChildren == true)
     }
 
@@ -80,31 +80,148 @@ extension ConversationView {
         viewModel.tab(for: tabId)?.inputLocked == true
     }
 
+    /// Whether capacity telemetry says the selected model has no remaining
+    /// ordinary-prompt budget. The capacity calculation shares the selected
+    /// model's window and output reserve with the desktop policy.
+    var contextCapacity: ConversationStatusBar.ContextCapacity? {
+        let instance = viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)
+        let fieldsTokens = instance?.statusFields?.contextTokens
+        let occupancy = (fieldsTokens ?? 0) > 0 ? fieldsTokens : viewModel.tab(for: tabId)?.contextTokens
+        let modelId = instance?.modelOverride ?? viewModel.tab(for: tabId)?.modelOverride ?? viewModel.preferredModel
+        let engineWindow = instance?.statusFields?.contextWindow
+        let fallbackWindow = (engineWindow ?? 0) > 0 ? engineWindow : viewModel.tab(for: tabId)?.contextWindow
+        return ConversationStatusBar.resolveContextCapacity(
+            occupancyTokens: occupancy,
+            modelId: modelId,
+            availableModels: viewModel.availableModels,
+            engineContextWindow: fallbackWindow,
+            engineEffectiveLimit: instance?.statusFields?.contextEffectiveLimit,
+        )
+    }
+
+    var contextCapacityState: ConversationStatusBar.ContextCapacityState {
+        ConversationStatusBar.contextCapacityState(contextCapacity)
+    }
+
     @ViewBuilder
     var engineInputBar: some View {
         if isInputLocked {
-            HStack(spacing: 6) {
-                Image(systemName: "lock")
-                    .font(.system(size: 10)) // design-type: SF Symbol lock glyph sized as icon geometry, not text
-                    .foregroundStyle(.tertiary)
-                Text(viewModel.tab(for: tabId)?.inputLockReason == "landed-worktree"
-                    ? "Landed worktree review — input is disabled. Retire this worktree when review is complete."
-                    : "Automated fix conversation — input is disabled. Continue the work in its worktree.")
-                    .ionType(.microLabel)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                Spacer()
+            if viewModel.tab(for: tabId)?.inputLockReason == "settled" {
+                if viewModel.tab(for: tabId)?.canRestoreSettled == false {
+                    permanentlySettledInputNotice
+                } else {
+                    settledInputNotice
+                }
+            } else {
+                HStack(spacing: 6) {
+                    Image(systemName: "lock")
+                        .font(.system(size: 10)) // design-type: SF Symbol lock glyph sized as icon geometry, not text
+                        .foregroundStyle(.tertiary)
+                    Text(viewModel.tab(for: tabId)?.inputLockReason == "landed-worktree"
+                        ? "Landed worktree review — input is disabled. Retire this worktree when review is complete."
+                        : "Automated fix conversation — input is disabled. Continue the work in its worktree.")
+                        .ionType(.microLabel)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                    Spacer()
+                }
+                .padding(.horizontal, 14) // design-geometry: 14pt gap between contentGap and rowInset; off the 4pt ratio scale
+                .padding(.vertical, IonSpace.contentGap)
+                .accessibilityIdentifier("input-locked-notice")
             }
-            .padding(.horizontal, 14) // design-geometry: 14pt gap between contentGap and rowInset; off the 4pt ratio scale
-            .padding(.vertical, IonSpace.contentGap)
-            .accessibilityIdentifier("input-locked-notice")
+        } else if ConversationStatusBar.contextCapacityBlocksPrompt(contextCapacity, text: promptText) {
+            contextFullInputNotice
         } else {
             engineInputBarUnlocked
         }
     }
 
+    private var contextFullInputNotice: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "lock")
+                .font(.system(size: 10)) // design-type: SF Symbol lock glyph sized as icon geometry, not text
+                .foregroundStyle(theme.statusError)
+            Text("Context is full. Use /compact or /clear, or start a new conversation.")
+                .ionType(.microLabel)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            Spacer()
+            Button("Compact") {
+                viewModel.setEngineDraft(tabId: tabId, instanceId: activeInstanceId, "/compact")
+            }
+            .accessibilityIdentifier("context-full-compact-button")
+            Button("Clear") {
+                viewModel.setEngineDraft(tabId: tabId, instanceId: activeInstanceId, "/clear")
+            }
+            .accessibilityIdentifier("context-full-clear-button")
+            Button {
+                DiagnosticLog.log("context capacity new conversation requested", tag: "view.inputbar", fields: [
+                    "tab_id": String(tabId.prefix(8)),
+                    "occupancy": String(contextCapacity?.occupancyTokens ?? 0),
+                    "limit": String(contextCapacity?.effectiveLimit ?? 0),
+                ])
+                viewModel.createTab(workingDirectory: workingDirectory)
+            } label: {
+                Text("New")
+                    .ionType(.microLabel)
+                    .foregroundStyle(theme.accent)
+            }
+            .accessibilityIdentifier("context-full-new-conversation-button")
+        }
+        .padding(.horizontal, 14) // design-geometry: 14pt gap between contentGap and rowInset; off the 4pt ratio scale
+        .padding(.vertical, IonSpace.contentGap)
+        .accessibilityIdentifier("context-full-input-notice")
+    }
+
+    private var permanentlySettledInputNotice: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "archivebox")
+                .font(.system(size: 10)) // design-type: SF Symbol glyph sized as icon geometry, not text
+                .foregroundStyle(.tertiary)
+            Text("Settled history — its worktree was retired.")
+                .ionType(.microLabel)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer()
+        }
+        .padding(.horizontal, 14) // design-geometry: 14pt gap between contentGap and rowInset; off the 4pt ratio scale
+        .padding(.vertical, IonSpace.contentGap)
+        .accessibilityIdentifier("permanently-settled-input-notice")
+    }
+
+    /// Settled conversation notice with an Un-settle action. This notice is used
+    /// only while the desktop says the record can restore. A retired-worktree
+    /// record uses the permanent notice above.
+    private var settledInputNotice: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "archivebox")
+                .font(.system(size: 10)) // design-type: SF Symbol glyph sized as icon geometry, not text
+                .foregroundStyle(.tertiary)
+            Text("Settled — input is paused.")
+                .ionType(.microLabel)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer()
+            Button {
+                viewModel.unsettleTab(tabId: tabId)
+            } label: {
+                Text("Un-settle")
+                    .ionType(.microLabel)
+                    .foregroundStyle(theme.accent)
+            }
+            .accessibilityIdentifier("unsettle-button")
+        }
+        .padding(.horizontal, 14) // design-geometry: 14pt gap between contentGap and rowInset; off the 4pt ratio scale
+        .padding(.vertical, IonSpace.contentGap)
+        .accessibilityIdentifier("settled-input-notice")
+    }
+
     private var engineInputBarUnlocked: some View {
         VStack(spacing: 0) {
+            if contextCapacityState == .warning {
+                contextCapacityWarning
+            }
+
             if let filter = slashFilter, !slashCommands.isEmpty {
                 SlashCommandMenu(
                     filter: filter,
@@ -230,6 +347,21 @@ extension ConversationView {
         }
     }
 
+    private var contextCapacityWarning: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 9)) // design-type: SF Symbol warning glyph sized as icon geometry, not text
+                .foregroundStyle(theme.statusWarning)
+            Text("Context is \(Int(contextCapacity?.percent ?? 0))% full")
+                .ionType(.microLabel)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 14) // design-geometry: 14pt gap between contentGap and rowInset; off the 4pt ratio scale
+        .padding(.top, IonSpace.hairlineGap)
+        .accessibilityIdentifier("context-capacity-warning")
+    }
+
     var engineMicButton: some View {
         Button {
             startVoiceRecording()
@@ -307,7 +439,8 @@ extension ConversationView {
 
     var cannotSend: Bool {
         let empty = promptText.trimmingCharacters(in: .whitespaces).isEmpty
-        return (empty && pendingAttachments.isEmpty) || hasUploading
+        let contextBlocksPrompt = ConversationStatusBar.contextCapacityBlocksPrompt(contextCapacity, text: promptText)
+        return (empty && pendingAttachments.isEmpty) || hasUploading || contextBlocksPrompt
     }
 
     /// Re-sync history when we recover from a transient disconnect
@@ -343,6 +476,14 @@ extension ConversationView {
         let trimmed = promptText.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty || !pendingAttachments.isEmpty else { return }
         guard !hasUploading else { return }
+        guard !ConversationStatusBar.contextCapacityBlocksPrompt(contextCapacity, text: promptText) else {
+            DiagnosticLog.log("submit blocked: context capacity full", tag: "view.inputbar", level: .warn, fields: [
+                "tab_id": String(tabId.prefix(8)),
+                "occupancy": String(contextCapacity?.occupancyTokens ?? 0),
+                "limit": String(contextCapacity?.effectiveLimit ?? 0),
+            ])
+            return
+        }
         // Submitting while a voice recording is active: the transcript is
         // already in the field (live transcription writes into the draft), so
         // whatever was being transcribed is what is being sent. Stop the

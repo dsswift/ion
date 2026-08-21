@@ -36,7 +36,7 @@ final class WorktreeWireTests: XCTestCase {
                 {"tabId": "tab-2", "title": "Add tests", "status": "idle", "index": 4}
               ],
               "membership": {
-                "sourceBranch": "josh", "enabled": true,
+                "sourceBranch": "josh",
                 "pin": "behind", "merge": "conflicted",
                 "pinnedSha": "9c2b17e1111", "order": 1,
                 "conflictPaths": ["src/a.ts"], "conflictsWith": ["wt/7b0c"],
@@ -103,6 +103,7 @@ final class WorktreeWireTests: XCTestCase {
         XCTAssertEqual(bench.openConversations.map(\.tabId), ["tab-9", "tab-fix", "tab-analysis"])
         XCTAssertEqual(bench.openConversations[1].roleLabel, "Auto-fix")
         XCTAssertEqual(bench.openConversations[2].roleLabel, "Analysis")
+        XCTAssertEqual(bench.activeAutoFixTabId, "tab-fix")
         XCTAssertEqual(bench.conversationActionTitle, "Go to · Analysis + Auto-fix")
         XCTAssertEqual(bench.benchConversationTabId, "tab-talk")
         XCTAssertTrue(bench.orphans.isEmpty)
@@ -121,9 +122,8 @@ final class WorktreeWireTests: XCTestCase {
         XCTAssertEqual(m.conflictsWith, ["wt/7b0c"])
         // A replayed rerere resolution is a different fact from a clean merge.
         XCTAssertEqual(m.mergeResolution, "replayed")
-        // Three axes, all readable at once. The single `status` they replaced
-        // could report only one of these three.
-        XCTAssertTrue(m.enabled)
+        // Pin freshness and merge outcome are both readable. The single
+        // `status` they replaced could report only one of these facts.
         XCTAssertEqual(m.pin, .behind)
         XCTAssertEqual(m.merge, .conflicted)
         // The workflow stage rides the WORKTREE, not the membership: it is
@@ -133,7 +133,26 @@ final class WorktreeWireTests: XCTestCase {
         // counted once.
         XCTAssertEqual(state.behindMemberCount(of: bench), 1)
         XCTAssertEqual(state.conflictedMemberCount(of: bench), 1)
-        XCTAssertEqual(state.enabledMemberCount(of: bench), 1)
+        XCTAssertEqual(state.memberCount(of: bench), 1)
+    }
+
+    func testRunningBenchAutoFixIsIdentifiedForFocusAndAttention() throws {
+        let json = """
+        {"type":"desktop_worktree_state","states":[{"repoPath":"/repo","worktrees":[],"benches":[{
+          "repoPath":"/repo","sourceBranch":"main","benchPath":"/bench",
+          "benchBranch":"ion/bench/main","baseSha":"aaa","lastBuiltAt":0,"baseDrifted":false,
+          "openConversations":[
+            {"tabId":"talk","title":"Talk","status":"idle","index":1,"tabRole":"bench-conversation"},
+            {"tabId":"fix","title":"Resolve","status":"running","index":2,"tabRole":"conflict-auto-fix"},
+            {"tabId":"analysis","title":"Analysis","status":"idle","index":3,"tabRole":"verification-analysis"}
+          ]
+        }]}]}
+        """.data(using: .utf8)!
+
+        guard case let .worktreeState(states) = try JSONDecoder().decode(RemoteEvent.self, from: json) else {
+            return XCTFail("wrong case")
+        }
+        XCTAssertEqual(states[0].benches[0].activeAutoFixTabId, "fix")
     }
 
     /// A desktop that has not shipped the naming change yet sends neither
@@ -159,10 +178,9 @@ final class WorktreeWireTests: XCTestCase {
         // With no title the slug is what the row shows -- never a placeholder.
         XCTAssertEqual(wt.displayName, "x")
 
-        // Unenrolled: membership ABSENT is a different fact from enabled:false
-        // (enrolled and skipped), so it decodes to nil rather than a default.
+        // A missing membership means this worktree is not in a bench.
         XCTAssertNil(wt.membership)
-        XCTAssertEqual(wt.enrollment, .none)
+        XCTAssertFalse(wt.isBenchMember)
 
         let bench = states[0].benches[0]
         XCTAssertEqual(bench.openConversations, [])
@@ -382,19 +400,18 @@ final class WorktreeWireTests: XCTestCase {
         XCTAssertEqual(states[0].worktrees[0].membership?.pin, .empty)
     }
 
-    /// An excluded member that is ALSO behind reports both. Under the single
-    /// collapsed status this was impossible: the record held one word, so the
-    /// operator re-enabled it and got a stale merge with no warning.
-    func testExcludedAndBehindAreBothReadable() throws {
-        let json = membershipJSON(pin: "behind", merge: "skipped", enabled: false)
+    /// Every membership is included in its bench. A skipped merge outcome stays
+    /// valid because it records what a past assembly did, not current enrollment.
+    func testMemberWithSkippedMergeOutcomeDecodes() throws {
+        let json = membershipJSON(pin: "behind", merge: "skipped")
 
         let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
 
         guard case let .worktreeState(states) = event else { return XCTFail("wrong case") }
-        let m = try XCTUnwrap(states[0].worktrees[0].membership)
-        XCTAssertFalse(m.enabled)
-        XCTAssertEqual(m.pin, .behind)
-        XCTAssertEqual(states[0].worktrees[0].enrollment, .excluded)
+        let worktree = states[0].worktrees[0]
+        XCTAssertTrue(worktree.isBenchMember)
+        XCTAssertEqual(worktree.membership?.pin, .behind)
+        XCTAssertEqual(worktree.membership?.merge, .skipped)
     }
 
     /// An unknown axis value from a newer desktop must not fail the whole
@@ -437,14 +454,14 @@ final class WorktreeWireTests: XCTestCase {
 
     /// One worktree carrying a membership, for the axis tests above.
     private func membershipJSON(
-        pin: String, merge: String, enabled: Bool = true, stage: String = "null"
+        pin: String, merge: String, stage: String = "null"
     ) -> Data {
         """
         {"type":"desktop_worktree_state","states":[{"repoPath":"/repo","worktrees":[{
           "worktreePath":"/wt/a","branchName":"wt/a","label":"a","sourceBranch":"josh",
           "head":"abc","lastCommitSubject":"","isDirty":false,"unlandedCommitCount":0,
           "needsSync":false,"safeToDiscard":false,"stage":\(stage),
-          "membership":{"sourceBranch":"josh","enabled":\(enabled),"pin":"\(pin)",
+          "membership":{"sourceBranch":"josh","pin":"\(pin)",
             "merge":"\(merge)","pinnedSha":"abc","order":1}}],
           "benches":[]}]}
         """.data(using: .utf8)!

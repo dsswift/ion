@@ -209,6 +209,7 @@ final class ContractSyncTests: XCTestCase {
             "contextPercent": 42,
             "contextWindow": 200000,
             "contextTokens": 84000,
+            "contextEffectiveLimit": 167000,
             "runCostUsd": 1.23,
             "completionReason": "normal",
             "conversationCostUsd": 2.34,
@@ -217,6 +218,7 @@ final class ContractSyncTests: XCTestCase {
             ],
             "extensionName": "Chief of Staff",
             "backgroundAgents": 2,
+            "hasPendingWork": true,
             "numTurns": 3,
             "conversationTurns": 210,
         ]
@@ -229,6 +231,7 @@ final class ContractSyncTests: XCTestCase {
         XCTAssertEqual(fields.model, "claude-4")
         XCTAssertEqual(fields.contextPercent, 42.0) // Double decodes int fine
         XCTAssertEqual(fields.contextTokens, 84000)
+        XCTAssertEqual(fields.contextEffectiveLimit, 167000)
         XCTAssertEqual(fields.extensionName, "Chief of Staff")
         XCTAssertEqual(fields.runCostUsd, 1.23)
         XCTAssertEqual(fields.completionReason, .normal)
@@ -238,8 +241,8 @@ final class ContractSyncTests: XCTestCase {
 
         // Verify we know about all Go fields (document any intentional gaps)
         let swiftHandled: Set<String> = [
-            "backgroundAgents", "backgroundShells", "label", "state", "sessionId", "team", "model",
-            "contextPercent", "contextWindow", "contextTokens", "runCostUsd", "completionReason", "conversationCostUsd",
+            "backgroundAgents", "backgroundShells", "hasPendingWork", "label", "state", "sessionId", "team", "model",
+            "contextPercent", "contextWindow", "contextTokens", "contextEffectiveLimit", "runCostUsd", "completionReason", "conversationCostUsd",
             "permissionDenials", "extensionName", "numTurns", "conversationTurns",
         ]
         let goSet = Set(goFields)
@@ -270,6 +273,7 @@ final class ContractSyncTests: XCTestCase {
             "hasInflightRun": true,
             "backgroundAgentCount": 3,
             "backgroundShellCount": 2,
+            "hasPendingWork": true,
             "permissionDenialsPending": [
                 ["toolName": "AskUserQuestion", "toolUseId": "tu-99"],
             ],
@@ -277,6 +281,7 @@ final class ContractSyncTests: XCTestCase {
             "contextPercent": 42,
             "contextWindow": 200_000,
             "contextTokens": 84_000,
+            "contextEffectiveLimit": 167_000,
             "runCostUsd": 1.23,
             "conversationCostUsd": 2.34,
             "sessionId": "conv-abc",
@@ -291,6 +296,7 @@ final class ContractSyncTests: XCTestCase {
         XCTAssertEqual(status.hasInflightRun, true)
         XCTAssertEqual(status.backgroundAgentCount, 3)
         XCTAssertEqual(status.backgroundShellCount, 2)
+        XCTAssertEqual(status.hasPendingWork, true)
         XCTAssertEqual(status.sessionId, "conv-abc")
         XCTAssertEqual(status.extensionName, "Chief of Staff")
         XCTAssertEqual(status.runCostUsd, 1.23)
@@ -299,8 +305,8 @@ final class ContractSyncTests: XCTestCase {
         // Verify we know about all Go fields (any intentional gap is
         // documented in the assertion message — there should be none).
         let swiftHandled: Set<String> = [
-            "backgroundAgentCount", "backgroundShellCount", "contextPercent",
-            "contextWindow", "contextTokens",
+            "backgroundAgentCount", "backgroundShellCount", "hasPendingWork", "contextPercent",
+            "contextWindow", "contextTokens", "contextEffectiveLimit",
             "conversationCostUsd", "extensionName", "hasInflightRun", "key",
             "lastEmittedAt", "model", "permissionDenialsPending", "runCostUsd",
             "sessionId", "state", "stateSince",
@@ -404,6 +410,7 @@ final class ContractSyncTests: XCTestCase {
                 hasInflightRun: false,
                 backgroundAgentCount: nil,
                 backgroundShellCount: 3,
+                hasPendingWork: nil,
                 permissionDenialsPending: nil,
                 model: "claude-4",
                 contextPercent: 12,
@@ -531,19 +538,38 @@ final class ContractSyncTests: XCTestCase {
             XCTFail("Expected engineDead")
         }
     }
+    func testUploadAttachmentResultRoundTripKeepsContentHash() throws {
+        let original = RemoteEvent.uploadAttachmentResult(
+            id: "upload-1", name: "input.png", path: "/tmp/input.png",
+            correlationId: "corr-1", contentHash: "hash-upload", error: nil
+        )
+        let data = try JSONEncoder().encode(original)
+        let decoded = try decoder.decode(RemoteEvent.self, from: data)
+        guard case .uploadAttachmentResult(let id, let name, let path, let correlationId, let contentHash, let error) = decoded else {
+            return XCTFail("Expected uploadAttachmentResult")
+        }
+        XCTAssertEqual(id, "upload-1")
+        XCTAssertEqual(name, "input.png")
+        XCTAssertEqual(path, "/tmp/input.png")
+        XCTAssertEqual(correlationId, "corr-1")
+        XCTAssertEqual(contentHash, "hash-upload")
+        XCTAssertNil(error)
+    }
+
     func testEngineImageContentDecode_tool() throws {
         // source "tool" carries a toolId; iOS attaches to the matching tool row.
         let json = """
-        {"type":"desktop_image_content","tabId":"t1","instanceId":"i1","path":"/Users/x/.ion/conversations/c1/images/abc.png","mediaType":"image/png","source":"tool","toolId":"tid-9"}
+        {"type":"desktop_image_content","tabId":"t1","instanceId":"i1","path":"/Users/x/.ion/conversations/c1/images/abc.png","mediaType":"image/png","contentHash":"hash-tool","source":"tool","toolId":"tid-9"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        guard case .engineImageContent(let tabId, let instanceId, let path, let mediaType, let source, let toolId) = event else {
+        guard case .engineImageContent(let tabId, let instanceId, let path, let mediaType, let contentHash, let source, let toolId) = event else {
             return XCTFail("Expected engineImageContent (tool)")
         }
         XCTAssertEqual(tabId, "t1")
         XCTAssertEqual(instanceId, "i1")
         XCTAssertEqual(path, "/Users/x/.ion/conversations/c1/images/abc.png")
         XCTAssertEqual(mediaType, "image/png")
+        XCTAssertEqual(contentHash, "hash-tool")
         XCTAssertEqual(source, "tool")
         XCTAssertEqual(toolId, "tid-9")
     }
@@ -554,10 +580,11 @@ final class ContractSyncTests: XCTestCase {
         {"type":"desktop_image_content","tabId":"t1","path":"/img/gen.png","mediaType":"image/png","source":"provider"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        guard case .engineImageContent(_, _, let path, _, let source, let toolId) = event else {
+        guard case .engineImageContent(_, _, let path, _, let contentHash, let source, let toolId) = event else {
             return XCTFail("Expected engineImageContent (provider)")
         }
         XCTAssertEqual(path, "/img/gen.png")
+        XCTAssertNil(contentHash)
         XCTAssertEqual(source, "provider")
         XCTAssertNil(toolId)
     }
@@ -566,15 +593,16 @@ final class ContractSyncTests: XCTestCase {
     func testEngineImageContentRoundTrip() throws {
         let original = RemoteEvent.engineImageContent(
             tabId: "t1", instanceId: "i1", path: "/img/a.png",
-            mediaType: "image/png", source: "tool", toolId: "tid-1"
+            mediaType: "image/png", contentHash: "hash-round-trip", source: "tool", toolId: "tid-1"
         )
         let data = try JSONEncoder().encode(original)
         let decoded = try decoder.decode(RemoteEvent.self, from: data)
-        guard case .engineImageContent(_, _, let path, let mediaType, let source, let toolId) = decoded else {
+        guard case .engineImageContent(_, _, let path, let mediaType, let contentHash, let source, let toolId) = decoded else {
             return XCTFail("Expected engineImageContent round-trip")
         }
         XCTAssertEqual(path, "/img/a.png")
         XCTAssertEqual(mediaType, "image/png")
+        XCTAssertEqual(contentHash, "hash-round-trip")
         XCTAssertEqual(source, "tool")
         XCTAssertEqual(toolId, "tid-1")
     }
@@ -589,7 +617,7 @@ final class ContractSyncTests: XCTestCase {
         }
         // tabId/instanceId are session correlators added by the desktop wire
         // envelope, not part of the engine ImageContentEvent struct.
-        let swiftHandled: Set<String> = ["path", "mediaType", "source", "toolId"]
+        let swiftHandled: Set<String> = ["path", "mediaType", "contentHash", "source", "toolId"]
         let goSet = Set(goFields)
         let unhandled = goSet.subtracting(swiftHandled)
         XCTAssert(
@@ -849,7 +877,7 @@ final class ContractSyncTests: XCTestCase {
         }
 
         let swiftHandled: Set<String> = [
-            "id", "mimeType", "name", "path", "type",
+            "contentHash", "id", "mimeType", "name", "path", "type",
         ]
         let goSet = Set(goFields)
         let unhandled = goSet.subtracting(swiftHandled)
@@ -898,7 +926,11 @@ final class ContractSyncTests: XCTestCase {
             "isCustom",
             "modelKind",   // consumed: gates the image-model banner (ConversationView+InputBar, ConversationStatusBar)
             "tokenizer",   // engine field; iOS does not consume it (thin client)
-            "maxOutputTokens", // engine field; iOS does not consume it (thin client)
+            // Output cap and the engine's usable-input limit. Both ARE consumed:
+            // ConversationStatusBar.resolveContextCapacity prefers the published
+            // limit and falls back to subtracting the output reserve from the
+            // raw window, so send admission matches the desktop's figure.
+            "maxOutputTokens", "effectiveContextLimit",
             // Wire protocol a dialect-dispatching (gateway) provider speaks for
             // this model ("anthropic" | "openai-chat" | "openai-responses" |
             // "image"). Protocol selection is an engine-side routing concern —
@@ -1024,6 +1056,10 @@ final class ContractSyncTests: XCTestCase {
         let swiftHandled: Set<String> = [
             "name", "transport", "url", "command",
             "connected", "authenticated", "toolCount", "lastError",
+            // Negotiated revision and advertised capability identifiers of the
+            // live connection. No mobile admin surface consumes them yet; the
+            // gate pins awareness so a future one starts from truth.
+            "protocolVersion", "capabilities",
         ]
         let unhandled = Set(goFields).subtracting(swiftHandled)
         XCTAssert(unhandled.isEmpty, "Go McpServerStatus has fields not tracked in Swift test: \(unhandled.sorted())")

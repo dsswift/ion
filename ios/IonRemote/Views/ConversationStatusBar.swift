@@ -204,6 +204,104 @@ struct ConversationStatusBar: View {
         return nil
     }
 
+    /// Client-side capacity state. The effective limit reserves response and
+    /// compaction room from the selected model's raw context window.
+    enum ContextCapacityState: Equatable {
+        case normal
+        case warning
+        case full
+    }
+
+    struct ContextCapacity: Equatable {
+        let occupancyTokens: Int
+        let effectiveLimit: Int
+        let percent: Double
+    }
+
+    /// Default output reserve when model metadata declares no output cap.
+    /// Mirrors DEFAULT_CONTEXT_OUTPUT_RESERVE in shared/context-capacity.ts.
+    static let defaultContextOutputReserve = 20_000
+
+    /// Compaction-summary reserve. Mirrors CONTEXT_SUMMARY_RESERVE there.
+    static let contextSummaryReserve = 13_000
+
+    /// Mirror the engine's input-budget calculation. The engine-reported
+    /// effective limit wins when it is present, because it IS the engine's own
+    /// arithmetic for the model the engine used. The client only recomputes from
+    /// the selected model's window and output reserve, which is what makes the
+    /// picker update admission before another request reaches the engine.
+    static func resolveContextCapacity(
+        occupancyTokens: Int?,
+        modelId: String,
+        availableModels: [RemoteModelEntry],
+        engineContextWindow: Int?,
+        engineEffectiveLimit: Int? = nil,
+    ) -> ContextCapacity? {
+        guard let occupancyTokens, occupancyTokens > 0 else { return nil }
+        let selected = availableModels.first(where: { $0.id == modelId })
+        // The engine's answer is only authoritative while the operator has not
+        // moved the picker to a model the engine has not run. A selected model
+        // that declares its own limit or window takes precedence.
+        if let reported = engineEffectiveLimit, reported > 0,
+           selected?.effectiveContextLimit == nil, selected?.contextWindow == nil {
+            return ContextCapacity(
+                occupancyTokens: occupancyTokens,
+                effectiveLimit: reported,
+                percent: Double(occupancyTokens) / Double(reported) * 100,
+            )
+        }
+        // The selected model's own published limit is the engine's arithmetic
+        // for THAT model, so it beats recomputing the reserves locally.
+        if let declared = selected?.effectiveContextLimit, declared > 0 {
+            return ContextCapacity(
+                occupancyTokens: occupancyTokens,
+                effectiveLimit: declared,
+                percent: Double(occupancyTokens) / Double(declared) * 100,
+            )
+        }
+        guard let rawWindow = windowForModel(
+            modelId,
+            availableModels: availableModels,
+            engineContextWindow: engineContextWindow,
+        ), rawWindow > 0 else {
+            guard let reported = engineEffectiveLimit, reported > 0 else { return nil }
+            return ContextCapacity(
+                occupancyTokens: occupancyTokens,
+                effectiveLimit: reported,
+                percent: Double(occupancyTokens) / Double(reported) * 100,
+            )
+        }
+
+        let declaredOutput = selected?.maxOutputTokens ?? 0
+        let outputReserve = declaredOutput > 0 ? declaredOutput : defaultContextOutputReserve
+        let effectiveLimit = rawWindow - outputReserve - contextSummaryReserve
+        let limit = effectiveLimit > 0 ? effectiveLimit : rawWindow
+        return ContextCapacity(
+            occupancyTokens: occupancyTokens,
+            effectiveLimit: limit,
+            percent: Double(occupancyTokens) / Double(limit) * 100,
+        )
+    }
+
+    static func contextCapacityState(_ capacity: ContextCapacity?) -> ContextCapacityState {
+        guard let capacity else { return .normal }
+        if capacity.percent >= 100 { return .full }
+        if capacity.percent >= 80 { return .warning }
+        return .normal
+    }
+
+    /// `/compact` and `/clear` are recovery commands. They remain available
+    /// when a normal prompt would exceed the selected model's input budget.
+    static func isContextRecoveryCommand(_ text: String) -> Bool {
+        let command = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return command == "/compact" || command.hasPrefix("/compact ") ||
+            command == "/clear" || command.hasPrefix("/clear ")
+    }
+
+    static func contextCapacityBlocksPrompt(_ capacity: ContextCapacity?, text: String) -> Bool {
+        contextCapacityState(capacity) == .full && !isContextRecoveryCommand(text)
+    }
+
     /// Context window of a named model from the catalog, falling back to the
     /// engine's reported window. Static so non-bar surfaces can resolve the
     /// same denominator.
