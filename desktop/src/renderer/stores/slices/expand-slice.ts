@@ -10,7 +10,7 @@ export function createExpandSlice(set: StoreSet, get: StoreGet): Partial<State> 
         isExpanded: willExpand,
         settingsOpen: false,
         tabs: willExpand
-          ? s.tabs.map((t) => t.id === activeTabId ? { ...t, hasUnread: false } : t)
+          ? s.tabs.map((t) => t.id === activeTabId ? { ...t, lastVisitedAt: Date.now(), manualUnread: false } : t)
           : s.tabs,
       }))
     },
@@ -43,7 +43,7 @@ export function createExpandSlice(set: StoreSet, get: StoreGet): Partial<State> 
     // The rule lives HERE rather than in the components that trigger it because
     // there are four triggers already (StatusBarGitButton, the context ring,
     // a dispatch row, the keyboard) and a component handler only holds for the
-    // window it is mounted in -- the ATV mirror runs these same actions. One
+    // window it is mounted in -- the Studio mirror runs these same actions. One
     // invariant at the mutation point covers every caller, present and future.
     //
     // Exclusivity fires on OPEN only. Closing a panel says nothing about the
@@ -101,6 +101,25 @@ export function createExpandSlice(set: StoreSet, get: StoreGet): Partial<State> 
         })
         return { statusDrawerOpen: true, statusDrawerDispatchId: dispatchId, gitPanelOpen: false }
       })
+    },
+
+    // Studio inline dispatch split (the Studio counterpart of the overlay's
+    // floating AgentDetailPanel). Same dispatch identity as the popup:
+    // {agentName, dispatchId}, '' = agent-level sentinel. Completion retains
+    // the ended detail until the user closes it; changing conversation closes
+    // it because no dispatch preview may outlive its originating conversation.
+    openDispatchSplit: (subject) => {
+      const tabId = get().activeTabId
+      rDebug('panels', 'openDispatchSplit', {
+        agent: subject.agentName,
+        dispatch_id: subject.dispatchId,
+        tab_id: tabId,
+      })
+      set({ dispatchSplit: { ...subject, tabId } })
+    },
+    closeDispatchSplit: () => {
+      rDebug('panels', 'closeDispatchSplit', {})
+      set({ dispatchSplit: null })
     },
   }
 }

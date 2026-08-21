@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * Tests for useAgentDetailOpener — the stable-ref event listener hook that
- * bridges the ATV window's click-to-inspect signals to AgentPanel's toggle.
+ * bridges the Studio window's click-to-inspect signals to AgentPanel's toggle.
  *
  * Critical behavioral contract:
  *   1. The `ion:open-agent-detail` listener is registered exactly ONCE on

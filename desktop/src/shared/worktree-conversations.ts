@@ -44,7 +44,7 @@
  * rather than from a stored cursor. That is not a shortcut, it is the correct
  * mechanism: each click makes its target active, so the next click naturally
  * advances. A stored cursor would be a second source of truth that the overlay
- * and the ATV mirror could disagree about (each window would keep its own),
+ * and the Studio mirror could disagree about (each window would keep its own),
  * and it would go stale the moment a tab is closed out from under it.
  */
 
@@ -322,4 +322,57 @@ export function pickDirTerminal<T extends DirConversationSource>(
     if (named) return named
   }
   return inDir[0]
+}
+
+/**
+ * Whether `directory` is a bench checkout, or lives inside one.
+ *
+ * A bench is rebuildable scratch space: its branch is recreated from each
+ * member's pinned commit on every assembly, and every conversation and terminal
+ * in it is ephemeral by construction. Surfaces that decide whether work in a
+ * directory is DURABLE ask this — most importantly the Inbox snooze gate, since
+ * parking an ephemeral conversation for later promises a future that the next
+ * rebuild deletes.
+ *
+ * Nested paths count: a conversation in a subdirectory of the bench is still in
+ * the bench. Matches the containment rule the Inbox navigator uses so one
+ * directory cannot be "in the bench" for filing and "outside" for permissions.
+ */
+export function isBenchDirectory(
+  directory: string | null | undefined,
+  benchPaths: Iterable<string>,
+): boolean {
+  if (!directory) return false
+  for (const benchPath of benchPaths) {
+    if (!benchPath) continue
+    if (directory === benchPath || directory.startsWith(`${benchPath}/`)) return true
+  }
+  return false
+}
+
+/**
+ * Whether settling this conversation is PERMANENT — settled with no route back
+ * to an active conversation.
+ *
+ * Two role families are ephemeral by construction and must not be perpetuated:
+ *
+ *   - `bench-conversation` — the bench's operator conversation. Its checkout is
+ *     rebuildable scratch space that the next assembly recreates from each
+ *     member's pinned commit, so restoring one resumes work against a directory
+ *     whose content has been replaced underneath it.
+ *   - `conflict-auto-fix` / `verification-analysis` — machine conversations. The
+ *     operator cannot type in them at all (they are input-locked), so "restore
+ *     to active" offers a conversation nobody can continue.
+ *
+ * Settling either is therefore terminal: the record stays readable as a review
+ * artifact, exactly as a retired worktree's record does, and Un-settle is
+ * absent rather than disabled.
+ *
+ * Decided from the STORED role, not from the directory, so the answer survives
+ * a bench being torn down and is identical on every surface and every client.
+ */
+export function settlingIsPermanent(role: ConversationTabRole | null | undefined): boolean {
+  return role === 'bench-conversation'
+    || role === 'conflict-auto-fix'
+    || role === 'verification-analysis'
 }

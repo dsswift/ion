@@ -25,6 +25,52 @@ import { rDebug } from '../rendererLogger'
 let listenerInstalled = false
 const lastRevisionByRepo: Record<string, number> = {}
 
+/**
+ * Renderer-side subscription refcount, keyed by directory.
+ *
+ * Main keys its subscription map `webContentsId::repoPath` WITHOUT a
+ * refcount: two same-window subscribers (StatusBar + GitPanel, or N
+ * workspace repo sections) collide on one entry, and the first unmount's
+ * gitUnsubscribe kills event delivery for every remaining subscriber in
+ * this window. Refcounting here means main sees one subscribe per
+ * (window, repo) and one unsubscribe when the LAST consumer leaves.
+ */
+const subscriberCounts: Record<string, number> = {}
+
+/** Exported for tests. */
+export function _subscriberCount(directory: string): number {
+  return subscriberCounts[directory] ?? 0
+}
+
+function acquireSubscription(directory: string): void {
+  const prev = subscriberCounts[directory] ?? 0
+  subscriberCounts[directory] = prev + 1
+  if (prev > 0) {
+    // Already subscribed at the window level — the snapshot is in the git
+    // store; just force a fresh read for this consumer's benefit.
+    window.ion.gitRefresh(directory).catch((err) => rDebug('git', 'gitRefresh failed', { directory, error: String(err) }))
+    return
+  }
+  window.ion.gitSubscribe(directory).then(({ snapshot }) => {
+    if (snapshot) {
+      useGitStore.getState().applySnapshot(snapshot)
+      lastRevisionByRepo[directory] = snapshot.revision
+    }
+    // Force a fresh read; deltas flow back through the onGitEvent listener.
+    window.ion.gitRefresh(directory).catch((err) => rDebug('git', 'gitRefresh failed', { directory, error: String(err) }))
+  }).catch((err) => rDebug('git', 'gitSubscribe on mount failed', { directory, error: String(err) }))
+}
+
+function releaseSubscription(directory: string): void {
+  const prev = subscriberCounts[directory] ?? 0
+  if (prev <= 1) {
+    delete subscriberCounts[directory]
+    window.ion.gitUnsubscribe(directory).catch((err) => rDebug('git', 'gitUnsubscribe failed', { directory, error: String(err) }))
+  } else {
+    subscriberCounts[directory] = prev - 1
+  }
+}
+
 function installGlobalListener(): void {
   if (listenerInstalled) return
   listenerInstalled = true
@@ -60,19 +106,10 @@ export function useGitRepo(directory: string | undefined, isGitRepo: boolean): v
     if (!directory || !isGitRepo || directory === '~') return
 
     let cancelled = false
-    // Subscribe first (returns the cached snapshot if any) and apply it
-    // immediately so the UI has something to render. Then fire gitRefresh
-    // so the snapshot is replaced with a fresh read on every mount — covers
-    // the silent-staleness path where the watcher missed events.
-    window.ion.gitSubscribe(directory).then(({ snapshot }) => {
-      if (cancelled) return
-      if (snapshot) {
-        useGitStore.getState().applySnapshot(snapshot)
-        lastRevisionByRepo[directory] = snapshot.revision
-      }
-      // Force a fresh read; deltas flow back through the onGitEvent listener.
-      window.ion.gitRefresh(directory).catch((err) => rDebug("git", "gitRefresh failed", { directory, error: String(err) }))
-    }).catch((err) => rDebug('git', 'gitSubscribe on mount failed', { directory, error: String(err) }))
+    // Refcounted subscribe: the first consumer in this window subscribes
+    // (applying the cached snapshot + forcing a fresh read); later consumers
+    // ride the existing subscription and just refresh.
+    acquireSubscription(directory)
 
     // Refresh on window focus return — the watcher may have dropped events
     // while blurred, and even when it didn't, FSEvents itself can silently
@@ -87,7 +124,7 @@ export function useGitRepo(directory: string | undefined, isGitRepo: boolean): v
     return () => {
       cancelled = true
       window.removeEventListener('focus', onWindowFocus)
-      window.ion.gitUnsubscribe(directory).catch((err) => rDebug("git", "gitUnsubscribe failed", { directory, error: String(err) }))
+      releaseSubscription(directory)
     }
   }, [directory, isGitRepo])
 

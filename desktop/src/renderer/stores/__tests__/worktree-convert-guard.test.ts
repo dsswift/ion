@@ -10,7 +10,7 @@
  * agent to resume.
  *
  * The context-menu row is disabled while the tab is busy, but the row is not
- * the only entry point — convertToWorktree is a FORWARDED ATV mirror action, so
+ * the only entry point — convertToWorktree is a FORWARDED Studio mirror action, so
  * the mirror window can dispatch it against state that has since moved. These
  * tests pin the guard at the action seam, where every entry point funnels.
  *

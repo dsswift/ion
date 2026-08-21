@@ -493,6 +493,11 @@ describe('projectCurrentSettings', () => {
     expect(out.enableEarlyStopContinuation).toBe(true)
   })
 
+  it('projects auto-settle days exactly from settings.json', () => {
+    readSettingsSpy.mockReturnValue({ inboxAutoSettleDays: 3 })
+    expect(projectCurrentSettings().inboxAutoSettleDays).toBe(3)
+  })
+
   it('does not include non-projectable keys even if settings.json carries them', () => {
     // settings.json typically carries dozens of keys; the projection
     // must filter to only the allowlist. A non-projectable key

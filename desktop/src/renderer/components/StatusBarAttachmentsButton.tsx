@@ -16,6 +16,7 @@ import { ResourceViewer } from './ResourceViewer'
 import { parseAttachmentsFromMessages, type MsgLike } from './StatusBarAttachmentsParser'
 import { activeInstance } from '../stores/conversation-instance'
 import type { ResourceItem } from '../../shared/types-engine'
+import { surfaceRouter, contentRouter } from '../lib/file-open-router'
 import { rWarn, rError } from '../rendererLogger'
 
 /* ─── Extension sets for icon picking ─── */
@@ -136,7 +137,7 @@ export function AttachmentsButton() {
   const popoverRef = useRef<HTMLDivElement>(null)
 
   const [open, setOpen] = useState(false)
-  // Keep the portaled popover inside the window (ATV top-anchored strip).
+  // Keep the portaled popover inside the window (Studio top-anchored strip).
   useViewportClamp(popoverRef, open)
   const [pos, setPos] = useState({ bottom: 0, left: 0 })
   const [planData, setPlanData] = useState<{ content: string; fileName: string; filePath: string } | null>(null)
@@ -225,17 +226,29 @@ export function AttachmentsButton() {
 
   const handlePlanClick = useCallback(async (path: string) => {
     setOpen(false)
+    // Studio routes into a surface editor tab (markdown preview default) —
+    // the shell's tab system replaces in-window popups; the overlay keeps
+    // the floating PlanViewer.
+    const router = surfaceRouter()
+    if (router && activeTabId) {
+      if (router.openPlan) router.openPlan(workingDir, activeTabId, path)
+      else router.openTextFile(workingDir, activeTabId, path)
+      return
+    }
     const result = await window.ion.readPlan(path)
     if (result.content && result.fileName) {
       setPlanData({ content: result.content, fileName: result.fileName, filePath: path })
     }
-  }, [])
+  }, [activeTabId, workingDir])
 
   const handleFileClick = useCallback(async (a: ParsedAttachment) => {
     setOpen(false)
     const ext = extOf(a.name)
     if (IMAGE_EXTS.has(ext)) {
-      setImagePreview({ path: a.path, name: a.name })
+      // Studio: surface preview tab; overlay: floating ImageViewer.
+      const router = surfaceRouter()
+      if (router) router.openImage(a.path)
+      else setImagePreview({ path: a.path, name: a.name })
       return
     }
     if (EDITABLE_EXTS.has(ext) && activeTabId) {
@@ -482,7 +495,9 @@ export function AttachmentsButton() {
                         hoverBg={colors.surfaceHover}
                         color={colors.iconPurple}
                         onClick={() => {
-                          setViewerData({ title, content: item.content })
+                          const router = contentRouter()
+                          if (router?.openResource) router.openResource(item)
+                          else setViewerData({ title, content: item.content })
                           setOpen(false)
                         }}
                       >

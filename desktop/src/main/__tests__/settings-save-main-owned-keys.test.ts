@@ -144,12 +144,12 @@ describe('SAVE_SETTINGS main-owned keys', () => {
     // The rule is general, not an OIDC special case: writeSettings replaces the
     // file wholesale, so ANY key written only by a main-process path must
     // survive a renderer save that has never heard of it.
-    settingsStoreMock.onDisk = { theme: 'dark', atvBounds: { x: 10, y: 20 } }
+    settingsStoreMock.onDisk = { theme: 'dark', studioBounds: { x: 10, y: 20 } }
 
     const save = ipcHandlers.get(IPC.SAVE_SETTINGS)!
     await save({}, { theme: 'light' })
 
-    expect(settingsStoreMock.written!.atvBounds).toEqual({ x: 10, y: 20 })
+    expect(settingsStoreMock.written!.studioBounds).toEqual({ x: 10, y: 20 })
   })
 
   it('lets the renderer overwrite the keys it does own', async () => {

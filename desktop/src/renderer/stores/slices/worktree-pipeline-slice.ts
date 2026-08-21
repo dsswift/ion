@@ -19,11 +19,11 @@
  *      commits, so any pre-sync pin is stale by definition (see
  *      worktreeRowState.ts on why sync outranks the pin).
  *
- * ── Why ONE store action per phase transition (ATV rule) ────────────────────
+ * ── Why ONE store action per phase transition (Studio rule) ────────────────────
  * The pipeline reads store state between mutations (tab status while an agent
  * runs, the bench list for phase 4), so it must run in the owner window as
  * forwarded actions — a component handler would decide against stale mirror
- * state. See atv-mirror-actions.ts.
+ * state. See studio-mirror-actions.ts.
  *
  * ── Cancellation semantics ──────────────────────────────────────────────────
  * Cancel stops the pipeline BETWEEN steps: no new agent launches, no phase 4.

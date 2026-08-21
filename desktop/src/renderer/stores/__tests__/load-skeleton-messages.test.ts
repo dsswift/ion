@@ -2,7 +2,7 @@
  * loadSkeletonMessages — the lazy history hydration path, and the
  * historyHydrated marker that gates it.
  *
- * Regression pin for the ATV last-turn-only bug: live streamed events append
+ * Regression pin for the Studio window last-turn-only bug: live streamed events append
  * to a never-hydrated skeleton pane, so the old "messages.length > 0 →
  * already loaded" short-circuit skipped the history load entirely and the
  * transcript showed only the live tail. The poisoned-pane tests here FAIL on
@@ -143,15 +143,20 @@ describe('loadSkeletonMessages', () => {
     expect(h.inst().historyHydrated).toBe(true)
   })
 
-  it('keeps live messages that stream in DURING the load (baseline merge)', async () => {
-    const h = makeHarness({ messages: [liveMsg('pre', 'pre-load live')], messageCount: 1, historyHydrated: false })
+  it('keeps a fresh prompt that precedes an empty history load', async () => {
+    // The auto-fix path inserts its machine prompt before lazy hydration. The
+    // engine can answer this load before it persists that prompt.
+    const h = makeHarness({
+      messages: [{ id: 'request-1', role: 'user', content: 'resolve this conflict', timestamp: 1 }],
+      messageCount: 1,
+      historyHydrated: false,
+    })
     mockLoadChainHistory.mockImplementation(async () => {
-      // A new message arrives while the history IPC is in flight.
       h.appendLive(liveMsg('mid', 'streamed during load'))
-      return [{ role: 'assistant', content: 'persisted history' }]
+      return []
     })
     await h.load()
-    expect(h.inst().messages.map((m) => m.content)).toEqual(['persisted history', 'streamed during load'])
+    expect(h.inst().messages.map((m) => m.content)).toEqual(['resolve this conflict', 'streamed during load'])
     expect(h.inst().messageCount).toBe(2)
   })
 
@@ -330,8 +335,12 @@ describe('loadSkeletonMessages — externalized content (schema v4)', () => {
     expect(inst.historyHydrationFailed).toBe(true)
   })
 
-  it('keeps live rows that streamed in during the async load', async () => {
-    const h = makeHarness({ messages: [], messageCount: 1, externalContentStatus: 'pending' })
+  it('keeps a fresh prompt that precedes an externalized history load', async () => {
+    const h = makeHarness({
+      messages: [{ id: 'request-1', role: 'user', content: 'resolve this conflict', timestamp: 2 }],
+      messageCount: 1,
+      externalContentStatus: 'pending',
+    })
     mockLoadChainHistory.mockResolvedValue([])
     mockLoadTabContent.mockImplementation(async () => {
       h.appendLive(liveMsg('live-1', 'streamed during load'))
@@ -341,10 +350,7 @@ describe('loadSkeletonMessages — externalized content (schema v4)', () => {
     await h.load()
 
     const inst = h.inst()
-    // harness row from content file + live tail
-    expect(inst.messages).toHaveLength(2)
-    expect(inst.messages[0].role).toBe('harness')
-    expect(inst.messages[1].id).toBe('live-1')
+    expect(inst.messages.map((m) => m.content)).toEqual(['banner', 'resolve this conflict', 'streamed during load'])
   })
 
   it('marks error (still usable) when content file is missing and chain is empty', async () => {
@@ -472,7 +478,7 @@ describe('rehydrateFailedHistory', () => {
 // tab and coming back" bug.
 //
 // loadSkeletonMessages is fired from four independent places that can target
-// the same tab in one tick (selectTab, rehydrateFailedHistory, the ATV dock,
+// the same tab in one tick (selectTab, rehydrateFailedHistory, the Studio window dock,
 // and the iOS desktop_load_attachments handler via executeJavaScript). It is
 // async and its first write lands only after an awaited IPC round-trip, so the
 // gates at the top (externalContentStatus / needsHistoryHydration) are read

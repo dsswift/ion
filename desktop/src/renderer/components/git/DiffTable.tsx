@@ -33,7 +33,7 @@ export function DiffTable({ parsed, selected, staged, onLineClick, onHunkAction,
   }
 
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-mono, monospace)', fontSize: 'var(--ion-conv-font-size, 11px)' as unknown as number }}>
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--ion-font-mono, monospace)', fontSize: 'var(--ion-data-code-font-size, 13px)' as unknown as number }}>
       <tbody>
         {parsed.lines.map((line) => {
           if (line.type === 'hunk') {

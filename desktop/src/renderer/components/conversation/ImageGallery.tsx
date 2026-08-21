@@ -4,6 +4,7 @@ import { useColors } from '../../theme'
 import { rInfo } from '../../rendererLogger'
 import { ImageViewer, useImageDataUrl } from '../ImageViewer'
 import { Tooltip } from '../git/Tooltip'
+import { contentRouter } from '../../lib/file-open-router'
 
 /**
  * ImageGallery — the single inline-image surface for the transcript.
@@ -153,6 +154,13 @@ export function ImageGallery({ items, align = 'start' }: { items: GalleryImage[]
   }, [count])
 
   const siblings = useMemo(() => items.map((i) => ({ path: i.path, name: i.name })), [items])
+  const openItem = useCallback((index: number) => {
+    const item = items[index]
+    if (!item) return
+    const router = contentRouter()
+    if (router) router.openImage(item.path, item.dataUrl)
+    else setSelected(index)
+  }, [items])
   const closeViewer = useCallback(() => setSelected(null), [])
 
   if (count === 0) return null
@@ -180,7 +188,7 @@ export function ImageGallery({ items, align = 'start' }: { items: GalleryImage[]
             maxWidth={SOLO_MAX_WIDTH}
             maxHeight={SOLO_MAX_HEIGHT}
             snap={false}
-            onOpen={() => setSelected(0)}
+            onOpen={() => openItem(0)}
           />
         </div>
         {viewer}
@@ -240,7 +248,7 @@ export function ImageGallery({ items, align = 'start' }: { items: GalleryImage[]
                 load={seen.has(i)}
                 maxHeight={tileHeight}
                 snap={!expanded}
-                onOpen={() => setSelected(i)}
+                onOpen={() => openItem(i)}
               />
             ))}
             {overflow > 0 && (

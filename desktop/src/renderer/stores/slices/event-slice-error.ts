@@ -38,6 +38,7 @@ export function handleErrorAction(set: StoreSet, tabId: string, error: EnrichedE
               status: 'failed' as TabStatus,
               activeRequestId: null,
               currentActivity: '',
+              lastFailureAt: Date.now(),
             }
           : t
       ),

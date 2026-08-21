@@ -1,9 +1,17 @@
 import React from 'react'
 import { useColors } from '../theme'
 import { formatDuration } from './agent-panel-helpers'
+import { resolveDispatchDot } from '../lib/agent-dot-model'
+import { StatusDot } from './TabStripStatusDot'
 import type { DispatchInfo } from './agent-panel-helpers'
+import type { AgentStateUpdate } from '../../shared/types'
 
 interface Props {
+  /** Agent owning this history. Each chip resolves status against its own dispatch. */
+  agent: AgentStateUpdate
+  /** Full durable agent tree provides legacy descendant fallback when a dispatch
+   *  predates the explicit `waitingOn` reason. */
+  allAgents: AgentStateUpdate[]
   dispatches: DispatchInfo[]
   selectedIndex: number
   onSelect: (index: number) => void
@@ -16,7 +24,7 @@ interface Props {
  * single agent row. Pills are shown in reverse chronological order
  * (newest = #1), matching the user's mental model of "most recent first".
  */
-export function DispatchPager({ dispatches, selectedIndex, onSelect, compact }: Props) {
+export function DispatchPager({ agent, allAgents, dispatches, selectedIndex, onSelect, compact }: Props) {
   const colors = useColors()
   if (dispatches.length === 0) return null
 
@@ -35,6 +43,7 @@ export function DispatchPager({ dispatches, selectedIndex, onSelect, compact }: 
           const i = dispatches.length - 1 - ri
           const displayNum = i + 1
           const isActive = i === selectedIndex
+          const dot = resolveDispatchDot(agent, d, allAgents, colors)
           return (
             <button
               key={d.id || i}
@@ -52,8 +61,18 @@ export function DispatchPager({ dispatches, selectedIndex, onSelect, compact }: 
               }}
               title={d.task || `Dispatch #${displayNum}`}
             >
-              #{displayNum}
-              {d.status === 'running' && ' ●'}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                #{displayNum}
+                <StatusDot
+                  derived={{
+                    bg: dot.bg,
+                    pulse: dot.pulse,
+                    glow: Boolean(dot.glowColor),
+                    glowColor: dot.glowColor,
+                  }}
+                  size={6}
+                />
+              </span>
             </button>
           )
         })}

@@ -1,0 +1,15 @@
+{
+  "id": "pc",
+  "name": "Workstation",
+  "category": "work",
+  "footprintW": 1,
+  "footprintH": 1,
+  "width": 16,
+  "height": 16,
+  "rotationScheme": "none",
+  "states": {
+    "on": "on.png",
+    "off": "off.png"
+  },
+  "canPlaceOnSurfaces": true
+}

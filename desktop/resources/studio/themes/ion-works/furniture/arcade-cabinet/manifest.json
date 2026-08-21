@@ -1,0 +1,14 @@
+{
+  "id": "arcade-cabinet",
+  "name": "Arcade Cabinet",
+  "category": "relax",
+  "footprintW": 1,
+  "footprintH": 1,
+  "width": 16,
+  "height": 32,
+  "rotationScheme": "none",
+  "images": {
+    "default": "default.png"
+  },
+  "frames": 2
+}

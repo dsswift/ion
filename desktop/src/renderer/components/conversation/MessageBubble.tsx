@@ -64,7 +64,7 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
           <div
             className="leading-[1.5] px-3 py-1.5 max-w-full min-w-0"
             style={{
-              fontSize: 'var(--ion-conv-font-size, 13px)',
+              fontSize: 'var(--ion-data-font-size, 13px)',
               background: colors.userBubble,
               color: colors.userBubbleText,
               border: isBashCmd ? `2px solid ${colors.bashModeRing}` : `1px solid ${colors.userBubbleBorder}`,

@@ -102,9 +102,11 @@ describe('sync and inventory conflict state', () => {
 
     await h.slice.syncWorktree!(WT, 'josh', '/repo')
 
-    expect(h.alerts().get(WT)).toEqual({
+    expect(h.alerts().get(WT)).toMatchObject({
+      source: 'sync',
       operationState: 'rebasing',
       label: 'proj-a1',
+      dismissed: false,
     })
   })
 
@@ -132,7 +134,12 @@ describe('sync and inventory conflict state', () => {
 
     await h.slice.refreshWorktreeInventory!('/repo')
 
-    expect(h.alerts().get(WT)).toEqual({ operationState: 'merging', label: 'proj-a1' })
+    expect(h.alerts().get(WT)).toMatchObject({
+      source: 'detected',
+      operationState: 'merging',
+      label: 'proj-a1',
+      dismissed: false,
+    })
   })
 
   it('clears conflict state when inventory reports operation completed', async () => {
@@ -152,7 +159,7 @@ describe('sync and inventory conflict state', () => {
 
   it('clears a resolved repo-root land conflict outside worktree inventory', async () => {
     const h = harness()
-    h.slice.recordConflictAlert!('/repo', { operationState: 'merging', label: 'repo' })
+    h.slice.recordConflictAlert!('/repo', { source: 'land', operationState: 'merging', label: 'repo' })
     ;(globalThis as unknown as { window: Record<string, unknown> }).window = {
       ion: {
         gitWorktreeInventory: vi.fn().mockResolvedValue({ worktrees: [] }),
@@ -390,11 +397,12 @@ describe('a failed land records conflict state', () => {
     const h = harness()
 
     h.slice.recordConflictAlert!(HOLDER, {
+      source: 'land',
       operationState: 'merging',
       label: 'repo',
     })
 
-    expect(h.alerts().get(HOLDER)).toEqual({ operationState: 'merging', label: 'repo' })
+    expect(h.alerts().get(HOLDER)).toMatchObject({ operationState: 'merging', label: 'repo', source: 'land', dismissed: false })
     expect(h.alerts().has(WT)).toBe(false)
   })
 
@@ -402,6 +410,7 @@ describe('a failed land records conflict state', () => {
     const h = harness()
 
     h.slice.recordConflictAlert!(WT, {
+      source: 'sync',
       operationState: 'rebasing',
       label: 'proj-a1',
     })

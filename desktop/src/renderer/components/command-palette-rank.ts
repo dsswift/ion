@@ -1,6 +1,6 @@
 /**
  * command-palette-rank — pure fuzzy ranking for the shared command palette
- * (mounted in BOTH the overlay and the ATV shell; parity by construction).
+ * (mounted in BOTH the overlay and the Studio shell; parity by construction).
  *
  * Scoring: subsequence match required; earlier and denser matches rank
  * higher; prefix beats infix; label beats keywords.

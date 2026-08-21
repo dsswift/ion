@@ -30,8 +30,10 @@ import { ensureHandoffDir } from './deeplink/handoff'
 import { getDeepLinkToken } from './deeplink/token'
 import { markDeepLinkConfirmationReady, markDeepLinkConfirmationUnavailable, rejectAllDeepLinkConfirmations } from './deeplink/confirm'
 import { showWindow } from './window-manager'
-import { openAtvWindow } from './atv-window-manager'
+import { openStudioWindow } from './studio-window-manager'
 import { readSettings } from './settings-store'
+import { resolveSurfacePlan } from './surface-launch'
+import { enterprisePolicyCache } from './state'
 import type { DeepLinkConfirmOwner } from '../shared/types-ipc'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -46,9 +48,10 @@ export const ION_SCHEME = 'ion'
 function presentConfirmation(): DeepLinkConfirmOwner | null {
   try {
     const settings = readSettings()
-    if (settings.surfacePolicy === 'atv-only') {
-      openAtvWindow('deeplink confirmation')
-      return 'atv'
+    // Single-UI exclusivity: the confirmation surfaces on the ACTIVE UI.
+    if (resolveSurfacePlan(settings, enterprisePolicyCache.policy).activeUi === 'studio') {
+      openStudioWindow('deeplink confirmation')
+      return 'studio'
     }
     showWindow('deeplink confirmation')
     return 'overlay'

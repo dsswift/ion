@@ -2,7 +2,7 @@ import React from 'react'
 import { useShallow } from 'zustand/shallow'
 import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
-import { useActiveEngineAgentRunningCount, useActiveEngineBackgroundShellCount } from './StatusBarEngineHelpers'
+import { useActiveEngineAgentRunningCount, useActiveEngineBackgroundShellCount, useActiveEngineStatusFields } from './StatusBarEngineHelpers'
 
 /**
  * Engine state slot — renders the orchestrator run-activity dot + label in
@@ -55,9 +55,11 @@ export function StatusBarEngineState() {
   )
   const agentRunningCount = useActiveEngineAgentRunningCount()
   const shellRunningCount = useActiveEngineBackgroundShellCount()
+  const statusFields = useActiveEngineStatusFields()
 
   const isRun = status === 'running' || status === 'connecting'
-  const isWaitingChildren = !isRun && agentRunningCount > 0
+  const isWaitingPending = !isRun && (status === 'waiting' || statusFields?.hasPendingWork === true)
+  const isWaitingChildren = !isRun && (agentRunningCount > 0 || isWaitingPending)
   // Background shells rank below agents, matching the tab-dot cascade: when
   // both are outstanding the richer agent signal is the one worth surfacing in
   // this single-line slot.
@@ -75,14 +77,19 @@ export function StatusBarEngineState() {
   const label = isRun
     ? 'running'
     : isWaitingChildren
-      ? `waiting for ${agentRunningCount} agent${agentRunningCount === 1 ? '' : 's'}`
+      ? agentRunningCount > 0
+        ? `waiting for ${agentRunningCount} agent${agentRunningCount === 1 ? '' : 's'}`
+        : 'waiting for queued work'
       // "background shell" IS accurate here, unlike the agent label above: these
       // are shell processes running detached from any turn, and the session is
       // held open for them. Do not "align" this wording with the agent label.
       : `waiting for ${shellRunningCount} background shell${shellRunningCount === 1 ? '' : 's'}`
 
   return (
-    <span style={{ color: colors.textTertiary, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10 }}>
+    <span
+      data-testid="composer-activity-status"
+      style={{ color: colors.textTertiary, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10 }}
+    >
       <span
         className="animate-pulse-dot"
         style={{

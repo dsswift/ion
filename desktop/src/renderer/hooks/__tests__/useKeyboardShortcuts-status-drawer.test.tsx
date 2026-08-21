@@ -41,13 +41,10 @@ const toggleStatusDrawer = vi.fn()
 const toggleGitPanel = vi.fn()
 
 let prefState = {
-  editorFontSize: 14,
-  conversationFontSize: 13,
-  previewFontSize: 13,
-  keyboardShortcuts: {} as Record<string, string>,
+  editorFontSize: 14, dataViewFontSize: 13,
+  keyboardShortcuts: { overlay: {}, studio: {} } as { overlay: Record<string, string>; studio: Record<string, string> },
   setEditorFontSize: vi.fn(),
-  setConversationFontSize: vi.fn(),
-  setPreviewFontSize: vi.fn(),
+  setDataViewFontSize: vi.fn(),
   defaultBaseDirectory: '',
   engineProfiles: [],
   defaultEngineProfileId: '',
@@ -100,7 +97,7 @@ let container: HTMLDivElement | null = null
 let root: any = null
 
 function Probe(): null {
-  useKeyboardShortcuts()
+  useKeyboardShortcuts(() => {})
   return null
 }
 
@@ -130,13 +127,9 @@ function pressKey(key: string, opts: { metaKey?: boolean; shiftKey?: boolean } =
 beforeEach(() => {
   vi.clearAllMocks()
   prefState = {
-    editorFontSize: 14,
-    conversationFontSize: 13,
-    previewFontSize: 13,
-    keyboardShortcuts: {},
+    editorFontSize: 14, dataViewFontSize: 13, setDataViewFontSize: vi.fn(),
+    keyboardShortcuts: { overlay: {}, studio: {} } as { overlay: Record<string, string>; studio: Record<string, string> },
     setEditorFontSize: vi.fn(),
-    setConversationFontSize: vi.fn(),
-    setPreviewFontSize: vi.fn(),
     defaultBaseDirectory: '',
     engineProfiles: [],
     defaultEngineProfileId: '',
@@ -228,7 +221,7 @@ describe('Cmd+4 — the Status Drawer branch exists in the handler', () => {
 
 describe('Cmd+4 is a binding, not a hardcoded key', () => {
   it('an override moves the drawer to the new chord', () => {
-    prefState.keyboardShortcuts = { 'panel.statusDrawer': 'Mod+9' }
+    prefState.keyboardShortcuts = { overlay: { 'panel.statusDrawer': 'Mod+9' }, studio: {} }
     mountProbe()
 
     pressKey('9', { metaKey: true })
@@ -238,7 +231,7 @@ describe('Cmd+4 is a binding, not a hardcoded key', () => {
 
   it('the old Cmd+4 goes dead once overridden', () => {
     // This is the assertion a hardcoded `e.key === '4'` check would fail.
-    prefState.keyboardShortcuts = { 'panel.statusDrawer': 'Mod+9' }
+    prefState.keyboardShortcuts = { overlay: { 'panel.statusDrawer': 'Mod+9' }, studio: {} }
     mountProbe()
 
     pressKey('4', { metaKey: true })

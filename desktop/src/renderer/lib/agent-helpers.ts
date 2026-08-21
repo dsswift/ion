@@ -32,6 +32,7 @@ export function getDispatches(agent: AgentStateUpdate): DispatchInfo[] {
       conversationId: String(d.conversationId ?? ''),
       elapsed: typeof d.elapsed === 'number' ? d.elapsed : undefined,
       status: String(d.status ?? ''),
+      waitingOn: d.waitingOn === 'children' || d.waitingOn === 'shell' ? d.waitingOn : undefined,
       startTime: typeof d.startTime === 'number' ? d.startTime : undefined,
     }))
   }
@@ -144,18 +145,78 @@ export function isAgentVisible(agent: AgentStateUpdate): boolean {
   }
 }
 
-export function sortAgents(agents: AgentStateUpdate[]): AgentStateUpdate[] {
-  const statusOrder: Record<string, number> = { running: 0, done: 1, error: 1, cancelled: 1, idle: 2 }
-  const visOrder: Record<string, number> = { always: 0, sticky: 1, ephemeral: 2 }
+export function sortAgents(
+  agents: AgentStateUpdate[],
+  allAgents: AgentStateUpdate[] = agents,
+): AgentStateUpdate[] {
   return [...agents].sort((a, b) => {
-    const sa = statusOrder[a.status] ?? 2
-    const sb = statusOrder[b.status] ?? 2
-    if (sa !== sb) return sa - sb
-    const va = visOrder[meta(a, 'visibility', 'ephemeral')] ?? 9
-    const vb = visOrder[meta(b, 'visibility', 'ephemeral')] ?? 9
+    const aTier = activityTierForAgent(a, allAgents)
+    const bTier = activityTierForAgent(b, allAgents)
+    if (aTier.foreground !== bTier.foreground) return aTier.foreground - bTier.foreground
+    if (aTier.background !== bTier.background) return aTier.background - bTier.background
+    const va = visibilitySortRank(a)
+    const vb = visibilitySortRank(b)
     if (va !== vb) return va - vb
     return meta(a, 'displayName', a.name).localeCompare(meta(b, 'displayName', b.name))
   })
+}
+
+/** Lower values render first. Foreground precedes historical work. */
+export type AgentActivityTier = 'running' | 'children' | 'shell' | 'terminal' | 'never-dispatched'
+
+const ACTIVITY_TIER_RANK: Record<AgentActivityTier, number> = {
+  running: 0,
+  children: 1,
+  shell: 2,
+  terminal: 3,
+  'never-dispatched': 4,
+}
+
+/**
+ * Classify a dispatch from exact durable status. A legacy parked member without
+ * `waitingOn` is child-waiting. Existing persisted state can still use the
+ * dispatch-ID descendant walk until a new snapshot replaces it.
+ */
+export function activityTierForDispatch(
+  dispatch: DispatchInfo | undefined,
+  allAgents: AgentStateUpdate[] = [],
+): AgentActivityTier {
+  if (!dispatch) return 'never-dispatched'
+  if (dispatch.status === 'running') return 'running'
+  if (dispatch.waitingOn === 'children') return 'children'
+  if (dispatch.waitingOn === 'shell') return 'shell'
+  if (dispatch.status === 'suspended') return 'children'
+  if (hasLiveDescendantOfDispatch(allAgents, dispatch.id)) return 'children'
+  return 'terminal'
+}
+
+/**
+ * Keep newest dispatch and older dispatches separate. A current state wins;
+ * historical activity only resolves ties. Roster rows never dispatched sort last.
+ */
+export function activityTierForAgent(
+  agent: AgentStateUpdate,
+  allAgents: AgentStateUpdate[] = [],
+): { foreground: number; background: number } {
+  const dispatches = getDispatches(agent)
+  const recent = mostRecentDispatch(dispatches)
+  if (!recent) {
+    return {
+      foreground: ACTIVITY_TIER_RANK['never-dispatched'],
+      background: ACTIVITY_TIER_RANK['never-dispatched'],
+    }
+  }
+  const foreground = ACTIVITY_TIER_RANK[activityTierForDispatch(recent, allAgents)]
+  const previous = dispatches.filter((dispatch) => dispatch.id !== recent.id)
+  const background = previous.length === 0
+    ? ACTIVITY_TIER_RANK.terminal
+    : Math.min(...previous.map((dispatch) => ACTIVITY_TIER_RANK[activityTierForDispatch(dispatch, allAgents)]))
+  return { foreground, background }
+}
+
+function visibilitySortRank(agent: AgentStateUpdate): number {
+  const order: Record<string, number> = { always: 0, sticky: 1, ephemeral: 2 }
+  return order[meta(agent, 'visibility', 'ephemeral')] ?? 9
 }
 
 /**
@@ -167,6 +228,8 @@ export interface StatusDotColors {
   statusRunning: string
   statusWaitingChildren: string
   statusWaitingChildrenGlow: string
+  statusBash?: string
+  statusBashGlow?: string
   statusComplete: string
   statusError: string
   statusIdle: string
@@ -216,31 +279,38 @@ export function isLiveStatus(status: string): boolean {
  * This is the single cascade; `getStatusDot` delegates to it. Order matters:
  *
  *   error                          → solid statusError
- *   live descendant, or suspended  → pulsing statusWaitingChildren + glow
- *   running                        → pulsing statusRunning
- *   done                           → solid statusComplete
+ *   foreground running              → pulsing statusRunning
+ *   waiting on children             → pulsing statusWaitingChildren + glow
+ *   waiting on shell                → pulsing statusBash + glow
+ *   done                            → solid statusComplete
  *   else (idle / cancelled / …)    → solid statusIdle
  *
- * The descendant check sits ABOVE the terminal branches on purpose: a parent
- * marked done while a child still runs must read as waiting-on-children, never
- * as a finished green dot, because the tree is not finished.
+ * Dispatch status alone cannot distinguish parked work. `waitingOn` carries
+ * that precise reason; legacy suspended status remains children-compatible.
  */
 export function resolveDotForStatus(
   status: string,
   colors: StatusDotColors,
-  hasLiveDescendant: boolean,
+  waitingOn?: DispatchInfo['waitingOn'] | boolean,
 ): RankedStatusDot {
+  const childWaiting = waitingOn === true || waitingOn === 'children'
   if (status === 'error') {
     return { bg: colors.statusError, pulse: false, glowColor: '', priority: 4 }
   }
-  if (hasLiveDescendant || status === 'suspended') {
-    return { bg: colors.statusWaitingChildren, pulse: true, glowColor: colors.statusWaitingChildrenGlow, priority: 3 }
+  if (childWaiting) {
+    return { bg: colors.statusWaitingChildren, pulse: true, glowColor: colors.statusWaitingChildrenGlow, priority: 2 }
+  }
+  if (waitingOn === 'shell') {
+    return { bg: colors.statusBash ?? colors.statusIdle, pulse: true, glowColor: colors.statusBashGlow ?? '', priority: 1 }
   }
   if (status === 'running') {
-    return { bg: colors.statusRunning, pulse: true, glowColor: '', priority: 2 }
+    return { bg: colors.statusRunning, pulse: true, glowColor: '', priority: 3 }
+  }
+  if (status === 'suspended') {
+    return { bg: colors.statusWaitingChildren, pulse: true, glowColor: colors.statusWaitingChildrenGlow, priority: 2 }
   }
   if (status === 'done') {
-    return { bg: colors.statusComplete, pulse: false, glowColor: '', priority: 1 }
+    return { bg: colors.statusComplete, pulse: false, glowColor: '', priority: 0 }
   }
   return { bg: colors.statusIdle, pulse: false, glowColor: '', priority: 0 }
 }
@@ -328,19 +398,19 @@ export function isAgentActive(agent: AgentStateUpdate, allAgents: AgentStateUpda
  * the same cascade `StatusDot` (TabStripStatusDot.tsx) and the status bar use.
  *
  * Thin delegator to `resolveDotForStatus` — that function documents and owns
- * the cascade, so there is exactly ONE place the ordering lives and no way for
- * a second copy to drift from it. Kept pure: the caller resolves `colors` from
- * `useColors()` and the child-liveness flag from `childAgentsOf` (direct
- * children) or `hasLiveDescendantOfDispatch` (the whole subtree).
+ * the cascade, so there is exactly ONE place the ordering lives. Kept pure:
+ * caller resolves `colors` from `useColors()` and the dispatch's `waitingOn`
+ * reason from durable dispatch metadata.
  */
 export function getStatusDot(
   agent: AgentStateUpdate,
   colors: StatusDotColors,
-  hasRunningChildren: boolean,
+  waitingOn?: DispatchInfo['waitingOn'] | boolean,
 ): StatusDot {
   // Drop `priority` so this function's published shape is unchanged: callers
   // compare the result exactly, and the rank is only meaningful to the folds.
-  const { bg, pulse, glowColor } = resolveDotForStatus(agent.status, colors, hasRunningChildren)
+  const reason = waitingOn === true ? 'children' : waitingOn || undefined
+  const { bg, pulse, glowColor } = resolveDotForStatus(agent.status, colors, reason)
   return { bg, pulse, glowColor }
 }
 

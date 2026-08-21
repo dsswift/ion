@@ -14,7 +14,8 @@
 // would still pass if the model folded every dispatch into one lumped dot, and
 // only together do they pin that the two subjects stay distinct.
 import { describe, it, expect } from 'vitest'
-import { resolveAgentDotModel } from '../agent-dot-model'
+import { resolveAgentDotModel, resolveDispatchDot } from '../agent-dot-model'
+import type { DispatchInfo } from '../../../shared/types-engine'
 import type { AgentStateUpdate } from '../../../shared/types'
 import type { StatusDotColors } from '../agent-helpers'
 
@@ -57,6 +58,20 @@ function child(
     },
   } as unknown as AgentStateUpdate
 }
+
+describe('resolveDispatchDot', () => {
+  it('preserves an explicit child-wait reason without requiring descendant inference', () => {
+    const agent = lead('done', [])
+    const dot = resolveDispatchDot(
+      agent,
+      { id: 'waiting', status: 'suspended', waitingOn: 'children' } as DispatchInfo,
+      [],
+      COLORS,
+    )
+
+    expect(dot).toMatchObject({ bg: 'WAITING', pulse: true, glowColor: 'WAITING_GLOW' })
+  })
+})
 
 describe('resolveAgentDotModel — collapse rule', () => {
   it('an agent with no dispatches renders a single dot from its own status', () => {

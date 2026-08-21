@@ -3,7 +3,7 @@ import { usePreferencesStore } from '../../preferences'
 import { destroyTerminalInstance } from '../../components/TerminalPanel'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { makeLocalTab, isReusableBlankConversationTab, initialModelOverride, initialPermissionMode, initialThinkingEffort } from '../session-store-helpers'
-import { makeMainPane, commitInstance, activeInstance, instanceMessageCount, needsHistoryHydration } from '../conversation-instance'
+import { makeMainPane, commitInstance, activeInstance, instanceMessageCount, isEmptyConversation, needsHistoryHydration } from '../conversation-instance'
 import { cleanupTabDeltas } from './engine-event-slice'
 import { applySetThinkingEffort } from './tab-slice-thinking'
 import { applyPermissionModeForTab } from './tab-slice-permission-mode'
@@ -12,8 +12,8 @@ import { evaluateSessionBusyGuard, formatSessionBusyRefusal } from './session-bu
 import { forgetTabContentTracking } from '../tab-content-tracking'
 import { pickNextActiveTab } from './tab-slice-next-active'
 import { resolveWorktreeForNewTab } from './tab-slice-worktree-resolve'
-import { getEffectiveTabGroups } from '../../preferences'
 import { rInfo, rDebug, rWarn } from '../../rendererLogger'
+import { isPersistedSettled } from '../../../shared/tab-predicates'
 import {
   moveTabToGroupAction, moveTabToGroupAndPinAction, setTabGroupIdAction,
   toggleTabGroupPinAction, setWorktreeUncommittedAction, addSystemMessageAction,
@@ -49,6 +49,14 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // tab-slice-permission-mode.ts so pipelines with an explicit tabId
       // (implement-slice) share the exact same flip.
       applyPermissionModeForTab(set, get, get().activeTabId, mode, source)
+    },
+
+    togglePermissionMode: (source) => {
+      const tabId = get().activeTabId
+      const pane = get().conversationPanes.get(tabId)
+      const instance = pane?.instances.find((candidate) => candidate.id === pane.activeInstanceId)
+      const mode = instance?.permissionMode === 'plan' ? 'auto' : 'plan'
+      applyPermissionModeForTab(set, get, tabId, mode, source)
     },
 
     setThinkingEffort: (effort) => {
@@ -187,11 +195,10 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const s = get()
       if (tabId === s.activeTabId) {
         if (!s.isExpanded) {
-          set((prev) => ({
+          set({
             isExpanded: true,
             settingsOpen: false,
-            tabs: prev.tabs.map((t) => t.id === tabId ? { ...t, hasUnread: false } : t),
-          }))
+          })
         }
         return
       }
@@ -199,6 +206,15 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const expandOnSwitch = prefs.expandOnTabSwitch
       set((prev) => {
         const targetTab = prev.tabs.find(t => t.id === tabId)
+        const reviewTab = prev.tabs.find((tab) => tab.id === prev.activeTabId && isPersistedSettled(tab))
+        const returningReview = reviewTab != null && reviewTab.id !== tabId
+        const tabs = returningReview ? prev.tabs.filter((tab) => tab.id !== reviewTab.id) : prev.tabs
+        const settledHistory = returningReview
+          ? [...prev.settledHistory.filter((tab) => tab.id !== reviewTab.id), reviewTab]
+          : prev.settledHistory
+        const conversationPanes = returningReview
+          ? new Map([...prev.conversationPanes].filter(([id]) => id !== reviewTab.id))
+          : prev.conversationPanes
         const isTerminalOnlyTall = targetTab?.isTerminalOnly && prefs.defaultTallTerminal
         // One tall-default for every conversation tab — plain or
         // extension-backed (the engine-specific default was collapsed away).
@@ -209,9 +225,9 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
           tallViewTabId: shouldTall ? tabId : null,
           terminalTallTabId: isTerminalOnlyTall ? tabId : null,
           settingsOpen: false,
-          tabs: prev.tabs.map((t) =>
-            t.id === tabId ? { ...t, hasUnread: false } : t
-          ),
+          tabs,
+          settledHistory,
+          conversationPanes,
         }
       })
       // Focused-session publishing now lives in lib/active-tab-notifier.ts —
@@ -230,10 +246,14 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       }
     },
 
-    closeTab: (tabId) => {
+    closeTab: (tabId, origin = 'local') => {
       const closingTab = get().tabs.find((t) => t.id === tabId)
-      // Action-layer guard: hard-block close while the orchestrator or any
-      // dispatched background agent is still running. TAB-TYPE-AGNOSTIC — see
+      if (!closingTab) {
+        rDebug('tab.close', 'close ignored: tab already absent', { tab_id: tabId, origin })
+        return
+      }
+      // Action-layer guard: hard-block immediate removal while the orchestrator
+      // or a dispatched background agent is still running.
       // evaluateSessionBusyGuard in session-busy-guard.ts for the full rationale
       // (plain conversations can dispatch sub-agents too, so this is not
       // engine-only).
@@ -244,6 +264,29 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
           rWarn('tab.close', 'close blocked by guard', { tab_id: tabId, reason: formatSessionBusyRefusal(tabId, guard, 'close the tab') })
           return
         }
+      }
+      // Close is recoverable after a conversation contains a message: a durable
+      // conversation enters Settled History. An untouched empty conversation has
+      // no history to recover, so close permanently removes it. Delete remains
+      // the explicit permanent verb for non-empty conversations. The guard above
+      // deliberately runs first: confirmed close must never stop active work.
+      const emptyConversation = !closingTab.isTerminalOnly
+        && isEmptyConversation(closingTab, get().conversationPanes.get(tabId))
+      const permanentDelete = origin === 'delete' || origin === 'remote-delete'
+      const mainAlreadyClosed = origin === 'remote' || origin === 'remote-delete'
+      if (!permanentDelete && !closingTab.isTerminalOnly && closingTab.conversationId && !emptyConversation) {
+        rInfo('tab.close', 'non-empty conversation routed to settled history', { tab_id: tabId, origin })
+        void get().settleTab(tabId)
+        return
+      }
+      if (!permanentDelete && !mainAlreadyClosed && emptyConversation) {
+        rInfo('tab.close', 'empty conversation routed to permanent deletion', {
+          tab_id: tabId,
+          origin,
+          has_conversation_id: closingTab.conversationId !== null,
+        })
+        void get().deleteConversationTab(tabId)
+        return
       }
       // Closing a conversation NEVER removes its worktree.
       //
@@ -266,17 +309,20 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
           branch: closingTab.worktree.branchName,
         })
       }
-      window.ion.closeTab(tabId).catch((err) => rWarn('tabs', 'closeTab IPC failed', { tab_id: tabId, error: String(err) }))
-      // Delete the tab's externalized content file (schema v4) and drop its
-      // change-tracking entry. The main-process orphan sweep is the backstop
-      // for paths that never reach here (crash mid-close).
+      if (!mainAlreadyClosed) {
+        window.ion.closeTab(tabId).catch((err) => rWarn('tabs', 'closeTab IPC failed', { tab_id: tabId, error: String(err) }))
+      }
+      // Delete externalized tab content after either origin. Main's remote-close
+      // handler stops sessions but does not own this renderer persistence file.
       window.ion.deleteTabContent?.(tabId)?.catch?.((err) => rDebug('tabs', 'deleteTabContent failed', { tab_id: tabId, error: String(err) }))
       forgetTabContentTracking(tabId)
       const pane = get().terminalPanes.get(tabId)
       if (pane) {
         for (const inst of pane.instances) {
           const key = `${tabId}:${inst.id}`
-          window.ion.terminalDestroy(key).catch((err) => rWarn('tabs', 'terminalDestroy on close failed', { key, error: String(err) }))
+          if (!mainAlreadyClosed) {
+            window.ion.terminalDestroy(key).catch((err) => rWarn('tabs', 'terminalDestroy on close failed', { key, error: String(err) }))
+          }
           destroyTerminalInstance(key)
         }
       }
@@ -366,33 +412,53 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
           })
           return
         }
-        const closedIndex = s.tabs.findIndex((t) => t.id === tabId)
-        // Group-aware next-active choice: prefer the nearest remaining sibling in
-        // the closed tab's derived group, falling back to nearest-by-flat-index.
-        // See tab-slice-next-active.ts for the selection rules.
-        const { tabGroupMode, tabGroups } = usePreferencesStore.getState()
-        const newActiveId =
-          pickNextActiveTab(tabId, s.tabs, {
-            mode: tabGroupMode,
-            groups: getEffectiveTabGroups(tabGroups),
-          }) ?? remaining[Math.min(closedIndex, remaining.length - 1)].id
-        // Commit the tab removal first so selectTab's `tabs.find` resolves the
-        // new target, then route activation through selectTab — the single,
-        // authoritative tab-activation path. This hydrates a skeleton existing
-        // conversation (loadSkeletonMessages), seeds tall view, clears unread,
-        // and fires the focus notification. A prior raw `set({ activeTabId })`
-        // here bypassed all of that and left the activated tab in a limbo state
-        // (empty scrollback + plan card). activeTabId is still the closing tab
-        // at this point, so selectTab's same-id early-return does not trip.
+        const next = pickNextActiveTab(tabId, s.tabs)
+        if (!next) {
+          rWarn('tab.close', 'next-active selection unexpectedly empty', { tab_id: tabId, remaining_tabs: remaining.length })
+          set({ tabs: remaining, activeTabId: remaining[0].id })
+          return
+        }
+        rInfo('tab.close', 'selected next active tab', {
+          closing_tab_id: tabId,
+          target_tab_id: next.tabId,
+          tier: next.tier,
+          target_last_visited_at: next.lastVisitedAt ?? 0,
+          target_last_activity_at: next.lastActivityAt ?? 0,
+        })
+        // Commit removal first so selectTab resolves target in current state.
+        // selectTab remains single activation funnel for history hydration,
+        // unread clearing, tall-view selection, and focus publication.
         set({ tabs: remaining })
-        get().selectTab(newActiveId)
+        get().selectTab(next.tabId)
       } else {
         set({ tabs: remaining })
       }
     },
 
-    reorderTabs: (reorderedTabs) => {
-      set({ tabs: reorderedTabs })
+    reorderTabs: (orderedIds) => {
+      set((s) => {
+        // Ids the caller named, in the order it wants them, filtered to only
+        // tabs that still exist in THIS store's current tabs — a stale or
+        // unknown id (the caller's copy drifted, or named a tab that closed
+        // since) is dropped rather than trusted.
+        const byId = new Map(s.tabs.map((t) => [t.id, t]))
+        const reordered: TabState[] = []
+        const seen = new Set<string>()
+        for (const id of orderedIds) {
+          const tab = byId.get(id)
+          if (tab && !seen.has(id)) {
+            reordered.push(tab)
+            seen.add(id)
+          }
+        }
+        // Anything the caller's ordering did not mention (a tab created after
+        // the caller last synced) is appended in its existing relative
+        // order, so it survives the reorder instead of being dropped.
+        for (const tab of s.tabs) {
+          if (!seen.has(tab.id)) reordered.push(tab)
+        }
+        return { tabs: reordered }
+      })
     },
 
     renameTab: (tabId, customTitle) => {

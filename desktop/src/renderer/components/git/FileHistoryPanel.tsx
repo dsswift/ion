@@ -12,7 +12,7 @@ import { computeGraphLayout } from '../../utils/gitGraphLayout'
 import { VirtualCommitList } from './VirtualCommitList'
 import { FloatingPanel } from '../FloatingPanel'
 import { DiffPane } from './DiffPane'
-import type { GitCommit, GitCommitDetail, GitCommitFile } from '../../../shared/types'
+import type { GitCommit, GitCommitDetail, GitCommitFile, GitDiffResult } from '../../../shared/types'
 import { rWarn } from '../../rendererLogger'
 
 interface Props {
@@ -27,7 +27,7 @@ export function FileHistoryPanel({ directory, path, onClose }: Props) {
   const [commits, setCommits] = useState<GitCommit[]>([])
   const [loading, setLoading] = useState(false)
   const [expanded, setExpanded] = useState<string | null>(null)
-  const [diffPair, setDiffPair] = useState<{ diff: string; fileName: string } | null>(null)
+  const [diffPair, setDiffPair] = useState<GitDiffResult | null>(null)
   const [commitDetail, setCommitDetail] = useState<GitCommitDetail | null>(null)
   const [commitFiles, setCommitFiles] = useState<GitCommitFile[]>([])
 
@@ -52,7 +52,7 @@ export function FileHistoryPanel({ directory, path, onClose }: Props) {
       ])
       setCommitDetail(detail)
       setCommitFiles(files.files as GitCommitFile[])
-      setDiffPair({ diff: fileDiff.diff, fileName: path.split('/').pop() ?? path })
+      setDiffPair(fileDiff)
     } catch {
       setCommitDetail(null); setCommitFiles([]); setDiffPair(null)
     }
@@ -99,6 +99,7 @@ export function FileHistoryPanel({ directory, path, onClose }: Props) {
               diff={diffPair.diff}
               fileName={diffPair.fileName}
               filePath={path}
+              isBinary={diffPair.isBinary}
               staged={false}
               directory={directory}
               onClose={() => { setExpanded(null); setDiffPair(null) }}

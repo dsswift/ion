@@ -61,6 +61,7 @@ export function buildSendPromptMessage(args: SendPromptArgs): Record<string, unk
   if (args.appendSystemPrompt) msg.appendSystemPrompt = args.appendSystemPrompt
   if (args.imageAttachments && args.imageAttachments.length > 0) {
     msg.attachments = args.imageAttachments.map((a) => ({
+      contentHash: a.contentHash,
       media_type: a.mediaType,
       data: a.data,
       path: a.path,

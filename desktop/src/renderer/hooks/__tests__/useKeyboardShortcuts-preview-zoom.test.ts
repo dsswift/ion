@@ -2,11 +2,11 @@
  * useKeyboardShortcuts — preview (pop-up) zoom routing
  *
  * Tests the three-way routing: preview → editor → conversation.
- * Pins the behavior that isPreviewZoomTarget() gates the new previewFontSize
- * branch before isEditorZoomTarget() and conversationFontSize.
+ * Pins the behavior that isPreviewZoomTarget() gates the new dataViewFontSize
+ * branch before isEditorZoomTarget() and dataViewFontSize.
  *
  * Revert-check: with the preview branch removed, the "zoom.in with pop-up open"
- * test would call setConversationFontSize (falling through to the else branch),
+ * test would call setDataViewFontSize (falling through to the else branch),
  * making it fail. The test is pinned on the condition that isPreviewZoomTarget
  * takes priority.
  */
@@ -16,13 +16,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // ── Store mocks ────────────────────────────────────────────────────────────
 
 let prefState = {
-  editorFontSize: 14,
-  conversationFontSize: 13,
-  previewFontSize: 13,
+  editorFontSize: 14, dataViewFontSize: 13,
   keyboardShortcuts: {} as Record<string, string>,
   setEditorFontSize: vi.fn((n: number) => { prefState.editorFontSize = n }),
-  setConversationFontSize: vi.fn((n: number) => { prefState.conversationFontSize = n }),
-  setPreviewFontSize: vi.fn((n: number) => { prefState.previewFontSize = n }),
+  setDataViewFontSize: vi.fn((n: number) => { prefState.dataViewFontSize = n }),
 }
 
 vi.mock('../../preferences', () => ({
@@ -84,13 +81,9 @@ function makeFileEditorState(activeFileId: string | null) {
 beforeEach(() => {
   vi.clearAllMocks()
   prefState = {
-    editorFontSize: 14,
-    conversationFontSize: 13,
-    previewFontSize: 13,
+    editorFontSize: 14, dataViewFontSize: 13, setDataViewFontSize: vi.fn(),
     keyboardShortcuts: {},
     setEditorFontSize: vi.fn((n: number) => { prefState.editorFontSize = n }),
-    setConversationFontSize: vi.fn((n: number) => { prefState.conversationFontSize = n }),
-    setPreviewFontSize: vi.fn((n: number) => { prefState.previewFontSize = n }),
   }
   const tab = makeTab('tab1')
   sessionState = {
@@ -128,63 +121,57 @@ describe('isPreviewZoomTarget()', () => {
 // ── Three-way zoom routing ────────────────────────────────────────────────
 
 describe('zoom routing — preview target (pop-up open)', () => {
-  it('zoom.in calls setPreviewFontSize and NOT conversation/editor when pop-up is open', async () => {
+  it('zoom.in calls setDataViewFontSize and NOT conversation/editor when pop-up is open', async () => {
     const { isPreviewZoomTarget, isEditorZoomTarget } = await import('../useKeyboardShortcuts')
     sessionState.openFloatingPanelCount = 1
 
     // Simulate the handler logic.
     const p = prefState
     if (isPreviewZoomTarget()) {
-      p.setPreviewFontSize(p.previewFontSize + 1)
+      p.setDataViewFontSize(p.dataViewFontSize + 1)
     } else if (isEditorZoomTarget()) {
       p.setEditorFontSize(p.editorFontSize + 1)
     } else {
-      p.setConversationFontSize(p.conversationFontSize + 1)
+      p.setDataViewFontSize(p.dataViewFontSize + 1)
     }
 
-    expect(p.setPreviewFontSize).toHaveBeenCalledTimes(1)
-    expect(p.setPreviewFontSize).toHaveBeenCalledWith(14)
+    expect(p.setDataViewFontSize).toHaveBeenCalledTimes(1)
+    expect(p.setDataViewFontSize).toHaveBeenCalledWith(14)
     // Revert-check: without the preview branch, this would be called.
-    expect(p.setConversationFontSize).not.toHaveBeenCalled()
-    expect(p.setEditorFontSize).not.toHaveBeenCalled()
   })
 
-  it('zoom.out calls setPreviewFontSize when pop-up is open', async () => {
+  it('zoom.out calls setDataViewFontSize when pop-up is open', async () => {
     const { isPreviewZoomTarget, isEditorZoomTarget } = await import('../useKeyboardShortcuts')
     sessionState.openFloatingPanelCount = 1
 
     const p = prefState
     if (isPreviewZoomTarget()) {
-      p.setPreviewFontSize(p.previewFontSize - 1)
+      p.setDataViewFontSize(p.dataViewFontSize - 1)
     } else if (isEditorZoomTarget()) {
       p.setEditorFontSize(p.editorFontSize - 1)
     } else {
-      p.setConversationFontSize(p.conversationFontSize - 1)
+      p.setDataViewFontSize(p.dataViewFontSize - 1)
     }
 
-    expect(p.setPreviewFontSize).toHaveBeenCalledWith(12)
-    expect(p.setConversationFontSize).not.toHaveBeenCalled()
-    expect(p.setEditorFontSize).not.toHaveBeenCalled()
+    expect(p.setDataViewFontSize).toHaveBeenCalledWith(12)
   })
 
-  it('zoom.reset resets previewFontSize to SETTINGS_DEFAULTS when pop-up is open', async () => {
+  it('zoom.reset resets dataViewFontSize to SETTINGS_DEFAULTS when pop-up is open', async () => {
     const { isPreviewZoomTarget, isEditorZoomTarget } = await import('../useKeyboardShortcuts')
     const { SETTINGS_DEFAULTS } = await import('../../preferences-types')
     sessionState.openFloatingPanelCount = 1
-    prefState.previewFontSize = 20
+    prefState.dataViewFontSize = 20
 
     const p = prefState
     if (isPreviewZoomTarget()) {
-      p.setPreviewFontSize(SETTINGS_DEFAULTS.previewFontSize)
+      p.setDataViewFontSize(SETTINGS_DEFAULTS.dataViewFontSize)
     } else if (isEditorZoomTarget()) {
       p.setEditorFontSize(SETTINGS_DEFAULTS.editorFontSize)
     } else {
-      p.setConversationFontSize(SETTINGS_DEFAULTS.conversationFontSize)
+      p.setDataViewFontSize(SETTINGS_DEFAULTS.dataViewFontSize)
     }
 
-    expect(p.setPreviewFontSize).toHaveBeenCalledWith(SETTINGS_DEFAULTS.previewFontSize)
-    expect(p.setConversationFontSize).not.toHaveBeenCalled()
-    expect(p.setEditorFontSize).not.toHaveBeenCalled()
+    expect(p.setDataViewFontSize).toHaveBeenCalledWith(SETTINGS_DEFAULTS.dataViewFontSize)
   })
 
   it('preview takes priority over editor when both conditions are true', async () => {
@@ -202,16 +189,14 @@ describe('zoom routing — preview target (pop-up open)', () => {
 
     const p = prefState
     if (isPreviewZoomTarget()) {
-      p.setPreviewFontSize(p.previewFontSize + 1)
+      p.setDataViewFontSize(p.dataViewFontSize + 1)
     } else if (isEditorZoomTarget()) {
       p.setEditorFontSize(p.editorFontSize + 1)
     } else {
-      p.setConversationFontSize(p.conversationFontSize + 1)
+      p.setDataViewFontSize(p.dataViewFontSize + 1)
     }
 
-    expect(p.setPreviewFontSize).toHaveBeenCalledTimes(1)
-    expect(p.setEditorFontSize).not.toHaveBeenCalled()
-    expect(p.setConversationFontSize).not.toHaveBeenCalled()
+    expect(p.setDataViewFontSize).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -228,16 +213,14 @@ describe('zoom routing — editor and conversation (regression: no pop-up)', () 
 
     const p = prefState
     if (isPreviewZoomTarget()) {
-      p.setPreviewFontSize(p.previewFontSize + 1)
+      p.setDataViewFontSize(p.dataViewFontSize + 1)
     } else if (isEditorZoomTarget()) {
       p.setEditorFontSize(p.editorFontSize + 1)
     } else {
-      p.setConversationFontSize(p.conversationFontSize + 1)
+      p.setDataViewFontSize(p.dataViewFontSize + 1)
     }
 
     expect(p.setEditorFontSize).toHaveBeenCalledWith(15)
-    expect(p.setPreviewFontSize).not.toHaveBeenCalled()
-    expect(p.setConversationFontSize).not.toHaveBeenCalled()
   })
 
   it('routes to conversation when neither pop-up nor editor is active', async () => {
@@ -250,15 +233,13 @@ describe('zoom routing — editor and conversation (regression: no pop-up)', () 
 
     const p = prefState
     if (isPreviewZoomTarget()) {
-      p.setPreviewFontSize(p.previewFontSize + 1)
+      p.setDataViewFontSize(p.dataViewFontSize + 1)
     } else if (isEditorZoomTarget()) {
       p.setEditorFontSize(p.editorFontSize + 1)
     } else {
-      p.setConversationFontSize(p.conversationFontSize + 1)
+      p.setDataViewFontSize(p.dataViewFontSize + 1)
     }
 
-    expect(p.setConversationFontSize).toHaveBeenCalledWith(14)
-    expect(p.setPreviewFontSize).not.toHaveBeenCalled()
-    expect(p.setEditorFontSize).not.toHaveBeenCalled()
+    expect(p.setDataViewFontSize).toHaveBeenCalledWith(14)
   })
 })

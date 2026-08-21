@@ -253,7 +253,7 @@ describe('bench resolution journal — format contract', () => {
 
     const read = loadResolutions()
     expect(read).toHaveLength(2)
-    expect(read[0].rationale).toContain('buildWorktreeRowActions')
+    expect(read[0].rationale).toContain('useWorktreeRowMenuVerbs')
     expect(read[0].collidedWith).toHaveLength(2)
     expect(read[1].verified).toBe(false)
   })

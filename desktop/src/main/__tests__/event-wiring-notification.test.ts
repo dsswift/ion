@@ -75,7 +75,7 @@ vi.mock('../event-wiring-provider-login', () => ({
   handleProviderLoginEvent: vi.fn(),
   handleProvidersUpdatedEvent: vi.fn(),
 }))
-vi.mock('../atv-window-manager', () => ({ notifyAtvPermissionResolved: vi.fn() }))
+vi.mock('../studio-window-manager', () => ({ notifyStudioPermissionResolved: vi.fn() }))
 
 import { wireEngineBridgeEvents } from '../event-wiring'
 

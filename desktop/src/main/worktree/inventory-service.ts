@@ -5,7 +5,7 @@
  * ── The failure this exists to prevent ──────────────────────────────────────
  * The raw crawl (`inventoryWorktrees`) spawns git per worktree. It used to be
  * called directly by four independent consumers — the overlay git panel's 5s
- * poll, the ATV mirror's identical poll, the new-tab directory picker (once
+ * poll, the Studio mirror's identical poll, the new-tab directory picker (once
  * per open repo path, and every worktree path is a distinct "repo path"), and
  * the iOS projection — with nothing coalescing them. With 25 worktrees the
  * crawls could not finish inside the poll period under load; overlapping runs

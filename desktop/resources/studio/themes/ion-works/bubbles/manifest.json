@@ -1,0 +1,8 @@
+{
+  "waiting": "waiting.png",
+  "permission": "permission.png",
+  "error": "error.png",
+  "dispatch": "dispatch.png",
+  "plan": "plan.png",
+  "question": "question.png"
+}

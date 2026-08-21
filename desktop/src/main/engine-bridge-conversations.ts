@@ -117,16 +117,25 @@ export async function branchSessionBefore(bridge: EngineBridge, key: string, ent
   await bridge._sendWithData({ cmd: 'branch_before', key, entryId })
 }
 
-export async function rewindSession(bridge: EngineBridge, key: string, userTurnIndex: number): Promise<{ ok: boolean; error?: string }> {
-  // Ordinal-addressed tree-native rewind — the client-facing counterpart to
-  // branchSessionBefore. Clients hold no engine entry ids (fresh turns carry
-  // optimistic renderer ids), only their own user-turn ordinal, so the engine
-  // resolves that ordinal against its own tree, moves the leaf to before the
-  // target turn, and restores plan-file continuity for the branch point. The
-  // next prompt replaces the turn on a fresh sibling branch — no duplicate.
+export async function rewindSession(bridge: EngineBridge, key: string, target: { entryId?: string; userTurnIndex?: number }): Promise<{ ok: boolean; error?: string }> {
+  // Tree-native rewind — the client-facing counterpart to branchSessionBefore.
+  // Prefers the exact durable engine entryId when the caller has one (learned
+  // from a prior engine_steer_injected confirmation, or from loaded
+  // conversation history): the engine validates that id names a genuine user
+  // turn on the CURRENT context path before branching, so a stale or
+  // foreign-branch id is rejected loudly instead of silently landing on the
+  // wrong turn. Falls back to the legacy 0-based user-turn ordinal when no
+  // entryId is supplied — the engine resolves that against its own tree the
+  // same way it always has. At least one of the two must be present; the
+  // caller decides which it has.
   await bridge.connect()
-  log('rewind_session', { key, user_turn_index: userTurnIndex })
-  return bridge._sendWithResult({ cmd: 'rewind_session', key, userTurnIndex })
+  log('rewind_session', { key, entry_id: target.entryId ?? '', user_turn_index: target.userTurnIndex ?? -1 })
+  return bridge._sendWithResult({
+    cmd: 'rewind_session',
+    key,
+    ...(target.entryId ? { entryId: target.entryId } : {}),
+    ...(typeof target.userTurnIndex === 'number' ? { userTurnIndex: target.userTurnIndex } : {}),
+  })
 }
 
 export async function getConversation(bridge: EngineBridge, conversationId: string, offset = 0, limit = 50): Promise<any> {
@@ -136,6 +145,16 @@ export async function getConversation(bridge: EngineBridge, conversationId: stri
   const data = result.data || { messages: [], total: 0, hasMore: false }
   log('get_conversation: result', { conversation_id: conversationId, messages: data.messages?.length ?? 0, total: data.total ?? 0 })
   return data
+}
+
+export async function deleteStoredConversations(
+  bridge: EngineBridge,
+  sessionIds: string[],
+): Promise<{ deleted: number }> {
+  await bridge.connect()
+  log('delete_stored_conversations', { session_count: sessionIds.length })
+  const result = await bridge._sendWithData<{ deleted?: number }>({ cmd: 'delete_stored_conversations', sessionIds })
+  return { deleted: result.data?.deleted ?? 0 }
 }
 
 /**

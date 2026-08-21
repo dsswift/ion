@@ -104,7 +104,7 @@ export function CodeBlock({ code, fenceLang, fileName, onOpenFile, onOpenUrl }: 
   const preStyle: React.CSSProperties = {
     margin: 0,
     padding: '0.65em 1em',
-    fontSize: 12,
+    fontSize: 'var(--ion-data-code-font-size, 13px)',
     lineHeight: 1.55,
     overflowX: wrap ? 'hidden' : 'auto',
     whiteSpace: wrap ? 'pre-wrap' : 'pre',

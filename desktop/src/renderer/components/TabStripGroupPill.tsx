@@ -335,6 +335,7 @@ export function GroupPill({
             key="group-picker"
             group={group}
             anchor={pickerAnchor}
+            anchorSpace="css"
             onSelectTab={(tabId) => { onSelect(tabId) }}
             onCloseTab={(tabId) => { void useSessionStore.getState().requestCloseTab(tabId) }}
             onClose={() => setPickerOpen(false)}

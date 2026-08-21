@@ -5,6 +5,7 @@ import { serializeConversationPane, collectExternalInstanceMessages, isExtension
 import { tabContentDirty, markTabContentWritten } from './tab-content-tracking'
 import { activeInstance } from './conversation-instance'
 import { EXTERNALIZE_SCHEMA_VERSION } from '../../shared/types-persistence'
+import { persistableAttachments } from '../../shared/staged-attachments'
 import type { useSessionStore as UseSessionStoreType } from './sessionStore'
 import { rError } from '../rendererLogger'
 
@@ -39,7 +40,7 @@ function persistExternalContent(useSessionStore: Store): void {
 }
 
 function persistTabs(useSessionStore: Store): void {
-  const { tabs, activeTabId } = useSessionStore.getState()
+  const { tabs, activeTabId, settledHistory } = useSessionStore.getState()
   const activeTab = tabs.find((t) => t.id === activeTabId)
   const dirsWithEditorState = new Set<string>()
   for (const [dir, dirState] of useSessionStore.getState().fileEditorStates) {
@@ -95,9 +96,16 @@ function persistTabs(useSessionStore: Store): void {
         ...(t.pillIcon ? { pillIcon: t.pillIcon } : {}),
         ...(t.forkedFromSessionId ? { forkedFromSessionId: t.forkedFromSessionId } : {}),
         ...(t.worktree ? { worktree: t.worktree } : {}),
+        ...(t.executionHost ? { executionHost: t.executionHost } : {}),
+        ...(t.executionMachineId ? { executionMachineId: t.executionMachineId } : {}),
         ...(t.groupId ? { groupId: t.groupId } : {}),
         ...(t.groupPinned ? { groupPinned: true } : {}),
         ...(t.queuedPrompts.length > 0 ? { queuedPrompts: t.queuedPrompts } : {}),
+        // Staged attachments ride with the draft text they belong to. Stripped
+        // of the base64 preview so a tray of images cannot bloat the file the
+        // 100 ms debounce rewrites; the preview is rebuilt from `path` on
+        // restore (shared/staged-attachments.ts).
+        ...(t.attachments.length > 0 ? { attachments: persistableAttachments(t.attachments) } : {}),
         // Context occupancy: kept at tab level for backward compatibility
         // with files written before the pane carried these scalars. The
         // authoritative copy now lives on the persisted instance (see
@@ -107,6 +115,20 @@ function persistTabs(useSessionStore: Store): void {
         ...(t.contextWindow ? { contextWindow: t.contextWindow } : {}),
         ...(t.lastMessagePreview ? { lastMessagePreview: t.lastMessagePreview } : {}),
         ...(t.lastEventAt ? { lastEventAt: t.lastEventAt } : {}),
+        ...(t.lastActivityAt ? { lastActivityAt: t.lastActivityAt } : {}),
+        ...(t.lastMessageAt ? { lastMessageAt: t.lastMessageAt } : {}),
+        ...(t.createdAt != null ? { createdAt: t.createdAt } : {}),
+        ...(t.lastFailureAt ? { lastFailureAt: t.lastFailureAt } : {}),
+        ...(t.pinnedAt ? { pinnedAt: t.pinnedAt } : {}),
+        ...(t.pinOrderKey ? { pinOrderKey: t.pinOrderKey } : {}),
+        ...(t.idleSince ? { idleSince: t.idleSince } : {}),
+        ...(t.lastCompletionAt ? { lastCompletionAt: t.lastCompletionAt } : {}),
+        ...(t.settledOverride ? { settledOverride: t.settledOverride } : {}),
+        ...(t.settledAt ? { settledAt: t.settledAt } : {}),
+        ...(t.snoozedUntil ? { snoozedUntil: t.snoozedUntil } : {}),
+        ...(t.snoozedAt ? { snoozedAt: t.snoozedAt } : {}),
+        ...(t.lastVisitedAt ? { lastVisitedAt: t.lastVisitedAt } : {}),
+        ...(t.manualUnread ? { manualUnread: true } : {}),
         ...(t.lastResult ? { lastResult: t.lastResult } : {}),
         ...(t.isTerminalOnly ? { isTerminalOnly: true } : {}),
         ...(t.inputLocked ? { inputLocked: true } : {}),
@@ -167,6 +189,25 @@ function persistTabs(useSessionStore: Store): void {
     activeSessionId: activeTab?.conversationId || null,
     activeTabIndex,
     tabs: persistedTabs,
+    settledHistory: settledHistory.map((tab) => ({
+      id: tab.id,
+      conversationId: tab.conversationId,
+      title: tab.customTitle || tab.title,
+      customTitle: tab.customTitle,
+      workingDirectory: tab.workingDirectory,
+      hasChosenDirectory: tab.hasChosenDirectory,
+      additionalDirs: tab.additionalDirs,
+      ...(tab.historicalSessionIds.length > 0 ? { historicalSessionIds: tab.historicalSessionIds } : {}),
+      ...(tab.lastKnownSessionId ? { lastKnownSessionId: tab.lastKnownSessionId } : {}),
+      ...(tab.worktree ? { worktree: tab.worktree } : {}),
+      ...(tab.executionHost ? { executionHost: tab.executionHost } : {}),
+      ...(tab.executionMachineId ? { executionMachineId: tab.executionMachineId } : {}),
+      ...(tab.engineProfileId ? { hasEngineExtension: true, engineProfileId: tab.engineProfileId } : {}),
+      ...(tab.lastMessagePreview ? { lastMessagePreview: tab.lastMessagePreview } : {}),
+      ...(tab.lastMessageAt ? { lastMessageAt: tab.lastMessageAt } : {}),
+      ...(tab.settledAt ? { settledAt: tab.settledAt } : {}),
+      settledOverride: tab.settledOverride === 'auto' ? 'auto' : 'settled', inputLocked: true, inputLockReason: 'settled',
+    })),
     editorStates: Object.keys(editorStates).length > 0 ? editorStates : undefined,
     isExpanded,
     editorOpenDirs: fileEditorOpenDirs.size > 0 ? [...fileEditorOpenDirs] : undefined,
@@ -174,7 +215,14 @@ function persistTabs(useSessionStore: Store): void {
     planGeometry,
     agentDetailGeometry,
   }
-  window.ion.saveTabs(data).catch((err) => rError('session.persist', 'saveTabs failed; restored session may be lost', { error: String(err) }))
+  const saveTabs = window.ion.saveTabs
+  if (typeof saveTabs !== 'function') {
+    rError('session.persist', 'saveTabs bridge unavailable; restored session may be lost')
+  } else {
+    void Promise.resolve(saveTabs(data)).catch((err) =>
+      rError('session.persist', 'saveTabs failed; restored session may be lost', { error: String(err) }),
+    )
+  }
 
   // External content files ride the same tick (change-tracked per tab), so
   // the thin manifest's hasExternalContent markers and the content files can
@@ -183,13 +231,20 @@ function persistTabs(useSessionStore: Store): void {
 
   // Owner sync push (mirror-store architecture): tab metadata does not ride
   // normalized events, so the owner publishes the same persisted snapshot to
-  // the main process, which caches it and forwards it to the ATV mirror.
+  // the main process, which caches it and forwards it to the Studio mirror.
   // Live statuses ride ALONGSIDE (they are runtime state, not persisted to
   // disk) — without them the mirror would hydrate every tab as idle and the
   // workspace indicator would miss running conversations.
-  window.ion.atvPublishTabsSync?.({
+  // Queued attachments are deliberately transient: copying their data URLs into
+  // tabs.json would retain arbitrary user content after send. Studio still needs
+  // them before send, so project the live queue only into the owner→mirror push.
+  // Empty arrays are kept to clear a previously staged mirror rail immediately.
+  const queuedAttachments = Object.fromEntries(tabs.map((t) => [t.id, t.attachments]))
+  window.ion.studioPublishTabsSync?.({
     ...data,
+    revision: Date.now(),
     liveTabStatus: Object.fromEntries(tabs.map((t) => [t.id, t.status])),
+    queuedAttachments,
   })
 
   void persistSessionChains(useSessionStore)
@@ -231,7 +286,7 @@ export function setupPersistence(useSessionStore: Store): void {
     // rehydrating is cleared alongside tabsReady=true after the loop completes.
     if (state.rehydrating) return
 
-    if (state.tabs !== prev.tabs || state.activeTabId !== prev.activeTabId || state.fileEditorStates !== prev.fileEditorStates || state.isExpanded !== prev.isExpanded || state.fileEditorOpenDirs !== prev.fileEditorOpenDirs || state.editorGeometry !== prev.editorGeometry || state.planGeometry !== prev.planGeometry || state.agentDetailGeometry !== prev.agentDetailGeometry || state.terminalPanes !== prev.terminalPanes || state.conversationPanes !== prev.conversationPanes) {
+    if (state.tabs !== prev.tabs || state.activeTabId !== prev.activeTabId || state.fileEditorStates !== prev.fileEditorStates || state.isExpanded !== prev.isExpanded || state.fileEditorOpenDirs !== prev.fileEditorOpenDirs || state.editorGeometry !== prev.editorGeometry || state.planGeometry !== prev.planGeometry || state.agentDetailGeometry !== prev.agentDetailGeometry || state.terminalPanes !== prev.terminalPanes || state.conversationPanes !== prev.conversationPanes || state.worktreeInventory !== prev.worktreeInventory || state.benchWorkspaces !== prev.benchWorkspaces || state.benchSourceTips !== prev.benchSourceTips || state.benchRetired !== prev.benchRetired || state.gitConflictAlerts !== prev.gitConflictAlerts || state.worktreePipeline !== prev.worktreePipeline || state.workspaceOperationLedger !== prev.workspaceOperationLedger) {
       // Flush immediately when permissionDenied changes on any tab — this
       // state must survive a crash or force-quit (e.g. the desktop is killed
       // while an engine run is in progress and the AskUserQuestion / ExitPlanMode
@@ -291,7 +346,7 @@ export function setupPersistence(useSessionStore: Store): void {
     persistTabs(useSessionStore)
   }
 
-  // Publish one tabs snapshot as soon as restoration completes, so an ATV
+  // Publish one tabs snapshot as soon as restoration completes, so a Studio window
   // mirror opened before the first user-driven persist still hydrates
   // (view readiness: the mirror's boot pull must find a snapshot).
   const unsubReady = useSessionStore.subscribe((state, prev) => {

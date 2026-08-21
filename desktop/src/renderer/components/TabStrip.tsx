@@ -7,7 +7,7 @@ import { useSessionStore } from '../stores/sessionStore'
 
 import { SettingsPopover } from './SettingsPopover'
 import { NotificationsBell } from './NotificationsPanel'
-import { AtvLauncherButton } from './AtvLauncherButton'
+import { StudioLauncherButton } from './StudioLauncherButton'
 import { BranchPickerDialog } from './BranchPickerDialog'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
@@ -78,7 +78,12 @@ export function TabStrip() {
     items: tabs,
     keyFn: (t) => t.id,
     itemRefs: tabRefs,
-    onReorder: reorderTabs,
+    // reorderTabs takes an ORDER OF IDS, not full TabState objects — the
+    // owner applies that order to its own authoritative tabs (see
+    // tab-slice.ts). Mapping to ids here, rather than forwarding the array
+    // useManualReorder hands back, keeps this call site correct regardless
+    // of whether it runs in the owner window or (forwarded) in the mirror.
+    onReorder: (reordered) => reorderTabs(reordered.map((t) => t.id)),
     insertIndicatorColor: colors.dragInsertIndicator,
   })
 
@@ -96,7 +101,7 @@ export function TabStrip() {
         if (aIdx != null && bIdx != null) return aIdx - bIdx
         return 0
       })
-      reorderTabs(result)
+      reorderTabs(result.map((t) => t.id))
     },
   })
 
@@ -392,7 +397,7 @@ export function TabStrip() {
               setConvPickerState(null)
             }}
             onOpenSettings={() => {
-              window.dispatchEvent(new CustomEvent('ion:open-settings'))
+              useSessionStore.getState().openSettings()
               setConvPickerState(null)
             }}
             onClose={() => setConvPickerState(null)}
@@ -505,7 +510,7 @@ export function TabStrip() {
         </button>
 
         {/* <HistoryPicker /> */}
-        <AtvLauncherButton />
+        <StudioLauncherButton />
         <NotificationsBell />
 
         <SettingsPopover />

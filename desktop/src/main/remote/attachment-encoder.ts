@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 import { readFileSync, statSync } from 'fs'
 import { basename, extname } from 'path'
 import type { NativeImage } from 'electron'
@@ -275,6 +276,7 @@ export function encodeAttachments(
     }
     totalBytes += compressed.bytes.length
     encoded.push({
+      contentHash: createHash('sha256').update(buf).digest('hex'),
       mediaType: compressed.mediaType,
       data: compressed.bytes.toString('base64'),
       path: a.path,

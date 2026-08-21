@@ -1,11 +1,18 @@
-import type { Message } from '../../shared/types'
-import type { StoreSet, StoreGet } from './session-store-types'
-import { nextMsgId } from './session-store-helpers'
-import { commitInstance, activeInstance, needsHistoryHydration } from './conversation-instance'
-import { mapSessionHistory } from '../../shared/session-message-mapper'
-import { mapPersistedMessages, filterRestorablePersistedMessages } from './persisted-message-map'
-import { buildRestoredDenied } from './restored-denied'
-import { rInfo, rWarn, rDebug } from '../rendererLogger'
+import type { Message } from "../../shared/types";
+import type { StoreSet, StoreGet } from "./session-store-types";
+import { nextMsgId } from "./session-store-helpers";
+import {
+  commitInstance,
+  activeInstance,
+  needsHistoryHydration,
+} from "./conversation-instance";
+import { mapSessionHistory } from "../../shared/session-message-mapper";
+import {
+  mapPersistedMessages,
+  filterRestorablePersistedMessages,
+} from "./persisted-message-map";
+import { buildRestoredDenied } from "./restored-denied";
+import { rInfo, rWarn, rDebug } from "../rendererLogger";
 
 /**
  * resume-slice-hydration — lazy history hydration for a skeleton pane.
@@ -21,7 +28,7 @@ import { rInfo, rWarn, rDebug } from '../rendererLogger'
  *
  *   - `tab-slice.ts:selectTab`      — the user opens the tab
  *   - `resume-slice.ts:rehydrateFailedHistory` — the engine reconnected
- *   - `atv/AtvSideDock.tsx`         — the ATV mirror activates the tab
+ *   - `studio/StudioCenter.tsx`         — the Studio mirror activates the tab
  *   - `main/remote/handlers/attachments.ts` — an iOS `desktop_load_attachments`
  *     drives it through `executeJavaScript` before scanning for attachments
  *
@@ -47,38 +54,64 @@ import { rInfo, rWarn, rDebug } from '../rendererLogger'
  * is the precise mechanism (shared identity of the in-flight operation), not a
  * heuristic debounce that would merely narrow the window.
  */
-const inFlight = new Map<string, Promise<void>>()
+const inFlight = new Map<string, Promise<void>>();
 
 /** Visible for tests: no load is currently in flight for any tab. */
 export function hydrationInFlightCount(): number {
-  return inFlight.size
+  return inFlight.size;
 }
+
+/**
+ * History IDs are canonical only after `user_turn_persisted` / `message_end`.
+ * A row that was optimistic when hydration began can therefore have a local ID
+ * even though the same durable row has already reached the history response.
+ * Match stable message content as a second identity before retaining it.
+ */
+function isDurablyLoadedMessage(history: Message[], live: Message): boolean {
+  return history.some((row) =>
+    row.id === live.id || (
+      row.role === live.role &&
+      row.content === live.content &&
+      row.toolName === live.toolName &&
+      row.toolId === live.toolId
+    ),
+  );
+}
+
 
 export function loadSkeletonMessagesImpl(set: StoreSet, get: StoreGet) {
   return async (tabId: string): Promise<void> => {
     // Coalesce concurrent callers onto one load. See the module doc: the gates
     // below cannot do this themselves because they are read before the first
     // awaited write, so every racing caller passes them.
-    const existing = inFlight.get(tabId)
+    const existing = inFlight.get(tabId);
     if (existing) {
-      rDebug('session.restore', 'hydration already in flight, joining', { tab_id: tabId.slice(0, 8) })
-      return existing
+      rDebug("session.restore", "hydration already in flight, joining", {
+        tab_id: tabId.slice(0, 8),
+      });
+      return existing;
     }
-    const run = hydrate(set, get, tabId).finally(() => { inFlight.delete(tabId) })
-    inFlight.set(tabId, run)
-    return run
-  }
+    const run = hydrate(set, get, tabId).finally(() => {
+      inFlight.delete(tabId);
+    });
+    inFlight.set(tabId, run);
+    return run;
+  };
 }
 
-async function hydrate(set: StoreSet, get: StoreGet, tabId: string): Promise<void> {
+async function hydrate(
+  set: StoreSet,
+  get: StoreGet,
+  tabId: string,
+): Promise<void> {
   // Externalized scrollback (schema v4): the instance's history lives in
   // a per-tab content file, not the engine store (renderer-only harness/
   // system rows never reach the engine). Load it once on first
   // activation; the engine-chain path below stays for count-only
   // instances whose rows ARE engine-reloadable.
-  const pendingInst = activeInstance(get().conversationPanes, tabId)
-  if (pendingInst?.externalContentStatus === 'pending') {
-    const baseline = pendingInst.messages.length
+  const pendingInst = activeInstance(get().conversationPanes, tabId);
+  if (pendingInst?.externalContentStatus === "pending") {
+    const baseline = pendingInst.messages.length;
     try {
       // Load the content file and the engine chain in parallel. The content
       // file holds renderer-only rows (harness/system) that are not in the
@@ -86,45 +119,61 @@ async function hydrate(set: StoreSet, get: StoreGet, tabId: string): Promise<voi
       // user/assistant/tool rows. Both are needed: a stale content file
       // (written after a session recycle that cleared the pane) misses the
       // real conversation rows, which the engine still has on disk.
-      const tab = get().tabs.find((t) => t.id === tabId)
+      const tab = get().tabs.find((t) => t.id === tabId);
       // Degrading to content-only when the engine chain fails is fine for
       // rendering, but it must not masquerade as a complete load — the
       // flag marks the pane for retry when the engine reconnects.
-      let chainLoadFailed = false
+      let chainLoadFailed = false;
       const [content, chainHistory] = await Promise.all([
         window.ion.loadTabContent(tabId),
         tab?.conversationId
-          ? window.ion.loadChainHistory([...(tab.historicalSessionIds ?? []), tab.conversationId])
+          ? window.ion
+              .loadChainHistory([
+                ...(tab.historicalSessionIds ?? []),
+                tab.conversationId,
+              ])
               .catch((err: unknown) => {
-                chainLoadFailed = true
-                rWarn('session.restore', 'external content: engine chain load failed, using content file only', { tab_id: tabId.slice(0, 8), error: String(err) })
-                return [] as unknown[]
+                chainLoadFailed = true;
+                rWarn(
+                  "session.restore",
+                  "external content: engine chain load failed, using content file only",
+                  { tab_id: tabId.slice(0, 8), error: String(err) },
+                );
+                return [] as unknown[];
               })
           : Promise.resolve([] as unknown[]),
-      ])
+      ]);
 
       const restoredFromFile = content
-        ? mapPersistedMessages(filterRestorablePersistedMessages(content.messages))
-        : []
+        ? mapPersistedMessages(
+            filterRestorablePersistedMessages(content.messages),
+          )
+        : [];
 
       // Engine chain is authoritative for user/assistant/tool rows.
-      const engineRows = mapSessionHistory(chainHistory as Parameters<typeof mapSessionHistory>[0], nextMsgId)
+      const engineRows = mapSessionHistory(
+        chainHistory as Parameters<typeof mapSessionHistory>[0],
+        nextMsgId,
+      );
 
       // Renderer-only rows (harness/system) exist only in the content file
       // and cannot be reloaded from the engine store. Supplement the engine
       // rows with these rather than using the full content file, so a stale
       // content file (missing real conversation rows) does not hide history.
       const rendererOnlyRows = restoredFromFile.filter(
-        (m) => m.role === 'harness' || m.role === 'system',
-      )
+        (m) => m.role === "harness" || m.role === "system",
+      );
 
       // Merge and sort by timestamp so harness banners slot in
       // chronologically alongside the real conversation rows.
-      const allRows = engineRows.length > 0
-        ? [...engineRows, ...rendererOnlyRows].sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
-        : restoredFromFile
+      const allRows =
+        engineRows.length > 0
+          ? [...engineRows, ...rendererOnlyRows].sort(
+              (a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0),
+            )
+          : restoredFromFile;
 
-      rInfo('session.restore', 'external content hydrated', {
+      rInfo("session.restore", "external content hydrated", {
         tab_id: tabId.slice(0, 8),
         content_rows: restoredFromFile.length,
         engine_rows: engineRows.length,
@@ -132,30 +181,35 @@ async function hydrate(set: StoreSet, get: StoreGet, tabId: string): Promise<voi
         merged_rows: allRows.length,
         baseline,
         missing: !content,
-      })
+      });
 
       set((s) => ({
         conversationPanes: commitInstance(s.conversationPanes, tabId, (i) => {
-          // Keep live rows that streamed in during the async load (past
-          // the baseline); everything before it is covered by the merged set.
-          // Drop tail rows the merged set already contains — the same
-          // id-based dedup the engine-chain branch below applies. Without it
-          // a turn that completed DURING the load appears twice (once from
-          // the reloaded history, once from the live row it re-keyed).
-          const mergedIds = new Set(allRows.map((m) => m.id))
-          const liveTail = i.messages.slice(baseline).filter((m) => !mergedIds.has(m.id))
+          // Keep rows that arrived during the load, plus an unmatched user
+          // prompt that preceded it. The latter is the start-session race:
+          // engine history can still be empty while the optimistic prompt is
+          // already visible. Other pre-load rows are historical and the
+          // durable load replaces them.
+          const liveTail = i.messages.filter((m, index) =>
+            !isDurablyLoadedMessage(allRows, m) && (index >= baseline || m.role === "user"),
+          );
           return {
             ...i,
             messages: [...allRows, ...liveTail],
             messageCount: allRows.length + liveTail.length,
             historyHydrated: true,
             historyHydrationFailed: chainLoadFailed,
-            externalContentStatus: content ? ('loaded' as const) : ('error' as const),
-          }
+            externalContentStatus: content
+              ? ("loaded" as const)
+              : ("error" as const),
+          };
         }),
-      }))
+      }));
     } catch (err) {
-      rWarn('session.restore', 'external content load failed', { tab_id: tabId.slice(0, 8), error: String(err) })
+      rWarn("session.restore", "external content load failed", {
+        tab_id: tabId.slice(0, 8),
+        error: String(err),
+      });
       // Mark errored-but-hydrated so the tab is usable (count-only
       // rendering) and selectTab doesn't retry on every switch. The
       // failure marker lets rehydrateFailedHistory retry this pane when
@@ -165,28 +219,25 @@ async function hydrate(set: StoreSet, get: StoreGet, tabId: string): Promise<voi
           ...i,
           historyHydrated: true,
           historyHydrationFailed: true,
-          externalContentStatus: 'error' as const,
+          externalContentStatus: "error" as const,
         })),
-      }))
+      }));
     }
-    return
+    return;
   }
 
-  const tab = get().tabs.find((t) => t.id === tabId)
-  if (!tab || !tab.conversationId) return
+  const tab = get().tabs.find((t) => t.id === tabId);
+  if (!tab || !tab.conversationId) return;
   // Precise hydration gate (needsHistoryHydration): the historyHydrated
   // marker, not message emptiness — live events append to skeleton panes
   // before the user opens them, and an emptiness check would skip the
   // history load, leaving only the live tail in the transcript.
-  const inst = activeInstance(get().conversationPanes, tabId)
-  if (!needsHistoryHydration(inst)) return
-  // Messages already present are live-streamed arrivals on the skeleton.
-  // Everything before this baseline is REPLACED by the history load (a
-  // completed turn is persisted, so the history covers it); anything
-  // appended during the async load is kept as the live tail. Known edge:
-  // a turn still streaming at this instant loses its not-yet-persisted
-  // partial text — the pre-hydration window is one IPC roundtrip.
-  const baseline = inst!.messages.length
+  const inst = activeInstance(get().conversationPanes, tabId);
+  if (!needsHistoryHydration(inst)) return;
+  // A pre-load user row can be the just-submitted prompt that has not reached
+  // durable engine history. The merge retains that unmatched prompt and all
+  // rows that arrive during this IPC roundtrip.
+  const baseline = inst!.messages.length;
 
   try {
     // Load all historical + current session messages in a single
@@ -195,45 +246,50 @@ async function hydrate(set: StoreSet, get: StoreGet, tabId: string): Promise<voi
     // No retries — the engine is already running and the files
     // are on disk. The old code used 3 retries with exponential
     // backoff (2s, 4s) causing 6+ second waits on tab switch.
-    const allSessionIds = [...tab.historicalSessionIds, tab.conversationId]
-    const history = await window.ion.loadChainHistory(allSessionIds)
+    const allSessionIds = [...tab.historicalSessionIds, tab.conversationId];
+    const history = await window.ion.loadChainHistory(allSessionIds);
 
     // Shared mapper: internal rows filtered, marker rows converted to
     // system divider Messages (compaction/plan/steer).
-    const allMessages: Message[] = mapSessionHistory(history, nextMsgId)
+    const allMessages: Message[] = mapSessionHistory(history, nextMsgId);
 
     // Restore permissionDenied from the last tool message (only if the
     // instance doesn't already have one from the persisted state)
-    const currentInst = activeInstance(get().conversationPanes, tabId)
-    let restoredDenied = currentInst?.permissionDenied ?? null
+    const currentInst = activeInstance(get().conversationPanes, tabId);
+    let restoredDenied = currentInst?.permissionDenied ?? null;
     if (!restoredDenied) {
-      restoredDenied = buildRestoredDenied(allMessages)
+      restoredDenied = buildRestoredDenied(allMessages);
     }
 
-    rInfo('session.restore', 'skeleton messages hydrated', { tab_id: tabId.slice(0, 8), count: allMessages.length, baseline, restored_denied: !!restoredDenied })
-    // Canonical ids make the live tail dedupable: a turn that completed
-    // DURING the async load appears both in the history (entry-row id)
-    // and in the tail (re-keyed at message_end / keyed by toolId), so
-    // drop tail rows the history already contains.
-    const historyIds = new Set(allMessages.map((m) => m.id))
+    rInfo("session.restore", "skeleton messages hydrated", {
+      tab_id: tabId.slice(0, 8),
+      count: allMessages.length,
+      baseline,
+      restored_denied: !!restoredDenied,
+    });
+    // Canonical IDs make live rows dedupable. Preserve an unmatched pre-load
+    // user prompt and every unmatched row that arrived while history loaded.
     set((s) => ({
       conversationPanes: commitInstance(s.conversationPanes, tabId, (i) => {
-        const liveTail = i.messages.slice(baseline).filter((m) => !historyIds.has(m.id))
+        const liveTail = i.messages.filter((m, index) =>
+          !isDurablyLoadedMessage(allMessages, m) && (index >= baseline || m.role === "user"),
+        );
         return {
           ...i,
-          // History first, then live messages that streamed in DURING the
-          // load (past the baseline) — the pre-baseline live messages are
-          // persisted turns the history already contains.
+          // History first, then the unmatched optimistic prompt and live tail.
           messages: [...allMessages, ...liveTail],
           messageCount: allMessages.length + liveTail.length,
           historyHydrated: true,
           historyHydrationFailed: false,
           ...(restoredDenied ? { permissionDenied: restoredDenied } : {}),
-        }
+        };
       }),
-    }))
+    }));
   } catch (err) {
-    rWarn('session.restore', 'skeleton load failed', { tab_id: tabId.slice(0, 8), error: String(err) })
+    rWarn("session.restore", "skeleton load failed", {
+      tab_id: tabId.slice(0, 8),
+      error: String(err),
+    });
     // Mark hydrated with whatever live messages exist so the tab is
     // usable and selectTab doesn't retry the failing load on every switch.
     // The persisted messageCount is intentionally NOT clobbered with the
@@ -247,6 +303,6 @@ async function hydrate(set: StoreSet, get: StoreGet, tabId: string): Promise<voi
         historyHydrated: true,
         historyHydrationFailed: true,
       })),
-    }))
+    }));
   }
 }

@@ -1,0 +1,13 @@
+{
+  "zone": "corridor",
+  "floor": "concrete",
+  "required": [],
+  "optional": [
+    {
+      "id": "plant-small",
+      "weight": 1,
+      "max": 3
+    }
+  ],
+  "density": 0.04
+}

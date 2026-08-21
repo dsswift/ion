@@ -64,11 +64,17 @@ export function createSendBashSlice(set: StoreSet, get: StoreGet): Partial<State
         }))
         const tabs = s.tabs.map((t) => {
           if (t.id !== tabId) return t
+          const now = Date.now()
           return {
             ...t,
             bashExecuting: false,
             bashExecId: null,
-            hasUnread: (t.id !== activeTabId || !isExpanded) ? true : t.hasUnread,
+            // Bash completion is a completion (R9 unread derivation) and
+            // genuine activity; a watched completion stamps the visit so
+            // the dot never lights under the user's eyes.
+            lastCompletionAt: now,
+            lastActivityAt: now,
+            ...(t.id === activeTabId && isExpanded ? { lastVisitedAt: now } : {}),
             bashResults: [...t.bashResults, { command, stdout, stderr }],
           }
         })

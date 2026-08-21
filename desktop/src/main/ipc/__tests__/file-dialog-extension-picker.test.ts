@@ -18,6 +18,7 @@ const { handlers, showOpenDialogMock } = vi.hoisted(() => ({
 }))
 
 vi.mock('electron', () => ({
+  BrowserWindow: { fromWebContents: vi.fn(() => null) },
   dialog: { showOpenDialog: showOpenDialogMock },
   ipcMain: {
     handle: vi.fn((channel: string, fn: (...args: unknown[]) => unknown) => handlers.set(channel, fn)),
@@ -50,7 +51,7 @@ registerFileDialogIpc()
 async function invokeExtensionPicker(): Promise<void> {
   const handler = handlers.get(IPC.SELECT_EXTENSION_FILES)
   if (!handler) throw new Error('no handler for SELECT_EXTENSION_FILES')
-  await handler({})
+  await handler({ sender: {} })
 }
 
 type DialogFilter = { name: string; extensions: string[] }

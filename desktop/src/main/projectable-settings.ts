@@ -169,8 +169,9 @@ function isDynamicGroupIdKey(key: string): boolean {
  * an error (the caller should always gate on `isProjectableKey` first).
  *
  * Type rules:
- *   - boolean/string/number: strict `typeof` match. NaN is rejected
- *     even though `typeof NaN === 'number'`.
+ *   - boolean/string/number: strict `typeof` match. Non-finite numeric
+ *     values are rejected even though `typeof NaN === 'number'`. Declared
+ *     numeric ranges are enforced at this write boundary.
  *   - enum: value must be one of the declared `choices` (including
  *     `null` for nullable enums). For the three dynamic group-id keys
  *     we accept any string OR null at validation time — the canonical
@@ -203,8 +204,12 @@ export function validateSettingValue(
         return `key ${key} expects string, got ${actualType}`
       return null
     case 'number':
-      if (actualType !== 'number' || Number.isNaN(value)) {
-        return `key ${key} expects number, got ${actualType}`
+      if (actualType !== 'number' || !Number.isFinite(value)) {
+        return `key ${key} expects finite number, got ${actualType}`
+      }
+      const numericValue = value as number
+      if (entry.range && (numericValue < entry.range.min || numericValue > entry.range.max)) {
+        return `key ${key} must be between ${entry.range.min} and ${entry.range.max}`
       }
       return null
     case 'enum':

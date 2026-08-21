@@ -21,7 +21,9 @@ import React, { useMemo, useCallback } from 'react'
 import { X, CircleNotch } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useShallow } from 'zustand/shallow'
+import { windowRole } from '../lib/window-role'
 import { useColors } from '../theme'
+import { STATUS_DRAWER_WIDTH } from './panelGeometry'
 import { meta, getDispatches, buildBreadcrumbStack } from './agent-panel-helpers'
 import { AgentDetailPanel } from './AgentDetailPanel'
 import type { AgentStateUpdate } from '../../shared/types'
@@ -44,7 +46,7 @@ import type { KindKey, GraphSegment } from './StatusDrawerParts'
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function StatusDrawer() {
+export function StatusDrawer({ embedded = false }: { embedded?: boolean }) {
   const colors = useColors()
   const preferredModel = usePreferencesStore((s) => s.preferredModel)
   const closeStatusDrawer = useSessionStore((s) => s.closeStatusDrawer)
@@ -150,15 +152,17 @@ export function StatusDrawer() {
   return (
     <div
       data-ion-ui
-      style={{ display: 'flex', flexDirection: 'column', background: colors.containerBg, border: `1px solid ${colors.containerBorder}`, borderRadius: 8, width: 300, maxHeight: 'calc(100vh - 120px)', overflow: 'hidden', boxShadow: colors.containerShadow }}
+      style={{ display: 'flex', flexDirection: 'column', background: colors.containerBg, border: embedded ? 'none' : `1px solid ${colors.containerBorder}`, borderRadius: embedded ? 0 : 8, width: embedded ? '100%' : STATUS_DRAWER_WIDTH, maxHeight: embedded ? undefined : 'calc(100vh - 120px)', height: embedded ? '100%' : undefined, overflow: 'hidden', boxShadow: embedded ? 'none' : colors.containerShadow }}
     >
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderBottom: `1px solid ${colors.containerBorder}`, flexShrink: 0 }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: colors.textPrimary }}>Status</span>
-        <button onClick={closeStatusDrawer}
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: 4, background: 'transparent', color: colors.textTertiary, cursor: 'pointer', border: 'none' }}>
-          <X size={12} />
-        </button>
+        {!embedded && (
+          <button onClick={closeStatusDrawer}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: 4, background: 'transparent', color: colors.textTertiary, cursor: 'pointer', border: 'none' }}>
+            <X size={12} />
+          </button>
+        )}
       </div>
 
       {/* Scrollable non-breakdown sections */}
@@ -252,7 +256,15 @@ export function StatusDrawer() {
             <SectionHeader label={`Running (${runningDispatches.length})`} colors={colors} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {runningDispatches.map(({ agent: _agent, dispatch, depth, displayName }) => (
-                <button key={dispatch.id} onClick={() => openDispatchPreview(dispatch.id)}
+                <button key={dispatch.id} onClick={() => {
+                  // Studio routes the deep-link into the inline dispatch
+                  // split; the overlay keeps the drawer→floating-panel path.
+                  if (windowRole() === 'studio') {
+                    useSessionStore.getState().openDispatchSplit({ agentName: _agent.name, dispatchId: dispatch.id })
+                    return
+                  }
+                  openDispatchPreview(dispatch.id)
+                }}
                   style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', borderRadius: 4, background: statusDrawerDispatchId === dispatch.id ? colors.surfaceActive : colors.surfaceHover, border: 'none', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
                   {depth > 0 && <span style={{ fontSize: 9, color: colors.textMuted, flexShrink: 0 }}>T{depth}</span>}
                   <span style={{ fontSize: 10, color: colors.textPrimary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</span>

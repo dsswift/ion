@@ -2,7 +2,7 @@ import { ipcMain } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync } from 'fs'
 import { IPC } from '../../shared/types'
 import { log as _log, debug as _debug, warn as _warn } from '../logger'
-import { state, engineBridge } from '../state'
+import { state, engineBridge, enterprisePolicyCache } from '../state'
 import { atomicWriteFileSync } from '../utils/atomicWrite'
 import { runTabUnifyMigration } from '../tab-migration-unify-runner'
 import { runTabSplitMigration } from '../tab-migration-split-runner'
@@ -29,6 +29,7 @@ import {
 import { initRemoteTransport } from '../remote/transport-init'
 import { sendRelayConfigToPeers } from '../remote/relay-config-push'
 import { persistAndBroadcastSettings } from '../settings-broadcast'
+import { resolveSurfacePlan } from '../surface-launch'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -89,6 +90,31 @@ function readOnDiskTabCount(): number {
 }
 
 export function registerSettingsIpc(): void {
+  // ─── Active-UI picker (single-UI exclusivity) ─────────────────────────
+  // Read: the resolved plan + lock state (the picker renders the enforced
+  // value with managed treatment when policy-locked). Write: the user
+  // preference through the settings funnel, which triggers the LIVE mode
+  // switch (applyActiveUiSwitch — no restart) and strips locked writes.
+  ipcMain.handle(IPC.GET_ACTIVE_UI, () => {
+    const plan = resolveSurfacePlan(readSettings(), enterprisePolicyCache.policy)
+    return {
+      activeUi: plan.activeUi,
+      locked: plan.lockedBy === 'policy',
+    }
+  })
+
+  ipcMain.handle(IPC.SET_ACTIVE_UI, (_event, ui: unknown) => {
+    if (ui !== 'overlay' && ui !== 'studio') {
+      warn('set_active_ui: invalid value', { ui: String(ui).slice(0, 32) })
+      return false
+    }
+    const prev = readSettings()
+    const next = { ...prev, activeUi: ui }
+    log('set_active_ui', { ui })
+    persistAndBroadcastSettings(next, prev)
+    return true
+  })
+
   ipcMain.handle(IPC.LOAD_SETTINGS, () => {
     try {
       if (existsSync(SETTINGS_FILE)) {

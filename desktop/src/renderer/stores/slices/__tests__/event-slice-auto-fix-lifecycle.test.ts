@@ -24,7 +24,7 @@ vi.mock('../event-slice-done-move', () => ({
 }))
 
 import {
-  maybeCloseAutoFixTab,
+  reportAutoFixCompletion,
   retryAutoFixCloseOnTerminalChildren,
   cancelAutoFixClose,
   type AutoFixCompletionEvidence,
@@ -82,18 +82,27 @@ describe('auto-fix close decision', () => {
   it('closes after a typed normal completion (deferred)', () => {
     const closeTab = vi.fn()
     const get = makeState({ closeTab })
-    maybeCloseAutoFixTab('fix-tab', evidence(), get as never)
+    reportAutoFixCompletion('fix-tab', evidence(), get as never)
     expect(closeTab).not.toHaveBeenCalled() // deferred, not immediate
     vi.advanceTimersByTime(1500)
     expect(closeTab).toHaveBeenCalledWith('fix-tab')
   })
 
+  it('makes duplicate completion reports close exactly once', () => {
+    const closeTab = vi.fn()
+    const get = makeState({ closeTab })
+    reportAutoFixCompletion('fix-tab', evidence(), get as never)
+    reportAutoFixCompletion('fix-tab', evidence(), get as never)
+    vi.advanceTimersByTime(1500)
+    expect(closeTab).toHaveBeenCalledTimes(1)
+    expect(closeTab).toHaveBeenCalledWith('fix-tab')
+  })
   it.each([
     ['max_turns'], ['aborted'], ['backend_exit'], ['some_future_reason'], [undefined],
   ])('retains on completion reason %s', (reason) => {
     const closeTab = vi.fn()
     const get = makeState({ closeTab })
-    maybeCloseAutoFixTab('fix-tab', evidence({ reason: reason as string | undefined }), get as never)
+    reportAutoFixCompletion('fix-tab', evidence({ reason: reason as string | undefined }), get as never)
     vi.advanceTimersByTime(5000)
     expect(closeTab).not.toHaveBeenCalled()
   })
@@ -101,7 +110,7 @@ describe('auto-fix close decision', () => {
   it('retains when the run ended with permission denials', () => {
     const closeTab = vi.fn()
     const get = makeState({ closeTab })
-    maybeCloseAutoFixTab('fix-tab', evidence({ hadDenials: true }), get as never)
+    reportAutoFixCompletion('fix-tab', evidence({ hadDenials: true }), get as never)
     vi.advanceTimersByTime(5000)
     expect(closeTab).not.toHaveBeenCalled()
   })
@@ -109,7 +118,7 @@ describe('auto-fix close decision', () => {
   it('retains when a permission/elicitation ask was pending', () => {
     const closeTab = vi.fn()
     const get = makeState({ closeTab })
-    maybeCloseAutoFixTab('fix-tab', evidence({ hadPendingAsk: true }), get as never)
+    reportAutoFixCompletion('fix-tab', evidence({ hadPendingAsk: true }), get as never)
     vi.advanceTimersByTime(5000)
     expect(closeTab).not.toHaveBeenCalled()
   })
@@ -117,7 +126,7 @@ describe('auto-fix close decision', () => {
   it('never touches a tab without the auto-fix role', () => {
     const closeTab = vi.fn()
     const get = makeState({ tabRole: 'bench-conversation', closeTab })
-    maybeCloseAutoFixTab('fix-tab', evidence(), get as never)
+    reportAutoFixCompletion('fix-tab', evidence(), get as never)
     vi.advanceTimersByTime(5000)
     expect(closeTab).not.toHaveBeenCalled()
   })
@@ -125,7 +134,7 @@ describe('auto-fix close decision', () => {
   it('defers while children run, then closes when the retry finds them terminal', () => {
     const closeTab = vi.fn()
     const running = makeState({ runningAgents: true, closeTab })
-    maybeCloseAutoFixTab('fix-tab', evidence(), running as never)
+    reportAutoFixCompletion('fix-tab', evidence(), running as never)
     vi.advanceTimersByTime(5000)
     expect(closeTab).not.toHaveBeenCalled()
 
@@ -139,7 +148,7 @@ describe('auto-fix close decision', () => {
   it('aborts a scheduled close when a newer run started (stale-work rejection)', () => {
     const closeTab = vi.fn()
     const get = makeState({ closeTab, status: 'running', activeRequestId: 'newer-run' })
-    maybeCloseAutoFixTab('fix-tab', evidence({ runRequestId: 'old-run' }), get as never)
+    reportAutoFixCompletion('fix-tab', evidence({ runRequestId: 'old-run' }), get as never)
     vi.advanceTimersByTime(1500)
     expect(closeTab).not.toHaveBeenCalled()
   })
@@ -147,7 +156,7 @@ describe('auto-fix close decision', () => {
   it('aborts a scheduled close when the tab is gone', () => {
     const closeTab = vi.fn()
     const present = makeState({ closeTab })
-    maybeCloseAutoFixTab('fix-tab', evidence(), present as never)
+    reportAutoFixCompletion('fix-tab', evidence(), present as never)
     // Swap the store out from under the timer: tab list is now empty.
     const gone = () => ({ tabs: [], conversationPanes: new Map(), closeTab }) as AnyState
     void gone
@@ -173,7 +182,7 @@ describe('auto-fix close refreshes the worktree surfaces it changed', () => {
   it('refreshes the repo of a worktree fix after closing', () => {
     const refreshWorkspaceViews = vi.fn(async () => {})
     const get = makeState({ worktreeRepoPath: '/repo', refreshWorkspaceViews })
-    maybeCloseAutoFixTab('fix-tab', evidence(), get as never)
+    reportAutoFixCompletion('fix-tab', evidence(), get as never)
     vi.advanceTimersByTime(1500)
     expect(refreshWorkspaceViews).toHaveBeenCalledWith('/repo')
   })
@@ -188,7 +197,7 @@ describe('auto-fix close refreshes the worktree surfaces it changed', () => {
       benchWorkspaces: new Map([['/repo', [{ benchPath: '/ion/integration/ion-josh' }]]]),
       refreshWorkspaceViews,
     })
-    maybeCloseAutoFixTab('fix-tab', evidence(), get as never)
+    reportAutoFixCompletion('fix-tab', evidence(), get as never)
     await vi.advanceTimersByTimeAsync(1500)
     expect(refreshWorkspaceViews).toHaveBeenCalledWith('/repo')
   })
@@ -204,7 +213,7 @@ describe('auto-fix close refreshes the worktree surfaces it changed', () => {
       benchWorkspaces: new Map([['/repo', [{ benchPath: '/ion/integration/ion-josh' }]]]),
       refreshWorkspaceViews,
     })
-    maybeCloseAutoFixTab('fix-tab', evidence(), get as never)
+    reportAutoFixCompletion('fix-tab', evidence(), get as never)
     await vi.advanceTimersByTimeAsync(1500)
 
     expect((window.ion.benchReconcileResolution as ReturnType<typeof vi.fn>))
@@ -218,7 +227,7 @@ describe('auto-fix close refreshes the worktree surfaces it changed', () => {
     // able to mask a live failure.
     const refreshWorkspaceViews = vi.fn(async () => {})
     const get = makeState({ refreshWorkspaceViews })
-    maybeCloseAutoFixTab('fix-tab', evidence({ reason: 'max_turns' }), get as never)
+    reportAutoFixCompletion('fix-tab', evidence({ reason: 'max_turns' }), get as never)
     vi.advanceTimersByTime(1500)
     expect(refreshWorkspaceViews).not.toHaveBeenCalled()
   })
@@ -226,7 +235,7 @@ describe('auto-fix close refreshes the worktree surfaces it changed', () => {
   it('does NOT refresh when the deferred close is aborted by a newer run', () => {
     const refreshWorkspaceViews = vi.fn(async () => {})
     const get = makeState({ status: 'running', refreshWorkspaceViews })
-    maybeCloseAutoFixTab('fix-tab', evidence(), get as never)
+    reportAutoFixCompletion('fix-tab', evidence(), get as never)
     vi.advanceTimersByTime(1500)
     expect(refreshWorkspaceViews).not.toHaveBeenCalled()
   })
@@ -237,7 +246,7 @@ describe('auto-fix close refreshes the worktree surfaces it changed', () => {
     const closeTab = vi.fn()
     const refreshWorkspaceViews = vi.fn(async () => {})
     const get = makeState({ worktreeRepoPath: null, closeTab, refreshWorkspaceViews })
-    maybeCloseAutoFixTab('fix-tab', evidence(), get as never)
+    reportAutoFixCompletion('fix-tab', evidence(), get as never)
     vi.advanceTimersByTime(1500)
     expect(closeTab).toHaveBeenCalledWith('fix-tab')
     expect(refreshWorkspaceViews).not.toHaveBeenCalled()
@@ -253,7 +262,7 @@ describe('verification-analysis tabs are never auto-closed', () => {
   it('never closes a verification-analysis tab on normal completion', () => {
     const closeTab = vi.fn()
     const get = makeState({ tabRole: 'verification-analysis', closeTab })
-    maybeCloseAutoFixTab('fix-tab', evidence(), get as never)
+    reportAutoFixCompletion('fix-tab', evidence(), get as never)
     vi.advanceTimersByTime(5000)
     expect(closeTab).not.toHaveBeenCalled()
   })
@@ -263,7 +272,7 @@ describe('verification-analysis tabs are never auto-closed', () => {
     // First: attempt a close with running children on a verification-analysis tab.
     // The early-return on tabRole means nothing is remembered.
     const running = makeState({ tabRole: 'verification-analysis', runningAgents: true, closeTab })
-    maybeCloseAutoFixTab('fix-tab', evidence(), running as never)
+    reportAutoFixCompletion('fix-tab', evidence(), running as never)
     // Children go terminal; the retry should still be a no-op because the
     // initial call never remembered evidence (role gate bailed early).
     const done = makeState({ tabRole: 'verification-analysis', runningAgents: false, closeTab })

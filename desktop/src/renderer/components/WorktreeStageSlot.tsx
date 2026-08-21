@@ -37,6 +37,7 @@ import { Tooltip } from './git/Tooltip'
 import { usePopoverLayer } from './PopoverLayer'
 import { useOutsideDismiss } from '../hooks/useOutsideDismiss'
 import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
+import { zoomRect } from '../viewport-zoom'
 import { WORK_STAGES, workStageDescriptor, type WorkStage } from '../../shared/types-git'
 
 export interface WorktreeStageSlotProps {
@@ -130,10 +131,11 @@ export function WorktreeStageSlot(props: WorktreeStageSlotProps): React.JSX.Elem
       </Tooltip>
 
       {open && popoverLayer && chipRef.current && (() => {
-        const rect = chipRef.current!.getBoundingClientRect()
+        const rect = zoomRect(chipRef.current!.getBoundingClientRect())
         return createPortal(
           <StageStrip
             anchor={{ x: rect.left, y: rect.bottom }}
+            anchorSpace="css"
             activeStage={active?.id}
             branchName={branchName}
             stripRef={stripRef}
@@ -158,6 +160,7 @@ export function WorktreeStageSlot(props: WorktreeStageSlotProps): React.JSX.Elem
  */
 function StageStrip({
   anchor,
+  anchorSpace,
   activeStage,
   branchName,
   stripRef,
@@ -166,6 +169,7 @@ function StageStrip({
   onDismiss,
 }: {
   anchor: { x: number; y: number }
+  anchorSpace: 'viewport' | 'css'
   activeStage?: WorkStage
   branchName: string
   stripRef: React.RefObject<HTMLDivElement | null>
@@ -174,7 +178,7 @@ function StageStrip({
   onDismiss(): void
 }): React.JSX.Element {
   useOutsideDismiss([stripRef], onDismiss)
-  const pos = useAnchoredPopover(anchor, { prefer: 'below', offsetY: 4 })
+  const pos = useAnchoredPopover(anchor, { prefer: 'below', offsetY: 4, anchorSpace })
 
   const setRefs = (node: HTMLDivElement | null): void => {
     pos.ref(node)

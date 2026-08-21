@@ -278,7 +278,7 @@ describe('AgentPanel row visual (pill + standardized dot, no suffix)', () => {
       metadata: { displayName: 'Spec', dispatchParentId: 'd-parent', dispatchDepth: 2 },
     } as AgentStateUpdate
     // rootOnly renders only the lead row (child is nested), while the full
-    // agents array still feeds the descendant walk for the yellow derivation.
+    // agent tree supplies legacy descendant fallback for the yellow derivation.
     const { container, root } = mount([parent, child], { rootOnly: true })
 
     const dot = Array.from(container.querySelectorAll('span')).find(
@@ -289,15 +289,10 @@ describe('AgentPanel row visual (pill + standardized dot, no suffix)', () => {
     act(() => { root.unmount() })
   })
 
-  // REGRESSION PIN for the reported bug. A lead whose MOST RECENT dispatch is
-  // finished, while an OLDER dispatch still owns a running depth-2 specialist.
-  //
-  // Before the two-dot model this row rendered ONE solid green dot and the
-  // header read "1 done" with no active segment: the row's live derivation only
-  // consulted the selected dispatch (defaulting to the last array slot), so the
-  // specialist hanging off the older dispatch was never found. A stalled agent
-  // was indistinguishable from finished work.
-  it('recent dispatch done + older dispatch still running a child: two dots, header active', () => {
+  // REGRESSION PIN: a lead's most-recent dispatch finished while an older
+  // dispatch still owns a live specialist. The model preserves both subjects,
+  // including legacy payloads without explicit `waitingOn` metadata.
+  it('recent dispatch done + older dispatch with a live child: two dots, header active', () => {
     const lead = {
       name: 'dev-lead',
       status: 'done',
@@ -320,7 +315,7 @@ describe('AgentPanel row visual (pill + standardized dot, no suffix)', () => {
     const spans = Array.from(container.querySelectorAll('span'))
     // Foreground: the most recent dispatch, finished.
     const green = spans.find((s) => s.style.background === 'var(--statusComplete)')
-    // Background: the older dispatch, still waiting on a live agent.
+    // Background: older dispatch's live descendant.
     const yellow = spans.find((s) => s.style.background === 'var(--statusWaitingChildren)')
     expect(green).toBeTruthy()
     expect(yellow).toBeTruthy()

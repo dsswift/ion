@@ -56,7 +56,7 @@ export const AssistantMessage = React.memo(function AssistantMessage({
       {displayContent && (
         <div
           className="leading-[1.6] prose-cloud min-w-0 max-w-[92%] overflow-hidden"
-          style={{ fontSize: 'var(--ion-conv-font-size, 13px)' }}
+          style={{ fontSize: 'var(--ion-data-font-size, 13px)' }}
         >
           <Markdown remarkPlugins={REMARK_PLUGINS} components={markdownComponents}>
             {displayContent}

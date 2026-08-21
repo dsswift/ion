@@ -8,7 +8,7 @@
  * ordering. The one deliberate divergence is the permission mode — 'plan'
  * here, 'auto' there — because the deliverable is a verdict, not a diff.
  *
- * ONE forwarded action (ATV multi-step rule): this reads store state
+ * ONE forwarded action (Studio multi-step rule): this reads store state
  * (benchWorkspaces, to build the prompt) between two mutations (materialising
  * the diagnostic tree on disk, then creating and tagging a tab), so a
  * component handler chaining these calls would run in whichever window hosts

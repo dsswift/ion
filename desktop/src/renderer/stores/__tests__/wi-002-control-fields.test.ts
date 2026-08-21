@@ -36,7 +36,7 @@ function plainTab(id: string): TabState {
   return {
     id,
     conversationId: null, historicalSessionIds: [], lastKnownSessionId: null,
-    status: 'idle', activeRequestId: null, lastEventAt: null, hasUnread: false,
+    status: 'idle', activeRequestId: null, lastEventAt: null, lastActivityAt: null, idleSince: null, lastCompletionAt: null, settledOverride: null, settledAt: null, snoozedUntil: null, snoozedAt: null, lastVisitedAt: null, manualUnread: false,
     currentActivity: '', attachments: [], title: 'New Tab', customTitle: null,
     lastResult: null, sessionTools: [], sessionMcpServers: [], sessionSkills: [],
     sessionVersion: null, queuedPrompts: [], workingDirectory: '~',

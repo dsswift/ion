@@ -170,6 +170,25 @@ describe('StatusDot — hasRunningChildren outranks plan-ready', () => {
 })
 
 describe('StatusDot — derived mode bypasses inline cascade', () => {
+  it('preserves the 8px icon-pill default unless a caller explicitly overrides it', () => {
+    const div = document.createElement('div')
+    document.body.appendChild(div)
+    divsToCleanup.push(div)
+    const root = createRoot(div)
+    act(() => {
+      root.render(
+        <StatusDot
+          pillIcon="diamond"
+          derived={{ bg: C.statusRunning, pulse: true, glow: false, glowColor: '' }}
+        />,
+      )
+    })
+
+    const iconHost = div.firstElementChild as HTMLElement
+    expect(iconHost.style.width).toBe('8px')
+    expect(iconHost.style.height).toBe('8px')
+  })
+
   it('renders the pre-computed color when derived prop is provided (yellow)', () => {
     // Derived mode: StatusDot must trust the pre-computed result from
     // getTabStatusColor and NOT re-run the inline cascade.

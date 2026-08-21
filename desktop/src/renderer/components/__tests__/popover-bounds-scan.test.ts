@@ -28,7 +28,7 @@ import { join, relative } from 'node:path'
  */
 
 const RENDERER_ROOT = join(__dirname, '..', '..')
-const SCAN_ROOTS = [join(RENDERER_ROOT, 'components'), join(RENDERER_ROOT, 'atv')]
+const SCAN_ROOTS = [join(RENDERER_ROOT, 'components'), join(RENDERER_ROOT, 'studio')]
 
 const FIXED = /position:\s*'fixed'/
 const ESCAPE_TAG = 'viewport-ok:'
@@ -72,7 +72,7 @@ function refExpressionAbove(lines: string[], fixedLine: number): string {
   return ''
 }
 
-describe('popover viewport-bounds scan (components + atv)', () => {
+describe('popover viewport-bounds scan (components + studio)', () => {
   it('every fixed-position element resolves its placement', () => {
     const violations: string[] = []
     for (const root of SCAN_ROOTS) {

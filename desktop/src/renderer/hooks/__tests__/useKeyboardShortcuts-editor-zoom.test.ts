@@ -12,11 +12,11 @@
  *       .cm-editor DOM node exists.
  *
  *   (c) Conversation does NOT zoom when the editor target is active: when
- *       isEditorZoomTarget() returns true, setConversationFontSize is never
+ *       isEditorZoomTarget() returns true, setDataViewFontSize is never
  *       called.
  *
  *   (d) Cmd+0 reset routes to editorFontSize when editor is the target and to
- *       conversationFontSize otherwise.
+ *       dataViewFontSize otherwise.
  *
  * These tests exercise isEditorZoomTarget() directly (unit) and the Cmd+=/
  * Cmd+-/Cmd+0 keydown handler paths via a synthetic KeyboardEvent dispatch
@@ -36,10 +36,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Minimal preferences state for zoom tests.
 let prefState = {
-  editorFontSize: 14,
-  conversationFontSize: 13,
+  editorFontSize: 14, dataViewFontSize: 13,
   setEditorFontSize: vi.fn((n: number) => { prefState.editorFontSize = n }),
-  setConversationFontSize: vi.fn((n: number) => { prefState.conversationFontSize = n }),
+  setDataViewFontSize: vi.fn((n: number) => { prefState.dataViewFontSize = n }),
 }
 
 vi.mock('../../preferences', () => ({
@@ -108,10 +107,8 @@ function makeFileEditorState(activeFileId: string | null, isPreview = false) {
 beforeEach(() => {
   vi.clearAllMocks()
   prefState = {
-    editorFontSize: 14,
-    conversationFontSize: 13,
+    editorFontSize: 14, dataViewFontSize: 13, setDataViewFontSize: vi.fn(),
     setEditorFontSize: vi.fn((n: number) => { prefState.editorFontSize = n }),
-    setConversationFontSize: vi.fn((n: number) => { prefState.conversationFontSize = n }),
   }
   // Default: editor open and focused with an active file (edit mode)
   const tab = makeTab('tab1')
@@ -185,12 +182,12 @@ describe('zoom routing — (a) one keypress = one increment', () => {
     if (isEditorZoomTarget()) {
       p.setEditorFontSize(p.editorFontSize + 1)
     } else {
-      p.setConversationFontSize(p.conversationFontSize + 1)
+      p.setDataViewFontSize(p.dataViewFontSize + 1)
     }
 
     expect(p.setEditorFontSize).toHaveBeenCalledTimes(1)
     expect(p.setEditorFontSize).toHaveBeenCalledWith(15)
-    expect(p.setConversationFontSize).not.toHaveBeenCalled()
+    expect(p.setDataViewFontSize).not.toHaveBeenCalled()
     expect(prefState.editorFontSize).toBe(15)
   })
 
@@ -202,12 +199,12 @@ describe('zoom routing — (a) one keypress = one increment', () => {
     if (isEditorZoomTarget()) {
       p.setEditorFontSize(p.editorFontSize - 1)
     } else {
-      p.setConversationFontSize(p.conversationFontSize - 1)
+      p.setDataViewFontSize(p.dataViewFontSize - 1)
     }
 
     expect(p.setEditorFontSize).toHaveBeenCalledTimes(1)
     expect(p.setEditorFontSize).toHaveBeenCalledWith(13)
-    expect(p.setConversationFontSize).not.toHaveBeenCalled()
+    expect(p.setDataViewFontSize).not.toHaveBeenCalled()
   })
 })
 
@@ -223,16 +220,16 @@ describe('zoom routing — (b) editor zoom works in preview mode', () => {
     if (isEditorZoomTarget()) {
       p.setEditorFontSize(p.editorFontSize + 1)
     } else {
-      p.setConversationFontSize(p.conversationFontSize + 1)
+      p.setDataViewFontSize(p.dataViewFontSize + 1)
     }
 
     expect(p.setEditorFontSize).toHaveBeenCalledWith(15)
-    expect(p.setConversationFontSize).not.toHaveBeenCalled()
+    expect(p.setDataViewFontSize).not.toHaveBeenCalled()
   })
 })
 
 describe('zoom routing — (c) conversation does NOT zoom when editor is the target', () => {
-  it('setConversationFontSize is never called when isEditorZoomTarget() is true', async () => {
+  it('setDataViewFontSize is never called when isEditorZoomTarget() is true', async () => {
     const { isEditorZoomTarget } = await import('../useKeyboardShortcuts')
     expect(isEditorZoomTarget()).toBe(true)
 
@@ -242,11 +239,11 @@ describe('zoom routing — (c) conversation does NOT zoom when editor is the tar
       if (isEditorZoomTarget()) {
         p.setEditorFontSize(p.editorFontSize + delta)
       } else {
-        p.setConversationFontSize(p.conversationFontSize + delta)
+        p.setDataViewFontSize(p.dataViewFontSize + delta)
       }
     }
 
-    expect(p.setConversationFontSize).not.toHaveBeenCalled()
+    expect(p.setDataViewFontSize).not.toHaveBeenCalled()
     expect(p.setEditorFontSize).toHaveBeenCalledTimes(2)
   })
 
@@ -260,11 +257,11 @@ describe('zoom routing — (c) conversation does NOT zoom when editor is the tar
     if (isEditorZoomTarget()) {
       p.setEditorFontSize(p.editorFontSize + 1)
     } else {
-      p.setConversationFontSize(p.conversationFontSize + 1)
+      p.setDataViewFontSize(p.dataViewFontSize + 1)
     }
 
     expect(p.setEditorFontSize).not.toHaveBeenCalled()
-    expect(p.setConversationFontSize).toHaveBeenCalledTimes(1)
+    expect(p.setDataViewFontSize).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -279,28 +276,28 @@ describe('zoom routing — (d) Cmd+0 reset routes correctly', () => {
     if (isEditorZoomTarget()) {
       p.setEditorFontSize(SETTINGS_DEFAULTS.editorFontSize)
     } else {
-      p.setConversationFontSize(SETTINGS_DEFAULTS.conversationFontSize)
+      p.setDataViewFontSize(SETTINGS_DEFAULTS.dataViewFontSize)
     }
 
     expect(p.setEditorFontSize).toHaveBeenCalledWith(SETTINGS_DEFAULTS.editorFontSize)
-    expect(p.setConversationFontSize).not.toHaveBeenCalled()
+    expect(p.setDataViewFontSize).not.toHaveBeenCalled()
   })
 
-  it('resets conversationFontSize to default when editor is NOT the target', async () => {
+  it('resets dataViewFontSize to default when editor is NOT the target', async () => {
     const { isEditorZoomTarget } = await import('../useKeyboardShortcuts')
     const { SETTINGS_DEFAULTS } = await import('../../preferences-types')
     sessionState.fileEditorFocused = false
     expect(isEditorZoomTarget()).toBe(false)
 
     const p = prefState
-    p.conversationFontSize = 20
+    p.dataViewFontSize = 20
     if (isEditorZoomTarget()) {
       p.setEditorFontSize(SETTINGS_DEFAULTS.editorFontSize)
     } else {
-      p.setConversationFontSize(SETTINGS_DEFAULTS.conversationFontSize)
+      p.setDataViewFontSize(SETTINGS_DEFAULTS.dataViewFontSize)
     }
 
-    expect(p.setConversationFontSize).toHaveBeenCalledWith(SETTINGS_DEFAULTS.conversationFontSize)
+    expect(p.setDataViewFontSize).toHaveBeenCalledWith(SETTINGS_DEFAULTS.dataViewFontSize)
     expect(p.setEditorFontSize).not.toHaveBeenCalled()
   })
 })

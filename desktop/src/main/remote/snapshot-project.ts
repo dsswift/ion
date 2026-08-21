@@ -24,6 +24,8 @@ export interface RendererTabInput {
   customTitle?: string | null
   status?: string
   workingDirectory?: string
+  executionHost?: string
+  executionMachineId?: string
   permissionMode?: string
   thinkingEffort?: string | null
   contextTokens?: number | null
@@ -32,7 +34,7 @@ export interface RendererTabInput {
   queuedPrompts?: string[]
   isTerminalOnly?: boolean
   inputLocked?: boolean
-  inputLockReason?: 'automated-workflow' | 'landed-worktree' | null
+  inputLockReason?: 'automated-workflow' | 'landed-worktree' | 'settled' | null
   tabRole?: 'bench-conversation' | 'conflict-auto-fix' | 'verification-analysis' | null
   hasEngineExtension?: boolean
   /** Engine profile id — non-null for extension-hosted tabs. iOS uses this
@@ -48,8 +50,22 @@ export interface RendererTabInput {
   groupPinned?: boolean
   hasRunningChildren?: boolean
   backgroundShellCount?: number
+  hasPendingWork?: boolean
   conversationId?: string | null
   lastActivityTs?: number
+  idleSince?: number | null
+  createdAt?: number
+  worktree?: RemoteTabState['worktree']
+  inboxState?: 'active' | 'snoozed' | 'settled'
+  unread?: boolean
+  snoozedUntil?: number | null
+  settledAt?: number | null
+  settledOverride?: 'settled' | 'active' | 'auto' | null
+  canRestoreSettled?: boolean
+  wokeAt?: number | null
+  pinnedAt?: number | null
+  pinOrderKey?: string | null
+  backgroundLiveness?: 'working' | 'monitoring'
   convFingerprint?: string
   pillColor?: string | null
   pillIcon?: string | null
@@ -105,6 +121,8 @@ export function projectRendererTab(
     customTitle: t.customTitle || null,
     status: (t.status || 'idle') as RemoteTabState['status'],
     workingDirectory: t.workingDirectory || '',
+    executionHost: t.executionHost || undefined,
+    executionMachineId: t.executionMachineId || undefined,
     permissionMode: (t.permissionMode === 'plan' ? 'plan' : 'auto') as 'auto' | 'plan',
     thinkingEffort: (t.thinkingEffort && t.thinkingEffort !== 'off')
       ? t.thinkingEffort as 'adaptive' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
@@ -134,8 +152,22 @@ export function projectRendererTab(
     groupPinned: t.groupPinned || false,
     hasRunningChildren: t.hasRunningChildren || undefined,
     backgroundShellCount: t.backgroundShellCount || undefined,
+    hasPendingWork: t.hasPendingWork || undefined,
     conversationId: t.conversationId || undefined,
     lastActivityAt: t.lastActivityTs || undefined,
+    idleSince: t.idleSince || undefined,
+    createdAt: t.createdAt || undefined,
+    worktree: t.worktree || undefined,
+    inboxState: t.inboxState || undefined,
+    unread: t.unread || undefined,
+    snoozedUntil: t.snoozedUntil || undefined,
+    settledAt: t.settledAt || undefined,
+    settledOverride: t.settledOverride || undefined,
+    canRestoreSettled: t.canRestoreSettled,
+    wokeAt: t.wokeAt || undefined,
+    pinnedAt: t.pinnedAt || undefined,
+    pinOrderKey: t.pinOrderKey || undefined,
+    backgroundLiveness: t.backgroundLiveness,
     // Omit an empty fingerprint (undefined) rather than sending ''. A tab with
     // no persisted tail (freshly created, no messages) has no fingerprint to
     // compare; '' would never match iOS's local tail and force a needless

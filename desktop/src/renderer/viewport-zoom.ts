@@ -1,30 +1,31 @@
-/**
- * Zoom-adjusted geometry helpers.
- *
- * The operator's UI zoom is applied as `document.documentElement.style.zoom`
- * (preferences-persist.ts). That creates two coordinate spaces: DOM
- * measurements come back in real viewport pixels, while CSS lengths written
- * into a `position: fixed` style are interpreted in the zoomed space. Anything
- * that measures an element and then positions another element from that
- * measurement has to convert, or the placement is off by the zoom factor.
- *
- * These two helpers are that conversion, and they live here — not in a
- * tab-strip module — because every popover in the renderer needs them.
- */
 import { usePreferencesStore } from './preferences'
 
-/** Adjust viewport rect to zoomed coordinate space for fixed positioning.
- * getBoundingClientRect() returns viewport pixels, but position:fixed inside
- * a CSS-zoomed root interprets coordinates in the zoomed space. Dividing by
- * zoom cancels the double-scaling. */
-export function zoomRect(rect: DOMRect): DOMRect {
-  const z = usePreferencesStore.getState().uiZoom
-  if (z === 1) return rect
-  return new DOMRect(rect.x / z, rect.y / z, rect.width / z, rect.height / z)
+function zoomFactor(): number {
+  const store = usePreferencesStore as unknown as { getState?: () => { uiZoom?: unknown } }
+  const zoom = store.getState?.().uiZoom
+  return typeof zoom === 'number' && Number.isFinite(zoom) && zoom > 0 ? zoom : 1
 }
 
-/** Return viewport dimensions in zoom-adjusted coordinate space. */
+/** Convert a viewport-space pointer point to CSS coordinates under root zoom. */
+export function zoomPoint(point: { x: number; y: number }): { x: number; y: number } {
+  const zoom = zoomFactor()
+  return { x: point.x / zoom, y: point.y / zoom }
+}
+
+/** Convert a viewport-space pointer delta to CSS coordinates under root zoom. */
+export function zoomDelta(delta: { x: number; y: number }): { x: number; y: number } {
+  return zoomPoint(delta)
+}
+
+/** Convert a viewport DOMRect to CSS coordinates for fixed positioning. */
+export function zoomRect(rect: DOMRect): DOMRect {
+  const zoom = zoomFactor()
+  if (zoom === 1) return rect
+  return new DOMRect(rect.x / zoom, rect.y / zoom, rect.width / zoom, rect.height / zoom)
+}
+
+/** Return viewport dimensions in CSS coordinates under root zoom. */
 export function zoomViewport(): { width: number; height: number } {
-  const z = usePreferencesStore.getState().uiZoom
-  return { width: window.innerWidth / z, height: window.innerHeight / z }
+  const zoom = zoomFactor()
+  return { width: window.innerWidth / zoom, height: window.innerHeight / zoom }
 }

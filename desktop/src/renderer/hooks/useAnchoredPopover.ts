@@ -38,7 +38,7 @@
  */
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { computeAnchoredPosition } from '../components/anchored-position'
-import { zoomRect, zoomViewport } from '../viewport-zoom'
+import { zoomPoint, zoomRect, zoomViewport } from '../viewport-zoom'
 
 /** Options accepted by `useAnchoredPopover`. */
 export interface UseAnchoredPopoverOpts {
@@ -52,6 +52,8 @@ export interface UseAnchoredPopoverOpts {
   prefer?: 'below' | 'rightOf'
   /** Parent row rect — required for clean left-flip when `prefer === 'rightOf'`. */
   parentRect?: { left: number; right: number; top: number; bottom: number }
+  /** Coordinate system of anchor point. Pointer and DOM coordinates are viewport pixels by default. */
+  anchorSpace?: 'viewport' | 'css'
   /** Extra dependencies that should trigger a re-measure (e.g. open submenu state, inline input toggles). */
   deps?: ReadonlyArray<unknown>
 }
@@ -107,6 +109,8 @@ export function useAnchoredPopover(
   const offsetX = opts.offsetX ?? 8
   const margin = opts.margin ?? 8
   const parentRect = opts.parentRect
+  const anchorSpace = opts.anchorSpace ?? 'viewport'
+  const cssAnchor = anchorSpace === 'viewport' ? zoomPoint(anchor) : anchor
   const deps = opts.deps ?? []
 
   const elRef = useRef<HTMLElement | null>(null)
@@ -126,8 +130,8 @@ export function useAnchoredPopover(
   // the same frame, so this default is mostly a fallback for
   // consumers that don't gate on `ready`.
   const [pos, setPos] = useState<{ left: number; top: number; ready: boolean }>(() => ({
-    left: anchor.x,
-    top: anchor.y + (prefer === 'below' ? offsetY : 0),
+    left: cssAnchor.x,
+    top: cssAnchor.y + (prefer === 'below' ? offsetY : 0),
     ready: false,
   }))
 
@@ -141,7 +145,7 @@ export function useAnchoredPopover(
     const rect = zoomRect(el.getBoundingClientRect())
     const viewport = zoomViewport()
     const next = computeAnchoredPosition({
-      anchor,
+      anchor: cssAnchor,
       menu: { width: rect.width, height: rect.height },
       viewport,
       offsetY,
@@ -166,8 +170,8 @@ export function useAnchoredPopover(
     // here; the spread is the correct mechanism for that pattern.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    anchor.x,
-    anchor.y,
+    cssAnchor.x,
+    cssAnchor.y,
     offsetY,
     offsetX,
     margin,
@@ -191,7 +195,7 @@ export function useAnchoredPopover(
       const rect = zoomRect(el.getBoundingClientRect())
       const viewport = zoomViewport()
       const next = computeAnchoredPosition({
-        anchor,
+        anchor: cssAnchor,
         menu: { width: rect.width, height: rect.height },
         viewport,
         offsetY,

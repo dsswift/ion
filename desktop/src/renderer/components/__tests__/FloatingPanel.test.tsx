@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * FloatingPanel — previewFontSize CSS variable placement test.
+ * FloatingPanel — data-view boundary placement test.
  *
  * Verifies:
  *   - The content wrapper div carries --ion-conv-font-size: <n>px.
@@ -18,11 +18,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // ── Store mocks ────────────────────────────────────────────────────────────
 
-let previewFontSize = 16
+let dataViewFontSize = 16
 let openFloatingPanelCount = 0
 
 vi.mock('../../preferences', () => ({
-  usePreferencesStore: (sel: any) => sel({ previewFontSize }),
+  usePreferencesStore: (sel: any) => sel({ dataViewFontSize }),
 }))
 
 const incMock = vi.fn(() => { openFloatingPanelCount++ })
@@ -58,6 +58,14 @@ vi.mock('../PopoverLayer', () => ({
 // X icon mock.
 vi.mock('@phosphor-icons/react', () => ({ X: () => null }))
 
+const openPanel = vi.fn<(title: string, body: React.ReactNode, close: () => void) => string>(() => 'panel:1')
+const updatePanel = vi.fn<(id: string, title: string, body: React.ReactNode) => void>()
+const closePanel = vi.fn<(id: string) => void>()
+let routerEnabled = false
+vi.mock('../../lib/file-open-router', () => ({
+  contentRouter: () => routerEnabled ? { openPanel, updatePanel, closePanel } : null,
+}))
+
 import { FloatingPanel } from '../FloatingPanel'
 
 function Panel(props: { children: React.ReactNode; title?: string; onClose?: () => void }) {
@@ -68,15 +76,19 @@ function Panel(props: { children: React.ReactNode; title?: string; onClose?: () 
   })
 }
 
-describe('FloatingPanel — previewFontSize CSS variable', () => {
+describe('FloatingPanel — data-view boundary', () => {
   let container: HTMLDivElement
   let root: ReturnType<typeof createRoot>
 
   beforeEach(() => {
-    previewFontSize = 16
+    dataViewFontSize = 16
     openFloatingPanelCount = 0
     incMock.mockClear()
     decMock.mockClear()
+    openPanel.mockClear()
+    updatePanel.mockClear()
+    closePanel.mockClear()
+    routerEnabled = false
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -87,26 +99,26 @@ describe('FloatingPanel — previewFontSize CSS variable', () => {
     document.body.removeChild(container)
   })
 
-  it('content wrapper carries --ion-conv-font-size: 16px', async () => {
+  it('content wrapper is marked as a data-view boundary', async () => {
     await act(async () => {
       root.render(React.createElement(Panel, null, React.createElement('div', { 'data-testid': 'child' }, 'content')))
     })
 
     const allDivs = Array.from(document.body.querySelectorAll('div'))
     const contentWrapper = allDivs.find((div) => {
-      return (div as HTMLElement).style.getPropertyValue('--ion-conv-font-size') === '16px'
+      return div.classList.contains('ion-data-view')
     })
     expect(contentWrapper).toBeDefined()
   })
 
-  it('header div does NOT carry --ion-conv-font-size (only content wrapper does)', async () => {
+  it('header remains outside data-view boundary', async () => {
     await act(async () => {
       root.render(React.createElement(Panel, null, React.createElement('div', { 'data-testid': 'child-2' }, 'child content')))
     })
 
     const allDivs = Array.from(document.body.querySelectorAll('div'))
     const withVar = allDivs.filter((div) => {
-      return (div as HTMLElement).style.getPropertyValue('--ion-conv-font-size') !== ''
+      return div.classList.contains('ion-data-view')
     })
     // Exactly one div — the content wrapper — carries the variable.
     expect(withVar).toHaveLength(1)
@@ -135,4 +147,35 @@ describe('FloatingPanel — previewFontSize CSS variable', () => {
     // Re-create for afterEach cleanup.
     root = createRoot(container)
   })
+
+  it('routes one stable panel and publishes later async children to Studio', async () => {
+    routerEnabled = true
+    await act(async () => {
+      root.render(React.createElement(Panel, { title: 'Loading', children: React.createElement('div', null, 'Loading conflict state…') }))
+    })
+    expect(openPanel).toHaveBeenCalledTimes(1)
+    expect(openPanel.mock.calls[0]?.[0]).toBe('Loading')
+
+    await act(async () => {
+      root.render(React.createElement(Panel, { title: 'Conflicts', children: React.createElement('div', null, 'engine/internal/backend/runloop.go') }))
+    })
+    expect(openPanel).toHaveBeenCalledTimes(1)
+    expect(updatePanel).toHaveBeenLastCalledWith(
+      'panel:1',
+      'Conflicts',
+      expect.anything(),
+    )
+    expect((updatePanel.mock.calls.at(-1)?.[2] as React.ReactElement<{ children: React.ReactNode }>).props.children).toBe('engine/internal/backend/runloop.go')
+  })
+
+  it('releases routed surface when owner unmounts', async () => {
+    routerEnabled = true
+    await act(async () => {
+      root.render(React.createElement(Panel, { children: React.createElement('div', null, 'content') }))
+    })
+    await act(async () => { root.unmount() })
+    expect(closePanel).toHaveBeenCalledWith('panel:1')
+    root = createRoot(container)
+  })
+
 })

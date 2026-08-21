@@ -58,7 +58,7 @@ vi.mock('../../preferences', () => ({
     // zoomRect (TabStripShared.ts) reads uiZoom directly off getState() when
     // measuring the "Go to tab" row's bounding rect — unrelated to anything
     // this file exercises, but required for the click handler not to throw.
-    { getState: () => ({ uiZoom: 1 }) },
+    { getState: () => ({ uiZoom: 1.5 }) },
   ),
 }))
 
@@ -67,8 +67,8 @@ let storeTabs: Array<{ id: string; workingDirectory: string; title: string; cust
 
 vi.mock('../../stores/sessionStore', () => ({
   useSessionStore: Object.assign(
-    (selector: (s: { benchWorkspaces: Map<string, never>; tabs: typeof storeTabs }) => unknown) =>
-      selector({ benchWorkspaces: new Map<string, never>(), tabs: storeTabs }),
+    (selector: (s: { benchWorkspaces: Map<string, never>; tabs: typeof storeTabs; conversationPanes: Map<string, never> }) => unknown) =>
+      selector({ benchWorkspaces: new Map<string, never>(), tabs: storeTabs, conversationPanes: new Map<string, never>() }),
     {
       getState: () => ({
         retireWorktree: mocks.retireWorktree,
@@ -77,6 +77,8 @@ vi.mock('../../stores/sessionStore', () => ({
         benchAddMember: mocks.benchAddMember,
         recordConflictAlert: mocks.recordConflictAlert,
         selectTab: mocks.selectTab,
+        tabs: storeTabs,
+        conversationPanes: new Map(),
       }),
     },
   ),
@@ -188,6 +190,20 @@ describe('WorktreeRowMenu — "Go to tab" submenu', () => {
     expect(document.body.textContent ?? '').toContain('Add feature')
   })
 
+  it('uses canonical status dot for each conversation', async () => {
+    storeTabs = [
+      { id: 'run-1', workingDirectory: WT, title: 'Run work', customTitle: null, status: 'running' },
+      { id: 'idle-1', workingDirectory: WT, title: 'Wait work', customTitle: null, status: 'idle' },
+    ]
+    render()
+
+    await press(findButton('Go to tab'))
+
+    const running = document.querySelector('[data-testid="worktree-conversation-status-run-1"]')!
+    const idle = document.querySelector('[data-testid="worktree-conversation-status-idle-1"]')!
+    expect(running.firstElementChild?.className).toContain('animate-pulse-dot')
+    expect(idle.firstElementChild?.className).not.toContain('animate-pulse-dot')
+  })
   it('focuses the clicked conversation and closes the whole menu', async () => {
     // RED before the containerRef fix: the submenu portals as a sibling of
     // the row menu's root, so a real mousedown on the submenu row read as
@@ -272,6 +288,21 @@ describe('WorktreeRowMenu — "Go to tab" submenu', () => {
     await press(row)
     expect(mocks.selectTab).toHaveBeenCalledWith('talk-1')
     expect(closed).toBe(1)
+  })
+
+  it('keeps an already-normalized submenu anchor beside its parent at UI zoom', async () => {
+    storeTabs = [{ id: 'talk-1', workingDirectory: WT, title: 'Add feature', customTitle: null, status: 'idle' }]
+    render()
+
+    const trigger = findButton('Go to tab')
+    vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({
+      x: 300, y: 150, top: 150, left: 300, right: 450, bottom: 180, width: 150, height: 30, toJSON: () => ({}),
+    } as DOMRect)
+    await act(async () => { trigger.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })) })
+
+    const submenu = document.querySelector('[data-testid="worktree-row-go-to-tab-submenu"]') as HTMLElement
+    expect(submenu.style.left).toBe('308px')
+    expect(submenu.style.top).toBe('100px')
   })
 
   it('skips a terminal-only tab even though it shares the worktree directory', async () => {

@@ -23,7 +23,7 @@ export function FinishWorkContextMenu({ anchor, worktree, onClose }: {
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
-  // Keep the portaled popover inside the window (ATV top-anchored strip).
+  // Keep the portaled popover inside the window (Studio top-anchored strip).
   useViewportClamp(ref, true)
   const strategy = usePreferencesStore((s) => s.worktreeCompletionStrategy)
   const activeTabId = useSessionStore((s) => s.activeTabId)

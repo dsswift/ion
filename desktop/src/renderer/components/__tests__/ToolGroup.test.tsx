@@ -123,6 +123,28 @@ describe('ToolGroup embedded mode', () => {
   })
 })
 
+describe('ToolGroup active progress', () => {
+  it('shows current tool and used count while collapsed', () => {
+    const active: Message[] = [
+      tool('read', 'Read'),
+      {
+        id: 'bash',
+        role: 'tool',
+        content: '',
+        toolName: 'Bash',
+        toolInput: JSON.stringify({ command: 'pwd' }),
+        toolStatus: 'running',
+        timestamp: 0,
+      } as Message,
+    ]
+
+    const html = render({ tools: active, skipMotion: true })
+    expect(html).toContain('Running pwd')
+    expect(html).toContain('Used 1 tool')
+    expect(html).not.toContain('Running tools')
+  })
+})
+
 describe('ToolGroup collapsed — three-state failure summary', () => {
   it('shows failure count when group has errors', () => {
     // 100 tools: 3 error, 97 completed. Collapsed (no userExecuted, no expandToolResults).

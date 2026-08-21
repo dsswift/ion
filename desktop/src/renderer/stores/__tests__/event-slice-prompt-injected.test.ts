@@ -5,7 +5,7 @@
  * check-ins, revives) starts a run whose user turn NO client submitted, so
  * no client did an optimistic insert. Before the engine emitted
  * engine_prompt_injected, the turn existed only in the conversation file —
- * the ATV (which rehydrates from disk) showed "[Agent X completed in Ns]"
+ * the Studio window (which rehydrates from disk) showed "[Agent X completed in Ns]"
  * turns the live overlay never displayed. This pins the reducer arm: the
  * event appends the prompt as a user message, verbatim.
  */

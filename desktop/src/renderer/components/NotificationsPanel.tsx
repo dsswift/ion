@@ -8,6 +8,7 @@ import { usePreferencesStore } from '../preferences'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { ResourceViewer } from './ResourceViewer'
+import { contentRouter } from '../lib/file-open-router'
 import { selectTrayResources } from './notifications-tray-filter'
 import type { ResourceItem } from '../../shared/types-engine'
 
@@ -30,13 +31,13 @@ function ResourceCard({
   item: ResourceItem
   isRead: boolean
   colors: ReturnType<typeof useColors>
-  onOpen: (data: { title: string; content: string }) => void
+  onOpen: (item: ResourceItem, data: { title: string; content: string }) => void
   onDelete: () => void
 }) {
   const title = item.title || (item.metadata?.agentName as string) || item.kind || 'Notification'
 
   const handleClick = () => {
-    onOpen({ title, content: item.content })
+    onOpen(item, { title, content: item.content })
     window.ion?.markResourceRead?.(item.kind, item.id)
   }
 
@@ -111,7 +112,7 @@ export function NotificationsPanel() {
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
-  // Keep the portaled popover inside the window (ATV top-anchored strip).
+  // Keep the portaled popover inside the window (Studio top-anchored strip).
   useViewportClamp(popoverRef, open)
   const [pos, setPos] = useState<{ right: number; top?: number; bottom?: number; maxHeight?: number }>({ right: 0 })
   const [viewerData, setViewerData] = useState<{ title: string; content: string } | null>(null)
@@ -254,9 +255,11 @@ export function NotificationsPanel() {
                   item={item}
                   isRead={readResourceIds.has(item.id)}
                   colors={colors}
-                  onOpen={(data) => {
-                    markResourceRead(item.id)
-                    setViewerData(data)
+                  onOpen={(openedItem, data) => {
+                    markResourceRead(openedItem.id)
+                    const router = contentRouter()
+                    if (router?.openResource) router.openResource(openedItem)
+                    else setViewerData(data)
                     setOpen(false)
                   }}
                   onDelete={() => deleteResource(item.kind, item.id)}

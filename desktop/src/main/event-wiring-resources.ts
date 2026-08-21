@@ -15,7 +15,7 @@ import { IPC } from '../shared/types'
 import { log as _log } from './logger'
 import { engineBridge, state } from './state'
 import { broadcast } from './broadcast'
-import { notifyAtvActiveTab } from './atv-window-manager'
+import { notifyStudioActiveTab } from './studio-window-manager'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -202,13 +202,13 @@ export function wireTabFocusHandler(): void {
     IPC.NOTIFY_TAB_FOCUS,
     (_event: Electron.IpcMainEvent, { tabId, engineProfileId }: { tabId: string; engineProfileId?: string | null }) => {
       publishTabFocus(tabId)
-      // The Agent Team Visualizer tracks the active tab through this same
-      // notification: record it so an ATV window opened later targets the
-      // right tab, and push it (with cached state) to a live ATV window.
-      // engineProfileId scopes the ATV office seed per extension.
-      state.atvActiveTabId = tabId
-      state.atvActiveProfileId = engineProfileId ?? null
-      notifyAtvActiveTab(tabId)
+      // The Ion Studio tracks the active tab through this same
+      // notification: record it so an Studio window opened later targets the
+      // right tab, and push it (with cached state) to a live Studio window.
+      // engineProfileId scopes the Studio window office seed per extension.
+      state.studioActiveTabId = tabId
+      state.studioActiveProfileId = engineProfileId ?? null
+      notifyStudioActiveTab(tabId)
     },
   )
 }

@@ -3,7 +3,7 @@ import type { AgentStateUpdate } from '../../shared/types'
 import { getDispatches, isRootLevelAgent, meta } from '../lib/agent-helpers'
 
 /**
- * Click-to-inspect bridge from the Agent Team Visualizer: the ATV window
+ * Click-to-inspect bridge from the Ion Studio: the Studio window
  * forwards an agent selection through the main process, App.tsx re-dispatches
  * it as an `ion:open-agent-detail` CustomEvent, and this hook opens the named
  * agent's detail exactly as if its AgentPanel row was clicked.

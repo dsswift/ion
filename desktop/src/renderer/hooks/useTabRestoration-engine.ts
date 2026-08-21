@@ -3,6 +3,8 @@
 // require passing the legacy-marker filter across file boundaries; the file is
 // modestly over cap and will be refactored when the restore hook is next revised.
 import type { Message, AgentStateUpdate, ConversationInstance, ConversationRef } from '../../shared/types'
+import { restoredInboxTabFields } from './tab-inbox-restore'
+import { resolvedInputLock } from './useTabRestoration-helpers'
 import type { PersistedTab, PersistedConversationInstance } from '../../shared/types-persistence'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
@@ -14,6 +16,7 @@ import { mapPersistedMessages, filterRestorablePersistedMessages } from '../stor
 import { restoredConversationStatus } from './useTabRestoration-status'
 import { reconcileRestoredImages } from './useTabRestoration-images'
 import { rDebug, rWarn, rError } from '../rendererLogger'
+import { isPersistedSettled } from '../../shared/tab-predicates'
 
 /**
  * Return true if the persisted message list contains a completed-plan marker.
@@ -357,11 +360,9 @@ async function restoreSingleInstanceTab(
             customTitle: st.customTitle || null,
             // Lock + role survive restart: a retained auto-fix conversation
             // must stay input-locked and role-tagged, or the operator could
-            // type into a machine conversation after relaunch.
-            inputLocked: st.inputLocked ?? false,
-            inputLockReason: st.worktree?.landedAt
-              ? 'landed-worktree'
-              : st.inputLockReason ?? null,
+            // type into a machine conversation after relaunch. Settled tabs
+            // are cold history records and are also input-locked.
+            ...resolvedInputLock(st, st.worktree),
             tabRole: st.tabRole ?? null,
             pillColor: st.pillColor || null,
             groupId: st.groupId || null,
@@ -372,6 +373,17 @@ async function restoreSingleInstanceTab(
             worktree: st.worktree ?? null,
             lastMessagePreview: st.lastMessagePreview || null,
             lastEventAt: st.lastEventAt ?? null,
+            ...restoredInboxTabFields(st),
+            lastActivityAt: st.lastActivityAt ?? null,
+                          lastMessageAt: st.lastMessageAt ?? null,
+                          idleSince: st.idleSince ?? null,
+                          lastCompletionAt: st.lastCompletionAt ?? null,
+                          settledOverride: st.settledOverride ?? null,
+                          settledAt: st.settledAt ?? null,
+                          snoozedUntil: st.snoozedUntil ?? null,
+                          snoozedAt: st.snoozedAt ?? null,
+                          lastVisitedAt: st.lastVisitedAt ?? null,
+                          manualUnread: st.manualUnread ?? false,
             lastResult: st.lastResult ?? null,
             permissionMode: 'auto',
             // Override the 'connecting' that createConversationTab set for the
@@ -389,6 +401,14 @@ async function restoreSingleInstanceTab(
   }))
 
   if (unifiedInstances.length > 0) {
+    // Settled tabs are cold history records. The scrollback has been restored
+    // into the pane above, but no engine process should be started -- they
+    // are purely read-only until the user un-settles.
+    if (isPersistedSettled(st)) {
+      rDebug('restore', 'skipped engine start for settled tab', { tab_id: tabId.slice(0, 8) })
+      return tabId
+    }
+
     const { engineProfiles } = usePreferencesStore.getState()
     const profile = st.engineProfileId ? engineProfiles.find((p) => p.id === st.engineProfileId) : null
     if (profile) {

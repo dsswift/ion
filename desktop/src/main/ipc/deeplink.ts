@@ -6,10 +6,10 @@ import { resolveDeepLinkConfirmation, markDeepLinkConfirmationReady, markDeepLin
 function log(msg: string, fields?: Record<string, unknown>): void { _log('deeplink', msg, fields) }
 function warn(msg: string, fields?: Record<string, unknown>): void { _warn('deeplink', msg, fields) }
 
-function owner(payload: unknown): 'overlay' | 'atv' | null {
+function owner(payload: unknown): 'overlay' | 'studio' | null {
   if (typeof payload !== 'object' || payload === null) return null
   const value = (payload as { owner?: unknown }).owner
-  return value === 'overlay' || value === 'atv' ? value : null
+  return value === 'overlay' || value === 'studio' ? value : null
 }
 
 export function registerDeepLinkIpc(): void {
@@ -27,7 +27,7 @@ export function registerDeepLinkIpc(): void {
     if (typeof payload !== 'object' || payload === null) { warn('confirm result ignored: payload is not an object'); return }
     const { id, owner: resultOwner, approved, tabId } = payload as { id?: unknown; owner?: unknown; approved?: unknown; tabId?: unknown }
     if (typeof id !== 'string' || !id || id.length > 128) { warn('confirm result ignored: bad id'); return }
-    if (resultOwner !== 'overlay' && resultOwner !== 'atv') { warn('confirm result ignored: invalid owner', { id }); return }
+    if (resultOwner !== 'overlay' && resultOwner !== 'studio') { warn('confirm result ignored: invalid owner', { id }); return }
     if (typeof approved !== 'boolean') { warn('confirm result ignored: approved is not a boolean', { id }); return }
     if (tabId !== undefined && (typeof tabId !== 'string' || !tabId || tabId.length > 200)) { warn('confirm result ignored: bad tab id', { id }); return }
     log('confirm result received', { id, approved, owner: resultOwner })

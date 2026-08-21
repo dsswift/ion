@@ -45,27 +45,15 @@ export const PANEL_TOP_RESERVE = 48
 /** Gap between the content column, a panel, and the next panel over. */
 export const PANEL_GAP = 8
 
-/**
- * Git panel width.
- *
- * 440 rather than the historical 320: worktree rows carry a fixed control
- * gutter plus a name that ellipsises, and at 320 the name lost most of its
- * space to the gutter. The extra 120px goes entirely to the name.
- */
-export const GIT_PANEL_WIDTH = 440
+/** Status Drawer and File Explorer share the compact panel width. */
+export const STATUS_DRAWER_WIDTH = 300
 
-/**
- * File explorer width.
- *
- * 264 rather than 240: the operator asked for roughly 10% more room for paths
- * that ellipsise in a deep tree.
- *
- * Unlike the git panel this constant is read at exactly ONE site -- the wrapper
- * in `App.tsx` that positions the panel -- because `FileExplorer` itself renders
- * at `width: '100%'` and inherits whatever the wrapper gives it. That is also
- * why the ATV shell can mount the same component at its own dock width.
- */
-export const FILE_EXPLORER_WIDTH = 264
+/** Inbox and Git share the wide panel width. */
+export const GIT_PANEL_WIDTH = 440
+export const INBOX_PANEL_WIDTH = GIT_PANEL_WIDTH
+
+/** File Explorer matches the current Status Drawer width. */
+export const FILE_EXPLORER_WIDTH = STATUS_DRAWER_WIDTH
 
 /** The panel height with no operator override. Also the FLOOR for a drag. */
 export function defaultPanelHeight(expandedUI: boolean): number {

@@ -1,23 +1,23 @@
 /**
  * Regression test: insertRendererRemoteUserMessage must echo the user turn
- * to the ATV mirror window via notifyAtvUserMessageEcho.
+ * to the Studio mirror window via notifyStudioUserMessageEcho.
  *
  * Root cause (WI-004): when an iOS-originated slash command succeeds as an
  * extension command (commandError === ''), insertRendererRemoteUserMessage is
  * called to insert the user bubble into the owner renderer via executeJavaScript.
- * That path never called notifyAtvUserMessageEcho, so the ATV mirror showed
+ * That path never called notifyStudioUserMessageEcho, so the Studio mirror showed
  * assistant text with no preceding user bubble.
  *
- * Fix: insertRendererRemoteUserMessage calls notifyAtvUserMessageEcho
+ * Fix: insertRendererRemoteUserMessage calls notifyStudioUserMessageEcho
  * unconditionally after the executeJavaScript insert. The call is outside the
  * try/catch so it fires even if executeJavaScript throws.
  */
 
-import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   executeJsMock: vi.fn().mockResolvedValue(null),
-  notifyAtvMock: vi.fn(),
+  notifyStudioMock: vi.fn(),
 }))
 
 vi.mock('../state', () => ({
@@ -30,8 +30,8 @@ vi.mock('../state', () => ({
   extensionCommandRegistry: new Map(),
 }))
 
-vi.mock('../atv-window-manager', () => ({
-  notifyAtvUserMessageEcho: (...args: any[]) => mocks.notifyAtvMock(...args),
+vi.mock('../studio-window-manager', () => ({
+  notifyStudioUserMessageEcho: (...args: any[]) => mocks.notifyStudioMock(...args),
 }))
 
 vi.mock('../logger', () => ({
@@ -44,7 +44,7 @@ vi.mock('../logger', () => ({
 import { insertRendererRemoteUserMessage } from '../prompt-pipeline-renderer'
 import type { IncomingPrompt } from '../prompt-pipeline'
 
-function makePrompt(tabId = 'tab-atv-1'): IncomingPrompt {
+function makePrompt(tabId = 'tab-studio-1'): IncomingPrompt {
   return {
     tabId,
     text: '/mycommand args',
@@ -57,27 +57,40 @@ function makePrompt(tabId = 'tab-atv-1'): IncomingPrompt {
 
 beforeEach(() => {
   mocks.executeJsMock.mockReset().mockResolvedValue(null)
-  mocks.notifyAtvMock.mockReset()
+  mocks.notifyStudioMock.mockReset()
+  vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
 })
 
-describe('insertRendererRemoteUserMessage — ATV echo', () => {
-  it('calls notifyAtvUserMessageEcho with tabId and content after insert', async () => {
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+describe('insertRendererRemoteUserMessage — Studio echo', () => {
+  it('calls notifyStudioUserMessageEcho with typed payload after insert', async () => {
     const p = makePrompt()
     await insertRendererRemoteUserMessage(p, '/mycommand args')
 
-    expect(mocks.notifyAtvMock).toHaveBeenCalledTimes(1)
-    expect(mocks.notifyAtvMock).toHaveBeenCalledWith('tab-atv-1', '/mycommand args')
+    expect(mocks.notifyStudioMock).toHaveBeenCalledTimes(1)
+    expect(mocks.notifyStudioMock).toHaveBeenCalledWith('tab-studio-1', {
+      id: 'req-1',
+      content: '/mycommand args',
+      timestamp: 1_700_000_000_000,
+    })
   })
 
-  it('calls notifyAtvUserMessageEcho even when executeJavaScript throws', async () => {
+  it('calls notifyStudioUserMessageEcho even when executeJavaScript throws', async () => {
     mocks.executeJsMock.mockRejectedValueOnce(new Error('renderer not ready'))
 
-    const p = makePrompt('tab-atv-err')
+    const p = makePrompt('tab-studio-err')
     await insertRendererRemoteUserMessage(p, '/failcommand')
 
     // The echo must still fire — it is outside the try/catch.
-    expect(mocks.notifyAtvMock).toHaveBeenCalledTimes(1)
-    expect(mocks.notifyAtvMock).toHaveBeenCalledWith('tab-atv-err', '/failcommand')
+    expect(mocks.notifyStudioMock).toHaveBeenCalledTimes(1)
+    expect(mocks.notifyStudioMock).toHaveBeenCalledWith('tab-studio-err', {
+      id: 'req-1',
+      content: '/failcommand',
+      timestamp: 1_700_000_000_000,
+    })
   })
 
   it('passes the raw content string — not a slash-stripped or partially-escaped variant', async () => {
@@ -85,7 +98,11 @@ describe('insertRendererRemoteUserMessage — ATV echo', () => {
     const content = "/complex args with 'quotes'"
     await insertRendererRemoteUserMessage(p, content)
 
-    expect(mocks.notifyAtvMock).toHaveBeenCalledWith(p.tabId, content)
+    expect(mocks.notifyStudioMock).toHaveBeenCalledWith(p.tabId, {
+      id: p.reqId,
+      content,
+      timestamp: 1_700_000_000_000,
+    })
   })
 
   it('fires for both plain and extension-hosted tab sources', async () => {
@@ -95,8 +112,16 @@ describe('insertRendererRemoteUserMessage — ATV echo', () => {
     await insertRendererRemoteUserMessage(plain, '/cmd1')
     await insertRendererRemoteUserMessage(ext, '/cmd2')
 
-    expect(mocks.notifyAtvMock).toHaveBeenCalledTimes(2)
-    expect(mocks.notifyAtvMock).toHaveBeenNthCalledWith(1, 'plain-tab', '/cmd1')
-    expect(mocks.notifyAtvMock).toHaveBeenNthCalledWith(2, 'ext-tab', '/cmd2')
+    expect(mocks.notifyStudioMock).toHaveBeenCalledTimes(2)
+    expect(mocks.notifyStudioMock).toHaveBeenNthCalledWith(1, 'plain-tab', {
+      id: plain.reqId,
+      content: '/cmd1',
+      timestamp: 1_700_000_000_000,
+    })
+    expect(mocks.notifyStudioMock).toHaveBeenNthCalledWith(2, 'ext-tab', {
+      id: ext.reqId,
+      content: '/cmd2',
+      timestamp: 1_700_000_000_000,
+    })
   })
 })

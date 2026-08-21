@@ -23,7 +23,7 @@ const { mockSend, mockState, accumulator, scrollback } = vi.hoisted(() => {
   const mockState = {
     mainWindow: null as any,
     remoteTransport: { send: mockSend } as any,
-    atvWindow: null as any,
+    studioWindow: null as any,
     terminalOutputFlushTimer: null as ReturnType<typeof setInterval> | null,
   }
   return { mockSend, mockState, accumulator, scrollback }
@@ -35,7 +35,7 @@ vi.mock('../state', () => ({
   terminalScrollback: scrollback,
   MAX_SCROLLBACK_SIZE: 1_000_000,
 }))
-vi.mock('../atv-state-cache', () => ({ atvWantsEvent: vi.fn(() => false), updateAtvCache: vi.fn() }))
+vi.mock('../studio-state-cache', () => ({ studioWantsEvent: vi.fn(() => false), updateStudioCache: vi.fn() }))
 
 import { broadcast, startTerminalOutputFlushing } from '../broadcast'
 

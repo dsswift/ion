@@ -27,7 +27,7 @@ export function registerThemesIpc(): void {
   })
 
   // Push the refreshed set to both windows whenever the pack set changes.
-  // Routed through broadcast() so the ATV mirror window converges too. The
+  // Routed through broadcast() so the Studio mirror window converges too. The
   // settings snapshot is re-broadcast as well: the selectedTheme schema
   // choices embed the live pack set, so paired iOS pickers must refresh.
   onThemePacksChanged(() => {

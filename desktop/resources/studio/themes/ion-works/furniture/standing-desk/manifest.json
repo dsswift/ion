@@ -1,0 +1,15 @@
+{
+  "id": "standing-desk",
+  "name": "Standing Desk",
+  "category": "work",
+  "footprintW": 2,
+  "footprintH": 1,
+  "width": 32,
+  "height": 16,
+  "rotationScheme": "2-way",
+  "images": {
+    "front": "front.png",
+    "side": "side.png"
+  },
+  "isSurface": true
+}

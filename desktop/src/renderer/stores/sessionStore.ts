@@ -11,6 +11,7 @@ import { createCloseIntentSlice } from './slices/close-intent-slice'
 import { createResumeSlice } from './slices/resume-slice'
 import { createForkSlice } from './slices/resume-slice-fork'
 import { createExpandSlice } from './slices/expand-slice'
+import { createInboxSlice } from './slices/inbox-slice'
 import { createTerminalSlice } from './slices/terminal-slice'
 import { createFileExplorerSlice } from './slices/file-explorer-slice'
 import { createFileEditorSlice } from './slices/file-editor-slice'
@@ -19,15 +20,20 @@ import { createWorktreeSlice } from './slices/worktree-slice'
 import { createWorktreeInventorySlice } from './slices/worktree-inventory-slice'
 import { createWorktreePipelineSlice } from './slices/worktree-pipeline-slice'
 import { createBenchSlice } from './slices/bench-slice'
+import { createBenchAssemblySlice } from './slices/bench-slice-assembly'
 import { createBenchVerificationSlice } from './slices/bench-verification-slice'
 import { createGitConflictSlice } from './slices/git-conflict-slice'
+import { trackWorkspaceActions } from './session-store-workspace-operation-ledger'
+import { setupStudioWorktreeSync } from './session-store-worktree-sync'
 import { createAttachmentsSlice } from './slices/attachments-slice'
 import { createPermissionsSlice } from './slices/permissions-slice'
 import { createSendSlice } from './slices/send-slice'
 import { createEventSlice } from './slices/event-slice'
+import { reportAutoFixCompletion } from './slices/event-slice-auto-fix-lifecycle'
 import { createEngineSlice } from './slices/engine-slice'
 import { createImplementSlice } from './slices/implement-slice'
 import { setupPersistence } from './session-store-persistence'
+import { startAutoSettleSweep } from './auto-settle-sweep'
 import { usePreferencesStore } from '../preferences'
 import { isMirrorWindow } from '../lib/window-role'
 
@@ -46,13 +52,16 @@ const initialEnginePanes = new Map<string, ConversationPane>([
 
 const initialState = {
   tabs: [initialTab],
+  settledHistory: [],
   activeTabId: initialTab.id,
   isExpanded: false,
   staticInfo: null,
   gitPanelOpen: false,
+  inboxPanelOpen: false,
   // Null = use the default height, which is also the floor for a drag.
   statusDrawerOpen: false,
   statusDrawerDispatchId: null,
+  dispatchSplit: null,
   terminalOpenTabIds: new Set<string>(),
   terminalActiveTabIds: new Set<string>(),
   terminalPendingCommands: new Map<string, string>(),
@@ -60,6 +69,7 @@ const initialState = {
   terminalTallTabId: null,
   terminalBigScreenTabId: null,
   fileExplorerOpenDirs: new Set<string>(),
+  fileExplorerRootCollapsed: new Set<string>(),
   fileExplorerStates: new Map(),
   fileEditorOpenDirs: new Set<string>(),
   fileEditorFocused: true,
@@ -69,6 +79,8 @@ const initialState = {
   resourceViewerGeometry: { x: 80, y: 100, w: 720, h: 420 },
   agentDetailGeometry: { x: 60, y: 80, w: 600, h: 500 },
   tabsReady: false,
+  startupReady: false,
+  startupError: null,
   rehydrating: false,
   initProgress: null,
   worktreeUncommittedMap: new Map(),
@@ -78,6 +90,7 @@ const initialState = {
   benchRetired: new Map(),
   gitConflictAlerts: new Map(),
   worktreePipeline: null,
+  workspaceOperationLedger: new Map(),
   engineWorkingMessages: new Map(),
   engineNotifications: new Map(),
   engineDialogs: new Map(),
@@ -106,20 +119,25 @@ export const useSessionStore = create<State>((set, get) => {
     ...createResumeSlice(_set, _get),
     ...createForkSlice(_set, _get),
     ...createExpandSlice(_set, _get),
+    ...createInboxSlice(_set, _get),
     ...createTerminalSlice(_set, _get),
     ...createFileExplorerSlice(_set, _get),
     ...createFileEditorSlice(_set, _get),
     ...createDirectorySlice(_set, _get),
-    ...createWorktreeSlice(_set, _get),
-    ...createWorktreeInventorySlice(_set, _get),
-    ...createWorktreePipelineSlice(_set, _get),
-    ...createBenchSlice(_set, _get),
-    ...createBenchVerificationSlice(_set, _get),
-    ...createGitConflictSlice(_set, _get),
+    ...trackWorkspaceActions(_set, {
+      ...createWorktreeSlice(_set, _get),
+      ...createWorktreeInventorySlice(_set, _get),
+      ...createWorktreePipelineSlice(_set, _get),
+      ...createBenchSlice(_set, _get),
+      ...createBenchAssemblySlice(_set, _get),
+      ...createBenchVerificationSlice(_set, _get),
+      ...createGitConflictSlice(_set, _get),
+    }),
     ...createAttachmentsSlice(_set, _get),
     ...createPermissionsSlice(_set, _get),
     ...createSendSlice(_set, _get),
     ...createEventSlice(_set, _get),
+    reportAutoFixCompletion: (tabId, evidence) => reportAutoFixCompletion(tabId, evidence, _get),
     ...createEngineSlice(_set, _get),
     ...createImplementSlice(_set, _get),
     markResourceRead: (resourceId: string) => {
@@ -155,11 +173,13 @@ export const useSessionStore = create<State>((set, get) => {
 ;(window as any).__Ion_PREFERENCES_STORE__ = usePreferencesStore
 ;(window as any).__serializeTerminalBuffer = serializeTerminalBuffer
 
-// The ATV mirror window never persists: the overlay renderer is the single
+// The Studio mirror window never persists: the overlay renderer is the single
 // writer for tabs/settings (single-writer rule of the mirror-store
 // architecture). The mirror also skips the stuck-tab watchdog and the
 // __ionForceFlushTabs global (both live inside setupPersistence) — healing
 // and flushing are owner duties.
 if (!isMirrorWindow()) {
   setupPersistence(useSessionStore)
+  startAutoSettleSweep(useSessionStore)
+  setupStudioWorktreeSync(useSessionStore)
 }

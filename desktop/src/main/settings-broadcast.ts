@@ -34,6 +34,8 @@ import { writeSettings } from './settings-store'
 import { writePlanBashAllowlist } from './plan-bash-allowlist-store'
 import { ENGINE_CONFIG_BACKED_KEYS } from './projectable-settings-data'
 import { getEnterpriseThemePolicy, isThemeLocked } from './theme-policy'
+import { deriveEnterpriseActiveUiPolicy } from '../shared/enterprise-active-ui-policy'
+import { applyActiveUiSwitch } from './active-ui'
 import {
   isProjectableKey,
   projectCurrentSettings,
@@ -65,10 +67,15 @@ export function broadcastDesktopSettingsSnapshot(reason: string): void {
     log('settings_broadcast: skip, no transport', { reason })
     return
   }
-  log('settings_broadcast: sending', { reason })
+  const settings = projectCurrentSettings()
+  log('settings_broadcast: sending', {
+    reason,
+    inbox_auto_settle_days: settings.inboxAutoSettleDays ?? 'absent',
+    setting_count: Object.keys(settings).length,
+  })
   state.remoteTransport.send({
     type: 'desktop_settings_snapshot',
-    settings: projectCurrentSettings(),
+    settings,
     schema: projectableSchema(),
     groups: projectableGroups(),
     // Enterprise policies ride every snapshot from the main-process cache
@@ -145,6 +152,28 @@ export function persistAndBroadcastSettings(
     }
   }
 
+  // Enterprise active-UI lock (single-UI exclusivity): strip locked
+  // `activeUi` writes at the same funnel — both edit surfaces covered.
+  const activeUiPolicy = deriveEnterpriseActiveUiPolicy(enterprisePolicyCache.policy)
+  if (Object.prototype.hasOwnProperty.call(next, 'activeUi') && activeUiPolicy?.locked) {
+    if (next.activeUi !== prev?.activeUi) {
+      log('settings_broadcast: activeUi write rejected by enterprise lock', {
+        attempted: String(next.activeUi),
+        enforced: activeUiPolicy.ui,
+      })
+    }
+    if (prev && Object.prototype.hasOwnProperty.call(prev, 'activeUi')) {
+      next.activeUi = prev.activeUi
+    } else {
+      delete next.activeUi
+    }
+  }
+
+  // Live mode switch: an activeUi change swaps the visible UI without
+  // restarting the owner renderer (active-ui.ts). Detected pre-write so the
+  // comparison uses the caller's prev.
+  const activeUiChanged = prev !== null && next.activeUi !== prev.activeUi
+
   let engineBackedChanged = false
   for (const key of Object.keys(next)) {
     if (!ENGINE_CONFIG_BACKED_KEYS.has(key)) continue
@@ -160,9 +189,11 @@ export function persistAndBroadcastSettings(
 
   writeSettings(next as Record<string, any>)
 
+  if (activeUiChanged) applyActiveUiSwitch()
+
   // Cross-window prefs sync (mirror-store architecture): every changed key
   // is pushed as ion:settings-changed so BOTH renderer preference stores
-  // (overlay owner + ATV mirror) converge, whichever window wrote. The
+  // (overlay owner + Studio mirror) converge, whichever window wrote. The
   // writer's own echo is a no-op — the renderer listener patches only when
   // the in-memory value differs.
   if (prev !== null) {

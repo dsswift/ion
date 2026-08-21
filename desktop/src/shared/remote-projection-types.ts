@@ -60,6 +60,8 @@ export interface ProjectedConversationInstance {
   label: string
   waitingState?: 'plan-ready' | 'question' | null
   isRunning?: boolean
+  /** Engine session is attaching without a foreground run. */
+  isStarting?: boolean
   runningAgentCount?: number
   /** Background bash commands this instance is waiting on (Bash
    *  run_in_background + notify_on_complete). The shell counterpart to
@@ -92,6 +94,8 @@ export interface ProjectedRendererTab {
   customTitle: string | null
   status: string
   workingDirectory: string
+  executionHost?: string
+  executionMachineId?: string
   permissionMode: string
   permissionQueue: ProjectedPermissionEntry[]
   elicitationQueue: ProjectedElicitationEntry[]
@@ -101,9 +105,9 @@ export interface ProjectedRendererTab {
   messageCount: number
   queuedPrompts: string[]
   isTerminalOnly?: boolean
-  /** Input-locked conversation (auto-generated conflict fix or sealed landed worktree). */
+  /** Input-locked conversation (auto-generated conflict fix, sealed landed worktree, or settled). */
   inputLocked?: boolean
-  inputLockReason?: 'automated-workflow' | 'landed-worktree' | null
+  inputLockReason?: 'automated-workflow' | 'landed-worktree' | 'settled' | null
   /** Explicit tab lifecycle role. See TabState.tabRole. */
   tabRole?: 'bench-conversation' | 'conflict-auto-fix' | 'verification-analysis'
   hasEngineExtension?: boolean
@@ -119,9 +123,53 @@ export interface ProjectedRendererTab {
   /** Summed outstanding background bash commands across instances. Drives
    *  the iOS parent tab pill's pink shell dot. Omitted at zero. */
   backgroundShellCount?: number
+  /** Exact engine status signal: background/delivery work still blocks settle. */
+  hasPendingWork?: boolean
   conversationId: string | null
   lastMessageContent: string | null
+  /**
+   * DERIVED inbox sort/age key: newest real user or assistant message only.
+   * Tool rows, status updates, schedules, and webhooks never advance it.
+   */
   lastActivityTs: number
+  /** Last running→idle transition (renderer-observed, restored verbatim). */
+  idleSince: number | null
+  /** Immutable creation timestamp — the "Newest created" inbox sort key. */
+  createdAt?: number
+  /**
+   * Explicit worktree identity when the tab lives in a managed worktree.
+   * Clients group by THIS, never by path-prefix guessing: a worktree that has
+   * not reached the inventory yet (freshly created) still groups under its
+   * source repository, exactly as the desktop navigator does.
+   */
+  worktree?: {
+    worktreePath: string
+    branchName: string
+    sourceBranch: string
+    repoPath: string
+    landedAt?: number
+  }
+  /** Desktop-derived inbox classification (iOS renders, never re-derives). */
+  inboxState: 'active' | 'snoozed' | 'settled'
+  /** Inbox unread derivation (manualUnread || completion > visit). */
+  unread: boolean
+  snoozedUntil: number | null
+  settledAt: number | null
+  /**
+   * False when settling this conversation is TERMINAL — no route back to an
+   * active conversation. Desktop-derived (clients render, never re-derive): a
+   * bench conversation's checkout is rebuilt underneath it and a machine
+   * conversation cannot be typed in, so Un-settle must be absent on every
+   * client. Omitted when the answer is "restorable", which is what a client
+   * assumes for an absent value.
+   */
+  canRestoreSettled?: boolean
+  /** Woke-pill moment (expired snooze not yet visited). */
+  wokeAt: number | null
+  /** Pin metadata and derived background liveness for inbox client parity. */
+  pinnedAt?: number | null
+  pinOrderKey?: string | null
+  backgroundLiveness?: 'working' | 'monitoring'
   convFingerprint: string
   pillColor: string | null
   pillIcon: string | null

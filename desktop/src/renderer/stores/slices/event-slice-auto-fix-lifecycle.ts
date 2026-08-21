@@ -28,8 +28,9 @@
  * changed role, or started a different run — a completion signal from a killed
  * session must not close a tab that has since been reused.
  *
- * MIRROR: never decides. Tab closing is an owner action (same contract as the
- * done-move); the mirror observes the resulting tab removal through sync.
+ * OWNER: normalized-event reducers report captured evidence to the owner action.
+ * Owner evaluates close eligibility after its own committed state. Mirror never
+ * evaluates or closes; forwarded reports make duplicate delivery idempotent.
  */
 import type { State } from '../session-store-types'
 import { isMirrorWindow } from '../../lib/window-role'
@@ -54,6 +55,9 @@ export interface AutoFixCompletionEvidence {
 const CLOSE_DELAY_MS = 1200
 
 const pendingCloses = new Map<string, ReturnType<typeof setTimeout>>()
+/** A close that passed every final guard. Duplicate reports must not start a
+ * second reconciliation, close, or refresh while this close is in progress. */
+const closingTabs = new Set<string>()
 
 export function cancelAutoFixClose(tabId: string): void {
   const t = pendingCloses.get(tabId)
@@ -61,26 +65,40 @@ export function cancelAutoFixClose(tabId: string): void {
     clearTimeout(t)
     pendingCloses.delete(tabId)
   }
+  closingTabs.delete(tabId)
 }
 
-/**
- * Post-commit entry point from the task_complete arm. Decides close vs retain.
- * Also called (without evidence) from the agent_state post-commit hook to
- * retry a close that was blocked by running children.
- */
-export function maybeCloseAutoFixTab(
+/** Post-commit owner entry point from the task_complete report. */
+export function reportAutoFixCompletion(
   tabId: string,
   evidence: AutoFixCompletionEvidence,
   get: () => State,
 ): void {
   if (isMirrorWindow()) {
-    rDebug('auto-fix.lifecycle', 'skipped: mirror window', { tab_id: tabId.slice(0, 8) })
+    rWarn('auto-fix.lifecycle', 'ignored local completion report in mirror', {
+      tab_id: tabId.slice(0, 8),
+    })
     return
   }
+  maybeCloseAutoFixTab(tabId, evidence, get)
+}
+
+/**
+ * Owner-only close evaluation. Called by reportAutoFixCompletion after an
+ * owner reducer commit and by terminal-child retry. Duplicate reports replace
+ * one pending timer, so only one close evaluation can execute for a tab.
+ */
+function maybeCloseAutoFixTab(
+  tabId: string,
+  evidence: AutoFixCompletionEvidence,
+  get: () => State,
+): void {
   const tab = get().tabs.find((t) => t.id === tabId)
   if (!tab || tab.tabRole !== 'conflict-auto-fix') return
 
   if (evidence.reason !== 'normal') {
+    cancelAutoFixClose(tabId)
+    blockedOnChildren.delete(tabId)
     // Absent reason is indistinguishable from an abnormal end; retain. This is
     // exactly why the completion reason is a typed engine field rather than a
     // result-text heuristic: `task_complete` presence alone does not prove the
@@ -91,6 +109,8 @@ export function maybeCloseAutoFixTab(
     return
   }
   if (evidence.hadDenials || evidence.hadPendingAsk) {
+    cancelAutoFixClose(tabId)
+    blockedOnChildren.delete(tabId)
     rInfo('auto-fix.lifecycle', 'retained: run ended asking for input', {
       tab_id: tabId.slice(0, 8), had_denials: evidence.hadDenials, had_pending_ask: evidence.hadPendingAsk,
     })
@@ -122,6 +142,7 @@ function rememberBlockedClose(tabId: string, evidence: AutoFixCompletionEvidence
  * terminal state, retry the close decision.
  */
 export function retryAutoFixCloseOnTerminalChildren(tabId: string, get: () => State): void {
+  if (isMirrorWindow()) return
   const evidence = blockedOnChildren.get(tabId)
   if (!evidence) return
   if (hasRunningAgents(get().conversationPanes, tabId)) return
@@ -162,7 +183,12 @@ async function closeAutoFixTab(
     rDebug('auto-fix.lifecycle', 'close aborted: children resumed', { tab_id: tabId.slice(0, 8) })
     return
   }
+  if (closingTabs.has(tabId)) {
+    rDebug('auto-fix.lifecycle', 'close ignored: close already in progress', { tab_id: tabId.slice(0, 8) })
+    return
+  }
   rInfo('auto-fix.lifecycle', 'closing auto-fix tab after clean completion', { tab_id: tabId.slice(0, 8) })
+  closingTabs.add(tabId)
 
   // Resolve the repo whose worktree surfaces this fix changed, BEFORE closing:
   // `closeTab` removes the tab from `tabs`, so reading it afterwards yields
@@ -180,6 +206,7 @@ async function closeAutoFixTab(
   }
 
   get().closeTab(tabId)
+  closingTabs.delete(tabId)
 
   // The resolution just changed what the worktree row says: the conflict is
   // gone, the operation state cleared, and the bench member's merge verdict

@@ -109,7 +109,7 @@ vi.mock('../settings-store', () => ({
 // Import after mocks are established
 // ---------------------------------------------------------------------------
 
-import { getAccessToken, getSignedInIdentity, signIn, signOut } from '../oauth/entra-auth'
+import { getAccessToken, getOperatorIdentityState, getSignedInIdentity, signIn, signOut } from '../oauth/entra-auth'
 import {
   setEgressUser,
   getEgressUser,
@@ -185,6 +185,21 @@ describe('getSignedInIdentity', () => {
     })
     const identity = await getSignedInIdentity()
     expect(identity!.user).toBe('oid-fallback-5678')
+  })
+})
+
+describe('getOperatorIdentityState', () => {
+  it('maps the engine requirement independently from current sign-in', async () => {
+    queueResponse('oidc_identity', {
+      ok: true,
+      data: { signedIn: false, requireOperatorIdentity: true },
+    })
+    expect(await getOperatorIdentityState()).toEqual({ required: true, signedIn: false, identity: null })
+  })
+
+  it('rejects an unavailable identity snapshot instead of bypassing the gate', async () => {
+    queueResponse('oidc_identity', { ok: false, error: 'engine unavailable' })
+    await expect(getOperatorIdentityState()).rejects.toThrow('engine unavailable')
   })
 })
 

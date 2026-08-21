@@ -86,6 +86,19 @@ afterEach(() => {
 })
 
 describe('ConflictsDialog', () => {
+
+  it('shows loading state until operation state returns, then renders its conflicted file', async () => {
+    let resolveState!: (value: Record<string, unknown>) => void
+    gitOpState.mockReturnValue(new Promise<Record<string, unknown>>((resolve) => { resolveState = resolve }))
+    await render()
+    expect(host.querySelector('[data-testid="conflict-state-loading"]')).not.toBeNull()
+    expect(host.querySelector('[data-testid="conflict-row-engine/internal/backend/runloop.go"]')).toBeNull()
+
+    await act(async () => { resolveState(opState([{ path: 'engine/internal/backend/runloop.go', shape: 'both modified' }])) })
+    expect(host.querySelector('[data-testid="conflict-state-loading"]')).toBeNull()
+    expect(host.querySelector('[data-testid="conflict-row-engine/internal/backend/runloop.go"]')).not.toBeNull()
+  })
+
   it('renders one row per conflicted file with its shape', async () => {
     gitOpState.mockResolvedValue(opState([
       { path: 'shared.txt', shape: 'both modified' },

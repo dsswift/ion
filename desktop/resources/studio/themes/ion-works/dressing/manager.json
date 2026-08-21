@@ -1,0 +1,45 @@
+{
+  "zone": "manager",
+  "floor": "plank-birch",
+  "required": [
+    {
+      "id": "exec-desk",
+      "count": 1
+    },
+    {
+      "id": "exec-chair",
+      "count": 1
+    },
+    {
+      "id": "pc",
+      "count": 1
+    },
+    {
+      "id": "large-painting",
+      "count": 1
+    }
+  ],
+  "optional": [
+    {
+      "id": "plant-large",
+      "weight": 2,
+      "max": 1
+    },
+    {
+      "id": "trophy-shelf",
+      "weight": 2,
+      "max": 1
+    },
+    {
+      "id": "floor-lamp",
+      "weight": 1,
+      "max": 1
+    },
+    {
+      "category": "decor",
+      "weight": 1,
+      "max": 2
+    }
+  ],
+  "density": 0.12
+}

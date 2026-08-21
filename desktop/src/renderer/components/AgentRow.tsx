@@ -2,15 +2,14 @@ import React from 'react'
 import { CaretRight } from '@phosphor-icons/react'
 import { meta, getAgentColor, getDispatches, mostRecentDispatch } from './agent-panel-helpers'
 import { resolveAgentDotModel } from '../lib/agent-dot-model'
-import { StatusDotStack } from './TabStripStatusDot'
+import { StatusDot, StatusDotStack } from './TabStripStatusDot'
 import { DurationDisplay } from './DurationDisplay'
 import type { useColors } from '../theme'
 import type { AgentStateUpdate } from '../../shared/types'
 
 interface Props {
   agent: AgentStateUpdate
-  /** The full, unfiltered agents array — used to derive the yellow
-   *  "waiting on children" state via childAgentsOf. */
+  /** Full tree retains legacy descendant fallback for older dispatch metadata. */
   allAgents: AgentStateUpdate[]
   colors: ReturnType<typeof useColors>
   /** Left indent (px) for a nested dispatch, 0 for root-level rows. */
@@ -118,14 +117,14 @@ export function AgentRow({
               size={8}
             />
           ) : (
-            <span
-              className={`rounded-full flex-shrink-0${dotModel.dot.pulse ? ' animate-pulse-dot' : ''}`}
-              style={{
-                width: 8,
-                height: 8,
-                background: dotModel.dot.bg,
-                ...(dotModel.dot.glowColor ? { boxShadow: `0 0 6px 2px ${dotModel.dot.glowColor}` } : {}),
+            <StatusDot
+              derived={{
+                bg: dotModel.dot.bg,
+                pulse: dotModel.dot.pulse,
+                glow: Boolean(dotModel.dot.glowColor),
+                glowColor: dotModel.dot.glowColor,
               }}
+              size={8}
             />
           )}
           {/* Duration (live-ticking while running) */}

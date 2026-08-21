@@ -2,6 +2,7 @@ import type { AgentStateUpdate } from '../../shared/types'
 import type { DispatchInfo } from '../../shared/types-engine'
 import type { RankedStatusDot, StatusDotColors } from './agent-helpers'
 import {
+  activityTierForDispatch,
   getDispatches,
   hasLiveDescendantOfDispatch,
   mostRecentDispatch,
@@ -44,9 +45,10 @@ export type AgentDotModel =
  *     over pulsing yellow, while "currently working, history clean" reads as
  *     orange over green.
  *
- * Each dispatch is evaluated with `hasLiveDescendantOfDispatch`, a recursive
- * walk keyed on dispatch ID, so a descendant at any depth counts and a parked
- * (`suspended`) descendant counts as alive.
+ * Each dispatch derives its tier from durable dispatch metadata: running is
+ * foreground, `waitingOn: 'children'` is child work, `waitingOn: 'shell'` is
+ * shell work, and terminal entries are historical. No inferred descendant walk
+ * can confuse sibling history with what this dispatch is waiting on.
  *
  * ── Collapse rule ───────────────────────────────────────────────────────────
  *
@@ -60,16 +62,20 @@ export type AgentDotModel =
  * An agent carrying NO dispatches at all (an extension-roster pill) falls back
  * to its own status, which is all the information such a row has.
  */
+export function resolveAgentDotModel(agent: AgentStateUpdate, colors: StatusDotColors): AgentDotModel
+export function resolveAgentDotModel(agent: AgentStateUpdate, allAgents: AgentStateUpdate[], colors: StatusDotColors): AgentDotModel
 export function resolveAgentDotModel(
   agent: AgentStateUpdate,
-  allAgents: AgentStateUpdate[],
-  colors: StatusDotColors,
+  allAgentsOrColors: AgentStateUpdate[] | StatusDotColors,
+  legacyColors?: StatusDotColors,
 ): AgentDotModel {
+  const allAgents = Array.isArray(allAgentsOrColors) ? allAgentsOrColors : undefined
+  const colors = legacyColors ?? allAgentsOrColors as StatusDotColors
   const dispatches = getDispatches(agent)
 
   // Roster pill / pre-dispatch row: nothing but the agent's own status.
   if (dispatches.length === 0) {
-    return { kind: 'single', dot: resolveDotForStatus(agent.status, colors, false) }
+    return { kind: 'single', dot: resolveDotForStatus(agent.status, colors) }
   }
 
   const recent = mostRecentDispatch(dispatches)
@@ -94,19 +100,37 @@ export function resolveAgentDotModel(
 /**
  * Dot for a single dispatch of an agent.
  *
- * The dispatch's own recorded status is the subject when it has one; a member
- * with no status yet (freshly minted, or a legacy row) falls back to the
- * agent's status so the dot still says something true. Liveness is resolved
- * from the dispatch's own subtree, which is what lets one dispatch read green
- * while a sibling reads yellow.
+ * Dispatch status and `waitingOn` are durable dispatch fields. Agent status is
+ * fallback only for legacy entries without a dispatch status.
  */
-function resolveDispatchDot(
+export function resolveDispatchDot(
   agent: AgentStateUpdate,
   dispatch: DispatchInfo | undefined,
-  allAgents: AgentStateUpdate[],
   colors: StatusDotColors,
+): RankedStatusDot
+export function resolveDispatchDot(
+  agent: AgentStateUpdate,
+  dispatch: DispatchInfo | undefined,
+  allAgents: AgentStateUpdate[] | undefined,
+  colors: StatusDotColors,
+): RankedStatusDot
+export function resolveDispatchDot(
+  agent: AgentStateUpdate,
+  dispatch: DispatchInfo | undefined,
+  allAgentsOrColors: AgentStateUpdate[] | StatusDotColors | undefined,
+  legacyColors?: StatusDotColors,
 ): RankedStatusDot {
+  const allAgents = Array.isArray(allAgentsOrColors) ? allAgentsOrColors : undefined
+  const colors = legacyColors ?? allAgentsOrColors as StatusDotColors
   const status = dispatch?.status || agent.status
-  const live = dispatch ? hasLiveDescendantOfDispatch(allAgents, dispatch.id) : false
-  return resolveDotForStatus(status, colors, live)
+  const tier = activityTierForDispatch(dispatch)
+  const waitingOn = tier === 'children'
+    ? 'children'
+    : tier === 'shell'
+      ? 'shell'
+      : dispatch?.waitingOn
+  const inferredChildren = allAgents && dispatch
+    ? hasLiveDescendantOfDispatch(allAgents, dispatch.id)
+    : false
+  return resolveDotForStatus(status, colors, waitingOn ?? (inferredChildren ? 'children' : undefined))
 }

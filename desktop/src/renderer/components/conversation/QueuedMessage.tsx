@@ -35,7 +35,7 @@ export const QueuedMessage = React.memo(function QueuedMessage({ content, onEdit
       <div
         className="leading-[1.5] px-3 py-1.5 max-w-[85%]"
         style={{
-          fontSize: 'var(--ion-conv-font-size, 13px)',
+          fontSize: 'var(--ion-data-font-size, 13px)',
           background: colors.userBubble,
           color: colors.userBubbleText,
           border: `1px dashed ${colors.userBubbleBorder}`,

@@ -66,16 +66,16 @@ describe('resolveSlashPill — engine metadata (slashCommand)', () => {
     expect(pill).toEqual({ command: '/clear', args: '', modelDisplay: null })
   })
 
-  it('includes model provenance when slashModelAlias and slashModelEffective are set', () => {
-    const m = msg({ slashCommand: '/diagram', slashArgs: 'auth flow', slashModelAlias: 'Standard', slashModelEffective: 'GPT-5.6 Terra' })
+  it('includes command tier and resolved model provenance', () => {
+    const m = msg({ slashCommand: '/diagram', slashArgs: 'auth flow', slashModelAlias: 'fast', slashModelEffective: 'dci-marketing/gpt-5.6-luna' })
     const pill = resolveSlashPill(m, m.content)
-    expect(pill).toEqual({ command: '/diagram', args: 'auth flow', modelDisplay: 'Standard · GPT-5.6 Terra' })
+    expect(pill).toEqual({ command: '/diagram', args: 'auth flow', modelDisplay: 'Fast · GPT 5.6 Luna' })
   })
 
-  it('includes model provenance with tier only', () => {
+  it('hides an unverified selector without an effective model', () => {
     const m = msg({ slashCommand: '/clear', slashModelAlias: 'Premium' })
     const pill = resolveSlashPill(m, m.content)
-    expect(pill).toEqual({ command: '/clear', args: '', modelDisplay: 'Premium' })
+    expect(pill).toEqual({ command: '/clear', args: '', modelDisplay: null })
   })
 
   it('includes model provenance with model only', () => {
@@ -90,12 +90,16 @@ describe('formatSlashModelDisplay', () => {
     expect(formatSlashModelDisplay('standard', 'dci-marketing/gpt-5.6-terra')).toBe('Standard · GPT 5.6 Terra')
   })
 
-  it('returns "tier · model" when both present', () => {
+  it('renders a direct command model once', () => {
+    expect(formatSlashModelDisplay('claude-opus-5', 'claude-opus-5')).toBe('Opus 5')
+  })
+
+  it('returns tier and model when both present', () => {
     expect(formatSlashModelDisplay('Standard', 'GPT-5.6 Terra')).toBe('Standard · GPT-5.6 Terra')
   })
 
-  it('returns tier alone when model missing', () => {
-    expect(formatSlashModelDisplay('Premium', undefined)).toBe('Premium')
+  it('returns null for a selector without a model', () => {
+    expect(formatSlashModelDisplay('Premium', undefined)).toBeNull()
   })
 
   it('returns model alone when tier missing', () => {

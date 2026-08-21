@@ -13,7 +13,7 @@
       "resolvedSha": "7b4d5e4f6a8b9c0d1e2f3a4b5c6d7e8f90123456",
       "resolvedAt": 1785759167866,
       "verified": true,
-      "rationale": "Kept HEAD's refactored structure (the buildWorktreeRowActions factory plus the extracted WorktreeRowMenuDialogs and WorktreeRenameEditor components) and layered ion-1880ac99's useAnchoredPopover and zoomViewport additions on top. The two sides are the same file taken in different directions: HEAD extracted the dialogs, 1880ac99 added measured placement. Neither supersedes the other, so both survive."
+      "rationale": "Kept HEAD's refactored structure (the useWorktreeRowMenuVerbs hook plus the extracted WorktreeRowMenuDialogs and WorktreeRenameEditor components) and layered ion-1880ac99's useAnchoredPopover and zoomViewport additions on top. The two sides are the same file taken in different directions: HEAD extracted the dialogs, 1880ac99 added measured placement. Neither supersedes the other, so both survive."
     },
     {
       "repoPath": "/Users/dev/source/project",

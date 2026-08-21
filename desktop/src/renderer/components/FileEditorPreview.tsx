@@ -3,7 +3,6 @@ import Markdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useColors } from '../theme'
-import { usePreferencesStore } from '../preferences'
 import { useSessionStore, FileEditorTab } from '../stores/sessionStore'
 import { EDITABLE_EXTS } from '../hooks/useNavigableLinks'
 import { REMARK_PLUGINS } from './FileEditorShared'
@@ -66,7 +65,6 @@ function splitFrontmatter(content: string): { frontmatterRaw: string | null; bod
  */
 export function FileEditorPreview({ dir, tabId, activeFile }: FileEditorPreviewProps) {
   const colors = useColors()
-  const editorFontSize = usePreferencesStore((s) => s.editorFontSize)
 
   const baseDir = useMemo(() => {
     return activeFile?.filePath
@@ -125,7 +123,7 @@ export function FileEditorPreview({ dir, tabId, activeFile }: FileEditorPreviewP
               margin: 0,
               padding: '0.75em 1em',
               borderRadius: 10,
-              fontSize: editorFontSize,
+              fontSize: 'var(--ion-data-code-font-size, 13px)',
               border: `1px solid ${colors.containerBorder}`,
             }}
           >
@@ -150,7 +148,7 @@ export function FileEditorPreview({ dir, tabId, activeFile }: FileEditorPreviewP
         />
       )
     },
-  }), [colors, baseDir, dir, tabId, editorFontSize])
+  }), [colors, baseDir, dir, tabId])
 
   return (
     <div
@@ -189,7 +187,7 @@ export function FileEditorPreview({ dir, tabId, activeFile }: FileEditorPreviewP
               padding: '8px 12px',
               borderTop: `1px solid ${colors.containerBorder}`,
               fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-              fontSize: 12,
+              fontSize: 'var(--ion-data-code-font-size, 13px)',
               lineHeight: 1.5,
               color: colors.textSecondary,
               whiteSpace: 'pre-wrap',
@@ -200,7 +198,7 @@ export function FileEditorPreview({ dir, tabId, activeFile }: FileEditorPreviewP
           </pre>
         </details>
       )}
-      <div className="leading-[1.6] prose-cloud" style={{ color: colors.textSecondary, fontSize: `${editorFontSize}px` }}>
+      <div className="leading-[1.6] prose-cloud" style={{ color: colors.textSecondary, fontSize: 'var(--ion-data-font-size, 13px)' }}>
         <Markdown remarkPlugins={REMARK_PLUGINS} components={markdownComponents}>
           {body}
         </Markdown>

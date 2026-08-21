@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useEdgeResize, type ResizeGeometry } from './useEdgeResize'
+import { zoomDelta, zoomViewport } from '../viewport-zoom'
 
 const MIN_WIDTH = 400
 const MIN_HEIGHT = 280
@@ -12,12 +13,11 @@ const MIN_HEIGHT = 280
  * oversized or stranded on a smaller display.
  */
 function clampToViewport(geo: ResizeGeometry): ResizeGeometry {
-  const vw = window.innerWidth
-  const vh = window.innerHeight
-  const w = Math.max(MIN_WIDTH, Math.min(geo.w, vw))
-  const h = Math.max(MIN_HEIGHT, Math.min(geo.h, vh))
-  const x = Math.max(0, Math.min(geo.x, vw - w))
-  const y = Math.max(0, Math.min(geo.y, vh - h))
+  const viewport = zoomViewport()
+  const w = Math.max(MIN_WIDTH, Math.min(geo.w, viewport.width))
+  const h = Math.max(MIN_HEIGHT, Math.min(geo.h, viewport.height))
+  const x = Math.max(0, Math.min(geo.x, viewport.width - w))
+  const y = Math.max(0, Math.min(geo.y, viewport.height - h))
   return { x, y, w, h }
 }
 
@@ -93,10 +93,13 @@ export function useFileEditorPanel(): UseFileEditorPanelResult {
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (dragRef.current) {
-        const dx = e.clientX - dragRef.current.startX
-        const dy = e.clientY - dragRef.current.startY
-        const newX = Math.max(-200, Math.min(window.innerWidth - 100, dragRef.current.originX + dx))
-        const newY = Math.max(0, Math.min(window.innerHeight - 32, dragRef.current.originY + dy))
+        const delta = zoomDelta({
+          x: e.clientX - dragRef.current.startX,
+          y: e.clientY - dragRef.current.startY,
+        })
+        const viewport = zoomViewport()
+        const newX = Math.max(-200, Math.min(viewport.width - 100, dragRef.current.originX + delta.x))
+        const newY = Math.max(0, Math.min(viewport.height - 32, dragRef.current.originY + delta.y))
         posRef.current = { x: newX, y: newY }
         // Direct DOM mutation — no React re-render, no layout thrash
         if (panelRef.current) {

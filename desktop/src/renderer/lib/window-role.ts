@@ -4,17 +4,23 @@
  * The desktop has two renderer windows built from two entries:
  *   - index.html → the overlay (the session-store OWNER: persists tabs,
  *     answers snapshot polls, runs the prompt pipeline)
- *   - atv.html → the ATV shell (a session-store MIRROR: consumes the same
- *     event stream, forwards owner-only mutations, never persists)
+ *   - studio.html → the Ion Studio shell (a session-store MIRROR: consumes
+ *     the same event stream, forwards owner-only mutations, never persists)
  *
  * Detection is by entry file, not a boot flag, so there is no init-order
  * dependency: any module (including sessionStore at import time) can ask.
- * See docs/architecture/adr on the ATV shell mirror store for the contract.
+ * See docs/architecture/adr on the Studio shell mirror store for the contract.
  */
-export function isMirrorWindow(): boolean {
+export type WindowRole = 'overlay' | 'studio'
+
+export function windowRole(): WindowRole {
   try {
-    return typeof window !== 'undefined' && window.location.pathname.endsWith('atv.html')
+    return typeof window !== 'undefined' && window.location.pathname.endsWith('studio.html') ? 'studio' : 'overlay'
   } catch {
-    return false
+    return 'overlay'
   }
+}
+
+export function isMirrorWindow(): boolean {
+  return windowRole() === 'studio'
 }

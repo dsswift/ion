@@ -1,170 +1,98 @@
-/**
- * tab-slice-next-active — pure next-active selection unit tests.
- *
- * Pins the group-aware selection rules pickNextActiveTab follows when closeTab
- * needs to choose which remaining tab to activate:
- *   - in-group sibling preferred (the tab after the closed one, else before)
- *   - cross-group fallback only when the closed tab's group is emptied
- *   - flat ('off') mode behaves as nearest-by-flat-index
- *   - single remaining tab is selected
- *   - closing the only tab returns null (caller builds a fresh blank tab)
- */
+import { describe, expect, it } from 'vitest'
+import { pickNextActiveTab } from '../tab-slice-next-active'
+import type { TabState, WorktreeInfo } from '../../../../shared/types'
 
-import { describe, it, expect } from 'vitest'
-import { pickNextActiveTab, type NextActiveGroupContext } from '../tab-slice-next-active'
-import type { TabState, TabGroup } from '../../../../shared/types'
+function worktree(worktreePath: string, repoPath = '/repo', sourceBranch = 'main'): WorktreeInfo {
+  return { worktreePath, repoPath, sourceBranch, branchName: `wt/${worktreePath.slice(-1)}` }
+}
 
-// Minimal TabState factory — only the fields the helper reads (id,
-// workingDirectory, groupId) carry meaning; the rest satisfy the type.
-function makeTab(over: Partial<TabState> & { id: string }): TabState {
+function tab(over: Omit<Partial<TabState>, 'id'> & { id: string }): TabState {
   return {
-    title: 'Tab',
-    customTitle: null,
-    workingDirectory: '/home/user',
-    hasChosenDirectory: true,
-    status: 'idle',
-    activeRequestId: null,
-    lastEventAt: null,
-    hasUnread: false,
-    currentActivity: '',
-    permissionQueue: [],
-    permissionDenied: null,
-    attachments: [],
-    draftInput: '',
-    messages: [],
-    queuedPrompts: [],
-    pillColor: null,
-    pillIcon: null,
-    forkedFromSessionId: null,
+    workingDirectory: '/repo',
     worktree: null,
-    pendingWorktreeSetup: false,
-    groupId: null,
-    groupPinned: false,
-    bashExecuting: false,
-    bashExecId: null,
-    historicalSessionIds: [],
-    lastKnownSessionId: null,
-    additionalDirs: [],
-    permissionMode: 'auto',
-    planFilePath: null,
-    bashResults: [],
-    contextTokens: null,
-    contextPercent: null,
-    contextWindow: null,
-    isCompacting: false,
     isTerminalOnly: false,
-    sessionModel: null,
-    modelOverride: null,
-    sessionTools: [],
-    sessionMcpServers: [],
-    sessionSkills: [],
-    sessionVersion: null,
-    conversationId: null,
-    lastResult: null,
-    lastMessagePreview: null,
+    lastVisitedAt: null,
+    lastActivityAt: null,
     ...over,
   } as TabState
 }
 
-function group(id: string, isDefault = false): TabGroup {
-  return { id, label: id, isDefault, order: 0, collapsed: false }
+function selected(closingId: string, tabs: TabState[]) {
+  return pickNextActiveTab(closingId, tabs)
 }
 
-const MANUAL_GROUPS: TabGroup[] = [group('planning', true), group('inprogress')]
-const manualCtx: NextActiveGroupContext = { mode: 'manual', groups: MANUAL_GROUPS }
-const autoCtx: NextActiveGroupContext = { mode: 'auto', groups: [] }
-const offCtx: NextActiveGroupContext = { mode: 'off', groups: [] }
-
-describe('pickNextActiveTab — manual mode', () => {
-  it('prefers the in-group sibling AFTER the closed tab', () => {
-    const tabs = [
-      makeTab({ id: 'a', groupId: 'planning' }),
-      makeTab({ id: 'b', groupId: 'planning' }), // closed
-      makeTab({ id: 'c', groupId: 'planning' }), // expected (after)
-      makeTab({ id: 'd', groupId: 'inprogress' }),
-    ]
-    expect(pickNextActiveTab('b', tabs, manualCtx)).toBe('c')
+describe('pickNextActiveTab', () => {
+  it('prefers most recently visited conversation in same worktree', () => {
+    const closing = tab({ id: 'close', workingDirectory: '/wt/a', worktree: worktree('/wt/a') })
+    const older = tab({ id: 'older', workingDirectory: '/wt/a', worktree: worktree('/wt/a'), lastVisitedAt: 10 })
+    const newest = tab({ id: 'newest', workingDirectory: '/wt/a', worktree: worktree('/wt/a'), lastVisitedAt: 20 })
+    const result = selected('close', [closing, older, newest])
+    expect(result).toMatchObject({ tabId: 'newest', tier: 'same-worktree' })
   })
 
-  it('falls to the in-group sibling BEFORE when none follows', () => {
-    const tabs = [
-      makeTab({ id: 'a', groupId: 'planning' }), // expected (before)
-      makeTab({ id: 'b', groupId: 'planning' }), // closed (last in group)
-      makeTab({ id: 'c', groupId: 'inprogress' }),
-    ]
-    expect(pickNextActiveTab('b', tabs, manualCtx)).toBe('a')
+  it('prefers same repo and source branch before same base from another source', () => {
+    const closing = tab({ id: 'close', workingDirectory: '/wt/a', worktree: worktree('/wt/a', '/repo', 'main') })
+    const sameSource = tab({ id: 'same-source', workingDirectory: '/wt/b', worktree: worktree('/wt/b', '/repo', 'main'), lastVisitedAt: 1 })
+    const otherSource = tab({ id: 'other-source', workingDirectory: '/wt/c', worktree: worktree('/wt/c', '/repo', 'feature'), lastVisitedAt: 99 })
+    expect(selected('close', [closing, otherSource, sameSource])).toMatchObject({ tabId: 'same-source', tier: 'same-worktree-source' })
   })
 
-  it('falls back across groups ONLY when the closed tab is the last in its group', () => {
-    const tabs = [
-      makeTab({ id: 'a', groupId: 'inprogress' }),
-      makeTab({ id: 'b', groupId: 'planning' }), // closed — sole planning tab
-      makeTab({ id: 'c', groupId: 'inprogress' }),
-    ]
-    // Group 'planning' is emptied → nearest-by-flat-index. closedIndex=1,
-    // remaining=[a,c]; min(1, 1)=1 → 'c'.
-    expect(pickNextActiveTab('b', tabs, manualCtx)).toBe('c')
+  it('uses same base directory before unrelated conversation', () => {
+    const closing = tab({ id: 'close', workingDirectory: '/wt/a', worktree: worktree('/wt/a', '/repo') })
+    const base = tab({ id: 'base', workingDirectory: '/repo', lastVisitedAt: 1 })
+    const elsewhere = tab({ id: 'elsewhere', workingDirectory: '/other', lastVisitedAt: 99 })
+    expect(selected('close', [closing, elsewhere, base])).toMatchObject({ tabId: 'base', tier: 'same-base-directory' })
   })
 
-  it('treats an unknown/absent groupId as the default group', () => {
-    const tabs = [
-      makeTab({ id: 'a', groupId: null }),        // → default ('planning')
-      makeTab({ id: 'b', groupId: 'planning' }),  // closed
-      makeTab({ id: 'c', groupId: null }),        // → default ('planning'), expected (after)
-    ]
-    expect(pickNextActiveTab('b', tabs, manualCtx)).toBe('c')
-  })
-})
-
-describe('pickNextActiveTab — auto mode (by workingDirectory)', () => {
-  it('prefers the same-directory sibling after the closed tab', () => {
-    const tabs = [
-      makeTab({ id: 'a', workingDirectory: '/repo/x' }),
-      makeTab({ id: 'b', workingDirectory: '/repo/x' }), // closed
-      makeTab({ id: 'c', workingDirectory: '/repo/x' }), // expected
-      makeTab({ id: 'd', workingDirectory: '/repo/y' }),
-    ]
-    expect(pickNextActiveTab('b', tabs, autoCtx)).toBe('c')
+  it('keeps nested base directories in same locality chain', () => {
+    const closing = tab({ id: 'close', workingDirectory: '/repo/packages/app' })
+    const base = tab({ id: 'base', workingDirectory: '/repo', lastVisitedAt: 1 })
+    const elsewhere = tab({ id: 'elsewhere', workingDirectory: '/other', lastVisitedAt: 99 })
+    expect(selected('close', [closing, elsewhere, base])).toMatchObject({ tabId: 'base', tier: 'same-base-directory' })
   })
 
-  it('falls back across directories when the directory is emptied', () => {
-    const tabs = [
-      makeTab({ id: 'a', workingDirectory: '/repo/y' }),
-      makeTab({ id: 'b', workingDirectory: '/repo/x' }), // closed — sole /repo/x tab
-      makeTab({ id: 'c', workingDirectory: '/repo/y' }),
-    ]
-    // closedIndex=1, remaining=[a,c], min(1,1)=1 → 'c'.
-    expect(pickNextActiveTab('b', tabs, autoCtx)).toBe('c')
-  })
-})
-
-describe('pickNextActiveTab — off mode (flat)', () => {
-  it('selects nearest-by-flat-index', () => {
-    const tabs = [makeTab({ id: 'a' }), makeTab({ id: 'b' }), makeTab({ id: 'c' })]
-    // close 'b': closedIndex=1, remaining=[a,c], min(1,1)=1 → 'c'.
-    expect(pickNextActiveTab('b', tabs, offCtx)).toBe('c')
+  it('falls outside base directory only after local buckets empty', () => {
+    const closing = tab({ id: 'close', workingDirectory: '/repo' })
+    const elsewhere = tab({ id: 'elsewhere', workingDirectory: '/other', lastVisitedAt: 99 })
+    expect(selected('close', [closing, elsewhere])).toMatchObject({ tabId: 'elsewhere', tier: 'outside-base-directory' })
   })
 
-  it('clamps to the last remaining tab when closing the final tab', () => {
-    const tabs = [makeTab({ id: 'a' }), makeTab({ id: 'b' })]
-    // close 'b': closedIndex=1, remaining=[a], min(1,0)=0 → 'a'.
-    expect(pickNextActiveTab('b', tabs, offCtx)).toBe('a')
-  })
-})
-
-describe('pickNextActiveTab — degenerate cases', () => {
-  it('selects the single remaining tab', () => {
-    const tabs = [makeTab({ id: 'a', groupId: 'planning' }), makeTab({ id: 'b', groupId: 'inprogress' })]
-    expect(pickNextActiveTab('a', tabs, manualCtx)).toBe('b')
+  it('uses activity only when neither candidate has been visited', () => {
+    const closing = tab({ id: 'close' })
+    const old = tab({ id: 'old', lastActivityAt: 20 })
+    const recent = tab({ id: 'recent', lastActivityAt: 30 })
+    expect(selected('close', [closing, old, recent])).toMatchObject({ tabId: 'recent' })
   })
 
-  it('returns null when closing the only tab', () => {
-    const tabs = [makeTab({ id: 'a', groupId: 'planning' })]
-    expect(pickNextActiveTab('a', tabs, manualCtx)).toBeNull()
+  it('always favors visit timestamp over activity timestamp', () => {
+    const closing = tab({ id: 'close' })
+    const visited = tab({ id: 'visited', lastVisitedAt: 10, lastActivityAt: 1 })
+    const activeOnly = tab({ id: 'active-only', lastActivityAt: 100 })
+    expect(selected('close', [closing, activeOnly, visited])).toMatchObject({ tabId: 'visited' })
   })
 
-  it('returns null when the closing id is not present', () => {
-    const tabs = [makeTab({ id: 'a' }), makeTab({ id: 'b' })]
-    expect(pickNextActiveTab('zzz', tabs, offCtx)).toBeNull()
+  it('uses original tab order for exact recency ties', () => {
+    const closing = tab({ id: 'close' })
+    const first = tab({ id: 'first', lastVisitedAt: 10 })
+    const second = tab({ id: 'second', lastVisitedAt: 10 })
+    expect(selected('close', [closing, first, second])).toMatchObject({ tabId: 'first' })
+  })
+
+  it('does not let newer terminal displace a conversation', () => {
+    const closing = tab({ id: 'close' })
+    const conversation = tab({ id: 'conversation', lastVisitedAt: 1 })
+    const terminal = tab({ id: 'terminal', isTerminalOnly: true, lastVisitedAt: 99 })
+    expect(selected('close', [closing, terminal, conversation])).toMatchObject({ tabId: 'conversation' })
+  })
+
+  it('falls back to most recently visited terminal once conversations are gone', () => {
+    const closing = tab({ id: 'close' })
+    const older = tab({ id: 'older', isTerminalOnly: true, lastVisitedAt: 1 })
+    const newest = tab({ id: 'newest', isTerminalOnly: true, lastVisitedAt: 2 })
+    expect(selected('close', [closing, older, newest])).toMatchObject({ tabId: 'newest', tier: 'terminal-fallback' })
+  })
+
+  it('returns null after final tab closes', () => {
+    expect(selected('close', [tab({ id: 'close' })])).toBeNull()
   })
 })

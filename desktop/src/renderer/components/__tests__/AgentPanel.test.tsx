@@ -249,6 +249,33 @@ describe('AgentPanel scoping and drill-down', () => {
     container.remove()
   })
 
+  it('renders rows foreground, child, shell, then historical in DOM order', async () => {
+    const row = (name: string, status: string, waitingOn?: 'children' | 'shell') => ({
+      name,
+      status: 'done',
+      metadata: {
+        displayName: name,
+        visibility: 'always',
+        dispatches: [{ id: name, task: '', model: '', conversationId: '', status, waitingOn }],
+      },
+    } as unknown as AgentStateUpdate)
+    const { container, root } = render(<div />)
+    await mount(container, root, <AgentPanel agents={[
+      row('Historical', 'done'),
+      row('Shell', 'suspended', 'shell'),
+      row('Children', 'suspended', 'children'),
+      row('Foreground', 'running'),
+    ]} />)
+
+    const labels = Array.from(container.querySelectorAll('span'))
+      .map((span) => span.textContent?.trim())
+      .filter((text): text is string => ['Foreground', 'Children', 'Shell', 'Historical'].includes(text ?? ''))
+    expect(labels).toEqual(['Foreground', 'Children', 'Shell', 'Historical'])
+
+    await act(async () => { root.unmount() })
+    container.remove()
+  })
+
   it('same-name dispatches render as distinct rows with independent expand state (keyed by dispatch id)', async () => {
     // Two agent pills with the same name but different dispatch IDs.
     // Before this fix, both shared the same Map key (name) so expand/select/popup

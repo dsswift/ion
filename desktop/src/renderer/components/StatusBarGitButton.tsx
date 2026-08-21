@@ -4,6 +4,7 @@ import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { useRepoState } from '../stores/git'
+import { contentRouter } from '../lib/file-open-router'
 
 /* ─── Git Branch Button (right side of StatusBar) ─── */
 
@@ -21,7 +22,11 @@ export function GitButton({ directory }: { directory: string }) {
 
   return (
     <button
-      onClick={toggleGitPanel}
+      onClick={() => {
+        const router = contentRouter()
+        if (router?.openGitPanel) router.openGitPanel()
+        else toggleGitPanel()
+      }}
       {...handlers}
       className="flex items-center gap-1 rounded-full px-1.5 py-0.5 ion-focusable"
       style={{

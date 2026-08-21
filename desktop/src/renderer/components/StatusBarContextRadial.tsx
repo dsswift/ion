@@ -32,7 +32,7 @@ export function ContextRadial({ pct, size = 16 }: { pct: number; size?: number }
   // Subscribed rather than read once at render: a plain `.matches` read is not
   // reactive, so toggling the OS accessibility setting mid-session would only
   // be honoured on the next unrelated re-render. Both windows mount this (the
-  // ATV shell mounts the real StatusBar), so the stale value would persist in
+  // Studio shell mounts the real StatusBar), so the stale value would persist in
   // whichever window happened not to re-render.
   const [reducedMotion, setReducedMotion] = useState(() =>
     typeof window !== 'undefined'

@@ -176,6 +176,28 @@ export async function runGit(
   }
 }
 
+/**
+ * Run a read-only Git command that may signal a meaningful result with exit
+ * code 1. `git diff --no-index` does this whenever files differ, despite
+ * producing a valid patch on stdout.
+ */
+export async function runGitAllowingDiffExit(
+  directory: string,
+  args: string[],
+): Promise<string> {
+  try {
+    const { stdout } = await withGitSlot(() => gitExec('git', withNoOptionalLocks(args), {
+      cwd: directory,
+      maxBuffer: 10 * 1024 * 1024,
+    }))
+    return stdout
+  } catch (err: unknown) {
+    const failure = err as { code?: number; stdout?: unknown; stderr?: unknown; message?: unknown }
+    if (failure.code === 1 && typeof failure.stdout === 'string') return failure.stdout
+    throw new Error(typeof failure.stderr === 'string' ? failure.stderr.trim() : String(failure.message ?? err))
+  }
+}
+
 export async function cleanOrphanedWorktrees(): Promise<void> {
   const worktreeDir = join(homedir(), '.ion', 'worktrees')
   if (!existsSync(worktreeDir)) return

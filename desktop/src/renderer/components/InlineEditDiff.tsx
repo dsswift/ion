@@ -16,9 +16,9 @@ export function InlineEditDiff({ oldString, newString }: InlineEditDiffProps) {
       className="leading-[1.5] rounded"
       style={{
         margin: '4px 0 0 0',
-        fontFamily: 'monospace',
+        fontFamily: 'var(--ion-font-mono, monospace)',
         border: `1px solid ${colors.toolBorder}`,
-        fontSize: 'var(--ion-conv-font-size, 11px)',
+        fontSize: 'var(--ion-data-code-font-size, 13px)',
       }}
     >
       {oldLines.map((line, i) => (

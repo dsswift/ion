@@ -1,0 +1,27 @@
+{
+  "id": "bench",
+  "name": "Bench",
+  "category": "relax",
+  "footprintW": 2,
+  "footprintH": 1,
+  "width": 32,
+  "height": 16,
+  "rotationScheme": "3-way-mirror",
+  "images": {
+    "down": "down.png",
+    "up": "up.png",
+    "right": "right.png"
+  },
+  "seatTiles": [
+    {
+      "x": 0,
+      "y": 0,
+      "dir": "down"
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "dir": "down"
+    }
+  ]
+}

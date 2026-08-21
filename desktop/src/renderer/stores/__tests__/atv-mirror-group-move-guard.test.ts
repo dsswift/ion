@@ -1,7 +1,7 @@
 /**
  * Mirror guard on auto-group movement (regression).
  *
- * Group movement is an OWNER decision. The ATV mirror ingests the same
+ * Group movement is an OWNER decision. The Studio mirror ingests the same
  * normalized event stream as the owner, so before the guard BOTH windows
  * evaluated every trigger: the mirror's copy read its own (possibly stale)
  * permission mode and forwarded moveTabToGroup to the owner — overwriting

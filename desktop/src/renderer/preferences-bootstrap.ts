@@ -33,6 +33,12 @@ function effectiveThemeId(store: PreferencesStore, userChoice: string): string {
  * persisted settings from disk, fetch enterprise policies from the engine,
  * and subscribe to main-process settings pushes.
  */
+let preferencesReady: Promise<void> | null = null
+
+export function bootstrapPreferencesReady(): Promise<void> {
+  return preferencesReady ?? Promise.resolve()
+}
+
 export function bootstrapPreferences(store: PreferencesStore, savedThemeId: string): void {
   // Initialize CSS vars + scheme classes with the saved theme so the first
   // paint is already correct (disk hydration below may still change it).
@@ -41,7 +47,7 @@ export function bootstrapPreferences(store: PreferencesStore, savedThemeId: stri
   // Load persisted settings from disk (async, fires once on startup).
   // The theme callback routes through the enterprise gate: if the policy
   // fetch below resolved first with a lock, the disk value must not win.
-  loadPersistedSettings(
+  preferencesReady = loadPersistedSettings(
     (patch) => store.setState(patch),
     () => store.getState(),
     (id) => applyTheme(effectiveThemeId(store, id)),

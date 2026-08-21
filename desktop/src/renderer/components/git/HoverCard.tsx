@@ -23,6 +23,7 @@ import { createPortal } from 'react-dom'
 import { usePopoverLayer } from '../PopoverLayer'
 import { useColors } from '../../theme'
 import { useViewportClamp } from '../../hooks/useViewportClamp'
+import { zoomRect, zoomViewport } from '../../viewport-zoom'
 
 interface Props {
   /** What the card shows. Rich content is the reason this component exists. */
@@ -34,7 +35,9 @@ interface Props {
    */
   fallbackTitle?: string
   children: React.ReactNode
-  position?: 'above' | 'below'
+  position?: 'above' | 'below' | 'right'
+  /** Delay before hover or keyboard focus reveals the card. */
+  delayMs?: number
   /**
    * Cap on the card's width. A one-line tooltip wants no wrapping; a card
    * listing conversation titles does. `null` keeps the tooltip behaviour
@@ -63,6 +66,7 @@ export function HoverCard({
   fallbackTitle,
   children,
   position = 'above',
+  delayMs = HOVER_DELAY_MS,
   maxWidth = null,
   style,
 }: Props): React.JSX.Element {
@@ -85,19 +89,22 @@ export function HoverCard({
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => {
       const r = spanRef.current?.getBoundingClientRect()
-      if (r) setRect(r)
-    }, HOVER_DELAY_MS)
-  }, [])
+      if (r) setRect(zoomRect(r))
+    }, delayMs)
+  }, [delayMs])
 
   const hide = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current)
     setRect(null)
   }, [])
 
+  const viewport = zoomViewport()
   const posStyle: React.CSSProperties = rect
-    ? position === 'below'
-      ? { top: rect.bottom + 4, left: rect.left + rect.width / 2, transform: 'translateX(-50%)' }
-      : { bottom: window.innerHeight - rect.top + 4, left: rect.left + rect.width / 2, transform: 'translateX(-50%)' }
+    ? position === 'right'
+      ? { top: rect.top + rect.height / 2, left: rect.right + 4, transform: 'translateY(-50%)' }
+      : position === 'below'
+        ? { top: rect.bottom + 4, left: rect.left + rect.width / 2, transform: 'translateX(-50%)' }
+        : { bottom: viewport.height - rect.top + 4, left: rect.left + rect.width / 2, transform: 'translateX(-50%)' }
     : {}
 
   return (

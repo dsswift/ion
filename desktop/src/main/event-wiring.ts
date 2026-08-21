@@ -1,7 +1,7 @@
 import type { NormalizedEvent, EnrichedError } from '../shared/types'
 import { log as _log, trace as _trace } from './logger'
 import { handleProviderLoginEvent, handleProvidersUpdatedEvent } from './event-wiring-provider-login'
-import { state, sessionPlane, engineBridge, extensionCommandRegistry, forwardedEnginePermissionDenials, lastForwardedTabStatus, lastForwardedTabMeta } from './state'
+import { state, sessionPlane, engineBridge, extensionCommandRegistry, forwardedEnginePermissionDenials, lastForwardedTabMeta } from './state'
 import { broadcast } from './broadcast'
 import { shouldStreamThinkingToRemote } from './settings-store'
 import { formatClearDivider } from '../shared/clear-divider'
@@ -11,10 +11,11 @@ import { handleInterceptEvent } from './event-wiring-intercept'
 import { injectDiskResourcesIfEmpty } from './event-wiring-disk-seed'
 import { accumulateTextDelta, flushKeyDeltas, dropKeyDeltas } from './event-wiring-text-delta-batcher'
 import { projectEngineEventToWire } from './event-wiring-wire-projection'
-import { notifyAtvPermissionResolved } from './atv-window-manager'
+import { notifyStudioPermissionResolved } from './studio-window-manager'
 import { recordStatusFields, recordWorkingMessage, clearAllAgentState } from './agent-state-mirror'
 import { resetAgentStateSelfHeal } from './remote/handlers/agent-state'
 import { ingestAgentStateEvent } from './event-wiring-agent-state'
+import { forwardRemoteEngineStatus } from './event-wiring-remote-status'
 export { wireTabFocusHandler, wireMarkResourceReadHandler, wireDeleteResourceHandler, wireResourceGetHandler, handleResourceItemEvent } from './event-wiring-resources'
 export { wireRemoteSessionPlaneForwarding } from './event-wiring-remote'
 
@@ -45,11 +46,11 @@ export function wireSessionPlaneEvents(): void {
 
   // Cross-surface permission reconcile: the control plane emits this from
   // its respondToPermission choke point (any surface's answer). Routed to
-  // the ATV window here rather than called from the control plane directly,
-  // which would re-create the engine-control-plane → atv-window-manager →
+  // the Studio window here rather than called from the control plane directly,
+  // which would re-create the engine-control-plane → studio-window-manager →
   // state module cycle.
   sessionPlane.on('permission-resolved', (tabId: string, questionId: string) => {
-    notifyAtvPermissionResolved(tabId, questionId)
+    notifyStudioPermissionResolved(tabId, questionId)
   })
 
   // engine_intercept from CLI-tab sessions. EngineControlPlane bubbles
@@ -95,7 +96,7 @@ export function wireEngineBridgeEvents(): void {
 
   // Tell the renderers the engine is reachable again so panes whose history
   // load failed during the outage re-arm hydration (rehydrateFailedHistory).
-  // Routed through broadcast() so the overlay and the ATV mirror both hear it
+  // Routed through broadcast() so the overlay and the Studio mirror both hear it
   // — each window re-hydrates its own store.
   engineBridge.on('reconnected', () => {
     log('engineBridge: broadcasting engine reconnect to renderers')
@@ -485,38 +486,8 @@ export function wireEngineBridgeEvents(): void {
           }, true, { title: 'Ion needs your attention', body: pushBody, tabId })
         }
       }
-      // `engine_status` reports a state transition. Engine-view events
-      // bypass EngineControlPlane (compound-key mismatch), so no
-      // `tab-status-change` fires on the sessionPlane — iOS never learns
-      // the tab moved from 'running' to 'idle'/'completed'. The desktop
-      // renderer handles this locally in engine-event-slice.ts, but iOS
-      // depends on explicit `tab_status` messages.
-      //
-      // Mirrors engine-control-plane-events.ts:handleStatusEvent logic:
-      //   - idle + AskUserQuestion/ExitPlanMode denials → 'completed'
-      //   - idle (no denials) → 'idle'
-      //   - running → 'running'
-      //
-      // Deduped via lastForwardedTabStatus to avoid flooding on
-      // cost-only ticks (engine_status fires repeatedly with the same
-      // state while the run is in progress or idling).
-      if (event.type === 'engine_status' && event.fields?.state && instanceId) {
-        const fieldState = event.fields.state as string
-        let derivedStatus: string | null = null
-        if (fieldState === 'idle') {
-          const hasInteresting = Array.isArray(event.fields.permissionDenials) &&
-            event.fields.permissionDenials.some(
-              (d: { toolName: string }) => d.toolName === 'ExitPlanMode' || d.toolName === 'AskUserQuestion',
-            )
-          derivedStatus = hasInteresting ? 'completed' : 'idle'
-        } else if (fieldState === 'running') {
-          derivedStatus = 'running'
-        }
-        if (derivedStatus && lastForwardedTabStatus.get(tabId) !== derivedStatus) {
-          lastForwardedTabStatus.set(tabId, derivedStatus)
-          log('engine_status: synthesizing tab_status for remote', { tab_id: tabId, instance: instanceId, derived_status: derivedStatus })
-          state.remoteTransport.send({ type: 'desktop_tab_status', tabId, status: derivedStatus as any })
-        }
+      if (event.type === 'engine_status') {
+        forwardRemoteEngineStatus(tabId, instanceId, event.fields)
       }
 
       // Push a lightweight desktop_tab_meta delta when cost or conversationInstances

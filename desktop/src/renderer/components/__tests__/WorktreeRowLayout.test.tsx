@@ -127,6 +127,27 @@ describe('WorktreeRow — controls lead, name trails', () => {
     expect(loaded).toEqual(quiet)
   })
 
+  it('reserves a full slot for a three-digit count before the state indicator', () => {
+    // RED with the former 16px slot: `100↑` extended into the fixed state
+    // column and overlapped its sync control.
+    render(entry({ unlandedCommitCount: 100, needsSync: true }))
+
+    const slots = Array.from(q(`worktree-gutter-${BRANCH}`)!.querySelectorAll('[data-ion-slot]'))
+      .map((node) => node as HTMLElement)
+    const countSlot = slots[3]
+    const stateSlot = slots[4]
+    const count = q(`worktree-unlanded-${BRANCH}`)!
+
+    expect(count.textContent).toBe('100↑')
+    expect(countSlot.style.width).toBe('24px')
+    expect(countSlot.style.justifyContent).toBe('flex-end')
+    expect(countSlot.style.flexShrink).toBe('0')
+    expect(stateSlot.style.width).toBe('13px')
+    expect(stateSlot.style.flexShrink).toBe('0')
+    expect(q(`worktree-sync-${BRANCH}`)).not.toBeNull()
+    expect(q(`worktree-gutter-${BRANCH}`)!.style.width).toBe(`${WORKTREE_ROW_GUTTER_WIDTH}px`)
+  })
+
   it('sizes the gutter and the second-line indent from the same constant', () => {
     render(entry())
 

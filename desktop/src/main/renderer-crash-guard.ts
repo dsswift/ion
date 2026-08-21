@@ -20,7 +20,7 @@
 import { Notification } from 'electron'
 import { log, warn, error } from './logger'
 
-type WindowKind = 'overlay' | 'atv'
+type WindowKind = 'overlay' | 'studio'
 
 /** Max automatic recoveries per rolling window, per window kind. */
 const MAX_RECOVERIES = 3
@@ -109,7 +109,7 @@ export function resetRendererCrashGuard(kind: WindowKind): void {
 
 function notifyOperator(kind: WindowKind): void {
   if (!Notification.isSupported()) return
-  const surface = kind === 'overlay' ? 'overlay' : 'ATV window'
+  const surface = kind === 'overlay' ? 'overlay' : 'Studio window'
   new Notification({
     title: 'Ion',
     body: `The Ion ${surface} crashed repeatedly and automatic recovery stopped. Use the tray icon to reopen it.`,

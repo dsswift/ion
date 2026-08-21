@@ -30,6 +30,10 @@ export function TabsPanelsCategory() {
   const setKeepStatusDrawerOnCollapse = usePreferencesStore((s) => s.setKeepStatusDrawerOnCollapse)
   const tabRecoveryEnabled = usePreferencesStore((s) => s.tabRecoveryEnabled)
   const setTabRecoveryEnabled = usePreferencesStore((s) => s.setTabRecoveryEnabled)
+  const inboxAutoSettleDays = usePreferencesStore((s) => s.inboxAutoSettleDays)
+  const setInboxAutoSettleDays = usePreferencesStore((s) => s.setInboxAutoSettleDays)
+  const inboxAutoSettleOnMerge = usePreferencesStore((s) => s.inboxAutoSettleOnMerge)
+  const setInboxAutoSettleOnMerge = usePreferencesStore((s) => s.setInboxAutoSettleOnMerge)
 
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
@@ -148,6 +152,33 @@ export function TabsPanelsCategory() {
         description="Automatically expand the conversation when switching tabs."
         checked={expandOnTabSwitch}
         onChange={setExpandOnTabSwitch}
+      />
+
+      <SettingToggle
+        label="Auto-settle inactive conversations"
+        description="File fully idle conversations into Settled after the selected number of days. Pending plans, questions, permission requests, and background work never auto-settle."
+        checked={inboxAutoSettleDays > 0}
+        onChange={(enabled) => setInboxAutoSettleDays(enabled ? 3 : 0)}
+      />
+      {inboxAutoSettleDays > 0 && (
+        <SettingSection label="Days of inactivity before auto-settle">
+          <input
+            type="number"
+            min={1}
+            max={90}
+            step={1}
+            value={inboxAutoSettleDays}
+            onChange={(event) => setInboxAutoSettleDays(Number(event.target.value))}
+            aria-label="Days of inactivity before auto-settle"
+            style={{ width: 72, border: `1px solid ${colors.containerBorder}`, borderRadius: 4, background: colors.surfacePrimary, color: colors.textPrimary, padding: '4px 6px' }}
+          />
+        </SettingSection>
+      )}
+      <SettingToggle
+        label="Auto-settle merged pull requests"
+        description="Move conversations with merged pull requests to Settled."
+        checked={inboxAutoSettleOnMerge}
+        onChange={setInboxAutoSettleOnMerge}
       />
 
       <SettingSection

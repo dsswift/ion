@@ -38,7 +38,7 @@ export function NewConversationPicker({
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
-  // Keep the portaled popover inside the window (ATV top-anchored strip).
+  // Keep the portaled popover inside the window (Studio top-anchored strip).
   useViewportClamp(ref, true)
   const profiles = usePreferencesStore((s) => s.engineProfiles)
   const defaultId = usePreferencesStore((s) => s.defaultEngineProfileId)

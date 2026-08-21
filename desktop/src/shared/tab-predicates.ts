@@ -38,6 +38,21 @@ export function persistedTabHasExtensions(st: {
 }
 
 /**
+ * True when a persisted tab was settled at shutdown time. Settled tabs restore
+ * as cold history records: `inputLocked` + `inputLockReason: 'settled'`, no
+ * engine/session bootstrap. The user can un-settle to reactivate.
+ *
+ * The persisted provenance is sufficient at restore time: both a manual and an
+ * automatic stamp restore as the same hard, cold state without consulting the
+ * current clock or preferences.
+ */
+export function isPersistedSettled(tab: {
+  settledOverride?: 'settled' | 'active' | 'auto' | null
+}): boolean {
+  return tab.settledOverride === 'settled' || tab.settledOverride === 'auto'
+}
+
+/**
  * Compute the clipboard payload for "Copy session id" against a tab and its
  * active conversation instance, or null when no id is available yet.
  *

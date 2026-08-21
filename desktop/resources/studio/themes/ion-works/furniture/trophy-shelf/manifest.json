@@ -1,0 +1,14 @@
+{
+  "id": "trophy-shelf",
+  "name": "Trophy Shelf",
+  "category": "manager",
+  "footprintW": 2,
+  "footprintH": 1,
+  "width": 32,
+  "height": 16,
+  "rotationScheme": "none",
+  "images": {
+    "default": "default.png"
+  },
+  "canPlaceOnWalls": true
+}

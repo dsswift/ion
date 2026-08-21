@@ -16,16 +16,16 @@ import { rootErrorOptions } from './react-root-errors'
 
 describe('rootErrorOptions', () => {
   it('logs root surface and compact component stack for uncaught scheduler errors', () => {
-    const options = rootErrorOptions('atv')
+    const options = rootErrorOptions('studio')
 
     options.onUncaughtError(new Error('Maximum update depth exceeded'), {
-      componentStack: '\n    at AtvShell\n    at PopoverLayerProvider',
+      componentStack: '\n    at StudioShell\n    at PopoverLayerProvider',
     })
 
     expect(error).toHaveBeenCalledWith('react-root', 'uncaught react error', {
-      surface: 'atv',
+      surface: 'studio',
       error: 'Maximum update depth exceeded',
-      component_stack: 'AtvShell < PopoverLayerProvider',
+      component_stack: 'StudioShell < PopoverLayerProvider',
     })
   })
 

@@ -158,6 +158,7 @@ export interface EntraIdentity {
 /** Wire shape of the engine's oidc_identity result payload. */
 interface OidcIdentityData {
   signedIn: boolean
+  requireOperatorIdentity?: boolean
   subject?: string
   username?: string
   name?: string
@@ -205,6 +206,24 @@ export async function getAccessToken(): Promise<string | null> {
  * Returns the signed-in identity from the engine's snapshot, or null when
  * signed out / unconfigured / engine unreachable.
  */
+export interface OperatorIdentityState {
+  required: boolean
+  signedIn: boolean
+  identity: EntraIdentity | null
+}
+
+export async function getOperatorIdentityState(): Promise<OperatorIdentityState> {
+  const result = await engineBridge.request<OidcIdentityData>('oidc_identity', {})
+  if (!result.ok || !result.data) {
+    throw new Error(result.error ?? 'OIDC identity state unavailable')
+  }
+  return {
+    required: result.data.requireOperatorIdentity === true,
+    signedIn: result.data.signedIn === true,
+    identity: result.data.signedIn ? toEntraIdentity(result.data) : null,
+  }
+}
+
 export async function getSignedInIdentity(): Promise<EntraIdentity | null> {
   const result = await engineBridge.request<OidcIdentityData>('oidc_identity', {})
   if (!result.ok || !result.data?.signedIn) return null

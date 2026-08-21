@@ -104,9 +104,17 @@ const CLI_OPENS_OWN_BROWSER = new Set(['claude-code'])
  * - Refreshes periodically (every 5 minutes)
  * - Listens for main-process cache updates (engine reconnect, credential changes)
  */
+let initialModelSync: Promise<void> | null = null
+
+export function setupModelSyncReady(): Promise<void> {
+  if (initialModelSync) return initialModelSync
+  initialModelSync = useModelStore.getState().fetchModels()
+  return initialModelSync
+}
+
 export function setupModelSync(): void {
   // Initial fetch
-  void useModelStore.getState().fetchModels().catch((err) => rDebug('model-store', 'initial fetchModels failed', { error: String(err) }))
+  void setupModelSyncReady().catch((err) => rDebug('model-store', 'initial fetchModels failed', { error: String(err) }))
 
   // Periodic refresh
   setInterval(() => {

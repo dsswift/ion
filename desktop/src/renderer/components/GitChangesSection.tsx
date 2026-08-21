@@ -5,7 +5,7 @@ import { Chevron } from './Chevron'
 import { FloatingPanel } from './FloatingPanel'
 import { DiffPane } from './git/DiffPane'
 import { Tooltip } from './git/Tooltip'
-import type { GitChangedFile } from '../../shared/types'
+import type { GitChangedFile, GitDiffResult } from '../../shared/types'
 import { buildFileTree, type FileTreeNode } from './GitPanelTypes'
 import { useRepoGroups } from '../stores/git'
 import { ConflictsDialog } from './git/ConflictsDialog'
@@ -19,15 +19,22 @@ export function GitChangesSection({
   files,
   onRefresh,
   treeView,
+  onFileDiffClick,
 }: {
   directory: string
   files: GitChangedFile[]
   onRefresh: () => void
   treeView: boolean
+  /**
+   * Diff-click override (Studio surface routing): when provided, a file-row
+   * click asks this to route into Studio. A `false` result keeps local popup
+   * behavior for a secondary workspace repo.
+   */
+  onFileDiffClick?: (target: { repoDir: string; filePath: string; staged: boolean }) => boolean
 }) {
   const colors = useColors()
   const [diffFile, setDiffFile] = useState<{ path: string; staged: boolean } | null>(null)
-  const [diffData, setDiffData] = useState<{ diff: string; fileName: string } | null>(null)
+  const [diffData, setDiffData] = useState<GitDiffResult | null>(null)
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const [_selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
@@ -171,6 +178,8 @@ export function GitChangesSection({
   }
 
   const handleFileClick = useCallback(async (file: GitChangedFile) => {
+    const target = { repoDir: directory, filePath: file.path, staged: file.staged }
+    if (onFileDiffClick?.(target)) return
     if (diffFile?.path === file.path && diffFile?.staged === file.staged) {
       setDiffFile(null)
       setDiffData(null)
@@ -179,7 +188,7 @@ export function GitChangesSection({
     setDiffFile({ path: file.path, staged: file.staged })
     const data = await window.ion.gitDiff(directory, file.path, file.staged)
     setDiffData(data)
-  }, [diffFile, directory])
+  }, [diffFile, directory, onFileDiffClick])
 
   const allFiles = useMemo(() => [...stagedFiles, ...unstagedFiles], [stagedFiles, unstagedFiles])
 
@@ -428,6 +437,7 @@ export function GitChangesSection({
             diff={diffData.diff}
             fileName={diffData.fileName}
             filePath={diffFile.path}
+            isBinary={diffData.isBinary}
             staged={diffFile.staged}
             directory={directory}
             onClose={() => { setDiffFile(null); setDiffData(null) }}

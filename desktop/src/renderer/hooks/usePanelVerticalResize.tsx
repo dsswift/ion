@@ -22,6 +22,7 @@ import { useWindowHeight } from './useWindowGeometry'
 import { defaultPanelHeight, maxPanelHeight, resolvePanelHeight } from '../components/panelGeometry'
 import { PanelResizeHandle } from '../components/PanelResizeHandle'
 import { rDebug } from '../rendererLogger'
+import { zoomDelta } from '../viewport-zoom'
 
 /**
  * Height after a drag of `dy` pixels from `startHeight`.
@@ -77,14 +78,15 @@ export function usePanelVerticalResize({
     rDebug('panel-resize', 'drag started', { panel_id: panelId, start_height: height })
 
     const min = defaultPanelHeight(expandedUI)
-    const max = maxPanelHeight(window.innerHeight, min)
+    const max = maxPanelHeight(winHeight, min)
 
     const onMouseMove = (ev: MouseEvent): void => {
       const drag = dragRef.current
       if (!drag) return
       // Commit on every move: the store write is cheap and it keeps the edge
       // under the cursor rather than snapping on release.
-      onCommit(resolveDragHeight(drag.startHeight, ev.clientY - drag.y, min, max))
+      const delta = zoomDelta({ x: 0, y: ev.clientY - drag.y })
+      onCommit(resolveDragHeight(drag.startHeight, delta.y, min, max))
     }
 
     const onMouseUp = (): void => {
@@ -104,7 +106,7 @@ export function usePanelVerticalResize({
     document.body.style.cursor = 'row-resize'
     document.addEventListener('mousemove', onMouseMove)
     document.addEventListener('mouseup', onMouseUp)
-  }, [expandedUI, height, onCommit, panelId])
+  }, [expandedUI, height, onCommit, panelId, winHeight])
 
   const renderHandle = useCallback((): React.JSX.Element => (
     <PanelResizeHandle
