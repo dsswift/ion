@@ -182,8 +182,8 @@ describe('formatChord (macOS glyphs)', () => {
     expect(formatChord('Mod+=')).toBe('⌘=')
   })
 
-  it('formats Mod+Shift+g as ⌘⇧g', () => {
-    expect(formatChord('Mod+Shift+g')).toBe('⌘⇧g')
+  it('formats Mod+Shift+g as ⌘⇧G, uppercasing the letter as platform menus do', () => {
+    expect(formatChord('Mod+Shift+g')).toBe('⌘⇧G')
   })
 
   it('formats Ctrl+` as ⌃`', () => {

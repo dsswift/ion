@@ -1,42 +1,11 @@
-/**
- * Shortcut catalog — single source of truth for every keyboard shortcut
- * command in the desktop app.
- *
- * Each entry has:
- *   - `id`: stable command identifier persisted in settings.json as the key
- *     of the override map. Treat as a contract — renaming is a migration.
- *   - `group`: display group (mirrors the handler's logical sections).
- *   - `description`: human-readable label shown in the Settings UI.
- *   - `defaultBinding`: normalized chord string (Mod = Cmd on mac / Ctrl elsewhere).
- *
- * `resolveBindings(overrides)` merges defaults with user overrides from
- * settings.json, producing the Map that both the keydown handler and the
- * Settings UI consume. The handler must use this Map — a separate hardcoded
- * list would be the forbidden "document but hardcode" anti-pattern.
- */
-
 import { parseChord } from './chord'
 import type { Chord } from './chord'
+import type { ShortcutContext, ShortcutEntry, ShortcutResolution, ShortcutView } from './shortcut-types'
 import { rWarn } from '../rendererLogger'
 
-export interface ShortcutEntry {
-  id: string
-  group: ShortcutGroup
-  description: string
-  defaultBinding: string
-}
+export type { ShortcutContext, ShortcutEntry, ShortcutGroup, ShortcutResolution, ShortcutView } from './shortcut-types'
 
-export type ShortcutGroup =
-  | 'Navigation'
-  | 'Panels'
-  | 'Layout'
-  | 'Tabs'
-  | 'Zoom'
-  | 'Conversation'
-  | 'App'
-
-/** All shortcut groups in display order. */
-export const SHORTCUT_GROUPS: ShortcutGroup[] = [
+export const SHORTCUT_GROUPS = [
   'Navigation',
   'Panels',
   'Layout',
@@ -44,134 +13,158 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   'Zoom',
   'Conversation',
   'App',
-]
+  'Studio',
+] as const
 
 /**
- * The full catalog. Order within each group determines the deterministic
- * conflict-winner (first in catalog order wins when two commands share a chord).
+ * One registry for Overlay and Studio. IDs that existed in Overlay remain
+ * stable because they are persisted in settings.json. A view-specific default
+ * exists only when the two views genuinely perform different work.
  */
-export const SHORTCUT_CATALOG: ShortcutEntry[] = [
-  // Navigation
-  { id: 'tab.prev',          group: 'Navigation',   description: 'Previous tab',               defaultBinding: 'Mod+h' },
-  { id: 'tab.next',          group: 'Navigation',   description: 'Next tab',                   defaultBinding: 'Mod+l' },
-  { id: 'tab.close',         group: 'Navigation',   description: 'Close tab',                  defaultBinding: 'Mod+w' },
+export const SHORTCUT_CATALOG: readonly ShortcutEntry[] = [
+  { id: 'tab.prev', group: 'Navigation', description: 'Previous tab', defaultBinding: 'Mod+h', views: ['overlay', 'studio'] },
+  { id: 'tab.next', group: 'Navigation', description: 'Next tab', defaultBinding: 'Mod+l', views: ['overlay', 'studio'] },
+  { id: 'tab.close', group: 'Navigation', description: 'Close tab', defaultBinding: 'Mod+w', views: ['overlay', 'studio'] },
 
-  // Panels
-  { id: 'panel.explorer',    group: 'Panels',       description: 'Toggle file explorer',        defaultBinding: 'Mod+1' },
-  { id: 'panel.terminal',    group: 'Panels',       description: 'Toggle terminal',             defaultBinding: 'Mod+2' },
-  { id: 'panel.git',         group: 'Panels',       description: 'Toggle git panel',            defaultBinding: 'Mod+3' },
-  { id: 'panel.statusDrawer', group: 'Panels',      description: 'Toggle status drawer',        defaultBinding: 'Mod+4' },
-  { id: 'panel.editor',      group: 'Panels',       description: 'Toggle file editor',          defaultBinding: 'Mod+e' },
-  { id: 'terminal.toggle',   group: 'Panels',       description: 'Toggle terminal (Ctrl)',       defaultBinding: 'Ctrl+`' },
-  { id: 'terminal.addShell', group: 'Panels',       description: 'Add terminal shell instance', defaultBinding: 'Ctrl+Shift+`' },
+  { id: 'panel.inbox', group: 'Panels', description: 'Toggle inbox', defaultBinding: 'Mod+1', views: ['overlay', 'studio'] },
+  { id: 'panel.explorer', group: 'Panels', description: 'Toggle file explorer', defaultBinding: 'Mod+2', views: ['overlay', 'studio'] },
+  { id: 'panel.git', group: 'Panels', description: 'Toggle git panel', defaultBinding: 'Mod+3', views: ['overlay', 'studio'] },
+  { id: 'panel.statusDrawer', group: 'Panels', description: 'Toggle status / right panel', defaultBinding: 'Mod+4', views: ['overlay', 'studio'] },
 
-  // Layout
-  { id: 'layout.collapse',   group: 'Layout',       description: 'Collapse conversation',       defaultBinding: 'Mod+j' },
-  { id: 'layout.expand',     group: 'Layout',       description: 'Expand conversation',         defaultBinding: 'Mod+k' },
-  { id: 'layout.tall',       group: 'Layout',       description: 'Toggle tall view',            defaultBinding: 'Mod+y' },
+  { id: 'panel.editor', group: 'Panels', description: 'Toggle file editor', defaultBinding: 'Mod+e', views: ['overlay'] },
+  { id: 'terminal.toggle', group: 'Panels', description: 'Toggle terminal (Ctrl)', defaultBinding: 'Ctrl+`', views: ['overlay', 'studio'] },
+  { id: 'terminal.addShell', group: 'Panels', description: 'Add terminal shell instance', defaultBinding: 'Ctrl+Shift+`', views: ['overlay', 'studio'] },
 
-  // Tabs
-  { id: 'tab.new',           group: 'Tabs',         description: 'New tab (default dir)',        defaultBinding: 'Mod+t' },
-  { id: 'tab.newHere',       group: 'Tabs',         description: 'New tab (current dir)',        defaultBinding: 'Mod+Shift+t' },
-  { id: 'tab.recentDirs',    group: 'Tabs',         description: 'Open recent directories',     defaultBinding: 'Mod+r' },
-  { id: 'tab.scratch',       group: 'Tabs',         description: 'New scratch file',            defaultBinding: 'Mod+n' },
+  { id: 'layout.collapse', group: 'Layout', description: 'Collapse conversation', defaultBinding: 'Mod+j', views: ['overlay'] },
+  { id: 'layout.tall', group: 'Layout', description: 'Toggle tall conversation', defaultBinding: 'Mod+y', views: ['overlay', 'studio'] },
 
-  // Zoom
-  // zoom.inShifted is the shifted-'=' alias (Mod++) for zoom in. It lives in
-  // the catalog so user overrides to zoom.in stay consistent with the alias,
-  // and so the alias itself is independently rebindable.
-  { id: 'zoom.in',           group: 'Zoom',         description: 'Zoom in (active surface)',         defaultBinding: 'Mod+=' },
-  { id: 'zoom.inShifted',    group: 'Zoom',         description: 'Zoom in — shifted alias (Mod++)',  defaultBinding: 'Mod++' },
-  { id: 'zoom.out',          group: 'Zoom',         description: 'Zoom out (active surface)',        defaultBinding: 'Mod+-' },
-  { id: 'zoom.reset',        group: 'Zoom',         description: 'Reset zoom (active surface)',      defaultBinding: 'Mod+0' },
+  { id: 'tab.new', group: 'Tabs', description: 'New tab (default directory)', defaultBinding: 'Mod+t', views: ['overlay', 'studio'] },
+  { id: 'tab.newHere', group: 'Tabs', description: 'New tab (current directory)', defaultBinding: 'Mod+Shift+t', views: ['overlay'] },
+  { id: 'tab.recentDirs', group: 'Tabs', description: 'Open recent directories', defaultBinding: 'Mod+r', views: ['overlay', 'studio'] },
+  { id: 'tab.scratch', group: 'Tabs', description: 'New scratch file', defaultBinding: 'Mod+n', views: ['overlay'] },
 
-  // Conversation
-  { id: 'conversation.find',           group: 'Conversation', description: 'Find in conversation',       defaultBinding: 'Mod+f' },
-  { id: 'conversation.findNext',       group: 'Conversation', description: 'Find next',                  defaultBinding: 'Mod+g' },
-  { id: 'conversation.findPrev',       group: 'Conversation', description: 'Find previous',              defaultBinding: 'Mod+Shift+g' },
-  { id: 'permission.togglePlanAuto',   group: 'Conversation', description: 'Toggle plan / auto mode',    defaultBinding: 'Shift+Tab' },
+  { id: 'zoom.in', group: 'Zoom', description: 'Zoom in (active surface)', defaultBinding: 'Mod+=', views: ['overlay', 'studio'] },
+  { id: 'zoom.inShifted', group: 'Zoom', description: 'Zoom in (shifted alias)', defaultBinding: 'Mod++', views: ['overlay', 'studio'] },
+  { id: 'zoom.out', group: 'Zoom', description: 'Zoom out (active surface)', defaultBinding: 'Mod+-', views: ['overlay', 'studio'] },
+  { id: 'zoom.reset', group: 'Zoom', description: 'Reset zoom (active surface)', defaultBinding: 'Mod+0', views: ['overlay', 'studio'] },
 
-  // App
-  { id: 'settings.open',     group: 'App',          description: 'Open settings',               defaultBinding: 'Mod+,' },
+  { id: 'conversation.find', group: 'Conversation', description: 'Find in conversation', defaultBinding: 'Mod+f', views: ['overlay', 'studio'] },
+  { id: 'conversation.findNext', group: 'Conversation', description: 'Find next', defaultBinding: 'Mod+g', views: ['overlay', 'studio'] },
+  { id: 'conversation.findPrev', group: 'Conversation', description: 'Find previous', defaultBinding: 'Mod+Shift+g', views: ['overlay', 'studio'] },
+  { id: 'permission.togglePlanAuto', group: 'Conversation', description: 'Toggle plan / auto mode', defaultBinding: 'Shift+Tab', views: ['overlay', 'studio'] },
+
+  { id: 'app.commandPalette', group: 'App', description: 'Open command palette', defaultBinding: 'Mod+k', views: ['overlay', 'studio'] },
+  { id: 'settings.open', group: 'App', description: 'Open settings', defaultBinding: 'Mod+,', views: ['overlay', 'studio'] },
+
+  { id: 'studio.layout.sidebar', group: 'Studio', description: 'Toggle left sidebar', defaultBinding: 'Mod+b', views: ['studio'] },
+  { id: 'studio.layout.surface', group: 'Studio', description: 'Toggle canvas panel', defaultBinding: 'Mod+Alt+b', views: ['studio'] },
+
+  // Canvas tabs form one family: Mod+Alt+<digit>. Mod alone selects a REGION
+  // (sidebar view, canvas visibility); adding Alt reaches INTO the canvas, the
+  // same meaning Alt already carries in Mod+Alt+b. Mod+Shift+<digit> is not
+  // available for this: macOS owns Mod+Shift+3 and Mod+Shift+4 as screenshot
+  // shortcuts and consumes them before the renderer sees a keydown.
+  { id: 'studio.surface.diff', group: 'Studio', description: 'Toggle diff canvas tab', defaultBinding: 'Mod+Alt+1', views: ['studio'] },
+  { id: 'studio.surface.plan', group: 'Studio', description: 'Toggle plan canvas tab', defaultBinding: 'Mod+Alt+2', views: ['studio'] },
+  { id: 'studio.surface.visualizer', group: 'Studio', description: 'Toggle visualizer canvas tab', defaultBinding: 'Mod+Alt+3', views: ['studio'] },
+  { id: 'studio.surface.status', group: 'Studio', description: 'Toggle status canvas tab', defaultBinding: 'Mod+Alt+4', views: ['studio'] },
+  { id: 'studio.surface.files', group: 'Studio', description: 'Toggle explorer canvas tab', defaultBinding: 'Mod+Alt+5', views: ['studio'] },
+  { id: 'studio.surface.gitpanel', group: 'Studio', description: 'Toggle git canvas tab', defaultBinding: 'Mod+Alt+6', views: ['studio'] },
+  { id: 'studio.surface.notification', group: 'Studio', description: 'Toggle notification canvas tab', defaultBinding: 'Mod+Alt+7', views: ['studio'] },
+
+  { id: 'studio.tab.slot1', group: 'Studio', description: 'Select conversation 1', defaultBinding: 'Mod+Ctrl+1', views: ['studio'] },
+  { id: 'studio.tab.slot2', group: 'Studio', description: 'Select conversation 2', defaultBinding: 'Mod+Ctrl+2', views: ['studio'] },
+  { id: 'studio.tab.slot3', group: 'Studio', description: 'Select conversation 3', defaultBinding: 'Mod+Ctrl+3', views: ['studio'] },
+  { id: 'studio.tab.slot4', group: 'Studio', description: 'Select conversation 4', defaultBinding: 'Mod+Ctrl+4', views: ['studio'] },
+  { id: 'studio.tab.slot5', group: 'Studio', description: 'Select conversation 5', defaultBinding: 'Mod+Ctrl+5', views: ['studio'] },
+  { id: 'studio.tab.slot6', group: 'Studio', description: 'Select conversation 6', defaultBinding: 'Mod+Ctrl+6', views: ['studio'] },
+  { id: 'studio.tab.slot7', group: 'Studio', description: 'Select conversation 7', defaultBinding: 'Mod+Ctrl+7', views: ['studio'] },
+  { id: 'studio.tab.slot8', group: 'Studio', description: 'Select conversation 8', defaultBinding: 'Mod+Ctrl+8', views: ['studio'] },
+  { id: 'studio.tab.slot9', group: 'Studio', description: 'Select conversation 9', defaultBinding: 'Mod+Ctrl+9', views: ['studio'] },
 ]
 
-/**
- * Build a resolved binding map from the catalog defaults merged with user
- * overrides from settings.json.
- *
- * - Overrides whose chord fails `parseChord` are silently dropped (tolerant
- *   load: a malformed external edit doesn't crash the handler).
- * - Overrides for unknown command ids are silently ignored (forward-compat:
- *   a settings file from a newer version doesn't crash an older desktop).
- * - When two resolved commands share a chord the first-in-catalog-order
- *   entry wins. The handler calls this once on mount; re-call when overrides
- *   change.
- *
- * Returns a Map<commandId, Chord> ready for `matchesChord`.
- */
-export function resolveBindings(overrides: Record<string, string>): Map<string, Chord> {
-  const _knownIds = new Set(SHORTCUT_CATALOG.map((e) => e.id))
-  const result = new Map<string, Chord>()
-
-  for (const entry of SHORTCUT_CATALOG) {
-    const overrideStr = overrides[entry.id]
-    // If there's a valid override for this id, use it; otherwise use default.
-    if (overrideStr !== undefined) {
-      const parsed = parseChord(overrideStr)
-      if (parsed) {
-        result.set(entry.id, parsed)
-        continue
-      }
-      // Invalid override — fall through to default.
-    }
-    const defaultParsed = parseChord(entry.defaultBinding)
-    if (defaultParsed) {
-      result.set(entry.id, defaultParsed)
-    }
-  }
-
-  // Detect conflicts: log a warning when two commands resolve to the same chord.
-  // First-in-catalog-order wins (already set above); we only log here.
-  const seenChords = new Map<string, string>() // chordKey -> commandId
-  for (const entry of SHORTCUT_CATALOG) {
-    if (!result.has(entry.id)) continue
-    const chord = result.get(entry.id)!
-    const chordKey = chordToKey(chord)
-    const existing = seenChords.get(chordKey)
-    if (existing) {
-      rWarn('shortcuts', 'chord conflict: existing wins', { later_id: entry.id, existing_id: existing, chord: chordKey })
-      // Remove the later entry (entry.id) — existing wins.
-      result.delete(entry.id)
-    } else {
-      seenChords.set(chordKey, entry.id)
-    }
-  }
-
-  return result
+export function getCatalogForView(view: ShortcutView): readonly ShortcutEntry[] {
+  return SHORTCUT_CATALOG.filter((entry) => entry.views.includes(view))
 }
 
-/** Serialize a Chord to a stable string key for conflict detection.
- *  Mod and Ctrl are kept as distinct literal strings, so a Mod+X entry and a
- *  Ctrl+X entry never collide in the key space. The current catalog has no
- *  entry that sets both mod and ctrl simultaneously, and the two Ctrl-only
- *  entries (terminal.toggle, terminal.addShell) use ` which no Mod+ entry
- *  uses — no normalization to a platform-effective modifier is needed. */
-function chordToKey(c: Chord): string {
-  return [c.mod ? 'Mod' : '', c.ctrl ? 'Ctrl' : '', c.shift ? 'Shift' : '', c.alt ? 'Alt' : '', c.key]
+export function defaultBinding(entry: ShortcutEntry, view: ShortcutView): string {
+  return entry.viewDefaults?.[view] ?? entry.defaultBinding
+}
+
+function chordKey(binding: string): string | null {
+  const chord = parseChord(binding)
+  if (!chord) return null
+  return [chord.mod ? 'Mod' : '', chord.ctrl ? 'Ctrl' : '', chord.shift ? 'Shift' : '', chord.alt ? 'Alt' : '', chord.key.toLowerCase()]
     .filter(Boolean)
     .join('+')
 }
 
+function contextsOverlap(a?: ShortcutContext, b?: ShortcutContext): boolean {
+  return a === undefined || b === undefined || a === b
+}
+
 /**
- * Returns the command ids grouped for display, preserving SHORTCUT_GROUPS order.
+ * Resolves one view's defaults and overrides. Every row survives in
+ * `shortcuts`, including conflict losers, so Settings can truthfully display
+ * configured input. `activeBindings` contains only deterministic winners.
  */
-export function getCatalogByGroup(): Map<ShortcutGroup, ShortcutEntry[]> {
-  const map = new Map<ShortcutGroup, ShortcutEntry[]>()
+/**
+ * Backward-compatible Overlay resolver. New callers use the view-aware
+ * `resolveViewBindings`; legacy callers and existing tests still receive the
+ * Map<commandId, Chord> contract during migration.
+ */
+export function resolveBindings(overrides: Record<string, string>): Map<string, Chord> {
+  const resolution = resolveViewBindings('overlay', overrides)
+  return new Map([...resolution.activeBindings].map(([id, shortcut]) => [id, parseChord(shortcut.binding)!]))
+}
+
+export function resolveViewBindings(view: ShortcutView, overrides: Record<string, string>): ShortcutResolution {
+  const resolved: Array<{ entry: ShortcutEntry; binding: string; enabled: boolean; conflictsWith: string | null }> = getCatalogForView(view).map((entry) => {
+    const requested = overrides[entry.id]
+    const binding = requested && parseChord(requested) ? requested : defaultBinding(entry, view)
+    return { entry, binding, enabled: true, conflictsWith: null }
+  })
+
+  for (let index = 0; index < resolved.length; index++) {
+    const candidate = resolved[index]
+    const key = chordKey(candidate.binding)
+    if (!key) {
+      candidate.enabled = false
+      continue
+    }
+    for (let earlier = 0; earlier < index; earlier++) {
+      const winner = resolved[earlier]
+      if (!winner.enabled || !contextsOverlap(candidate.entry.when, winner.entry.when)) continue
+      if (chordKey(winner.binding) !== key) continue
+      candidate.enabled = false
+      candidate.conflictsWith = winner.entry.id
+      rWarn('shortcuts', 'binding conflict: earlier command wins', {
+        view,
+        chord: key,
+        winner: winner.entry.id,
+        loser: candidate.entry.id,
+      })
+      break
+    }
+  }
+
+  const activeBindings = new Map<string, typeof resolved[number]>()
+  for (const shortcut of resolved) {
+    if (shortcut.enabled) activeBindings.set(shortcut.entry.id, shortcut)
+  }
+  return { shortcuts: resolved, activeBindings }
+}
+
+/** Alias retained for transition callers. */
+export function resolveOverlayBindings(overrides: Record<string, string>): Map<string, Chord> {
+  return resolveBindings(overrides)
+}
+
+export function getCatalogByGroup(view: ShortcutView): Map<string, readonly ShortcutEntry[]> {
+  const result = new Map<string, readonly ShortcutEntry[]>()
   for (const group of SHORTCUT_GROUPS) {
-    map.set(group, [])
+    const entries = getCatalogForView(view).filter((entry) => entry.group === group)
+    if (entries.length > 0) result.set(group, entries)
   }
-  for (const entry of SHORTCUT_CATALOG) {
-    map.get(entry.group)!.push(entry)
-  }
-  return map
+  return result
 }
