@@ -13,9 +13,9 @@ vi.mock('../../logger', () => ({ log: vi.fn(), warn: vi.fn() }))
 vi.mock('../../git/repositoryManager', () => ({ repositoryManager: { get: () => ({ queue: { enqueueMutation: (work: () => unknown) => work() } }) } }))
 vi.mock('../../integration/bench-snapshot', () => ({ captureContribution: (...args: unknown[]) => capture(...args) }))
 vi.mock('../../integration/bench-store', () => ({
-  loadWorkspaces: () => workspaces(), findWorkspace: () => undefined,
+  loadWorkspaces: () => workspaces(), findWorkspace: (items: Array<{ repoPath: string; sourceBranch: string }>, repoPath: string, sourceBranch: string) => items.find((item) => item.repoPath === repoPath && item.sourceBranch === sourceBranch),
   makeWorkspace: (repoPath: string, sourceBranch: string) => ({ repoPath, sourceBranch, members: [] }),
-  makeMember: (member: Record<string, unknown>) => ({ ...member, enabled: true }), saveWorkspaces: (...args: unknown[]) => save(...args),
+  makeMember: (member: Record<string, unknown>) => ({ ...member }), saveWorkspaces: (...args: unknown[]) => save(...args),
 }))
 vi.mock('../overlap-service', () => ({ getWorktreeOverlap: vi.fn(() => analysis), invalidateWorktreeOverlap: vi.fn() }))
 vi.mock('../overlap-preview', () => ({ previewWorktreeOverlap: vi.fn(async () => ({ prediction: 'clean', conflictPaths: [] })) }))
@@ -31,7 +31,22 @@ describe('applyOverlapRecommendation', () => {
   it('persists custom ordered selection as durable bench members', async () => {
     await expect(applyOverlapRecommendation({ repoPath: '/repo', sourceBranch: 'main' }, 'live', ['/repo/new'])).resolves.toMatchObject({ ok: true, applied: { newlyEnrolled: 1 } })
     expect(capture).toHaveBeenCalledWith('/repo/new', 'main', 'new')
-    expect(save).toHaveBeenCalledWith([expect.objectContaining({ repoPath: '/repo', sourceBranch: 'main', members: [expect.objectContaining({ worktreePath: '/repo/new', enabled: true })] })])
+    expect(save).toHaveBeenCalledWith([expect.objectContaining({ repoPath: '/repo', sourceBranch: 'main', members: [expect.objectContaining({ worktreePath: '/repo/new' })] })])
+  })
+
+  it('removes existing members that are not selected', async () => {
+    workspaces.mockReturnValue([{
+      repoPath: '/repo', sourceBranch: 'main',
+      members: [
+        { worktreePath: '/repo/new', branchName: 'new', pinnedSha: 'tip', pinnedTreeHash: 'tree', pinnedBaseSha: 'base', currentTreeHash: 'tree', pin: 'current', merge: 'unbuilt' },
+        { worktreePath: '/repo/removed', branchName: 'removed', pinnedSha: 'tip', pinnedTreeHash: 'tree', pinnedBaseSha: 'base', currentTreeHash: 'tree', pin: 'current', merge: 'unbuilt' },
+      ],
+    }])
+
+    await expect(applyOverlapRecommendation({ repoPath: '/repo', sourceBranch: 'main' }, 'live', ['/repo/new'])).resolves.toMatchObject({ ok: true, applied: { newlyEnrolled: 0, removed: 1 } })
+    expect(save).toHaveBeenCalledWith([expect.objectContaining({
+      members: [expect.objectContaining({ worktreePath: '/repo/new' })],
+    })])
   })
 
   it('reports persistence failure without claiming selection applied', async () => {

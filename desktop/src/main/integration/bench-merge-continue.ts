@@ -257,7 +257,7 @@ export async function continueBenchMerge(directory: string): Promise<ContinueRes
  * Attribution of the member being merged and its counterparts comes from the
  * merge itself: `MERGE_HEAD` is the pinned contribution git was merging, so the
  * member is whichever enrolled member carries that sha, and the counterparts are
- * the earlier enabled members whose pinned ranges also touch the resolved paths.
+ * the earlier members whose pinned ranges also touch the resolved paths.
  * That is the same range-based question `describeConflict` asks during assembly,
  * for the same reason: "who last touched this file" is confidently wrong exactly
  * when several members changed it.
@@ -282,15 +282,15 @@ async function journalResolution(
       return
     }
 
-    const enabled = ws.members.filter((m) => m.enabled && m.pinnedSha)
-    const merged = enabled.find((m) => m.pinnedSha === state.mergeHead)
+    const members = ws.members.filter((m) => m.pinnedSha)
+    const merged = members.find((m) => m.pinnedSha === state.mergeHead)
     const memberBranch = merged?.branchName ?? state.mergeHead.slice(0, 7)
 
     // One entry per resolved path: the journal is queried BY path, since the
     // next conflict is on a file rather than on a member.
     for (const path of state.conflictedPaths) {
       const collidedWith: string[] = []
-      for (const other of enabled) {
+      for (const other of members) {
         if (other.worktreePath === merged?.worktreePath) continue
         const base = other.pinnedBaseSha || ws.baseSha
         if (!base) continue

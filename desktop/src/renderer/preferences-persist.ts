@@ -6,6 +6,10 @@ import { isThinkingEffort } from '../shared/thinking-options'
 import { isAiAssistWorkflowId, type AiAssistWorkflowId } from '../shared/ai-assist-workflows'
 import { rError, rInfo } from './rendererLogger'
 import { sanitizeRecentDirectories } from '../shared/recent-directories'
+import { sanitizeWorkspaceFolders } from '../shared/workspace-roots'
+import { sanitizeProjectRegistry } from '../shared/project-registry'
+import { sanitizeKeyboardShortcuts } from './preferences-shortcuts'
+import { clampFontSize, clampUiZoom } from './typography'
 
 export function saveSettings(s: Record<string, unknown>): void {
   window.ion?.saveSettings(s)?.catch((err) => rError('preferences', 'saveSettings failed; user settings not persisted', { error: String(err) }))
@@ -13,7 +17,7 @@ export function saveSettings(s: Record<string, unknown>): void {
 
 export function getAllSettings(get: () => PreferencesState): Record<string, unknown> {
   const s = get()
-  return { selectedTheme: s.selectedTheme, soundEnabled: s.soundEnabled, expandedUI: s.expandedUI, ultraWide: s.ultraWide, defaultBaseDirectory: s.defaultBaseDirectory, recentBaseDirectories: s.recentBaseDirectories, directoryUsageCounts: s.directoryUsageCounts, defaultPermissionMode: s.defaultPermissionMode, expandOnTabSwitch: s.expandOnTabSwitch, bashCommandEntry: s.bashCommandEntry, gitPanelPaneProportions: s.gitPanelPaneProportions, gitPanelHeight: s.gitPanelHeight, fileExplorerHeight: s.fileExplorerHeight, gitPanelChangesOpen: s.gitPanelChangesOpen, gitPanelGraphOpen: s.gitPanelGraphOpen, gitPanelWorktreesOpen: s.gitPanelWorktreesOpen, expandToolResults: s.expandToolResults, terminalFontFamily: s.terminalFontFamily, terminalFontSize: s.terminalFontSize, closeExplorerOnFileOpen: s.closeExplorerOnFileOpen, openMarkdownInPreview: s.openMarkdownInPreview, editorWordWrap: s.editorWordWrap, editorFontSize: s.editorFontSize, conversationFontSize: s.conversationFontSize, previewFontSize: s.previewFontSize, gitOpsMode: s.gitOpsMode, worktreeCompletionStrategy: s.worktreeCompletionStrategy, worktreeBranchDefaults: s.worktreeBranchDefaults, worktreeSkipPrTitle: s.worktreeSkipPrTitle, allowSettingsEdits: s.allowSettingsEdits, enableClaudeCompat: s.enableClaudeCompat, enableEarlyStopContinuation: s.enableEarlyStopContinuation, showTodoList: s.showTodoList, agentPanelDefaultOpen: s.agentPanelDefaultOpen, unifiedTurnView: s.unifiedTurnView, aiGeneratedTitles: s.aiGeneratedTitles, hideOnExternalLaunch: s.hideOnExternalLaunch, keepExplorerOnCollapse: s.keepExplorerOnCollapse, keepTerminalOnCollapse: s.keepTerminalOnCollapse, keepGitPanelOnCollapse: s.keepGitPanelOnCollapse, keepStatusDrawerOnCollapse: s.keepStatusDrawerOnCollapse, tabGroupMode: s.tabGroupMode, tabGroups: s.tabGroups, autoGroupOrder: s.autoGroupOrder, stashedManualGroups: s.stashedManualGroups, stashedManualTabAssignments: s.stashedManualTabAssignments, inProgressGroupId: s.inProgressGroupId, doneGroupId: s.doneGroupId, planningGroupId: s.planningGroupId, autoGroupMovement: s.autoGroupMovement, commitCommand: s.commitCommand, aiAssistPromptOverrides: s.aiAssistPromptOverrides, gitChangesTreeView: s.gitChangesTreeView, quickTools: s.quickTools, uiZoom: s.uiZoom, remoteEnabled: s.remoteEnabled, relayUrl: s.relayUrl, relayApiKey: s.relayApiKey, lanServerPort: s.lanServerPort, pairedDevices: s.pairedDevices, streamThinkingToRemote: s.streamThinkingToRemote, defaultThinkingEffort: s.defaultThinkingEffort, remoteDisplay: s.remoteDisplay, engineDefaultModel: s.engineDefaultModel, defaultEngineProfileId: s.defaultEngineProfileId, engineProfiles: s.engineProfiles, preferredModel: s.preferredModel, defaultTallConversation: s.defaultTallConversation, defaultTallTerminal: s.defaultTallTerminal, tabRecoveryEnabled: s.tabRecoveryEnabled, planModelSplitEnabled: s.planModelSplitEnabled, planModeModel: s.planModeModel, implementModeModel: s.implementModeModel, showImplementClearContext: s.showImplementClearContext, gitWatcherIgnoredDirectories: s.gitWatcherIgnoredDirectories, excludedResourceKinds: s.excludedResourceKinds, keyboardShortcuts: s.keyboardShortcuts }
+  return { selectedTheme: s.selectedTheme, soundEnabled: s.soundEnabled, expandedUI: s.expandedUI, ultraWide: s.ultraWide, defaultBaseDirectory: s.defaultBaseDirectory, recentBaseDirectories: s.recentBaseDirectories, directoryUsageCounts: s.directoryUsageCounts, defaultPermissionMode: s.defaultPermissionMode, expandOnTabSwitch: s.expandOnTabSwitch, studioSurfaceSwitchMode: s.studioSurfaceSwitchMode, bashCommandEntry: s.bashCommandEntry, gitPanelPaneProportions: s.gitPanelPaneProportions, gitPanelHeight: s.gitPanelHeight, fileExplorerHeight: s.fileExplorerHeight, gitPanelChangesOpen: s.gitPanelChangesOpen, gitPanelGraphOpen: s.gitPanelGraphOpen, expandToolResults: s.expandToolResults, terminalFontFamily: s.terminalFontFamily, terminalFontSize: s.terminalFontSize, closeExplorerOnFileOpen: s.closeExplorerOnFileOpen, openMarkdownInPreview: s.openMarkdownInPreview, editorWordWrap: s.editorWordWrap, editorFontSize: s.editorFontSize, dataViewFontSize: s.dataViewFontSize, gitOpsMode: s.gitOpsMode, worktreeCompletionStrategy: s.worktreeCompletionStrategy, worktreeBranchDefaults: s.worktreeBranchDefaults, worktreeSkipPrTitle: s.worktreeSkipPrTitle, allowSettingsEdits: s.allowSettingsEdits, enableClaudeCompat: s.enableClaudeCompat, enableEarlyStopContinuation: s.enableEarlyStopContinuation, showTodoList: s.showTodoList, agentPanelDefaultOpen: s.agentPanelDefaultOpen, unifiedTurnView: s.unifiedTurnView, aiGeneratedTitles: s.aiGeneratedTitles, hideOnExternalLaunch: s.hideOnExternalLaunch, keepExplorerOnCollapse: s.keepExplorerOnCollapse, keepTerminalOnCollapse: s.keepTerminalOnCollapse, keepGitPanelOnCollapse: s.keepGitPanelOnCollapse, keepStatusDrawerOnCollapse: s.keepStatusDrawerOnCollapse, tabGroupMode: s.tabGroupMode, tabGroups: s.tabGroups, autoGroupOrder: s.autoGroupOrder, stashedManualGroups: s.stashedManualGroups, stashedManualTabAssignments: s.stashedManualTabAssignments, inProgressGroupId: s.inProgressGroupId, doneGroupId: s.doneGroupId, planningGroupId: s.planningGroupId, autoGroupMovement: s.autoGroupMovement, commitCommand: s.commitCommand, aiAssistPromptOverrides: s.aiAssistPromptOverrides, gitChangesTreeView: s.gitChangesTreeView, quickTools: s.quickTools, uiZoom: s.uiZoom, remoteEnabled: s.remoteEnabled, relayUrl: s.relayUrl, relayApiKey: s.relayApiKey, lanServerPort: s.lanServerPort, pairedDevices: s.pairedDevices, streamThinkingToRemote: s.streamThinkingToRemote, defaultThinkingEffort: s.defaultThinkingEffort, remoteDisplay: s.remoteDisplay, engineDefaultModel: s.engineDefaultModel, defaultEngineProfileId: s.defaultEngineProfileId, engineProfiles: s.engineProfiles, preferredModel: s.preferredModel, defaultTallConversation: s.defaultTallConversation, defaultTallTerminal: s.defaultTallTerminal, tabRecoveryEnabled: s.tabRecoveryEnabled, tabRecoveryTimeoutSec: s.tabRecoveryTimeoutSec, planModelSplitEnabled: s.planModelSplitEnabled, planModeModel: s.planModeModel, implementModeModel: s.implementModeModel, showImplementClearContext: s.showImplementClearContext, gitWatcherIgnoredDirectories: s.gitWatcherIgnoredDirectories, workspaceFolders: s.workspaceFolders, gitPanelRepoSectionsCollapsed: s.gitPanelRepoSectionsCollapsed, inboxAutoSettleDays: s.inboxAutoSettleDays, inboxAutoSettleOnMerge: s.inboxAutoSettleOnMerge, conversationNav: s.conversationNav, projects: s.projects, excludedResourceKinds: s.excludedResourceKinds, keyboardShortcuts: s.keyboardShortcuts }
 }
 
 /** Returns effective tab groups: custom groups if any exist, otherwise built-in defaults */
@@ -40,8 +44,8 @@ export function loadPersistedSettings(
   setState: (patch: Partial<PreferencesState>) => void,
   getState: () => PreferencesState,
   applyTheme: (themeId: string) => void,
-): void {
-  window.ion?.loadSettings().then((disk) => {
+): Promise<void> {
+  return Promise.resolve(window.ion?.loadSettings()).then((disk) => {
     if (!disk) return
     const sound = typeof disk.soundEnabled === 'boolean' ? disk.soundEnabled : true
     const expanded = typeof disk.expandedUI === 'boolean' ? disk.expandedUI : false
@@ -56,6 +60,7 @@ export function loadPersistedSettings(
     const recentDirs = sanitizedRecents.directories
     const dirUsageCounts = sanitizedRecents.usageCounts
     const expandTabSwitch = typeof disk.expandOnTabSwitch === 'boolean' ? disk.expandOnTabSwitch : true
+    const studioSurfaceSwitchMode = disk.studioSurfaceSwitchMode === 'per-conversation' ? 'per-conversation' as const : 'preserve' as const
     const bashCmd = typeof disk.bashCommandEntry === 'boolean' ? disk.bashCommandEntry : false
     // Pane proportions replaced the single Changes-vs-Graph ratio. A disk value
     // written by an older build carries only that scalar, which describes a
@@ -72,18 +77,24 @@ export function loadPersistedSettings(
     const fileExplorerHeight = (typeof disk.fileExplorerHeight === 'number' && Number.isFinite(disk.fileExplorerHeight) && disk.fileExplorerHeight > 0) ? disk.fileExplorerHeight : null
     const changesOpen = typeof disk.gitPanelChangesOpen === 'boolean' ? disk.gitPanelChangesOpen : true
     const graphOpen = typeof disk.gitPanelGraphOpen === 'boolean' ? disk.gitPanelGraphOpen : true
-    // Default OPEN: the section's whole purpose is discoverability, and an
-    // operator who does not know it exists cannot open it.
-    const worktreesOpen = typeof disk.gitPanelWorktreesOpen === 'boolean' ? disk.gitPanelWorktreesOpen : true
     const expandTools = typeof disk.expandToolResults === 'boolean' ? disk.expandToolResults : false
     const termFont = typeof disk.terminalFontFamily === 'string' ? disk.terminalFontFamily : 'Menlo, Monaco, monospace'
-    const termSize = typeof disk.terminalFontSize === 'number' ? disk.terminalFontSize : 13
+    const termSize = clampFontSize(typeof disk.terminalFontSize === 'number' ? disk.terminalFontSize : 13)
     const closeExplorer = typeof disk.closeExplorerOnFileOpen === 'boolean' ? disk.closeExplorerOnFileOpen : true
     const mdPreview = typeof disk.openMarkdownInPreview === 'boolean' ? disk.openMarkdownInPreview : true
     const wordWrap = typeof disk.editorWordWrap === 'boolean' ? disk.editorWordWrap : true
-    const editorFontSize = typeof disk.editorFontSize === 'number' ? Math.max(8, Math.min(24, Math.round(disk.editorFontSize))) : 12
-    const conversationFontSize = typeof disk.conversationFontSize === 'number' ? Math.max(8, Math.min(24, Math.round(disk.conversationFontSize))) : 13
-    const previewFontSize = typeof disk.previewFontSize === 'number' ? Math.max(8, Math.min(24, Math.round(disk.previewFontSize))) : 13
+    const editorFontSize = clampFontSize(typeof disk.editorFontSize === 'number' ? disk.editorFontSize : 12, 12)
+    // Legacy values migrate once. Conversation was the default shortcut target,
+    // so it wins when old conversation and preview values disagree.
+    const dataViewFontSize = clampFontSize(
+      typeof disk.dataViewFontSize === 'number'
+        ? disk.dataViewFontSize
+        : typeof disk.dataViewFontSize === 'number'
+          ? disk.dataViewFontSize
+          : typeof disk.dataViewFontSize === 'number'
+            ? disk.dataViewFontSize
+            : 13,
+    )
     const gitOpsMode = (disk.gitOpsMode === 'manual' || disk.gitOpsMode === 'worktree') ? disk.gitOpsMode : 'manual'
     const wtStrategy = (disk.worktreeCompletionStrategy === 'merge-ff' || disk.worktreeCompletionStrategy === 'merge' || disk.worktreeCompletionStrategy === 'pr') ? disk.worktreeCompletionStrategy : 'merge-ff'
     const wtDefaults = (disk.worktreeBranchDefaults && typeof disk.worktreeBranchDefaults === 'object' && !Array.isArray(disk.worktreeBranchDefaults)) ? disk.worktreeBranchDefaults as Record<string, string> : {}
@@ -117,7 +128,7 @@ export function loadPersistedSettings(
     const keepStatusDrawer = typeof disk.keepStatusDrawerOnCollapse === 'boolean' ? disk.keepStatusDrawerOnCollapse : false
     const permMode = (disk.defaultPermissionMode === 'auto' || disk.defaultPermissionMode === 'plan') ? disk.defaultPermissionMode : 'plan'
     const quickTools = Array.isArray(disk.quickTools) ? (disk.quickTools as QuickTool[]).filter((t: any) => t && typeof t.id === 'string' && typeof t.name === 'string' && typeof t.command === 'string') : []
-    const uiZoom = typeof disk.uiZoom === 'number' ? Math.round(Math.max(0.5, Math.min(2.0, disk.uiZoom)) * 10) / 10 : 1
+    const uiZoom = clampUiZoom(typeof disk.uiZoom === 'number' ? disk.uiZoom : 1)
     const remoteEnabled = typeof disk.remoteEnabled === 'boolean' ? disk.remoteEnabled : false
     const relayUrl = typeof disk.relayUrl === 'string' ? disk.relayUrl : ''
     const relayApiKey = typeof disk.relayApiKey === 'string' ? disk.relayApiKey : ''
@@ -166,12 +177,32 @@ export function loadPersistedSettings(
     const defaultTallConversation = (typeof disk.defaultTallConversation === 'boolean' ? disk.defaultTallConversation : false) || legacyDefaultTallEngine
     const defaultTallTerminal = typeof disk.defaultTallTerminal === 'boolean' ? disk.defaultTallTerminal : false
     const tabRecoveryEnabled = typeof disk.tabRecoveryEnabled === 'boolean' ? disk.tabRecoveryEnabled : true
+    const tabRecoveryTimeoutSec = typeof disk.tabRecoveryTimeoutSec === 'number' ? Math.max(30, Math.min(600, Math.round(disk.tabRecoveryTimeoutSec))) : 120
     const planModelSplitEnabled = typeof disk.planModelSplitEnabled === 'boolean' ? disk.planModelSplitEnabled : false
     const planModeModel = typeof disk.planModeModel === 'string' ? disk.planModeModel : ''
     const implementModeModel = typeof disk.implementModeModel === 'string' ? disk.implementModeModel : ''
     // gitWatcherIgnoredDirectories: paths where the git file watcher is
     // suppressed. An explicit empty array means "watch everywhere". Falls back
     // to the default ['~/.ion'] when the key is absent or not an array.
+    // workspaceFolders: per-project record of extra roots. Malformed disk
+    // values (wrong shape, relative paths, non-strings) sanitize to {}.
+    const workspaceFolders = sanitizeWorkspaceFolders(disk.workspaceFolders)
+    const gitPanelRepoSectionsCollapsed: Record<string, boolean> = {}
+    if (disk.gitPanelRepoSectionsCollapsed && typeof disk.gitPanelRepoSectionsCollapsed === 'object' && !Array.isArray(disk.gitPanelRepoSectionsCollapsed)) {
+      for (const [k, v] of Object.entries(disk.gitPanelRepoSectionsCollapsed as Record<string, unknown>)) {
+        if (typeof v === 'boolean') gitPanelRepoSectionsCollapsed[k] = v
+      }
+    }
+    const inboxAutoSettleDays =
+      typeof disk.inboxAutoSettleDays === 'number' && Number.isFinite(disk.inboxAutoSettleDays)
+        ? Math.min(90, Math.max(0, Math.round(disk.inboxAutoSettleDays)))
+        : SETTINGS_DEFAULTS.inboxAutoSettleDays
+    const inboxAutoSettleOnMerge =
+      typeof disk.inboxAutoSettleOnMerge === 'boolean'
+        ? disk.inboxAutoSettleOnMerge
+        : SETTINGS_DEFAULTS.inboxAutoSettleOnMerge
+    const conversationNav = disk.conversationNav === 'inbox' ? ('inbox' as const) : ('tabs' as const)
+    const projects = sanitizeProjectRegistry(disk.projects)
     const gitWatcherIgnoredDirs = Array.isArray(disk.gitWatcherIgnoredDirectories)
       ? (disk.gitWatcherIgnoredDirectories as unknown[]).filter((v): v is string => typeof v === 'string')
       : ['~/.ion']
@@ -197,14 +228,10 @@ export function loadPersistedSettings(
     // extra clear-context action per-plan. The reset behavior is not a
     // global toggle.
     const showImplementClearContext = typeof disk.showImplementClearContext === 'boolean' ? disk.showImplementClearContext : false
-    // keyboardShortcuts: user overrides (command id -> chord string).
-    // Only non-default entries are stored. On load: must be an object
-    // of string->string; drop any malformed entries; ignore unknown ids
-    // (tolerant load — a stale or forward config doesn't crash).
-    const keyboardShortcuts = (disk.keyboardShortcuts && typeof disk.keyboardShortcuts === 'object' && !Array.isArray(disk.keyboardShortcuts))
-      ? Object.fromEntries(Object.entries(disk.keyboardShortcuts as Record<string, unknown>).filter(([k, v]) => typeof k === 'string' && typeof v === 'string')) as Record<string, string>
-      : {}
-    setState({ selectedTheme, soundEnabled: sound, expandedUI: expanded, ultraWide, defaultBaseDirectory: baseDir, recentBaseDirectories: recentDirs, directoryUsageCounts: dirUsageCounts, expandOnTabSwitch: expandTabSwitch, bashCommandEntry: bashCmd, gitPanelPaneProportions: paneProportions, gitPanelHeight, fileExplorerHeight, gitPanelChangesOpen: changesOpen, gitPanelGraphOpen: graphOpen, gitPanelWorktreesOpen: worktreesOpen, expandToolResults: expandTools, terminalFontFamily: termFont, terminalFontSize: termSize, editorFontSize, conversationFontSize, previewFontSize, closeExplorerOnFileOpen: closeExplorer, openMarkdownInPreview: mdPreview, editorWordWrap: wordWrap, gitOpsMode, worktreeCompletionStrategy: wtStrategy, worktreeBranchDefaults: wtDefaults, worktreeSkipPrTitle: wtSkipPr, allowSettingsEdits: allowSettings, enableClaudeCompat: enableCompat, enableEarlyStopContinuation: enableEarlyStop, showTodoList: showTodo, agentPanelDefaultOpen, unifiedTurnView, aiGeneratedTitles: aiTitles, hideOnExternalLaunch: hideExternal, tabGroupMode: tabGroupMode as TabGroupMode, tabGroups, autoGroupOrder, stashedManualGroups, stashedManualTabAssignments, inProgressGroupId, doneGroupId, planningGroupId, autoGroupMovement, commitCommand, aiAssistPromptOverrides, gitChangesTreeView: changesTreeView, keepExplorerOnCollapse: keepExplorer, keepTerminalOnCollapse: keepTerminal, keepGitPanelOnCollapse: keepGitPanel, keepStatusDrawerOnCollapse: keepStatusDrawer, defaultPermissionMode: permMode, quickTools, uiZoom, remoteEnabled, relayUrl, relayApiKey, lanServerPort, pairedDevices, streamThinkingToRemote, defaultThinkingEffort, remoteDisplay, engineDefaultModel, defaultEngineProfileId, engineProfiles, preferredModel, defaultTallConversation, defaultTallTerminal, tabRecoveryEnabled, planModelSplitEnabled, planModeModel, implementModeModel, showImplementClearContext, gitWatcherIgnoredDirectories: gitWatcherIgnoredDirs, excludedResourceKinds, keyboardShortcuts })
+    // keyboardShortcuts are scoped by view. Flat legacy maps migrate to the
+    // overlay so existing bindings keep their behavior after this upgrade.
+    const keyboardShortcuts = sanitizeKeyboardShortcuts(disk.keyboardShortcuts)
+    setState({ selectedTheme, soundEnabled: sound, expandedUI: expanded, ultraWide, defaultBaseDirectory: baseDir, recentBaseDirectories: recentDirs, directoryUsageCounts: dirUsageCounts, expandOnTabSwitch: expandTabSwitch, studioSurfaceSwitchMode, bashCommandEntry: bashCmd, gitPanelPaneProportions: paneProportions, gitPanelHeight, fileExplorerHeight, gitPanelChangesOpen: changesOpen, gitPanelGraphOpen: graphOpen, expandToolResults: expandTools, terminalFontFamily: termFont, terminalFontSize: termSize, editorFontSize, dataViewFontSize, closeExplorerOnFileOpen: closeExplorer, openMarkdownInPreview: mdPreview, editorWordWrap: wordWrap, gitOpsMode, worktreeCompletionStrategy: wtStrategy, worktreeBranchDefaults: wtDefaults, worktreeSkipPrTitle: wtSkipPr, allowSettingsEdits: allowSettings, enableClaudeCompat: enableCompat, enableEarlyStopContinuation: enableEarlyStop, showTodoList: showTodo, agentPanelDefaultOpen, unifiedTurnView, aiGeneratedTitles: aiTitles, hideOnExternalLaunch: hideExternal, tabGroupMode: tabGroupMode as TabGroupMode, tabGroups, autoGroupOrder, stashedManualGroups, stashedManualTabAssignments, inProgressGroupId, doneGroupId, planningGroupId, autoGroupMovement, commitCommand, aiAssistPromptOverrides, gitChangesTreeView: changesTreeView, keepExplorerOnCollapse: keepExplorer, keepTerminalOnCollapse: keepTerminal, keepGitPanelOnCollapse: keepGitPanel, keepStatusDrawerOnCollapse: keepStatusDrawer, defaultPermissionMode: permMode, quickTools, uiZoom, remoteEnabled, relayUrl, relayApiKey, lanServerPort, pairedDevices, streamThinkingToRemote, defaultThinkingEffort, remoteDisplay, engineDefaultModel, defaultEngineProfileId, engineProfiles, preferredModel, defaultTallConversation, defaultTallTerminal, tabRecoveryEnabled, tabRecoveryTimeoutSec, planModelSplitEnabled, planModeModel, implementModeModel, showImplementClearContext, gitWatcherIgnoredDirectories: gitWatcherIgnoredDirs, workspaceFolders, gitPanelRepoSectionsCollapsed, inboxAutoSettleDays, inboxAutoSettleOnMerge, conversationNav, projects, excludedResourceKinds, keyboardShortcuts })
     if (sanitizedRecents.removed) {
       saveSettings(getAllSettings(getState))
       rInfo('preferences', 'removed ephemeral workspaces from persisted recent directories', {
@@ -212,6 +239,9 @@ export function loadPersistedSettings(
       })
     }
     applyTheme(selectedTheme)
-    if (uiZoom !== 1) document.documentElement.style.zoom = String(uiZoom)
+
+    // TypographySync applies root zoom in each renderer window after this
+    // state patch. Applying it here would only update the loading renderer.
+
   })?.catch((err) => rError('preferences', 'loadSettings failed; using in-memory defaults', { error: String(err) }))
 }

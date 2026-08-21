@@ -122,7 +122,7 @@ export async function describeConflict(
   // attribution — the conflict report still fires, just with fewer names.
   const conflictsWith: string[] = []
   // Source attribution is separate from prior-member attribution. A single
-  // enabled member can conflict because its source branch moved after its pin's
+  // member can conflict because its source branch moved after its pin's
   // base. Name that real counterpart instead of returning an empty list.
   if (conflictedMember.pinnedBaseSha && conflictedMember.pinnedBaseSha !== buildBaseSha) {
     try {

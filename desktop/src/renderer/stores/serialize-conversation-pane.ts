@@ -1,7 +1,7 @@
 import type { ConversationPane } from '../../shared/types-engine'
 import type { PersistedConversationPane, PersistedConversationInstance } from '../../shared/types-persistence'
 import { deriveLedger, resolveCurrentSessionId } from '../../shared/session-ledger'
-import { instanceMessageCount } from './conversation-instance'
+import { instanceMessageCount, isRendererOnlyRow } from './conversation-instance'
 import { rDebug } from '../rendererLogger'
 
 /**
@@ -91,7 +91,7 @@ export function instanceHasRendererOnlyRows(
   messages: Array<{ role: string }> | undefined,
 ): boolean {
   if (!messages || messages.length === 0) return false
-  return messages.some((m) => m.role === 'harness' || m.role === 'system')
+  return messages.some(isRendererOnlyRow)
 }
 
 /**

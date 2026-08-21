@@ -26,7 +26,7 @@ function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, ms
  * working.
  *
  * The simulation merges the candidate pin onto the CURRENT source tip with the
- * other enabled members' pins applied in order — the same inputs the next
+ * other members' pins applied in order — the same inputs the next
  * assembly will use. Best-effort: any probe failure (other than a predicted
  * conflict) returns no warning, since a broken dry-run must never block or
  * mislabel an update.
@@ -36,13 +36,13 @@ export async function dryRunCollision(
   candidate: { worktreePath: string; branchName: string; sha: string },
 ): Promise<string | undefined> {
   try {
-    // Simulated base: source tip plus every OTHER enabled member, merged in
+    // Simulated base: source tip plus every OTHER member, merged in
     // order via merge-tree chaining. A prior member that itself conflicts with
     // the simulation is skipped — the dry-run answers for THIS update, and the
     // assembly will report the other collision on its own.
     let simulated = (await runGit(ws.repoPath, ['rev-parse', ws.sourceBranch])).trim()
     for (const m of ws.members) {
-      if (!m.enabled || !m.pinnedSha || m.worktreePath === candidate.worktreePath) continue
+      if (!m.pinnedSha || m.worktreePath === candidate.worktreePath) continue
       const prior = await mergeTree(ws.repoPath, simulated, m.pinnedSha)
       if (prior.prediction !== 'clean' || !prior.tree) continue
       // Advance the simulation as a synthetic commit so later members merge

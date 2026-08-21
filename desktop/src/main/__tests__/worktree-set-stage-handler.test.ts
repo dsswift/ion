@@ -15,6 +15,7 @@ const sentResults: Array<{ type: string; operation?: string; ok: boolean; error?
 
 vi.mock('../state', () => ({
   state: {
+    remoteWorktreeStates: new Map(),
     remoteTransport: {
       send: (msg: Record<string, unknown>) => { sentResults.push(msg as typeof sentResults[0]) },
     },
@@ -43,7 +44,7 @@ vi.mock('../worktree/inventory-service', () => ({
 
 vi.mock('../worktree/integrate', () => ({
   syncWorktreeFromSource: vi.fn(),
-  landWorktree: vi.fn(),
+  landAndRetireWorktree: vi.fn(),
 }))
 
 vi.mock('../worktree/sync-all', () => ({
@@ -55,7 +56,6 @@ vi.mock('../integration/bench-ops', () => ({
   assembleWorkspace: vi.fn(),
   updateMember: vi.fn(),
   updateAllStale: vi.fn(),
-  setMemberEnabled: vi.fn(),
   setMemberOrder: vi.fn(),
   addMember: vi.fn(),
   removeMember: vi.fn(),
@@ -76,7 +76,7 @@ import {
 } from '../worktree/registry'
 
 import { handleWorktreeCommand } from '../remote/handlers/worktree'
-import { landWorktree } from '../worktree/integrate'
+import { landAndRetireWorktree } from '../worktree/integrate'
 import { broadcast } from '../broadcast'
 
 let home: string
@@ -86,6 +86,7 @@ beforeEach(() => {
   mkdirSync(join(home, '.ion'), { recursive: true })
   process.env.ION_TEST_HOME_SET_STAGE = home
   sentResults.length = 0
+  vi.clearAllMocks()
   resetRegistryWriter()
 })
 
@@ -180,11 +181,44 @@ describe('desktop_worktree_set_stage handler', () => {
 })
 
 describe('desktop_worktree remote lifecycle', () => {
+  it('routes owner-rendered worktree and bench actions through broadcast', async () => {
+    const commands = [
+      [{ type: 'desktop_worktree_create', repoPath: '/repo', sourceBranch: 'main' }, 'ion:remote-create-worktree'],
+      [{ type: 'desktop_worktree_convert_conversation', tabId: 'tab-1' }, 'ion:remote-convert-worktree-conversation'],
+      [{ type: 'desktop_worktree_rename', repoPath: '/repo', worktreePath: '/wt/a', title: 'Work' }, 'ion:remote-rename-worktree'],
+      [{ type: 'desktop_worktree_reprovision', repoPath: '/repo', worktreePath: '/wt/a' }, 'ion:remote-reprovision-worktree'],
+      [{ type: 'desktop_bench_recover_conflict', repoPath: '/repo', sourceBranch: 'main' }, 'ion:remote-recover-bench-conflict'],
+      [{ type: 'desktop_bench_analyse_verification', repoPath: '/repo', sourceBranch: 'main' }, 'ion:remote-analyse-bench-verification'],
+      [{ type: 'desktop_bench_discard_member_recordings', repoPath: '/repo', sourceBranch: 'main', branchNames: ['wt/a'] }, 'ion:remote-discard-bench-member-recordings'],
+      [{ type: 'desktop_bench_discard_all_recordings', repoPath: '/repo', sourceBranch: 'main' }, 'ion:remote-discard-all-bench-recordings'],
+    ] as const
+
+    for (const [command, channel] of commands) {
+      await handleWorktreeCommand(command as Parameters<typeof handleWorktreeCommand>[0])
+      if (channel === 'ion:remote-create-worktree') {
+        expect(broadcast).toHaveBeenCalledWith(channel, { repoPath: '/repo', sourceBranch: 'main' })
+      } else if (channel === 'ion:remote-convert-worktree-conversation') {
+        expect(broadcast).toHaveBeenCalledWith(channel, { tabId: 'tab-1' })
+      } else {
+        expect(broadcast).toHaveBeenCalledWith(channel, command)
+      }
+    }
+  })
+
+  it('refuses invalid paths before owner-rendered actions are broadcast', async () => {
+    await handleWorktreeCommand({
+      type: 'desktop_worktree_reprovision', repoPath: 'relative', worktreePath: '/wt/a',
+    } as Parameters<typeof handleWorktreeCommand>[0])
+
+    expect(broadcast).not.toHaveBeenCalledWith('ion:remote-reprovision-worktree', expect.anything())
+    expect(sentResults).toContainEqual(expect.objectContaining({ operation: 'reprovision', ok: false, error: 'Invalid path.' }))
+  })
+
   it('broadcasts sealed worktree after remote land succeeds', async () => {
-    vi.mocked(landWorktree).mockResolvedValue({ ok: true, mode: 'merge', sha: 'abc' })
+    vi.mocked(landAndRetireWorktree).mockResolvedValue({ ok: true, landed: true, mode: 'merge', sha: 'abc' })
 
     await handleWorktreeCommand({
-      type: 'desktop_worktree_land', repoPath: '/repo', worktreePath: '/wt/landed',
+      type: 'desktop_worktree_land_and_retire', repoPath: '/repo', worktreePath: '/wt/landed',
       worktreeBranch: 'wt/landed', sourceBranch: 'main',
     } as Parameters<typeof handleWorktreeCommand>[0])
 

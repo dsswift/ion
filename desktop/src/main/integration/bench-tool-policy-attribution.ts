@@ -58,7 +58,7 @@ export function benchRelativePath(canonicalTarget: string, canonicalBenchPath: s
 const HUNK_HEADER_RE = /^@@ .* \+(\d+)(?:,(\d+))? @@/
 
 /**
- * Find every enabled member whose pinned CONTRIBUTION RANGE touches target.
+ * Find every member whose pinned CONTRIBUTION RANGE touches target.
  *
  * Best-effort: a member whose diff cannot be read is omitted, and the refusal
  * still fires — attribution improves the message, it never turns a refusal
@@ -70,8 +70,7 @@ export function attributeOwners(bench: IntegrationWorkspace, canonicalTarget: st
 
   const owners: BenchOwner[] = []
   for (const m of bench.members) {
-    // Absent `enabled` means enabled — enrollment defaults to included.
-    if (m.enabled === false || !m.pinnedSha) continue
+    if (!m.pinnedSha) continue
     const base = m.pinnedBaseSha || bench.baseSha
     if (!base) continue
     let changed = ''
@@ -148,7 +147,7 @@ export function benchWriteReason(target: string, bench: IntegrationWorkspace, ow
     }
     b += ' edit in the member that owns those lines, commit there, then update that member in the bench.'
   }
-  b += ' Writes into an enrolled, enabled member worktree are permitted from this bench conversation, so the redirect above needs no new conversation.'
+  b += ' Writes into an enrolled member worktree are permitted from this bench conversation, so the redirect above needs no new conversation.'
   b += ATTRIBUTION_HINT
   b += ' Reading, building, and testing in the bench are unaffected.'
   return b
@@ -156,15 +155,7 @@ export function benchWriteReason(target: string, bench: IntegrationWorkspace, ow
 
 /** The refusal for a history verb inside a bench. */
 export function benchHistoryReason(subcommand: string, bench: IntegrationWorkspace): string {
-  return `Refused: \`git ${subcommand}\` inside the integration bench ${bench.benchPath}. A bench branch is recreated from scratch on every assembly, so a commit made here is destroyed by the next assembly and a push would publish a synthetic merge of other people's in-flight work. Commit in the member worktree that owns the change — writes and commits in an enrolled, enabled member worktree are permitted from this bench conversation — then update that member in the bench. Reading, building, testing, and staging are unaffected.${ATTRIBUTION_HINT}`
-}
-
-/**
- * Why an enrolled-but-excluded member is not a valid destination for a fix
- * diagnosed in the bench.
- */
-export function disabledMemberReason(target: string, bench: IntegrationWorkspace, memberPath: string, memberBranch: string): string {
-  return `Refused: ${target} is inside the member worktree ${memberPath} (${memberBranch}), which is enrolled in the bench ${bench.benchPath} but DISABLED. A disabled member is skipped during assembly, so none of its work is in the bench and a failure observed there cannot originate from it — an edit here would change unrelated work on evidence that does not apply to it. Attribute the failing content to an enabled member first; writes into enabled member worktrees are permitted from this bench conversation.${ATTRIBUTION_HINT}`
+  return `Refused: \`git ${subcommand}\` inside the integration bench ${bench.benchPath}. A bench branch is recreated from scratch on every assembly, so a commit made here is destroyed by the next assembly and a push would publish a synthetic merge of other people's in-flight work. Commit in the member worktree that owns the change — writes and commits in an enrolled member worktree are permitted from this bench conversation — then update that member in the bench. Reading, building, testing, and staging are unaffected.${ATTRIBUTION_HINT}`
 }
 
 /**
@@ -172,7 +163,7 @@ export function disabledMemberReason(target: string, bench: IntegrationWorkspace
  * from a bench conversation.
  */
 export function benchSourceCheckoutReason(target: string, bench: IntegrationWorkspace): string {
-  return `Refused: ${target} is inside the source checkout ${bench.repoPath} that the bench ${bench.benchPath} integrates into. Writing there commits straight onto ${bench.sourceBranch}, bypassing the integration model entirely, and leaves every conversation sharing that checkout with a dirty tree no review can attribute. Route the change to the enabled member worktree that owns the content — those writes are permitted from this bench conversation — or, when the content comes from ${bench.sourceBranch} itself, to a worktree cut from ${bench.sourceBranch}.${ATTRIBUTION_HINT}`
+  return `Refused: ${target} is inside the source checkout ${bench.repoPath} that the bench ${bench.benchPath} integrates into. Writing there commits straight onto ${bench.sourceBranch}, bypassing the integration model entirely, and leaves every conversation sharing that checkout with a dirty tree no review can attribute. Route the change to the member worktree that owns the content — those writes are permitted from this bench conversation — or, when the content comes from ${bench.sourceBranch} itself, to a worktree cut from ${bench.sourceBranch}.${ATTRIBUTION_HINT}`
 }
 
 /**
@@ -181,5 +172,5 @@ export function benchSourceCheckoutReason(target: string, bench: IntegrationWork
  */
 export function nonMemberWorktreeReason(target: string, bench: IntegrationWorkspace, worktreePath: string, branchName: string): string {
   const label = branchName || worktreePath
-  return `Refused: ${target} is inside the worktree ${worktreePath} (${label}), which is NOT enrolled as a member of the bench ${bench.benchPath}. It belongs to another conversation, and writing there would interleave two conversations' work in one checkout — the same defect worktree isolation exists to prevent. Only enrolled, enabled member worktrees of this bench are writable from here.${ATTRIBUTION_HINT}`
+  return `Refused: ${target} is inside the worktree ${worktreePath} (${label}), which is NOT enrolled as a member of the bench ${bench.benchPath}. It belongs to another conversation, and writing there would interleave two conversations' work in one checkout — the same defect worktree isolation exists to prevent. Only enrolled member worktrees of this bench are writable from here.${ATTRIBUTION_HINT}`
 }

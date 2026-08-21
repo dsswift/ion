@@ -13,7 +13,7 @@
  *     history-writing git verb is refused, except the standalone exact merge
  *     drivers while a machinery-prepared merge is open;
  *   - a bench-cwd conversation writing OUTSIDE the bench is judged by the
- *     bench-origin rules: enrolled enabled member worktrees pass (that is the
+ *     bench-origin rules: enrolled member worktrees pass (that is the
  *     named remediation), the source checkout and non-member worktrees refuse.
  *
  * Worktree isolation (base repo / sibling worktree / worktree identity) stays
@@ -42,7 +42,7 @@ import {
 } from './bench-bash-destinations'
 import {
   attributeOwners, benchHistoryReason, benchRelativePath, benchSourceCheckoutReason,
-  benchWriteReason, disabledMemberReason, nonMemberWorktreeReason, runGit,
+  benchWriteReason, nonMemberWorktreeReason, runGit,
 } from './bench-tool-policy-attribution'
 import { log as _log, warn as _warn } from '../logger'
 import type { IntegrationWorkspace } from '../../shared/types'
@@ -193,13 +193,9 @@ function checkWriteTarget(target: string, cwd: string, benches: IntegrationWorks
  * be refused. The rule would then have no compliant path at all, which is how
  * a guard stops being a guard and becomes something to work around.
  *
- * ── Why only ENABLED and only ENROLLED ─────────────────────────────────────
- *   - An ENROLLED, ENABLED member owns bench content. A fix routed there is
- *     the fix reaching the code the bench actually built.
- *   - A DISABLED member is enrolled but excluded from the assembly. Its
- *     content is NOT in the bench, so a failure observed in the bench cannot
- *     originate from it, and an edit routed to it would be a change to
- *     unrelated work justified by evidence that does not apply to it.
+ * ── Why only enrolled members pass ──────────────────────────────────────────
+ *   - An ENROLLED member owns bench content. A fix routed there reaches the
+ *     code the bench actually built.
  *   - An ARBITRARY worktree of the same repo is not a member at all. Another
  *     conversation owns that checkout.
  *   - The SOURCE CHECKOUT is never a valid destination: landing work directly
@@ -211,17 +207,10 @@ function checkWriteTarget(target: string, cwd: string, benches: IntegrationWorks
 function benchOriginRefusal(bench: IntegrationWorkspace, target: string): GateDenial | null {
   for (const m of bench.members) {
     if (!within(target, m.worktreePath)) continue
-    // Absent `enabled` means enabled — enrollment defaults to included.
-    if (m.enabled !== false) {
-      log('bench-origin write into enrolled member allowed', {
-        bench_path: bench.benchPath, member_branch: m.branchName, member_path: m.worktreePath, target,
-      })
-      return null
-    }
-    warn('bench-origin write into disabled member refused', {
-      bench_path: bench.benchPath, member_branch: m.branchName, target,
+    log('bench-origin write into enrolled member allowed', {
+      bench_path: bench.benchPath, member_branch: m.branchName, member_path: m.worktreePath, target,
     })
-    return { reason: disabledMemberReason(target, bench, m.worktreePath, m.branchName) }
+    return null
   }
 
   // The source checkout the bench integrates into.
@@ -296,7 +285,7 @@ function checkBash(command: string, cwd: string, benches: IntegrationWorkspace[]
     const bench = benchFor(gitDir, benches)
     if (!bench) {
       // A bench conversation whose segment runs OUTSIDE the bench is judged by
-      // the bench-origin destination rules: history verbs in an enabled member
+      // the bench-origin destination rules: history verbs in an enrolled member
       // worktree are the remediation the bench refusal names (commit the fix
       // there), so they must pass, while the source checkout and non-member
       // worktrees stay refused. Only history verbs are judged — a build or

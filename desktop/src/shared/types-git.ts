@@ -44,6 +44,13 @@ export interface GitGraphData {
 
 export type GitConflictKind = 'UU' | 'AA' | 'DD' | 'AU' | 'UA' | 'DU' | 'UD'
 
+export interface GitDiffResult {
+  diff: string
+  fileName: string
+  /** Git classified this change as binary, so no diff content is transferred. */
+  isBinary: boolean
+}
+
 export interface GitChangedFile {
   path: string
   status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked' | 'conflict'
@@ -166,6 +173,13 @@ export interface SyncAllResult {
     dropped: number
   }
   error?: string
+}
+
+export interface LandAndRetireResult extends LandResult {
+  /** True when integration succeeded even if checkout cleanup needs a retry. */
+  landed?: boolean
+  /** Source repository used only as a race fallback for an occupant that became busy. */
+  workingDirectory?: string
 }
 
 /** Result of retiring or re-attaching a worktree. */
@@ -390,6 +404,6 @@ export interface WorktreeAppraisalWire {
 // Bench types live in types-bench.ts (extracted to keep this file under the
 // 600-line cap). Re-exported here so existing import paths keep working.
 export type {
-  EnrollmentState, PinState, MergeOutcome,
+  PinState, MergeOutcome,
   IntegrationMember, BenchPriorResolution, IntegrationWorkspace, BenchAssembleResult,
 } from './types-bench'

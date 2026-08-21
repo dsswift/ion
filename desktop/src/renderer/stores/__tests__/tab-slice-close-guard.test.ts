@@ -163,6 +163,9 @@ function buildHarness(tabs: any[], opts?: { activeTabId?: string }): Harness {
   }
   const get = () => state
   const slice = createTabSlice(set, get) as Partial<State>
+  // Recovery path for durable close. Most close tests only assert guard
+  // behavior; this stub prevents their plain harness from invoking undefined.
+  state.settleTab = vi.fn().mockResolvedValue(undefined)
   // Expose the slice's own selectTab on the state so closeTab's
   // get().selectTab(...) resolves to the real activation path under test.
   state.selectTab = slice.selectTab
@@ -367,6 +370,16 @@ describe('closeTab next-active activation', () => {
     closeTabRpc.mockClear()
   })
 
+  it('settles a durable conversation instead of permanently closing it', () => {
+    const tab = { ...makeCliTab('recoverable'), conversationId: 'conv-recoverable' }
+    const h = buildHarness([tab], { activeTabId: 'recoverable' })
+
+    h.slice.closeTab!('recoverable')
+
+    expect(h.state.settleTab).toHaveBeenCalledWith('recoverable')
+    expect(closeTabRpc).not.toHaveBeenCalled()
+  })
+
   it('activates the in-group sibling via selectTab and hydrates its skeleton', () => {
     // Two existing conversations in the same manual group. tab1 is active and
     // closing; tab2 is an un-hydrated skeleton (messageCount > 0, empty messages).
@@ -390,7 +403,7 @@ describe('closeTab next-active activation', () => {
 
     const selectSpy = vi.spyOn(h.state, 'selectTab')
 
-    h.slice.closeTab!('tab1')
+    h.slice.closeTab!('tab1', 'delete')
 
     // Activation went through selectTab with the in-group sibling, not a raw write.
     expect(selectSpy).toHaveBeenCalledWith('tab2')
@@ -400,5 +413,30 @@ describe('closeTab next-active activation', () => {
 
     selectSpy.mockRestore()
     h.warnSpy.mockClear()
+  })
+
+  it('uses MRU worktree-local selection over tab-strip position', () => {
+    const closing = { ...makeCliTab('close'), workingDirectory: '/wt/a', worktree: { worktreePath: '/wt/a', repoPath: '/repo', sourceBranch: 'main', branchName: 'wt/a' }, lastVisitedAt: 1 }
+    const local = { ...makeCliTab('local'), workingDirectory: '/wt/a', worktree: { worktreePath: '/wt/a', repoPath: '/repo', sourceBranch: 'main', branchName: 'wt/a' }, lastVisitedAt: 2 }
+    const unrelated = { ...makeCliTab('unrelated'), workingDirectory: '/other', lastVisitedAt: 99 }
+    const h = buildHarness([closing, unrelated, local], { activeTabId: 'close' })
+    h.state.conversationPanes.set('close', { instances: [{ id: 'main', label: 'main', statusFields: { state: 'idle' }, agentStates: [] }], activeInstanceId: 'main' })
+
+    h.slice.closeTab!('close')
+
+    expect(h.state.activeTabId).toBe('local')
+  })
+
+  it('does not send duplicate close IPC after a remote close', () => {
+    const closing = makeCliTab('close')
+    const target = { ...makeCliTab('target'), lastVisitedAt: 10 }
+    const h = buildHarness([closing, target], { activeTabId: 'close' })
+    h.state.conversationPanes.set('close', { instances: [{ id: 'main', label: 'main', statusFields: { state: 'idle' }, agentStates: [] }], activeInstanceId: 'main' })
+
+    h.slice.closeTab!('close', 'remote-delete')
+
+    expect(closeTabRpc).not.toHaveBeenCalled()
+    expect(h.state.activeTabId).toBe('target')
+    expect(h.state.tabs.map((tab: { id: string }) => tab.id)).toEqual(['target'])
   })
 })

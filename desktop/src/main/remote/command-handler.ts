@@ -14,6 +14,10 @@ import {
 } from './handlers/tabs'
 import { handleSetTabModel, handleSetPreferredModel, handleSetEngineDefaultModel } from './handlers/tabs-models'
 import {
+  handleTabSettle, handleTabReviewSettled, handleTabUnsettle, handleTabSnooze, handleTabUnsnooze, handleTabMarkUnread,
+  handleTabPin, handleTabUnpin, handleTabReorderPin, handleTabRegenerateTitle,
+} from './handlers/inbox'
+import {
   handleSetTabGroupMode,
   handleMoveTabToGroup,
   handleToggleTabGroupPin,
@@ -41,7 +45,6 @@ import {
 } from './handlers/terminal'
 import { handleRequestAgentState } from './handlers/agent-state'
 import {
-  handleRewind,
   handleForkFromMessage,
   handleEngineRewind,
   handleUnpair,
@@ -95,7 +98,7 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'desktop_sync': await handleSync(deviceId); break
     case 'desktop_create_tab': await handleCreateTab(cmd); break
     case 'desktop_create_terminal_tab': await handleCreateTerminalTab(cmd); break
-    case 'desktop_close_tab': handleCloseTab(cmd); break
+    case 'desktop_close_tab': await handleCloseTab(cmd); break
     case 'desktop_prompt': await handlePrompt(cmd, deviceId); break
     case 'desktop_cancel': handleCancel(cmd); break
     case 'desktop_respond_permission':
@@ -106,6 +109,16 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
       break
     case 'desktop_set_permission_mode': await handleSetPermissionMode(cmd); break
     case 'desktop_set_thinking_effort': await handleSetThinkingEffort(cmd); break
+    case 'desktop_tab_settle': await handleTabSettle(cmd); break
+    case 'desktop_review_settled_tab': await handleTabReviewSettled(cmd); break
+    case 'desktop_tab_unsettle': await handleTabUnsettle(cmd); break
+    case 'desktop_tab_snooze': await handleTabSnooze(cmd); break
+    case 'desktop_tab_unsnooze': await handleTabUnsnooze(cmd); break
+    case 'desktop_tab_mark_unread': await handleTabMarkUnread(cmd); break
+    case 'desktop_tab_pin': await handleTabPin(cmd); break
+    case 'desktop_tab_unpin': await handleTabUnpin(cmd); break
+    case 'desktop_tab_reorder_pin': await handleTabReorderPin(cmd); break
+    case 'desktop_tab_regenerate_title': await handleTabRegenerateTitle(cmd); break
     case 'desktop_reset_tab_session': sessionPlane.resetTabSession(cmd.tabId); break
     case 'desktop_reset_engine_session': await handleResetEngineSession(cmd); break
     case 'desktop_load_conversation': await handleLoadConversation(cmd, deviceId); break
@@ -155,7 +168,6 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'desktop_rename_terminal_instance': handleRenameTerminalInstance(cmd); break
     case 'desktop_set_pill_color': handleSetPillColor(cmd); break
     case 'desktop_set_pill_icon': handleSetPillIcon(cmd); break
-    case 'desktop_rewind': await handleRewind(cmd); break
     case 'desktop_fork_from_message': await handleForkFromMessage(cmd); break
     case 'desktop_engine_rewind': await handleEngineRewind(cmd); break
     case 'desktop_set_tab_group_mode': await handleSetTabGroupMode(cmd); break

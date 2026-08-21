@@ -62,7 +62,6 @@ export const storeState = {
   createTabInDirectory: vi.fn(),
   benchAddMember: vi.fn(),
   benchRemoveMember: vi.fn(),
-  benchSetEnabled: vi.fn(),
   setWorktreeStage: vi.fn(),
   // Deprecated shim (see worktree-inventory-slice.ts); mocked so sibling-branch
   // test files that still exercise it keep passing in the assembled bench.
@@ -108,8 +107,7 @@ export function member(n: string, over: Partial<IntegrationMember> = {}): Integr
   return {
     worktreePath: `/wt/${n}`,
     branchName: `wt/${n}`,
-    enabled: true,
-    pin: 'current',
+        pin: 'current',
     merge: 'merged',
     pinnedSha: 'abc1234',
     pinnedTreeHash: 't1',

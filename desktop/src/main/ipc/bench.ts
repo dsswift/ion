@@ -9,7 +9,7 @@ import { ipcMain } from 'electron'
 import { IPC } from '../../shared/types'
 import { log as _log, warn as _warn } from '../logger'
 import {
-  listWorkspaces, ensureWorkspace, addMember, removeMember, setMemberEnabled,
+  listWorkspaces, ensureWorkspace, addMember, removeMember,
   setMemberOrder,
   updateMember, updateAllStale, assembleWorkspace, refreshStaleness, sourceBranchTip,
 } from '../integration/bench-ops'
@@ -87,14 +87,6 @@ export function registerBenchIpc(): void {
       { repoPath: string; sourceBranch: string; worktreePath: string }) => {
       log('remove member', { worktree_path: worktreePath })
       return { workspace: removeMember(repoPath, sourceBranch, worktreePath) }
-    },
-  )
-
-  ipcMain.handle(
-    IPC.BENCH_SET_ENABLED,
-    async (_e, { repoPath, sourceBranch, worktreePath, enabled }:
-      { repoPath: string; sourceBranch: string; worktreePath: string; enabled: boolean }) => {
-      return { workspace: setMemberEnabled(repoPath, sourceBranch, worktreePath, enabled) }
     },
   )
 

@@ -1,6 +1,4 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'fs'
-import { join } from 'path'
 import { projectRendererTab } from '../snapshot-project'
 
 /**
@@ -94,44 +92,29 @@ describe('projectRendererTab — engineProfileId wire projection', () => {
   })
 })
 
-// ─── Static scan: renderer IIFE path ─────────────────────────────────────────
-//
-// The renderer IIFE is a string evaluated via executeJavaScript in the renderer
-// process. It cannot be imported, invoked, or mocked in a unit test — the
-// entire IIFE string never runs in Node. A source scan is the only feasible
-// coverage for this path. It is intentionally narrow: just the presence of the
-// assignment expression `engineProfileId: t.engineProfileId`. A broader test
-// would over-specify the formatting and break on whitespace changes.
-//
-// The main-process path (above) carries the behavioral parity assertion.
-
-// The legacy IIFE now lives in snapshot-renderer-poll.ts (cold-start / stall
-// fallback). The canonical extracted projection is behaviorally pinned in
-// renderer/stores/__tests__/remote-projection.test.ts.
-const SNAPSHOT_SRC = readFileSync(
-  join(__dirname, '..', 'snapshot-renderer-poll.ts'),
-  'utf-8',
-)
-
-function extractIifeString(src: string): string {
-  const start = src.indexOf('executeJavaScript(`')
-  if (start === -1) throw new Error('executeJavaScript template literal not found')
-  const open = src.indexOf('`', start)
-  const close = src.indexOf('`', open + 1)
-  if (close === -1) throw new Error('executeJavaScript template literal not closed')
-  return src.slice(open + 1, close)
-}
-
-describe('engineProfileId — renderer IIFE source guard', () => {
-  it('IIFE tab-map return object assigns engineProfileId from t.engineProfileId', () => {
-    const iife = extractIifeString(SNAPSHOT_SRC)
-    // Confirm the assignment is present in the tab-mapping body.
-    const tabsMapIdx = iife.indexOf('s.tabs.map(function(t)')
-    expect(tabsMapIdx, 'IIFE should contain s.tabs.map(function(t))').toBeGreaterThan(-1)
-    const tabMapBody = iife.slice(tabsMapIdx)
-    expect(tabMapBody).toMatch(/engineProfileId:\s*t\.engineProfileId/)
+describe('projectRendererTab — execution host wire projection', () => {
+  it('carries the main-owned execution identity to the wire', () => {
+    const result = projectRendererTab(
+      { id: 't1', title: 'Tab', executionHost: 'desktop-host', executionMachineId: 'machine-1' },
+      { lastMessage: null, permissionQueue: [] },
+    )
+    expect(result.executionHost).toBe('desktop-host')
+    expect(result.executionMachineId).toBe('machine-1')
   })
 })
+
+//
+// The fallback poll no longer transcribes the projection. It calls the
+// canonical renderer projection through a window global, so `engineProfileId`
+// and `elicitationQueue` reach the fallback path by construction rather than
+// by a source-scanned duplicate staying in sync. Those two scans are retired;
+// the behavioral pins live in
+// renderer/stores/__tests__/remote-projection.test.ts (which asserts both
+// fields off real store fixtures) and in the main-process projection tests
+// above.
+//
+// The single-source guard that replaces them — the fallback must not project
+// any field itself — is asserted in snapshot-wi-003-status-parity.test.ts.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WI-002 parity: thinkingEffort snapshot projection (#259 FIX 2)
@@ -220,12 +203,16 @@ describe('projectRendererTab — elicitationQueue wire projection', () => {
   })
 })
 
-describe('elicitationQueue — renderer IIFE source guard', () => {
-  it('IIFE captures the active instance elicitationQueue and projects it', () => {
-    const iife = extractIifeString(SNAPSHOT_SRC)
-    // The capture: var elicitQueue = (activeInst && activeInst.elicitationQueue ...
-    expect(iife).toMatch(/elicitQueue\s*=\s*\(activeInst\s*&&\s*activeInst\.elicitationQueue/)
-    // The projection onto the per-tab object.
-    expect(iife).toMatch(/elicitationQueue:\s*elicitQueue/)
+describe('elicitationQueue — wire projection', () => {
+  it('is pinned behaviorally, not by scanning a duplicated projection', () => {
+    // Previously this asserted that the fallback's transcribed IIFE captured
+    // activeInst.elicitationQueue. The transcription is gone, so the capture is
+    // pinned where the projection actually lives: remote-projection.test.ts
+    // ('terminals and elicitations'). The wire-shape half is above.
+    const result = projectRendererTab(
+      { id: 't1', title: 'T', engineProfileId: null },
+      { lastMessage: null, permissionQueue: [], elicitationQueue: [{ requestId: 'e1', mode: 'approval' }] },
+    )
+    expect(result.elicitationQueue).toEqual([{ requestId: 'e1', mode: 'approval' }])
   })
 })

@@ -363,50 +363,48 @@ describe('resolve-once carve-out lifecycle', () => {
 })
 
 describe('bench-origin destinations', () => {
-  let enabled: string
-  let disabled: string
+  let member: string
+  let legacyDisabled: string
   let nonMember: string
 
   beforeEach(() => {
-    enabled = join(root, 'worktrees', 'project-enabled')
-    disabled = join(root, 'worktrees', 'project-disabled')
+    member = join(root, 'worktrees', 'project-member')
+    legacyDisabled = join(root, 'worktrees', 'project-legacy-disabled')
     nonMember = join(root, 'worktrees', 'project-nonmember')
-    for (const d of [repo, enabled, disabled, nonMember]) mkdirSync(d, { recursive: true })
+    for (const d of [repo, member, legacyDisabled, nonMember]) mkdirSync(d, { recursive: true })
     writeWorkspaces([
-      { worktreePath: enabled, branchName: 'wt/enabled', enabled: true },
-      { worktreePath: disabled, branchName: 'wt/disabled', enabled: false },
+      { worktreePath: member, branchName: 'wt/member' },
+      { worktreePath: legacyDisabled, branchName: 'wt/legacy-disabled', enabled: false },
     ])
     writeWorktreeRegistry([
-      { worktreePath: enabled, repoPath: repo, branchName: 'wt/enabled' },
-      { worktreePath: disabled, repoPath: repo, branchName: 'wt/disabled' },
+      { worktreePath: member, repoPath: repo, branchName: 'wt/member' },
+      { worktreePath: legacyDisabled, repoPath: repo, branchName: 'wt/legacy-disabled' },
       { worktreePath: nonMember, repoPath: repo, branchName: 'wt/nonmember' },
     ])
   })
 
-  it('write into an enabled member passes — the remediation path itself', () => {
+  it('write into an member passes — the remediation path itself', () => {
     for (const tool of ['Write', 'Edit', 'NotebookEdit']) {
       const key = tool === 'NotebookEdit' ? 'notebook_path' : 'file_path'
-      const r = evaluateToolGate({ toolName: tool, input: { [key]: join(enabled, 'src', 'fix.go') }, cwd: benchPath })
+      const r = evaluateToolGate({ toolName: tool, input: { [key]: join(member, 'src', 'fix.go') }, cwd: benchPath })
       expect(r, tool).toBeNull()
     }
   })
 
-  it('committing in an enabled member passes — half the remediation', () => {
+  it('committing in an member passes — half the remediation', () => {
     for (const cmd of [
-      `cd ${enabled} && git commit -am fix`,
-      `git -C ${enabled} commit -am fix`,
-      `cd ${enabled} && git add -A && git commit -m fix`,
+      `cd ${member} && git commit -am fix`,
+      `git -C ${member} commit -am fix`,
+      `cd ${member} && git add -A && git commit -m fix`,
     ]) {
       expect(evaluateToolGate(bash(cmd, benchPath)), cmd).toBeNull()
     }
   })
 
-  it('refuses a disabled member: its content is not in the bench', () => {
-    const r = evaluateToolGate(write(join(disabled, 'x.go'), benchPath))
+  it('refuses a legacy disabled member as a non-member', () => {
+    const r = evaluateToolGate(write(join(legacyDisabled, 'x.go'), benchPath))
     expect(r).not.toBeNull()
-    expect(r!.reason).toContain('DISABLED')
-    expect(r!.reason).toContain('cannot originate from it')
-    expect(r!.reason).toContain('WorkspaceAttribution')
+    expect(r!.reason).toContain('NOT enrolled')
   })
 
   it('refuses the source checkout', () => {
@@ -428,8 +426,8 @@ describe('bench-origin destinations', () => {
   })
 
   it('member with absent enabled key is enrolled and writable', () => {
-    writeWorkspaces([{ worktreePath: enabled, branchName: 'wt/enabled' }])
-    expect(evaluateToolGate(write(join(enabled, 'x.go'), benchPath))).toBeNull()
+    writeWorkspaces([{ worktreePath: member, branchName: 'wt/enabled' }])
+    expect(evaluateToolGate(write(join(member, 'x.go'), benchPath))).toBeNull()
   })
 
   it('is not a cwd jail: unrelated destinations pass', () => {
@@ -442,7 +440,7 @@ describe('bench-origin destinations', () => {
     for (const cmd of [
       `cd ${repo} && npm test`,
       `cd ${nonMember} && git status --short`,
-      `cd ${disabled} && make build`,
+      `cd ${legacyDisabled} && make build`,
     ]) {
       expect(evaluateToolGate(bash(cmd, benchPath)), cmd).toBeNull()
     }

@@ -104,8 +104,7 @@ describe('resolveBenchContextAcrossRepos', () => {
 
   it('carries the member list through, so the bench banner can name them', () => {
     const members = [{
-      worktreePath: '/wt/a', branchName: 'wt/a', enabled: true,
-      pin: 'current' as const, merge: 'merged' as const,
+      worktreePath: '/wt/a', branchName: 'wt/a',       pin: 'current' as const, merge: 'merged' as const,
       pinnedSha: 'a', pinnedTreeHash: 't', pinnedBaseSha: 'b', currentTreeHash: 't',
     }]
     const byRepo = new Map([[REPO, [workspace({ members })]]])

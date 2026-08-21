@@ -105,13 +105,11 @@ export function loadWorkspaces(): IntegrationWorkspace[] {
     const list = Array.isArray(parsed.workspaces) ? parsed.workspaces : []
     const normalized = list.map(normalizeWorkspace).filter((w): w is IntegrationWorkspace => w !== null)
     log('workspaces loaded', { count: normalized.length, dropped: list.length - normalized.length })
-    // A file written before work stages existed carries per-member `review`
-    // verdicts. normalizeMember migrated each into the registry above; persist
-    // the stripped shape NOW so the migration is one-time — leaving the key on
-    // disk would resurrect the verdict on every load, including after the
-    // operator deliberately clears the stage it became.
-    if (hasLegacyReviewKey(list)) {
-      log('stripping migrated legacy review verdicts from the workspaces file', { path: file })
+    // Persist every one-way migration now. A review verdict moves into the
+    // worktree registry. A disabled or excluded member is removed. This keeps
+    // an empty workspace record when every old member is removed.
+    if (hasLegacyMembershipKeys(list)) {
+      log('stripping retired membership state from the workspaces file', { path: file })
       saveWorkspaces(normalized)
     }
     return normalized
@@ -121,14 +119,18 @@ export function loadWorkspaces(): IntegrationWorkspace[] {
   }
 }
 
-/** True when any persisted member still carries the pre-stage `review` key. */
-function hasLegacyReviewKey(raw: unknown[]): boolean {
+/** True when a persisted member carries a key that migration removes. */
+function hasLegacyMembershipKeys(raw: unknown[]): boolean {
   return raw.some((w) => {
     if (!w || typeof w !== 'object') return false
     const members = (w as { members?: unknown }).members
-    return Array.isArray(members) && members.some(
-      (m) => !!m && typeof m === 'object' && 'review' in (m as object),
-    )
+    return Array.isArray(members) && members.some((m) => (
+      !!m && typeof m === 'object' && (
+        'review' in (m as object) ||
+        (m as { enabled?: unknown }).enabled === false ||
+        (m as { status?: unknown }).status === 'excluded'
+      )
+    ))
   })
 }
 
@@ -194,7 +196,6 @@ export function makeMember(args: {
   return {
     worktreePath: args.worktreePath,
     branchName: args.branchName,
-    enabled: true,
     // A member enrolled before it has committed anything contributes nothing, and
     // says so. Calling that `current` would claim content the bench does not
     // hold; the bench used to call it `landed` and delete the member outright.
@@ -269,40 +270,23 @@ function normalizeVerification(
   }
 }
 
-/**
- * Legacy `MemberStatus` values, read from records written before the state was
- * split into three axes. Kept only as an input shape for the migration below —
- * nothing produces these any more.
- */
-type LegacyStatus = 'integrated' | 'pending' | 'landed' | 'stale' | 'conflicted' | 'missing' | 'excluded'
-
-/** A persisted member as it may appear on disk: new shape, old shape, or both. */
+/** A persisted member as it may appear on disk. */
 type PersistedMember = Partial<IntegrationMember> & {
+  /** Retired membership flag, read only to remove old records. */
+  enabled?: unknown
   status?: unknown
   /** Dropped on write: the worktree owns its own display name. */
   label?: unknown
-  /**
-   * Legacy per-pin review verdict (`good` | `issue`), replaced by the
-   * registry-scoped `stage` (shared/types-git.ts `WorkStage`). Read once for
-   * migration below, never written back — `saveWorkspaces` persists the new
-   * shape with no `review` key.
-   */
+  /** Legacy per-pin review verdict, migrated into the worktree stage. */
   review?: unknown
 }
 
-/**
- * Migrate a legacy member `review` verdict into the worktree registry's stage.
- *
- * `good` meant "reviewed, the feature works" → `verified`. `issue` meant
- * "this contribution has a bug" → `bug`. A stage the operator has already set
- * is never overwritten: the registry is the live system and the verdict is the
- * historical one. Runs at load, so a file written by an older build migrates
- * on its first read and the verdict key disappears on the next persist.
- */
+
+/** Legacy status values read only while migrating an older workspace file. */
+type LegacyStatus = 'integrated' | 'pending' | 'landed' | 'stale' | 'conflicted' | 'missing'
+
+/** Move a legacy per-pin review verdict to the worktree registry once. */
 function migrateLegacyReview(worktreePath: string, review: unknown): void {
-  // The verdict→stage table lives beside WORK_STAGES (legacyReviewToStage) so
-  // this migration and the deprecated benchSetReview preload shim cannot
-  // drift. `null` is a cleared verdict — nothing to migrate.
   const stage = legacyReviewToStage(review)
   if (!stage) return
   if (lookupWorktreeStage(worktreePath)) {
@@ -319,42 +303,25 @@ function migrateLegacyReview(worktreePath: string, review: unknown): void {
   })
 }
 
-/**
- * Map a legacy collapsed `status` onto the three axes it was hiding.
- *
- * The collapsed enum reported ONE fact where three were true, so this recovers
- * what it can and stays conservative where it cannot: a legacy `excluded`
- * record says nothing about whether its pin was fresh, so the pin is recomputed
- * from the tree hashes rather than guessed. That is exactly the information the
- * old ladder destroyed, and re-deriving it here is why the migration is worth
- * running rather than resetting everyone's benches.
- */
+/** Translate the former collapsed status into pin and merge facts. */
 function migrateStatus(
   status: LegacyStatus,
   pinnedTreeHash: string,
   currentTreeHash: string,
   pinnedSha: string,
   pinnedBaseSha: string,
-  enabled: boolean,
 ): { pin: PinState; merge: MergeOutcome } {
-  // Recomputed rather than inferred from the status word: for `excluded` and
-  // `conflicted` the old value carried no freshness information at all.
   const emptyPin = pinnedBaseSha !== '' && pinnedBaseSha === pinnedSha
   const derivedPin: PinState = emptyPin
     ? 'empty'
-    : currentTreeHash && currentTreeHash !== pinnedTreeHash
-      ? 'behind'
-      : 'current'
-
+    : currentTreeHash && currentTreeHash !== pinnedTreeHash ? 'behind' : 'current'
   switch (status) {
-    case 'pending': return { pin: 'empty', merge: enabled ? 'merged' : 'skipped' }
+    case 'pending': return { pin: 'empty', merge: 'skipped' }
     case 'integrated': return { pin: 'current', merge: 'merged' }
     case 'stale': return { pin: 'behind', merge: 'merged' }
-    case 'landed': return { pin: 'absorbed', merge: 'merged' }
+    case 'landed': return { pin: 'absorbed', merge: 'skipped' }
     case 'missing': return { pin: 'gone', merge: 'unbuilt' }
-    // Both of these said nothing about the pin, so it is derived above.
     case 'conflicted': return { pin: derivedPin, merge: 'conflicted' }
-    case 'excluded': return { pin: derivedPin, merge: 'skipped' }
   }
 }
 
@@ -364,7 +331,9 @@ function normalizeMember(raw: unknown): IntegrationMember | null {
   if (typeof m.worktreePath !== 'string' || !m.worktreePath) return null
   if (typeof m.branchName !== 'string' || !m.branchName) return null
 
-  const enabled = typeof m.enabled === 'boolean' ? m.enabled : true
+  // Membership is binary. A legacy disabled/excluded record is removed rather
+  // than retained as a dormant member. The workspace stays, even when empty.
+  if (m.enabled === false || m.status === 'excluded') return null
   const pinnedSha = typeof m.pinnedSha === 'string' ? m.pinnedSha : ''
   const pinnedTreeHash = typeof m.pinnedTreeHash === 'string' ? m.pinnedTreeHash : ''
   // Absent on records written before the contribution range was tracked.
@@ -375,7 +344,7 @@ function normalizeMember(raw: unknown): IntegrationMember | null {
   const pinnedBaseSha = typeof m.pinnedBaseSha === 'string' ? m.pinnedBaseSha : ''
   const currentTreeHash = typeof m.currentTreeHash === 'string' ? m.currentTreeHash : ''
 
-  const axes = resolveAxes(m, { enabled, pinnedSha, pinnedTreeHash, pinnedBaseSha, currentTreeHash })
+  const axes = resolveAxes(m, { pinnedSha, pinnedTreeHash, pinnedBaseSha, currentTreeHash })
 
   // A record written before stages existed may still carry a review verdict;
   // fold it into the registry once and drop the key from the member shape.
@@ -384,7 +353,6 @@ function normalizeMember(raw: unknown): IntegrationMember | null {
   return {
     worktreePath: m.worktreePath,
     branchName: m.branchName,
-    enabled,
     pin: axes.pin,
     merge: axes.merge,
     pinnedSha,
@@ -407,18 +375,18 @@ function normalizeMember(raw: unknown): IntegrationMember | null {
  */
 function resolveAxes(
   m: PersistedMember,
-  ctx: { enabled: boolean; pinnedSha: string; pinnedTreeHash: string; pinnedBaseSha: string; currentTreeHash: string },
+  ctx: { pinnedSha: string; pinnedTreeHash: string; pinnedBaseSha: string; currentTreeHash: string },
 ): { pin: PinState; merge: MergeOutcome } {
   const PINS: readonly PinState[] = ['empty', 'current', 'behind', 'absorbed', 'gone']
   const MERGES: readonly MergeOutcome[] = ['unbuilt', 'merged', 'conflicted', 'skipped']
   const hasNewShape = PINS.includes(m.pin as PinState) && MERGES.includes(m.merge as MergeOutcome)
   if (hasNewShape) return { pin: m.pin as PinState, merge: m.merge as MergeOutcome }
 
-  const LEGACY: readonly string[] = ['integrated', 'pending', 'landed', 'stale', 'conflicted', 'missing', 'excluded']
+  const LEGACY: readonly string[] = ['integrated', 'pending', 'landed', 'stale', 'conflicted', 'missing']
   if (typeof m.status === 'string' && LEGACY.includes(m.status)) {
     const migrated = migrateStatus(
       m.status as LegacyStatus,
-      ctx.pinnedTreeHash, ctx.currentTreeHash, ctx.pinnedSha, ctx.pinnedBaseSha, ctx.enabled,
+      ctx.pinnedTreeHash, ctx.currentTreeHash, ctx.pinnedSha, ctx.pinnedBaseSha,
     )
     log('migrated legacy member status', {
       worktree_path: String(m.worktreePath), legacy_status: m.status,

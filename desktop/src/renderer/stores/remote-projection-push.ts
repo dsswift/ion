@@ -10,12 +10,12 @@
  * preload bridge (window.ion.pushRemoteTabStates). The main process caches
  * the payload and serves `getRemoteTabStates()` from that cache.
  *
- * Owner-window only: the ATV mirror window runs the same session store in
- * MIRROR mode (see renderer/atv/README.md and ADR-021) and must never push —
+ * Owner-window only: the Studio mirror window runs the same session store in
+ * MIRROR mode (see renderer/studio/README.md and ADR-021) and must never push —
  * the overlay renderer is the single writer/answerer for snapshot state, and
  * a second pusher would race it with potentially stale mirror state. The
  * guard uses isMirrorWindow() (entry-file detection, no init-order
- * dependency). This is not a store action, so no atv-mirror-actions
+ * dependency). This is not a store action, so no studio-mirror-actions
  * classification applies.
  *
  * Debounce: trailing ~250 ms. Store changes arrive in bursts (streamed
@@ -29,6 +29,7 @@
 import { useSessionStore } from './sessionStore'
 import { isMirrorWindow } from '../lib/window-role'
 import { projectRemoteTabStates } from './remote-projection'
+import { PROJECTION_GLOBAL } from '../../shared/remote-projection-global'
 import { rDebug, rError, rInfo } from '../rendererLogger'
 
 /** Trailing debounce window for projection recompute + push. */
@@ -104,6 +105,30 @@ export function startRemoteProjectionPush(deps: PushDeps): () => void {
 let stop: (() => void) | null = null
 
 /**
+ * Global name the main process's fallback poll calls to obtain the projection.
+ *
+ * The fallback (main/remote/snapshot-renderer-poll.ts) runs in the renderer
+ * global scope via executeJavaScript and cannot import anything. It used to
+ * carry its OWN ~300-line transcription of this projection, which drifted:
+ * the copy never learned the inbox fields (inboxState / unread / snoozedUntil /
+ * settledAt / wokeAt / idleSince), so every fallback tick shipped tabs with no
+ * classification at all while cache ticks shipped the real one. iOS then
+ * alternated between a correctly-filed Inbox and one where every conversation
+ * fell back to Active, flipping on the poll cadence. Exposing the canonical
+ * function as a global makes the fallback a CALLER of this module instead of a
+ * second implementation of it, so the two can no longer disagree.
+ */
+
+/**
+ * Publish the canonical projection for the main process's fallback poll.
+ * Owner window only — the mirror must never answer a snapshot poll.
+ */
+function exposeProjectionGlobal(): void {
+  ;(window as unknown as Record<string, unknown>)[PROJECTION_GLOBAL] = (): ReturnType<typeof projectRemoteTabStates> =>
+    projectRemoteTabStates(useSessionStore.getState())
+}
+
+/**
  * Start the projection pusher (idempotent). Called once from App mount in the
  * OWNER (overlay) window. Mirror windows no-op — see module doc.
  */
@@ -113,6 +138,10 @@ export function initRemoteProjectionPush(): () => void {
     rInfo('remote-projection-push', 'mirror window; projection push disabled')
     return () => { /* mirror never started */ }
   }
+  // Publish before the push starts: the main-process fallback may poll during
+  // the very first debounce window, and it must get the real projection rather
+  // than fall through to the field-poor cold-start path.
+  exposeProjectionGlobal()
   if (typeof window.ion?.pushRemoteTabStates !== 'function') {
     // Preload bridge absent (renderer unit tests without preload). Observable
     // no-op rather than a throw during App mount.

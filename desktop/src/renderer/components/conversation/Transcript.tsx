@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react'
 
 import { useColors } from '../../theme'
-import { groupMessages } from './tool-helpers'
+import { groupMessages, suppressUserImageEchoes } from './tool-helpers'
 import { TranscriptRows } from './TranscriptRows'
 import { useScrollFollow } from './useScrollFollow'
 import { ScrollToBottomButton } from './ScrollToBottomButton'
@@ -24,6 +24,8 @@ export interface TranscriptProps {
   actions?: (msg: Message) => React.ReactNode
   /** Live agent state updates for the embedded AgentPanel. */
   agents?: AgentStateUpdate[]
+  /** Full dispatch tree, retained when this transcript renders a child tier. */
+  allAgents?: AgentStateUpdate[]
   /** Flat dispatch telemetry for agent nesting depth. */
   dispatchTelemetry?: DispatchTelemetryEntry[]
   /** Called when the user opens a dispatch detail popup from the agent panel. */
@@ -50,20 +52,22 @@ export function Transcript({
   isRunning,
   actions,
   agents,
+  allAgents,
   dispatchTelemetry,
   onOpenDispatch,
   subDispatch,
 }: TranscriptProps) {
   const colors = useColors()
+  const visibleMessages = useMemo(() => suppressUserImageEchoes(messages), [messages])
   const grouped = useMemo(
-    () => groupMessages(messages, { includeUser: true, unifiedTurnView }),
-    [messages, unifiedTurnView],
+    () => groupMessages(visibleMessages, { includeUser: true, unifiedTurnView }),
+    [visibleMessages, unifiedTurnView],
   )
 
   const agentList = agents ?? EMPTY_AGENTS
   const telemetry = dispatchTelemetry ?? EMPTY_TELEMETRY
 
-  const { scrollRef, showScrollBtn, handleScroll, scrollToBottom } = useScrollFollow([
+  const { scrollRef, contentRef, showScrollBtn, handleScroll, scrollToBottom } = useScrollFollow([
     messages.length,
     agentList.length,
     isRunning,
@@ -96,7 +100,9 @@ export function Transcript({
           onScroll={handleScroll}
           style={{ height: '100%', overflowY: 'auto', padding: '8px 12px' }}
         >
-          <TranscriptRows grouped={grouped} actions={actions} />
+          <div ref={contentRef}>
+            <TranscriptRows grouped={grouped} actions={actions} />
+          </div>
         </div>
         <ScrollToBottomButton visible={showScrollBtn} onClick={scrollToBottom} />
       </div>
@@ -106,6 +112,7 @@ export function Transcript({
           (shows "Agents (0)"), then populates as children spawn. */}
       <AgentPanel
         agents={agentList}
+        allAgents={allAgents ?? agentList}
         dispatchTelemetry={telemetry}
         onOpenDispatch={onOpenDispatch}
         subDispatch={subDispatch}

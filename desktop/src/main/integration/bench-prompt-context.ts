@@ -56,16 +56,10 @@ export interface BenchContext {
   /** Unix ms of the last assembly attempt; 0 means never. */
   lastBuiltAt: number
   /**
-   * The ENABLED members in merge order — the contributors whose content is
-   * actually in the bench.
+   * The members in merge order — the contributors whose content is actually in
+   * the bench.
    */
   members: MemberContext[]
-  /**
-   * Enrolled but skipped. Kept in a separate field, never merged into
-   * `members`: their content is NOT in the bench, and listing them as
-   * contributors would attribute assembled bytes to work that never arrived.
-   */
-  disabledMembers: MemberContext[]
   /**
    * Facts that change how bench observations should be read (failed assembly,
    * stale pins, conflicts). Generic strings so a consumer can surface them
@@ -80,7 +74,6 @@ export interface MemberContext {
   worktreePath: string
   branchName: string
   title: string
-  enabled: boolean
   /**
    * `pinnedBaseSha..pinnedSha` — the EXACT contribution the assembly merged.
    * The tip alone is not the contribution: a collision introduced by an
@@ -149,13 +142,7 @@ function workspaceContaining(directory: string): IntegrationWorkspace | null {
  * made in the bench should be read.
  */
 function benchContext(ws: IntegrationWorkspace): BenchContext {
-  const members: MemberContext[] = []
-  const disabledMembers: MemberContext[] = []
-  for (const m of ws.members) {
-    const mc = memberContext(m)
-    if (mc.enabled) members.push(mc)
-    else disabledMembers.push(mc)
-  }
+  const members = ws.members.map(memberContext)
   return {
     benchPath: ws.benchPath,
     benchBranch: ws.benchBranch,
@@ -168,7 +155,6 @@ function benchContext(ws: IntegrationWorkspace): BenchContext {
     lastAssemblyError: ws.lastAssemblyError ?? '',
     lastBuiltAt: ws.lastBuiltAt,
     members,
-    disabledMembers,
     warnings: benchWarnings(ws),
   }
 }
@@ -181,7 +167,6 @@ function memberContext(m: IntegrationMember): MemberContext {
     // no worktree facts of its own (see the sidecar rationale on
     // IntegrationMember).
     title: lookupWorktreeTitle(m.worktreePath) ?? '',
-    enabled: m.enabled,
     pinnedRange: pinnedRangeOf(m),
     pinnedSha: m.pinnedSha,
     pinnedBaseSha: m.pinnedBaseSha,
@@ -245,10 +230,9 @@ function benchWarnings(ws: IntegrationWorkspace): string[] {
     warnings.push('The last assembly outcome is unknown for this bench (the record predates outcome tracking), so whether the tree matches the enrolled combination cannot be confirmed from the record.')
   }
 
-  const enabled = ws.members.filter((m) => m.enabled)
   const stale: string[] = []
   const unknownStale: string[] = []
-  for (const m of enabled) {
+  for (const m of ws.members) {
     if (staleOf(m)) stale.push(m.branchName)
     else if (!stalenessKnownOf(m)) unknownStale.push(m.branchName)
   }
@@ -259,7 +243,7 @@ function benchWarnings(ws: IntegrationWorkspace): string[] {
     warnings.push(`Pin freshness is unknown for: ${unknownStale.join(', ')} (the record carries no tree hashes to compare).`)
   }
 
-  for (const m of enabled) {
+  for (const m of ws.members) {
     if (m.merge === 'conflicted') {
       let w = `Member ${m.branchName} last merged with CONFLICTS`
       if (m.conflictsWith?.length) w += ' against ' + m.conflictsWith.join(', ')
@@ -289,20 +273,15 @@ function format(bc: BenchContext): string {
   if (bc.benchBranch) b += ` on branch ${bc.benchBranch}`
   b += `. It is assembled from the source branch ${bc.sourceBranch} of ${bc.repoPath}`
   if (bc.baseSha) b += ` at ${bc.baseSha}`
-  b += ", with each enabled member's pinned contribution merged on top.\n"
+  b += ", with each member's pinned contribution merged on top.\n"
 
   b += '\nThe bench is disposable: its branch is recreated from scratch on every assembly, so a file written here and a commit made here are both destroyed by the next assembly and reach nobody. File writes and history-writing git commands are refused in the bench for that reason. Reading, building, testing, and staging are unaffected — running the assembled combination is what the bench is for.\n'
 
   if (bc.members.length > 0) {
-    b += '\nEnabled members, in merge order — each owns the content its pinned range contributed:\n'
+    b += '\nMembers, in merge order — each owns the content its pinned range contributed:\n'
     bc.members.forEach((m, i) => { b += `${i + 1}. ${formatLine(m)}\n` })
   } else {
-    b += '\nNo enabled members: this bench currently holds only its source branch.\n'
-  }
-
-  if (bc.disabledMembers.length > 0) {
-    b += '\nEnrolled but DISABLED — their work is not in this bench and they own none of its content:\n'
-    for (const m of bc.disabledMembers) b += `- ${formatLine(m)}\n`
+    b += '\nNo members: this bench currently holds only its source branch.\n'
   }
 
   if (bc.lastAssembly) {

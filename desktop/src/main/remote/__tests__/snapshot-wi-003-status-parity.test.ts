@@ -63,28 +63,32 @@ describe('WI-003 guard: deriveEngineParentStatus removed', () => {
     expect(PROJECTION_SRC).not.toContain('deriveEngineParentStatus')
   })
 
-  it('fallback IIFE and canonical projection have no derivedStatus variable (status is uniform)', () => {
+  it('no snapshot source has a derivedStatus variable (status is uniform)', () => {
     // If derivedStatus appears, someone reintroduced the compensation.
     // Status must project t.status directly — no intermediate variable.
-    const start = POLL_SRC.indexOf('executeJavaScript(`')
-    expect(start).toBeGreaterThan(-1)
-    const open = POLL_SRC.indexOf('`', start)
-    const close = POLL_SRC.indexOf('`', open + 1)
-    const iife = POLL_SRC.slice(open + 1, close)
-    expect(iife).not.toContain('derivedStatus')
+    // The fallback poll no longer transcribes the projection at all (it calls
+    // the canonical one through a window global), so scanning its whole source
+    // is now stricter than extracting an IIFE body used to be.
+    expect(POLL_SRC).not.toContain('derivedStatus')
     expect(PROJECTION_SRC).not.toContain('derivedStatus')
   })
 
-  it('fallback IIFE has no anyInstanceRunning aggregate (retired with derivation)', () => {
+  it('no snapshot source has an anyInstanceRunning aggregate (retired with derivation)', () => {
     // anyInstanceRunning was only used by the derivation loop.
     // After WI-003 it is gone; only anyInstanceHasRunningChildren survives
     // (drives the hasRunningChildren yellow-dot field).
-    const start = POLL_SRC.indexOf('executeJavaScript(`')
-    expect(start).toBeGreaterThan(-1)
-    const open = POLL_SRC.indexOf('`', start)
-    const close = POLL_SRC.indexOf('`', open + 1)
-    const iife = POLL_SRC.slice(open + 1, close)
-    expect(iife).not.toContain('anyInstanceRunning')
+    expect(POLL_SRC).not.toContain('anyInstanceRunning')
+  })
+
+  it('the fallback poll does not re-implement the projection (single-source guard)', () => {
+    // The fallback used to carry a ~300-line transcription of the canonical
+    // projection, which drifted: it never learned the inbox fields, so every
+    // fallback tick shipped tabs with no classification and the iOS Inbox
+    // flipped between filed and unfiled on the poll cadence. It must stay a
+    // CALLER. A field-mapping key reappearing here means the copy is back.
+    for (const marker of ['inboxState:', 'permissionMode:', 'engineProfileId:', 'convFingerprint:', 's.tabs.map']) {
+      expect(POLL_SRC, `fallback poll must not project "${marker}" itself`).not.toContain(marker)
+    }
   })
 })
 

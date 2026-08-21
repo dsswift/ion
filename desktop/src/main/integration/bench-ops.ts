@@ -215,28 +215,6 @@ export function disenrollWorktree(worktreePath: string): { removedFrom: number; 
   return { removedFrom, prunedBenches }
 }
 
-/** Enable or exclude a member without removing it from the list. */
-export function setMemberEnabled(
-  repoPath: string,
-  sourceBranch: string,
-  worktreePath: string,
-  enabled: boolean,
-): IntegrationWorkspace | null {
-  const ws = findWorkspace(loadWorkspaces(), repoPath, sourceBranch)
-  if (!ws) return null
-  const next = {
-    ...ws,
-    // Only the enrollment axis moves. The pin keeps saying how fresh the
-    // contribution is, so re-enabling an excluded member that moved on still
-    // reports `behind` — under the collapsed enum that fact was erased by the
-    // exclusion and the operator got a silent stale merge.
-    members: ws.members.map((m) => (m.worktreePath === worktreePath ? { ...m, enabled } : m)),
-  }
-  persist(next)
-  log('member enabled changed', { worktree_path: worktreePath, enabled })
-  return next
-}
-
 /**
  * Move a member to a new position in the merge order.
  *
@@ -359,7 +337,7 @@ export async function updateMember(
   return warning ? { ...result, warning } : result
 }
 
-/** Advance every ENABLED member whose pin is behind, then assemble once. */
+/** Advance every member whose pin is behind, then assemble once. */
 export async function updateAllStale(
   repoPath: string,
   sourceBranch: string,
@@ -372,9 +350,6 @@ export async function updateAllStale(
   const warnings: string[] = []
   for (let i = 0; i < members.length; i++) {
     const m = members[i]
-    // Disabled members keep their pins: the operator excluded them
-    // deliberately, and silently advancing would re-integrate on re-enable.
-    if (!m.enabled) continue
     const current = await contributedTreeHash(m)
     if (!current || current === m.pinnedTreeHash) continue
     try {
@@ -426,14 +401,9 @@ export async function assembleWorkspace(
  *
  * ── Only the pin axis is written here ───────────────────────────────────────
  * This function used to compute a single collapsed `status`, which forced a
- * priority ladder: a conflict verdict had to be preserved by hand, exclusion
- * outranked staleness, and whichever fact lost the ordering was destroyed. The
- * concrete damage was an excluded member that had also moved on — it reported
- * only `excluded`, so re-enabling it merged a stale pin with no warning.
- *
- * Now staleness owns exactly one axis. `merge` belongs to assembly and `enabled`
- * belongs to the operator, so neither can be clobbered by an evaluation that
- * has nothing to say about them.
+ * priority ladder where one fact destroyed another. Now staleness owns exactly
+ * one axis and `merge` belongs to assembly, so evaluation does not clobber a
+ * merge outcome it has nothing to say about.
  */
 export async function refreshStaleness(
   repoPath: string,
@@ -476,9 +446,6 @@ export async function refreshStaleness(
       changed: moved,
       behind: members.filter((m) => m.pin === 'behind').length,
       gone: members.filter((m) => m.pin === 'gone').length,
-      // Logged separately from `behind` precisely because the old model could not
-      // report both at once.
-      excluded: members.filter((m) => !m.enabled).length,
       conflicted: members.filter((m) => m.merge === 'conflicted').length,
     })
   }

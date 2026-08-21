@@ -85,7 +85,7 @@ export async function prepareVerificationDiagnostic(
 
     const replayedBranches: string[] = []
     for (const member of ws.members) {
-      if (!member.enabled || !member.pinnedSha) continue
+      if (!member.pinnedSha) continue
       const contribution = await resolveContribution(ws.benchPath, member, ws.sourceBranch)
       if (contribution.empty) continue
       if (await isLandedIntoSource(ws.benchPath, member, ws.sourceBranch)) continue

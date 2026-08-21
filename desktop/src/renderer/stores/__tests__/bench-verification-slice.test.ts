@@ -39,8 +39,7 @@ function workspaceFixture(over: Partial<IntegrationWorkspace> = {}): Integration
       {
         worktreePath: '/wt/a',
         branchName: 'wt/a',
-        enabled: true,
-        pin: 'current',
+                pin: 'current',
         merge: 'unbuilt',
         pinnedSha: 'abc1234',
         pinnedTreeHash: 't1',

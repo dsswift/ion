@@ -61,6 +61,7 @@ vi.mock('../../state', () => ({
     },
     tabSnapshotInterval: null,
     mainWindow: null,
+    remoteWorktreeStates: new Map(),
   },
   modelCache: { models: [] },
   engineBridge: null,
@@ -146,6 +147,7 @@ vi.mock('../handlers/load-conversation-gate', () => ({
 vi.mock('../client-msg-id-map', () => ({ lookupClientMsgId: vi.fn(), clearClientMsgIdsForTab: vi.fn() }))
 vi.mock('../../prompt-pipeline', () => ({ processIncomingPrompt: vi.fn() }))
 
+import { state } from '../../state'
 import { sendSync } from '../handlers/tabs-sync'
 import { handleSync } from '../handlers/tabs'
 import { resetSnapshotHash, pollSnapshotOnce } from '../snapshot-polling'
@@ -223,6 +225,15 @@ describe('sendSync — single snapshot sender with force semantics', () => {
 
     const snap = collected.find((event) => event.type === 'desktop_snapshot')
     expect(snap.recentDirectories).toEqual(['/tmp'])
+  })
+
+  it('includes main-owned worktree state and settled history in the snapshot', async () => {
+    state.remoteWorktreeStates.set('/repo', { repoPath: '/repo', worktrees: [], benches: [] })
+    await sendSync(collector, [])
+    const snap = collected.find((event) => event.type === 'desktop_snapshot')
+    expect(snap.worktreeStates).toEqual([{ repoPath: '/repo', worktrees: [], benches: [] }])
+    expect(snap.settledTabs).toEqual([])
+    state.remoteWorktreeStates.clear()
   })
 
   it('includes tabs and settings fields in the sent event', async () => {

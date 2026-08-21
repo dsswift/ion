@@ -17,7 +17,7 @@
  * ── The sequence, reused from bench-merge-continue.ts's restoreConflict ────
  * To forget member X's recording:
  *   1. Reset the bench to the source tip.
- *   2. Re-merge every enabled, non-empty-pin, non-landed member in order.
+ *   2. Re-merge every non-empty-pin, non-landed member in order.
  *      A member BEFORE X that conflicts is expected to replay cleanly (it
  *      already did, in the assembly that produced the tree under
  *      investigation) — `tryReplayResolution` completes it exactly the way
@@ -75,7 +75,7 @@ async function replayUpTo(
 
   for (const member of ws.members) {
     if (member.branchName === targetBranch) return { ok: true }
-    if (!member.enabled || !member.pinnedSha) continue
+    if (!member.pinnedSha) continue
     const contribution = await resolveContribution(ws.benchPath, member, ws.sourceBranch)
     if (contribution.empty) continue
     if (await isLandedIntoSource(ws.benchPath, member, ws.sourceBranch)) continue
@@ -95,7 +95,7 @@ async function replayUpTo(
   }
   return {
     ok: false,
-    error: `${targetBranch} is not an enrolled, enabled member with a contribution — nothing to rebuild toward.`,
+    error: `${targetBranch} is not an enrolled member with a contribution — nothing to rebuild toward.`,
   }
 }
 

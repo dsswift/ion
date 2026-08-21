@@ -161,34 +161,6 @@ describe('assembleBench — pure function, no accumulation', () => {
     expect(existsSync(join(ws.benchPath, 'b.txt'))).toBe(true)
   })
 
-  it('excludes a disabled member without removing it from the list', async () => {
-    const a = makeWorktree('a')
-    const b = makeWorktree('b')
-    const ws = workspaceFor([await enroll(a), await enroll(b)])
-    const built = (await assembleBench(ws)).workspace!
-
-    const disabled = {
-      ...built,
-      members: built.members.map((m) => (m.branchName === 'wt/b' ? { ...m, enabled: false } : m)),
-    }
-    const result = await assembleBench(disabled)
-
-    expect(result.ok).toBe(true)
-    expect(benchMergeCount(ws.benchPath)).toBe(1)
-    expect(existsSync(join(ws.benchPath, 'b.txt'))).toBe(false)
-    expect(result.workspace!.members).toHaveLength(2)
-    const excluded = result.workspace!.members.find((m) => m.branchName === 'wt/b')!
-    // Only the merge axis records the exclusion. The pin keeps saying how fresh
-    // the contribution is, which is what a re-enable needs to know.
-    expect(excluded.merge).toBe('skipped')
-    expect(excluded.enabled).toBe(false)
-  })
-}, GIT_FIXTURE_TIMEOUT)
-
-describe('assembleBench — pins, not tips (the commit-pair guarantee)', () => {
-  // THE regression test for the whole manual-integration design. An assembly
-  // triggered to pick up member A must not drag in member B's half-finished
-  // two-commit change.
   it('merges each member at its pinned contribution, not its current tip', async () => {
     const a = makeWorktree('a')
     const b = makeWorktree('b')

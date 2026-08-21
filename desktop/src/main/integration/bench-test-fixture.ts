@@ -147,7 +147,7 @@ export function buildMembers(f: BenchFixture): void {
 /** Member record with the full shape the desktop's normalizer expects. */
 export function memberRecord(over: Record<string, unknown>): Record<string, unknown> {
   return {
-    enabled: true, pin: 'current', merge: 'merged',
+    pin: 'current', merge: 'merged',
     pinnedTreeHash: '', currentTreeHash: '', pinnedBaseSha: '',
     ...over,
   }
@@ -177,7 +177,7 @@ export function writeRecord(
 /**
  * Build the bench branch by merging each named member in order, and write the
  * workspace record with those pins. Mirrors what the real assembly does: base
- * first, then each enabled member's pinned tip.
+ * first, then each member's pinned tip.
  */
 export function assemble(f: BenchFixture, ...branches: string[]): void {
   git(f.benchPath, 'switch', '-C', 'ion/bench/main', f.baseSha)

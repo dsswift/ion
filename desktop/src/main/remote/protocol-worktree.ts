@@ -110,8 +110,7 @@ export interface RemoteWorktree {
   openConversations: RemoteOpenConversation[]
   /**
    * This worktree's bench membership, when it belongs to one. Absent for an
-   * unenrolled worktree -- which is a different fact from `enabled: false`
-   * (enrolled but skipped), and clients must render them differently.
+   * unenrolled worktree. Every membership is part of the exact assembly set.
    */
   membership?: RemoteMembership
 }
@@ -125,14 +124,12 @@ export interface RemoteWorktree {
  * worktree twice, in two shapes, and iOS rendered it in two different rows.
  * Membership now decorates the worktree it belongs to.
  *
- * The three axes ship separately for the same reason they are stored
- * separately: a member can be excluded AND behind AND conflicted, and the old
- * single `status` could report only one of those.
+ * Pin freshness and merge outcome ship separately: a member can be behind and
+ * conflicted, and the old single `status` could report only one of those.
  */
 export interface RemoteMembership {
   /** Which bench: the source branch it integrates into. */
   sourceBranch: string
-  enabled: boolean
   pin: 'empty' | 'current' | 'behind' | 'absorbed' | 'gone'
   merge: 'unbuilt' | 'merged' | 'conflicted' | 'skipped'
   /** Short sha of the contribution currently integrated. */
@@ -256,7 +253,7 @@ export type RemoteWorktreeCommand =
    * half: precise rebases plus replay of every recorded resolution.
    */
   | { type: 'desktop_worktree_sync_all'; repoPath: string }
-  | { type: 'desktop_worktree_land'; repoPath: string; worktreePath: string; worktreeBranch: string; sourceBranch: string }
+  | { type: 'desktop_worktree_land_and_retire'; repoPath: string; worktreePath: string; worktreeBranch: string; sourceBranch: string }
   | { type: 'desktop_bench_open_conversation'; repoPath: string; sourceBranch: string }
   /**
    * Open (or focus) the bench's ONE dedicated terminal tab. Distinct from
@@ -268,7 +265,6 @@ export type RemoteWorktreeCommand =
   | { type: 'desktop_bench_assemble'; repoPath: string; sourceBranch: string }
   | { type: 'desktop_bench_update_member'; repoPath: string; sourceBranch: string; worktreePath: string }
   | { type: 'desktop_bench_update_all'; repoPath: string; sourceBranch: string }
-  | { type: 'desktop_bench_set_enabled'; repoPath: string; sourceBranch: string; worktreePath: string; enabled: boolean }
   /**
    * Set or clear the operator's workflow stage on a worktree. Worktree-scoped
    * (no sourceBranch): the stage lives in the desktop's worktree registry, not
@@ -285,18 +281,93 @@ export type RemoteWorktreeCommand =
    * how many succeeded) are identical on both clients.
    */
   | { type: 'desktop_worktree_retire_landed'; repoPath: string }
+  /** Create a standalone worktree from a repository and source branch. */
+  | { type: 'desktop_worktree_create'; repoPath: string; sourceBranch: string }
+  /** Move this owner-rendered conversation into a new worktree. */
+  | { type: 'desktop_worktree_convert_conversation'; tabId: string }
+  | { type: 'desktop_worktree_rename'; repoPath: string; worktreePath: string; title: string }
+  | { type: 'desktop_worktree_reprovision'; repoPath: string; worktreePath: string }
+  /** Recreate the failed conflict merge, or reassemble when recordings recover it. */
+  | { type: 'desktop_bench_recover_conflict'; repoPath: string; sourceBranch: string }
+  /** Create the owner-rendered, read-only verification analysis conversation. */
+  | { type: 'desktop_bench_analyse_verification'; repoPath: string; sourceBranch: string }
+  | { type: 'desktop_bench_discard_member_recordings'; repoPath: string; sourceBranch: string; branchNames: string[] }
+  | { type: 'desktop_bench_discard_all_recordings'; repoPath: string; sourceBranch: string }
   | { type: 'desktop_bench_add_member'; repoPath: string; sourceBranch: string; worktreePath: string; branchName: string }
   | { type: 'desktop_bench_remove_member'; repoPath: string; sourceBranch: string; worktreePath: string }
-  | { type: 'desktop_worktree_retire'; repoPath: string; worktreePath: string }
+  /**
+   * Retire ONE worktree (unlanded or landed). Mirrors the desktop row menu's
+   * Retire verb: the renderer store owns the occupant pre-flight (idle check,
+   * tab relocation) and the dirty-work appraisal, so the command routes there.
+   * Refusals come back as a `retire` op result with `refusedDirty` so iOS can
+   * word "refused, commit or land first" differently from a hard failure.
+   */
+  | { type: 'desktop_worktree_retire'; repoPath: string; worktreePath: string; branchName: string }
+  /**
+   * Launch the AI-assisted conflict resolution conversation for a worktree
+   * whose sync/rebase stopped on conflicts (`operationState` set). Same store
+   * verb as the desktop ConflictsDialog's "AI Assisted" button
+   * (openConflictAssist): a fresh auto-mode conversation in the conflicted
+   * directory with a fixed machine prompt and locked input. The 3-pane manual
+   * merge stays desktop-only; THIS assisted path is deliberately wire-reachable
+   * so a phone is never dead-ended on a conflict. Answers with a
+   * `conflict_assist` op result carrying the resolver tabId.
+   */
+  | { type: 'desktop_worktree_conflict_assist'; repoPath: string; worktreePath: string }
+  /**
+   * Bench counterpart: recreate the failed assembly merge in the bench
+   * (benchResolveConflict — replay recordings first; reassemble-and-finish
+   * when they cover it), then launch the assisted resolver on the bench
+   * directory. One command rather than two because the intermediate state
+   * (merge recreated, no resolver) is not a state iOS can act on.
+   */
+  | { type: 'desktop_bench_conflict_assist'; repoPath: string; sourceBranch: string }
+  /**
+   * The full sync pipeline, remote-started: mechanical pass → AI-confirm gate
+   * → sequential agents with rerere replay between → bench update-all. This is
+   * the desktop's "Sync All" button verb (startWorktreePipeline), NOT the
+   * mechanical-only `desktop_worktree_sync_all` above, which remains for the
+   * gate-free bulk sync. Progress rides `desktop_worktree_pipeline` events;
+   * the AI gate is answered with `confirm_ai` / `cancel` — money is spent only
+   * after the operator's explicit confirmation, same as on the desktop.
+   */
+  | { type: 'desktop_worktree_pipeline_start'; repoPath: string; sourceBranch: string }
+  | { type: 'desktop_worktree_pipeline_confirm_ai'; repoPath: string }
+  | { type: 'desktop_worktree_pipeline_cancel'; repoPath: string }
+  | { type: 'desktop_worktree_pipeline_dismiss'; repoPath: string }
 
 /** desktop → iOS worktree/bench events. */
 export type RemoteWorktreeEvent =
   | { type: 'desktop_worktree_state'; states: RemoteWorktreeState[] }
+  /**
+   * Live projection of the worktree sync pipeline (WorktreePipelineState).
+   * Pushed on every phase/progress change while a pipeline runs, and once
+   * with `phase: null` when it is dismissed. iOS renders the same banner the
+   * desktop's WorktreePipelinePanel shows and raises the AI-confirm gate on
+   * `awaiting-ai-confirm`. All wording (summary) is desktop-authored so every
+   * client renders the same sentence.
+   */
+  | {
+      type: 'desktop_worktree_pipeline'
+      repoPath: string
+      sourceBranch: string | null
+      /** Null when the pipeline was dismissed (clear the banner). */
+      phase: 'syncing' | 'awaiting-ai-confirm' | 'resolving' | 'assembling' | 'done' | 'failed' | null
+      /** Conflicted worktree paths awaiting AI confirmation / resolution. */
+      queue: string[]
+      /** Worktree path the current agent is resolving, when phase=resolving. */
+      current: string | null
+      /** Worktree paths parked for manual resolution. */
+      needsManual: string[]
+      resolvedByAi: number
+      /** Terminal one-line summary (done/failed), desktop-worded. */
+      summary?: string
+    }
   | {
       type: 'desktop_worktree_op_result'
       ok: boolean
       /** Which verb this answers, so iOS can attribute the toast. */
-      operation: 'open' | 'sync' | 'land' | 'assemble' | 'update' | 'update_all' | 'sync_all' | 'retire' | 'retire_all'
+      operation: 'open' | 'sync' | 'land_and_retire' | 'assemble' | 'update' | 'update_all' | 'sync_all' | 'retire' | 'retire_all' | 'create' | 'convert' | 'rename' | 'reprovision' | 'recover_conflict' | 'conflict_assist' | 'analyse_verification' | 'discard_recordings' | 'pipeline_start'
       error?: string
       /** Tab opened or focused for an `open` result. */
       tabId?: string

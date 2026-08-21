@@ -24,7 +24,7 @@ const sessionState = {
     benchPath: benchDirectory,
     sourceBranch: 'main',
     lastBuiltAt: 1,
-    members: [{ enabled: true }],
+    members: [{  }],
   }]]]),
   staticInfo: { homePath: '/Users/example' },
   refreshWorktreeInventory: vi.fn(async () => {}),

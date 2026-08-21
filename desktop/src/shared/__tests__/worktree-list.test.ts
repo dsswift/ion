@@ -7,7 +7,7 @@
  * section -- with two different vocabularies describing the same directory.
  */
 import { describe, it, expect } from 'vitest'
-import { buildWorktreeList, findMembership } from '../worktree-list'
+import { benchMemberSummary, buildWorktreeList, findMembership } from '../worktree-list'
 import type {
   WorktreeInventoryEntry, IntegrationWorkspace, IntegrationMember,
 } from '../types-git'
@@ -35,7 +35,6 @@ function member(over: Partial<IntegrationMember> = {}): IntegrationMember {
   return {
     worktreePath: '/wt/a',
     branchName: 'wt/a',
-    enabled: true,
     pin: 'current',
     merge: 'merged',
     pinnedSha: 'aaa1111',
@@ -68,23 +67,13 @@ describe('buildWorktreeList — one worktree, one row', () => {
     expect(items).toHaveLength(2)
     expect(items.filter((i) => i.entry.worktreePath === '/wt/a')).toHaveLength(1)
     expect(items[0].membership).toBeDefined()
-    expect(items[0].enrollment).toBe('included')
+    expect(items[0].membership).toBeDefined()
   })
 
   it('reports an unenrolled worktree as `none` with no membership', () => {
     const { items } = buildWorktreeList([entry()], [], null)
-    expect(items[0].enrollment).toBe('none')
     expect(items[0].membership).toBeUndefined()
     expect(items[0].order).toBeUndefined()
-  })
-
-  it('distinguishes excluded from unenrolled', () => {
-    // Two different facts the old model could not tell apart on a row: `none`
-    // means "not in the bench", `excluded` means "in the bench, skipped".
-    const ws = workspace([member({ enabled: false })])
-    const { items } = buildWorktreeList([entry()], [ws], 'josh')
-    expect(items[0].enrollment).toBe('excluded')
-    expect(items[0].membership).toBeDefined()
   })
 
   it('supplies the worktree title to an enrolled row', () => {
@@ -235,12 +224,12 @@ describe('buildWorktreeList — landed work sinks to its own band', () => {
 
   it('sinks the exact shape the land verb leaves behind', () => {
     // Reported live: Land ran, `landedAt` was written, unlanded went to 0 -- and
-    // the row stayed at the top of the list because it was still an enabled
+    // the row stayed at the top of the list because it was still a
     // member with a `current` pin and a `merged` state. The bench had not
     // rebuilt yet, so nothing had retired the membership.
     const ws = workspace([
       member({ worktreePath: '/wt/other', branchName: 'wt/other' }),
-      member({ worktreePath: '/wt/a', enabled: true, pin: 'current', merge: 'merged' }),
+      member({ worktreePath: '/wt/a', pin: 'current', merge: 'merged' }),
     ])
     const entries = [
       entry({ worktreePath: '/wt/a', landedAt: LANDED_AT, unlandedCommitCount: 0, safeToDiscard: true }),
@@ -298,13 +287,13 @@ describe('buildWorktreeList — benches and orphans', () => {
     // A repo integrating into two branches has two benches; a row can show one
     // membership, so the caller picks which.
     const wsJosh = workspace([member()], 'josh')
-    const wsMain = workspace([member({ enabled: false })], 'main')
+    const wsMain = workspace([member()], 'main')
 
     const asJosh = buildWorktreeList([entry()], [wsJosh, wsMain], 'josh')
     const asMain = buildWorktreeList([entry()], [wsJosh, wsMain], 'main')
 
-    expect(asJosh.items[0].enrollment).toBe('included')
-    expect(asMain.items[0].enrollment).toBe('excluded')
+    expect(asJosh.items[0].membership).toBeDefined()
+    expect(asMain.items[0].membership).toBeDefined()
   })
 
   it('returns a membership with no worktree as an orphan, never as a row', () => {
@@ -326,7 +315,6 @@ describe('buildWorktreeList — benches and orphans', () => {
   it('treats a repo with no bench as a plain list rather than an error', () => {
     const { items, orphans } = buildWorktreeList([entry()], [], 'josh')
     expect(items).toHaveLength(1)
-    expect(items[0].enrollment).toBe('none')
     expect(orphans).toEqual([])
   })
 })
@@ -345,7 +333,7 @@ describe('findMembership', () => {
  * The active-worktree mark: "which checkout is the current conversation in?"
  *
  * Derived in this builder rather than in a component so the overlay panel, the
- * ATV mirror, and the wire projection cannot disagree about which row is
+ * Studio mirror, and the wire projection cannot disagree about which row is
  * current — the same reason membership and order are joined here.
  */
 describe('buildWorktreeList — active worktree', () => {
@@ -395,5 +383,58 @@ describe('buildWorktreeList — active worktree', () => {
     const { items } = buildWorktreeList(prefixed, [], null, '/wt/ion-a33725460')
     expect(items.find((i) => i.entry.branchName === 'wt/long')?.active).toBe(true)
     expect(items.find((i) => i.entry.branchName === 'wt/short')?.active).toBe(false)
+  })
+})
+
+describe('benchMemberSummary', () => {
+  const HOUR = 3600_000
+
+  it('reports member count alongside the assembly age', () => {
+    const ws = workspace([member(), member({ worktreePath: '/wt/b', branchName: 'wt/b' })])
+    expect(benchMemberSummary({ ...ws, lastBuiltAt: Date.now() - 2 * HOUR }))
+      .toBe('2 members · assembled 2h ago')
+  })
+
+  // The bug: the count and the age were mutually exclusive. A bench with a
+  // stale member hid how old the build was, and a bench with no stale members
+  // hid how many members it held -- so a bench that had silently lost every
+  // member read exactly like a healthy one.
+  it('reports the out-of-date count WITHOUT hiding the age', () => {
+    const ws = workspace([
+      member({ pin: 'behind' }),
+      member({ worktreePath: '/wt/b', branchName: 'wt/b' }),
+      member({ worktreePath: '/wt/c', branchName: 'wt/c', pin: 'behind' }),
+    ])
+    const summary = benchMemberSummary({ ...ws, lastBuiltAt: Date.now() - 9 * HOUR })
+    expect(summary).toBe('3 members · 2 out of date · assembled 9h ago')
+  })
+
+  it('singularises one member', () => {
+    const ws = workspace([member({ pin: 'behind' })])
+    expect(benchMemberSummary({ ...ws, lastBuiltAt: Date.now() - HOUR }))
+      .toBe('1 member · 1 out of date · assembled 1h ago')
+  })
+
+  it('says so when the bench holds nothing', () => {
+    expect(benchMemberSummary(workspace([]))).toBe('no members')
+  })
+
+  it('reports a never-assembled bench honestly', () => {
+    expect(benchMemberSummary(workspace([member()]))).toBe('1 member · never assembled')
+  })
+
+  // A `gone` member is a BROKEN membership, not a stale one -- its worktree no
+  // longer exists, and it already surfaces as an orphan on the bench bar.
+  it('does not count a gone member as out of date', () => {
+    const ws = workspace([member({ pin: 'gone' }), member({ worktreePath: '/wt/b', branchName: 'wt/b' })])
+    expect(benchMemberSummary({ ...ws, lastBuiltAt: Date.now() - HOUR }))
+      .toBe('2 members · assembled 1h ago')
+  })
+
+  it('replaces everything with the failure when the last assembly failed', () => {
+    const ws = workspace([member({ pin: 'behind' })])
+    expect(benchMemberSummary({ ...ws, lastAssembly: 'failed' })).toBe('Assembly failed')
+    expect(benchMemberSummary({ ...ws, lastAssembly: 'failed', lastAssemblyFailure: 'verification' }))
+      .toBe('Verification failed')
   })
 })

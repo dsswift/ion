@@ -9,7 +9,7 @@
  *
  * ── The question this answers, and why precision matters ────────────────────
  * A build fails in a bench. The failing file is assembled from a source branch
- * plus every enabled member's pinned contribution, and the bench itself is not
+ * plus every member's pinned contribution, and the bench itself is not
  * writable — so the only actionable answer is "this belongs to member X, edit
  * it there". Getting that wrong sends an edit to the wrong worktree, where it
  * is either irrelevant or actively harmful.
@@ -230,7 +230,7 @@ function describeBenchFile(bench: IntegrationWorkspace, res: AttributionResult):
 }
 
 /**
- * Ask each enabled member whether its PINNED RANGE touches the file, and
+ * Ask each member whether its PINNED RANGE touches the file, and
  * record what it did to it.
  *
  * A member whose diff cannot be read is appended WITH its error rather than
@@ -242,16 +242,7 @@ function collectCandidates(bench: IntegrationWorkspace, res: AttributionResult):
   for (const m of bench.members) {
     const { cand, touches } = memberCandidate(bench, m, res)
     if (!touches) continue
-    if (m.enabled) {
-      res.candidates.push(cand)
-    } else {
-      (res.disabledMembersTouching ??= []).push(cand)
-    }
-  }
-
-  if (res.disabledMembersTouching && res.disabledMembersTouching.length > 0) {
-    const names = res.disabledMembersTouching.map((d) => d.branchName).join(', ')
-    addWarning(res, `Disabled member(s) ${names} also change this file, but they are excluded from the assembly and own none of the bench's content.`)
+    res.candidates.push(cand)
   }
 }
 
@@ -453,7 +444,6 @@ function benchWarnings(bench: IntegrationWorkspace): string[] {
   const stale: string[] = []
   const unknownStale: string[] = []
   for (const m of bench.members) {
-    if (!m.enabled) continue
     if (memberStale(m)) stale.push(m.branchName)
     else if (!memberStalenessKnown(m)) unknownStale.push(m.branchName)
   }
@@ -465,7 +455,6 @@ function benchWarnings(bench: IntegrationWorkspace): string[] {
   }
 
   for (const m of bench.members) {
-    if (!m.enabled) continue
     if (m.merge === 'conflicted') {
       let w = `Member ${m.branchName} last merged with CONFLICTS`
       if (m.conflictsWith && m.conflictsWith.length > 0) w += ' against ' + m.conflictsWith.join(', ')

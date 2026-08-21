@@ -30,7 +30,7 @@ export async function solveWorktreeOverlap(analysis: Analysis, keptPaths: string
   const constrained = constrainedSeed.prediction === 'clean'
     ? await bestCohort(analysis, constrainedSeed.tree!, pool.filter((item) => !kept.includes(item)), kept.map((item) => item.worktreePath), kind)
     : cohortFromFailed(analysis, kept.map((item) => item.worktreePath), constrainedSeed, kind, 'Kept worktrees do not merge cleanly together.')
-  const currentPaths = stableOrder(eligible.filter((item) => item.enrolled && item.enabled)).map((item) => item.worktreePath)
+  const currentPaths = stableOrder(eligible.filter((item) => item.enrolled)).map((item) => item.worktreePath)
   const current = await reorderCurrentSelection(analysis, base, currentPaths, currentPaths.length > EXACT_CANDIDATE_CAP ? 'anchored' : kind)
   return { constrained, hypothetical, current, keptPaths }
 }

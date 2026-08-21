@@ -5,9 +5,8 @@ import { state, pairingManager } from '../state'
 import { broadcast } from '../broadcast'
 import { SETTINGS_FILE, readSettings, writeSettings } from '../settings-store'
 import { deriveChannelId, generateKeyPair, deriveSharedSecret } from './crypto'
-import { getRemoteTabStates } from './snapshot'
+import { sendSync } from './handlers/tabs-sync'
 import type { PairedDevice } from './protocol'
-import { recentLocalDirectories } from '../../shared/recent-directories'
 import { getMachineIdentity } from '../machine-identity'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -180,16 +179,8 @@ export function handlePairRequest(request: PairRequest): void {
 
   setTimeout(() => {
     void (async () => {
-      const { tabs, resourceManifest } = await getRemoteTabStates()
-      const pairSettings = readSettings()
-      const persistedPairRecentDirs: string[] = Array.isArray(pairSettings.recentBaseDirectories) ? pairSettings.recentBaseDirectories : []
-      const pairRecentDirs = recentLocalDirectories(persistedPairRecentDirs)
-      state.remoteTransport?.send({
-        type: 'desktop_snapshot',
-        tabs,
-        recentDirectories: pairRecentDirs,
-        resources: Object.keys(resourceManifest).length > 0 ? resourceManifest : undefined,
-      })
+      const deviceIds = state.remoteTransport?.getConnectedDeviceIds() ?? []
+      await sendSync((event) => state.remoteTransport?.send(event), deviceIds)
     })().catch((err) => warn('pairing: post-pair snapshot send failed', { error: String(err) }))
   }, 500)
 }

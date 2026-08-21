@@ -1,5 +1,5 @@
 /**
- * Snapshot parity: backgroundAgents field visible through snapshot IIFE.
+ * Snapshot parity: backgroundAgents field visible through the snapshot.
  *
  * Root cause being tested: four "running children" consumers folded only
  * inst.agentStates (empty for plain-conversation dispatch) and ignored
@@ -9,91 +9,38 @@
  * pulsing-yellow "awaiting children" state.
  *
  * Option B fix: effectiveRunningChildrenCount (TabStripShared.ts) takes
- * max(fromAgentStates, fromBackgroundAgents). The snapshot IIFE inlines
- * the same logic (cannot import helpers — runs in renderer global scope
- * via executeJavaScript).
+ * max(fromAgentStates, fromBackgroundAgents). The canonical projection
+ * (renderer/stores/remote-projection.ts) IMPORTS that helper, so there is no
+ * second copy of the fold to keep in sync — the fallback poll calls the same
+ * projection through a window global rather than transcribing it.
  *
- * Tests in this file:
- *   IIFE SOURCE GUARD — snapshot.ts IIFE contains the backgroundAgents
- *     read so the fix is actually present in the stringified code.
+ * Tests in this file cover PROJECTION PARITY: projectRendererTab passes
+ * runningAgentCount and hasRunningChildren through unchanged. The projection
+ * sets them; the main-process wire mapping must not drop or zero them.
  *
- *   PROJECTION PARITY — projectRendererTab passes runningAgentCount and
- *     hasRunningChildren through unchanged. The IIFE sets them; the main-
- *     process projection must not drop or zero them.
- *
- * Each test must go RED if the snapshot IIFE is reverted to the
- * agentStates-only fold (fromAgentStates count only, no backgroundAgents).
+ * The fold itself (max, not sum; backgroundAgents-only source) is pinned
+ * behaviorally in renderer/stores/__tests__/remote-projection.test.ts
+ * ('running-children fold') and in TabStripShared-running-children.test.ts.
+ * The former source-scan of the transcribed IIFE is retired with the
+ * transcription; snapshot-wi-003-status-parity.test.ts guards that the
+ * fallback never re-implements the projection again.
  */
 
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'fs'
-import { join } from 'path'
 import { projectRendererTab } from '../snapshot-project'
-
-// The legacy IIFE now lives in snapshot-renderer-poll.ts (the cold-start /
-// stall fallback of the renderer-push architecture). The CANONICAL projection
-// is renderer/stores/remote-projection.ts, behaviorally pinned in
-// renderer/stores/__tests__/remote-projection.test.ts; this source guard pins
-// the fallback string, which cannot import helpers (renderer scope).
-const SNAPSHOT_SRC = readFileSync(join(__dirname, '..', 'snapshot-renderer-poll.ts'), 'utf-8')
-
-// Extract just the IIFE body from the executeJavaScript template literal.
-// The template literal is delimited by the backtick immediately after
-// "executeJavaScript(`". We find the first backtick after that marker
-// and then the next unescaped backtick to bound the IIFE string.
-function extractIife(): string {
-  const marker = 'executeJavaScript(`'
-  const start = SNAPSHOT_SRC.indexOf(marker)
-  if (start === -1) throw new Error('executeJavaScript template literal not found in snapshot-renderer-poll.ts')
-  const open = SNAPSHOT_SRC.indexOf('`', start + marker.length - 1)
-  // Walk forward to find the closing backtick of the template literal
-  // (skip escaped backticks — none expected in this IIFE, but be safe).
-  let i = open + 1
-  while (i < SNAPSHOT_SRC.length) {
-    if (SNAPSHOT_SRC[i] === '`' && SNAPSHOT_SRC[i - 1] !== '\\') break
-    i++
-  }
-  return SNAPSHOT_SRC.slice(open + 1, i)
-}
-
-const IIFE = extractIife()
-
-// ─── IIFE SOURCE GUARD ────────────────────────────────────────────────────────
-
-describe('snapshot IIFE: backgroundAgents source guard', () => {
-  it('reads inst.statusFields.backgroundAgents in the per-instance count block', () => {
-    // If this string is absent the fix was not applied to the IIFE.
-    // Goes RED on revert.
-    expect(IIFE).toContain('backgroundAgents')
-  })
-
-  it('declares fromBackgroundAgents variable (not agentStates-only fold)', () => {
-    expect(IIFE).toContain('fromBackgroundAgents')
-  })
-
-  it('calls Math.max to combine both sources (not additive sum)', () => {
-    expect(IIFE).toContain('Math.max(fromAgentStates, fromBackgroundAgents)')
-  })
-
-  it('carries a keep-in-sync comment referencing effectiveRunningChildrenCount', () => {
-    // The comment ties the IIFE logic to the helper so future maintainers
-    // know the two must stay in sync.
-    expect(IIFE).toContain('effectiveRunningChildrenCount')
-  })
-})
 
 // ─── PROJECTION PARITY ────────────────────────────────────────────────────────
 //
 // projectRendererTab is the main-process function that maps renderer tab state
 // onto the wire shape. It must pass runningAgentCount and hasRunningChildren
-// through unchanged — the IIFE computes them, and they must survive into the
-// RemoteTabState that reaches iOS.
+// through unchanged — the renderer projection computes them, and they must
+// survive into the RemoteTabState that reaches iOS.
 
 describe('snapshot projection parity: backgroundAgents → hasRunningChildren', () => {
   const BASE = { lastMessage: null, permissionQueue: [] }
 
   it('plain tab with backgroundAgents>0: runningAgentCount>0 projected through', () => {
-    // Simulates the fixed IIFE output for a plain orchestrator conversation
+    // Simulates the projection output for a plain orchestrator conversation
     // that is idle but has 2 background agents still running:
     //   inst.agentStates = [] (empty for plain dispatch)
     //   inst.statusFields.backgroundAgents = 2

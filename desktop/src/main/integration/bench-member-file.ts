@@ -70,7 +70,7 @@ export interface MemberFileRequest {
  */
 export const MAX_MEMBER_FILE_BYTES = 256 * 1024
 
-/** One enabled member, as the result lists them. */
+/** One member, as the result lists them. */
 export interface MemberFileCandidate {
   branchName: string
   worktreePath: string
@@ -113,7 +113,7 @@ export interface MemberFileResult {
   /** Content holds only the first MAX_MEMBER_FILE_BYTES. */
   truncated?: boolean
   /**
-   * Every enabled member of the bench, so a caller that named the wrong one
+   * Every member of the bench, so a caller that named the wrong one
    * can correct itself without a second round trip.
    */
   members?: MemberFileCandidate[]
@@ -140,7 +140,7 @@ export function memberFile(req: MemberFileRequest): MemberFileResult {
   }
   res.benchPath = bench.benchPath
   if (bench.sourceBranch) res.sourceBranch = bench.sourceBranch
-  res.members = enabledMemberCandidates(bench)
+  res.members = memberCandidates(bench)
 
   const resolved = resolveRequestPath(req.path, bench)
   if (resolved.rejection) {
@@ -188,11 +188,6 @@ function resolveMemberRevision(
     if (m.branchName !== req.member && m.worktreePath !== req.member && canonicalizePath(m.worktreePath) !== wanted) {
       continue
     }
-    if (!m.enabled) {
-      // A disabled member's content is NOT in the bench. Returning it without
-      // saying so would answer a question the caller did not ask.
-      return { sha: '', rejection: `member ${m.branchName} is enrolled but DISABLED, so its content is not in this bench; enable it or read an enabled member` }
-    }
     if (!m.pinnedSha) {
       return { sha: '', rejection: `member ${m.branchName} has no pinned contribution recorded, so there is no revision to read` }
     }
@@ -204,7 +199,7 @@ function resolveMemberRevision(
     }
     return { sha: m.pinnedSha, rejection: '' }
   }
-  return { sha: '', rejection: `no member of this bench matches "${req.member}"; see members in this result for the enabled set` }
+  return { sha: '', rejection: `no member of this bench matches "${req.member}"; see members in this result for the member set` }
 }
 
 /** Fill content, size, and the binary/absent/truncated facts. */
@@ -262,13 +257,12 @@ function blobIsBinary(bench: IntegrationWorkspace, sha: string, rel: string): bo
 }
 
 /**
- * The members whose content is actually in the bench, so a caller that named
+ * The members in this bench, so a caller that named
  * the wrong one can correct itself in place.
  */
-function enabledMemberCandidates(bench: IntegrationWorkspace): MemberFileCandidate[] {
+function memberCandidates(bench: IntegrationWorkspace): MemberFileCandidate[] {
   const out: MemberFileCandidate[] = []
   for (const m of bench.members) {
-    if (!m.enabled) continue
     const cand: MemberFileCandidate = { branchName: m.branchName, worktreePath: m.worktreePath }
     if (m.pinnedSha) cand.pinnedSha = m.pinnedSha
     if (memberStale(m)) cand.stale = true

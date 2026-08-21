@@ -6,6 +6,7 @@ import { reconcileGitWatchedDirectories } from './git-watcher-bridge'
 import { log as _log, debug as _debug, error as _error } from '../logger'
 import type { RemoteTabState } from './protocol'
 import { recentLocalDirectories } from '../../shared/recent-directories'
+import { settledTabsSnapshot } from './snapshot-settled'
 
 function log(msg: string, fields?: Record<string, unknown>): void { _log('snapshot-polling', msg, fields) }
 function debug(msg: string, fields?: Record<string, unknown>): void { _debug('snapshot-polling', msg, fields) }
@@ -174,6 +175,8 @@ export async function buildSnapshotEvent(): Promise<{ event: Record<string, unkn
   const event: Record<string, unknown> = {
     type: 'desktop_snapshot',
     tabs,
+    worktreeStates: state.remoteWorktreeStates?.size ? [...state.remoteWorktreeStates.values()] : undefined,
+    settledTabs: settledTabsSnapshot(),
     recentDirectories,
     tabGroupMode,
     tabGroups,

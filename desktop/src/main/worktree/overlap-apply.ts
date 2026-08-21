@@ -33,19 +33,17 @@ export async function previewOverlapApply(context: WorktreeOverlapContext, basis
 
 export async function previewOverlapApplyWithAnalysis(analysis: WorktreeOverlapAnalysis, orderedPaths: string[]): Promise<WorktreeOverlapApplyPreview> {
   const invalid = validateOverlapApplySelection(analysis, orderedPaths)
-  if (invalid) return { orderedPaths, newlyEnrolled: [], enabled: [], disabled: [], orderChanged: [], prediction: 'unavailable', error: invalid }
+  if (invalid) return { orderedPaths, newlyEnrolled: [], removed: [], orderChanged: [], prediction: 'unavailable', error: invalid }
   const workspace = findWorkspace(loadWorkspaces(), analysis.repoPath, analysis.sourceBranch) ?? makeWorkspace(analysis.repoPath, analysis.sourceBranch)
   const selected = new Set(orderedPaths)
   const simulation = await previewWorktreeOverlap(analysis, orderedPaths)
   const oldOrder = workspace.members.map((member) => member.worktreePath)
   const existing = new Set(oldOrder)
-  const proposed = [...orderedPaths, ...oldOrder.filter((path) => !selected.has(path))]
   return {
     orderedPaths,
-    newlyEnrolled: orderedPaths.filter((path) => !workspace.members.some((member) => member.worktreePath === path)),
-    enabled: workspace.members.filter((member) => selected.has(member.worktreePath) && !member.enabled).map((member) => member.worktreePath),
-    disabled: workspace.members.filter((member) => !selected.has(member.worktreePath) && member.enabled).map((member) => member.worktreePath),
-    orderChanged: proposed.filter((path, index) => existing.has(path) && oldOrder[index] !== path), prediction: simulation.prediction, error: simulation.error,
+    newlyEnrolled: orderedPaths.filter((path) => !existing.has(path)),
+    removed: oldOrder.filter((path) => !selected.has(path)),
+    orderChanged: orderedPaths.filter((path, index) => existing.has(path) && oldOrder[index] !== path), prediction: simulation.prediction, error: simulation.error,
   }
 }
 
@@ -79,7 +77,7 @@ export async function applyOverlapRecommendation(context: WorktreeOverlapContext
       return { ok: false, error: 'Could not persist bench membership. No selection was applied.' }
     }
     invalidateWorktreeOverlap(context.repoPath)
-    log('selection applied', { repo_path: context.repoPath, source_branch: analysis.sourceBranch, enrolled: newlyEnrolled, enabled: transformed.enabled, disabled: transformed.disabled, reordered: transformed.reordered })
-    return { ok: true, applied: { newlyEnrolled, enabled: transformed.enabled, disabled: transformed.disabled, reordered: transformed.reordered } }
+    log('selection applied', { repo_path: context.repoPath, source_branch: analysis.sourceBranch, enrolled: newlyEnrolled, removed: transformed.removed, reordered: transformed.reordered })
+    return { ok: true, applied: { newlyEnrolled, removed: transformed.removed, reordered: transformed.reordered } }
   }).catch((error) => { warn('selection apply failed', { repo_path: context.repoPath, error: String(error) }); return { ok: false, error: String(error) } })
 }

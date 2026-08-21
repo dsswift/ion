@@ -91,8 +91,7 @@ function workspace(): IntegrationWorkspace {
       {
         worktreePath: WORKTREE,
         branchName: BRANCH,
-        enabled: true,
-        pin: "current",
+                pin: "current",
         merge: "merged",
         pinnedSha: "pin",
         pinnedTreeHash: "tree",

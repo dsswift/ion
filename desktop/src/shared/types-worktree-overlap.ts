@@ -34,7 +34,6 @@ export interface WorktreeFootprint {
   files: WorktreeChangedFile[]
   incompleteReason?: string
   enrolled: boolean
-  enabled?: boolean
   order?: number
   landed: boolean
 }
@@ -105,8 +104,7 @@ export interface WorktreeOverlapAnalysis {
 export interface WorktreeOverlapApplyPreview {
   orderedPaths: string[]
   newlyEnrolled: string[]
-  enabled: string[]
-  disabled: string[]
+  removed: string[]
   orderChanged: string[]
   prediction: MergePrediction
   error?: string
@@ -115,7 +113,7 @@ export interface WorktreeOverlapApplyPreview {
 export interface WorktreeOverlapApplyResult {
   ok: boolean
   error?: string
-  applied?: { newlyEnrolled: number; enabled: number; disabled: number; reordered: number }
+  applied?: { newlyEnrolled: number; removed: number; reordered: number }
 }
 export interface WorktreeOverlapContext {
   repoPath: string
