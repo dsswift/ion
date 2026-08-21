@@ -433,19 +433,24 @@ describe('handleStatusEvent — session-ready idle clears connecting', () => {
     expect(taskComplete).toBeUndefined()
   })
 
-  it('session-ready idle on a never-run connecting tab forwards idle (no task_complete)', () => {
-    // If the control-plane TabEntry is itself 'connecting' with no run, same
-    // ready-idle path applies.
+  it('session-ready idle on a never-run starting tab settles the control plane', () => {
+    // The control plane can be attaching while the renderer is already showing
+    // a settled tab. It must commit the engine's idle answer locally too, or a
+    // SIGUSR1 drain waits on a state the user can no longer see.
+    const tab = makeTab({ status: 'starting', activeRequestId: null, startedAt: 0 })
+    handleEngineEvent(ctx, 'tab-001', tab, makeIdleEvent('conv-ready'))
+
+    expect(setStatusCalls).toEqual([['tab-001', 'idle']])
+    expect(ctx.checkDrain).not.toHaveBeenCalled()
+    expect(emitted.find((e) => e.name === 'event' && (e.args[1] as any)?.type === 'task_complete')).toBeUndefined()
+  })
+
+  it('session-ready idle on a never-run connecting tab settles the control plane', () => {
     const tab = makeTab({ status: 'connecting', activeRequestId: null, startedAt: 0 })
     handleEngineEvent(ctx, 'tab-001', tab, makeIdleEvent('conv-ready'))
 
-    const statusChange = emitted.find((e) => e.name === 'tab-status-change')
-    expect(statusChange).toBeDefined()
-    expect(statusChange!.args[1]).toBe('idle')
-    const taskComplete = emitted.find(
-      (e) => e.name === 'event' && (e.args[1] as any)?.type === 'task_complete',
-    )
-    expect(taskComplete).toBeUndefined()
+    expect(setStatusCalls).toEqual([['tab-001', 'idle']])
+    expect(emitted.find((e) => e.name === 'event' && (e.args[1] as any)?.type === 'task_complete')).toBeUndefined()
   })
 
   it('stale post-reset idle (run in flight) is still suppressed — b16d5538 guard', () => {
@@ -492,5 +497,31 @@ describe('handleStatusEvent — session-ready idle clears connecting', () => {
     expect(
       emitted.find((e) => e.name === 'event' && (e.args[1] as any)?.type === 'task_complete'),
     ).toBeDefined()
+  })
+})
+
+
+describe('handleStatusEvent — session attachment', () => {
+  it('publishes starting before a real run becomes running', () => {
+    const tab = makeTab({ status: 'idle', activeRequestId: null, startedAt: 0 })
+    const setStatus = vi.fn()
+    const ctx: EventEmitterContext = {
+      bridge: { updateSessionConversationId: vi.fn() } as any,
+      emit: vi.fn(),
+      setStatus,
+      checkDrain: vi.fn(),
+    }
+
+    handleEngineEvent(ctx, 'tab-001', tab, {
+      type: 'engine_status',
+      fields: { state: 'starting', label: 'tab-001' },
+    } as EngineEvent)
+    handleEngineEvent(ctx, 'tab-001', tab, {
+      type: 'engine_status',
+      fields: { state: 'running', label: 'tab-001' },
+    } as EngineEvent)
+
+    expect(setStatus).toHaveBeenNthCalledWith(1, 'tab-001', 'starting')
+    expect(setStatus).toHaveBeenLastCalledWith('tab-001', 'running')
   })
 })

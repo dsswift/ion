@@ -1,6 +1,7 @@
 import type { EngineBridge } from './engine-bridge'
 import { log as _log, warn as _warn } from './logger'
 import type { EngineConfig } from '../shared/types'
+import { SESSION_ATTACH_BATCH_SIZE } from '../shared/session-attach-policy'
 
 function log(msg: string, fields?: Record<string, unknown>): void { _log('engine-bridge', msg, fields) }
 function warn(msg: string, fields?: Record<string, unknown>): void { _warn('engine-bridge', msg, fields) }
@@ -125,8 +126,6 @@ export async function startSession(
  * reconnect increments `_reRegisterGeneration` while a batch is in flight,
  * the stale batch cancels and the new connection's batch takes over.
  */
-const RE_REGISTER_BATCH_SIZE = 5
-
 export function reRegisterSessions(bridge: EngineBridge): void {
   const generation = bridge._reRegisterGeneration
   // A key with a pending interrupt is NOT re-registered. A successful flush
@@ -141,12 +140,12 @@ export function reRegisterSessions(bridge: EngineBridge): void {
   log('re-register: starting', { count: entries.length, generation })
 
   void (async () => {
-    for (let i = 0; i < entries.length; i += RE_REGISTER_BATCH_SIZE) {
+    for (let i = 0; i < entries.length; i += SESSION_ATTACH_BATCH_SIZE) {
       if (bridge._reRegisterGeneration !== generation) {
         log('re-register: cancelled, generation changed', { generation, current: bridge._reRegisterGeneration })
         return
       }
-      const batch = entries.slice(i, i + RE_REGISTER_BATCH_SIZE)
+      const batch = entries.slice(i, i + SESSION_ATTACH_BATCH_SIZE)
       await Promise.all(
         batch.map(([key, entry]) => {
           if (bridge._reRegisterGeneration !== generation) return Promise.resolve()

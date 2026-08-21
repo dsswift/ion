@@ -6,11 +6,11 @@
  * and this loop's only job is to bring each restored conversation's engine
  * session up.
  *
- * ── Why the start is staggered ──────────────────────────────────────────────
+ * ── Why the start is batched ────────────────────────────────────────────────
  * The active tab starts first (it is what the user is looking at), then the rest
- * start sequentially. A simultaneous burst overwhelms the shared engine daemon's
- * dispatch goroutine. Ordering and sequencing live in the pure helpers so the
- * no-burst contract is unit-pinned rather than incidental.
+ * start in bounded batches. The shared engine daemon must not receive an
+ * unbounded attach burst. Ordering and batch limits live in pure helpers so the
+ * restore contract is unit-pinned rather than incidental.
  *
  * ── Why the directory is re-resolved here ───────────────────────────────────
  * A tab's persisted `workingDirectory` can disagree with its own worktree
@@ -21,11 +21,13 @@
  */
 import type { PersistedTab } from '../../shared/types'
 import { rInfo, rWarn } from '../rendererLogger'
+import { isPersistedSettled } from '../../shared/tab-predicates'
+import { SESSION_ATTACH_BATCH_SIZE } from '../../shared/session-attach-policy'
 import {
   readMainInstance,
   resolveRestoredWorkingDirectory,
   orderSessionCandidates,
-  startSessionsSequentially,
+  startSessionsInBatches,
   type RestoredTabRef,
 } from './useTabRestoration-helpers'
 
@@ -43,6 +45,7 @@ export async function startRestoredSessions(
   activeTabIndex: number,
   worktreeAliveByIndex: Map<number, boolean>,
   persistedTabHasExtensions: (tab: PersistedTab) => boolean,
+  reportProgress?: (completed: number, total: number) => void,
 ): Promise<void> {
   const sessionCandidates = restoredTabIds.filter(({ index }) => {
     const st = savedTabs[index]
@@ -50,12 +53,25 @@ export async function startRestoredSessions(
   })
   const activeFirst = orderSessionCandidates(sessionCandidates, activeTabIndex)
 
-  await startSessionsSequentially(activeFirst, async ({ tabId, index }) => {
+  rInfo('restore', 'starting restored engine sessions in bounded batches', {
+    total: activeFirst.length,
+    batch_size: SESSION_ATTACH_BATCH_SIZE,
+    active_tab_index: activeTabIndex,
+  })
+
+  await startSessionsInBatches(activeFirst, async ({ tabId, index }) => {
     const st = savedTabs[index]
     if (st.worktree?.landedAt) {
       rInfo('restore', 'skipped engine session start for landed worktree review', {
         tab_id: tabId.slice(0, 8),
         worktree_path: st.worktree.worktreePath,
+      })
+      return
+    }
+
+    if (isPersistedSettled(st)) {
+      rInfo('restore', 'skipped engine session start for settled tab', {
+        tab_id: tabId.slice(0, 8),
       })
       return
     }
@@ -94,5 +110,12 @@ export async function startRestoredSessions(
     } catch (err: any) {
       rWarn('restore', 'eager session start threw', { tab_id: tabId.slice(0, 8), error: err?.message ?? String(err) })
     }
+  }, (completed, total) => {
+    rInfo('restore', 'restored engine session attach progress', {
+      completed,
+      total,
+      batch_size: SESSION_ATTACH_BATCH_SIZE,
+    })
+    reportProgress?.(completed, total)
   })
 }

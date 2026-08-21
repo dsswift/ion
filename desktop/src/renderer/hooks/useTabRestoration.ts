@@ -1,17 +1,28 @@
 import { useEffect } from 'react'
 import type { TabState } from '../../shared/types'
+import { backfillLastActivity } from './useTabRestoration-activity'
+import { restoredInboxTabFields, restoreSettledHistoryRecord } from './tab-inbox-restore'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
 import { setSavedBuffer } from '../components/TerminalInstance'
 import { restoreConversationTab } from './useTabRestoration-engine'
 import { makeLocalTab } from '../stores/session-store-helpers'
 import { makeMainPane, commitInstance } from '../stores/conversation-instance'
-import { normalizeLegacyTabFields, readMainInstance, restoredModelSelection, seedContextStatusFields, reassertRestoredPlanMode, resolveBootActiveTabId, hydrateBootActiveTab, hydrateBootWorkspace } from './useTabRestoration-helpers'
-import { startRestoredSessions } from './useTabRestoration-sessions'
+import { normalizeLegacyTabFields, readMainInstance, restoredModelSelection, seedContextStatusFields, reassertRestoredPlanMode, resolveBootActiveTabId, hydrateBootActiveTab, hydrateBootWorkspace, resolvedInputLock } from './useTabRestoration-helpers'
+import {
+  reportRestoreActiveConversation,
+  reportRestoreHistoryLoading,
+  reportRestoreLayout,
+  reportRestoreWorkspaceState,
+  startRestoredSessionsWithSplashProgress,
+} from './useTabRestoration-progress'
+import { restoreGlobalGeometry } from './useTabRestoration-geometry'
 import { loadRestoredHistory } from './useTabRestoration-history'
 import { resolveRegisteredWorktree } from '../stores/worktree-registration'
-import { persistedTabHasExtensions } from '../../shared/tab-predicates'
+import { persistedTabHasExtensions, isPersistedSettled } from '../../shared/tab-predicates'
+import { registerInitialRestoredTab } from './useTabRestoration-initial-tab'
 import { rDebug, rWarn, rError } from '../rendererLogger'
+import { reportStartup } from '../startup-report'
 
 /**
  * Bootstrap effect run once at app start. Initializes static info, restores
@@ -27,6 +38,7 @@ export function useTabRestoration() {
     useSessionStore.getState().initStaticInfo().then(async () => {
       if (aborted) return
       useSessionStore.setState({ initProgress: 'Loading saved tabs…' })
+      reportStartup('owner', 'Loading saved tabs…')
       const homeDir = useSessionStore.getState().staticInfo?.homePath || '~'
 
       // Try restoring saved tabs
@@ -41,7 +53,14 @@ export function useTabRestoration() {
         // shape; idempotent for already-migrated files). Restoration then reads
         // conversation state from conversationPane uniformly.
         saved.tabs = normalizeLegacyTabFields(saved.tabs)
+        // Migration: the prior inbox kept settled tabs in the active workspace.
+        // Close and Settle now share one cold history collection, so move every
+        // persisted settled record out before any tab or engine restoration.
+        const legacySettled = saved.tabs.filter(isPersistedSettled)
+        saved.tabs = saved.tabs.filter((tab) => !isPersistedSettled(tab))
+        saved.settledHistory = [...(saved.settledHistory ?? []), ...legacySettled]
         useSessionStore.setState({ initProgress: `Restoring ${saved.tabs.length} tabs…` })
+        reportStartup('owner', `Restoring ${saved.tabs.length} tabs…`)
         // Gate persistence during the restore loop. Each per-tab setState fires the
         // persist subscriber, producing ~N partial saves before all tabs are loaded.
         // These partial saves trip the GUARD (on-disk has N tabs, incoming has 1..N-1)
@@ -49,7 +68,10 @@ export function useTabRestoration() {
         // the subscriber early-return for the entire restore window; it is cleared
         // alongside tabsReady=true after the loop completes. The on-disk tab-count
         // GUARD remains as the backstop for any other callers.
-        useSessionStore.setState({ rehydrating: true })
+        useSessionStore.setState({
+          rehydrating: true,
+          settledHistory: (saved.settledHistory ?? []).map(restoreSettledHistoryRecord),
+        })
         // Restore each saved tab.
         // persistedTabHasExtensions: ROUTING (IPC path), not content-vs-skeleton.
         // Content-vs-skeleton is data-driven in serializeConversationPane (WI-005).
@@ -61,6 +83,7 @@ export function useTabRestoration() {
         const worktreeAliveByIndex = new Map<number, boolean>()
         for (let i = 0; i < saved.tabs.length; i++) {
           useSessionStore.setState({ initProgress: `Restoring tab ${i + 1} of ${saved.tabs.length}…` })
+          reportStartup('owner', `Restoring tab ${i + 1} of ${saved.tabs.length}…`)
           let st = saved.tabs[i]
           // Re-read the registry even when persisted metadata exists: landedAt is
           // terminal state written after the tab was persisted, and a restart
@@ -104,7 +127,15 @@ export function useTabRestoration() {
               worktreeAliveByIndex.set(i, false)
             }
 
-            if (isActiveTab) {
+            // Settled tabs are cold history records: no engine session, no
+            // resumeSession. They always go through the skeleton path so the
+            // user sees persisted history without bootstrapping anything.
+            const settled = isPersistedSettled(st)
+            if (settled) {
+              worktreeAliveByIndex.set(i, false)
+            }
+
+            if (isActiveTab && !settled) {
               // Active tab: load messages eagerly via resumeSession
               const tabId = await useSessionStore.getState().resumeSession(
                 st.conversationId,
@@ -112,7 +143,6 @@ export function useTabRestoration() {
                 st.workingDirectory,
               )
               restoredTabIds.push({ tabId, sessionId: st.conversationId, index: i })
-
               // Patch extra per-tab settings that resumeSession doesn't handle.
               // modelOverride / draftInput / permissionDenied / planFilePath /
               // permissionMode moved off TabState onto the active `main`
@@ -158,8 +188,20 @@ export function useTabRestoration() {
                           contextTokens: main?.contextTokens ?? st.contextTokens ?? null,
                           contextWindow: main?.contextWindow ?? st.contextWindow ?? null,
                           queuedPrompts: st.queuedPrompts?.length ? [st.queuedPrompts.join('\n\n')] : [],
+                          attachments: st.attachments ?? [],
                           lastMessagePreview: st.lastMessagePreview || null,
                           lastEventAt: st.lastEventAt ?? null,
+                          ...restoredInboxTabFields(st),
+                          lastActivityAt: st.lastActivityAt ?? null,
+                          lastMessageAt: st.lastMessageAt ?? null,
+                          idleSince: st.idleSince ?? null,
+                          lastCompletionAt: st.lastCompletionAt ?? null,
+                          settledOverride: st.settledOverride ?? null,
+                          settledAt: st.settledAt ?? null,
+                          snoozedUntil: st.snoozedUntil ?? null,
+                          snoozedAt: st.snoozedAt ?? null,
+                          lastVisitedAt: st.lastVisitedAt ?? null,
+                          manualUnread: st.manualUnread ?? false,
                           lastResult: st.lastResult ?? null,
                           // If worktree is valid, restore workingDirectory to worktree path
                           // If worktree was cleaned up, fall back to original repo path
@@ -184,12 +226,10 @@ export function useTabRestoration() {
                 tabId = crypto.randomUUID()
               }
               restoredTabIds.push({ tabId, sessionId: st.conversationId, index: i })
-
               // Read the persisted `main` instance up front: the tab literal
               // below seeds its context scalars from it, and the skeleton
               // pane built afterwards reuses the same read.
               const main = readMainInstance(st)
-
               const tab: TabState = {
                 ...makeLocalTab(),
                 id: tabId,
@@ -204,10 +244,7 @@ export function useTabRestoration() {
                 bashResults: st.bashResults || [],
                 pillColor: st.pillColor || null,
                 pillIcon: st.pillIcon || null,
-                inputLocked: st.inputLocked ?? false,
-                inputLockReason: restoredWorktree?.landedAt
-                  ? 'landed-worktree'
-                  : st.inputLockReason ?? null,
+                ...resolvedInputLock(st, restoredWorktree),
                 tabRole: st.tabRole ?? null,
                 forkedFromSessionId: st.forkedFromSessionId || null,
                 worktree: restoredWorktree,
@@ -216,8 +253,20 @@ export function useTabRestoration() {
                 contextTokens: main?.contextTokens ?? st.contextTokens ?? null,
                 contextWindow: main?.contextWindow ?? st.contextWindow ?? null,
                 queuedPrompts: st.queuedPrompts?.length ? [st.queuedPrompts.join('\n\n')] : [],
+                attachments: st.attachments ?? [],
                 lastMessagePreview: st.lastMessagePreview || null,
                 lastEventAt: st.lastEventAt ?? null,
+                ...restoredInboxTabFields(st),
+                lastActivityAt: st.lastActivityAt ?? null,
+                          lastMessageAt: st.lastMessageAt ?? null,
+                          idleSince: st.idleSince ?? null,
+                          lastCompletionAt: st.lastCompletionAt ?? null,
+                          settledOverride: st.settledOverride ?? null,
+                          settledAt: st.settledAt ?? null,
+                          snoozedUntil: st.snoozedUntil ?? null,
+                          snoozedAt: st.snoozedAt ?? null,
+                          lastVisitedAt: st.lastVisitedAt ?? null,
+                          manualUnread: st.manualUnread ?? false,
                 lastResult: st.lastResult ?? null,
                 // If worktree is valid, restore workingDirectory to worktree path
                 // If worktree was cleaned up, fall back to original repo path
@@ -258,7 +307,11 @@ export function useTabRestoration() {
                 conversationPanes.set(tabId, pane)
                 return { tabs: [...s.tabs, tab], conversationPanes }
               })
-              reassertRestoredPlanMode(tabId, main, (st as any).permissionMode)
+              // Settled tabs have no engine session; skip the permission-mode
+              // IPC that would target a nonexistent session.
+              if (!settled) {
+                reassertRestoredPlanMode(tabId, main, (st as any).permissionMode)
+              }
               if (main?.draftInput) rDebug('restore', 'skeleton tab draft', { tab_id: tabId.slice(0, 8), count: main.draftInput.length })
             }
           } else if (persistedTabHasExtensions(st)) {
@@ -286,6 +339,17 @@ export function useTabRestoration() {
                       // still logged below for parity with the other paths.
                       lastMessagePreview: st.lastMessagePreview || null,
                       lastEventAt: st.lastEventAt ?? null,
+                      ...restoredInboxTabFields(st),
+                      lastActivityAt: st.lastActivityAt ?? null,
+                          lastMessageAt: st.lastMessageAt ?? null,
+                          idleSince: st.idleSince ?? null,
+                          lastCompletionAt: st.lastCompletionAt ?? null,
+                          settledOverride: st.settledOverride ?? null,
+                          settledAt: st.settledAt ?? null,
+                          snoozedUntil: st.snoozedUntil ?? null,
+                          snoozedAt: st.snoozedAt ?? null,
+                          lastVisitedAt: st.lastVisitedAt ?? null,
+                          manualUnread: st.manualUnread ?? false,
                     }
                   : t
               ),
@@ -341,10 +405,7 @@ export function useTabRestoration() {
                         additionalDirs: st.additionalDirs,
                         pillColor: st.pillColor || null,
                         pillIcon: st.pillIcon || null,
-                        inputLocked: st.inputLocked ?? false,
-                        inputLockReason: st.worktree?.landedAt
-                          ? 'landed-worktree'
-                          : st.inputLockReason ?? null,
+                        ...resolvedInputLock(st, st.worktree),
                         tabRole: st.tabRole ?? null,
                         forkedFromSessionId: st.forkedFromSessionId || null,
                         worktree: st.worktree || null,
@@ -355,8 +416,20 @@ export function useTabRestoration() {
                         contextTokens: st.contextTokens || null,
                         contextWindow: st.contextWindow || null,
                         queuedPrompts: st.queuedPrompts?.length ? [st.queuedPrompts.join('\n\n')] : [],
+                        attachments: st.attachments ?? [],
                         lastMessagePreview: st.lastMessagePreview || null,
                         lastEventAt: st.lastEventAt ?? null,
+                        ...restoredInboxTabFields(st),
+                        lastActivityAt: st.lastActivityAt ?? null,
+                          lastMessageAt: st.lastMessageAt ?? null,
+                          idleSince: st.idleSince ?? null,
+                          lastCompletionAt: st.lastCompletionAt ?? null,
+                          settledOverride: st.settledOverride ?? null,
+                          settledAt: st.settledAt ?? null,
+                          snoozedUntil: st.snoozedUntil ?? null,
+                          snoozedAt: st.snoozedAt ?? null,
+                          lastVisitedAt: st.lastVisitedAt ?? null,
+                          manualUnread: st.manualUnread ?? false,
                         lastResult: st.lastResult ?? null,
                       }
                     : t
@@ -368,11 +441,10 @@ export function useTabRestoration() {
           }
         }
 
-        // Eager durable session start for restored NORMAL (non-engine) tabs
-        // that have a conversationId. Staggered ordering, the worktree-aware
-        // directory resolution, and the per-tab logging all live in the sibling
-        // module — see useTabRestoration-sessions.ts.
-        await startRestoredSessions(
+        // Eager durable session start for restored NORMAL (non-engine) tabs.
+        // The active tab attaches first. Remaining tabs use bounded batches and
+        // report exact progress to the splash screen.
+        await startRestoredSessionsWithSplashProgress(
           restoredTabIds,
           saved.tabs,
           saved.activeTabIndex ?? -1,
@@ -380,7 +452,13 @@ export function useTabRestoration() {
           persistedTabHasExtensions,
         )
 
+        reportRestoreHistoryLoading()
         await loadRestoredHistory(saved, restoredTabIds)
+
+        // Staged attachments come back from disk without their base64 preview;
+        // rebuild it from each file's permanent path. Fire-and-forget: a tray
+        // renders correctly by name and size before the thumbnails land.
+        void useSessionStore.getState().rehydrateAttachmentPreviews()
 
         // Set active tab by index (handles both session and sessionless tabs),
         // then hydrate it. The boot-active tab is set via raw setState —
@@ -388,13 +466,15 @@ export function useTabRestoration() {
         // never fires; hydrateBootActiveTab applies the same gate explicitly.
         const bootActiveTabId = resolveBootActiveTabId(saved, restoredTabIds)
         if (bootActiveTabId) {
+          reportRestoreActiveConversation()
           useSessionStore.setState({ activeTabId: bootActiveTabId })
           const store = useSessionStore.getState()
-          hydrateBootActiveTab(store, bootActiveTabId)
+          await hydrateBootActiveTab(store, bootActiveTabId)
           const bootActiveTab = store.tabs.find((t) => t.id === bootActiveTabId)
           // `tabsReady` stays false until this finishes. A restored bench tab has
           // no worktree metadata, so exposing GitPanel before main resolves its
           // owner makes the bench path look like a repo on the first frame.
+          reportRestoreWorkspaceState()
           await hydrateBootWorkspace(
             bootActiveTab,
             store.refreshWorkspaceViews,
@@ -411,7 +491,7 @@ export function useTabRestoration() {
           }))
         }
 
-        useSessionStore.setState({ initProgress: 'Restoring workspace…' })
+        reportRestoreLayout()
         // Restore editor states (per-directory)
         if (saved.editorStates) {
           const restoredEditorStates = new Map<string, any>()
@@ -458,80 +538,34 @@ export function useTabRestoration() {
           }
         }
 
-        // Restore global editor geometry (clamped to current screen)
-        if (saved.editorGeometry) {
-          const g = saved.editorGeometry
-          const clampedGeo = {
-            x: Math.max(-200, Math.min(window.innerWidth - 100, g.x)),
-            y: Math.max(0, Math.min(window.innerHeight - 32, g.y)),
-            w: Math.max(400, g.w),
-            h: Math.max(280, g.h),
-          }
-          useSessionStore.setState({ editorGeometry: clampedGeo })
-        }
-
-        // Restore global plan preview geometry (clamped to current screen)
-        if (saved.planGeometry) {
-          const g = saved.planGeometry
-          const clampedGeo = {
-            x: Math.max(-200, Math.min(window.innerWidth - 100, g.x)),
-            y: Math.max(0, Math.min(window.innerHeight - 32, g.y)),
-            w: Math.max(280, g.w),
-            h: Math.max(180, g.h),
-          }
-          useSessionStore.setState({ planGeometry: clampedGeo })
-        }
-
-        // Restore global agent detail popup geometry (clamped to current screen)
-        if (saved.agentDetailGeometry) {
-          const g = saved.agentDetailGeometry
-          const clampedGeo = {
-            x: Math.max(-200, Math.min(window.innerWidth - 100, g.x)),
-            y: Math.max(0, Math.min(window.innerHeight - 32, g.y)),
-            w: Math.max(280, g.w),
-            h: Math.max(180, g.h),
-          }
-          useSessionStore.setState({ agentDetailGeometry: clampedGeo })
-        }
+        restoreGlobalGeometry(saved)
 
         // Restore expanded/collapsed state, or fall back to setting
         const restoredExpanded = typeof saved.isExpanded === 'boolean'
           ? saved.isExpanded
           : usePreferencesStore.getState().expandOnTabSwitch
         useSessionStore.setState({ isExpanded: restoredExpanded, tabsReady: true, rehydrating: false, initProgress: null })
+        // Honest-activity backfill AFTER restoration: max(persisted,
+        // SessionMeta.lastTimestamp) per conversation chain — never
+        // Date.now(). Fire-and-forget; failures leave persisted values.
+        void backfillLastActivity()
         return
       }
 
       // No saved tabs -- fall through to blank tab behavior
       const tab = useSessionStore.getState().tabs[0]
       if (tab) {
-        const defaultBase = usePreferencesStore.getState().defaultBaseDirectory
-        const startDir = defaultBase || homeDir
-        const hasChosen = !!defaultBase
-        useSessionStore.setState((s) => ({
-          tabs: s.tabs.map((t, i) => (i === 0 ? { ...t, workingDirectory: startDir, hasChosenDirectory: hasChosen } : t)),
-        }))
-        useSessionStore.setState({ initProgress: 'Creating new tab…' })
-        const registerInitialTab = async (retries = 5): Promise<void> => {
-          for (let i = 0; i < retries; i++) {
-            try {
-              const { tabId } = await window.ion.createTab()
-              useSessionStore.setState((s) => ({
-                tabs: s.tabs.map((t, idx) => (idx === 0 ? { ...t, id: tabId } : t)),
-                activeTabId: tabId,
-                tabsReady: true,
-                rehydrating: false,
-                initProgress: null,
-              }))
-              return
-            } catch {
-              if (i < retries - 1) await new Promise((r) => setTimeout(r, 500))
-            }
-          }
-          // All retries failed — still set tabsReady so UI isn't stuck forever
-          useSessionStore.setState({ tabsReady: true, rehydrating: false, initProgress: null })
-        }
-        registerInitialTab().catch((err) => rError('tab-restore', 'registerInitialTab failed', { error: String(err) }))
+        await registerInitialRestoredTab({
+          homeDir,
+          defaultBaseDirectory: usePreferencesStore.getState().defaultBaseDirectory,
+          createTab: () => window.ion.createTab(),
+          update: (updater) => useSessionStore.setState((state) => ({ tabs: updater(state.tabs) })),
+          finish: (tabId) => useSessionStore.setState({ activeTabId: tabId, tabsReady: true, rehydrating: false, initProgress: null }),
+          fail: (error) => {
+            useSessionStore.setState({ rehydrating: false, initProgress: null, startupError: error })
+            reportStartup('owner', 'Ion could not start', false, error)
+          },
+        })
       }
     }).catch((err) => rError('tab-restore', 'bootstrap tab restoration failed', { error: String(err) }))
     return () => { aborted = true }

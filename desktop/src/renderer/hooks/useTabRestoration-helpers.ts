@@ -2,6 +2,8 @@ import type { ConversationPane, StatusFields } from '../../shared/types-engine'
 import type { PersistedTab, PersistedConversationInstance } from '../../shared/types-persistence'
 import { migrateTabToUnified } from '../../main/tab-migration-unify'
 import { activeInstance, needsHistoryHydration } from '../stores/conversation-instance'
+import { isPersistedSettled } from '../../shared/tab-predicates'
+import { SESSION_ATTACH_BATCH_SIZE } from '../../shared/session-attach-policy'
 import { rDebug, rInfo, rWarn } from '../rendererLogger'
 
 /**
@@ -84,10 +86,12 @@ export function resolveRestoredWorkingDirectory(
   worktreeExists: boolean,
 ): string {
   if (tab.worktree) {
-    // The worktree is the authority when it is still on disk. When it is gone,
-    // the repo it was cut from is the only sane place for the conversation to
-    // resume — never the stale persisted path, which may be the dead worktree.
-    return worktreeExists ? tab.worktree.worktreePath : tab.worktree.repoPath
+    // Active conversations can move back to the source repo after external
+    // cleanup. Settled records cannot: they stay bound to their retired
+    // worktree forever, and the Inbox restore guard keeps them cold.
+    return worktreeExists || isPersistedSettled(tab)
+      ? tab.worktree.worktreePath
+      : tab.worktree.repoPath
   }
   return tab.workingDirectory
 }
@@ -197,16 +201,12 @@ export function readConversationInstances(tab: PersistedTab): PersistedConversat
   return tab.conversationPane?.instances ?? []
 }
 
-// ─── Staggered eager session-start ordering (daemon-model compatibility) ─────
+// ─── Bounded eager session-start ordering (daemon-model compatibility) ───────
 //
 // The engine is a shared launchd daemon (not a fresh per-desktop child). On
-// restore the desktop must NOT fire all ensureEngineSession calls at once: the
-// simultaneous burst overwhelms the daemon's dispatch goroutine and event
-// queue, causing result drops and 30s timeouts. These two helpers encode the
-// well-behaved-client contract — active tab first (what the user sees), then
-// the rest, one session start in flight at a time. They are pure/structural so
-// the ordering and the sequential (no-burst) guarantee can be pinned without
-// driving the whole restoration effect.
+// restore the desktop starts the active tab first, then attaches the remaining
+// sessions in bounded batches. The cap protects the daemon dispatch goroutine
+// and event queue while removing unnecessary sequential startup delay.
 
 /** A restored tab id paired with its index into the persisted tabs array. */
 export interface RestoredTabRef {
@@ -233,25 +233,31 @@ export function orderSessionCandidates<T extends RestoredTabRef>(
 }
 
 /**
- * Start sessions one at a time, awaiting each before starting the next. This
- * is the no-burst guarantee: at any instant at most one `start` call is in
- * flight. Errors from an individual start are swallowed (logged by the caller's
- * starter) so one failure does not abort the remaining serialized starts.
+ * Start items in bounded batches. Each batch completes before the next starts.
+ * The caller orders its active item first, so the active attach is dispatched
+ * first in the first batch. A rejected item does not prevent later attaches.
  *
- * `start` is invoked once per item, in the given order, and must resolve (or
- * reject) before the next item is started.
+ * `onProgress` runs after every completed item, including failures. It gives the
+ * splash screen an exact completed count rather than an inferred timer state.
  */
-export async function startSessionsSequentially<T>(
+export async function startSessionsInBatches<T>(
   items: T[],
   start: (item: T) => Promise<void>,
+  onProgress?: (completed: number, total: number) => void,
 ): Promise<void> {
-  for (const item of items) {
-    try {
-      await start(item)
-    } catch {
-      // Individual-start failures are handled inside `start`; never abort the
-      // remaining serialized starts.
-    }
+  let completed = 0
+  for (let i = 0; i < items.length; i += SESSION_ATTACH_BATCH_SIZE) {
+    const batch = items.slice(i, i + SESSION_ATTACH_BATCH_SIZE)
+    await Promise.all(batch.map(async (item) => {
+      try {
+        await start(item)
+      } catch {
+        // Individual-start failures are logged by `start`; preserve the batch.
+      } finally {
+        completed++
+        onProgress?.(completed, items.length)
+      }
+    }))
   }
 }
 
@@ -341,20 +347,41 @@ export async function hydrateBootWorkspace(
  * (e.g. one bootstrap harness row) and its real history is never loaded.
  * Applies the same gate selectTab uses (conversationId + needsHistoryHydration).
  */
-export function hydrateBootActiveTab(
+export async function hydrateBootActiveTab(
   s: {
     tabs: Array<{ id: string; conversationId: string | null }>
     conversationPanes: Map<string, ConversationPane>
     loadSkeletonMessages: (tabId: string) => Promise<void>
   },
   tabId: string,
-): void {
+): Promise<void> {
   const tab = s.tabs.find((t) => t.id === tabId)
   const inst = activeInstance(s.conversationPanes, tabId)
   if (tab?.conversationId && needsHistoryHydration(inst)) {
     rInfo('restore', 'hydrating boot-active tab', { tab_id: tabId.slice(0, 8) })
-    void s.loadSkeletonMessages(tabId)
+    await s.loadSkeletonMessages(tabId)
   }
 }
 
-
+/**
+ * Resolve the input-lock fields for a restored tab. Consolidates the
+ * priority chain: settled > landed-worktree > persisted reason.
+ *
+ * Shared by the plain-tab skeleton, active-tab, sessionless, and engine-tab
+ * restore paths so the rule is expressed once.
+ */
+export function resolvedInputLock(st: PersistedTab, worktree?: { landedAt?: number } | null): {
+  inputLocked: boolean
+  inputLockReason: 'automated-workflow' | 'landed-worktree' | 'settled' | null
+} {
+  if (isPersistedSettled(st)) {
+    return { inputLocked: true, inputLockReason: 'settled' }
+  }
+  if (worktree?.landedAt) {
+    return { inputLocked: true, inputLockReason: 'landed-worktree' }
+  }
+  return {
+    inputLocked: st.inputLocked ?? false,
+    inputLockReason: (st.inputLockReason as 'automated-workflow' | 'landed-worktree' | 'settled' | null) ?? null,
+  }
+}
