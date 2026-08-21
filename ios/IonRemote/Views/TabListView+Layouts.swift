@@ -23,7 +23,7 @@ extension TabListView {
                 // modifier on the NavigationSplitView would leave the other
                 // column on the system background.
                 .background(theme.background.ignoresSafeArea())
-                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search tabs…")
+                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: listViewMode == "inbox" ? "Search conversations or projects…" : "Search tabs…")
                 .navigationTitle("")
                 .toolbar {
                     // Separate items, not a grouped HStack — same reasoning as
@@ -39,6 +39,9 @@ extension TabListView {
                         NotificationsBellButton(resourceStore: viewModel.resourceStore) {
                             showNotifications = true
                         }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        viewModeToggle
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         newTabButton
@@ -98,13 +101,13 @@ extension TabListView {
             }
             NavigationStack(path: $navigationPath) {
                 List {
-                    tabGroupSections(selectionStyle: .navigation)
+                    tabSections(selectionStyle: .navigation)
                 }
                 .scrollContentBackground(.hidden)
                 .safeAreaInset(edge: .top, spacing: 0) {
                     ConnectionBannerView()
                 }
-                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search tabs…")
+                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: listViewMode == "inbox" ? "Search conversations or projects…" : "Search tabs…")
                 .navigationTitle("")
                 .toolbar {
                     ToolbarItem(placement: .principal) {
@@ -149,6 +152,9 @@ extension TabListView {
                         NotificationsBellButton(resourceStore: viewModel.resourceStore) {
                             showNotifications = true
                         }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        viewModeToggle
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         newTabButton

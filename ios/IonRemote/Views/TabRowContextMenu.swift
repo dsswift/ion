@@ -9,7 +9,6 @@ struct TabRowContextMenu: ViewModifier {
     @Binding var renamingTabId: String?
     @Binding var renameText: String
     @Environment(SessionViewModel.self) private var viewModel
-    @State private var confirmRetire = false
 
     /// Merges live `statusFields.sessionId` with historical `conversationIds`
     /// for the active engine instance. Returns all IDs (historical first,
@@ -31,7 +30,7 @@ struct TabRowContextMenu: ViewModifier {
     /// desktop's projection rather than inferred from the path.
     private var worktreeForTab: (state: RemoteWorktreeState, worktree: RemoteWorktree)? {
         for state in viewModel.worktreeStates.values {
-            if let wt = state.worktrees.first(where: { $0.worktreePath == tab.workingDirectory }) {
+            if let wt = state.worktrees.first(where: { tab.workingDirectory == $0.worktreePath || tab.workingDirectory.hasPrefix($0.worktreePath + "/") }) {
                 return (state, wt)
             }
         }
@@ -48,7 +47,7 @@ struct TabRowContextMenu: ViewModifier {
             if let (state, wt) = worktreeForTab {
                 if !wt.isLanded {
                     Button {
-                        viewModel.openWorktreeConversation(worktreePath: wt.worktreePath)
+                        viewModel.newWorktreeConversation(worktreePath: wt.worktreePath)
                     } label: {
                         Label("New conversation in this worktree", systemImage: "bubble.left.and.bubble.right")
                     }
@@ -61,18 +60,19 @@ struct TabRowContextMenu: ViewModifier {
                         .disabled(wt.isDirty)
 
                         Button {
-                            viewModel.landWorktree(wt, repoPath: state.repoPath)
+                            viewModel.landAndRetireWorktree(wt, repoPath: state.repoPath)
                         } label: {
-                            Label("Land into \(source)", systemImage: "arrow.down.to.line")
+                            Label("Land and retire into \(source)", systemImage: "arrow.down.to.line")
                         }
                         .disabled(wt.isDirty || wt.unlandedCommitCount == 0)
                     }
-                } else {
-                    Button(role: .destructive) {
-                        confirmRetire = true
-                    } label: {
-                        Label("Retire worktree", systemImage: "trash")
-                    }
+                }
+                Divider()
+            } else if viewModel.worktreeStates[tab.workingDirectory] != nil {
+                Button {
+                    viewModel.convertConversationToWorktree(tabId: tab.id)
+                } label: {
+                    Label("Move conversation into a worktree", systemImage: "arrow.triangle.branch")
                 }
                 Divider()
             }
@@ -193,16 +193,6 @@ struct TabRowContextMenu: ViewModifier {
                     }
                 }
             }
-        }
-        .confirmationDialog("Retire this worktree?", isPresented: $confirmRetire,
-                            titleVisibility: .visible) {
-            Button("Retire", role: .destructive) {
-                guard let (state, worktree) = worktreeForTab else { return }
-                viewModel.retireWorktree(worktree, repoPath: state.repoPath)
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("The worktree directory and its branch will be removed. All work in this worktree has already landed.")
         }
     }
 

@@ -12,7 +12,7 @@ import Foundation
 /// Mirrors `RemoteEvent` in `src/main/remote/protocol.ts`.
 /// (RemoteTabGroup, used by the snapshot event, lives in RemoteTabGroup.swift.)
 enum RemoteEvent: Sendable {
-    case snapshot(tabs: [RemoteTabState], recentDirectories: [String], tabGroupMode: String?, tabGroups: [RemoteTabGroup]?, preferredModel: String?, engineDefaultModel: String?, availableModels: [RemoteModelEntry]?, customName: String?, customIcon: String?, remoteDisplayUpdatedAt: Date?, resources: [String: [[String: AnyCodable]]]?)
+    case snapshot(tabs: [RemoteTabState], recentDirectories: [String], tabGroupMode: String?, tabGroups: [RemoteTabGroup]?, preferredModel: String?, engineDefaultModel: String?, availableModels: [RemoteModelEntry]?, customName: String?, customIcon: String?, remoteDisplayUpdatedAt: Date?, resources: [String: [[String: AnyCodable]]]?, worktreeStates: [RemoteWorktreeState]? = nil, settledTabs: [RemoteTabState]? = nil)
     case tabCreated(tab: RemoteTabState, clientCmdId: String?)
     case tabClosed(tabId: String)
     /// `resync` reasserts status after client-side optimistic state diverged.
@@ -90,9 +90,9 @@ enum RemoteEvent: Sendable {
     /// desktop's retransmit buffer (too old). iOS clears its pending-resend
     /// range and falls back to the snapshot reconcile to heal that gap.
     case resendUnavailable(fromSeq: UInt64)
-    /// Desktop is prefilling input text (after rewind or fork).
-    /// `instanceId` is set when the prefill targets a specific engine
-    /// instance's draft (engine_rewind); nil for CLI-tab rewinds.
+    /// Desktop is prefilling input text after a rewind or fork. `instanceId`
+    /// is set for the unified transactional rewind path; nil is the fork reply
+    /// shape for the newly-created tab.
     case inputPrefill(tabId: String, text: String, switchTo: Bool, instanceId: String?)
     // Terminal events
     case terminalOutput(tabId: String, instanceId: String, data: String)
@@ -141,7 +141,18 @@ enum RemoteEvent: Sendable {
     /// both clients. The body is not carried over the wire — the steer
     /// message is already part of the conversation. See the Go-side
     /// SteerInjectedEvent and the TS engine_steer_injected variant.
-    case engineSteerInjected(tabId: String, instanceId: String?, messageLength: Int)
+    ///
+    /// `clientMessageId` echoes the sender's `steer_agent` correlation id
+    /// (nil for a machine-originated steer, or a client that omitted one).
+    /// `entryId` is the durable conversation-tree entry id the steer text
+    /// was persisted under — present for every genuine client-originated
+    /// steer regardless of whether a correlation id was sent, since it is
+    /// the exact target a later `engine_rewind` needs. Both ride the wire
+    /// under the engine's own field names (`steerClientMessageId` /
+    /// `steerEntryId`): the desktop's generic engine-event forwarder
+    /// spreads the raw engine payload rather than the renderer-internal
+    /// NormalizedEvent shape, so iOS decodes the engine's names directly.
+    case engineSteerInjected(tabId: String, instanceId: String?, messageLength: Int, clientMessageId: String?, entryId: String?)
     /// ctx.steerSelf found no owning run to steer and delivered its message as
     /// a fresh prompt instead. The delivery is distinct from engineSteerInjected:
     /// no run-loop checkpoint drained it. Clients may render the same
@@ -169,7 +180,7 @@ enum RemoteEvent: Sendable {
     /// when the path misses the local cache. `source` is "tool" (with a
     /// `toolId`) or "provider" (no toolId); the handler attaches the image to
     /// the matching tool message or the last assistant message respectively.
-    case engineImageContent(tabId: String, instanceId: String?, path: String, mediaType: String, source: String, toolId: String?)
+    case engineImageContent(tabId: String, instanceId: String?, path: String, mediaType: String, contentHash: String?, source: String, toolId: String?)
     case engineDispatchStart(tabId: String, instanceId: String?, dispatchAgent: String, dispatchSessionId: String, dispatchModel: String, dispatchTask: String, dispatchDepth: Int, dispatchParentId: String, dispatchId: String)
     /// engine_dispatch_end -- emitted when an extension-initiated dispatch completes.
     /// Carries telemetry (exit code, elapsed, cost) and nesting identity
@@ -471,6 +482,9 @@ enum RemoteEvent: Sendable {
     /// Outcome of a worktree/bench verb, so a toast can attribute the result
     /// and distinguish a fixable refusal from a hard failure.
     case worktreeOpResult(result: RemoteWorktreeOpResult)
+    /// Live sync-pipeline projection (banner + AI-confirm gate). `phase == nil`
+    /// clears the banner (pipeline dismissed).
+    case worktreePipeline(pipeline: RemoteWorktreePipeline)
     case gitChangesResponse(directory: String, response: GitChangesResponse)
     case gitGraphResponse(directory: String, response: GitGraphResponse)
     case gitDiffResponse(response: GitDiffResponse)
@@ -492,7 +506,7 @@ enum RemoteEvent: Sendable {
     // Command discovery events
     case discoverCommandsResponse(directory: String, commands: [DiscoveredSlashCommand])
     // Upload attachment result
-    case uploadAttachmentResult(id: String, name: String, path: String, correlationId: String?, error: String?)
+    case uploadAttachmentResult(id: String, name: String, path: String, correlationId: String?, contentHash: String?, error: String?)
     // Tab attachments response
     case tabAttachments(tabId: String, attachments: [TabAttachmentEntry])
     // Diagnostic log request from desktop. sinceSeq = 0 → full export;
@@ -531,6 +545,16 @@ enum RemoteEvent: Sendable {
     /// failure prevents delivery (rejected). iOS correlates via clientMsgId
     /// to update the optimistic user bubble's delivery state.
     case promptResult(tabId: String, clientMsgId: String, status: String, error: String?)
+
+    /// Engine-tab rewind refusal notice (desktop_engine_rewind_result). A
+    /// rewind is transactional: the desktop calls the engine first and only
+    /// truncates state on success. This event is sent ONLY when the engine
+    /// REJECTS the rewind (unknown/foreign-branch/non-user target) — a
+    /// successful rewind stays silent, observable through the existing
+    /// desktop_conversation_history / desktop_input_prefill pair. Without
+    /// this event a refused rewind left the user staring at an unchanged
+    /// transcript with no feedback that the tap did anything.
+    case engineRewindResult(tabId: String, instanceId: String, error: String?)
 
     // MARK: - Codable keys
 
@@ -629,6 +653,7 @@ enum RemoteEvent: Sendable {
         case desktopThemeAssetContent = "desktop_theme_asset_content"
         case worktreeState = "desktop_worktree_state"
         case worktreeOpResult = "desktop_worktree_op_result"
+        case worktreePipeline = "desktop_worktree_pipeline"
         case gitChangesResponse = "desktop_git_changes_response"
         case gitGraphResponse = "desktop_git_graph_response"
         case gitDiffResponse = "desktop_git_diff_response"
@@ -657,6 +682,7 @@ enum RemoteEvent: Sendable {
         /// (plan modest-leaping-waffle.md §9).
         case desktopContextBreakdown = "desktop_context_breakdown"
         case promptResult = "desktop_prompt_result"
+        case engineRewindResult = "desktop_engine_rewind_result"
     }
 
     // CodingKeys and the init(from:)/encode(to:) requirements must live in
@@ -668,12 +694,16 @@ enum RemoteEvent: Sendable {
     // see RemoteTabGroup.swift.)
     enum CodingKeys: String, CodingKey {
         case type
-        case tabs, tab, tabId, status, resync, text, toolName, toolId
+        case tabs, tab, tabId, status, resync, text, toolName, toolId, worktreeStates, settledTabs
         // Worktree + integration bench payload keys. `warning` carries the
         // pin-update dry-run's collision prediction on desktop_worktree_op_result;
         // `summary` carries sync_all's pre-worded per-worktree counts; `retired`
         // carries retire_all's count of worktrees actually retired.
         case states, operation, refusedDirty, hasConflicts, warning, summary, retired, recoveryRef, prunedBenchPaths
+        // desktop_worktree_pipeline payload keys (repoPath/sourceBranch/summary
+        // are shared above or elsewhere; these four are pipeline-specific).
+        case phase, queue, current, needsManual, resolvedByAi
+        case repoPath, sourceBranch
         // desktop_tab_created echo of the iOS create command's correlation id,
         // consumed by the confirm-or-resend delivery loop (create-tab reliability).
         case clientCmdId
@@ -717,7 +747,7 @@ enum RemoteEvent: Sendable {
         case userTurnEntryId, userTurnSlashModelAlias, userTurnSlashModelEffective
         case tabGroupMode, tabGroups, preferredModel, engineDefaultModel, availableModels
         case directory, files, branch, isGitRepo, ahead, behind, stagedCount, unstagedCount
-        case commits, totalCount, diff, fileName, graphLayout, hash, stats
+        case commits, totalCount, diff, fileName, graphLayout, hash, stats, isBinary
         case entries, filePath, ok, error
         // fs_rename_result payload — the command carries `oldPath`/`newPath`
         // and the result echoes them so the iOS handler can refresh the
@@ -731,7 +761,7 @@ enum RemoteEvent: Sendable {
         // `toolId` are shared above; `mediaType` is the image MIME type
         // (e.g. "image/png") mirroring the Go ImageContentEvent json tag.
         case mediaType
-        case correlationId
+        case correlationId, contentHash
         case dataUrl
         case attachments
         case sourceTabId, targetTabId
@@ -744,6 +774,11 @@ enum RemoteEvent: Sendable {
         // engine_steer_injected — mid-turn steer drain confirmation.
         // Mirrors EngineEvent.SteerMessageLength's JSON tag.
         case steerMessageLength
+        // engine_steer_injected — additive correlation fields. Mirror the
+        // engine's own JSON tags (EngineEvent.SteerClientMessageID /
+        // SteerEntryID) verbatim: the desktop forwards the raw engine
+        // event, not a renamed renderer-internal shape.
+        case steerClientMessageId, steerEntryId
         // engine_steer_degraded — ctx.steerSelf accepted a fresh prompt
         // because no owning run was live. Mirrors EngineEvent's dedicated
         // SteerDegradedMessageLength JSON tag.

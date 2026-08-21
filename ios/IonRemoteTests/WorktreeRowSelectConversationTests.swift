@@ -2,7 +2,7 @@ import XCTest
 @testable import IonRemote
 
 /// WorktreeRowView "Open here" conversation rows are tappable — each calls
-/// `onSelectConversation(tabId)`, wired by `WorktreeListView` to
+/// `onSelectConversation(tabId)`, wired by `InboxWorktreeGroup` to
 /// `viewModel.navigateToTab(_:)`.
 ///
 /// SwiftUI view interactions aren't directly tap-tested in this codebase (no
@@ -10,7 +10,7 @@ import XCTest
 /// the equivalent bench-conversation navigation path — this pins the
 /// ViewModel-level seam the row's Button ultimately calls: decode a worktree
 /// state carrying `openConversations`, then invoke `navigateToTab` with one of
-/// those conversations' `tabId` exactly as `WorktreeListView`'s
+/// those conversations' `tabId` exactly as `InboxWorktreeGroup`'s
 /// `onSelectConversation` closure does, and assert the pending-navigation
 /// contract fires.
 ///

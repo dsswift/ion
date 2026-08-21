@@ -38,15 +38,55 @@ final class WorktreeOpResultWireTests: XCTestCase {
 
     func testEventsRoundTrip() throws {
         let original = RemoteEvent.worktreeOpResult(result: RemoteWorktreeOpResult(
-            ok: false, operation: .land, error: "conflict", refusedDirty: nil, hasConflicts: true))
+            ok: false, operation: .landAndRetire, error: "conflict", refusedDirty: nil, hasConflicts: true))
 
         let decoded = try JSONDecoder().decode(
             RemoteEvent.self, from: try JSONEncoder().encode(original))
 
         guard case let .worktreeOpResult(result) = decoded else { return XCTFail("wrong case") }
-        XCTAssertEqual(result.operation, .land)
+        XCTAssertEqual(result.operation, .landAndRetire)
         XCTAssertEqual(result.hasConflicts, true)
         XCTAssertEqual(result.error, "conflict")
+    }
+
+    /// Regression: the desktop answers a land with `operation:"land_and_retire"`.
+    /// The Swift enum used to carry a stale `land` raw value that never matched,
+    /// so every successful land fell through the unknown-operation fallback and
+    /// toasted "Bench assembled." This pins the real wire string.
+    func testLandAndRetireResultDecodesToItsOwnCase() throws {
+        let json = """
+        {"type":"desktop_worktree_op_result","ok":true,"operation":"land_and_retire"}
+        """.data(using: .utf8)!
+
+        let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
+
+        guard case let .worktreeOpResult(result) = event else { return XCTFail("wrong case") }
+        XCTAssertEqual(result.operation, .landAndRetire)
+        XCTAssertNotEqual(result.operation, .assemble)
+    }
+
+    /// The AI-assisted resolver answers as `conflict_assist` with the resolver
+    /// conversation's tabId, and a remote pipeline start acknowledges as
+    /// `pipeline_start` (ok or refused-because-running).
+    func testConflictAssistAndPipelineStartDecode() throws {
+        let assist = """
+        {"type":"desktop_worktree_op_result","ok":true,"operation":"conflict_assist","tabId":"tab-9"}
+        """.data(using: .utf8)!
+        guard case let .worktreeOpResult(assistResult) = try JSONDecoder().decode(RemoteEvent.self, from: assist) else {
+            return XCTFail("wrong case")
+        }
+        XCTAssertEqual(assistResult.operation, .conflictAssist)
+        XCTAssertEqual(assistResult.tabId, "tab-9")
+
+        let refused = """
+        {"type":"desktop_worktree_op_result","ok":false,"operation":"pipeline_start",
+         "error":"A sync pipeline is already running."}
+        """.data(using: .utf8)!
+        guard case let .worktreeOpResult(startResult) = try JSONDecoder().decode(RemoteEvent.self, from: refused) else {
+            return XCTFail("wrong case")
+        }
+        XCTAssertEqual(startResult.operation, .pipelineStart)
+        XCTAssertFalse(startResult.ok)
     }
 
     /// The pin-update dry-run's collision prediction: the operation SUCCEEDED
@@ -71,6 +111,20 @@ final class WorktreeOpResultWireTests: XCTestCase {
     /// `assemble` is the wire vocabulary (lockstep rename from `rebuild`); an
     /// unknown operation from a newer desktop degrades to `.assemble` rather
     /// than failing the frame.
+    func testNewRemoteOperationNamesDecode() throws {
+        let names: [(String, RemoteWorktreeOpResult.Operation)] = [
+            ("create", .create), ("convert", .convert), ("rename", .rename),
+            ("reprovision", .reprovision), ("recover_conflict", .recoverConflict),
+            ("analyse_verification", .analyseVerification), ("discard_recordings", .discardRecordings),
+        ]
+        for (raw, expected) in names {
+            let json = "{\"type\":\"desktop_worktree_op_result\",\"ok\":true,\"operation\":\"\(raw)\"}".data(using: .utf8)!
+            let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
+            guard case let .worktreeOpResult(result) = event else { return XCTFail("expected operation result") }
+            XCTAssertEqual(result.operation, expected)
+        }
+    }
+
     func testOpResultAssembleOperationDecodes() throws {
         let json = """
         {"type":"desktop_worktree_op_result","ok":true,"operation":"assemble"}
@@ -247,15 +301,22 @@ extension WorktreeOpResultWireTests {
         XCTAssertTrue(source.contains("Landed worktree review — input is disabled."))
         XCTAssertTrue(source.contains("Automated fix conversation — input is disabled."))
         XCTAssertTrue(source.contains("inputLockReason == \"landed-worktree\""))
+        // Settled conversations show a distinct notice with an Un-settle action.
+        XCTAssertTrue(source.contains("inputLockReason == \"settled\""),
+            "settled lock reason must branch to a distinct notice")
+        XCTAssertTrue(source.contains("Settled — input is paused."),
+            "settled notice must carry the settled-specific copy")
+        XCTAssertTrue(source.contains("unsettleTab(tabId:"),
+            "settled notice must offer an Un-settle action")
     }
 
-    func testTabRowRetireRequiresConfirmationBeforeDispatch() throws {
+    func testTabRowUsesTerminalLandAndRetireAction() throws {
         let source = try tabRowContextMenuSource()
 
-        XCTAssertTrue(source.contains("@State private var confirmRetire = false"))
-        XCTAssertTrue(source.contains("confirmRetire = true"))
-        XCTAssertTrue(source.contains(".confirmationDialog(\"Retire this worktree?\""))
-        XCTAssertTrue(source.contains("viewModel.retireWorktree(worktree, repoPath: state.repoPath)"))
+        XCTAssertTrue(source.contains("viewModel.landAndRetireWorktree(wt, repoPath: state.repoPath)"))
+        XCTAssertTrue(source.contains("Land and retire into \\(source)"))
+        XCTAssertFalse(source.contains("confirmRetire"))
+        XCTAssertFalse(source.contains("Retire worktree"))
     }
 
     private func tabRowContextMenuSource() throws -> String {

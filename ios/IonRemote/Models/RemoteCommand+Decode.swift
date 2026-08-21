@@ -89,6 +89,31 @@ extension RemoteCommand {
             let before = try container.decodeIfPresent(String.self, forKey: .before)
             self = .loadConversation(tabId: tabId, before: before)
 
+        // Inbox actions: iOS only ever ENCODES these; the decode cases keep
+        // the TypeKey switch exhaustive and support round-trip tests.
+        case .tabSettle:
+            self = .tabSettle(tabId: try container.decode(String.self, forKey: .tabId))
+        case .tabUnsettle:
+            self = .tabUnsettle(tabId: try container.decode(String.self, forKey: .tabId))
+        case .tabSnooze:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let untilMs = try container.decode(Double.self, forKey: .untilMs)
+            self = .tabSnooze(tabId: tabId, untilMs: untilMs)
+        case .tabUnsnooze:
+            self = .tabUnsnooze(tabId: try container.decode(String.self, forKey: .tabId))
+        case .tabMarkUnread:
+            self = .tabMarkUnread(tabId: try container.decode(String.self, forKey: .tabId))
+        case .tabPin:
+            self = .tabPin(tabId: try container.decode(String.self, forKey: .tabId))
+        case .tabUnpin:
+            self = .tabUnpin(tabId: try container.decode(String.self, forKey: .tabId))
+        case .tabReorderPin:
+            self = .tabReorderPin(assignments: try container.decode([PinOrderAssignment].self, forKey: .assignments))
+        case .tabRegenerateTitle:
+            self = .tabRegenerateTitle(tabId: try container.decode(String.self, forKey: .tabId))
+        case .reviewSettledTab:
+            self = .reviewSettledTab(tabId: try container.decode(String.self, forKey: .tabId))
+
         case .requestResend:
             // iOS only ever ENCODES this (it asks the desktop to resend); the
             // decode case exists to keep the TypeKey switch exhaustive and for
@@ -152,11 +177,6 @@ extension RemoteCommand {
             let instanceId = try container.decode(String.self, forKey: .instanceId)
             let label = try container.decode(String.self, forKey: .label)
             self = .renameTerminalInstance(tabId: tabId, instanceId: instanceId, label: label)
-
-        case .rewind:
-            let tabId = try container.decode(String.self, forKey: .tabId)
-            let messageId = try container.decode(String.self, forKey: .messageId)
-            self = .rewind(tabId: tabId, messageId: messageId)
 
         case .forkFromMessage:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -438,101 +458,25 @@ extension RemoteCommand {
             self = .requestPlanContent(tabId: tabId, questionId: questionId, planFilePath: planFilePath, offset: offset, length: length)
         // ── Worktree + integration bench ──
         // iOS only SENDS these; the decode paths exist because Codable
-        // conformance requires them (same pattern as implementPlan above).
-        case .worktreeRefresh:
-            self = .worktreeRefresh(repoPath: try container.decode(String.self, forKey: .repoPath))
-
-        case .worktreeOpenConversation:
-            self = .worktreeOpenConversation(
-                worktreePath: try container.decode(String.self, forKey: .worktreePath),
-                // Absent means open-or-cycle: an older desktop sends no flag.
-                newConversation: try container.decodeIfPresent(Bool.self, forKey: .newConversation) ?? false)
-
-        case .worktreeSync:
-            self = .worktreeSync(
-                worktreePath: try container.decode(String.self, forKey: .worktreePath),
-                sourceBranch: try container.decode(String.self, forKey: .sourceBranch),
-                repoPath: try container.decode(String.self, forKey: .repoPath))
-
-        case .worktreeSyncAll:
-            self = .worktreeSyncAll(
-                repoPath: try container.decode(String.self, forKey: .repoPath))
-
-        case .worktreeLand:
-            self = .worktreeLand(
-                repoPath: try container.decode(String.self, forKey: .repoPath),
-                worktreePath: try container.decode(String.self, forKey: .worktreePath),
-                worktreeBranch: try container.decode(String.self, forKey: .worktreeBranch),
-                sourceBranch: try container.decode(String.self, forKey: .sourceBranch))
-
-        case .worktreeRetire:
-            self = .worktreeRetire(
-                repoPath: try container.decode(String.self, forKey: .repoPath),
-                worktreePath: try container.decode(String.self, forKey: .worktreePath))
-
-        case .worktreeRetireLanded:
-            self = .worktreeRetireLanded(
-                repoPath: try container.decode(String.self, forKey: .repoPath))
-
-        case .benchOpenConversation:
-            self = .benchOpenConversation(
-                repoPath: try container.decode(String.self, forKey: .repoPath),
-                sourceBranch: try container.decode(String.self, forKey: .sourceBranch))
-
-        case .benchOpenTerminal:
-            self = .benchOpenTerminal(
-                repoPath: try container.decode(String.self, forKey: .repoPath),
-                sourceBranch: try container.decode(String.self, forKey: .sourceBranch))
-
-        case .benchAssemble:
-            self = .benchAssemble(
-                repoPath: try container.decode(String.self, forKey: .repoPath),
-                sourceBranch: try container.decode(String.self, forKey: .sourceBranch))
-
-        case .benchUpdateMember:
-            self = .benchUpdateMember(
-                repoPath: try container.decode(String.self, forKey: .repoPath),
-                sourceBranch: try container.decode(String.self, forKey: .sourceBranch),
-                worktreePath: try container.decode(String.self, forKey: .worktreePath))
-
-        case .benchUpdateAll:
-            self = .benchUpdateAll(
-                repoPath: try container.decode(String.self, forKey: .repoPath),
-                sourceBranch: try container.decode(String.self, forKey: .sourceBranch))
-
-        case .benchSetEnabled:
-            self = .benchSetEnabled(
-                repoPath: try container.decode(String.self, forKey: .repoPath),
-                sourceBranch: try container.decode(String.self, forKey: .sourceBranch),
-                worktreePath: try container.decode(String.self, forKey: .worktreePath),
-                enabled: try container.decode(Bool.self, forKey: .enabled))
-
-        case .worktreeSetStage:
-            self = .worktreeSetStage(
-                repoPath: try container.decode(String.self, forKey: .repoPath),
-                worktreePath: try container.decode(String.self, forKey: .worktreePath),
-                // decodeIfPresent, because an explicit null CLEARS the stage.
-                stage: try container.decodeIfPresent(String.self, forKey: .stage))
-
-        case .benchReorderMember:
-            self = .benchReorderMember(
-                repoPath: try container.decode(String.self, forKey: .repoPath),
-                sourceBranch: try container.decode(String.self, forKey: .sourceBranch),
-                worktreePath: try container.decode(String.self, forKey: .worktreePath),
-                toIndex: try container.decode(Int.self, forKey: .toIndex))
-
-        case .benchAddMember:
-            self = .benchAddMember(
-                repoPath: try container.decode(String.self, forKey: .repoPath),
-                sourceBranch: try container.decode(String.self, forKey: .sourceBranch),
-                worktreePath: try container.decode(String.self, forKey: .worktreePath),
-                branchName: try container.decode(String.self, forKey: .branchName))
-
-        case .benchRemoveMember:
-            self = .benchRemoveMember(
-                repoPath: try container.decode(String.self, forKey: .repoPath),
-                sourceBranch: try container.decode(String.self, forKey: .sourceBranch),
-                worktreePath: try container.decode(String.self, forKey: .worktreePath))
+        // conformance requires them. The family is decoded in
+        // RemoteCommand+DecodeWorktree.swift (extracted at the 600-line cap);
+        // the grouped case keeps this switch exhaustive so a future TypeKey
+        // still forces a compile-time decision.
+        case .worktreeRefresh, .worktreeOpenConversation, .worktreeSync, .worktreeSyncAll,
+             .worktreeLandAndRetire, .benchOpenConversation, .benchOpenTerminal, .benchAssemble,
+             .benchUpdateMember, .benchUpdateAll, .worktreeSetStage, .benchReorderMember,
+             .benchAddMember, .benchRemoveMember, .worktreeRetireLanded, .worktreeCreate,
+             .worktreeConvertConversation, .worktreeRename, .worktreeReprovision,
+             .benchRecoverConflict, .benchAnalyseVerification, .benchDiscardMemberRecordings,
+             .benchDiscardAllRecordings, .worktreeRetire, .worktreeConflictAssist,
+             .benchConflictAssist, .worktreePipelineStart, .worktreePipelineConfirmAi,
+             .worktreePipelineCancel, .worktreePipelineDismiss:
+            guard let command = try Self.decodeWorktreeCommand(type: type, container: container) else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .type, in: container,
+                    debugDescription: "Unhandled worktree command: \(type.rawValue)")
+            }
+            self = command
         }
     }
 

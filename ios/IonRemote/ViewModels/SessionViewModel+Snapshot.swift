@@ -5,7 +5,7 @@ import Foundation
 extension SessionViewModel {
 
     @MainActor
-    func handleSnapshot(snapshotTabs: [RemoteTabState], recentDirs: [String], groupMode: String?, groups: [RemoteTabGroup]?, preferredModel: String? = nil, engineDefaultModel: String? = nil, availableModels: [RemoteModelEntry]? = nil) {
+    func handleSnapshot(snapshotTabs: [RemoteTabState], recentDirs: [String], groupMode: String?, groups: [RemoteTabGroup]?, preferredModel: String? = nil, engineDefaultModel: String? = nil, availableModels: [RemoteModelEntry]? = nil, worktreeStates: [RemoteWorktreeState]? = nil, settledTabs: [RemoteTabState]? = nil) {
         DiagnosticLog.log("snapshot received", tag: "session.snapshot", fields: [
             "count": String(snapshotTabs.count),
             "max": String(recentDirs.count),
@@ -96,6 +96,14 @@ extension SessionViewModel {
         }
         if let models = availableModels, !models.isEmpty {
             self.availableModels = models
+        }
+        // Snapshot fields replace the first-render navigator cache. Incremental
+        // desktop_worktree_state events still update the same state afterwards.
+        if let worktreeStates {
+            self.worktreeStates = Dictionary(uniqueKeysWithValues: worktreeStates.map { ($0.repoPath, $0) })
+        }
+        if let settledTabs {
+            self.settledTabs = settledTabs
         }
         // Filter out tabs that iOS requested to close but hasn't received
         // tab_closed confirmation for yet. Without this, the snapshot

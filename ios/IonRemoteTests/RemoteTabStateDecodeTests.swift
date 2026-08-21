@@ -74,6 +74,42 @@ final class RemoteTabStateDecodeTests: XCTestCase {
             "engineProfileId must not decode from 'engine_profile_id' — wrong key")
     }
 
+
+    // MARK: - Per-instance startup state
+
+    func testConversationInstanceStartingDecodesFromSnapshot() throws {
+        let data = minimalTab(extra: #""conversationInstances": [{"id": "main", "label": "Main", "agentStates": [], "isStarting": true}]"#)
+        let tab = try decoder.decode(RemoteTabState.self, from: data)
+
+        XCTAssertEqual(tab.conversationInstances?.first?.isStarting, true,
+            "isStarting should decode from the per-instance snapshot key")
+    }
+
+    func testConversationInstanceStartingIsNilWhenAbsent() throws {
+        let data = minimalTab(extra: #""conversationInstances": [{"id": "main", "label": "Main", "agentStates": []}]"#)
+        let tab = try decoder.decode(RemoteTabState.self, from: data)
+
+        XCTAssertNil(tab.conversationInstances?.first?.isStarting,
+            "isStarting should be nil when older desktops omit the key")
+    }
+
+    func testConversationInstanceStartingUsesCamelCaseWireKey() throws {
+        let data = minimalTab(extra: #""conversationInstances": [{"id": "main", "label": "Main", "is_starting": true}]"#)
+        let tab = try decoder.decode(RemoteTabState.self, from: data)
+
+        XCTAssertNil(tab.conversationInstances?.first?.isStarting,
+            "isStarting must not decode from the wrong snake_case key")
+    }
+
+    func testConversationInstanceStartingEncodesWithCamelCaseWireKey() throws {
+        let instance = ConversationInstanceInfo(id: "main", label: "Main", isStarting: true)
+        let data = try JSONEncoder().encode(instance)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        XCTAssertEqual(object["isStarting"] as? Bool, true)
+        XCTAssertNil(object["is_starting"])
+    }
+
     // MARK: - Both fields together
 
     func testBothFieldsDecodeFromSamePayload() throws {
@@ -98,6 +134,21 @@ final class RemoteTabStateDecodeTests: XCTestCase {
         XCTAssertNil(tab.lastRunReason)
     }
 
+    // MARK: - execution host identity
+
+    func testExecutionHostAndMachineDecode() throws {
+        let data = minimalTab(extra: #""executionHost": "build-host", "executionMachineId": "machine-42""#)
+        let tab = try decoder.decode(RemoteTabState.self, from: data)
+        XCTAssertEqual(tab.executionHost, "build-host")
+        XCTAssertEqual(tab.executionMachineId, "machine-42")
+    }
+
+    func testExecutionIdentityIsAbsentOnLegacySnapshots() throws {
+        let tab = try decoder.decode(RemoteTabState.self, from: minimalTab())
+        XCTAssertNil(tab.executionHost)
+        XCTAssertNil(tab.executionMachineId)
+    }
+
     // MARK: - inputLocked (auto-generated conflict-fix conversations)
 
     func testInputLockedDecodesTrue() throws {
@@ -114,5 +165,61 @@ final class RemoteTabStateDecodeTests: XCTestCase {
         let tab = try decoder.decode(RemoteTabState.self, from: data)
         XCTAssertNil(tab.inputLocked,
             "inputLocked should be nil when key is absent (back-compat, reads as unlocked)")
+    }
+
+    // MARK: - inputLockReason (settled conversations)
+
+    func testInputLockReasonSettledDecodes() throws {
+        let data = minimalTab(extra: #""inputLocked": true, "inputLockReason": "settled""#)
+        let tab = try decoder.decode(RemoteTabState.self, from: data)
+        XCTAssertEqual(tab.inputLocked, true)
+        XCTAssertEqual(tab.inputLockReason, "settled",
+            "inputLockReason 'settled' must decode for settled-conversation input lock")
+    }
+
+    func testInputLockReasonLandedWorktreeDecodes() throws {
+        let data = minimalTab(extra: #""inputLocked": true, "inputLockReason": "landed-worktree""#)
+        let tab = try decoder.decode(RemoteTabState.self, from: data)
+        XCTAssertEqual(tab.inputLockReason, "landed-worktree")
+    }
+
+    func testInputLockReasonNilWhenAbsent() throws {
+        let data = minimalTab(extra: #""inputLocked": true"#)
+        let tab = try decoder.decode(RemoteTabState.self, from: data)
+        XCTAssertNil(tab.inputLockReason,
+            "inputLockReason should be nil when key is absent (falls through to automated-workflow copy)")
+    }
+
+    // MARK: - createdAt (the "Newest created" inbox sort key)
+
+    func testCreatedAtDecodes() throws {
+        let data = minimalTab(extra: #""createdAt": 1234567890"#)
+        let tab = try decoder.decode(RemoteTabState.self, from: data)
+        XCTAssertEqual(tab.createdAt, 1_234_567_890)
+    }
+
+    func testCreatedAtNilWhenAbsent() throws {
+        let tab = try decoder.decode(RemoteTabState.self, from: minimalTab())
+        XCTAssertNil(tab.createdAt, "older desktops omit createdAt; must decode nil")
+    }
+
+    // MARK: - worktree identity (desktop-parity inbox grouping)
+
+    func testWorktreeIdentityDecodes() throws {
+        let data = minimalTab(extra: """
+        "worktree": { "worktreePath": "/wt/ion-abc", "branchName": "wt/ion-abc",
+                      "sourceBranch": "josh", "repoPath": "/repo/ion", "landedAt": 99 }
+        """)
+        let tab = try decoder.decode(RemoteTabState.self, from: data)
+        XCTAssertEqual(tab.worktree?.worktreePath, "/wt/ion-abc")
+        XCTAssertEqual(tab.worktree?.branchName, "wt/ion-abc")
+        XCTAssertEqual(tab.worktree?.sourceBranch, "josh")
+        XCTAssertEqual(tab.worktree?.repoPath, "/repo/ion")
+        XCTAssertEqual(tab.worktree?.landedAt, 99)
+    }
+
+    func testWorktreeIdentityNilForRepoRootTabs() throws {
+        let tab = try decoder.decode(RemoteTabState.self, from: minimalTab())
+        XCTAssertNil(tab.worktree, "repo-root conversations carry no worktree identity")
     }
 }

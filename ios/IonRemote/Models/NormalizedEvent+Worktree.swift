@@ -49,6 +49,28 @@ extension RemoteEvent {
                 summary: summary,
                 retired: retired))
 
+        case .worktreePipeline:
+            // Flat frame like the op result. `phase` nil means "dismissed":
+            // decodeIfPresent keeps the dismissal shape (phase absent/null)
+            // decodable rather than failing on a missing key.
+            let repoPath = try container.decode(String.self, forKey: .repoPath)
+            let sourceBranch = try container.decodeIfPresent(String.self, forKey: .sourceBranch)
+            let phase = try container.decodeIfPresent(RemoteWorktreePipeline.Phase.self, forKey: .phase)
+            let queue = try container.decodeIfPresent([String].self, forKey: .queue) ?? []
+            let current = try container.decodeIfPresent(String.self, forKey: .current)
+            let needsManual = try container.decodeIfPresent([String].self, forKey: .needsManual) ?? []
+            let resolvedByAi = try container.decodeIfPresent(Int.self, forKey: .resolvedByAi) ?? 0
+            let summary = try container.decodeIfPresent(String.self, forKey: .summary)
+            return .worktreePipeline(pipeline: RemoteWorktreePipeline(
+                repoPath: repoPath,
+                sourceBranch: sourceBranch,
+                phase: phase,
+                queue: queue,
+                current: current,
+                needsManual: needsManual,
+                resolvedByAi: resolvedByAi,
+                summary: summary))
+
         default:
             return nil
         }
@@ -76,6 +98,18 @@ extension RemoteEvent {
             try container.encodeIfPresent(result.warning, forKey: .warning)
             try container.encodeIfPresent(result.summary, forKey: .summary)
             try container.encodeIfPresent(result.retired, forKey: .retired)
+            return true
+
+        case .worktreePipeline(let pipeline):
+            try container.encode(TypeKey.worktreePipeline, forKey: .type)
+            try container.encode(pipeline.repoPath, forKey: .repoPath)
+            try container.encodeIfPresent(pipeline.sourceBranch, forKey: .sourceBranch)
+            try container.encodeIfPresent(pipeline.phase, forKey: .phase)
+            try container.encode(pipeline.queue, forKey: .queue)
+            try container.encodeIfPresent(pipeline.current, forKey: .current)
+            try container.encode(pipeline.needsManual, forKey: .needsManual)
+            try container.encode(pipeline.resolvedByAi, forKey: .resolvedByAi)
+            try container.encodeIfPresent(pipeline.summary, forKey: .summary)
             return true
 
         default:
