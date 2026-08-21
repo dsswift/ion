@@ -14,6 +14,10 @@ var recallLogMu sync.Mutex
 func captureRecallLogFields(t *testing.T) func() []map[string]any {
 	t.Helper()
 	recallLogMu.Lock()
+	// Same reason as captureDispatchLogs: the process-global per-message rate
+	// limiter runs ahead of the test sink, so a package run that has already
+	// filled a window for these recall lines would hide them from the sink.
+	utils.ResetLogRateLimitForTest()
 
 	var mu sync.Mutex
 	var fields []map[string]any

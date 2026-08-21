@@ -30,6 +30,13 @@ func captureDispatchLogs(t *testing.T) func() []workdirLogEntry {
 
 	prevLevel := utils.GetLevel()
 	utils.SetLevel(utils.LevelDebug)
+	// The per-message rate limiter is checked BEFORE the test sink (by design:
+	// a withheld line is invisible to every consumer identically), and it is
+	// process-global. A full-package run dispatches far more than one window's
+	// worth of "dispatch working directory resolved" lines, so without this
+	// reset these tests pass in isolation and fail in the package run — the
+	// limiter, not the code under test, decides whether the line is observed.
+	utils.ResetLogRateLimitForTest()
 	utils.SetTestSink(func(_ utils.LogLevel, tag, msg string, fields map[string]any, _, _ string) {
 		if tag != "session.extcontext" {
 			return

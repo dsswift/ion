@@ -164,13 +164,26 @@ type LlmContentBlock struct {
 	// plain text block on the wire (mirroring compact_boundary), so the model
 	// still sees the rendered context and providers never see this field.
 	ContextPaths []string `json:"contextPaths,omitempty"`
+
+	// --- skill lifecycle fields ---
+	// SkillName/SkillSource/SkillInvokedAt identify a `skill_content` block.
+	// SkillNames identifies a one-time/delta `skill_listing` block. Providers
+	// flatten both internal discriminators to text, never forwarding them raw.
+	SkillName      string   `json:"skillName,omitempty"`
+	SkillSource    string   `json:"skillSource,omitempty"`
+	SkillInvokedAt int64    `json:"skillInvokedAt,omitempty"`
+	SkillNames     []string `json:"skillNames,omitempty"`
+	// RestoredSkills belongs only to a compact_boundary. It carries bounded,
+	// newest-first invoked instruction bodies across hard compaction.
+	RestoredSkills []SkillInvocation `json:"restoredSkills,omitempty"`
 }
 
 // ImageSource carries base64-encoded image data for vision.
 type ImageSource struct {
-	Type      string `json:"type"`
-	MediaType string `json:"media_type"`
-	Data      string `json:"data"`
+	Type        string `json:"type"`
+	MediaType   string `json:"media_type"`
+	Data        string `json:"data"`
+	ContentHash string `json:"contentHash,omitempty"`
 }
 
 // ImageBlockTokenEstimate is the fixed token cost charged for a single image
@@ -214,9 +227,10 @@ const ImageBlockTokenEstimate = 1600
 // corresponding marker (if any) remains in the prompt for the Read-tool
 // fallback to handle.
 type ImageAttachment struct {
-	MediaType string `json:"media_type"`
-	Data      string `json:"data"`
-	Path      string `json:"path,omitempty"`
+	MediaType   string `json:"media_type"`
+	Data        string `json:"data"`
+	Path        string `json:"path,omitempty"`
+	ContentHash string `json:"contentHash,omitempty"`
 }
 
 // LlmToolDef defines a tool available to the LLM provider.
@@ -327,6 +341,9 @@ type ModelInfo struct {
 	// conservative provider constant. Additive field — omitempty, never breaks
 	// existing consumers.
 	MaxOutputTokens int `json:"maxOutputTokens,omitempty"`
+	// EffectiveContextLimit is the usable input capacity after the engine
+	// reserves this model's output capacity and the compaction summary reserve.
+	EffectiveContextLimit int `json:"effectiveContextLimit,omitempty"`
 	// ThinkingMode is the reasoning mechanism this model uses on the wire:
 	//   "adaptive"         — Anthropic adaptive thinking + effort (current models)
 	//   "budget"           — Anthropic legacy type:"enabled" + budget_tokens (older)
@@ -382,9 +399,12 @@ type ModelEntry struct {
 	SupportsImages   bool    `json:"supportsImages,omitempty"`
 	// MaxOutputTokens is the model's maximum output-token capacity per response.
 	// See ModelInfo.MaxOutputTokens for the value contract. Additive, omitempty.
-	MaxOutputTokens int      `json:"maxOutputTokens,omitempty"`
-	ThinkingMode    string   `json:"thinkingMode,omitempty"`
-	ThinkingEfforts []string `json:"thinkingEfforts,omitempty"`
+	MaxOutputTokens int `json:"maxOutputTokens,omitempty"`
+	// EffectiveContextLimit is the usable input capacity after output and
+	// compaction-summary reserves. Additive, omitempty.
+	EffectiveContextLimit int      `json:"effectiveContextLimit,omitempty"`
+	ThinkingMode          string   `json:"thinkingMode,omitempty"`
+	ThinkingEfforts       []string `json:"thinkingEfforts,omitempty"`
 	// Tokenizer is the tiktoken encoding name for this model's local BPE encoder.
 	// See ModelInfo.Tokenizer for the value contract. Additive, omitempty.
 	Tokenizer string `json:"tokenizer,omitempty"`

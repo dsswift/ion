@@ -291,10 +291,12 @@ func buildSessionStatusMirror(key string, f *types.StatusFields, s *engineSessio
 			HasInflightRun:           hasInflight,
 			BackgroundAgentCount:     f.BackgroundAgents,
 			BackgroundShellCount:     f.BackgroundShells,
+			HasPendingWork:           f.HasPendingWork,
 			Model:                    f.Model,
 			ContextPercent:           f.ContextPercent,
 			ContextWindow:            f.ContextWindow,
 			ContextTokens:            f.ContextTokens,
+			ContextEffectiveLimit:    f.ContextEffectiveLimit,
 			RunCostUsd:               f.RunCostUsd,
 			ConversationCostUsd:      f.ConversationCostUsd,
 			PermissionDenialsPending: f.PermissionDenials,
@@ -377,13 +379,20 @@ func (m *Manager) SendCommand(key, command, args string) {
 
 // StopSession cancels the active run and cleans up the session.
 func (m *Manager) StopSession(key string) error {
-	utils.LogWithFields(utils.LevelInfo, "session", "stopsession", map[string]any{"key": key})
 	m.mu.Lock()
 	s, ok := m.sessions[key]
 	if !ok {
 		m.mu.Unlock()
+		// DEBUG, and after the lookup, because a stop for an unknown key is not
+		// a state transition — it is the expected answer to an idempotent retry.
+		// Logged at INFO before the lookup, it made every no-op stop
+		// indistinguishable from a real teardown: a misbehaving client produced
+		// 109,801 INFO lines for roughly 60 actual stops, which rotated the log
+		// past the window under investigation.
+		utils.LogWithFields(utils.LevelDebug, "session", "stopsession for unknown key", map[string]any{"key": key})
 		return fmt.Errorf("session %q not found", key)
 	}
+	utils.LogWithFields(utils.LevelInfo, "session", "stopsession", map[string]any{"key": key})
 	// StartRun launches without Manager.mu so callbacks cannot deadlock. Record
 	// an in-flight launch for cancellation after backend registration. StopSession
 	// never waits here: a backend is allowed to synchronously invoke a callback,
@@ -599,6 +608,9 @@ func (m *Manager) sessionState(s *engineSession) string {
 // Return values mirror StatusFields.State exactly so the function is a
 // drop-in replacement for the prior sessionState body.
 func (m *Manager) currentSessionStatus(s *engineSession) string {
+	if s.settled {
+		return "settled"
+	}
 	if s.requestID == "" {
 		return "idle"
 	}

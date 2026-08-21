@@ -31,6 +31,7 @@ func TestRegistryGetTool(t *testing.T) {
 		{"Grep", true},
 		{"Glob", true},
 		{"Agent", true},
+		{"AgentStatus", true},
 		{"WebFetch", true},
 		{"WebSearch", true},
 		{"TaskCreate", true},

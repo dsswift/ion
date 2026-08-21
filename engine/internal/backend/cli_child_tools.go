@@ -130,6 +130,15 @@ func BuildDelegatedChildToolServer(child RunBackend, sessionID string, cfg *RunC
 		}, agentDef.Description, agentDef.InputSchema)
 	}
 
+	if cfg.AgentStatus != nil {
+		statusDef := tools.AgentStatusTool()
+		getter := cfg.AgentStatus
+		ts.RegisterTool("ion_agent_status", func(input map[string]interface{}) (*types.ToolResult, error) {
+			ctx := tools.WithAgentStatusGetter(context.Background(), getter)
+			return tools.ExecuteTool(ctx, tools.AgentStatusToolName, input, "")
+		}, statusDef.Description, statusDef.InputSchema)
+	}
+
 	if err := ts.Start(); err != nil {
 		return nil, err
 	}
@@ -139,7 +148,7 @@ func BuildDelegatedChildToolServer(child RunBackend, sessionID string, cfg *RunC
 	}
 
 	utils.LogWithFields(utils.LevelInfo, "backend.cli_child_tools", "wired tool server for delegated-CLI child", map[string]any{
-		"session_id": sessionID, "kind": kind, "ext_tools": len(cfg.ExternalTools), "ion_agent": cfg.AgentSpawner != nil,
+		"session_id": sessionID, "kind": kind, "ext_tools": len(cfg.ExternalTools), "ion_agent": cfg.AgentSpawner != nil, "ion_agent_status": cfg.AgentStatus != nil,
 	})
 	return ts, nil
 }

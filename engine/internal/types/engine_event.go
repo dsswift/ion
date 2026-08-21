@@ -38,6 +38,14 @@ type EngineEvent struct {
 	Retryable     bool   `json:"retryable,omitempty"`
 	RetryAfterMs  int64  `json:"retryAfterMs,omitempty"`
 	HttpStatus    int    `json:"httpStatus,omitempty"`
+	// ContextModel and capacity counts are structured details on engine_error
+	// with errorCode=context_limit_reached.
+	ContextModel          string `json:"contextModel,omitempty"`
+	ContextTokens         int    `json:"contextTokens,omitempty"`
+	ContextLimit          int    `json:"contextLimit,omitempty"`
+	ContextWindow         int    `json:"contextWindow,omitempty"`
+	ContextOutputReserve  int    `json:"contextOutputReserve,omitempty"`
+	ContextSummaryReserve int    `json:"contextSummaryReserve,omitempty"`
 
 	// engine_harness_message
 	HarnessSource string `json:"source,omitempty"`
@@ -105,10 +113,11 @@ type EngineEvent struct {
 	// Mirrors the ImageContentEvent NormalizedEvent variant. Surfaced with
 	// image-prefixed field names so they don't collide with other variants'
 	// primitives (ToolID is already used by engine_tool_start/tool_end).
-	ImagePath      string `json:"imagePath,omitempty"`
-	ImageMediaType string `json:"imageMediaType,omitempty"`
-	ImageSource    string `json:"imageSource,omitempty"`
-	ImageToolID    string `json:"imageToolId,omitempty"`
+	ImagePath        string `json:"imagePath,omitempty"`
+	ImageMediaType   string `json:"imageMediaType,omitempty"`
+	ImageContentHash string `json:"imageContentHash,omitempty"`
+	ImageSource      string `json:"imageSource,omitempty"`
+	ImageToolID      string `json:"imageToolId,omitempty"`
 
 	// engine_tool_stalled
 	ToolElapsed float64 `json:"toolElapsed,omitempty"`
@@ -136,6 +145,19 @@ type EngineEvent struct {
 	// echoing the message body back over the wire. See
 	// SteerInjectedEvent for the underlying normalized variant.
 	SteerMessageLength int `json:"steerMessageLength,omitempty"`
+
+	// engine_steer_injected — echoes the client's steer_agent correlation id
+	// (ClientCommand.ClientMessageID) when the client supplied one and this
+	// was a genuine client-originated steer. Use this, not arrival order, to
+	// resolve which outstanding optimistic UI row a confirmation belongs to.
+	// See SteerInjectedEvent.ClientMessageID.
+	SteerClientMessageID string `json:"steerClientMessageId,omitempty"`
+
+	// engine_steer_injected — the durable conversation-tree entry id the
+	// steer text was persisted under, present only for a genuine
+	// client-originated steer. Retain this as the exact target for a later
+	// rewind_session command. See SteerInjectedEvent.EntryID.
+	SteerEntryID string `json:"steerEntryId,omitempty"`
 
 	// engine_steer_degraded — character count of a ctx.steerSelf delivery
 	// accepted as a fresh prompt because no owning run was live. Distinct from
@@ -359,7 +381,11 @@ type EngineEvent struct {
 	// identity state. OidcSignedIn is a pointer so the false (signed-out)
 	// snapshot survives omitempty; consumers replace their local identity
 	// view with the payload. Claim fields are empty when signed out.
-	OidcSignedIn    *bool  `json:"oidcSignedIn,omitempty"`
+	OidcSignedIn *bool `json:"oidcSignedIn,omitempty"`
+	// OidcRequired carries auth.requireOperatorIdentity on every identity
+	// snapshot. Pointer preserves the false value so consumers can replace stale
+	// required state after configuration changes.
+	OidcRequired    *bool  `json:"oidcRequired,omitempty"`
 	OidcProvider    string `json:"oidcProvider,omitempty"`
 	OidcSubject     string `json:"oidcSubject,omitempty"`
 	OidcUsername    string `json:"oidcUsername,omitempty"`

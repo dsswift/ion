@@ -16,7 +16,7 @@ import (
 // used to smuggle a mutating tool into plan mode. Omitting Skill disabled the
 // entire skill system precisely in the mode where codebase-investigation skills
 // are most useful, and the model silently fell back to raw Grep/Read sweeps.
-var defaultPlanModeTools = []string{"Read", "Grep", "Glob", "Agent", "WebFetch", "WebSearch", "Skill"}
+var defaultPlanModeTools = []string{"Read", "Grep", "Glob", "Agent", "AgentStatus", "WebFetch", "WebSearch", "Skill"}
 
 // planModeReminderInterval is the number of turns between sparse plan-mode
 // reminder injections. The first reminder fires on turn 2 (first post-entry

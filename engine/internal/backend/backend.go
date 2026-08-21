@@ -370,8 +370,11 @@ type RunConfig struct {
 	McpConnections []*mcp.Connection
 	McpToolRouter  func(ctx context.Context, name string, input map[string]interface{}) (*types.ToolResult, error)
 	AgentSpawner   tools.AgentSpawner
-	Telemetry      TelemetryCollector
-	Timeouts       *types.TimeoutsConfig
+	// AgentStatus returns the session's complete active-dispatch snapshot for
+	// the read-only AgentStatus tool. Nil means the run has no dispatch registry.
+	AgentStatus tools.AgentStatusGetter
+	Telemetry   TelemetryCollector
+	Timeouts    *types.TimeoutsConfig
 
 	// BackgroundTaskOwner is the session key stamped onto tool contexts so
 	// background Bash tasks (run_in_background) are attributed to their

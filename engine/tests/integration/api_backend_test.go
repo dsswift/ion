@@ -557,7 +557,7 @@ func TestApiBackendPlanModeDefaultTools(t *testing.T) {
 		t.Fatal("expected at least one provider call")
 	}
 
-	// Default set: Read, Grep, Glob, Agent, WebFetch, WebSearch, Skill + Write, Edit + ExitPlanMode
+	// Default set: Read, Grep, Glob, Agent, AgentStatus, WebFetch, WebSearch, Skill + Write, Edit + ExitPlanMode
 	// AskUserQuestion is also injected universally (see runloop_setup.go:144).
 	// Skill is part of defaultPlanModeTools (plan_mode_prompt.go): invoking a
 	// skill is read-only, and without it skills are unusable while planning.
@@ -565,7 +565,7 @@ func TestApiBackendPlanModeDefaultTools(t *testing.T) {
 	// survive the filter on the PlanModeSafe flag, not on the allowlist.
 	expectedTools := addPlanModeSafeTools(map[string]bool{
 		"Read": true, "Grep": true, "Glob": true,
-		"Agent": true, "WebFetch": true, "WebSearch": true,
+		"Agent": true, "AgentStatus": true, "WebFetch": true, "WebSearch": true,
 		"Skill": true,
 		"Write": true, "Edit": true, "ExitPlanMode": true,
 		"AskUserQuestion": true,
@@ -683,7 +683,7 @@ func TestApiBackendToolRegistryComplete(t *testing.T) {
 	// Verify all expected tools are registered
 	expectedTools := []string{
 		"Read", "Write", "Edit", "Bash", "Grep", "Glob",
-		"Agent", "WebFetch", "WebSearch",
+		"Agent", "AgentStatus", "WebFetch", "WebSearch",
 		"TaskCreate", "TaskList", "TaskGet", "TaskStop",
 		"NotebookEdit", "LSP",
 	}

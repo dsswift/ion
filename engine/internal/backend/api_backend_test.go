@@ -341,16 +341,10 @@ func setupTestProviderModel(modelID string, responses [][]types.LlmStreamEvent) 
 	return mock
 }
 
-// testEarlyStopDisabled returns a pointer to false, used to opt tests out of
-// the default-on early-stop continuation feature. Backend unit tests use
-// tiny synthetic token counts (e.g. 5 output tokens) that fall well below
-// any sensible budget threshold and would otherwise trigger continuation
-// nudges, requiring multi-response scripts. Tests that specifically
-// exercise the early-stop logic (runloop_early_stop_test.go) opt back in
-// by leaving this field unset or passing &true.
-//
-// Real harness code never calls this — production runs ship with the
-// feature on by default. See docs/configuration/engine-json.md.
+// testEarlyStopDisabled returns a pointer to false, used to make tests state
+// their no-nudge policy explicitly. Backend unit tests use tiny synthetic token
+// counts (e.g. 5 output tokens); tests that exercise early-stop logic opt in by
+// leaving this field unset or passing &true.
 func testEarlyStopDisabled() *bool {
 	v := false
 	return &v

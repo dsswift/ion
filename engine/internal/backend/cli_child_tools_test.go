@@ -2,8 +2,10 @@ package backend
 
 import (
 	"context"
+	"strings"
 	"testing"
 
+	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -23,7 +25,25 @@ func childCfgWithTools(spawnerCalled, routerCalled *bool) *RunConfig {
 			*spawnerCalled = true
 			return "grandchild done", nil
 		},
+		AgentStatus: func() []tools.AgentStatusEntry {
+			return []tools.AgentStatusEntry{{DispatchID: "dispatch-live", Name: "worker", Status: "running", Depth: 1}}
+		},
 	}
+}
+
+func callToolServerEntry(t *testing.T, ts *ToolServer, name string, input map[string]interface{}) *types.ToolResult {
+	t.Helper()
+	ts.mu.Lock()
+	entry, ok := ts.tools[name]
+	ts.mu.Unlock()
+	if !ok {
+		t.Fatalf("tool server missing %q", name)
+	}
+	result, err := entry.handler(input)
+	if err != nil {
+		t.Fatalf("%s handler: %v", name, err)
+	}
+	return result
 }
 
 // TestBuildDelegatedChildToolServer_ApiChildNoServer verifies an API-routed
@@ -75,6 +95,16 @@ func TestBuildDelegatedChildToolServer_ClaudeChild(t *testing.T) {
 	if !ts.HasTool("ion_agent") {
 		t.Error("child tool server missing ion_agent (child cannot dispatch grandchildren)")
 	}
+	if !ts.HasTool("ion_agent_status") {
+		t.Error("child tool server missing ion_agent_status (child cannot inspect existing dispatches)")
+	}
+	status := callToolServerEntry(t, ts, "ion_agent_status", map[string]interface{}{"dispatch_id": "dispatch-live"})
+	if status.IsError || !strings.Contains(status.Content, "dispatch-live") {
+		t.Fatalf("ion_agent_status result = %#v", status)
+	}
+	if sp {
+		t.Fatal("ion_agent_status invoked AgentSpawner")
+	}
 }
 
 // TestBuildDelegatedChildToolServer_AcpChild verifies a grok child gets the
@@ -99,7 +129,7 @@ func TestBuildDelegatedChildToolServer_AcpChild(t *testing.T) {
 	if len(opts.CliMcpServers) != 1 {
 		t.Fatalf("acp child: want 1 inline mcp server, got %d", len(opts.CliMcpServers))
 	}
-	if !ts.HasTool("emit_briefing") || !ts.HasTool("ion_agent") {
+	if !ts.HasTool("emit_briefing") || !ts.HasTool("ion_agent") || !ts.HasTool("ion_agent_status") {
 		t.Error("acp child tool server missing expected tools")
 	}
 }

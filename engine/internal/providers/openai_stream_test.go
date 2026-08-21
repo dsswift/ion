@@ -430,3 +430,57 @@ func TestParseOpenAIImageOut(t *testing.T) {
 		t.Errorf("empty entry: got (%q,%q), want empty", mt, data)
 	}
 }
+
+// TestOpenAIStreamToolCallWithStopFinishReasonYieldsTerminalReason pins the
+// provider-level shape that produces a stop-reason/payload disagreement: a
+// gateway that streams tool-call deltas and then reports finish_reason "stop"
+// instead of "tool_calls". translateFinishReason maps "stop" to "end_turn", so
+// the turn arrives at the run loop as a terminal reason carrying a fully-parsed
+// tool_use block.
+//
+// The provider is correct to report what the gateway said — it does not invent
+// a reason. Reconciliation belongs to the run loop
+// (dispatchStopReason, internal/backend/runloop_stop_reason.go), which treats
+// the block payload as authoritative. This test exists so that reconciliation
+// has a reproduction at its source: if a future change makes the provider
+// normalize the reason itself, this test documents which layer moved.
+func TestOpenAIStreamToolCallWithStopFinishReasonYieldsTerminalReason(t *testing.T) {
+	body := strings.Join([]string{
+		`data: {"choices":[{"delta":{"tool_calls":[{"id":"call_skew","type":"function","function":{"name":"Read","arguments":""}}]}}]}`,
+		`data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"file_path\":\"/tmp/x\"}"}}]}}]}`,
+		`data: {"choices":[{"delta":{},"finish_reason":"stop"}]}`,
+		`data: [DONE]`,
+		"",
+	}, "\n\n")
+
+	srv := sseServer(t, body)
+	defer srv.Close()
+
+	collected, err := drainStream(t, newTestOpenAI(srv.URL))
+	if err != nil {
+		t.Fatalf("stream error: %v", err)
+	}
+
+	// The tool call is present in the stream despite the terminal reason.
+	sawToolBlock := false
+	for _, ev := range collected {
+		if ev.Type == "content_block_start" && ev.ContentBlock != nil &&
+			ev.ContentBlock.Type == "tool_use" && ev.ContentBlock.Name == "Read" {
+			sawToolBlock = true
+		}
+	}
+	if !sawToolBlock {
+		t.Error("no tool_use content block in the stream; the skew fixture no longer reproduces the case")
+	}
+
+	// And the reported stop reason is terminal, not tool_use.
+	stopReason := ""
+	for _, ev := range collected {
+		if ev.Type == "message_delta" && ev.Delta != nil && ev.Delta.StopReason != nil {
+			stopReason = *ev.Delta.StopReason
+		}
+	}
+	if stopReason != "end_turn" {
+		t.Errorf("stop reason = %q, want end_turn (finish_reason \"stop\" translated) — this is the skew the run loop must reconcile", stopReason)
+	}
+}

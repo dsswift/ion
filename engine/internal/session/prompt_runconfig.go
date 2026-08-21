@@ -14,6 +14,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/permissions"
 	"github.com/dsswift/ion/engine/internal/plugins"
+	"github.com/dsswift/ion/engine/internal/session/extcontext"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -245,6 +246,7 @@ func (m *Manager) buildRunConfig(
 		spawnerExtGroup = nil
 	}
 	m.wireAgentSpawner(s, key, currentModel, spawnerExtGroup, runCfg)
+	runCfg.AgentStatus = extcontext.AgentStatusGetter(s.dispatchRegistry)
 
 	// Wire session memory getter so compaction can use the pre-built
 	// summary as a zero-cost alternative to LLM summarization.

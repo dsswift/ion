@@ -213,7 +213,7 @@ func TestToolRegistryComplete(t *testing.T) {
 
 	expectedTools := []string{
 		"Read", "Write", "Edit", "Bash", "Grep", "Glob",
-		"Agent", "WebFetch", "WebSearch",
+		"Agent", "AgentStatus", "WebFetch", "WebSearch",
 		"TaskCreate", "TaskList", "TaskGet", "TaskStop",
 		"NotebookEdit", "LSP",
 	}

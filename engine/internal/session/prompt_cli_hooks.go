@@ -11,6 +11,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/permissions"
+	"github.com/dsswift/ion/engine/internal/session/extcontext"
 	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -201,6 +202,11 @@ func (m *Manager) wireAgentToolServer(s *engineSession, key string, opts *types.
 		agentDef.Description,
 		agentDef.InputSchema,
 	)
+	statusDef := tools.AgentStatusTool()
+	ts.RegisterTool("ion_agent_status", buildAgentStatusToolHandler(s.dispatchRegistry),
+		statusDef.Description,
+		statusDef.InputSchema,
+	)
 
 	if needsStart {
 		if err := ts.Start(); err != nil {
@@ -217,11 +223,19 @@ func (m *Manager) wireAgentToolServer(s *engineSession, key string, opts *types.
 		m.mu.Unlock()
 	}
 
-	aliasNames := []string{"ion_agent"}
+	aliasNames := []string{"ion_agent", "ion_agent_status"}
 	directive := buildToolAliasDirective(aliasNames, backend.McpServerName)
 	appendDirective(opts, directive, aliasNames)
 
-	utils.LogWithFields(utils.LevelInfo, "session", "ion_agent tool registered on ToolServer for CLI backend", map[string]any{"kind": kind, "key": key})
+	utils.LogWithFields(utils.LevelInfo, "session", "ion agent tools registered on ToolServer for CLI backend", map[string]any{"kind": kind, "key": key, "count": len(aliasNames)})
+}
+
+func buildAgentStatusToolHandler(registry *extcontext.DispatchRegistry) backend.ToolHandler {
+	getter := extcontext.AgentStatusGetter(registry)
+	return func(input map[string]interface{}) (*types.ToolResult, error) {
+		ctx := tools.WithAgentStatusGetter(context.Background(), getter)
+		return tools.ExecuteTool(ctx, tools.AgentStatusToolName, input, "")
+	}
 }
 
 // buildAgentToolHandler returns the ToolHandler for the delegated-CLI

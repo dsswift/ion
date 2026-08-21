@@ -83,6 +83,7 @@ func registerBuiltinTools() {
 	RegisterTool(GrepTool())
 	RegisterTool(GlobTool())
 	RegisterTool(AgentTool())
+	RegisterTool(AgentStatusTool())
 	RegisterTool(WebFetchTool())
 	RegisterTool(WebSearchTool())
 	// Task tools (TaskCreate, TaskList, TaskGet, TaskStop) are optional.

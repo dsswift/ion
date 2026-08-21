@@ -308,15 +308,22 @@ type engineSession struct {
 	// (start_session.go), per turn from the UsageEvent occupancy signal
 	// (event_translation.go), and at run exit by refreshContextUsage
 	// (context_refresh.go). Cumulative run billing never writes them.
-	lastContextPct    int
-	lastContextTokens int
-	lastContextWindow int
+	lastContextPct     int
+	lastContextTokens  int
+	lastContextWindow  int
+	lastContextLimit   int
+	lastContextWarning bool
 	// modelMu protects lastModel for extension-context construction, which may
 	// run without Manager.mu and from paths already holding Manager.mu.
 	modelMu       sync.RWMutex
 	lastModel     string
 	lastTotalCost float64 // run-scoped cost (alias: RunCostUsd)
 	lastConvCost  float64 // conversation-scoped cost (alias: ConversationCostUsd)
+	// lastCompletionReason is the authoritative terminal classification from the
+	// most recent TaskCompleteEvent. Status snapshots repeat it until the next
+	// prompt starts, so a client that processes the run-exit idle snapshot rather
+	// than the initial completion status still receives the completion semantics.
+	lastCompletionReason types.TaskCompletionReason
 
 	// lastPermissionDenials retains the PermissionDenials slice from the
 	// most recent TaskCompleteEvent. The slice typically contains
@@ -416,6 +423,13 @@ type engineSession struct {
 	// See background_task_registry.go for the accessors and
 	// background_task_wake.go for the park/wake cycle that consumes it.
 	outstandingBackgroundTasks map[string]outstandingBackgroundTask
+
+	// settled is true when the session has been paused via SettleSession.
+	// A settled session stays in the Manager's map (StartSession for the
+	// same key is idempotent) but rejects prompts and has its async hosts
+	// unwired so schedules and webhooks do not fire. Cleared by
+	// ResumeSession. Guarded by Manager.mu.
+	settled bool
 
 	// parked records that this session's run exited at a turn boundary
 	// because outstandingBackgroundTasks was non-empty, and is waiting to be

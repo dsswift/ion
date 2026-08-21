@@ -221,9 +221,10 @@ func (ToolResultEvent) eventType() string { return EventToolResult }
 // "image/png"); Source records provenance ("tool", "provider", or "user").
 // The engine never puts base64 on the wire — Path is the durable reference.
 type ToolResultImage struct {
-	Path      string `json:"path"`
-	MediaType string `json:"mediaType"`
-	Source    string `json:"source,omitempty"`
+	Path        string `json:"path"`
+	MediaType   string `json:"mediaType"`
+	ContentHash string `json:"contentHash,omitempty"`
+	Source      string `json:"source,omitempty"`
 }
 
 // ImageContentEvent is emitted once per image produced during a run: a tool
@@ -234,10 +235,11 @@ type ToolResultImage struct {
 // tool_result / text_chunk stream events — a typed data event the engine emits
 // once and moves on; consumers render or ignore it as they choose.
 type ImageContentEvent struct {
-	Path      string `json:"path"`
-	MediaType string `json:"mediaType"`
-	Source    string `json:"source"`
-	ToolID    string `json:"toolId,omitempty"`
+	Path        string `json:"path"`
+	MediaType   string `json:"mediaType"`
+	ContentHash string `json:"contentHash,omitempty"`
+	Source      string `json:"source"`
+	ToolID      string `json:"toolId,omitempty"`
 }
 
 func (ImageContentEvent) eventType() string { return EventImageContent }
@@ -298,6 +300,11 @@ type ErrorEvent struct {
 	RetryAfterMs int64    `json:"retryAfterMs,omitempty"`
 	HttpStatus   int      `json:"httpStatus,omitempty"`
 	StderrTail   []string `json:"stderrTail,omitempty"`
+	// ContextTokens, ContextLimit, and ContextWindow describe the engine's
+	// capacity decision when ErrorCode is context_limit_reached.
+	ContextTokens int `json:"contextTokens,omitempty"`
+	ContextLimit  int `json:"contextLimit,omitempty"`
+	ContextWindow int `json:"contextWindow,omitempty"`
 }
 
 func (ErrorEvent) eventType() string { return EventError }

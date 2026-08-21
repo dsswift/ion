@@ -36,6 +36,7 @@ func (b *ApiBackend) executeTools(
 	var mcpRouter func(context.Context, string, map[string]interface{}) (*types.ToolResult, error)
 	var telem TelemetryCollector
 	var spawnerFn tools.AgentSpawner
+	var agentStatusFn tools.AgentStatusGetter
 	var bgOwner string
 	var bgRegistrar func(taskID, command string)
 	if run.cfg != nil {
@@ -46,6 +47,7 @@ func (b *ApiBackend) executeTools(
 		mcpRouter = run.cfg.McpToolRouter
 		telem = run.cfg.Telemetry
 		spawnerFn = run.cfg.AgentSpawner
+		agentStatusFn = run.cfg.AgentStatus
 		bgOwner = run.cfg.BackgroundTaskOwner
 		bgRegistrar = run.cfg.RegisterOutstandingBackgroundTask
 	}
@@ -95,6 +97,13 @@ func (b *ApiBackend) executeTools(
 		gCtx = tools.WithAgentSpawner(gCtx, spawnerFn)
 	} else {
 		utils.LogWithFields(utils.LevelWarn, "backend.runloop", "has nil AgentSpawner: Agent tool will be unavailable. \"+ \"This indicates a wiring gap in the RunConfig assembly path.", map[string]any{
+			"run_id": run.requestID,
+		})
+	}
+	if agentStatusFn != nil {
+		gCtx = tools.WithAgentStatusGetter(gCtx, agentStatusFn)
+	} else {
+		utils.LogWithFields(utils.LevelWarn, "backend.runloop", "has nil AgentStatus getter: AgentStatus tool will be unavailable", map[string]any{
 			"run_id": run.requestID,
 		})
 	}
@@ -592,6 +601,7 @@ func (b *ApiBackend) executeTools(
 					IsError:         toolResult.IsError,
 					Images:          toolResult.Images,
 					EphemeralImages: toolResult.EphemeralImages,
+					SkillInvocation: toolResult.SkillInvocation,
 				}
 				// A tool that returns IsError=true with no Go-level error is the
 				// dominant real-failure path: Bash non-zero exit, Edit

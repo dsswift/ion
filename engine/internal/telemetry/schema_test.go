@@ -458,7 +458,7 @@ func emitSchemaWriterChangedAt(filePath string, prevSchema, currentSchema int, e
 			"engine_version":          engineVersion,
 		},
 	}
-	_ = flushToFile([]Event{event}, filePath)
+	_ = flushToFile([]Event{event}, filePath, rotationPolicy{})
 }
 
 // filelock import needed by stampSchemaCheckpointAt.

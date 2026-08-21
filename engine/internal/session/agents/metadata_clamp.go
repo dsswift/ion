@@ -146,18 +146,35 @@ type ClampReport struct {
 	LimitBytes    int
 }
 
+// ClampAttribution names the conversation whose snapshot is being clamped.
+//
+// The clamp runs deep inside this package, which owns no session identity, so
+// without it the WARN below lands in engine.jsonl carrying an agent name and
+// nothing else. That is what made a production run's clamp warnings
+// uncorrelatable: the reader could see that metadata was being bounded, but
+// not which conversation was producing it, and so could not reach the
+// offending run. Both fields may be empty on paths where the session is gone
+// (teardown races); the log still emits, just without the correlation.
+type ClampAttribution struct {
+	// Key is the manager's session key.
+	Key string
+	// ConversationID is the engine conversation id, the field every other
+	// surface correlates on.
+	ConversationID string
+}
+
 // clampStates bounds every entry in states in place and returns the reports.
-func clampStates(states []types.AgentStateUpdate, limits MetadataLimits) []ClampReport {
+func clampStates(states []types.AgentStateUpdate, limits MetadataLimits, attr ClampAttribution) []ClampReport {
 	l := limits.normalized()
 	var reports []ClampReport
 
 	for i := range states {
-		if rep := clampEntry(&states[i], l); rep != nil {
+		if rep := clampEntry(&states[i], l, attr); rep != nil {
 			reports = append(reports, *rep)
 		}
 	}
 
-	if rep := clampSnapshot(states, l); rep != nil {
+	if rep := clampSnapshot(states, l, attr); rep != nil {
 		reports = append(reports, *rep)
 	}
 	return reports
@@ -168,7 +185,7 @@ func clampStates(states []types.AgentStateUpdate, limits MetadataLimits) []Clamp
 // enabled, approxMapBytes(entry) ≤ MaxEntryBytes holds unconditionally on
 // return — the three-phase budget (drop unprotected, shrink protected
 // collections, replace protected values) ends in a guarantee, not a hope.
-func clampEntry(state *types.AgentStateUpdate, l MetadataLimits) *ClampReport {
+func clampEntry(state *types.AgentStateUpdate, l MetadataLimits, attr ClampAttribution) *ClampReport {
 	if state.Metadata == nil {
 		return nil
 	}
@@ -217,6 +234,7 @@ func clampEntry(state *types.AgentStateUpdate, l MetadataLimits) *ClampReport {
 	rep.OriginalBytes = originalBytes
 	rep.ClampedBytes = approxMapBytes(state.Metadata)
 	utils.LogWithFields(utils.LevelWarn, "session.agents", "agent_metadata_clamped", map[string]any{
+		"key": attr.Key, "conversation_id": attr.ConversationID,
 		"agent": state.Name, "scope": rep.Scope, "clamped_keys": rep.ClampedKeys,
 		"dropped_keys": rep.DroppedKeys, "original_bytes": rep.OriginalBytes,
 		"clamped_bytes": rep.ClampedBytes, "limit_bytes": rep.LimitBytes,
@@ -328,7 +346,7 @@ func enforceEntryBudget(md map[string]any, budget int) []string {
 // across the largest entries. It never removes an agent from the snapshot:
 // the event is a complete snapshot applied by replacement, so omitting an
 // agent tells every consumer that agent is gone.
-func clampSnapshot(states []types.AgentStateUpdate, l MetadataLimits) *ClampReport {
+func clampSnapshot(states []types.AgentStateUpdate, l MetadataLimits, attr ClampAttribution) *ClampReport {
 	if l.MaxSnapshotBytes == LimitsDisabled {
 		return nil
 	}
@@ -397,6 +415,7 @@ func clampSnapshot(states []types.AgentStateUpdate, l MetadataLimits) *ClampRepo
 		OriginalBytes: original, ClampedBytes: total, LimitBytes: l.MaxSnapshotBytes,
 	}
 	utils.LogWithFields(utils.LevelWarn, "session.agents", "agent_snapshot_clamped", map[string]any{
+		"key": attr.Key, "conversation_id": attr.ConversationID,
 		"agents": len(states), "dropped_keys": len(dropped),
 		"original_bytes": original, "clamped_bytes": total, "limit_bytes": l.MaxSnapshotBytes,
 	})
@@ -529,13 +548,13 @@ func sortedKeys(md map[string]any) []string {
 // ClampSnapshotCopy returns a bounded emission projection without mutating the
 // registry-owned source state. Metadata is an open map used by persistence and
 // dispatch lifecycle updates, so byte limits apply only at the wire boundary.
-func ClampSnapshotCopy(states []types.AgentStateUpdate, limits MetadataLimits) ([]types.AgentStateUpdate, []ClampReport) {
+func ClampSnapshotCopy(states []types.AgentStateUpdate, limits MetadataLimits, attr ClampAttribution) ([]types.AgentStateUpdate, []ClampReport) {
 	out := make([]types.AgentStateUpdate, len(states))
 	for i := range states {
 		out[i] = states[i]
 		out[i].Metadata = deepCopyMetadata(states[i].Metadata)
 	}
-	return out, clampStates(out, limits)
+	return out, clampStates(out, limits, attr)
 }
 
 func deepCopyMetadata(src map[string]any) map[string]any {
