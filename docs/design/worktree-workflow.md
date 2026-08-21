@@ -35,39 +35,30 @@ without landing anything.
 | **member** | A worktree enrolled in a bench. |
 | **pin** | The exact commit of a member that is currently integrated. |
 | **behind (member)** | The worktree has committed work newer than its pin. |
-| **excluded (member)** | Enrolled in the bench but skipped in the merge. Independent of whether it is behind. |
 | **review verdict** | Your judgement on a member's *current pin*. Cleared automatically when the pin advances. |
 | **stale (base)** | The source branch has moved ahead of where a worktree was cut from. |
-| **land** | Integrate a worktree's work into the source branch. |
-| **retire** | Remove a worktree, keeping the conversation. |
+| **land and retire** | Integrate a clean worktree into the source branch, then remove its checkout and branch. |
 | **re-attach** | Give an existing conversation a fresh worktree. |
 | **sync** | Rebase a worktree onto the current source-branch tip. |
 
 ## The worktree lifecycle
 
-Every verb is available from the git panel's Worktrees section, the tab context
+Every verb is available from the Inbox worktree hierarchy, the tab context
 menu, and iOS.
 
 | Verb | Effect on the worktree | Effect on the conversation |
 |---|---|---|
-| **Land** | Work merges into the source branch. Worktree stays. | Untouched. Repeatable. |
-| **Land & retire** | Work lands, then the worktree and branch are removed. | Stays open, relocated to the repo root. |
-| **Land & close** | Work lands, worktree removed, tab closed. | Closed deliberately. |
+| **Land and retire** | Work merges into the source branch, then the worktree and branch are removed. | Finished conversations close. A conversation that becomes active during deletion moves to the source repository rather than staying on a deleted path. |
 | **Push & PR** | Branch pushed, compare URL opened. | Untouched. |
 | **Sync** | Rebased onto the current source tip. | Untouched. |
 | **Re-attach** | A fresh worktree is created from the source tip. | Same conversation, now isolated again. |
 
-**Landing is repeatable.** Land picks the least destructive primitive: when the
-source branch is checked out nowhere it advances the ref directly with zero
-working-tree impact; when it *is* checked out it merges in place after checking
-that tree is clean. It never runs `git checkout`, so it cannot yank your working
-tree out from under a running build.
+**Land and retire is terminal.** The operation uses the least destructive merge primitive, then deletes the completed checkout. It never runs `git checkout`, so it cannot yank your working tree out from under a running build. New work starts in a new worktree.
 
 **Closing a tab never destroys a worktree.** Close is safe and reversible. If
 the worktree still holds uncommitted or unlanded work you are told so, and told
-where to find it. To get back in, open the Worktrees list and click the row (or
-its speech-bubble control). If nothing is open on that worktree a conversation
-is created; if something is, you are taken to it — and when several
+where to find it. To get back in, open the Inbox project and click the worktree
+row. If nothing is open on that worktree a conversation is created; if something is, you are taken to it — and when several
 conversations live in one worktree, clicking again moves to the next, so none of
 them is stranded.
 
@@ -123,12 +114,12 @@ can clear teaches you to ignore every badge.
 
 ## Using the bench
 
-### Enrolling — the bench appears when you need it
+### Adding a member — the bench appears when you need it
 
 There is no "create a bench" step, and no separate list to manage. Click the
 diamond at the start of a worktree's row — or use **Add to integration bench**
-in its row menu — and the bench is created on that first enrollment. Creating it
-writes a record, not a directory (the bench worktree is materialised by the
+in its row menu — and the bench is created when you add its first member.
+Creating it writes a record, not a directory (the bench worktree is materialised by the
 first assembly), so there is nothing to commit to and nothing to choose.
 
 Which bench a worktree joins is fully determined by its repo and source branch,
@@ -139,40 +130,27 @@ The diamond has three readings, and the middle one matters:
 | Diamond | Meaning |
 |---|---|
 | hollow, grey | Not in the bench. |
-| solid, accent | In the bench and merged. |
-| accent with a slash | In the bench but **excluded** from the merge. |
-
-An excluded diamond keeps the bench's colour on purpose: it *is* a member, just
-one the merge currently skips. Only the grey hollow diamond means "not a
-member".
-
-Excluding is how you bisect a broken build without dismantling the member set:
-⌥click the diamond to flip include/exclude, and a plain click to leave the bench
-entirely. An excluded member keeps its pin, so it still tells you whether the
-worktree has moved on since — re-including it will not silently merge stale
-work.
+| solid, accent | In the bench and merged in member order. |
 
 Each bench is keyed by `(repo, source branch)`, so different projects and
 different feature branches always get separate benches. They cannot blend.
 
-Enrollment is **never automatic**. Putting a worktree in the bench means "I want
-this integrated", which is a judgement only you can make.
+Membership is **never automatic**. A worktree is either present in the bench
+member list or absent from it. Adding it means "I want this integrated", which
+is a judgement only you can make.
 
-### Leaving — automatic when a worktree is retired
+### Removing a member
 
-Disenrollment *is* automatic, and the asymmetry is deliberate. Retiring a
-worktree removes it from every bench that held it, because a member whose
-worktree no longer exists can never be updated, rebuilt from, or landed — it
-would sit as a permanent `missing` row you could only clear by hand.
+Removing a worktree from a bench makes it absent from that bench's member list.
+Retiring a worktree removes it from every bench because a member whose worktree
+no longer exists can never be updated, rebuilt from, or landed.
 
-When the last member leaves, the bench is pruned entirely: record and worktree.
-An empty bench holds nothing unique (its content is exactly the feature branch),
-and keeping them would accumulate one dead bench per feature branch you ever
-integrated into. The next enrollment recreates it.
+An empty workspace record remains. It retains the bench identity and other
+workspace state until a later member is added.
 
-**Closing a conversation does not disenroll anything.** Close leaves the
+**Closing a conversation does not remove membership.** Close leaves the
 worktree intact so you can come back to it, so its membership stays valid too.
-Only Retire removes a worktree.
+Only an explicit removal or Retire removes a worktree from a bench.
 
 ### Only committed work integrates
 
@@ -222,8 +200,7 @@ Two ways out, both in that dialog:
 - **Open the member worktree.** The durable fix: rework the collision where it
   can be committed, then Update that member and reassemble.
 
-Excluding the conflicted member also works — that is the explicit,
-partial-on-purpose subset the exclude toggle exists for.
+Remove the conflicted member from the bench to assemble a different exact member set.
 
 #### The second conflict on the same file is not a cold start
 
@@ -302,15 +279,12 @@ A member that cannot be merged is reported `conflicted`, with the colliding
 paths and which earlier member it collided with, and is **skipped** — the rest
 of the bench still builds. A bad member never costs you the working bench.
 
-### After a land
+### After terminal completion
 
-Land is a terminal transition for that worktree. It records the landing, removes
-the worktree from every bench immediately, and leaves the checkout as a sealed,
-read-only review record. Existing conversations remain readable, but no new
-conversation, terminal, Sync, Update, stage, or bench action can run there.
-**Retire worktree** is its only remaining lifecycle action.
+**Land and retire** merges the worktree into its source branch, removes it from
+every bench, then removes the checkout and branch. Finished conversations close.
 
-Land does not reassemble the bench or advance any other pin. Sync each remaining
+Land and retire does not reassemble the bench or advance any other pin. Sync each remaining
 worktree from the source branch, then use Update or Update all & assemble when
 its new committed contribution is ready. This brings landed source content into
 remaining worktrees natively rather than retaining a duplicate bench member.
@@ -320,7 +294,7 @@ base and the remaining members layer on top. Nothing is lost: the content is in
 the feature branch, which is where a pull request into the trunk reads from.
 
 This works even when you squash a dozen iteration commits into one before
-landing, and even after **Land & retire** deletes the branch.
+landing, and even after terminal completion deletes the branch.
 
 ## A worked run
 
@@ -342,9 +316,8 @@ landing, and even after **Land & retire** deletes the branch.
 |---|---|---|
 | `@9c2b17e` | Integrated at that commit. | — |
 | `@9c2b17e · stale` | Worktree has newer commits. | Update. |
-| `conflict` | Could not merge; the assembly failed and the bench is empty. | Resolve once (recorded and replayed), rework in the member worktree, or exclude the member. |
+| `conflict` | Could not merge; the assembly failed and the bench is empty. | Resolve once (recorded and replayed), rework in the member worktree, or remove the member. |
 | `missing` | Branch or worktree is gone. | Remove from the bench. |
-| `excluded` | Disabled by you. | Re-check it. |
 
 ## Troubleshooting
 
@@ -355,14 +328,11 @@ landing, and even after **Land & retire** deletes the branch.
 | Land refused: cannot fast-forward | Source branch moved on. | Sync the worktree, then land. |
 | Sync refused | The worktree is dirty. Your changes are untouched. | Commit or stash, then sync. |
 | The bench "didn't pick up my work" | Integration is manual. | Update the member. |
-| No bench exists yet | Benches appear on first enrollment. | Click the diamond at the start of a worktree row. |
-| A bench vanished | Its last member was retired, so it was pruned. | Enroll a worktree; it comes back. |
+| No bench exists yet | The workspace has no members yet. | Click the diamond at the start of a worktree row. |
+| A bench has no members | All members were removed or retired. | Add a worktree when you want to assemble it. |
 | A member shows `behind` and Update changes nothing | You amended or reworded — same content, new sha. | Nothing to do; the badge clears on the next evaluation. |
-| The header says fewer are "building" than have diamonds | Excluded members are enrolled but skipped, so they are not in the build. | Expected. The badge reports the size of the build; hover it for the excluded count. |
-| A worktree I just landed is still at the top of the list | Landedness is stored and terminal. The row moves into Landed immediately and leaves every bench. | Review it, then Retire when finished. |
-| A worktree I have never committed in is not under Landed | Correct: landed means work *reached the source branch*. An empty worktree has shipped nothing. | Nothing to do. It joins the band the first time you land from it. |
-| A worktree I landed long ago is not under Landed | Its landing predates the stored `landedAt` witness. Git cannot safely distinguish it from a never-started checkout. | It remains active until you retire it. |
-| A row shows both `excluded` and `behind` | Both are true: it is skipped in the merge AND holds newer work than its pin. | Expected. Re-including it will merge the old pin until you Update. |
+| A worktree I just completed is still at the top of the list | Terminal completion removes the checkout and its branch. | Refresh the Inbox. New work starts in a new worktree. |
+| A worktree I landed long ago is still present | It predates terminal completion. | Retire it with the existing lifecycle cleanup, then it disappears. |
 | Assemble refused | The bench tree is dirty or a bench conversation is running. | Discard the bench edits or export them to the member. |
 | A worktree is missing from the list | It was created outside Ion. | It still appears, but with "source unknown" — land and sync are disabled because Ion cannot know what it was cut from. |
 | Two benches for one repo | You integrate into two source branches. | Expected; each branch gets its own. |
@@ -455,16 +425,17 @@ the Re-provision verb.
 
 ## Where the controls are
 
-**Desktop** — the git panel carries **one** Worktrees section listing every
-worktree once, whether or not it is in a bench. The list is identical from a
-worktree conversation and from a bench conversation: opening the panel inside a
-bench resolves the owning repo through the bench record, so it shows that repo's
-worktrees with their real memberships and merge order rather than the bench's own
-raw checkout set. Enrolled worktrees sort to the
-top under the bench bar (bench branch, base drift, build age, Open terminal,
-Assemble), joined by a rail that numbers them in merge order; drag a
-row within that group to reorder the merge, or use **Move earlier / later** in the
-row menu.
+**Desktop** — Inbox is the single project, bench, worktree, and conversation
+navigator. A project with worktrees shows its Integration Bench first, then its
+Source Repository, then its worktrees. The Inbox Bench bar is the production
+mount for its singleton terminal, automated re-sync pipeline, assembly/update,
+replay-cache deletion, conflict recovery, and verification analysis. A normal
+Bench row click cycles an already-open Bench conversation only; it never creates
+one. Right-click opens the Bench menu, where **Open Bench Conversation** is the
+explicit creation verb. Empty worktrees remain visible and start a new
+conversation when clicked. Enrolled worktrees retain merge order; their Inbox
+state slot shows the same pin, sync, conflict, verification, replay, provision,
+and active auto-fix states as the former worktree panel.
 
 Every per-row control — the bench diamond, the activity dot, the dirty marker,
 the unlanded count, the state indicator — sits in a fixed-width gutter at the
@@ -491,16 +462,15 @@ in words as well, since colour must never be the only carrier.
 
 Line 2 of each row leads with the **worktree ID** — the directory name under
 `~/.ion/worktrees/`, which is also the suffix of the branch (`wt/<id>`) — before
-the last commit subject, in monospace. That is the token the worktree panel and
-the tab strip have in common: a conversation's title is renamed by its first
+the last commit subject, in monospace. That is the token the Inbox worktree row
+and the tab strip have in common: a conversation's title is renamed by its first
 prompt and a worktree carries its own label, so without the ID the two surfaces
 share no visible string to correlate. The same ID appears on the iOS row.
 
-These three surfaces are deliberately complementary rather than redundant. The
-tab strip says which *tab* is focused and how work is grouped; the workspace
-indicator says which conversations are live or waiting across every group; the
-worktree panel says which *checkout* you are standing in and what git thinks of
-it. The activity dot appearing in two of them is one shared fold rendered twice,
+These surfaces are deliberately complementary rather than redundant. The tab
+strip says which *tab* is focused and how work is grouped; the workspace
+indicator says which conversations are live or waiting across every group; Inbox
+says which *checkout* you are standing in and what git thinks of it. The activity dot appearing in two of them is one shared fold rendered twice,
 not two opinions — which is why it cannot drift.
 
 The gutter deliberately carries no conversation button and no `⋯` button. The
@@ -508,16 +478,20 @@ first duplicated the row click while wearing the same glyph as the bench bar's
 Open-conversation button; the second duplicated right-click. Both spent
 permanently reserved width that the worktree name needs. A second gutter column on the row's lower line carries the **review
 verdict** pair for bench members (see below). No name length can push a control out of reach, and every name and
-control lines up down the list. The section fills its pane, so its scrollbar
-sits at the pane's bottom edge rather than floating above dead space. Drag the
-panel's top edge to make it taller for the current session.
+control lines up in Inbox. The Git panel now holds changes, history, and conflict
+resolution only.
 
 Land verbs are also on the tab context menu, and worktrees and benches appear in
 the new-tab directory picker.
 
-**ATV** — the side dock has a Worktrees tab mounting the same two sections.
+**Studio** — the side dock mounts the same Inbox navigator as the overlay.
 
-**iOS** — worktrees and benches appear in the new-tab sheet (one tap from the
-tab list) and the tab-row context menu. The full console, with per-member pins
-and bench controls, is in the git pane under **Worktrees & Bench**. A tab whose
-base has moved shows an indicator on its row.
+**iOS** — Inbox is the same project, Bench, Source Repository, worktree, and
+conversation console. Its toolbar provides project scope, sorting, global group
+collapse and expansion, search, and Settled History. A collapsed group shows only
+pinned conversations; expanding it shows every conversation in that checkout.
+Long-press menus and confirmation sheets provide the mobile forms of desktop
+row menus: create or convert worktrees, create another conversation in a
+worktree, manage Bench membership and order, sync, assemble, recover, discard
+recordings, re-provision, and Land and retire. Finder reveal remains desktop-only
+because an iPhone cannot open the paired Mac's Finder.
