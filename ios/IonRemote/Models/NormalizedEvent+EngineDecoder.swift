@@ -88,7 +88,9 @@ extension RemoteEvent {
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
             let messageLength = try container.decode(Int.self, forKey: .steerMessageLength)
-            return .engineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength)
+            let clientMessageId = try container.decodeIfPresent(String.self, forKey: .steerClientMessageId)
+            let entryId = try container.decodeIfPresent(String.self, forKey: .steerEntryId)
+            return .engineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength, clientMessageId: clientMessageId, entryId: entryId)
 
         case .engineSteerDegraded:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -520,9 +522,10 @@ extension RemoteEvent {
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
             let path = try container.decode(String.self, forKey: .path)
             let mediaType = try container.decodeIfPresent(String.self, forKey: .mediaType) ?? "image/png"
+            let contentHash = try container.decodeIfPresent(String.self, forKey: .contentHash)
             let source = try container.decodeIfPresent(String.self, forKey: .source) ?? "tool"
             let toolId = try container.decodeIfPresent(String.self, forKey: .toolId)
-            return .engineImageContent(tabId: tabId, instanceId: instanceId, path: path, mediaType: mediaType, source: source, toolId: toolId)
+            return .engineImageContent(tabId: tabId, instanceId: instanceId, path: path, mediaType: mediaType, contentHash: contentHash, source: source, toolId: toolId)
 
         default:
             return nil

@@ -248,6 +248,68 @@ final class NormalizedEventStreamTests: XCTestCase {
         XCTAssertTrue(vm.toastMessages.isEmpty)
     }
 
+    // MARK: - Engine rewind result (rejection-only notice)
+
+    /// The desktop's rewind is transactional and sends this event ONLY on
+    /// refusal (unknown/foreign-branch/non-user target). Round-trips through
+    /// JSON to lock in the CodingKeys.
+    func testDecodeEngineRewindResult() throws {
+        let json = """
+        {"type":"desktop_engine_rewind_result","tabId":"t1","instanceId":"i1","status":"rejected","error":"entry is not a user turn on the current path"}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineRewindResult(let tabId, let instanceId, let error) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+            XCTAssertEqual(error, "entry is not a user turn on the current path")
+        } else {
+            XCTFail("Expected engineRewindResult, got \(event)")
+        }
+    }
+
+    /// `error` is optional on the wire (the desktop always sends one today,
+    /// but the decoder must not throw if a future desktop omits it).
+    func testDecodeEngineRewindResultWithoutError() throws {
+        let json = """
+        {"type":"desktop_engine_rewind_result","tabId":"t1","instanceId":"i1","status":"rejected"}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineRewindResult(let tabId, let instanceId, let error) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+            XCTAssertNil(error)
+        } else {
+            XCTFail("Expected engineRewindResult, got \(event)")
+        }
+    }
+
+    func testRoundTripEngineRewindResult() throws {
+        let original = RemoteEvent.engineRewindResult(tabId: "t9", instanceId: "i9", error: "unknown entry")
+        let data = try encoder.encode(original)
+        let decoded = try decoder.decode(RemoteEvent.self, from: data)
+        if case .engineRewindResult(let tabId, let instanceId, let error) = decoded {
+            XCTAssertEqual(tabId, "t9")
+            XCTAssertEqual(instanceId, "i9")
+            XCTAssertEqual(error, "unknown entry")
+        } else {
+            XCTFail("Round-trip engineRewindResult failed")
+        }
+    }
+
+    /// Regression: a refused rewind previously produced ZERO feedback on iOS
+    /// — the user tapped "Rewind", nothing visibly happened, and there was
+    /// no toast, no log, nothing. This pins that a rejection notice now
+    /// surfaces an error toast.
+    @MainActor
+    func testEngineRewindResultShowsErrorToast() {
+        let vm = SessionViewModel()
+        XCTAssertTrue(vm.toastMessages.isEmpty)
+
+        vm.handleEvent(.engineRewindResult(tabId: "t-rw", instanceId: "i-rw", error: "entry is not a user turn"))
+
+        XCTAssertTrue(vm.toastMessages.contains { $0.style == .error && $0.title == "Rewind not applied" })
+    }
+
 
     func testEncodePrompt() throws {
         let cmd = RemoteCommand.prompt(tabId: "t1", text: "What is this?")

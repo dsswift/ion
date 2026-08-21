@@ -396,14 +396,18 @@ extension SessionViewModel {
             return
         }
 
-        // CLI-tab prefill: write the tab-level pending input and (for a
-        // rewind, switchTo == false) reload the CLI conversation so the
-        // truncated history is reflected.
-        pendingInputByTab[tabId] = text
+        // A fork creates a new Plain tab and replies without an instanceId.
+        // Plain is still a normal one-instance conversation, so its visible
+        // input reads the SAME bare-tab draft store as every other tab. The
+        // retired prefill map was never read by any view, which made
+        // a successful fork appear without its promised editable prefill.
+        setTabDraft(tabId, text)
         if switchTo {
             pendingNavigationTabId = tabId
         } else {
-            // Rewind: reload the conversation for this tab
+            // Compatibility for an older desktop that still replies to the
+            // retired plain-rewind command without instanceId. Current rewinds
+            // always carry instanceId and take the branch above.
             conversationLoaded.remove(tabId)
             setConversationMessages(tabId: tabId, [])
             conversationLoadFailed.remove(tabId)

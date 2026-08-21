@@ -166,6 +166,9 @@ extension ConversationView {
                         messageId: messageId
                     )
                 },
+                onFork: { messageId in
+                    viewModel.forkFromMessage(tabId: tabId, messageId: messageId)
+                },
                 agents: visibleAgents.isEmpty ? nil : visibleAgents,
                 allAgents: allAgents,
                 onOpenDispatch: { dispatch, agent in

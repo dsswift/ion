@@ -1,0 +1,168 @@
+import XCTest
+@testable import IonRemote
+
+/// engine_steer_injected / engine_steer_degraded — mid-turn steer drain
+/// confirmation and its idle-fallback sibling. Extracted from
+/// NormalizedEventLifecycleTests.swift (file-size cap): the correlation-id
+/// coverage added for the iOS rewind-parity fix pushed that file over 600
+/// lines, and this section is a self-contained, cohesive concern (one wire
+/// event family) that splits cleanly.
+final class NormalizedEventSteerTests: XCTestCase {
+    private let decoder = JSONDecoder()
+    private let encoder = JSONEncoder()
+
+    // MARK: - engine_steer_injected (mid-turn steer drain confirmation)
+
+    /// Round-trips engine_steer_injected through JSON to lock in CodingKeys.
+    /// The Go-side EngineEvent uses json tag "steerMessageLength" (see
+    /// engine/internal/types/types.go SteerMessageLength field); the iOS
+    /// CodingKeys must match verbatim.
+    func testDecodeEngineSteerInjected() throws {
+        let json = """
+        {
+            "type": "desktop_steer_injected",
+            "tabId": "t1",
+            "instanceId": "i1",
+            "steerMessageLength": 42
+        }
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineSteerInjected(let tabId, let instanceId, let messageLength, let clientMessageId, let entryId) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+            XCTAssertEqual(messageLength, 42)
+            // Both correlation fields are additive (Go omitempty); absent on
+            // the wire decodes to nil.
+            XCTAssertNil(clientMessageId)
+            XCTAssertNil(entryId)
+        } else {
+            XCTFail("Expected engineSteerInjected, got \(event)")
+        }
+    }
+
+    /// Pins the wire field names the desktop's generic engine-event
+    /// forwarder actually sends: the RAW engine field names
+    /// (steerClientMessageId / steerEntryId), not a renamed shape — the
+    /// forwarder spreads the original EngineEvent payload rather than a
+    /// renderer-internal NormalizedEvent. A decoder keyed on any other
+    /// name silently drops these fields even though the bytes are present.
+    func testDecodeEngineSteerInjectedWithCorrelationIds() throws {
+        let json = """
+        {
+            "type": "desktop_steer_injected",
+            "tabId": "t1",
+            "instanceId": "i1",
+            "steerMessageLength": 42,
+            "steerClientMessageId": "msg-abc123",
+            "steerEntryId": "9f2a1b7c"
+        }
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineSteerInjected(let tabId, let instanceId, let messageLength, let clientMessageId, let entryId) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+            XCTAssertEqual(messageLength, 42)
+            XCTAssertEqual(clientMessageId, "msg-abc123")
+            XCTAssertEqual(entryId, "9f2a1b7c")
+        } else {
+            XCTFail("Expected engineSteerInjected, got \(event)")
+        }
+    }
+
+    func testRoundTripEngineSteerInjected() throws {
+        let original = RemoteEvent.engineSteerInjected(
+            tabId: "t1",
+            instanceId: "i1",
+            messageLength: 27,
+            clientMessageId: nil,
+            entryId: nil
+        )
+        let data = try encoder.encode(original)
+        let decoded = try decoder.decode(RemoteEvent.self, from: data)
+        if case .engineSteerInjected(let tabId, let instanceId, let messageLength, let clientMessageId, let entryId) = decoded {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+            XCTAssertEqual(messageLength, 27)
+            XCTAssertNil(clientMessageId)
+            XCTAssertNil(entryId)
+        } else {
+            XCTFail("Round-trip engineSteerInjected failed")
+        }
+    }
+
+    /// Round-trips with both correlation ids present — the shape a genuine
+    /// client-originated steer carries once the desktop-side fix threads the
+    /// sender's own id through as the correlation id (see
+    /// send-slice.test.ts's remote-steer-correlation coverage).
+    func testRoundTripEngineSteerInjectedWithCorrelationIds() throws {
+        let original = RemoteEvent.engineSteerInjected(
+            tabId: "t1",
+            instanceId: "i1",
+            messageLength: 27,
+            clientMessageId: "msg-xyz789",
+            entryId: "ab12cd34"
+        )
+        let data = try encoder.encode(original)
+        let decoded = try decoder.decode(RemoteEvent.self, from: data)
+        if case .engineSteerInjected(let tabId, let instanceId, let messageLength, let clientMessageId, let entryId) = decoded {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+            XCTAssertEqual(messageLength, 27)
+            XCTAssertEqual(clientMessageId, "msg-xyz789")
+            XCTAssertEqual(entryId, "ab12cd34")
+        } else {
+            XCTFail("Round-trip engineSteerInjected with correlation ids failed")
+        }
+    }
+
+    /// CLI tabs receive the event without an instanceId (the runloop
+    /// emits steer events at the run level; the instanceId is added by
+    /// the desktop's remote bridge for engine tabs).
+    func testDecodeEngineSteerInjectedWithoutInstanceId() throws {
+        let json = """
+        {
+            "type": "desktop_steer_injected",
+            "tabId": "t1",
+            "steerMessageLength": 5
+        }
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineSteerInjected(let tabId, let instanceId, let messageLength, let clientMessageId, let entryId) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertNil(instanceId)
+            XCTAssertEqual(messageLength, 5)
+            XCTAssertNil(clientMessageId)
+            XCTAssertNil(entryId)
+        } else {
+            XCTFail("Expected engineSteerInjected, got \(event)")
+        }
+    }
+
+    // MARK: - engine_steer_degraded (idle/no-owning-run fallback)
+
+    func testRoundTripEngineSteerDegraded() throws {
+        let original = RemoteEvent.engineSteerDegraded(tabId: "t1", instanceId: "i1", messageLength: 27)
+        let data = try encoder.encode(original)
+        let decoded = try decoder.decode(RemoteEvent.self, from: data)
+        if case .engineSteerDegraded(let tabId, let instanceId, let messageLength) = decoded {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+            XCTAssertEqual(messageLength, 27)
+        } else {
+            XCTFail("Round-trip engineSteerDegraded failed")
+        }
+    }
+
+    func testDecodeEngineSteerDegradedDoesNotAliasLiveSteer() throws {
+        let json = """
+        {"type":"desktop_steer_degraded","tabId":"t1","steerDegradedMessageLength":5}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        guard case .engineSteerDegraded(let tabId, let instanceId, let messageLength) = event else {
+            return XCTFail("Expected engineSteerDegraded, got \(event)")
+        }
+        XCTAssertEqual(tabId, "t1")
+        XCTAssertNil(instanceId)
+        XCTAssertEqual(messageLength, 5)
+    }
+}

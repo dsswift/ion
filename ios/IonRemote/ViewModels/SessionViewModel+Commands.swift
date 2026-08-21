@@ -24,10 +24,6 @@ extension SessionViewModel {
         send(.cancel(tabId: tabId), intent: .userInitiated)
     }
 
-    func rewindConversation(tabId: String, messageId: String) {
-        send(.rewind(tabId: tabId, messageId: messageId), intent: .userInitiated)
-    }
-
     func forkFromMessage(tabId: String, messageId: String) {
         send(.forkFromMessage(tabId: tabId, messageId: messageId), intent: .userInitiated)
     }
@@ -36,8 +32,9 @@ extension SessionViewModel {
     /// Sends the `engine_rewind` remote command; the desktop stops the
     /// engine session, starts a fresh one, truncates the instance's
     /// messages, and replies with an `input_prefill` carrying the rewound
-    /// user message (handled by the existing input_prefill path). Mirrors
-    /// rewindConversation for CLI tabs but is per-instance.
+    /// user message (handled by the existing input_prefill path). This is
+    /// the one rewind mechanism for both Plain and extension-hosted tabs;
+    /// each tab resolves its active conversation instance before calling it.
     ///
     /// Sends a `userTurnIndex` alongside the message id: the 0-based ordinal
     /// of the target among role==.user messages in this instance. The desktop

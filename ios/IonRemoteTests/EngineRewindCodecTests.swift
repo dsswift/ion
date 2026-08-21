@@ -156,6 +156,48 @@ final class EngineRewindCodecTests: XCTestCase {
         }
     }
 
+    // MARK: - Fork command (one shared conversation pipeline)
+
+    /// Fork is one client-local conversation operation on the desktop. It does
+    /// not branch on a tab profile, so iOS sends the same desktop_fork_from_message
+    /// command for Plain and extension-hosted tabs alike.
+    func testRoundTripForkFromMessage() throws {
+        let original = RemoteCommand.forkFromMessage(tabId: "fork-tab", messageId: "entry-7")
+        let data = try encoder.encode(original)
+        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        XCTAssertEqual(json["type"] as? String, "desktop_fork_from_message")
+        XCTAssertEqual(json["tabId"] as? String, "fork-tab")
+        XCTAssertEqual(json["messageId"] as? String, "entry-7")
+
+        let decoded = try decoder.decode(RemoteCommand.self, from: data)
+        if case .forkFromMessage(let tabId, let messageId) = decoded {
+            XCTAssertEqual(tabId, "fork-tab")
+            XCTAssertEqual(messageId, "entry-7")
+        } else {
+            XCTFail("Round-trip forkFromMessage failed, got \(decoded)")
+        }
+    }
+
+    // MARK: - Fork prefill reaches the visible draft store
+
+    /// Fork replies use desktop_input_prefill with no instanceId. The visible
+    /// composer reads the unified bare-tab draft store, so this shape must write
+    /// there — the retired prefill map was never read by any view.
+    @MainActor
+    func testForkInputPrefillWritesUnifiedTabDraftAndNavigates() {
+        let viewModel = SessionViewModel()
+
+        viewModel.handleInputPrefill(
+            tabId: "fork-tab",
+            text: "continue from this message",
+            switchTo: true,
+            instanceId: nil
+        )
+
+        XCTAssertEqual(viewModel.tabDraft("fork-tab"), "continue from this message")
+        XCTAssertEqual(viewModel.pendingNavigationTabId, "fork-tab")
+    }
+
     // MARK: - input_prefill round-trip preserves instanceId
 
     func testRoundTripInputPrefillInstanceId() throws {
