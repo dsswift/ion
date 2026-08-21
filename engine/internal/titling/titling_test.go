@@ -4,8 +4,10 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -145,10 +147,17 @@ func TestGenerateTitleAcceptsMultibyteOutputWithinCharacterLimit(t *testing.T) {
 	}
 }
 
+// The sanity bound rejects prose, not a compliant title. A model that returns a
+// sentence or an answer to the message must not become the conversation's name.
 func TestGenerateTitleRejectsOversizedOutput(t *testing.T) {
 	stopReason := "end_turn"
+	// Comfortably past the bound: a refusal/explanation rather than a title.
+	oversized := "This message appears to be asking about configuration options, and the answer depends on which provider you have selected"
+	if utf8.RuneCountInString(oversized) <= titleMaxChars {
+		t.Fatalf("fixture must exceed the bound to test rejection: %d <= %d", utf8.RuneCountInString(oversized), titleMaxChars)
+	}
 	_, model := registerTitleProvider(t, []types.LlmStreamEvent{
-		{Type: "content_block_delta", Delta: &types.LlmStreamDelta{Type: "text_delta", Text: "A title that exceeds the forty character limit"}},
+		{Type: "content_block_delta", Delta: &types.LlmStreamDelta{Type: "text_delta", Text: oversized}},
 		{Type: "message_delta", Delta: &types.LlmStreamDelta{Type: "message_delta", StopReason: &stopReason}},
 	})
 	withTitleModel(t, model)
@@ -159,5 +168,65 @@ func TestGenerateTitleRejectsOversizedOutput(t *testing.T) {
 	}
 	if title != "" {
 		t.Errorf("GenerateTitle() = %q, want empty title from oversized output", title)
+	}
+}
+
+/*
+The system prompt asks for a 3-8 word title, so the sanity bound must not
+reject one. The bound was 40 runes while eight ordinary words plus separators
+run past 55, so a model that complied EXACTLY was rejected as "too long" and
+the caller silently kept its fallback — the reported "regenerate title does
+nothing" defect, after hydration was already fixed.
+
+Regression direction: lowering titleMaxChars back under the prompt's own
+8-word request turns this red.
+*/
+func TestGenerateTitleAcceptsTheEightWordTitleItAsksFor(t *testing.T) {
+	stopReason := "end_turn"
+	// A realistic upper-bound answer to the prompt's own "3-8 word" request.
+	const title = "Desktop Inbox Regenerate Title Command Silently Failing Again"
+	if words := len(strings.Fields(title)); words != 8 {
+		t.Fatalf("fixture must be the prompt's 8-word upper bound, got %d words", words)
+	}
+	_, model := registerTitleProvider(t, []types.LlmStreamEvent{
+		{Type: "content_block_delta", Delta: &types.LlmStreamDelta{Type: "text_delta", Text: title}},
+		{Type: "message_delta", Delta: &types.LlmStreamDelta{Type: "message_delta", StopReason: &stopReason}},
+	})
+	withTitleModel(t, model)
+
+	got, err := GenerateTitle(context.Background(), "a conversation about the inbox retitle command")
+	if err != nil {
+		t.Fatalf("GenerateTitle() error = %v", err)
+	}
+	if got != title {
+		t.Errorf("GenerateTitle() = %q, want the compliant 8-word title %q", got, title)
+	}
+}
+
+// The input bound is in runes. Byte-slicing a multibyte prompt cut a character
+// in half and sent invalid UTF-8 upstream.
+func TestGenerateTitleTruncatesLongInputOnRuneBoundaries(t *testing.T) {
+	stopReason := "end_turn"
+	provider, model := registerTitleProvider(t, []types.LlmStreamEvent{
+		{Type: "content_block_delta", Delta: &types.LlmStreamDelta{Type: "text_delta", Text: "Multibyte Input Title"}},
+		{Type: "message_delta", Delta: &types.LlmStreamDelta{Type: "message_delta", StopReason: &stopReason}},
+	})
+	withTitleModel(t, model)
+
+	// Every rune is 3 bytes, so a byte-slice at maxInputChars lands mid-rune.
+	oversized := strings.Repeat("日", maxInputChars+500)
+	if _, err := GenerateTitle(context.Background(), oversized); err != nil {
+		t.Fatalf("GenerateTitle() error = %v", err)
+	}
+
+	sent, ok := provider.options().Messages[0].Content.(string)
+	if !ok {
+		t.Fatalf("prompt content is not a string: %T", provider.options().Messages[0].Content)
+	}
+	if !utf8.ValidString(sent) {
+		t.Error("truncated prompt is not valid UTF-8; input was sliced mid-rune")
+	}
+	if strings.ContainsRune(sent, '\uFFFD') {
+		t.Error("truncated prompt contains a replacement char; input was sliced mid-rune")
 	}
 }

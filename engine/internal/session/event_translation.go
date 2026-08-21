@@ -133,6 +133,24 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 			ee.Fields.SessionID = s2.conversationID
 		}
 		m.mu.RUnlock()
+		// A TaskCompleteEvent is a run-loop boundary, not proof that the
+		// session is terminal. Rebuild its status from the live session inventory
+		// so child dispatches, notifying shells, queued prompts, and delivery
+		// outboxes cannot be hidden behind its legacy idle shape.
+		if _, isTaskComplete := event.Data.(*types.TaskCompleteEvent); isTaskComplete {
+			if live, exists := m.buildStatusFields(key); exists {
+				live.RunCostUsd = ee.Fields.RunCostUsd
+				live.ConversationCostUsd = ee.Fields.ConversationCostUsd
+				live.ContextPercent = ee.Fields.ContextPercent
+				live.ContextWindow = ee.Fields.ContextWindow
+				live.ContextTokens = ee.Fields.ContextTokens
+				live.Model = ee.Fields.Model
+				live.CompletionReason = ee.Fields.CompletionReason
+				live.NumTurns = ee.Fields.NumTurns
+				live.ConversationTurns = ee.Fields.ConversationTurns
+				ee.Fields = live
+			}
+		}
 	}
 
 	m.emit(key, ee)
@@ -199,6 +217,7 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 		if s, ok2 := m.sessions[key]; ok2 {
 			s.lastContextPct = ee.EndUsage.ContextPercent
 			s.lastContextTokens = ee.EndUsage.InputTokens
+			updateContextCapacityLocked(s, s.lastModel, s.lastContextWindow, s.config.MaxTokens)
 		}
 		m.mu.Unlock()
 	}
@@ -303,6 +322,7 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 			if tc.CostUsd > 0 {
 				s2.lastTotalCost = tc.CostUsd
 			}
+			s2.lastCompletionReason = tc.Reason
 			retainedPct = s2.lastContextPct
 			// Capture the final assistant text for delegated-CLI turn
 			// persistence (see persistCliTurn in native_session.go). LastText
@@ -440,6 +460,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	var nextPrompt *pendingPrompt
 	var bgCount int
 	var ionConvID string
+	var exitSession *engineSession
 	var captureCursorKind string
 	var invalidateCursorKind string
 	m.mu.Lock()
@@ -449,6 +470,10 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	// same runID correctly resolves to "" and is dropped.
 	m.unbindRunLocked(runID)
 	if s, ok := m.sessions[key]; ok {
+		// Keep the exact session instance that owned this run. Later recovery
+		// cleanup runs outside this lock, so it must never clear a lifecycle
+		// belonging to a replacement session with the same key.
+		exitSession = s
 		s.clearRunIdentity()
 		// Ion's durable conversation-file identity, captured under the lock
 		// for use in persistTerminalDispatches below. This is NOT the
@@ -610,21 +635,20 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	// emits no usage events (the ACP backends) reports zero forever.
 	m.refreshContextUsage(key, "run_exit")
 
-	m.mu.RLock()
-	var exitSession *engineSession
-	if s2, ok := m.sessions[key]; ok {
-		exitSession = s2
-	}
-	m.mu.RUnlock()
-
 	if bgCount > 0 {
 		utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit: emitting idle with", map[string]any{"bg_count": bgCount, "key": key})
 	}
 	var idleFields *types.StatusFields
-	if exitSession != nil {
-		idleFields = m.buildIdleStatusFields(exitSession, key, bgCount)
+	if fields, exists := m.buildStatusFields(key); exists {
+		idleFields = fields
 	} else {
 		idleFields = &types.StatusFields{Label: key, State: "idle", BackgroundAgents: bgCount}
+	}
+	// The run identity has cleared, but queued user input may already have been
+	// dequeued for dispatch. Preserve that handoff in the exit snapshot so a
+	// consumer cannot see a false terminal gap before SendPrompt starts it.
+	if nextPrompt != nil {
+		idleFields.HasPendingWork = true
 	}
 	m.emit(key, types.EngineEvent{
 		Type:   "engine_status",
@@ -687,45 +711,9 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 		utils.LogWithFields(utils.LevelInfo, "session", "suspended exit (park; no reap, no engine_dead)", map[string]any{"key": key, "code_str": codeStr, "sig_str": sigStr})
 	}
 
-	// A completed or terminal run cannot revive after restart. A suspended root
-	// keeps its durable journal, but drops the dispatch gate so its engine-owned
-	// wake can start the next continuation. Snapshot and mutate lifecycle only
-	// under Manager.mu; journal fsync stays outside that lock.
-	if exitSession != nil {
-		m.mu.Lock()
-		current, live := m.sessions[key]
-		isCurrent := live && current == exitSession
-		recoveryActive := isCurrent && current.recoveryInProgress
-		recoveryID, recoveryAttempt, recoveryMaxAttempts := "", 0, 0
-		conversationID := ""
-		if recoveryActive {
-			recoveryID, recoveryAttempt, recoveryMaxAttempts = current.recoveryID, current.recoveryAttempt, current.recoveryMaxAttempts
-			conversationID = current.conversationID
-			if suspendedExit {
-				// Keep ownership claimed across park/wake. SendPrompt admits only
-				// classified engine wakes while this lifecycle remains active.
-				utils.LogWithFields(utils.LevelInfo, "session.recovery", "recovery parked; keeping lifecycle claim for wake", map[string]any{"key": key, "recovery_id": recoveryID})
-			}
-		}
-		m.mu.Unlock()
-
-		if recoveryActive && !suspendedExit {
-			phase, reason := "completed", ""
-			if cleanCancel || abnormalExit {
-				phase, reason = "failed", fmt.Sprintf("run exit code=%s signal=%s", codeStr, sigStr)
-			}
-			if !m.clearRunRecovery(conversationID, key, recoveryID, "run_exit") {
-				utils.LogWithFields(utils.LevelError, "session.recovery", "could not persist terminal recovery cleanup", map[string]any{"key": key, "conversation_id": conversationID, "phase": phase})
-				phase, reason = "failed", "could not persist terminal recovery cleanup"
-			}
-			m.emitRunRecovery(key, recoveryID, phase, recoveryAttempt, recoveryMaxAttempts, reason)
-			m.mu.Lock()
-			if current, ok := m.sessions[key]; ok && current == exitSession && current.recoveryID == recoveryID {
-				clearRecoveryLifecycle(current)
-			}
-			m.mu.Unlock()
-		}
-	}
+	// A terminal exit clears its durable journal. A suspended root remains
+	// recoverable because its engine-owned wake has not started yet.
+	m.cleanupRunExitJournal(exitSession, key, runID, suspendedExit, cleanCancel, abnormalExit, codeStr, sigStr)
 
 	// Auto-respawn any extension hosts whose subprocess died during the
 	// run. Now that the run has finished we can rebuild safely without
@@ -741,19 +729,6 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 		return
 	}
 	m.retryRootDispatchCompletions(key)
-}
-
-// dispatchQueuedPrompt re-submits a dequeued prompt on its own goroutine,
-// forwarding the full *PromptOverrides captured at enqueue time. All 19
-// override fields survive the queue round-trip because enqueueIfBusy stored
-// a value copy. Dispatched off-lock and on a goroutine because SendPrompt
-// re-acquires m.mu and may start a run.
-func (m *Manager) dispatchQueuedPrompt(key string, next *pendingPrompt) {
-	go func() {
-		if err := m.SendPrompt(key, next.text, next.overrides); err != nil {
-			utils.LogWithFields(utils.LevelError, "session", "queued prompt failed", map[string]any{"error": err.Error()})
-		}
-	}()
 }
 
 // handleRunError is called when a backend run encounters an error.

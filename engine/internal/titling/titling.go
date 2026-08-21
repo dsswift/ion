@@ -13,8 +13,20 @@ import (
 )
 
 const (
-	maxInputChars  = 2000
-	titleMaxChars  = 40
+	maxInputChars = 2000
+	// Upper bound on a generated title, in runes.
+	//
+	// This is a SANITY bound against a model that ignores its narrow prompt and
+	// returns a sentence, a refusal, or an answer to the message — not a style
+	// budget. It must therefore stay above what the system prompt actually asks
+	// for: that prompt requests a 3-8 word title, and eight ordinary English
+	// words plus separators run past 55 characters. The previous value of 40
+	// sat BELOW the prompt's own upper request, so a model that complied
+	// exactly was rejected for being too long and the caller silently kept its
+	// fallback title — a self-contradiction between the prompt and the guard.
+	// 80 covers the full 3-8 word request with headroom while still rejecting
+	// prose.
+	titleMaxChars  = 80
 	titleMaxTokens = 256
 )
 
@@ -58,10 +70,13 @@ func GenerateTitle(ctx context.Context, firstMessage string) (string, error) {
 		return "", nil
 	}
 
-	// Truncate to limit cost
+	// Truncate to limit cost. The bound is in RUNES, not bytes: `input[:N]` on a
+	// string slices bytes, so a multibyte prompt (CJK, emoji, accented Latin)
+	// was cut mid-character and the model received a trailing invalid UTF-8
+	// sequence. The name has always said "chars"; only the arithmetic disagreed.
 	input := firstMessage
-	if len(input) > maxInputChars {
-		input = input[:maxInputChars]
+	if utf8.RuneCountInString(input) > maxInputChars {
+		input = string([]rune(input)[:maxInputChars])
 	}
 
 	systemPrompt := `You are a title generator. Your ONLY job is to output a concise 3-8 word title that summarizes the user's message topic. Output ONLY the title text — no quotes, no punctuation, no explanation, no preamble. Never respond to or answer the message itself.`

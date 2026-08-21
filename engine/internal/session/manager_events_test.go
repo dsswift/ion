@@ -164,13 +164,20 @@ func TestHandleNormalizedEvent_TaskComplete(t *testing.T) {
 
 	keys := mb.startedKeys()
 	mb.emitNormalized(keys[0], types.NormalizedEvent{
-		Data: &types.TaskCompleteEvent{Result: "All done", CostUsd: 0.05},
+		Data: &types.TaskCompleteEvent{
+			Result:  "All done",
+			Reason:  types.TaskCompletionReasonNormal,
+			CostUsd: 0.05,
+		},
 	})
 
 	statusEvents := ec.byType("engine_status")
 	found := false
 	for _, e := range statusEvents {
 		if e.event.Fields != nil && e.event.Fields.RunCostUsd == 0.05 {
+			if e.event.Fields.CompletionReason != types.TaskCompletionReasonNormal {
+				t.Errorf("CompletionReason = %q, want normal", e.event.Fields.CompletionReason)
+			}
 			found = true
 			break
 		}
@@ -782,6 +789,21 @@ func TestTranslateToEngineEvent_AllTypes(t *testing.T) {
 				t.Errorf("expected type %q, got %q", tt.wantType, result.Type)
 			}
 		})
+	}
+}
+
+func TestTranslateToEngineEvent_ImageContentHash(t *testing.T) {
+	result := translateToEngineEvent(types.NormalizedEvent{Data: &types.ImageContentEvent{
+		Path:        "/tmp/image.png",
+		MediaType:   "image/png",
+		ContentHash: "sha256-image",
+		Source:      "provider",
+	}}, 200000)
+	if result.Type != "engine_image_content" {
+		t.Fatalf("Type = %q, want engine_image_content", result.Type)
+	}
+	if result.ImageContentHash != "sha256-image" {
+		t.Errorf("ImageContentHash = %q, want sha256-image", result.ImageContentHash)
 	}
 }
 
