@@ -76,6 +76,17 @@ func (c *Checker) WorktreeList(ctx context.Context, cwd string) WorktreeListResu
 	res.RepoPath = repoPath
 
 	for _, e := range entries {
+		// A landed checkout that was removed from disk is finished work, not a
+		// usable worktree. Keep active missing entries visible so callers can still
+		// inspect their branch through the shared object store and recover work.
+		exists := existsOnDisk(e.WorktreePath)
+		if e.Landed() && !exists {
+			utils.LogWithFields(utils.LevelInfo, logTag, "worktree list skipped missing landed checkout", map[string]any{
+				"cwd": cwd, "repo": repoPath, "worktree_path": e.WorktreePath,
+				"branch": e.BranchName, "landed_at": e.LandedAt,
+			})
+			continue
+		}
 		item := WorktreeListEntry{
 			WorktreePath: e.WorktreePath,
 			RepoPath:     e.RepoPath,
@@ -86,7 +97,7 @@ func (c *Checker) WorktreeList(ctx context.Context, cwd string) WorktreeListResu
 			LandedAt:     e.LandedAt,
 			Landed:       e.Landed(),
 			IsSelf:       self != nil && self.WorktreePath == e.WorktreePath,
-			ExistsOnDisk: existsOnDisk(e.WorktreePath),
+			ExistsOnDisk: exists,
 		}
 		item.HeadSha, item.HeadSubject = c.headSummary(ctx, cwd, e.BranchName)
 		if n, ok := c.unlandedCount(ctx, cwd, e.SourceBranch, e.BranchName); ok {

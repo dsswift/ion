@@ -38,7 +38,7 @@ const (
 func WorktreeListTool() *types.ToolDef {
 	return &types.ToolDef{
 		Name:        WorktreeListName,
-		Description: "List every worktree registered for the repository containing the current directory, including this one. Each entry carries its branch, source branch, title, landed status, and (when resolvable) its current HEAD commit and how many commits it holds that have not yet reached its source branch. Read-only: every git query runs in the CALLING conversation's own directory, never inside another worktree's checkout.",
+		Description: "List every worktree registered for the repository containing the current directory, including this one. A landed worktree whose checkout directory was removed is omitted; a missing active worktree remains available for branch recovery. Each entry carries its branch, source branch, title, landed status, and (when resolvable) its current HEAD commit and how many commits it holds that have not yet reached its source branch. Read-only: every git query runs in the CALLING conversation's own directory, never inside another worktree's checkout.",
 		InputSchema: map[string]any{
 			"type":       "object",
 			"properties": map[string]any{},
@@ -71,7 +71,7 @@ func executeWorktreeList(ctx context.Context, _ map[string]any, cwd string) (*ty
 // WorktreeCommitsTool returns the read-only commit-log tool.
 func WorktreeCommitsTool() *types.ToolDef {
 	return &types.ToolDef{
-		Name: WorktreeCommitsName,
+		Name:        WorktreeCommitsName,
 		Description: "Show the commit log for one worktree's branch (a sibling worktree of the same repository, or this one). Reads through the shared git object store from the CALLING conversation's own directory -- never by opening the target worktree's checkout. Use before starting work to check whether a sibling worktree has already built what you are about to build.",
 		InputSchema: map[string]any{
 			"type": "object",
@@ -120,7 +120,7 @@ func executeWorktreeCommits(ctx context.Context, input map[string]any, cwd strin
 // WorktreeDiffTool returns the read-only diff tool.
 func WorktreeDiffTool() *types.ToolDef {
 	return &types.ToolDef{
-		Name: WorktreeDiffName,
+		Name:        WorktreeDiffName,
 		Description: "Show a diff for one worktree's branch (a sibling worktree of the same repository, or this one): either one specific commit, or everything the branch has done since it diverged from its source branch. Reads through the shared git object store from the CALLING conversation's own directory -- never by opening the target worktree's checkout. Large diffs are truncated (stated in the result) after a stat summary that always survives.",
 		InputSchema: map[string]any{
 			"type": "object",

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestWorktreeList_ListsGroupFromSiblingCwd(t *testing.T) {
+func TestWorktreeList_OmitsMissingLandedWorktreesFromSiblingCwd(t *testing.T) {
 	checker, repo, wtA, wtB := multiWorktreeFixture(t)
 	_ = repo
 
@@ -13,46 +13,27 @@ func TestWorktreeList_ListsGroupFromSiblingCwd(t *testing.T) {
 	if res.Rejection != "" {
 		t.Fatalf("unexpected rejection: %s", res.Rejection)
 	}
-	if len(res.Entries) != 2 {
-		t.Fatalf("entries = %d, want 2", len(res.Entries))
+	if len(res.Entries) != 1 {
+		t.Fatalf("entries = %d, want only the live checkout: %+v", len(res.Entries), res.Entries)
 	}
 
-	var a, b *WorktreeListEntry
-	for i := range res.Entries {
-		switch res.Entries[i].WorktreePath {
-		case wtA:
-			a = &res.Entries[i]
-		case wtB:
-			b = &res.Entries[i]
-		}
+	a := &res.Entries[0]
+	if a.WorktreePath != wtA {
+		t.Fatalf("listed worktree = %q, want live checkout %q", a.WorktreePath, wtA)
 	}
-	if a == nil || b == nil {
-		t.Fatalf("expected both wtA and wtB in entries, got %+v", res.Entries)
-	}
-
 	if !a.IsSelf {
 		t.Error("the entry matching the calling cwd must be IsSelf")
 	}
-	if b.IsSelf {
-		t.Error("a sibling entry must not be IsSelf")
-	}
 	if !a.ExistsOnDisk {
-		t.Error("wtA still exists on disk and must report ExistsOnDisk=true")
+		t.Error("every listed worktree must exist on disk")
 	}
-	if b.ExistsOnDisk {
-		t.Error("wtB was removed from disk and must report ExistsOnDisk=false")
-	}
-
-	// wtA has 2 commits ahead of main; wtB has 1 -- and its branch is still
-	// readable via the shared object store even though its directory is gone.
 	if !a.UnlandedCountKnown || a.UnlandedCount != 2 {
 		t.Errorf("wtA unlandedCount = %+v, want known=true count=2", a)
 	}
-	if !b.UnlandedCountKnown || b.UnlandedCount != 1 {
-		t.Errorf("wtB unlandedCount = %+v, want known=true count=1 (readable despite removed checkout)", b)
-	}
-	if b.HeadSha == "" || b.HeadSubject != "wt/b commit 1" {
-		t.Errorf("wtB head summary = %+v, want a resolvable sha and subject from the shared object store", b)
+	for _, entry := range res.Entries {
+		if entry.WorktreePath == wtB {
+			t.Fatalf("removed checkout %q must not remain in the worktree list", wtB)
+		}
 	}
 }
 
@@ -63,16 +44,18 @@ func TestWorktreeList_FromBaseRepoListsAllWorktrees(t *testing.T) {
 	if res.Rejection != "" {
 		t.Fatalf("unexpected rejection: %s", res.Rejection)
 	}
-	if len(res.Entries) != 2 {
-		t.Fatalf("entries from the base repo cwd = %d, want 2", len(res.Entries))
+	if len(res.Entries) != 1 {
+		t.Fatalf("entries from the base repo cwd = %d, want only the live checkout", len(res.Entries))
 	}
 	for _, e := range res.Entries {
 		if e.IsSelf {
 			t.Errorf("no entry is IsSelf when the caller is the base checkout, not a worktree: %+v", e)
 		}
+		if e.WorktreePath == wtB {
+			t.Fatalf("removed checkout %q must not be listed from the base repo", wtB)
+		}
 	}
 	_ = wtA
-	_ = wtB
 }
 
 func TestWorktreeList_UnrelatedDirectoryIsRejected(t *testing.T) {
