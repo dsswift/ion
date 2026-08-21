@@ -17,6 +17,13 @@ export interface ModelEntry {
    */
   maxOutputTokens?: number
   /**
+   * Usable input capacity after the engine reserves this model's output
+   * capacity and the compaction summary reserve (mirrors Go
+   * ModelEntry.EffectiveContextLimit). Absent for models with no declared
+   * output cap, where the engine cannot compute a reserve.
+   */
+  effectiveContextLimit?: number
+  /**
    * Reasoning mechanism this model uses on the wire (mirrors Go ModelEntry):
    * "adaptive" | "budget" | "reasoning_effort" | "gemini" | "none" | "".
    * Clients use it together with thinkingEfforts to show/gray the

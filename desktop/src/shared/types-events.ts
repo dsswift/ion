@@ -174,7 +174,9 @@ export type NormalizedEvent =
   | { type: 'tool_result'; toolId: string; content: string; isError: boolean; images?: Array<{ path: string; mediaType: string; source?: string }> }
   | { type: 'task_update'; message: AssistantMessagePayload }
   | { type: 'task_complete'; reason?: TaskCompletionReason | (string & {}); result: string; lastText?: string; costUsd: number; durationMs: number; numTurns: number; conversationTurns?: number; usage: UsageData; sessionId: string; permissionDenials?: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> }
-  | { type: 'error'; message: string; isError: boolean; sessionId?: string; errorCode?: string; retryable?: boolean; retryAfterMs?: number; httpStatus?: number; stderrTail?: string[] }
+  // contextTokens / contextLimit / contextWindow describe the engine's capacity
+  // decision and are populated when errorCode is 'context_limit_reached'.
+  | { type: 'error'; message: string; isError: boolean; sessionId?: string; errorCode?: string; retryable?: boolean; retryAfterMs?: number; httpStatus?: number; stderrTail?: string[]; contextTokens?: number; contextLimit?: number; contextWindow?: number }
   | { type: 'session_dead'; exitCode: number | null; signal: string | null; stderrTail: string[] }
   | { type: 'rate_limit'; status: string; resetsAt: number; rateLimitType: string }
   | { type: 'usage'; usage: UsageData }
@@ -184,7 +186,13 @@ export type NormalizedEvent =
   | { type: 'stream_reset' }
   | { type: 'compacting'; active: boolean; summary?: string; messagesBefore?: number; messagesAfter?: number; clearedBlocks?: number; strategy?: string; microOnly?: boolean }
   | { type: 'tool_stalled'; toolId: string; toolName: string; elapsed: number }
-  | { type: 'steer_injected'; messageLength: number }
+  // clientMessageId echoes the client's steer_agent correlation id when the
+  // client supplied one and this was a genuine client-originated steer
+  // (never present for a machine-to-machine injection). entryId is the
+  // durable conversation-tree entry id the steer text was persisted under,
+  // present only for a genuine client-originated steer -- the exact target
+  // for a later rewind_session command. Both optional and additive.
+  | { type: 'steer_injected'; messageLength: number; clientMessageId?: string; entryId?: string }
   // ctx.steerSelf accepted a fresh prompt because no owning run was live.
   // Distinct from steer_injected, which proves a live run-loop drain.
   | { type: 'steer_degraded'; messageLength: number }
@@ -283,7 +291,7 @@ export type NormalizedEvent =
   // 'provider', toolId empty). Path is the on-disk file the engine saved under
   // the conversation's images/ directory; the engine never sends base64 on the
   // wire. Rendered inline and surfaced in the attachments panel.
-  | { type: 'image_content'; path: string; mediaType: string; source: string; toolId?: string }
+  | { type: 'image_content'; path: string; mediaType: string; source: string; toolId?: string; contentHash?: string }
   // Dispatch telemetry (n-tier nested dispatch). Emitted by the control plane
   // from engine_dispatch_start/end so the renderer can record dispatch depth
   // and parent linkage for tree rendering in the AgentPanel.

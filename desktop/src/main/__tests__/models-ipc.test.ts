@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const { handlers, bridge } = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
   bridge: {
+    listModels: vi.fn(),
     listModelTiers: vi.fn(),
     setModelTier: vi.fn(),
     removeModelTier: vi.fn(),
@@ -18,7 +19,8 @@ vi.mock('../state', () => ({ engineBridge: bridge, modelCache: {}, enterprisePol
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn() }))
 
 import { IPC } from '../../shared/types'
-import { registerModelsIpc } from '../ipc/models'
+import { modelCache } from '../state'
+import { refreshModelCache, registerModelsIpc } from '../ipc/models'
 
 registerModelsIpc()
 
@@ -53,5 +55,34 @@ describe('model tier IPC', () => {
     expect(bridge.listModelTiers).toHaveBeenCalledOnce()
     expect(bridge.setModelTier).toHaveBeenCalledWith(tier)
     expect(bridge.removeModelTier).toHaveBeenCalledWith(tier.name)
+  })
+})
+
+// The cache IS the iOS projection: snapshot-polling and transport-init send
+// modelCache.models straight through as availableModels. A capability the
+// engine publishes but the cache drops never reaches the phone, so iOS falls
+// back to a generic reserve and reports a different remaining input budget
+// than the desktop does for the same conversation.
+describe('model cache projection', () => {
+  it('carries the capacity capabilities iOS needs to size input budget', async () => {
+    bridge.listModels.mockResolvedValue({
+      providers: [{ id: 'anthropic', hasAuth: true }],
+      models: [{
+        id: 'anthropic/claude',
+        providerId: 'anthropic',
+        contextWindow: 200_000,
+        maxOutputTokens: 32_000,
+        effectiveContextLimit: 155_000,
+      }],
+    })
+
+    await refreshModelCache()
+
+    expect(modelCache.models[0]).toMatchObject({
+      id: 'anthropic/claude',
+      contextWindow: 200_000,
+      maxOutputTokens: 32_000,
+      effectiveContextLimit: 155_000,
+    })
   })
 })

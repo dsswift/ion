@@ -14,6 +14,8 @@ export interface DispatchInfo {
   conversationId: string
   elapsed?: number
   status: string
+  /** What this dispatch is blocked on while its own run is not foreground work. */
+  waitingOn?: 'children' | 'shell'
   startTime?: number
 }
 
@@ -288,7 +290,7 @@ export interface ConversationInstance {
    * the PRECISE hydration marker — "messages is empty" is NOT a reliable
    * proxy, because live streamed events (and cross-window user-message echoes)
    * append to a never-hydrated skeleton pane, after which an emptiness check
-   * silently skips loading the history (the ATV-mirror last-turn-only bug).
+   * silently skips loading the history (the Studio window-mirror last-turn-only bug).
    * `undefined` (legacy panes created by paths that don't set it) falls back
    * to the empty-messages+messageCount heuristic in `needsHistoryHydration`.
    * Client-only and transient: never persisted, not part of the Go contract.
@@ -366,6 +368,11 @@ export interface StatusFields {
    *  is no engine command to change an idle session's model, so the
    *  picker-driven recompute is necessarily client-side arithmetic. */
   contextTokens?: number
+  /** Usable input capacity after the engine reserves output and
+   *  compaction-summary tokens. Mirrors the Go field of the same name; the
+   *  engine keeps its 80%-occupancy warning internal, so clients derive any
+   *  warning state from this limit rather than reading a flag. */
+  contextEffectiveLimit?: number
   /** Cost of the most recent run in USD (cache-aware, descendants included).
    *  Replaces the former totalCostUsd field; the rename makes the scope
    *  unambiguous — "run" not "conversation". */
@@ -391,6 +398,10 @@ export interface StatusFields {
    *  the commands finish. Commands started WITHOUT notify_on_complete are not
    *  counted — nothing is waiting on them. */
   backgroundShells?: number
+  /** True when the engine has accepted work that still prevents a terminal
+   * completion. This includes dispatches, notifying shells, queued prompts,
+   * durable completion deliveries, and parked runs. */
+  hasPendingWork?: boolean
   /** Number of LLM turns completed in the most recent run. Stamped from
    *  TaskCompleteEvent.NumTurns; absent on idle and heartbeat status events. */
   numTurns?: number
@@ -438,6 +449,9 @@ export interface SessionStatus {
    *  event can tell a parked session (idle orchestrator, commands in flight)
    *  from a plain idle one. */
   backgroundShellCount?: number
+  /** Exact engine verdict that accepted work remains pending even when the
+   * foreground orchestrator has reached idle. */
+  hasPendingWork?: boolean
   /** Unresolved AskUserQuestion / ExitPlanMode entries retained
    *  across status emissions. Same shape as
    *  `StatusFields.permissionDenials`. */
@@ -449,6 +463,9 @@ export interface SessionStatus {
   /** Absolute context-window occupancy in tokens. Mirrors
    *  StatusFields.contextTokens. */
   contextTokens?: number
+  /** Usable input capacity after engine output and summary reserves.
+   *  Mirrors StatusFields.contextEffectiveLimit. */
+  contextEffectiveLimit?: number
   /** Cost of the most recent run in USD. Matches StatusFields.runCostUsd semantics. */
   runCostUsd?: number
   /** Cumulative cost of the entire conversation (this session + all descendant dispatches) in USD. */
@@ -520,6 +537,19 @@ export interface LlmContentBlock {
   // descent). Carries the absolute instruction-file paths the block injected;
   // it is the engine's structural dedup key. See Go-side llm.go.
   contextPaths?: string[]
+  // skill_content and skill_listing fields. The engine uses these internal
+  // structural markers to manage one-time skill instructions and listings;
+  // clients must tolerate them without rendering transcript rows.
+  skillName?: string
+  skillSource?: string
+  skillInvokedAt?: number
+  skillNames?: string[]
+  restoredSkills?: Array<{
+    name: string
+    source?: string
+    content: string
+    invokedAt: number
+  }>
 }
 
 // EngineEvent — the engine's outbound wire event union — lives in
