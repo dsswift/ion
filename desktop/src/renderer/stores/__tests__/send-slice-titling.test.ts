@@ -66,8 +66,11 @@ vi.mock('../../preferences', () => ({
 }))
 
 vi.mock('../../rendererLogger', () => ({
+  rInfo: vi.fn(),
   rDebug: vi.fn(),
   rWarn: vi.fn(),
+  rError: vi.fn(),
+  rTrace: vi.fn(),
 }))
 
 import { usePreferencesStore } from '../../preferences'
@@ -104,8 +107,7 @@ function makeTab(overrides: Partial<TabState> = {}): TabState {
     lastKnownSessionId: null,
     status: 'idle',
     activeRequestId: null,
-    lastEventAt: null,
-    hasUnread: false,
+    lastEventAt: null,    lastActivityAt: null,    idleSince: null,    lastCompletionAt: null,    settledOverride: null,    settledAt: null,    snoozedUntil: null,    snoozedAt: null,    lastVisitedAt: null,    manualUnread: false,
     currentActivity: '',
     attachments: [],
     title: 'New Tab',

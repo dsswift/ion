@@ -11,6 +11,7 @@ import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId, totalInputTokens } from '../session-store-helpers'
 import { formatSteerAppliedDivider } from '../../../shared/clear-divider'
 import { suppressesInjection } from '../../../shared/injection-policy'
+import { isPendingUserCardDenial } from '../../../shared/pending-card'
 import { buildCompactionMarkerContent, buildManualCompactionNoOpNotice } from '../../../shared/compaction-marker'
 import { captureSessionInitId } from './session-init-capture'
 import { activeInstance, commitInstance, baseStatusFields } from '../conversation-instance'
@@ -24,10 +25,10 @@ import { handlePlanModeEvent } from './event-slice-plan-mode'
 import { buildDispatchStartEntry, applyDispatchEnd } from './engine-event-slice-helpers'
 import { maybeApplyPlanModeGroupMove } from './event-slice-plan-mode-move'
 import { handleTaskEvent } from './event-slice-task'
-import { maybeCloseAutoFixTab, retryAutoFixCloseOnTerminalChildren } from './event-slice-auto-fix-lifecycle'
+import { retryAutoFixCloseOnTerminalChildren } from './event-slice-auto-fix-lifecycle'
 import { handleErrorAction } from './event-slice-error'
 import { rInfo, rTrace, rWarn } from '../../rendererLogger'
-import { setTabStatus } from './tab-status-transition'
+import { setTabStatus, logTabStatusWrite, logTabStatusPatch } from './tab-status-transition'
 import { sameTab, sameInstance, preserveArrayIdentity, shouldStampLastEventAt } from '../store-identity'
 
 /** Compact a multi-line message into a single ~80-char preview for the tab strip. */
@@ -82,6 +83,13 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
           const updated = shouldStampLastEventAt(tab.lastEventAt, now)
             ? { ...tab, lastEventAt: now }
             : { ...tab }
+          const stampMessage = (): void => {
+            updated.lastMessageAt = now
+            // Settled conversations are inert. Any late event is from the
+            // engine shutdown that settlement already requested; it must not
+            // revive a cold record. Only the explicit Unsettle action clears
+            // the lock and resumes the session.
+          }
 
           // Extended thinking (issue #158), plain-conversation path. The three
           // thinking_* events delegate to event-slice-thinking.ts (mirrors
@@ -157,20 +165,74 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                 updated.activeRequestId != null
               if (!event.isWarmup && hasActiveRun) {
                 const isTerminal = updated.status === 'failed' || updated.status === 'dead' || updated.status === 'completed'
-                if (isTerminal) break
+                if (isTerminal) {
+                  logTabStatusWrite(tabId, updated.status, 'running', 'event.session-init', 'guard-rejected',
+                    { reason: 'terminal-status', is_warmup: !!event.isWarmup, had_active_request: updated.activeRequestId != null })
+                  break
+                }
+                logTabStatusPatch(tabId, updated.status, 'running', 'event.session-init',
+                  { had_active_request: updated.activeRequestId != null })
                 updated.status = 'running'
                 updated.lastResult = null
                 updated.currentActivity = 'Thinking...'
-                instPatch.permissionDenied = null
+                // Clearing the denial here is correct for a genuine new run:
+                // the previous run's card belongs to work that is now over.
+                // But a session_init can land in the SAME few hundred
+                // milliseconds as a plan proposal — a conversation load pushes
+                // live state while the finishing run emits its proposal
+                // (observed: proposal synthesized at .488, load pushed at
+                // .682, card gone). Nulling then destroys a card that was
+                // just created for the CURRENT turn, and because every
+                // waiting-state surface reads this one field
+                // (waitingStateOfPane in TabStripShared.ts), the tab silently
+                // loses its Plan Ready dot, pill, inbox label and iOS
+                // projection as well as the approval card itself.
+                //
+                // A pending ExitPlanMode / AskUserQuestion denial is a
+                // question awaiting the USER, not run-scoped residue: only the
+                // user answering it (implementPlan / clearPermissionDenied) or
+                // a genuine newer proposal may retire it. So preserve it here
+                // and clear everything else, mirroring the same carve-out
+                // task_complete already makes (event-slice-task.ts).
+                const initDenied =
+                  'permissionDenied' in instPatch ? instPatch.permissionDenied : inst0?.permissionDenied
+                if (isPendingUserCardDenial(initDenied)) {
+                  rInfo('event.session', 'session_init preserving pending user card', {
+                    tab_id: tabId.slice(0, 8),
+                    tools: (initDenied?.tools ?? []).map((t) => t.toolName).join(','),
+                  })
+                } else {
+                  rInfo('event.session', 'session_init clearing denial for new run', {
+                    tab_id: tabId.slice(0, 8),
+                    had_denial: initDenied != null,
+                  })
+                  instPatch.permissionDenied = null
+                }
                 instTouched = true
                 if (updated.queuedPrompts.length > 0) {
                   const [nextPrompt, ...rest] = updated.queuedPrompts
                   updated.queuedPrompts = rest
                   messages = [
                     ...messages,
-                    { id: nextMsgId(), role: 'user' as const, content: nextPrompt, timestamp: Date.now() },
+                    { id: nextMsgId(), role: 'user' as const, content: nextPrompt, timestamp: now },
                   ]
+                  stampMessage()
                 }
+              } else {
+                // The promotion did NOT happen. This is the branch that leaves a
+                // conversation sitting at 'connecting' for a whole run: the tab
+                // shows every running affordance and the composer stays locked,
+                // because 'connecting' reads as running everywhere (App.tsx) and
+                // the main-process plane deliberately drops inbound idles for a
+                // connecting tab. Recording WHY it was skipped is the only way to
+                // tell a legitimate restore warmup from a genuine run whose
+                // promotion was missed.
+                logTabStatusWrite(tabId, updated.status, 'running', 'event.session-init', 'guard-rejected',
+                  {
+                    reason: event.isWarmup ? 'warmup-flag' : 'no-active-run',
+                    is_warmup: !!event.isWarmup,
+                    had_active_request: updated.activeRequestId != null,
+                  })
               }
               break
 
@@ -228,19 +290,40 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               // that pairing the steer text is stranded rows above the divider
               // that announces it.
               //
-              // Resolution is FIFO against the oldest still-pending bubble:
-              // the engine's steer channel drains in order and emits one
-              // steer_injected per message, so a single event must resolve
-              // exactly ONE bubble. Clearing every pending bubble here would
-              // collapse two queued steers onto the first divider.
+              // Resolution prefers an EXACT match by clientMessageId — the
+              // optimistic bubble's own id, which send-slice.ts passed through
+              // window.ion.steer as the correlation identity. This is
+              // load-bearing the moment more than one steer is outstanding:
+              // FIFO-first-pending resolution collapses a later confirmation
+              // onto an earlier, unrelated bubble. Falls back to FIFO-first
+              // only when the event carries no clientMessageId (an older
+              // engine, or a caller that has not adopted correlation ids) —
+              // preserves the pre-existing single-steer behavior exactly.
               const dividerId = nextMsgId()
-              const pendingIdx = messages.findIndex((m) => m.steerPending)
+              let pendingIdx = -1
+              if (event.clientMessageId) {
+                pendingIdx = messages.findIndex((m) => m.steerPending && m.id === event.clientMessageId)
+              } else {
+                pendingIdx = messages.findIndex((m) => m.steerPending)
+              }
               if (pendingIdx !== -1) {
                 messages = messages.map((m, i) =>
                   i === pendingIdx
-                    ? { ...m, steerPending: undefined, steerApplied: true, steerAppliedDividerId: dividerId }
+                    ? {
+                        ...m,
+                        steerPending: undefined,
+                        steerApplied: true,
+                        steerAppliedDividerId: dividerId,
+                        // Re-key to the durable engine entry id when present,
+                        // exactly as the run-opening user-turn re-key does in
+                        // event-slice-extension-surface.ts — this is the id a
+                        // later exact-entry rewind_session command targets.
+                        ...(event.entryId ? { id: event.entryId } : {}),
+                      }
                     : m,
                 )
+              } else if (event.clientMessageId) {
+                rWarn('event.steer', 'steer_injected: no pending bubble matched clientMessageId', { tab_id: tabId, client_message_id: event.clientMessageId })
               }
               messages = [
                 ...messages,
@@ -277,7 +360,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               // this turn, so no optimistic insert happened anywhere. Append
               // it as the user turn it is — the same content is persisted in
               // the conversation file, so a rehydrate shows the identical
-              // transcript (this closes the "ATV shows [Agent X completed]
+              // transcript (this closes the "Studio shows [Agent X completed]
               // turns the overlay never displayed" divergence).
               //
               // Machine-to-machine injections are suppressed. The engine
@@ -295,16 +378,24 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                 machineAuthored: event.machineAuthored,
                 injectionKind: event.kind,
               })) {
+                updated.inboxMessageSuppressed = false
                 messages = [
                   ...messages,
-                  { id: nextMsgId(), role: 'user' as const, content: event.prompt, timestamp: Date.now() },
+                  { id: nextMsgId(), role: 'user' as const, content: event.prompt, timestamp: now },
                 ]
+                stampMessage()
+              } else {
+                // The engine classified this as a schedule/webhook/dispatch
+                // delivery. Its resulting text is not conversation activity.
+                updated.inboxMessageSuppressed = true
               }
               break
 
             case 'text_chunk': {
               rTrace('event.stream', 'text_chunk', { tab_id: tabId, len: (event as any).text?.length })
+              if (!event.text) break
               updated.currentActivity = 'Writing...'
+              if (!updated.inboxMessageSuppressed) stampMessage()
               const lastMsg = messages[messages.length - 1]
               // A `sealed` row was closed by message_end — the next chunk is
               // a NEW assistant message, not a continuation. Appending across
@@ -720,20 +811,21 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
         }
       })
       maybeApplyPlanModeGroupMove(tabId, event.type, get) // post-commit: re-evaluate group after plan-mode event
-      // Post-commit: auto-fix lifecycle. Decides close-vs-retain from the
-      // committed store plus the pre-clear evidence the reducer captured.
+      // Post-commit: report auto-fix completion evidence to owner. The mirror
+      // reduces events for local rendering but forwards this durable decision.
       if (autoFixEvidence) {
-        maybeCloseAutoFixTab(tabId, autoFixEvidence, get)
+        get().reportAutoFixCompletion(tabId, autoFixEvidence)
       }
-      // Post-commit: re-evaluate auto-group placement when an agent_state
-      // snapshot arrives. Closes two symmetric gaps — see event-slice-done-move.ts:
-      //   Bug A: running children discovered in the done group → move back.
-      //   Bug B: all children terminal while tab is idle → schedule done-move.
-      if (event.type === 'agent_state') {
-        maybeApplyAgentStateGroupMove(tabId, (event as { agents: import('../../../shared/types').AgentStateUpdate[] }).agents ?? [], get)
+      // Post-commit: both agent and status snapshots can change exact
+      // pending-work truth and therefore group placement.
+      if (event.type === 'agent_state' || event.type === 'status') {
+        const agents = event.type === 'agent_state'
+          ? (event as { agents: import('../../../shared/types').AgentStateUpdate[] }).agents ?? []
+          : []
+        maybeApplyAgentStateGroupMove(tabId, agents, get)
         // A terminal child snapshot may unblock an auto-fix close that was
         // deferred while children were running.
-        retryAutoFixCloseOnTerminalChildren(tabId, get)
+        if (event.type === 'agent_state') retryAutoFixCloseOnTerminalChildren(tabId, get)
       }
     },
 
@@ -754,7 +846,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
           rInfo('event.session', 'status resync converged renderer tab', {
             tab_id: tabId, from: cur.status, to: newStatus,
           })
-          return { tabs: setTabStatus(s.tabs, tabId, newStatus as TabStatus) }
+          return { tabs: setTabStatus(s.tabs, tabId, newStatus as TabStatus, 'event.status-resync') }
         })
         return
       }
@@ -810,6 +902,24 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               }
             : t
         )
+        // This is the main-process control plane's authoritative transition, and
+        // it writes the tab object directly rather than through setTabStatus, so
+        // it logs itself. It is the single most load-bearing status write in the
+        // renderer: it is how a run's end reaches the UI.
+        //
+        // A missing tab keeps its explicit outcome; otherwise the outcome is
+        // derived, because this path legitimately re-asserts a status it already
+        // holds (an engine heartbeat re-stating 'connecting', for instance) and
+        // recording that as 'applied' would claim a transition that never
+        // happened. The queue/denial clears still run on those ticks, which is
+        // why they are reported as fields rather than folded into the outcome.
+        if (!prevTab) {
+          logTabStatusWrite(tabId, 'unknown', newStatus as TabStatus, 'event.status-transition', 'tab-missing',
+            { was_active: wasActive, cleared_queue: clearQueue, cleared_denied: clearDenied })
+        } else {
+          logTabStatusPatch(tabId, prevStatus as TabStatus, newStatus as TabStatus, 'event.status-transition',
+            { was_active: wasActive, cleared_queue: clearQueue, cleared_denied: clearDenied })
+        }
         // Schedule the done-group move using the post-transition tab + panes.
         // The denial state was just cleared on a clean terminal transition
         // (clearDenied), so the committed `conversationPanes` read inside the

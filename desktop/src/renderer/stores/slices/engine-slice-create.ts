@@ -201,7 +201,7 @@ export function createConversationTabAction(set: StoreSet, get: StoreGet) {
       // EngineView's auto-create effect (addEngineInstance) will find the
       // pane already populated and skip, so there is no duplicate start.
       set((state) => ({
-        tabs: setTabStatus(state.tabs, tabId, 'connecting'),
+        tabs: setTabStatus(state.tabs, tabId, 'connecting', 'engine.create-connecting'),
       }))
       window.ion.engineStart(tabId, {
         profileId: profile?.id || '',
@@ -275,7 +275,7 @@ function _onEngineStartError(
         conversationPanes.set(tabId, { ...pane, instances })
       }
     }
-    const tabs = setTabStatus(state.tabs, tabId, 'idle')
+    const tabs = setTabStatus(state.tabs, tabId, 'idle', 'engine.create-online')
     return { conversationPanes, tabs }
   })
 }

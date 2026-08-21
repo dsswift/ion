@@ -3,6 +3,7 @@ import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId } from '../session-store-helpers'
 import { activeInstance, commitInstance } from '../conversation-instance'
 import { rWarn, rError } from '../../rendererLogger'
+import { logTabStatusPatch } from './tab-status-transition'
 
 export function createPermissionsSlice(set: StoreSet, _get: StoreGet): Partial<State> {
   return {
@@ -95,6 +96,7 @@ export function createPermissionsSlice(set: StoreSet, _get: StoreGet): Partial<S
         }))
         const tabs = s.tabs.map((t) => {
           if (t.id !== tabId) return t
+          logTabStatusPatch(tabId, t.status, 'idle', 'permissions.force-recover', { reason })
           return {
             ...t,
             status: 'idle' as TabStatus,
