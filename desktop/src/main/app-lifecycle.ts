@@ -1,22 +1,22 @@
-import { app, BrowserWindow, globalShortcut, Menu, powerMonitor, screen } from 'electron'
-import { existsSync, rmSync, writeFileSync } from 'fs'
+import { app, BrowserWindow, Menu, powerMonitor, screen } from 'electron'
+import { existsSync, writeFileSync } from 'fs'
 import { readFileSync } from 'fs'
 import { join } from 'path'
-import { log as _log, warn as _warn, error as _error, flushLogs, initLoggerMachineIdentity } from './logger'
+import { log as _log, error as _error, initLoggerMachineIdentity } from './logger'
 import { loadMachineIdentity } from './machine-identity'
-import { state, SPACES_DEBUG, sessionPlane, engineBridge, fileWatchers, bashProcesses, enterprisePolicyCache } from './state'
-import { terminalManager } from './terminal-manager-instance'
-import { stopTabSnapshotPolling } from './remote/snapshot-polling'
-import { createTray, createWindow, installContentSecurityPolicy, snapshotWindowState, showWindow, toggleWindow } from './window-manager'
-import { focusAtvWindow, isAtvWindowOpen, openAtvWindow, toggleAtvWindow, applyAtvPin, isAtvPinned } from './atv-window-manager'
+import { state, SPACES_DEBUG, engineBridge, enterprisePolicyCache } from './state'
+import { createWindow, installContentSecurityPolicy, snapshotWindowState, showWindow } from './window-manager'
+import { focusStudioWindow, isStudioWindowOpen } from './studio-window-manager'
 import { focusWorktreeOverlapWindow } from './worktree-overlap-window'
 import { resolveSurfacePlan } from './surface-launch'
+import { restoreStudioTerminals } from './studio-terminal-persistence'
 import { requestPermissions } from './permissions-preflight'
 import { claimSingleInstance, setupDeepLinks, consumeLaunchUrl, bindDeepLinkRenderer } from './deeplink-setup'
 import { markDeepLinksReady } from './deeplink/dispatch'
 import { cleanOrphanedWorktrees } from './git-runner'
 import { focusState } from './git/focus-state'
 import { startConversationCleanup } from './conversation-cleanup'
+import { startWorktreeFreshnessPoll } from './worktree/freshness-poll'
 import {
   TABS_FILE,
   SESSION_CHAINS_FILE,
@@ -30,19 +30,18 @@ import {
 } from './settings-store'
 import { ensureEngineDaemon, restartEngineDaemon } from './engine-bootstrap'
 import { claimEngineEgressForDesktop } from './engine-egress-claim'
-import { configureEgress, closeEgress, setEgressUser, type EgressConfig, type AuthHeaderProvider } from './log-egress'
-import { startEgressTailers, stopEgressTailers } from './log-egress-tailer'
-import { getAccessToken, getSignedInIdentity, ensureEntraAuthConfig } from './oauth/entra-auth'
+import { configureEgress, setEgressUser, type EgressConfig, type AuthHeaderProvider } from './log-egress'
+import { startEgressTailers } from './log-egress-tailer'
+import { getAccessToken, getOperatorIdentityState, getSignedInIdentity, ensureEntraAuthConfig } from './oauth/entra-auth'
 import { getEnterprisePolicy, getEnterprisePolicyNewConversationDefaults } from './engine-bridge-fs'
 import { initAutoUpdater } from './updater'
-import { startWatchdog, stopWatchdog, setWatchdogSuspended } from './watchdog'
+import { startWatchdog, setWatchdogSuspended } from './watchdog'
+import { createStartupWindow } from './startup-window'
+import { installQuitHandlers } from './app-lifecycle-quit'
+import { failStartup, isStartupRevealed, reportStartup, requireStartupAuthentication, startStartup } from './startup-coordinator'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
-}
-
-function warn(msg: string, fields?: Record<string, unknown>): void {
-  _warn('main', msg, fields)
 }
 
 function error(msg: string, fields?: Record<string, unknown>): void {
@@ -235,6 +234,8 @@ export function setupAppLifecycle(): void {
   loadMachineIdentity().then(initLoggerMachineIdentity).catch(() => { /* non-fatal */ })
 
   app.whenReady().then(async () => {
+    createStartupWindow()
+    reportStartup({ source: 'main', sequence: 0, status: 'Preparing Ion…' })
     if (process.platform === 'darwin' && app.dock) {
       app.dock.hide()
     }
@@ -254,6 +255,7 @@ export function setupAppLifecycle(): void {
     })
 
     await requestPermissions()
+    reportStartup({ source: 'main', sequence: 1, status: 'Checking system permissions…' })
 
     // Claim engine-log egress for the desktop before bootstrapping the daemon.
     // When egress is configured and no explicit shipping matrix is present,
@@ -268,7 +270,7 @@ export function setupAppLifecycle(): void {
     // flow, grant persistence, silent refresh, per-scope minting. Same
     // pre-daemon timing rationale as the egress claim above. Idempotent —
     // never overwrites an operator/enterprise identity choice.
-    ensureEntraAuthConfig()
+    const identityConfigured = ensureEntraAuthConfig()
 
     // Opt into credential-based per-provider routing: the desktop writes
     // backend:"hybrid" into engine.json (the engine default stays api for
@@ -283,6 +285,7 @@ export function setupAppLifecycle(): void {
     // LaunchAgent plist, copies the binary if version-mismatched, runs
     // install-assets, and kickstarts the daemon. On non-macOS this is a no-op.
     await ensureEngineDaemon()
+    reportStartup({ source: 'main', sequence: 2, status: 'Starting Ion engine…' })
     if (backendConfigChanged) {
       await restartEngineDaemon()
     }
@@ -341,13 +344,43 @@ export function setupAppLifecycle(): void {
 
     cleanOrphanedWorktrees().catch((err: Error) => log('app_lifecycle: worktree cleanup failed', { error: err.message }))
 
+    // Restore surface-terminal scrollback (studio: namespace) before any
+    // window can attach to one.
+    restoreStudioTerminals()
+
     // Launch-surface resolution: which surface(s) the user sees first. The
     // overlay window is ALWAYS created (its renderer owns session state);
     // only its visibility is governed here.
-    const surfacePlan = resolveSurfacePlan(readSettings())
+    const surfacePlan = resolveSurfacePlan(readSettings(), enterprisePolicyCache.policy)
     log('surface plan resolved', { ...surfacePlan })
+    startStartup(surfacePlan)
+    reportStartup({ source: 'main', sequence: 3, status: 'Checking identity…' })
 
-    createWindow(surfacePlan.showOverlayOnLaunch)
+    // Required operator identity gates session restoration. The owner renderer
+    // is not created until the engine reports a usable grant, so start_session
+    // cannot load extensions before authentication completes.
+    // Unconfigured identity is the normal optional-auth state. Query the engine
+    // only when a provider exists; required config is validated by the engine
+    // before daemon startup and can never arrive here unconfigured.
+    const identityAvailable = identityConfigured || !!enterprisePolicy?.auth?.identityProvider
+    if (identityAvailable) {
+      const identityState = await getOperatorIdentityState().catch((err) => {
+        throw new Error(`Could not verify required operator identity: ${err instanceof Error ? err.message : String(err)}`)
+      })
+      if (identityState.required && !identityState.signedIn) {
+        requireStartupAuthentication()
+        while (true) {
+          await new Promise((resolve) => setTimeout(resolve, 250))
+          const next = await getOperatorIdentityState()
+          if (next.signedIn) break
+        }
+      }
+    }
+    reportStartup({ source: 'main', sequence: 4, status: 'Preparing your workspace…' })
+
+    // The owner renderer must always restore session state, but startup splash
+    // owns first visible paint for both product surfaces.
+    createWindow(false)
     snapshotWindowState('after createWindow')
 
     // Deep links can only run once the RENDERER STORE exists — every action
@@ -370,7 +403,7 @@ export function setupAppLifecycle(): void {
     log('app_lifecycle: pid file written', { path: pidPath, pid: process.pid })
 
     // Rebuilt (not mutated) whenever a checkbox state changes — Electron
-    // menus are immutable snapshots. The Window menu carries the ATV pin
+    // menus are immutable snapshots. The Window menu carries the STUDIO pin
     // toggle so the visualizer chrome stays free of window-management UI.
     function buildAppMenu(): void {
       Menu.setApplicationMenu(Menu.buildFromTemplate([
@@ -398,7 +431,7 @@ export function setupAppLifecycle(): void {
             { role: 'selectAll' },
           ],
         },
-        // Standard window controls (minimize/zoom/front). Matters while the ATV
+        // Standard window controls (minimize/zoom/front). Matters while the STUDIO
         // holds Dock presence: without a Window menu the regular-policy menu bar
         // looks broken and window-management shortcuts don't route.
         {
@@ -406,16 +439,6 @@ export function setupAppLifecycle(): void {
           submenu: [
             { role: 'minimize' },
             { role: 'zoom' },
-            { type: 'separator' },
-            {
-              label: 'Pin Visualizer',
-              type: 'checkbox',
-              checked: isAtvPinned(),
-              click: () => {
-                applyAtvPin(!isAtvPinned())
-                buildAppMenu()
-              },
-            },
             { type: 'separator' },
             { role: 'front' },
           ],
@@ -454,27 +477,10 @@ export function setupAppLifecycle(): void {
       })
     }
 
-    // Alt+Space drives the overlay glass; under an 'atv-only' policy it
-    // retargets to the ATV so the muscle-memory hotkey still works.
-    const overlayToggle = surfacePlan.overlayEnabled
-      ? () => toggleWindow('shortcut Alt+Space')
-      : () => toggleAtvWindow('shortcut Alt+Space (atv-only policy)')
-    const registered = globalShortcut.register('Alt+Space', overlayToggle)
-    if (!registered) {
-      log('Alt+Space shortcut registration failed — macOS input sources may claim it')
-    }
-    globalShortcut.register('CommandOrControl+Shift+K', () => toggleWindow('shortcut Cmd/Ctrl+Shift+K'))
-    // The ATV's own global shortcut (configurable; '' = none / disabled by
-    // policy). Same show/focus/hide toggle model as the overlay's Alt+Space.
-    if (surfacePlan.atvShortcut) {
-      const ok = globalShortcut.register(surfacePlan.atvShortcut, () => toggleAtvWindow(`shortcut ${surfacePlan.atvShortcut}`))
-      if (!ok) log('atv shortcut registration failed', { accelerator: surfacePlan.atvShortcut })
-    }
-
-    createTray()
-
-    if (surfacePlan.openAtvOnLaunch) {
-      openAtvWindow('launch surface')
+    // Register shortcuts only after splash hands off to the selected UI.
+    // Early registration would let a hidden product window steal startup input.
+    if (surfacePlan.openStudioOnLaunch) {
+      // Studio window is created after owner reports a complete snapshot.
     }
 
     // Background conversation cleanup (dry-run by default).
@@ -501,77 +507,30 @@ export function setupAppLifecycle(): void {
       labelsFiles: [SESSION_LABELS_FILE, legacySessionLabelsFileForBackend('api'), legacySessionLabelsFileForBackend('cli')],
     }, enterprisePolicy?.conversationRetentionDays)
 
-    // Dock click / Cmd-Tab. The Dock icon only exists while the ATV window is
-    // open (atvDockPresence flips the activation policy) — so an activate
-    // while the ATV is open means the user is reaching for the ATV, not the
-    // overlay. With no ATV open, keep the historical overlay behavior.
+    // Keep worktree + bench state current for every consumer. Main owns this
+    // timer rather than a renderer: the overlay, the Studio mirror, and iOS all
+    // need the same answer, and a renderer-owned timer stops existing when its
+    // window closes — which is how the previous panel-local 5s poll was lost
+    // when its component was deleted. Attention-gated inside the tick, so an
+    // unattended desktop does no git work.
+    startWorktreeFreshnessPoll()
+
+    // Dock click / Cmd-Tab. The Dock icon only exists while the STUDIO window is
+    // open (studioDockPresence flips the activation policy) — so an activate
+    // while the STUDIO is open means the user is reaching for the STUDIO, not the
+    // overlay. With no STUDIO open, keep the historical overlay behavior.
     app.on('activate', () => {
-      if (isAtvWindowOpen()) focusAtvWindow('app activate')
+      if (!isStartupRevealed()) return
+      if (isStudioWindowOpen()) focusStudioWindow('app activate')
       else if (state.worktreeOverlapWindow && !state.worktreeOverlapWindow.isDestroyed()) focusWorktreeOverlapWindow('app activate')
       else showWindow('app activate')
     })
-  }).catch((err) => error('app_lifecycle: whenReady startup failed', { error: String(err) }))
-
-  app.on('will-quit', () => {
-    stopWatchdog()
-    globalShortcut.unregisterAll()
-    sessionPlane.shutdown()
-    for (const [, entry] of fileWatchers) {
-      if (entry.debounceTimer) clearTimeout(entry.debounceTimer)
-      entry.watcher.close()
-    }
-    fileWatchers.clear()
-    if (state.tray) {
-      state.tray.destroy()
-      state.tray = null
-    }
-    stopTabSnapshotPolling()
-    if (state.remoteTransport) {
-      state.remoteTransport.stop().catch((err) => warn('app_lifecycle: remote transport stop failed on will-quit', { error: String(err) }))
-      state.remoteTransport = null
-    }
-    try { rmSync(join(app.getPath('userData'), 'ion.pid')) } catch { /* silent-ok: best-effort pid-file cleanup on quit */ }
-    flushLogs()
-    // Stop tailers first so no new records arrive after we drain, then drain egress.
-    stopEgressTailers()
-    closeEgress().catch(() => {}) // silent-ok: terminal shutdown drain; flushLogs already ran and closeEgress logs its own flush errors
+  }).catch((err) => {
+    error('app_lifecycle: whenReady startup failed', { error: String(err) })
+    failStartup(String(err))
   })
 
-  process.on('SIGUSR1', () => {
-    log('SIGUSR1 received, draining active work before quit')
-    const timeout = setTimeout(() => {
-      void (async () => {
-        log('Drain timeout (5min), force quitting')
-        await flushRendererTabs()
-        state.forceQuit = true
-        terminalManager.destroyAll()
-        // Bootout the daemon so launchd does not restart it after we exit.
-        await engineBridge.shutdownAndWait().catch((e) => { log('app_lifecycle: engine daemon bootout failed on quit', { error: e instanceof Error ? e.message : String(e) }) })
-        sessionPlane.shutdown()
-        globalShortcut.unregisterAll()
-        if (state.tray) { state.tray.destroy(); state.tray = null }
-        try { rmSync(join(app.getPath('userData'), 'ion.pid')) } catch { /* silent-ok: best-effort pid-file cleanup on quit */ }
-        flushLogs()
-        app.exit(0)
-      })()
-    }, 5 * 60 * 1000)
-
-    sessionPlane.drain(() => bashProcesses.size > 0).then(async () => {
-      clearTimeout(timeout)
-      log('All agents finished, quitting')
-      await flushRendererTabs()
-      state.forceQuit = true
-      terminalManager.destroyAll()
-      // Bootout the daemon so launchd does not restart it after we exit.
-      await engineBridge.shutdownAndWait().catch((e) => { log('app_lifecycle: engine daemon bootout failed on quit', { error: e instanceof Error ? e.message : String(e) }) })
-      sessionPlane.shutdown()
-      globalShortcut.unregisterAll()
-      if (state.tray) { state.tray.destroy(); state.tray = null }
-      try { rmSync(join(app.getPath('userData'), 'ion.pid')) } catch { /* silent-ok: best-effort pid-file cleanup on quit */ }
-      flushLogs()
-      app.exit(0)
-    }).catch((err) => error('app_lifecycle: drain-quit sequence failed', { error: String(err) }))
-  })
+  installQuitHandlers(flushRendererTabs)
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {

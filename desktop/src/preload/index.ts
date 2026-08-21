@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/types'
 import { legacyReviewToStage } from '../shared/types-git'
-import { atvApi } from './atv-api'
+import { studioApi } from './studio-api'
 import type { NormalizedEvent, EnrichedError, GitEvent, DeepLinkConfirmRequest, DeepLinkConfirmResult } from '../shared/types'
 import type { IonAPI } from './ionapi'
 
@@ -23,15 +23,16 @@ const ipcWrappers = new WeakMap<
 >()
 
 const api: IonAPI = {
-  // Agent Team Visualizer bridge (see preload/atv-api.ts)
-  ...atvApi,
+  // Ion Studio bridge (see preload/studio-api.ts)
+  ...studioApi,
+  startupReport: (report) => ipcRenderer.send(IPC.STARTUP_REPORT, report),
   // ─── Request-response ───
   start: () => ipcRenderer.invoke(IPC.START),
   createTab: () => ipcRenderer.invoke(IPC.CREATE_TAB),
   adoptTab: (tabId: string) => ipcRenderer.invoke(IPC.ADOPT_TAB, tabId),
   prompt: (tabId, requestId, options) => ipcRenderer.invoke(IPC.PROMPT, { tabId, requestId, options }),
   cancel: (requestId) => ipcRenderer.invoke(IPC.CANCEL, requestId),
-  steer: (tabId, message) => ipcRenderer.send(IPC.STEER, { tabId, message }),
+  steer: (tabId, message, clientMessageId) => ipcRenderer.send(IPC.STEER, { tabId, message, clientMessageId }),
   stopTab: (tabId) => ipcRenderer.invoke(IPC.STOP_TAB, tabId),
   retry: (tabId, requestId, options) => ipcRenderer.invoke(IPC.RETRY, { tabId, requestId, options }),
   status: () => ipcRenderer.invoke(IPC.STATUS),
@@ -81,6 +82,9 @@ const api: IonAPI = {
   terminalWrite: (key, data) => ipcRenderer.send(IPC.TERMINAL_DATA, { key, data }),
   terminalResize: (key, cols, rows) => ipcRenderer.send(IPC.TERMINAL_RESIZE, { key, cols, rows }),
   terminalDestroy: (key) => ipcRenderer.invoke(IPC.TERMINAL_DESTROY, { key }),
+  terminalAttach: (key, opts) => ipcRenderer.invoke(IPC.TERMINAL_ATTACH, { key, ...opts }),
+  getActiveUi: () => ipcRenderer.invoke(IPC.GET_ACTIVE_UI),
+  setActiveUi: (ui) => ipcRenderer.invoke(IPC.SET_ACTIVE_UI, ui),
   terminalGetScrollback: (key) => ipcRenderer.invoke(IPC.TERMINAL_GET_SCROLLBACK, { key }),
   terminalActiveTabs: () => ipcRenderer.invoke(IPC.TERMINAL_ACTIVE_TABS),
   onTerminalActivity: (callback) => {
@@ -149,8 +153,39 @@ const api: IonAPI = {
     ipcRenderer.on('ion:remote-open-bench-terminal', handler)
     return () => ipcRenderer.removeListener('ion:remote-open-bench-terminal', handler)
   },
+  onRemoteWorktreeAction: (callback) => {
+    const channels = [
+      'ion:remote-create-worktree',
+      'ion:remote-convert-worktree-conversation',
+      'ion:remote-rename-worktree',
+      'ion:remote-reprovision-worktree',
+      'ion:remote-recover-bench-conflict',
+      'ion:remote-analyse-bench-verification',
+      'ion:remote-discard-bench-member-recordings',
+      'ion:remote-discard-all-bench-recordings',
+      'ion:remote-worktree-conflict-assist',
+      'ion:remote-bench-conflict-assist',
+    ] as const
+    const handlers = channels.map((channel) => {
+      const handler = (_e: Electron.IpcRendererEvent, arg: Record<string, unknown>) => callback(channel, arg)
+      ipcRenderer.on(channel, handler)
+      return { channel, handler }
+    })
+    return () => handlers.forEach(({ channel, handler }) => ipcRenderer.removeListener(channel, handler))
+  },
+  // iOS drives the sync pipeline remotely: start / confirm-ai / cancel /
+  // dismiss ride one channel with a verb so the listener stays a single
+  // subscription. The pipeline itself is a renderer-store state machine.
+  onRemoteWorktreePipeline: (callback) => {
+    const handler = (
+      _e: Electron.IpcRendererEvent,
+      arg: { verb: 'start' | 'confirm-ai' | 'cancel' | 'dismiss'; repoPath: string; sourceBranch?: string },
+    ) => callback(arg)
+    ipcRenderer.on('ion:remote-worktree-pipeline', handler)
+    return () => ipcRenderer.removeListener('ion:remote-worktree-pipeline', handler)
+  },
   // A worktree earned (or was given) a human title. Both windows listen so the
-  // overlay and the ATV mirror rename the row at the same moment.
+  // overlay and the Studio mirror rename the row at the same moment.
   onWorktreeTitled: (callback) => {
     const handler = (
       _e: Electron.IpcRendererEvent,
@@ -167,10 +202,19 @@ const api: IonAPI = {
     ipcRenderer.on('ion:worktree-landed', handler)
     return () => ipcRenderer.removeListener('ion:worktree-landed', handler)
   },
+  onWorktreeFreshnessTick: (callback) => {
+    const handler = (
+      _e: Electron.IpcRendererEvent,
+      arg: { repoPaths: string[] },
+    ) => callback(arg)
+    ipcRenderer.on(IPC.WORKTREE_FRESHNESS_TICK, handler)
+    return () => ipcRenderer.removeListener(IPC.WORKTREE_FRESHNESS_TICK, handler)
+  },
   executeBash: (id, command, cwd) => ipcRenderer.invoke(IPC.EXECUTE_BASH, { id, command, cwd }),
   cancelBash: (id) => ipcRenderer.send(IPC.CANCEL_BASH, id),
   sendRemote: (event) => ipcRenderer.send(IPC.REMOTE_SEND, event),
   setPermissionMode: (tabId, mode, source, planFilePath) => ipcRenderer.send(IPC.SET_PERMISSION_MODE, { tabId, mode, source, planFilePath }),
+  resolvePermissionDenials: (tabId) => ipcRenderer.send(IPC.RESOLVE_PERMISSION_DENIALS, { tabId }),
   loadSettings: () => ipcRenderer.invoke(IPC.LOAD_SETTINGS),
   saveSettings: (data) => ipcRenderer.invoke(IPC.SAVE_SETTINGS, data),
   loadTabs: () => ipcRenderer.invoke(IPC.LOAD_TABS),
@@ -186,6 +230,8 @@ const api: IonAPI = {
   saveSessionChains: (data) => ipcRenderer.invoke(IPC.SAVE_SESSION_CHAINS, data),
   getConversation: (conversationId: string, offset = 0, limit = 50) =>
     ipcRenderer.invoke(IPC.GET_CONVERSATION, { conversationId, offset, limit }),
+  deleteStoredConversations: (sessionIds: string[]) =>
+    ipcRenderer.invoke(IPC.DELETE_STORED_CONVERSATIONS, sessionIds),
   loadChainHistory: (sessionIds: string[]) =>
     ipcRenderer.invoke(IPC.LOAD_CHAIN_HISTORY, sessionIds),
 
@@ -264,7 +310,7 @@ const api: IonAPI = {
   gitWorktreeMerge: (repoPath, worktreeBranch, sourceBranch, noFf) => ipcRenderer.invoke(IPC.GIT_WORKTREE_MERGE, { repoPath, worktreeBranch, sourceBranch, noFf }),
   gitWorktreePush: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_PUSH, { worktreePath, sourceBranch }),
   gitWorktreeRebase: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_REBASE, { worktreePath, sourceBranch }),
-  gitWorktreeLand: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_LAND, args),
+  gitWorktreeLandAndRetire: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_LAND_AND_RETIRE, args),
   gitWorktreeSync: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_SYNC, { worktreePath, sourceBranch }),
   gitWorktreeSyncAll: (repoPath) => ipcRenderer.invoke(IPC.GIT_WORKTREE_SYNC_ALL, { repoPath }),
   gitWorktreeBaseStatus: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_BASE_STATUS, { worktreePath, sourceBranch }),
@@ -288,7 +334,6 @@ const api: IonAPI = {
   benchEnsure: (repoPath, sourceBranch) => ipcRenderer.invoke(IPC.BENCH_ENSURE, { repoPath, sourceBranch }),
   benchAddMember: (args) => ipcRenderer.invoke(IPC.BENCH_ADD_MEMBER, args),
   benchRemoveMember: (args) => ipcRenderer.invoke(IPC.BENCH_REMOVE_MEMBER, args),
-  benchSetEnabled: (args) => ipcRenderer.invoke(IPC.BENCH_SET_ENABLED, args),
   gitWorktreeRegistration: (worktreePath) => ipcRenderer.invoke(IPC.GIT_WORKTREE_REGISTRATION, { worktreePath }),
   benchSetOrder: (args) => ipcRenderer.invoke(IPC.BENCH_SET_ORDER, args),
   benchUpdateMember: (args) => ipcRenderer.invoke(IPC.BENCH_UPDATE_MEMBER, args),
@@ -313,7 +358,6 @@ const api: IonAPI = {
   benchRefreshStaleness: (repoPath, sourceBranch) => ipcRenderer.invoke(IPC.BENCH_REFRESH_STALENESS, { repoPath, sourceBranch }),
   benchReconcileResolution: (directory) => ipcRenderer.invoke(IPC.BENCH_RECONCILE_RESOLUTION, { directory }),
   gitWorktreeAppraise: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_APPRAISE, { worktreePath, sourceBranch }),
-  gitWorktreeRetire: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_RETIRE, args),
   gitWorktreeRetirePreview: (worktreePath) => ipcRenderer.invoke(IPC.GIT_WORKTREE_RETIRE_PREVIEW, { worktreePath }),
   gitWorktreeReprovision: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_REPROVISION, args),
   gitWorktreeReattach: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_REATTACH, args),
@@ -326,7 +370,7 @@ const api: IonAPI = {
   fsCreateFile: (filePath) => ipcRenderer.invoke(IPC.FS_CREATE_FILE, { filePath }),
   fsRename: (oldPath, newPath) => ipcRenderer.invoke(IPC.FS_RENAME, { oldPath, newPath }),
   fsDelete: (targetPath) => ipcRenderer.invoke(IPC.FS_DELETE, { targetPath }),
-  fsSaveDialog: (defaultPath) => ipcRenderer.invoke(IPC.FS_SAVE_DIALOG, { defaultPath }),
+  fsSaveDialog: (defaultPath, defaultFileName) => ipcRenderer.invoke(IPC.FS_SAVE_DIALOG, { defaultPath, defaultFileName }),
   fsRevealInFinder: (targetPath) => ipcRenderer.invoke(IPC.FS_REVEAL_IN_FINDER, { targetPath }),
   fsOpenNative: (targetPath) => ipcRenderer.invoke(IPC.FS_OPEN_NATIVE, { targetPath }),
   fsExists: (targetPath) => ipcRenderer.invoke(IPC.FS_EXISTS, { targetPath }),
@@ -348,7 +392,7 @@ const api: IonAPI = {
   engineCommand: (key, command, args) => ipcRenderer.invoke(IPC.ENGINE_COMMAND, { key, command, args }),
   engineStop: (key) => ipcRenderer.invoke(IPC.ENGINE_STOP, { key }),
   engineBranchBefore: (key, entryId) => ipcRenderer.invoke(IPC.ENGINE_BRANCH_BEFORE, { key, entryId }),
-  engineRewind: (key, userTurnIndex) => ipcRenderer.invoke(IPC.ENGINE_REWIND, { key, userTurnIndex }),
+  engineRewind: (key, target) => ipcRenderer.invoke(IPC.ENGINE_REWIND, { key, ...target }),
   engineGetContextBreakdown: (key) => ipcRenderer.invoke(IPC.ENGINE_GET_CONTEXT_BREAKDOWN, { key }),
   getPlanBashAllowlist: () => ipcRenderer.invoke(IPC.GET_PLAN_BASH_ALLOWLIST),
   setPlanBashAllowlist: (cmds) => ipcRenderer.invoke(IPC.SET_PLAN_BASH_ALLOWLIST, cmds),

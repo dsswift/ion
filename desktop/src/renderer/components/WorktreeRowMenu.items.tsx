@@ -1,12 +1,9 @@
 /**
- * WorktreeRowMenu items — the menu's verb list, derived from worktree state.
+ * WorktreeRowMenu entries — the menu's ordered, state-derived structure.
  *
- * Extracted from WorktreeRowMenu.tsx to keep both files under the 600-line
- * cap. This module owns WHAT the verbs are and when each is available; the
- * component owns the operations they invoke and the dialogs they raise. The
- * split is along that seam deliberately: everything here is a pure derivation
- * from the entry, the bench membership, and a set of callbacks, so the item
- * list can be reasoned about (and tested) without mounting a portal.
+ * This module owns WHAT the menu shows and how actions are grouped. The menu
+ * component owns rendering, submenus, store access, and dialogs. Keeping this
+ * derivation pure makes the action order and state gates easy to test.
  */
 import React from "react";
 import {
@@ -18,27 +15,19 @@ import {
   Package,
   PencilSimple,
   Trash,
-  XCircle,
 } from "@phosphor-icons/react";
 import { describeLandStrategy } from "../../shared/worktree-land-strategy";
-import { workStageIcon, workStageColor } from "./WorktreeStageSlot";
-import { WORK_STAGES, type WorkStage } from "../../shared/types-git";
 import type { ColorPalette } from "../theme/palette-dark";
 import type {
   IntegrationMember,
+  WorktreeCompletionStrategy,
   WorktreeInventoryEntry,
 } from "../../shared/types";
-import type { WorktreeCompletionStrategy } from "../../shared/types";
 
-/**
- * One row in the menu.
- *
- * `keepsMenuOpen` is the single opt-out from uniform dismissal, for items that
- * REPLACE the menu body with their own UI rather than dismissing it. Rename
- * swaps in an inline editor; land and retire own dialogs that are children of
- * the menu component and would unmount with it.
- */
-export interface WorktreeMenuItem {
+/** One action row in the menu. */
+export interface WorktreeMenuActionEntry {
+  type: "action";
+  id: string;
   label: string;
   icon: React.ReactNode;
   disabled?: boolean;
@@ -48,25 +37,28 @@ export interface WorktreeMenuItem {
   run(): void;
 }
 
-/**
- * The operations the menu can invoke. Supplied by the component so this module
- * stays free of store access, IPC, and dialog state.
- */
+/** A submenu trigger or visual break in the ordered menu structure. */
+export type WorktreeMenuEntry =
+  | WorktreeMenuActionEntry
+  | { type: "go-to-tab"; id: "go-to-tab" }
+  | { type: "stage"; id: "stage" }
+  | { type: "separator"; id: string };
+
+/** Operations supplied by the component so this module stays free of stores. */
 export interface WorktreeMenuActions {
   onNewConversation(): void;
   onBeginRename(): void;
   onAddToBench(): void;
-  onSetStage(stage: WorkStage | null): void;
+  onRemoveFromBench(): void;
   onMoveInBench(toIndex: number): void;
   onSync(): void;
-  onLand(): void;
+  onLandAndRetire(): void;
   onReveal(): void;
   onReprovision(): void;
   onRequestDiscardRecordings(): void;
-  onRequestRetire(): void;
 }
 
-export interface WorktreeMenuItemsInput {
+export interface WorktreeMenuEntriesInput {
   entry: WorktreeInventoryEntry;
   colors: ColorPalette;
   strategy: WorktreeCompletionStrategy;
@@ -78,16 +70,12 @@ export interface WorktreeMenuItemsInput {
   benchSize: number;
   /** True when this worktree is already a member of any bench for the repo. */
   alreadyInBench: boolean;
+  /** Whether the navigation submenu has at least one conversation to show. */
+  hasOpenConversations: boolean;
   actions: WorktreeMenuActions;
 }
 
-/**
- * Why the land verb is unavailable, or '' when it is available.
- *
- * Without a known source branch land is unanswerable: git does not record what
- * a worktree was cut from, and guessing would land work in the wrong branch.
- * Disable rather than guess.
- */
+/** Why land is unavailable, or an empty string when it can run. */
 export function landRefusalReason(entry: WorktreeInventoryEntry): string {
   if (!entry.sourceBranch) return "Source branch unknown";
   if (entry.isDirty) return "Commit changes first";
@@ -102,22 +90,29 @@ export function canLandWorktree(entry: WorktreeInventoryEntry): boolean {
   );
 }
 
+/** Append a non-empty group, with one separator between adjacent groups. */
+function appendGroup(
+  entries: WorktreeMenuEntry[],
+  groupId: string,
+  group: WorktreeMenuEntry[],
+): void {
+  if (group.length === 0) return;
+  if (entries.length > 0) {
+    entries.push({ type: "separator", id: `separator-${groupId}` });
+  }
+  entries.push(...group);
+}
+
 /**
- * Build the menu's verbs.
+ * Build the complete menu in usage order.
  *
- * ── Dismissal is uniform and declared here, not inside each handler ────────
- * Clicking an enabled item ALWAYS withdraws the menu immediately, before the
- * verb runs. That was previously each handler's own business, and the seven
- * items had four different behaviours: sync and reveal closed immediately,
- * add-to-bench and re-provision closed only after their await resolved (so
- * the menu sat open for the duration), land never closed at all on success,
- * and retire waited on the appraisal round-trip before its dialog replaced
- * the menu. A menu still on screen after a click reads as "the click did
- * nothing" — which is exactly what was reported for retire.
+ * Common conversation actions come first. Lower-frequency actions then follow
+ * their worktree lifecycle: details, bench, delivery, local tools, destructive.
+ * Empty state-based groups never leave doubled or dangling separators.
  */
-export function buildWorktreeMenuItems(
-  input: WorktreeMenuItemsInput,
-): WorktreeMenuItem[] {
+export function buildWorktreeMenuEntries(
+  input: WorktreeMenuEntriesInput,
+): WorktreeMenuEntry[] {
   const {
     entry,
     colors,
@@ -126,100 +121,60 @@ export function buildWorktreeMenuItems(
     benchIndex,
     benchSize,
     alreadyInBench,
+    hasOpenConversations,
     actions,
   } = input;
-  const landed = !!entry.landedAt;
-  if (landed) {
-    return [{
-      label: "Retire worktree",
-      icon: <Trash size={12} color={colors.textSecondary} />,
-      keepsMenuOpen: true,
-      run: actions.onRequestRetire,
-    }];
-  }
+  const entries: WorktreeMenuEntry[] = [];
 
-  const canLand = canLandWorktree(entry);
-  const landReason = landRefusalReason(entry);
-
-  return [
+  appendGroup(entries, "conversation", [
     {
-      // The row CLICK opens or cycles existing conversations; this creates an
-      // additional one. Two distinct verbs, so the second gets a menu entry
-      // rather than a second gutter button that looks like the first.
-      label: "New conversation here",
+      type: "action",
+      id: "new-conversation",
+      label: "New conversation",
       icon: <ChatCircle size={12} color={colors.accent} />,
       run: actions.onNewConversation,
     },
+    ...(hasOpenConversations
+      ? [{ type: "go-to-tab", id: "go-to-tab" } as const]
+      : []),
+  ]);
+
+  appendGroup(entries, "details", [
     {
+      type: "action",
+      id: "rename",
       label: entry.title ? "Rename worktree" : "Name this worktree",
       icon: <PencilSimple size={12} color={colors.textSecondary} />,
-      // Named lazily from the first prompt, so a worktree that has not been
-      // prompted in yet still needs a manual way to get a name.
       hint: entry.title ? "" : "Not named yet",
-      // Swaps the menu body for the inline editor.
       keepsMenuOpen: true,
       run: actions.onBeginRename,
     },
-    {
-      label: alreadyInBench
-        ? "Already in the bench"
-        : "Add to integration bench",
-      icon: (
-        <Flask
-          size={12}
-          color={
-            alreadyInBench || !entry.sourceBranch
-              ? colors.textTertiary
-              : colors.accent
-          }
-        />
-      ),
-      disabled: alreadyInBench || !entry.sourceBranch,
-      hint: !entry.sourceBranch ? "Source branch unknown" : "",
-      run: actions.onAddToBench,
-    },
-    // Workflow stages. The gutter chip is the fast path; the menu is where the
-    // stages are always reachable by keyboard, named in full, and clearable
-    // explicitly. Selecting the active stage clears it, same as the strip —
-    // plus a dedicated Clear entry when a stage is set, because "remove the
-    // marker" should not require knowing the toggle convention.
-    ...WORK_STAGES.map((s) => {
-      const isActive = entry.stage === s.id;
-      return {
-        label: isActive ? `Stage: ${s.label} ✓` : `Stage: ${s.label}`,
-        icon: (
-          <span
-            style={{
-              display: "inline-flex",
-              color: isActive
-                ? workStageColor(s.id, colors)
-                : colors.textSecondary,
-            }}
-          >
-            {workStageIcon(s.id, 12, isActive)}
-          </span>
-        ),
-        run: () => {
-          actions.onSetStage(isActive ? null : s.id);
-        },
-      };
-    }),
-    ...(entry.stage
-      ? [
-          {
-            label: "Clear stage",
-            icon: <XCircle size={12} color={colors.textSecondary} />,
-            run: () => {
-              actions.onSetStage(null);
-            },
-          },
-        ]
-      : []),
-    // Keyboard-reachable reorder. Dragging the rail is the direct gesture, but
-    // a drag is not available to every operator or every input device.
+    { type: "stage", id: "stage" },
+  ]);
+
+  appendGroup(entries, "bench", [
+    ...(enrolled
+      ? [{
+          type: "action" as const,
+          id: "remove-from-bench",
+          label: "Remove from integration bench",
+          icon: <Flask size={12} color={colors.textSecondary} />,
+          run: actions.onRemoveFromBench,
+        }]
+      : [{
+          type: "action" as const,
+          id: "add-to-bench",
+          label: alreadyInBench ? "Already in the bench" : "Add to integration bench",
+          icon: <Flask size={12} color={alreadyInBench || !entry.sourceBranch ? colors.textTertiary : colors.accent} />,
+          disabled: alreadyInBench || !entry.sourceBranch,
+          hint: !entry.sourceBranch ? "Source branch unknown" : "",
+          run: actions.onAddToBench,
+        }]),
     ...(enrolled
       ? [
           {
+            type: "action" as const,
+            id: "move-earlier",
             label: "Move earlier in the merge",
             icon: (
               <ArrowLineDown
@@ -230,22 +185,27 @@ export function buildWorktreeMenuItems(
             ),
             disabled: benchIndex <= 0,
             hint: benchIndex <= 0 ? "Already first" : "",
-            run: () => {
-              actions.onMoveInBench(benchIndex - 1);
-            },
+            run: () => actions.onMoveInBench(benchIndex - 1),
           },
           {
+            type: "action" as const,
+            id: "move-later",
             label: "Move later in the merge",
             icon: <ArrowLineDown size={12} color={colors.textSecondary} />,
             disabled: benchIndex < 0 || benchIndex >= benchSize - 1,
             hint: benchIndex >= benchSize - 1 ? "Already last" : "",
-            run: () => {
-              actions.onMoveInBench(benchIndex + 1);
-            },
+            run: () => actions.onMoveInBench(benchIndex + 1),
           },
         ]
       : []),
+  ]);
+
+  const canLand = canLandWorktree(entry);
+  const landReason = landRefusalReason(entry);
+  appendGroup(entries, "delivery", [
     {
+      type: "action",
+      id: "sync",
       label: `Sync from ${entry.sourceBranch ?? "source"}`,
       icon: <ArrowsClockwise size={12} color={colors.textSecondary} />,
       disabled: !entry.sourceBranch || entry.isDirty,
@@ -257,7 +217,9 @@ export function buildWorktreeMenuItems(
       run: actions.onSync,
     },
     {
-      label: `Land into ${entry.sourceBranch ?? "source"}`,
+      type: "action",
+      id: "land-and-retire",
+      label: `Land and retire into ${entry.sourceBranch ?? "source"}`,
       icon: (
         <ArrowLineDown
           size={12}
@@ -265,46 +227,47 @@ export function buildWorktreeMenuItems(
         />
       ),
       disabled: !canLand,
-      // Name the strategy that will actually run, so the operator is not
-      // guessing which of the three shapes this click produces.
       hint:
-        landReason ??
+        landReason ||
         (entry.sourceBranch
           ? describeLandStrategy(strategy, entry.sourceBranch)
           : undefined),
-      // A land REFUSAL raises an error dialog owned by the menu component, so
-      // the menu must survive the click; `doLand` closes it on the success path.
       keepsMenuOpen: true,
-      run: actions.onLand,
+      run: actions.onLandAndRetire,
     },
+  ]);
+
+  appendGroup(entries, "tools", [
     {
+      type: "action",
+      id: "reveal",
       label: "Reveal in Finder",
       icon: <FolderOpen size={12} color={colors.textSecondary} />,
       run: actions.onReveal,
     },
     {
+      type: "action",
+      id: "reprovision",
       label: "Re-provision",
       icon: <Package size={12} color={colors.textSecondary} />,
       run: actions.onReprovision,
     },
+  ]);
+
+  appendGroup(entries, "destructive", [
     ...(enrolled
       ? [
           {
+            type: "action" as const,
+            id: "discard-recordings",
             label: "Discard recorded resolutions",
             icon: <Trash size={12} color={colors.dangerFg} />,
-            // Confirmation and result replace menu body, so component must remain mounted.
             keepsMenuOpen: true,
             run: actions.onRequestDiscardRecordings,
           },
         ]
       : []),
-    {
-      label: "Retire worktree",
-      icon: <Trash size={12} color={colors.textSecondary} />,
-      // Owns the confirmation dialog and the busy guard, so it stays mounted;
-      // the body is withdrawn by `dialogUp` in the component.
-      keepsMenuOpen: true,
-      run: actions.onRequestRetire,
-    },
-  ];
+  ]);
+
+  return entries;
 }

@@ -73,6 +73,9 @@ export const IPC = {
 
   // Permission mode
   SET_PERMISSION_MODE: "ion:set-permission-mode",
+  // Tell the engine a pending plan/question card was resolved by this client,
+  // so it stops re-publishing the denial on every status snapshot.
+  RESOLVE_PERMISSION_DENIALS: "ion:resolve-permission-denials",
 
   // Settings persistence
   LOAD_SETTINGS: "ion:load-settings",
@@ -104,6 +107,7 @@ export const IPC = {
 
   // Conversation retrieval (agent child sessions)
   GET_CONVERSATION: "ion:get-conversation",
+  DELETE_STORED_CONVERSATIONS: "ion:delete-stored-conversations",
 
   // Batch conversation loading (all sessions in a chain in one roundtrip)
   LOAD_CHAIN_HISTORY: "ion:load-chain-history",
@@ -174,13 +178,12 @@ export const IPC = {
   GIT_WORKTREE_MERGE: "ion:git-worktree-merge",
   GIT_WORKTREE_PUSH: "ion:git-worktree-push",
   GIT_WORKTREE_REBASE: "ion:git-worktree-rebase",
-  // Worktree lifecycle: repeatable land, sync, and the retire / re-attach
-  // pair that lets a conversation outlive its worktree.
-  GIT_WORKTREE_LAND: "ion:git-worktree-land",
+  // Terminal lifecycle operation: integrate the branch, then remove the clean
+  // worktree and its branch in the same repository mutation slot.
+  GIT_WORKTREE_LAND_AND_RETIRE: "ion:git-worktree-land-and-retire",
   GIT_WORKTREE_SYNC: "ion:git-worktree-sync",
   // Bulk sync: every worktree of a repo, sequentially, with rerere replay.
   GIT_WORKTREE_SYNC_ALL: "ion:git-worktree-sync-all",
-  GIT_WORKTREE_RETIRE: "ion:git-worktree-retire",
   // Read-only blast-radius preview for a retire: which bench directories would
   // this retire remove? Asked BEFORE the retire, so the caller can refuse when
   // an active conversation lives in a directory the retire would delete.
@@ -192,6 +195,11 @@ export const IPC = {
   // to describe and act on them (the re-entry surface after a tab close).
   GIT_WORKTREE_INVENTORY: "ion:git-worktree-inventory",
   GIT_WORKTREE_APPRAISE: "ion:git-worktree-appraise",
+  // Main → renderer: the freshness poll crawled these repos, so re-read the
+  // worktree + bench surfaces. Main owns the timer because three consumers
+  // (overlay, Studio mirror, iOS) need the same answer and a renderer-owned
+  // timer dies with its window. See main/worktree/freshness-poll.ts.
+  WORKTREE_FRESHNESS_TICK: "ion:worktree-freshness-tick",
   // Worktree naming. A worktree's own identifiers (`ion-03e81090`,
   // `wt/ion-03e81090`) describe nothing about the work, so a worktree is SEEDED
   // with the name of the conversation that started it (SEED_TITLE, which
@@ -217,7 +225,6 @@ export const IPC = {
   BENCH_ENSURE: "ion:bench-ensure",
   BENCH_ADD_MEMBER: "ion:bench-add-member",
   BENCH_REMOVE_MEMBER: "ion:bench-remove-member",
-  BENCH_SET_ENABLED: "ion:bench-set-enabled",
   BENCH_SET_ORDER: "ion:bench-set-order",
   BENCH_UPDATE_MEMBER: "ion:bench-update-member",
   BENCH_UPDATE_ALL: "ion:bench-update-all",
@@ -232,22 +239,13 @@ export const IPC = {
   BENCH_RERERE_COUNT: "ion:bench-rerere-count",
   BENCH_RERERE_FORGET: "ion:bench-rerere-forget",
   BENCH_RERERE_DISCARD_ALL: "ion:bench-rerere-discard-all",
-  // Bench-verification analysis materialises the failed tree for read-only diagnosis.
+  // Bench-verification recovery: materialise the failing tree for the
+  // AI-assisted analysis conversation, and the targeted discard-and-reassemble
+  // verb the recovery dialog offers.
   BENCH_PREPARE_VERIFICATION_ANALYSIS:
     "ion:bench-prepare-verification-analysis",
-  // Targeted bench recording recovery: reconstruct selected member merge
-  // contexts, forget only their rerere entries, then reassemble.
-  BENCH_DISCARD_MEMBER_RECORDINGS: "ion:bench-discard-member-recordings",
-  // Desktop-local worktree overlap visualizer. The main process owns the
-  // selected repository context so the standalone window never selects paths.
-  WORKTREE_OVERLAP_OPEN: "ion:worktree-overlap-open",
-  WORKTREE_OVERLAP_CONTEXT: "ion:worktree-overlap-context",
-  WORKTREE_OVERLAP_ANALYZE: "ion:worktree-overlap-analyze",
-  WORKTREE_OVERLAP_PREVIEW: "ion:worktree-overlap-preview",
-  WORKTREE_OVERLAP_APPLY_PREVIEW: "ion:worktree-overlap-apply-preview",
-  WORKTREE_OVERLAP_APPLY: "ion:worktree-overlap-apply",
-  WORKTREE_OVERLAP_SOLVE: "ion:worktree-overlap-solve",
-  WORKTREE_OVERLAP_AUTO_ORDER: "ion:worktree-overlap-auto-order",
+  BENCH_DISCARD_VERIFICATION_RECORDINGS:
+    "ion:bench-discard-verification-recordings",
 
   // Filesystem operations
   FS_READ_DIR: "ion:fs-read-dir",
@@ -272,7 +270,6 @@ export const IPC = {
   LIST_FONTS: "ion:list-fonts",
 
   // Terminal PTY
-  // Terminal PTY
   TERMINAL_ACTIVE_TABS: "ion:terminal-active-tabs",
   TERMINAL_ACTIVITY: "ion:terminal-activity",
   TERMINAL_CREATE: "ion:terminal-create",
@@ -282,6 +279,25 @@ export const IPC = {
   TERMINAL_EXIT: "ion:terminal-exit",
   TERMINAL_DESTROY: "ion:terminal-destroy",
   TERMINAL_GET_SCROLLBACK: "ion:terminal-get-scrollback",
+  // Attach protocol (D2): history snapshot + lifecycle state in one call,
+  // with optional respawn-on-demand for dead terminals.
+  TERMINAL_ATTACH: "ion:terminal-attach",
+  // Studio browser preview: lift the offline block for one preview
+  // partition (explicit per-tab confirm — D6).
+  STUDIO_PREVIEW_ALLOW_NETWORK: "studio:preview-allow-network",
+  BENCH_DISCARD_MEMBER_RECORDINGS: "ion:bench-discard-member-recordings",
+  WORKTREE_OVERLAP_OPEN: "ion:worktree-overlap-open",
+  WORKTREE_OVERLAP_CONTEXT: "ion:worktree-overlap-context",
+  WORKTREE_OVERLAP_ANALYZE: "ion:worktree-overlap-analyze",
+  WORKTREE_OVERLAP_PREVIEW: "ion:worktree-overlap-preview",
+  WORKTREE_OVERLAP_APPLY_PREVIEW: "ion:worktree-overlap-apply-preview",
+  WORKTREE_OVERLAP_APPLY: "ion:worktree-overlap-apply",
+  WORKTREE_OVERLAP_SOLVE: "ion:worktree-overlap-solve",
+  WORKTREE_OVERLAP_AUTO_ORDER: "ion:worktree-overlap-auto-order",
+  // Active-UI picker (single-UI exclusivity): read current resolution +
+  // lock state; set the user preference (live switch, no restart).
+  GET_ACTIVE_UI: "ion:get-active-ui",
+  SET_ACTIVE_UI: "ion:set-active-ui",
 
   // Deep links (ion:// URL scheme). An untrusted request is described to the
   // operator and waits for an explicit decision before anything runs.
@@ -424,53 +440,75 @@ export const IPC = {
   // stamps component=desktop and forwards to the desktop logger.
   LOG_WRITE: "log:write",
 
-  // Agent Team Visualizer (ATV) — secondary floating window
-  ATV_OPEN: "atv:open",
-  ATV_GET_STATE: "atv:get-state",
-  ATV_ACTIVE_TAB: "atv:active-tab",
-  ATV_GET_SETTINGS: "atv:get-settings",
-  ATV_SET_SETTING: "atv:set-setting",
-  ATV_LIST_TABS: "atv:list-tabs",
-  ATV_FOCUS_TAB: "atv:focus-tab",
-  ATV_FOCUS_AGENT: "atv:focus-agent",
-  ATV_LIST_THEMES: "atv:list-themes",
-  ATV_READ_THEME_BUNDLE: "atv:read-theme-bundle",
-  ATV_READ_THEME_ASSET: "atv:read-theme-asset",
-  // Main → overlay renderer push: the ATV window opened/closed (drives the
+  // Ion Studio (Studio) — secondary floating window
+  STUDIO_OPEN: "studio:open",
+  STUDIO_GET_STATE: "studio:get-state",
+  STUDIO_ACTIVE_TAB: "studio:active-tab",
+  STUDIO_GET_SETTINGS: "studio:get-settings",
+  STUDIO_SET_SETTING: "studio:set-setting",
+  STUDIO_LIST_TABS: "studio:list-tabs",
+  STUDIO_FOCUS_TAB: "studio:focus-tab",
+  STUDIO_FOCUS_AGENT: "studio:focus-agent",
+  STUDIO_LIST_THEMES: "studio:list-themes",
+  STUDIO_READ_THEME_BUNDLE: "studio:read-theme-bundle",
+  STUDIO_READ_THEME_ASSET: "studio:read-theme-asset",
+  // Main → Studio push: title-bar geometry changes with native fullscreen.
+  STUDIO_WINDOW_CHROME: "studio:window-chrome",
+  // Studio → main: update non-macOS native window-control overlay colors.
+  STUDIO_SET_TITLE_BAR_OVERLAY: "studio:set-title-bar-overlay",
+  // Main → overlay renderer push: the Studio window opened/closed (drives the
   // launcher button's active indicator).
-  ATV_WINDOW_STATE: "atv:window-state",
-  // Mirror-store action forwarding: ATV renderer → main (validated against
+  STUDIO_WINDOW_STATE: "studio:window-state",
+  // Mirror-store action forwarding: Studio renderer → main (validated against
   // FORWARDED_ACTIONS) → overlay renderer, which executes on the owner store
   // and replies with the action's return value.
   //
   // Request/response, not fire-and-forget: a mirror caller does
   // `const result = await store.retireWorktree(…)` and needs the owner's real
-  // answer. Main mints a callId, relays it with the action on ATV_EXEC_ACTION,
-  // and the owner replies once on ATV_ACTION_RESULT.
-  ATV_CALL_ACTION: "atv:call-action",
-  ATV_EXEC_ACTION: "atv:exec-action",
-  ATV_ACTION_RESULT: "atv:action-result",
+  // answer. Main mints a callId, relays it with the action on STUDIO_EXEC_ACTION,
+  // and the owner replies once on STUDIO_ACTION_RESULT.
+  STUDIO_CALL_ACTION: "studio:call-action",
+  STUDIO_EXEC_ACTION: "studio:exec-action",
+  STUDIO_ACTION_RESULT: "studio:action-result",
   // Owner-published tab-metadata snapshot: owner renderer → main (publish),
-  // main → ATV window (push), ATV → main (boot pull).
-  ATV_PUBLISH_TABS_SYNC: "atv:publish-tabs-sync",
-  ATV_TABS_SYNC: "atv:tabs-sync",
-  ATV_GET_TABS_SYNC: "atv:get-tabs-sync",
-  // Main → ATV push: a permission was answered on SOME surface (overlay,
-  // iOS, or ATV) — clear it from the mirror queue and the canvas bubble.
-  ATV_PERMISSION_RESOLVED: "atv:permission-resolved",
-  // ATV → main: surface the overlay glass (palette cross-link).
-  ATV_SHOW_OVERLAY: "atv:show-overlay",
-  // ATV → main: save a composed office snapshot PNG via the save dialog.
-  ATV_EXPORT_IMAGE: "atv:export-image",
-  // ATV → main: live per-tab summaries for the campus view.
-  ATV_GET_ALL_STATUS: "atv:get-all-status",
-  // ATV → main: save a recorded office clip (webm) via the save dialog.
-  ATV_EXPORT_VIDEO: "atv:export-video",
-  // Main → ATV push: a user prompt was submitted (any surface) — the mirror
+  // main → Studio window (push), Studio → main (boot pull).
+  STUDIO_PUBLISH_TABS_SYNC: "studio:publish-tabs-sync",
+  STUDIO_TABS_SYNC: "studio:tabs-sync",
+  STUDIO_GET_TABS_SYNC: "studio:get-tabs-sync",
+  // Owner-rendered worktree inventory + bench snapshot: owner renderer → main
+  // (publish), main → Studio window (push), Studio → main (boot pull).
+  STUDIO_PUBLISH_WORKTREE_SYNC: "studio:publish-worktree-sync",
+  STUDIO_WORKTREE_SYNC: "studio:worktree-sync",
+  STUDIO_GET_WORKTREE_SYNC: "studio:get-worktree-sync",
+  // Main → Studio push: a permission was answered on SOME surface (overlay,
+  // iOS, or Studio) — clear it from the mirror queue and the canvas bubble.
+  STUDIO_PERMISSION_RESOLVED: "studio:permission-resolved",
+  // Studio → main: surface the overlay glass (palette cross-link).
+  STUDIO_SHOW_OVERLAY: "studio:show-overlay",
+  // Studio → main: save a composed office snapshot PNG via the save dialog.
+  STUDIO_EXPORT_IMAGE: "studio:export-image",
+  // Studio → main: live per-tab summaries for the campus view.
+  STUDIO_GET_ALL_STATUS: "studio:get-all-status",
+  // Studio → main: save a recorded office clip (webm) via the save dialog.
+  STUDIO_EXPORT_VIDEO: "studio:export-video",
+  // Main → Studio push: a user prompt was submitted (any surface) — the mirror
   // inserts it so its transcript matches the owner's optimistic insert.
-  // Main → ATV push: a user prompt was submitted (any surface) — the mirror
-  // inserts it so its transcript matches the owner's optimistic insert.
-  ATV_USER_MESSAGE_ECHO: "atv:user-message-echo",
+  STUDIO_USER_MESSAGE_ECHO: "studio:user-message-echo",
+  // Main → Studio push: a successful engine rewind committed a NEW message
+  // list for one instance. The mirror replaces the pane instance's messages
+  // wholesale — never merges — mirroring desktop_conversation_history's
+  // replace semantics on the iOS wire. Fired only after the engine confirmed
+  // the branch succeeded (transactional rewind); the mirror's stale tail is
+  // never preserved past a successful owner branch.
+  STUDIO_HISTORY_REPLACE: "studio:history-replace",
+  // Startup splash: renderer reports go through main, which owns monotonic
+  // startup state and reveals exactly one product window after full hydration.
+  STARTUP_REPORT: "startup:report",
+  STARTUP_GET_STATE: "startup:get-state",
+  STARTUP_STATE: "startup:state",
+  STARTUP_AUTHENTICATE: "startup:authenticate",
+  STARTUP_RELAUNCH: "startup:relaunch",
+  STARTUP_QUIT: "startup:quit",
 } as const;
 
 /**
@@ -478,11 +516,11 @@ export const IPC = {
  *
  * Lives in `shared/` because it crosses the process boundary: main builds it,
  * the preload bridge types it, and the renderer dialog renders it. Every field
- * the operator needs to decide is present — the dialog shows the real
+ * the operator needs in order to decide is present — the dialog shows the real
  * command or the real prompt text, because a confirmation that describes the
  * request only vaguely trains people to approve without reading.
  */
-export type DeepLinkConfirmOwner = "overlay" | "atv";
+export type DeepLinkConfirmOwner = "overlay" | "studio";
 
 export interface DeepLinkConfirmResult {
   id: string;

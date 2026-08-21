@@ -16,8 +16,6 @@ import { rError } from "../rendererLogger";
 
 export function WorktreeRowMenuDialogs({
   landError,
-  retireOutcome,
-  setRetireOutcome,
   confirmDiscardRecordings,
   setConfirmDiscardRecordings,
   discardRecordingsOutcome,
@@ -27,13 +25,11 @@ export function WorktreeRowMenuDialogs({
   confirmRetire,
   setLandError,
   setConfirmRetire,
-  doRetire,
+  doLandAndRetire,
   onClose,
 }: {
   landError: string | null;
   setLandError: (value: string | null) => void;
-  retireOutcome: string | null;
-  setRetireOutcome: (value: string | null) => void;
   confirmDiscardRecordings: string | null;
   setConfirmDiscardRecordings: (value: string | null) => void;
   discardRecordingsOutcome: string | null;
@@ -42,14 +38,14 @@ export function WorktreeRowMenuDialogs({
   doDiscardRecordings: () => Promise<void>;
   confirmRetire: string | null;
   setConfirmRetire: (value: string | null) => void;
-  doRetire: () => Promise<void>;
+  doLandAndRetire: () => Promise<void>;
   onClose: () => void;
 }): React.ReactElement {
   return (
     <>
       {landError !== null && (
         <ConfirmDialog
-          title="Land did not complete"
+          title="Land and retire did not complete"
           message={landError}
           acknowledge
           onConfirm={() => {
@@ -105,45 +101,23 @@ export function WorktreeRowMenuDialogs({
           />
         )}
 
-      {retireOutcome !== null && (
+      {confirmRetire !== null && (
         <ConfirmDialog
-          title="Retire"
-          message={retireOutcome}
-          acknowledge
-          onConfirm={() => {
-            setRetireOutcome(null);
-            setConfirmRetire(null);
-            onClose();
-          }}
-          onCancel={() => {
-            setRetireOutcome(null);
-            setConfirmRetire(null);
-            onClose();
-          }}
-        />
-      )}
-
-      {retireOutcome === null && confirmRetire !== null && (
-        <ConfirmDialog
-          title="Retire this worktree?"
-          message={`${confirmRetire} Retiring removes the directory and its branch. Work is preserved to a recovery ref first, but this is not a routine action.`}
-          confirmLabel="Retire"
+          title="Land and retire this worktree?"
+          message={confirmRetire}
+          confirmLabel="Land and retire"
           cancelLabel="Keep it"
           danger
-          /* The retire takes seconds (appraise, snapshot the work to a recovery
-             ref, delete the directory, relocate conversations). This dialog stays
-             mounted across that await, so the same dialog reports the operation
-             in place and the success path then swaps it for the outcome. */
           busy={busy}
-          busyLabel="Retiring the worktree…"
+          busyLabel="Landing and retiring the worktree…"
           onConfirm={() => {
-            void doRetire().catch((err) =>
-              rError("worktree.menu", "retire threw", { error: String(err) }),
-            );
+            void doLandAndRetire().catch((err) =>
+              rError("worktree.menu", "land and retire threw", { error: String(err) }),
+            )
           }}
           onCancel={() => {
-            setConfirmRetire(null);
-            onClose();
+            setConfirmRetire(null)
+            onClose()
           }}
         />
       )}

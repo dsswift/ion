@@ -63,10 +63,18 @@ export interface RetireOptions {
  * it was saved is the defect this guards.
  */
 export async function retireWorktree(opts: RetireOptions): Promise<WorktreeMoveResult> {
+  const repo = repositoryManager.get(opts.repoPath)
+  return repo.queue.enqueueMutation(() => retireWorktreeUnqueued(opts))
+}
+
+/**
+ * The retire body without its queue wrapper. Callers must already hold the
+ * repository mutation slot. This lets a terminal land-and-retire operation use
+ * one slot for both halves without waiting on itself.
+ */
+export async function retireWorktreeUnqueued(opts: RetireOptions): Promise<WorktreeMoveResult> {
   const { repoPath, worktreePath, branchName, force } = opts
-  const repo = repositoryManager.get(repoPath)
-  return repo.queue.enqueueMutation(async () => {
-    log('retire: starting', { repo_path: repoPath, worktree_path: worktreePath, branch: branchName, force: !!force })
+  log('retire: starting', { repo_path: repoPath, worktree_path: worktreePath, branch: branchName, force: !!force })
 
     let recoveryRef: string | undefined
     if (!force) {
@@ -179,7 +187,6 @@ export async function retireWorktree(opts: RetireOptions): Promise<WorktreeMoveR
       ok: true, workingDirectory: repoPath, recoveryRef,
       prunedBenchPaths: prunedBenches, warning: registryWarning,
     }
-  })
 }
 
 export interface ReattachOptions {

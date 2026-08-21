@@ -43,6 +43,18 @@ export interface RefPairAppraisal {
 }
 
 interface CacheEntry {
+  /**
+   * The repo whose crawl produced this entry.
+   *
+   * Recorded so the prune can be scoped. The cache is one module-level map
+   * shared by every repo, but a crawl only ever knows about ITS OWN worktrees
+   * — so an unscoped prune driven by one repo's listing deletes every other
+   * repo's entries as "no longer live". With six repos open, the five that
+   * list no worktrees each wiped the sixth's entries before it crawled, and
+   * the cache reported `hits: 0, misses: 7` forever: the sha-pair fast path
+   * existed but could never be taken.
+   */
+  repoPath: string
   headSha: string
   sourceTipSha: string
   appraisal: RefPairAppraisal
@@ -78,6 +90,7 @@ export async function appraiseRefPair(
   headSha: string,
   sourceTipSha: string,
   counters?: AppraisalCounters,
+  repoPath = '',
 ): Promise<RefPairAppraisal | null> {
   const cached = pairCache.get(worktreePath)
   if (cached && cached.headSha === headSha && cached.sourceTipSha === sourceTipSha) {
@@ -129,7 +142,7 @@ export async function appraiseRefPair(
   }
 
   const appraisal: RefPairAppraisal = { ahead, behind, treesDiffer }
-  pairCache.set(worktreePath, { headSha, sourceTipSha, appraisal })
+  pairCache.set(worktreePath, { repoPath, headSha, sourceTipSha, appraisal })
   log('appraised ref pair', {
     worktree_path: worktreePath,
     head: headSha.slice(0, 7),
@@ -164,11 +177,22 @@ export async function commitSubject(worktreePath: string, sha: string): Promise<
 }
 
 /**
- * Drop pair-cache entries for worktrees that no longer exist, so a retired
- * path cannot pin stale state. Called by the inventory after each listing.
+ * Drop pair-cache entries for worktrees of `repoPath` that no longer exist, so
+ * a retired path cannot pin stale state. Called by the inventory after each
+ * listing, with the paths that listing reported.
+ *
+ * Scoped to the crawling repo, and that scoping is the whole correctness
+ * argument. A crawl's `livePaths` is the answer to "what worktrees does THIS
+ * repo have", never "what worktrees exist anywhere". Treating it as the latter
+ * — which the unscoped version did — makes every repo's crawl evict every
+ * other repo's entries, so the cache never serves a hit when more than one
+ * repo is open. Entries written before a repo was recorded carry an empty
+ * `repoPath` and are pruned by whichever crawl first sees their path missing;
+ * that is the same conservative behaviour as a miss, never a stale hit.
  */
-export function pruneAppraisalCache(livePaths: Set<string>): void {
-  for (const path of pairCache.keys()) {
+export function pruneAppraisalCache(repoPath: string, livePaths: Set<string>): void {
+  for (const [path, entry] of pairCache) {
+    if (entry.repoPath && entry.repoPath !== repoPath) continue
     if (!livePaths.has(path)) pairCache.delete(path)
   }
 }

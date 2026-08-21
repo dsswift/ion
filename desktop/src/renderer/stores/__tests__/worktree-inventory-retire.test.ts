@@ -40,7 +40,7 @@ describe('retireWorktree', () => {
       const res = await state.retireWorktree(REPO, WT_A, 'wt/a3f1')
 
       expect(res.ok).toBe(false)
-      expect(ion.gitWorktreeRetire).not.toHaveBeenCalled()
+      expect(ion.gitWorktreeLandAndRetire).not.toHaveBeenCalled()
       expect(state.tabs).toHaveLength(1)
     })
 
@@ -64,7 +64,7 @@ describe('retireWorktree', () => {
 
       const res = await state.retireWorktree(REPO, WT_A, 'wt/a3f1')
 
-      expect(ion.gitWorktreeRetire).not.toHaveBeenCalled()
+      expect(ion.gitWorktreeLandAndRetire).not.toHaveBeenCalled()
       expect(res.error).toContain('Migration sweep')
       expect(res.error).toContain('2 background agents running')
     })
@@ -77,7 +77,7 @@ describe('retireWorktree', () => {
 
       const res = await state.retireWorktree(REPO, WT_A, 'wt/a3f1')
 
-      expect(ion.gitWorktreeRetire).not.toHaveBeenCalled()
+      expect(ion.gitWorktreeLandAndRetire).not.toHaveBeenCalled()
       expect(res.error).toContain('1 background command running')
     })
 
@@ -116,7 +116,7 @@ describe('retireWorktree', () => {
       const res = await state.retireWorktree(REPO, WT_A, 'wt/a3f1')
 
       expect(res.ok).toBe(false)
-      expect(ion.gitWorktreeRetire).not.toHaveBeenCalled()
+      expect(ion.gitWorktreeLandAndRetire).not.toHaveBeenCalled()
     })
 
     // "Only that worktree" applies to the REFUSAL as much as to the close: a
@@ -130,7 +130,7 @@ describe('retireWorktree', () => {
       const res = await state.retireWorktree(REPO, WT_A, 'wt/a3f1')
 
       expect(res.ok).toBe(true)
-      expect(ion.gitWorktreeRetire).toHaveBeenCalled()
+      expect(ion.gitWorktreeLandAndRetire).toHaveBeenCalled()
       expect(state.tabs).toHaveLength(1)
     })
 
@@ -159,7 +159,7 @@ describe('retireWorktree', () => {
 
       expect(res.ok).toBe(false)
       expect(res.error).toContain('Bench work')
-      expect(ion.gitWorktreeRetire).not.toHaveBeenCalled()
+      expect(ion.gitWorktreeLandAndRetire).not.toHaveBeenCalled()
     })
 
     it('ignores active work in a bench this retire would NOT prune', async () => {
@@ -248,7 +248,7 @@ describe('retireWorktree', () => {
 
     it('closes tabs in the benches the retire actually pruned', async () => {
       const OTHER_BENCH = '/Users/test/.ion/integration/project-other'
-      ion.gitWorktreeRetire.mockResolvedValueOnce({
+      ion.gitWorktreeLandAndRetire.mockResolvedValueOnce({
         ok: true, workingDirectory: REPO, prunedBenchPaths: [BENCH],
       })
       const { state } = harness({
@@ -305,7 +305,7 @@ describe('retireWorktree', () => {
 
   describe('a refused retire changes nothing', () => {
     it('closes no tabs when the retire itself refuses', async () => {
-      ion.gitWorktreeRetire.mockResolvedValueOnce({ ok: false, error: 'unlanded work' })
+      ion.gitWorktreeLandAndRetire.mockResolvedValueOnce({ ok: false, error: 'unlanded work' })
       const { state } = harness({ tabs: [{ id: 'occupant', workingDirectory: WT_A }] })
 
       const res = await state.retireWorktree(REPO, WT_A, 'wt/a3f1')
@@ -329,7 +329,7 @@ describe('retireWorktree', () => {
         tabs: [{ id: 'racer', workingDirectory: WT_A, conversationId: 'conv-1' } as any],
       })
       // Idle at pre-flight; busy by the time closeTab runs.
-      ion.gitWorktreeRetire.mockImplementationOnce(async () => {
+      ion.gitWorktreeLandAndRetire.mockImplementationOnce(async () => {
         state.conversationPanes.set('racer', runningPane)
         return { ok: true, workingDirectory: REPO, prunedBenchPaths: [] }
       })
@@ -366,7 +366,7 @@ describe('retireWorktree', () => {
       const res = await state.retireWorktree(REPO, WT_A, 'wt/a3f1')
 
       expect(res.ok).toBe(false)
-      expect(ion.gitWorktreeRetire).not.toHaveBeenCalled()
+      expect(ion.gitWorktreeLandAndRetire).not.toHaveBeenCalled()
     })
   })
 })
@@ -379,7 +379,7 @@ describe('retireLandedWorktrees', () => {
     const res = await state.retireLandedWorktrees(REPO)
 
     expect(res).toEqual({ ok: true, retired: 0 })
-    expect(ion.gitWorktreeRetire).not.toHaveBeenCalled()
+    expect(ion.gitWorktreeLandAndRetire).not.toHaveBeenCalled()
   })
 
   it('retires every landed worktree in the repo and leaves active ones alone', async () => {
@@ -393,9 +393,9 @@ describe('retireLandedWorktrees', () => {
     const res = await state.retireLandedWorktrees(REPO)
 
     expect(res).toEqual({ ok: true, retired: 2 })
-    expect(ion.gitWorktreeRetire).toHaveBeenCalledTimes(2)
-    expect(ion.gitWorktreeRetire).toHaveBeenCalledWith(expect.objectContaining({ worktreePath: WT_A, branchName: 'wt/a3f1' }))
-    expect(ion.gitWorktreeRetire).toHaveBeenCalledWith(expect.objectContaining({ worktreePath: WT_B, branchName: 'wt/7b0c' }))
+    expect(ion.gitWorktreeLandAndRetire).toHaveBeenCalledTimes(2)
+    expect(ion.gitWorktreeLandAndRetire).toHaveBeenCalledWith(expect.objectContaining({ worktreePath: WT_A, branchName: 'wt/a3f1' }))
+    expect(ion.gitWorktreeLandAndRetire).toHaveBeenCalledWith(expect.objectContaining({ worktreePath: WT_B, branchName: 'wt/7b0c' }))
   })
 
   it('refuses the whole batch, retiring nothing, when any landed worktree has active work', async () => {
@@ -412,7 +412,7 @@ describe('retireLandedWorktrees', () => {
 
     expect(res.ok).toBe(false)
     expect(res.retired).toBe(0)
-    expect(ion.gitWorktreeRetire).not.toHaveBeenCalled()
+    expect(ion.gitWorktreeLandAndRetire).not.toHaveBeenCalled()
   })
 
   it('stops and reports the count already retired if a later retire in the batch fails', async () => {
@@ -421,7 +421,7 @@ describe('retireLandedWorktrees', () => {
       entry({ worktreePath: WT_A, branchName: 'wt/a3f1', landedAt: 1000 }),
       entry({ worktreePath: WT_B, branchName: 'wt/7b0c', landedAt: 2000 }),
     ])
-    ion.gitWorktreeRetire
+    ion.gitWorktreeLandAndRetire
       .mockResolvedValueOnce({ ok: true, workingDirectory: REPO, prunedBenchPaths: [] })
       .mockResolvedValueOnce({ ok: false, error: 'disk busy' })
 

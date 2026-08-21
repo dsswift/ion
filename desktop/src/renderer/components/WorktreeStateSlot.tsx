@@ -170,8 +170,8 @@ export function WorktreeStateSlot(props: WorktreeStateSlotProps): React.JSX.Elem
       )
     }
 
-    case 'needs-sync':
-      return (
+    case 'needs-sync': {
+      const sync = (
         <Tooltip text={state.blocked
           ? 'Base moved, but this worktree has uncommitted changes. Commit or stash them, then sync.'
           : 'Base moved: sync from the source branch'}>
@@ -199,6 +199,40 @@ export function WorktreeStateSlot(props: WorktreeStateSlotProps): React.JSX.Elem
           </button>
         </Tooltip>
       )
+      if (!state.pinAlsoBehind) return sync
+      // Both facts are true, so both controls are present. Sync is FIRST and
+      // reads as the recommended step (see resolveRowState: a pin advanced
+      // before a rebase is stale the moment the rebase lands). The pin control
+      // is still offered rather than hidden, because the operator may
+      // legitimately want the bench to hold current content now -- and because
+      // a worktree that stays behind its base for days would otherwise never
+      // show a pin control at all.
+      const updating = !!props.updatingPin
+      const locked = !!props.pinUpdateLocked
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+          {sync}
+          <Tooltip text={updating
+            ? 'Updating this pin and reassembling the bench.'
+            : locked
+              ? 'Another pin update is reassembling this bench. Wait for it to finish.'
+              : 'The bench also holds an older contribution. Syncing first is recommended, because a rebase rewrites these commits. Click to update the pin anyway.'}>
+            <button
+              data-testid={`worktree-pin-behind-${branchName}`}
+              onClick={(e) => { e.stopPropagation(); props.onUpdatePin?.() }}
+              disabled={updating || locked}
+              aria-disabled={updating || locked}
+              style={{
+                ...iconButtonStyle(updating || locked ? colors.textTertiary : colors.textSecondary, !updating && !locked),
+                ...(updating ? { animation: 'bench-conflict-flash 1.2s ease-in-out infinite' } : {}),
+              }}
+            >
+              {updating ? <CircleNotch size={11} className="animate-spin" /> : <ArrowCircleUp size={11} />}
+            </button>
+          </Tooltip>
+        </span>
+      )
+    }
 
     case 'provisioning':
       return (

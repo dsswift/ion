@@ -20,27 +20,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-// Every icon the menu renders must be stubbed, and an exhaustive LIST cannot
-// stay exhaustive: vi.mock replaces the module wholesale, so the first icon a
-// sibling change renders that is missing here throws at render and fails every
-// test in the file at once. That is a real integration failure and not a
-// hypothetical -- a stage indicator rendering `Compass` did exactly this.
-//
-// A proxy answers for any icon name, so this mock is complete by construction
-// and never needs editing when the menu grows an icon.
-vi.mock('@phosphor-icons/react', () => {
-  const stub = (): null => null
-  // Named exports the menu and its indicators render. Kept as one flat list so
-  // a sibling change that renders a new icon needs one word here, not a debug
-  // session -- the failure mode is otherwise a whole-file throw with no hint at
-  // which icon was missing.
-  const names = [
-    'ArrowLineDown', 'ArrowsClockwise', 'Bug', 'ChatCircle', 'Check',
-    'CircleDashed', 'Compass', 'Flask', 'FolderOpen', 'GitMerge', 'Hammer',
-    'Package', 'PencilSimple', 'RocketLaunch', 'Trash',
-  ]
-  return Object.fromEntries(names.map((name) => [name, stub]))
-})
+// Real Phosphor icons render cheaply in jsdom and cannot drift when the menu
+// gains another icon. A hand-maintained replacement module made every placement
+// test fail at render time whenever a new menu row or submenu trigger appeared.
 
 vi.mock('framer-motion', () => ({
   motion: {

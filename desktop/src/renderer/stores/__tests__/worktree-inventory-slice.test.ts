@@ -148,10 +148,10 @@ describe('openWorktreeConversation', () => {
   // the row.
   describe('with several conversations open in the same worktree', () => {
     const threeTabs = [
-      { id: 'wt-1', workingDirectory: WT_A },
-      { id: 'other', workingDirectory: WT_B },
-      { id: 'wt-2', workingDirectory: WT_A },
-      { id: 'wt-3', workingDirectory: WT_A },
+      { id: 'wt-1', workingDirectory: WT_A, lastActivityAt: 10 },
+      { id: 'other', workingDirectory: WT_B, lastActivityAt: 100 },
+      { id: 'wt-2', workingDirectory: WT_A, lastActivityAt: 30 },
+      { id: 'wt-3', workingDirectory: WT_A, lastActivityAt: 20 },
     ]
 
     it('advances to the next conversation on each click, wrapping at the end', async () => {
@@ -170,10 +170,9 @@ describe('openWorktreeConversation', () => {
     })
 
     it('starts at the first conversation when the operator is elsewhere', async () => {
-      const { state, slice } = harness({ tabs: threeTabs, activeTabId: 'other' })
+      const { slice } = harness({ tabs: threeTabs, activeTabId: 'other' })
 
-      expect(await slice.openWorktreeConversation!(WT_A)).toBe('wt-1')
-      expect(state.createTabInDirectory).not.toHaveBeenCalled()
+      expect(await slice.openWorktreeConversation!(WT_A)).toBe('wt-2')
     })
 
     it('never creates a duplicate while any conversation is open there', async () => {

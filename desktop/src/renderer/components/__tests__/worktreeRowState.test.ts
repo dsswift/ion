@@ -1,12 +1,5 @@
 /**
  * worktreeRowState — the one-slot priority chain, and what stays visible.
- *
- * The case that motivates the whole axis split is the last describe block: a
- * member that is excluded AND behind AND conflicted. Under the collapsed
- * `MemberStatus` those three facts could not coexist -- `refreshStaleness` wrote
- * one word and the other two were gone from the record -- so no renderer could
- * have shown them however it prioritised. Here the slot picks one and the words
- * carry the rest.
  */
 import { describe, it, expect } from 'vitest'
 import { resolveRowState, resolveRowWords } from '../worktreeRowState'
@@ -32,8 +25,7 @@ function member(over: Partial<IntegrationMember> = {}): IntegrationMember {
   return {
     worktreePath: '/wt/a',
     branchName: 'wt/a',
-    enabled: true,
-    pin: 'current',
+        pin: 'current',
     merge: 'merged',
     pinnedSha: 'aaa1111',
     pinnedTreeHash: 'tree-a',
@@ -106,7 +98,33 @@ describe('resolveRowState — one rung at a time', () => {
       entry: entry({ needsSync: true }),
       membership: member({ pin: 'behind', pinnedSha: 'ccc3333' }),
     })
-    expect(state).toEqual({ kind: 'needs-sync', blocked: false, syncing: false })
+    // Ranked first, but the pin fact rides along rather than being dropped.
+    expect(state).toEqual({ kind: 'needs-sync', blocked: false, syncing: false, pinAlsoBehind: true })
+  })
+
+  // The regression: a long-lived worktree is routinely BOTH behind its base and
+  // ahead of its pin. Ranking alone made the pin completely invisible — the
+  // slot showed sync, and the second line's `behind` word was suppressed
+  // because it was gated on the slot not being the pin control, which it never
+  // was in this state. An out-of-date pin with no surface at all is how a bench
+  // silently held nine-hour-old content while the worktree kept committing.
+  it('still reports the behind pin when the slot is showing sync', () => {
+    const input = {
+      entry: entry({ needsSync: true }),
+      membership: member({ pin: 'behind', pinnedSha: 'ccc3333' }),
+    }
+    const state = resolveRowState(input)
+    expect(state.kind).toBe('needs-sync')
+    expect(state).toMatchObject({ pinAlsoBehind: true })
+    expect(resolveRowWords(input)).toContain('behind')
+  })
+
+  it('does not claim a behind pin when the pin is current', () => {
+    const state = resolveRowState({
+      entry: entry({ needsSync: true }),
+      membership: member({ pin: 'current' }),
+    })
+    expect(state).toEqual({ kind: 'needs-sync', blocked: false, syncing: false, pinAlsoBehind: undefined })
   })
 
   it('keeps sync ranked first even when it is blocked by a dirty worktree', () => {
@@ -118,7 +136,7 @@ describe('resolveRowState — one rung at a time', () => {
       entry: entry({ needsSync: true, isDirty: true }),
       membership: member({ pin: 'behind' }),
     })
-    expect(state).toEqual({ kind: 'needs-sync', blocked: true, syncing: false })
+    expect(state).toEqual({ kind: 'needs-sync', blocked: true, syncing: false, pinAlsoBehind: true })
   })
 
   it('shows the behind pin once the base is current', () => {
@@ -167,23 +185,18 @@ describe('resolveRowState — landed worktree sealed', () => {
   })
 })
 
-describe('resolveRowState — the case the collapsed enum could not express', () => {
+describe('resolveRowState — concurrent member signals', () => {
   const input = {
     entry: entry({ needsSync: true }),
-    membership: member({ enabled: false, pin: 'behind', merge: 'conflicted' }),
+    membership: member({ pin: 'behind', merge: 'conflicted' }),
   }
 
   it('picks the most severe fact for the slot', () => {
     expect(resolveRowState(input).kind).toBe('bench-conflict')
   })
 
-  it('still reports the excluded and behind facts in the words', () => {
-    // The point of three axes: nothing is destroyed at write time, so the row
-    // can show one and say the others. Under `MemberStatus` the record held the
-    // single word `excluded` and both other facts were unrecoverable.
-    const words = resolveRowWords(input)
-    expect(words).toContain('excluded')
-    expect(words).toContain('behind')
+  it('still reports the hidden behind fact in the words', () => {
+    expect(resolveRowWords(input)).toContain('behind')
   })
 })
 
