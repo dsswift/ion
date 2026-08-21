@@ -373,3 +373,44 @@ func TestChildQuestionHandlerErrorStillAnswers(t *testing.T) {
 	}
 	fe.awaitLog("child question handler failed")
 }
+
+func TestListDispatchStateDecodesWaitingOn(t *testing.T) {
+	fe := newFakeEngine(t, WithName("dispatch-waiting-on-test"))
+	fe.start()
+	fe.doInit(ExtensionConfig{})
+
+	done := make(chan struct {
+		entries []DispatchStateEntry
+		err     error
+	}, 1)
+	go func() {
+		entries, err := fe.sdk.newContext(nil).ListDispatchState(context.Background())
+		done <- struct {
+			entries []DispatchStateEntry
+			err     error
+		}{entries, err}
+	}()
+	frame := fe.awaitMethod("ext/list_dispatch_state")
+	id, _ := frame["id"].(float64)
+	fe.respond(id, map[string]any{"dispatches": []any{map[string]any{
+		"dispatchId": "dispatch-parent", "name": "lead", "status": "suspended",
+		"depth": 1, "startedAt": "2026-01-01T00:00:00Z", "elapsedMs": 1,
+		"waitingOn": map[string]any{
+			"taskIds":          []string{"bash-1"},
+			"childDispatchIds": []string{"dispatch-child"},
+		},
+	}}})
+	result := <-done
+	if result.err != nil {
+		t.Fatalf("ListDispatchState: %v", result.err)
+	}
+	if len(result.entries) != 1 || result.entries[0].WaitingOn == nil {
+		t.Fatalf("entries = %+v, want one entry with WaitingOn", result.entries)
+	}
+	if got := result.entries[0].WaitingOn.TaskIDs; len(got) != 1 || got[0] != "bash-1" {
+		t.Errorf("TaskIDs = %v, want [bash-1]", got)
+	}
+	if got := result.entries[0].WaitingOn.ChildDispatchIDs; len(got) != 1 || got[0] != "dispatch-child" {
+		t.Errorf("ChildDispatchIDs = %v, want [dispatch-child]", got)
+	}
+}
