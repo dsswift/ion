@@ -129,9 +129,11 @@ payload still decodes.
 
 `backgroundShells` reaches the desktop and iOS through the existing status pipeline, so a
 parked session reads as "waiting on N background shells" rather than as idle — a run the
-user started ended without completing, and that must be visible. Both clients render it
-with the same pink shell dot, and both block closing a tab with outstanding commands
-(closing kills the processes).
+user started ended without completing, and that must be visible. `hasPendingWork` is the
+additive status verdict that generalizes this rule across shells, dispatches, queued
+prompts, durable completion deliveries, and parks. An `idle` status with
+`hasPendingWork: true` is waiting, not terminal. Both clients render it as active waiting
+work and block closing a tab with outstanding commands (closing kills the processes).
 
 ## Alternatives rejected
 

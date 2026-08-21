@@ -42,7 +42,17 @@ must not depend on callback code waking parent.
 Users can submit prompts after agent dispatch returns. The orchestrator can
 continue work, end turn, or use exact dispatch ID with steering APIs. Clients
 receive existing agent snapshots and dispatch events; no UI-specific signal is
-inserted into model text beyond classified terminal completion input.
+inserted into model text beyond classified terminal completion input. Status snapshots
+carry additive `hasPendingWork`, so an idle root with live descendants or a durable
+completion delivery is explicitly waiting rather than terminal.
+
+## Provider authority
+
+A model-authored Agent request cannot change providers. The engine resolves a bare model
+name only within the parent session provider and rejects a provider-qualified request for
+a different provider. This protects data residency and billing boundaries. A configured
+tier, a user model selection, or an extension `ctx.dispatchAgent` request remains an
+explicit deterministic authority and can select the provider named by that configuration.
 
 Explicit foreground work is bounded by normal tool timeout. API parents can
 consume completion before next provider call. CLI parents receive completion

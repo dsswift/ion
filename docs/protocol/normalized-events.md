@@ -403,6 +403,8 @@ A live run-loop checkpoint drained a steer message into its conversation before 
 |-------|------|-------------|
 | `type` | `"steer_injected"` | A live run drained the steer. |
 | `messageLength` | number | Character count of the delivered message. |
+| `clientMessageId` | string, optional | Echoes the client's `steer_agent` correlation id when supplied and this was a genuine client-originated steer (never present for a machine-to-machine injection). |
+| `entryId` | string, optional | The durable conversation-tree entry id the steer text was persisted under, present only for a genuine client-originated steer — the exact target for a later `rewind_session` command. |
 
 ### steer_degraded
 

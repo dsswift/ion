@@ -75,5 +75,5 @@ Automated coverage spans parsing (unknown actions, over-long fields, newline inj
 ## References
 
 - [ADR-008](008-wire-event-naming-and-ownership.md) — the `desktop_` prefix convention the confirmation IPC follows.
-- [ADR-021](021-atv-shell-mirror-store.md) — why the confirmation request is broadcast rather than sent directly to one window.
+- [ADR-021](021-studio-shell-mirror-store.md) — why the confirmation request is broadcast rather than sent directly to one window.
 - [`docs/configuration/deep-links.md`](../../configuration/deep-links.md) — the action reference for link authors.

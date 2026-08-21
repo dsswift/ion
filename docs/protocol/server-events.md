@@ -883,6 +883,7 @@ Typed per-session status snapshot. Emitted alongside the legacy `engine_status` 
 | `hasInflightRun` | boolean | True when the backend has a live run |
 | `backgroundAgentCount` | number | Number of background dispatch agents still running |
 | `backgroundShellCount` | number | Outstanding background bash commands the session is waiting on. The shell counterpart to `backgroundAgentCount`, so a consumer reading only this event can tell a parked session (idle orchestrator, commands in flight) from a plain idle one. |
+| `hasPendingWork` | boolean | True when the engine has accepted work that remains non-terminal even though `state` is `"idle"`. Includes live dispatches, notifying shells, queued prompts, durable completion deliveries, queued background completions, and parked runs. Clients must render this as waiting work, not completion. |
 | `permissionDenialsPending` | array | Unresolved AskUserQuestion / ExitPlanMode entries |
 | `model` | string | Model the most recent run resolved to |
 | `contextPercent` | number | Context-window usage percent |
@@ -998,7 +999,7 @@ The kinds are enumerated in `engine/internal/types/injection_kind.go`, which is 
 
 An empty kind means the injection is a genuine extension-initiated turn with no special classification, and is never machine-authored: silently hiding content the engine could not identify is worse than showing a turn a consumer did not expect. Consumers must treat an unrecognized kind as unclassified rather than failing to decode — the vocabulary grows additively.
 
-**A degraded self-steer has no kind of its own.** When `ctx.steerSelf` finds no live run it delivers a fresh prompt instead, carrying whatever kind the caller supplied. The engine emits additive `engine_steer_degraded` and persists a steer marker on that path. `engine_steer_injected` remains exclusive to a message a live run-loop checkpoint drained; consumers that need to distinguish the two must use their distinct event types. Both carry only message length, and the persisted marker lets history reload replay the confirmation.
+**A degraded self-steer has no kind of its own.** When `ctx.steerSelf` finds no live run it delivers a fresh prompt instead, carrying whatever kind the caller supplied. The engine emits additive `engine_steer_degraded` and persists a steer marker on that path. `engine_steer_injected` remains exclusive to a message a live run-loop checkpoint drained; consumers that need to distinguish the two must use their distinct event types. `engine_steer_degraded` carries only message length; `engine_steer_injected` additionally carries the client's correlation id and the durable entry id for a genuine client-originated steer (see below). The persisted marker lets history reload replay the confirmation.
 
 #### engine_steer_injected
 
@@ -1008,6 +1009,8 @@ A live run-loop checkpoint drained a steer message into the conversation before 
 |-------|------|-------------|
 | `type` | `"engine_steer_injected"` | Event type |
 | `steerMessageLength` | integer | Character count of the drained message |
+| `steerClientMessageId` | string, optional | Echoes the client's `steer_agent` correlation id (`clientMessageId`) when the client supplied one and this was a genuine client-originated steer. Absent for a machine-to-machine injection (a dispatch completion, a scheduled check-in) and for any client that omitted the field. Use this — never message length or arrival order — to identify which outstanding optimistic UI row this confirmation resolves. |
+| `steerEntryId` | string, optional | The durable conversation-tree entry id the steer text was persisted under, present only for a genuine client-originated steer. Retain this as the exact target for a later `rewind_session` command's `entryId` field — it removes the class of bug where a client-computed ordinal points at the wrong turn once a queued-but-undelivered steer occupies a row position with no corresponding tree entry yet. |
 
 #### engine_steer_degraded
 
@@ -1151,8 +1154,8 @@ The `load_session_history` response includes these fields on user-role `SessionM
 | `slashCommand`  | string | The full command as the user typed it, including the leading slash (e.g. `/spec`). Present only on turns that originated from a slash invocation. |
 | `slashArgs`     | string | The argument text that followed the command name. May be empty. |
 | `slashSource`   | string | Where the command was resolved: `"ion"` (`.ion/commands`), `"claude"` (`.claude/commands`), `"skill"`, or `"extension"` (registered via `RegisterCommand`). |
-| `slashModelAlias` | string | The model alias requested by the command's frontmatter `model:` field (e.g. `"standard"`, `"reasoning"`, `"fast"`). Present only when the command specifies a per-run model. |
-| `slashModelEffective` | string | The resolved model ID used for this invocation (for example, `"dci-marketing/gpt-5.6-terra"` or an unqualified direct model ID). Present only when `slashModelAlias` is set. |
+| `slashModelAlias` | string | Command-owned model selector from frontmatter (for example, `"standard"`, `"reasoning"`, or `"fast"`) when that selector's resolved model starts the run. Empty after provider fallback selects a different model. |
+| `slashModelEffective` | string | Concrete model selected to start this invocation after tier and provider resolution (for example, `"dci-marketing/gpt-5.6-terra"` or an unqualified direct model ID). Can be present without `slashModelAlias` after provider fallback. |
 
 ### `desktop_message_added` / `desktop_conversation_history` — RemoteMessage
 
@@ -1163,9 +1166,9 @@ The same fields appear on `RemoteMessage` objects sent to paired iOS clients via
 | `slashCommand`   | string | Full slash invocation (e.g. `/spec`). |
 | `slashArgs`      | string | Arguments following the command name. |
 | `slashSource`    | string | Resolution origin: `"ion"`, `"claude"`, `"skill"`, or `"extension"`. |
-| `slashModelAlias` | string | Optional model alias from command frontmatter (e.g. `"standard"`). |
-| `slashModelEffective` | string | Optional resolved model ID, qualified or direct, used for this invocation. |
+| `slashModelAlias` | string | Command-owned selector when its resolved model starts the invocation. Empty after provider fallback selects a different model. |
+| `slashModelEffective` | string | Concrete model selected to start the invocation. Can be present without `slashModelAlias` after provider fallback. |
 
-The engine also carries these model fields on [`engine_user_turn_persisted`](#engine_user_turn_persisted) as `userTurnSlashModelAlias` and `userTurnSlashModelEffective`, letting clients stamp an optimistic slash bubble before history reload. The fields describe only that invocation's run and never change the conversation-level model shown by a status bar.
+The engine also carries these model fields on [`engine_user_turn_persisted`](#engine_user_turn_persisted) as `userTurnSlashModelAlias` and `userTurnSlashModelEffective`, letting clients stamp an optimistic slash bubble before history reload. Clients show `Selector · Model` only when both engine facts are present, so a badge such as `Fast · GPT 5.6 Luna` means that command selector started on that model. If provider fallback changes the serving model, the user turn shows only that model and the separate [`engine_model_fallback`](#engine_model_fallback) event reports the requested selector and fallback relationship. The fields describe only that invocation's run and never change the conversation-level model shown by a status bar.
 
 The engine sets these fields via the session layer's slash-stash mechanism (see `pendingSlashInvocation` in `engine/internal/session/types.go`). For extension-dispatched prompts, the stash is written by `dispatchCommand` and consumed by `SendPrompt`; for direct `send_prompt` invocations the engine resolves the command inline when `resolveSlash` is `true` on the command.

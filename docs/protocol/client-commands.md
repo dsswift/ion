@@ -59,7 +59,7 @@ Send a user message to an active session.
 | `cmd`                       | `"send_prompt"` | yes | Command discriminator               |
 | `key`                       | string   | yes      | Session key                          |
 | `text`                      | string   | yes      | The user's prompt text               |
-| `model`                     | string   | no       | Model override for this prompt       |
+| `model`                     | string   | no       | Model override for an ordinary prompt. A resolved slash command with a non-empty frontmatter `model:` field overrides this value for that invocation. |
 | `maxTurns`                  | number   | no       | Max LLM turns for this run           |
 | `maxBudgetUsd`              | number   | no       | Spending cap in USD                  |
 | `extensionDir`              | string   | no       | Override extension directory         |
@@ -82,7 +82,7 @@ Send a user message to an active session.
 | `compactSummaryEnabled`     | boolean  | no       | Whether LLM-based summarization is used during compaction for this prompt. |
 | `compactMemoryEnabled`      | boolean  | no       | Whether the background session memory summarizer is active for this prompt. |
 | `clientWorkspaceContext`    | object   | no       | Per-prompt workspace context override. Takes precedence over the session-level `EngineConfig.clientWorkspaceContext`. Fields: `kind` (string), `cwd` (string), `bench` (object, structured bench facts), `data` (object, generic consumer data), `text` (string, prose for system prompt). The engine routes `bench` to `PromptContext.Bench` and `data` to `PromptContext.Client` for hook payloads. |
-| `resolveSlash`              | boolean  | no       | When `true`, signals that `text` is a slash-command invocation (`/name args`) the engine should resolve and expand rather than treat as plain content. The engine looks the command up across the conventional roots in precedence order — `{workingDir}/.ion/commands`, `~/.ion/commands`, `{workingDir}/.ion/skills/<name>/SKILL.md`, `~/.ion/skills/<name>/SKILL.md`, then (only when Claude compatibility is enabled) `{workingDir}/.claude/commands`, `~/.claude/commands`, `~/.claude/skills/<name>/SKILL.md` — substitutes `$ARGUMENTS`, feeds the **expanded** body to the model (SKILL.md bodies are prefixed with their base directory so relative companion files resolve), and persists the **raw** invocation as the displayed user turn. Default `false`; existing clients sending `/`-prefixed content as ordinary text are unaffected because they do not set this flag. |
+| `resolveSlash`              | boolean  | no       | When `true`, signals that `text` is a slash-command invocation (`/name args`) the engine should resolve and expand rather than treat as plain content. The engine looks the command up across the conventional roots in precedence order — `{workingDir}/.ion/commands`, `~/.ion/commands`, `{workingDir}/.ion/skills/<name>/SKILL.md`, `~/.ion/skills/<name>/SKILL.md`, then (only when Claude compatibility is enabled) `{workingDir}/.claude/commands`, `~/.claude/commands`, `~/.claude/skills/<name>/SKILL.md` — substitutes `$ARGUMENTS`, feeds the **expanded** body to the model (SKILL.md bodies are prefixed with their base directory so relative companion files resolve), and persists the **raw** invocation as the displayed user turn. A non-empty command-frontmatter `model:` field is authoritative for that invocation: the engine resolves its tier before enterprise policy and provider availability checks, rather than using `send_prompt.model` or conversation state. Enterprise policy can reject the resolved model. A provider-unavailable model follows the typed fallback path. Default `false`; existing clients sending `/`-prefixed content as ordinary text are unaffected because they do not set this flag. |
 
 ```json
 {"cmd":"send_prompt","key":"abc-123","text":"List all files in the current directory","requestId":"r2"}
@@ -128,15 +128,17 @@ Abort a specific named agent within a session. Fire-and-forget.
 
 Inject a steering message into a running agent. Fire-and-forget.
 
-| Field       | Type              | Required | Description                       |
-|-------------|-------------------|----------|-----------------------------------|
-| `cmd`       | `"steer_agent"`   | yes      | Command discriminator             |
-| `key`       | string            | yes      | Session key                       |
-| `agentName` | string            | yes      | Name of the agent to steer        |
-| `message`   | string            | yes      | Steering message text             |
+| Field             | Type              | Required | Description                       |
+|-------------------|-------------------|----------|------------------------------------|
+| `cmd`             | `"steer_agent"`   | yes      | Command discriminator             |
+| `key`             | string            | yes      | Session key                       |
+| `agentName`       | string            | yes      | Name of the agent to steer        |
+| `message`         | string            | yes      | Steering message text             |
+| `clientMessageId` | string            | no       | Client-generated correlation id for this one steer message. When the steer reaches a live API-backed main-loop run (`agentName` empty) and persists as a genuine user turn, the engine echoes this id back on `engine_steer_injected` alongside the durable `entryId` it assigned — so the sender can re-key its optimistic UI row by identity instead of trusting buffer position or arrival order. Omitted: no correlation identity is echoed (unchanged legacy behavior). |
 
 ```json
 {"cmd":"steer_agent","key":"abc-123","agentName":"researcher","message":"Focus on the API layer only"}
+{"cmd":"steer_agent","key":"abc-123","agentName":"","message":"Actually, check the auth flow too","clientMessageId":"c-9f2a"}
 ```
 
 ---
@@ -298,7 +300,47 @@ Create a new branch in the conversation tree at the given entry.
 
 ---
 
-### navigate_tree
+### branch_before
+
+Move the conversation tree's leaf pointer to the PARENT of the given entry, so the next appended turn replaces that entry on the active path (a new sibling branch) instead of chaining after the old leaf and duplicating it. Entry-id-addressed; the tree-navigator/external-consumer counterpart to `rewind_session` below.
+
+| Field      | Type              | Required | Description                          |
+|------------|-------------------|----------|--------------------------------------|
+| `cmd`      | `"branch_before"` | yes      | Command discriminator                |
+| `key`      | string            | yes      | Session key                          |
+| `entryId`  | string            | yes      | Conversation entry ID to branch before |
+| `requestId`| string            | no       | Correlates with ServerResult         |
+
+```json
+{"cmd":"branch_before","key":"abc-123","entryId":"entry-7","requestId":"r8b"}
+```
+
+**Response:** `ServerResult` with `ok: true` on success.
+
+---
+
+### rewind_session
+
+Rewind the conversation to before a user turn — the client-facing counterpart to `branch_before`. Moves the leaf to that turn's parent and restores the plan-file continuity in effect at the branch point. Two addressing modes are supported; when both are present the exact entry id takes priority.
+
+| Field           | Type              | Required     | Description                          |
+|-----------------|-------------------|--------------|---------------------------------------|
+| `cmd`           | `"rewind_session"`| yes          | Command discriminator                |
+| `key`           | string            | yes          | Session key                          |
+| `entryId`       | string            | one of two   | Exact durable engine entry id to rewind before. The engine validates this names a genuine user-turn row on the conversation's CURRENT context path before branching, and rejects a stale, foreign-branch, or non-user id rather than silently corrupting the tree. Learn this value from a prior `engine_steer_injected` confirmation's `entryId` field, or from loaded conversation history — never compute it locally. |
+| `userTurnIndex` | number            | one of two   | Legacy 0-based ordinal of the user turn to rewind before, resolved by the engine against its own rendered-row list. Retained for older clients and external SDK consumers that have not adopted entry-id addressing. **Caution:** an ordinal computed against a client's own local row list can silently point at the wrong tree entry once a queued-but-undelivered steer occupies a row position with no corresponding persisted entry yet — prefer `entryId` whenever one is available. |
+| `requestId`     | string            | no           | Correlates with ServerResult         |
+
+```json
+{"cmd":"rewind_session","key":"abc-123","entryId":"entry-42","requestId":"r8c"}
+{"cmd":"rewind_session","key":"abc-123","userTurnIndex":3,"requestId":"r8d"}
+```
+
+**Response:** `ServerResult` with `ok: true` on success, or an error when the target entry is out of range (ordinal mode) or is not a user turn on the current path (entry-id mode).
+
+---
+
+
 
 Navigate to a different node in the conversation tree.
 
@@ -812,9 +854,27 @@ Remove stale conversation files from disk. All filter fields are optional with s
 
 ---
 
+### delete_stored_conversations
+
+Delete exact inactive stored conversations. `sessionIds` is required. The engine refuses the full request when any named conversation is active. Each requested ID removes its `.tree.jsonl`, `.llm.jsonl`, `.memory.md`, and legacy conversation files.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"delete_stored_conversations"` | yes | Command discriminator |
+| `sessionIds` | string[] | yes | Exact conversation IDs to delete |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"delete_stored_conversations","sessionIds":["conv-old"],"requestId":"r32"}
+```
+
+**Response:** `ServerResult` with `data: { deleted: number }`.
+
+---
+
 ### oidc_begin_login
 
-Start an operator OIDC login. The engine owns the operator's OIDC identity; this command begins a grant flow and returns only the user-facing half the consumer must surface. The flow completes engine-side (or via background polling for device-code); completion broadcasts an `engine_oidc_identity` snapshot to all clients. Requires an identity provider configured via `auth.identityProvider` in `engine.json`; without one, the command returns an error.
+Start an operator OIDC login. The engine owns the operator's OIDC identity; this command begins a grant flow and returns only the user-facing half the consumer must surface. The flow completes engine-side (or via background polling for device-code); completion broadcasts an `engine_oidc_identity` snapshot to all clients. Requires an identity provider configured via `auth.identityProvider` in `engine.json`; without one, the command returns an error. When `auth.requireOperatorIdentity` is true, `start_session` and `send_prompt` are refused until this flow establishes a usable operator identity, so extensions cannot load before authentication.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -864,7 +924,7 @@ Request the current operator identity snapshot. Requires a configured identity p
 {"cmd":"oidc_identity","requestId":"r42"}
 ```
 
-**Response.** An `engine_oidc_identity` event is delivered to the requesting client. The `ServerResult` payload mirrors it: `{ signedIn: boolean, subject, username, name, provider }`.
+**Response.** An `engine_oidc_identity` event is delivered to the requesting client. The `ServerResult` payload mirrors it: `{ signedIn: boolean, requireOperatorIdentity: boolean, subject, username, name, provider }`. The event carries the same policy as `oidcRequired`; both booleans are always present so consumers replace stale state when policy changes.
 
 ---
 
