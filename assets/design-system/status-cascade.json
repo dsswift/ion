@@ -4,6 +4,7 @@
     { "name": "error", "semantics": "Dead or failed conversation.", "iosReachable": true },
     { "name": "permission", "semantics": "Generic tool permission awaiting a response.", "iosReachable": true },
     { "name": "running", "semantics": "Foreground conversation running or connecting.", "iosReachable": true },
+    { "name": "starting", "semantics": "Engine session attaching without a foreground run.", "iosReachable": true },
     { "name": "children", "semantics": "Background child agents still running.", "iosReachable": true },
     { "name": "bash-background", "semantics": "Background shell command still running.", "iosReachable": true },
     { "name": "plan-ready", "semantics": "Plan exit awaiting a response.", "iosReachable": true },
