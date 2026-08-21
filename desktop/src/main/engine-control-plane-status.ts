@@ -10,18 +10,24 @@
  * reader asking "how is health computed" or "why did no transition fire" should
  * not have to scroll past the prompt path to find out.
  */
-import { log as _log } from './logger'
-import type { HealthReport, TabStatus } from '../shared/types'
-import type { TabEntry } from './engine-control-plane-events'
+import { log as _log } from "./logger";
+import type { HealthReport, TabStatus } from "../shared/types";
+import type { TabEntry } from "./engine-control-plane-events";
 
-const TAG = 'SessionPlane'
-function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
+const TAG = "SessionPlane";
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log(TAG, msg, fields);
+}
 
 /**
  * Publishes a `tab-status-change` to the plane's consumers. Supplied by the
  * control plane so these writers stay free of EventEmitter coupling.
  */
-export type StatusEmit = (tabId: string, newStatus: TabStatus, oldStatus: TabStatus) => void
+export type StatusEmit = (
+  tabId: string,
+  newStatus: TabStatus,
+  oldStatus: TabStatus,
+) => void;
 
 /**
  * Project every tracked tab into the health report shape.
@@ -32,32 +38,32 @@ export type StatusEmit = (tabId: string, newStatus: TabStatus, oldStatus: TabSta
  * report.
  */
 export function buildHealthReport(tabs: Map<string, TabEntry>): HealthReport {
-  const projected: HealthReport['tabs'] = []
+  const projected: HealthReport["tabs"] = [];
   for (const tab of tabs.values()) {
     projected.push({
       tabId: tab.tabId,
       status: tab.status,
       activeRequestId: tab.activeRequestId,
       conversationId: tab.conversationId,
-      alive: tab.status !== 'dead' && tab.status !== 'failed',
+      alive: tab.status !== "dead" && tab.status !== "failed",
       lastActivityAt: tab.lastActivityAt,
-    })
+    });
   }
-  return { tabs: projected, queueDepth: 0 }
+  return { tabs: projected, queueDepth: 0 };
 }
 
 /**
- * True when any tab is mid-flight. 'connecting' counts: the session is starting
- * and a prompt is already committed to it, so treating it as idle would let a
- * shutdown or drain race a run that is about to produce output.
+ * True when any tab is mid-flight. `connecting` and `starting` count for drain
+ * safety even though only `running` renders as work: stopping an attaching
+ * session would race the first status snapshot and its configured resources.
  */
 export function anyTabRunning(tabs: Map<string, TabEntry>): boolean {
   for (const tab of tabs.values()) {
-    if (tab.status === 'running' || tab.status === 'connecting') {
-      return true
+    if (tab.status === "running" || tab.status === "connecting" || tab.status === "starting") {
+      return true;
     }
   }
-  return false
+  return false;
 }
 
 /**
@@ -84,11 +90,16 @@ export function anyTabRunning(tabs: Map<string, TabEntry>): boolean {
  * recognise it by `oldStatus === newStatus` and must treat it as convergence
  * with no run-lifecycle meaning.
  */
-export function resyncStatus(tabs: Map<string, TabEntry>, tabId: string, reason: string, emit: StatusEmit): void {
-  const tab = tabs.get(tabId)
-  if (!tab) return
-  log('status_resync', { tab_id: tabId, status: tab.status, reason })
-  emit(tabId, tab.status, tab.status)
+export function resyncStatus(
+  tabs: Map<string, TabEntry>,
+  tabId: string,
+  reason: string,
+  emit: StatusEmit,
+): void {
+  const tab = tabs.get(tabId);
+  if (!tab) return;
+  log("status_resync", { tab_id: tabId, status: tab.status, reason });
+  emit(tabId, tab.status, tab.status);
 }
 
 /**
@@ -96,12 +107,17 @@ export function resyncStatus(tabs: Map<string, TabEntry>, tabId: string, reason:
  * already the target — see `resyncStatus` above for why that early return
  * needs a companion rather than removal.
  */
-export function applyStatus(tabs: Map<string, TabEntry>, tabId: string, newStatus: TabStatus, emit: StatusEmit): void {
-  const tab = tabs.get(tabId)
-  if (!tab) return
-  const oldStatus = tab.status
-  if (oldStatus === newStatus) return
-  log('status_transition', { tab_id: tabId, from: oldStatus, to: newStatus })
-  tab.status = newStatus
-  emit(tabId, newStatus, oldStatus)
+export function applyStatus(
+  tabs: Map<string, TabEntry>,
+  tabId: string,
+  newStatus: TabStatus,
+  emit: StatusEmit,
+): void {
+  const tab = tabs.get(tabId);
+  if (!tab) return;
+  const oldStatus = tab.status;
+  if (oldStatus === newStatus) return;
+  log("status_transition", { tab_id: tabId, from: oldStatus, to: newStatus });
+  tab.status = newStatus;
+  emit(tabId, newStatus, oldStatus);
 }

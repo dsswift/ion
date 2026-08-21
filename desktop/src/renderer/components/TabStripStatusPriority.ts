@@ -8,6 +8,7 @@ export const STATUS_CASCADE = [
   { name: 'error', iosReachable: true },
   { name: 'permission', iosReachable: true },
   { name: 'running', iosReachable: true },
+  { name: 'starting', iosReachable: true },
   { name: 'children', iosReachable: true },
   { name: 'bash-background', iosReachable: true },
   { name: 'plan-ready', iosReachable: true },
@@ -28,6 +29,7 @@ function statusPriority(name: StatusCascadeName): number {
 export const STATUS_PRIORITY_ERROR = statusPriority('error')
 export const STATUS_PRIORITY_PERMISSION = statusPriority('permission')
 export const STATUS_PRIORITY_RUNNING = statusPriority('running')
+export const STATUS_PRIORITY_STARTING = statusPriority('starting')
 export const STATUS_PRIORITY_CHILDREN = statusPriority('children')
 export const STATUS_PRIORITY_BASH_BACKGROUND = statusPriority('bash-background')
 export const STATUS_PRIORITY_PLAN_READY = statusPriority('plan-ready')
