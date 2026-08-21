@@ -3,7 +3,50 @@ package extcontext
 import (
 	"testing"
 	"time"
+
+	"github.com/dsswift/ion/engine/internal/tools"
 )
+
+func TestAgentStatusGetterMapsCompleteActiveSnapshot(t *testing.T) {
+	r := NewDispatchRegistry()
+	r.RegisterWithID("dispatch-parent", "parent", nil, nil, "sess", "", 1)
+	r.RegisterWithID("dispatch-child", "child", nil, nil, "sess", "dispatch-parent", 2)
+	r.SetChildConvID("dispatch-child", "child-conversation")
+	r.UpdateActivity("dispatch-child", 4, "Using Read...")
+	if !r.SetSuspendedStateWithWaitingOn("dispatch-child", make(chan struct{}, 1), []string{"dispatch-grandchild"}, []string{"bash-task"}) {
+		t.Fatal("failed to suspend child dispatch")
+	}
+
+	entries := AgentStatusGetter(r)()
+	if len(entries) != 2 {
+		t.Fatalf("AgentStatusGetter entries = %d, want 2", len(entries))
+	}
+	var child tools.AgentStatusEntry
+	for _, entry := range entries {
+		if entry.DispatchID == "dispatch-child" {
+			child = entry
+		}
+	}
+	if child.DispatchID == "" {
+		t.Fatal("AgentStatusGetter missing child dispatch")
+	}
+	if child.Status != "suspended" || child.ParentDispatchID != "dispatch-parent" || child.Depth != 2 {
+		t.Fatalf("AgentStatusGetter hierarchy/status = %#v", child)
+	}
+	if child.ChildConversationID != "child-conversation" || child.ToolCount != 4 || child.LastWork != "Using Read..." || child.StartedAt == "" {
+		t.Fatalf("AgentStatusGetter activity fields = %#v", child)
+	}
+	if child.WaitingOn == nil || !equalStrings(child.WaitingOn.TaskIDs, []string{"bash-task"}) || !equalStrings(child.WaitingOn.ChildDispatchIDs, []string{"dispatch-grandchild"}) {
+		t.Fatalf("AgentStatusGetter waiting set = %#v", child.WaitingOn)
+	}
+
+	r.Deregister("dispatch-child")
+	for _, entry := range AgentStatusGetter(r)() {
+		if entry.DispatchID == "dispatch-child" {
+			t.Fatal("AgentStatusGetter retained terminal dispatch after deregistration")
+		}
+	}
+}
 
 // TestDispatchRegistry_Snapshot_ReturnsActiveEntries verifies that Snapshot
 // returns a DispatchStateEntry for each registered dispatch and omits
@@ -80,6 +123,50 @@ func TestDispatchRegistry_Snapshot_ReturnsActiveEntries(t *testing.T) {
 		t.Errorf("alpha.ElapsedMs = %d, expected <= %d (snapshot window)", alpha.ElapsedMs, maxElapsed)
 	}
 
+	// Park beta on mixed task and child work. Snapshot must preserve exact,
+	// sorted sets so SDK consumers can distinguish what holds it open.
+	if !r.SetSuspendedStateWithWaitingOn("dispatch-beta-1001-bbb", make(chan struct{}, 1), []string{"child-z", "child-a"}, []string{"bash-2", "bash-1"}) {
+		t.Fatal("SetSuspendedStateWithWaitingOn unexpectedly refused to park")
+	}
+	snap = r.Snapshot()
+	for _, entry := range snap {
+		if entry.DispatchID != "dispatch-beta-1001-bbb" {
+			continue
+		}
+		if entry.Status != "suspended" {
+			t.Errorf("beta.Status = %q, want suspended", entry.Status)
+		}
+		if entry.WaitingOn == nil {
+			t.Fatal("beta.WaitingOn = nil, want task and child sets")
+		}
+		if got, want := entry.WaitingOn.TaskIDs, []string{"bash-1", "bash-2"}; !equalStrings(got, want) {
+			t.Errorf("beta.WaitingOn.TaskIDs = %v, want %v", got, want)
+		}
+		if got, want := entry.WaitingOn.ChildDispatchIDs, []string{"child-a", "child-z"}; !equalStrings(got, want) {
+			t.Errorf("beta.WaitingOn.ChildDispatchIDs = %v, want %v", got, want)
+		}
+	}
+
+	// Completion drains only its task ID, preserving remaining task and child
+	// wait metadata for the next snapshot.
+	if owner, revived := r.DeliverTaskResult("bash-1", TaskResultRecord{Status: "completed"}); owner != "dispatch-beta-1001-bbb" || revived {
+		t.Fatalf("DeliverTaskResult = (%q, %v), want (dispatch-beta-1001-bbb, false) — one task of a mixed wait set must not revive", owner, revived)
+	}
+	for _, entry := range r.Snapshot() {
+		if entry.DispatchID != "dispatch-beta-1001-bbb" {
+			continue
+		}
+		if entry.WaitingOn == nil {
+			t.Fatal("beta.WaitingOn = nil after one task completion")
+		}
+		if got, want := entry.WaitingOn.TaskIDs, []string{"bash-2"}; !equalStrings(got, want) {
+			t.Errorf("remaining TaskIDs = %v, want %v", got, want)
+		}
+		if got, want := entry.WaitingOn.ChildDispatchIDs, []string{"child-a", "child-z"}; !equalStrings(got, want) {
+			t.Errorf("remaining ChildDispatchIDs = %v, want %v", got, want)
+		}
+	}
+
 	// Deregister one entry; snapshot must shrink to 1.
 	r.Deregister("dispatch-alpha-1000-aaa")
 	snap = r.Snapshot()
@@ -91,11 +178,10 @@ func TestDispatchRegistry_Snapshot_ReturnsActiveEntries(t *testing.T) {
 	}
 }
 
-// TestDispatchRegistry_Snapshot_StatusAlwaysRunning verifies that every entry
-// returned by Snapshot carries Status="running", regardless of how it was
-// registered. The registry's deregister-on-completion invariant means no
-// terminal entry ever appears, but the field must be explicitly set.
-func TestDispatchRegistry_Snapshot_StatusAlwaysRunning(t *testing.T) {
+// TestDispatchRegistry_Snapshot_StatusRunningForActive verifies that active,
+// non-parked entries carry Status="running". Parked entries are covered above;
+// terminal entries never appear because Deregister removes them.
+func TestDispatchRegistry_Snapshot_StatusRunningForActive(t *testing.T) {
 	r := NewDispatchRegistry()
 	r.RegisterWithID("id-1", "agent", nil, nil, "sess", "", 1)
 	r.RegisterWithID("id-2", "other", nil, nil, "sess", "id-1", 2)
@@ -105,4 +191,16 @@ func TestDispatchRegistry_Snapshot_StatusAlwaysRunning(t *testing.T) {
 			t.Errorf("entry %q: Status = %q, want \"running\"", e.DispatchID, e.Status)
 		}
 	}
+}
+
+func equalStrings(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
 }

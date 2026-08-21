@@ -81,6 +81,20 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 		result.DefaultModel = fallback
 	}
 
+	// Enterprise identity config is sealed. Provider identity and OAuth client
+	// details come from enterprise when present. Requirement composes one-way:
+	// either lower or enterprise config can require an operator, but enterprise
+	// false never weakens a lower-layer true.
+	if enterprise.Auth != nil {
+		required := enterprise.Auth.RequireOperatorIdentity || (result.Auth != nil && result.Auth.RequireOperatorIdentity)
+		authCopy := *enterprise.Auth
+		authCopy.RequireOperatorIdentity = required
+		result.Auth = &authCopy
+		utils.LogWithFields(utils.LevelInfo, "config.merge", "enterprise: identity configuration applied", map[string]any{
+			"provider": authCopy.IdentityProvider, "require_operator_identity": authCopy.RequireOperatorIdentity,
+		})
+	}
+
 	// Provider restrictions -- allow list (D-005). When the enterprise
 	// declares AllowedProviders, every provider not on the list is stripped
 	// from the merged config so a hand-edited ~/.ion/engine.json cannot

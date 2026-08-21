@@ -41,6 +41,17 @@ func (b *ApiBackend) saveToolResultImages(run *activeRun, toolID string, images 
 		if img == nil {
 			continue
 		}
+		contentHash := img.ContentHash
+		if contentHash == "" {
+			var err error
+			contentHash, err = conversation.ContentHashFromBase64(img.Data)
+			if err != nil {
+				utils.LogWithFields(utils.LevelError, "backend.runloop", "tool result image hash failed; skipping image", map[string]any{
+					"run_id": run.requestID, "tool_id": toolID, "mediaType": img.MediaType, "error": utils.ErrStr(err),
+				})
+				continue
+			}
+		}
 		path, err := conversation.SaveImageToConversation("", convID, img.MediaType, img.Data)
 		if err != nil {
 			utils.LogWithFields(utils.LevelError, "backend.runloop", "tool result image save failed; skipping image", map[string]any{
@@ -58,9 +69,10 @@ func (b *ApiBackend) saveToolResultImages(run *activeRun, toolID string, images 
 			"path":      path,
 		})
 		out = append(out, types.ToolResultImage{
-			Path:      path,
-			MediaType: img.MediaType,
-			Source:    "tool",
+			Path:        path,
+			MediaType:   img.MediaType,
+			ContentHash: contentHash,
+			Source:      "tool",
 		})
 	}
 	return out
@@ -75,9 +87,16 @@ func (b *ApiBackend) saveToolResultImages(run *activeRun, toolID string, images 
 // convID is resolved from the run's loaded conversation. An empty convID (no
 // conversation on the run) or a save failure is logged at Error and returns ""
 // so the caller emits no event rather than a dangling path.
-func (b *ApiBackend) saveProviderImage(run *activeRun, mediaType, base64Data string) string {
+func (b *ApiBackend) saveProviderImage(run *activeRun, mediaType, base64Data string) (string, string) {
 	if base64Data == "" {
-		return ""
+		return "", ""
+	}
+	contentHash, err := conversation.ContentHashFromBase64(base64Data)
+	if err != nil {
+		utils.LogWithFields(utils.LevelError, "backend.runloop", "provider image hash failed; skipping image", map[string]any{
+			"run_id": run.requestID, "mediaType": mediaType, "error": utils.ErrStr(err),
+		})
+		return "", ""
 	}
 	convID := ""
 	if run != nil && run.conv != nil {
@@ -88,7 +107,7 @@ func (b *ApiBackend) saveProviderImage(run *activeRun, mediaType, base64Data str
 			"run_id":    run.requestID,
 			"mediaType": mediaType,
 		})
-		return ""
+		return "", ""
 	}
 	path, err := conversation.SaveImageToConversation("", convID, mediaType, base64Data)
 	if err != nil {
@@ -97,12 +116,12 @@ func (b *ApiBackend) saveProviderImage(run *activeRun, mediaType, base64Data str
 			"mediaType": mediaType,
 			"error":     utils.ErrStr(err),
 		})
-		return ""
+		return "", ""
 	}
 	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "provider image saved", map[string]any{
 		"run_id":    run.requestID,
 		"mediaType": mediaType,
 		"path":      path,
 	})
-	return path
+	return path, contentHash
 }

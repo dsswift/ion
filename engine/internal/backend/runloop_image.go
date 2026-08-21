@@ -197,7 +197,7 @@ func (b *ApiBackend) runImageLoop(ctx context.Context, run *activeRun, opts type
 		persistBlocks = append(persistBlocks, types.LlmContentBlock{Type: "text", Text: revisedPrompt})
 	}
 	for i, result := range results {
-		path := b.saveProviderImage(run, result.MediaType, result.Data)
+		path, contentHash := b.saveProviderImage(run, result.MediaType, result.Data)
 		if path == "" {
 			utils.LogWithFields(utils.LevelError, "backend.image", "failed to save image, skipping", map[string]any{
 				"run_id": run.requestID,
@@ -209,15 +209,17 @@ func (b *ApiBackend) runImageLoop(ctx context.Context, run *activeRun, opts type
 		persistBlocks = append(persistBlocks, types.LlmContentBlock{
 			Type: "image",
 			Source: &types.ImageSource{
-				Type:      "base64",
-				MediaType: result.MediaType,
-				Data:      result.Data,
+				Type:        "base64",
+				MediaType:   result.MediaType,
+				Data:        result.Data,
+				ContentHash: contentHash,
 			},
 		})
 		b.emit(run, types.NormalizedEvent{Data: &types.ImageContentEvent{
-			Path:      path,
-			MediaType: result.MediaType,
-			Source:    "provider",
+			Path:        path,
+			MediaType:   result.MediaType,
+			ContentHash: contentHash,
+			Source:      "provider",
 		}})
 		utils.LogWithFields(utils.LevelInfo, "backend.image", "image emitted", map[string]any{
 			"run_id": run.requestID,

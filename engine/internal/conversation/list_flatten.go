@@ -172,6 +172,10 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 			var promptAttachments []types.SessionMessageAttachment
 			for _, b := range blocks {
 				switch b.Type {
+				case SkillListingBlockType, SkillContentBlockType:
+					// Internal lifecycle metadata rides this carrier for provider role
+					// alternation but never becomes a transcript row.
+					continue
 				case "text":
 					if b.Text != "" {
 						textParts = append(textParts, b.Text)
@@ -380,6 +384,17 @@ func imageAttachmentFromBlock(convID string, b types.LlmContentBlock) *types.Ses
 	if b.Source == nil || b.Source.Data == "" || convID == "" {
 		return nil
 	}
+	contentHash := b.Source.ContentHash
+	if contentHash == "" {
+		var hashErr error
+		contentHash, hashErr = ContentHashFromBase64(b.Source.Data)
+		if hashErr != nil {
+			utils.LogWithFields(utils.LevelError, "conversation", "reload image attachment hash failed; dropping", map[string]any{
+				"conversation_id": convID, "mediaType": b.Source.MediaType, "tool_use_id": b.ToolUseID, "error": utils.ErrStr(hashErr),
+			})
+			return nil
+		}
+	}
 	path, err := SaveImageToConversation("", convID, b.Source.MediaType, b.Source.Data)
 	if err != nil {
 		utils.LogWithFields(utils.LevelError, "conversation", "reload image attachment save failed; dropping", map[string]any{
@@ -395,10 +410,11 @@ func imageAttachmentFromBlock(convID string, b types.LlmContentBlock) *types.Ses
 		name = name[i+1:]
 	}
 	return &types.SessionMessageAttachment{
-		ID:        "img:" + path,
-		Type:      "image",
-		Name:      name,
-		Path:      path,
-		MediaType: b.Source.MediaType,
+		ID:          "img:" + path,
+		Type:        "image",
+		Name:        name,
+		Path:        path,
+		MediaType:   b.Source.MediaType,
+		ContentHash: contentHash,
 	}
 }

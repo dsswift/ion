@@ -75,6 +75,10 @@ func TestProcessStreamProviderImageEmitsImageContentEvent(t *testing.T) {
 	if img.Path == "" {
 		t.Fatal("Path is empty; provider image was not saved to disk")
 	}
+	const wantContentHash = "08bb5e5d6eaac1049ede0893d30ed022b1a4d9b5b48db414871f51c9cb35283d"
+	if img.ContentHash != wantContentHash {
+		t.Errorf("ContentHash = %q, want %q", img.ContentHash, wantContentHash)
+	}
 	// Path must be a real file under the temp HOME, and must not be base64.
 	if img.Path == b64 {
 		t.Fatal("Path carries base64 data instead of a file path")

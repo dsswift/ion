@@ -54,7 +54,7 @@ func CountUserPrompts(conv *Conversation) int {
 			continue
 		}
 		blocks := contentToBlocks(md.Content)
-		if isContextInjectionBlocks(blocks) {
+		if isContextInjectionBlocks(blocks) || isSkillMetaBlocks(blocks) {
 			continue
 		}
 		hasText := false

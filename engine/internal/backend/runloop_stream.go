@@ -181,18 +181,21 @@ func (b *ApiBackend) processStream(
 			// reload path re-derives the content-addressed path from these
 			// bytes via imageAttachmentFromBlock).
 			if cb.Type == "image" || cb.ImageData != "" {
+				path, contentHash := b.saveProviderImage(run, cb.ImageMediaType, cb.ImageData)
 				if currentBlockIndex < len(assistantBlocks) {
 					assistantBlocks[currentBlockIndex].Source = &types.ImageSource{
-						Type:      "base64",
-						MediaType: cb.ImageMediaType,
-						Data:      cb.ImageData,
+						Type:        "base64",
+						MediaType:   cb.ImageMediaType,
+						Data:        cb.ImageData,
+						ContentHash: contentHash,
 					}
 				}
-				if path := b.saveProviderImage(run, cb.ImageMediaType, cb.ImageData); path != "" {
+				if path != "" {
 					b.emit(run, types.NormalizedEvent{Data: &types.ImageContentEvent{
-						Path:      path,
-						MediaType: cb.ImageMediaType,
-						Source:    "provider",
+						Path:        path,
+						MediaType:   cb.ImageMediaType,
+						ContentHash: contentHash,
+						Source:      "provider",
 					}})
 				}
 			}

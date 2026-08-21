@@ -66,6 +66,59 @@ func findOidcEvent(t *testing.T, lines []string, eventType string) *types.Engine
 	return nil
 }
 
+func TestDispatchOidc_RequiredIdentityBlocksSessionBeforeExtensions(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	mb := newMockBackend()
+	srv := newShortPathTestServer(t, mb)
+	srv.SetConfig(&types.EngineRuntimeConfig{
+		Auth: &types.AuthConfig{RequireOperatorIdentity: true},
+	})
+	srv.SetIdentityManager(auth.NewIdentityManager("entra", types.OAuthConfig{
+		ClientID: "client-1", AuthorizationURL: "https://login.example.com/authorize", TokenURL: "https://login.example.com/token",
+	}, 0))
+	conn := dialServer(t, srv)
+	t.Cleanup(func() { conn.Close() })
+
+	sendJSON(t, conn, map[string]interface{}{
+		"cmd": "start_session", "requestId": "req-start", "key": "required-auth",
+		"config": map[string]interface{}{
+			"profileId": "default", "workingDirectory": t.TempDir(), "extensions": []string{"/must/not/load.js"},
+		},
+	})
+	lines := readLines(t, conn, 1, 2*time.Second)
+	if len(lines) == 0 || !strings.Contains(lines[0], "operator OIDC identity is required") {
+		t.Fatalf("expected required-identity refusal, got %v", lines)
+	}
+	if len(srv.SessionManager().ListSessions()) != 0 {
+		t.Fatal("session was created before required identity was established")
+	}
+}
+
+func TestDispatchOidc_IdentitySnapshotIncludesRequirement(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	mb := newMockBackend()
+	srv := newShortPathTestServer(t, mb)
+	srv.SetConfig(&types.EngineRuntimeConfig{Auth: &types.AuthConfig{RequireOperatorIdentity: true}})
+	srv.SetIdentityManager(auth.NewIdentityManager("entra", types.OAuthConfig{
+		ClientID: "client-1", AuthorizationURL: "https://login.example.com/authorize", TokenURL: "https://login.example.com/token",
+	}, 0))
+	conn := dialServer(t, srv)
+	t.Cleanup(func() { conn.Close() })
+
+	sendJSON(t, conn, map[string]interface{}{"cmd": "oidc_identity", "requestId": "req-required"})
+	lines := readLines(t, conn, 2, 2*time.Second)
+	evt := findOidcEvent(t, lines, types.EventOidcIdentity)
+	if evt == nil || evt.OidcRequired == nil || !*evt.OidcRequired {
+		t.Fatalf("required identity missing from snapshot: %v", lines)
+	}
+	joined := strings.Join(lines, "\n")
+	if !strings.Contains(joined, `"requireOperatorIdentity":true`) {
+		t.Fatalf("required identity missing from result payload: %v", lines)
+	}
+}
+
 func TestDispatchOidc_NoIdentityManagerConfigured(t *testing.T) {
 	mb := newMockBackend()
 	srv := newShortPathTestServer(t, mb)

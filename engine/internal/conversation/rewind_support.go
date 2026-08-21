@@ -34,6 +34,37 @@ func UserMessageEntryID(conv *Conversation, userTurnIndex int) (string, bool) {
 	return "", false
 }
 
+// IsUserTurnEntryOnCurrentPath reports whether entryID names a genuine
+// client-facing user-turn row on the conversation's CURRENT context path (leaf
+// → root). This is the validation gate for exact-entry rewind: a client that
+// retained an EntryID from a prior engine_steer_injected confirmation, or from
+// loaded conversation history, may be naming an entry that (a) never existed,
+// (b) belongs to a different branch than the one currently active, or (c)
+// exists but is not a user row at all (an assistant turn, a tool result, a
+// marker). Any of those must be rejected before BranchBefore runs — that
+// primitive trusts its entryID argument completely and will happily branch
+// before a non-user or now-orphaned entry, silently corrupting the tree in a
+// way ordinal resolution structurally cannot (an out-of-range ordinal just
+// fails UserMessageEntryID's count comparison; an exact id has no such
+// automatic bound).
+//
+// Reuses flattenEntries so the definition of "a user row" is identical to the
+// one UserMessageEntryID and the client's own rendered list use — the same
+// rowID(entry.ID, 0) identity a genuine user turn's first (and only) row
+// carries.
+func IsUserTurnEntryOnCurrentPath(conv *Conversation, entryID string) bool {
+	if entryID == "" {
+		return false
+	}
+	rows := flattenEntries(conv)
+	for _, r := range rows {
+		if r.ID == entryID {
+			return r.Role == "user"
+		}
+	}
+	return false
+}
+
 // PlanStateAtLeaf returns the plan-file continuity in effect at the current
 // leaf: the path and slug of the last plan-file-written marker on the context
 // path (leaf → root, root-first order). After a rewind moves the leaf, this is

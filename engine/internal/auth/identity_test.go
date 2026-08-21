@@ -296,6 +296,43 @@ func seedGrant(t *testing.T, m *IdentityManager, tok *TokenResponse) {
 	}
 }
 
+func TestIdentityManager_ValidateGrantRefreshesExpiredBaseGrant(t *testing.T) {
+	var calls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "fresh-at", "refresh_token": "rotated-rt",
+			"expires_in": 3600, "scope": "openid profile offline_access",
+		})
+	}))
+	defer server.Close()
+
+	m := testIdentityManager(t, server.URL)
+	seedGrant(t, m, &TokenResponse{
+		AccessToken: "expired", RefreshToken: "rt-1",
+		IDToken: makeUnsignedJWT(t, map[string]any{"preferred_username": "user@example.com"}),
+		Scope:   "openid profile offline_access", ExpiresAt: time.Now().Add(-time.Minute),
+	})
+	if err := m.ValidateGrant(context.Background()); err != nil {
+		t.Fatalf("ValidateGrant: %v", err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("refresh calls = %d, want 1", calls.Load())
+	}
+}
+
+func TestIdentityManager_ValidateGrantRejectsExpiredGrantWithoutRefresh(t *testing.T) {
+	m := testIdentityManager(t, "https://unused.example.com")
+	seedGrant(t, m, &TokenResponse{
+		AccessToken: "expired",
+		IDToken:     makeUnsignedJWT(t, map[string]any{"preferred_username": "user@example.com"}),
+		ExpiresAt:   time.Now().Add(-time.Minute),
+	})
+	if err := m.ValidateGrant(context.Background()); err == nil || !strings.Contains(err.Error(), "no refresh token") {
+		t.Fatalf("expected unusable-grant error, got %v", err)
+	}
+}
+
 // TestIdentityManager_GetToken_MintsPerScope asserts one refresh token
 // mints per-scope access tokens, and that a second request for the same
 // scope is served from cache without a network round-trip.

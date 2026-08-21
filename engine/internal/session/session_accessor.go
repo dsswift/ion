@@ -293,11 +293,31 @@ func (a *sessionAccessor) PersistDispatchRegistered(agentID, agentName, displayN
 	a.m.persistDispatchRegistered(a.key, a.s.conversationID, agentID, agentName, displayName, task, model, parentDispatchID, depth)
 }
 
+// PersistDispatchTerminal writes the terminal durability record for a single
+// dispatch at its own terminal transition. Delegates to
+// Manager.persistTerminalDispatch (dispatch_rehydrate.go). Best-effort by
+// contract; see the interface doc.
+func (a *sessionAccessor) PersistDispatchTerminal(agentID string) {
+	a.m.persistTerminalDispatch(a.key, a.s.conversationID, agentID)
+}
+
 // DispatchRegistry returns the session's dispatch registry so context builders
 // that do not already hold one in scope (extension-tool dispatch, the LLM-call
 // hook context) can pass it to NewExtContext instead of silently omitting it.
 func (a *sessionAccessor) DispatchRegistry() *extcontext.DispatchRegistry {
 	return a.s.dispatchRegistry
+}
+
+// RegisterOutstandingBackgroundTask records a notifying Bash task against this
+// dispatch's owning session. The dispatch path discovers this optional seam so
+// lightweight test accessors need not carry session task bookkeeping.
+func (a *sessionAccessor) RegisterOutstandingBackgroundTask(taskID, command string) {
+	a.m.registerOutstandingBackgroundTask(a.key, taskID, command)
+}
+
+// OutstandingBackgroundTaskIDs returns this owning session's live task set.
+func (a *sessionAccessor) OutstandingBackgroundTaskIDs() []string {
+	return a.m.OutstandingBackgroundTaskIDs(a.key)
 }
 
 func (a *sessionAccessor) EngineConfig() *types.EngineRuntimeConfig { return a.m.config }

@@ -540,6 +540,12 @@ func formatAnthropicBlock(b types.LlmContentBlock) map[string]any {
 			text = "[Nested context loaded]"
 		}
 		return map[string]any{"type": "text", "text": text}
+	case "skill_content", "skill_listing":
+		text := b.Text
+		if text == "" {
+			text = "[Skill content]"
+		}
+		return map[string]any{"type": "text", "text": text}
 	default:
 		// Pass through unknown block types as-is
 		m := map[string]any{"type": b.Type}

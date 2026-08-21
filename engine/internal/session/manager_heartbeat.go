@@ -164,56 +164,18 @@ func (m *Manager) emitHeartbeatTick() {
 // NOT emit the new event directly — that would double-emit. See
 // Manager.emit + buildSessionStatusMirror in manager.go.
 func (m *Manager) emitStatusSnapshot(key, reason string) {
-	m.mu.RLock()
-	s, ok := m.sessions[key]
+	fields, ok := m.buildStatusFields(key)
 	if !ok {
-		m.mu.RUnlock()
 		return
 	}
-	// Compute the authoritative state under the lock so the
-	// cross-check's defensive clear is observed atomically with the
-	// emission. currentSessionStatus only writes s.requestID, which is
-	// covered by the manager lock — we promote to write here so the
-	// clear is race-free.
-	m.mu.RUnlock()
-	m.mu.Lock()
-	sessionState := m.currentSessionStatus(s)
-	pendingDenials := s.lastPermissionDenials
-	lastPct := s.lastContextPct
-	lastWindow := s.lastContextWindow
-	lastTokens := s.lastContextTokens
-	lastModel := s.lastModel
-	lastCost := s.lastTotalCost
-	lastConvCost := s.lastConvCost
-	sessionID := s.conversationID
-	bgCount := 0
-	if s.dispatchRegistry != nil {
-		bgCount = len(s.dispatchRegistry.ActiveIDs())
-	}
-	// Outstanding background shells ride every status snapshot alongside the
-	// dispatch count, so a reconnecting or polling consumer learns that an
-	// idle-looking session is actually holding for background commands.
-	shellCount := len(s.outstandingBackgroundTasks)
-	m.mu.Unlock()
-
-	utils.LogWithFields(utils.LevelDebug, "session", "status_snapshot_emitted", map[string]any{"key": key, "session_state": sessionState, "reason": reason, "count": len(pendingDenials), "model": lastModel, "last_pct": lastPct, "last_tokens": lastTokens, "bg_count": bgCount, "shell_count": shellCount})
-	m.emit(key, types.EngineEvent{
-		Type: "engine_status",
-		Fields: &types.StatusFields{
-			Label:               key,
-			State:               sessionState,
-			SessionID:           sessionID,
-			ContextPercent:      lastPct,
-			ContextWindow:       lastWindow,
-			ContextTokens:       lastTokens,
-			Model:               lastModel,
-			RunCostUsd:          lastCost,
-			ConversationCostUsd: lastConvCost,
-			PermissionDenials:   pendingDenials,
-			BackgroundAgents:    bgCount,
-			BackgroundShells:    shellCount,
-		},
+	utils.LogWithFields(utils.LevelDebug, "session", "status_snapshot_emitted", map[string]any{
+		"key": key, "session_state": fields.State, "reason": reason,
+		"count": len(fields.PermissionDenials), "model": fields.Model,
+		"last_pct": fields.ContextPercent, "last_tokens": fields.ContextTokens,
+		"bg_count": fields.BackgroundAgents, "shell_count": fields.BackgroundShells,
+		"has_pending_work": fields.HasPendingWork,
 	})
+	m.emit(key, types.EngineEvent{Type: "engine_status", Fields: fields})
 }
 
 // QuerySessionStatus emits a fresh engine_status snapshot for the

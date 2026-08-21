@@ -392,17 +392,24 @@ func (h *HybridBackend) SteerWithReason(requestID, message string) SteerResult {
 // kind of the inner backend (api / cli), which is a different concept from the
 // injection kind being threaded through.
 func (h *HybridBackend) SteerWithKind(requestID, message, injectionKind string) SteerResult {
+	return h.SteerWithClientID(requestID, message, injectionKind, "")
+}
+
+// SteerWithClientID is the correlation-id-carrying variant, forwarding to the
+// API-routed inner backend's SteerWithClientID. See ApiBackend.SteerWithClientID.
+func (h *HybridBackend) SteerWithClientID(requestID, message, injectionKind, clientMessageID string) SteerResult {
 	inner, backendKind := h.lookup(requestID)
 	api, ok := inner.(*ApiBackend)
 	if !ok {
 		utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "SteerWithReason: not API-routed, falling back to stdin", map[string]any{
-			"request_id":     requestID,
-			"kind":           backendKind,
-			"injection_kind": injectionKind,
+			"request_id":        requestID,
+			"kind":              backendKind,
+			"injection_kind":    injectionKind,
+			"client_message_id": clientMessageID,
 		})
 		return SteerResultNoRun
 	}
-	return api.SteerWithKind(requestID, message, injectionKind)
+	return api.SteerWithClientID(requestID, message, injectionKind, clientMessageID)
 }
 
 // SignalSuspend satisfies the `suspendableBackend` interface the extcontext

@@ -134,5 +134,33 @@ func mapToContentBlock(m map[string]any) types.LlmContentBlock {
 		}
 		b.RecentFiles = files
 	}
+	if v, ok := m["skillName"].(string); ok {
+		b.SkillName = v
+	}
+	if v, ok := m["skillSource"].(string); ok {
+		b.SkillSource = v
+	}
+	if v, ok := m["skillInvokedAt"].(float64); ok {
+		b.SkillInvokedAt = int64(v)
+	}
+	if v, ok := m["skillNames"].([]any); ok {
+		for _, item := range v {
+			if name, ok := item.(string); ok {
+				b.SkillNames = append(b.SkillNames, name)
+			}
+		}
+	}
+	if v, ok := m["restoredSkills"].([]any); ok {
+		for _, item := range v {
+			encoded, err := json.Marshal(item)
+			if err != nil {
+				continue
+			}
+			var skill types.SkillInvocation
+			if json.Unmarshal(encoded, &skill) == nil && skill.Name != "" && skill.Content != "" {
+				b.RestoredSkills = append(b.RestoredSkills, skill)
+			}
+		}
+	}
 	return b
 }

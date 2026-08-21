@@ -180,9 +180,9 @@ func resolveSlashCommand(name, args, workingDir string, claudeCompat bool) (*Res
 // resolveSlashIntoOpts resolves the slash invocation carried in opts.Prompt and,
 // on success, rewrites opts.Prompt to the EXPANDED body and records the raw
 // invocation on opts (ResolvedSlash* fields) so the runloop persists the
-// invocation as the display turn. hasExplicitModel records whether the client
-// supplied `send_prompt.model`; that public per-prompt override wins over
-// command frontmatter. Allowed-bash hints are unioned for this run. On failure
+// invocation as the display turn. A non-empty command `model:` field owns model
+// selection for this invocation and therefore overrides any client-supplied
+// per-prompt model. Allowed-bash hints are unioned for this run. On failure
 // (not a parseable invocation, or no template found) it emits an
 // unknown_command result and returns false so SendPrompt aborts the prompt
 // without starting a run.
@@ -194,7 +194,7 @@ func resolveSlashCommand(name, args, workingDir string, claudeCompat bool) (*Res
 // failedCommand is the string to pass to emitUnknownCommand. The caller is
 // responsible for emitting the unknown-command event AFTER releasing m.mu,
 // because emit acquires m.mu.RLock which deadlocks under a held write lock.
-func (m *Manager) resolveSlashIntoOpts(s *engineSession, key string, opts *types.RunOptions, hasExplicitModel bool) (bool, string) {
+func (m *Manager) resolveSlashIntoOpts(s *engineSession, key string, opts *types.RunOptions) (bool, string) {
 	name, args, ok := parseSlashInvocation(opts.Prompt)
 	if !ok {
 		utils.LogWithFields(utils.LevelInfo, "session.slash", "resolveslash set but prompt is not a slash invocation", map[string]any{"key": key})
@@ -222,9 +222,10 @@ func (m *Manager) resolveSlashIntoOpts(s *engineSession, key string, opts *types
 	opts.ResolvedSlashSource = res.Source
 	opts.ResolvedSlashContext = res.Context
 
-	// Capture the command's model hint for provenance. It selects the model
-	// only when the client did not explicitly set send_prompt.model.
-	applySlashModelHint(opts, res.Model, hasExplicitModel)
+	// A command-declared model is authoritative for this invocation. A client
+	// model controls ordinary conversation prompts, but cannot change command
+	// semantics after the command author selected a tier or direct model.
+	applySlashModelHint(opts, res.Model)
 
 	// Apply frontmatter allowed-bash additions for this run (union, transient).
 	if len(res.AllowedBashCommands) > 0 {
@@ -237,9 +238,9 @@ func (m *Manager) resolveSlashIntoOpts(s *engineSession, key string, opts *types
 	return true, ""
 }
 
-func applySlashModelHint(opts *types.RunOptions, frontmatterModel string, hasExplicitModel bool) {
+func applySlashModelHint(opts *types.RunOptions, frontmatterModel string) {
 	opts.ResolvedSlashModelAlias = frontmatterModel
-	if frontmatterModel != "" && !hasExplicitModel {
+	if frontmatterModel != "" {
 		opts.Model = frontmatterModel
 	}
 }

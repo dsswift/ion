@@ -350,7 +350,38 @@ func metaInt(meta map[string]interface{}, key string) int {
 // in the conversation file. Called from handleRunExit AFTER the
 // backend's final conversation save, so the load-append-save cycle
 // cannot be overwritten by a subsequent backend save.
+//
+// This is the reconciling sweep, not the only writer. A dispatch persists its
+// own terminal record the moment it transitions (persistTerminalDispatch),
+// because a sweep tied to run exit is durable only if a run exit happens to
+// follow the completion before the process dies — and for a parked root that is
+// not guaranteed. See persistTerminalDispatch for the failure this closes.
 func (m *Manager) persistTerminalDispatches(key, convID string) {
+	m.persistTerminalDispatchesFiltered(key, convID, "")
+}
+
+// persistTerminalDispatch persists the terminal record for ONE dispatch, at the
+// moment its own lifecycle reaches a terminal status. Without it, the durable
+// outcome of a completed dispatch waited on the parent's next run exit: a
+// dispatch could finish with exit 0, deliver its result, and still be read back
+// as `running` by the next start's rehydration — which then correctly (given the
+// file) declared it lost and flipped it to `error`. A successful 25-turn
+// dispatch rendering red after a restart was that gap, not a failure.
+//
+// Same best-effort contract as the sweep: every failure branch logs and returns.
+func (m *Manager) persistTerminalDispatch(key, convID, agentID string) {
+	if agentID == "" {
+		utils.LogWithFields(utils.LevelDebug, "session", "persistterminaldispatch: no dispatch id (no-op)", map[string]any{"key": key, "conversation_id": convID})
+		return
+	}
+	m.persistTerminalDispatchesFiltered(key, convID, agentID)
+}
+
+// persistTerminalDispatchesFiltered is the shared body. onlyID scopes the pass
+// to a single dispatch identity; empty sweeps every terminal row in the
+// registry. Both callers share the status-aware supersession dedup below, so a
+// per-completion write and a later sweep never double-persist the same status.
+func (m *Manager) persistTerminalDispatchesFiltered(key, convID, onlyID string) {
 	if convID == "" {
 		return
 	}
@@ -366,6 +397,9 @@ func (m *Manager) persistTerminalDispatches(key, convID string) {
 	snapshot := s.agents.MergedSnapshot()
 	var dispatches []conversation.SessionEntry
 	for _, state := range snapshot {
+		if onlyID != "" && state.ID != onlyID {
+			continue
+		}
 		if state.Status != "done" && state.Status != "error" && state.Status != "cancelled" {
 			continue
 		}
@@ -463,6 +497,11 @@ func (m *Manager) persistTerminalDispatches(key, convID string) {
 	}
 
 	if len(dispatches) == 0 {
+		// Observable on both scopes: a per-completion call that finds no terminal
+		// row means the registry slot was not terminal yet (or was swept), which
+		// is exactly the condition that used to leave a completed dispatch
+		// persisted as running.
+		utils.LogWithFields(utils.LevelDebug, "session", "persistterminaldispatches: no terminal dispatch rows (no-op)", map[string]any{"conversation_id": convID, "key": key, "scope": dispatchPersistScope(onlyID)})
 		return
 	}
 
@@ -524,11 +563,21 @@ func (m *Manager) persistTerminalDispatches(key, convID string) {
 		return
 	}
 	if added == 0 {
-		utils.LogWithFields(utils.LevelDebug, "session", "persistterminaldispatches: nothing to add (no-op)", map[string]any{"conversation_id": convID, "key": key})
+		utils.LogWithFields(utils.LevelDebug, "session", "persistterminaldispatches: nothing to add (no-op)", map[string]any{"conversation_id": convID, "key": key, "scope": dispatchPersistScope(onlyID)})
 		return
 	}
 
-	utils.LogWithFields(utils.LevelInfo, "session", "persistterminaldispatches: persisted dispatch entries", map[string]any{"added": added, "conversation_id": convID, "key": key})
+	utils.LogWithFields(utils.LevelInfo, "session", "persistterminaldispatches: persisted dispatch entries", map[string]any{"added": added, "conversation_id": convID, "key": key, "scope": dispatchPersistScope(onlyID)})
+}
+
+// dispatchPersistScope labels which caller a persist pass came from so the two
+// writers are distinguishable in the log: the per-completion write carries its
+// dispatch id, the run-exit sweep reads "sweep".
+func dispatchPersistScope(onlyID string) string {
+	if onlyID == "" {
+		return "sweep"
+	}
+	return onlyID
 }
 
 // persistDispatchRegistered writes a `running` agent_dispatch record for a

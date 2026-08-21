@@ -23,6 +23,7 @@ func buildDispatchRunOptions(opts *extension.DispatchAgentOpts, model, projectPa
 	runOpts := types.RunOptions{
 		Prompt:      opts.Task,
 		Model:       model,
+		ModelOrigin: opts.ModelOrigin,
 		ProjectPath: projectPath,
 		ParentCtx:   dispatchParentCtx,
 		// Mirror the parent session's Claude-compatibility setting onto the

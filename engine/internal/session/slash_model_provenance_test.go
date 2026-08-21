@@ -1,6 +1,7 @@
 package session
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -70,7 +71,7 @@ func TestApplySlashModelHint(t *testing.T) {
 		opts := &types.RunOptions{
 			Prompt: "/test-cmd",
 		}
-		applySlashModelHint(opts, "claude-sonnet", false)
+		applySlashModelHint(opts, "claude-sonnet")
 
 		if opts.ResolvedSlashModelAlias != "claude-sonnet" {
 			t.Errorf("ResolvedSlashModelAlias = %q, want %q", opts.ResolvedSlashModelAlias, "claude-sonnet")
@@ -83,18 +84,18 @@ func TestApplySlashModelHint(t *testing.T) {
 		}
 	})
 
-	t.Run("explicit per-prompt model wins over command frontmatter", func(t *testing.T) {
+	t.Run("command frontmatter overrides explicit per-prompt model", func(t *testing.T) {
 		opts := &types.RunOptions{
 			Prompt: "/test-cmd",
 			Model:  "claude-opus",
 		}
-		applySlashModelHint(opts, "claude-sonnet", true)
+		applySlashModelHint(opts, "claude-sonnet")
 
 		if opts.ResolvedSlashModelAlias != "claude-sonnet" {
 			t.Errorf("ResolvedSlashModelAlias = %q, want %q", opts.ResolvedSlashModelAlias, "claude-sonnet")
 		}
-		if opts.Model != "claude-opus" {
-			t.Errorf("Model = %q, want %q (explicit per-prompt override must win)", opts.Model, "claude-opus")
+		if opts.Model != "claude-sonnet" {
+			t.Errorf("Model = %q, want %q (command frontmatter must win)", opts.Model, "claude-sonnet")
 		}
 		if opts.ResolvedSlashModelEffective != "" {
 			t.Errorf("ResolvedSlashModelEffective = %q, want empty before final resolution", opts.ResolvedSlashModelEffective)
@@ -106,7 +107,7 @@ func TestApplySlashModelHint(t *testing.T) {
 			Prompt: "/test-cmd",
 			Model:  "claude-opus",
 		}
-		applySlashModelHint(opts, "", false)
+		applySlashModelHint(opts, "")
 
 		if opts.ResolvedSlashModelAlias != "" {
 			t.Errorf("ResolvedSlashModelAlias = %q, want empty", opts.ResolvedSlashModelAlias)
@@ -120,7 +121,7 @@ func TestApplySlashModelHint(t *testing.T) {
 		opts := &types.RunOptions{
 			Prompt: "/test-cmd",
 		}
-		applySlashModelHint(opts, "", false)
+		applySlashModelHint(opts, "")
 
 		if opts.ResolvedSlashModelAlias != "" {
 			t.Errorf("ResolvedSlashModelAlias = %q, want empty", opts.ResolvedSlashModelAlias)
@@ -132,12 +133,24 @@ func TestApplySlashModelHint(t *testing.T) {
 }
 
 func TestSlashModelProvenance_PromptPrecedence(t *testing.T) {
+	modelsHome := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(modelsHome, ".ion"), 0o755); err != nil {
+		t.Fatalf("MkdirAll models directory: %v", err)
+	}
+	modelsJSON, err := json.Marshal(map[string]any{"tiers": map[string]string{"fast": "gpt-5.6-luna"}})
+	if err != nil {
+		t.Fatalf("Marshal models config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(modelsHome, ".ion", "models.json"), modelsJSON, 0o600); err != nil {
+		t.Fatalf("WriteFile models config: %v", err)
+	}
+	t.Setenv("HOME", modelsHome)
 	workingDir := t.TempDir()
 	commandsDir := filepath.Join(workingDir, ".ion", "commands")
 	if err := os.MkdirAll(commandsDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(commandsDir, "tier.md"), []byte("---\nmodel: standard\n---\ninspect $ARGUMENTS"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(commandsDir, "tier.md"), []byte("---\nmodel: fast\n---\ninspect $ARGUMENTS"), 0o600); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
@@ -158,11 +171,11 @@ func TestSlashModelProvenance_PromptPrecedence(t *testing.T) {
 	if !ok {
 		t.Fatal("explicit prompt never reached backend")
 	}
-	if explicit.Model != "explicit-model" {
-		t.Fatalf("explicit prompt model = %q, want explicit-model", explicit.Model)
+	if explicit.Model != "gpt-5.6-luna" {
+		t.Fatalf("command model = %q, want gpt-5.6-luna", explicit.Model)
 	}
-	if explicit.ResolvedSlashModelAlias != "standard" || explicit.ResolvedSlashModelEffective != "explicit-model" {
-		t.Fatalf("explicit provenance = (%q, %q), want (standard, explicit-model)", explicit.ResolvedSlashModelAlias, explicit.ResolvedSlashModelEffective)
+	if explicit.ResolvedSlashModelAlias != "fast" || explicit.ResolvedSlashModelEffective != "gpt-5.6-luna" {
+		t.Fatalf("command provenance = (%q, %q), want (fast, gpt-5.6-luna)", explicit.ResolvedSlashModelAlias, explicit.ResolvedSlashModelEffective)
 	}
 
 	mgr.handleRunExit(explicitRun, intPtr(0), nil, "")
@@ -179,11 +192,11 @@ func TestSlashModelProvenance_PromptPrecedence(t *testing.T) {
 	if !ok {
 		t.Fatal("frontmatter prompt never reached backend")
 	}
-	if frontmatter.Model != "standard" {
-		t.Fatalf("frontmatter prompt model = %q, want standard", frontmatter.Model)
+	if frontmatter.Model != "gpt-5.6-luna" {
+		t.Fatalf("frontmatter prompt model = %q, want gpt-5.6-luna", frontmatter.Model)
 	}
-	if frontmatter.ResolvedSlashModelAlias != "standard" || frontmatter.ResolvedSlashModelEffective != "standard" {
-		t.Fatalf("frontmatter provenance = (%q, %q), want (standard, standard)", frontmatter.ResolvedSlashModelAlias, frontmatter.ResolvedSlashModelEffective)
+	if frontmatter.ResolvedSlashModelAlias != "fast" || frontmatter.ResolvedSlashModelEffective != "gpt-5.6-luna" {
+		t.Fatalf("frontmatter provenance = (%q, %q), want (fast, gpt-5.6-luna)", frontmatter.ResolvedSlashModelAlias, frontmatter.ResolvedSlashModelEffective)
 	}
 }
 
@@ -247,6 +260,24 @@ func TestNormalizeSlashThinkingForResolvedModel(t *testing.T) {
 	})
 }
 
+func TestCommandOwnedSlashModelSkipsModelSelect(t *testing.T) {
+	const commandModel = "slash-tier-model"
+	mgr := NewManager(newMockBackend())
+	s := &engineSession{}
+	host := extension.NewHost()
+	host.SDK().On(extension.HookModelSelect, func(_ *extension.Context, _ interface{}) (interface{}, error) {
+		return "selector-must-not-win", nil
+	})
+	group := extension.NewExtensionGroup()
+	group.Add(host)
+
+	opts := types.RunOptions{Model: commandModel, ResolvedSlashCommand: "/check-running", ResolvedSlashModelAlias: "fast"}
+	mgr.fireModelSelect(s, "slash-model-select", group, false, &opts)
+	if opts.Model != commandModel {
+		t.Fatalf("command-owned slash model = %q, want %q", opts.Model, commandModel)
+	}
+}
+
 func TestRefreshSlashModelProvenanceAfterModelSelect(t *testing.T) {
 	const selected = "slash-selected-model"
 	mgr := NewManager(newMockBackend())
@@ -259,16 +290,15 @@ func TestRefreshSlashModelProvenanceAfterModelSelect(t *testing.T) {
 	group.Add(host)
 
 	opts := types.RunOptions{
-		Model:                       "slash-tier-model",
-		ResolvedSlashModelAlias:     "standard",
-		ResolvedSlashModelEffective: "slash-tier-model",
+		Model:                   "slash-tier-model",
+		ResolvedSlashModelAlias: "",
 	}
-	mgr.fireModelSelect(s, "slash-model-select", group, false, &opts)
+	mgr.fireModelSelect(s, "ordinary-model-select", group, false, &opts)
 	if opts.Model != selected {
-		t.Fatalf("model_select model = %q, want %q", opts.Model, selected)
+		t.Fatalf("ordinary model_select model = %q, want %q", opts.Model, selected)
 	}
-	refreshSlashModelProvenance(&opts, "slash-model-select")
-	if opts.ResolvedSlashModelEffective != selected {
-		t.Fatalf("slash effective model = %q, want final selected model %q", opts.ResolvedSlashModelEffective, selected)
+	refreshSlashModelProvenance(&opts, "ordinary-model-select")
+	if opts.ResolvedSlashModelEffective != "" {
+		t.Fatalf("ordinary prompt effective provenance = %q, want empty", opts.ResolvedSlashModelEffective)
 	}
 }

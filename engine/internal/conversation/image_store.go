@@ -11,6 +11,19 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
+// ContentHashFromBase64 returns the SHA-256 hash of decoded image bytes. Image
+// references carry this stable content identity alongside their path so consumers
+// can match live events, reload attachments, and inbound attachments without
+// treating a local file path as identity.
+func ContentHashFromBase64(base64Data string) (string, error) {
+	data, err := base64.StdEncoding.DecodeString(base64Data)
+	if err != nil {
+		return "", fmt.Errorf("decode image base64: %w", err)
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
+}
+
 // imageExtByMediaType maps a MIME media type to the file extension used when
 // saving an image to the conversation images directory. Unknown types fall back
 // to ".bin" so a save never fails on an unrecognized type — the bytes are still

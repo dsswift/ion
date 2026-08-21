@@ -146,13 +146,15 @@ func TestOutstandingBackgroundTasks_RideStatusFields(t *testing.T) {
 	mgr.registerOutstandingBackgroundTask(key, "bash-1", "one")
 	mgr.registerOutstandingBackgroundTask(key, "bash-2", "two")
 
-	mgr.mu.RLock()
-	s := mgr.sessions[key]
-	mgr.mu.RUnlock()
-
-	fields := mgr.buildIdleStatusFields(s, key, 0)
+	fields, ok := mgr.buildStatusFields(key)
+	if !ok {
+		t.Fatal("buildStatusFields returned no session")
+	}
 	if fields.BackgroundShells != 2 {
 		t.Errorf("StatusFields.BackgroundShells = %d, want 2", fields.BackgroundShells)
+	}
+	if !fields.HasPendingWork {
+		t.Error("StatusFields.HasPendingWork = false, want true while notifying shells remain")
 	}
 }
 

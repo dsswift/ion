@@ -103,6 +103,46 @@ func TestModelFallback_SwapsToDefaultAndEmitsEvent(t *testing.T) {
 	}
 }
 
+func TestModelFallback_UpdatesSlashServingModelProvenance(t *testing.T) {
+	setupTestProvider([][]types.LlmStreamEvent{
+		textResponse("fallback response", 10, 5),
+	})
+	b := NewApiBackend()
+	c := collectEvents(b, "req-slash-fallback")
+	opts := types.RunOptions{
+		Prompt:                      "/check-running",
+		ProjectPath:                 "/tmp",
+		Model:                       "slash-unavailable-model",
+		ResolvedSlashModelAlias:     "fast",
+		ResolvedSlashModelEffective: "slash-unavailable-model",
+		EarlyStopEnabled:            testEarlyStopDisabled(),
+		MaxTurns:                    1,
+	}
+	b.StartRunWithConfig("req-slash-fallback", opts, &RunConfig{DefaultModel: testModel})
+	if !waitForExit(c, 5*time.Second) {
+		t.Fatal("timed out waiting for slash fallback exit")
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var persisted *types.UserTurnPersistedEvent
+	for _, ev := range c.normalized {
+		if candidate, ok := ev.Data.(*types.UserTurnPersistedEvent); ok {
+			persisted = candidate
+			break
+		}
+	}
+	if persisted == nil {
+		t.Fatal("missing UserTurnPersistedEvent")
+	}
+	if persisted.SlashModelAlias != "" {
+		t.Errorf("SlashModelAlias = %q, want empty after provider fallback", persisted.SlashModelAlias)
+	}
+	if persisted.SlashModelEffective != testModel {
+		t.Errorf("SlashModelEffective = %q, want serving fallback %q", persisted.SlashModelEffective, testModel)
+	}
+}
+
 // TestModelFallback_SkippedWhenNoDefaultConfigured locks in the chosen
 // behaviour for the "no fallback available" case: when the run's RunConfig
 // has DefaultModel == "" (or the run has no RunConfig at all), the

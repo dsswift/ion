@@ -5,6 +5,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/tools"
+	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 	"github.com/dsswift/ion/engine/internal/workspaces"
 )
@@ -73,6 +74,7 @@ func BuildChildAgentSpawner(
 			Name:              name,
 			Task:              prompt,
 			Model:             model,
+			ModelOrigin:       types.ModelOriginAgent,
 			ProjectPath:       cwd,
 			MaxTurns:          0, // no limit; the child runs until done
 			WaitForCompletion: waitForCompletion,

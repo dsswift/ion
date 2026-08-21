@@ -459,6 +459,9 @@ func resolveModelTier(opts *types.RunOptions) {
 	if opts.Model == "" {
 		return
 	}
+	if opts.ModelOrigin == "" {
+		opts.ModelOrigin = types.ModelOriginConfig
+	}
 	resolved, fallbacks := modelconfig.ResolveTierChain(opts.Model)
 	if resolved != opts.Model {
 		opts.Model = resolved

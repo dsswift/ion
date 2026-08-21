@@ -41,10 +41,11 @@ func (b *ApiBackend) emitToolResult(
 	}})
 	for _, img := range resultImages {
 		b.emit(run, types.NormalizedEvent{Data: &types.ImageContentEvent{
-			Path:      img.Path,
-			MediaType: img.MediaType,
-			Source:    "tool",
-			ToolID:    toolID,
+			Path:        img.Path,
+			MediaType:   img.MediaType,
+			ContentHash: img.ContentHash,
+			Source:      "tool",
+			ToolID:      toolID,
 		}})
 	}
 }

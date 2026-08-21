@@ -127,31 +127,25 @@ func (m *Manager) buildRootAgentSpawner(s *engineSession, key string, parentMode
 			}
 		}
 
-		// Use spec model if matched, then call-site model, then parent.
-		childModel := model
+		// Tiers are operator configuration. A direct Agent-tool model string is
+		// LLM-authored and may not select a different provider.
+		modelOrigin := types.ModelOriginAgent
+		if _, isTier := modelconfig.LookupTier(model); isTier {
+			modelOrigin = types.ModelOriginConfig
+		}
+		childModel, childFallbacks, resolveErr := modelconfig.ResolveModelForOrigin(model, capturedModel, modelOrigin)
+		if resolveErr != nil {
+			utils.LogWithFields(utils.LevelWarn, "session", "agent model refused by provider lock", map[string]any{"requested_model": model, "parent_model": capturedModel, "agent": agentName, "error": resolveErr.Error()})
+			return "", resolveErr
+		}
 		if childModel == "" && specMatched {
-			childModel = spec.Model
+			childModel, childFallbacks = modelconfig.ResolveTierChain(spec.Model)
 		}
 		if childModel == "" {
 			childModel = capturedModel
 		}
 
-		// Resolve tier aliases (e.g. "standard" → "claude-sonnet-4-6") so child
-		// runs get a concrete model ID. Without this, tier names from agent specs
-		// pass through as literal model strings and fail provider resolution.
-		var childFallbacks []string
-		if childModel != "" {
-			resolved, fallbacks := modelconfig.ResolveTierChain(childModel)
-			if resolved != childModel {
-				utils.LogWithFields(utils.LevelInfo, "session", "agent tier resolved: -> ()", map[string]any{"model": childModel, "resolved": resolved, "fallbacks": fallbacks, "agent_name": agentName})
-				childModel = resolved
-			} else {
-				utils.LogWithFields(utils.LevelDebug, "session", "agent tier passthrough", map[string]any{"model": childModel, "agent_name": agentName})
-			}
-			childFallbacks = fallbacks
-		}
-
-		utils.LogWithFields(utils.LevelDebug, "session", "child model resolved", map[string]any{"model": model, "agent": agentName, "child_model": childModel})
+		utils.LogWithFields(utils.LevelDebug, "session", "child model resolved", map[string]any{"requested_model": model, "agent": agentName, "child_model": childModel, "model_origin": modelOrigin})
 
 		// Delegate the actual dispatch to the single shared dispatch
 		// mechanism (extcontext.BuildDispatchAgentFunc). The orchestrator's
@@ -183,9 +177,15 @@ func (m *Manager) buildRootAgentSpawner(s *engineSession, key string, parentMode
 		acc := &sessionAccessor{m: m, s: s, key: capturedKey, progressTarget: progressTarget}
 		dispatchFn := extcontext.BuildDispatchAgentFunc(acc, s.dispatchRegistry, 0, "", workspaceChecker)
 		dispatchOpts := extension.DispatchAgentOpts{
-			Name:          agentName,
-			Task:          prompt,
-			Model:         childModel,
+			Name:  agentName,
+			Task:  prompt,
+			Model: childModel,
+			ModelOrigin: func() types.ModelOrigin {
+				if specMatched && model == "" {
+					return types.ModelOriginConfig
+				}
+				return modelOrigin
+			}(),
 			ProjectPath:   cwd,
 			DisplayName:   displayName,
 			FallbackChain: childFallbacks,

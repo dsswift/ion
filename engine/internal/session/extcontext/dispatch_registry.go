@@ -1,6 +1,7 @@
 package extcontext
 
 import (
+	"sort"
 	"sync"
 	"time"
 
@@ -51,10 +52,20 @@ type DispatchStateEntry struct {
 	// transcript from disk while the dispatch runs — and harvest partial
 	// work if the dispatch is lost.
 	ChildConversationID string `json:"childConversationId,omitempty"`
-	// PendingChildren lists the child dispatch IDs a suspended parent is
-	// waiting on. Non-empty only when Status is "suspended" with a
-	// suspendUntilAll-style park; empty for a bare suspend.
+	// PendingChildren lists child dispatch IDs a suspended parent awaits. Kept
+	// for compatibility; WaitingOn is the complete task-and-child wait metadata.
 	PendingChildren []string `json:"pendingChildren,omitempty"`
+	// WaitingOn identifies work holding this dispatch parked. It is absent for
+	// running dispatches and bare suspend() calls, which await only a prompt.
+	WaitingOn *DispatchWaitingOn `json:"waitingOn,omitempty"`
+}
+
+// DispatchWaitingOn is the precise wait set for a suspended dispatch. TaskIDs
+// identify notifying background Bash commands; ChildDispatchIDs identify
+// dispatched children. Both may be present when a run awaits mixed async work.
+type DispatchWaitingOn struct {
+	TaskIDs          []string `json:"taskIds,omitempty"`
+	ChildDispatchIDs []string `json:"childDispatchIds,omitempty"`
 }
 
 // DispatchRegistry is a thread-safe registry of active background dispatches,
@@ -85,6 +96,14 @@ type DispatchRegistry struct {
 	dispatches         map[string]*activeDispatch
 	totalRegistrations int // total lifetime RegisterWithID calls (audit/test)
 	recallObserver     func([]RecalledDispatch)
+
+	// settledTasks holds background-task results that arrived before any
+	// dispatch had armed a wait on them, so the arming prune in
+	// SetSuspendedStateWithWaitingOn can satisfy a wait that is already
+	// complete instead of parking on a task that will never notify again.
+	// Bounded FIFO — see dispatch_task_revive.go.
+	settledTasks map[string]TaskResultRecord
+	settledOrder []string
 }
 
 // activeDispatch holds the bookkeeping state for a single in-flight
@@ -150,12 +169,15 @@ type activeDispatch struct {
 	// channel sends occur outside the lock after the pointer is captured.
 	ReviveCh chan struct{}
 
-	// PendingChildren is the set of child dispatch IDs the suspended agent
-	// is waiting on (for N-child fan-out via dispatch_agents). Each time a
-	// child whose ID is in this set completes, the engine removes that ID.
-	// When the set becomes empty, ReviveCh is signaled. Nil/empty means bare
-	// suspend() — any sendPrompt revives immediately. Protected by registry mu.
+	// PendingChildren is the child-dispatch half of this dispatch's wait set.
+	// Each completed child is removed before Snapshot exposes the next state.
+	// Nil/empty means no child-specific wait. Protected by registry mu.
 	PendingChildren map[string]struct{}
+
+	// PendingTasks is the background-Bash half of this dispatch's wait set.
+	// Task completion removes IDs before the next registry snapshot. Protected
+	// by registry mu.
+	PendingTasks map[string]struct{}
 
 	// StartedAt is the wall-clock time when the dispatch was registered.
 	// Used by Snapshot to compute ElapsedMs without per-entry timers.
@@ -196,6 +218,12 @@ type activeDispatch struct {
 	// dispatch_registry_activity.go.
 	CompletedChildResults []ChildResultRecord
 
+	// CompletedTaskResults accumulates the outcomes of the background bash
+	// commands THIS dispatch parked on (DeliverTaskResult), so a revived
+	// dispatch reads the command's result instead of resuming blind. Drained
+	// by runChild on revive (DrainTaskResults). See dispatch_task_revive.go.
+	CompletedTaskResults []TaskResultRecord
+
 	// reserved marks an entry that was created by Reserve before the full
 	// dispatch bookkeeping (cancel, child, childRunID) was known. A reserved
 	// entry is a real member of ActiveIDs/ActiveNames — its whole purpose is to
@@ -226,7 +254,8 @@ func (r *DispatchRegistry) SetRecallObserver(observer func([]RecalledDispatch)) 
 func NewDispatchRegistry() *DispatchRegistry {
 	utils.Debug("DispatchRegistry", "created new dispatch registry")
 	return &DispatchRegistry{
-		dispatches: make(map[string]*activeDispatch),
+		dispatches:   make(map[string]*activeDispatch),
+		settledTasks: make(map[string]TaskResultRecord),
 	}
 }
 
@@ -648,6 +677,24 @@ func (r *DispatchRegistry) LiveConvIDs() []string {
 	return ids
 }
 
+// waitingOnSnapshot returns independent, stable-order copies of a dispatch's
+// parked task and child sets. Caller must hold r.mu.
+func waitingOnSnapshot(d *activeDispatch) *DispatchWaitingOn {
+	if !d.Suspended || (len(d.PendingTasks) == 0 && len(d.PendingChildren) == 0) {
+		return nil
+	}
+	waiting := &DispatchWaitingOn{}
+	for taskID := range d.PendingTasks {
+		waiting.TaskIDs = append(waiting.TaskIDs, taskID)
+	}
+	for childID := range d.PendingChildren {
+		waiting.ChildDispatchIDs = append(waiting.ChildDispatchIDs, childID)
+	}
+	sort.Strings(waiting.TaskIDs)
+	sort.Strings(waiting.ChildDispatchIDs)
+	return waiting
+}
+
 // Snapshot returns a point-in-time copy of every currently in-flight dispatch
 // as a slice of DispatchStateEntry values. Status is "running" for active
 // entries and "suspended" for parked ones (see DispatchStateEntry.Status).
@@ -685,6 +732,7 @@ func (r *DispatchRegistry) Snapshot() []DispatchStateEntry {
 			LastActivityMs:      lastActivityMs,
 			ChildConversationID: d.ChildConvID,
 			PendingChildren:     pending,
+			WaitingOn:           waitingOnSnapshot(d),
 		})
 	}
 	return entries

@@ -205,6 +205,9 @@ func TestGetEnterprisePolicy_FullBlobPassthrough(t *testing.T) {
 	srv.SetConfig(&types.EngineRuntimeConfig{
 		Enterprise: &types.EnterpriseConfig{
 			AllowedModels: []string{"claude-sonnet-4-6", "gpt-4o"},
+			Auth: &types.AuthConfig{
+				IdentityProvider: "corp", RequireOperatorIdentity: true,
+			},
 			ToolRestrictions: &types.ToolRestrictions{
 				Allow: []string{"Read", "Grep"},
 			},
@@ -249,6 +252,9 @@ func TestGetEnterprisePolicy_FullBlobPassthrough(t *testing.T) {
 	}
 	if len(decoded.AllowedModels) != 2 || decoded.AllowedModels[0] != "claude-sonnet-4-6" {
 		t.Errorf("allowedModels not carried: %v", decoded.AllowedModels)
+	}
+	if decoded.Auth == nil || decoded.Auth.IdentityProvider != "corp" || !decoded.Auth.RequireOperatorIdentity {
+		t.Errorf("auth policy not carried: %+v", decoded.Auth)
 	}
 	if decoded.ToolRestrictions == nil || len(decoded.ToolRestrictions.Allow) != 2 {
 		t.Errorf("toolRestrictions not carried: %+v", decoded.ToolRestrictions)

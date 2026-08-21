@@ -522,8 +522,8 @@ function buildContext(ctxData: any): IonContext {
     },
     async listDispatchState(): Promise<DispatchEntry[]> {
       // Returns a point-in-time snapshot of every active dispatch in the
-      // engine's DispatchRegistry for this session. All entries carry
-      // status:"running" — the registry only holds in-flight dispatches.
+      // engine's DispatchRegistry for this session. Entries are running or
+      // suspended; suspended entries may expose their complete waitingOn set.
       // Returns [] when no dispatches are active or the engine does not yet
       // support this RPC (older builds without ext/list_dispatch_state return
       // an error; the catch returns the empty default gracefully).

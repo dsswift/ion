@@ -56,6 +56,15 @@ type steerMessage struct {
 	// kind is a types.InjectionKind wire value. Empty for a client-originated
 	// steer, which is a genuine user turn.
 	kind string
+	// clientMessageID is the client-supplied correlation id from a steer_agent
+	// command's optional ClientMessageID field. Empty for a machine-originated
+	// steer (kind != "") and for any client that omitted the field. Carried
+	// through so drainSteer can echo it back on the confirming
+	// engine_steer_injected event — the only way a client's own optimistic UI
+	// row can be re-keyed by identity instead of assumed-first-pending-row
+	// position, which breaks the moment more than one steer is outstanding or
+	// a machine injection interleaves with a human one.
+	clientMessageID string
 }
 
 // drainSteer performs a non-blocking check of the run's steer channel.
@@ -77,7 +86,7 @@ func (b *ApiBackend) drainSteer(run *activeRun, conv *conversation.Conversation)
 		// Classified through the kind-aware append so a machine-originated
 		// steer persists as the machine-to-machine turn it is. A client steer
 		// carries no kind and reaches the same plain user turn as before.
-		conversation.AddUserMessageWithKind(conv, steerMsg.text, steerMsg.kind)
+		entry := conversation.AddUserMessageWithKind(conv, steerMsg.text, steerMsg.kind)
 		// Persist a steer marker immediately after the injected user message so
 		// the steer marker survives reload (SteerInjectedEvent is not persisted).
 		// Appended before the existing Save so it rides the same write.
@@ -92,13 +101,32 @@ func (b *ApiBackend) drainSteer(run *activeRun, conv *conversation.Conversation)
 				"error":  utils.ErrStr(err),
 			})
 		}
+		// entryID and clientID are only echoed when this was a genuine
+		// client-originated steer (no kind) — a machine-to-machine injection
+		// (kind != "") must never resolve a client's optimistic UI row, even
+		// if a caller mistakenly supplied a clientMessageID alongside a
+		// non-empty kind. A client that sent no correlation id still gets
+		// entryID (this remains a genuine client steer) but an empty
+		// clientID, preserving the pre-existing length-only confirmation
+		// shape for callers that have not adopted correlation ids.
+		var entryID, clientID string
+		if steerMsg.kind == "" {
+			clientID = steerMsg.clientMessageID
+			if entry != nil {
+				entryID = entry.ID
+			}
+		}
 		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "steer message injected into conversation", map[string]any{
-			"run_id":  run.requestID,
-			"msg_len": len(steerMsg.text),
-			"kind":    steerMsg.kind,
+			"run_id":            run.requestID,
+			"msg_len":           len(steerMsg.text),
+			"kind":              steerMsg.kind,
+			"client_message_id": clientID,
+			"entry_id":          entryID,
 		})
 		b.emit(run, types.NormalizedEvent{Data: &types.SteerInjectedEvent{
-			MessageLength: len(steerMsg.text),
+			MessageLength:   len(steerMsg.text),
+			ClientMessageID: clientID,
+			EntryID:         entryID,
 		}})
 		return true
 	default:

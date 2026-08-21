@@ -391,6 +391,44 @@ func TestMergeEnterprisePartial_ProvidersOverlay(t *testing.T) {
 	}
 }
 
+func TestEnforceEnterprise_AuthRequiresOperatorIdentity(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Auth = &types.AuthConfig{IdentityProvider: "personal"}
+	enterprise := &types.EnterpriseConfig{Auth: &types.AuthConfig{
+		IdentityProvider: "corp", RequireOperatorIdentity: true,
+		OAuth: map[string]types.OAuthConfig{"corp": {ClientID: "managed-client"}},
+	}}
+
+	result := EnforceEnterprise(cfg, enterprise)
+	if result.Auth == nil || result.Auth.IdentityProvider != "corp" || !result.Auth.RequireOperatorIdentity {
+		t.Fatalf("enterprise auth was not sealed: %#v", result.Auth)
+	}
+	if result.Auth.OAuth["corp"].ClientID != "managed-client" {
+		t.Fatal("enterprise OAuth client config was not applied")
+	}
+	if cfg.Auth.IdentityProvider != "personal" {
+		t.Fatal("enterprise auth enforcement mutated input")
+	}
+}
+
+func TestEnforceEnterprise_AuthCannotDisableLowerRequirement(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Auth = &types.AuthConfig{IdentityProvider: "corp", RequireOperatorIdentity: true}
+	result := EnforceEnterprise(cfg, &types.EnterpriseConfig{Auth: &types.AuthConfig{IdentityProvider: "corp"}})
+	if result.Auth == nil || !result.Auth.RequireOperatorIdentity {
+		t.Fatal("enterprise false weakened lower-layer required identity")
+	}
+}
+
+func TestMergeEnterprisePartial_AuthOverlay(t *testing.T) {
+	base := &types.EnterpriseConfig{}
+	overlay := &types.EnterpriseConfig{Auth: &types.AuthConfig{IdentityProvider: "corp", RequireOperatorIdentity: true}}
+	result := mergeEnterprisePartial(base, overlay)
+	if result.Auth == nil || result.Auth.IdentityProvider != "corp" || !result.Auth.RequireOperatorIdentity {
+		t.Fatalf("overlay Auth must carry through: %#v", result.Auth)
+	}
+}
+
 // ─── Feature 0011 / #308: extension allowlist overlay merge ───
 
 func TestMergeEnterprisePartial_ExtensionAllowlist(t *testing.T) {

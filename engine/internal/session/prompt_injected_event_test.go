@@ -16,7 +16,7 @@ import (
 // user turn no client submitted. Without a typed event, live clients watch
 // the model respond to a turn they cannot see — the injected prompt exists
 // only in the conversation file until a reload (the reported symptom: the
-// ATV, which rehydrates from disk, showed "[Agent X completed in Ns]" turns
+// Ion Studio (the desktop mirror shell), which rehydrates from disk, showed "[Agent X completed in Ns]" turns
 // the overlay never displayed).
 //
 // Pins:

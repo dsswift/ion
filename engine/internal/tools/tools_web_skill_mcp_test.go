@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"io"
 	"net/http"
 	"os"
@@ -383,11 +384,21 @@ func TestSkillToolRegisteredSkill(t *testing.T) {
 	if !strings.Contains(result.Content, "test-skill") {
 		t.Errorf("expected skill name in output, got %q", result.Content)
 	}
-	if !strings.Contains(result.Content, "Do the test thing") {
-		t.Errorf("expected skill content in output, got %q", result.Content)
+	if result.SkillInvocation == nil {
+		t.Fatal("expected structured skill invocation metadata")
 	}
-	if !strings.Contains(result.Content, "A test skill") {
-		t.Errorf("expected description in output, got %q", result.Content)
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("marshal skill result: %v", err)
+	}
+	if strings.Contains(string(encoded), "Do the test thing") || strings.Contains(string(encoded), "skillInvocation") {
+		t.Fatalf("skill invocation metadata leaked into tool result JSON: %s", encoded)
+	}
+	if !strings.Contains(result.SkillInvocation.Content, "Do the test thing") {
+		t.Errorf("expected skill content in metadata, got %q", result.SkillInvocation.Content)
+	}
+	if !strings.Contains(result.SkillInvocation.Content, "A test skill") {
+		t.Errorf("expected description in metadata, got %q", result.SkillInvocation.Content)
 	}
 }
 
@@ -417,11 +428,11 @@ func TestSkillToolBaseDirectory(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("unexpected error: %s", result.Content)
 	}
-	if !strings.Contains(result.Content, "Base directory for this skill: "+skillDir+"\n") {
-		t.Errorf("expected base-directory line for %q, got %q", skillDir, result.Content)
+	if result.SkillInvocation == nil || !strings.Contains(result.SkillInvocation.Content, "Base directory for this skill: "+skillDir+"\n") {
+		t.Errorf("expected base-directory metadata for %q, got %#v", skillDir, result.SkillInvocation)
 	}
-	if !strings.Contains(result.Content, "Relative paths in this skill (e.g. references/...) resolve against this base directory.") {
-		t.Errorf("expected relative-path hint, got %q", result.Content)
+	if result.SkillInvocation == nil || !strings.Contains(result.SkillInvocation.Content, "Relative paths in this skill (e.g. references/...) resolve against this base directory.") {
+		t.Errorf("expected relative-path hint in metadata, got %#v", result.SkillInvocation)
 	}
 }
 
@@ -457,11 +468,11 @@ func TestSkillToolWithArgs(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("unexpected error: %s", result.Content)
 	}
-	if !strings.Contains(result.Content, "param1 param2") {
-		t.Errorf("expected args in output, got %q", result.Content)
+	if result.SkillInvocation == nil || !strings.Contains(result.SkillInvocation.Content, "param1 param2") {
+		t.Errorf("expected args in metadata, got %#v", result.SkillInvocation)
 	}
-	if !strings.Contains(result.Content, "Arguments:") {
-		t.Errorf("expected 'Arguments:' label, got %q", result.Content)
+	if result.SkillInvocation == nil || !strings.Contains(result.SkillInvocation.Content, "Arguments:") {
+		t.Errorf("expected argument label in metadata, got %#v", result.SkillInvocation)
 	}
 }
 
@@ -523,8 +534,8 @@ func TestSkillToolMultipleSkills(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("unexpected error: %s", result.Content)
 	}
-	if !strings.Contains(result.Content, "alpha content") {
-		t.Errorf("expected alpha content, got %q", result.Content)
+	if result.SkillInvocation == nil || !strings.Contains(result.SkillInvocation.Content, "alpha content") {
+		t.Errorf("expected alpha content in metadata, got %#v", result.SkillInvocation)
 	}
 
 	// Unknown skill should list all available.

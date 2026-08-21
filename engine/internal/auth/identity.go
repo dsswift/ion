@@ -443,6 +443,49 @@ func (m *IdentityManager) SignedIn() bool {
 	return err == nil
 }
 
+// ValidateGrant proves the persisted operator grant is usable now. It parses the
+// identity claims and obtains a current base-scope access token, which performs
+// silent refresh when the stored token is expired. A persisted but revoked or
+// unrefreshable grant is therefore not treated as authenticated.
+func (m *IdentityManager) ValidateGrant(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if m.Identity() == nil {
+		return fmt.Errorf("identity: signed-in grant has no usable id_token claims")
+	}
+	m.refreshMu.Lock()
+	defer m.refreshMu.Unlock()
+	stored, err := m.loadStored()
+	if err != nil {
+		return err
+	}
+	if m.tokenFresh(*stored) {
+		return nil
+	}
+	if stored.RefreshToken == "" {
+		return fmt.Errorf("identity: stored grant has expired and has no refresh token")
+	}
+	if err := m.resolveEndpoints(); err != nil {
+		return err
+	}
+	refreshed, err := doRefreshTokenGrant(m.cfg.ClientID, stored.RefreshToken, m.cfg.TokenURL, stored.Scope, m.cfg.Audience, m.cfg.AudienceParameter)
+	if err != nil {
+		return fmt.Errorf("identity: refresh required grant: %w", err)
+	}
+	if refreshed.RefreshToken == "" {
+		refreshed.RefreshToken = stored.RefreshToken
+	}
+	if refreshed.IDToken == "" {
+		refreshed.IDToken = stored.IDToken
+	}
+	return m.CompleteLogin(&TokenResponse{
+		AccessToken: refreshed.AccessToken, RefreshToken: refreshed.RefreshToken,
+		IDToken: refreshed.IDToken, TokenType: refreshed.TokenType,
+		Scope: refreshed.Scope, ExpiresAt: refreshed.ExpiresAt,
+	})
+}
+
 // SignOut deletes the persisted grant and clears all cached tokens.
 func (m *IdentityManager) SignOut() error {
 	m.mu.Lock()

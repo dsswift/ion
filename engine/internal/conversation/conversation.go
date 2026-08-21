@@ -1,10 +1,7 @@
 package conversation
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"sync"
-	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
 )
@@ -73,13 +70,12 @@ type MessageData struct {
 	// "extension" | "ion" | "claude" | "skill" | "project". Display provenance
 	// only; lets a consumer label the pill by origin. Empty for ordinary prompts.
 	SlashSource string `json:"slashSource,omitempty"`
-	// SlashModelAlias is the model string from the slash command's frontmatter
-	// (`model:` key). Provenance only. Empty when no model hint was declared.
+	// SlashModelAlias is the command-owned model selector from slash frontmatter
+	// (`model:` key). Empty when no model selector was declared.
 	SlashModelAlias string `json:"slashModelAlias,omitempty"`
-	// SlashModelEffective is the model the engine resolved for this run after
-	// applying tier resolution and documented precedence. It is provenance only;
-	// an explicit per-prompt model override wins over slash frontmatter. Empty
-	// when no model was resolved.
+	// SlashModelEffective is the concrete model selected to start this slash run
+	// after tier and provider resolution. It never reflects conversation picker
+	// state when SlashModelAlias is set.
 	SlashModelEffective string `json:"slashModelEffective,omitempty"`
 
 	// DisplayOnly marks an entry that belongs in the tree/scrollback (so the
@@ -122,17 +118,18 @@ type MessageData struct {
 // SessionMessage on historical reload. All enriched fields are additive
 // (omitempty): legacy entries that lack them reload with zero values.
 type CompactionData struct {
-	Summary            string   `json:"summary"`
-	FirstKeptEntryID   string   `json:"firstKeptEntryId"`
-	TokensBefore       int      `json:"tokensBefore"`
-	MessagesSummarized int      `json:"messagesSummarized,omitempty"`
-	MessagesBefore     int      `json:"messagesBefore,omitempty"`
-	MessagesAfter      int      `json:"messagesAfter,omitempty"`
-	ClearedBlocks      int      `json:"clearedBlocks,omitempty"`
-	Strategy           string   `json:"strategy,omitempty"`
-	MicroOnly          bool     `json:"microOnly,omitempty"`
-	FactCount          int      `json:"factCount,omitempty"`
-	RecentFiles        []string `json:"recentFiles,omitempty"`
+	Summary            string                  `json:"summary"`
+	FirstKeptEntryID   string                  `json:"firstKeptEntryId"`
+	TokensBefore       int                     `json:"tokensBefore"`
+	MessagesSummarized int                     `json:"messagesSummarized,omitempty"`
+	MessagesBefore     int                     `json:"messagesBefore,omitempty"`
+	MessagesAfter      int                     `json:"messagesAfter,omitempty"`
+	ClearedBlocks      int                     `json:"clearedBlocks,omitempty"`
+	Strategy           string                  `json:"strategy,omitempty"`
+	MicroOnly          bool                    `json:"microOnly,omitempty"`
+	FactCount          int                     `json:"factCount,omitempty"`
+	RecentFiles        []string                `json:"recentFiles,omitempty"`
+	RestoredSkills     []types.SkillInvocation `json:"restoredSkills,omitempty"`
 }
 
 // LabelData holds a label annotation on an entry.
@@ -296,314 +293,4 @@ type ContextUsageInfo struct {
 	Tokens    int  `json:"tokens"`
 	Limit     int  `json:"limit"`
 	Estimated bool `json:"estimated"`
-}
-
-// ToolResultEntry is a tool result to add as a user message.
-type ToolResultEntry struct {
-	ToolUseID string `json:"tool_use_id"`
-	Content   string `json:"content"`
-	// PersistContent, when non-empty, replaces Content in the persisted
-	// entry tree while Content is still what the provider sees for the
-	// current turn. Empty (the default) means "persist Content verbatim",
-	// which is the behavior every caller had before this field existed.
-	//
-	// This exists for tool results whose text is only TRUE for the turn
-	// that produced it. The motivating case is the EnterPlanMode sentinel
-	// (runloop_plan_mode_gates.go): its result carries the full plan-mode
-	// framing, including "You are in planning mode. You MUST NOT make any
-	// edits ... This overrides any conflicting instructions you have
-	// received elsewhere in this prompt or conversation." That is correct
-	// guidance for the turn it lands on, and a lie on every later turn
-	// after the mode has been exited — but it is persisted history, so the
-	// model re-reads it as ground truth and declines to re-enter plan mode
-	// ("Do NOT call this tool if: You are already in plan mode"), narrating
-	// the transition instead of invoking it.
-	//
-	// A tool result cannot simply be dropped from history the way a
-	// transient injected message can: every persisted tool_use requires a
-	// matching tool_result on reload, or the provider rejects the request
-	// (see the ordering contract on AddToolResults below). So the fix is to
-	// persist a SHORTER, still-true statement rather than nothing at all.
-	//
-	// Same reasoning as the AddUserMessage / AddTransientUserMessage split
-	// and the transient parameter on AddContextInjectionMessage: the engine
-	// already distinguishes "the model sees this now" from "this belongs in
-	// history". This field extends that distinction to tool results, which
-	// previously had no way to express it.
-	PersistContent string               `json:"persist_content,omitempty"`
-	IsError        bool                 `json:"is_error,omitempty"`
-	Images         []*types.ImageSource `json:"images,omitempty"` // durable vision images to attach alongside text
-	// EphemeralImages are provider input for only this live turn. They are never
-	// copied into the entry tree or serialized into conversation history.
-	EphemeralImages []*types.ImageSource `json:"-"`
-}
-
-// ContextFile is a discovered context file on disk.
-type ContextFile struct {
-	Path    string
-	Content string
-}
-
-// GenEntryID generates an 8-character hex ID from crypto/rand.
-func GenEntryID() string {
-	b := make([]byte, 4)
-	if _, err := rand.Read(b); err != nil {
-		panic("crypto/rand failed: " + err.Error())
-	}
-	return hex.EncodeToString(b)
-}
-
-func nowMillis() int64 {
-	return time.Now().UnixMilli()
-}
-
-// textBlock creates a text content block.
-func textBlock(text string) types.LlmContentBlock {
-	return types.LlmContentBlock{Type: "text", Text: text}
-}
-
-// CreateConversation initializes a new v2 conversation.
-func CreateConversation(id, system, model string) *Conversation {
-	return &Conversation{
-		ID:        id,
-		System:    system,
-		Model:     model,
-		Messages:  []types.LlmMessage{},
-		CreatedAt: nowMillis(),
-		Version:   CurrentVersion,
-		Entries:   []SessionEntry{},
-		LeafID:    nil,
-	}
-}
-
-// AddUserMessage appends a user message to the conversation. The same content
-// becomes both the LLM-visible message (conv.Messages) and the persisted
-// display entry (conv.Entries) — the right behavior for an ordinary prompt
-// where what the user typed and what the model sees are identical.
-//
-// Returns the *SessionEntry that AppendEntry produced (the display/tree entry)
-// so callers that need the entry id can thread it out. Returns nil when
-// conv.Entries is nil (the LLM-only path that skips the tree write).
-// Additive: existing callers that ignore the return value are unaffected.
-func AddUserMessage(conv *Conversation, content any) *SessionEntry {
-	blocks := toContentBlocks(content)
-
-	conv.lock()
-	defer conv.unlock()
-	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: blocks})
-
-	if conv.Entries != nil {
-		entry := appendEntryLocked(conv, EntryMessage, MessageData{Role: "user", Content: blocks}, "")
-		conv.Messages[len(conv.Messages)-1].EntryID = entry.ID
-		return entry
-	}
-	return nil
-}
-
-// AddUserMessageWithDeliveryIDs adds one classified user message atomically and
-// returns false when every delivery ID is already represented in the persisted
-// tree. All supplied IDs map to one message, so a retry cannot duplicate a
-// batch of child completions.
-func AddUserMessageWithDeliveryIDs(conv *Conversation, content any, kind string, deliveryIDs []string) bool {
-	if len(deliveryIDs) == 0 {
-		AddUserMessageWithKind(conv, content, kind)
-		return true
-	}
-	blocks := toContentBlocks(content)
-	wanted := make(map[string]struct{}, len(deliveryIDs))
-	for _, id := range deliveryIDs {
-		wanted[id] = struct{}{}
-	}
-
-	conv.lock()
-	defer conv.unlock()
-	for _, entry := range conv.Entries {
-		message, ok := entry.Data.(MessageData)
-		if !ok {
-			continue
-		}
-		for _, id := range message.DeliveryIDs {
-			delete(wanted, id)
-		}
-	}
-	if len(wanted) == 0 {
-		return false
-	}
-
-	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: blocks})
-	if conv.Entries != nil {
-		ids := make([]string, 0, len(wanted))
-		for _, id := range deliveryIDs {
-			if _, remains := wanted[id]; remains {
-				ids = append(ids, id)
-			}
-		}
-		entry := appendEntryLocked(conv, EntryMessage, MessageData{
-			Role:            "user",
-			Content:         blocks,
-			InjectionKind:   kind,
-			MachineAuthored: types.InjectionKind(kind).IsMachineToMachine(),
-			DeliveryIDs:     ids,
-		}, "")
-		conv.Messages[len(conv.Messages)-1].EntryID = entry.ID
-	}
-	return true
-}
-
-// HasDeliveryID scans the conversation's persisted entries for a message
-// carrying the given delivery ID. Used by the dispatch layer to enforce
-// idempotent prompt submission before a run starts.
-func HasDeliveryID(conv *Conversation, id string) bool {
-	if id == "" {
-		return false
-	}
-	conv.lock()
-	defer conv.unlock()
-	for _, entry := range conv.Entries {
-		message, ok := entry.Data.(MessageData)
-		if !ok {
-			continue
-		}
-		for _, did := range message.DeliveryIDs {
-			if did == id {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// AddUserMessageWithKind is the kind-aware variant of AddUserMessage. It
-// stamps InjectionKind on the persisted entry, plus the MachineAuthored flag
-// derived from it, so consumers can classify the injection on historical
-// reload without knowing the engine's kind taxonomy. An empty kind is
-// identical to calling AddUserMessage.
-func AddUserMessageWithKind(conv *Conversation, content any, kind string) *SessionEntry {
-	if kind == "" {
-		return AddUserMessage(conv, content)
-	}
-	blocks := toContentBlocks(content)
-
-	conv.lock()
-	defer conv.unlock()
-	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: blocks})
-
-	if conv.Entries != nil {
-		entry := appendEntryLocked(conv, EntryMessage, MessageData{
-			Role:    "user",
-			Content: blocks,
-
-			InjectionKind: kind,
-			// Derived once here, at the single write seam for classified
-			// injections, rather than by each reader re-deriving it from the
-			// kind string.
-			MachineAuthored: types.InjectionKind(kind).IsMachineToMachine(),
-		}, "")
-		conv.Messages[len(conv.Messages)-1].EntryID = entry.ID
-		return entry
-	}
-	return nil
-}
-
-// AddToolResults appends tool results as a user message with tool_result content blocks.
-// All tool_result blocks are emitted first (in result order), then all image blocks
-// (in result/image order). This ordering is load-bearing: the Anthropic API requires
-// every tool_result in the post-tool_use user message to come immediately after the
-// tool_use turn, so no image block may be interleaved between two tool_result blocks.
-// With parallel tool calls where a non-final result carries an image, interleaving the
-// image after its owning tool_result would separate a later tool_result from the
-// tool_use turn and the API rejects the request ("tool_use ids were found without
-// tool_result blocks immediately after"). Images still ride in the same user message,
-// and each tool_result's text content (e.g. "[Image: foo.png]") keeps the image
-// identifiable, so model comprehension is preserved.
-func AddToolResults(conv *Conversation, results []ToolResultEntry) {
-	var blocks []types.LlmContentBlock
-	var imageBlocks []types.LlmContentBlock
-	var ephemeralImageBlocks []types.LlmContentBlock
-	// persistOverrides maps a block index in `blocks` to the text that should
-	// be written to the entry tree instead of the block's live Content. Only
-	// populated for results that set PersistContent; nil-safe and empty for
-	// every existing caller, which keeps the persisted history byte-identical
-	// to what it was before this field existed.
-	var persistOverrides map[int]string
-	for _, r := range results {
-		isErr := r.IsError
-		if r.PersistContent != "" {
-			if persistOverrides == nil {
-				persistOverrides = make(map[int]string, 1)
-			}
-			persistOverrides[len(blocks)] = r.PersistContent
-		}
-		blocks = append(blocks, types.LlmContentBlock{
-			Type:      "tool_result",
-			ToolUseID: r.ToolUseID,
-			Content:   r.Content,
-			IsError:   &isErr,
-		})
-		for _, img := range r.Images {
-			imageBlocks = append(imageBlocks, types.LlmContentBlock{
-				Type: "image",
-				// Carry the owning tool call's id on the persisted image block.
-				// Providers ignore ToolUseID on an image block (every provider
-				// serialiser reads only Source for type=="image"), so this never
-				// reaches the wire — but it is what lets flattenEntries associate
-				// a reloaded image back to its tool message on historical reload.
-				// Without it, images loaded from disk have no home and are dropped.
-				ToolUseID: r.ToolUseID,
-				Source:    img,
-			})
-		}
-		for _, img := range r.EphemeralImages {
-			ephemeralImageBlocks = append(ephemeralImageBlocks, types.LlmContentBlock{
-				Type:      "image",
-				ToolUseID: r.ToolUseID,
-				Source:    img,
-				Ephemeral: true,
-			})
-		}
-	}
-	blocks = append(blocks, imageBlocks...)
-	liveBlocks := append(append([]types.LlmContentBlock(nil), blocks...), ephemeralImageBlocks...)
-
-	conv.lock()
-	defer conv.unlock()
-	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: liveBlocks})
-
-	if conv.Entries != nil {
-		// Deep-copy blocks so MicroCompact mutations on conv.Messages
-		// cannot corrupt the persisted entry history.
-		entryCopy := make([]types.LlmContentBlock, len(blocks))
-		copy(entryCopy, blocks)
-		// Apply PersistContent overrides to the COPY only, so the provider
-		// still sees the full text on this turn while history stores the
-		// shorter, still-true statement. See the field comment on
-		// ToolResultEntry.PersistContent for why a tool result cannot simply
-		// be omitted from history the way a transient message can.
-		for idx, text := range persistOverrides {
-			entryCopy[idx].Content = text
-		}
-		entry := appendEntryLocked(conv, EntryMessage, MessageData{Role: "user", Content: entryCopy}, "")
-		conv.Messages[len(conv.Messages)-1].EntryID = entry.ID
-	}
-}
-
-// AddToolResultsWithSizeCheck appends tool results with an automatic size cap.
-// Results exceeding maxChars are persisted to disk and replaced with a preview
-// containing the first 2K characters plus a file path the model can Read.
-// When maxChars <= 0, DefaultMaxToolResultChars is used.
-func AddToolResultsWithSizeCheck(conv *Conversation, results []ToolResultEntry, convDir string, maxChars int) {
-	for i := range results {
-		replaced, persisted := PersistAndPreview(results[i].Content, results[i].ToolUseID, convDir, conv.ID, maxChars)
-		if persisted {
-			results[i].Content = replaced
-		}
-	}
-	AddToolResults(conv, results)
-}
-
-// UpdateCost adds to the running cost total.
-func UpdateCost(conv *Conversation, costUsd float64) {
-	conv.lock()
-	defer conv.unlock()
-	conv.TotalCost += costUsd
 }

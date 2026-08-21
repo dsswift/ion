@@ -294,38 +294,10 @@ func buildSystemPrompt(opts *types.RunOptions, conv *conversation.Conversation, 
 		systemPrompt += "\n" + opts.CapabilityPrompt
 	}
 
-	// Inject skill listing + proactive-invocation instruction when skills are
-	// loaded. Mirrors Claude Code's skill_listing attachment which injects the
-	// same block as a <system-reminder> user message on every turn. Doing it
-	// here means the listing is present from turn 1 and survives compaction
-	// (buildSystemPrompt is called fresh for every run, including post-compact
-	// runs). Skills with disable-model-invocation:true are excluded by
-	// BuildSkillSystemPromptSection.
-	//
-	// This is an opinion the engine carries generically: the coarse gate is
-	// RunOptions.DisableSkillSystemPrompt (from engine.json's
-	// LimitsConfig.DisableSkillSystemPrompt), and the fine-grained seam is the
-	// system_inject hook (kind "skill_listing"), which lets a harness observe,
-	// replace, or suppress the exact section text per run even when injection
-	// is enabled. A consumer that wants softer phrasing, a fully custom block,
-	// or no skill directive at all reaches it through one of these two paths
-	// instead of being forced onto the engine's default directive.
-	if !opts.DisableSkillSystemPrompt {
-		if skillSection := tools.BuildSkillSystemPromptSectionFor(opts.SessionKey); skillSection != "" {
-			text := skillSection
-			if hooks.OnSystemInject != nil {
-				hookText, suppress := hooks.OnSystemInject("skill_listing", skillSection, 0, 0)
-				if suppress {
-					text = ""
-				} else if hookText != "" {
-					text = hookText
-				}
-			}
-			if text != "" {
-				systemPrompt += "\n\n" + text
-			}
-		}
-	}
+	// Skill availability is a conversation-scoped typed announcement injected
+	// by runLoop once and then only for deltas. Do not rebuild a full listing in
+	// every run's system prompt: it wastes context and differs from Claude Code.
+	// The config and system_inject seam are applied at that announcement site.
 
 	return systemPrompt
 }
