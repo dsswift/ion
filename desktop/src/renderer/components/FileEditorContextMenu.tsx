@@ -5,9 +5,9 @@ import { gotoLine } from '@codemirror/search'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
-import { zoomViewport } from '../viewport-zoom'
 import { transitions } from '../theme-tokens'
 import { rWarn, rError } from '../rendererLogger'
+import { scrollableMenuStyle } from '../menu-viewport'
 
 /** Menu entry button with the standard hover/pressed/disabled states. */
 function EditorMenuButton({
@@ -175,7 +175,6 @@ export function FileEditorContextMenu({ x, y, isReadOnly, viewRef, onClose }: Fi
   // or a label wraps, and the drift is invisible until the menu hangs off the
   // screen edge again. Read-only mode hides rows, so the count is a dep.
   const pos = useAnchoredPopover({ x, y }, { deps: [visibleItems.length] })
-  const vp = zoomViewport()
 
   return (
     <div
@@ -185,8 +184,7 @@ export function FileEditorContextMenu({ x, y, isReadOnly, viewRef, onClose }: Fi
         left: pos.left,
         top: pos.top,
         visibility: pos.ready ? 'visible' : 'hidden',
-        maxHeight: vp.height - 16,
-        overflowY: 'auto',
+        ...scrollableMenuStyle(),
         width: menuW,
         background: colors.containerBg,
         border: `1px solid ${colors.containerBorder}`,

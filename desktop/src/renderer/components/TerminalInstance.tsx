@@ -16,19 +16,40 @@ interface TerminalEntry {
   created: boolean
   cwd: string
   hostEl: HTMLDivElement
-  unsubData: () => void
-  unsubExit: () => void
+  historyPending: boolean
+  pendingChunks: string[]
   unsubLinks: () => void
 }
 
-// Module-level pool: one xterm instance per compound key, survives React re-renders
+// Module-level pool: one xterm instance per compound key, survives React re-renders.
+// One IPC listener pair routes by that key. Per-instance listeners hit Electron's
+// EventEmitter warning threshold when users keep many shells across conversations.
 const terminalInstances = new Map<string, TerminalEntry>()
+let terminalListenersInstalled = false
+
+function installTerminalListeners(): void {
+  if (terminalListenersInstalled) return
+  terminalListenersInstalled = true
+  window.ion.onTerminalData((key, data) => {
+    const entry = terminalInstances.get(key)
+    if (!entry) return
+    if (entry.historyPending) entry.pendingChunks.push(data)
+    else entry.terminal.write(data)
+  })
+  window.ion.onTerminalExit((key, _exitCode) => {
+    const entry = terminalInstances.get(key)
+    if (!entry) return
+    entry.terminal.reset()
+    void window.ion.terminalCreate(key, entry.cwd).then(() => {
+      const dims = entry.fitAddon.proposeDimensions()
+      if (dims) window.ion.terminalResize(key, dims.cols, dims.rows)
+    }).catch((err) => rWarn('terminal', 'terminal recreate failed', { key, error: String(err) }))
+  })
+}
 
 export function destroyTerminalInstance(key: string): void {
   const entry = terminalInstances.get(key)
   if (entry) {
-    entry.unsubData()
-    entry.unsubExit()
     entry.unsubLinks()
     entry.hostEl.remove()
     entry.terminal.dispose()
@@ -158,6 +179,7 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
   const key = `${tabId}:${instanceId}`
 
   useEffect(() => {
+    installTerminalListeners()
     const container = containerRef.current
     if (!container) return
 
@@ -256,42 +278,34 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
       // Queueing them and flushing AFTER the history keeps the transcript in
       // chronological order — writing live data first would interleave the
       // backlog behind output that came later.
-      let historyPending = !restoredBuffer
+      const historyPending = !restoredBuffer
       const pendingChunks: string[] = []
+      const unsubLinks = registerTerminalLinks(terminal, cwd, tabId)
+      entry = {
+        terminal,
+        fitAddon,
+        serializeAddon,
+        created: false,
+        cwd,
+        hostEl,
+        historyPending,
+        pendingChunks,
+        unsubLinks,
+      }
+      terminalInstances.set(key, entry)
       if (historyPending) {
         void window.ion.terminalGetScrollback(key).then((history) => {
           if (history) terminal.write(history)
         }).catch((err) => {
           rWarn('terminal', 'scrollback fetch failed', { key, error: String(err) })
         }).finally(() => {
-          historyPending = false
-          for (const chunk of pendingChunks) terminal.write(chunk)
-          pendingChunks.length = 0
+          const current = terminalInstances.get(key)
+          if (!current) return
+          current.historyPending = false
+          for (const chunk of current.pendingChunks) terminal.write(chunk)
+          current.pendingChunks.length = 0
         })
       }
-
-      // Cmd+Click link provider for file paths & URLs
-      const unsubLinks = registerTerminalLinks(terminal, cwd, tabId)
-
-      // Module-level IPC listeners -- stay active even when component is unmounted
-      const unsubData = window.ion.onTerminalData((k, data) => {
-        if (k !== key) return
-        if (historyPending) pendingChunks.push(data)
-        else terminal.write(data)
-      })
-      const unsubExit = window.ion.onTerminalExit((k, _exitCode) => {
-        if (k !== key) return
-        const e = terminalInstances.get(key)
-        if (!e) return
-        terminal.reset()
-        void window.ion.terminalCreate(key, e.cwd).then(() => {
-          const dims = e.fitAddon.proposeDimensions()
-          if (dims) window.ion.terminalResize(key, dims.cols, dims.rows)
-        }).catch((err) => rWarn('terminal', 'terminal recreate failed', { error: String(err) }))
-      })
-
-      entry = { terminal, fitAddon, serializeAddon, created: false, cwd, hostEl, unsubData, unsubExit, unsubLinks }
-      terminalInstances.set(key, entry)
     }
 
     // Move persistent host element into the React container

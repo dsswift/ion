@@ -6,6 +6,7 @@ import { SettingToggle } from './SettingToggle'
 import { SettingSection } from './SettingSection'
 import { SettingHeading } from './SettingHeading'
 import { deriveProfileOptions, resolveSelectedProfileOption } from './default-profile-options'
+import { InterfacePicker } from './InterfacePicker'
 import { rError } from '../../rendererLogger'
 
 export function GeneralCategory() {
@@ -33,6 +34,8 @@ export function GeneralCategory() {
   const setAgentPanelDefaultOpen = usePreferencesStore((s) => s.setAgentPanelDefaultOpen)
   const aiGeneratedTitles = usePreferencesStore((s) => s.aiGeneratedTitles)
   const setAiGeneratedTitles = usePreferencesStore((s) => s.setAiGeneratedTitles)
+  const studioSurfaceSwitchMode = usePreferencesStore((s) => s.studioSurfaceSwitchMode)
+  const setStudioSurfaceSwitchMode = usePreferencesStore((s) => s.setStudioSurfaceSwitchMode)
 
   const handleBrowse = async () => {
     const dir = await window.ion.selectDirectory()
@@ -42,6 +45,8 @@ export function GeneralCategory() {
   return (
     <>
       <SettingHeading first>Workspace</SettingHeading>
+
+      <InterfacePicker />
 
       <SettingSection
         label="Default Directory"
@@ -172,6 +177,44 @@ export function GeneralCategory() {
       </SettingSection>
 
       <SettingHeading>Behavior</SettingHeading>
+
+      <SettingSection
+        label="Studio Surface on Conversation Switch"
+        description="Choose whether the surface stays as it is or restores each conversation's expanded state."
+      >
+        <div
+          style={{
+            display: 'flex',
+            background: colors.surfacePrimary,
+            border: `1px solid ${colors.containerBorder}`,
+            borderRadius: 8,
+            overflow: 'hidden',
+          }}
+        >
+          {([
+            ['preserve', 'Keep surface pinned when switching tabs'],
+            ['per-conversation', 'Remember surface expanded state per conversation'],
+          ] as const).map(([mode, label]) => (
+            <button
+              key={mode}
+              onClick={() => setStudioSurfaceSwitchMode(mode)}
+              style={{
+                flex: 1,
+                padding: '7px 0',
+                background: studioSurfaceSwitchMode === mode ? colors.accent : 'transparent',
+                color: studioSurfaceSwitchMode === mode ? colors.textOnAccent : colors.textSecondary,
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 13,
+                fontWeight: studioSurfaceSwitchMode === mode ? 600 : 400,
+                transition: 'background 0.15s, color 0.15s',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </SettingSection>
 
       <SettingToggle
         label="Bash Command Entry"

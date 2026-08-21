@@ -30,13 +30,15 @@ import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
 import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
-import { zoomViewport } from '../viewport-zoom'
-import { statusColor } from './WorktreeConversationsCard'
+import { WorktreeConversationStatusDot } from './WorktreeConversationStatusDot'
 import { conversationRoleLabel, type DirConversation } from '../../shared/worktree-conversations'
+import { scrollableMenuStyle } from '../menu-viewport'
 
 interface WorktreeRowGoToTabSubmenuProps {
   anchor: { x: number; y: number }
   conversations: readonly DirConversation[]
+  /** Coordinates from the caller's raw pointer or an already-normalized row rect. */
+  anchorSpace?: 'viewport' | 'css'
   /** Closes this portalled submenu while keeping its parent menu open. */
   onClose: () => void
   /** Runs after a conversation selection, when host should close whole hierarchy. */
@@ -80,6 +82,7 @@ interface WorktreeRowGoToTabSubmenuProps {
 /** Submenu listing every open conversation in a directory, for direct focus. */
 export function WorktreeRowGoToTabSubmenu({
   anchor,
+  anchorSpace = 'viewport',
   conversations,
   onClose,
   onSelect,
@@ -109,10 +112,10 @@ export function WorktreeRowGoToTabSubmenu({
     }
   }, [onClose, triggerRef])
 
-  const vp = zoomViewport()
   const pos = useAnchoredPopover(anchor, {
     prefer,
     parentRect,
+    anchorSpace,
     deps: [conversations.length],
   })
 
@@ -136,8 +139,7 @@ export function WorktreeRowGoToTabSubmenu({
         left: pos.left,
         top: pos.top,
         visibility: pos.ready ? 'visible' : 'hidden',
-        maxHeight: vp.height - 16,
-        overflowY: 'auto',
+        ...scrollableMenuStyle(),
         pointerEvents: 'auto',
         background: colors.popoverBg,
         border: `1px solid ${colors.popoverBorder}`,
@@ -164,10 +166,7 @@ export function WorktreeRowGoToTabSubmenu({
             else onClose()
           }}
         >
-          <span style={{
-            width: 6, height: 6, borderRadius: 3, flexShrink: 0,
-            background: statusColor(c.status, colors),
-          }} />
+          <WorktreeConversationStatusDot tabId={c.tabId} />
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</span>
           {conversationRoleLabel(c.tabRole) && (
             <span style={{ color: colors.accent, fontSize: 10, flexShrink: 0 }}>

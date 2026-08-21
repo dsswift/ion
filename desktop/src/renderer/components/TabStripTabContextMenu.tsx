@@ -12,12 +12,13 @@ import { usePopoverLayer } from './PopoverLayer'
 import { usePreferencesStore, getEffectiveTabGroups } from '../preferences'
 import type { TabState } from '../../shared/types'
 import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
-import { zoomRect, zoomViewport } from '../viewport-zoom'
+import { zoomRect } from '../viewport-zoom'
 import { ContextMenuItem } from './ContextMenuItem'
 import { MoveToGroupSubmenu } from './TabStripMoveToGroupSubmenu'
 import { ConfirmDialog } from './git/ConfirmDialog'
 import { useConvertToWorktreeGate } from './useConvertToWorktreeGate'
 import { rDebug, rInfo, rError } from '../rendererLogger'
+import { scrollableMenuStyle } from '../menu-viewport'
 
 interface TabContextMenuProps {
   anchor: { x: number; y: number }
@@ -138,7 +139,6 @@ export function TabContextMenu({
       moveAllSubmenu,
     ],
   })
-  const vp = zoomViewport()
 
   if (!popoverLayer) return null
 
@@ -162,8 +162,7 @@ export function TabContextMenu({
           left: pos.left,
           top: pos.top,
           visibility: pos.ready ? 'visible' : 'hidden',
-          maxHeight: vp.height - 16,
-          overflowY: 'auto',
+          ...scrollableMenuStyle(),
           pointerEvents: 'auto',
           background: colors.popoverBg,
           border: `1px solid ${colors.popoverBorder}`,
@@ -320,6 +319,7 @@ export function TabContextMenu({
       {moveSubmenu && (
         <MoveToGroupSubmenu
           anchor={moveSubmenu}
+          anchorSpace="css"
           tabId={tab.id}
           currentGroupId={tab.groupId || ''}
           triggerRef={moveItemRef}
@@ -338,6 +338,7 @@ export function TabContextMenu({
       {movePinSubmenu && (
         <MoveToGroupSubmenu
           anchor={movePinSubmenu}
+          anchorSpace="css"
           tabId={tab.id}
           currentGroupId={tab.groupId || ''}
           triggerRef={movePinItemRef}
@@ -447,10 +448,10 @@ function MoveAllToGroupInlineSubmenu({
   const targets = effectiveGroups
     .filter((g) => g.id !== currentGroupId)
     .map((g) => ({ id: g.id, label: g.label }))
-  const vp = zoomViewport()
   const pos = useAnchoredPopover(anchor, {
     prefer: 'rightOf',
     parentRect,
+    anchorSpace: 'css',
     deps: [showNewGroupInput, targets.length],
   })
 
@@ -470,8 +471,7 @@ function MoveAllToGroupInlineSubmenu({
         left: pos.left,
         top: pos.top,
         visibility: pos.ready ? 'visible' : 'hidden',
-        maxHeight: vp.height - 16,
-        overflowY: 'auto',
+        ...scrollableMenuStyle(),
         pointerEvents: 'auto',
         background: colors.popoverBg,
         border: `1px solid ${colors.popoverBorder}`,

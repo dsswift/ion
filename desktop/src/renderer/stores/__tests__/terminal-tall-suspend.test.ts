@@ -109,6 +109,39 @@ function buildHarness(overrides: Record<string, any> = {}) {
 describe('tall auto-suspend on terminal open', () => {
   beforeEach(() => vi.clearAllMocks())
 
+  it('keeps tray visibility and shell pools isolated by conversation directory', () => {
+    const sourceDir = '/repo/source'
+    const worktreeDir = '/repo/worktree'
+    const { state, termSlice } = buildHarness({
+      tabs: [
+        { id: 'source-tab', workingDirectory: sourceDir, isTerminalOnly: false },
+        { id: 'worktree-tab', workingDirectory: worktreeDir, isTerminalOnly: false },
+      ],
+    })
+
+    termSlice.toggleTerminal('worktree-tab')
+    const worktreeShell = termSlice.addTerminalInstance('worktree-tab', 'user')
+
+    expect(state.terminalOpenTabIds.has('worktree-tab')).toBe(true)
+    expect(state.terminalOpenTabIds.has('source-tab')).toBe(false)
+    expect(state.terminalPanes.get('worktree-tab').instances).toEqual([
+      expect.objectContaining({ id: worktreeShell, cwd: worktreeDir }),
+    ])
+    expect(state.terminalPanes.has('source-tab')).toBe(false)
+
+    termSlice.toggleTerminal('source-tab')
+    const sourceShell = termSlice.addTerminalInstance('source-tab', 'user')
+
+    expect(sourceShell).not.toBe(worktreeShell)
+    expect(state.terminalOpenTabIds.has('source-tab')).toBe(true)
+    expect(state.terminalPanes.get('source-tab').instances).toEqual([
+      expect.objectContaining({ id: sourceShell, cwd: sourceDir }),
+    ])
+    expect(state.terminalPanes.get('worktree-tab').instances).toEqual([
+      expect.objectContaining({ id: worktreeShell, cwd: worktreeDir }),
+    ])
+  })
+
   // ── (a) open on tall tab ──────────────────────────────────────────────────
 
   it('clears tallViewTabId and sets suspendedTallTabId when terminal opens on a tall tab', () => {

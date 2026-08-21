@@ -6,8 +6,9 @@ import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
 import { usePreferencesStore } from '../preferences'
 import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
-import { zoomRect, zoomViewport } from '../viewport-zoom'
+import { zoomRect } from '../viewport-zoom'
 import { MoveToGroupSubmenu } from './TabStripMoveToGroupSubmenu'
+import { scrollableMenuStyle } from '../menu-viewport'
 
 interface DirContextMenuProps {
   anchor: { x: number; y: number }
@@ -91,7 +92,6 @@ export function DirContextMenu({
     prefer: 'below',
     deps: [tabGroupMode, !!onForkTab, !!onFinishWork, moveSubmenu, movePinSubmenu],
   })
-  const vp = zoomViewport()
 
   if (!popoverLayer) return null
 
@@ -114,8 +114,7 @@ export function DirContextMenu({
         left: pos.left,
         top: pos.top,
         visibility: pos.ready ? 'visible' : 'hidden',
-        maxHeight: vp.height - 16,
-        overflowY: 'auto',
+        ...scrollableMenuStyle(),
         pointerEvents: 'auto',
         background: colors.popoverBg,
         border: `1px solid ${colors.popoverBorder}`,
@@ -249,6 +248,7 @@ export function DirContextMenu({
       {moveSubmenu && tabId && (
         <MoveToGroupSubmenu
           anchor={moveSubmenu}
+          anchorSpace="css"
           tabId={tabId}
           currentGroupId={tabGroupId || ''}
           triggerRef={moveItemRef}
@@ -261,6 +261,7 @@ export function DirContextMenu({
       {movePinSubmenu && tabId && (
         <MoveToGroupSubmenu
           anchor={movePinSubmenu}
+          anchorSpace="css"
           tabId={tabId}
           currentGroupId={tabGroupId || ''}
           triggerRef={movePinItemRef}

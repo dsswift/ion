@@ -40,13 +40,16 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 // records them.
 
 const written: string[] = []
+const fakeTerminals: FakeTerminal[] = []
 
 class FakeTerminal {
+  readonly writes: string[] = []
   buffer = { active: { getLine: () => null } }
+  constructor() { fakeTerminals.push(this) }
   // The component mutates `options` in a second effect (readOnly/theme sync),
   // so the stub must carry a real object or that effect throws.
   options: Record<string, unknown> = { theme: {} }
-  write(data: string): void { written.push(data) }
+  write(data: string): void { this.writes.push(data); written.push(data) }
   open(): void { /* no-op: nothing to attach in jsdom */ }
   focus(): void { /* no-op */ }
   reset(): void { /* no-op */ }
@@ -99,6 +102,15 @@ vi.mock('../../rendererLogger', () => ({
 // ─── window.ion bridge ────────────────────────────────────────────────────────
 
 let dataCallback: ((key: string, data: string) => void) | null = null
+let exitCallback: ((key: string, exitCode: number) => void) | null = null
+const onTerminalData = vi.fn((cb: (key: string, data: string) => void) => {
+  dataCallback = cb
+  return () => { dataCallback = null }
+})
+const onTerminalExit = vi.fn((cb: (key: string, exitCode: number) => void) => {
+  exitCallback = cb
+  return () => { exitCallback = null }
+})
 const terminalGetScrollback = vi.fn<(key: string) => Promise<string>>()
 
 function installIonBridge(): void {
@@ -108,11 +120,8 @@ function installIonBridge(): void {
     terminalResize: vi.fn(),
     terminalDestroy: vi.fn().mockResolvedValue(undefined),
     terminalGetScrollback,
-    onTerminalData: (cb: (key: string, data: string) => void) => {
-      dataCallback = cb
-      return () => { dataCallback = null }
-    },
-    onTerminalExit: () => () => {},
+    onTerminalData,
+    onTerminalExit,
     openExternal: vi.fn(),
     fsExists: vi.fn().mockResolvedValue({ exists: false }),
     fsOpenNative: vi.fn(),
@@ -127,7 +136,11 @@ class FakeResizeObserver {
 describe('TerminalInstance scrollback restoration', () => {
   beforeEach(() => {
     written.length = 0
+    fakeTerminals.length = 0
     dataCallback = null
+    exitCallback = null
+    onTerminalData.mockClear()
+    onTerminalExit.mockClear()
     terminalGetScrollback.mockReset()
     terminalGetScrollback.mockResolvedValue('')
     // React 18+ requires this flag for act() to flush effects synchronously.
@@ -198,6 +211,22 @@ describe('TerminalInstance scrollback restoration', () => {
 
     expect(terminalGetScrollback).not.toHaveBeenCalled()
     expect(written.join('')).toContain('restored from disk')
+  })
+
+  it('uses one IPC listener pair and routes output by terminal key', async () => {
+    await mount('tab-e:inst-e')
+    await mount('tab-f:inst-f')
+
+    expect(onTerminalData).toHaveBeenCalledTimes(1)
+    expect(onTerminalExit).toHaveBeenCalledTimes(1)
+    expect(dataCallback).toBeTypeOf('function')
+    expect(exitCallback).toBeTypeOf('function')
+
+    dataCallback!('tab-f:inst-f', 'SECOND')
+
+    expect(fakeTerminals).toHaveLength(2)
+    expect(fakeTerminals[0].writes).not.toContain('SECOND')
+    expect(fakeTerminals[1].writes).toContain('SECOND')
   })
 
   it('orders late-arriving live output after the fetched history', async () => {

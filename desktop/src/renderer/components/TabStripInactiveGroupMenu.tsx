@@ -10,10 +10,11 @@ import { usePreferencesStore, getEffectiveTabGroups } from '../preferences'
 import type { TabGroupView } from '../hooks/useTabGroups'
 import type { TabGroupMode } from '../../shared/types-session'
 import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
-import { zoomRect, zoomViewport } from '../viewport-zoom'
+import { zoomRect } from '../viewport-zoom'
 import { ContextMenuItem } from './ContextMenuItem'
 import { ConfirmDialog } from './git/ConfirmDialog'
 import { rDebug, rInfo } from '../rendererLogger'
+import { scrollableMenuStyle } from '../menu-viewport'
 
 interface InactiveGroupMenuProps {
   anchor: { x: number; y: number }
@@ -70,7 +71,6 @@ export function InactiveGroupMenu({
     prefer: 'below',
     deps: [tabGroupMode, moveSubmenu],
   })
-  const vp = zoomViewport()
 
   if (!popoverLayer) return null
 
@@ -95,8 +95,7 @@ export function InactiveGroupMenu({
           left: outerPos.left,
           top: outerPos.top,
           visibility: outerPos.ready ? 'visible' : 'hidden',
-          maxHeight: vp.height - 16,
-          overflowY: 'auto',
+          ...scrollableMenuStyle(),
           pointerEvents: 'auto',
           background: colors.popoverBg,
           border: `1px solid ${colors.popoverBorder}`,
@@ -212,10 +211,10 @@ function InactiveGroupMoveAllSubmenu({
   setNewGroupName,
   onPickTarget,
 }: InactiveGroupMoveAllSubmenuProps) {
-  const vp = zoomViewport()
   const pos = useAnchoredPopover(anchor, {
     prefer: 'rightOf',
     parentRect,
+    anchorSpace: 'css',
     deps: [showNewGroupInput, targets.length, tabGroupMode],
   })
   return createPortal(
@@ -234,8 +233,7 @@ function InactiveGroupMoveAllSubmenu({
         left: pos.left,
         top: pos.top,
         visibility: pos.ready ? 'visible' : 'hidden',
-        maxHeight: vp.height - 16,
-        overflowY: 'auto',
+        ...scrollableMenuStyle(),
         pointerEvents: 'auto',
         background: colors.popoverBg,
         border: `1px solid ${colors.popoverBorder}`,
