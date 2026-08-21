@@ -106,10 +106,20 @@ Launch a new agent to handle complex, multi-step tasks autonomously.
 |-----------|------|----------|-------------|
 | `prompt` | string | yes | The task for the agent to perform |
 | `description` | string | no | Short description of what the agent will do |
-| `model` | string | no | Model override for the child agent. Invalid values warn and fall back to the session default. |
+| `model` | string | no | Optional model request. Omit to inherit the parent model. Direct requests stay locked to the parent provider; a configured tier may select its configured provider. |
 | `wait_for_completion` | boolean | no | Block until terminal child output. Default `false`: return a dispatch ID immediately and receive automatic completion delivery. |
 
-Spawns a child session via the session-scoped `AgentSpawner`. Default dispatch is asynchronous: parent may continue working or end its turn, and engine injects classified child completion when it finishes. Use `wait_for_completion: true` only when current turn needs terminal output.
+Spawns a child session via the session-scoped `AgentSpawner`. Every call creates a new dispatch. Default dispatch is asynchronous: parent may continue working or end its turn, and engine injects classified child completion when it finishes. Use `AgentStatus` to inspect an existing dispatch. Use `wait_for_completion: true` only when current turn needs terminal output.
+
+### AgentStatus
+
+Inspect active agent dispatches without creating, steering, stopping, or waiting for an agent.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `dispatch_id` | string | no | Exact dispatch ID returned by `Agent`. Omit to list all active dispatches. |
+
+Returns the authoritative live dispatch registry snapshot. Each entry includes identity, running or suspended status, hierarchy, elapsed time, tool activity, child conversation identity, and the exact task or child wait set when suspended. Terminal dispatches are absent because the engine delivers their completion to the parent automatically.
 
 ### WebFetch
 
@@ -173,16 +183,35 @@ Invoke a loaded skill by name.
 | `skill` | string | yes | The name of the skill to invoke |
 | `args` | string | no | Optional arguments to pass to the skill |
 
-Returns the skill content for execution, prefixed with the skill's name, description, and — for disk-loaded skills — a `Base directory for this skill:` line so the model can resolve the skill's relative companion files (`references/*.md`, scripts, assets). Skills are loaded from the skills registry, which the engine populates at session start.
+Returns a compact acknowledgment plus typed skill instructions for execution. The full rendered body includes skill name, description, and -- for disk-loaded skills -- a `Base directory for this skill:` line so the model can resolve relative companion files (`references/*.md`, scripts, assets). Skills are loaded from the skills registry at session start.
 
 Skill roots (always loaded): `~/.ion/skills/` and `{workingDir}/.ion/skills/`. When the consumer enables Claude compatibility, `~/.claude/skills/` is loaded as well. Skills are also user-invocable as slash commands by default (`/name` resolves the SKILL.md and lists it in slash discovery); set `user-invocable: false` in frontmatter to hide a skill from the autocomplete feed (typed resolution still works), or `disable-model-invocation: true` to block the Skill tool path.
 
 Skills can be placed in the roots above in two formats:
 
-- **Flat file**: `<name>.md` — the skill name comes from the `name` frontmatter key, falling back to the filename stem.
-- **Subdirectory**: `<name>/SKILL.md` — the skill name is always the directory name. This is the industry-standard layout used by most third-party skill repositories.
+- **Flat file**: `<name>.md` -- the skill name comes from the `name` frontmatter key, falling back to the filename stem.
+- **Subdirectory**: `<name>/SKILL.md` -- the skill name is always the directory name. This is the industry-standard layout used by most third-party skill repositories.
 
 Both formats coexist in the same directory. Frontmatter supports single-line values (`key: value`) and YAML block scalars (`key: >` for folded, `key: |` for literal).
+
+#### Skill context lifecycle
+
+Skills have a three-phase lifecycle that governs how their content flows through system prompt, conversation history, and compaction.
+
+**Phase 1 -- listing (announce once, then deltas).** On the first run of a conversation the engine appends a `skill_listing` block to that run's inbound user message, carrying every model-invocable skill name (with its `description` and `when_to_use` hint, budget-capped). On later runs it reads structurally persisted `SkillNames` and adds only names registered since the last announcement. Re-announcing the full set every run is unnecessary. The typed listing block survives restart, and conversations that predate this mechanism receive a full initial listing on their next run. The listing is routed through the `system_inject` hook (kind `"skill_listing"`) so a harness can observe, replace, or suppress it.
+
+**Phase 2 -- invocation (full body once per Skill call).** When the Skill tool executes, the tool result has two parts:
+
+- A compact acknowledgment string (`Content`: `Loaded skill "name". Follow its instructions for this task.`) remains in the matching provider-required `tool_result` block.
+- A `SkillInvocation` struct (name, source path, full rendered SKILL.md body, invocation timestamp) rides the internal tool result. `AddToolResults` converts it into a typed `skill_content` block after every provider-required `tool_result` block in the same user message. Providers flatten `skill_content` to plain text, while `SkillName`, `SkillSource`, and `SkillInvokedAt` remain structural persistence metadata.
+
+**Phase 3 -- post-hard-compaction restoration.** When a hard compaction replaces the pre-boundary history with a summary, invoked skill instructions that were in the compacted region are lost from the message stream. The engine restores them onto the `compact_boundary` block's `RestoredSkills` field. Restoration works as follows:
+
+1. `CollectInvokedSkills` scans the pre-compaction messages for `skill_content` blocks and any prior `compact_boundary` blocks' `RestoredSkills`, deduplicating by name and keeping the newest invocation per skill.
+2. `BoundRestoredSkills` applies token budgets: each skill's content is capped at 5,000 estimated tokens (truncated with a marker pointing to the source path), and the aggregate across all restored skills is capped at 25,000 tokens. Skills are processed newest-first, so the most recently invoked skill is never dropped to make room for an older one.
+3. The bounded list is attached to the `compact_boundary` block as `RestoredSkills`. When the post-compaction run rebuilds context, provider serializers emit these as text blocks so the model sees the instructions again.
+
+This three-phase design means existing conversations that predate the skill lifecycle mechanism are forward-compatible: they carry no listing or content blocks, receive a full initial listing on the next run, and skill invocations from that point forward participate in the lifecycle normally.
 
 ### ListMcpResources
 
@@ -212,7 +241,7 @@ Search the conversation history for content that may have been compacted or clea
 
 ### WorktreeList
 
-List every worktree registered for the repository containing the current directory, including this one. Each entry carries its branch, source branch, title, landed status, and (when resolvable) its current HEAD commit and how many commits it holds that have not yet reached its source branch. Read-only: every git query runs in the calling conversation's own directory, never inside another worktree's checkout — cross-worktree data is read through the shared git object store by referencing a sibling's branch name, not by visiting its directory.
+List every worktree registered for the repository containing the current directory, including this one. A landed worktree whose checkout directory was removed is omitted; a missing active worktree remains available for branch recovery. Each entry carries its branch, source branch, title, landed status, and (when resolvable) its current HEAD commit and how many commits it holds that have not yet reached its source branch. Read-only: every git query runs in the calling conversation's own directory, never inside another worktree's checkout — cross-worktree data is read through the shared git object store by referencing a sibling's branch name, not by visiting its directory.
 
 No parameters.
 
