@@ -36,6 +36,14 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	utils.LogWithFields(utils.LevelDebug, "server", "dispatch", map[string]any{"status": cmd.Cmd, "session_id": cmd.Key, "run_id": cmd.RequestID})
 	switch cmd.Cmd {
 	case "start_session":
+		if cmd.Config == nil {
+			s.sendResult(conn, cmd, fmt.Errorf("start_session requires config"), nil)
+			break
+		}
+		if err := s.requireOperatorIdentityForSession(); err != nil {
+			s.sendResult(conn, cmd, err, nil)
+			break
+		}
 		result, err := s.manager.StartSession(cmd.Key, *cmd.Config)
 		if err == nil {
 			s.ownership.claim(conn, cmd.Key)
@@ -46,6 +54,10 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		s.sendResult(conn, cmd, err, result)
 
 	case "send_prompt":
+		if err := s.requireOperatorIdentityForSession(); err != nil {
+			s.sendResult(conn, cmd, err, nil)
+			break
+		}
 		if !s.manager.ReserveDeliveryID(cmd.Key, cmd.DeliveryId) {
 			utils.LogWithFields(utils.LevelInfo, "server", "send_prompt: idempotent duplicate, skipping run", map[string]any{
 				"key":         cmd.Key,
@@ -64,7 +76,6 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 				s.manager.ReleaseDeliveryID(cmd.Key, reservedDelivery)
 			}
 		}()
-
 		var overrides *session.PromptOverrides
 		resolvedExts := cmd.ResolveExtensions()
 		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" || len(cmd.Attachments) > 0 || cmd.ImplementationPhase || cmd.ThinkingEffort != "" || cmd.EnterPlanModeDescription != "" || cmd.PlanModeSparseReminder != "" || cmd.PlanFilePath != "" || len(cmd.BashAllowlistAdditionsForThisPrompt) > 0 || len(cmd.McpAllowlistAdditionsForThisPrompt) > 0 || cmd.CompactTargetPercent > 0 || cmd.CompactMicroKeepTurns > 0 || cmd.CompactEnabled != nil || cmd.CompactSummaryEnabled != nil || cmd.CompactMemoryEnabled != nil || cmd.ResolveSlash || cmd.ClientWorkspaceContext != nil || cmd.DeliveryId != "" {
@@ -122,8 +133,8 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		// returns a typed outcome so the steer can never be silently dropped;
 		// we log both the attempt and the resolved outcome (engine-grounding
 		// §7), at parity with the abort/abort_agent cases above.
-		utils.LogWithFields(utils.LevelInfo, "server", "steer agent", map[string]any{"session_id": cmd.Key, "model": cmd.AgentName, "count": len(cmd.Message)})
-		outcome := s.manager.SteerAgent(cmd.Key, cmd.AgentName, cmd.Message)
+		utils.LogWithFields(utils.LevelInfo, "server", "steer agent", map[string]any{"session_id": cmd.Key, "model": cmd.AgentName, "count": len(cmd.Message), "client_message_id": cmd.ClientMessageID})
+		outcome := s.manager.SteerAgentWithClientID(cmd.Key, cmd.AgentName, cmd.Message, "", cmd.ClientMessageID)
 		if outcome.Delivered() {
 			utils.LogWithFields(utils.LevelInfo, "server", "steer agent delivered", map[string]any{"session_id": cmd.Key, "model": cmd.AgentName, "status": outcome})
 		} else {
@@ -141,6 +152,14 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "stop_session":
 		err := s.manager.StopSession(cmd.Key)
 		s.lanes.evictSession(cmd.Key)
+		s.sendResult(conn, cmd, err, nil)
+
+	case "settle_session":
+		err := s.manager.SettleSession(cmd.Key)
+		s.sendResult(conn, cmd, err, nil)
+
+	case "resume_session":
+		err := s.manager.ResumeSession(cmd.Key)
 		s.sendResult(conn, cmd, err, nil)
 
 	case "stop_by_prefix":
@@ -215,18 +234,25 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		s.sendResult(conn, cmd, err, nil)
 
 	case "rewind_session":
-		// Ordinal-addressed tree-native rewind: the client sends the 0-based
-		// ordinal of the user turn to rewind before (which it already computes
-		// from its rendered rows); the engine resolves it to the matching tree
-		// entry, moves the leaf to that entry's parent, and restores plan-file
-		// continuity for the branch point. Clients hold no engine entry ids, so
-		// this is the client-facing counterpart to branch_before (entry-id
-		// addressed, for tree-navigator/external consumers).
-		idx := 0
-		if cmd.UserTurnIndex != nil {
-			idx = *cmd.UserTurnIndex
+		// Exact-entry-addressed tree-native rewind takes priority when the
+		// client supplies EntryID (learned from a prior engine_steer_injected
+		// confirmation, or from loaded conversation history): the engine
+		// validates it names a genuine user turn on the CURRENT context path
+		// before branching, rather than trusting a client-computed ordinal
+		// that can point at the wrong turn once a queued-but-undelivered
+		// steer occupies a row position with no corresponding tree entry.
+		// Falls back to the legacy ordinal-addressed path when EntryID is
+		// absent, for older clients and external SDK consumers.
+		var err error
+		if cmd.EntryID != "" {
+			err = s.manager.RewindSessionToEntry(cmd.Key, cmd.EntryID)
+		} else {
+			idx := 0
+			if cmd.UserTurnIndex != nil {
+				idx = *cmd.UserTurnIndex
+			}
+			err = s.manager.RewindSession(cmd.Key, idx)
 		}
-		err := s.manager.RewindSession(cmd.Key, idx)
 		s.sendResult(conn, cmd, err, nil)
 
 	case "navigate_tree":
@@ -337,6 +363,17 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		// via OnEvent / the WebSocket stream and observes the emission
 		// through that channel.
 		s.manager.QuerySessionStatus(cmd.Key)
+		s.sendResult(conn, cmd, nil, nil)
+
+	case "resolve_permission_denials":
+		// The consumer resolved a pending AskUserQuestion / ExitPlanMode by
+		// its own means (typically the user dismissed the card), which
+		// produces neither a prompt nor a /clear — the only two events that
+		// previously released the engine's retention. Drop the retention so
+		// subsequent status snapshots stop re-publishing a question nobody is
+		// waiting on. The resulting snapshot is emitted on the manager's event
+		// bus, so every attached consumer converges, not just this caller.
+		s.manager.ResolvePermissionDenials(cmd.Key)
 		s.sendResult(conn, cmd, nil, nil)
 
 	case "get_agent_state":
@@ -495,6 +532,18 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		utils.LogWithFields(utils.LevelInfo, "server", "clear conversation file", map[string]any{"session_id": cmd.Key})
 		err := s.manager.ClearConversationFile(cmd.Key)
 		s.sendResult(conn, cmd, err, nil)
+
+	case "delete_stored_conversations":
+		activeSessions := s.manager.ListSessions()
+		activeIDs := make([]string, 0, len(activeSessions))
+		for _, session := range activeSessions {
+			if session.ConversationID != "" {
+				activeIDs = append(activeIDs, session.ConversationID)
+			}
+		}
+		utils.LogWithFields(utils.LevelInfo, "server", "delete stored conversations", map[string]any{"requested_count": len(cmd.SessionIDs), "active_count": len(activeIDs)})
+		deleted, err := conversation.DeleteStoredExact("", cmd.SessionIDs, activeIDs)
+		s.sendResult(conn, cmd, err, map[string]int{"deleted": deleted})
 
 	case "delete_stored_sessions":
 		maxAge := cmd.MaxAgeDays
