@@ -75,7 +75,7 @@ The engine fires hooks at each stage of tool execution:
 
 ## Tool Categories
 
-### Core Tools (14)
+### Core Tools
 
 Always registered. Available in every session.
 
@@ -87,7 +87,8 @@ Always registered. Available in every session.
 | Bash | Execute shell commands |
 | Grep | Search file contents (ripgrep) |
 | Glob | Find files by pattern |
-| Agent | Spawn sub-agent sessions |
+| Agent | Spawn a new sub-agent session |
+| AgentStatus | Inspect active sub-agent sessions without spawning |
 | WebFetch | Fetch content from URLs |
 | WebSearch | Search the web |
 | NotebookEdit | Read/edit/run Jupyter notebooks |
@@ -96,7 +97,7 @@ Always registered. Available in every session.
 | ListMcpResources | List MCP server resources |
 | ReadMcpResource | Read MCP server resources |
 
-### Optional Tools (4)
+### Optional Tools
 
 Require explicit opt-in via `RegisterTaskTools()`. See [Task Tools](task-tools.md).
 

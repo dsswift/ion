@@ -150,7 +150,8 @@ Core tools, always registered:
 | Bash | Execute shell commands |
 | Grep | Content search (ripgrep) |
 | Glob | File pattern matching |
-| Agent | Spawn sub-agent |
+| Agent | Spawn a new sub-agent |
+| AgentStatus | Inspect active sub-agents without spawning |
 | WebFetch | HTTP GET/POST |
 | WebSearch | Web search |
 | NotebookEdit | Jupyter notebook editing |

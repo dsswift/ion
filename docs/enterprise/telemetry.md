@@ -41,6 +41,8 @@ Any field the operator sets explicitly is never overridden. If `targets` is set 
       "X-Source": "ion-engine"
     },
     "filePath": "/var/log/ion/telemetry.jsonl",
+    "maxSizeMB": 20,
+    "maxFiles": 3,
     "privacyLevel": "standard",
     "batchSize": 100,
     "flushIntervalMs": 5000,
@@ -86,11 +88,24 @@ The engine retries failed HTTP sends with exponential backoff. After 3 consecuti
 
 Writes telemetry entries as newline-delimited JSON (one entry per line) to a local file.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `filePath` | `string` | Absolute path to the output file. The engine creates the file if it does not exist. |
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `filePath` | `string` | `~/.ion/telemetry.jsonl` | Absolute path to the output file. The engine creates the file if it does not exist. |
+| `maxSizeMB` | `int` | `20` | Size cap on the live file before it is rotated. |
+| `maxFiles` | `int` | `3` | Number of rotated archives retained beside the live file. Negative retains none — the live file is discarded at the cap. |
+| `disableRotation` | `bool` | `false` | Disable size-based rotation entirely, restoring unbounded append. |
 
 The file target is useful for local debugging, compliance archives, or feeding into a log shipping agent (Filebeat, Fluentd, Vector).
+
+#### Rotation and the disk bound
+
+The live file is bounded by `maxSizeMB` and rotated by rename — `telemetry.jsonl` becomes `telemetry.jsonl.1`, existing archives shift down, and the oldest beyond `maxFiles` is dropped. Total disk for the target is therefore `maxSizeMB × (maxFiles + 1)`, or **80 MB** at the defaults.
+
+Rotating by rename rather than truncating in place is what keeps a concurrent reader correct: a shipping agent following the path detects the inode change and continues on the new file, so no line is shipped twice and none is lost. The engine logs the resolved policy at startup and every rotation at `INFO`, so the live bound is visible in `~/.ion/engine.jsonl` without reading config.
+
+Shipping telemetry downstream does **not** bound the local file — a shipper advances a read offset, it does not truncate. Rotation is the only thing that caps local disk, and it is independent of retention at the collector, which is the collector's policy to set.
+
+`disableRotation` exists for operators who need the complete local stream (a compliance archive rotated by an external tool, for instance). It restores the unbounded growth that rotation exists to prevent, and the engine logs a `WARN` at startup when it is set.
 
 ### OpenTelemetry target
 
