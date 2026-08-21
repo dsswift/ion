@@ -117,14 +117,17 @@ export function registerEngineIpc(): void {
     await engineBridge.branchSessionBefore(key, entryId)
   })
 
-  ipcMain.handle(IPC.ENGINE_REWIND, async (_event, { key, userTurnIndex }: { key: string; userTurnIndex: number }) => {
-    // Ordinal-addressed tree-native rewind. The engine resolves the user-turn
-    // ordinal against its own tree, moves the leaf to before that turn, and
-    // restores plan-file continuity — so the next prompt replaces the turn on a
-    // fresh branch with no duplicate. Errors surface to the renderer via the
+  ipcMain.handle(IPC.ENGINE_REWIND, async (_event, { key, entryId, userTurnIndex }: { key: string; entryId?: string; userTurnIndex?: number }) => {
+    // Exact-entry-addressed tree-native rewind when entryId is supplied
+    // (learned from a prior engine_steer_injected confirmation, or from
+    // loaded conversation history): the engine validates it names a genuine
+    // user turn on the CURRENT context path before branching, rejecting a
+    // stale or foreign-branch id rather than silently landing on the wrong
+    // turn. Falls back to the ordinal when entryId is absent — same tree
+    // resolution behavior as before. Errors surface to the renderer via the
     // returned result so a failed rewind is logged, not silent.
-    log('engine_rewind', { key, user_turn_index: userTurnIndex })
-    return engineBridge.rewindSession(key, userTurnIndex)
+    log('engine_rewind', { key, entry_id: entryId ?? '', user_turn_index: userTurnIndex ?? -1 })
+    return engineBridge.rewindSession(key, { entryId, userTurnIndex })
   })
 
   ipcMain.handle(IPC.ENGINE_GET_CONTEXT_BREAKDOWN, (_event, { key }: { key: string }) => {
@@ -155,6 +158,16 @@ export function registerEngineIpc(): void {
     const safePlanFilePath = sanitizePlanFilePath(planFilePath, 'SET_PERMISSION_MODE')
     log('set_permission_mode', { tab_id: tabId, mode, source: source ?? 'unknown', plan_file_path: safePlanFilePath ?? '' })
     sessionPlane.setPermissionMode(tabId, mode, source, safePlanFilePath)
+  })
+
+  ipcMain.on(IPC.RESOLVE_PERMISSION_DENIALS, (_event, payload: { tabId: string }) => {
+    const tabId = payload?.tabId
+    if (typeof tabId !== 'string' || tabId.length === 0 || tabId.length > 128) {
+      log('resolve_permission_denials: invalid tabId')
+      return
+    }
+    log('resolve_permission_denials: ipc', { tab_id: tabId })
+    sessionPlane.resolvePermissionDenials(tabId)
   })
 
   ipcMain.on('ion:engine-set-plan-mode', (_event, key: string, enabled: boolean, planFilePath?: string) => {

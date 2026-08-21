@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pendingCardOutcome, lastPendingCardTool } from '../pending-card'
+import { pendingCardOutcome, lastPendingCardTool, isPendingUserCardDenial } from '../pending-card'
 import { formatClearDivider } from '../clear-divider'
 
 describe('pending-card', () => {
@@ -55,5 +55,43 @@ describe('pending-card', () => {
   it('ignores a clear divider that appears BEFORE the pending tool', () => {
     // A prior clear, then a fresh question after it → the question is live.
     expect(lastPendingCardTool([clearDivider, ask])?.toolName).toBe('AskUserQuestion')
+  })
+})
+
+/**
+ * isPendingUserCardDenial — the shared "must this card survive?" predicate.
+ *
+ * Every lifecycle path that nulls `permissionDenied` (session_init,
+ * task_complete, heartbeat reconciliation) consults this one function, because
+ * `permissionDenied` is the single field all waiting-state surfaces read. A
+ * regression here blanks the approval card, the tab dot, the group pill, the
+ * inbox label and the iOS projection at once.
+ */
+describe('isPendingUserCardDenial', () => {
+  it('is true for an outstanding ExitPlanMode denial', () => {
+    expect(isPendingUserCardDenial({ tools: [{ toolName: 'ExitPlanMode' }] })).toBe(true)
+  })
+
+  it('is true for an outstanding AskUserQuestion denial', () => {
+    expect(isPendingUserCardDenial({ tools: [{ toolName: 'AskUserQuestion' }] })).toBe(true)
+  })
+
+  it('is true when a proposal rides ALONGSIDE another denial', () => {
+    // The prior narrow check required tools.length === 1, so a proposal that
+    // arrived with any companion denial was treated as run-scoped residue and
+    // silently cleared.
+    expect(
+      isPendingUserCardDenial({ tools: [{ toolName: 'Bash' }, { toolName: 'ExitPlanMode' }] }),
+    ).toBe(true)
+  })
+
+  it('is false for run-scoped tool denials only', () => {
+    expect(isPendingUserCardDenial({ tools: [{ toolName: 'Bash' }, { toolName: 'Write' }] })).toBe(false)
+  })
+
+  it('is false for an empty, null, or undefined denial', () => {
+    expect(isPendingUserCardDenial({ tools: [] })).toBe(false)
+    expect(isPendingUserCardDenial(null)).toBe(false)
+    expect(isPendingUserCardDenial(undefined)).toBe(false)
   })
 })

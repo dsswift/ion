@@ -144,14 +144,25 @@ describe('task_complete.permissionDenials → active instance.permissionDenied',
     expect(getPermissionDenied(state, 'tab1')!.tools).toHaveLength(2)
   })
 
-  it('task_complete without denials CLEARS existing permissionDenied (authoritative path)', () => {
-    // WI-001 change: the normalized path is authoritative. task_complete with
-    // an empty permissionDenials list always clears permissionDenied. This is
-    // by design: a follow-up run that completes cleanly should clear any
-    // leftover denial card from the previous run.
+  it('task_complete without denials PRESERVES an unanswered user card, and CLEARS run-scoped residue', () => {
+    // CORRECTED CONTRACT. This test previously asserted that an empty
+    // permissionDenials list always clears permissionDenied, on the reasoning
+    // that "a follow-up run that completes cleanly should clear any leftover
+    // denial card from the previous run."
+    //
+    // That is right for run-scoped residue and wrong for an unanswered
+    // question. An AskUserQuestion / ExitPlanMode denial is a question awaiting
+    // THE USER; a later run completing is not the user answering it. Clearing
+    // on that signal is what made a Plan Ready card vanish with no user action
+    // (see event-slice-plan-card-survival.test.ts for the live timeline).
+    //
+    // The card is still cleared at the paths that mean the user moved on: the
+    // next prompt (send-slice.ts clears permissionDenied on a non-busy send),
+    // approval (implement-slice.ts), explicit dismissal
+    // (useClearPermissionDenied.ts) and /clear. So nothing leaks.
     const { state, slice } = buildHarness()
 
-    // Tick 1: denial arrives.
+    // Tick 1: an unanswered question arrives.
     slice.handleNormalizedEvent('tab1', {
       type: 'task_complete',
       sessionId: 'sess-1',
@@ -164,7 +175,35 @@ describe('task_complete.permissionDenials → active instance.permissionDenied',
     } as any)
     expect(getPermissionDenied(state, 'tab1')).not.toBeNull()
 
-    // Tick 2: follow-up task_complete with no denials clears the existing entry.
+    // Tick 2: a follow-up task_complete with no denials must NOT retire the
+    // question the user has not answered yet.
+    slice.handleNormalizedEvent('tab1', {
+      type: 'task_complete',
+      sessionId: 'sess-2',
+      costUsd: 0.001,
+      durationMs: 1000,
+      numTurns: 1,
+      permissionDenials: [],
+    } as any)
+    expect(getPermissionDenied(state, 'tab1')?.tools[0].toolName).toBe('AskUserQuestion')
+  })
+
+  it('task_complete without denials CLEARS a run-scoped denial (no user card outstanding)', () => {
+    const { state, slice } = buildHarness()
+
+    slice.handleNormalizedEvent('tab1', {
+      type: 'task_complete',
+      sessionId: 'sess-1',
+      costUsd: 0,
+      durationMs: 0,
+      numTurns: 1,
+      permissionDenials: [{ toolName: 'AskUserQuestion', toolUseId: 'tu-1', toolInput: { question: 'q?' } }],
+    } as any)
+
+    // The user answers, so the card is dismissed the way production dismisses
+    // it. A subsequent clean completion leaves nothing behind.
+    state.conversationPanes.get('tab1')!.instances[0].permissionDenied = null
+
     slice.handleNormalizedEvent('tab1', {
       type: 'task_complete',
       sessionId: 'sess-2',

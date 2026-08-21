@@ -17,7 +17,7 @@ import * as path from 'path'
 // Mock state before importing the handler.
 vi.mock('../../state', () => ({
   state: { mainWindow: null, remoteTransport: null },
-  sessionPlane: { resetTabSession: vi.fn(), setPermissionMode: vi.fn() },
+  sessionPlane: { resetTabSession: vi.fn(), setPermissionMode: vi.fn(), resolvePermissionDenials: vi.fn() },
   engineBridge: {},
   activeAssistantMessages: new Map(),
   lastMessagePreview: new Map(),

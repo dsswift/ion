@@ -84,6 +84,41 @@ export function pendingCardOutcome(messages: readonly PendingCardMessage[] | und
 }
 
 /**
+ * A live `permissionDenied` entry, narrowed to what the predicates below read.
+ * Both the renderer instance shape and the main-process denial list satisfy it.
+ */
+export interface PendingCardDenial {
+  tools?: ReadonlyArray<{ toolName: string }>
+}
+
+/**
+ * True when a denial is a question awaiting THE USER rather than run-scoped
+ * residue — i.e. it contains an AskUserQuestion or ExitPlanMode entry.
+ *
+ * This is the counterpart to `pendingCardOutcome`: that function decides
+ * whether to REBUILD a card from persisted history, this one decides whether a
+ * card already in memory must be PRESERVED across a lifecycle event.
+ *
+ * Why it is shared rather than re-derived at each call site: `permissionDenied`
+ * is the single field every waiting-state surface reads (`waitingStateOfPane`
+ * in TabStripShared.ts feeds the tab dot, the group pill, the workspace
+ * indicator, the Studio inbox row, and the iOS projection). So any code path
+ * that nulls it while a user-facing question is outstanding silently blanks all
+ * of them at once, and the card disappears with no user action and no record.
+ * Every such path must consult this one predicate.
+ *
+ * A run ending, a session initialising, or a heartbeat arriving are all
+ * lifecycle noise with respect to a question the user has not answered yet.
+ * Only the user answering (implementPlan / clearPermissionDenied) or a
+ * genuinely different proposal may retire it.
+ */
+export function isPendingUserCardDenial(denial: PendingCardDenial | null | undefined): boolean {
+  const tools = denial?.tools
+  if (!tools || tools.length === 0) return false
+  return tools.some((t) => (PENDING_CARD_TOOLS as readonly string[]).includes(t.toolName))
+}
+
+/**
  * Convenience wrapper that returns the restorable pending tool message's
  * identifying fields, or null when no card should be restored. Most call sites
  * want exactly this — they build a `{ tools: [{ toolName, toolUseId,

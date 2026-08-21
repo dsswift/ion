@@ -1,4 +1,4 @@
-import { dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, watch, writeFileSync } from 'fs'
 import { join } from 'path'
 import { IPC } from '../../shared/types'
@@ -6,6 +6,7 @@ import { state, fileWatchers, recentlyWrittenPaths } from '../state'
 import { broadcast } from '../broadcast'
 import { showWindow } from '../window-manager'
 import { isValidProjectPath } from '../ipc-validation'
+import { log, warn } from '../logger'
 
 export function registerFilesIpc(): void {
   ipcMain.handle(IPC.FS_READ_DIR, async (_event, { directory }: { directory: string }) => {
@@ -100,12 +101,51 @@ export function registerFilesIpc(): void {
     }
   })
 
-  ipcMain.handle(IPC.FS_SAVE_DIALOG, async (_event, { defaultPath }: { defaultPath?: string }) => {
-    if (!state.mainWindow) return { filePath: null }
-    state.mainWindow.hide()
-    const result = await dialog.showSaveDialog(state.mainWindow, { defaultPath: defaultPath || undefined })
-    showWindow('dialog-return')
-    return { filePath: result.canceled ? null : result.filePath || null }
+  ipcMain.handle(IPC.FS_SAVE_DIALOG, async (event, payload: unknown) => {
+    const args = payload != null && typeof payload === 'object'
+      ? payload as { defaultPath?: unknown; defaultFileName?: unknown }
+      : {}
+    const { defaultPath, defaultFileName } = args
+    const sender = BrowserWindow.fromWebContents(event.sender)
+    const isOverlay = sender != null && sender === state.mainWindow
+    if (isOverlay) state.mainWindow!.hide()
+
+    if (defaultPath != null && (typeof defaultPath !== 'string' || !isValidProjectPath(defaultPath))) {
+      warn('files', 'save dialog rejected invalid default path')
+      if (isOverlay) showWindow('dialog-return')
+      return { filePath: null, error: 'Invalid default path' }
+    }
+    let resolvedDefaultPath = defaultPath || undefined
+    if (defaultFileName != null) {
+      if (typeof defaultFileName !== 'string' || defaultFileName.length === 0 || /[/\\\0\r\n]/.test(defaultFileName)) {
+        warn('files', 'save dialog rejected invalid default filename', { default_file_name: defaultFileName })
+        if (isOverlay) showWindow('dialog-return')
+        return { filePath: null, error: 'Invalid default filename' }
+      }
+      resolvedDefaultPath = join(app.getPath('downloads'), defaultFileName)
+    }
+
+    log('files', 'opening save dialog', {
+      sender_window: isOverlay ? 'overlay' : sender ? 'application' : 'unowned',
+      default_path: resolvedDefaultPath ?? '',
+    })
+    try {
+      const options = { defaultPath: resolvedDefaultPath }
+      const result = sender
+        ? await dialog.showSaveDialog(sender, options)
+        : await dialog.showSaveDialog(options)
+      if (result.canceled || !result.filePath) {
+        log('files', 'save dialog cancelled')
+        return { filePath: null }
+      }
+      log('files', 'save dialog selected path', { path: result.filePath })
+      return { filePath: result.filePath }
+    } catch (error) {
+      warn('files', 'save dialog failed', { error: String(error) })
+      return { filePath: null, error: String(error) }
+    } finally {
+      if (isOverlay) showWindow('dialog-return')
+    }
   })
 
   ipcMain.handle(IPC.FS_REVEAL_IN_FINDER, async (_event, { targetPath }: { targetPath: string }) => {

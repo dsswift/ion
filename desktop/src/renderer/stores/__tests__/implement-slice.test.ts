@@ -2,15 +2,15 @@
  * implementPlan — the single plan-approval → implementation pipeline
  * (implement-slice.ts). Formerly runHandleImplement, a component helper that
  * executed in whichever window hosted the card; as a store action it is
- * owner-executed everywhere (the ATV mirror forwards it — see
- * shared/atv-mirror-actions.ts).
+ * owner-executed everywhere (the Studio mirror forwards it — see
+ * shared/studio-mirror-actions.ts).
  *
  * Pinned contracts:
  *  - Plan-mode stale-parent regression: implement must flip the AUTHORITATIVE
  *    permission mode to 'auto' so the next submit() cannot re-assert plan.
- *  - Explicit-tab regression (the ATV wrong-tab flip): the mode flip targets
+ *  - Explicit-tab regression (the Studio window wrong-tab flip): the mode flip targets
  *    the CARD'S tab, not the store's activeTabId. The old pipeline called the
- *    active-tab-bound setPermissionMode; a forwarded ATV call then flipped
+ *    active-tab-bound setPermissionMode; a forwarded Studio call then flipped
  *    whatever tab was active in the owner window.
  *  - Unpin ordering (Implement and Unpin): the pin is released inside the
  *    action BEFORE the auto-move pin check, so the in-progress move runs.
@@ -96,6 +96,7 @@ const mockEngineSetPlanMode = vi.fn()
 const mockSteer = vi.fn()
 const mockReadPlan = vi.fn(async () => ({ content: '# plan body' }))
 const mockResetTabSession = vi.fn()
+const mockResolvePermissionDenials = vi.fn()
 ;(globalThis as any).window = {
   ion: {
     prompt: mockPrompt,
@@ -104,6 +105,7 @@ const mockResetTabSession = vi.fn()
     steer: mockSteer,
     readPlan: mockReadPlan,
     resetTabSession: mockResetTabSession,
+    resolvePermissionDenials: mockResolvePermissionDenials,
   },
   crypto: { randomUUID: () => 'uuid-1234' },
 }
@@ -118,8 +120,7 @@ function makeTab(overrides: Partial<TabState> = {}): TabState {
     lastKnownSessionId: null,
     status: 'completed',
     activeRequestId: null,
-    lastEventAt: null,
-    hasUnread: false,
+    lastEventAt: null,    lastActivityAt: null,    idleSince: null,    lastCompletionAt: null,    settledOverride: null,    settledAt: null,    snoozedUntil: null,    snoozedAt: null,    lastVisitedAt: null,    manualUnread: false,
     currentActivity: '',
     attachments: [],
     title: 'New Tab',
@@ -233,7 +234,7 @@ describe('implementPlan — plan-mode flip (plain tab)', () => {
   })
 
   it('REGRESSION: flips the mode of the CARD tab even when another tab is active', async () => {
-    // The ATV wrong-tab bug: a forwarded implement executed the mode flip
+    // The Studio wrong-tab bug: a forwarded implement executed the mode flip
     // against the owner's activeTabId. With two tabs and tab-2 active, the
     // old pipeline flipped tab-2 and left tab-1 in plan mode (the send-slice
     // prompt_sync then re-asserted plan and the tab filed under Planning).
@@ -340,6 +341,22 @@ describe('implementPlan — planFilePath cleared on instance after implement', (
     const instAfter = paneAfter.instances.find((i: any) => i.id === paneAfter.activeInstanceId) ?? paneAfter.instances[0]
     expect(instAfter.planFilePath).toBeNull()
   })
+
+  it('preserves consumed plan path on implement divider before clearing current state', async () => {
+    const tab = makeTab()
+    const planPath = '/plans/retained.md'
+    const { state } = buildHarness(tab, { permissionMode: 'plan', planFilePath: planPath })
+
+    await state.implementPlan('tab-1', {})
+
+    expect(state.addEngineSystemMessage).toHaveBeenCalledWith(
+      'tab-1',
+      expect.stringContaining('Implementing plan'),
+      planPath,
+    )
+    const pane = state.conversationPanes.get('tab-1')!
+    expect(pane.instances[0].planFilePath).toBeNull()
+  })
 })
 
 describe('implementPlan — clearContext branch', () => {
@@ -393,5 +410,45 @@ describe('implementPlan — clearContext branch', () => {
     const pane = state.conversationPanes.get('tab-1')!
     const inst = pane.instances.find((i: any) => i.id === pane.activeInstanceId) ?? pane.instances[0]
     expect(inst.pendingCutReason).toBeUndefined()
+  })
+
+  /**
+   * Both ways a card leaves the screen must release the ENGINE's retention of
+   * the denial, not just the local copy. The engine re-publishes an unresolved
+   * AskUserQuestion / ExitPlanMode on every status snapshot and releases it
+   * only on a new prompt or a /clear, so a card that is merely dismissed would
+   * otherwise be re-offered forever.
+   */
+  it('dismissPermissionDenied clears the card AND notifies the engine', () => {
+    const tab = makeTab()
+    const { state } = buildHarness(tab, {
+      permissionMode: 'plan',
+      planFilePath: '/plans/test.md',
+      permissionDenied: { tools: [{ toolName: 'ExitPlanMode', toolUseId: 'tu-1' }] } as any,
+    })
+
+    state.dismissPermissionDenied('tab-1')
+
+    const pane = state.conversationPanes.get('tab-1')!
+    const inst = pane.instances.find((i: any) => i.id === pane.activeInstanceId) ?? pane.instances[0]
+    expect(inst.permissionDenied).toBeNull()
+    expect(mockResolvePermissionDenials).toHaveBeenCalledWith('tab-1')
+  })
+
+  it('implementPlan notifies the engine that the plan question is resolved', () => {
+    // Approval is a resolution too. The implement prompt would eventually
+    // clear the engine's retention, but the clearContext branch tears the
+    // session down first — so a heartbeat in that window would re-offer the
+    // card the user just approved.
+    const tab = makeTab({ conversationId: 'conv-1' })
+    const { state } = buildHarness(tab, {
+      permissionMode: 'plan',
+      planFilePath: '/plans/test.md',
+      permissionDenied: { tools: [{ toolName: 'ExitPlanMode', toolUseId: 'tu-1' }] } as any,
+    })
+
+    void state.implementPlan('tab-1', {})
+
+    expect(mockResolvePermissionDenials).toHaveBeenCalledWith('tab-1')
   })
 })

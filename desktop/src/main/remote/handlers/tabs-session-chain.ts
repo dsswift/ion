@@ -4,7 +4,7 @@
  * Session-chain resolution + pure pagination for `desktop_load_conversation`.
  *
  * iOS history is served from the ENGINE (`load_session_history` over the
- * daemon socket) — the same source the overlay and ATV hydrate from — so all
+ * daemon socket) — the same source the overlay and Studio hydrate from — so all
  * clients render one canonical transcript. The renderer is consulted only for
  * tab METADATA (conversation id, historical session ids, runtime status);
  * no message content ever crosses the renderer seam. When the renderer is
@@ -194,6 +194,7 @@ export function toRemoteMessage(m: Message): RemoteMessage {
       type: (a.type === 'image' || a.type === 'file' || a.type === 'plan' ? a.type : 'file') as 'image' | 'file' | 'plan',
       name: a.name,
       path: a.path ?? '',
+      ...(a.type === 'image' && a.contentHash ? { contentHash: a.contentHash } : {}),
     })),
   }
 }
@@ -218,4 +219,37 @@ export function planPathFromHistory(all: readonly Message[]): string | undefined
     }
   }
   return undefined
+}
+
+/** Where an ExitPlanMode row's plan path came from, or that there was none. */
+export type PlanPathSource = 'tool_input' | 'history_write' | 'none'
+
+/**
+ * Resolve the plan path for an ExitPlanMode row, reporting which source
+ * produced it: the path the tool call carried, else the most recent plan-file
+ * Write in the transcript, else nothing.
+ *
+ * The source is returned rather than derived at the log site because it is the
+ * field that separates two failures which produce an identical message and need
+ * opposite fixes. A `'none'` result means no read was ever attempted (the
+ * transcript carries no plan path); a `'tool_input'` or `'history_write'`
+ * result that still fails means the path resolved and the FILE could not be
+ * read. Without the distinction, "no plan file found" reads as a missing file
+ * when it is often a pathless transcript, and the investigation goes to the
+ * filesystem instead of the transcript.
+ *
+ * Split out of the enrichment block in tabs.ts so the rule is testable: that
+ * block sits inside an IPC handler that cannot run without a full
+ * Electron/engine harness, which is why the resolution went unpinned.
+ */
+export function resolvePlanPath(
+  inputPath: unknown,
+  all: readonly Message[],
+): { planPath: string | undefined; pathSource: PlanPathSource } {
+  // An empty string is treated as absent, not as a path: it would otherwise
+  // reach readFile and throw a confusing error instead of taking the honest
+  // "no path" branch.
+  const fromInput = typeof inputPath === 'string' && inputPath.length > 0 ? inputPath : undefined
+  const planPath = fromInput ?? planPathFromHistory(all)
+  return { planPath, pathSource: fromInput ? 'tool_input' : planPath ? 'history_write' : 'none' }
 }

@@ -34,6 +34,7 @@
  *     standalone path so conversation tabs that track the current
  *     plan via `tab.planFilePath` still surface it.
  */
+import { isImplementDivider, planSlugFromPath } from '../../shared/clear-divider'
 
 export interface ParsedAttachment {
   kind: 'image' | 'file' | 'plan'
@@ -56,6 +57,7 @@ export interface MsgLike {
 }
 
 const ATTACHMENT_LINE_RE = /^\[Attached (image|file|plan): ([^\]]+)\]$/
+const PLAN_FILE_WRITTEN_PREFIXES = ['── Plan created', '── Plan updated']
 
 /** Tools that write files. When the agent invokes one of these and the
  *  resolved `file_path` lives under `~/.ion/plans/` (or any path ending
@@ -91,6 +93,95 @@ function tryExtractPlanFilePathFromToolInput(toolInput: string | undefined): str
     if (m && PLAN_PATH_RE.test(m[1])) return m[1]
   }
   return null
+}
+
+/**
+ * True once the engine confirmed that it wrote the current plan file. Plan-mode
+ * entry reserves a path before the agent authors the file, so a live path alone
+ * must never be treated as readable content.
+ */
+export function hasPlanFileBeenWritten(messages: MsgLike[], planFilePath: string | null): boolean {
+  return !!planFilePath && messages.some(
+    (message) =>
+      message.planFilePath === planFilePath &&
+      PLAN_FILE_WRITTEN_PREFIXES.some((prefix) => message.content.startsWith(prefix)),
+  )
+}
+
+/**
+ * Resolve the plan Studio should treat as current for one conversation.
+ * A live instance path wins while planning. After Implement clears that path,
+ * lifecycle dividers retain the consumed plan path, so the newest referenced
+ * plan remains visible until a newer plan is created.
+ */
+export function latestPlanPathFromMessages(
+  messages: MsgLike[],
+  currentPlanFilePath: string | null,
+): string | null {
+  if (currentPlanFilePath) return currentPlanFilePath
+
+  let latest: string | null = null
+  const record = (path: string): void => { latest = path }
+
+  for (const msg of messages) {
+    if (msg.role === 'user' && msg.attachments) {
+      for (const attachment of msg.attachments) {
+        if (attachment.type === 'plan') record(attachment.path)
+      }
+    }
+
+    if (msg.role === 'user') {
+      for (const line of msg.content.split('\n')) {
+        const marker = ATTACHMENT_LINE_RE.exec(line)
+        if (!marker) break
+        if (marker[1] === 'plan') record(marker[2])
+      }
+    }
+
+    if (msg.role === 'system' && msg.planFilePath) record(msg.planFilePath)
+
+    if (msg.role === 'tool' && msg.toolName && PLAN_WRITING_TOOLS.has(msg.toolName)) {
+      const path = tryExtractPlanFilePathFromToolInput(msg.toolInput)
+      if (path) record(path)
+    }
+  }
+
+  return latest
+}
+
+/**
+ * True when the transcript records that `planFilePath` was actually
+ * implemented — i.e. an implement divider for that plan appears in the
+ * conversation.
+ *
+ * Why this exists rather than inferring from a cleared `planFilePath`: the
+ * implement flow clears `instance.planFilePath` as its last step
+ * (implement-slice.ts), so "a plan path is known from history but the instance
+ * field is empty" LOOKS like proof of implementation. It is not. Any other path
+ * that nulls the field produces the identical shape, and the badge then claims
+ * an implementation that never happened. An absence is not a record.
+ *
+ * `formatImplementDivider` writes a real, durable marker at the moment the user
+ * approves, carrying the plan slug. That marker is the evidence, so it is what
+ * we read. A plan with no matching divider is reported as not implemented, even
+ * when its path has been cleared.
+ *
+ * Slug matching (not full path) because that is what the divider carries; an
+ * unslugged divider matches nothing, which fails closed to "not implemented".
+ */
+export function isPlanImplementedInMessages(
+  messages: MsgLike[],
+  planFilePath: string | null,
+): boolean {
+  if (!planFilePath) return false
+  const slug = planSlugFromPath(planFilePath)
+  if (!slug) return false
+  for (const msg of messages) {
+    if (msg.role !== 'system') continue
+    if (!isImplementDivider(msg.content)) continue
+    if (msg.content.includes(slug)) return true
+  }
+  return false
 }
 
 export function parseAttachmentsFromMessages(
