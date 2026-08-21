@@ -75,7 +75,11 @@ describe('submit — mid-turn steering', () => {
     const state = buildHarness('running')
     state.submit('tab1', 'steer me in a new direction')
     expect(mockSteer).toHaveBeenCalledOnce()
-    expect(mockSteer).toHaveBeenCalledWith('tab1', 'steer me in a new direction')
+    // The third argument is the client correlation id (the optimistic
+    // bubble's own id) — passed so the engine's confirming steer_injected
+    // event can re-key THIS exact bubble by identity instead of trusting
+    // buffer position. See engine-slice-rewind.ts / event-slice.ts.
+    expect(mockSteer).toHaveBeenCalledWith('tab1', 'steer me in a new direction', 'steer-msg-id')
     expect(mockPrompt).not.toHaveBeenCalled()
   })
 
@@ -110,5 +114,76 @@ describe('submit — mid-turn steering', () => {
     state.submit('tab1', 'a new prompt')
     const msgs = state.conversationPanes.get('tab1')?.instances.find((i: any) => i.id === 'main')?.messages ?? []
     expect(msgs[0].steerPending).toBeUndefined()
+  })
+
+  it('passes the optimistic bubble id (not a fresh id) as the steer client correlation id', () => {
+    const state = buildHarness('running')
+    state.submit('tab1', 'redirect please')
+    const msgs = state.conversationPanes.get('tab1')?.instances.find((i: any) => i.id === 'main')?.messages ?? []
+    const bubbleId = msgs[0].id
+    expect(mockSteer).toHaveBeenCalledWith('tab1', 'redirect please', bubbleId)
+  })
+
+  it('does not pass a client correlation id on an idle (non-steer) prompt', () => {
+    const state = buildHarness('idle')
+    state.submit('tab1', 'a new prompt')
+    // window.ion.prompt, not window.ion.steer, is the call on the idle path —
+    // steer must never fire for a fresh turn.
+    expect(mockSteer).not.toHaveBeenCalled()
+  })
+
+  it('reuses the caller-supplied requestId as the steer message id for a remote-sourced steer', () => {
+    // Regression: a remote (iOS) steer must carry the SAME id iOS's own
+    // optimistic bubble uses, not a freshly-minted desktop-local msg-N id.
+    // Without this, the engine's confirming steer_injected event echoes back
+    // an id iOS never sent, and iOS can never resolve which pending bubble
+    // the confirmation belongs to by identity — it silently falls back to an
+    // "oldest pending" guess, which breaks the moment more than one steer is
+    // outstanding. nextMsgId() is mocked to 'steer-msg-id'; a caller-supplied
+    // requestId must win over it on this path.
+    const state = buildHarness('running')
+    state.submit('tab1', 'redirect please', { source: 'remote', requestId: 'ios-steer-correlation-id' })
+    const msgs = state.conversationPanes.get('tab1')?.instances.find((i: any) => i.id === 'main')?.messages ?? []
+    expect(msgs[0].id).toBe('ios-steer-correlation-id')
+    expect(mockSteer).toHaveBeenCalledWith('tab1', 'redirect please', 'ios-steer-correlation-id')
+  })
+
+  it('mints a fresh id for a local (desktop-typed) steer even when a requestId happens to be supplied', () => {
+    // Only remote-sourced steers reuse the caller's id — a local steer keeps
+    // minting its own, since there is no separate optimistic bubble on
+    // another client to correlate against.
+    const state = buildHarness('running')
+    state.submit('tab1', 'redirect please', { requestId: 'should-be-ignored' })
+    const msgs = state.conversationPanes.get('tab1')?.instances.find((i: any) => i.id === 'main')?.messages ?? []
+    expect(msgs[0].id).toBe('steer-msg-id')
+    expect(mockSteer).toHaveBeenCalledWith('tab1', 'redirect please', 'steer-msg-id')
+  })
+})
+
+describe('submitRemotePrompt — mid-turn steering (always remote-sourced)', () => {
+  it('reuses the iOS-supplied reqId as the steer message id', () => {
+    // submitRemotePrompt is the iOS-only entry point (CLI tabs) — reqId is
+    // always the caller's own correlation id and must be reused as the
+    // message id on a busy-tab (steer) send, same reasoning as submit()'s
+    // remote-steer branch above.
+    const state = buildHarness('running')
+    state.submitRemotePrompt('tab1', 'redirect please', undefined, undefined, undefined, 'ios-reqid-123')
+    const msgs = state.conversationPanes.get('tab1')?.instances.find((i: any) => i.id === 'main')?.messages ?? []
+    expect(msgs[0].id).toBe('ios-reqid-123')
+    expect(mockSteer).toHaveBeenCalledWith('tab1', 'redirect please', 'ios-reqid-123')
+  })
+
+  it('falls back to a generated requestId when iOS omits reqId entirely', () => {
+    // requestId itself falls back to crypto.randomUUID() (not nextMsgId())
+    // when reqId is absent; the steer message id must still track whatever
+    // requestId resolves to, since the two are the same variable in this path.
+    const state = buildHarness('running')
+    state.submitRemotePrompt('tab1', 'redirect please')
+    const msgs = state.conversationPanes.get('tab1')?.instances.find((i: any) => i.id === 'main')?.messages ?? []
+    expect(mockSteer).toHaveBeenCalledOnce()
+    const [, , correlationId] = mockSteer.mock.calls[0]
+    expect(msgs[0].id).toBe(correlationId)
+    expect(typeof correlationId).toBe('string')
+    expect(correlationId.length).toBeGreaterThan(0)
   })
 })

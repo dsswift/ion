@@ -138,7 +138,6 @@ vi.mock('../remote/handlers/terminal', () => ({
   handleSetPillIcon: vi.fn(),
 }))
 vi.mock('../remote/handlers/history', () => ({
-  handleRewind: vi.fn(),
   handleForkFromMessage: vi.fn(),
   handleEngineRewind: vi.fn(),
   handleUnpair: vi.fn(),
