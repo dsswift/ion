@@ -25,6 +25,7 @@
     "Log",
     "Notify",
     "RecallAgent",
+    "RecallDispatch",
     "RegisterAgentSpec",
     "RegisterProcess",
     "RunOnce",

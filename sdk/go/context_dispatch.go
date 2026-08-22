@@ -96,7 +96,7 @@ type DispatchAgentOpts struct {
 	// OnError fires when an asynchronous dispatch fails.
 	OnError func(DispatchError) `json:"-"`
 	// OnRecall fires when an asynchronous dispatch is cancelled by
-	// [Context.RecallAgent].
+	// [Context.RecallDispatch].
 	OnRecall func(RecallInfo) `json:"-"`
 	// OnEvent receives the child's raw engine events.
 	OnEvent func(EngineEvent) `json:"-"`
@@ -364,13 +364,24 @@ func (c *Context) DispatchAgent(ctx context.Context, opts DispatchAgentOpts) (Di
 	return out, nil
 }
 
-// RecallAgent cancels a running asynchronous dispatch. Reports whether a
-// matching dispatch was found.
+// RecallAgent retains the published name-addressed dispatch recall API.
+// When several live dispatches share a name, the engine selects one match.
+// Prefer RecallDispatch when the caller has the exact dispatch ID.
 func (c *Context) RecallAgent(ctx context.Context, name, reason string) (bool, error) {
 	var out struct {
 		Found bool `json:"found"`
 	}
 	err := c.sdk.call(ctx, "ext/recall_agent", map[string]string{"name": name, "reason": reason}, &out)
+	return out.Found, err
+}
+
+// RecallDispatch cancels one asynchronous dispatch by exact dispatch ID.
+// Names are never accepted because concurrent dispatches can share them.
+func (c *Context) RecallDispatch(ctx context.Context, dispatchID, reason string) (bool, error) {
+	var out struct {
+		Found bool `json:"found"`
+	}
+	err := c.sdk.call(ctx, "ext/recall_dispatch", map[string]string{"dispatchId": dispatchID, "reason": reason}, &out)
 	return out.Found, err
 }
 
