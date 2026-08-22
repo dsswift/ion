@@ -14,6 +14,6 @@ describe('desktop development version', () => {
   })
 
   it('reads the released desktop version from the release manifest', () => {
-    expect(versioning.readReleasedDesktopVersion()).toBe('1.82.0')
+    expect(versioning.readReleasedDesktopVersion()).toBe('1.83.0')
   })
 })

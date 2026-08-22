@@ -25,6 +25,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('../../rendererLogger', () => ({
   rError: vi.fn(),
+  rWarn: vi.fn(),
 }))
 
 const readImageDataUrl = vi.fn(async (path: string) => ({ dataUrl: `data:image/png;base64,STUB_${path.split('/').pop()}` }))

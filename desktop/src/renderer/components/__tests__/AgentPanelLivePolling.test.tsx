@@ -69,6 +69,7 @@ vi.mock('../conversation', () => ({
 vi.mock('../conversation/tool-helpers', () => ({
   groupMessages: (msgs: Array<{ id: string; content: string }>) =>
     msgs.map((m) => ({ kind: 'user' as const, message: m })),
+  suppressUserImageEchoes: (msgs: unknown[]) => msgs,
 }))
 vi.mock('../conversation/TranscriptRows', () => ({
   TranscriptRows: ({ grouped }: { grouped: Array<{ message: { content: string } }> }) =>

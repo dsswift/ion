@@ -59,12 +59,14 @@ beforeEach(() => {
 
 describe("Studio window chrome", () => {
   it("uses hiddenInset title bar and shared traffic-light geometry on macOS", () => {
+    const platform = vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
     openStudioWindow("test");
 
     expect(BrowserWindow).toHaveBeenCalledWith(expect.objectContaining({
       titleBarStyle: "hiddenInset",
       trafficLightPosition: STUDIO_TRAFFIC_LIGHT_POSITION,
     }));
+    platform.mockRestore();
   });
 
   it("pushes fullscreen changes so renderer removes its traffic-light inset", () => {

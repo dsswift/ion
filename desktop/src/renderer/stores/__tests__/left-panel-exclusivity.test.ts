@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 import { createInboxSlice } from '../slices/inbox-slice'
 import { createFileExplorerSlice } from '../slices/file-explorer-slice'

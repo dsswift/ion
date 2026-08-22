@@ -32,6 +32,7 @@ vi.mock('../../../theme', () => ({
 }))
 vi.mock('../../../rendererLogger', () => ({
   rInfo: vi.fn(),
+  rWarn: vi.fn(),
   rError: vi.fn(),
 }))
 vi.mock('../../git/Tooltip', () => ({
