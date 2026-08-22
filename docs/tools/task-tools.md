@@ -164,7 +164,7 @@ Note that `task_created` / `task_completed` are **turn** lifecycle hooks (`TaskI
 
 ### The outstanding set
 
-A notifying command joins the session's **outstanding set**. The set is session-scoped, not run-scoped: a model can start a command in one turn, keep working, start another in a later turn, and both are still tracked when it finally stops. A command started without `notify_on_complete` never joins the set — nothing is waiting on it.
+A notifying command joins the session's **outstanding set**. The set is session-scoped, not run-scoped: a model can start a command in one turn, keep working, start another in a later turn, and both are still tracked when it finally stops. A command started without `notify_on_complete` never joins the set — nothing is waiting on it. When a notifying command is the only remaining work, the model ends its turn instead of polling or starting a blocking wait; the engine then parks the session and resumes it on completion.
 
 `backgroundTasks.maxOutstandingPerSession` bounds the set. Past the cap a command still runs and still emits its completion event; it simply is not tracked, so a runaway loop cannot park the session on an unbounded pile.
 

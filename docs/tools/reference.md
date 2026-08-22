@@ -56,7 +56,7 @@ Execute a bash command and return its output.
 | `command` | string | yes | The bash command to execute |
 | `timeout` | number | no | Timeout in milliseconds (default: 120000). Values above `timeouts.bashMaxMs` (default 600000) are clamped, and the clamp is reported on the result. Ignored when `run_in_background` is true |
 | `run_in_background` | boolean | no | Run the command in the background and return immediately with a task ID and output-file path |
-| `notify_on_complete` | boolean | no | Only meaningful with `run_in_background`. Deliver the command's result back to the session when it finishes, instead of requiring polling |
+| `notify_on_complete` | boolean | no | Only meaningful with `run_in_background`. Deliver the command's result back to the session when it finishes, instead of requiring polling. When the command is the only remaining work, end the turn so the engine can park the session and resume it on completion |
 
 Runs through the pluggable `BashOperations` backend. Returns stdout and stderr. Non-zero exit codes are reported as tool errors. The backend supports sandboxing via Seatbelt (macOS) or bubblewrap (Linux). A command killed for exceeding its timeout is reported as such — the result names the deadline and the background alternative rather than surfacing a bare `signal: killed` — and any output produced before the kill is preserved.
 
@@ -66,7 +66,7 @@ With `run_in_background: true`, the command starts detached from the tool call i
 
 With `notify_on_complete: true` the command additionally joins the session's **outstanding set**, and the engine takes responsibility for delivering its result — the model does not poll. Three consequences follow:
 
-- **The model may keep working.** Starting a notifying command does not commit the session to waiting. It can start more commands, do unrelated work, and end its turn whenever it wants.
+- **The model may keep working.** Starting a notifying command does not commit the session to waiting. It can start more commands or do other useful work. When the command is the only remaining work, it ends its turn rather than polling or starting a blocking wait.
 - **The engine parks the session at the turn boundary.** When the model finishes its turn with commands still outstanding, the run ends without completing (`engine_task_suspended` carrying `awaitingTaskIds`) and the session consumes no tokens while it waits. A session with an empty outstanding set completes exactly as it always has.
 - **Each completion wakes the session once.** The result arrives as an injected prompt naming the command's exit code, output path, output tail, and whatever is still outstanding. If the woken run ends its turn with work still in flight, it parks again. The cycle repeats until the set empties.
 
