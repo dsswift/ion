@@ -67,12 +67,16 @@ function tab(workingDirectory = '/repo'): TabState {
 }
 
 /** Opens the row's context menu and returns the menu's button labels. */
-function menuLabels(t: TabState): string[] {
+async function menuLabels(t: TabState): Promise<string[]> {
   act(() => root.render(
     <InboxRow tab={t} unread={false} woke={false} projectName={null} variant="card" backgroundLiveness={null} />,
   ))
   const row = host.querySelector<HTMLDivElement>(`[data-inbox-tab-id="${t.id}"]`)!
   act(() => { row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 10 })) })
+  // Let the convert-to-worktree gate's gitIsRepo probe resolve so its state
+  // update lands inside act(), matching how TabStripTabContextMenu.test.tsx
+  // settles the same gate.
+  await act(async () => { await Promise.resolve() })
   return Array.from(host.querySelectorAll('button')).map((b) => b.textContent ?? '')
 }
 
@@ -84,6 +88,13 @@ beforeEach(() => {
   host = document.createElement('div')
   document.body.appendChild(host)
   root = createRoot(host)
+  // The row menu now includes the same convert-to-worktree gate the tab-strip
+  // menu uses, which probes window.ion.gitIsRepo on mount. Stub it closed
+  // (not a repo) so these Rename/Snooze-focused tests are unaffected by it.
+  window.ion = {
+    gitIsRepo: vi.fn().mockResolvedValue({ isRepo: false }),
+    gitChanges: vi.fn().mockResolvedValue({ files: [] }),
+  } as unknown as typeof window.ion
 })
 afterEach(() => {
   act(() => root.unmount())
@@ -100,6 +111,8 @@ describe('InboxRow context-menu Rename', () => {
 
     const row = host.querySelector<HTMLDivElement>(`[data-inbox-tab-id="${t.id}"]`)!
     act(() => { row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 10 })) })
+    // Let the convert-to-worktree gate's gitIsRepo probe resolve inside act().
+    await act(async () => { await Promise.resolve() })
 
     const renameButton = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === 'Rename')
     expect(renameButton).toBeDefined()
@@ -130,15 +143,15 @@ describe('InboxRow context-menu Snooze in an integration bench', () => {
     state.benchWorkspaces = new Map()
   })
 
-  it('omits Snooze for a conversation in the bench', () => {
-    expect(menuLabels(tab(BENCH)).some((label) => label.startsWith('Snooze'))).toBe(false)
+  it('omits Snooze for a conversation in the bench', async () => {
+    expect((await menuLabels(tab(BENCH))).some((label) => label.startsWith('Snooze'))).toBe(false)
   })
 
-  it('omits Snooze for a conversation nested inside the bench', () => {
-    expect(menuLabels(tab(`${BENCH}/desktop`)).some((label) => label.startsWith('Snooze'))).toBe(false)
+  it('omits Snooze for a conversation nested inside the bench', async () => {
+    expect((await menuLabels(tab(`${BENCH}/desktop`))).some((label) => label.startsWith('Snooze'))).toBe(false)
   })
 
-  it('still offers Snooze outside the bench', () => {
-    expect(menuLabels(tab('/Users/dev/src/ion')).some((label) => label.startsWith('Snooze'))).toBe(true)
+  it('still offers Snooze outside the bench', async () => {
+    expect((await menuLabels(tab('/Users/dev/src/ion'))).some((label) => label.startsWith('Snooze'))).toBe(true)
   })
 })

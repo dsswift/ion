@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { usePopoverLayer } from '../../components/PopoverLayer'
 import { useColors } from '../../theme'
-import { rWarn } from '../../rendererLogger'
+import { rWarn, rError } from '../../rendererLogger'
 import { useAnchoredPopover } from '../../hooks/useAnchoredPopover'
 import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveState'
 import { transitions } from '../../theme-tokens'
@@ -17,13 +17,15 @@ import { isBenchDirectory, settlingIsPermanent } from '../../../shared/worktree-
 import { classifyInbox, type InboxTabView } from '../../../shared/inbox-classify'
 import type { TabState } from '../../../shared/types'
 import { scrollableMenuStyle } from '../../menu-viewport'
+import { useConvertToWorktreeGate } from '../../components/useConvertToWorktreeGate'
 
-function MenuButton({ label, onSelect }: { label: string; onSelect: () => void }): React.JSX.Element {
+function MenuButton({ label, onSelect, disabled = false }: { label: string; onSelect: () => void; disabled?: boolean }): React.JSX.Element {
   const colors = useColors()
   const { hover, pressed, handlers } = useInteractiveState()
   return (
     <button
-      onClick={onSelect}
+      onClick={disabled ? undefined : onSelect}
+      disabled={disabled}
       className="ion-focusable"
       {...handlers}
       style={{
@@ -32,9 +34,10 @@ function MenuButton({ label, onSelect }: { label: string; onSelect: () => void }
         width: '100%',
         padding: '5px 12px',
         border: 'none',
-        background: interactiveBg(colors, { hover, pressed }),
-        color: colors.textPrimary,
-        cursor: 'pointer',
+        background: disabled ? 'transparent' : interactiveBg(colors, { hover, pressed }),
+        color: disabled ? colors.textTertiary : colors.textPrimary,
+        cursor: disabled ? 'default' : 'pointer',
+        opacity: disabled ? 0.45 : 1,
         textAlign: 'left',
         fontSize: 12,
         transition: `background ${transitions.base}`,
@@ -82,6 +85,10 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onClose }
     tab.workingDirectory,
     [...benchPaths.values()].flatMap((list) => list.map((workspace) => workspace.benchPath)),
   )
+  // Same gate the tab-strip context menu uses: visible only for a plain
+  // conversation over a git repo (not already a worktree), disabled while the
+  // tab is busy or the checkout is dirty. One mechanism, two menus.
+  const convert = useConvertToWorktreeGate(tab)
 
   // Settled state (override-aware) decides which settle verb shows.
   const view: InboxTabView = {
@@ -106,10 +113,10 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onClose }
   const store = useSessionStore
 
   // Drives the anchored positioner's re-measure. A bench row drops the Snooze
-  // verb entirely, so the count must drop with it or the menu stays placed for
-  // a taller body than it renders.
-  const itemCount = 5 - (inBench && state !== 'snoozed' ? 1 : 0) + (snoozeOpen ? presets.length : 0)
-  const pos = useAnchoredPopover({ x, y }, { deps: [itemCount] })
+  // verb entirely, and the convert row is conditionally present, so the count
+  // must track both or the menu stays placed for the wrong body height.
+  const itemCount = 5 - (inBench && state !== 'snoozed' ? 1 : 0) + (snoozeOpen ? presets.length : 0) + (convert.show ? 1 : 0)
+  const pos = useAnchoredPopover({ x, y }, { deps: [itemCount, convert.label] })
 
   const menu = (
     <div
@@ -166,6 +173,15 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onClose }
       <div style={{ height: 1, background: colors.containerBorder, margin: '4px 0' }} />
       <MenuButton label="Rename" onSelect={() => exec(onRename)} />
       <MenuButton label="Regenerate title" onSelect={() => exec(() => { void store.getState().regenerateTabTitle(tab.id) })} />
+      {convert.show && (
+        <MenuButton
+          label={convert.label}
+          disabled={convert.disabled}
+          onSelect={() => exec(() => {
+            void store.getState().convertToWorktree(tab.id).catch((err) => rError('inbox', 'convert to worktree failed', { error: String(err) }))
+          })}
+        />
+      )}
       <MenuButton label="Copy path" onSelect={() => exec(() => { void navigator.clipboard.writeText(tab.workingDirectory).catch((error) => rWarn('inbox', 'copy path failed', { error: String(error) })) })} />
       {tab.worktree?.branchName && <MenuButton label="Copy branch" onSelect={() => exec(() => { void navigator.clipboard.writeText(tab.worktree!.branchName).catch((error) => rWarn('inbox', 'copy branch failed', { error: String(error) })) })} />}
       <MenuButton label="Copy conversation ID" onSelect={() => exec(() => { void navigator.clipboard.writeText(tab.conversationId ?? tab.id).catch((error) => rWarn('inbox', 'copy conversation ID failed', { error: String(error) })) })} />

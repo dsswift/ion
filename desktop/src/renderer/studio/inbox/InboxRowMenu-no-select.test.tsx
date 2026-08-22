@@ -82,6 +82,13 @@ beforeEach(() => {
   host = document.createElement('div')
   document.body.appendChild(host)
   root = createRoot(host)
+  // The row menu now includes the same convert-to-worktree gate the tab-strip
+  // menu uses, which probes window.ion.gitIsRepo on mount. Stub it closed (not
+  // a repo) so it stays inert for this bubbling-regression test.
+  window.ion = {
+    gitIsRepo: vi.fn().mockResolvedValue({ isRepo: false }),
+    gitChanges: vi.fn().mockResolvedValue({ files: [] }),
+  } as unknown as typeof window.ion
 })
 afterEach(() => {
   act(() => root.unmount())
