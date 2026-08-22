@@ -65,6 +65,7 @@ type steerMessage struct {
 	// position, which breaks the moment more than one steer is outstanding or
 	// a machine injection interleaves with a human one.
 	clientMessageID string
+	backgroundWork  *types.BackgroundWorkInfo
 }
 
 // drainSteer performs a non-blocking check of the run's steer channel.
@@ -86,7 +87,12 @@ func (b *ApiBackend) drainSteer(run *activeRun, conv *conversation.Conversation)
 		// Classified through the kind-aware append so a machine-originated
 		// steer persists as the machine-to-machine turn it is. A client steer
 		// carries no kind and reaches the same plain user turn as before.
-		entry := conversation.AddUserMessageWithKind(conv, steerMsg.text, steerMsg.kind)
+		var entry *conversation.SessionEntry
+		if steerMsg.backgroundWork != nil {
+			entry = conversation.AddUserMessageWithBackgroundWork(conv, steerMsg.text, *steerMsg.backgroundWork)
+		} else {
+			entry = conversation.AddUserMessageWithKind(conv, steerMsg.text, steerMsg.kind)
+		}
 		// Persist a steer marker immediately after the injected user message so
 		// the steer marker survives reload (SteerInjectedEvent is not persisted).
 		// Appended before the existing Save so it rides the same write.
@@ -127,6 +133,8 @@ func (b *ApiBackend) drainSteer(run *activeRun, conv *conversation.Conversation)
 			MessageLength:   len(steerMsg.text),
 			ClientMessageID: clientID,
 			EntryID:         entryID,
+			Kind:            steerMsg.kind,
+			MachineAuthored: types.InjectionKind(steerMsg.kind).IsMachineToMachine(),
 		}})
 		return true
 	default:

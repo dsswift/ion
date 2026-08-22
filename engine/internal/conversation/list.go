@@ -43,9 +43,9 @@ func ListStored(dir string, limit int) ([]types.StoredSessionInfo, error) {
 	//   - For legacy-format IDs: mtime of the .jsonl file.
 	// New format takes precedence when both exist for the same ID.
 	type idEntry struct {
-		id        string
-		mtime     int64
-		isNewFmt  bool // true → use .llm.jsonl + .tree.jsonl; false → use .jsonl
+		id       string
+		mtime    int64
+		isNewFmt bool // true → use .llm.jsonl + .tree.jsonl; false → use .jsonl
 	}
 	byID := make(map[string]*idEntry)
 
@@ -405,7 +405,6 @@ func LoadChainMessages(ids []string, dir string) ([]types.SessionMessage, error)
 	}
 	return all, nil
 }
-
 
 // contentToBlocks converts a MessageData.Content (which may be string,
 // []types.LlmContentBlock, or []any) into a uniform []types.LlmContentBlock.

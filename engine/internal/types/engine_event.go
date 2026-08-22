@@ -104,7 +104,8 @@ type EngineEvent struct {
 	// (never base64) so consumers can render tool-produced images inline.
 	// Additive (omitempty): absent for the overwhelming majority of tool
 	// results. Mirrors ToolResultEvent.Images.
-	ToolResultImages []ToolResultImage `json:"images,omitempty"`
+	ToolResultImages     []ToolResultImage `json:"images,omitempty"`
+	ToolBackgroundTaskID string            `json:"backgroundTaskId,omitempty"`
 
 	// engine_image_content — a single image produced during a run, emitted
 	// once per image. Source is "tool" (ImageToolID set to the producing tool
@@ -145,6 +146,10 @@ type EngineEvent struct {
 	// echoing the message body back over the wire. See
 	// SteerInjectedEvent for the underlying normalized variant.
 	SteerMessageLength int `json:"steerMessageLength,omitempty"`
+	// SteerKind and SteerMachineAuthored preserve who authored a steer so
+	// consumers do not mislabel classified background delivery as user input.
+	SteerKind            string `json:"steerKind,omitempty"`
+	SteerMachineAuthored bool   `json:"steerMachineAuthored,omitempty"`
 
 	// engine_steer_injected — echoes the client's steer_agent correlation id
 	// (ClientCommand.ClientMessageID) when the client supplied one and this
@@ -680,6 +685,14 @@ type EngineEvent struct {
 	// BackgroundTaskCompleteEvent for the normalized variant and the full
 	// field semantics.
 	BackgroundTaskComplete *BackgroundTaskCompletePayload `json:"backgroundTaskComplete,omitempty"`
+	BackgroundTaskStarted  *BackgroundTaskState           `json:"backgroundTaskStarted,omitempty"`
+	BackgroundTaskTerminal *BackgroundTaskTerminalPayload `json:"backgroundTaskTerminal,omitempty"`
+	SessionWorkStopped     *SessionWorkStoppedEvent       `json:"sessionWorkStopped,omitempty"`
+
+	// engine_background_work_delivered -- a background completion was durably
+	// appended to the LLM conversation. Nested payload retains typed metadata
+	// and exact delivered content without adding a scalar per work field.
+	BackgroundWorkDelivered *BackgroundWorkDeliveredPayload `json:"backgroundWorkDelivered,omitempty"`
 
 	// engine_dispatch_lost — a dispatch that was running when the engine
 	// process died is unrecoverable after restart; one event per orphan,

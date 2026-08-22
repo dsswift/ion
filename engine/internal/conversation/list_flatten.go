@@ -95,12 +95,13 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 				continue
 			}
 			result = append(result, types.SessionMessage{
-				ID:                  rowID(entry.ID, 0),
-				Role:                "system",
-				Content:             "──",
-				Timestamp:           entry.Timestamp,
-				MarkerKind:          "steer",
-				MarkerMessageLength: sd.MessageLength,
+				ID:                    rowID(entry.ID, 0),
+				Role:                  "system",
+				Content:               "──",
+				Timestamp:             entry.Timestamp,
+				MarkerKind:            "steer",
+				MarkerMessageLength:   sd.MessageLength,
+				MarkerMachineAuthored: parentMessageMachineAuthored(conv, entry.ParentID),
 			})
 			continue
 		case EntryCleared:
@@ -147,6 +148,7 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 		if md == nil {
 			continue
 		}
+		legacyWork := legacyBackgroundWork(conv, entry, md)
 
 		blocks := contentToBlocks(md.Content)
 		switch md.Role {
@@ -184,11 +186,12 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 					// Merge result content into the matching tool-call message.
 					if idx, ok := toolCallIndex[b.ToolUseID]; ok {
 						result[idx].Content = b.Content
-						// Carry the persisted error flag so reloaded tool rows
-						// keep their failed state (live path sets it via the
-						// tool_result event; history must not coerce to
-						// success).
 						result[idx].IsError = b.IsError != nil && *b.IsError
+						bgID := b.BackgroundTaskID
+						if bgID == "" {
+							bgID, _ = types.ParseCanonicalBashStartResult(b.Content)
+						}
+						result[idx].BackgroundTaskID = bgID
 					} else {
 						// No matching tool call: the orphan result is dropped
 						// from the flattened view. Post-repair this should
@@ -291,6 +294,12 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 					// reload as a user-authored turn.
 					MachineAuthored: md.MachineAuthored ||
 						types.InjectionKind(md.InjectionKind).IsMachineToMachine(),
+					BackgroundWork: func() *types.BackgroundWorkInfo {
+						if md.BackgroundWork != nil {
+							return md.BackgroundWork
+						}
+						return legacyWork
+					}(),
 					// Prompt attachments (client-sent images/documents) replayed
 					// onto the user row so history loads carry the same
 					// structured references the live echo did. Empty for

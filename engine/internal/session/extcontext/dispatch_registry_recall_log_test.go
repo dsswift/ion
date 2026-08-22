@@ -73,7 +73,7 @@ func TestDispatchRegistryRecallLogsCanonicalDispatchID(t *testing.T) {
 	r.RegisterWithID("parent-id", "parent", func() {}, nil, "session", "", 1)
 	r.RegisterWithID("child-id", "child", func() {}, nil, "session", "parent-id", 2)
 
-	if !r.Recall("parent", "test") {
+	if !r.RecallByID("parent-id", "test") {
 		t.Fatal("Recall returned false")
 	}
 

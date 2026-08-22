@@ -71,46 +71,6 @@ func (o SteerOutcome) Delivered() bool {
 	}
 }
 
-// AbortAgent sends SIGTERM to the named agent process. If subtree is true,
-// it walks the parentAgent chain to find all descendant agents and aborts them.
-//
-// Special case: if agentName is empty and subtree is true, every agent in
-// the session is aborted. The user-facing interrupt button uses this when
-// the parent run is already dead but dispatched children are still alive.
-func (m *Manager) AbortAgent(key, agentName string, subtree bool) {
-	if agentName == "" && subtree {
-		m.abortAllDescendants(key, "user abort (all)")
-		return
-	}
-
-	m.mu.RLock()
-	s, ok := m.sessions[key]
-	if !ok {
-		m.mu.RUnlock()
-		return
-	}
-	m.mu.RUnlock()
-
-	var pidsToKill []int
-
-	if subtree {
-		all := s.agents.AllHandles()
-		for name, handle := range all {
-			if name == agentName || s.agents.IsDescendant(name, agentName) {
-				pidsToKill = append(pidsToKill, handle.PID)
-			}
-		}
-	} else {
-		if handle, exists := s.agents.LookupHandle(agentName); exists {
-			pidsToKill = append(pidsToKill, handle.PID)
-		}
-	}
-
-	for _, pid := range pidsToKill {
-		killProcess(pid)
-	}
-}
-
 // steerable is a local interface satisfied by any backend that can steer
 // a running agent loop via an in-process message rather than the stdin
 // pipe. Both *backend.ApiBackend and *backend.HybridBackend implement it.
@@ -145,6 +105,10 @@ type steerableWithClientID interface {
 	SteerWithClientID(requestID, message, kind, clientMessageID string) backend.SteerResult
 }
 
+type backgroundWorkSteerable interface {
+	SteerWithBackgroundWork(requestID, message, kind string, work types.BackgroundWorkInfo) backend.SteerResult
+}
+
 // SteerAgent sends a message to a running agent's stdin, or steers the main
 // session loop if agentName is empty. It returns a SteerOutcome describing how
 // the steer was resolved so the caller (and the logs) can never lose track of
@@ -153,6 +117,35 @@ type steerableWithClientID interface {
 // outcome (engine-grounding §7).
 func (m *Manager) SteerAgent(key, agentName, message string) SteerOutcome {
 	return m.SteerAgentWithKind(key, agentName, message, "")
+}
+
+// SteerAgentWithBackgroundWork steers completion metadata into an API-backed run.
+func (m *Manager) SteerAgentWithBackgroundWork(key, agentName, message, kind string, work types.BackgroundWorkInfo) SteerOutcome {
+	if agentName != "" {
+		return m.SteerAgentWithKind(key, agentName, message, kind)
+	}
+	m.mu.RLock()
+	s, ok := m.sessions[key]
+	rid := ""
+	if ok {
+		rid = s.requestID
+	}
+	m.mu.RUnlock()
+	if !ok || rid == "" {
+		return SteerRejectedNoRun
+	}
+	steer, ok := m.backend.(backgroundWorkSteerable)
+	if !ok {
+		return m.SteerAgentWithKind(key, agentName, message, kind)
+	}
+	switch steer.SteerWithBackgroundWork(rid, message, kind, work) {
+	case backend.SteerResultDelivered:
+		return SteerDelivered
+	case backend.SteerResultChannelFull:
+		return SteerRejectedChannelFull
+	default:
+		return SteerRejectedNoRun
+	}
 }
 
 // SteerAgentWithKind is the classification-carrying variant of SteerAgent.

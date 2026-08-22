@@ -43,9 +43,10 @@ type ToolResultEntry struct {
 	// already distinguishes "the model sees this now" from "this belongs in
 	// history". This field extends that distinction to tool results, which
 	// previously had no way to express it.
-	PersistContent string               `json:"persist_content,omitempty"`
-	IsError        bool                 `json:"is_error,omitempty"`
-	Images         []*types.ImageSource `json:"images,omitempty"` // durable vision images to attach alongside text
+	PersistContent   string               `json:"persist_content,omitempty"`
+	IsError          bool                 `json:"is_error,omitempty"`
+	Images           []*types.ImageSource `json:"images,omitempty"` // durable vision images to attach alongside text
+	BackgroundTaskID string               `json:"background_task_id,omitempty"`
 	// EphemeralImages are provider input for only this live turn. They are never
 	// copied into the entry tree or serialized into conversation history.
 	EphemeralImages []*types.ImageSource `json:"-"`
@@ -220,6 +221,39 @@ func AddUserMessageWithKind(conv *Conversation, content any, kind string) *Sessi
 		return entry
 	}
 	return nil
+}
+
+// ClassifyEntry stamps an injection classification onto an already-appended
+// user entry, deriving MachineAuthored from the kind exactly as the
+// kind-bearing constructors do.
+//
+// This exists because classification is ORTHOGONAL to content shape. A
+// persisted user turn's shape is chosen by its provenance — a slash expansion,
+// image attachments, a background-work payload, plain text — while its kind
+// says who authored it. The two are independently true: a machine-authored
+// recovery continuation can carry the attachments of the run it resumes, and a
+// classified injection can carry a slash expansion.
+//
+// Collapsing them into one mutually-exclusive choice is what broke: the kind
+// was a competing switch arm, so any injected turn that also had attachments
+// took the attachment arm and persisted with no kind and no MachineAuthored.
+// Both clients suppress on those two fields, so the engine's steering messages
+// reloaded as user turns in the transcript.
+//
+// A no-op when kind is empty, and it never overwrites a kind the constructor
+// already set — the background-work payload is authoritative for its own
+// delivery.
+func ClassifyEntry(entry *SessionEntry, kind string) {
+	if entry == nil || kind == "" {
+		return
+	}
+	md, ok := entry.Data.(MessageData)
+	if !ok || md.InjectionKind != "" {
+		return
+	}
+	md.InjectionKind = kind
+	md.MachineAuthored = types.InjectionKind(kind).IsMachineToMachine()
+	entry.Data = md
 }
 
 // SlashInvocation captures the raw slash-command invocation that produced a
@@ -460,6 +494,13 @@ func AddToolResults(conv *Conversation, results []ToolResultEntry) {
 			})
 		}
 	}
+	for _, r := range results {
+		for i := range blocks {
+			if blocks[i].ToolUseID == r.ToolUseID && blocks[i].Type == "tool_result" {
+				blocks[i].BackgroundTaskID = r.BackgroundTaskID
+			}
+		}
+	}
 	blocks = append(blocks, imageBlocks...)
 	// Provider-required tool results stay first. The full Skill body follows as
 	// typed content in this same carrier, so provider adapters never see two
@@ -501,6 +542,7 @@ func AddToolResults(conv *Conversation, results []ToolResultEntry) {
 			entryCopy[idx].Content = text
 		}
 		entry := appendEntryLocked(conv, EntryMessage, MessageData{Role: "user", Content: entryCopy}, "")
+		_ = entry
 		conv.Messages[len(conv.Messages)-1].EntryID = entry.ID
 	}
 }
@@ -517,11 +559,4 @@ func AddToolResultsWithSizeCheck(conv *Conversation, results []ToolResultEntry, 
 		}
 	}
 	AddToolResults(conv, results)
-}
-
-// UpdateCost adds to the running cost total.
-func UpdateCost(conv *Conversation, costUsd float64) {
-	conv.lock()
-	defer conv.unlock()
-	conv.TotalCost += costUsd
 }

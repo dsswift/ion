@@ -134,5 +134,3 @@ func addLabelToTree(t *testing.T, dir, id string) {
 		t.Fatal(err)
 	}
 }
-
-

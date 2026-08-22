@@ -21,6 +21,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/session"
+	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -134,14 +135,36 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 
 	case "abort":
 		// Fire-and-forget: no response sent (matches TS behavior).
-		utils.LogWithFields(utils.LevelInfo, "server", "abort", map[string]any{"session_id": cmd.Key})
-		s.manager.SendAbort(cmd.Key)
+		// An absent/unknown abortScope resolves to "all" inside the session
+		// manager, so a client that predates the field is unaffected.
+		scope := session.ParseAbortScope(cmd.AbortScope)
+		utils.LogWithFields(utils.LevelInfo, "server", "abort", map[string]any{"session_id": cmd.Key, "abort_scope": string(scope)})
+		s.manager.SendAbortScoped(cmd.Key, scope)
 
 	case "abort_agent":
-		// Fire-and-forget: no response sent (matches TS behavior).
+		// Compatibility command for name-addressed process handles. The empty-name
+		// subtree form retains the historic full descendant reap behavior.
 		subtree := cmd.Subtree != nil && *cmd.Subtree
-		utils.LogWithFields(utils.LevelInfo, "server", "abort agent", map[string]any{"session_id": cmd.Key, "model": cmd.AgentName})
+		utils.LogWithFields(utils.LevelInfo, "server", "abort agent", map[string]any{"session_id": cmd.Key, "agent_name": cmd.AgentName, "subtree": subtree})
 		s.manager.AbortAgent(cmd.Key, cmd.AgentName, subtree)
+
+	case "abort_dispatch":
+		// Fire-and-forget: no response sent (matches the abort
+		// cases). AbortDispatch returns whether a live dispatch matched, and
+		// both outcomes are logged so a stop that hit nothing is visible from
+		// the logs alone (engine-grounding §7) — at parity with the
+		// steer_agent delivered/not-delivered convention below.
+		utils.LogWithFields(utils.LevelInfo, "server", "abort dispatch", map[string]any{"session_id": cmd.Key, "dispatch_id": cmd.DispatchID})
+		if s.manager.AbortDispatch(cmd.Key, cmd.DispatchID, "user abort (dispatch)") {
+			utils.LogWithFields(utils.LevelInfo, "server", "abort dispatch recalled", map[string]any{"session_id": cmd.Key, "dispatch_id": cmd.DispatchID})
+		} else {
+			utils.LogWithFields(utils.LevelWarn, "server", "abort dispatch found no live dispatch", map[string]any{"session_id": cmd.Key, "dispatch_id": cmd.DispatchID})
+		}
+
+	case "stop_background_task":
+		outcome := tools.StopBackgroundTaskForOwner(cmd.Key, cmd.TaskID)
+		utils.LogWithFields(utils.LevelInfo, "server", "stop background task", map[string]any{"session_id": cmd.Key, "task_id": cmd.TaskID, "outcome": outcome})
+		s.sendResult(conn, cmd, nil, map[string]any{"status": outcome, "stopped": outcome == "stopped"})
 
 	case "steer_agent":
 		// Fire-and-forget: no response sent (matches TS behavior). SteerAgent

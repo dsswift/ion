@@ -91,6 +91,10 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "key")
 	case "abort_agent":
 		return hasNonEmptyString(raw, "key") && hasString(raw, "agentName")
+	case "abort_dispatch":
+		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "dispatchId")
+	case "stop_background_task":
+		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "taskId")
 	case "steer_agent":
 		return hasNonEmptyString(raw, "key") && hasString(raw, "agentName") && hasString(raw, "message")
 	case "stop_by_prefix":

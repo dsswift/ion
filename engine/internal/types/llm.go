@@ -105,8 +105,9 @@ type LlmContentBlock struct {
 	Input     map[string]any `json:"input,omitempty"`
 	ToolUseID string         `json:"tool_use_id,omitempty"`
 	Content   string         `json:"content,omitempty"`
-	IsError   *bool          `json:"is_error,omitempty"`
-	Thinking  string         `json:"thinking,omitempty"`
+	IsError          *bool   `json:"is_error,omitempty"`
+	BackgroundTaskID string  `json:"background_task_id,omitempty"`
+	Thinking         string  `json:"thinking,omitempty"`
 	Source    *ImageSource   `json:"source,omitempty"`
 	// Ephemeral marks provider input that must leave in-memory history after the
 	// current stream. It is never persisted or serialized to a provider API.

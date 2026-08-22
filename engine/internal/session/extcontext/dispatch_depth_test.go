@@ -420,7 +420,7 @@ func TestRegistryCascadeRecallByName(t *testing.T) {
 		mu.Unlock()
 	}, nil, "sess", "parent-2", 2)
 
-	found := r.Recall("myagent", "cascade by name")
+	found := r.RecallByID("parent-2", "cascade by id")
 	if !found {
 		t.Fatal("expected myagent to be found")
 	}

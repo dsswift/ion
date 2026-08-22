@@ -51,7 +51,6 @@ import type {
   LLMCallResult,
   NotifyOpts,
   ProcessInfo,
-  RecallAgentOpts,
   RunOnceOpts,
   RunOnceResult,
   SessionListEntry,
@@ -65,6 +64,7 @@ import type {
   ToolContent,
   WalkContextFilesOpts,
 } from './types'
+import type { RecallAgentOpts, RecallDispatchOpts } from './types-dispatch-control'
 
 // ---------------------------------------------------------------------------
 // Internal state
@@ -484,6 +484,10 @@ function buildContext(ctxData: any): IonContext {
     },
     async recallAgent(name: string, opts?: RecallAgentOpts): Promise<boolean> {
       const result = await request('ext/recall_agent', { name, reason: opts?.reason || '' })
+      return !!result?.found
+    },
+    async recallDispatch(dispatchId: string, opts?: RecallDispatchOpts): Promise<boolean> {
+      const result = await request('ext/recall_dispatch', { dispatchId, reason: opts?.reason || '' })
       return !!result?.found
     },
     async steerDispatch(dispatchId: string, message: string): Promise<SteerDispatchResult> {

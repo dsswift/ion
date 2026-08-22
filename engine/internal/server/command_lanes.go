@@ -96,8 +96,8 @@ func classifyCommand(cmd *protocol.ClientCommand) commandClass {
 		}
 		return classProcess
 
-	case "start_session", "send_prompt", "abort", "abort_agent",
-		"steer_agent", "dialog_response", "command", "stop_session",
+	case "start_session", "send_prompt", "abort", "abort_agent", "abort_dispatch",
+		"stop_background_task", "steer_agent", "dialog_response", "command", "stop_session",
 		"settle_session", "resume_session",
 		"fork_session", "set_plan_mode", "branch", "branch_before",
 		"rewind_session", "navigate_tree", "get_tree",

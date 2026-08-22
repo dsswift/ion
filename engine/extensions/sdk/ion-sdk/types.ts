@@ -3,6 +3,8 @@
 // All public types and interfaces. Imported by ./runtime.ts and re-exported
 // from ./index.ts.
 
+import type { DispatchControlContext } from './types-dispatch-control'
+
 export interface ExtensionConfig {
   extensionDir: string
   model: string
@@ -84,7 +86,7 @@ export interface DispatchAgentOpts {
 
   /**
    * Fires when an asynchronous dispatch is cancelled via
-   * {@link IonContext.recallAgent}. Not called for foreground dispatches.
+   * {@link IonContext.recallDispatch}. Not called for foreground dispatches.
    */
   onRecall?: (info: RecallInfo) => void
 
@@ -335,12 +337,6 @@ export interface RecallInfo {
   reason: string
   elapsed: number
   toolCount: number
-}
-
-/** Options for {@link IonContext.recallAgent}. */
-export interface RecallAgentOpts {
-  /** Human-readable reason for the recall. Logged by the engine. */
-  reason?: string
 }
 
 /**
@@ -607,7 +603,7 @@ export interface HistoryMatch {
  * A single in-flight dispatch entry returned by {@link IonContext.listDispatchState}.
  *
  * - `dispatchId`: collision-safe unique ID for this dispatch instance. Use this
- *   to address {@link IonContext.recallAgent} / {@link IonContext.steerDispatch}
+ *   to address {@link IonContext.recallDispatch} / {@link IonContext.steerDispatch}
  *   when multiple dispatches of the same agent name may be running.
  * - `name`: the agent name (e.g. `"code-reviewer"`).
  * - `status`: `"running"` for an actively working dispatch, `"suspended"` for
@@ -877,7 +873,7 @@ export interface ToolResult {
   contentItems?: ToolContent[]
 }
 
-export interface IonContext {
+export interface IonContext extends DispatchControlContext {
   /**
    * Identifier of the engine session that fired this hook (the same key
    * clients pass on `start_session` / `send_prompt`). Empty string when the
@@ -1133,28 +1129,7 @@ export interface IonContext {
    */
   setDispatchContextDefaults(policy: ContextPolicy): Promise<void>
 
-  /**
-   * Terminate a running asynchronous dispatch by agent name. Returns `true` if
-   * a dispatch was found and recalled, `false` otherwise. The recalled agent's
-   * {@link DispatchAgentOpts.onRecall} callback fires with the provided reason.
-   *
-   * Only applies to default asynchronous dispatches. Has no effect on
-   * foreground dispatches started with `waitForCompletion: true`.
-   *
-   * @example
-   * ```ts
-   * // Launch an asynchronous agent
-   * await ctx.dispatchAgent({
-   *   name: 'code-reviewer',
-   *   task: 'Review the PR',
-   *   onRecall: (info) => log.info(`recalled: ${info.reason}`),
-   * })
-   *
-   * // Later, cancel it
-   * const found = await ctx.recallAgent('code-reviewer', { reason: 'user requested' })
-   * ```
-   */
-  recallAgent(name: string, opts?: RecallAgentOpts): Promise<boolean>
+
   /**
    * Deliver a steering message to a running asynchronous dispatch. The message
    * is injected into the child's conversation as a user message at the next
@@ -1172,7 +1147,7 @@ export interface IonContext {
    * by {@link dispatchAgent}, `steerDispatchByName` resolves by the
    * human-readable agent name (e.g. `'code-reviewer'`). When multiple
    * dispatches share a name, the first one found is steered (non-deterministic
-   * order, matching {@link recallAgent}'s name-based semantics). Use
+   * order, matching {@link recallDispatch}'s name-based semantics). Use
    * {@link steerDispatch} when the exact dispatch ID is available for precise
    * targeting.
    *
@@ -1388,7 +1363,7 @@ export interface IonContext {
    *
    * Use this to enumerate running asynchronous agents and their nesting
    * relationships without subscribing to `engine_agent_state` events.
-   * Complements {@link IonContext.recallAgent} and
+   * Complements {@link IonContext.recallDispatch} and
    * {@link IonContext.steerDispatch}: get the `dispatchId` from here, then
    * target the specific dispatch precisely.
    *

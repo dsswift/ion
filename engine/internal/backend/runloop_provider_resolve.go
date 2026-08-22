@@ -71,6 +71,28 @@ func (b *ApiBackend) resolveProviderForRun(run *activeRun, opts *types.RunOption
 		model = run.cfg.DefaultModel
 		opts.Model = model
 		provider = b.resolveProvider(model)
+		// Re-point the slash provenance at the model that will actually serve
+		// the run. ResolvedSlashModelEffective is documented as "the concrete
+		// model selected to start this run AFTER tier and provider resolution"
+		// (see types.RunOptions), and this swap is the last step of that
+		// resolution — leaving it on the unresolvable model would persist a
+		// provenance record naming a model that never ran.
+		//
+		// The alias is cleared rather than re-pointed: it is the
+		// command-owned selector from slash frontmatter, and the fallback
+		// deliberately did NOT honour that selector. Reporting it as though it
+		// were served would claim the command's model choice took effect.
+		if opts.ResolvedSlashModelEffective != "" {
+			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "slash model provenance re-pointed to serving fallback", map[string]any{
+				"run_id":          run.requestID,
+				"previous_alias":  opts.ResolvedSlashModelAlias,
+				"previous_model":  opts.ResolvedSlashModelEffective,
+				"serving_model":   model,
+				"conversation_id": opts.ConversationID,
+			})
+			opts.ResolvedSlashModelAlias = ""
+			opts.ResolvedSlashModelEffective = model
+		}
 		b.emit(run, types.NormalizedEvent{Data: &types.ModelFallbackEvent{
 			RequestedModel: original,
 			FallbackModel:  run.cfg.DefaultModel,

@@ -214,60 +214,7 @@ func TestSendAbort_NoQueuedPrompt_RunExitDispatchesNothing(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// AbortAgent tests
 // ---------------------------------------------------------------------------
-
-func TestAbortAgent_KillsByName(t *testing.T) {
-	mb := newMockBackend()
-	mgr := NewManager(mb)
-	_, _ = mgr.StartSession("agent-abort", defaultConfig())
-
-	// Manually inject an agent into the session's registry.
-	// Since engineSession is internal, we access via the manager's lock.
-	mgr.mu.Lock()
-	s := mgr.sessions["agent-abort"]
-	s.agents.RegisterHandle("worker-1", types.AgentHandle{PID: 99999, ParentAgent: ""})
-	mgr.mu.Unlock()
-
-	// AbortAgent with subtree=false targets only the named agent.
-	// We can't easily verify the kill since PID 99999 doesn't exist,
-	// but we verify it doesn't panic.
-	mgr.AbortAgent("agent-abort", "worker-1", false)
-}
-
-func TestAbortAgent_SubtreeTraversal(t *testing.T) {
-	mb := newMockBackend()
-	mgr := NewManager(mb)
-	_, _ = mgr.StartSession("tree", defaultConfig())
-
-	mgr.mu.Lock()
-	s := mgr.sessions["tree"]
-	s.agents.RegisterHandle("root", types.AgentHandle{PID: 90001, ParentAgent: ""})
-	s.agents.RegisterHandle("child1", types.AgentHandle{PID: 90002, ParentAgent: "root"})
-	s.agents.RegisterHandle("child2", types.AgentHandle{PID: 90003, ParentAgent: "root"})
-	s.agents.RegisterHandle("grandchild", types.AgentHandle{PID: 90004, ParentAgent: "child1"})
-	s.agents.RegisterHandle("unrelated", types.AgentHandle{PID: 90005, ParentAgent: ""})
-	mgr.mu.Unlock()
-
-	// subtree=true on "root" should attempt to kill root, child1, child2, grandchild
-	// but NOT unrelated. We can't verify kills on non-existent PIDs, but no panic.
-	mgr.AbortAgent("tree", "root", true)
-}
-
-func TestAbortAgent_UnknownSessionNoPanic(t *testing.T) {
-	mb := newMockBackend()
-	mgr := NewManager(mb)
-
-	mgr.AbortAgent("nope", "agent", false)
-}
-
-func TestAbortAgent_UnknownAgentNoPanic(t *testing.T) {
-	mb := newMockBackend()
-	mgr := NewManager(mb)
-	_, _ = mgr.StartSession("s", defaultConfig())
-
-	mgr.AbortAgent("s", "no-such-agent", false)
-}
 
 // TestResolveAgentSpec_DirectMatch verifies that an already-registered spec
 // resolves without firing the capability_match hook.

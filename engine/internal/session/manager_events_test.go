@@ -780,6 +780,18 @@ func TestTranslateToEngineEvent_AllTypes(t *testing.T) {
 			input:    types.NormalizedEvent{Data: &types.SteerDegradedEvent{MessageLength: 17}},
 			wantType: "engine_steer_degraded",
 		},
+		{
+			name: "background_work_delivered",
+			input: types.NormalizedEvent{Data: &types.BackgroundWorkDeliveredEvent{
+				EntryID: "e1",
+				Content: "result",
+				Work: types.BackgroundWorkInfo{
+					Kind:         "background_task_completion",
+					DeliveryMode: "wake",
+				},
+			}},
+			wantType: "engine_background_work_delivered",
+		},
 	}
 
 	for _, tt := range tests {
@@ -1318,5 +1330,52 @@ func TestTranslateToEngineEvent_SteerDegraded(t *testing.T) {
 	}
 	if result.SteerMessageLength != 0 {
 		t.Errorf("live steer message length = %d, want 0", result.SteerMessageLength)
+	}
+}
+
+func TestTranslateToEngineEvent_BackgroundWorkDelivered(t *testing.T) {
+	result := translateToEngineEvent(types.NormalizedEvent{
+		Data: &types.BackgroundWorkDeliveredEvent{
+			EntryID: "entry-abc",
+			Content: "Background command bash-1 (completed).",
+			Work: types.BackgroundWorkInfo{
+				Kind:         "background_task_completion",
+				DeliveryMode: "wake",
+				Items: []types.BackgroundWorkItem{{
+					ID:        "bash-1",
+					Source:    "bash",
+					Label:     "make build",
+					Status:    "completed",
+					ExitCode:  0,
+					ElapsedMs: 5000,
+				}},
+				RemainingTaskIDs: []string{"bash-2"},
+			},
+		},
+	}, 200000)
+	if result.Type != "engine_background_work_delivered" {
+		t.Fatalf("expected engine_background_work_delivered, got %q", result.Type)
+	}
+	p := result.BackgroundWorkDelivered
+	if p == nil {
+		t.Fatal("BackgroundWorkDelivered payload is nil")
+	}
+	if p.EntryID != "entry-abc" {
+		t.Errorf("EntryID = %q, want entry-abc", p.EntryID)
+	}
+	if p.Content != "Background command bash-1 (completed)." {
+		t.Errorf("Content = %q, want the wake payload text", p.Content)
+	}
+	if p.Work.Kind != "background_task_completion" {
+		t.Errorf("Work.Kind = %q, want background_task_completion", p.Work.Kind)
+	}
+	if p.Work.DeliveryMode != "wake" {
+		t.Errorf("Work.DeliveryMode = %q, want wake", p.Work.DeliveryMode)
+	}
+	if len(p.Work.Items) != 1 || p.Work.Items[0].ID != "bash-1" {
+		t.Errorf("Work.Items = %+v, want single item with ID bash-1", p.Work.Items)
+	}
+	if len(p.Work.RemainingTaskIDs) != 1 || p.Work.RemainingTaskIDs[0] != "bash-2" {
+		t.Errorf("Work.RemainingTaskIDs = %v, want [bash-2]", p.Work.RemainingTaskIDs)
 	}
 }

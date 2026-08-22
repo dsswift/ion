@@ -38,14 +38,16 @@ func TestParseClientCommand_ValidCommands(t *testing.T) {
 			cmd:  "abort",
 		},
 		{
-			name: "abort_agent",
-			line: `{"cmd":"abort_agent","key":"s1","agentName":"coder"}`,
-			cmd:  "abort_agent",
+			// An absent abortScope is the pre-scope wire shape and must keep
+			// parsing — older clients never send the field.
+			name: "abort with scope",
+			line: `{"cmd":"abort","key":"s1","abortScope":"orchestrator"}`,
+			cmd:  "abort",
 		},
 		{
-			name: "abort_agent with subtree",
-			line: `{"cmd":"abort_agent","key":"s1","agentName":"coder","subtree":true}`,
-			cmd:  "abort_agent",
+			name: "abort_dispatch",
+			line: `{"cmd":"abort_dispatch","key":"s1","dispatchId":"dispatch-coder-123-abc"}`,
+			cmd:  "abort_dispatch",
 		},
 		{
 			name: "steer_agent",
@@ -262,12 +264,22 @@ func TestParseClientCommand_MissingRequired(t *testing.T) {
 			line: `{"cmd":"tool_gate_response","gateRequestId":"tool-gate-1-3"}`,
 		},
 		{
-			name: "abort_agent missing key",
-			line: `{"cmd":"abort_agent","agentName":"coder"}`,
-		},
-		{
 			name: "abort_agent missing agentName",
 			line: `{"cmd":"abort_agent","key":"s1"}`,
+		},
+		{
+			name: "abort_dispatch missing key",
+			line: `{"cmd":"abort_dispatch","dispatchId":"d1"}`,
+		},
+		{
+			name: "abort_dispatch missing dispatchId",
+			line: `{"cmd":"abort_dispatch","key":"s1"}`,
+		},
+		{
+			// An empty dispatchId addresses nothing; rejecting it here keeps
+			// the "recall the first match" ambiguity off this command.
+			name: "abort_dispatch empty dispatchId",
+			line: `{"cmd":"abort_dispatch","key":"s1","dispatchId":""}`,
 		},
 		{
 			name: "steer_agent missing message",
@@ -637,7 +649,8 @@ func TestParseClientCommand_AllCommandTypes(t *testing.T) {
 		"start_session":   `{"cmd":"start_session","key":"k","config":{"profileId":"p","extensionDir":"/e","workingDirectory":"/w"}}`,
 		"send_prompt":     `{"cmd":"send_prompt","key":"k","text":"hi"}`,
 		"abort":           `{"cmd":"abort","key":"k"}`,
-		"abort_agent":     `{"cmd":"abort_agent","key":"k","agentName":"a"}`,
+		"abort_agent":     `{"cmd":"abort_agent","key":"k","agentName":"a","subtree":true}`,
+		"abort_dispatch":  `{"cmd":"abort_dispatch","key":"k","dispatchId":"d"}`,
 		"steer_agent":     `{"cmd":"steer_agent","key":"k","agentName":"a","message":"m"}`,
 		"dialog_response": `{"cmd":"dialog_response","key":"k","dialogId":"d"}`,
 		"command":         `{"cmd":"command","key":"k","command":"c"}`,
@@ -679,17 +692,51 @@ func TestParseClientCommand_OptionalFieldsAbsent(t *testing.T) {
 	}
 }
 
-func TestParseClientCommand_OptionalFieldsPresent(t *testing.T) {
-	line := `{"cmd":"abort_agent","key":"k","agentName":"coder","subtree":true,"requestId":"r99"}`
-	result := ParseClientCommand(line)
+// TestParseClientCommand_AbortScopeDecodes pins the scope field onto the
+// struct. An absent field must decode as empty — the session layer maps that
+// to the full-teardown default, which is what keeps pre-scope clients working.
+func TestParseClientCommand_AbortScopeDecodes(t *testing.T) {
+	scoped := ParseClientCommand(`{"cmd":"abort","key":"k","abortScope":"orchestrator"}`)
+	if scoped == nil {
+		t.Fatal("expected non-nil result for scoped abort")
+	}
+	if scoped.AbortScope != "orchestrator" {
+		t.Errorf("abortScope = %q, want orchestrator", scoped.AbortScope)
+	}
+
+	bare := ParseClientCommand(`{"cmd":"abort","key":"k"}`)
+	if bare == nil {
+		t.Fatal("expected non-nil result for bare abort")
+	}
+	if bare.AbortScope != "" {
+		t.Errorf("absent abortScope should decode empty, got %q", bare.AbortScope)
+	}
+
+	allWork := ParseClientCommand(`{"cmd":"abort","key":"k","abortScope":"all_work"}`)
+	if allWork == nil || allWork.AbortScope != "all_work" {
+		t.Fatalf("all_work abortScope = %#v, want all_work", allWork)
+	}
+}
+
+// TestParseClientCommand_DispatchIDDecodes pins the per-dispatch address.
+func TestParseClientCommand_DispatchIDDecodes(t *testing.T) {
+	const id = "dispatch-code-reviewer-1719500000000-a1b2c3d4e5f6"
+	result := ParseClientCommand(`{"cmd":"abort_dispatch","key":"k","dispatchId":"` + id + `"}`)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
-	if result.Subtree == nil || *result.Subtree != true {
-		t.Errorf("subtree should be true")
+	if result.DispatchID != id {
+		t.Errorf("dispatchId = %q, want %q", result.DispatchID, id)
 	}
-	if result.RequestID != "r99" {
-		t.Errorf("requestId = %q, want r99", result.RequestID)
+}
+
+func TestParseClientCommand_AbortAgentCompatibilityFields(t *testing.T) {
+	result := ParseClientCommand(`{"cmd":"abort_agent","key":"k","agentName":"coder","subtree":true}`)
+	if result == nil {
+		t.Fatal("expected abort_agent compatibility command to parse")
+	}
+	if result.AgentName != "coder" || result.Subtree == nil || !*result.Subtree {
+		t.Fatalf("abort_agent fields = %#v, want agentName=coder and subtree=true", result)
 	}
 }
 

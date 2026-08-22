@@ -366,6 +366,17 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	m.mu.RUnlock()
 	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: off-lock inject complete", map[string]any{"key": key})
 
+	// Queue-mode completions become durable inputs only when a run actually
+	// starts. Claim them here, after the session lock is released, then let the
+	// backend append and announce them before its first provider call.
+	for _, pending := range m.takePendingBackgroundCompletions(key) {
+		if len(pending.Work.Items) > 0 {
+			opts.PendingBackgroundWork = append(opts.PendingBackgroundWork, types.BackgroundWorkDelivery{
+				Content: pending.Text, Work: pending.Work,
+			})
+		}
+	}
+
 	// Lazily connect MCP servers, once per session, now that the lock is
 	// released (the connect is network I/O). This is the seam that replaced the
 	// eager connect in StartSession: it runs on the first prompt only, so a

@@ -20,7 +20,11 @@ func (h *Host) rpcWalkContextFiles(_ *Context, id int64, raw []byte) {
 }
 
 func (h *Host) rpcRecallAgent(ctx *Context, id int64, raw []byte) {
-	h.handleRecallRPC(ctx, id, raw)
+	h.handleRecallAgentRPC(ctx, id, raw)
+}
+
+func (h *Host) rpcRecallDispatch(ctx *Context, id int64, raw []byte) {
+	h.handleRecallDispatchRPC(ctx, id, raw)
 }
 
 func (h *Host) rpcAnswerDispatchQuestion(_ *Context, id int64, raw []byte) {

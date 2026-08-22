@@ -43,6 +43,7 @@ var extRequestHandlers = map[string]extRequestHandler{
 	"ext/deregister_agent_spec":         (*Host).rpcDeregisterAgentSpec,
 	"ext/dispatch_agent":                (*Host).rpcDispatchAgent,
 	"ext/recall_agent":                  (*Host).rpcRecallAgent,
+	"ext/recall_dispatch":               (*Host).rpcRecallDispatch,
 	"ext/steer_dispatch":                (*Host).rpcSteerDispatch,
 	"ext/steer_dispatch_by_name":        (*Host).rpcSteerDispatchByName,
 	"ext/steer_self":                    (*Host).rpcSteerSelf,

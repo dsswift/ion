@@ -40,6 +40,8 @@ type TaskInfo struct {
 	// survive across runs, so it lives in the session layer. This package
 	// owns only the per-task "does this one notify" bit.
 	NotifyOnComplete bool
+	// ToolID links a Bash task to the model tool-use row that started it.
+	ToolID string
 
 	// stop kills the underlying process (Kind=="bash"). nil for agent tasks.
 	stop func()
@@ -300,11 +302,31 @@ func executeTaskStop(ctx context.Context, input map[string]any, _ string) (*type
 		return &types.ToolResult{Content: "Error: taskId is required", IsError: true}, nil
 	}
 
-	// Hold the lock through the status mutation: the background-bash
-	// Done-watcher goroutine (tasks_bash.go) writes the same fields under
-	// tasksMu, and the "stopped" stamp must win over a concurrent exit.
-	tasksMu.Lock()
+	// TaskStop is a model-visible wrapper around the same exact-ID lifecycle
+	// mechanism used by client controls. Agent tasks retain the historic tool
+	// behavior; Bash tasks enforce session ownership only for client commands.
+	tasksMu.RLock()
 	task, ok := tasks[taskID]
+	isBash := ok && task.Kind == "bash"
+	owner := ""
+	if isBash {
+		owner = task.Owner
+	}
+	tasksMu.RUnlock()
+	if isBash {
+		outcome := StopBackgroundTaskForOwner(owner, taskID)
+		switch outcome {
+		case "stopped":
+			return &types.ToolResult{Content: fmt.Sprintf("Task %s stopped.", taskID)}, nil
+		case "already_terminal":
+			return &types.ToolResult{Content: fmt.Sprintf("Task %s is not running", taskID)}, nil
+		default:
+			return &types.ToolResult{Content: fmt.Sprintf("Task not found: %s", taskID), IsError: true}, nil
+		}
+	}
+
+	tasksMu.Lock()
+	task, ok = tasks[taskID]
 	if !ok {
 		tasksMu.Unlock()
 		return &types.ToolResult{Content: fmt.Sprintf("Task not found: %s", taskID), IsError: true}, nil
@@ -312,33 +334,11 @@ func executeTaskStop(ctx context.Context, input map[string]any, _ string) (*type
 	if task.Status != "running" {
 		status := task.Status
 		tasksMu.Unlock()
-		return &types.ToolResult{
-			Content: fmt.Sprintf("Task %s is not running (status: %s)", taskID, status),
-		}, nil
+		return &types.ToolResult{Content: fmt.Sprintf("Task %s is not running (status: %s)", taskID, status)}, nil
 	}
 	now := time.Now()
 	task.Status = "stopped"
 	task.CompletedAt = &now
-	// Bash tasks own a real process: actually kill it (stop() signals the
-	// process group and returns without waiting, so holding tasksMu is fine).
-	// Agent tasks keep the historical status-flip behavior (their run is
-	// torn down elsewhere).
-	stop := task.stop
-	// The Done-watcher bails out on a non-"running" status, so this path owns
-	// the completion notification for the task it stops — otherwise a parked
-	// session waits forever on a task the model deliberately killed.
-	var completion *TaskCompletion
-	if task.NotifyOnComplete {
-		c := completionFor(task, nil)
-		completion = &c
-	}
 	tasksMu.Unlock()
-	if stop != nil {
-		stop()
-	}
-	if completion != nil {
-		notifyTaskCompletion(*completion)
-	}
-
 	return &types.ToolResult{Content: fmt.Sprintf("Task %s stopped.", taskID)}, nil
 }

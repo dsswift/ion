@@ -426,7 +426,7 @@ type RunConfig struct {
 	// waiting at a safe run-loop checkpoint plus an acknowledgement closure. The
 	// loop calls acknowledgement only after persistence succeeds, so a save
 	// failure leaves the records available for retry.
-	PeekCompletedChildDispatches func() ([]types.LlmMessage, func())
+	PeekCompletedChildDispatches func() ([]types.BackgroundWorkDelivery, func())
 
 	// Shell carries EngineRuntimeConfig.Shell so the Bash tool can run
 	// commands through the user's login shell when Shell.UseLoginShell is

@@ -198,5 +198,5 @@ func executeBashBackground(ctx context.Context, command, cwd string, notify bool
 	} else {
 		content += "\nRead the output file to inspect progress."
 	}
-	return &types.ToolResult{Content: content}, nil
+	return &types.ToolResult{Content: content, BackgroundTaskID: info.ID}, nil
 }

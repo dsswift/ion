@@ -597,9 +597,9 @@ func TestDispatchArchitecture_RecallOneSibling(t *testing.T) {
 	}
 
 	// Phase 3: Recall doomed. Its context cancels, unblocking the provider.
-	found, _ := ctx.RecallAgent("doomed", extension.RecallAgentOpts{Reason: "test"})
+	found, _ := ctx.RecallDispatch("doomed", extension.RecallDispatchOpts{Reason: "test"})
 	if !found {
-		t.Error("RecallAgent(doomed) returned false")
+		t.Error("RecallDispatch(doomed) returned false")
 	}
 
 	// Wait for doomed's outcome.

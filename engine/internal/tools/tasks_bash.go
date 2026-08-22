@@ -51,20 +51,27 @@ func BackgroundTaskOwnerFromContext(ctx context.Context) string {
 	return owner
 }
 
-// TaskCompletion is the terminal report for a Kind=="bash" task that was
-// started with notify_on_complete. It carries everything a consumer needs to
-// act on the completion without reaching back into this package's registry.
+// TaskCompletion is a lifecycle snapshot for a Kind=="bash" task. It carries
+// everything a consumer needs to identify the task and act on a terminal
+// completion without reaching back into this package's registry.
 type TaskCompletion struct {
 	// TaskID is the tasks-registry ID ("bash-<n>-<millis>").
 	TaskID string
+	// ToolID identifies the model tool-use row that started this task.
+	ToolID string
 	// Owner is the session key that started the task (may be "" when the
 	// task was started outside a session-owned run).
 	Owner string
 	// Command is the shell command that ran, so a consumer can describe the
 	// task without a second registry lookup.
 	Command string
-	// Status is the terminal status: "completed", "failed", or "stopped".
+	// StartedAt is the task's original Unix-millisecond start timestamp.
+	StartedAt int64
+	// Status is the current lifecycle status.
 	Status string
+	// NotifyOnComplete reports whether the Bash call requested completion delivery.
+	// Lifecycle observers need the original option on both start and terminal events.
+	NotifyOnComplete bool
 	// ExitCode is the process exit code. Zero for "stopped" tasks that were
 	// killed before reporting one.
 	ExitCode int
@@ -81,8 +88,10 @@ type TaskCompletion struct {
 type TaskCompletionNotifier func(TaskCompletion)
 
 var (
-	taskNotifierMu sync.RWMutex
-	taskNotifier   TaskCompletionNotifier
+	taskNotifierMu        sync.RWMutex
+	taskNotifier          TaskCompletionNotifier
+	backgroundLifecycleMu sync.RWMutex
+	backgroundLifecycle   func(TaskCompletion, bool)
 )
 
 // SetTaskCompletionNotifier installs the callback invoked when a notifying
@@ -94,6 +103,24 @@ func SetTaskCompletionNotifier(fn TaskCompletionNotifier) {
 	taskNotifierMu.Lock()
 	defer taskNotifierMu.Unlock()
 	taskNotifier = fn
+}
+
+// SetBackgroundTaskLifecycleObserver observes every session-owned Bash start
+// and terminal transition. It runs outside tasksMu to avoid lock inversion with
+// session status projection.
+func SetBackgroundTaskLifecycleObserver(fn func(TaskCompletion, bool)) {
+	backgroundLifecycleMu.Lock()
+	defer backgroundLifecycleMu.Unlock()
+	backgroundLifecycle = fn
+}
+
+func notifyBackgroundTaskLifecycle(c TaskCompletion, terminal bool) {
+	backgroundLifecycleMu.RLock()
+	fn := backgroundLifecycle
+	backgroundLifecycleMu.RUnlock()
+	if fn != nil {
+		fn(c, terminal)
+	}
 }
 
 // notifyTaskCompletion delivers a terminal report to the installed notifier.
@@ -135,14 +162,17 @@ func completionFor(info *TaskInfo, handle *BackgroundHandle) TaskCompletion {
 		tail = info.tail()
 	}
 	return TaskCompletion{
-		TaskID:     info.ID,
-		Owner:      info.Owner,
-		Command:    info.Prompt,
-		Status:     info.Status,
-		ExitCode:   info.ExitCode,
-		ElapsedMs:  elapsed,
-		OutputPath: info.OutputPath,
-		Tail:       tail,
+		TaskID:           info.ID,
+		ToolID:           info.ToolID,
+		Owner:            info.Owner,
+		Command:          info.Prompt,
+		StartedAt:        info.StartedAt.UnixMilli(),
+		Status:           info.Status,
+		NotifyOnComplete: info.NotifyOnComplete,
+		ExitCode:         info.ExitCode,
+		ElapsedMs:        elapsed,
+		OutputPath:       info.OutputPath,
+		Tail:             tail,
 	}
 }
 
@@ -170,6 +200,7 @@ func startBackgroundBashTask(ctx context.Context, ops BackgroundBashOperations, 
 		Owner:            owner,
 		PID:              handle.PID,
 		NotifyOnComplete: notifyOnComplete,
+		ToolID:           backgroundToolIDFromContext(ctx),
 		stop:             handle.Stop,
 		tail:             handle.Tail,
 	}
@@ -177,6 +208,9 @@ func startBackgroundBashTask(ctx context.Context, ops BackgroundBashOperations, 
 	tasksMu.Lock()
 	tasks[taskID] = info
 	tasksMu.Unlock()
+
+	started := completionFor(info, nil)
+	notifyBackgroundTaskLifecycle(started, false)
 
 	utils.LogWithFields(utils.LevelInfo, "tools.bash", "background task registered", map[string]any{
 		"task_id": taskID, "pid": handle.PID, "path": handle.OutputPath, "session_id": owner, "notify_on_complete": notifyOnComplete,
@@ -214,6 +248,7 @@ func startBackgroundBashTask(ctx context.Context, ops BackgroundBashOperations, 
 		if notify {
 			notifyTaskCompletion(completion)
 		}
+		notifyBackgroundTaskLifecycle(completion, true)
 	}()
 
 	return info, nil
@@ -229,6 +264,7 @@ func StopBackgroundTasksForOwner(sessionKey string) {
 	now := time.Now()
 	var stopped []string
 	var completions []TaskCompletion
+	var terminals []TaskCompletion
 
 	tasksMu.Lock()
 	for _, t := range tasks {
@@ -251,6 +287,7 @@ func StopBackgroundTasksForOwner(sessionKey string) {
 			// killed out from under it.
 			completions = append(completions, completionFor(t, nil))
 		}
+		terminals = append(terminals, completionFor(t, nil))
 		stopped = append(stopped, t.ID)
 	}
 	tasksMu.Unlock()
@@ -258,6 +295,9 @@ func StopBackgroundTasksForOwner(sessionKey string) {
 	// Notify outside the registry lock (see notifyTaskCompletion).
 	for _, c := range completions {
 		notifyTaskCompletion(c)
+	}
+	for _, c := range terminals {
+		notifyBackgroundTaskLifecycle(c, true)
 	}
 
 	if len(stopped) > 0 {

@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -73,6 +74,36 @@ func TestBackgroundWake_EmitsTypedEventAlways(t *testing.T) {
 				t.Errorf("payload.Command = %q, want the command carried through", payload.Command)
 			}
 		})
+	}
+}
+
+func TestBackgroundTaskLifecycle_PreservesNonNotifyingStart(t *testing.T) {
+	const key = "lifecycle-non-notifying"
+	_, _, ec := newWakeManager(t, key, types.BackgroundDeliveryWake)
+	t.Cleanup(func() { tools.StopBackgroundTasksForOwner(key) })
+	ctx := tools.WithBackgroundTaskOwner(context.Background(), key)
+
+	if _, err := tools.ExecuteTool(ctx, "Bash", map[string]any{
+		"command":            "sleep 60",
+		"run_in_background":  true,
+		"notify_on_complete": false,
+	}, t.TempDir()); err != nil {
+		t.Fatalf("start non-notifying background task: %v", err)
+	}
+
+	events := ec.byType("engine_background_task_started")
+	if len(events) != 1 {
+		t.Fatalf("start lifecycle events = %d, want 1", len(events))
+	}
+	payload := events[0].event.BackgroundTaskStarted
+	if payload == nil {
+		t.Fatal("start lifecycle event has no payload")
+	}
+	if payload.StartedAt == 0 {
+		t.Error("startedAt = 0, want the task registry timestamp")
+	}
+	if payload.NotifyOnComplete {
+		t.Error("notifyOnComplete = true, want false for a detached task")
 	}
 }
 
@@ -304,6 +335,98 @@ func TestBackgroundWake_ParkRoutesThroughHybrid(t *testing.T) {
 	if mgr.ParkMainLoop(key) {
 		t.Error("expected the inner ApiBackend to decline a park for an unknown requestID")
 	}
+}
+
+// buildBackgroundWorkInfo maps TaskCompletion fields to BackgroundWorkInfo.
+func TestBuildBackgroundWorkInfo(t *testing.T) {
+	c := tools.TaskCompletion{
+		TaskID:     "bash-42",
+		Command:    "npm test",
+		Status:     "completed",
+		ExitCode:   0,
+		ElapsedMs:  9876,
+		OutputPath: "/tmp/bash-42.out",
+	}
+	remaining := []outstandingBackgroundTask{
+		{TaskID: "bash-43", Command: "npm build"},
+		{TaskID: "bash-44", Command: "npm lint"},
+	}
+	info := buildBackgroundWorkInfo(c, "wake", remaining)
+
+	if info.Kind != string(types.InjectionKindBackgroundTaskCompletion) {
+		t.Errorf("Kind = %q, want %q", info.Kind, types.InjectionKindBackgroundTaskCompletion)
+	}
+	if info.DeliveryMode != "wake" {
+		t.Errorf("DeliveryMode = %q, want wake", info.DeliveryMode)
+	}
+	if len(info.Items) != 1 {
+		t.Fatalf("Items count = %d, want 1", len(info.Items))
+	}
+	item := info.Items[0]
+	if item.ID != "bash-42" {
+		t.Errorf("Item.ID = %q, want bash-42", item.ID)
+	}
+	if item.Source != types.BackgroundWorkSourceBash {
+		t.Errorf("Item.Source = %q, want %q", item.Source, types.BackgroundWorkSourceBash)
+	}
+	if item.Label != "npm test" {
+		t.Errorf("Item.Label = %q, want npm test", item.Label)
+	}
+	if item.Status != "completed" {
+		t.Errorf("Item.Status = %q, want completed", item.Status)
+	}
+	if item.ExitCode != 0 {
+		t.Errorf("Item.ExitCode = %d, want 0", item.ExitCode)
+	}
+	if item.ElapsedMs != 9876 {
+		t.Errorf("Item.ElapsedMs = %d, want 9876", item.ElapsedMs)
+	}
+	if item.OutputPath != "/tmp/bash-42.out" {
+		t.Errorf("Item.OutputPath = %q, want /tmp/bash-42.out", item.OutputPath)
+	}
+	if len(info.RemainingTaskIDs) != 2 {
+		t.Fatalf("RemainingTaskIDs count = %d, want 2", len(info.RemainingTaskIDs))
+	}
+	if info.RemainingTaskIDs[0] != "bash-43" || info.RemainingTaskIDs[1] != "bash-44" {
+		t.Errorf("RemainingTaskIDs = %v, want [bash-43 bash-44]", info.RemainingTaskIDs)
+	}
+}
+
+// buildBackgroundWorkInfo with no remaining tasks produces empty slice.
+func TestBuildBackgroundWorkInfo_NoRemaining(t *testing.T) {
+	c := tools.TaskCompletion{TaskID: "bash-1", Status: "completed"}
+	info := buildBackgroundWorkInfo(c, "steer", nil)
+	if len(info.RemainingTaskIDs) != 0 {
+		t.Errorf("RemainingTaskIDs = %v, want empty", info.RemainingTaskIDs)
+	}
+}
+
+// Wake delivery emits engine_background_work_delivered through the backend's
+// run-open path (BackgroundWork on prompt overrides).
+func TestBackgroundWake_WakeEmitsBackgroundWorkDelivered(t *testing.T) {
+	key := "wake-bwd"
+	mgr, mb, ec := newWakeManager(t, key, types.BackgroundDeliveryWake)
+	mgr.registerOutstandingBackgroundTask(key, "bash-1", "make build")
+
+	mgr.onBackgroundTaskComplete(testCompletion(key, "bash-1", "make build"))
+
+	keys := mb.startedInOrder()
+	if len(keys) != 1 {
+		t.Fatalf("expected 1 run started on wake, got %d", len(keys))
+	}
+
+	opts, _ := mb.getStarted(keys[0])
+	if opts.BackgroundWork == nil {
+		t.Fatal("wake run should carry BackgroundWork metadata on prompt overrides")
+	}
+	if opts.BackgroundWork.DeliveryMode != types.BackgroundDeliveryWake {
+		t.Errorf("BackgroundWork.DeliveryMode = %q, want %q", opts.BackgroundWork.DeliveryMode, types.BackgroundDeliveryWake)
+	}
+	if len(opts.BackgroundWork.Items) != 1 || opts.BackgroundWork.Items[0].ID != "bash-1" {
+		t.Errorf("BackgroundWork.Items = %+v, want single item with ID bash-1", opts.BackgroundWork.Items)
+	}
+
+	_ = ec
 }
 
 // ParkMainLoop refuses when there is no active run to park.

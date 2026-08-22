@@ -107,6 +107,14 @@ func (e *NormalizedEvent) UnmarshalJSON(data []byte) error {
 		target = &TaskSuspendEvent{}
 	case EventBackgroundTaskComplete:
 		target = &BackgroundTaskCompleteEvent{}
+	case EventBackgroundTaskStarted:
+		target = &BackgroundTaskStartedEvent{}
+	case EventBackgroundTaskTerminal:
+		target = &BackgroundTaskTerminalEvent{}
+	case EventSessionWorkStopped:
+		target = &SessionWorkStoppedEvent{}
+	case EventBackgroundWorkDelivered:
+		target = &BackgroundWorkDeliveredEvent{}
 	case EventPlanContent:
 		target = &PlanContentEvent{}
 	case EventThinkingBlockStart:
@@ -212,6 +220,9 @@ type ToolResultEvent struct {
 	// carry no images. Consumers that render tool output can display these
 	// images inline; headless consumers may ignore them.
 	Images []ToolResultImage `json:"images,omitempty"`
+	// BackgroundTaskID correlates this tool result with an asynchronous task:
+	// Bash background task ID or Agent dispatch ID. Additive (omitempty).
+	BackgroundTaskID string `json:"backgroundTaskId,omitempty"`
 }
 
 func (ToolResultEvent) eventType() string { return EventToolResult }

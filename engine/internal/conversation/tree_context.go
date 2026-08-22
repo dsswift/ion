@@ -18,7 +18,6 @@ func compactionMetaFromData(data CompactionData) CompactMeta {
 		Summary:            data.Summary,
 		FactCount:          data.FactCount,
 		RecentFiles:        data.RecentFiles,
-		RestoredSkills:     data.RestoredSkills,
 	}
 }
 

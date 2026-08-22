@@ -203,30 +203,6 @@ func (m *Manager) buildRunConfig(
 		}
 	}
 
-	// Deliver any background-command completions that were queued while this
-	// session had no run to receive them (the "queue" delivery mode, or a wake
-	// whose run could not start). They ride into the conversation as
-	// system-reminder user messages on this run's first turn, so the result is
-	// never silently lost.
-	//
-	// Composed around any existing OnInitialMessages rather than replacing it:
-	// the plugin UserPromptSubmit wiring above owns the same hook, and both
-	// contributions belong in the message list.
-	priorInitialMessages := runCfg.Hooks.OnInitialMessages
-	runCfg.Hooks.OnInitialMessages = func(runID string, prompt string) []types.LlmMessage {
-		var msgs []types.LlmMessage
-		for _, pending := range m.takePendingBackgroundCompletions(key) {
-			msgs = append(msgs, types.LlmMessage{
-				Role:    "user",
-				Content: wrapInSystemReminder(pending.Text),
-			})
-		}
-		if priorInitialMessages != nil {
-			msgs = append(msgs, priorInitialMessages(runID, prompt)...)
-		}
-		return msgs
-	}
-
 	if telemCollector != nil {
 		runCfg.Telemetry = &telemetryAdapter{c: telemCollector}
 	}

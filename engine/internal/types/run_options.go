@@ -380,6 +380,14 @@ type RunOptions struct {
 	// fields instead.
 	InjectionKind string `json:"-"`
 
+	// BackgroundWork identifies an engine-owned completion represented by this
+	// inbound prompt. It is persisted with the entry but never comes from a
+	// client command directly.
+	BackgroundWork *BackgroundWorkInfo `json:"-"`
+	// PendingBackgroundWork are queue-mode completions claimed when this run
+	// starts. The backend persists them before the provider sees the run.
+	PendingBackgroundWork []BackgroundWorkDelivery `json:"-"`
+
 	// SteerDegraded marks a prompt that began as a ctx.steerSelf delivery and
 	// became a fresh prompt because the owning run was not live.
 	//

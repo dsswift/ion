@@ -463,6 +463,11 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	var exitSession *engineSession
 	var captureCursorKind string
 	var invalidateCursorKind string
+	// skipDescendantReap is set when this exit was caused by an
+	// orchestrator-scoped abort, which deliberately leaves background
+	// dispatches running. Read from the session's one-shot marker under the
+	// lock below and consumed by the reap decision further down.
+	var skipDescendantReap bool
 	m.mu.Lock()
 	// Authoritative terminal point: clear the runID -> key routing binding
 	// under the lock, unconditionally (even if the session was already torn
@@ -475,6 +480,14 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 		// belonging to a replacement session with the same key.
 		exitSession = s
 		s.clearRunIdentity()
+		// Consume the orchestrator-scoped-abort marker. Matching on runID
+		// means a marker left by an earlier run can never suppress this run's
+		// reap; clearing it unconditionally when it matches makes it one-shot,
+		// so the NEXT ordinary cancel on this session reaps normally.
+		if s.orchestratorAbortRunID != "" && s.orchestratorAbortRunID == runID {
+			skipDescendantReap = true
+			s.orchestratorAbortRunID = ""
+		}
 		// Ion's durable conversation-file identity, captured under the lock
 		// for use in persistTerminalDispatches below. This is NOT the
 		// backend-reported sessionID (which is claude's UUID for the CLI
@@ -690,8 +703,17 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	// SendAbort-side abortAllDescendants is not guaranteed to have fired.
 	// Reaping here ensures dispatched children never outlive a cancelled
 	// parent regardless of the cancel's origin.
+	//
+	// The one exception is an orchestrator-scoped abort, which cancelled this
+	// run precisely so its background dispatches could keep running. Reaping
+	// here would silently undo that scope, since a scoped abort is otherwise
+	// indistinguishable from any other cancel at run exit.
 	if cleanCancel || abnormalExit {
-		m.abortAllDescendants(key, fmt.Sprintf("parent run exit code=%s signal=%s", codeStr, sigStr))
+		if skipDescendantReap {
+			utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit: skipping descendant reap (orchestrator-scoped abort)", map[string]any{"key": key, "run_id": runID, "code_str": codeStr, "sig_str": sigStr})
+		} else {
+			m.abortAllDescendants(key, fmt.Sprintf("parent run exit code=%s signal=%s", codeStr, sigStr))
+		}
 	}
 
 	if abnormalExit {

@@ -1,7 +1,6 @@
 package extcontext
 
 import (
-
 	ioncontext "github.com/dsswift/ion/engine/internal/context"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/types"

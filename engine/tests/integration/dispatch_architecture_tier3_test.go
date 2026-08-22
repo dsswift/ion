@@ -394,9 +394,9 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 		}
 
 		// Recall the 3rd-tier agent.
-		found, _ := tier2Ctx.RecallAgent("tier3-doom", extension.RecallAgentOpts{Reason: "test-recall"})
+		found, _ := tier2Ctx.RecallDispatch("tier3-doom", extension.RecallDispatchOpts{Reason: "test-recall"})
 		if !found {
-			t.Error("RecallAgent(tier3-doom) returned false")
+			t.Error("RecallDispatch(tier3-doom) returned false")
 		}
 
 		select {
@@ -407,7 +407,7 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 
 		// The dispatch Cancel callback hardcodes "recall_agent" as the reason
 		// (set at registration time in dispatch_agent.go). The reason from
-		// RecallAgentOpts is logged by the registry but not forwarded through
+		// RecallDispatchOpts is logged by the registry but not forwarded through
 		// the cancel closure. This is by design: Cancel is a simple func().
 		if recallInfo.Reason != "recall_agent" {
 			t.Errorf("recall reason=%q want recall_agent", recallInfo.Reason)
@@ -510,7 +510,7 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 		}
 
 		// Clean up: recall to release the blocked provider.
-		tier2Ctx.RecallAgent("tier3-steered", extension.RecallAgentOpts{Reason: "done"})
+		tier2Ctx.RecallDispatch(stub.DispatchID, extension.RecallDispatchOpts{Reason: "done"})
 		select {
 		case <-steerDone:
 		case <-time.After(10 * time.Second):
@@ -582,7 +582,7 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 		}
 
 		// Clean up.
-		rootCtx.RecallAgent("tier2-steer", extension.RecallAgentOpts{Reason: "done"})
+		rootCtx.RecallDispatch(stub.DispatchID, extension.RecallDispatchOpts{Reason: "done"})
 		select {
 		case <-steerDone:
 		case <-time.After(10 * time.Second):

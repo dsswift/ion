@@ -58,6 +58,7 @@ type parkedRun struct {
 // the "queue" mode.
 type backgroundCompletionPayload struct {
 	Text       string
+	Work       types.BackgroundWorkInfo
 	ReceivedAt time.Time
 }
 
@@ -67,7 +68,20 @@ type backgroundCompletionPayload struct {
 // keeps internal/tools free of a session import.
 func (m *Manager) wireBackgroundTaskNotifier() {
 	tools.SetTaskCompletionNotifier(m.onBackgroundTaskComplete)
-	utils.Log("session.bgtask", "background task completion notifier installed")
+	tools.SetBackgroundTaskLifecycleObserver(m.onBackgroundTaskLifecycle)
+	utils.Log("session.bgtask", "background task lifecycle observers installed")
+}
+
+func (m *Manager) onBackgroundTaskLifecycle(c tools.TaskCompletion, terminal bool) {
+	if c.Owner == "" {
+		return
+	}
+	if terminal {
+		m.emit(c.Owner, types.EngineEvent{Type: "engine_background_task_terminal", BackgroundTaskTerminal: &types.BackgroundTaskTerminalPayload{TaskID: c.TaskID, Status: c.Status, ExitCode: c.ExitCode, ElapsedMs: c.ElapsedMs, Command: c.Command, OutputPath: c.OutputPath, Tail: c.Tail}})
+	} else {
+		m.emit(c.Owner, types.EngineEvent{Type: "engine_background_task_started", BackgroundTaskStarted: &types.BackgroundTaskState{TaskID: c.TaskID, ToolID: c.ToolID, Command: c.Command, StartedAt: c.StartedAt, NotifyOnComplete: c.NotifyOnComplete}})
+	}
+	m.emitBackgroundShellStatus(c.Owner, "background_task_lifecycle")
 }
 
 // onBackgroundTaskComplete is the terminal handler for a notifying background
@@ -189,8 +203,12 @@ func (m *Manager) onBackgroundTaskComplete(c tools.TaskCompletion) {
 
 	if runActive {
 		// The orchestrator is mid-turn. Steer the result in so it lands at the
-		// next drainSteer checkpoint without interrupting the run.
-		outcome := m.SteerAgent(key, "", payload)
+		// next drainSteer checkpoint without interrupting the run. The work
+		// metadata rides the steer channel; drainSteer emits
+		// BackgroundWorkDeliveredEvent after its conversation save succeeds,
+		// which is the only place the entryID is available.
+		work := buildBackgroundWorkInfo(c, "steer", remaining)
+		outcome := m.SteerAgentWithBackgroundWork(key, "", payload, BackgroundTaskCompletionInjectionKind, work)
 		utils.LogWithFields(utils.LevelInfo, "session.bgtask", "completion delivered to active run via steer", map[string]any{
 			"task_id": c.TaskID, "session_id": key, "delivery": "steer", "outcome": outcome.String(),
 		})
@@ -215,7 +233,7 @@ func (m *Manager) onBackgroundTaskComplete(c tools.TaskCompletion) {
 		m.mu.Lock()
 		if s2, ok := m.sessions[key]; ok {
 			s2.pendingBackgroundCompletions = append(s2.pendingBackgroundCompletions, backgroundCompletionPayload{
-				Text: payload, ReceivedAt: time.Now(),
+				Text: payload, Work: buildBackgroundWorkInfo(c, "queue", remaining), ReceivedAt: time.Now(),
 			})
 		}
 		m.mu.Unlock()
@@ -225,7 +243,7 @@ func (m *Manager) onBackgroundTaskComplete(c tools.TaskCompletion) {
 		return
 
 	default: // types.BackgroundDeliveryWake
-		m.wakeSessionWithPayload(key, c.TaskID, payload, mode)
+		m.wakeSessionWithPayload(key, c, payload, mode, remaining)
 	}
 }
 
@@ -233,19 +251,17 @@ func (m *Manager) onBackgroundTaskComplete(c tools.TaskCompletion) {
 // injected prompt. This is the root-session revive: unlike a dispatched child
 // there is no parked goroutine to signal, so the session resumes by running
 // again with the completion in its conversation.
-func (m *Manager) wakeSessionWithPayload(key, taskID, payload, mode string) {
+func (m *Manager) wakeSessionWithPayload(key string, completion tools.TaskCompletion, payload, mode string, remaining []outstandingBackgroundTask) {
 	overrides := buildPromptOverrides("", nil, BackgroundTaskCompletionInjectionKind)
+	overrides.BackgroundWork = buildBackgroundWorkInfo(completion, mode, remaining)
 	if err := m.SendPrompt(key, payload, overrides); err != nil {
 		utils.LogWithFields(utils.LevelError, "session.bgtask", "wake failed: could not start run for completion", map[string]any{
-			"task_id": taskID, "session_id": key, "delivery": mode, "error": err.Error(),
+			"task_id": completion.TaskID, "session_id": key, "delivery": mode, "error": err.Error(),
 		})
-		// The run could not start (queue full, session tearing down). Hold the
-		// payload so the next run that does start still carries the result
-		// rather than losing it silently.
 		m.mu.Lock()
 		if s, ok := m.sessions[key]; ok {
 			s.pendingBackgroundCompletions = append(s.pendingBackgroundCompletions, backgroundCompletionPayload{
-				Text: payload, ReceivedAt: time.Now(),
+				Text: payload, Work: buildBackgroundWorkInfo(completion, mode, remaining), ReceivedAt: time.Now(),
 			})
 		}
 		m.mu.Unlock()
@@ -253,7 +269,7 @@ func (m *Manager) wakeSessionWithPayload(key, taskID, payload, mode string) {
 	}
 	m.emitPromptInjected(key, payload, BackgroundTaskCompletionInjectionKind)
 	utils.LogWithFields(utils.LevelInfo, "session.bgtask", "session woken with completion", map[string]any{
-		"task_id": taskID, "session_id": key, "delivery": mode,
+		"task_id": completion.TaskID, "session_id": key, "delivery": mode,
 	})
 }
 
@@ -302,6 +318,29 @@ func (m *Manager) emitBackgroundTaskComplete(key string, c tools.TaskCompletion,
 			RemainingTaskIDs: remainingIDs,
 		},
 	})
+}
+
+// buildBackgroundWorkInfo constructs the structured metadata for a single
+// background completion delivery.
+func buildBackgroundWorkInfo(c tools.TaskCompletion, deliveryMode string, remaining []outstandingBackgroundTask) types.BackgroundWorkInfo {
+	remainIDs := make([]string, len(remaining))
+	for i, t := range remaining {
+		remainIDs[i] = t.TaskID
+	}
+	return types.BackgroundWorkInfo{
+		Kind:         string(types.InjectionKindBackgroundTaskCompletion),
+		DeliveryMode: deliveryMode,
+		Items: []types.BackgroundWorkItem{{
+			ID:         c.TaskID,
+			Source:     types.BackgroundWorkSourceBash,
+			Label:      c.Command,
+			Status:     c.Status,
+			ExitCode:   c.ExitCode,
+			ElapsedMs:  c.ElapsedMs,
+			OutputPath: c.OutputPath,
+		}},
+		RemainingTaskIDs: remainIDs,
+	}
 }
 
 // fireBackgroundTaskCompletedHook notifies extensions of a completion. Fired
@@ -449,7 +488,11 @@ func (m *Manager) onParkTimeout(key string) {
 		}
 		b.WriteString("These commands remain tracked and will report when they finish.")
 	}
-	m.wakeSessionWithPayload(key, "park-timeout", strings.TrimRight(b.String(), "\n"), "wake_timeout")
+	// Background task completions created by the park timeout are advisory, not
+	// a terminal process result, so they intentionally carry no background-work
+	// row metadata.
+	timeoutCompletion := tools.TaskCompletion{TaskID: "park-timeout", Status: "timeout"}
+	m.wakeSessionWithPayload(key, timeoutCompletion, strings.TrimRight(b.String(), "\n"), "wake_timeout", nil)
 }
 
 // takePendingBackgroundCompletions removes and returns any queued completions
