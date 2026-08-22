@@ -520,12 +520,24 @@ struct WorktreeRowView: View {
                 }
                 .disabled(worktree.isDirty || worktree.operationState != nil)
 
-                Button {
+                // "Land and retire" also covers the discard case: a worktree
+                // with nothing to land (a mistake, or abandoned before the
+                // first commit) still needs a way to go away. The label and
+                // disabled gate match the desktop's canLandWorktree /
+                // landRefusalReason (WorktreeRowMenu.items.tsx) — dirty or an
+                // unknown source branch still refuses; zero unlanded commits
+                // does not.
+                Button(role: worktree.unlandedCommitCount == 0 ? .destructive : nil) {
                     onLandAndRetire()
                 } label: {
-                    Label("Land and retire into \(worktree.sourceBranch ?? "source")", systemImage: "arrow.down.to.line")
+                    Label(
+                        worktree.unlandedCommitCount > 0
+                            ? "Land and retire into \(worktree.sourceBranch ?? "source")"
+                            : "Retire (nothing to land)",
+                        systemImage: "arrow.down.to.line"
+                    )
                 }
-                .disabled(worktree.isDirty || worktree.unlandedCommitCount == 0 || worktree.operationState != nil)
+                .disabled(worktree.isDirty || worktree.operationState != nil)
             }
             // An in-worktree conflicted operation: assisted resolution, or
             // focus the resolver already working on it. Placed with the

@@ -59,12 +59,19 @@ struct TabRowContextMenu: ViewModifier {
                         }
                         .disabled(wt.isDirty)
 
-                        Button {
+                        // Same discard-covers-nothing-to-land rule as
+                        // WorktreeRowView / desktop's canLandWorktree.
+                        Button(role: wt.unlandedCommitCount == 0 ? .destructive : nil) {
                             viewModel.landAndRetireWorktree(wt, repoPath: state.repoPath)
                         } label: {
-                            Label("Land and retire into \(source)", systemImage: "arrow.down.to.line")
+                            Label(
+                                wt.unlandedCommitCount > 0
+                                    ? "Land and retire into \(source)"
+                                    : "Retire (nothing to land)",
+                                systemImage: "arrow.down.to.line"
+                            )
                         }
-                        .disabled(wt.isDirty || wt.unlandedCommitCount == 0)
+                        .disabled(wt.isDirty)
                     }
                 }
                 Divider()
