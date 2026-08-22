@@ -1,29 +1,41 @@
-import React, { useState, useMemo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { CaretRight, CaretDown, SpinnerGap, CheckCircle, Warning, XCircle } from '@phosphor-icons/react'
-import { useColors } from '../../theme'
-import { usePreferencesStore } from '../../preferences'
-import { ToolGroup } from './ToolGroup'
-import { ToolImagesStrip } from './ToolImagesStrip'
-import { AssistantMessage } from './AssistantMessage'
-import { ThinkingBlock } from './ThinkingBlock'
-import { CopyButton } from './CopyButton'
-import { activeToolProgress, toolFailureSummary } from './tool-helpers'
-import type { Message } from '../../../shared/types'
+import React, { useState, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  CaretRight,
+  CaretDown,
+  SpinnerGap,
+  CheckCircle,
+  Warning,
+  XCircle,
+} from "@phosphor-icons/react";
+import { useColors } from "../../theme";
+import { usePreferencesStore } from "../../preferences";
+import { ToolGroup } from "./ToolGroup";
+import { ToolImagesStrip } from "./ToolImagesStrip";
+import { AssistantMessage } from "./AssistantMessage";
+import { ThinkingBlock } from "./ThinkingBlock";
+import { CopyButton } from "./CopyButton";
+import { activeToolProgress, toolFailureSummary } from "./tool-helpers";
+import type { BackgroundTaskState } from "../../../shared/types-engine";
+import type { Message } from "../../../shared/types";
+import { BackgroundWorkGroup } from "./BackgroundWorkGroup";
 
-const TASK_NOTIFICATION_RE = /<task-notification>[\s\S]*?<\/task-notification>\s*(?:Read the output file to retrieve the result:[^\n]*)?\n?/g
+const TASK_NOTIFICATION_RE =
+  /<task-notification>[\s\S]*?<\/task-notification>\s*(?:Read the output file to retrieve the result:[^\n]*)?\n?/g;
 
 interface AgentTurnGroupProps {
-  tools: Message[]
-  assistantMessages: Message[]
-  isActive: boolean
+  tools: Message[];
+  assistantMessages: Message[];
+  isActive: boolean;
   /**
    * Optional extended-thinking row for this turn (issue #158). Rendered as
    * the turn's top group, ABOVE the collapsible tool row. undefined when
    * the model did not reason this turn (the common case).
    */
-  thinking?: Message
-  skipMotion?: boolean
+  thinking?: Message;
+  skipMotion?: boolean;
+  tabId?: string;
+  activeBackgroundTasks?: BackgroundTaskState[];
 }
 
 export const AgentTurnGroup = React.memo(function AgentTurnGroup({
@@ -32,41 +44,58 @@ export const AgentTurnGroup = React.memo(function AgentTurnGroup({
   isActive,
   thinking,
   skipMotion,
+  tabId,
+  activeBackgroundTasks = [],
 }: AgentTurnGroupProps) {
-  const colors = useColors()
-  const _expandToolResults = usePreferencesStore((s) => s.expandToolResults)
-  const [expanded, setExpanded] = useState(false)
+  const colors = useColors();
+  const _expandToolResults = usePreferencesStore((s) => s.expandToolResults);
+  const [expanded, setExpanded] = useState(false);
 
-  const toolCount = tools.length
-  const activeProgress = activeToolProgress(tools)
+  const toolCount = tools.length;
+  const activeProgress = activeToolProgress(tools);
 
   // Failure summary for the activity header three-state icon (only when !isActive).
-  const { failed, total, running: hasRunningTool } = toolFailureSummary(tools)
-  const settled = total - tools.filter((t) => t.toolStatus === 'running').length
-  const isMixed = !isActive && !hasRunningTool && failed > 0 && failed < settled
-  const isAllFailed = !isActive && !hasRunningTool && failed > 0 && failed === settled
+  const { failed, total, running: hasRunningTool } = toolFailureSummary(tools);
+  const settled =
+    total - tools.filter((t) => t.toolStatus === "running").length;
+  const isMixed =
+    !isActive && !hasRunningTool && failed > 0 && failed < settled;
+  const isAllFailed =
+    !isActive && !hasRunningTool && failed > 0 && failed === settled;
 
   const headerFailureSuffix = isMixed
     ? ` (${failed} failed)`
     : isAllFailed
-      ? ' (all failed)'
-      : ''
+      ? " (all failed)"
+      : "";
 
-  const headerStatusIcon = isActive
-    ? null
-    : isAllFailed
-      ? <XCircle size={12} className="flex-shrink-0" style={{ color: colors.statusError }} />
-      : isMixed
-        ? <Warning size={12} className="flex-shrink-0" style={{ color: colors.statusWarning }} />
-        : <CheckCircle size={12} className="flex-shrink-0" style={{ color: colors.statusComplete }} />
+  const headerStatusIcon = isActive ? null : isAllFailed ? (
+    <XCircle
+      size={12}
+      className="flex-shrink-0"
+      style={{ color: colors.statusError }}
+    />
+  ) : isMixed ? (
+    <Warning
+      size={12}
+      className="flex-shrink-0"
+      style={{ color: colors.statusWarning }}
+    />
+  ) : (
+    <CheckCircle
+      size={12}
+      className="flex-shrink-0"
+      style={{ color: colors.statusComplete }}
+    />
+  );
 
   // Concatenated assistant text for the copy button
   const concatenatedText = useMemo(() => {
     return assistantMessages
-      .map((m) => (m.content || '').replace(TASK_NOTIFICATION_RE, '').trim())
+      .map((m) => (m.content || "").replace(TASK_NOTIFICATION_RE, "").trim())
       .filter(Boolean)
-      .join('\n\n')
-  }, [assistantMessages])
+      .join("\n\n");
+  }, [assistantMessages]);
 
   const activityHeader = (
     <div
@@ -81,28 +110,45 @@ export const AgentTurnGroup = React.memo(function AgentTurnGroup({
           style={{ color: colors.statusRunning }}
         />
       ) : expanded ? (
-        <CaretDown size={12} className="flex-shrink-0" style={{ color: colors.textMuted }} />
+        <CaretDown
+          size={12}
+          className="flex-shrink-0"
+          style={{ color: colors.textMuted }}
+        />
       ) : (
-        <CaretRight size={12} className="flex-shrink-0" style={{ color: colors.textTertiary }} />
+        <CaretRight
+          size={12}
+          className="flex-shrink-0"
+          style={{ color: colors.textTertiary }}
+        />
       )}
       {headerStatusIcon}
       <span
         className="min-w-0 flex-1 flex items-center gap-1.5 text-[11px] leading-[1.4]"
-        style={{ color: isActive ? colors.textSecondary : colors.textTertiary }}
+        style={{
+          color: isActive ? colors.textSecondary : colors.textTertiary,
+        }}
       >
         {isActive ? (
           activeProgress ? (
             <>
-              <span className="min-w-0 truncate">Running {activeProgress.currentToolDescription}</span>
-              <span className="flex-shrink-0 tabular-nums">· Used {activeProgress.usedCount} tool{activeProgress.usedCount !== 1 ? 's' : ''}</span>
+              <span className="min-w-0 truncate">
+                Running {activeProgress.currentToolDescription}
+              </span>
+              <span className="flex-shrink-0 tabular-nums">
+                · Used {activeProgress.usedCount} tool
+                {activeProgress.usedCount !== 1 ? "s" : ""}
+              </span>
             </>
-          ) : 'Running tools…'
+          ) : (
+            `Running tools…`
+          )
         ) : (
-          `Used ${toolCount} tool${toolCount !== 1 ? 's' : ''}${headerFailureSuffix}`
+          `Used ${toolCount} tool${toolCount !== 1 ? "s" : ""}${headerFailureSuffix}`
         )}
       </span>
     </div>
-  )
+  );
 
   const inner = (
     <div className="group/turn relative">
@@ -145,10 +191,10 @@ export const AgentTurnGroup = React.memo(function AgentTurnGroup({
           <motion.div
             key="tools-panel"
             initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
+            animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.15 }}
-            style={{ overflow: 'hidden' }}
+            style={{ overflow: "hidden" }}
           >
             <div
               className="ml-1 pl-3 mb-1"
@@ -159,10 +205,11 @@ export const AgentTurnGroup = React.memo(function AgentTurnGroup({
           </motion.div>
         )}
       </AnimatePresence>
+      <BackgroundWorkGroup tabId={tabId} tools={tools} activeTasks={activeBackgroundTasks} />
     </div>
-  )
+  );
 
-  if (skipMotion) return inner
+  if (skipMotion) return inner;
 
   return (
     <motion.div
@@ -172,5 +219,5 @@ export const AgentTurnGroup = React.memo(function AgentTurnGroup({
     >
       {inner}
     </motion.div>
-  )
-})
+  );
+});

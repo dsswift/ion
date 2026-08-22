@@ -2,18 +2,13 @@
  * handleCancel — unified interrupt parity (iOS abort fix)
  *
  * `desktop_cancel` (sent by iOS when the user taps the stop button) must behave
- * like the desktop renderer's `interrupt`: abort the parent run AND reap the
- * dispatched-agent subtree. handleCancel delegates to sessionPlane.cancelTab,
- * which performs both; when the tab is NOT tracked by the session plane it falls
- * back to firing both on engineBridge directly.
+ * like the desktop renderer's `interrupt`: abort at its requested scope. handleCancel delegates to sessionPlane.cancelTab;
+ * when the tab is NOT tracked by the session plane it falls back to engineBridge.
  *
  * Coverage:
  *   1. Tracked tab: cancelTab returns true, no direct bridge calls from the
  *      fallback branch.
- *   2. Untracked tab: cancelTab returns false → fallback fires BOTH
- *      engineBridge.sendAbort AND engineBridge.sendAbortAgent(tabId, '', true).
- *      Removing the reap line on the fallback path makes assertion (2b) fail —
- *      that is the regression guard for the not-in-plane case.
+ *   2. Untracked tab: cancelTab returns false → fallback fires exact scoped abort.
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest'
@@ -38,17 +33,14 @@ vi.mock('electron', () => ({
 
 const cancelTabMock = vi.fn()
 const sendAbortMock = vi.fn()
-const sendAbortAgentMock = vi.fn()
 
 vi.mock('../../../state', () => ({
   state: {},
   sessionPlane: {
-    cancelTab: (tabId: string) => cancelTabMock(tabId),
+    cancelTab: (tabId: string, scope?: string) => cancelTabMock(tabId, scope),
   },
   engineBridge: {
-    sendAbort: (tabId: string) => sendAbortMock(tabId),
-    sendAbortAgent: (tabId: string, agentName: string, subtree: boolean) =>
-      sendAbortAgentMock(tabId, agentName, subtree),
+    sendAbort: (tabId: string, scope?: string) => sendAbortMock(tabId, scope),
   },
 }))
 
@@ -69,23 +61,19 @@ describe('handleCancel — unified interrupt parity', () => {
 
     handleCancel({ type: 'desktop_cancel', tabId: 'tab-1' })
 
-    expect(cancelTabMock).toHaveBeenCalledWith('tab-1')
+    expect(cancelTabMock).toHaveBeenCalledWith('tab-1', 'all')
     // cancelTab handled it (it performs abort + reap internally); the fallback
     // branch must not double-fire on the bridge.
     expect(sendAbortMock).not.toHaveBeenCalled()
-    expect(sendAbortAgentMock).not.toHaveBeenCalled()
   })
 
-  it('falls back to abort AND subtree reap when the tab is not in the session plane', () => {
+  it('falls back to exact all-scope abort when tab is not in session plane', () => {
     cancelTabMock.mockReturnValue(false)
 
     handleCancel({ type: 'desktop_cancel', tabId: 'tab-2' })
 
-    expect(cancelTabMock).toHaveBeenCalledWith('tab-2')
-    // (2a) parent run aborted directly
-    expect(sendAbortMock).toHaveBeenCalledWith('tab-2')
-    // (2b) dispatched-agent subtree reaped directly — empty agentName + subtree
-    // reaps all descendants; removing this line in handleCancel fails this test.
-    expect(sendAbortAgentMock).toHaveBeenCalledWith('tab-2', '', true)
+    expect(cancelTabMock).toHaveBeenCalledWith('tab-2', 'all')
+    // Engine abort(all) owns complete teardown, including every descendant.
+    expect(sendAbortMock).toHaveBeenCalledWith('tab-2', 'all')
   })
 })

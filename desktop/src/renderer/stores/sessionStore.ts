@@ -28,6 +28,8 @@ import { setupStudioWorktreeSync } from './session-store-worktree-sync'
 import { createAttachmentsSlice } from './slices/attachments-slice'
 import { createPermissionsSlice } from './slices/permissions-slice'
 import { createSendSlice } from './slices/send-slice'
+import { createDispatchAbortSlice } from './slices/dispatch-abort-slice'
+import { createBackgroundTaskSlice } from './slices/background-task-slice'
 import { createEventSlice } from './slices/event-slice'
 import { reportAutoFixCompletion } from './slices/event-slice-auto-fix-lifecycle'
 import { createEngineSlice } from './slices/engine-slice'
@@ -136,6 +138,8 @@ export const useSessionStore = create<State>((set, get) => {
     ...createAttachmentsSlice(_set, _get),
     ...createPermissionsSlice(_set, _get),
     ...createSendSlice(_set, _get),
+    ...createDispatchAbortSlice(_set, _get),
+    ...createBackgroundTaskSlice(_set, _get),
     ...createEventSlice(_set, _get),
     reportAutoFixCompletion: (tabId, evidence) => reportAutoFixCompletion(tabId, evidence, _get),
     ...createEngineSlice(_set, _get),

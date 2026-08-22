@@ -124,6 +124,21 @@ export function isSteerAppliedDivider(content: string): boolean {
 }
 
 /**
+ * Format the divider system message inserted into scrollback when
+ * background work results are delivered into the conversation.
+ */
+export function formatBackgroundWorkDivider(at: Date, count: number): string {
+  const time = at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  const label = count === 1 ? '1 result' : `${count} results`
+  return `── Background work delivered at ${time} · ${label} ──`
+}
+
+/** Sentinel-prefix check for background-work-delivered dividers. */
+export function isBackgroundWorkDivider(content: string): boolean {
+  return content.startsWith('── Background work delivered')
+}
+
+/**
  * Build the `RemoteEvent` envelope used to mirror a `/clear` divider to
  * connected remote (iOS) clients. The envelope kind depends on the engine
  * session key shape:

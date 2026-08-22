@@ -12,16 +12,16 @@ function tab(
 }
 
 describe('collapsedInboxRows', () => {
-  it('keeps only pinned rows visible when collapsed', () => {
-    const tabs = [tab('pinned-later', { pinnedAt: 1, pinOrderKey: 'z' }), tab('active'), tab('pinned-first', { pinnedAt: 2, pinOrderKey: 'a' })]
-    expect(collapsedInboxRows(tabs).map(({ id }) => id))
-      .toEqual(['pinned-first', 'pinned-later'])
+  it('keeps pinned rows and the active row visible when collapsed', () => {
+    const tabs = [tab('pinned-later', { pinnedAt: 1, pinOrderKey: 'z' }), tab('active'), tab('pinned-first', { pinnedAt: 2, pinOrderKey: 'a' }), tab('hidden')]
+    expect(collapsedInboxRows(tabs, 'active').map(({ id }) => id))
+      .toEqual(['pinned-first', 'pinned-later', 'active'])
   })
 
-  it('shows every conversation under an expanded worktree and pins only when collapsed', () => {
-    const tabs = [tab('plain'), tab('pinned', { pinnedAt: 1 }), tab('other')]
-    expect(worktreeChildRows(tabs, false).map(({ id }) => id)).toEqual(['plain', 'pinned', 'other'])
-    expect(worktreeChildRows(tabs, true).map(({ id }) => id)).toEqual(['pinned'])
+  it('shows every conversation under an expanded worktree and pins plus active when collapsed', () => {
+    const tabs = [tab('plain'), tab('pinned', { pinnedAt: 1 }), tab('active'), tab('other')]
+    expect(worktreeChildRows(tabs, false, 'active').map(({ id }) => id)).toEqual(['plain', 'pinned', 'active', 'other'])
+    expect(worktreeChildRows(tabs, true, 'active').map(({ id }) => id)).toEqual(['pinned', 'active'])
   })
 
   it('keeps conversation status indicators out of the worktree group header', () => {
@@ -36,13 +36,19 @@ describe('collapsedInboxRows', () => {
       tab('newer', { pinnedAt: 2, createdAt: 20 }),
       tab('older-a', { pinnedAt: 3, createdAt: 10 }),
     ]
-    expect(collapsedInboxRows(tabs).map(({ id }) => id))
+    expect(collapsedInboxRows(tabs, 'outside').map(({ id }) => id))
       .toEqual(['newer', 'older-a', 'older-b'])
   })
 
-  it('does not duplicate an active pinned row', () => {
-    expect(collapsedInboxRows([tab('pinned-active', { pinnedAt: 1 }), tab('other')]).map(({ id }) => id))
+  it('does not duplicate the active row when it is pinned', () => {
+    expect(collapsedInboxRows([tab('pinned-active', { pinnedAt: 1 }), tab('other')], 'pinned-active').map(({ id }) => id))
       .toEqual(['pinned-active'])
+  })
+
+  it('removes an unpinned active row after navigation leaves the collapsed group', () => {
+    const tabs = [tab('active'), tab('hidden')]
+    expect(collapsedInboxRows(tabs, 'active').map(({ id }) => id)).toEqual(['active'])
+    expect(collapsedInboxRows(tabs, 'outside')).toEqual([])
   })
 })
 

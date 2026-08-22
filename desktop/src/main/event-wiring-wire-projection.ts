@@ -79,5 +79,29 @@ export function projectEngineEventToWire(
       ...(event.imageToolId ? { toolId: event.imageToolId } : {}),
     }
   }
+  if (event.type === 'engine_background_task_started') {
+    return {
+      type: 'desktop_background_task_started',
+      tabId,
+      instanceId,
+      task: event.backgroundTaskStarted,
+    }
+  }
+  if (event.type === 'engine_background_task_terminal') {
+    return {
+      type: 'desktop_background_task_terminal',
+      tabId,
+      instanceId,
+      ...event.backgroundTaskTerminal,
+    }
+  }
+  if (event.type === 'engine_session_work_stopped') {
+    return {
+      type: 'desktop_session_work_stopped',
+      tabId,
+      instanceId,
+      ...event.sessionWorkStopped,
+    }
+  }
   return { ...event, tabId, instanceId, type: engineToWireType(event.type) }
 }

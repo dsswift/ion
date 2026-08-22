@@ -1,16 +1,20 @@
-import { log as _log } from '../../logger'
-import { resolveEngineModel } from '../../resolve-engine-model'
-import { state, sessionPlane, engineBridge } from '../../state'
-import { processIncomingPrompt } from '../../prompt-pipeline'
-import { encodeAttachments } from '../attachment-encoder'
-import { IS_REMOTE } from '../../engine-bridge'
-import { getVoiceSystemPrompt } from './engine'
-import { performUnifiedInterrupt } from '../../engine-control-plane-interrupt'
-import { registerRemotePromptDelivery } from '../prompt-delivery'
-import type { RemoteCommand } from '../protocol'
+import { log as _log } from "../../logger";
+import { resolveEngineModel } from "../../resolve-engine-model";
+import { state, sessionPlane, engineBridge } from "../../state";
+import { processIncomingPrompt } from "../../prompt-pipeline";
+import { encodeAttachments } from "../attachment-encoder";
+import { IS_REMOTE } from "../../engine-bridge";
+import { getVoiceSystemPrompt } from "./engine";
+import {
+  performUnifiedInterrupt,
+  performDispatchAbort,
+} from "../../engine-control-plane-interrupt";
+import { registerRemotePromptDelivery } from "../prompt-delivery";
+import type { AbortScope } from "../../../shared/types-engine";
+import type { RemoteCommand } from "../protocol";
 
 function log(msg: string, fields?: Record<string, unknown>): void {
-  _log('main', msg, fields)
+  _log("main", msg, fields);
 }
 
 /**
@@ -22,10 +26,12 @@ function log(msg: string, fields?: Record<string, unknown>): void {
  * or mainWindow isn't ready (defensive — in that case the pipeline still
  * runs, just without project-scoped `.md` discovery).
  */
-export async function resolveTabProjectPath(tabId: string): Promise<string | undefined> {
-  if (!state.mainWindow) return undefined
+export async function resolveTabProjectPath(
+  tabId: string,
+): Promise<string | undefined> {
+  if (!state.mainWindow) return undefined;
   try {
-    const escapedTab = tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const escapedTab = tabId.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
     const cwd = await state.mainWindow.webContents.executeJavaScript(`
       (function() {
         var store = window.__Ion_SESSION_STORE__;
@@ -33,11 +39,14 @@ export async function resolveTabProjectPath(tabId: string): Promise<string | und
         var tab = store.getState().tabs.find(function(t) { return t.id === '${escapedTab}'; });
         return tab && tab.workingDirectory ? tab.workingDirectory : null;
       })()
-    `)
-    return cwd || undefined
+    `);
+    return cwd || undefined;
   } catch (err) {
-    log('resolve_tab_project_path error', { tab_id: tabId, error: (err as Error).message })
-    return undefined
+    log("resolve_tab_project_path error", {
+      tab_id: tabId,
+      error: (err as Error).message,
+    });
+    return undefined;
   }
 }
 
@@ -45,20 +54,23 @@ function sendPromptResult(
   deviceId: string,
   tabId: string,
   clientMsgId: string | undefined,
-  status: 'accepted' | 'rejected',
+  status: "accepted" | "rejected",
   error?: string,
 ): void {
-  if (!clientMsgId) return
+  if (!clientMsgId) return;
   state.remoteTransport?.sendToDevice(deviceId, {
-    type: 'desktop_prompt_result',
+    type: "desktop_prompt_result",
     tabId,
     clientMsgId,
     status,
     ...(error ? { error } : {}),
-  })
+  });
 }
 
-export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_prompt' }>, deviceId: string): Promise<void> {
+export async function handlePrompt(
+  cmd: Extract<RemoteCommand, { type: "desktop_prompt" }>,
+  deviceId: string,
+): Promise<void> {
   // Capture the user-echo timestamp ONCE, before any await. handlePrompt awaits
   // several executeJavaScript round-trips (instance resolution, model override,
   // project-path/plan-file queries) before it builds the echo. Stamping the echo
@@ -68,78 +80,94 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
   // ("my message appears under the agent response"). Capturing here, before the
   // first await, makes the echo timestamp monotonically precede every event this
   // turn will produce. Both the engine and CLI branches use `echoTs`.
-  const echoTs = Date.now()
-  const reqId = cmd.clientMsgId || `remote-${echoTs}`
+  const echoTs = Date.now();
+  const reqId = cmd.clientMsgId || `remote-${echoTs}`;
 
   // When instanceId is present the iOS client is targeting an engine-hosted
   // conversation (merged from the former desktop_engine_prompt path). Detect
   // this here so we can choose the right pipeline branch below.
-  const isEnginePrompt = cmd.instanceId !== undefined && cmd.instanceId !== null
+  const isEnginePrompt =
+    cmd.instanceId !== undefined && cmd.instanceId !== null;
 
   if (isEnginePrompt) {
     // ── Engine tab path (formerly handleEnginePrompt) ──────────────────
     if (!state.mainWindow) {
-      log('handlePrompt (engine): no mainWindow, ignoring')
-      sendPromptResult(deviceId, cmd.tabId, cmd.clientMsgId, 'rejected', 'no main window')
-      return
+      log("handlePrompt (engine): no mainWindow, ignoring");
+      sendPromptResult(
+        deviceId,
+        cmd.tabId,
+        cmd.clientMsgId,
+        "rejected",
+        "no main window",
+      );
+      return;
     }
-    const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const escapedTab = cmd.tabId.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 
     // Resolve the active instance from the renderer store.
     // If no instance exists yet (EngineView hasn't mounted), create one.
-    let instanceId: string | null = cmd.instanceId || await state.mainWindow.webContents.executeJavaScript(`
+    let instanceId: string | null =
+      cmd.instanceId ||
+      (await state.mainWindow.webContents.executeJavaScript(`
       (function() {
         var store = window.__Ion_SESSION_STORE__;
         if (!store) return null;
         var pane = store.getState().conversationPanes.get('${escapedTab}');
         return pane && pane.activeInstanceId ? pane.activeInstanceId : null;
       })()
-    `)
+    `));
 
     if (!instanceId) {
-      log('handlePrompt (engine): no instance exists, auto-creating one')
+      log("handlePrompt (engine): no instance exists, auto-creating one");
       instanceId = await state.mainWindow.webContents.executeJavaScript(`
         (function() {
           var store = window.__Ion_SESSION_STORE__;
           if (!store) return null;
           return store.getState().addEngineInstance('${escapedTab}');
         })()
-      `)
+      `);
       if (!instanceId) {
-        log('handlePrompt (engine): failed to create engine instance')
-        sendPromptResult(deviceId, cmd.tabId, cmd.clientMsgId, 'rejected', 'failed to create engine instance')
-        return
+        log("handlePrompt (engine): failed to create engine instance");
+        sendPromptResult(
+          deviceId,
+          cmd.tabId,
+          cmd.clientMsgId,
+          "rejected",
+          "failed to create engine instance",
+        );
+        return;
       }
       // Notify iOS about the new instance
-      const instanceInfo = await state.mainWindow.webContents.executeJavaScript(`
+      const instanceInfo = await state.mainWindow.webContents
+        .executeJavaScript(`
         (function() {
           var store = window.__Ion_SESSION_STORE__;
           if (!store) return null;
           var pane = store.getState().conversationPanes.get('${escapedTab}');
           if (!pane) return null;
-          var inst = pane.instances.find(function(i) { return i.id === '${instanceId!.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'; });
+          var inst = pane.instances.find(function(i) { return i.id === '${instanceId!.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'; });
           return inst ? { id: inst.id, label: inst.label } : null;
         })()
-      `)
+      `);
       if (instanceInfo) {
         state.remoteTransport?.send({
-          type: 'desktop_instance_added',
+          type: "desktop_instance_added",
           tabId: cmd.tabId,
           instance: instanceInfo,
-        })
+        });
       }
       // Send the initial model override so iOS knows the configured model.
       // Resolved in main rather than via executeJavaScript: both inputs (the
       // tab's override in the renderer snapshot cache, and the two preference
       // fallbacks) are already main-owned, so the round-trip bought nothing.
-      const modelOverride = resolveEngineModel(cmd.tabId, instanceId)
+      const modelOverride = resolveEngineModel(cmd.tabId, instanceId);
       if (modelOverride) {
         state.remoteTransport?.send({
-          type: 'desktop_model_override',
+          type: "desktop_model_override",
           tabId: cmd.tabId,
           instanceId,
           model: modelOverride,
-        })
+        });
       }
       // Session readiness is guaranteed downstream, not by a timer here. The
       // prompt re-enters processIncomingPrompt → REMOTE_ENGINE_PROMPT → the
@@ -155,14 +183,20 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
 
     // Image-attachment encoding for engine tabs (engine bridge takes
     // already-encoded ImageAttachmentPayload[]).
-    let fullText = cmd.text
-    const attachments = cmd.attachments || []
+    let fullText = cmd.text;
+    const attachments = cmd.attachments || [];
     if (attachments.length > 0) {
-      const ctx = attachments.map((a) => `[Attached ${a.type}: ${a.path}]`).join('\n')
-      fullText = `${ctx}\n\n${fullText}`
+      const ctx = attachments
+        .map((a) => `[Attached ${a.type}: ${a.path}]`)
+        .join("\n");
+      fullText = `${ctx}\n\n${fullText}`;
     }
-    const { encoded, rewrittenText } = encodeAttachments(fullText, attachments, { isRemote: IS_REMOTE })
-    const voicePrompt = getVoiceSystemPrompt(deviceId)
+    const { encoded, rewrittenText } = encodeAttachments(
+      fullText,
+      attachments,
+      { isRemote: IS_REMOTE },
+    );
+    const voicePrompt = getVoiceSystemPrompt(deviceId);
     // Reuse the iOS-supplied clientMsgId as the engine request id so the
     // user-message echo (below) carries this exact id back to iOS. iOS reconciles
     // its optimistic user bubble by id and replaces it in place — without a
@@ -170,7 +204,7 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
     // render (duplicate). Mirrors the CLI branch's `reqId = cmd.clientMsgId || …`
     // below. Falls back to a fresh id for desktop-originated prompts that carry
     // no clientMsgId.
-    const engineReqId = cmd.clientMsgId || `remote-engine-${echoTs}`
+    const engineReqId = cmd.clientMsgId || `remote-engine-${echoTs}`;
 
     // Echo the user's message back to iOS under engineReqId so the optimistic
     // bubble reconciles by id immediately, matching the CLI branch. The engine
@@ -186,33 +220,43 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
     // invocation, carry the parsed command/args so iOS renders the pill from
     // metadata rather than relying on fallback content parsing (which breaks
     // when the history reload delivers the expanded body as content).
-    const slashMatch = cmd.text.match(/^\/([a-zA-Z][a-zA-Z0-9_:-]*)\s*([\s\S]*)$/)
+    const slashMatch = cmd.text.match(
+      /^\/([a-zA-Z][a-zA-Z0-9_:-]*)\s*([\s\S]*)$/,
+    );
     state.remoteTransport?.send({
-      type: 'desktop_message_added',
+      type: "desktop_message_added",
       tabId: cmd.tabId,
       message: {
-        id: engineReqId, role: 'user', content: fullText, timestamp: echoTs, source: 'remote',
+        id: engineReqId,
+        role: "user",
+        content: fullText,
+        timestamp: echoTs,
+        source: "remote",
         // Carry structured attachments on the echo so iOS id-reconciliation
         // (handleMessageAdded) preserves them when it replaces the optimistic
         // message. Without this the structured attachments on the optimistic
         // bubble are cleared on reconciliation and the inline image disappears.
         // Use a.path as the synthetic id — consumeUploadResults keys the
         // AttachmentImageCache by path, so the cache lookup resolves correctly.
-        ...(attachments.length > 0 ? {
-          attachments: attachments.map((a) => ({
-            id: a.path,
-            type: a.type as 'image' | 'file' | 'plan',
-            name: a.name,
-            path: a.path,
-            ...(a.contentHash ? { contentHash: a.contentHash } : {}),
-          })),
-        } : {}),
-        ...(slashMatch ? { slashCommand: `/${slashMatch[1]}`, slashArgs: slashMatch[2] } : {}),
+        ...(attachments.length > 0
+          ? {
+              attachments: attachments.map((a) => ({
+                id: a.path,
+                type: a.type as "image" | "file" | "plan",
+                name: a.name,
+                path: a.path,
+                ...(a.contentHash ? { contentHash: a.contentHash } : {}),
+              })),
+            }
+          : {}),
+        ...(slashMatch
+          ? { slashCommand: `/${slashMatch[1]}`, slashArgs: slashMatch[2] }
+          : {}),
       },
-    })
+    });
 
     // Resolve project path from renderer (same query as CLI path below).
-    let projectPath: string | undefined
+    let projectPath: string | undefined;
     try {
       const cwd = await state.mainWindow.webContents.executeJavaScript(`
         (function() {
@@ -221,14 +265,17 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
           var tab = store.getState().tabs.find(function(t) { return t.id === '${escapedTab}'; });
           return tab && tab.workingDirectory ? tab.workingDirectory : null;
         })()
-      `)
-      projectPath = cwd || undefined
+      `);
+      projectPath = cwd || undefined;
     } catch (err) {
-      log('handle_prompt: project-path query failed', { tab_id: cmd.tabId, error: (err as Error).message })
+      log("handle_prompt: project-path query failed", {
+        tab_id: cmd.tabId,
+        error: (err as Error).message,
+      });
     }
 
     // Resolve planFilePath from renderer store.
-    let planFilePath: string | undefined
+    let planFilePath: string | undefined;
     try {
       const pfp = await state.mainWindow.webContents.executeJavaScript(`
         (function() {
@@ -237,28 +284,31 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
           var tab = store.getState().tabs.find(function(t) { return t.id === '${escapedTab}'; });
           return tab && tab.planFilePath ? tab.planFilePath : null;
         })()
-      `)
-      planFilePath = pfp || undefined
+      `);
+      planFilePath = pfp || undefined;
     } catch (err) {
-      log('handle_prompt: plan file path query failed', { tab_id: cmd.tabId, error: (err as Error).message })
+      log("handle_prompt: plan file path query failed", {
+        tab_id: cmd.tabId,
+        error: (err as Error).message,
+      });
     }
 
-    registerRemotePromptDelivery(engineReqId, deviceId, cmd.tabId)
+    registerRemotePromptDelivery(engineReqId, deviceId, cmd.tabId);
     await processIncomingPrompt({
       tabId: cmd.tabId,
       text: rewrittenText,
       attachments,
       imageAttachments: encoded.length > 0 ? encoded : undefined,
       reqId: engineReqId,
-      source: 'remote',
+      source: "remote",
       hasExtensions: true,
       instanceId,
       appendSystemPrompt: voicePrompt,
       projectPath,
       implementationPhase: cmd.implementationPhase,
       planFilePath,
-    })
-    return
+    });
+    return;
   }
 
   // ── CLI tab path (original handlePrompt) ──────────────────────────────
@@ -286,30 +336,42 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
   // optimistic insert rendered (the "image appears then disappears" bug the
   // engine branch already fixed; the CLI branch had the same defect).
   // `id: a.path` — iOS keys AttachmentImageCache by the desktop-side path.
-  const cliAttachments = cmd.attachments || []
-  let cliEchoContent = cmd.text
+  const cliAttachments = cmd.attachments || [];
+  let cliEchoContent = cmd.text;
   if (cliAttachments.length > 0) {
-    const ctx = cliAttachments.map((a) => `[Attached ${a.type}: ${a.path}]`).join('\n')
-    cliEchoContent = `${ctx}\n\n${cliEchoContent}`
+    const ctx = cliAttachments
+      .map((a) => `[Attached ${a.type}: ${a.path}]`)
+      .join("\n");
+    cliEchoContent = `${ctx}\n\n${cliEchoContent}`;
   }
-  const cliSlashMatch = cmd.text.match(/^\/([a-zA-Z][a-zA-Z0-9_:-]*)\s*([\s\S]*)$/)
+  const cliSlashMatch = cmd.text.match(
+    /^\/([a-zA-Z][a-zA-Z0-9_:-]*)\s*([\s\S]*)$/,
+  );
   state.remoteTransport?.send({
-    type: 'desktop_message_added',
+    type: "desktop_message_added",
     tabId: cmd.tabId,
     message: {
-      id: reqId, role: 'user', content: cliEchoContent, timestamp: echoTs, source: 'remote',
-      ...(cliAttachments.length > 0 ? {
-        attachments: cliAttachments.map((a) => ({
-          id: a.path,
-          type: a.type as 'image' | 'file' | 'plan',
-          name: a.name,
-          path: a.path,
-          ...(a.contentHash ? { contentHash: a.contentHash } : {}),
-        })),
-      } : {}),
-      ...(cliSlashMatch ? { slashCommand: `/${cliSlashMatch[1]}`, slashArgs: cliSlashMatch[2] } : {}),
+      id: reqId,
+      role: "user",
+      content: cliEchoContent,
+      timestamp: echoTs,
+      source: "remote",
+      ...(cliAttachments.length > 0
+        ? {
+            attachments: cliAttachments.map((a) => ({
+              id: a.path,
+              type: a.type as "image" | "file" | "plan",
+              name: a.name,
+              path: a.path,
+              ...(a.contentHash ? { contentHash: a.contentHash } : {}),
+            })),
+          }
+        : {}),
+      ...(cliSlashMatch
+        ? { slashCommand: `/${cliSlashMatch[1]}`, slashArgs: cliSlashMatch[2] }
+        : {}),
     },
-  })
+  });
   // Resolve the tab's working directory from the renderer store so the
   // pipeline can find project-scoped `.md` templates (e.g.
   // ${cwd}/.claude/commands/ion--review-changes.md). The renderer is the
@@ -317,31 +379,63 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
   // implicitly via the most recent submitPrompt. Awaiting this query is
   // cheap (single executeJavaScript round-trip) and the work-in-flight
   // overlap with the engine dispatch is unavoidable anyway.
-  const projectPath = await resolveTabProjectPath(cmd.tabId)
+  const projectPath = await resolveTabProjectPath(cmd.tabId);
   // Fire-and-forget the unified pipeline. Errors are logged inside the
   // pipeline; we never want a thrown error here to crash the transport.
-  registerRemotePromptDelivery(reqId, deviceId, cmd.tabId)
+  registerRemotePromptDelivery(reqId, deviceId, cmd.tabId);
   void processIncomingPrompt({
     tabId: cmd.tabId,
     text: cmd.text,
     attachments: cmd.attachments,
     reqId,
-    source: 'remote',
+    source: "remote",
     hasExtensions: false,
     projectPath,
     implementationPhase: cmd.implementationPhase,
   }).catch((err: unknown) => {
-    log('handle_prompt: pipeline error', { error: (err as Error).message })
-  })
+    log("handle_prompt: pipeline error", { error: (err as Error).message });
+  });
 }
 
-export function handleCancel(cmd: Extract<RemoteCommand, { type: 'desktop_cancel' }>): void {
-  if (!sessionPlane.cancelTab(cmd.tabId)) {
-    log('remote_cancel: not in session plane, direct interrupt', { tab_id: cmd.tabId })
-    // Mirror cancelTab's unified interrupt on the not-in-plane fallback path:
-    // abort the parent run AND reap the dispatched-agent subtree. Otherwise a
-    // cancel that misses the session plane (e.g. a tab the control plane doesn't
-    // track) leaves background agents running.
-    performUnifiedInterrupt(engineBridge, cmd.tabId)
+export function handleCancel(
+  cmd: Extract<RemoteCommand, { type: "desktop_cancel" }>,
+): void {
+  // Absent scope means full teardown — the shape older clients send.
+  const scope: AbortScope =
+    cmd.scope === "orchestrator" || cmd.scope === "all_work" ? cmd.scope : "all";
+  if (!sessionPlane.cancelTab(cmd.tabId, scope)) {
+    log("remote_cancel: not in session plane, direct interrupt", {
+      tab_id: cmd.tabId,
+      abort_scope: scope,
+    });
+    // Mirror cancelTab's interrupt on the not-in-plane fallback path, at the
+    // same scope. Otherwise a cancel that misses the session plane (e.g. a tab
+    // the control plane doesn't track) would behave differently from one that
+    // hits it.
+    performUnifiedInterrupt(engineBridge, cmd.tabId, scope);
+  }
+}
+
+/**
+ * Stop one background dispatch from a remote client. Falls back to the bridge
+ * when the tab is not tracked by the session plane, matching handleCancel — a
+ * dispatch stop must not depend on control-plane bookkeeping the engine does
+ * not share.
+ */
+export function handleAbortDispatch(
+  cmd: Extract<RemoteCommand, { type: "desktop_abort_dispatch" }>,
+): void {
+  if (!cmd.dispatchId) {
+    log("remote_abort_dispatch: rejecting empty dispatchId", {
+      tab_id: cmd.tabId,
+    });
+    return;
+  }
+  if (!sessionPlane.abortDispatch(cmd.tabId, cmd.dispatchId)) {
+    log("remote_abort_dispatch: not in session plane, direct abort", {
+      tab_id: cmd.tabId,
+      dispatch_id: cmd.dispatchId,
+    });
+    performDispatchAbort(engineBridge, cmd.tabId, cmd.dispatchId);
   }
 }

@@ -14,15 +14,15 @@
  * AGENTS.md § IPC.
  */
 
-import type { Message, SessionLoadMessage } from './types'
-import { buildCompactionMarkerContent } from './compaction-marker'
-import { suppressesInjection } from './injection-policy'
+import type { Message, SessionLoadMessage } from "./types";
+import { buildCompactionMarkerContent } from "./compaction-marker";
+import { suppressesInjection } from "./injection-policy";
 import {
   formatClearDivider,
   formatPlanCreatedDivider,
   formatPlanUpdatedDivider,
   formatSteerAppliedDivider,
-} from './clear-divider'
+} from "./clear-divider";
 
 /**
  * Convert a marker row (a `SessionLoadMessage` with `markerKind` set) into the
@@ -40,10 +40,10 @@ import {
  * then treats the row as an ordinary message (or drops the no-op compaction).
  */
 export function buildMarkerContent(m: SessionLoadMessage): string | null {
-  if (!m.markerKind) return null
-  const at = new Date(m.timestamp || Date.now())
+  if (!m.markerKind) return null;
+  const at = new Date(m.timestamp || Date.now());
   switch (m.markerKind) {
-    case 'compaction':
+    case "compaction":
       return buildCompactionMarkerContent({
         summary: m.markerSummary,
         messagesBefore: m.markerMessagesBefore,
@@ -51,17 +51,17 @@ export function buildMarkerContent(m: SessionLoadMessage): string | null {
         clearedBlocks: m.markerClearedBlocks,
         strategy: m.markerStrategy,
         microOnly: m.markerMicroOnly,
-      })
-    case 'plan':
-      return m.markerPlanOperation === 'updated'
+      });
+    case "plan":
+      return m.markerPlanOperation === "updated"
         ? formatPlanUpdatedDivider(at, m.markerPlanSlug)
-        : formatPlanCreatedDivider(at, m.markerPlanSlug)
-    case 'steer':
-      return formatSteerAppliedDivider(at, m.markerMessageLength ?? 0)
-    case 'clear':
-      return formatClearDivider(at)
+        : formatPlanCreatedDivider(at, m.markerPlanSlug);
+    case "steer":
+      return formatSteerAppliedDivider(at, m.markerMessageLength ?? 0);
+    case "clear":
+      return formatClearDivider(at);
     default:
-      return null
+      return null;
   }
 }
 
@@ -71,7 +71,7 @@ export function buildMarkerContent(m: SessionLoadMessage): string | null {
  * failed; history mapping must agree. Mirrors the exemption in
  * event-slice.ts's tool_result handler.
  */
-const ERROR_EXEMPT_TOOLS = new Set(['ExitPlanMode', 'AskUserQuestion'])
+const ERROR_EXEMPT_TOOLS = new Set(["ExitPlanMode", "AskUserQuestion"]);
 
 /**
  * Map a single engine `SessionLoadMessage` to a client `Message`, or `null`
@@ -85,41 +85,44 @@ const ERROR_EXEMPT_TOOLS = new Set(['ExitPlanMode', 'AskUserQuestion'])
  * identities. `makeId` supplies the id only as a degraded fallback for rows
  * from an engine that predates the field.
  */
-export function mapSessionMessage(m: SessionLoadMessage, makeId: () => string): Message | null {
+export function mapSessionMessage(
+  m: SessionLoadMessage,
+  makeId: () => string,
+): Message | null {
   // Tool rows are keyed by the engine tool id — the SAME key the live
   // reducer uses when the tool_call streams in — so a history reload dedups
   // against a live-built tool row. Every other row uses the engine's
   // canonical entry-row id (live assistant/user rows re-key to it at
   // message_end). makeId is the degraded fallback for engines predating ids.
-  const rowId = (m.toolName && m.toolId ? m.toolId : m.id) || makeId()
+  const rowId = (m.toolName && m.toolId ? m.toolId : m.id) || makeId();
   if (m.markerKind) {
-    const content = buildMarkerContent(m)
+    const content = buildMarkerContent(m);
     // A no-op compaction marker (buildCompactionMarkerContent → null) is
     // dropped, matching the live compacting handler which never pushes it.
-    if (content === null) return null
+    if (content === null) return null;
     const msg: Message = {
       id: rowId,
-      role: 'system',
+      role: "system",
       content,
       timestamp: m.timestamp,
-    }
+    };
     // Carry planFilePath so the plan slug stays clickable after reload, exactly
     // as the live plan_file_written handler does.
-    if (m.markerKind === 'plan' && m.markerPlanFilePath) {
-      msg.planFilePath = m.markerPlanFilePath
+    if (m.markerKind === "plan" && m.markerPlanFilePath) {
+      msg.planFilePath = m.markerPlanFilePath;
     }
-    return msg
+    return msg;
   }
 
-  const failed = m.isError && m.toolName && !ERROR_EXEMPT_TOOLS.has(m.toolName)
+  const failed = m.isError && m.toolName && !ERROR_EXEMPT_TOOLS.has(m.toolName);
   return {
     id: rowId,
-    role: m.role as Message['role'],
-    content: m.content || '',
+    role: m.role as Message["role"],
+    content: m.content || "",
     toolName: m.toolName,
     toolId: m.toolId,
     toolInput: m.toolInput,
-    toolStatus: m.toolName ? (failed ? 'error' : 'completed') : undefined,
+    toolStatus: m.toolName ? (failed ? "error" : "completed") : undefined,
     userExecuted: m.userExecuted,
     slashCommand: m.slashCommand,
     slashArgs: m.slashArgs,
@@ -127,8 +130,9 @@ export function mapSessionMessage(m: SessionLoadMessage, makeId: () => string): 
     slashModelAlias: m.slashModelAlias,
     slashModelEffective: m.slashModelEffective,
     attachments: m.attachments,
+    backgroundTaskId: m.backgroundTaskId,
     timestamp: m.timestamp,
-  }
+  };
 }
 
 /**
@@ -163,12 +167,44 @@ export function mapSessionHistory(
   history: readonly SessionLoadMessage[],
   makeId: () => string,
 ): Message[] {
-  const out: Message[] = []
+  // Pass 1: map all non-backgroundWork rows into messages, collecting
+  // background work entries for the fold pass.
+  const out: Message[] = [];
+  const pendingWork: Array<{ row: SessionLoadMessage; id: string }> = [];
   for (const m of history) {
-    if (m.internal) continue
-    if (suppressesInjection(m)) continue
-    const mapped = mapSessionMessage(m, makeId)
-    if (mapped) out.push(mapped)
+    if (m.internal) continue;
+    if (m.backgroundWork) {
+      pendingWork.push({ row: m, id: m.id || makeId() });
+      continue;
+    }
+    if (suppressesInjection(m)) continue;
+    if (m.markerKind === "steer" && m.markerMachineAuthored) continue;
+    const mapped = mapSessionMessage(m, makeId);
+    if (mapped) out.push(mapped);
   }
-  return out
+
+  // Pass 2: fold background work items onto their originating tool rows.
+  // Unmatched deliveries stay invisible (machine context only).
+  for (const { row } of pendingWork) {
+    if (!row.backgroundWork) continue;
+    const itemsByTaskId = new Map<
+      string,
+      (typeof row.backgroundWork.items)[number]
+    >();
+    for (const item of row.backgroundWork.items) {
+      itemsByTaskId.set(item.id, item);
+    }
+    for (const msg of out) {
+      if (msg.role !== "tool" || !msg.backgroundTaskId) continue;
+      const item = itemsByTaskId.get(msg.backgroundTaskId);
+      if (!item) continue;
+      msg.toolStatus = item.status === "completed" ? "completed" : "error";
+      msg.backgroundWork = {
+        kind: row.backgroundWork.kind,
+        deliveryMode: row.backgroundWork.deliveryMode,
+        items: [item],
+      };
+    }
+  }
+  return out;
 }

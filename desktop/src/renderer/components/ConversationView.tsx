@@ -55,7 +55,6 @@ export function ConversationView({ tabId }: ConversationViewProps) {
   const pane = useSessionStore(s => s.conversationPanes.get(tabId))
   const activeInstanceId = pane?.activeInstanceId || ''
   const key = activeInstanceId ? tabId : ''
-  const dataViewFontSize = usePreferencesStore((s) => s.dataViewFontSize)
   const queuedPrompts = useSessionStore(s => s.tabs.find(t => t.id === tabId)?.queuedPrompts ?? EMPTY_ARRAY)
   const editQueuedMessage = useSessionStore(s => s.editQueuedMessage)
 
@@ -74,12 +73,13 @@ export function ConversationView({ tabId }: ConversationViewProps) {
     const inst = p?.activeInstanceId ? p.instances.find(i => i.id === p.activeInstanceId) : null
     return inst?.messages ?? EMPTY_MESSAGES
   })
-  const { agentStates, dispatchTelemetry } = useSessionStore(useShallow(s => {
+  const { agentStates, dispatchTelemetry, activeBackgroundTasks } = useSessionStore(useShallow(s => {
     const p = s.conversationPanes.get(tabId)
     const inst = p?.activeInstanceId ? p.instances.find(i => i.id === p.activeInstanceId) : null
     return {
       agentStates: inst?.agentStates ?? EMPTY_AGENTS,
       dispatchTelemetry: inst?.dispatchTelemetry ?? EMPTY_TELEMETRY,
+      activeBackgroundTasks: inst?.statusFields?.activeBackgroundTasks ?? EMPTY_ARRAY,
     }
   }))
   const workingMessage = useSessionStore(s => {
@@ -108,7 +108,9 @@ export function ConversationView({ tabId }: ConversationViewProps) {
   const isRunning = tabStatus === 'running' || tabStatus === 'connecting'
   const runningChildCount = agentStates.filter(a => a.status === 'running').length
   const hasRunningChildren = runningChildCount > 0
-  const activityOverlayVisible = isRunning || hasRunningChildren
+  const backgroundTaskCount = activeBackgroundTasks.length
+  const hasBackgroundTasks = backgroundTaskCount > 0
+  const activityOverlayVisible = isRunning || hasRunningChildren || hasBackgroundTasks
   const suppressPlanCard = resolvePlanCardSuppression({
     toolNames: permissionDenied?.tools.map((t) => t.toolName),
     hasRunningChildren,
@@ -174,7 +176,11 @@ export function ConversationView({ tabId }: ConversationViewProps) {
   }, [tabId])
 
   const handleAbort = useCallback(() => {
-    interrupt(tabId)
+    interrupt(tabId, isRunning ? 'orchestrator' : 'all_work')
+  }, [interrupt, isRunning, tabId])
+
+  const handleStopAll = useCallback(() => {
+    interrupt(tabId, 'all_work')
   }, [interrupt, tabId])
 
   // Answering clears the card locally and then submits. The submitted prompt
@@ -264,14 +270,13 @@ export function ConversationView({ tabId }: ConversationViewProps) {
           style={{
             flex: 1, minWidth: 0, height: '100%', overflowY: 'auto',
             padding: `8px 12px ${activityOverlayVisible ? CONVERSATION_ACTIVITY_OVERLAY_HEIGHT + 8 : 8}px 4px`,
-            ['--ion-conv-font-size' as string]: `${dataViewFontSize}px`,
-          } as React.CSSProperties}
+          }}
         >
           <div ref={contentRef}>
             {messages.length === 0 && !isRunning && <EmptyState />}
 
             {/* Grouped conversation messages via shared TranscriptRows */}
-            <TranscriptRows grouped={grouped} actions={renderActions} scrollRef={scrollRef} forceFullRender={searchState.active} />
+            <TranscriptRows grouped={grouped} actions={renderActions} scrollRef={scrollRef} forceFullRender={searchState.active} tabId={tabId} activeBackgroundTasks={activeBackgroundTasks} />
 
             {!isRunning && messages.length > 0 && lastResult && (
               <RunDurationFooter durationMs={lastResult.durationMs} reason={lastResult.reason} />
@@ -357,7 +362,7 @@ export function ConversationView({ tabId }: ConversationViewProps) {
                   </div>
                 ) : <span />}
                 <div data-testid="conversation-interrupt-row" style={{ pointerEvents: 'auto' }}>
-                  <InterruptButton onInterrupt={handleAbort} />
+                  <InterruptButton onInterrupt={handleAbort} onStopAll={handleStopAll} isRunning={isRunning} runningChildCount={runningChildCount} backgroundTaskCount={backgroundTaskCount} />
                 </div>
               </div>
             </motion.div>

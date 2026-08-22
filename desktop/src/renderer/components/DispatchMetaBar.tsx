@@ -1,11 +1,12 @@
-import React from 'react'
-import { useColors } from '../theme'
-import { DurationDisplay } from './DurationDisplay'
-import type { DispatchInfo } from './agent-panel-helpers'
+import React from "react";
+import { useColors } from "../theme";
+import { DurationDisplay } from "./DurationDisplay";
+import type { DispatchInfo } from "./agent-panel-helpers";
 
 interface Props {
-  dispatch: DispatchInfo | undefined
-  agentStatus: string
+  dispatch: DispatchInfo | undefined;
+  agentStatus: string;
+  tabId?: string;
 }
 
 /**
@@ -14,28 +15,29 @@ interface Props {
  * directly below the DispatchPager (or directly below the breadcrumb for
  * single-dispatch agents).
  *
- * The popup header always uses compact/flush alignment (no inline left-pad:
- * that variant belonged to the inline-expand row, which no longer exists).
+ * Dispatch controls live in two consistent places instead: every running
+ * AgentRow, and the bottom-right corner of the open dispatch transcript. The
+ * old header-only Stop was easy to miss and did not exist at nested tiers.
  */
-export function DispatchMetaBar({ dispatch, agentStatus }: Props) {
-  const colors = useColors()
+export function DispatchMetaBar({ dispatch, agentStatus, tabId: _tabId }: Props) {
+  const colors = useColors();
 
-  if (!dispatch) return null
+  if (!dispatch) return null;
 
-  const model = dispatch.model || ''
-  const startTime = dispatch.startTime
-  const elapsed = dispatch.elapsed
-  const status = dispatch.status || agentStatus
+  const model = dispatch.model || "";
+  const startTime = dispatch.startTime;
+  const elapsed = dispatch.elapsed;
+  const status = dispatch.status || agentStatus;
 
-  if (!model && startTime == null && elapsed == null) return null
+  if (!model && startTime == null && elapsed == null) return null;
 
   return (
     <div
       style={{
-        display: 'flex',
-        alignItems: 'center',
+        display: "flex",
+        alignItems: "center",
         gap: 4,
-        padding: '4px 12px',
+        padding: "4px 12px",
         background: colors.surfaceHover,
         fontSize: 10,
         color: colors.textTertiary,
@@ -48,9 +50,14 @@ export function DispatchMetaBar({ dispatch, agentStatus }: Props) {
       )}
       {(startTime != null || elapsed != null) && (
         <span>
-          Duration: <DurationDisplay startTime={startTime} elapsed={elapsed} status={status} />
+          Duration:{" "}
+          <DurationDisplay
+            startTime={startTime}
+            elapsed={elapsed}
+            status={status}
+          />
         </span>
       )}
     </div>
-  )
+  );
 }

@@ -143,6 +143,7 @@ export interface RemoteTabState {
      *  run_in_background + notify_on_complete). The shell counterpart to
      *  runningAgentCount; drives the iOS pink shell dot. */
     backgroundShellCount?: number
+    activeBackgroundTasks?: import('../../shared/types-engine').BackgroundTaskState[]
     /** Exact engine status verdict for accepted work with no foreground run. */
     hasPendingWork?: boolean
     modelFallback?: { requestedModel: string; fallbackModel: string }
@@ -271,6 +272,10 @@ export interface RemoteMessage {
    * field (optimistic-bubble reconciliation is a UI concern). Present only on
    * user rows the desktop echoed; omitted otherwise. */
   clientMsgId?: string
+  /** Background task identifier linking a tool row to its background task. */
+  backgroundTaskId?: string
+  /** Structured background-work delivery metadata for collapsible transcript rows. */
+  backgroundWork?: import('../../shared/types-events').BackgroundWorkInfo
 }
 
 export interface RemoteAttachment {

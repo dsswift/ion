@@ -92,7 +92,7 @@ describe('ConversationView selector — shallow stability (#185 regression)', ()
 
     // The combined selector must be wrapped: useShallow(s => { ... agentStates ... dispatchTelemetry ... })
     // We check that useShallow appears adjacent to the agentStates/dispatchTelemetry destructure.
-    expect(src).toMatch(/const \{ agentStates, dispatchTelemetry \} = useSessionStore\(useShallow\(/)
+    expect(src).toMatch(/const \{ agentStates, dispatchTelemetry, activeBackgroundTasks \} = useSessionStore\(useShallow\(/)
   })
 
   // ── 2. Logic: same instance data → shallow-equal → stable reference ──────────

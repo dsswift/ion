@@ -17,14 +17,14 @@
  * active-tab change, then applies live events on top. Cache updates run even
  * while the Studio window is closed — that IS the backfill.
  */
-import type { NormalizedEvent } from '../shared/types'
-import type { AgentStateUpdate, StatusFields } from '../shared/types-engine'
-import { tabIdFromKey } from '../shared/session-key'
-import { permissionClearingState } from '../shared/permission-clear'
-import { log as _log } from './logger'
+import type { NormalizedEvent, BackgroundWorkItem } from "../shared/types";
+import type { AgentStateUpdate, StatusFields } from "../shared/types-engine";
+import { tabIdFromKey } from "../shared/session-key";
+import { permissionClearingState } from "../shared/permission-clear";
+import { log as _log } from "./logger";
 
 function log(msg: string, fields?: Record<string, unknown>): void {
-  _log('studio', msg, fields)
+  _log("studio", msg, fields);
 }
 
 /**
@@ -34,34 +34,38 @@ function log(msg: string, fields?: Record<string, unknown>): void {
  * the fan-out in broadcast.ts filters to this set.
  */
 export const STUDIO_EVENT_TYPES: ReadonlySet<string> = new Set([
-  'agent_state',
-  'status',
-  'dispatch_start',
-  'dispatch_end',
-  'dispatch_activity',
-  'permission_request',
-])
+  "agent_state",
+  "status",
+  "dispatch_start",
+  "dispatch_end",
+  "dispatch_activity",
+  "permission_request",
+  "background_task_complete",
+]);
 
 /**
  * dispatch_activity text deltas are a firehose (per-token). Only tool
  * lifecycle events cross into the Studio window path; text deltas are dropped here.
  */
 export function studioWantsEvent(event: NormalizedEvent): boolean {
-  if (!STUDIO_EVENT_TYPES.has(event.type)) return false
-  if (event.type === 'dispatch_activity') {
-    return event.dispatchActivityKind === 'tool_start' || event.dispatchActivityKind === 'tool_end'
+  if (!STUDIO_EVENT_TYPES.has(event.type)) return false;
+  if (event.type === "dispatch_activity") {
+    return (
+      event.dispatchActivityKind === "tool_start" ||
+      event.dispatchActivityKind === "tool_end"
+    );
   }
-  return true
+  return true;
 }
 
 /** Raw events kept per tab. Old entries fall off the front. */
-export const STUDIO_EVENT_RING_CAP = 200
+export const STUDIO_EVENT_RING_CAP = 200;
 
 export interface StudioTabState {
-  agents: AgentStateUpdate[]
+  agents: AgentStateUpdate[];
   /** Ring buffer of dispatch_start / dispatch_end / permission_request events. */
-  events: NormalizedEvent[]
-  statusFields: StatusFields | null
+  events: NormalizedEvent[];
+  statusFields: StatusFields | null;
   /**
    * Outstanding permission requests, arrival-ordered — the authoritative
    * pending queue for closed-window backfill and marquee boot truth. Added
@@ -69,18 +73,26 @@ export interface StudioTabState {
    * from the respondToPermission choke point regardless of which surface
    * answered) or on any clearing status (shared predicate).
    */
-  pendingPermissions: NormalizedEvent[]
+  pendingPermissions: NormalizedEvent[];
+  /** Background bash commands: completed items. */
+  backgroundWork: BackgroundWorkItem[];
 }
 
-const cache = new Map<string, StudioTabState>()
+const cache = new Map<string, StudioTabState>();
 
 function entryFor(tabId: string): StudioTabState {
-  let entry = cache.get(tabId)
+  let entry = cache.get(tabId);
   if (!entry) {
-    entry = { agents: [], events: [], statusFields: null, pendingPermissions: [] }
-    cache.set(tabId, entry)
+    entry = {
+      agents: [],
+      events: [],
+      statusFields: null,
+      pendingPermissions: [],
+      backgroundWork: [],
+    };
+    cache.set(tabId, entry);
   }
-  return entry
+  return entry;
 }
 
 /**
@@ -89,62 +101,95 @@ function entryFor(tabId: string): StudioTabState {
  * from extension-hosted paths) — normalized here to the bare tabId so cached
  * state never splits between key shapes.
  */
-export function updateStudioCache(rawTabId: string, event: NormalizedEvent): void {
-  if (!studioWantsEvent(event)) return
-  const tabId = tabIdFromKey(rawTabId)
-  const entry = entryFor(tabId)
+export function updateStudioCache(
+  rawTabId: string,
+  event: NormalizedEvent,
+): void {
+  if (!studioWantsEvent(event)) return;
+  const tabId = tabIdFromKey(rawTabId);
+  const entry = entryFor(tabId);
 
   switch (event.type) {
-    case 'agent_state':
+    case "agent_state":
       // Complete snapshot: replace, never merge.
-      entry.agents = event.agents
-      break
-    case 'status':
-      entry.statusFields = event.fields
+      entry.agents = event.agents;
+      break;
+    case "status":
+      entry.statusFields = event.fields;
       // A clearing status means nothing can still be blocked on an answer.
-      if (entry.pendingPermissions.length > 0 && permissionClearingState(String(event.fields?.state ?? ''))) {
-        log('studio_cache: pending permissions cleared by status', {
+      if (
+        entry.pendingPermissions.length > 0 &&
+        permissionClearingState(String(event.fields?.state ?? ""))
+      ) {
+        log("studio_cache: pending permissions cleared by status", {
           tab_id: tabId,
-          state: String(event.fields?.state ?? ''),
+          state: String(event.fields?.state ?? ""),
           cleared: entry.pendingPermissions.length,
-        })
-        entry.pendingPermissions = []
+        });
+        entry.pendingPermissions = [];
       }
-      break
-    case 'permission_request':
-      entry.pendingPermissions.push(event)
-      entry.events.push(event)
+      break;
+    case "permission_request":
+      entry.pendingPermissions.push(event);
+      entry.events.push(event);
       if (entry.events.length > STUDIO_EVENT_RING_CAP) {
-        entry.events.splice(0, entry.events.length - STUDIO_EVENT_RING_CAP)
+        entry.events.splice(0, entry.events.length - STUDIO_EVENT_RING_CAP);
       }
-      break
-    case 'dispatch_activity':
+      break;
+    case "background_task_complete": {
+      const item: BackgroundWorkItem = {
+        id: event.taskId,
+        taskId: event.taskId,
+        status:
+          event.status === "error" || event.exitCode !== 0
+            ? "failed"
+            : "completed",
+        command: event.command,
+        exitCode: event.exitCode,
+        elapsedMs: event.elapsedMs,
+        tail: event.tail,
+        ts: Date.now(),
+      };
+      const index = entry.backgroundWork.findIndex(
+        (work) => work.taskId === item.taskId,
+      );
+      if (index >= 0) entry.backgroundWork[index] = item;
+      else entry.backgroundWork.push(item);
+      break;
+    }
+    case "dispatch_activity":
       // Transient flavor — forwarded live but never ring-cached (replaying
       // stale tool activity on backfill would be noise).
-      break
+      break;
     default:
-      entry.events.push(event)
+      entry.events.push(event);
       if (entry.events.length > STUDIO_EVENT_RING_CAP) {
-        entry.events.splice(0, entry.events.length - STUDIO_EVENT_RING_CAP)
+        entry.events.splice(0, entry.events.length - STUDIO_EVENT_RING_CAP);
       }
-      break
+      break;
   }
 }
 
 /** Current cached state for a tab (empty state when nothing cached yet). */
 export function getStudioState(rawTabId: string): StudioTabState {
-  const tabId = tabIdFromKey(rawTabId)
-  const entry = cache.get(tabId)
+  const tabId = tabIdFromKey(rawTabId);
+  const entry = cache.get(tabId);
   if (!entry) {
-    log('studio_cache: miss', { tab_id: tabId })
-    return { agents: [], events: [], statusFields: null, pendingPermissions: [] }
+    log("studio_cache: miss", { tab_id: tabId });
+    return {
+      agents: [],
+      events: [],
+      statusFields: null,
+      pendingPermissions: [],
+      backgroundWork: [],
+    };
   }
-  log('studio_cache: hit', {
+  log("studio_cache: hit", {
     tab_id: tabId,
     agent_count: entry.agents.length,
     event_count: entry.events.length,
-  })
-  return entry
+  });
+  return entry;
 }
 
 /**
@@ -152,53 +197,60 @@ export function getStudioState(rawTabId: string): StudioTabState {
  * was present. Called from the respondToPermission choke point — the single
  * spot every surface's answer (overlay, iOS, Studio) funnels through.
  */
-export function resolveStudioPermission(rawTabId: string, questionId: string): boolean {
-  const tabId = tabIdFromKey(rawTabId)
-  const entry = cache.get(tabId)
-  if (!entry) return false
-  const before = entry.pendingPermissions.length
+export function resolveStudioPermission(
+  rawTabId: string,
+  questionId: string,
+): boolean {
+  const tabId = tabIdFromKey(rawTabId);
+  const entry = cache.get(tabId);
+  if (!entry) return false;
+  const before = entry.pendingPermissions.length;
   entry.pendingPermissions = entry.pendingPermissions.filter(
     (e) => (e as { questionId?: string }).questionId !== questionId,
-  )
-  const removed = entry.pendingPermissions.length < before
-  if (removed) log('studio_cache: permission resolved', { tab_id: tabId, question_id: questionId })
-  return removed
+  );
+  const removed = entry.pendingPermissions.length < before;
+  if (removed)
+    log("studio_cache: permission resolved", {
+      tab_id: tabId,
+      question_id: questionId,
+    });
+  return removed;
 }
 
 /** Per-tab live summary for the campus view (all cached tabs). */
 export interface StudioTabSummary {
-  tabId: string
-  state: string
-  working: number
-  error: number
-  total: number
-  pendingPermissions: number
+  tabId: string;
+  state: string;
+  working: number;
+  error: number;
+  total: number;
+  pendingPermissions: number;
 }
 
 export function allStudioSummaries(): StudioTabSummary[] {
-  const out: StudioTabSummary[] = []
+  const out: StudioTabSummary[] = [];
   for (const [tabId, entry] of cache) {
     out.push({
       tabId,
-      state: String(entry.statusFields?.state ?? ''),
-      working: entry.agents.filter((a) => a.status === 'running').length,
-      error: entry.agents.filter((a) => a.status === 'error').length,
+      state: String(entry.statusFields?.state ?? ""),
+      working: entry.agents.filter((a) => a.status === "running").length,
+      error: entry.agents.filter((a) => a.status === "error").length,
       total: entry.agents.length,
       pendingPermissions: entry.pendingPermissions.length,
-    })
+    });
   }
-  return out
+  return out;
 }
 
 /** Drop a tab's cached state (tab closed). */
 export function evictStudioTab(rawTabId: string): void {
-  const tabId = tabIdFromKey(rawTabId)
+  const tabId = tabIdFromKey(rawTabId);
   if (cache.delete(tabId)) {
-    log('studio_cache: evicted', { tab_id: tabId })
+    log("studio_cache: evicted", { tab_id: tabId });
   }
 }
 
 /** Test hook: reset the cache between test cases. */
 export function clearStudioCache(): void {
-  cache.clear()
+  cache.clear();
 }

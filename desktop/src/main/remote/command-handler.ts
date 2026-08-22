@@ -6,6 +6,7 @@ import {
   handleCreateTerminalTab,
   handleCloseTab,
   handlePrompt,
+  handleAbortDispatch,
   handleCancel,
   handleSetPermissionMode,
   handleSetThinkingEffort,
@@ -83,6 +84,7 @@ import { handleRequestPlanContent } from './handlers/plan-content'
 import { handleImplementPlan } from './handlers/implement-plan'
 import { handleWorktreeCommand } from './handlers/worktree'
 import { handleReportMobileAuth } from './handlers/mobile-auth'
+import { handleStopBackgroundTask } from './handlers/background-tasks'
 import type { RemoteCommand } from './protocol'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -101,6 +103,8 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'desktop_close_tab': await handleCloseTab(cmd); break
     case 'desktop_prompt': await handlePrompt(cmd, deviceId); break
     case 'desktop_cancel': handleCancel(cmd); break
+    case 'desktop_abort_dispatch': handleAbortDispatch(cmd); break
+    case 'desktop_stop_background_task': await handleStopBackgroundTask(cmd, deviceId); break
     case 'desktop_respond_permission':
       sessionPlane.respondToPermission(cmd.tabId, cmd.questionId, cmd.optionId)
       break

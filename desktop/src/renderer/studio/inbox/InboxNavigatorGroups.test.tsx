@@ -132,8 +132,10 @@ const worktree: WorktreeInventoryEntry = {
 }
 
 function Harness({ project }: { project: InboxNavigatorProject }): React.JSX.Element {
-  const groupKey = `group:card:${worktree.worktreePath}`
-  const [collapsed, setCollapsed] = useState(() => new Set([groupKey]))
+  const group = project.groups[0]
+  const groupKey = group ? `group:card:${group.key}` : `project:${project.project.key}`
+  const initialCollapsed = group && group.kind !== 'bench' ? [groupKey] : []
+  const [collapsed, setCollapsed] = useState(() => new Set(initialCollapsed))
   const toggle = (key: string): void => setCollapsed((current) => {
     const next = new Set(current)
     if (next.has(key)) next.delete(key)
@@ -245,6 +247,40 @@ describe('InboxNavigatorGroups worktree cycling', () => {
       'inbox.navigator',
       'expanded project before cycling conversations',
       expect.objectContaining({ project_key: '/repo', conversation_count: 2 }),
+    )
+
+    await act(async () => { root.unmount() })
+  })
+
+  it('keeps the selected source conversation visible, then expands and cycles', async () => {
+    state.activeTabId = 'older'
+    const project: InboxNavigatorProject = {
+      project: { key: '/repo', name: 'repo' },
+      groups: [{
+        key: 'source:/repo',
+        kind: 'source',
+        label: 'Source Repository',
+        tabs: state.tabs,
+      }],
+      flatTabs: [],
+    }
+    const root = createRoot(container)
+    await act(async () => { root.render(<Harness project={project} />) })
+
+    const toggle = container.querySelector<HTMLButtonElement>('[aria-label="Toggle Source Repository"]')!
+    const header = toggle.parentElement!
+    expect(container.querySelector('[data-testid="conversation-older"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="conversation-newer"]')).toBeNull()
+
+    await act(async () => { header.click() })
+
+    expect(container.querySelector('[data-testid="conversation-newer"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="conversation-older"]')).not.toBeNull()
+    expect(selectTab).toHaveBeenCalledWith('newer')
+    expect(rInfo).toHaveBeenCalledWith(
+      'inbox.navigator',
+      'expanded group before cycling conversations',
+      expect.objectContaining({ group_kind: 'source', conversation_count: 2 }),
     )
 
     await act(async () => { root.unmount() })

@@ -1,29 +1,45 @@
-import { EventEmitter } from 'events'
-import { Socket } from 'net'
-import { log as _log, debug as _debug, warn as _warn, error as _error } from './logger'
-import { installLogCorrelation } from './engine-bridge-log-correlation'
-import { doConnect, scheduleReconnect } from './engine-bridge-connection'
-import { startSession as startSessionImpl, reRegisterSessions as reRegisterSessionsImpl } from './engine-bridge-start-session'
-import { sendReconcileState as sendReconcileStateImpl, sendQuerySessionStatus as sendQuerySessionStatusImpl, sendResolvePermissionDenials as sendResolvePermissionDenialsImpl } from './engine-bridge-state-sync'
-import { disconnect as disconnectImpl, shutdownAndWait as shutdownAndWaitImpl } from './engine-bridge-lifecycle'
-import { buildSendPromptMessage, buildSendPromptLogLine } from './engine-bridge-prompts'
-import { installAgentStateRecovery } from './engine-bridge-agent-state'
-import * as conv from './engine-bridge-conversations'
-import * as prov from './engine-bridge-providers'
-import type { EngineConfig, EngineEvent, ImageAttachmentPayload, DiscoveredCommand } from '../shared/types'
-import type { ClientWorkspaceContext } from '../shared/types-engine'
-import type { ModelTier } from '../shared/types-model-tiers'
+import { EventEmitter } from "events";
+import { Socket } from "net";
+import { log as _log, warn as _warn } from "./logger";
+import { installLogCorrelation } from "./engine-bridge-log-correlation";
+import { doConnect, scheduleReconnect } from "./engine-bridge-connection";
+import {
+  startSession as startSessionImpl,
+  reRegisterSessions as reRegisterSessionsImpl,
+} from "./engine-bridge-start-session";
+import {
+  sendReconcileState as sendReconcileStateImpl,
+  sendQuerySessionStatus as sendQuerySessionStatusImpl,
+  sendResolvePermissionDenials as sendResolvePermissionDenialsImpl,
+} from "./engine-bridge-state-sync";
+import {
+  disconnect as disconnectImpl,
+  shutdownAndWait as shutdownAndWaitImpl,
+} from "./engine-bridge-lifecycle";
+import { installAgentStateRecovery } from "./engine-bridge-agent-state";
+import * as abort from "./engine-bridge-abort";
+import * as core from "./engine-bridge-core";
+import * as conv from "./engine-bridge-conversations";
+import * as prov from "./engine-bridge-providers";
+import type { EngineConfig, DiscoveredCommand } from "../shared/types";
+import type { AbortScope } from "../shared/types-engine";
+import type { ModelTier } from "../shared/types-model-tiers";
 
-const TAG = 'EngineBridge'
-function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
-function debug(msg: string, fields?: Record<string, unknown>): void { _debug(TAG, msg, fields) }
-function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, msg, fields) }
-function error(msg: string, fields?: Record<string, unknown>): void { _error(TAG, msg, fields) }
-
+const TAG = "EngineBridge";
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log(TAG, msg, fields);
+}
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn(TAG, msg, fields);
+}
 // Connection constants live in engine-bridge-connection.ts (the connect
 // ladder + reconnect-loop module); re-exported here so existing consumers
 // keep importing them from the bridge module.
-export { IS_REMOTE, REMOTE_SOCKET, LADDER_FAST_FAIL_WINDOW_MS } from './engine-bridge-connection'
+export {
+  IS_REMOTE,
+  REMOTE_SOCKET,
+  LADDER_FAST_FAIL_WINDOW_MS,
+} from "./engine-bridge-connection";
 
 /**
  * EngineBridge: thin socket client connecting Ion to the standalone
@@ -33,16 +49,16 @@ export { IS_REMOTE, REMOTE_SOCKET, LADDER_FAST_FAIL_WINDOW_MS } from './engine-b
  *  - 'event' (key, EngineEvent) -- forwarded from engine server
  */
 export class EngineBridge extends EventEmitter {
-  conn: Socket | null = null
+  conn: Socket | null = null;
   // Package-internal (written by engine-bridge-connection.ts).
-  buffer = ''
-  connected = false
-  reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  buffer = "";
+  connected = false;
+  reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   // Package-internal (managed by engine-bridge-connection.ts).
-  reconnectAttempts = 0
-  private requestCallbacks = new Map<string, (result: any) => void>()
-  private requestCounter = 0
-  private connectPromise: Promise<void> | null = null
+  reconnectAttempts = 0;
+  requestCallbacks = new Map<string, (result: any) => void>();
+  requestCounter = 0;
+  private connectPromise: Promise<void> | null = null;
   /**
    * Set when a full connect retry ladder exhausted against a dead socket;
    * cleared on any successful connect. While recent (see
@@ -51,54 +67,59 @@ export class EngineBridge extends EventEmitter {
    * the background reconnect loop owns recovery during an outage.
    * Package-internal (managed by engine-bridge-connection.ts).
    */
-  lastLadderFailureAt = 0
-  reconnectDisabled = false
+  lastLadderFailureAt = 0;
+  reconnectDisabled = false;
   /**
    * Monotonic counter incremented on every successful socket connect.
    * Package-internal (used by engine-bridge-start-session.ts to cancel
    * stale reRegisterSessions batches after a new connection replaces the
    * one that triggered the batch).
    */
-  _reRegisterGeneration = 0
-  private _drainScheduled = false
-  private sessionGeneration = 0
+  _reRegisterGeneration = 0;
+  _drainScheduled = false;
+  sessionGeneration = 0;
   // Package-internal (used by engine-bridge-start-session.ts and other siblings).
-  activeSessions = new Map<string, { config: EngineConfig; conversationId?: string; generation?: number }>()
+  activeSessions = new Map<
+    string,
+    { config: EngineConfig; conversationId?: string; generation?: number }
+  >();
   /** Client-side key aliases: oldKey → newKey. Rewrites incoming event keys. */
-  private keyAliases = new Map<string, string>()
+  keyAliases = new Map<string, string>();
   /** Tracks last `engine_status` receipt per key for stale-sweep polling. */
-  lastEngineStatusAt = new Map<string, number>()
+  lastEngineStatusAt = new Map<string, number>();
   // Package-internal: reset by engine-bridge-connection.ts on new connection.
-  consecutiveTimeouts = 0
+  consecutiveTimeouts = 0;
 
   constructor() {
-    super()
-    installAgentStateRecovery(this)
+    super();
+    installAgentStateRecovery(this);
     // Let the logger resolve each line's conversation from its own session key
     // (see engine-bridge-log-correlation.ts). The bridge owns that mapping.
-    installLogCorrelation(this as unknown as Parameters<typeof installLogCorrelation>[0])
+    installLogCorrelation(
+      this as unknown as Parameters<typeof installLogCorrelation>[0],
+    );
   }
 
   // ─── Connection lifecycle ───
 
   async connect(): Promise<void> {
-    if (this.connected) return
+    if (this.connected) return;
     // Prevent concurrent connect() calls from creating multiple connections.
     // All callers share the same in-flight connection attempt.
-    if (this.connectPromise) return this.connectPromise
-    this.connectPromise = doConnect(this)
+    if (this.connectPromise) return this.connectPromise;
+    this.connectPromise = doConnect(this);
     try {
-      await this.connectPromise
+      await this.connectPromise;
     } finally {
-      this.connectPromise = null
+      this.connectPromise = null;
     }
   }
 
-  private _onRequestTimeout(): void {
-    this.consecutiveTimeouts++
+  _onRequestTimeout(): void {
+    this.consecutiveTimeouts++;
     if (this.consecutiveTimeouts >= 2 && this.conn) {
-      warn('consecutive_timeouts', { count: this.consecutiveTimeouts })
-      this.conn.destroy()
+      warn("consecutive_timeouts", { count: this.consecutiveTimeouts });
+      this.conn.destroy();
     }
   }
 
@@ -106,51 +127,46 @@ export class EngineBridge extends EventEmitter {
   // engine-bridge-connection.ts; this thin method remains for in-class
   // callers (request-timeout eviction path).
   _scheduleReconnect(): void {
-    scheduleReconnect(this)
+    scheduleReconnect(this);
+  }
+
+  _drainBuffer(): void {
+    core.drainBuffer(this);
+  }
+
+  _handleMessage(line: string): void {
+    core.handleMessage(this, line);
+  }
+
+  _send(msg: any): boolean {
+    return core.send(this, msg);
+  }
+
+  _sendWithResult<T = unknown>(
+    msg: any,
+  ): Promise<{ ok: boolean; error?: string; data?: T }> {
+    return core.sendWithResult<T>(this, msg);
+  }
+
+  _sendWithData<T>(
+    msg: any,
+  ): Promise<{ ok: boolean; error?: string; data?: T }> {
+    return core.sendWithData<T>(this, msg);
   }
 
   /** Reject all pending request callbacks with an error message.
    * Package-internal (called by engine-bridge-connection.ts on remote errors). */
   _failPendingRequests(reason: string): void {
     for (const [_id, cb] of this.requestCallbacks) {
-      cb({ ok: false, error: reason })
+      cb({ ok: false, error: reason });
     }
-    this.requestCallbacks.clear()
-  }
-
-  /**
-   * Process up to BATCH_SIZE messages then yield via setImmediate.
-   * Prevents the main process from blocking for 5+ seconds when a large
-   * burst of events arrives in one TCP chunk, which triggers the engine's
-   * 5s write-deadline eviction → disconnect/reconnect storm.
-   * Package-internal (called by engine-bridge-connection.ts on socket data).
-   */
-  _drainBuffer(): void {
-    if (this._drainScheduled) return
-    const BATCH_SIZE = 10
-    let processed = 0
-    let nl: number
-    while (processed < BATCH_SIZE && (nl = this.buffer.indexOf('\n')) !== -1) {
-      const line = this.buffer.slice(0, nl)
-      this.buffer = this.buffer.slice(nl + 1)
-      if (line.trim()) {
-        this._handleMessage(line)
-        processed++
-      }
-    }
-    if (this.buffer.indexOf('\n') !== -1) {
-      this._drainScheduled = true
-      setImmediate(() => {
-        this._drainScheduled = false
-        this._drainBuffer()
-      })
-    }
+    this.requestCallbacks.clear();
   }
 
   /** Re-register all tracked sessions, then reconcile (see engine-bridge-start-session.ts).
    * Package-internal (called by engine-bridge-connection.ts after a reconnect). */
   _reRegisterSessions(): void {
-    reRegisterSessionsImpl(this)
+    reRegisterSessionsImpl(this);
   }
 
   /**
@@ -159,183 +175,67 @@ export class EngineBridge extends EventEmitter {
    * so incoming engine events keyed by oldKey are transparently rewritten.
    */
   remapSession(oldKey: string, newKey: string): void {
-    log('remap_session', { old_key: oldKey, new_key: newKey })
-    const entry = this.activeSessions.get(oldKey)
+    log("remap_session", { old_key: oldKey, new_key: newKey });
+    const entry = this.activeSessions.get(oldKey);
     if (entry) {
-      this.activeSessions.set(newKey, entry)
-      this.activeSessions.delete(oldKey)
-      log('remap_session: active_sessions moved', { old_key: oldKey, new_key: newKey })
+      this.activeSessions.set(newKey, entry);
+      this.activeSessions.delete(oldKey);
+      log("remap_session: active_sessions moved", {
+        old_key: oldKey,
+        new_key: newKey,
+      });
     } else {
-      log('remap_session: no active_sessions entry', { old_key: oldKey })
+      log("remap_session: no active_sessions entry", { old_key: oldKey });
     }
-    this.keyAliases.set(oldKey, newKey)
+    this.keyAliases.set(oldKey, newKey);
     // Remove any prior alias that pointed to oldKey to avoid stale chains
     for (const [k, v] of this.keyAliases) {
       if (v === oldKey && k !== oldKey) {
-        this.keyAliases.set(k, newKey)
-        log('remap_session: transitive_alias updated', { alias: k, new_key: newKey })
+        this.keyAliases.set(k, newKey);
+        log("remap_session: transitive_alias updated", {
+          alias: k,
+          new_key: newKey,
+        });
       }
-    }
-  }
-
-  private _handleMessage(line: string): void {
-    this.consecutiveTimeouts = 0
-
-    let msg: any
-    try {
-      msg = JSON.parse(line)
-    } catch {
-      warn('unparseable_message', { preview: line.substring(0, 200) })
-      return
-    }
-
-    // Command result with requestId -- resolve pending callback
-    if (msg.cmd === 'result' && msg.requestId) {
-      debug('result', { request_id: msg.requestId, ok: msg.ok, error: msg.error ?? 'none' })
-      const cb = this.requestCallbacks.get(msg.requestId)
-      if (cb) {
-        this.requestCallbacks.delete(msg.requestId)
-        cb(msg)
-      }
-      return
-    }
-
-    // Session list response
-    if (msg.cmd === 'session_list') {
-      return
-    }
-
-    // Session event -- forward to IPC layer
-    if (typeof msg.key === 'string' && msg.event) {
-      // Rewrite key if it has been remapped (client-side alias)
-      const routedKey = this.keyAliases.get(msg.key) ?? msg.key
-      // Phase 2 of the state-management overhaul: track the last
-      // engine_status receipt per key so the snapshot poller can
-      // detect stale keys and issue a query_session_status. We track
-      // only engine_status (not every event) because the convergence
-      // problem the poller addresses is specifically "we never saw a
-      // fresh status event" — text deltas, tool calls, agent state
-      // updates do not refresh the running/idle determination.
-      //
-      // This is an INBOUND engine event, so the type is `engine_status`
-      // (matched by the control plane's `case 'engine_status'`). It is
-      // NOT `desktop_status` — that is the OUTBOUND iOS wire type this
-      // desktop emits when rebroadcasting. The #240 `desktop_` wire-prefix
-      // rename mistakenly renamed this inbound check, which left
-      // lastEngineStatusAt permanently empty: every key read as stale, so
-      // the 5 s poll re-queried every session forever (a status-broadcast
-      // storm fanned to every paired device).
-      if (msg.event.type === 'engine_status') {
-        this.lastEngineStatusAt.set(routedKey, Date.now())
-      }
-      debug('event', { key: msg.key, routed_key: routedKey, type: msg.event.type })
-      this.emit('event', routedKey, msg.event as EngineEvent)
     }
   }
 
   // ─── Command helpers ───
 
-  // Used by sibling files in the engine-bridge.* module group (see
-  // engine-bridge-state-sync.ts). Not `private` so the state-sync RPCs
-  // can dispatch without forcing every helper back into this already-
-  // cap-bound file. Same convention as _sendWithResult / _sendWithData.
-  _send(msg: any): boolean {
-    if (!this.conn || this.conn.destroyed) {
-      warn('_send: dropped, no connection', { cmd: msg?.cmd, key: msg?.key })
-      return false
-    }
-    try {
-      const accepted = this.conn.write(JSON.stringify(msg) + '\n')
-      if (!accepted) {
-        warn('_send: backpressure', { cmd: msg?.cmd, key: msg?.key })
-      }
-      return true
-    } catch (err: any) {
-      error('_send: write failed', { cmd: msg?.cmd, key: msg?.key, error: err.message })
-      return false
-    }
-  }
-
-  /**
-   * Internal command dispatch with typed { ok, error } response.
-   *
-   * Marked with a leading underscore to signal "treat as internal to the
-   * engine-bridge.* module group" — TypeScript's `private` keyword would
-   * be stricter but would also prevent sibling files like
-   * engine-bridge-start-session.ts from calling it, which is the
-   * extraction-driven seam we need to stay under the file-size cap.
-   * Treat external callers as a code-review concern, not a compile-time
-   * one.
-   */
-  _sendWithResult<T = unknown>(msg: any): Promise<{ ok: boolean; error?: string; data?: T }> {
-    const requestId = `bridge-${++this.requestCounter}-${Date.now()}`
-    msg.requestId = requestId
-
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        if (!this.requestCallbacks.has(requestId)) return
-        this.requestCallbacks.delete(requestId)
-        warn('request_timeout', { request_id: requestId, cmd: msg.cmd })
-        this._onRequestTimeout()
-        resolve({ ok: false, error: 'Request timed out' })
-      }, 30000)
-
-      this.requestCallbacks.set(requestId, (result) => {
-        clearTimeout(timer)
-        this.consecutiveTimeouts = 0
-        resolve({ ok: result.ok, error: result.error, data: result.data as T })
-      })
-
-      this._send(msg)
-    })
-  }
-
-  // Internal to the engine-bridge.* module group. See _sendWithResult
-  // for the rationale on widening from `private` to module-package scope.
-  _sendWithData<T>(msg: any): Promise<{ ok: boolean; error?: string; data?: T }> {
-    const requestId = `bridge-${++this.requestCounter}-${Date.now()}`
-    msg.requestId = requestId
-
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        if (!this.requestCallbacks.has(requestId)) return
-        this.requestCallbacks.delete(requestId)
-        this._onRequestTimeout()
-        resolve({ ok: false, error: 'Request timed out' })
-      }, 30000)
-
-      this.requestCallbacks.set(requestId, (result) => {
-        clearTimeout(timer)
-        this.consecutiveTimeouts = 0
-        resolve({ ok: result.ok, error: result.error, data: result.data })
-      })
-
-      this._send(msg)
-    })
-  }
-
   // ─── Public API ───
 
-  async startSession(key: string, config: EngineConfig): Promise<{ ok: boolean; error?: string; conversationId?: string }> {
-    return startSessionImpl(this, key, config)
+  async startSession(
+    key: string,
+    config: EngineConfig,
+  ): Promise<{ ok: boolean; error?: string; conversationId?: string }> {
+    return startSessionImpl(this, key, config);
   }
 
   /** Send a typed-response command. Sibling helpers (e.g. engine-bridge-fs.ts) layer on top of the bridge via this. */
-  async request<T>(cmd: string, payload: Record<string, unknown> = {}): Promise<{ ok: boolean; error?: string; data?: T }> {
-    await this.connect()
-    return this._sendWithData<T>({ cmd, ...payload })
+  async request<T>(
+    cmd: string,
+    payload: Record<string, unknown> = {},
+  ): Promise<{ ok: boolean; error?: string; data?: T }> {
+    await this.connect();
+    return this._sendWithData<T>({ cmd, ...payload });
   }
 
-  async getAgentState(key: string): Promise<{ ok: boolean; error?: string; agents?: import('../shared/types').AgentStateUpdate[] }> {
-    const result = await this.request<{ agents?: import('../shared/types').AgentStateUpdate[] }>('get_agent_state', { key })
-    return { ok: result.ok, error: result.error, agents: result.data?.agents }
+  async getAgentState(key: string): Promise<{
+    ok: boolean;
+    error?: string;
+    agents?: import("../shared/types").AgentStateUpdate[];
+  }> {
+    const result = await this.request<{
+      agents?: import("../shared/types").AgentStateUpdate[];
+    }>("get_agent_state", { key });
+    return { ok: result.ok, error: result.error, agents: result.data?.agents };
   }
 
   /** Track the conversation ID for a session so it can be restored on reconnect. */
   updateSessionConversationId(key: string, conversationId: string): void {
-    const entry = this.activeSessions.get(key)
+    const entry = this.activeSessions.get(key);
     if (entry) {
-      entry.conversationId = conversationId
+      entry.conversationId = conversationId;
     }
   }
 
@@ -347,19 +247,47 @@ export class EngineBridge extends EventEmitter {
    * placeholders. Returning a copy keeps callers from mutating bridge state.
    */
   getSessionConfig(key: string): EngineConfig | undefined {
-    const entry = this.activeSessions.get(key)
-    return entry ? { ...entry.config } : undefined
+    const entry = this.activeSessions.get(key);
+    return entry ? { ...entry.config } : undefined;
   }
 
-  async sendPrompt(key: string, text: string, model?: string, appendSystemPrompt?: string, imageAttachments?: ImageAttachmentPayload[], implementationPhase?: boolean, enterPlanModeDescription?: string, planModeSparseReminder?: string, planFilePath?: string, bashAllowlistAdditionsForThisPrompt?: string[], thinkingEffort?: string, resolveSlash?: boolean, clientWorkspaceContext?: ClientWorkspaceContext, deliveryId?: string): Promise<{ ok: boolean; error?: string; data?: { accepted?: boolean; alreadyAccepted?: boolean } }> {
-    // Message construction and the diagnostic log line live in
-    // engine-bridge-prompts.ts so this file stays under the 600-line cap
-    // as the send_prompt wire surface grows. See that sibling for the
-    // per-field omitempty pattern and the bash-additions log convention.
-    const args = { key, text, model, appendSystemPrompt, imageAttachments, implementationPhase, enterPlanModeDescription, planModeSparseReminder, planFilePath, bashAllowlistAdditionsForThisPrompt, thinkingEffort, resolveSlash, clientWorkspaceContext, deliveryId }
-    log(buildSendPromptLogLine(args))
-    await this.connect()
-    return this._sendWithResult(buildSendPromptMessage(args))
+  async sendPrompt(
+    key: string,
+    text: string,
+    model?: string,
+    appendSystemPrompt?: string,
+    imageAttachments?: import("../shared/types").ImageAttachmentPayload[],
+    implementationPhase?: boolean,
+    enterPlanModeDescription?: string,
+    planModeSparseReminder?: string,
+    planFilePath?: string,
+    bashAllowlistAdditionsForThisPrompt?: string[],
+    thinkingEffort?: string,
+    resolveSlash?: boolean,
+    clientWorkspaceContext?: import("../shared/types-engine").ClientWorkspaceContext,
+    deliveryId?: string,
+  ): Promise<{
+    ok: boolean;
+    error?: string;
+    data?: { accepted?: boolean; alreadyAccepted?: boolean };
+  }> {
+    return core.sendPrompt(
+      this,
+      key,
+      text,
+      model,
+      appendSystemPrompt,
+      imageAttachments,
+      implementationPhase,
+      enterPlanModeDescription,
+      planModeSparseReminder,
+      planFilePath,
+      bashAllowlistAdditionsForThisPrompt,
+      thinkingEffort,
+      resolveSlash,
+      clientWorkspaceContext,
+      deliveryId,
+    );
   }
 
   /**
@@ -368,98 +296,78 @@ export class EngineBridge extends EventEmitter {
    * until both abort writes reach a live socket. Live-write failure uses the
    * current generation, so only a later connection can retry it.
    */
-  pendingAborts = new Map<string, number>()
+  pendingAborts = new Map<string, number>();
+  pendingAbortScopes = new Map<string, AbortScope>();
 
-  nextSessionGeneration(): number { return ++this.sessionGeneration }
-
-  retirePendingAbort(key: string): void { this.pendingAborts.delete(key) }
-
-  sendAbort(key: string): void {
-    const alive = !!(this.conn && !this.conn.destroyed)
-    log('send_abort', { key, connected: this.connected, alive })
-    if (!alive) {
-      const sessionGeneration = this.activeSessions.get(key)?.generation ?? this._reRegisterGeneration
-      this.pendingAborts.set(key, sessionGeneration)
-      warn('send_abort: socket dead, deferring abort to reconnect', { key, pending: this.pendingAborts.size, session_generation: sessionGeneration })
-      this._scheduleReconnect()
-      return
-    }
-    if (this._send({ cmd: 'abort', key })) {
-      this.pendingAborts.delete(key)
-      return
-    }
-    const sessionGeneration = this.activeSessions.get(key)?.generation ?? this._reRegisterGeneration
-    this.pendingAborts.set(key, sessionGeneration)
-    warn('send_abort: write failed, deferring abort to reconnect', { key, pending: this.pendingAborts.size, session_generation: sessionGeneration })
-    this.conn?.destroy()
-    this._scheduleReconnect()
+  nextSessionGeneration(): number {
+    return abort.nextSessionGeneration(this);
   }
 
-  /**
-   * Deliver deferred interrupts before re-registering sessions.
-   *
-   * Do not clear an entry until both writes reached this connection. A socket
-   * can die between writes; keeping the entry lets the next generation retry
-   * instead of silently resurrecting work the operator aborted.
-   */
+  retirePendingAbort(key: string): void {
+    abort.retirePendingAbort(this, key);
+  }
+
+  sendAbort(key: string, scope: AbortScope = "all"): void {
+    abort.sendAbort(this, key, scope);
+  }
+
   flushPendingAborts(): void {
-    if (this.pendingAborts.size === 0) return
-    const generation = this._reRegisterGeneration
-    log('flush_pending_aborts', { count: this.pendingAborts.size, generation })
-    for (const [key, requestedGeneration] of this.pendingAborts) {
-      const activeGeneration = this.activeSessions.get(key)?.generation
-      if (activeGeneration !== undefined && activeGeneration !== requestedGeneration) {
-        this.pendingAborts.delete(key)
-        continue
-      }
-      if (activeGeneration === undefined && requestedGeneration >= generation) continue
-      const abortSent = this._send({ cmd: 'abort', key })
-      const subtreeAbortSent = abortSent && this._send({ cmd: 'abort_agent', key, agentName: '', subtree: true })
-      if (!subtreeAbortSent) {
-        warn('flush_pending_aborts: retaining undelivered abort', { key, requested_generation: requestedGeneration, generation })
-        continue
-      }
-      this.pendingAborts.delete(key)
-      this.activeSessions.delete(key)
-      this.emit('abort-delivered', key)
-    }
+    abort.flushPendingAborts(this);
+  }
+
+  sendAbortDispatch(key: string, dispatchId: string): void {
+    abort.sendAbortDispatch(this, key, dispatchId);
+  }
+
+  async stopBackgroundTask(
+    key: string,
+    taskId: string,
+  ): Promise<{ ok: boolean; status?: string; error?: string }> {
+    return core.stopBackgroundTask(this, key, taskId);
   }
 
   sendSteer(key: string, message: string, clientMessageId?: string): void {
-    log('send_steer', { key, len: message.length, client_message_id: clientMessageId ?? '' })
-    this._send({ cmd: 'steer_agent', key, agentName: '', message, ...(clientMessageId ? { clientMessageId } : {}) })
+    core.sendSteer(this, key, message, clientMessageId);
   }
 
-  sendAbortAgent(key: string, agentName: string, subtree: boolean): void {
-    log('send_abort_agent', { key, agent: agentName, subtree, connected: this.connected })
-    this._send({ cmd: 'abort_agent', key, agentName, subtree })
-  }
-
-  async sendDialogResponse(key: string, dialogId: string, value: any): Promise<void> {
-    debug('send_dialog_response', { key, dialog_id: dialogId })
-    this._send({ cmd: 'dialog_response', key, dialogId, value })
+  async sendDialogResponse(
+    key: string,
+    dialogId: string,
+    value: any,
+  ): Promise<void> {
+    core.sendDialogResponse(this, key, dialogId, value);
   }
 
   async sendCommand(key: string, command: string, args: string): Promise<void> {
-    log('send_command', { key, command })
-    this._send({ cmd: 'command', key, command, args })
+    core.sendCommand(this, key, command, args);
   }
 
   async stopSession(key: string): Promise<void> {
-    log('stop_session', { key })
-    this.activeSessions.delete(key)
-    this.retirePendingAbort(key)
-    this._send({ cmd: 'stop_session', key })
+    core.stopSession(this, key);
   }
 
-  // Tree-native rewind RPCs. Bodies live in engine-bridge-conversations.ts
-  // (same delegation pattern as the conversation-data RPCs below).
-  async branchSessionBefore(key: string, entryId: string): Promise<void> { return conv.branchSessionBefore(this, key, entryId) }
-  async rewindSession(key: string, target: { entryId?: string; userTurnIndex?: number }): Promise<{ ok: boolean; error?: string }> { return conv.rewindSession(this, key, target) }
+  // Tree-native rewind RPCs. Bodies live in engine-bridge-conversations.ts.
+  async branchSessionBefore(key: string, entryId: string): Promise<void> {
+    return conv.branchSessionBefore(this, key, entryId);
+  }
+  async rewindSession(
+    key: string,
+    target: { entryId?: string; userTurnIndex?: number },
+  ): Promise<{ ok: boolean; error?: string }> {
+    return conv.rewindSession(this, key, target);
+  }
 
-  sendPermissionResponse(key: string, questionId: string, optionId: string): void {
-    log('send_permission_response', { key, question_id: questionId, option_id: optionId })
-    this._send({ cmd: 'permission_response', key, questionId, optionId })
+  sendPermissionResponse(
+    key: string,
+    questionId: string,
+    optionId: string,
+  ): void {
+    log("send_permission_response", {
+      key,
+      question_id: questionId,
+      option_id: optionId,
+    });
+    this._send({ cmd: "permission_response", key, questionId, optionId });
   }
 
   sendElicitationResponse(
@@ -469,36 +377,43 @@ export class EngineBridge extends EventEmitter {
     cancelled: boolean,
     declined = false,
   ): void {
-    log('send_elicitation_response', { key, request_id: requestId, cancelled, declined })
+    log("send_elicitation_response", {
+      key,
+      request_id: requestId,
+      cancelled,
+      declined,
+    });
     this._send({
-      cmd: 'elicitation_response',
+      cmd: "elicitation_response",
       key,
       elicitRequestId: requestId,
       elicitResponse: response,
       elicitCancelled: cancelled,
       elicitDeclined: declined,
-    })
+    });
   }
 
-  sendRaw(payload: Record<string, unknown>): void { this._send(payload) }
+  sendRaw(payload: Record<string, unknown>): void {
+    this._send(payload);
+  }
 
-  sendSetPlanMode(key: string, enabled: boolean, allowedTools?: string[], source?: string, allowedBashCommands?: string[], planFilePath?: string): void {
-    log('send_set_plan_mode', { key, enabled, source: source ?? 'unknown', bash_cmd_count: allowedBashCommands?.length ?? 0, plan_file_path: planFilePath ?? '' })
-    // planFilePath restores plan-file continuity on a plan-mode toggle: when
-    // the engine session was replaced (rebound) it lost its in-memory path,
-    // and the engine's set_plan_mode handler re-adopts this path (if it exists
-    // on disk) so the next prompt reuses the conversation's existing plan
-    // instead of allocating a fresh slug. Omitted when empty — the engine
-    // treats absence as "no restore", preserving prior behavior.
-    this._send({
-      cmd: 'set_plan_mode',
+  sendSetPlanMode(
+    key: string,
+    enabled: boolean,
+    allowedTools?: string[],
+    source?: string,
+    allowedBashCommands?: string[],
+    planFilePath?: string,
+  ): void {
+    core.sendSetPlanMode(
+      this,
       key,
       enabled,
       allowedTools,
       source,
-      planModeAllowedBashCommands: allowedBashCommands,
-      ...(planFilePath ? { planFilePath } : {}),
-    })
+      allowedBashCommands,
+      planFilePath,
+    );
   }
 
   // ─── Conversation-data RPCs ───
@@ -509,31 +424,55 @@ export class EngineBridge extends EventEmitter {
   // single-line delegate — see the sibling file for behavior, logging,
   // and wire-protocol contract notes.
 
-  async listStoredSessions(limit?: number): Promise<any[]> { return conv.listStoredSessions(this, limit) }
+  async listStoredSessions(limit?: number): Promise<any[]> {
+    return conv.listStoredSessions(this, limit);
+  }
 
-  async loadSessionHistory(sessionId: string): Promise<any[]> { return conv.loadSessionHistory(this, sessionId) }
+  async loadSessionHistory(sessionId: string): Promise<any[]> {
+    return conv.loadSessionHistory(this, sessionId);
+  }
 
   // Discover filesystem `.md`/skill slash templates (the engine OWNS slash
   // resolution). `claudeCompat` gates the .claude roots engine-side. Mapping +
   // contract live in the sibling file.
-  discoverSlashCommands(workingDir: string, claudeCompat: boolean): Promise<DiscoveredCommand[]> { return conv.discoverSlashCommands(this, workingDir, claudeCompat) }
-
-  async loadChainHistory(sessionIds: string[]): Promise<any[]> { return conv.loadChainHistory(this, sessionIds) }
-
-  async getConversation(conversationId: string, offset = 0, limit = 50): Promise<any> { return conv.getConversation(this, conversationId, offset, limit) }
-
-  async deleteStoredConversations(sessionIds: string[]): Promise<{ deleted: number }> {
-    return conv.deleteStoredConversations(this, sessionIds)
+  discoverSlashCommands(
+    workingDir: string,
+    claudeCompat: boolean,
+  ): Promise<DiscoveredCommand[]> {
+    return conv.discoverSlashCommands(this, workingDir, claudeCompat);
   }
 
-  async clearConversationFile(conversationId: string): Promise<void> { return conv.clearConversationFile(this, conversationId) }
+  async loadChainHistory(sessionIds: string[]): Promise<any[]> {
+    return conv.loadChainHistory(this, sessionIds);
+  }
 
-  async saveSessionLabel(sessionId: string, label: string): Promise<{ ok: boolean; error?: string }> {
-    return conv.saveSessionLabel(this, sessionId, label)
+  async getConversation(
+    conversationId: string,
+    offset = 0,
+    limit = 50,
+  ): Promise<any> {
+    return conv.getConversation(this, conversationId, offset, limit);
+  }
+
+  async deleteStoredConversations(
+    sessionIds: string[],
+  ): Promise<{ deleted: number }> {
+    return conv.deleteStoredConversations(this, sessionIds);
+  }
+
+  async clearConversationFile(conversationId: string): Promise<void> {
+    return conv.clearConversationFile(this, conversationId);
+  }
+
+  async saveSessionLabel(
+    sessionId: string,
+    label: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    return conv.saveSessionLabel(this, sessionId, label);
   }
 
   async generateTitle(text: string): Promise<string> {
-    return conv.generateTitle(this, text)
+    return conv.generateTitle(this, text);
   }
 
   async migrateConversation(
@@ -541,36 +480,102 @@ export class EngineBridge extends EventEmitter {
     targetFormat: string,
     targetDir: string,
     sourceDir: string,
-  ): Promise<{ ok: boolean; error?: string; data?: { newSessionId: string; outputPath: string; messageCount: number; contentHash: string } }> {
-    return conv.migrateConversation(this, sessionId, targetFormat, targetDir, sourceDir)
+  ): Promise<{
+    ok: boolean;
+    error?: string;
+    data?: {
+      newSessionId: string;
+      outputPath: string;
+      messageCount: number;
+      contentHash: string;
+    };
+  }> {
+    return conv.migrateConversation(
+      this,
+      sessionId,
+      targetFormat,
+      targetDir,
+      sourceDir,
+    );
   }
 
   // Model / credential / delegated-CLI provider RPCs delegate to
   // engine-bridge-providers.ts (file-size cap).
-  async listModels(): Promise<{ models: any[]; providers: any[] }> { return prov.listModels(this) }
-  async resolveModelTier(tier: string): Promise<{ tier: string; model: string; fallbacks: string[]; configured: boolean }> { return prov.resolveModelTier(this, tier) }
-  async listModelTiers(): Promise<ModelTier[]> { return prov.listModelTiers(this) }
-  async setModelTier(tier: ModelTier): Promise<{ ok: boolean; error?: string }> { return prov.setModelTier(this, tier) }
-  async removeModelTier(name: string): Promise<{ ok: boolean; error?: string }> { return prov.removeModelTier(this, name) }
-  async storeCredential(provider: string, credential: string): Promise<{ ok: boolean; error?: string }> { return prov.storeCredential(this, provider, credential) }
-  async refreshModels(provider?: string): Promise<{ ok: boolean; error?: string }> { return prov.refreshModels(this, provider) }
-  async providerLogin(provider: string): Promise<{ ok: boolean; error?: string }> { return prov.providerLogin(this, provider) }
-  async providerLoginCancel(provider: string): Promise<{ ok: boolean; error?: string }> { return prov.providerLoginCancel(this, provider) }
-  async providerLoginCode(provider: string, code: string): Promise<{ ok: boolean; error?: string }> { return prov.providerLoginCode(this, provider, code) }
-  async providerLogout(provider: string): Promise<{ ok: boolean; error?: string }> { return prov.providerLogout(this, provider) }
+  async listModels(): Promise<{ models: any[]; providers: any[] }> {
+    return prov.listModels(this);
+  }
+  async resolveModelTier(tier: string): Promise<{
+    tier: string;
+    model: string;
+    fallbacks: string[];
+    configured: boolean;
+  }> {
+    return prov.resolveModelTier(this, tier);
+  }
+  async listModelTiers(): Promise<ModelTier[]> {
+    return prov.listModelTiers(this);
+  }
+  async setModelTier(
+    tier: ModelTier,
+  ): Promise<{ ok: boolean; error?: string }> {
+    return prov.setModelTier(this, tier);
+  }
+  async removeModelTier(
+    name: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    return prov.removeModelTier(this, name);
+  }
+  async storeCredential(
+    provider: string,
+    credential: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    return prov.storeCredential(this, provider, credential);
+  }
+  async refreshModels(
+    provider?: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    return prov.refreshModels(this, provider);
+  }
+  async providerLogin(
+    provider: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    return prov.providerLogin(this, provider);
+  }
+  async providerLoginCancel(
+    provider: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    return prov.providerLoginCancel(this, provider);
+  }
+  async providerLoginCode(
+    provider: string,
+    code: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    return prov.providerLoginCode(this, provider, code);
+  }
+  async providerLogout(
+    provider: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    return prov.providerLogout(this, provider);
+  }
 
-  sendReconcileState(key: string): void { sendReconcileStateImpl(this, key) }
-  sendQuerySessionStatus(key: string): void { sendQuerySessionStatusImpl(this, key) }
-  sendResolvePermissionDenials(key: string): void { sendResolvePermissionDenialsImpl(this, key) }
+  sendReconcileState(key: string): void {
+    sendReconcileStateImpl(this, key);
+  }
+  sendQuerySessionStatus(key: string): void {
+    sendQuerySessionStatusImpl(this, key);
+  }
+  sendResolvePermissionDenials(key: string): void {
+    sendResolvePermissionDenialsImpl(this, key);
+  }
 
   stopByPrefix(prefix: string): void {
     for (const key of this.activeSessions.keys()) {
       if (key.startsWith(prefix)) {
-        this.activeSessions.delete(key)
-        this.retirePendingAbort(key)
+        this.activeSessions.delete(key);
+        this.retirePendingAbort(key);
       }
     }
-    this._send({ cmd: 'stop_by_prefix', prefix })
+    this._send({ cmd: "stop_by_prefix", prefix });
   }
 
   /**
@@ -578,12 +583,18 @@ export class EngineBridge extends EventEmitter {
    * engine-bridge-lifecycle.disconnect for why the old name (`stopAll`) was a
    * defect generator.
    */
-  async disconnect(): Promise<void> { return disconnectImpl(this) }
-  shutdown(): void { this._send({ cmd: 'shutdown' }) }
-  async shutdownAndWait(timeoutMs = 3000): Promise<void> { return shutdownAndWaitImpl(this, timeoutMs) }
+  async disconnect(): Promise<void> {
+    return disconnectImpl(this);
+  }
+  shutdown(): void {
+    this._send({ cmd: "shutdown" });
+  }
+  async shutdownAndWait(timeoutMs = 3000): Promise<void> {
+    return shutdownAndWaitImpl(this, timeoutMs);
+  }
 
   isRunning(_key: string): boolean {
     // Can't synchronously check -- return true if connected
-    return this.connected
+    return this.connected;
   }
 }

@@ -1,20 +1,34 @@
-import React from 'react'
-import { CaretRight } from '@phosphor-icons/react'
-import { meta, getAgentColor, getDispatches, mostRecentDispatch } from './agent-panel-helpers'
-import { resolveAgentDotModel } from '../lib/agent-dot-model'
-import { StatusDot, StatusDotStack } from './TabStripStatusDot'
-import { DurationDisplay } from './DurationDisplay'
-import type { useColors } from '../theme'
-import type { AgentStateUpdate } from '../../shared/types'
+import React from "react";
+import { CaretRight } from "@phosphor-icons/react";
+import {
+  meta,
+  getAgentColor,
+  getDispatches,
+  mostRecentDispatch,
+} from "./agent-panel-helpers";
+import { resolveAgentDotModel } from "../lib/agent-dot-model";
+import { StatusDotStack } from "./TabStripStatusDot";
+import { DurationDisplay } from "./DurationDisplay";
+import { DispatchStopControl } from "./DispatchStopControl";
+import { useSessionStore } from "../stores/sessionStore";
+import type { useColors } from "../theme";
+import type { AgentStateUpdate } from "../../shared/types";
+import type { DispatchInfo } from "../../shared/types-engine";
 
 interface Props {
-  agent: AgentStateUpdate
-  /** Full tree retains legacy descendant fallback for older dispatch metadata. */
-  allAgents: AgentStateUpdate[]
-  colors: ReturnType<typeof useColors>
+  agent: AgentStateUpdate;
+  /** The full, unfiltered agents array — used to derive the yellow
+   *  "waiting on children" state via childAgentsOf. */
+  allAgents: AgentStateUpdate[];
+  colors: ReturnType<typeof useColors>;
   /** Left indent (px) for a nested dispatch, 0 for root-level rows. */
-  nestIndent: number
-  onToggle: () => void
+  nestIndent: number;
+  /** Dispatch data and pager selection for the row-level Stop control. */
+  dispatches?: DispatchInfo[];
+  dispIdx?: number;
+  /** Owning tab, required for row-level dispatch Stop controls. */
+  tabId?: string;
+  onToggle: () => void;
 }
 
 /**
@@ -39,6 +53,9 @@ export function AgentRow({
   allAgents,
   colors,
   nestIndent,
+  dispatches: providedDispatches,
+  dispIdx = 0,
+  tabId,
   onToggle,
 }: Props) {
   // The row's status indicator. `resolveAgentDotModel` takes no selected-
@@ -46,17 +63,30 @@ export function AgentRow({
   // recent dispatch and the background dot always aggregates the earlier ones,
   // so paging around inside the detail panel can never repoint what this row
   // reports. See agent-dot-model.ts for why the two are kept separate.
-  const dotModel = resolveAgentDotModel(agent, allAgents, colors)
+  const dotModel = resolveAgentDotModel(agent, allAgents, colors);
+  const dispatches = providedDispatches ?? getDispatches(agent);
+  const dispatchCount = dispatches.length;
+  const selectedDispatch = dispatches[dispIdx];
+  const abortDispatch = useSessionStore((s) => s.abortDispatch);
+  const abortDispatches = useSessionStore((s) => s.abortDispatches);
+  const runningDispatchIds = dispatches
+    .filter((dispatch) => (dispatch.status || agent.status) === "running")
+    .map((dispatch) => dispatch.id)
+    .filter(Boolean);
+  const selectedDispatchId = selectedDispatch?.id ?? "";
+  const stoppableDispatchId = runningDispatchIds.includes(selectedDispatchId)
+    ? selectedDispatchId
+    : (runningDispatchIds.at(-1) ?? "");
   // Duration follows the same subject as the foreground dot — the most recent
   // dispatch — so the clock and the dot beside it never describe different
   // dispatches. Falls back to the agent's own metadata for a roster row that
   // carries no dispatch at all.
-  const dispatches = getDispatches(agent)
-  const dispatchCount = dispatches.length
-  const recent = mostRecentDispatch(dispatches)
-  const durStartTime = recent?.startTime ?? (agent.metadata?.startTime as number | undefined)
-  const durElapsed = recent?.elapsed ?? (agent.metadata?.elapsed as number | undefined)
-  const durStatus = recent?.status || agent.status
+  const recent = mostRecentDispatch(dispatches);
+  const durStartTime =
+    recent?.startTime ?? (agent.metadata?.startTime as number | undefined);
+  const durElapsed =
+    recent?.elapsed ?? (agent.metadata?.elapsed as number | undefined);
+  const durStatus = recent?.status || agent.status;
 
   return (
     <div>
@@ -64,21 +94,21 @@ export function AgentRow({
         data-ion-ui
         onClick={onToggle}
         style={{
-          display: 'flex',
-          alignItems: 'center',
+          display: "flex",
+          alignItems: "center",
           height: 22,
-          cursor: 'pointer',
-          userSelect: 'none',
+          cursor: "pointer",
+          userSelect: "none",
           paddingLeft: nestIndent || undefined,
         }}
       >
         {/* Name pill + status dot + duration (iOS AgentBarRow parity) */}
         <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
+            display: "flex",
+            alignItems: "center",
             gap: 6,
-            padding: '0 8px',
+            padding: "0 8px",
             flexShrink: 0,
           }}
         >
@@ -88,19 +118,21 @@ export function AgentRow({
               borderRadius: 999,
               background: getAgentColor(agent),
               opacity: 0.85,
-              padding: '2px 8px',
+              padding: "2px 8px",
               fontSize: 11,
               fontWeight: 700,
               color: colors.textOnAccent,
-              whiteSpace: 'nowrap',
+              whiteSpace: "nowrap",
               flexShrink: 0,
             }}
           >
-            {meta(agent, 'displayName', agent.name)}
+            {meta(agent, "displayName", agent.name)}
           </span>
           {dispatchCount > 0 && (
-            <span style={{ fontSize: 9, color: colors.textTertiary, flexShrink: 0 }}>
-              {dispatchCount} {dispatchCount === 1 ? 'dispatch' : 'dispatches'}
+            <span
+              style={{ fontSize: 9, color: colors.textTertiary, flexShrink: 0 }}
+            >
+              {dispatchCount} {dispatchCount === 1 ? "dispatch" : "dispatches"}
             </span>
           )}
           {/* Standardized status dot(s) — same vocabulary as the tab and
@@ -109,7 +141,7 @@ export function AgentRow({
               finished most-recent dispatch cannot hide an older one that is
               still waiting on a live agent. The ring uses the panel surface so
               the two layers separate visually. */}
-          {dotModel.kind === 'stack' ? (
+          {dotModel.kind === "stack" ? (
             <StatusDotStack
               foreground={dotModel.foreground}
               background={dotModel.background}
@@ -117,19 +149,32 @@ export function AgentRow({
               size={8}
             />
           ) : (
-            <StatusDot
-              derived={{
-                bg: dotModel.dot.bg,
-                pulse: dotModel.dot.pulse,
-                glow: Boolean(dotModel.dot.glowColor),
-                glowColor: dotModel.dot.glowColor,
+            <span
+              className={`rounded-full flex-shrink-0${dotModel.dot.pulse ? " animate-pulse-dot" : ""}`}
+              style={{
+                width: 8,
+                height: 8,
+                background: dotModel.dot.bg,
+                ...(dotModel.dot.glowColor
+                  ? { boxShadow: `0 0 6px 2px ${dotModel.dot.glowColor}` }
+                  : {}),
               }}
-              size={8}
             />
           )}
           {/* Duration (live-ticking while running) */}
-          <span style={{ fontSize: 10, color: colors.textTertiary, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-            <DurationDisplay startTime={durStartTime} elapsed={durElapsed} status={durStatus} />
+          <span
+            style={{
+              fontSize: 10,
+              color: colors.textTertiary,
+              fontVariantNumeric: "tabular-nums",
+              flexShrink: 0,
+            }}
+          >
+            <DurationDisplay
+              startTime={durStartTime}
+              elapsed={durElapsed}
+              status={durStatus}
+            />
           </span>
         </div>
 
@@ -138,24 +183,44 @@ export function AgentRow({
           style={{
             flex: 1,
             minWidth: 0,
-            padding: '0 8px',
+            padding: "0 8px",
             fontSize: 11,
             color: colors.textTertiary,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
           }}
         >
-          {meta(agent, 'lastWork', '')}
+          {meta(agent, "lastWork", "")}
         </div>
+
+        {/* Stop selected dispatch; caret stops every running instance represented
+            by this row. Actions stop propagation inside DispatchStopControl so
+            they never also open/collapse the preview. */}
+        {tabId && stoppableDispatchId && (
+          <DispatchStopControl
+            compact
+            dispatchId={stoppableDispatchId}
+            runningDispatchIds={runningDispatchIds}
+            onStop={(dispatchId) => abortDispatch(tabId, dispatchId)}
+            onStopAll={(dispatchIds) => abortDispatches(tabId, dispatchIds)}
+          />
+        )}
 
         {/* Open-detail caret. Static: the row never expands in place, so the
             caret is an affordance for "this opens", not an expanded/collapsed
             state indicator. */}
-        <div style={{ padding: '0 6px', display: 'flex', alignItems: 'center', color: colors.textTertiary }}>
+        <div
+          style={{
+            padding: "0 6px",
+            display: "flex",
+            alignItems: "center",
+            color: colors.textTertiary,
+          }}
+        >
           <CaretRight size={10} />
         </div>
       </div>
     </div>
-  )
+  );
 }

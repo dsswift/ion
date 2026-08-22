@@ -10,21 +10,22 @@
  */
 import type { SyncAllResult, SyncAllWorktreeOutcome } from "../../shared/types";
 
-/** One conflicted or refused directory, as the alert surfaces see it. */
+/**
+ * One conflicted or refused directory, as the alert surfaces see it.
+ *
+ * `source`, `dismissed`, and `recordedAt` are marked required here (matching
+ * `StudioGitConflictAlert` in shared/types-studio.ts) because the only writer,
+ * `recordConflictAlert` in git-conflict-slice.ts, always stamps all three —
+ * every call site supplies `source` and the slice always sets `dismissed` and
+ * `recordedAt` on write. An optional type here was strictly weaker than the
+ * real invariant, and let the studio-mirror projection in
+ * session-store-worktree-sync.ts spread a `GitConflictAlert[]` directly where
+ * `StudioGitConflictAlert[]` is expected without a cast.
+ */
 export interface GitConflictAlert {
   /** What raised it: a failed sync, a failed land, or an inventory detection. */
   source: "sync" | "land" | "detected";
-  /**
-   * What kind of failure this is. `conflict` (the default when absent) means
-   * an operation is stuck mid-way and the ConflictsDialog can resolve it.
-   * `refusal` means the verb declined to start — a dirty worktree refusing a
-   * sync — so there is NO in-progress operation to resolve; the remediation
-   * is in `message` (commit or stash), and the toast offers no Resolve.
-   *
-   * Lifecycle differs too: a conflict clears when the inventory sees the
-   * operation finish, a refusal clears when the worktree goes clean or the
-   * next sync succeeds (there is no git state that says "was refused").
-   */
+  /** Whether this is a conflict needing resolution or an actionable refusal. */
   kind?: "conflict" | "refusal";
   /** The in-progress operation, when known. */
   operationState?: "rebasing" | "merging" | "cherry-picking";
@@ -39,7 +40,7 @@ export interface GitConflictAlert {
 
 /**
  * The sync-all pipeline's live state — what the progress banner, the confirm
- * gate, and the Studio mirror render. One object because the phases are a strict
+ * gate, and the ATV mirror render. One object because the phases are a strict
  * sequence; see stores/slices/worktree-pipeline-slice.ts for the machine.
  */
 export interface WorktreePipelineState {
@@ -118,9 +119,9 @@ export interface FileEditorTab {
    */
   readError?: string;
   /**
-   * Per-tab word-wrap override. undefined = follow the editorWordWrap
-   * preference (the default); true/false = this tab's explicit choice
-   * (Studio surface editor tabs expose the toggle per-tab).
+   * Per-tab word-wrap override. Absent means the tab follows the global
+   * `editorWordWrap` preference default; toggleEditorWordWrap flips away from
+   * that effective value on first use, then alternates the override directly.
    */
   wordWrap?: boolean;
 }

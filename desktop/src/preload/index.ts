@@ -1,11 +1,17 @@
-import { contextBridge, ipcRenderer } from 'electron'
-import { IPC } from '../shared/types'
-import { legacyReviewToStage } from '../shared/types-git'
-import { studioApi } from './studio-api'
-import type { NormalizedEvent, EnrichedError, GitEvent, DeepLinkConfirmRequest, DeepLinkConfirmResult } from '../shared/types'
-import type { IonAPI } from './ionapi'
+import { contextBridge, ipcRenderer } from "electron";
+import { IPC } from "../shared/types";
+import { studioApi } from "./studio-api";
+import { gitApi } from "./git-api";
+import { engineApi } from "./engine-api";
+import type {
+  NormalizedEvent,
+  EnrichedError,
+  DeepLinkConfirmRequest,
+  DeepLinkConfirmResult,
+} from "../shared/types";
+import type { IonAPI } from "./ionapi";
 
-export type { IonAPI } from './ionapi'
+export type { IonAPI } from "./ionapi";
 
 /**
  * Wrapper registry for the generic `on`/`off` bridge below.
@@ -20,7 +26,7 @@ export type { IonAPI } from './ionapi'
 const ipcWrappers = new WeakMap<
   (...args: any[]) => void,
   Map<string, (_e: Electron.IpcRendererEvent, ...args: any[]) => void>
->()
+>();
 
 const api: IonAPI = {
   // Ion Studio bridge (see preload/studio-api.ts)
@@ -30,25 +36,34 @@ const api: IonAPI = {
   start: () => ipcRenderer.invoke(IPC.START),
   createTab: () => ipcRenderer.invoke(IPC.CREATE_TAB),
   adoptTab: (tabId: string) => ipcRenderer.invoke(IPC.ADOPT_TAB, tabId),
-  prompt: (tabId, requestId, options) => ipcRenderer.invoke(IPC.PROMPT, { tabId, requestId, options }),
+  prompt: (tabId, requestId, options) =>
+    ipcRenderer.invoke(IPC.PROMPT, { tabId, requestId, options }),
   cancel: (requestId) => ipcRenderer.invoke(IPC.CANCEL, requestId),
-  steer: (tabId, message, clientMessageId) => ipcRenderer.send(IPC.STEER, { tabId, message, clientMessageId }),
-  stopTab: (tabId) => ipcRenderer.invoke(IPC.STOP_TAB, tabId),
-  retry: (tabId, requestId, options) => ipcRenderer.invoke(IPC.RETRY, { tabId, requestId, options }),
+  steer: (tabId, message, clientMessageId) =>
+    ipcRenderer.send(IPC.STEER, { tabId, message, clientMessageId }),
+  stopTab: (tabId, scope) => ipcRenderer.invoke(IPC.STOP_TAB, tabId, scope),
+  retry: (tabId, requestId, options) =>
+    ipcRenderer.invoke(IPC.RETRY, { tabId, requestId, options }),
   status: () => ipcRenderer.invoke(IPC.STATUS),
   tabHealth: () => ipcRenderer.invoke(IPC.TAB_HEALTH),
   closeTab: (tabId) => ipcRenderer.invoke(IPC.CLOSE_TAB, tabId),
-  tabMetaChanged: (payload: { tabId: string; title?: string; runCostUsd?: number; totalCostUsd?: number; groupId?: string | null }) =>
-    ipcRenderer.send(IPC.TAB_META_CHANGED, payload),
-  pushRemoteTabStates: (payload) => ipcRenderer.send(IPC.REMOTE_TAB_STATES_PUSH, payload),
+  tabMetaChanged: (payload: {
+    tabId: string;
+    title?: string;
+    runCostUsd?: number;
+    totalCostUsd?: number;
+    groupId?: string | null;
+  }) => ipcRenderer.send(IPC.TAB_META_CHANGED, payload),
+  pushRemoteTabStates: (payload) =>
+    ipcRenderer.send(IPC.REMOTE_TAB_STATES_PUSH, payload),
   selectDirectory: () => ipcRenderer.invoke(IPC.SELECT_DIRECTORY),
   selectExtensionFiles: () => ipcRenderer.invoke(IPC.SELECT_EXTENSION_FILES),
   getEngineHostInfo: () => ipcRenderer.invoke(IPC.GET_ENGINE_HOST_INFO),
   listEngineDirectory: (path: string, showHidden: boolean) =>
     ipcRenderer.invoke(IPC.LIST_ENGINE_DIRECTORY, path, showHidden),
-  engineIsRemote: () => ipcRenderer.invoke(IPC.ENGINE_IS_REMOTE),
   getEnterprisePolicy: () => ipcRenderer.invoke(IPC.GET_ENTERPRISE_POLICY),
-  getEnterprisePolicyFull: () => ipcRenderer.invoke(IPC.GET_ENTERPRISE_POLICY_FULL),
+  getEnterprisePolicyFull: () =>
+    ipcRenderer.invoke(IPC.GET_ENTERPRISE_POLICY_FULL),
   listCustomThemes: () => ipcRenderer.invoke(IPC.THEMES_LIST_CUSTOM),
   openExternal: (url) => ipcRenderer.invoke(IPC.OPEN_EXTERNAL, url),
   getFavicon: (host) => ipcRenderer.invoke(IPC.FAVICON_GET, host),
@@ -57,68 +72,110 @@ const api: IonAPI = {
   attachFileByPath: (path) => ipcRenderer.invoke(IPC.ATTACH_FILE_BY_PATH, path),
   takeScreenshot: () => ipcRenderer.invoke(IPC.TAKE_SCREENSHOT),
   pasteImage: (dataUrl) => ipcRenderer.invoke(IPC.PASTE_IMAGE, dataUrl),
-  transcribeAudio: (audioBase64) => ipcRenderer.invoke(IPC.TRANSCRIBE_AUDIO, audioBase64),
+  transcribeAudio: (audioBase64) =>
+    ipcRenderer.invoke(IPC.TRANSCRIBE_AUDIO, audioBase64),
   getDiagnostics: () => ipcRenderer.invoke(IPC.GET_DIAGNOSTICS),
   respondPermission: (tabId, questionId, optionId) =>
     ipcRenderer.invoke(IPC.RESPOND_PERMISSION, { tabId, questionId, optionId }),
   respondElicitation: (tabId, requestId, response, cancelled, declined) =>
-    ipcRenderer.invoke(IPC.RESPOND_ELICITATION, { tabId, requestId, response, cancelled, declined }),
+    ipcRenderer.invoke(IPC.RESPOND_ELICITATION, {
+      tabId,
+      requestId,
+      response,
+      cancelled,
+      declined,
+    }),
   approveDeniedTools: (tabId: string, toolNames: string[]) =>
     ipcRenderer.invoke(IPC.APPROVE_DENIED_TOOLS, { tabId, toolNames }),
   initSession: (tabId) => ipcRenderer.send(IPC.INIT_SESSION, tabId),
-  ensureEngineSession: (args) => ipcRenderer.invoke(IPC.ENSURE_ENGINE_SESSION, args),
+  ensureEngineSession: (args) =>
+    ipcRenderer.invoke(IPC.ENSURE_ENGINE_SESSION, args),
   resetTabSession: (tabId) => ipcRenderer.send(IPC.RESET_TAB_SESSION, tabId),
-  restartTabSession: (tabId: string) => ipcRenderer.send(IPC.RESTART_TAB_SESSION, tabId),
-  relocateTabSession: (tabId, workingDirectory) => ipcRenderer.invoke(IPC.RELOCATE_TAB_SESSION, { tabId, workingDirectory }),
-  listSessions: (projectPath?: string) => ipcRenderer.invoke(IPC.LIST_SESSIONS, projectPath),
+  restartTabSession: (tabId: string) =>
+    ipcRenderer.send(IPC.RESTART_TAB_SESSION, tabId),
+  relocateTabSession: (tabId, workingDirectory) =>
+    ipcRenderer.invoke(IPC.RELOCATE_TAB_SESSION, { tabId, workingDirectory }),
+  listSessions: (projectPath?: string) =>
+    ipcRenderer.invoke(IPC.LIST_SESSIONS, projectPath),
   listAllSessions: () => ipcRenderer.invoke(IPC.LIST_ALL_SESSIONS),
-  loadSession: (sessionId: string, projectPath?: string, encodedDir?: string) => ipcRenderer.invoke(IPC.LOAD_SESSION, { sessionId, projectPath, encodedDir }),
-  conversationExists: (sessionId: string): Promise<boolean> => ipcRenderer.invoke(IPC.CONVERSATION_EXISTS, sessionId),
+  loadSession: (sessionId: string, projectPath?: string, encodedDir?: string) =>
+    ipcRenderer.invoke(IPC.LOAD_SESSION, {
+      sessionId,
+      projectPath,
+      encodedDir,
+    }),
+  conversationExists: (sessionId: string): Promise<boolean> =>
+    ipcRenderer.invoke(IPC.CONVERSATION_EXISTS, sessionId),
   readPlan: (filePath: string) => ipcRenderer.invoke(IPC.READ_PLAN, filePath),
-  readImageDataUrl: (filePath: string) => ipcRenderer.invoke(IPC.READ_IMAGE_DATA_URL, filePath),
-  discoverCommands: (projectPath: string) => ipcRenderer.invoke(IPC.DISCOVER_COMMANDS, projectPath),
+  readImageDataUrl: (filePath: string) =>
+    ipcRenderer.invoke(IPC.READ_IMAGE_DATA_URL, filePath),
+  discoverCommands: (projectPath: string) =>
+    ipcRenderer.invoke(IPC.DISCOVER_COMMANDS, projectPath),
   listFonts: () => ipcRenderer.invoke(IPC.LIST_FONTS),
-  terminalCreate: (key, cwd) => ipcRenderer.invoke(IPC.TERMINAL_CREATE, { key, cwd }),
-  terminalWrite: (key, data) => ipcRenderer.send(IPC.TERMINAL_DATA, { key, data }),
-  terminalResize: (key, cols, rows) => ipcRenderer.send(IPC.TERMINAL_RESIZE, { key, cols, rows }),
+  terminalCreate: (key, cwd) =>
+    ipcRenderer.invoke(IPC.TERMINAL_CREATE, { key, cwd }),
+  terminalWrite: (key, data) =>
+    ipcRenderer.send(IPC.TERMINAL_DATA, { key, data }),
+  terminalResize: (key, cols, rows) =>
+    ipcRenderer.send(IPC.TERMINAL_RESIZE, { key, cols, rows }),
   terminalDestroy: (key) => ipcRenderer.invoke(IPC.TERMINAL_DESTROY, { key }),
-  terminalAttach: (key, opts) => ipcRenderer.invoke(IPC.TERMINAL_ATTACH, { key, ...opts }),
+  terminalAttach: (key, opts) =>
+    ipcRenderer.invoke(IPC.TERMINAL_ATTACH, { key, ...opts }),
   getActiveUi: () => ipcRenderer.invoke(IPC.GET_ACTIVE_UI),
   setActiveUi: (ui) => ipcRenderer.invoke(IPC.SET_ACTIVE_UI, ui),
-  terminalGetScrollback: (key) => ipcRenderer.invoke(IPC.TERMINAL_GET_SCROLLBACK, { key }),
+  terminalGetScrollback: (key) =>
+    ipcRenderer.invoke(IPC.TERMINAL_GET_SCROLLBACK, { key }),
   terminalActiveTabs: () => ipcRenderer.invoke(IPC.TERMINAL_ACTIVE_TABS),
   onTerminalActivity: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, activity: { key: string; tabId: string; active: boolean }) => callback(activity)
-    ipcRenderer.on(IPC.TERMINAL_ACTIVITY, handler)
-    return () => ipcRenderer.removeListener(IPC.TERMINAL_ACTIVITY, handler)
+    const handler = (
+      _e: Electron.IpcRendererEvent,
+      activity: { key: string; tabId: string; active: boolean },
+    ) => callback(activity);
+    ipcRenderer.on(IPC.TERMINAL_ACTIVITY, handler);
+    return () => ipcRenderer.removeListener(IPC.TERMINAL_ACTIVITY, handler);
   },
   onTerminalData: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, key: string, data: string) => callback(key, data)
-    ipcRenderer.on(IPC.TERMINAL_INCOMING, handler)
-    return () => ipcRenderer.removeListener(IPC.TERMINAL_INCOMING, handler)
+    const handler = (
+      _e: Electron.IpcRendererEvent,
+      key: string,
+      data: string,
+    ) => callback(key, data);
+    ipcRenderer.on(IPC.TERMINAL_INCOMING, handler);
+    return () => ipcRenderer.removeListener(IPC.TERMINAL_INCOMING, handler);
   },
   onTerminalExit: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, key: string, exitCode: number) => callback(key, exitCode)
-    ipcRenderer.on(IPC.TERMINAL_EXIT, handler)
-    return () => ipcRenderer.removeListener(IPC.TERMINAL_EXIT, handler)
+    const handler = (
+      _e: Electron.IpcRendererEvent,
+      key: string,
+      exitCode: number,
+    ) => callback(key, exitCode);
+    ipcRenderer.on(IPC.TERMINAL_EXIT, handler);
+    return () => ipcRenderer.removeListener(IPC.TERMINAL_EXIT, handler);
   },
   // An untrusted ion:// deep link needs the operator's approval before anything
   // runs. Main describes the request; the renderer renders it and answers.
   onDeepLinkConfirmRequest: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, request: DeepLinkConfirmRequest) => callback(request)
-    ipcRenderer.on(IPC.DEEPLINK_CONFIRM_REQUEST, handler)
-    return () => ipcRenderer.removeListener(IPC.DEEPLINK_CONFIRM_REQUEST, handler)
+    const handler = (
+      _e: Electron.IpcRendererEvent,
+      request: DeepLinkConfirmRequest,
+    ) => callback(request);
+    ipcRenderer.on(IPC.DEEPLINK_CONFIRM_REQUEST, handler);
+    return () =>
+      ipcRenderer.removeListener(IPC.DEEPLINK_CONFIRM_REQUEST, handler);
   },
   onDeepLinkConfirmSettled: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, id: string) => callback(id)
-    ipcRenderer.on(IPC.DEEPLINK_CONFIRM_SETTLED, handler)
-    return () => ipcRenderer.removeListener(IPC.DEEPLINK_CONFIRM_SETTLED, handler)
+    const handler = (_e: Electron.IpcRendererEvent, id: string) => callback(id);
+    ipcRenderer.on(IPC.DEEPLINK_CONFIRM_SETTLED, handler);
+    return () =>
+      ipcRenderer.removeListener(IPC.DEEPLINK_CONFIRM_SETTLED, handler);
   },
-  setDeepLinkConfirmAvailability: (owner, available) => ipcRenderer.send(
-    available ? IPC.DEEPLINK_CONFIRM_READY : IPC.DEEPLINK_CONFIRM_UNAVAILABLE,
-    { owner },
-  ),
-  resolveDeepLinkConfirm: (result: DeepLinkConfirmResult) => ipcRenderer.send(IPC.DEEPLINK_CONFIRM_RESULT, result),
+  setDeepLinkConfirmAvailability: (owner, available) =>
+    ipcRenderer.send(
+      available ? IPC.DEEPLINK_CONFIRM_READY : IPC.DEEPLINK_CONFIRM_UNAVAILABLE,
+      { owner },
+    ),
+  resolveDeepLinkConfirm: (result: DeepLinkConfirmResult) =>
+    ipcRenderer.send(IPC.DEEPLINK_CONFIRM_RESULT, result),
   // iOS asked to open a worktree / bench conversation. Tab creation lives in
   // the renderer store (it owns panes and titling), so main relays the intent
   // here rather than duplicating that logic.
@@ -126,52 +183,75 @@ const api: IonAPI = {
     const handler = (
       _e: Electron.IpcRendererEvent,
       arg: { worktreePath: string; newConversation: boolean },
-    ) => callback(arg)
-    ipcRenderer.on('ion:remote-open-worktree-conversation', handler)
-    return () => ipcRenderer.removeListener('ion:remote-open-worktree-conversation', handler)
+    ) => callback(arg);
+    ipcRenderer.on("ion:remote-open-worktree-conversation", handler);
+    return () =>
+      ipcRenderer.removeListener(
+        "ion:remote-open-worktree-conversation",
+        handler,
+      );
   },
   onRemoteRetireWorktree: (callback) => {
     const handler = (
       _e: Electron.IpcRendererEvent,
       arg: { repoPath: string; worktreePath: string; branchName: string },
-    ) => callback(arg)
-    ipcRenderer.on('ion:remote-retire-worktree', handler)
-    return () => ipcRenderer.removeListener('ion:remote-retire-worktree', handler)
+    ) => callback(arg);
+    ipcRenderer.on("ion:remote-retire-worktree", handler);
+    return () =>
+      ipcRenderer.removeListener("ion:remote-retire-worktree", handler);
   },
   onRemoteRetireLandedWorktrees: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, arg: { repoPath: string }) => callback(arg)
-    ipcRenderer.on('ion:remote-retire-landed-worktrees', handler)
-    return () => ipcRenderer.removeListener('ion:remote-retire-landed-worktrees', handler)
+    const handler = (
+      _e: Electron.IpcRendererEvent,
+      arg: { repoPath: string },
+    ) => callback(arg);
+    ipcRenderer.on("ion:remote-retire-landed-worktrees", handler);
+    return () =>
+      ipcRenderer.removeListener("ion:remote-retire-landed-worktrees", handler);
   },
   onRemoteOpenBenchConversation: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, arg: { repoPath: string; sourceBranch: string }) => callback(arg)
-    ipcRenderer.on('ion:remote-open-bench-conversation', handler)
-    return () => ipcRenderer.removeListener('ion:remote-open-bench-conversation', handler)
+    const handler = (
+      _e: Electron.IpcRendererEvent,
+      arg: { repoPath: string; sourceBranch: string },
+    ) => callback(arg);
+    ipcRenderer.on("ion:remote-open-bench-conversation", handler);
+    return () =>
+      ipcRenderer.removeListener("ion:remote-open-bench-conversation", handler);
   },
   onRemoteOpenBenchTerminal: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, arg: { repoPath: string; sourceBranch: string }) => callback(arg)
-    ipcRenderer.on('ion:remote-open-bench-terminal', handler)
-    return () => ipcRenderer.removeListener('ion:remote-open-bench-terminal', handler)
+    const handler = (
+      _e: Electron.IpcRendererEvent,
+      arg: { repoPath: string; sourceBranch: string },
+    ) => callback(arg);
+    ipcRenderer.on("ion:remote-open-bench-terminal", handler);
+    return () =>
+      ipcRenderer.removeListener("ion:remote-open-bench-terminal", handler);
   },
   onRemoteWorktreeAction: (callback) => {
     const channels = [
-      'ion:remote-create-worktree',
-      'ion:remote-convert-worktree-conversation',
-      'ion:remote-rename-worktree',
-      'ion:remote-reprovision-worktree',
-      'ion:remote-recover-bench-conflict',
-      'ion:remote-analyse-bench-verification',
-      'ion:remote-discard-bench-member-recordings',
-      'ion:remote-discard-all-bench-recordings',
-      'ion:remote-worktree-conflict-assist',
-      'ion:remote-bench-conflict-assist',
-    ] as const
+      "ion:remote-create-worktree",
+      "ion:remote-convert-worktree-conversation",
+      "ion:remote-rename-worktree",
+      "ion:remote-reprovision-worktree",
+      "ion:remote-recover-bench-conflict",
+      "ion:remote-analyse-bench-verification",
+      "ion:remote-discard-bench-member-recordings",
+      "ion:remote-discard-all-bench-recordings",
+      "ion:remote-worktree-conflict-assist",
+      "ion:remote-bench-conflict-assist",
+    ] as const;
     const handlers = channels.map((channel) => {
-      const handler = (_e: Electron.IpcRendererEvent, arg: Record<string, unknown>) => callback(channel, arg)
-      ipcRenderer.on(channel, handler)
-      return { channel, handler }
-    })
-    return () => handlers.forEach(({ channel, handler }) => ipcRenderer.removeListener(channel, handler))
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        arg: Record<string, unknown>,
+      ) => callback(channel, arg);
+      ipcRenderer.on(channel, handler);
+      return { channel, handler };
+    });
+    return () =>
+      handlers.forEach(({ channel, handler }) =>
+        ipcRenderer.removeListener(channel, handler),
+      );
   },
   // iOS drives the sync pipeline remotely: start / confirm-ai / cancel /
   // dismiss ride one channel with a verb so the listener stays a single
@@ -179,10 +259,15 @@ const api: IonAPI = {
   onRemoteWorktreePipeline: (callback) => {
     const handler = (
       _e: Electron.IpcRendererEvent,
-      arg: { verb: 'start' | 'confirm-ai' | 'cancel' | 'dismiss'; repoPath: string; sourceBranch?: string },
-    ) => callback(arg)
-    ipcRenderer.on('ion:remote-worktree-pipeline', handler)
-    return () => ipcRenderer.removeListener('ion:remote-worktree-pipeline', handler)
+      arg: {
+        verb: "start" | "confirm-ai" | "cancel" | "dismiss";
+        repoPath: string;
+        sourceBranch?: string;
+      },
+    ) => callback(arg);
+    ipcRenderer.on("ion:remote-worktree-pipeline", handler);
+    return () =>
+      ipcRenderer.removeListener("ion:remote-worktree-pipeline", handler);
   },
   // A worktree earned (or was given) a human title. Both windows listen so the
   // overlay and the Studio mirror rename the row at the same moment.
@@ -190,44 +275,61 @@ const api: IonAPI = {
     const handler = (
       _e: Electron.IpcRendererEvent,
       arg: { repoPath: string; worktreePath: string; title: string },
-    ) => callback(arg)
-    ipcRenderer.on('ion:worktree-titled', handler)
-    return () => ipcRenderer.removeListener('ion:worktree-titled', handler)
+    ) => callback(arg);
+    ipcRenderer.on("ion:worktree-titled", handler);
+    return () => ipcRenderer.removeListener("ion:worktree-titled", handler);
   },
   onWorktreeLanded: (callback) => {
     const handler = (
       _e: Electron.IpcRendererEvent,
-      arg: { repoPath: string; worktreePath: string; prunedBenchPaths: string[] },
-    ) => callback(arg)
-    ipcRenderer.on('ion:worktree-landed', handler)
-    return () => ipcRenderer.removeListener('ion:worktree-landed', handler)
+      arg: {
+        repoPath: string;
+        worktreePath: string;
+        prunedBenchPaths: string[];
+      },
+    ) => callback(arg);
+    ipcRenderer.on("ion:worktree-landed", handler);
+    return () => ipcRenderer.removeListener("ion:worktree-landed", handler);
   },
   onWorktreeFreshnessTick: (callback) => {
     const handler = (
       _e: Electron.IpcRendererEvent,
       arg: { repoPaths: string[] },
-    ) => callback(arg)
-    ipcRenderer.on(IPC.WORKTREE_FRESHNESS_TICK, handler)
-    return () => ipcRenderer.removeListener(IPC.WORKTREE_FRESHNESS_TICK, handler)
+    ) => callback(arg);
+    ipcRenderer.on(IPC.WORKTREE_FRESHNESS_TICK, handler);
+    return () =>
+      ipcRenderer.removeListener(IPC.WORKTREE_FRESHNESS_TICK, handler);
   },
-  executeBash: (id, command, cwd) => ipcRenderer.invoke(IPC.EXECUTE_BASH, { id, command, cwd }),
+  executeBash: (id, command, cwd) =>
+    ipcRenderer.invoke(IPC.EXECUTE_BASH, { id, command, cwd }),
   cancelBash: (id) => ipcRenderer.send(IPC.CANCEL_BASH, id),
   sendRemote: (event) => ipcRenderer.send(IPC.REMOTE_SEND, event),
-  setPermissionMode: (tabId, mode, source, planFilePath) => ipcRenderer.send(IPC.SET_PERMISSION_MODE, { tabId, mode, source, planFilePath }),
-  resolvePermissionDenials: (tabId) => ipcRenderer.send(IPC.RESOLVE_PERMISSION_DENIALS, { tabId }),
+  setPermissionMode: (tabId, mode, source, planFilePath) =>
+    ipcRenderer.send(IPC.SET_PERMISSION_MODE, {
+      tabId,
+      mode,
+      source,
+      planFilePath,
+    }),
+  resolvePermissionDenials: (tabId) =>
+    ipcRenderer.send(IPC.RESOLVE_PERMISSION_DENIALS, { tabId }),
   loadSettings: () => ipcRenderer.invoke(IPC.LOAD_SETTINGS),
   saveSettings: (data) => ipcRenderer.invoke(IPC.SAVE_SETTINGS, data),
   loadTabs: () => ipcRenderer.invoke(IPC.LOAD_TABS),
   saveTabs: (data) => ipcRenderer.invoke(IPC.SAVE_TABS, data),
-  loadTabContent: (tabId: string) => ipcRenderer.invoke(IPC.LOAD_TAB_CONTENT, tabId),
+  loadTabContent: (tabId: string) =>
+    ipcRenderer.invoke(IPC.LOAD_TAB_CONTENT, tabId),
   saveTabContent: (tabId: string, instanceId: string, messages: unknown[]) =>
     ipcRenderer.invoke(IPC.SAVE_TAB_CONTENT, { tabId, instanceId, messages }),
-  deleteTabContent: (tabId: string) => ipcRenderer.invoke(IPC.DELETE_TAB_CONTENT, tabId),
-  saveSessionLabel: (sessionId, customTitle) => ipcRenderer.invoke(IPC.SAVE_SESSION_LABEL, { sessionId, customTitle }),
+  deleteTabContent: (tabId: string) =>
+    ipcRenderer.invoke(IPC.DELETE_TAB_CONTENT, tabId),
+  saveSessionLabel: (sessionId, customTitle) =>
+    ipcRenderer.invoke(IPC.SAVE_SESSION_LABEL, { sessionId, customTitle }),
   loadSessionLabels: () => ipcRenderer.invoke(IPC.LOAD_SESSION_LABELS),
   generateTitle: (text) => ipcRenderer.invoke(IPC.GENERATE_TITLE, text),
   loadSessionChains: () => ipcRenderer.invoke(IPC.LOAD_SESSION_CHAINS),
-  saveSessionChains: (data) => ipcRenderer.invoke(IPC.SAVE_SESSION_CHAINS, data),
+  saveSessionChains: (data) =>
+    ipcRenderer.invoke(IPC.SAVE_SESSION_CHAINS, data),
   getConversation: (conversationId: string, offset = 0, limit = 50) =>
     ipcRenderer.invoke(IPC.GET_CONVERSATION, { conversationId, offset, limit }),
   deleteStoredConversations: (sessionIds: string[]) =>
@@ -236,223 +338,40 @@ const api: IonAPI = {
     ipcRenderer.invoke(IPC.LOAD_CHAIN_HISTORY, sessionIds),
 
   // ─── Conversation backup ───
-  conversationExportPreview: (scope) => ipcRenderer.invoke(IPC.CONVERSATION_EXPORT_PREVIEW, { scope }),
-  conversationExport: (args) => ipcRenderer.invoke(IPC.CONVERSATION_EXPORT, args),
-  conversationRestorePreview: (args) => ipcRenderer.invoke(IPC.CONVERSATION_RESTORE_PREVIEW, args ?? {}),
-  conversationRestore: (args) => ipcRenderer.invoke(IPC.CONVERSATION_RESTORE, args),
+  conversationExportPreview: (scope) =>
+    ipcRenderer.invoke(IPC.CONVERSATION_EXPORT_PREVIEW, { scope }),
+  conversationExport: (args) =>
+    ipcRenderer.invoke(IPC.CONVERSATION_EXPORT, args),
+  conversationRestorePreview: (args) =>
+    ipcRenderer.invoke(IPC.CONVERSATION_RESTORE_PREVIEW, args ?? {}),
+  conversationRestore: (args) =>
+    ipcRenderer.invoke(IPC.CONVERSATION_RESTORE, args),
   onConversationBackupProgress: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, data: { current: number; total: number; label: string }) => callback(data)
-    ipcRenderer.on(IPC.CONVERSATION_BACKUP_PROGRESS, handler)
-    return () => ipcRenderer.removeListener(IPC.CONVERSATION_BACKUP_PROGRESS, handler)
+    const handler = (
+      _e: Electron.IpcRendererEvent,
+      data: { current: number; total: number; label: string },
+    ) => callback(data);
+    ipcRenderer.on(IPC.CONVERSATION_BACKUP_PROGRESS, handler);
+    return () =>
+      ipcRenderer.removeListener(IPC.CONVERSATION_BACKUP_PROGRESS, handler);
   },
 
-  // ─── Git operations ───
-  gitIsRepo: (directory) => ipcRenderer.invoke(IPC.GIT_IS_REPO, directory),
-  gitGraph: (directory, skip, limit, search, author, extra) => ipcRenderer.invoke(IPC.GIT_GRAPH, { directory, skip, limit, search, author, ...(extra ?? {}) }),
-  gitChanges: (directory) => ipcRenderer.invoke(IPC.GIT_CHANGES, { directory }),
-  gitCommit: (directory, message, opts) => {
-    const args = typeof opts === 'boolean'
-      ? { directory, message, amend: opts }
-      : { directory, message, amend: opts?.amend, signoff: opts?.signoff, gpg: opts?.gpg }
-    return ipcRenderer.invoke(IPC.GIT_COMMIT, args)
-  },
-  gitFetch: (directory) => ipcRenderer.invoke(IPC.GIT_FETCH, { directory }),
-  gitPull: (directory) => ipcRenderer.invoke(IPC.GIT_PULL, { directory }),
-  gitPush: (directory) => ipcRenderer.invoke(IPC.GIT_PUSH, { directory }),
-  gitBranches: (directory) => ipcRenderer.invoke(IPC.GIT_BRANCHES, { directory }),
-  gitCheckout: (directory, branch) => ipcRenderer.invoke(IPC.GIT_CHECKOUT, { directory, branch }),
-  gitCreateBranch: (directory, name) => ipcRenderer.invoke(IPC.GIT_CREATE_BRANCH, { directory, name }),
-  gitDiff: (directory, path, staged) => ipcRenderer.invoke(IPC.GIT_DIFF, { directory, path, staged }),
-  gitStage: (directory, paths) => ipcRenderer.invoke(IPC.GIT_STAGE, { directory, paths }),
-  gitUnstage: (directory, paths) => ipcRenderer.invoke(IPC.GIT_UNSTAGE, { directory, paths }),
-  gitDiscard: (directory, paths) => ipcRenderer.invoke(IPC.GIT_DISCARD, { directory, paths }),
-  gitDeleteBranch: (directory, branch) => ipcRenderer.invoke(IPC.GIT_DELETE_BRANCH, { directory, branch }),
-  gitCommitDetail: (directory, hash) => ipcRenderer.invoke(IPC.GIT_COMMIT_DETAIL, { directory, hash }),
-  gitCommitFiles: (directory, hash) => ipcRenderer.invoke(IPC.GIT_COMMIT_FILES, { directory, hash }),
-  gitCommitFileDiff: (directory, hash, path) => ipcRenderer.invoke(IPC.GIT_COMMIT_FILE_DIFF, { directory, hash, path }),
-  gitIgnoredFiles: (directory) => ipcRenderer.invoke(IPC.GIT_IGNORED_FILES, directory),
-  gitStashList: (directory: string) => ipcRenderer.invoke(IPC.GIT_STASH_LIST, { directory }),
-  gitStashSave: (directory: string, message?: string) => ipcRenderer.invoke(IPC.GIT_STASH_SAVE, { directory, message }),
-  gitStashPop: (directory: string, ref?: string) => ipcRenderer.invoke(IPC.GIT_STASH_POP, { directory, ref }),
-  gitStashDrop: (directory: string, ref: string) => ipcRenderer.invoke(IPC.GIT_STASH_DROP, { directory, ref }),
-  gitCherryPick: (directory: string, hash: string) => ipcRenderer.invoke(IPC.GIT_CHERRY_PICK, { directory, hash }),
-  gitRevert: (directory: string, hash: string) => ipcRenderer.invoke(IPC.GIT_REVERT, { directory, hash }),
-  gitReset: (directory: string, hash: string, mode: 'soft' | 'mixed' | 'hard') => ipcRenderer.invoke(IPC.GIT_RESET, { directory, hash, mode }),
-  gitBlame: (directory: string, path: string) => ipcRenderer.invoke(IPC.GIT_BLAME, { directory, path }),
-  gitResolveConflict: (directory: string, path: string, content: string) => ipcRenderer.invoke(IPC.GIT_RESOLVE_CONFLICT, { directory, path, content }),
-  gitRebaseTodo: (directory: string, onto: string) => ipcRenderer.invoke(IPC.GIT_REBASE_TODO, { directory, onto }),
-  gitRebaseExec: (directory: string, onto: string, commits: Array<{ hash: string; action: string }>) => ipcRenderer.invoke(IPC.GIT_REBASE_EXEC, { directory, onto, commits }),
-  gitRebaseAbort: (directory: string) => ipcRenderer.invoke(IPC.GIT_REBASE_ABORT, { directory }),
-  gitRebaseContinue: (directory: string) => ipcRenderer.invoke(IPC.GIT_REBASE_CONTINUE, { directory }),
-  gitOpState: (directory: string) => ipcRenderer.invoke(IPC.GIT_OP_STATE, { directory }),
-  gitConflictStages: (directory: string, path: string) => ipcRenderer.invoke(IPC.GIT_CONFLICT_STAGES, { directory, path }),
-  gitConflictAccept: (directory: string, path: string, side: 'ours' | 'theirs') =>
-    ipcRenderer.invoke(IPC.GIT_CONFLICT_ACCEPT, { directory, path, side }),
-  gitSubscribe: (directory) => ipcRenderer.invoke(IPC.GIT_SUBSCRIBE, { directory }),
-  gitUnsubscribe: (directory) => ipcRenderer.invoke(IPC.GIT_UNSUBSCRIBE, { directory }),
-  gitRefresh: (directory) => ipcRenderer.invoke(IPC.GIT_REFRESH, { directory }),
-  gitApplyPatch: (directory, patch, opts) => ipcRenderer.invoke(IPC.GIT_APPLY_PATCH, { directory, patch, reverse: opts?.reverse, cached: opts?.cached }),
-  gitTagCreate: (directory, name, ref, message) => ipcRenderer.invoke(IPC.GIT_TAG_CREATE, { directory, name, ref, message }),
-  gitShowFile: (directory, hash, path) => ipcRenderer.invoke(IPC.GIT_SHOW_FILE, { directory, hash, path }),
-  gitCommitSignature: (directory, hash) => ipcRenderer.invoke(IPC.GIT_COMMIT_SIGNATURE, { directory, hash }),
-  gitRecentRefs: (directory, limit) => ipcRenderer.invoke(IPC.GIT_RECENT_REFS, { directory, limit }),
-  onGitEvent: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, event: GitEvent) => callback(event)
-    ipcRenderer.on(IPC.GIT_EVENT, handler)
-    return () => ipcRenderer.removeListener(IPC.GIT_EVENT, handler)
-  },
-
-  // ─── Git worktree operations ───
-  gitWorktreeAdd: (repoPath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_ADD, { repoPath, sourceBranch }),
-  gitWorktreeRemove: (repoPath, worktreePath, branchName, force) => ipcRenderer.invoke(IPC.GIT_WORKTREE_REMOVE, { repoPath, worktreePath, branchName, force }),
-  gitWorktreeList: (repoPath) => ipcRenderer.invoke(IPC.GIT_WORKTREE_LIST, { repoPath }),
-  gitWorktreeStatus: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_STATUS, { worktreePath, sourceBranch }),
-  gitWorktreeMerge: (repoPath, worktreeBranch, sourceBranch, noFf) => ipcRenderer.invoke(IPC.GIT_WORKTREE_MERGE, { repoPath, worktreeBranch, sourceBranch, noFf }),
-  gitWorktreePush: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_PUSH, { worktreePath, sourceBranch }),
-  gitWorktreeRebase: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_REBASE, { worktreePath, sourceBranch }),
-  gitWorktreeLandAndRetire: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_LAND_AND_RETIRE, args),
-  gitWorktreeSync: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_SYNC, { worktreePath, sourceBranch }),
-  gitWorktreeSyncAll: (repoPath) => ipcRenderer.invoke(IPC.GIT_WORKTREE_SYNC_ALL, { repoPath }),
-  gitWorktreeBaseStatus: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_BASE_STATUS, { worktreePath, sourceBranch }),
-  gitWorktreeInventory: (repoPath) => ipcRenderer.invoke(IPC.GIT_WORKTREE_INVENTORY, { repoPath }),
-  gitWorktreeSeedTitle: (worktreePath, title) =>
-    ipcRenderer.invoke(IPC.GIT_WORKTREE_SEED_TITLE, { worktreePath, title }),
-  gitWorktreeSetTitle: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_SET_TITLE, args),
-  gitWorktreeSetStage: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_SET_STAGE, args),
-  // Deprecated shim over gitWorktreeSetStage — see the ionapi.ts declaration
-  // for the removal condition. The verdict→stage mapping is the shared
-  // legacyReviewToStage table, the same one the workspaces-file load
-  // migration uses, so the two cannot drift. `sourceBranch` is ignored:
-  // stages are worktree-scoped.
-  benchSetReview: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_SET_STAGE, {
-    worktreePath: args.worktreePath,
-    repoPath: args.repoPath,
-    stage: legacyReviewToStage(args.review) ?? null,
-  }),
-  benchList: (repoPath) => ipcRenderer.invoke(IPC.BENCH_LIST, { repoPath }),
-  benchResolvePath: (directory) => ipcRenderer.invoke(IPC.BENCH_RESOLVE_PATH, { directory }),
-  benchEnsure: (repoPath, sourceBranch) => ipcRenderer.invoke(IPC.BENCH_ENSURE, { repoPath, sourceBranch }),
-  benchAddMember: (args) => ipcRenderer.invoke(IPC.BENCH_ADD_MEMBER, args),
-  benchRemoveMember: (args) => ipcRenderer.invoke(IPC.BENCH_REMOVE_MEMBER, args),
-  gitWorktreeRegistration: (worktreePath) => ipcRenderer.invoke(IPC.GIT_WORKTREE_REGISTRATION, { worktreePath }),
-  benchSetOrder: (args) => ipcRenderer.invoke(IPC.BENCH_SET_ORDER, args),
-  benchUpdateMember: (args) => ipcRenderer.invoke(IPC.BENCH_UPDATE_MEMBER, args),
-  benchUpdateAll: (repoPath, sourceBranch) => ipcRenderer.invoke(IPC.BENCH_UPDATE_ALL, { repoPath, sourceBranch }),
-  benchAssemble: (repoPath, sourceBranch) => ipcRenderer.invoke(IPC.BENCH_ASSEMBLE, { repoPath, sourceBranch }),
-  benchResolveConflict: (repoPath, sourceBranch) => ipcRenderer.invoke(IPC.BENCH_RESOLVE_CONFLICT, { repoPath, sourceBranch }),
-  benchRerereCount: (directory) => ipcRenderer.invoke(IPC.BENCH_RERERE_COUNT, { directory }),
-  benchRerereForget: (directory, paths) => ipcRenderer.invoke(IPC.BENCH_RERERE_FORGET, { directory, paths }),
-  benchRerereDiscardAll: (directory) => ipcRenderer.invoke(IPC.BENCH_RERERE_DISCARD_ALL, { directory }),
-  benchPrepareVerificationAnalysis: (repoPath, sourceBranch) =>
-    ipcRenderer.invoke(IPC.BENCH_PREPARE_VERIFICATION_ANALYSIS, { repoPath, sourceBranch }),
-  benchDiscardMemberRecordings: (repoPath, sourceBranch, branchNames) =>
-    ipcRenderer.invoke(IPC.BENCH_DISCARD_MEMBER_RECORDINGS, { repoPath, sourceBranch, branchNames }),
-  openWorktreeOverlap: (context) => ipcRenderer.send(IPC.WORKTREE_OVERLAP_OPEN, context),
-  getWorktreeOverlapContext: () => ipcRenderer.invoke(IPC.WORKTREE_OVERLAP_CONTEXT),
-  getWorktreeOverlap: (basis) => ipcRenderer.invoke(IPC.WORKTREE_OVERLAP_ANALYZE, basis),
-  previewWorktreeOverlap: (basis, paths) => ipcRenderer.invoke(IPC.WORKTREE_OVERLAP_PREVIEW, basis, paths),
-  previewWorktreeOverlapApply: (basis, paths) => ipcRenderer.invoke(IPC.WORKTREE_OVERLAP_APPLY_PREVIEW, basis, paths),
-  applyWorktreeOverlap: (basis, paths) => ipcRenderer.invoke(IPC.WORKTREE_OVERLAP_APPLY, basis, paths),
-  solveWorktreeOverlap: (basis, keptPaths) => ipcRenderer.invoke(IPC.WORKTREE_OVERLAP_SOLVE, basis, keptPaths),
-  autoOrderWorktreeOverlap: (basis, paths) => ipcRenderer.invoke(IPC.WORKTREE_OVERLAP_AUTO_ORDER, basis, paths),
-  benchRefreshStaleness: (repoPath, sourceBranch) => ipcRenderer.invoke(IPC.BENCH_REFRESH_STALENESS, { repoPath, sourceBranch }),
-  benchReconcileResolution: (directory) => ipcRenderer.invoke(IPC.BENCH_RECONCILE_RESOLUTION, { directory }),
-  gitWorktreeAppraise: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_APPRAISE, { worktreePath, sourceBranch }),
-  gitWorktreeRetirePreview: (worktreePath) => ipcRenderer.invoke(IPC.GIT_WORKTREE_RETIRE_PREVIEW, { worktreePath }),
-  gitWorktreeReprovision: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_REPROVISION, args),
-  gitWorktreeReattach: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_REATTACH, args),
-
-  // ─── Filesystem operations ───
-  fsReadDir: (directory) => ipcRenderer.invoke(IPC.FS_READ_DIR, { directory }),
-  fsReadFile: (filePath) => ipcRenderer.invoke(IPC.FS_READ_FILE, { filePath }),
-  fsWriteFile: (filePath, content) => ipcRenderer.invoke(IPC.FS_WRITE_FILE, { filePath, content }),
-  fsCreateDir: (dirPath) => ipcRenderer.invoke(IPC.FS_CREATE_DIR, { dirPath }),
-  fsCreateFile: (filePath) => ipcRenderer.invoke(IPC.FS_CREATE_FILE, { filePath }),
-  fsRename: (oldPath, newPath) => ipcRenderer.invoke(IPC.FS_RENAME, { oldPath, newPath }),
-  fsDelete: (targetPath) => ipcRenderer.invoke(IPC.FS_DELETE, { targetPath }),
-  fsSaveDialog: (defaultPath, defaultFileName) => ipcRenderer.invoke(IPC.FS_SAVE_DIALOG, { defaultPath, defaultFileName }),
-  fsRevealInFinder: (targetPath) => ipcRenderer.invoke(IPC.FS_REVEAL_IN_FINDER, { targetPath }),
-  fsOpenNative: (targetPath) => ipcRenderer.invoke(IPC.FS_OPEN_NATIVE, { targetPath }),
-  fsExists: (targetPath) => ipcRenderer.invoke(IPC.FS_EXISTS, { targetPath }),
-  fsWatchFile: (filePath) => ipcRenderer.invoke(IPC.FS_WATCH_FILE, { filePath }),
-  fsUnwatchFile: (filePath) => ipcRenderer.invoke(IPC.FS_UNWATCH_FILE, { filePath }),
-  onFileChanged: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, filePath: string) => callback(filePath)
-    ipcRenderer.on(IPC.FS_FILE_CHANGED, handler)
-    return () => ipcRenderer.removeListener(IPC.FS_FILE_CHANGED, handler)
-  },
-
-  // ─── Engine operations ───
-  engineStart: (key, config) => ipcRenderer.invoke(IPC.ENGINE_START, { key, config }),
-  engineSetPlanMode: (key, enabled, planFilePath) => ipcRenderer.send('ion:engine-set-plan-mode', key, enabled, planFilePath),
-  engineAbort: (key) => ipcRenderer.invoke(IPC.ENGINE_ABORT, { key }),
-  engineAbortAgent: (key, agentName, subtree) =>
-    ipcRenderer.invoke(IPC.ENGINE_ABORT_AGENT, { key, agentName, subtree }),
-  engineDialogResponse: (key, dialogId, value) => ipcRenderer.invoke(IPC.ENGINE_DIALOG_RESPONSE, { key, dialogId, value }),
-  engineCommand: (key, command, args) => ipcRenderer.invoke(IPC.ENGINE_COMMAND, { key, command, args }),
-  engineStop: (key) => ipcRenderer.invoke(IPC.ENGINE_STOP, { key }),
-  engineBranchBefore: (key, entryId) => ipcRenderer.invoke(IPC.ENGINE_BRANCH_BEFORE, { key, entryId }),
-  engineRewind: (key, target) => ipcRenderer.invoke(IPC.ENGINE_REWIND, { key, ...target }),
-  engineGetContextBreakdown: (key) => ipcRenderer.invoke(IPC.ENGINE_GET_CONTEXT_BREAKDOWN, { key }),
-  getPlanBashAllowlist: () => ipcRenderer.invoke(IPC.GET_PLAN_BASH_ALLOWLIST),
-  setPlanBashAllowlist: (cmds) => ipcRenderer.invoke(IPC.SET_PLAN_BASH_ALLOWLIST, cmds),
-  engineRemapSession: (oldKey, newKey) => ipcRenderer.invoke(IPC.ENGINE_REMAP_SESSION, { oldKey, newKey }),
-  engineBroadcastHistory: (tabId, instanceId) => ipcRenderer.invoke(IPC.ENGINE_BROADCAST_HISTORY, { tabId, instanceId }),
-  notifyTabFocus: (tabId, engineProfileId) =>
-    ipcRenderer.send(IPC.NOTIFY_TAB_FOCUS, { tabId, engineProfileId: engineProfileId ?? null }),
-  markResourceRead: (kind, resourceId) => ipcRenderer.send(IPC.MARK_RESOURCE_READ, { kind, resourceId }),
-  getReadResourceIds: () => ipcRenderer.invoke(IPC.GET_READ_RESOURCE_IDS),
-  getPersistedResources: () => ipcRenderer.invoke(IPC.GET_PERSISTED_RESOURCES),
-  publishResourceDelete: (kind, resourceId) => ipcRenderer.send(IPC.DELETE_RESOURCE, { kind, resourceId }),
-  resourceGet: (kind, id, opts) => ipcRenderer.invoke(IPC.RESOURCE_GET, { kind, id, ...opts }),
-  onEngineEvent: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, key: string, event: any) => callback(key, event)
-    ipcRenderer.on(IPC.ENGINE_EVENT, handler)
-    return () => ipcRenderer.removeListener(IPC.ENGINE_EVENT, handler)
-  },
-
-  // ─── Plugin management ───
-  pluginInstall: (source) => ipcRenderer.invoke('plugin:install', source),
-  pluginList: () => ipcRenderer.invoke('plugin:list'),
-  pluginRemove: (name) => ipcRenderer.invoke('plugin:remove', name),
-
-  // ─── MCP server administration ───
-  mcpList: () => ipcRenderer.invoke(IPC.MCP_LIST),
-  mcpAdd: (request) => ipcRenderer.invoke(IPC.MCP_ADD, request),
-  mcpRemove: (name) => ipcRenderer.invoke(IPC.MCP_REMOVE, name),
-  mcpLogin: (name, scope) => ipcRenderer.invoke(IPC.MCP_LOGIN, { name, scope }),
-  mcpLogout: (name) => ipcRenderer.invoke(IPC.MCP_LOGOUT, name),
-
-  // ─── Model & provider management ───
-  listModels: () => ipcRenderer.invoke(IPC.LIST_MODELS),
-  resolveModelTier: (tier: string) => ipcRenderer.invoke(IPC.MODEL_TIER_RESOLVE, { tier }),
-  listModelTiers: () => ipcRenderer.invoke(IPC.LIST_MODEL_TIERS),
-  setModelTier: (tier) => ipcRenderer.invoke(IPC.SET_MODEL_TIER, tier),
-  removeModelTier: (name) => ipcRenderer.invoke(IPC.REMOVE_MODEL_TIER, { name }),
-  onModelTiersUpdated: (callback) => {
-    ipcRenderer.on(IPC.MODEL_TIERS_UPDATED, callback)
-    return () => ipcRenderer.removeListener(IPC.MODEL_TIERS_UPDATED, callback)
-  },
-  storeCredential: (provider, credential) => ipcRenderer.invoke(IPC.STORE_CREDENTIAL, { provider, credential }),
-  refreshModels: (provider) => ipcRenderer.invoke(IPC.REFRESH_MODELS, { provider }),
-
-  // ─── Delegated-CLI provider auth (codex/claude-code/grok/cursor) ───
-  providerLogin: (provider) => ipcRenderer.invoke(IPC.PROVIDER_LOGIN, { provider }),
-  providerLoginCancel: (provider) => ipcRenderer.invoke(IPC.PROVIDER_LOGIN_CANCEL, { provider }),
-  providerLoginCode: (provider, code) => ipcRenderer.invoke(IPC.PROVIDER_LOGIN_CODE, { provider, code }),
-  providerLogout: (provider) => ipcRenderer.invoke(IPC.PROVIDER_LOGOUT, { provider }),
-  onProviderLoginEvent: (handler) => {
-    const listener = (_e: unknown, update: import('../shared/types-engine-event').ProviderLoginUpdate) => handler(update)
-    ipcRenderer.on(IPC.PROVIDER_LOGIN_EVENT, listener)
-    return () => ipcRenderer.removeListener(IPC.PROVIDER_LOGIN_EVENT, listener)
-  },
-
+  // ─── Git operations (see preload/git-api.ts) ───
+  ...gitApi,
+  // ─── Engine, model/provider, plugin, MCP operations (see preload/engine-api.ts) ───
+  ...engineApi,
   // ─── OAuth ───
   startOAuth: (provider) => ipcRenderer.invoke(IPC.OAUTH_START, { provider }),
   logoutOAuth: (provider) => ipcRenderer.invoke(IPC.OAUTH_LOGOUT, { provider }),
   oauthStatus: (provider) => ipcRenderer.invoke(IPC.OAUTH_STATUS, { provider }),
-  oauthDeviceCode: (provider) => ipcRenderer.invoke(IPC.OAUTH_DEVICE_CODE, { provider }),
-  oauthDevicePoll: (deviceCode, interval, expiresIn) => ipcRenderer.invoke(IPC.OAUTH_DEVICE_POLL, { deviceCode, interval, expiresIn }),
+  oauthDeviceCode: (provider) =>
+    ipcRenderer.invoke(IPC.OAUTH_DEVICE_CODE, { provider }),
+  oauthDevicePoll: (deviceCode, interval, expiresIn) =>
+    ipcRenderer.invoke(IPC.OAUTH_DEVICE_POLL, {
+      deviceCode,
+      interval,
+      expiresIn,
+    }),
 
   // ─── Entra OIDC (Feature 0001 Part F — telemetry auth) ───
   entraSignIn: () => ipcRenderer.invoke(IPC.ENTRA_SIGN_IN),
@@ -461,31 +380,45 @@ const api: IonAPI = {
 
   // ─── Remote control ───
   remoteGetState: () => ipcRenderer.invoke(IPC.REMOTE_GET_STATE),
-  remoteGetMessages: (tabId) => ipcRenderer.invoke(IPC.REMOTE_GET_MESSAGES, tabId),
+  remoteGetMessages: (tabId) =>
+    ipcRenderer.invoke(IPC.REMOTE_GET_MESSAGES, tabId),
   remoteStartPairing: () => ipcRenderer.invoke(IPC.REMOTE_START_PAIRING),
   remoteCancelPairing: () => ipcRenderer.send(IPC.REMOTE_CANCEL_PAIRING),
-  remoteRevokeDevice: (deviceId) => ipcRenderer.send(IPC.REMOTE_REVOKE_DEVICE, deviceId),
+  remoteRevokeDevice: (deviceId) =>
+    ipcRenderer.send(IPC.REMOTE_REVOKE_DEVICE, deviceId),
   remoteDiscoverRelays: () => ipcRenderer.invoke(IPC.REMOTE_DISCOVER_RELAYS),
   remoteStopDiscovery: () => ipcRenderer.send(IPC.REMOTE_STOP_DISCOVERY),
-  remoteTestRelay: (url, key) => ipcRenderer.invoke(IPC.REMOTE_TEST_RELAY, url, key),
-  remoteRelayAuthConfig: (url) => ipcRenderer.invoke(IPC.REMOTE_RELAY_AUTH_CONFIG, url),
-  remoteSetLanDisabled: (disabled) => ipcRenderer.invoke(IPC.REMOTE_SET_LAN_DISABLED, disabled),
-  remoteSetDisplay: (customName, customIcon) => ipcRenderer.invoke(IPC.REMOTE_SET_DISPLAY, customName, customIcon),
-  remoteGetDisplay: () => ipcRenderer.invoke('ion:remote-get-display'),
+  remoteTestRelay: (url, key) =>
+    ipcRenderer.invoke(IPC.REMOTE_TEST_RELAY, url, key),
+  remoteRelayAuthConfig: (url) =>
+    ipcRenderer.invoke(IPC.REMOTE_RELAY_AUTH_CONFIG, url),
+  remoteSetLanDisabled: (disabled) =>
+    ipcRenderer.invoke(IPC.REMOTE_SET_LAN_DISABLED, disabled),
+  remoteSetDisplay: (customName, customIcon) =>
+    ipcRenderer.invoke(IPC.REMOTE_SET_DISPLAY, customName, customIcon),
+  remoteGetDisplay: () => ipcRenderer.invoke("ion:remote-get-display"),
 
   // ─── Auto-update ───
   installUpdate: () => ipcRenderer.send(IPC.INSTALL_UPDATE),
   onUpdateDownloaded: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, info: { version: string }) => callback(info)
-    ipcRenderer.on(IPC.UPDATE_DOWNLOADED, handler)
-    return () => ipcRenderer.removeListener(IPC.UPDATE_DOWNLOADED, handler)
+    const handler = (
+      _e: Electron.IpcRendererEvent,
+      info: { version: string },
+    ) => callback(info);
+    ipcRenderer.on(IPC.UPDATE_DOWNLOADED, handler);
+    return () => ipcRenderer.removeListener(IPC.UPDATE_DOWNLOADED, handler);
   },
 
   // ─── Renderer logging bridge ───
   logWrite: (level, tag, msg, fields) => {
     // Fire-and-forget log bridge: the renderer logger does not await delivery.
     // Void the invoke promise so its (rare) rejection doesn't float.
-    void ipcRenderer.invoke(IPC.LOG_WRITE, { level, tag, msg, fields: fields ?? {} })
+    void ipcRenderer.invoke(IPC.LOG_WRITE, {
+      level,
+      tag,
+      msg,
+      fields: fields ?? {},
+    });
   },
 
   // `on` wraps the caller's callback, so `off` cannot pass the ORIGINAL
@@ -502,26 +435,27 @@ const api: IonAPI = {
   // collectable when the caller's closure goes away, so a component that
   // unmounts without calling `off` leaks nothing.
   on: (channel, callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, ...args: any[]) => callback(_e, ...args)
-    let perChannel = ipcWrappers.get(callback)
+    const handler = (_e: Electron.IpcRendererEvent, ...args: any[]) =>
+      callback(_e, ...args);
+    let perChannel = ipcWrappers.get(callback);
     if (!perChannel) {
-      perChannel = new Map()
-      ipcWrappers.set(callback, perChannel)
+      perChannel = new Map();
+      ipcWrappers.set(callback, perChannel);
     }
     // Re-registering the same callback on the same channel would otherwise
     // orphan the previous wrapper (unremovable, still firing). Drop it first
     // so `on` is idempotent per (channel, callback) pair.
-    const prior = perChannel.get(channel)
-    if (prior) ipcRenderer.removeListener(channel, prior)
-    perChannel.set(channel, handler)
-    ipcRenderer.on(channel, handler)
+    const prior = perChannel.get(channel);
+    if (prior) ipcRenderer.removeListener(channel, prior);
+    perChannel.set(channel, handler);
+    ipcRenderer.on(channel, handler);
   },
   off: (channel, callback) => {
-    const perChannel = ipcWrappers.get(callback)
-    const handler = perChannel?.get(channel)
-    if (!handler) return
-    ipcRenderer.removeListener(channel, handler)
-    perChannel!.delete(channel)
+    const perChannel = ipcWrappers.get(callback);
+    const handler = perChannel?.get(channel);
+    if (!handler) return;
+    ipcRenderer.removeListener(channel, handler);
+    perChannel!.delete(channel);
   },
 
   // ─── Window management ───
@@ -537,47 +471,66 @@ const api: IonAPI = {
   // ─── Event listeners ───
   onEvent: (callback) => {
     const _channels = [
-      IPC.TEXT_CHUNK, IPC.TOOL_CALL, IPC.TOOL_CALL_UPDATE,
-      IPC.TOOL_CALL_COMPLETE, IPC.TASK_UPDATE, IPC.TASK_COMPLETE,
-      IPC.SESSION_DEAD, IPC.SESSION_INIT, IPC.ERROR, IPC.RATE_LIMIT,
-    ]
+      IPC.TEXT_CHUNK,
+      IPC.TOOL_CALL,
+      IPC.TOOL_CALL_UPDATE,
+      IPC.TOOL_CALL_COMPLETE,
+      IPC.TASK_UPDATE,
+      IPC.TASK_COMPLETE,
+      IPC.SESSION_DEAD,
+      IPC.SESSION_INIT,
+      IPC.ERROR,
+      IPC.RATE_LIMIT,
+    ];
     // Single unified handler — all normalized events come through one channel
-    const handler = (_e: Electron.IpcRendererEvent, tabId: string, event: NormalizedEvent) => callback(tabId, event)
-    ipcRenderer.on('ion:normalized-event', handler)
-    return () => ipcRenderer.removeListener('ion:normalized-event', handler)
+    const handler = (
+      _e: Electron.IpcRendererEvent,
+      tabId: string,
+      event: NormalizedEvent,
+    ) => callback(tabId, event);
+    ipcRenderer.on("ion:normalized-event", handler);
+    return () => ipcRenderer.removeListener("ion:normalized-event", handler);
   },
 
   onTabStatusChange: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, tabId: string, newStatus: string, oldStatus: string) =>
-      callback(tabId, newStatus, oldStatus)
-    ipcRenderer.on('ion:tab-status-change', handler)
-    return () => ipcRenderer.removeListener('ion:tab-status-change', handler)
+    const handler = (
+      _e: Electron.IpcRendererEvent,
+      tabId: string,
+      newStatus: string,
+      oldStatus: string,
+    ) => callback(tabId, newStatus, oldStatus);
+    ipcRenderer.on("ion:tab-status-change", handler);
+    return () => ipcRenderer.removeListener("ion:tab-status-change", handler);
   },
 
   onError: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, tabId: string, error: EnrichedError) =>
-      callback(tabId, error)
-    ipcRenderer.on('ion:enriched-error', handler)
-    return () => ipcRenderer.removeListener('ion:enriched-error', handler)
+    const handler = (
+      _e: Electron.IpcRendererEvent,
+      tabId: string,
+      error: EnrichedError,
+    ) => callback(tabId, error);
+    ipcRenderer.on("ion:enriched-error", handler);
+    return () => ipcRenderer.removeListener("ion:enriched-error", handler);
   },
 
   onSkillStatus: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, status: any) => callback(status)
-    ipcRenderer.on(IPC.SKILL_STATUS, handler)
-    return () => ipcRenderer.removeListener(IPC.SKILL_STATUS, handler)
+    const handler = (_e: Electron.IpcRendererEvent, status: any) =>
+      callback(status);
+    ipcRenderer.on(IPC.SKILL_STATUS, handler);
+    return () => ipcRenderer.removeListener(IPC.SKILL_STATUS, handler);
   },
 
   onWindowShown: (callback) => {
-    const handler = () => callback()
-    ipcRenderer.on(IPC.WINDOW_SHOWN, handler)
-    return () => ipcRenderer.removeListener(IPC.WINDOW_SHOWN, handler)
+    const handler = () => callback();
+    ipcRenderer.on(IPC.WINDOW_SHOWN, handler);
+    return () => ipcRenderer.removeListener(IPC.WINDOW_SHOWN, handler);
   },
 
   onShowSettings: (callback) => {
-    const handler = () => callback()
-    ipcRenderer.on(IPC.SHOW_SETTINGS, handler)
-    return () => ipcRenderer.removeListener(IPC.SHOW_SETTINGS, handler)
+    const handler = () => callback();
+    ipcRenderer.on(IPC.SHOW_SETTINGS, handler);
+    return () => ipcRenderer.removeListener(IPC.SHOW_SETTINGS, handler);
   },
-}
+};
 
-contextBridge.exposeInMainWorld('ion', api)
+contextBridge.exposeInMainWorld("ion", api);

@@ -42,7 +42,7 @@ const mockBridge = {
   startSession: vi.fn().mockResolvedValue({ ok: true }),
   sendPrompt: vi.fn().mockResolvedValue({ ok: true }),
   sendAbort: vi.fn(),
-  sendAbortAgent: vi.fn(),
+  sendAbortDispatch: vi.fn(),
   sendDialogResponse: vi.fn(),
   sendCommand: vi.fn(),
   sendPermissionResponse: vi.fn(),
@@ -173,7 +173,7 @@ describe('EngineControlPlane', () => {
     })
   })
 
-  describe('cancelTab — unified interrupt (abort + subtree reap)', () => {
+  describe('cancelTab — unified interrupt (scoped abort)', () => {
     // Regression guard for the iOS interrupt-parity fix: a remote cancel must
     // behave like the desktop renderer's `interrupt` — abort the parent run AND
     // reap the dispatched-agent subtree. Before the fix cancelTab only called
@@ -184,11 +184,37 @@ describe('EngineControlPlane', () => {
       const ok = cp.cancelTab(tabId)
 
       expect(ok).toBe(true)
-      expect(mockBridge.sendAbort).toHaveBeenCalledWith(tabId)
+      // Defaults to the full-teardown scope when no scope is supplied.
+      expect(mockBridge.sendAbort).toHaveBeenCalledWith(tabId, 'all')
       // Empty agentName + subtree=true reaps every descendant; the engine
       // no-ops safely when there are no children. Removing the reap line in
       // cancelTab makes this assertion fail — that is the regression guard.
-      expect(mockBridge.sendAbortAgent).toHaveBeenCalledWith(tabId, '', true)
+    })
+
+    // The orchestrator scope's whole purpose: background dispatches survive.
+    // Reaping here would silently undo it, so the absent reap is the assertion.
+    it('does not reap the subtree under the orchestrator scope', () => {
+      const tabId = cp.createTab()
+
+      const ok = cp.cancelTab(tabId, 'orchestrator')
+
+      expect(ok).toBe(true)
+      expect(mockBridge.sendAbort).toHaveBeenCalledWith(tabId, 'orchestrator')
+    })
+
+    it('abortDispatch addresses one dispatch without aborting the run', () => {
+      const tabId = cp.createTab()
+
+      const ok = cp.abortDispatch(tabId, 'dispatch-abc-123')
+
+      expect(ok).toBe(true)
+      expect(mockBridge.sendAbortDispatch).toHaveBeenCalledWith(tabId, 'dispatch-abc-123')
+      expect(mockBridge.sendAbort).not.toHaveBeenCalled()
+    })
+
+    it('abortDispatch returns false for an untracked tab', () => {
+      expect(cp.abortDispatch('nonexistent-tab', 'dispatch-abc')).toBe(false)
+      expect(mockBridge.sendAbortDispatch).not.toHaveBeenCalled()
     })
 
     it('returns false and sends nothing for an untracked tab', () => {
@@ -196,7 +222,6 @@ describe('EngineControlPlane', () => {
 
       expect(ok).toBe(false)
       expect(mockBridge.sendAbort).not.toHaveBeenCalled()
-      expect(mockBridge.sendAbortAgent).not.toHaveBeenCalled()
     })
   })
 

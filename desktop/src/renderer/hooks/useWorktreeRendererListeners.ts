@@ -4,7 +4,7 @@ import { rError, rInfo } from '../rendererLogger'
 
 /**
  * Worktree renderer listeners kept outside App so app composition stays within
- * the file-size cap. These broadcasts update both overlay and ATV through the
+ * the file-size cap. These broadcasts update both overlay and Studio through the
  * shared owner store.
  */
 export function useWorktreeRendererListeners(): void {

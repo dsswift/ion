@@ -282,6 +282,9 @@ export function handleEngineEvent(
     case 'engine_tool_stalled':
     case 'engine_run_stalled':
     case 'engine_run_recovery':
+    case 'engine_background_task_started':
+    case 'engine_background_task_terminal':
+    case 'engine_session_work_stopped':
     case 'engine_steer_injected':
     case 'engine_steer_degraded':
     case 'engine_prompt_injected':

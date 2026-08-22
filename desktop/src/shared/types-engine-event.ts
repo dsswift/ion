@@ -5,32 +5,31 @@
 // `import type { EngineEvent } from './types-engine'` sites keep working.
 //
 // The union references shared engine types (AgentStateUpdate, StatusFields,
-// SessionStatus, ResourceItem, ResourceDelta, EngineCommandListing, Message),
-// imported below from their defining modules.
+// SessionStatus), imported below from their defining module. The
+// async-trigger, resource, and client-observation variants live in
+// types-engine-event-async.ts (EngineEventAsync) to keep this file under the
+// 600-line cap; EngineEvent includes that union unchanged via `| EngineEventAsync`.
 import type {
   AgentStateUpdate,
+  BackgroundTaskState,
   StatusFields,
   SessionStatus,
-  ResourceItem,
-  ResourceDelta,
-  EngineCommandListing,
-  ContextBreakdownPayload,
-} from './types-engine'
-
+} from "./types-engine";
+import type { EngineEventAsync } from "./types-engine-event-async";
 /**
  * One stage transition of a delegated-CLI login (codex/grok/cursor). Payload of
  * the engine_provider_login event; mirrors Go ProviderLoginUpdate.
  */
 export interface ProviderLoginUpdate {
-  provider: string
-  backend: string
+  provider: string;
+  backend: string;
   /** started | await_browser | await_device_code | await_auth_code | completed | failed | cancelled */
-  stage: string
-  authUrl?: string
-  userCode?: string
-  verificationUrl?: string
-  loginError?: string
-  loginId?: string
+  stage: string;
+  authUrl?: string;
+  userCode?: string;
+  verificationUrl?: string;
+  loginError?: string;
+  loginId?: string;
 }
 
 /**
@@ -46,51 +45,111 @@ export interface ProviderLoginUpdate {
  * log file can explain why a configured server is absent.
  */
 export interface McpServerStatus {
-  name: string
+  name: string;
   /** http | sse | ws | stdio */
-  transport?: string
-  url?: string
-  command?: string
-  connected: boolean
-  authenticated: boolean
-  toolCount?: number
-  protocolVersion?: string
-  capabilities?: string[]
-  lastError?: string
+  transport?: string;
+  url?: string;
+  command?: string;
+  connected: boolean;
+  authenticated: boolean;
+  toolCount?: number;
+  protocolVersion?: string;
+  capabilities?: string[];
+  lastError?: string;
 }
 
 export type EngineEvent =
-  | { type: 'engine_agent_state'; agents: AgentStateUpdate[] }
-  | { type: 'engine_status'; fields: StatusFields; metadata?: Record<string, unknown> }
-  | { type: 'engine_session_status'; sessionStatus: SessionStatus; metadata?: Record<string, unknown> }
-  | { type: 'engine_working_message'; message: string; metadata?: Record<string, unknown> }
-  | { type: 'engine_notify'; message: string; level: 'info' | 'warning' | 'error'; metadata?: Record<string, unknown> }
-  | { type: 'engine_dialog'; dialogId: string; method: 'select' | 'confirm' | 'input'; title: string; message?: string; options?: string[]; defaultValue?: string }
+  | { type: "engine_agent_state"; agents: AgentStateUpdate[] }
+  | {
+      type: "engine_status";
+      fields: StatusFields;
+      metadata?: Record<string, unknown>;
+    }
+  | {
+      type: "engine_session_status";
+      sessionStatus: SessionStatus;
+      metadata?: Record<string, unknown>;
+    }
+  | {
+      type: "engine_working_message";
+      message: string;
+      metadata?: Record<string, unknown>;
+    }
+  | {
+      type: "engine_notify";
+      message: string;
+      level: "info" | "warning" | "error";
+      metadata?: Record<string, unknown>;
+    }
+  | {
+      type: "engine_dialog";
+      dialogId: string;
+      method: "select" | "confirm" | "input";
+      title: string;
+      message?: string;
+      options?: string[];
+      defaultValue?: string;
+    }
   // engine_elicitation_request — an extension called ctx.elicit(). The engine
   // fans this to every connected client expecting one to respond with an
   // `elicitation_response` command (or a peer extension's elicitation_request
   // hook to answer). `mode` selects the renderer ("approval", "select", ...);
   // `schema` describes what is being requested. Mirrors the Go fields
   // ElicitRequestID/ElicitSchema/ElicitURL/ElicitMode in engine_event.go.
-  | { type: 'engine_elicitation_request'; requestId: string; schema?: Record<string, unknown>; url?: string; elicitMode?: string; elicitSource?: string; elicitServer?: string; elicitMessage?: string; elicitAction?: string }
+  | {
+      type: "engine_elicitation_request";
+      requestId: string;
+      schema?: Record<string, unknown>;
+      url?: string;
+      elicitMode?: string;
+      elicitSource?: string;
+      elicitServer?: string;
+      elicitMessage?: string;
+      elicitAction?: string;
+    }
   // `metadata` is an opaque pass-through map the harness sets via ctx.emit
   // that the engine forwards verbatim. The desktop renderer honors
   // `metadata.dedupKey` (string) to suppress repeated harness messages
   // within an engine-instance scrollback — see engine-event-slice.ts. The
   // convention is renderer-honored, not engine-enforced; other extensions
   // may pick their own keys (namespace as `<extensionName>:<messageKey>`).
-  | { type: 'engine_harness_message'; message: string; source?: string; metadata?: Record<string, unknown> }
-  | { type: 'engine_text_delta'; text: string }
-  | { type: 'engine_message_end'; usage: { inputTokens: number; outputTokens: number; contextPercent: number; cost: number; entryId?: string; userEntryId?: string } }
+  | {
+      type: "engine_harness_message";
+      message: string;
+      source?: string;
+      metadata?: Record<string, unknown>;
+    }
+  | { type: "engine_text_delta"; text: string }
+  | {
+      type: "engine_message_end";
+      usage: {
+        inputTokens: number;
+        outputTokens: number;
+        contextPercent: number;
+        cost: number;
+        entryId?: string;
+        userEntryId?: string;
+      };
+    }
   // engine_user_turn_persisted — the canonical persisted tree-entry id of the
   // run-opening user turn, announced immediately after the engine persists it
   // (before streaming). Re-key signal only, never content: consumers re-key
   // their optimistic user row to this id so history loads dedup against it
   // even when the run never reaches a message_end (cancel, mid-stream
   // failure). Mirror of Go EngineEvent.UserTurnEntryID.
-  | { type: 'engine_user_turn_persisted'; userTurnEntryId: string; userTurnSlashModelAlias?: string; userTurnSlashModelEffective?: string }
-  | { type: 'engine_tool_start'; toolName: string; toolId: string }
-  | { type: 'engine_tool_end'; toolId: string; result?: string; isError?: boolean }
+  | {
+      type: "engine_user_turn_persisted";
+      userTurnEntryId: string;
+      userTurnSlashModelAlias?: string;
+      userTurnSlashModelEffective?: string;
+    }
+  | { type: "engine_tool_start"; toolName: string; toolId: string }
+  | {
+      type: "engine_tool_end";
+      toolId: string;
+      result?: string;
+      isError?: boolean;
+    }
   // engine_image_content — a single image produced during a run, either
   // tool-returned (imageSource 'tool', imageToolId set to the producing tool
   // call) or provider-generated (imageSource 'provider', imageToolId empty).
@@ -99,54 +158,138 @@ export type EngineEvent =
   // control plane translates this to the `image_content` NormalizedEvent the
   // renderer's event-slice-images materializer consumes. Mirror of the Go
   // EngineEvent Image* fields (engine/internal/types/engine_event.go).
-  | { type: 'engine_image_content'; imagePath: string; imageMediaType: string; imageSource: string; imageToolId?: string; imageContentHash?: string }
-  | { type: 'engine_tool_update'; toolId: string; partialInput: string }
-  | { type: 'engine_tool_complete'; index?: number }
-  | { type: 'engine_dead'; exitCode: number | null; signal: string | null; stderrTail: string[] }
-  | { type: 'engine_error'; message: string; errorCode?: string; errorCategory?: string; retryable?: boolean; retryAfterMs?: number; httpStatus?: number; stderrTail?: string[] }
-  | { type: 'engine_permission_request'; questionId: string; permToolName: string; permToolDescription?: string; permToolInput?: Record<string, unknown>; permOptions: Array<{ id: string; label: string; kind?: string }> }
-  // engine_tool_gate_request — the opt-in client tool gate (EngineConfig.toolGate).
+  | {
+      type: "engine_image_content";
+      imagePath: string;
+      imageMediaType: string;
+      imageSource: string;
+      imageToolId?: string;
+      imageContentHash?: string;
+    }
+  | { type: "engine_tool_update"; toolId: string; partialInput: string }
+  | { type: "engine_tool_complete"; index?: number }
+  | {
+      type: "engine_dead";
+      exitCode: number | null;
+      signal: string | null;
+      stderrTail: string[];
+    }
+  | {
+      type: "engine_error";
+      message: string;
+      errorCode?: string;
+      errorCategory?: string;
+      retryable?: boolean;
+      retryAfterMs?: number;
+      httpStatus?: number;
+      stderrTail?: string[];
+    }
+  | {
+      type: "engine_permission_request";
+      questionId: string;
+      permToolName: string;
+      permToolDescription?: string;
+      permToolInput?: Record<string, unknown>;
+      permOptions: Array<{ id: string; label: string; kind?: string }>;
+    }
+  | {
+      type: "engine_background_work_delivered";
+      backgroundWorkDelivered?: {
+        entryId: string;
+        content: string;
+        work: {
+          kind: string;
+          deliveryMode: string;
+          items: Array<{
+            id: string;
+            source: string;
+            label?: string;
+            status: string;
+            exitCode: number;
+            elapsedMs?: number;
+            outputPath?: string;
+          }>;
+          remainingTaskIds?: string[];
+        };
+      };
+    }
+  // engine_tool_gate_request (EngineConfig.toolGate).
   // Answered programmatically with a tool_gate_response command, never surfaced
   // in human permission UI. gateKind 'policy' (or absent) asks allow/deny for a
   // gated engine tool call; gateKind 'tool' asks the client to EXECUTE one of
   // its declared clientTools and answer with gateContent/gateIsError.
   // gateSiblingTools names the other tool calls in the same model turn so a
   // policy can evaluate turn isolation.
-  | { type: 'engine_tool_gate_request'; gateRequestId: string; gateKind?: 'policy' | 'tool'; gateToolName: string; gateToolInput?: Record<string, unknown>; gateCwd?: string; gateSiblingTools?: string[] }
-  | { type: 'engine_plan_mode_changed'; planModeEnabled: boolean; planFilePath?: string; planSlug?: string }
+  | {
+      type: "engine_tool_gate_request";
+      gateRequestId: string;
+      gateKind?: "policy" | "tool";
+      gateToolName: string;
+      gateToolInput?: Record<string, unknown>;
+      gateCwd?: string;
+      gateSiblingTools?: string[];
+    }
+  | {
+      type: "engine_plan_mode_changed";
+      planModeEnabled: boolean;
+      planFilePath?: string;
+      planSlug?: string;
+    }
   // engine_oidc_login_url — delivered to the client that issued
   // oidc_begin_login. Interactive PKCE carries oidcAuthorizationUrl (open
   // it in a browser; the engine's loopback callback completes the
   // exchange); device-code carries oidcUserCode + oidcVerificationUri
   // (display them; the engine polls to completion).
-  | { type: 'engine_oidc_login_url'; oidcAuthorizationUrl?: string; oidcUserCode?: string; oidcVerificationUri?: string }
+  | {
+      type: "engine_oidc_login_url";
+      oidcAuthorizationUrl?: string;
+      oidcUserCode?: string;
+      oidcVerificationUri?: string;
+    }
   // engine_provider_login — one stage transition of a delegated-CLI login
   // (codex/grok/cursor). Incremental: consumers render the current stage; a
   // terminal completed/failed/cancelled stage ends the flow.
-  | { type: 'engine_provider_login'; providerLogin?: ProviderLoginUpdate }
+  | { type: "engine_provider_login"; providerLogin?: ProviderLoginUpdate }
   // engine_oidc_identity — complete SNAPSHOT of the operator's OIDC
   // identity state, broadcast on every login/logout transition and
   // answered to oidc_identity queries. Consumers REPLACE their local
   // identity view with the payload; claim fields are absent when signed
   // out.
-  | { type: 'engine_oidc_identity'; oidcSignedIn: boolean; oidcRequired: boolean; oidcProvider?: string; oidcSubject?: string; oidcUsername?: string; oidcDisplayName?: string }
+  | {
+      type: "engine_oidc_identity";
+      oidcSignedIn: boolean;
+      oidcRequired: boolean;
+      oidcProvider?: string;
+      oidcSubject?: string;
+      oidcUsername?: string;
+      oidcDisplayName?: string;
+    }
   // engine_mcp_login_url — delivered to the client that issued mcp_login.
   // mcpAuthorizationUrl is opened in a browser; the engine's loopback callback
   // completes the code exchange and persists the token. mcpServerName says
   // which server it authorizes, since more than one login can be in flight.
-  | { type: 'engine_mcp_login_url'; mcpServerName?: string; mcpAuthorizationUrl?: string }
+  | {
+      type: "engine_mcp_login_url";
+      mcpServerName?: string;
+      mcpAuthorizationUrl?: string;
+    }
   // engine_mcp_servers — complete SNAPSHOT of the configured MCP servers with
   // their connection and authorization state. Broadcast on every transition
   // (add, remove, login, logout) and answered to mcp_list queries. Consumers
   // REPLACE their local server view with the payload; never merge. An absent or
   // empty array is the authoritative "no MCP servers configured" signal.
-  | { type: 'engine_mcp_servers'; mcpServers?: McpServerStatus[] }
+  | { type: "engine_mcp_servers"; mcpServers?: McpServerStatus[] }
   // engine_plan_file_written fires when a Write/Edit lands on the canonical
   // plan file during plan mode — the accurate trigger for the "plan created /
   // updated" conversation marker (the file now exists with content, so the
   // marker is correctly positioned and any link resolves). `planWriteOperation`
   // discriminates "created" (first content) from "updated" (a revision).
-  | { type: 'engine_plan_file_written'; planWriteOperation: 'created' | 'updated' | string; planFilePath?: string; planSlug?: string }
+  | {
+      type: "engine_plan_file_written";
+      planWriteOperation: "created" | "updated" | string;
+      planFilePath?: string;
+      planSlug?: string;
+    }
   // engine_plan_proposal is the workflow-level counterpart to
   // engine_plan_mode_changed: it fires when the model *proposes* a plan-mode
   // transition (e.g. by calling ExitPlanMode) but the actual mode change is
@@ -158,7 +301,12 @@ export type EngineEvent =
   // state-vs-workflow distinction. PlanFilePath and PlanSlug are carried
   // directly so consumers don't have to scrape `permissionDenials.toolInput`
   // to recover them.
-  | { type: 'engine_plan_proposal'; planProposalKind: 'exit' | string; planFilePath?: string; planSlug?: string }
+  | {
+      type: "engine_plan_proposal";
+      planProposalKind: "exit" | string;
+      planFilePath?: string;
+      planSlug?: string;
+    }
   // engine_plan_mode_auto_exit fires when the engine deterministically
   // synthesizes an ExitPlanMode call at end-of-turn because the model
   // ended a plan-mode run without invoking ExitPlanMode or
@@ -176,10 +324,32 @@ export type EngineEvent =
   // Use cases: telemetry on prompt quality (how often does the model
   // misroute plan exit?); subtle UI hints that the synthesis fired
   // ("Plan surfaced automatically — review carefully").
-  | { type: 'engine_plan_mode_auto_exit'; stopReason: string; planFilePath?: string; planSlug?: string; reason?: string; sessionId?: string; runId?: string }
-  | { type: 'engine_stream_reset' }
-  | { type: 'engine_compacting'; active: boolean; summary?: string; messagesBefore?: number; messagesAfter?: number; clearedBlocks?: number; strategy?: string; microOnly?: boolean }
-  | { type: 'engine_tool_stalled'; toolId: string; toolName: string; toolElapsed: number }
+  | {
+      type: "engine_plan_mode_auto_exit";
+      stopReason: string;
+      planFilePath?: string;
+      planSlug?: string;
+      reason?: string;
+      sessionId?: string;
+      runId?: string;
+    }
+  | { type: "engine_stream_reset" }
+  | {
+      type: "engine_compacting";
+      active: boolean;
+      summary?: string;
+      messagesBefore?: number;
+      messagesAfter?: number;
+      clearedBlocks?: number;
+      strategy?: string;
+      microOnly?: boolean;
+    }
+  | {
+      type: "engine_tool_stalled";
+      toolId: string;
+      toolName: string;
+      toolElapsed: number;
+    }
   // Mid-turn steer-drain confirmation. Engine emits this after the
   // runloop drainSteer helper captures a steer message (queued via the
   // steer channel) and injects it into the conversation as a user turn
@@ -193,26 +363,56 @@ export type EngineEvent =
   // client-originated steer -- the exact target for a later
   // engine_rewind command. See
   // engine/internal/types/normalized_event.go (SteerInjectedEvent).
-  | { type: 'engine_steer_injected'; steerMessageLength: number; steerClientMessageId?: string; steerEntryId?: string }
-  // No owning run was live, so ctx.steerSelf delivered a fresh prompt instead.
-  | { type: 'engine_steer_degraded'; steerDegradedMessageLength: number }
   | {
-      type: 'engine_agent_state_clamped'
-      clampedAgentName?: string
-      clampedScope?: string
-      clampedKeys?: string[]
-      clampedDroppedKeys?: string[]
-      clampedOriginalBytes?: number
-      clampedBytes?: number
-      clampedLimitBytes?: number
+      type: "engine_steer_injected";
+      steerMessageLength: number;
+      steerClientMessageId?: string;
+      steerEntryId?: string;
+      steerKind?: string;
+      steerMachineAuthored?: boolean;
     }
-  | { type: 'engine_prompt_injected'; injectedPrompt: string; injectedPromptOrigin?: string; injectedPromptKind?: string; injectedPromptMachineAuthored?: boolean }
+  // No owning run was live, so ctx.steerSelf delivered a fresh prompt instead.
+  | {
+      type: "engine_steer_degraded";
+      steerDegradedMessageLength: number;
+      steerKind?: string;
+      steerMachineAuthored?: boolean;
+    }
+  | {
+      type: "engine_agent_state_clamped";
+      clampedAgentName?: string;
+      clampedScope?: string;
+      clampedKeys?: string[];
+      clampedDroppedKeys?: string[];
+      clampedOriginalBytes?: number;
+      clampedBytes?: number;
+      clampedLimitBytes?: number;
+    }
+  | {
+      type: "engine_prompt_injected";
+      injectedPrompt: string;
+      injectedPromptOrigin?: string;
+      injectedPromptKind?: string;
+      injectedPromptMachineAuthored?: boolean;
+    }
   // engine_run_stalled — advisory event emitted by the run-progress watchdog
   // when a run records no forward progress for longer than the configured
   // RunStall threshold. The authoritative completion signal is the follow-up
   // task_complete; this event is for observability only.
-  | { type: 'engine_run_stalled'; runStalledDuration: number; runStalledLastActivity?: string }
-  | { type: 'engine_run_recovery'; runRecoveryId: string; runRecoveryPhase: 'started' | 'completed' | 'skipped' | 'exhausted' | 'failed' | string; runRecoveryAttempt?: number; runRecoveryMaxAttempts?: number; runRecoveryReason?: string }
+  | {
+      type: "engine_run_stalled";
+      runStalledDuration: number;
+      runStalledLastActivity?: string;
+    }
+  | {
+      type: "engine_run_recovery";
+      runRecoveryId: string;
+      runRecoveryPhase:
+        "started" | "completed" | "skipped" | "exhausted" | "failed" | string;
+      runRecoveryAttempt?: number;
+      runRecoveryMaxAttempts?: number;
+      runRecoveryReason?: string;
+    }
   // engine_task_suspended — a run ended without completing, because it is parked.
   // Two producers. A dispatched agent that called ctx.suspend() /
   // ctx.suspendUntilAll() is waiting on child completions or a revive message;
@@ -221,9 +421,35 @@ export type EngineEvent =
   // background bash commands; taskSuspendAwaitingTaskCount is how many. Clients
   // may show a parked/idle indicator. Task completion fires later on revival.
   | {
-      type: 'engine_task_suspended'
-      taskSuspendAwaitingCount?: number
-      taskSuspendAwaitingTaskCount?: number
+      type: "engine_task_suspended";
+      taskSuspendAwaitingCount?: number;
+      taskSuspendAwaitingTaskCount?: number;
+    }
+  | {
+      type: "engine_background_task_started";
+      backgroundTaskStarted?: BackgroundTaskState;
+    }
+  | {
+      type: "engine_background_task_terminal";
+      backgroundTaskTerminal?: {
+        taskId: string;
+        status: string;
+        exitCode?: number;
+        elapsedMs?: number;
+        command?: string;
+        outputPath?: string;
+        tail?: string;
+      };
+    }
+  | {
+      type: "engine_session_work_stopped";
+      sessionWorkStopped?: {
+        scope: string;
+        cancelledRunId?: string;
+        recalledDispatchIds?: string[];
+        stoppedBackgroundTaskIds?: string[];
+        killedAgentProcessCount?: number;
+      };
     }
   // engine_background_task_complete — a background bash command started with
   // Bash({ run_in_background: true, notify_on_complete: true }) reached a
@@ -232,17 +458,17 @@ export type EngineEvent =
   // completions without scraping run content. remainingTaskIds carries the
   // session's still-outstanding commands at that instant.
   | {
-      type: 'engine_background_task_complete'
+      type: "engine_background_task_complete";
       backgroundTaskComplete?: {
-        taskId: string
-        status: string
-        exitCode: number
-        elapsedMs: number
-        outputPath?: string
-        tail?: string
-        command?: string
-        remainingTaskIds?: string[]
-      }
+        taskId: string;
+        status: string;
+        exitCode: number;
+        elapsedMs: number;
+        outputPath?: string;
+        tail?: string;
+        command?: string;
+        remainingTaskIds?: string[];
+      };
     }
   // engine_dispatch_lost — a dispatch that was running when the engine
   // process died is unrecoverable after restart. One event per orphan,
@@ -252,15 +478,15 @@ export type EngineEvent =
   // redispatch, harvest the child's partial transcript via
   // childConversationId, or ignore the event.
   | {
-      type: 'engine_dispatch_lost'
+      type: "engine_dispatch_lost";
       dispatchLost?: {
-        dispatchId: string
-        agentName: string
-        task?: string
-        parentDispatchId?: string
-        depth?: number
-        childConversationId?: string
-      }
+        dispatchId: string;
+        agentName: string;
+        task?: string;
+        parentDispatchId?: string;
+        depth?: number;
+        childConversationId?: string;
+      };
     }
   // engine_model_fallback — workflow signal emitted by the engine when
   // it fell back to its configured defaultModel because the requested
@@ -271,9 +497,17 @@ export type EngineEvent =
   // snapshot path (RemoteTabState.conversationInstances[i].modelFallback)
   // rather than as a live RemoteEvent. See CLAUDE.md §
   // "The typed-event corollary" for the broader rule.
-  | { type: 'engine_model_fallback'; fallbackRequestedModel: string; fallbackModel: string; fallbackReason: string }
+  | {
+      type: "engine_model_fallback";
+      fallbackRequestedModel: string;
+      fallbackModel: string;
+      fallbackReason: string;
+    }
   // engine_model_tiers is a complete snapshot. Consumers replace, never merge.
-  | { type: 'engine_model_tiers'; modelTiers: import('./types-model-tiers').ModelTier[] }
+  | {
+      type: "engine_model_tiers";
+      modelTiers: import("./types-model-tiers").ModelTier[];
+    }
   // engine_capability_unsupported — workflow signal emitted when a requested
   // feature (e.g. plan mode) is not supported by the backend that would serve
   // the run; the engine declined the prompt cleanly instead of dispatching a
@@ -281,7 +515,12 @@ export type EngineEvent =
   // render a recoverable message (not a dead engine). Mirrors the underlying
   // CapabilityUnsupportedEvent NormalizedEvent variant. See CLAUDE.md §
   // "The typed-event corollary".
-  | { type: 'engine_capability_unsupported'; capability: string; capabilityBackend: string; capabilityReason: string }
+  | {
+      type: "engine_capability_unsupported";
+      capability: string;
+      capabilityBackend: string;
+      capabilityReason: string;
+    }
   // Extended-thinking events (issue #158). Surface the model's reasoning
   // activity so consumers can distinguish active reasoning from a stall and
   // render a "thinking" view. Emitted only when the provider streams reasoning
@@ -289,264 +528,31 @@ export type EngineEvent =
   // Boundaries (start/end) always emit; engine_thinking_delta is gated by the
   // engine's ThinkingConfig.StreamDeltas (default on). See
   // engine/internal/types/normalized_event.go (Thinking*Event).
-  | { type: 'engine_thinking_block_start' }
-  | { type: 'engine_thinking_delta'; thinkingText: string }
-  | { type: 'engine_thinking_block_end'; thinkingTotalTokens?: number; thinkingElapsedSeconds?: number; thinkingRedacted?: boolean }
-  | { type: 'engine_extension_died'; extensionName: string; exitCode: number | null; signal: string | null; stderrTail?: string[] }
-  | { type: 'engine_extension_respawned'; extensionName: string; attemptNumber: number }
-  | { type: 'engine_events_dropped'; count: number }
-  | { type: 'engine_extension_dead_permanent'; extensionName: string; attemptNumber: number; stderrTail?: string[] }
-  // ─── Async-trigger events (D-010 / D-011) ───
-  //
-  // The engine emits these for every webhook and schedule fire plus
-  // every registration/deregistration so the desktop / iOS can render
-  // an audit-log panel of "what's declared" and "what just fired".
-  // The desktop does NOT act on these (they're observation-only);
-  // they're typed here so future UI work has the shape ready.
-  //
-  // Shared fields across the variants:
-  //   asyncKind:        "webhook" | "schedule"
-  //   asyncId:          route path (webhook) or job id (schedule)
-  //   asyncOrigin:      "init" | "runtime" — set on lifecycle events
-  //   asyncReason:      negative-path discriminator
-  //   asyncDecl:        the original declaration JSON, redacted of secrets
-  //   asyncRequestId:   webhook correlation id (received → responded)
-  //   asyncMethod:      HTTP method (webhook)
-  //   asyncPath:        HTTP path (mirrors asyncId for webhooks)
-  //   asyncStatus:      HTTP response status (webhook)
-  //   asyncDurationMs:  elapsed time of the fire
-  //   asyncMissedSlot:  RFC3339 UTC timestamp of the missed schedule slot (schedule)
-  //   asyncHadMarker:   whether a last-run marker existed when the miss was detected (schedule)
-  | { type: 'engine_webhook_received'; asyncKind: 'webhook'; asyncId: string; asyncRequestId: string; asyncMethod: string; asyncPath: string }
-  | { type: 'engine_webhook_authenticated'; asyncKind: 'webhook'; asyncId: string; asyncRequestId: string; asyncMethod: string; asyncPath: string }
-  | { type: 'engine_webhook_handler_error'; asyncKind: 'webhook'; asyncId: string; asyncRequestId: string; asyncMethod: string; asyncPath: string; asyncStatus: number; asyncReason: string; asyncDurationMs: number }
-  | { type: 'engine_webhook_responded'; asyncKind: 'webhook'; asyncId: string; asyncRequestId: string; asyncMethod: string; asyncPath: string; asyncStatus: number; asyncDurationMs: number }
-  | { type: 'engine_webhook_registered'; asyncKind: 'webhook'; asyncId: string; asyncOrigin: 'init' | 'runtime'; asyncDecl?: unknown }
-  | { type: 'engine_webhook_deregistered'; asyncKind: 'webhook'; asyncId: string; asyncOrigin: 'init' | 'runtime'; asyncDecl?: unknown }
-  | { type: 'engine_schedule_fired'; asyncKind: 'schedule'; asyncId: string; asyncDurationMs: number }
-  | { type: 'engine_schedule_skipped'; asyncKind: 'schedule'; asyncId: string; asyncReason: string }
-  | { type: 'engine_schedule_failed'; asyncKind: 'schedule'; asyncId: string; asyncReason: string; asyncDurationMs: number }
-  | { type: 'engine_schedule_missed'; asyncKind: 'schedule'; asyncId: string; asyncMissedSlot: string; asyncHadMarker: boolean }
-  | { type: 'engine_schedule_registered'; asyncKind: 'schedule'; asyncId: string; asyncOrigin: 'init' | 'runtime'; asyncDecl?: unknown }
-  | { type: 'engine_schedule_deregistered'; asyncKind: 'schedule'; asyncId: string; asyncOrigin: 'init' | 'runtime'; asyncDecl?: unknown }
-  // engine_schedule_unhosted: the last alive host for a (extension, jobID)
-  // group was removed; the job will not fire until a new host re-registers
-  // it. Consumers can alert on unexpected schedule gaps.
-  | { type: 'engine_schedule_unhosted'; asyncKind: 'schedule'; asyncId: string }
-  | { type: 'engine_async_fire_dropped'; asyncKind: 'webhook' | 'schedule'; asyncId: string; asyncReason: string }
-  // engine_command_result is emitted at the end of every Manager.SendCommand
-  // dispatch — success (CommandError empty), extension-command failure
-  // (CommandError = the error message), and unknown command (CommandError =
-  // "unknown_command"). The `command` field carries the bare name so a
-  // consumer can switch on it without reparsing prose. The desktop's prompt
-  // pipeline awaits this event to decide between "dispatch landed, draw
-  // the divider" and "engine disclaims, fall through to `.md` expansion".
-  | { type: 'engine_command_result'; message?: string; command?: string; commandError?: string }
-  // engine_export carries the rendered export output for a /export command.
-  // The engine's dispatchExport emits this event with the rendered string
-  // on `message` BEFORE the matching engine_command_result, so consumers
-  // can capture the payload and persist it / surface a save dialog.
-  // `exportFormat` is the format the engine resolved from the /export args
-  // (markdown | json | html | jsonl; markdown when args is empty) — consumers
-  // use it to pick a file extension / MIME type directly rather than sniffing
-  // the payload bytes. See engine/internal/session/command_dispatch.go's
-  // EngineEventExport constant for the wire type string declaration.
-  | { type: 'engine_export'; message: string; exportFormat?: string }
-  // engine_command_registry is a complete SNAPSHOT of the session's
-  // extension-registered slash commands. Emitted at session_start (after
-  // extensions wire up) and on every subsequent change (mid-session
-  // RegisterCommand, hot reload, etc.). Consumers REPLACE their cached
-  // routing-hint set with this payload. Empty `commands` is the authoritative
-  // "no extension commands live for this session" signal.
-  | { type: 'engine_command_registry'; commands: EngineCommandListing[] }
-  // engine_early_stop_decision_request is the wire-protocol surface for the
-  // before_early_stop_decision hook. Promotes the hook to the socket so
-  // socket-only harnesses (desktop, custom UIs, headless tooling) can
-  // participate without running a subprocess extension. The engine emits this
-  // event after the model emits end_turn / stop AND after the extension-side
-  // hook returned no opinion. Consumers must respond via the
-  // `early_stop_decision_response` client command, supplying the same
-  // fields the subprocess hook would return (all optional). The engine
-  // waits at most 100ms for a response; a missed deadline is treated as
-  // "no opinion" and the run proceeds with the existing merge logic.
-  //
-  // Field semantics mirror engine/internal/extension/EarlyStopDecisionInfo
-  // verbatim; see docs/hooks/reference.md for the canonical descriptions.
+  | { type: "engine_thinking_block_start" }
+  | { type: "engine_thinking_delta"; thinkingText: string }
   | {
-      type: 'engine_early_stop_decision_request'
-      earlyStopRequestId: string
-      earlyStopRunId: string
-      earlyStopModel: string
-      earlyStopTurnNumber: number
-      earlyStopStopReason: string
-      earlyStopCumulativeOutput: number
-      earlyStopBudget: number
-      earlyStopThresholdPct: number
-      earlyStopContinuationCount: number
-      earlyStopMaxContinuations: number
-      earlyStopLastContinuationDelta: number
-      earlyStopWouldContinue: boolean
-      earlyStopIsSubagent?: boolean
-    }
-  // engine_llm_call is the lightweight-inference observability event,
-  // emitted exactly once per successful ctx.LLMCall invocation. Carries
-  // model / provider / latency / token / cost / jsonMode metadata —
-  // never the prompt text or response content (privacy-by-default for
-  // harness-internal classification prompts). The desktop is observation-
-  // only; it does NOT need to act on this, but the variant is typed so
-  // any future cost-summary or telemetry-rendering work has the shape
-  // ready. See engine/internal/types/types.go for the canonical Go
-  // definition.
-  | {
-      type: 'engine_llm_call'
-      llmCallModel: string
-      llmCallProvider: string
-      llmCallLatencyMs: number
-      llmCallInputTokens: number
-      llmCallOutputTokens: number
-      llmCallCost: number
-      llmCallJsonMode?: boolean
-    }
-  // engine_dispatch_start is emitted on the parent session's event stream when
-  // an extension-initiated dispatch begins. Carries the agent name, task, model,
-  // child session ID, and nesting depth/parent. Observation-only — harnesses can
-  // use this and engine_dispatch_end to persist dispatch records or surface
-  // dispatch status (including nested hierarchy).
-  | {
-      type: 'engine_dispatch_start'
-      dispatchAgent: string
-      dispatchTask: string
-      dispatchModel: string
-      dispatchSessionId: string
-      dispatchDepth?: number
-      dispatchParentId?: string
-      // Unique ID for this dispatch invocation. Consumers match dispatch_start
-      // with dispatch_end and join a child's dispatchParentId to its parent's
-      // dispatchId to reconstruct the dispatch tree.
-      dispatchId?: string
-    }
-  // engine_dispatch_end is emitted when an extension-initiated dispatch completes
-  // (success, error, or recall). Carries telemetry: exit code, elapsed time,
-  // cost, tokens, tool count, and nesting depth/parent.
-  | {
-      type: 'engine_dispatch_end'
-      dispatchAgent: string
-      dispatchExitCode: number
-      dispatchElapsed: number
-      dispatchCost: number
-      dispatchInputTokens: number
-      dispatchOutputTokens: number
-      dispatchToolCount: number
-      dispatchDepth?: number
-      dispatchParentId?: string
-      // Matches the dispatchId on the corresponding engine_dispatch_start.
-      dispatchId?: string
-      // The conversation ID the dispatched agent used. Set at end-time once
-      // the child session has a real conversation ID.
-      dispatchConversationId?: string
-    }
-  // engine_dispatch_activity streams a running dispatched (sub-)agent's
-  // intra-turn activity — a tool call starting, a tool result returning, or a
-  // chunk of streamed assistant text — to the parent session's event stream so
-  // consumers can render the live sub-agent transcript without waiting for the
-  // dispatch to complete. INCREMENTAL, append-by-key; NOT a snapshot, NOT
-  // retained, NOT replayed on reconnect. The file-backed conversation transcript
-  // (loaded via getConversation) is the snapshot authority that heals gaps.
-  // dispatchAgentId routes the delta to the right agent/dispatch row (never the
-  // parent conversation's own message stream); dispatchSeq orders deltas and
-  // keys a streaming-text run; toolId keys tool entries (durable, also persisted,
-  // so it survives reconcile).
-  | {
-      type: 'engine_dispatch_activity'
-      dispatchAgentId: string
-      dispatchConversationId: string
-      dispatchActivityKind: 'text' | 'tool_start' | 'tool_end'
-      dispatchSeq: number
-      toolName?: string
-      toolId?: string
-      dispatchTextDelta?: string
-      dispatchToolIsError?: boolean
-      dispatchActivityTs?: number
-    }
-  // ─── Resource subsystem events (D-007) ───
-  //
-  // engine_resource_snapshot: emitted when a client subscribes to a resource
-  // kind. Consumers REPLACE their local collection with resourceItems.
-  //
-  // engine_resource_delta: emitted when a producer publishes a change.
-  // Consumers apply the delta incrementally.
-  //
-  // engine_resource_item: emitted in response to a resource_get command.
-  // Carries the full content of a single item fetched on demand.
-  //
-  // engine_resource_snapshot and engine_resource_delta carry resourceSubId
-  // for subscription correlation. All three carry resourceKind.
-  | {
-      type: 'engine_resource_snapshot'
-      resourceKind: string
-      resourceSubId: string
-      resourceItems: ResourceItem[]
+      type: "engine_thinking_block_end";
+      thinkingTotalTokens?: number;
+      thinkingElapsedSeconds?: number;
+      thinkingRedacted?: boolean;
     }
   | {
-      type: 'engine_resource_delta'
-      resourceKind: string
-      resourceSubId: string
-      resourceDelta: ResourceDelta
+      type: "engine_extension_died";
+      extensionName: string;
+      exitCode: number | null;
+      signal: string | null;
+      stderrTail?: string[];
     }
   | {
-      type: 'engine_resource_item'
-      resourceKind: string
-      resourceItem: ResourceItem
+      type: "engine_extension_respawned";
+      extensionName: string;
+      attemptNumber: number;
     }
-  // ─── Notification events (D-009) ───
-  //
-  // engine_notification: emitted when an extension calls ctx.notify().
-  // The push/pushTitle/pushBody fields trigger APNs delivery through the
-  // relay when the mobile peer is not connected. The notifyKind/Title/Body
-  // fields carry structured metadata for richer client handling.
+  | { type: "engine_events_dropped"; count: number }
   | {
-      type: 'engine_notification'
-      push: boolean
-      pushTitle: string
-      pushBody: string
-      notifyKind: string
-      notifyResourceId?: string
-      notifyTitle: string
-      notifyBody: string
-      notifySound?: string
-      notifyScope?: string
+      type: "engine_extension_dead_permanent";
+      extensionName: string;
+      attemptNumber: number;
+      stderrTail?: string[];
     }
-  // ─── engine_intercept ───
-  //
-  // Fire-and-forget signal emitted when an extension calls ctx.intercept().
-  // The engine routes the event to the target session's stream and attaches no
-  // further semantics. Clients decide how to render and whether to act on the
-  // level hint:
-  //   "banner"   — informational, non-disruptive inline display
-  //   "redirect" — urgent; client may abort the active run and re-prompt with message
-  //
-  // There is no "current intercept state" to query — this event fires exactly
-  // once per ctx.intercept() call. Consumers must not accumulate or replace
-  // state from it. See docs/protocol/server-events.md for the full field table.
-  | {
-      type: 'engine_intercept'
-      interceptLevel: string
-      interceptTitle: string
-      interceptMessage: string
-      interceptSource?: string
-      interceptMetadata?: Record<string, unknown>
-    }
-  // ─── engine_context_breakdown ───
-  //
-  // Per-category token breakdown for the active run. Emitted once after
-  // prompt assembly and again after the first usage-event reconciliation
-  // (apiReportedTotal and unaccounted are populated on the second emit).
-  // Advisory telemetry — the engine attaches no UI semantics; clients
-  // render it as they see fit. Tier encodes how the count was obtained:
-  //   "exact"       — provider native count-tokens endpoint (online)
-  //   "local"       — tiktoken BPE, no network (OpenAI + offline path)
-  //   "approximate" — char/4 heuristic, last resort
-  | {
-      type: 'engine_context_breakdown'
-      contextBreakdown: ContextBreakdownPayload
-    }
+  | EngineEventAsync;

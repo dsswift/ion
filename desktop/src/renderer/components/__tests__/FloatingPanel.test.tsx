@@ -3,8 +3,8 @@
  * FloatingPanel — data-view boundary placement test.
  *
  * Verifies:
- *   - The content wrapper div carries --ion-conv-font-size: <n>px.
- *   - The header div does NOT carry --ion-conv-font-size (chrome stays fixed).
+ *   - The content wrapper div carries the `ion-data-view` class.
+ *   - The header div does NOT carry `ion-data-view` (chrome stays fixed).
  *
  * Also verifies the openFloatingPanelCount store behavior (inc on mount,
  * dec on unmount).

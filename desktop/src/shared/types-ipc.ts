@@ -347,7 +347,8 @@ export const IPC = {
   // Engine (native extension runtime)
   ENGINE_START: "ion:engine-start",
   ENGINE_ABORT: "ion:engine-abort",
-  ENGINE_ABORT_AGENT: "ion:engine-abort-agent",
+  ENGINE_ABORT_DISPATCH: "ion:engine-abort-dispatch",
+  ENGINE_STOP_BACKGROUND_TASK: "ion:engine-stop-background-task",
   ENGINE_DIALOG_RESPONSE: "ion:engine-dialog-response",
   ENGINE_COMMAND: "ion:engine-command",
   ENGINE_STOP: "ion:engine-stop",

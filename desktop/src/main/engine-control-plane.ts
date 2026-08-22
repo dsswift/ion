@@ -8,7 +8,7 @@ import { relocateTabSession, type RelocateResult } from './engine-control-plane-
 import { reconcileSessionWorkingDirectory } from './engine-control-plane-cwd'
 import { sendPromptWithRecovery, bridgeSendAdapter } from './engine-control-plane-send'
 import { buildHealthReport, anyTabRunning, resyncStatus, applyStatus, type StatusEmit } from './engine-control-plane-status'
-import { performUnifiedInterrupt } from './engine-control-plane-interrupt'
+import { cancelRequest, cancelTabRun, abortTabDispatch } from './engine-control-plane-cancel'
 import * as historyReads from './engine-control-plane-history'
 import { resolveSessionThinkingConfig } from './settings-store'
 import { resolveClaudeCompat, resolveRunRecoveryConfig } from './engine-control-plane-config'
@@ -28,6 +28,7 @@ import type {
   HealthReport,
   EnrichedError,
 } from '../shared/types'
+import type { AbortScope } from '../shared/types-engine'
 
 const TAG = 'SessionPlane'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
@@ -479,25 +480,16 @@ export class EngineControlPlane extends EventEmitter {
   }
 
   cancel(requestId: string): boolean {
-    for (const [tabId, tab] of this.tabs) {
-      if (tab.activeRequestId === requestId) {
-        log('cancel: found tab, sending abort', { tab_id: tabId, request_id: requestId })
-        this.bridge.sendAbort(tabId)
-        return true
-      }
-    }
-    warn('cancel: no tab found', { request_id: requestId })
-    return false
+    return cancelRequest(this.tabs, this.bridge, requestId, log, warn)
   }
 
-  cancelTab(tabId: string): boolean {
-    if (!this.tabs.has(tabId)) {
-      warn('cancel_tab: not found', { tab_id: tabId })
-      return false
-    }
-    log('cancel_tab: unified interrupt', { tab_id: tabId })
-    performUnifiedInterrupt(this.bridge, tabId)
-    return true
+  cancelTab(tabId: string, scope: AbortScope = 'all'): boolean {
+    return cancelTabRun(this.tabs, this.bridge, tabId, scope, log, warn)
+  }
+
+  /** Stop one background dispatch; the orchestrator and siblings keep running. */
+  abortDispatch(tabId: string, dispatchId: string): boolean {
+    return abortTabDispatch(this.tabs, this.bridge, tabId, dispatchId, warn)
   }
 
   async retry(tabId: string, requestId: string, options: RunOptions): Promise<void> {
@@ -522,7 +514,13 @@ export class EngineControlPlane extends EventEmitter {
     return true
   }
 
-  respondToElicitation(tabId: string, requestId: string, response: Record<string, unknown> | undefined, cancelled: boolean, declined = false): boolean {
+  respondToElicitation(
+    tabId: string,
+    requestId: string,
+    response: Record<string, unknown> | undefined,
+    cancelled: boolean,
+    declined = false,
+  ): boolean {
     if (!this.tabs.has(tabId)) { log('respond_to_elicitation: dropped, unknown tab', { tab_id: tabId, request_id: requestId, cancelled }); return false }
     this.bridge.sendElicitationResponse(tabId, requestId, response, cancelled, declined)
     return true

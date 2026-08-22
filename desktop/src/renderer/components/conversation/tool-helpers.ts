@@ -1,18 +1,24 @@
-import type { Message } from '../../../shared/types'
-import { mergeThinkingMessages } from './thinking-block-helpers'
+import type { Message } from "../../../shared/types";
+import { mergeThinkingMessages } from "./thinking-block-helpers";
 
 // ─── Types ───
 
 export type GroupedItem =
-  | { kind: 'user'; message: Message }
-  | { kind: 'assistant'; message: Message }
-  | { kind: 'system'; message: Message }
-  | { kind: 'harness'; message: Message }
-  | { kind: 'intercept'; message: Message }
-  | { kind: 'tool-group'; messages: Message[] }
-  | { kind: 'agent-turn'; tools: Message[]; assistantMessages: Message[]; isActive: boolean; thinking?: Message }
-  | { kind: 'thinking'; message: Message }
-  | { kind: 'compaction'; message: Message }
+  | { kind: "user"; message: Message }
+  | { kind: "assistant"; message: Message }
+  | { kind: "system"; message: Message }
+  | { kind: "harness"; message: Message }
+  | { kind: "intercept"; message: Message }
+  | { kind: "tool-group"; messages: Message[] }
+  | {
+      kind: "agent-turn";
+      tools: Message[];
+      assistantMessages: Message[];
+      isActive: boolean;
+      thinking?: Message;
+    }
+  | { kind: "thinking"; message: Message }
+  | { kind: "compaction"; message: Message };
 
 // ─── Steer relocation ───
 
@@ -33,7 +39,7 @@ export type GroupedItem =
  * the ids are absent, and grouping emits everything in natural order.
  */
 function isRelocatableSteer(msg: Message): boolean {
-  return msg.role === 'user' && !!msg.steerAppliedDividerId
+  return msg.role === "user" && !!msg.steerAppliedDividerId;
 }
 
 /**
@@ -47,20 +53,13 @@ function flushHeldSteers(
   result: GroupedItem[],
   includeUser: boolean,
 ): void {
-  if (held.size === 0) return
+  if (held.size === 0) return;
   if (includeUser) {
     for (const message of held.values()) {
-      result.push({ kind: 'user', message })
+      result.push({ kind: "user", message });
     }
   }
-  held.clear()
-}
-
-// ─── groupMessages ───
-
-interface GroupOptions {
-  includeUser?: boolean
-  unifiedTurnView?: boolean
+  held.clear();
 }
 
 /**
@@ -73,106 +72,139 @@ interface GroupOptions {
  * visible because guessing would hide real output.
  */
 export function suppressUserImageEchoes(messages: Message[]): Message[] {
-  const userHashes = new Set<string>()
-  const visible: Message[] = []
+  const userHashes = new Set<string>();
+  const visible: Message[] = [];
 
   for (const message of messages) {
-    if (message.role === 'user') {
+    if (message.role === "user") {
       for (const attachment of message.attachments || []) {
-        if (attachment.type === 'image') {
-          const normalized = attachment.contentHash?.toLowerCase() ?? ''
-          if (/^[a-f0-9]{64}$/.test(normalized)) userHashes.add(normalized)
+        if (attachment.type === "image") {
+          const normalized = attachment.contentHash?.toLowerCase() ?? "";
+          if (/^[a-f0-9]{64}$/.test(normalized)) userHashes.add(normalized);
         }
       }
-      visible.push(message)
-      continue
+      visible.push(message);
+      continue;
     }
 
-    if (message.role !== 'assistant' && message.role !== 'tool') {
-      visible.push(message)
-      continue
+    if (message.role !== "assistant" && message.role !== "tool") {
+      visible.push(message);
+      continue;
     }
 
-    const attachments = message.attachments
-    if (!attachments?.some((attachment) => attachment.type === 'image' && !!attachment.contentHash && userHashes.has(attachment.contentHash.toLowerCase()))) {
-      visible.push(message)
-      continue
+    const attachments = message.attachments;
+    if (
+      !attachments?.some(
+        (attachment) =>
+          attachment.type === "image" &&
+          !!attachment.contentHash &&
+          userHashes.has(attachment.contentHash.toLowerCase()),
+      )
+    ) {
+      visible.push(message);
+      continue;
     }
 
-    const filtered = attachments.filter((attachment) =>
-      attachment.type !== 'image' || !attachment.contentHash || !userHashes.has(attachment.contentHash.toLowerCase()))
-    if (message.role === 'assistant' && !message.content.trim() && filtered.length === 0) continue
-    visible.push({ ...message, attachments: filtered.length > 0 ? filtered : undefined })
+    const filtered = attachments.filter(
+      (attachment) =>
+        attachment.type !== "image" ||
+        !attachment.contentHash ||
+        !userHashes.has(attachment.contentHash.toLowerCase()),
+    );
+    if (
+      message.role === "assistant" &&
+      !message.content.trim() &&
+      filtered.length === 0
+    )
+      continue;
+    visible.push({
+      ...message,
+      attachments: filtered.length > 0 ? filtered : undefined,
+    });
   }
 
-  return visible
+  return visible;
 }
 
-export function groupMessages(messages: Message[], opts?: GroupOptions): GroupedItem[] {
-  const includeUser = opts?.includeUser ?? true
+// ─── groupMessages ───
+
+interface GroupOptions {
+  includeUser?: boolean;
+  unifiedTurnView?: boolean;
+}
+
+export function groupMessages(
+  messages: Message[],
+  opts?: GroupOptions,
+): GroupedItem[] {
+  const includeUser = opts?.includeUser ?? true;
 
   if (opts?.unifiedTurnView) {
-    return groupMessagesUnified(messages, includeUser)
+    return groupMessagesUnified(messages, includeUser);
   }
 
-  const result: GroupedItem[] = []
-  let toolBuf: Message[] = []
+  const result: GroupedItem[] = [];
+  let toolBuf: Message[] = [];
   // Steer bubbles held back until their "Steer applied" divider is reached,
   // keyed by the shared steerAppliedDividerId. See isRelocatableSteer.
-  const heldSteers = new Map<string, Message>()
+  const heldSteers = new Map<string, Message>();
 
   const flushTools = () => {
     if (toolBuf.length > 0) {
-      result.push({ kind: 'tool-group', messages: [...toolBuf] })
-      toolBuf = []
+      result.push({ kind: "tool-group", messages: [...toolBuf] });
+      toolBuf = [];
     }
-  }
+  };
 
   for (const msg of messages) {
-    if (msg.role === 'tool') {
-      toolBuf.push(msg)
-    } else if (msg.role === 'thinking') {
+    if (msg.role === "tool") {
+      toolBuf.push(msg);
+    } else if (msg.role === "thinking") {
       // Extended-thinking row (issue #158). In the non-unified view there
       // is no turn container to host it inside, so emit it as a standalone
       // collapsed block in stream order. It naturally precedes the tool
       // group that follows because thinking_block_start fires before the
       // first tool_use of the turn.
-      flushTools()
-      result.push({ kind: 'thinking', message: msg })
+      flushTools();
+      result.push({ kind: "thinking", message: msg });
     } else {
-      flushTools()
-      if (msg.role === 'user') {
+      flushTools();
+      if (msg.role === "user") {
         // Hold an applied steer until its divider; emit everything else here.
         if (isRelocatableSteer(msg)) {
-          heldSteers.set(msg.steerAppliedDividerId!, msg)
+          heldSteers.set(msg.steerAppliedDividerId!, msg);
         } else if (includeUser) {
-          result.push({ kind: 'user', message: msg })
+          result.push({ kind: "user", message: msg });
         }
-      } else if (msg.role === 'assistant') {
-        result.push({ kind: 'assistant', message: msg })
-      } else if (msg.role === 'harness') {
+      } else if (msg.role === "assistant") {
+        result.push({ kind: "assistant", message: msg });
+      } else if (msg.role === "harness") {
         if (msg.interceptLevel) {
-          result.push({ kind: 'intercept', message: msg })
+          result.push({ kind: "intercept", message: msg });
         } else {
-          result.push({ kind: 'harness', message: msg })
+          result.push({ kind: "harness", message: msg });
         }
-      } else if (msg.role === 'system' && (msg.content || '').startsWith('[Compaction]')) {
-        result.push({ kind: 'compaction', message: msg })
+      } else if (
+        msg.role === "system" &&
+        (msg.content || "").startsWith("[Compaction]")
+      ) {
+        result.push({ kind: "compaction", message: msg });
+      } else if (msg.role === "system" && msg.backgroundWork) {
+        continue;
       } else {
-        result.push({ kind: 'system', message: msg })
-        // The divider lands first, then the steer it announces.
-        const steer = heldSteers.get(msg.id)
+        result.push({ kind: "system", message: msg });
+        const steer = heldSteers.get(msg.id);
         if (steer) {
-          heldSteers.delete(msg.id)
-          if (includeUser) result.push({ kind: 'user', message: steer })
+          heldSteers.delete(msg.id);
+          if (includeUser) result.push({ kind: "user", message: steer });
         }
       }
     }
   }
-  flushTools()
-  flushHeldSteers(heldSteers, result, includeUser)
+  flushTools();
+  flushHeldSteers(heldSteers, result, includeUser);
 
-  return result
+  return result;
 }
 
 // ─── Unified turn-grouping (agent-turn mode) ───
@@ -181,28 +213,29 @@ function groupMessagesUnified(
   messages: Message[],
   includeUser: boolean,
 ): GroupedItem[] {
-  const result: GroupedItem[] = []
-  let turnTools: Message[] = []
-  let turnAssistant: Message[] = []
+  const result: GroupedItem[] = [];
+  let turnTools: Message[] = [];
+  let turnAssistant: Message[] = [];
   // All thinking rows for the current turn, in stream order. A single run
   // makes many API rounds and each opens its own thinking block, so a turn
   // routinely accumulates many `role: 'thinking'` rows. They are merged into
   // ONE display row per turn at flush time (mergeThinkingMessages) — one
   // continuous thought stream pinned at the top of the turn, mirroring how
   // the unified view merges the rest of the turn.
-  let turnThinking: Message[] = []
+  let turnThinking: Message[] = [];
   // Steer bubbles held back until their "Steer applied" divider is reached,
   // keyed by the shared steerAppliedDividerId. See isRelocatableSteer.
-  const heldSteers = new Map<string, Message>()
+  const heldSteers = new Map<string, Message>();
 
   const flushTurn = () => {
     // Merge the turn's thinking rows (if any) into one display message —
     // exactly one thought bubble per turn.
-    const merged = turnThinking.length > 0 ? mergeThinkingMessages(turnThinking) : null
+    const merged =
+      turnThinking.length > 0 ? mergeThinkingMessages(turnThinking) : null;
     if (turnTools.length > 0) {
-      const isActive = turnTools.some((t) => t.toolStatus === 'running')
+      const isActive = turnTools.some((t) => t.toolStatus === "running");
       result.push({
-        kind: 'agent-turn',
+        kind: "agent-turn",
         tools: [...turnTools],
         assistantMessages: [...turnAssistant],
         isActive,
@@ -210,73 +243,77 @@ function groupMessagesUnified(
         // above the tool row by AgentTurnGroup). undefined when the model
         // did not reason this turn.
         ...(merged ? { thinking: merged } : {}),
-      })
+      });
     } else {
       // No tools — there is no turn container, so emit the merged thinking
       // row (if any) as a standalone collapsed block first, then each
       // assistant message. Thinking precedes assistant output, matching the
       // engine's block_start → text ordering within a turn.
       if (merged) {
-        result.push({ kind: 'thinking', message: merged })
+        result.push({ kind: "thinking", message: merged });
       }
       for (const m of turnAssistant) {
-        result.push({ kind: 'assistant', message: m })
+        result.push({ kind: "assistant", message: m });
       }
     }
-    turnTools = []
-    turnAssistant = []
-    turnThinking = []
-  }
+    turnTools = [];
+    turnAssistant = [];
+    turnThinking = [];
+  };
 
   for (const msg of messages) {
-
-    if (msg.role === 'user') {
+    if (msg.role === "user") {
       // An applied steer belongs at its divider, not at its send position, so
       // hold it back. It does NOT flush the turn here — the steer landed mid-
       // turn, and flushing on it would split the agent turn at the wrong point.
       if (isRelocatableSteer(msg)) {
-        heldSteers.set(msg.steerAppliedDividerId!, msg)
+        heldSteers.set(msg.steerAppliedDividerId!, msg);
       } else {
-        flushTurn()
-        if (includeUser) result.push({ kind: 'user', message: msg })
+        flushTurn();
+        if (includeUser) result.push({ kind: "user", message: msg });
       }
-    } else if (msg.role === 'thinking') {
+    } else if (msg.role === "thinking") {
       // Accumulate the turn's thinking rows; they merge into one display
       // row per turn at flush time (see flushTurn). Never emitted standalone
       // mid-turn — that is what fragmented a turn into dozens of independent
       // "Thought" rows.
-      turnThinking.push(msg)
-    } else if (msg.role === 'tool') {
-      turnTools.push(msg)
-    } else if (msg.role === 'assistant') {
-      turnAssistant.push(msg)
-    } else if (msg.role === 'harness') {
+      turnThinking.push(msg);
+    } else if (msg.role === "tool") {
+      turnTools.push(msg);
+    } else if (msg.role === "assistant") {
+      turnAssistant.push(msg);
+    } else if (msg.role === "harness") {
       if (msg.interceptLevel) {
-        flushTurn()
-        result.push({ kind: 'intercept', message: msg })
+        flushTurn();
+        result.push({ kind: "intercept", message: msg });
       } else {
-        flushTurn()
-        result.push({ kind: 'harness', message: msg })
+        flushTurn();
+        result.push({ kind: "harness", message: msg });
       }
-    } else if (msg.role === 'system' && (msg.content || '').startsWith('[Compaction]')) {
-      flushTurn()
-      result.push({ kind: 'compaction', message: msg })
+    } else if (
+      msg.role === "system" &&
+      (msg.content || "").startsWith("[Compaction]")
+    ) {
+      flushTurn();
+      result.push({ kind: "compaction", message: msg });
+    } else if (msg.role === "system" && msg.backgroundWork) {
+      continue;
     } else {
-      flushTurn()
-      result.push({ kind: 'system', message: msg })
+      flushTurn();
+      result.push({ kind: "system", message: msg });
       // The divider lands first, then the steer it announces.
-      const steer = heldSteers.get(msg.id)
+      const steer = heldSteers.get(msg.id);
       if (steer) {
-        heldSteers.delete(msg.id)
-        if (includeUser) result.push({ kind: 'user', message: steer })
+        heldSteers.delete(msg.id);
+        if (includeUser) result.push({ kind: "user", message: steer });
       }
     }
   }
 
-  flushTurn()
-  flushHeldSteers(heldSteers, result, includeUser)
+  flushTurn();
+  flushHeldSteers(heldSteers, result, includeUser);
 
-  return result
+  return result;
 }
 
 // ─── stripCdPrefix ───
@@ -287,60 +324,87 @@ function groupMessagesUnified(
 // instead of being dominated by an absolute-path prefix. Only strips one leading
 // hop, so chained `cd a && cd b && cmd` becomes `cd b && cmd` rather than
 // vanishing entirely.
-const CD_PREFIX_RE = /^\s*cd\s+(?:"[^"]+"|'[^']+'|\S+)\s*(?:&&|;)\s*/
+const CD_PREFIX_RE = /^\s*cd\s+(?:"[^"]+"|'[^']+'|\S+)\s*(?:&&|;)\s*/;
 
 export function stripCdPrefix(cmd: string): string {
-  return cmd.replace(CD_PREFIX_RE, '')
+  return cmd.replace(CD_PREFIX_RE, "");
 }
 
 // ─── getToolDescription ───
 
 export function getToolDescription(name: string, input?: string): string {
-  if (!input) return name
+  if (!input) return name;
 
   try {
-    const parsed = JSON.parse(input)
+    const parsed = JSON.parse(input);
     switch (name) {
-      case 'Read': return `Read ${parsed.file_path || parsed.path || 'file'}`
-      case 'Edit': return `Edit ${parsed.file_path || 'file'}`
-      case 'Write': return `Write ${parsed.file_path || 'file'}`
-      case 'Glob': return `Search files: ${parsed.pattern || ''}`
-      case 'Grep': return `Search: ${parsed.pattern || ''}`
-      case 'Bash': {
-        const raw = parsed.command || ''
+      case "Read":
+        return `Read ${parsed.file_path || parsed.path || "file"}`;
+      case "Edit":
+        return `Edit ${parsed.file_path || "file"}`;
+      case "Write":
+        return `Write ${parsed.file_path || "file"}`;
+      case "Glob":
+        return `Search files: ${parsed.pattern || ""}`;
+      case "Grep":
+        return `Search: ${parsed.pattern || ""}`;
+      case "Bash": {
+        const raw = parsed.command || "";
         // Strip leading `cd <path> && ` so the row shows the real command.
-        const cmd = stripCdPrefix(raw)
-        return cmd.length > 60 ? `${cmd.substring(0, 57)}...` : cmd || 'Bash'
+        const cmd = stripCdPrefix(raw);
+        return cmd.length > 60 ? `${cmd.substring(0, 57)}...` : cmd || "Bash";
       }
-      case 'WebSearch': return `Search: ${parsed.query || parsed.search_query || ''}`
-      case 'WebFetch': return `Fetch: ${parsed.url || ''}`
-      case 'Agent': return `Agent: ${(parsed.prompt || parsed.description || '').substring(0, 50)}`
-      default: return name
+      case "WebSearch":
+        return `Search: ${parsed.query || parsed.search_query || ""}`;
+      case "WebFetch":
+        return `Fetch: ${parsed.url || ""}`;
+      case "Agent":
+        return `Agent: ${(parsed.prompt || parsed.description || "").substring(0, 50)}`;
+      default:
+        return name;
     }
   } catch {
     // Partial JSON during streaming — extract key values via regex
     const str = (p: string) => {
-      const m = new RegExp(`"${p}"\\s*:\\s*"([^"]*)"` ).exec(input)
-      return m?.[1] || ''
-    }
+      const m = new RegExp(`"${p}"\\s*:\\s*"([^"]*)"`).exec(input);
+      return m?.[1] || "";
+    };
     switch (name) {
-      case 'Read': case 'Edit': case 'Write': {
-        const fp = str('file_path') || str('path')
-        return fp ? `${name} ${fp}` : name
+      case "Read":
+      case "Edit":
+      case "Write": {
+        const fp = str("file_path") || str("path");
+        return fp ? `${name} ${fp}` : name;
       }
-      case 'Glob': { const v = str('pattern'); return v ? `Search files: ${v}` : name }
-      case 'Grep': { const v = str('pattern'); return v ? `Search: ${v}` : name }
-      case 'Bash': {
+      case "Glob": {
+        const v = str("pattern");
+        return v ? `Search files: ${v}` : name;
+      }
+      case "Grep": {
+        const v = str("pattern");
+        return v ? `Search: ${v}` : name;
+      }
+      case "Bash": {
         // Same cd-prefix strip for the streaming-partial branch.
-        const raw = str('command')
-        if (!raw) return name
-        const v = stripCdPrefix(raw)
-        return v.length > 60 ? v.substring(0, 57) + '...' : v
+        const raw = str("command");
+        if (!raw) return name;
+        const v = stripCdPrefix(raw);
+        return v.length > 60 ? v.substring(0, 57) + "..." : v;
       }
-      case 'WebSearch': { const v = str('query') || str('search_query'); return v ? `Search: ${v}` : name }
-      case 'WebFetch': { const v = str('url'); return v ? `Fetch: ${v}` : name }
-      case 'Agent': { const v = str('description') || str('prompt'); return v ? `Agent: ${v.substring(0, 50)}` : name }
-      default: return name
+      case "WebSearch": {
+        const v = str("query") || str("search_query");
+        return v ? `Search: ${v}` : name;
+      }
+      case "WebFetch": {
+        const v = str("url");
+        return v ? `Fetch: ${v}` : name;
+      }
+      case "Agent": {
+        const v = str("description") || str("prompt");
+        return v ? `Agent: ${v.substring(0, 50)}` : name;
+      }
+      default:
+        return name;
     }
   }
 }
@@ -360,19 +424,25 @@ export function getToolDescription(name: string, input?: string): string {
  * in the failure ratio while a run is still in flight. The running flag is
  * returned here so the caller can suppress failure UI while work continues.
  */
-export function toolFailureSummary(tools: Message[]): { failed: number; total: number; running: boolean } {
-  let failed = 0
-  let running = false
+export function toolFailureSummary(tools: Message[]): {
+  failed: number;
+  total: number;
+  running: boolean;
+} {
+  let failed = 0;
+  let running = false;
   for (const t of tools) {
-    if (t.toolStatus === 'error') failed++
-    if (t.toolStatus === 'running') running = true
+    if (t.toolStatus === "error") failed++;
+    if (t.toolStatus === "running") running = true;
   }
-  return { failed, total: tools.length, running }
+  return { failed, total: tools.length, running };
 }
 
+// ─── activeToolProgress ───
+
 export interface ActiveToolProgress {
-  currentToolDescription: string
-  usedCount: number
+  currentToolDescription: string;
+  usedCount: number;
 }
 
 /**
@@ -380,22 +450,29 @@ export interface ActiveToolProgress {
  * running row is current because tool rows preserve engine event order. Every
  * settled row counts as used, including failed calls, because it ran.
  */
-export function activeToolProgress(tools: Message[]): ActiveToolProgress | null {
-  const currentTool = [...tools].reverse().find((tool) => tool.toolStatus === 'running')
-  if (!currentTool) return null
+export function activeToolProgress(
+  tools: Message[],
+): ActiveToolProgress | null {
+  const currentTool = [...tools]
+    .reverse()
+    .find((tool) => tool.toolStatus === "running");
+  if (!currentTool) return null;
 
   return {
-    currentToolDescription: getToolDescription(currentTool.toolName || 'Tool', currentTool.toolInput),
-    usedCount: tools.filter((tool) => tool.toolStatus !== 'running').length,
-  }
+    currentToolDescription: getToolDescription(
+      currentTool.toolName || "Tool",
+      currentTool.toolInput,
+    ),
+    usedCount: tools.filter((tool) => tool.toolStatus !== "running").length,
+  };
 }
 
 // ─── toolSummary ───
 
 export function toolSummary(tools: Message[]): string {
-  if (tools.length === 0) return ''
-  const first = tools[0]
-  const desc = getToolDescription(first.toolName || 'Tool', first.toolInput)
-  if (tools.length === 1) return desc
-  return `${desc} and ${tools.length - 1} more tool${tools.length > 2 ? 's' : ''}`
+  if (tools.length === 0) return "";
+  const first = tools[0];
+  const desc = getToolDescription(first.toolName || "Tool", first.toolInput);
+  if (tools.length === 1) return desc;
+  return `${desc} and ${tools.length - 1} more tool${tools.length > 2 ? "s" : ""}`;
 }

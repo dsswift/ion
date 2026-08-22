@@ -18,7 +18,7 @@ import { lookupClientMsgId, clearClientMsgIdsForTab } from '../client-msg-id-map
 import type { RemoteCommand, RemoteEvent } from '../protocol'
 import { isThinkingEffort } from '../../../shared/thinking-options'
 
-export { handlePrompt, handleCancel } from './tabs-prompt'
+export { handlePrompt, handleCancel, handleAbortDispatch } from './tabs-prompt'
 // Tab creation (and its desktop_tab_created echo) lives in tabs-create-echo.ts;
 // re-exported here so command-handler.ts and the wire tests keep one import
 // site for the whole tab-command surface.

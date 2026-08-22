@@ -6,7 +6,7 @@
 import type { StudioApi } from './studio-api'
 import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, GitDiffResult, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, LandResult, SyncAllResult, WorktreeMoveResult, WorktreeInventoryEntry, WorktreeAppraisalWire, WorktreeProvisionState, WorkStage, IntegrationWorkspace, BenchAssembleResult, EngineConfig, EngineEvent, EngineHostInfo, EngineDirListing, RemoteTransportState, DiscoveredCommand, GitEvent, RepoSnapshot, NewConversationDefaultsPolicy } from '../shared/types'
 import type { DeepLinkConfirmRequest, DeepLinkConfirmResult } from '../shared/types-ipc'
-import type { EnterprisePolicy } from '../shared/types-engine'
+import type { AbortScope, EnterprisePolicy } from '../shared/types-engine'
 import type { StartupReport } from '../shared/startup-state'
 import type { ModelTier } from '../shared/types-model-tiers'
 import type { CustomThemeForRenderer } from '../shared/theme-pack-types'
@@ -21,7 +21,7 @@ export interface IonAPI extends StudioApi {
   prompt(tabId: string, requestId: string, options: RunOptions): Promise<void>
   cancel(requestId: string): Promise<boolean>
   steer(tabId: string, message: string, clientMessageId?: string): void
-  stopTab(tabId: string): Promise<boolean>
+  stopTab(tabId: string, scope?: AbortScope): Promise<boolean>
   retry(tabId: string, requestId: string, options: RunOptions): Promise<void>
   status(): Promise<HealthReport>
   tabHealth(): Promise<HealthReport>
@@ -387,8 +387,9 @@ export interface IonAPI extends StudioApi {
   // ─── Engine operations ───
   engineStart(key: string, config: EngineConfig): Promise<{ ok: boolean; error?: string; conversationId?: string }>
   engineSetPlanMode(key: string, enabled: boolean, planFilePath?: string): void
-  engineAbort(key: string): Promise<void>
-  engineAbortAgent(key: string, agentName: string, subtree: boolean): Promise<void>
+  engineAbort(key: string, scope?: AbortScope): Promise<void>
+  engineAbortDispatch(key: string, dispatchId: string): Promise<void>
+  engineStopBackgroundTask(key: string, taskId: string): Promise<{ ok: boolean; status?: string; error?: string }>
   engineDialogResponse(key: string, dialogId: string, value: any): Promise<void>
   engineCommand(key: string, command: string, args: string): Promise<void>
   engineStop(key: string): Promise<void>

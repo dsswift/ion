@@ -189,6 +189,8 @@ export function toRemoteMessage(m: Message): RemoteMessage {
     slashModelAlias: m.slashModelAlias,
     slashModelEffective: m.slashModelEffective,
     planFilePath: m.planFilePath,
+    backgroundTaskId: m.backgroundTaskId,
+    backgroundWork: m.backgroundWork,
     attachments: (m.attachments || []).map((a) => ({
       id: a.id,
       type: (a.type === 'image' || a.type === 'file' || a.type === 'plan' ? a.type : 'file') as 'image' | 'file' | 'plan',

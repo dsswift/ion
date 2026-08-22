@@ -1,7 +1,7 @@
 // @file-size-exception: types-session.ts is a shared type barrel; enterprise
 // policy types were added in #256. Next split: extract enterprise types into
 // types-enterprise.ts when the file grows by another ~80 lines.
-import type { UsageData } from './types-events'
+import type { UsageData } from "./types-events";
 
 // ─── Thinking ───
 
@@ -25,37 +25,51 @@ import type { UsageData } from './types-events'
  *
  * Stored per-instance, applied live on the next prompt.
  */
-export type ThinkingEffort = 'off' | 'adaptive' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+export type ThinkingEffort =
+  "off" | "adaptive" | "low" | "medium" | "high" | "xhigh" | "max";
 
 // ─── Tab Grouping ───
 
-export const DEFAULT_TAB_GROUP_LABELS = ['Planning', 'On Deck', 'In Progress', 'Testing'] as const
+export const DEFAULT_TAB_GROUP_LABELS = [
+  "Planning",
+  "On Deck",
+  "In Progress",
+  "Testing",
+] as const;
 
-export type TabGroupMode = 'off' | 'auto' | 'manual'
+export type TabGroupMode = "off" | "auto" | "manual";
 
 export interface TabGroup {
-  id: string          // nanoid
-  label: string       // user-provided name (manual) or dir name (auto)
-  isDefault: boolean  // manual mode: where new tabs land
-  order: number       // position in strip
-  collapsed: boolean  // whether the group shows as a single pill
+  id: string; // nanoid
+  label: string; // user-provided name (manual) or dir name (auto)
+  isDefault: boolean; // manual mode: where new tabs land
+  order: number; // position in strip
+  collapsed: boolean; // whether the group shows as a single pill
 }
 
 // ─── Tab State Machine (v2 — from execution plan) ───
 
-export type TabStatus = 'connecting' | 'starting' | 'idle' | 'running' | 'waiting' | 'completed' | 'failed' | 'dead'
+export type TabStatus =
+  | "connecting"
+  | "starting"
+  | "idle"
+  | "running"
+  | "waiting"
+  | "completed"
+  | "failed"
+  | "dead";
 
 export interface PermissionRequest {
-  questionId: string
-  toolTitle: string
-  toolDescription?: string
-  toolInput?: Record<string, unknown>
-  options: Array<{ optionId: string; kind?: string; label: string }>
+  questionId: string;
+  toolTitle: string;
+  toolDescription?: string;
+  toolInput?: Record<string, unknown>;
+  options: Array<{ optionId: string; kind?: string; label: string }>;
   /** Engine instance (sub-tab) this request belongs to. Set for engine-view
    * denials promoted into the tab-level queue so clients can scope the
    * card to the owning sub-conversation. Absent for CLI tabs and for
    * requests that predate this field (additive, non-breaking). */
-  instanceId?: string
+  instanceId?: string;
 }
 
 /**
@@ -69,52 +83,52 @@ export interface PermissionRequest {
  */
 export interface ElicitationRequest {
   /** Engine-assigned id echoed back in the elicitation_response command. */
-  requestId: string
+  requestId: string;
   /** Renderer selector ("approval", "select", ...). May be empty. */
-  mode: string
+  mode: string;
   /** Harness-defined description of what is being requested. */
-  schema?: Record<string, unknown>
+  schema?: Record<string, unknown>;
   /** Optional deep-link URL for web flows. */
-  url?: string
+  url?: string;
   /** Extension or subsystem that raised the elicitation. */
-  source?: string
+  source?: string;
   /** MCP/tool server name, when the elicitation originates from one. */
-  server?: string
+  server?: string;
   /** Human-readable description of what the elicitation is asking. */
-  message?: string
+  message?: string;
   /** Label for the primary approval action (e.g. "Install", "Connect"). */
-  action?: string
+  action?: string;
 }
 
 export interface FileAttachment {
-  id: string
-  type: 'image' | 'file'
-  name: string
-  path: string
-  mimeType?: string
+  id: string;
+  type: "image" | "file";
+  name: string;
+  path: string;
+  mimeType?: string;
   /** Exact SHA-256 identity of decoded image bytes. Absent on legacy rows. */
-  contentHash?: string
+  contentHash?: string;
   /** Base64 data URL for image previews */
-  dataUrl?: string
+  dataUrl?: string;
   /** File size in bytes */
-  size?: number
+  size?: number;
 }
 
 export interface PlanAttachment {
-  id: string
-  type: 'plan'
-  name: string
-  path: string
+  id: string;
+  type: "plan";
+  name: string;
+  path: string;
 }
 
-export type Attachment = FileAttachment | PlanAttachment
+export type Attachment = FileAttachment | PlanAttachment;
 
 export interface TabState {
-  id: string
-  conversationId: string | null
-  historicalSessionIds: string[]
+  id: string;
+  conversationId: string | null;
+  historicalSessionIds: string[];
   /** Most recent non-null conversationId; never cleared. Recovery fallback when conversationId is null. */
-  lastKnownSessionId: string | null
+  lastKnownSessionId: string | null;
   /**
    * Transient: the conversationId a deliberate checkpoint cut (clear-context)
    * just left behind, to be recorded as the next session's on-disk `parentId`.
@@ -122,9 +136,9 @@ export interface TabState {
    * engine start (passed as EngineConfig.parentConversationId), then cleared.
    * Never persisted — it only bridges the cut to the subsequent start.
    */
-  pendingParentConversationId?: string | null
-  status: TabStatus
-  activeRequestId: string | null
+  pendingParentConversationId?: string | null;
+  status: TabStatus;
+  activeRequestId: string | null;
   /**
    * Wall-clock ms of last engine-originated event for this tab. Drives the
    * stuck-tab watchdog and the "any event counts" freshness pill. Persisted
@@ -133,20 +147,20 @@ export interface TabState {
    * NOT an activity signal: reconnects, heartbeats, and status re-emissions
    * all stamp it. Honest activity is `lastActivityAt` below.
    */
-  lastEventAt: number | null
+  lastEventAt: number | null;
   /**
    * Wall-clock ms of the last non-message renderer activity. This remains
    * useful for diagnostics, but is NEVER an inbox sort, age, or settle signal.
    */
-  lastActivityAt: number | null
+  lastActivityAt: number | null;
   /** True while a machine-authored injected run streams. Never persisted. */
-  inboxMessageSuppressed?: boolean
+  inboxMessageSuppressed?: boolean;
   /**
    * Wall-clock ms of the newest real user or assistant message. This is the
    * inbox source of truth. Background delivery, schedules, webhooks, status
    * events, and task completion do not write it.
    */
-  lastMessageAt?: number | null
+  lastMessageAt?: number | null;
   /**
    * Wall-clock ms of the last running→idle transition (renderer-observed).
    * Persisted verbatim; after restore only a live running→idle transition
@@ -156,35 +170,35 @@ export interface TabState {
    * time. This renderer field records its observed tab transition because tab
    * state can also change through local recovery and event reduction.
    */
-  idleSince: number | null
+  idleSince: number | null;
   /** Immutable creation timestamp for stable inbox and pinned fallback order. */
-  createdAt?: number
+  createdAt?: number;
   /** Wall-clock ms of the newest failure; compares against snoozedAt for wake. */
-  lastFailureAt?: number | null
+  lastFailureAt?: number | null;
   /** Inbox pin timestamp. Pinned rows keep a full-card position above active rows. */
-  pinnedAt?: number | null
+  pinnedAt?: number | null;
   /** Fractional base-26 ordering key for pinned rows. */
-  pinOrderKey?: string | null
+  pinOrderKey?: string | null;
   /** Wall-clock ms of the last task_complete (inbox unread derivation). */
-  lastCompletionAt: number | null
+  lastCompletionAt: number | null;
   /**
    * Inbox settle provenance: 'settled' = operator, 'auto' = idle clock,
    * 'active' = explicit keep-active, null = not settled. Both settled values
    * are hard, input-locked states; only their provenance differs.
    */
-  settledOverride: 'settled' | 'active' | 'auto' | null
+  settledOverride: "settled" | "active" | "auto" | null;
   /** When the tab was settled (settled-shelf sort key). */
-  settledAt: number | null
+  settledAt: number | null;
   /** Snooze wake time (ms). Snoozed tabs sit on the snoozed shelf until
    *  wake or a raised hand (pending ask / fresh error / completion). */
-  snoozedUntil: number | null
+  snoozedUntil: number | null;
   /** When the snooze was set (raised-hand comparisons). */
-  snoozedAt: number | null
+  snoozedAt: number | null;
   /** Last time the user visited (selected) this tab. Inbox unread =
    *  manualUnread || lastCompletionAt > lastVisitedAt; never-visited = read. */
-  lastVisitedAt: number | null
+  lastVisitedAt: number | null;
   /** User-forced unread marker (cleared on visit). */
-  manualUnread: boolean
+  manualUnread: boolean;
   /**
    * Auto-recovery bookkeeping for the stuck-tab watchdog. When a running tab
    * goes silent past the recovery threshold, the watchdog automatically
@@ -195,61 +209,61 @@ export interface TabState {
    * auto-resuming and surfaces an honest, actionable message instead. Not
    * persisted — recovery is a live-session concern that resets on restart.
    */
-  autoRecoveryAttempts?: number
-  autoRecoveryWindowStartedAt?: number | null
-  currentActivity: string
-  attachments: FileAttachment[]
+  autoRecoveryAttempts?: number;
+  autoRecoveryWindowStartedAt?: number | null;
+  currentActivity: string;
+  attachments: FileAttachment[];
   /**
    * One-shot field: set by rewind, consumed by InputBar to pre-fill input,
    * then cleared. Tab-level because rewind targets the tab's active
    * conversation and the InputBar is tab-scoped.
    */
-  pendingInput?: string
-  title: string
+  pendingInput?: string;
+  title: string;
   /** User-provided custom tab name (overrides auto-generated title when set) */
-  customTitle: string | null
+  customTitle: string | null;
   /** Last run's result data (cost, tokens, duration) */
-  lastResult: RunResult | null
-  sessionTools: string[]
-  sessionMcpServers: Array<{ name: string; status: string }>
-  sessionSkills: string[]
-  sessionVersion: string | null
+  lastResult: RunResult | null;
+  sessionTools: string[];
+  sessionMcpServers: Array<{ name: string; status: string }>;
+  sessionSkills: string[];
+  sessionVersion: string | null;
   /** Prompts waiting behind the current run (display text only) */
-  queuedPrompts: string[]
+  queuedPrompts: string[];
   /** Working directory for this tab's sessions */
-  workingDirectory: string
+  workingDirectory: string;
   /** Whether the user explicitly chose a directory (vs. using default home) */
-  hasChosenDirectory: boolean
+  hasChosenDirectory: boolean;
   /** Extra directories accessible via --add-dir (session-preserving) */
-  additionalDirs: string[]
+  additionalDirs: string[];
   /** Pending bash command results to send as context with next prompt */
-  bashResults: Array<{ command: string; stdout: string; stderr: string }>
+  bashResults: Array<{ command: string; stdout: string; stderr: string }>;
   /** Whether a bash command is currently executing in this tab */
-  bashExecuting: boolean
+  bashExecuting: boolean;
   /** ID of the currently executing bash command (for cancellation) */
-  bashExecId: string | null
+  bashExecId: string | null;
   /** Custom pill outline color (null = use theme default) */
-  pillColor: string | null
+  pillColor: string | null;
   /** Custom pill icon shape (null = default circle dot) */
-  pillIcon: string | null
+  pillIcon: string | null;
   /** Session ID this tab was forked from (null if not a fork) */
-  forkedFromSessionId: string | null
+  forkedFromSessionId: string | null;
   /** Host where this conversation executes. Durable for future remote execution. */
-  executionHost?: string | null
+  executionHost?: string | null;
   /** Stable execution-machine identity when the host exposes one. */
-  executionMachineId?: string | null
+  executionMachineId?: string | null;
   /** Worktree metadata when tab operates inside a managed worktree */
-  worktree: WorktreeInfo | null
+  worktree: WorktreeInfo | null;
   /** True while waiting for the user to pick a source branch in the BranchPickerDialog */
-  pendingWorktreeSetup: boolean
+  pendingWorktreeSetup: boolean;
   /** Tab group assignment (null = ungrouped / auto-computed) */
-  groupId: string | null
+  groupId: string | null;
   /**
    * When true, suppresses autoGroupMovement for this tab.
    * Manual moves preserve the pin — the new group becomes the sticky anchor.
    * Toggle via right-click → "Pin to group" / "Unpin from group".
    */
-  groupPinned: boolean
+  groupPinned: boolean;
   /**
    * Absolute context-window occupancy in tokens for the tab's active
    * conversation instance, mirrored from `statusFields.contextTokens`.
@@ -260,7 +274,7 @@ export interface TabState {
    * (see remote-projection.ts). It is the wire carrier, not a second
    * source of truth: both are written from the same engine status event.
    */
-  contextTokens: number | null
+  contextTokens: number | null;
   /**
    * Engine-reported context window size (tokens) for the model the engine
    * actually used on the most recent turn — the denominator the ENGINE
@@ -276,11 +290,11 @@ export interface TabState {
    *
    * Null on a fresh tab (no engine response yet).
    */
-  contextWindow: number | null
+  contextWindow: number | null;
   /** True while the engine is actively compacting context */
-  isCompacting: boolean
+  isCompacting: boolean;
   /** Terminal-focused tab with no conversation */
-  isTerminalOnly: boolean
+  isTerminalOnly: boolean;
   /**
    * When true, the operator cannot type into this conversation. Set on the
    * auto-generated conflict-resolution conversations (the AI Assisted rebase /
@@ -291,11 +305,11 @@ export interface TabState {
    * fix/analysis conversation stays readable and abortable; it just refuses
    * new prompts.
    */
-  inputLocked: boolean
+  inputLocked: boolean;
   /** Why input is locked. `landed-worktree` seals review-only conversations,
    * `settled` seals a cold Inbox history record, and automated workflows admit
    * their one initial `source: 'machine'` prompt. */
-  inputLockReason?: 'automated-workflow' | 'landed-worktree' | 'settled' | null
+  inputLockReason?: "automated-workflow" | "landed-worktree" | "settled" | null;
   /**
    * Explicit lifecycle role for tabs that share one directory. A bench can
    * simultaneously hold the persistent operator conversation, its dedicated
@@ -315,32 +329,33 @@ export interface TabState {
    * - `null`/absent: every other tab (default). Terminal identity stays
    *   derived via `isTerminalOnly` + `pickDirTerminal`, not a role.
    */
-  tabRole?: 'bench-conversation' | 'conflict-auto-fix' | 'verification-analysis' | null
+  tabRole?:
+    "bench-conversation" | "conflict-auto-fix" | "verification-analysis" | null;
   /**
    * Engine profile ID used for this tab (references EngineProfile.id).
    * Non-null/non-empty means the tab has extensions loaded (derived via
    * `tabHasExtensions()` from shared/tab-predicates.ts).
    */
-  engineProfileId: string | null
+  engineProfileId: string | null;
   /** Short single-line preview of the last visible message (~80 chars), used
    *  as a tab-pill subtitle to help distinguish multiple Jarvis sessions. */
-  lastMessagePreview: string | null
+  lastMessagePreview: string | null;
 }
 
 export interface Message {
-  id: string
-  role: 'user' | 'assistant' | 'tool' | 'system' | 'harness' | 'thinking'
-  content: string
-  toolName?: string
-  toolInput?: string
-  toolId?: string
-  toolStatus?: 'running' | 'completed' | 'error'
+  id: string;
+  role: "user" | "assistant" | "tool" | "system" | "harness" | "thinking";
+  content: string;
+  toolName?: string;
+  toolInput?: string;
+  toolId?: string;
+  toolStatus?: "running" | "completed" | "error";
   /** True for messages originating from user bash command entry (! prefix) */
-  userExecuted?: boolean
+  userExecuted?: boolean;
   /** True when the expand-tool-results setting auto-expanded this result */
-  autoExpandResult?: boolean
+  autoExpandResult?: boolean;
   /** File or plan attachments associated with this message */
-  attachments?: Attachment[]
+  attachments?: Attachment[];
   /**
    * Optional dedup key carried verbatim from
    * `engine_harness_message.metadata.dedupKey`. The renderer uses it to
@@ -353,7 +368,7 @@ export interface Message {
    * See engine-event-slice.ts for the consumer logic and
    * docs/protocol/server-events.md for the well-known-keys table.
    */
-  dedupKey?: string
+  dedupKey?: string;
   /**
    * Path to the plan file associated with a plan-created divider message.
    * Populated only on `role: 'system'` messages whose content starts with
@@ -361,7 +376,7 @@ export interface Message {
    * (opens the plan preview, same as clicking a plan in the attachment drawer).
    * Client-only field — NOT part of the Go contract or wire protocol.
    */
-  planFilePath?: string
+  planFilePath?: string;
   /**
    * Engine-provided slash-command metadata for rendering a command PILL.
    * Populated from `SessionMessage.slashCommand` (and siblings) returned by
@@ -374,15 +389,15 @@ export interface Message {
    * alongside the message (see serialize-conversation-pane.ts and
    * types-persistence.ts) so the pill survives app restart.
    */
-  slashCommand?: string
+  slashCommand?: string;
   /** Slash args (the text after `/name`), from `SessionMessage.slashArgs`. */
-  slashArgs?: string
+  slashArgs?: string;
   /** Origin of the resolved template: "extension"|"ion"|"claude"|"skill"|"project". */
-  slashSource?: string
+  slashSource?: string;
   /** Command-owned model selector from slash frontmatter, such as `fast`. */
-  slashModelAlias?: string
+  slashModelAlias?: string;
   /** Concrete model the engine selected for this slash invocation after tier and provider resolution. */
-  slashModelEffective?: string
+  slashModelEffective?: string;
   /**
    * Intercept level carried from `engine_intercept.interceptLevel`.
    * Populated only on `role: 'harness'` messages pushed by the
@@ -391,14 +406,14 @@ export interface Message {
    * The InterceptBanner component reads this to choose its visual weight.
    * Client-only field — NOT part of the Go contract or wire protocol.
    */
-  interceptLevel?: string
-  timestamp: number
+  interceptLevel?: string;
+  timestamp: number;
   /**
    * Local UI state only -- NOT a wire protocol field, NOT persisted.
    * Set to true by engine_message_end so the next engine_text_delta
    * opens a fresh assistant message instead of appending to this one.
    */
-  sealed?: boolean
+  sealed?: boolean;
   /**
    * Local UI state only -- NOT a wire protocol field, NOT persisted.
    * Set to true on the optimistic user bubble created by the mid-turn
@@ -412,13 +427,13 @@ export interface Message {
    *   - engine_dead arrives before steer_injected → the bubble is marked
    *     steerFailed so the renderer can show an error affordance.
    */
-  steerPending?: boolean
+  steerPending?: boolean;
   /**
    * Local UI state only -- NOT a wire protocol field, NOT persisted.
    * Set to true when the engine died before the buffered steer was drained.
    * The renderer shows an error affordance instead of the pending indicator.
    */
-  steerFailed?: boolean
+  steerFailed?: boolean;
   /**
    * Local UI state only -- NOT a wire protocol field, NOT persisted.
    * Set to true on the optimistic user bubble when `steer_injected` confirms
@@ -426,7 +441,7 @@ export interface Message {
    * user turn was a mid-turn steer" so the renderer can label it distinctly
    * from a normal turn-opening prompt.
    */
-  steerApplied?: boolean
+  steerApplied?: boolean;
   /**
    * Local UI state only -- NOT a wire protocol field, NOT persisted.
    * The `id` of the "── Steer applied" divider that `steer_injected` appended
@@ -442,7 +457,7 @@ export interface Message {
    * position and this field is absent, so no relocation happens (and none is
    * needed).
    */
-  steerAppliedDividerId?: string
+  steerAppliedDividerId?: string;
   // ─── Extended-thinking fields (issue #158) ───
   // Populated ONLY on `role: 'thinking'` messages, which the renderer
   // synthesizes from the engine's `engine_thinking_block_start` /
@@ -467,58 +482,60 @@ export interface Message {
   // conversation simply has no thinking rows, which is the correct
   // summary-absent default.
   /** True while the block is streaming (between block_start and block_end). */
-  thinkingActive?: boolean
+  thinkingActive?: boolean;
   /** Wall-clock seconds the reasoning block took, from block_end. */
-  thinkingElapsedSeconds?: number
+  thinkingElapsedSeconds?: number;
   /** Token count the model spent reasoning, from block_end (when present). */
-  thinkingTotalTokens?: number
+  thinkingTotalTokens?: number;
   /**
    * True when the engine reported the block as encrypted/redacted
    * reasoning with no readable text. The ThinkingBlock renders a
    * "🔒 redacted reasoning" affordance rather than an empty block.
    */
-  thinkingRedacted?: boolean
+  thinkingRedacted?: boolean;
+  backgroundWork?: import("./types-background-work").BackgroundWorkInfo;
+  backgroundTaskId?: string;
 }
 
 export interface RunResult {
   /** Cost of this run in USD. Populated from TaskCompleteEvent.costUsd which
    *  the engine sets to a per-run value (cache-aware, CliBackend delta-normalized). */
-  totalCostUsd: number
-  durationMs: number
+  totalCostUsd: number;
+  durationMs: number;
   /** Terminal reason for this run. Drives the transcript completion label. */
-  reason?: import('./types-events').TaskCompletionReason | (string & {})
-  numTurns: number
+  reason?: import("./types-events").TaskCompletionReason | (string & {});
+  numTurns: number;
   /** Conversation-lifetime prompt count (real user prompts across the whole
    *  conversation), from TaskCompleteEvent.conversationTurns. Distinct from
    *  numTurns (per-run round-trips). The StatusDrawer "Turns" row renders this
    *  lifetime value. Absent on paths that do not report it (e.g. CLI backend). */
-  conversationTurns?: number
-  usage: UsageData
-  sessionId: string
+  conversationTurns?: number;
+  usage: UsageData;
+  sessionId: string;
 }
 
 // ─── Run Options ───
 
 export interface RunOptions {
-  prompt: string
-  projectPath: string
+  prompt: string;
+  projectPath: string;
   /** Conversation ID to resume (loads existing conversation history) */
-  sessionId?: string
-  model?: string
+  sessionId?: string;
+  model?: string;
   /** Extra directories to add (session-preserving) */
-  addDirs?: string[]
+  addDirs?: string[];
   /** Extra context appended to the system prompt (additive, not replacement) */
-  appendSystemPrompt?: string
+  appendSystemPrompt?: string;
   /** Origin of the prompt — 'remote' skips iOS forwarding (already echoed) */
-  source?: 'desktop' | 'remote'
+  source?: "desktop" | "remote";
   /** Stable client delivery identity. Reused on retries to make engine acceptance idempotent. */
-  deliveryId?: string
+  deliveryId?: string;
   /** Max output tokens per LLM turn */
-  maxTokens?: number
+  maxTokens?: number;
   /** Extended thinking config (per-session default). See ThinkingConfig. */
-  thinking?: import('./types-engine').ThinkingConfig
+  thinking?: import("./types-engine").ThinkingConfig;
   /** Extension entry points for engine tabs (resolved from engine profile) */
-  extensions?: string[]
+  extensions?: string[];
   /**
    * Tells the engine that this run is the "implement" half of a
    * plan-then-implement flow. The desktop sets this on the run dispatched
@@ -534,13 +551,13 @@ export interface RunOptions {
    * is the mechanical equivalent and lives on the structured wire
    * contract instead of in prompt prose.
    */
-  implementationPhase?: boolean
+  implementationPhase?: boolean;
   /**
    * Per-prompt extended-thinking effort for this CLI/conversation prompt.
    * 'off'/undefined → no thinking directive. Threaded to send_prompt as
    * `thinkingEffort`; read from the conversation instance's level.
    */
-  thinkingEffort?: string
+  thinkingEffort?: string;
   /**
    * Harness-supplied description prose for the EnterPlanMode sentinel
    * tool that the engine injects during auto-mode runs. The desktop
@@ -561,7 +578,7 @@ export interface RunOptions {
    * EnterPlanMode injection when implementationPhase=true, so any
    * description value would be unused.
    */
-  enterPlanModeDescription?: string
+  enterPlanModeDescription?: string;
   /**
    * Harness-supplied text for the per-turn sparse plan-mode reminder the
    * engine injects every planModeReminderInterval turns (default: every 5).
@@ -573,21 +590,25 @@ export interface RunOptions {
    * The desktop ships its reference prose as PLAN_MODE_SPARSE_REMINDER in
    * prompt-pipeline.ts; third-party harnesses pick their own or omit.
    */
-  planModeSparseReminder?: string
+  planModeSparseReminder?: string;
   /**
    * Pre-encoded image attachments for the user message. The engine forwards
    * each as a native multimodal content block. Desktop is responsible for
    * reading the file, base64-encoding the bytes, and dropping unreadable
    * entries before they reach the engine.
    */
-  imageAttachments?: ImageAttachmentPayload[]
+  imageAttachments?: ImageAttachmentPayload[];
   /**
    * Raw (not yet encoded) file/image attachments from the desktop composer.
    * The renderer cannot encode (fs + nativeImage live in main), so it passes
    * the paths through; the prompt pipeline's desktop branch runs
    * encodeAttachments on them -- same treatment the remote branches get.
    */
-  rawAttachments?: Array<{ type: 'image' | 'file'; name: string; path: string }>
+  rawAttachments?: Array<{
+    type: "image" | "file";
+    name: string;
+    path: string;
+  }>;
   /**
    * Persisted plan file path from tab state. When set, the engine uses this
    * path instead of allocating a fresh slug — restoring continuity after
@@ -598,7 +619,7 @@ export interface RunOptions {
    * entered plan mode omit this field and the engine's behavior is
    * unchanged.
    */
-  planFilePath?: string
+  planFilePath?: string;
   /**
    * When true, the engine treats `prompt` as a slash invocation
    * (`/name args`): it resolves the command template across its own command
@@ -613,93 +634,93 @@ export interface RunOptions {
    * resolution + expansion (local `.md` expansion is retired). Sent on the
    * wire only when truthy (mirrors the engine's omitempty `resolveSlash`).
    */
-  resolveSlash?: boolean
+  resolveSlash?: boolean;
   /**
    * Client-supplied workspace descriptor for this prompt. When set, the
    * engine uses this instead of its own worktree-registry-derived context.
    * Per-prompt override: takes precedence over the session-level
    * EngineConfig.clientWorkspaceContext value.
    */
-  clientWorkspaceContext?: import('./types-engine').ClientWorkspaceContext
+  clientWorkspaceContext?: import("./types-engine").ClientWorkspaceContext;
 }
 
 /** Pre-encoded image bytes that ride alongside a user prompt. */
 export interface ImageAttachmentPayload {
   /** SHA-256 identity of original user-visible image bytes. */
-  contentHash?: string
+  contentHash?: string;
   /** MIME type, e.g. "image/jpeg", "image/png", "image/webp", "image/gif". */
-  mediaType: string
+  mediaType: string;
   /** Base64-encoded image bytes (no data URL prefix). */
-  data: string
+  data: string;
   /** Source path on disk; carried for logging only. */
-  path?: string
+  path?: string;
 }
 
 // ─── Control Plane Types ───
 
 export interface TabRegistryEntry {
-  tabId: string
-  conversationId: string | null
-  status: TabStatus
-  activeRequestId: string | null
-  runPid: number | null
-  createdAt: number
-  lastActivityAt: number
-  promptCount: number
+  tabId: string;
+  conversationId: string | null;
+  status: TabStatus;
+  activeRequestId: string | null;
+  runPid: number | null;
+  createdAt: number;
+  lastActivityAt: number;
+  promptCount: number;
 }
 
 export interface HealthReport {
   tabs: Array<{
-    tabId: string
-    status: TabStatus
-    activeRequestId: string | null
-    conversationId: string | null
-    alive: boolean
-    lastActivityAt: number
-  }>
-  queueDepth: number
+    tabId: string;
+    status: TabStatus;
+    activeRequestId: string | null;
+    conversationId: string | null;
+    alive: boolean;
+    lastActivityAt: number;
+  }>;
+  queueDepth: number;
 }
 
 export interface EnrichedError {
-  message: string
-  stderrTail: string[]
-  stdoutTail?: string[]
-  exitCode: number | null
-  elapsedMs: number
-  toolCallCount: number
-  sawPermissionRequest?: boolean
-  permissionDenials?: Array<{ tool_name: string; tool_use_id: string }>
+  message: string;
+  stderrTail: string[];
+  stdoutTail?: string[];
+  exitCode: number | null;
+  elapsedMs: number;
+  toolCallCount: number;
+  sawPermissionRequest?: boolean;
+  permissionDenials?: Array<{ tool_name: string; tool_use_id: string }>;
 }
 
 // ─── Session History ───
 
 export interface SessionMeta {
-  sessionId: string
-  slug: string | null
-  firstMessage: string | null
-  lastResponse: string | null
-  firstTimestamp?: string
-  lastTimestamp: string
-  size: number
-  customTitle: string | null
+  sessionId: string;
+  slug: string | null;
+  firstMessage: string | null;
+  lastResponse: string | null;
+  firstTimestamp?: string;
+  lastTimestamp: string;
+  size: number;
+  customTitle: string | null;
   /** Decoded real filesystem path (null if directory no longer exists) */
-  projectPath: string | null
+  projectPath: string | null;
   /** Human-readable label (basename of path, or fallback from encoded name) */
-  projectLabel: string | null
+  projectLabel: string | null;
   /** Raw encoded directory name (for loading sessions from deleted dirs) */
-  encodedDir: string | null
+  encodedDir: string | null;
   /** All session IDs in this composite conversation chain (including self) */
-  chainSessionIds?: string[]
+  chainSessionIds?: string[];
   /** Number of sessions in the chain (1 = standalone) */
-  chainLength?: number
+  chainLength?: number;
 }
 
 /** Maps root session IDs to their continuation chains for composite conversation grouping */
 export interface SessionChainIndex {
   /** root session ID -> ordered list of continuation session IDs */
-  chains: Record<string, string[]>
+  chains: Record<string, string[]>;
   /** any continuation session ID -> its root session ID */
-  reverse: Record<string, string>
+  reverse: Record<string, string>;
 }
 
 export interface SessionLoadMessage {
@@ -711,28 +732,29 @@ export interface SessionLoadMessage {
    * reloads dedup against live rows instead of duplicating them. Absent only
    * when the engine predates the field.
    */
-  id?: string
-  role: string
-  content: string
-  toolName?: string
-  toolId?: string
-  toolInput?: string
-  userExecuted?: boolean
-  attachments?: Attachment[]
-  timestamp: number
-  internal?: boolean
+  id?: string;
+  role: string;
+  content: string;
+  toolName?: string;
+  toolId?: string;
+  toolInput?: string;
+  userExecuted?: boolean;
+  attachments?: Attachment[];
+  timestamp: number;
+  backgroundTaskId?: string;
+  internal?: boolean;
   /**
    * Persisted tool_result error flag on tool rows (mirror of
    * `types.SessionMessage.IsError`) so reloaded history keeps failed tool
    * state instead of coercing every result to success.
    */
-  isError?: boolean
+  isError?: boolean;
   /** Engine-provided slash-command metadata (see Message.slashCommand). */
-  slashCommand?: string
-  slashArgs?: string
-  slashSource?: string
-  slashModelAlias?: string
-  slashModelEffective?: string
+  slashCommand?: string;
+  slashArgs?: string;
+  slashSource?: string;
+  slashModelAlias?: string;
+  slashModelEffective?: string;
   /**
    * Marker payload fields (additive, omitempty on the wire). Set only when
    * `role === 'system'` and this row is a persisted marker entry (compaction,
@@ -743,22 +765,25 @@ export interface SessionLoadMessage {
    * family. Mirror of `types.SessionMessage.Marker*` in
    * engine/internal/types/types.go.
    */
-  markerKind?: string // "compaction" | "plan" | "steer" | "clear"
+  markerKind?: string; // "compaction" | "plan" | "steer" | "clear"
   /** Compaction marker fields (markerKind === 'compaction'). */
-  markerMessagesBefore?: number
-  markerMessagesAfter?: number
-  markerClearedBlocks?: number
-  markerStrategy?: string
-  markerMicroOnly?: boolean
-  markerSummary?: string
+  markerMessagesBefore?: number;
+  markerMessagesAfter?: number;
+  markerClearedBlocks?: number;
+  markerStrategy?: string;
+  markerMicroOnly?: boolean;
+  markerSummary?: string;
   /** Plan marker fields (markerKind === 'plan'). */
-  markerPlanOperation?: string
-  markerPlanFilePath?: string
-  markerPlanSlug?: string
+  markerPlanOperation?: string;
+  markerPlanFilePath?: string;
+  markerPlanSlug?: string;
   /** Steer marker fields (markerKind === 'steer'). */
-  markerMessageLength?: number
-  /** Engine-derived machine-origin classification for a historical user turn. */
-  machineAuthored?: boolean
+  markerMessageLength?: number;
+  /** Steer marker machine-authored classification. */
+  markerMachineAuthored?: boolean;
+  machineAuthored?: boolean;
+  /** Structured completion delivery metadata. */
+  backgroundWork?: import("./types-events").BackgroundWorkInfo;
   /**
    * Classifies engine-side injected user turns on historical reload.
    * "agent_completion" marks a machine-to-machine dispatch callback (a child
@@ -766,34 +791,34 @@ export interface SessionLoadMessage {
    * Absent (or empty string) means an ordinary user turn. Additive: absent on
    * legacy history rows, which correctly read as ordinary turns.
    */
-  injectionKind?: string
+  injectionKind?: string;
 }
 
 // ─── Terminal Multiplexing ───
 
-export type TerminalInstanceKind = string  // 'user' | 'commit' | 'cli' | 'tool:<toolId>'
+export type TerminalInstanceKind = string; // 'user' | 'commit' | 'cli' | 'tool:<toolId>'
 
 export interface TerminalInstance {
-  id: string              // nanoid
-  label: string           // "Shell", "Commit", "CLI", "Shell 2", tool name
-  kind: TerminalInstanceKind
-  readOnly: boolean
-  cwd: string
+  id: string; // nanoid
+  label: string; // "Shell", "Commit", "CLI", "Shell 2", tool name
+  kind: TerminalInstanceKind;
+  readOnly: boolean;
+  cwd: string;
 }
 
 // ─── Quick Tools ───
 
 export interface QuickTool {
-  id: string              // UUID
-  name: string            // display label, e.g. "Merge Flow"
-  icon: string            // Phosphor icon name, e.g. "GitMerge"
-  command: string          // shell command with optional {cwd} and {branch} vars
-  directories?: string[]   // scoped base dirs (empty = available in all tabs)
+  id: string; // UUID
+  name: string; // display label, e.g. "Merge Flow"
+  icon: string; // Phosphor icon name, e.g. "GitMerge"
+  command: string; // shell command with optional {cwd} and {branch} vars
+  directories?: string[]; // scoped base dirs (empty = available in all tabs)
 }
 
 export interface TerminalPaneState {
-  instances: TerminalInstance[]
-  activeInstanceId: string | null
+  instances: TerminalInstance[];
+  activeInstanceId: string | null;
 }
 
 // ─── Git Types ───
@@ -801,76 +826,95 @@ export interface TerminalPaneState {
 // Git types live in types-git.ts (extracted to keep this file under the
 // 600-line cap). Re-exported here so existing import paths keep working.
 export type {
-  GitCommit, GitRef, GitCommitDetail, GitCommitFile, GitGraphData,
-  GitConflictKind, GitDiffResult, GitChangedFile, GitChangesData, GitBranchInfo,
-  LandMode, LandResult, WorktreeMoveResult, WorktreeInventoryEntry, WorktreeAppraisalWire,
-  WorktreeProvisionState, GitOperationState, WorkStage, WorkStageDescriptor,
-  SyncAllResult, SyncAllWorktreeOutcome,
-  PinState, MergeOutcome,
-  IntegrationMember, IntegrationWorkspace, BenchAssembleResult,
-} from './types-git'
+  GitCommit,
+  GitRef,
+  GitCommitDetail,
+  GitCommitFile,
+  GitGraphData,
+  GitConflictKind,
+  GitDiffResult,
+  GitChangedFile,
+  GitChangesData,
+  GitBranchInfo,
+  LandMode,
+  LandResult,
+  WorktreeMoveResult,
+  WorktreeInventoryEntry,
+  WorktreeAppraisalWire,
+  WorktreeProvisionState,
+  GitOperationState,
+  WorkStage,
+  WorkStageDescriptor,
+  SyncAllResult,
+  SyncAllWorktreeOutcome,
+  PinState,
+  MergeOutcome,
+  IntegrationMember,
+  IntegrationWorkspace,
+  BenchAssembleResult,
+} from "./types-git";
 
 // ─── Worktree Types ───
 
-export type GitOpsMode = 'manual' | 'worktree'
-export type WorktreeCompletionStrategy = 'merge-ff' | 'merge' | 'pr'
+export type GitOpsMode = "manual" | "worktree";
+export type WorktreeCompletionStrategy = "merge-ff" | "merge" | "pr";
 
 export interface WorktreeInfo {
   /** Physical path on disk (~/.ion/worktrees/...) */
-  worktreePath: string
+  worktreePath: string;
   /** Auto-generated branch name (wt/<nanoid>) */
-  branchName: string
+  branchName: string;
   /** Branch the worktree was created from */
-  sourceBranch: string
+  sourceBranch: string;
   /** Original repo root path */
-  repoPath: string
+  repoPath: string;
   /** Terminal witness written by successful Land; absent before then. */
-  landedAt?: number
+  landedAt?: number;
 }
 
 export interface WorktreeStatus {
-  hasUncommittedChanges: boolean
-  hasUnpushedCommits: boolean
-  isMerged: boolean
-  aheadCount: number
-  behindCount: number
+  hasUncommittedChanges: boolean;
+  hasUnpushedCommits: boolean;
+  isMerged: boolean;
+  aheadCount: number;
+  behindCount: number;
 }
 
 // ─── Filesystem Types ───
 
 export interface FsEntry {
-  name: string
-  path: string
-  isDirectory: boolean
-  size: number
-  modifiedMs: number
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  size: number;
+  modifiedMs: number;
 }
 
 // ─── Engine-host filesystem (browsed via the engine, may be remote) ───
 
 /** One entry in a list_directory response from the engine. */
 export interface EngineDirEntry {
-  name: string
-  isDir: boolean
-  isSymlink: boolean
-  readable: boolean
+  name: string;
+  isDir: boolean;
+  isSymlink: boolean;
+  readable: boolean;
 }
 
 /** Response of the engine's list_directory RPC. */
 export interface EngineDirListing {
-  path: string
-  parent: string | null
-  entries: EngineDirEntry[]
-  truncated: boolean
+  path: string;
+  parent: string | null;
+  entries: EngineDirEntry[];
+  truncated: boolean;
 }
 
 /** Response of the engine's get_host_info RPC. */
 export interface EngineHostInfo {
-  home: string
-  username: string
-  hostname: string
-  os: string
-  pathSep: string
+  home: string;
+  username: string;
+  hostname: string;
+  os: string;
+  pathSep: string;
 }
 
 /**
@@ -880,43 +924,44 @@ export interface EngineHostInfo {
  */
 export interface NewConversationDefaultsPolicy {
   /** Mandated working directory for new tabs. Empty string = no constraint. */
-  baseDirectory: string
+  baseDirectory: string;
   /**
    * Mandated engine profile id. Empty string = plain conversation (no
    * extension). Must match an id in the user's engineProfiles list.
    */
-  engineProfileId: string
+  engineProfileId: string;
   /**
    * When true, the user cannot change baseDirectory or engineProfileId.
    * The desktop skips both the directory picker and the profile picker and
    * opens the conversation directly with these values.
    */
-  locked: boolean
+  locked: boolean;
 }
 
 // ─── Remote Control Types ───
 
 export interface RemoteSettings {
-  remoteEnabled: boolean
-  relayUrl: string
-  relayApiKey: string
-  lanServerPort: number
-  pairedDevices: RemotePairedDevice[]
+  remoteEnabled: boolean;
+  relayUrl: string;
+  relayApiKey: string;
+  lanServerPort: number;
+  pairedDevices: RemotePairedDevice[];
 }
 
 export interface RemotePairedDevice {
-  id: string
-  name: string
-  pairedAt: string
-  lastSeen: string | null
-  channelId: string
-  relayOidcAccountUsername?: string
-  relayOidcAccountName?: string
-  relayOidcTenantId?: string
-  relayOidcSignedInAt?: string
-  relayOidcAccessStatus?: string
-  relayOidcAccessReason?: string
-  relayOidcReportedAt?: string
+  id: string;
+  name: string;
+  pairedAt: string;
+  lastSeen: string | null;
+  channelId: string;
+  relayOidcAccountUsername?: string;
+  relayOidcAccountName?: string;
+  relayOidcTenantId?: string;
+  relayOidcSignedInAt?: string;
+  relayOidcAccessStatus?: string;
+  relayOidcAccessReason?: string;
+  relayOidcReportedAt?: string;
 }
 
-export type RemoteTransportState = 'disconnected' | 'relay_only' | 'lan_preferred'
+export type RemoteTransportState =
+  "disconnected" | "relay_only" | "lan_preferred";

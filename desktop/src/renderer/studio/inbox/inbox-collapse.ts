@@ -27,8 +27,9 @@ export function inboxActivityOrder<T extends Pick<TabState, 'id' | 'lastActivity
 export function worktreeChildRows(
   tabs: readonly TabState[],
   collapsed: boolean,
+  activeTabId: string,
 ): TabState[] {
-  return collapsed ? collapsedInboxRows(tabs) : [...tabs]
+  return collapsed ? collapsedInboxRows(tabs, activeTabId) : [...tabs]
 }
 
 /** Select the next conversation in activity order and wrap at the end. */
@@ -42,9 +43,13 @@ export function nextInboxConversation<T extends Pick<TabState, 'id' | 'lastActiv
   return activeIndex < 0 ? ordered[0] : ordered[(activeIndex + 1) % ordered.length]
 }
 
-/** Rows that remain visible under a collapsed project or location group: pinned only. */
+/** Rows that remain visible under a collapsed group: pinned rows and the active row. */
 export function collapsedInboxRows(
   tabs: readonly TabState[],
+  activeTabId: string,
 ): TabState[] {
-  return sortPinnedByOrder(tabs.filter((tab) => tab.pinnedAt != null))
+  const pinned = sortPinnedByOrder(tabs.filter((tab) => tab.pinnedAt != null))
+  if (pinned.some((tab) => tab.id === activeTabId)) return pinned
+  const active = tabs.find((tab) => tab.id === activeTabId)
+  return active ? [...pinned, active] : pinned
 }

@@ -286,6 +286,9 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
         isStarting: instStarting || undefined,
         runningAgentCount: instRunningAgents > 0 ? instRunningAgents : undefined,
         backgroundShellCount: instBackgroundShells > 0 ? instBackgroundShells : undefined,
+        activeBackgroundTasks: inst.statusFields?.activeBackgroundTasks?.length
+          ? inst.statusFields.activeBackgroundTasks
+          : undefined,
         hasPendingWork: inst.statusFields?.hasPendingWork || undefined,
         modelFallback: mfOut,
         conversationIds: inst.conversationIds && inst.conversationIds.length > 0 ? inst.conversationIds : undefined,

@@ -8,12 +8,19 @@ import { useActiveEngineAgentRunningCount, useActiveEngineBackgroundShellCount, 
  * Engine state slot — renders the orchestrator run-activity dot + label in
  * the unified `StatusBar` left cluster.
  *
- * Two visual states (priority order):
+ * Four visual states (priority order):
  *   - orchestrator running (`tab.status === 'running' | 'connecting'`) →
  *       orange `statusRunning` pulse + `[running]`
  *   - orchestrator NOT running AND agentRunningCount > 0 →
  *       yellow `statusWaitingChildren` pulse +
  *       `[waiting for N agent(s)]`
+ *   - orchestrator NOT running AND agentRunningCount === 0 AND
+ *     shellRunningCount > 0 →
+ *       pink `statusBash` pulse + `[waiting for N background shell(s)]`
+ *   - orchestrator NOT running AND no agents/shells but the engine's generic
+ *     `hasPendingWork` flag is set (queued prompts, dispatch completions, a
+ *     parked run) →
+ *       yellow `statusWaitingChildren` pulse + `[waiting for queued work]`
  *   - everything else → renders nothing (this is a run-activity indicator;
  *       there is no idle label).
  *
@@ -42,6 +49,17 @@ import { useActiveEngineAgentRunningCount, useActiveEngineBackgroundShellCount, 
  * them, and the session is held open waiting for them. The two labels are
  * inconsistent on purpose — do not "fix" one to match the other.
  *
+ * PRIORITY: agents outrank shells, and shells outrank the generic pending
+ * flag. `hasPendingWork` (engine/internal/session/status_work_snapshot.go)
+ * is a catch-all that is also true whenever a background shell is
+ * outstanding, so it must be the LAST resort, not folded into the agent
+ * check — otherwise a session with only a running shell (no agents) renders
+ * the vague "waiting for queued work" instead of the specific shell count,
+ * even though the richer signal (shellRunningCount) is available. This was a
+ * real regression: `isWaitingChildren` used to OR in `hasPendingWork`
+ * directly, which made it true the instant a shell registered and stole the
+ * render from the shell branch below it.
+ *
  * Foreground orange beats background yellow because the orchestrator's
  * own activity is the strongest signal — matches the priority cascade
  * in `TabStripShared.getTabStatusColor`. The pulse animation reuses
@@ -58,18 +76,22 @@ export function StatusBarEngineState() {
   const statusFields = useActiveEngineStatusFields()
 
   const isRun = status === 'running' || status === 'connecting'
-  const isWaitingPending = !isRun && (status === 'waiting' || statusFields?.hasPendingWork === true)
-  const isWaitingChildren = !isRun && (agentRunningCount > 0 || isWaitingPending)
+  const isWaitingChildren = !isRun && agentRunningCount > 0
   // Background shells rank below agents, matching the tab-dot cascade: when
   // both are outstanding the richer agent signal is the one worth surfacing in
   // this single-line slot.
   const isWaitingShells = !isRun && !isWaitingChildren && shellRunningCount > 0
+  // Lowest priority: the engine's generic hasPendingWork catch-all (queued
+  // prompts, dispatch completions, a parked run) only surfaces when neither
+  // of the more specific signals above already explained the wait.
+  const isWaitingPending = !isRun && !isWaitingChildren && !isWaitingShells
+    && (status === 'waiting' || statusFields?.hasPendingWork === true)
 
-  if (!isRun && !isWaitingChildren && !isWaitingShells) return null
+  if (!isRun && !isWaitingChildren && !isWaitingShells && !isWaitingPending) return null
 
   const stateColor = isRun
     ? colors.statusRunning
-    : isWaitingChildren
+    : isWaitingChildren || isWaitingPending
       ? colors.statusWaitingChildren
       : colors.statusBash
   const dotColor = stateColor
@@ -77,13 +99,13 @@ export function StatusBarEngineState() {
   const label = isRun
     ? 'running'
     : isWaitingChildren
-      ? agentRunningCount > 0
-        ? `waiting for ${agentRunningCount} agent${agentRunningCount === 1 ? '' : 's'}`
+      ? `waiting for ${agentRunningCount} agent${agentRunningCount === 1 ? '' : 's'}`
+      : isWaitingShells
+        // "background shell" IS accurate here, unlike the agent label above: these
+        // are shell processes running detached from any turn, and the session is
+        // held open for them. Do not "align" this wording with the agent label.
+        ? `waiting for ${shellRunningCount} background shell${shellRunningCount === 1 ? '' : 's'}`
         : 'waiting for queued work'
-      // "background shell" IS accurate here, unlike the agent label above: these
-      // are shell processes running detached from any turn, and the session is
-      // held open for them. Do not "align" this wording with the agent label.
-      : `waiting for ${shellRunningCount} background shell${shellRunningCount === 1 ? '' : 's'}`
 
   return (
     <span

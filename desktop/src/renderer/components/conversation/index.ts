@@ -1,28 +1,45 @@
-export { groupMessages, suppressUserImageEchoes, getToolDescription, toolSummary, toolFailureSummary, type GroupedItem } from './tool-helpers'
-export { ToolIcon } from './ToolIcon'
-export { ToolRow } from './ToolRow'
-export { ToolGroup } from './ToolGroup'
-export { ToolImagesStrip } from './ToolImagesStrip'
-export { ImageGallery, galleryLayout, GALLERY_RAIL_CAP, type GalleryImage } from './ImageGallery'
-export { AgentTurnGroup } from './AgentTurnGroup'
-export { ThinkingBlock } from './ThinkingBlock'
-export { CompactionRow } from './CompactionRow'
-export { CopyButton } from './CopyButton'
-export { InterruptButton } from './InterruptButton'
-export { MessageBubble } from './MessageBubble'
-export { UserMarkdown } from './UserMarkdown'
-export { AssistantMessage } from './AssistantMessage'
-export { TableScrollWrapper, ImageCard } from './markdownRenderers'
-export { SystemMessage } from './SystemMessage'
-export { HarnessMessage } from './HarnessMessage'
-export { InterceptBanner } from './InterceptBanner'
-export { QueuedMessage } from './QueuedMessage'
-export { MessageActions } from './MessageActions'
-export { EmptyState } from './EmptyState'
-export { serializeConversation } from './serializeConversation'
-export { ConversationErrorBoundary } from './ErrorBoundary'
-export { Transcript } from './Transcript'
-export { TranscriptRows } from './TranscriptRows'
-export { useScrollFollow } from './useScrollFollow'
-export { RunDurationFooter, formatRunDuration, runDurationLabel } from './RunDurationFooter'
-export { ScrollToBottomButton } from './ScrollToBottomButton'
+export {
+  groupMessages,
+  suppressUserImageEchoes,
+  getToolDescription,
+  toolSummary,
+  toolFailureSummary,
+  type GroupedItem,
+} from "./tool-helpers";
+export { ToolIcon } from "./ToolIcon";
+export { ToolRow } from "./ToolRow";
+export { ToolGroup } from "./ToolGroup";
+export { BackgroundWorkGroup } from "./BackgroundWorkGroup";
+export { ToolImagesStrip } from "./ToolImagesStrip";
+export {
+  ImageGallery,
+  galleryLayout,
+  GALLERY_RAIL_CAP,
+  type GalleryImage,
+} from "./ImageGallery";
+export { AgentTurnGroup } from "./AgentTurnGroup";
+export { ThinkingBlock } from "./ThinkingBlock";
+export { CompactionRow } from "./CompactionRow";
+export { CopyButton } from "./CopyButton";
+export { InterruptButton } from "./InterruptButton";
+export { MessageBubble } from "./MessageBubble";
+export { UserMarkdown } from "./UserMarkdown";
+export { AssistantMessage } from "./AssistantMessage";
+export { TableScrollWrapper, ImageCard } from "./markdownRenderers";
+export { SystemMessage } from "./SystemMessage";
+export { HarnessMessage } from "./HarnessMessage";
+export { InterceptBanner } from "./InterceptBanner";
+export { QueuedMessage } from "./QueuedMessage";
+export { MessageActions } from "./MessageActions";
+export { EmptyState } from "./EmptyState";
+export { serializeConversation } from "./serializeConversation";
+export { ConversationErrorBoundary } from "./ErrorBoundary";
+export { Transcript } from "./Transcript";
+export { TranscriptRows } from "./TranscriptRows";
+export { useScrollFollow } from "./useScrollFollow";
+export {
+  RunDurationFooter,
+  formatRunDuration,
+  runDurationLabel,
+} from "./RunDurationFooter";
+export { ScrollToBottomButton } from "./ScrollToBottomButton";

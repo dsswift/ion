@@ -7,14 +7,14 @@ function tab(id: string, pinnedAt: number | null = null, pinOrderKey: string | n
 }
 
 describe('collapsed inbox groups', () => {
-  it('keeps only pinned rows in a collapsed project or location group', () => {
-    const tabs = [tab('pinned-last', 1, 'z'), tab('active'), tab('pinned-first', 2, 'a')]
-    expect(collapsedInboxRows(tabs).map(({ id }) => id))
-      .toEqual(['pinned-first', 'pinned-last'])
+  it('keeps pinned rows and the active row in a collapsed project or location group', () => {
+    const tabs = [tab('pinned-last', 1, 'z'), tab('active'), tab('hidden'), tab('pinned-first', 2, 'a')]
+    expect(collapsedInboxRows(tabs, 'active').map(({ id }) => id))
+      .toEqual(['pinned-first', 'pinned-last', 'active'])
   })
 
   it('does not duplicate the active conversation when it is pinned', () => {
-    expect(collapsedInboxRows([tab('pinned-active', 1), tab('other')]).map(({ id }) => id))
+    expect(collapsedInboxRows([tab('pinned-active', 1), tab('other')], 'pinned-active').map(({ id }) => id))
       .toEqual(['pinned-active'])
   })
 })

@@ -17,9 +17,9 @@ export interface StudioTabState {
   events: NormalizedEvent[];
   /** Latest status-fields snapshot for the tab, if any arrived. */
   statusFields: StatusFields | null;
+  /** Background bash commands: completed items. */
+  backgroundWork: import("./types-events").BackgroundWorkItem[];
 }
-
-/** Response shape of `studio:get-state`. */
 export interface StudioGetStateResult {
   activeTabId: string | null;
   /** The active tab's engineProfileId (extension seed scope); null = plain tab. */
@@ -61,7 +61,13 @@ export interface StudioGitConflictAlert {
 export interface StudioWorktreePipeline {
   repoPath: string;
   sourceBranch: string | null;
-  phase: "syncing" | "awaiting-ai-confirm" | "resolving" | "assembling" | "done" | "failed";
+  phase:
+    | "syncing"
+    | "awaiting-ai-confirm"
+    | "resolving"
+    | "assembling"
+    | "done"
+    | "failed";
   outcomes: unknown[];
   lastSummary?: unknown;
   queue: string[];
@@ -113,7 +119,13 @@ export interface StudioHistoryReplace {
     dedupKey?: string;
     dedupMode?: "relocate";
     planFilePath?: string;
-    attachments?: Array<{ id: string; type: string; name: string; path: string; contentHash?: string }>;
+    attachments?: Array<{
+      id: string;
+      type: string;
+      name: string;
+      path: string;
+      contentHash?: string;
+    }>;
   }>;
 }
 
