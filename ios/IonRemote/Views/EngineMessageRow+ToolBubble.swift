@@ -26,10 +26,11 @@ extension EngineMessageRow {
 
     var toolAccentColor: Color {
         switch message.toolStatus {
-        case .running:   return .orange
-        case .completed: return .green
-        case .error:     return .red
-        case nil:        return .gray
+        case .running:      return .orange
+        case .asyncPending: return .pink
+        case .completed:    return .green
+        case .error:        return .red
+        case nil:           return .gray
         }
     }
 
@@ -119,6 +120,10 @@ extension EngineMessageRow {
             case .running:
                 ProgressView()
                     .controlSize(.mini)
+            case .asyncPending:
+                Image(systemName: "clock.arrow.circlepath")
+                    .foregroundStyle(.pink)
+                    .font(.subheadline)
             case .completed:
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)
@@ -165,6 +170,10 @@ extension EngineMessageRow {
         case .running:
             ProgressView()
                 .scaleEffect(0.6)
+        case .asyncPending:
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.caption2)
+                .foregroundStyle(.pink)
         case .completed:
             Image(systemName: "checkmark.circle.fill")
                 .font(.caption2)

@@ -1,5 +1,6 @@
 // @file-size-exception: contract sync test suite — each shared type needs its own decode + field-set test
 import XCTest
+
 @testable import IonRemote
 
 /// Validates that Swift Codable types can decode all fields declared in the
@@ -47,1192 +48,1227 @@ import XCTest
 ///     ModelFallbackEvent above; the field-set test in
 ///     ContractSyncEngineEventsTests tracks the Go variant for drift.
 final class ContractSyncTests: XCTestCase {
-    private let decoder = JSONDecoder()
-    private let encoder = JSONEncoder()
+  private let decoder = JSONDecoder()
+  private let encoder = JSONEncoder()
 
-    // MARK: - Manifest loading
+  // MARK: - Manifest loading
 
-    private struct Manifest: Decodable {
-        let normalizedEvents: [String: [String]?]
-        let engineEvent: [String]
-        let sharedTypes: [String: [String]]
-    }
+  private struct Manifest: Decodable {
+    let normalizedEvents: [String: [String]?]
+    let engineEvent: [String]
+    let sharedTypes: [String: [String]]
+  }
 
-    /// Load the Go contract manifest from the repo-relative path.
-    /// In local test runs the working directory is the ios/ folder.
-    private func loadManifest() throws -> Manifest {
-        // Try repo-relative paths (Xcode sets cwd to the project root or
-        // a DerivedData folder depending on the run mode).
-        let candidates = [
-            // Running from ios/ directory
-            "../engine/internal/types/testdata/contracts.json",
-            // Running from repo root
-            "engine/internal/types/testdata/contracts.json",
-        ]
-
-        for candidate in candidates {
-            let url = URL(fileURLWithPath: candidate)
-            if FileManager.default.fileExists(atPath: url.path) {
-                let data = try Data(contentsOf: url)
-                return try JSONDecoder().decode(Manifest.self, from: data)
-            }
-        }
-
-        // Fallback: search up from the source file location
-        var dir = URL(fileURLWithPath: #file).deletingLastPathComponent()
-        for _ in 0..<5 {
-            dir = dir.deletingLastPathComponent()
-            let candidate = dir
-                .appendingPathComponent("engine/internal/types/testdata/contracts.json")
-            if FileManager.default.fileExists(atPath: candidate.path) {
-                let data = try Data(contentsOf: candidate)
-                return try JSONDecoder().decode(Manifest.self, from: data)
-            }
-        }
-
-        throw ContractError.manifestNotFound
-    }
-
-    private enum ContractError: Error {
-        case manifestNotFound
-    }
-
-    // MARK: - StatusFields decode
-
-    // MARK: - Variant coverage sweep
-
-    /// Every Go NormalizedEvent variant is accounted for on the iOS side:
-    /// either decoded, or listed below as a deliberate non-consumer with a
-    /// reason.
-    ///
-    /// ios/AGENTS.md § "Contract sync" promises "the test target will fail if
-    /// Go has fields you haven't accounted for". That was true of the handful
-    /// of types with a field-coverage set, and false for VARIANTS — a brand-new
-    /// Go variant landed with nothing on this side that would notice. The TS
-    /// side has had `every Go variant exists in TS map` from the start, which
-    /// is why this gap was iOS-only.
-    ///
-    /// The skip-list is the point of the test, not a weakness in it. iOS is a
-    /// reference implementation and "no in-repo consumer" is the expected
-    /// default for new engine surface (root AGENTS.md § "Engine consumers"), so
-    /// the goal is not to decode all 40-plus variants — it is to make each
-    /// omission a stated decision instead of an invisible hole. Adding a Go
-    /// variant now forces a one-line choice here: decode it, or say why not.
-    func testEveryGoVariantIsAccountedFor() throws {
-        let manifest = try loadManifest()
-
-        /// Variants iOS deliberately does not decode, each with its reason.
-        let deliberatelyNotDecoded: [String: String] = [
-            "agent_state_clamped":
-                "Engine-side advisory for metadata bounds. Desktop has no "
-                + "desktop_agent_state_clamped wire member; iOS renders the "
-                + "bounded roster from its existing snapshot/event path.",
-            "background_task_complete":
-                "Engine-socket only. The desktop consumes it to drive tab status and "
-                + "projects the outcome through the snapshot (backgroundShellCount); "
-                + "the desktop<->iOS wire carries no desktop_background_task_complete, "
-                + "so there is nothing here to decode.",
-            "capability_unsupported":
-                "See the type-level note above: the desktop renders the recoverable "
-                + "message and iOS converges through the snapshot (tab stays idle).",
-            "model_fallback":
-                "Projected onto RemoteTabState.conversationInstances[i].modelFallback "
-                + "rather than decoded live, so the indicator survives reconnect.",
-            "events_dropped":
-                "Engine-internal backpressure signal for a socket consumer; the "
-                + "snapshot is authoritative for iOS, which re-syncs wholesale.",
-            "extension_dead_permanent": "Extension-host lifecycle; no iOS surface renders it.",
-            "extension_died": "Extension-host lifecycle; no iOS surface renders it.",
-            "extension_respawned": "Extension-host lifecycle; no iOS surface renders it.",
-            "plan_file_written": "Desktop-only affordance (reveals the file on disk).",
-            "session_init": "Desktop owns engine session lifecycle; iOS attaches to tabs.",
-            "stream_reset": "Desktop-side stream bookkeeping; iOS renders from message events.",
-            "task_suspend":
-                "The wire carries only the awaited COUNTS, which ride tab status; iOS "
-                + "has no per-dispatch suspend surface to render.",
-            "tool_stalled": "Desktop-only diagnostic surface.",
-            "run_stalled": "Desktop-only diagnostic surface.",
-            "user_turn_persisted": "Desktop persistence confirmation; iOS reads the snapshot.",
-        ]
-
-        var unaccounted: [String] = []
-        for variant in manifest.normalizedEvents.keys {
-            if deliberatelyNotDecoded[variant] != nil { continue }
-            if Self.iosDecodedVariants.contains(variant) { continue }
-            unaccounted.append(variant)
-        }
-
-        XCTAssertTrue(
-            unaccounted.isEmpty,
-            "Go NormalizedEvent variants with no iOS decode and no documented reason: "
-            + "\(unaccounted.sorted()). Either decode the variant, or add it to "
-            + "deliberatelyNotDecoded with the reason it does not apply to iOS."
-        )
-
-        // The skip-list must not outlive the variants it excuses: a stale entry
-        // for a variant Go no longer emits is its own kind of lie.
-        let goVariants = Set(manifest.normalizedEvents.keys)
-        let staleExcuses = Set(deliberatelyNotDecoded.keys).subtracting(goVariants)
-        XCTAssertTrue(
-            staleExcuses.isEmpty,
-            "deliberatelyNotDecoded names variants absent from the Go manifest: \(staleExcuses.sorted())"
-        )
-    }
-
-    /// NormalizedEvent variants iOS decodes and renders. Mirrors the bare
-    /// internal names in the Go manifest (the engine's translateToEngineEvent
-    /// maps these to engine_* on the wire).
-    private static let iosDecodedVariants: Set<String> = [
-        "agent_state", "compacting", "context_breakdown", "dialog", "engine_plan_content",
-        "error", "harness_message", "image_content", "message_end", "notify",
-        "permission_request", "plan_mode_auto_exit", "plan_mode_changed", "plan_proposal",
-        "prompt_injected", "rate_limit", "run_recovery", "session_dead", "steer_injected", "steer_degraded",
-        "task_complete", "task_update", "text_chunk", "thinking_block_end", "thinking_block_start",
-        "thinking_delta", "tool_call", "tool_call_complete", "tool_call_update",
-        "tool_result", "usage", "working_message",
+  /// Load the Go contract manifest from the repo-relative path.
+  /// In local test runs the working directory is the ios/ folder.
+  private func loadManifest() throws -> Manifest {
+    // Try repo-relative paths (Xcode sets cwd to the project root or
+    // a DerivedData folder depending on the run mode).
+    let candidates = [
+      // Running from ios/ directory
+      "../engine/internal/types/testdata/contracts.json",
+      // Running from repo root
+      "engine/internal/types/testdata/contracts.json",
     ]
 
-    func testStatusFieldsDecode() throws {
-        let manifest = try loadManifest()
-        guard let goFields = manifest.sharedTypes["StatusFields"] else {
-            XCTFail("StatusFields not found in Go manifest")
-            return
-        }
-
-        // Build a JSON payload with representative values for all Go fields
-        let json: [String: Any] = [
-            "label": "test",
-            "state": "idle",
-            "sessionId": "sess-1",
-            "team": "alpha",
-            "model": "claude-4",
-            "contextPercent": 42,
-            "contextWindow": 200000,
-            "contextTokens": 84000,
-            "contextEffectiveLimit": 167000,
-            "runCostUsd": 1.23,
-            "completionReason": "normal",
-            "conversationCostUsd": 2.34,
-            "permissionDenials": [
-                ["toolName": "bash", "toolUseId": "tu-1"],
-            ],
-            "extensionName": "Chief of Staff",
-            "backgroundAgents": 2,
-            "hasPendingWork": true,
-            "numTurns": 3,
-            "conversationTurns": 210,
-        ]
-
-        let data = try JSONSerialization.data(withJSONObject: json)
-        let fields = try decoder.decode(StatusFields.self, from: data)
-        XCTAssertEqual(fields.label, "test")
-        XCTAssertEqual(fields.state, "idle")
-        XCTAssertEqual(fields.sessionId, "sess-1")
-        XCTAssertEqual(fields.model, "claude-4")
-        XCTAssertEqual(fields.contextPercent, 42.0) // Double decodes int fine
-        XCTAssertEqual(fields.contextTokens, 84000)
-        XCTAssertEqual(fields.contextEffectiveLimit, 167000)
-        XCTAssertEqual(fields.extensionName, "Chief of Staff")
-        XCTAssertEqual(fields.runCostUsd, 1.23)
-        XCTAssertEqual(fields.completionReason, .normal)
-        XCTAssertEqual(fields.conversationCostUsd, 2.34)
-        XCTAssertEqual(fields.numTurns, 3)
-        XCTAssertEqual(fields.conversationTurns, 210)
-
-        // Verify we know about all Go fields (document any intentional gaps)
-        let swiftHandled: Set<String> = [
-            "backgroundAgents", "backgroundShells", "hasPendingWork", "label", "state", "sessionId", "team", "model",
-            "contextPercent", "contextWindow", "contextTokens", "contextEffectiveLimit", "runCostUsd", "completionReason", "conversationCostUsd",
-            "permissionDenials", "extensionName", "numTurns", "conversationTurns",
-        ]
-        let goSet = Set(goFields)
-        let unhandled = goSet.subtracting(swiftHandled)
-        XCTAssert(
-            unhandled.isEmpty,
-            "Go StatusFields has fields not tracked in Swift test: \(unhandled.sorted())"
-        )
+    for candidate in candidates {
+      let url = URL(fileURLWithPath: candidate)
+      if FileManager.default.fileExists(atPath: url.path) {
+        let data = try Data(contentsOf: url)
+        return try JSONDecoder().decode(Manifest.self, from: data)
+      }
     }
 
-    // MARK: - SessionStatus decode (Phase 3 of state-management overhaul)
-
-    /// Mirrors `testStatusFieldsDecode` for the new SessionStatus type
-    /// added in Phase 3. Pins the wire contract so any drift between
-    /// the Go struct and the Swift mirror fails at PR time.
-    func testSessionStatusDecode() throws {
-        let manifest = try loadManifest()
-        guard let goFields = manifest.sharedTypes["SessionStatus"] else {
-            XCTFail("SessionStatus not found in Go manifest")
-            return
-        }
-
-        let json: [String: Any] = [
-            "key": "tab-1:inst-2",
-            "state": "running",
-            "stateSince": 1_780_000_000_000,
-            "lastEmittedAt": 1_780_000_005_000,
-            "hasInflightRun": true,
-            "backgroundAgentCount": 3,
-            "backgroundShellCount": 2,
-            "hasPendingWork": true,
-            "permissionDenialsPending": [
-                ["toolName": "AskUserQuestion", "toolUseId": "tu-99"],
-            ],
-            "model": "claude-4",
-            "contextPercent": 42,
-            "contextWindow": 200_000,
-            "contextTokens": 84_000,
-            "contextEffectiveLimit": 167_000,
-            "runCostUsd": 1.23,
-            "conversationCostUsd": 2.34,
-            "sessionId": "conv-abc",
-            "extensionName": "Chief of Staff",
-        ]
-
-        let data = try JSONSerialization.data(withJSONObject: json)
-        let status = try decoder.decode(SessionStatus.self, from: data)
-        XCTAssertEqual(status.key, "tab-1:inst-2")
-        XCTAssertEqual(status.state, "running")
-        XCTAssertEqual(status.lastEmittedAt, 1_780_000_005_000)
-        XCTAssertEqual(status.hasInflightRun, true)
-        XCTAssertEqual(status.backgroundAgentCount, 3)
-        XCTAssertEqual(status.backgroundShellCount, 2)
-        XCTAssertEqual(status.hasPendingWork, true)
-        XCTAssertEqual(status.sessionId, "conv-abc")
-        XCTAssertEqual(status.extensionName, "Chief of Staff")
-        XCTAssertEqual(status.runCostUsd, 1.23)
-        XCTAssertEqual(status.conversationCostUsd, 2.34)
-
-        // Verify we know about all Go fields (any intentional gap is
-        // documented in the assertion message — there should be none).
-        let swiftHandled: Set<String> = [
-            "backgroundAgentCount", "backgroundShellCount", "hasPendingWork", "contextPercent",
-            "contextWindow", "contextTokens", "contextEffectiveLimit",
-            "conversationCostUsd", "extensionName", "hasInflightRun", "key",
-            "lastEmittedAt", "model", "permissionDenialsPending", "runCostUsd",
-            "sessionId", "state", "stateSince",
-        ]
-        let goSet = Set(goFields)
-        let unhandled = goSet.subtracting(swiftHandled)
-        XCTAssert(
-            unhandled.isEmpty,
-            "Go SessionStatus has fields not tracked in Swift test: \(unhandled.sorted())"
-        )
+    // Fallback: search up from the source file location
+    var dir = URL(fileURLWithPath: #file).deletingLastPathComponent()
+    for _ in 0..<5 {
+      dir = dir.deletingLastPathComponent()
+      let candidate =
+        dir
+        .appendingPathComponent("engine/internal/types/testdata/contracts.json")
+      if FileManager.default.fileExists(atPath: candidate.path) {
+        let data = try Data(contentsOf: candidate)
+        return try JSONDecoder().decode(Manifest.self, from: data)
+      }
     }
 
-    // MARK: - EngineEvent decode (engine_status with StatusFields)
+    throw ContractError.manifestNotFound
+  }
 
-    func testEngineStatusDecode() throws {
-        let json = """
-        {
-            "type": "desktop_status",
-            "tabId": "t1",
-            "fields": {
-                "label": "Running",
-                "state": "running",
-                "model": "claude-4",
-                "contextPercent": 55,
-                "contextWindow": 200000
-            }
-        }
-        """.data(using: .utf8)!
+  private enum ContractError: Error {
+    case manifestNotFound
+  }
 
-        let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineStatus(let tabId, _, let fields, _) = event {
-            XCTAssertEqual(tabId, "t1")
-            XCTAssertEqual(fields.label, "Running")
-            XCTAssertEqual(fields.state, "running")
-            XCTAssertEqual(fields.contextPercent, 55.0)
-        } else {
-            XCTFail("Expected engineStatus, got \(event)")
-        }
+  // MARK: - StatusFields decode
+
+  // MARK: - Variant coverage sweep
+
+  /// Every Go NormalizedEvent variant is accounted for on the iOS side:
+  /// either decoded, or listed below as a deliberate non-consumer with a
+  /// reason.
+  ///
+  /// ios/AGENTS.md § "Contract sync" promises "the test target will fail if
+  /// Go has fields you haven't accounted for". That was true of the handful
+  /// of types with a field-coverage set, and false for VARIANTS — a brand-new
+  /// Go variant landed with nothing on this side that would notice. The TS
+  /// side has had `every Go variant exists in TS map` from the start, which
+  /// is why this gap was iOS-only.
+  ///
+  /// The skip-list is the point of the test, not a weakness in it. iOS is a
+  /// reference implementation and "no in-repo consumer" is the expected
+  /// default for new engine surface (root AGENTS.md § "Engine consumers"), so
+  /// the goal is not to decode all 40-plus variants — it is to make each
+  /// omission a stated decision instead of an invisible hole. Adding a Go
+  /// variant now forces a one-line choice here: decode it, or say why not.
+  func testEveryGoVariantIsAccountedFor() throws {
+    let manifest = try loadManifest()
+
+    /// Variants iOS deliberately does not decode, each with its reason.
+    let deliberatelyNotDecoded: [String: String] = [
+      "agent_state_clamped":
+        "Engine-side advisory for metadata bounds. Desktop has no "
+        + "desktop_agent_state_clamped wire member; iOS renders the "
+        + "bounded roster from its existing snapshot/event path.",
+      "background_task_complete":
+        "Engine-socket only. The desktop consumes it to drive tab status and "
+        + "projects the outcome through the snapshot (backgroundShellCount); "
+        + "the desktop<->iOS wire carries no desktop_background_task_complete, "
+        + "so there is nothing here to decode.",
+      "capability_unsupported":
+        "See the type-level note above: the desktop renders the recoverable "
+        + "message and iOS converges through the snapshot (tab stays idle).",
+      "model_fallback":
+        "Projected onto RemoteTabState.conversationInstances[i].modelFallback "
+        + "rather than decoded live, so the indicator survives reconnect.",
+      "events_dropped":
+        "Engine-internal backpressure signal for a socket consumer; the "
+        + "snapshot is authoritative for iOS, which re-syncs wholesale.",
+      "extension_dead_permanent": "Extension-host lifecycle; no iOS surface renders it.",
+      "extension_died": "Extension-host lifecycle; no iOS surface renders it.",
+      "extension_respawned": "Extension-host lifecycle; no iOS surface renders it.",
+      "plan_file_written": "Desktop-only affordance (reveals the file on disk).",
+      "session_init": "Desktop owns engine session lifecycle; iOS attaches to tabs.",
+      "stream_reset": "Desktop-side stream bookkeeping; iOS renders from message events.",
+      "task_suspend":
+        "The wire carries only the awaited COUNTS, which ride tab status; iOS "
+        + "has no per-dispatch suspend surface to render.",
+      "tool_stalled": "Desktop-only diagnostic surface.",
+      "run_stalled": "Desktop-only diagnostic surface.",
+      "user_turn_persisted": "Desktop persistence confirmation; iOS reads the snapshot.",
+    ]
+
+    var unaccounted: [String] = []
+    for variant in manifest.normalizedEvents.keys {
+      if deliberatelyNotDecoded[variant] != nil { continue }
+      if Self.iosDecodedVariants.contains(variant) { continue }
+      unaccounted.append(variant)
     }
 
-    // MARK: - engine_session_status (Phase 3 typed event) decode + round-trip
+    XCTAssertTrue(
+      unaccounted.isEmpty,
+      "Go NormalizedEvent variants with no iOS decode and no documented reason: "
+        + "\(unaccounted.sorted()). Either decode the variant, or add it to "
+        + "deliberatelyNotDecoded with the reason it does not apply to iOS."
+    )
 
-    /// Pins the wire decode for the Phase 3 engine_session_status event.
-    /// The engine emits this in parallel with engine_status; iOS reads
-    /// it via the dispatcher in SessionViewModel+SessionStatus.swift.
-    func testEngineSessionStatusDecode() throws {
-        let json = """
-        {
-            "type": "desktop_session_status",
-            "tabId": "t1",
-            "instanceId": "inst-2",
-            "sessionStatus": {
-                "key": "t1:inst-2",
-                "state": "running",
-                "lastEmittedAt": 1780000005000,
-                "hasInflightRun": true,
-                "backgroundAgentCount": 1,
-                "model": "claude-4",
-                "contextPercent": 42,
-                "contextWindow": 200000,
-                "runCostUsd": 1.23,
-                "conversationCostUsd": 5.67,
-                "sessionId": "conv-abc"
-            }
-        }
-        """.data(using: .utf8)!
+    // The skip-list must not outlive the variants it excuses: a stale entry
+    // for a variant Go no longer emits is its own kind of lie.
+    let goVariants = Set(manifest.normalizedEvents.keys)
+    let staleExcuses = Set(deliberatelyNotDecoded.keys).subtracting(goVariants)
+    XCTAssertTrue(
+      staleExcuses.isEmpty,
+      "deliberatelyNotDecoded names variants absent from the Go manifest: \(staleExcuses.sorted())"
+    )
+  }
 
-        let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineSessionStatus(let tabId, let instanceId, let status, _) = event {
-            XCTAssertEqual(tabId, "t1")
-            XCTAssertEqual(instanceId, "inst-2")
-            XCTAssertEqual(status.key, "t1:inst-2")
-            XCTAssertEqual(status.state, "running")
-            XCTAssertEqual(status.lastEmittedAt, 1_780_000_005_000)
-            XCTAssertEqual(status.hasInflightRun, true)
-            XCTAssertEqual(status.backgroundAgentCount, 1)
-            XCTAssertEqual(status.model, "claude-4")
-            XCTAssertEqual(status.contextPercent, 42)
-            XCTAssertEqual(status.runCostUsd, 1.23)
-            XCTAssertEqual(status.conversationCostUsd, 5.67)
-            XCTAssertEqual(status.sessionId, "conv-abc")
-        } else {
-            XCTFail("Expected engineSessionStatus, got \(event)")
-        }
+  /// NormalizedEvent variants iOS decodes and renders. Mirrors the bare
+  /// internal names in the Go manifest (the engine's translateToEngineEvent
+  /// maps these to engine_* on the wire).
+  private static let iosDecodedVariants: Set<String> = [
+    "agent_state", "background_task_started", "background_task_terminal", "background_work_delivered", "compacting", "context_breakdown",
+    "dialog", "engine_plan_content",
+    "error", "harness_message", "image_content", "message_end", "notify",
+    "permission_request", "plan_mode_auto_exit", "plan_mode_changed", "plan_proposal",
+    "prompt_injected", "rate_limit", "run_recovery", "session_dead", "session_work_stopped", "steer_injected", "steer_degraded",
+    "task_complete",
+    "task_update", "text_chunk", "thinking_block_end", "thinking_block_start",
+    "thinking_delta", "tool_call", "tool_call_complete", "tool_call_update",
+    "tool_result", "usage", "working_message",
+  ]
+
+  func testStatusFieldsDecode() throws {
+    let manifest = try loadManifest()
+    guard let goFields = manifest.sharedTypes["StatusFields"] else {
+      XCTFail("StatusFields not found in Go manifest")
+      return
     }
 
-    /// Round-trip the engine_session_status event through encode + decode
-    /// to pin the wire-symmetric behavior. If a future change to
-    /// NormalizedEvent+Engine.swift drops a field on encode, this test
-    /// fails — preventing an iOS-originated event from losing data when
-    /// echoed back to the desktop (e.g. for a relay-replay debug path).
-    func testEngineSessionStatusRoundTrip() throws {
-        let original: RemoteEvent = .engineSessionStatus(
-            tabId: "t1",
-            instanceId: "inst-2",
-            sessionStatus: SessionStatus(
-                key: "t1:inst-2",
-                state: "idle",
-                stateSince: nil,
-                lastEmittedAt: 1_780_000_005_000,
-                hasInflightRun: false,
-                backgroundAgentCount: nil,
-                backgroundShellCount: 3,
-                hasPendingWork: nil,
-                permissionDenialsPending: nil,
-                model: "claude-4",
-                contextPercent: 12,
-                contextWindow: 200_000,
-                contextTokens: 24_000,
-                runCostUsd: 0.5,
-                conversationCostUsd: 2.5,
-                sessionId: "conv-x",
-                extensionName: nil
-            ),
-            metadata: nil
-        )
+    // Build a JSON payload with representative values for all Go fields
+    let json: [String: Any] = [
+      "label": "test",
+      "state": "idle",
+      "sessionId": "sess-1",
+      "team": "alpha",
+      "model": "claude-4",
+      "contextPercent": 42,
+      "contextWindow": 200000,
+      "contextTokens": 84000,
+      "runCostUsd": 1.23,
+      "completionReason": "normal",
+      "conversationCostUsd": 2.34,
+      "permissionDenials": [
+        ["toolName": "bash", "toolUseId": "tu-1"]
+      ],
+      "extensionName": "Chief of Staff",
+      "backgroundAgents": 2,
+      "numTurns": 3,
+      "conversationTurns": 210,
+    ]
 
-        let encoded = try encoder.encode(original)
-        let decoded = try decoder.decode(RemoteEvent.self, from: encoded)
-        if case .engineSessionStatus(let tabId, let instId, let status, _) = decoded {
-            XCTAssertEqual(tabId, "t1")
-            XCTAssertEqual(instId, "inst-2")
-            XCTAssertEqual(status.key, "t1:inst-2")
-            XCTAssertEqual(status.state, "idle")
-            XCTAssertEqual(status.lastEmittedAt, 1_780_000_005_000)
-            XCTAssertEqual(status.hasInflightRun, false)
-            XCTAssertEqual(status.model, "claude-4")
-            XCTAssertEqual(status.contextPercent, 12)
-            XCTAssertEqual(status.contextTokens, 24_000)
-            // Survives the encode/decode round-trip: a dropped CodingKey on
-            // the encode side would silently lose the parked-session signal.
-            XCTAssertEqual(status.backgroundShellCount, 3)
-            XCTAssertEqual(status.sessionId, "conv-x")
-        } else {
-            XCTFail("Round-trip expected engineSessionStatus, got \(decoded)")
-        }
+    let data = try JSONSerialization.data(withJSONObject: json)
+    let fields = try decoder.decode(StatusFields.self, from: data)
+    XCTAssertEqual(fields.label, "test")
+    XCTAssertEqual(fields.state, "idle")
+    XCTAssertEqual(fields.sessionId, "sess-1")
+    XCTAssertEqual(fields.model, "claude-4")
+    XCTAssertEqual(fields.contextPercent, 42.0)  // Double decodes int fine
+    XCTAssertEqual(fields.contextTokens, 84000)
+    XCTAssertEqual(fields.extensionName, "Chief of Staff")
+    XCTAssertEqual(fields.runCostUsd, 1.23)
+    XCTAssertEqual(fields.completionReason, .normal)
+    XCTAssertEqual(fields.conversationCostUsd, 2.34)
+    XCTAssertEqual(fields.numTurns, 3)
+    XCTAssertEqual(fields.conversationTurns, 210)
+
+    // Verify we know about all Go fields (document any intentional gaps)
+    let swiftHandled: Set<String> = [
+      "backgroundAgents", "backgroundShells", "activeBackgroundTasks", "label", "state", "sessionId", "team", "model",
+      "contextPercent", "contextWindow", "contextTokens", "contextEffectiveLimit", "hasPendingWork", "runCostUsd", "completionReason",
+      "conversationCostUsd",
+      "permissionDenials", "extensionName", "numTurns", "conversationTurns",
+    ]
+    let goSet = Set(goFields)
+    let unhandled = goSet.subtracting(swiftHandled)
+    XCTAssert(
+      unhandled.isEmpty,
+      "Go StatusFields has fields not tracked in Swift test: \(unhandled.sorted())"
+    )
+  }
+
+  // MARK: - SessionStatus decode (Phase 3 of state-management overhaul)
+
+  /// Mirrors `testStatusFieldsDecode` for the new SessionStatus type
+  /// added in Phase 3. Pins the wire contract so any drift between
+  /// the Go struct and the Swift mirror fails at PR time.
+  func testSessionStatusDecode() throws {
+    let manifest = try loadManifest()
+    guard let goFields = manifest.sharedTypes["SessionStatus"] else {
+      XCTFail("SessionStatus not found in Go manifest")
+      return
     }
 
-    /// Documents the Phase 3 dual-emit contract: when the engine ships
-    /// engine_status it also ships engine_session_status carrying the
-    /// same authoritative state. This test does not invoke the engine;
-    /// it asserts that both event shapes decode and discriminate
-    /// correctly on the same iOS decoder so a downstream consumer can
-    /// trust both routes.
-    func testEngineStatusAndSessionStatusBothDecode() throws {
-        let legacyJSON = """
-        {"type":"desktop_status","tabId":"t1","fields":{"label":"","state":"running","model":"","contextPercent":0,"contextWindow":0}}
-        """.data(using: .utf8)!
-        let typedJSON = """
-        {"type":"desktop_session_status","tabId":"t1","sessionStatus":{"key":"t1","state":"running","lastEmittedAt":1}}
-        """.data(using: .utf8)!
+    let json: [String: Any] = [
+      "key": "tab-1:inst-2",
+      "state": "running",
+      "stateSince": 1_780_000_000_000,
+      "lastEmittedAt": 1_780_000_005_000,
+      "hasInflightRun": true,
+      "backgroundAgentCount": 3,
+      "backgroundShellCount": 2,
+      "permissionDenialsPending": [
+        ["toolName": "AskUserQuestion", "toolUseId": "tu-99"]
+      ],
+      "model": "claude-4",
+      "contextPercent": 42,
+      "contextWindow": 200_000,
+      "contextTokens": 84_000,
+      "runCostUsd": 1.23,
+      "conversationCostUsd": 2.34,
+      "sessionId": "conv-abc",
+      "extensionName": "Chief of Staff",
+    ]
 
-        let legacy = try decoder.decode(RemoteEvent.self, from: legacyJSON)
-        let typed = try decoder.decode(RemoteEvent.self, from: typedJSON)
+    let data = try JSONSerialization.data(withJSONObject: json)
+    let status = try decoder.decode(SessionStatus.self, from: data)
+    XCTAssertEqual(status.key, "tab-1:inst-2")
+    XCTAssertEqual(status.state, "running")
+    XCTAssertEqual(status.lastEmittedAt, 1_780_000_005_000)
+    XCTAssertEqual(status.hasInflightRun, true)
+    XCTAssertEqual(status.backgroundAgentCount, 3)
+    XCTAssertEqual(status.backgroundShellCount, 2)
+    XCTAssertEqual(status.sessionId, "conv-abc")
+    XCTAssertEqual(status.extensionName, "Chief of Staff")
+    XCTAssertEqual(status.runCostUsd, 1.23)
+    XCTAssertEqual(status.conversationCostUsd, 2.34)
 
-        guard case .engineStatus(_, _, let legacyFields, _) = legacy,
-              case .engineSessionStatus(_, _, let typedStatus, _) = typed else {
-            XCTFail("Expected both events to decode to their respective cases")
-            return
-        }
-        XCTAssertEqual(legacyFields.state, "running")
-        XCTAssertEqual(typedStatus.state, "running")
+    // Verify we know about all Go fields (any intentional gap is
+    // documented in the assertion message — there should be none).
+    let swiftHandled: Set<String> = [
+      "backgroundAgentCount", "backgroundShellCount", "activeBackgroundTasks", "contextPercent",
+      "contextWindow", "contextTokens", "contextEffectiveLimit",
+      "conversationCostUsd", "extensionName", "hasInflightRun", "hasPendingWork", "key",
+      "lastEmittedAt", "model", "permissionDenialsPending", "runCostUsd",
+      "sessionId", "state", "stateSince",
+    ]
+    let goSet = Set(goFields)
+    let unhandled = goSet.subtracting(swiftHandled)
+    XCTAssert(
+      unhandled.isEmpty,
+      "Go SessionStatus has fields not tracked in Swift test: \(unhandled.sorted())"
+    )
+  }
+
+  func testBackgroundTaskStateDecode() throws {
+    let manifest = try loadManifest()
+    guard let goFields = manifest.sharedTypes["BackgroundTaskState"] else {
+      XCTFail("BackgroundTaskState not found in Go manifest")
+      return
     }
 
-    // MARK: - EngineEvent variants decode
+    let json = #"{"taskId":"bg-1","toolId":"tool-1","command":"sleep 10","startedAt":123,"notifyOnComplete":true}"#.data(using: .utf8)!
+    let task = try decoder.decode(BackgroundTaskState.self, from: json)
+    XCTAssertEqual(task.taskId, "bg-1")
+    XCTAssertEqual(task.toolId, "tool-1")
+    XCTAssertEqual(task.command, "sleep 10")
+    XCTAssertEqual(task.startedAt, 123)
+    XCTAssertTrue(task.notifyOnComplete)
 
-    func testEngineTextDeltaDecode() throws {
-        let json = """
-        {"type":"desktop_text_delta","tabId":"t1","text":"hello"}
-        """.data(using: .utf8)!
-        let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineTextDelta(_, _, let text) = event {
-            XCTAssertEqual(text, "hello")
-        } else {
-            XCTFail("Expected engineTextDelta")
-        }
+    let swiftHandled: Set<String> = [
+      "taskId", "toolId", "command", "startedAt", "notifyOnComplete",
+    ]
+    XCTAssertEqual(Set(goFields), swiftHandled)
+  }
+
+  // MARK: - EngineEvent decode (engine_status with StatusFields)
+
+  func testEngineStatusDecode() throws {
+    let json = """
+      {
+          "type": "desktop_status",
+          "tabId": "t1",
+          "fields": {
+              "label": "Running",
+              "state": "running",
+              "model": "claude-4",
+              "contextPercent": 55,
+              "contextWindow": 200000
+          }
+      }
+      """.data(using: .utf8)!
+
+    let event = try decoder.decode(RemoteEvent.self, from: json)
+    if case .engineStatus(let tabId, _, let fields, _) = event {
+      XCTAssertEqual(tabId, "t1")
+      XCTAssertEqual(fields.label, "Running")
+      XCTAssertEqual(fields.state, "running")
+      XCTAssertEqual(fields.contextPercent, 55.0)
+    } else {
+      XCTFail("Expected engineStatus, got \(event)")
+    }
+  }
+
+  // MARK: - engine_session_status (Phase 3 typed event) decode + round-trip
+
+  /// Pins the wire decode for the Phase 3 engine_session_status event.
+  /// The engine emits this in parallel with engine_status; iOS reads
+  /// it via the dispatcher in SessionViewModel+SessionStatus.swift.
+  func testEngineSessionStatusDecode() throws {
+    let json = """
+      {
+          "type": "desktop_session_status",
+          "tabId": "t1",
+          "instanceId": "inst-2",
+          "sessionStatus": {
+              "key": "t1:inst-2",
+              "state": "running",
+              "lastEmittedAt": 1780000005000,
+              "hasInflightRun": true,
+              "backgroundAgentCount": 1,
+              "model": "claude-4",
+              "contextPercent": 42,
+              "contextWindow": 200000,
+              "runCostUsd": 1.23,
+              "conversationCostUsd": 5.67,
+              "sessionId": "conv-abc"
+          }
+      }
+      """.data(using: .utf8)!
+
+    let event = try decoder.decode(RemoteEvent.self, from: json)
+    if case .engineSessionStatus(let tabId, let instanceId, let status, _) = event {
+      XCTAssertEqual(tabId, "t1")
+      XCTAssertEqual(instanceId, "inst-2")
+      XCTAssertEqual(status.key, "t1:inst-2")
+      XCTAssertEqual(status.state, "running")
+      XCTAssertEqual(status.lastEmittedAt, 1_780_000_005_000)
+      XCTAssertEqual(status.hasInflightRun, true)
+      XCTAssertEqual(status.backgroundAgentCount, 1)
+      XCTAssertEqual(status.model, "claude-4")
+      XCTAssertEqual(status.contextPercent, 42)
+      XCTAssertEqual(status.runCostUsd, 1.23)
+      XCTAssertEqual(status.conversationCostUsd, 5.67)
+      XCTAssertEqual(status.sessionId, "conv-abc")
+    } else {
+      XCTFail("Expected engineSessionStatus, got \(event)")
+    }
+  }
+
+  /// Round-trip the engine_session_status event through encode + decode
+  /// to pin the wire-symmetric behavior. If a future change to
+  /// NormalizedEvent+Engine.swift drops a field on encode, this test
+  /// fails — preventing an iOS-originated event from losing data when
+  /// echoed back to the desktop (e.g. for a relay-replay debug path).
+  func testEngineSessionStatusRoundTrip() throws {
+    let original: RemoteEvent = .engineSessionStatus(
+      tabId: "t1",
+      instanceId: "inst-2",
+      sessionStatus: SessionStatus(
+        key: "t1:inst-2",
+        state: "idle",
+        stateSince: nil,
+        lastEmittedAt: 1_780_000_005_000,
+        hasInflightRun: false,
+        backgroundAgentCount: nil,
+        backgroundShellCount: 3,
+        hasPendingWork: nil,
+        permissionDenialsPending: nil,
+        model: "claude-4",
+        contextPercent: 12,
+        contextWindow: 200_000,
+        contextTokens: 24_000,
+        runCostUsd: 0.5,
+        conversationCostUsd: 2.5,
+        sessionId: "conv-x",
+        extensionName: nil
+      ),
+      metadata: nil
+    )
+
+    let encoded = try encoder.encode(original)
+    let decoded = try decoder.decode(RemoteEvent.self, from: encoded)
+    if case .engineSessionStatus(let tabId, let instId, let status, _) = decoded {
+      XCTAssertEqual(tabId, "t1")
+      XCTAssertEqual(instId, "inst-2")
+      XCTAssertEqual(status.key, "t1:inst-2")
+      XCTAssertEqual(status.state, "idle")
+      XCTAssertEqual(status.lastEmittedAt, 1_780_000_005_000)
+      XCTAssertEqual(status.hasInflightRun, false)
+      XCTAssertEqual(status.model, "claude-4")
+      XCTAssertEqual(status.contextPercent, 12)
+      XCTAssertEqual(status.contextTokens, 24_000)
+      // Survives the encode/decode round-trip: a dropped CodingKey on
+      // the encode side would silently lose the parked-session signal.
+      XCTAssertEqual(status.backgroundShellCount, 3)
+      XCTAssertEqual(status.sessionId, "conv-x")
+    } else {
+      XCTFail("Round-trip expected engineSessionStatus, got \(decoded)")
+    }
+  }
+
+  /// Documents the Phase 3 dual-emit contract: when the engine ships
+  /// engine_status it also ships engine_session_status carrying the
+  /// same authoritative state. This test does not invoke the engine;
+  /// it asserts that both event shapes decode and discriminate
+  /// correctly on the same iOS decoder so a downstream consumer can
+  /// trust both routes.
+  func testEngineStatusAndSessionStatusBothDecode() throws {
+    let legacyJSON = """
+      {"type":"desktop_status","tabId":"t1","fields":{"label":"","state":"running","model":"","contextPercent":0,"contextWindow":0}}
+      """.data(using: .utf8)!
+    let typedJSON = """
+      {"type":"desktop_session_status","tabId":"t1","sessionStatus":{"key":"t1","state":"running","lastEmittedAt":1}}
+      """.data(using: .utf8)!
+
+    let legacy = try decoder.decode(RemoteEvent.self, from: legacyJSON)
+    let typed = try decoder.decode(RemoteEvent.self, from: typedJSON)
+
+    guard case .engineStatus(_, _, let legacyFields, _) = legacy,
+      case .engineSessionStatus(_, _, let typedStatus, _) = typed
+    else {
+      XCTFail("Expected both events to decode to their respective cases")
+      return
+    }
+    XCTAssertEqual(legacyFields.state, "running")
+    XCTAssertEqual(typedStatus.state, "running")
+  }
+
+  // MARK: - EngineEvent variants decode
+
+  func testEngineTextDeltaDecode() throws {
+    let json = """
+      {"type":"desktop_text_delta","tabId":"t1","text":"hello"}
+      """.data(using: .utf8)!
+    let event = try decoder.decode(RemoteEvent.self, from: json)
+    if case .engineTextDelta(_, _, let text) = event {
+      XCTAssertEqual(text, "hello")
+    } else {
+      XCTFail("Expected engineTextDelta")
+    }
+  }
+
+  func testEngineStreamResetDecode() throws {
+    let json = """
+      {"type":"desktop_stream_reset","tabId":"t1"}
+      """.data(using: .utf8)!
+    let event = try decoder.decode(RemoteEvent.self, from: json)
+    if case .engineStreamReset(let tabId, let instanceId) = event {
+      XCTAssertEqual(tabId, "t1")
+      XCTAssertNil(instanceId)
+    } else {
+      XCTFail("Expected engineStreamReset")
+    }
+  }
+
+  func testEngineToolStartDecode() throws {
+    let json = """
+      {"type":"desktop_tool_start","tabId":"t1","toolName":"bash","toolId":"tid-1"}
+      """.data(using: .utf8)!
+    let event = try decoder.decode(RemoteEvent.self, from: json)
+    if case .engineToolStart(_, _, let name, let id) = event {
+      XCTAssertEqual(name, "bash")
+      XCTAssertEqual(id, "tid-1")
+    } else {
+      XCTFail("Expected engineToolStart")
+    }
+  }
+
+  func testEngineToolEndDecode() throws {
+    let json = """
+      {"type":"desktop_tool_end","tabId":"t1","toolId":"tid-1","result":"ok","isError":false}
+      """.data(using: .utf8)!
+    let event = try decoder.decode(RemoteEvent.self, from: json)
+    if case .engineToolEnd(_, _, let id, let result, let isError, _) = event {
+      XCTAssertEqual(id, "tid-1")
+      XCTAssertEqual(result, "ok")
+      XCTAssertFalse(isError)
+    } else {
+      XCTFail("Expected engineToolEnd")
+    }
+  }
+
+  func testEngineDeadDecode() throws {
+    let json = """
+      {"type":"desktop_dead","tabId":"t1","exitCode":1,"signal":null,"stderrTail":["error"]}
+      """.data(using: .utf8)!
+    let event = try decoder.decode(RemoteEvent.self, from: json)
+    if case .engineDead(_, _, let exitCode, let signal, let tail) = event {
+      XCTAssertEqual(exitCode, 1)
+      XCTAssertNil(signal)
+      XCTAssertEqual(tail, ["error"])
+    } else {
+      XCTFail("Expected engineDead")
+    }
+  }
+  func testEngineImageContentDecode_tool() throws {
+    // source "tool" carries a toolId; iOS attaches to the matching tool row.
+    let json = """
+      {"type":"desktop_image_content","tabId":"t1","instanceId":"i1","path":"/Users/x/.ion/conversations/c1/images/abc.png","mediaType":"image/png","source":"tool","toolId":"tid-9"}
+      """.data(using: .utf8)!
+    let event = try decoder.decode(RemoteEvent.self, from: json)
+    guard
+      case .engineImageContent(
+        let tabId, let instanceId, let path, let mediaType, _, let source, let toolId) = event
+    else {
+      return XCTFail("Expected engineImageContent (tool)")
+    }
+    XCTAssertEqual(tabId, "t1")
+    XCTAssertEqual(instanceId, "i1")
+    XCTAssertEqual(path, "/Users/x/.ion/conversations/c1/images/abc.png")
+    XCTAssertEqual(mediaType, "image/png")
+    XCTAssertEqual(source, "tool")
+    XCTAssertEqual(toolId, "tid-9")
+  }
+
+  func testEngineImageContentDecode_provider() throws {
+    // source "provider" omits toolId; iOS attaches to the last assistant row.
+    let json = """
+      {"type":"desktop_image_content","tabId":"t1","path":"/img/gen.png","mediaType":"image/png","source":"provider"}
+      """.data(using: .utf8)!
+    let event = try decoder.decode(RemoteEvent.self, from: json)
+    guard case .engineImageContent(_, _, let path, _, _, let source, let toolId) = event else {
+      return XCTFail("Expected engineImageContent (provider)")
+    }
+    XCTAssertEqual(path, "/img/gen.png")
+    XCTAssertEqual(source, "provider")
+    XCTAssertNil(toolId)
+  }
+
+  /// Round-trip encode → decode to pin the wire shape stays symmetric.
+  func testEngineImageContentRoundTrip() throws {
+    let original = RemoteEvent.engineImageContent(
+      tabId: "t1", instanceId: "i1", path: "/img/a.png",
+      mediaType: "image/png", contentHash: nil, source: "tool", toolId: "tid-1"
+    )
+    let data = try JSONEncoder().encode(original)
+    let decoded = try decoder.decode(RemoteEvent.self, from: data)
+    guard case .engineImageContent(_, _, let path, let mediaType, _, let source, let toolId) = decoded
+    else {
+      return XCTFail("Expected engineImageContent round-trip")
+    }
+    XCTAssertEqual(path, "/img/a.png")
+    XCTAssertEqual(mediaType, "image/png")
+    XCTAssertEqual(source, "tool")
+    XCTAssertEqual(toolId, "tid-1")
+  }
+
+  /// Pin that every Go-side image_content field is tracked by the Swift
+  /// engineImageContent case. Fails if Go adds a field iOS doesn't decode.
+  func testImageContentNormalizedEventFields() throws {
+    let manifest = try loadManifest()
+    guard let goFields = manifest.normalizedEvents["image_content"] ?? nil else {
+      XCTFail("image_content not found in Go normalizedEvents manifest")
+      return
+    }
+    // tabId/instanceId are session correlators added by the desktop wire
+    // envelope, not part of the engine ImageContentEvent struct.
+    let swiftHandled: Set<String> = ["path", "mediaType", "contentHash", "source", "toolId"]
+    let goSet = Set(goFields)
+    let unhandled = goSet.subtracting(swiftHandled)
+    XCTAssert(
+      unhandled.isEmpty,
+      "Go image_content has fields not tracked in Swift test: \(unhandled.sorted())"
+    )
+  }
+
+  func testEngineDispatchActivityDecode() throws {
+    // tool_start (with dispatchActivityTs — the full wire shape)
+    let startJSON = """
+      {"type":"desktop_dispatch_activity","tabId":"t1","instanceId":"i1","dispatchAgentId":"dispatch-dev-1","dispatchConversationId":"child-conv","dispatchActivityKind":"tool_start","dispatchSeq":1,"toolName":"Read","toolId":"tool-1","dispatchActivityTs":1782088921498}
+      """.data(using: .utf8)!
+    let startEvent = try decoder.decode(RemoteEvent.self, from: startJSON)
+    guard
+      case .engineDispatchActivity(
+        _, _, let agentId, let convId, let kind, let seq, let toolName, let toolId, _, _, let ts) =
+        startEvent
+    else {
+      return XCTFail("Expected engineDispatchActivity (tool_start)")
+    }
+    XCTAssertEqual(agentId, "dispatch-dev-1")
+    XCTAssertEqual(convId, "child-conv")
+    XCTAssertEqual(kind, "tool_start")
+    XCTAssertEqual(seq, 1)
+    XCTAssertEqual(toolName, "Read")
+    XCTAssertEqual(toolId, "tool-1")
+    XCTAssertEqual(ts, 1_782_088_921_498)
+
+    // text delta
+    let textJSON = """
+      {"type":"desktop_dispatch_activity","tabId":"t1","dispatchAgentId":"a","dispatchConversationId":"c","dispatchActivityKind":"text","dispatchSeq":2,"dispatchTextDelta":"hello"}
+      """.data(using: .utf8)!
+    let textEvent = try decoder.decode(RemoteEvent.self, from: textJSON)
+    guard
+      case .engineDispatchActivity(_, _, _, _, let tkind, _, _, _, let textDelta, _, let textTs) =
+        textEvent
+    else {
+      return XCTFail("Expected engineDispatchActivity (text)")
+    }
+    XCTAssertEqual(tkind, "text")
+    XCTAssertEqual(textDelta, "hello")
+    // Absent dispatchActivityTs decodes as nil (tolerant mirror).
+    XCTAssertNil(textTs)
+
+    // tool_end with error
+    let endJSON = """
+      {"type":"desktop_dispatch_activity","tabId":"t1","dispatchAgentId":"a","dispatchConversationId":"c","dispatchActivityKind":"tool_end","dispatchSeq":3,"toolId":"tool-1","dispatchToolIsError":true}
+      """.data(using: .utf8)!
+    let endEvent = try decoder.decode(RemoteEvent.self, from: endJSON)
+    guard case .engineDispatchActivity(_, _, _, _, let ekind, _, _, _, _, let isError, _) = endEvent
+    else {
+      return XCTFail("Expected engineDispatchActivity (tool_end)")
+    }
+    XCTAssertEqual(ekind, "tool_end")
+    XCTAssertTrue(isError)
+  }
+
+  func testEngineMessageEndDecode() throws {
+    let json = """
+      {"type":"desktop_message_end","tabId":"t1","usage":{"inputTokens":100,"outputTokens":50,"contextPercent":30,"cost":0.01}}
+      """.data(using: .utf8)!
+    let event = try decoder.decode(RemoteEvent.self, from: json)
+    if case .engineMessageEnd(
+      _, _, let input, let output, let pct, let cost, let entryId, let userEntryId) = event
+    {
+      XCTAssertEqual(input, 100)
+      XCTAssertEqual(output, 50)
+      XCTAssertEqual(pct, 30.0)
+      XCTAssertEqual(cost, 0.01)
+      // Older desktops omit the canonical entry ids — they decode nil.
+      XCTAssertNil(entryId)
+      XCTAssertNil(userEntryId)
+    } else {
+      XCTFail("Expected engineMessageEnd")
+    }
+  }
+
+  /// The canonical persisted entry ids ride inside `usage` on the wire
+  /// (Go MessageEndUsage) and surface as top-level associated values on
+  /// the Swift case. handleEngineMessageEnd uses them to re-key the
+  /// streamed rows so history pages anchor on them.
+  func testEngineMessageEndDecodeWithEntryIds() throws {
+    let json = """
+      {"type":"desktop_message_end","tabId":"t1","usage":{"inputTokens":100,"outputTokens":50,"contextPercent":30,"cost":0.01,"entryId":"entry-9","userEntryId":"entry-8"}}
+      """.data(using: .utf8)!
+    let event = try decoder.decode(RemoteEvent.self, from: json)
+    if case .engineMessageEnd(_, _, _, _, _, _, let entryId, let userEntryId) = event {
+      XCTAssertEqual(entryId, "entry-9")
+      XCTAssertEqual(userEntryId, "entry-8")
+    } else {
+      XCTFail("Expected engineMessageEnd with entry ids")
+    }
+  }
+
+  /// desktop_user_turn_persisted — the run-opening user turn's canonical
+  /// persisted tree-entry id, announced before streaming so the optimistic
+  /// user row is re-keyed even when the run never reaches a message_end
+  /// (cancel, mid-stream failure). Mirrors Go EngineEvent.UserTurnEntryID
+  /// forwarded via the desktop's generic engine→wire mapper.
+  func testEngineUserTurnPersistedDecode() throws {
+    let json = """
+      {"type":"desktop_user_turn_persisted","tabId":"t1","userTurnEntryId":"entry-77","userTurnSlashModelAlias":"Premium","userTurnSlashModelEffective":"claude-opus-4"}
+      """.data(using: .utf8)!
+    let event = try decoder.decode(RemoteEvent.self, from: json)
+    if case .engineUserTurnPersisted(
+      let tabId, let instanceId, let entryId, let alias, let effective) = event
+    {
+      XCTAssertEqual(tabId, "t1")
+      XCTAssertNil(instanceId)
+      XCTAssertEqual(entryId, "entry-77")
+      XCTAssertEqual(alias, "Premium")
+      XCTAssertEqual(effective, "claude-opus-4")
+    } else {
+      XCTFail("Expected engineUserTurnPersisted")
+    }
+  }
+
+  func testEngineDialogDecode() throws {
+    let json = """
+      {"type":"desktop_dialog","tabId":"t1","dialogId":"d1","method":"select","title":"Pick","options":["a","b"]}
+      """.data(using: .utf8)!
+    let event = try decoder.decode(RemoteEvent.self, from: json)
+    if case .engineDialog(_, _, let dialogId, let method, let title, let opts, _) = event {
+      XCTAssertEqual(dialogId, "d1")
+      XCTAssertEqual(method, "select")
+      XCTAssertEqual(title, "Pick")
+      XCTAssertEqual(opts, ["a", "b"])
+    } else {
+      XCTFail("Expected engineDialog")
+    }
+  }
+
+  func testEngineAgentStateDecode() throws {
+    let json = """
+      {"type":"desktop_agent_state","tabId":"t1","agents":[{"name":"coder","status":"running","metadata":{"displayName":"Coder","type":"specialist","visibility":"always","invited":true}}]}
+      """.data(using: .utf8)!
+    let event = try decoder.decode(RemoteEvent.self, from: json)
+    guard case .engineAgentState(_, _, let agents, _) = event else {
+      XCTFail("Expected engineAgentState, got \(event)")
+      return
+    }
+    XCTAssertEqual(agents.count, 1)
+    XCTAssertEqual(agents[0].name, "coder")
+    XCTAssertEqual(agents[0].status, "running")
+  }
+
+  /// Pin that the engineResourceItem wire event decodes correctly. This is a
+  /// regression test for the desktop_resource_item TypeKey and CodingKey
+  /// alignment added in #211: if the TypeKey raw value, CodingKey names, or
+  /// the decoder case in NormalizedEvent+Resource.swift drift from the
+  /// desktop wire contract, this test will fail before CI runs the full build.
+  func testEngineResourceItemDecode() throws {
+    let json = """
+      {"type":"desktop_resource_item","tabId":"t1","resourceKind":"briefing","resourceItem":{"id":"r-1","kind":"briefing","title":"Daily brief","content":"Full body here","createdAt":"2024-01-01T00:00:00Z"}}
+      """.data(using: .utf8)!
+    let event = try decoder.decode(RemoteEvent.self, from: json)
+    guard case .engineResourceItem(let tabId, let instanceId, let kind, let rawItem) = event else {
+      XCTFail("Expected engineResourceItem, got \(event)")
+      return
+    }
+    XCTAssertEqual(tabId, "t1")
+    XCTAssertNil(instanceId)
+    XCTAssertEqual(kind, "briefing")
+    XCTAssertEqual(rawItem["id"]?.value as? String, "r-1", "resourceItem.id mismatch")
+    XCTAssertEqual(
+      rawItem["content"]?.value as? String, "Full body here", "resourceItem.content mismatch")
+  }
+
+  // MARK: - StatusFields with contextPercent as int (Go sends int)
+
+  func testStatusFieldsContextPercentAsInt() throws {
+    // Go contextPercent is int; Swift decodes as Double — should work
+    let json = """
+      {"label":"test","state":"idle","model":"claude-4","contextPercent":75,"contextWindow":200000}
+      """.data(using: .utf8)!
+    let fields = try decoder.decode(StatusFields.self, from: json)
+    XCTAssertEqual(fields.contextPercent, 75.0)
+  }
+
+  // MARK: - MessageEndUsage decode
+
+  func testMessageEndUsageDecode() throws {
+    let manifest = try loadManifest()
+    guard let goFields = manifest.sharedTypes["MessageEndUsage"] else {
+      XCTFail("MessageEndUsage not found in Go manifest")
+      return
     }
 
-    func testEngineStreamResetDecode() throws {
-        let json = """
-        {"type":"desktop_stream_reset","tabId":"t1"}
-        """.data(using: .utf8)!
-        let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineStreamReset(let tabId, let instanceId) = event {
-            XCTAssertEqual(tabId, "t1")
-            XCTAssertNil(instanceId)
-        } else {
-            XCTFail("Expected engineStreamReset")
-        }
+    let json = """
+      {"inputTokens":100,"outputTokens":50,"contextPercent":30,"cost":0.5,"entryId":"e-1","userEntryId":"u-1"}
+      """.data(using: .utf8)!
+    let usage = try decoder.decode(EngineMessageEndUsage.self, from: json)
+    XCTAssertEqual(usage.inputTokens, 100)
+    XCTAssertEqual(usage.outputTokens, 50)
+    XCTAssertEqual(usage.entryId, "e-1")
+    XCTAssertEqual(usage.userEntryId, "u-1")
+
+    let swiftHandled: Set<String> = [
+      "inputTokens", "outputTokens", "contextPercent", "cost",
+      "entryId", "userEntryId",
+    ]
+    let unhandled = Set(goFields).subtracting(swiftHandled)
+    XCTAssert(
+      unhandled.isEmpty,
+      "Go MessageEndUsage has fields not tracked in Swift: \(unhandled.sorted())"
+    )
+  }
+
+  // MARK: - SessionMessage / SessionMessageAttachment field coverage
+
+  /// Go `SessionMessage` is the engine's persisted history-row shape. iOS
+  /// consumes it two ways: via the desktop history mapper (standard
+  /// `Message` Codable decode on desktop_conversation_history) and via the
+  /// direct engine-wire path (`Message(engineJSON:)` for agent histories).
+  /// This tracked set mirrors the Go manifest so any engine-side field
+  /// addition fails here and prompts an iOS review. Fields iOS deliberately
+  /// does not decode are still tracked (documented inline).
+  func testSessionMessageFieldsInManifest() throws {
+    let manifest = try loadManifest()
+    guard let goFields = manifest.sharedTypes["SessionMessage"] else {
+      XCTFail("SessionMessage not found in Go manifest")
+      return
     }
 
-    func testEngineToolStartDecode() throws {
-        let json = """
-        {"type":"desktop_tool_start","tabId":"t1","toolName":"bash","toolId":"tid-1"}
-        """.data(using: .utf8)!
-        let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineToolStart(_, _, let name, let id) = event {
-            XCTAssertEqual(name, "bash")
-            XCTAssertEqual(id, "tid-1")
-        } else {
-            XCTFail("Expected engineToolStart")
-        }
+    let swiftHandled: Set<String> = [
+      // Decoded by Message (Codable + engineJSON paths).
+      "attachments", "content", "id", "internal", "role",
+      "slashArgs", "slashCommand", "slashModelAlias",
+      "slashModelEffective", "slashSource",
+      "timestamp", "toolId", "toolInput", "toolName",
+      // Decoded by Message(engineJSON:) (markerKind + markerPlanFilePath
+      // fallback for plan-divider links).
+      "markerKind", "markerPlanFilePath",
+      // Decoded: markerMachineAuthored lets historical clients suppress a
+      // transport marker when its adjacent delivery was engine-authored
+      // background work.
+      "markerMachineAuthored",
+      // Decoded: classifies engine-injected user turns, and the engine's
+      // derived verdict on whether an engine-side actor authored the turn.
+      // InjectionPolicy reads both to filter machine-to-machine rows out
+      // of handleConversationHistory, so a dispatch completion or a
+      // scheduled check-in never renders as a user bubble on reload.
+      "injectionKind", "machineAuthored",
+      // Decoded: structured metadata for an engine-owned completion input.
+      "backgroundWork",
+      // Decoded: correlation identifier matching a delivered background
+      // work item to its originating tool row.
+      "backgroundTaskId",
+      // Tracked but not decoded: the desktop history mapper folds these
+      // marker payload details into the rendered divider content before
+      // iOS sees the row; the engineJSON path routes markers by their
+      // content sentinel. A future iOS marker renderer can adopt them
+      // without a contract change.
+      "markerClearedBlocks", "markerMessageLength",
+      "markerMessagesAfter", "markerMessagesBefore", "markerMicroOnly",
+      "markerPlanOperation", "markerPlanSlug",
+      "markerStrategy", "markerSummary",
+      // Tracked but not decoded: the desktop mapper projects a tool
+      // row's error state onto `toolStatus` before forwarding to iOS.
+      "isError",
+    ]
+    let goSet = Set(goFields)
+    let unhandled = goSet.subtracting(swiftHandled)
+    XCTAssert(
+      unhandled.isEmpty,
+      "Go SessionMessage has fields not tracked in Swift test: \(unhandled.sorted())"
+    )
+  }
+
+  /// Go `SessionMessageAttachment` mirrors onto the Swift MessageAttachment
+  /// used on both history paths.
+  func testSessionMessageAttachmentFieldsInManifest() throws {
+    let manifest = try loadManifest()
+    guard let goFields = manifest.sharedTypes["SessionMessageAttachment"] else {
+      XCTFail("SessionMessageAttachment not found in Go manifest")
+      return
     }
 
-    func testEngineToolEndDecode() throws {
-        let json = """
-        {"type":"desktop_tool_end","tabId":"t1","toolId":"tid-1","result":"ok","isError":false}
-        """.data(using: .utf8)!
-        let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineToolEnd(_, _, let id, let result, let isError) = event {
-            XCTAssertEqual(id, "tid-1")
-            XCTAssertEqual(result, "ok")
-            XCTAssertFalse(isError)
-        } else {
-            XCTFail("Expected engineToolEnd")
-        }
+    let swiftHandled: Set<String> = [
+      "id", "mimeType", "name", "path", "type", "contentHash",
+    ]
+    let goSet = Set(goFields)
+    let unhandled = goSet.subtracting(swiftHandled)
+    XCTAssert(
+      unhandled.isEmpty,
+      "Go SessionMessageAttachment has fields not tracked in Swift test: \(unhandled.sorted())"
+    )
+  }
+
+  // MARK: - ModelEntry decode
+
+  func testModelEntryDecode() throws {
+    let manifest = try loadManifest()
+    guard let goFields = manifest.sharedTypes["ModelEntry"] else {
+      XCTFail("ModelEntry not found in Go manifest")
+      return
     }
 
-    func testEngineDeadDecode() throws {
-        let json = """
-        {"type":"desktop_dead","tabId":"t1","exitCode":1,"signal":null,"stderrTail":["error"]}
-        """.data(using: .utf8)!
-        let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineDead(_, _, let exitCode, let signal, let tail) = event {
-            XCTAssertEqual(exitCode, 1)
-            XCTAssertNil(signal)
-            XCTAssertEqual(tail, ["error"])
-        } else {
-            XCTFail("Expected engineDead")
-        }
-    }
-    func testUploadAttachmentResultRoundTripKeepsContentHash() throws {
-        let original = RemoteEvent.uploadAttachmentResult(
-            id: "upload-1", name: "input.png", path: "/tmp/input.png",
-            correlationId: "corr-1", contentHash: "hash-upload", error: nil
-        )
-        let data = try JSONEncoder().encode(original)
-        let decoded = try decoder.decode(RemoteEvent.self, from: data)
-        guard case .uploadAttachmentResult(let id, let name, let path, let correlationId, let contentHash, let error) = decoded else {
-            return XCTFail("Expected uploadAttachmentResult")
-        }
-        XCTAssertEqual(id, "upload-1")
-        XCTAssertEqual(name, "input.png")
-        XCTAssertEqual(path, "/tmp/input.png")
-        XCTAssertEqual(correlationId, "corr-1")
-        XCTAssertEqual(contentHash, "hash-upload")
-        XCTAssertNil(error)
-    }
+    let json: [String: Any] = [
+      "id": "claude-sonnet-4-6",
+      "providerId": "anthropic",
+      "contextWindow": 200000,
+      "costPer1kInput": 0.003,
+      "costPer1kOutput": 0.015,
+      "supportsCaching": true,
+      "supportsThinking": true,
+      "supportsImages": true,
+    ]
 
-    func testEngineImageContentDecode_tool() throws {
-        // source "tool" carries a toolId; iOS attaches to the matching tool row.
-        let json = """
-        {"type":"desktop_image_content","tabId":"t1","instanceId":"i1","path":"/Users/x/.ion/conversations/c1/images/abc.png","mediaType":"image/png","contentHash":"hash-tool","source":"tool","toolId":"tid-9"}
-        """.data(using: .utf8)!
-        let event = try decoder.decode(RemoteEvent.self, from: json)
-        guard case .engineImageContent(let tabId, let instanceId, let path, let mediaType, let contentHash, let source, let toolId) = event else {
-            return XCTFail("Expected engineImageContent (tool)")
-        }
-        XCTAssertEqual(tabId, "t1")
-        XCTAssertEqual(instanceId, "i1")
-        XCTAssertEqual(path, "/Users/x/.ion/conversations/c1/images/abc.png")
-        XCTAssertEqual(mediaType, "image/png")
-        XCTAssertEqual(contentHash, "hash-tool")
-        XCTAssertEqual(source, "tool")
-        XCTAssertEqual(toolId, "tid-9")
-    }
+    let _ = try JSONSerialization.data(withJSONObject: json)
+    // ModelEntry is a contract type but iOS uses RemoteModelEntry for the wire.
+    // We verify that we can decode the Go-side fields that matter to iOS.
+    // RemoteModelEntry covers: id, providerId, contextWindow, label, hasAuth,
+    // providerLabel (desktop-resolved provider display name), modelKind,
+    // thinkingMode, thinkingEfforts, and isCustom. The remaining Go fields
+    // (costPer1kInput, etc.) are not needed on iOS.
 
-    func testEngineImageContentDecode_provider() throws {
-        // source "provider" omits toolId; iOS attaches to the last assistant row.
-        let json = """
-        {"type":"desktop_image_content","tabId":"t1","path":"/img/gen.png","mediaType":"image/png","source":"provider"}
-        """.data(using: .utf8)!
-        let event = try decoder.decode(RemoteEvent.self, from: json)
-        guard case .engineImageContent(_, _, let path, _, let contentHash, let source, let toolId) = event else {
-            return XCTFail("Expected engineImageContent (provider)")
-        }
-        XCTAssertEqual(path, "/img/gen.png")
-        XCTAssertNil(contentHash)
-        XCTAssertEqual(source, "provider")
-        XCTAssertNil(toolId)
-    }
+    let swiftHandled: Set<String> = [
+      "id", "providerId", "contextWindow",
+      "costPer1kInput", "costPer1kOutput",
+      "supportsCaching", "supportsThinking", "supportsImages",
+      "thinkingMode", "thinkingEfforts",
+      // Operator-defined model (engine.json `models` entry) rather than
+      // one the provider's catalog reported. Consumed: drives the
+      // `custom` badge in ModelPickerSheet.
+      "isCustom",
+      "modelKind",  // consumed: gates the image-model banner (ConversationView+InputBar, ConversationStatusBar)
+      "tokenizer",  // engine field; iOS does not consume it (thin client)
+      "maxOutputTokens",  // engine field; iOS does not consume it (thin client)
+      // Wire protocol a dialect-dispatching (gateway) provider speaks for
+      // this model ("anthropic" | "openai-chat" | "openai-responses" |
+      // "image"). Protocol selection is an engine-side routing concern —
+      // iOS sends a model id and the engine picks the dialect — so this
+      // is deliberately NOT projected into RemoteModelEntry by the
+      // desktop (see desktop/src/main/ipc/models.ts updateCache).
+      "dialect",
+      // Per-image USD rate for per-image-billed image models. The engine
+      // computes image-run cost itself (cost.ImageCost →
+      // TaskCompleteEvent.CostUsd) and iOS renders the resulting cost, so
+      // the raw rate is not projected into RemoteModelEntry either.
+      "costPerImage",
+      // Engine's own input-budget arithmetic for this model (raw window
+      // minus output reserve minus compaction reserve). Consumed:
+      // ConversationStatusBar+Context.swift's resolveContextCapacity
+      // prefers this over recomputing the reserves locally when the
+      // selected model declares it.
+      "effectiveContextLimit",
+    ]
+    let goSet = Set(goFields)
+    let unhandled = goSet.subtracting(swiftHandled)
+    XCTAssert(
+      unhandled.isEmpty,
+      "Go ModelEntry has fields not tracked in Swift test: \(unhandled.sorted())"
+    )
+  }
 
-    /// Round-trip encode → decode to pin the wire shape stays symmetric.
-    func testEngineImageContentRoundTrip() throws {
-        let original = RemoteEvent.engineImageContent(
-            tabId: "t1", instanceId: "i1", path: "/img/a.png",
-            mediaType: "image/png", contentHash: "hash-round-trip", source: "tool", toolId: "tid-1"
-        )
-        let data = try JSONEncoder().encode(original)
-        let decoded = try decoder.decode(RemoteEvent.self, from: data)
-        guard case .engineImageContent(_, _, let path, let mediaType, let contentHash, let source, let toolId) = decoded else {
-            return XCTFail("Expected engineImageContent round-trip")
-        }
-        XCTAssertEqual(path, "/img/a.png")
-        XCTAssertEqual(mediaType, "image/png")
-        XCTAssertEqual(contentHash, "hash-round-trip")
-        XCTAssertEqual(source, "tool")
-        XCTAssertEqual(toolId, "tid-1")
+  // MARK: - ProviderEntry decode
+
+  func testProviderEntryDecode() throws {
+    let manifest = try loadManifest()
+    guard let goFields = manifest.sharedTypes["ProviderEntry"] else {
+      XCTFail("ProviderEntry not found in Go manifest")
+      return
     }
 
-    /// Pin that every Go-side image_content field is tracked by the Swift
-    /// engineImageContent case. Fails if Go adds a field iOS doesn't decode.
-    func testImageContentNormalizedEventFields() throws {
-        let manifest = try loadManifest()
-        guard let goFields = manifest.normalizedEvents["image_content"] ?? nil else {
-            XCTFail("image_content not found in Go normalizedEvents manifest")
-            return
-        }
-        // tabId/instanceId are session correlators added by the desktop wire
-        // envelope, not part of the engine ImageContentEvent struct.
-        let swiftHandled: Set<String> = ["path", "mediaType", "contentHash", "source", "toolId"]
-        let goSet = Set(goFields)
-        let unhandled = goSet.subtracting(swiftHandled)
-        XCTAssert(
-            unhandled.isEmpty,
-            "Go image_content has fields not tracked in Swift test: \(unhandled.sorted())"
-        )
+    let json: [String: Any] = [
+      "id": "anthropic",
+      "hasAuth": true,
+      "authSource": "env",
+    ]
+
+    let _ = try JSONSerialization.data(withJSONObject: json)
+    // ProviderEntry is a Go contract type. iOS doesn't decode it directly
+    // (it uses RemoteModelEntry, onto which the desktop flattens hasAuth
+    // and the resolved provider display name per model), but we verify
+    // awareness of all Go fields.
+
+    let swiftHandled: Set<String> = [
+      "id", "hasAuth", "authSource",
+      "baseURL", "apiKeyRef",
+      // Delegated-CLI backend selection + install/auth status. iOS does
+      // not run CLIs, so it does not act on these, but the contract test
+      // tracks awareness of every Go field (see testProviderCliStatus).
+      "backend", "cli",
+      // Operator-configured human-friendly provider name (engine.json
+      // provider displayName). iOS does not decode ProviderEntry — the
+      // desktop flattens per-provider data onto each model, so this
+      // resolved name arrives as RemoteModelEntry.providerLabel (see
+      // desktop/src/main/ipc/models.ts updateCache) and is rendered as
+      // the section header in the provider-grouped model picker
+      // (ModelPickerGrouping.providerLabel / ModelPickerSheet).
+      "displayName",
+    ]
+    let goSet = Set(goFields)
+    let unhandled = goSet.subtracting(swiftHandled)
+    XCTAssert(
+      unhandled.isEmpty,
+      "Go ProviderEntry has fields not tracked in Swift test: \(unhandled.sorted())"
+    )
+  }
+
+  // MARK: - ProviderCliStatus / ProviderLoginUpdate awareness
+
+  /// Tracks the delegated-CLI status shape carried on ProviderEntry.cli. iOS
+  /// is a thin client and does not render CLI install/auth state (login is
+  /// desktop-only — the CLIs live on the desktop machine), but the test pins
+  /// awareness of every Go field so a future consumer starts from truth.
+  func testProviderCliStatus() throws {
+    let manifest = try loadManifest()
+    guard let goFields = manifest.sharedTypes["ProviderCliStatus"] else {
+      XCTFail("ProviderCliStatus not found in Go manifest")
+      return
+    }
+    let swiftHandled: Set<String> = [
+      "backend", "installed", "binaryPath", "version",
+      "authenticated", "authMethod", "planType", "email", "label", "probedAt",
+    ]
+    let unhandled = Set(goFields).subtracting(swiftHandled)
+    XCTAssert(
+      unhandled.isEmpty,
+      "Go ProviderCliStatus has fields not tracked in Swift test: \(unhandled.sorted())")
+  }
+
+  /// Tracks the engine_provider_login payload (EngineEvent.providerLogin).
+  /// Provider-CLI login is a desktop-only flow; iOS drops the forwarded
+  /// desktop_provider_login events at trace level. The test pins field
+  /// awareness for parity.
+  func testProviderLoginUpdate() throws {
+    let manifest = try loadManifest()
+    guard let goFields = manifest.sharedTypes["ProviderLoginUpdate"] else {
+      XCTFail("ProviderLoginUpdate not found in Go manifest")
+      return
+    }
+    let swiftHandled: Set<String> = [
+      "provider", "backend", "stage",
+      "authUrl", "userCode", "verificationUrl", "loginError", "loginId",
+    ]
+    let unhandled = Set(goFields).subtracting(swiftHandled)
+    XCTAssert(
+      unhandled.isEmpty,
+      "Go ProviderLoginUpdate has fields not tracked in Swift test: \(unhandled.sorted())")
+  }
+
+  /// Tracks the engine_mcp_servers payload (EngineEvent.mcpServers). MCP
+  /// server administration is a desktop-only flow: adding a server writes the
+  /// engine host's engine.json, and authorizing one requires a browser on the
+  /// engine host to complete the OAuth redirect. Neither has a meaningful
+  /// mobile interaction model, so iOS renders no MCP admin surface — but the
+  /// test pins awareness of every Go field so a future consumer starts from
+  /// truth rather than a stale guess.
+  ///
+  /// Note the two independent state flags: `connected` and `authenticated` are
+  /// deliberately separate, because a stored token that is being rejected
+  /// (authenticated, not connected) is exactly the case an operator must see.
+  /// A future iOS surface must not collapse them into one indicator.
+  func testMcpServerStatus() throws {
+    let manifest = try loadManifest()
+    guard let goFields = manifest.sharedTypes["McpServerStatus"] else {
+      XCTFail("McpServerStatus not found in Go manifest")
+      return
+    }
+    let swiftHandled: Set<String> = [
+      "name", "transport", "url", "command",
+      "connected", "authenticated", "toolCount", "lastError",
+      "protocolVersion", "capabilities",
+    ]
+    let unhandled = Set(goFields).subtracting(swiftHandled)
+    XCTAssert(
+      unhandled.isEmpty,
+      "Go McpServerStatus has fields not tracked in Swift test: \(unhandled.sorted())")
+  }
+
+  /// Drift-detection gate for ResourceLimits (D-007). iOS does not decode
+  /// ResourceLimits directly — the engine enforces the caps server-side and
+  /// the desktop consumes the policy blob. The test ensures that if Go renames
+  /// maxSessions or maxAgentsPerSession the mismatch surfaces at CI time rather
+  /// than silently diverging in the manifest.
+  func testResourceLimits() throws {
+    let manifest = try loadManifest()
+    guard let goFields = manifest.sharedTypes["ResourceLimits"] else {
+      XCTFail("ResourceLimits not found in Go manifest — was it removed or renamed?")
+      return
+    }
+    // Both fields are declared in Go's ResourceLimits struct in
+    // internal/types/config_resource_limits.go (D-007). iOS does not decode
+    // these at runtime; this test exists purely as a drift-detection gate.
+    let swiftHandled: Set<String> = [
+      "maxSessions",
+      "maxAgentsPerSession",
+    ]
+    let unhandled = Set(goFields).subtracting(swiftHandled)
+    XCTAssert(
+      unhandled.isEmpty,
+      "Go ResourceLimits has fields not tracked in Swift test: \(unhandled.sorted())")
+    let untracked = swiftHandled.subtracting(Set(goFields))
+    XCTAssert(
+      untracked.isEmpty,
+      "Swift test tracks ResourceLimits fields absent from Go manifest: \(untracked.sorted())")
+  }
+
+  // MARK: - EngineEvent dispatch field coverage
+
+  /// Pins that dispatchId and dispatchConversationId are present in the Go
+  /// EngineEvent manifest and that the Swift decoder handles them on
+  /// engineDispatchStart / engineDispatchEnd. Any future Go field added to
+  /// dispatch events that Swift doesn't decode will surface here.
+  func testEngineDispatchFieldsInManifest() throws {
+    let manifest = try loadManifest()
+    let goEventFields = Set(manifest.engineEvent)
+
+    // Fields consumed by engineDispatchStart / engineDispatchEnd on iOS.
+    let swiftConsumed: Set<String> = [
+      "dispatchId",
+      "dispatchConversationId",
+      "dispatchAgent",
+      "dispatchSessionId",
+      "dispatchModel",
+      "dispatchTask",
+      "dispatchDepth",
+      "dispatchParentId",
+      "dispatchExitCode",
+      "dispatchElapsed",
+    ]
+
+    let missingFromGo = swiftConsumed.subtracting(goEventFields)
+    XCTAssert(
+      missingFromGo.isEmpty,
+      "EngineEvent manifest is missing dispatch fields consumed by iOS: \(missingFromGo.sorted())"
+    )
+  }
+
+  /// Pins that the engine_dispatch_lost nested payload field is present in
+  /// the Go EngineEvent manifest. iOS does not yet decode the event (the
+  /// desktop's snapshot carries the corrected agent state, which is what
+  /// iOS renders); this gate exists so its removal from the Go wire — a
+  /// breaking change for loss-surfacing consumers — is caught at PR time.
+  func testEngineDispatchLostFieldInManifest() throws {
+    let manifest = try loadManifest()
+    let goEventFields = Set(manifest.engineEvent)
+    XCTAssert(
+      goEventFields.contains("dispatchLost"),
+      "EngineEvent manifest is missing the dispatchLost payload field (engine_dispatch_lost)"
+    )
+  }
+
+  /// Pins that the engine_tool_gate_request fields are present in the Go
+  /// EngineEvent manifest. iOS does not decode the event — the tool gate is
+  /// answered programmatically by the session's owning client (the desktop
+  /// main process), never surfaced in device UI — but the fields are wire
+  /// contract for gating consumers, so their removal must be caught at PR
+  /// time like any other engine-wire break.
+  func testEngineToolGateFieldsInManifest() throws {
+    let manifest = try loadManifest()
+    let goEventFields = Set(manifest.engineEvent)
+    let gateFields: Set<String> = [
+      "gateRequestId", "gateKind", "gateToolName", "gateToolInput", "gateCwd", "gateSiblingTools",
+    ]
+    let missing = gateFields.subtracting(goEventFields)
+    XCTAssert(
+      missing.isEmpty,
+      "EngineEvent manifest is missing tool-gate fields (engine_tool_gate_request): \(missing.sorted())"
+    )
+  }
+
+  // MARK: - context_breakdown normalized-event field coverage
+
+  /// Pins that every field the Go engine declares on the context_breakdown
+  /// normalized event is mirrored by the Swift ContextBreakdownPayload. The
+  /// cacheReadTokens / cacheCreationTokens fields were added in the
+  /// minty-grinning-cocoa plan (C7); this guards against future Go-side
+  /// additions the Swift wire type doesn't handle.
+  func testContextBreakdownNormalizedEventFields() throws {
+    let manifest = try loadManifest()
+    guard let goFields = manifest.normalizedEvents["context_breakdown"] ?? nil else {
+      XCTFail("context_breakdown not found in Go normalizedEvents manifest")
+      return
     }
 
-    func testEngineDispatchActivityDecode() throws {
-        // tool_start (with dispatchActivityTs — the full wire shape)
-        let startJSON = """
-        {"type":"desktop_dispatch_activity","tabId":"t1","instanceId":"i1","dispatchAgentId":"dispatch-dev-1","dispatchConversationId":"child-conv","dispatchActivityKind":"tool_start","dispatchSeq":1,"toolName":"Read","toolId":"tool-1","dispatchActivityTs":1782088921498}
-        """.data(using: .utf8)!
-        let startEvent = try decoder.decode(RemoteEvent.self, from: startJSON)
-        guard case .engineDispatchActivity(_, _, let agentId, let convId, let kind, let seq, let toolName, let toolId, _, _, let ts) = startEvent else {
-            return XCTFail("Expected engineDispatchActivity (tool_start)")
-        }
-        XCTAssertEqual(agentId, "dispatch-dev-1")
-        XCTAssertEqual(convId, "child-conv")
-        XCTAssertEqual(kind, "tool_start")
-        XCTAssertEqual(seq, 1)
-        XCTAssertEqual(toolName, "Read")
-        XCTAssertEqual(toolId, "tool-1")
-        XCTAssertEqual(ts, 1782088921498)
+    // Fields decoded by ContextBreakdownPayload / ContextBreakdownCategory on iOS.
+    let swiftHandled: Set<String> = [
+      "aggregateCostUsd", "apiReportedTotal", "cacheCreationTokens", "cacheReadTokens",
+      "categories", "contextWindow", "model", "modelBreakdown", "occupancyTokens",
+      "totalTokens", "unaccounted",
+    ]
+    let goSet = Set(goFields)
+    let unhandled = goSet.subtracting(swiftHandled)
+    XCTAssert(
+      unhandled.isEmpty,
+      "Go context_breakdown has fields not tracked in Swift test: \(unhandled.sorted())"
+    )
+  }
 
-        // text delta
-        let textJSON = """
-        {"type":"desktop_dispatch_activity","tabId":"t1","dispatchAgentId":"a","dispatchConversationId":"c","dispatchActivityKind":"text","dispatchSeq":2,"dispatchTextDelta":"hello"}
-        """.data(using: .utf8)!
-        let textEvent = try decoder.decode(RemoteEvent.self, from: textJSON)
-        guard case .engineDispatchActivity(_, _, _, _, let tkind, _, _, _, let textDelta, _, let textTs) = textEvent else {
-            return XCTFail("Expected engineDispatchActivity (text)")
-        }
-        XCTAssertEqual(tkind, "text")
-        XCTAssertEqual(textDelta, "hello")
-        // Absent dispatchActivityTs decodes as nil (tolerant mirror).
-        XCTAssertNil(textTs)
+  // MARK: - ModelBreakdown decode
 
-        // tool_end with error
-        let endJSON = """
-        {"type":"desktop_dispatch_activity","tabId":"t1","dispatchAgentId":"a","dispatchConversationId":"c","dispatchActivityKind":"tool_end","dispatchSeq":3,"toolId":"tool-1","dispatchToolIsError":true}
-        """.data(using: .utf8)!
-        let endEvent = try decoder.decode(RemoteEvent.self, from: endJSON)
-        guard case .engineDispatchActivity(_, _, _, _, let ekind, _, _, _, _, let isError, _) = endEvent else {
-            return XCTFail("Expected engineDispatchActivity (tool_end)")
-        }
-        XCTAssertEqual(ekind, "tool_end")
-        XCTAssertTrue(isError)
+  /// Pins that ModelBreakdown decodes all fields correctly. The struct was added
+  /// in the early-grinning-sunset plan (WS2) to carry per-model cost breakdowns
+  /// inside ContextBreakdownPayload. This test must fail if a future Go-side
+  /// field addition goes un-mirrored in Swift.
+  func testModelBreakdownDecode() throws {
+    let json = """
+      [
+        {"model":"claude-opus-4-5","conversations":1,"inputTokens":1500000,"outputTokens":45000,"costUsd":195.71,"isSelf":true},
+        {"model":"claude-opus-4-5","conversations":12,"inputTokens":900000,"outputTokens":30000,"costUsd":80.00},
+        {"model":"claude-sonnet-4-6","conversations":9,"inputTokens":800000,"outputTokens":25000,"costUsd":110.50}
+      ]
+      """.data(using: .utf8)!
+    let rows = try decoder.decode([ModelBreakdown].self, from: json)
+    XCTAssertEqual(rows.count, 3)
+    // Row 0: the viewing conversation's OWN opus spend (isSelf=true, count 1).
+    XCTAssertEqual(rows[0].model, "claude-opus-4-5")
+    XCTAssertEqual(rows[0].conversations, 1)
+    XCTAssertEqual(rows[0].inputTokens, 1_500_000)
+    XCTAssertEqual(rows[0].outputTokens, 45_000)
+    XCTAssertEqual(rows[0].costUsd, 195.71, accuracy: 0.01)
+    XCTAssertEqual(rows[0].isSelf, true)
+    // Row 1: opus DISPATCHES (isSelf omitted on the wire -> nil).
+    XCTAssertEqual(rows[1].model, "claude-opus-4-5")
+    XCTAssertEqual(rows[1].conversations, 12)
+    XCTAssertNil(rows[1].isSelf)
+    // Row 2: sonnet dispatches (also a dispatch -> isSelf nil).
+    XCTAssertEqual(rows[2].model, "claude-sonnet-4-6")
+    XCTAssertEqual(rows[2].conversations, 9)
+    XCTAssertEqual(rows[2].costUsd, 110.50, accuracy: 0.01)
+    XCTAssertNil(rows[2].isSelf)
+    // The self row and the dispatch row share a model but must have distinct
+    // Identifiable ids so SwiftUI ForEach renders both.
+    XCTAssertNotEqual(rows[0].id, rows[1].id)
+  }
+
+  /// Verifies ModelBreakdown fields are covered in the Go contract manifest.
+  func testModelBreakdownFieldsInManifest() throws {
+    let manifest = try loadManifest()
+    guard let goFields = manifest.sharedTypes["ModelBreakdown"] else {
+      XCTFail("ModelBreakdown not found in Go manifest")
+      return
     }
 
-    func testEngineMessageEndDecode() throws {
-        let json = """
-        {"type":"desktop_message_end","tabId":"t1","usage":{"inputTokens":100,"outputTokens":50,"contextPercent":30,"cost":0.01}}
-        """.data(using: .utf8)!
-        let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineMessageEnd(_, _, let input, let output, let pct, let cost, let entryId, let userEntryId) = event {
-            XCTAssertEqual(input, 100)
-            XCTAssertEqual(output, 50)
-            XCTAssertEqual(pct, 30.0)
-            XCTAssertEqual(cost, 0.01)
-            // Older desktops omit the canonical entry ids — they decode nil.
-            XCTAssertNil(entryId)
-            XCTAssertNil(userEntryId)
-        } else {
-            XCTFail("Expected engineMessageEnd")
-        }
-    }
-
-    /// The canonical persisted entry ids ride inside `usage` on the wire
-    /// (Go MessageEndUsage) and surface as top-level associated values on
-    /// the Swift case. handleEngineMessageEnd uses them to re-key the
-    /// streamed rows so history pages anchor on them.
-    func testEngineMessageEndDecodeWithEntryIds() throws {
-        let json = """
-        {"type":"desktop_message_end","tabId":"t1","usage":{"inputTokens":100,"outputTokens":50,"contextPercent":30,"cost":0.01,"entryId":"entry-9","userEntryId":"entry-8"}}
-        """.data(using: .utf8)!
-        let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineMessageEnd(_, _, _, _, _, _, let entryId, let userEntryId) = event {
-            XCTAssertEqual(entryId, "entry-9")
-            XCTAssertEqual(userEntryId, "entry-8")
-        } else {
-            XCTFail("Expected engineMessageEnd with entry ids")
-        }
-    }
-
-    /// desktop_user_turn_persisted — the run-opening user turn's canonical
-    /// persisted tree-entry id, announced before streaming so the optimistic
-    /// user row is re-keyed even when the run never reaches a message_end
-    /// (cancel, mid-stream failure). Mirrors Go EngineEvent.UserTurnEntryID
-    /// forwarded via the desktop's generic engine→wire mapper.
-    func testEngineUserTurnPersistedDecode() throws {
-        let json = """
-        {"type":"desktop_user_turn_persisted","tabId":"t1","userTurnEntryId":"entry-77","userTurnSlashModelAlias":"Premium","userTurnSlashModelEffective":"claude-opus-4"}
-        """.data(using: .utf8)!
-        let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineUserTurnPersisted(let tabId, let instanceId, let entryId, let alias, let effective) = event {
-            XCTAssertEqual(tabId, "t1")
-            XCTAssertNil(instanceId)
-            XCTAssertEqual(entryId, "entry-77")
-            XCTAssertEqual(alias, "Premium")
-            XCTAssertEqual(effective, "claude-opus-4")
-        } else {
-            XCTFail("Expected engineUserTurnPersisted")
-        }
-    }
-
-    func testEngineDialogDecode() throws {
-        let json = """
-        {"type":"desktop_dialog","tabId":"t1","dialogId":"d1","method":"select","title":"Pick","options":["a","b"]}
-        """.data(using: .utf8)!
-        let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineDialog(_, _, let dialogId, let method, let title, let opts, _) = event {
-            XCTAssertEqual(dialogId, "d1")
-            XCTAssertEqual(method, "select")
-            XCTAssertEqual(title, "Pick")
-            XCTAssertEqual(opts, ["a", "b"])
-        } else {
-            XCTFail("Expected engineDialog")
-        }
-    }
-
-    func testEngineAgentStateDecode() throws {
-        let json = """
-        {"type":"desktop_agent_state","tabId":"t1","agents":[{"name":"coder","status":"running","metadata":{"displayName":"Coder","type":"specialist","visibility":"always","invited":true}}]}
-        """.data(using: .utf8)!
-        let event = try decoder.decode(RemoteEvent.self, from: json)
-        guard case .engineAgentState(_, _, let agents, let metadataOmitted) = event else {
-            XCTFail("Expected engineAgentState, got \(event)")
-            return
-        }
-        XCTAssertEqual(agents.count, 1)
-        XCTAssertEqual(agents[0].name, "coder")
-        XCTAssertEqual(agents[0].status, "running")
-        XCTAssertFalse(metadataOmitted)
-    }
-
-    /// Pin that the engineResourceItem wire event decodes correctly. This is a
-    /// regression test for the desktop_resource_item TypeKey and CodingKey
-    /// alignment added in #211: if the TypeKey raw value, CodingKey names, or
-    /// the decoder case in NormalizedEvent+Resource.swift drift from the
-    /// desktop wire contract, this test will fail before CI runs the full build.
-    func testEngineResourceItemDecode() throws {
-        let json = """
-        {"type":"desktop_resource_item","tabId":"t1","resourceKind":"briefing","resourceItem":{"id":"r-1","kind":"briefing","title":"Daily brief","content":"Full body here","createdAt":"2024-01-01T00:00:00Z"}}
-        """.data(using: .utf8)!
-        let event = try decoder.decode(RemoteEvent.self, from: json)
-        guard case .engineResourceItem(let tabId, let instanceId, let kind, let rawItem) = event else {
-            XCTFail("Expected engineResourceItem, got \(event)")
-            return
-        }
-        XCTAssertEqual(tabId, "t1")
-        XCTAssertNil(instanceId)
-        XCTAssertEqual(kind, "briefing")
-        XCTAssertEqual(rawItem["id"]?.value as? String, "r-1", "resourceItem.id mismatch")
-        XCTAssertEqual(rawItem["content"]?.value as? String, "Full body here", "resourceItem.content mismatch")
-    }
-
-    // MARK: - StatusFields with contextPercent as int (Go sends int)
-
-    func testStatusFieldsContextPercentAsInt() throws {
-        // Go contextPercent is int; Swift decodes as Double — should work
-        let json = """
-        {"label":"test","state":"idle","model":"claude-4","contextPercent":75,"contextWindow":200000}
-        """.data(using: .utf8)!
-        let fields = try decoder.decode(StatusFields.self, from: json)
-        XCTAssertEqual(fields.contextPercent, 75.0)
-    }
-
-    // MARK: - MessageEndUsage decode
-
-    func testMessageEndUsageDecode() throws {
-        let manifest = try loadManifest()
-        guard let goFields = manifest.sharedTypes["MessageEndUsage"] else {
-            XCTFail("MessageEndUsage not found in Go manifest")
-            return
-        }
-
-        let json = """
-        {"inputTokens":100,"outputTokens":50,"contextPercent":30,"cost":0.5,"entryId":"e-1","userEntryId":"u-1"}
-        """.data(using: .utf8)!
-        let usage = try decoder.decode(EngineMessageEndUsage.self, from: json)
-        XCTAssertEqual(usage.inputTokens, 100)
-        XCTAssertEqual(usage.outputTokens, 50)
-        XCTAssertEqual(usage.entryId, "e-1")
-        XCTAssertEqual(usage.userEntryId, "u-1")
-
-        let swiftHandled: Set<String> = [
-            "inputTokens", "outputTokens", "contextPercent", "cost",
-            "entryId", "userEntryId",
-        ]
-        let unhandled = Set(goFields).subtracting(swiftHandled)
-        XCTAssert(
-            unhandled.isEmpty,
-            "Go MessageEndUsage has fields not tracked in Swift: \(unhandled.sorted())"
-        )
-    }
-
-    // MARK: - SessionMessage / SessionMessageAttachment field coverage
-
-    /// Go `SessionMessage` is the engine's persisted history-row shape. iOS
-    /// consumes it two ways: via the desktop history mapper (standard
-    /// `Message` Codable decode on desktop_conversation_history) and via the
-    /// direct engine-wire path (`Message(engineJSON:)` for agent histories).
-    /// This tracked set mirrors the Go manifest so any engine-side field
-    /// addition fails here and prompts an iOS review. Fields iOS deliberately
-    /// does not decode are still tracked (documented inline).
-    func testSessionMessageFieldsInManifest() throws {
-        let manifest = try loadManifest()
-        guard let goFields = manifest.sharedTypes["SessionMessage"] else {
-            XCTFail("SessionMessage not found in Go manifest")
-            return
-        }
-
-        let swiftHandled: Set<String> = [
-            // Decoded by Message (Codable + engineJSON paths).
-            "attachments", "content", "id", "internal", "role",
-            "slashArgs", "slashCommand", "slashModelAlias",
-            "slashModelEffective", "slashSource",
-            "timestamp", "toolId", "toolInput", "toolName",
-            // Decoded by Message(engineJSON:) (markerKind + markerPlanFilePath
-            // fallback for plan-divider links).
-            "markerKind", "markerPlanFilePath",
-            // Decoded: classifies engine-injected user turns, and the engine's
-            // derived verdict on whether an engine-side actor authored the turn.
-            // InjectionPolicy reads both to filter machine-to-machine rows out
-            // of handleConversationHistory, so a dispatch completion or a
-            // scheduled check-in never renders as a user bubble on reload.
-            "injectionKind", "machineAuthored",
-            // Tracked but not decoded: the desktop history mapper folds these
-            // marker payload details into the rendered divider content before
-            // iOS sees the row; the engineJSON path routes markers by their
-            // content sentinel. A future iOS marker renderer can adopt them
-            // without a contract change.
-            "markerClearedBlocks", "markerMessageLength",
-            "markerMessagesAfter", "markerMessagesBefore", "markerMicroOnly",
-            "markerPlanOperation", "markerPlanSlug",
-            "markerStrategy", "markerSummary",
-            // Tracked but not decoded: the desktop mapper projects a tool
-            // row's error state onto `toolStatus` before forwarding to iOS.
-            "isError",
-        ]
-        let goSet = Set(goFields)
-        let unhandled = goSet.subtracting(swiftHandled)
-        XCTAssert(
-            unhandled.isEmpty,
-            "Go SessionMessage has fields not tracked in Swift test: \(unhandled.sorted())"
-        )
-    }
-
-    /// Go `SessionMessageAttachment` mirrors onto the Swift MessageAttachment
-    /// used on both history paths.
-    func testSessionMessageAttachmentFieldsInManifest() throws {
-        let manifest = try loadManifest()
-        guard let goFields = manifest.sharedTypes["SessionMessageAttachment"] else {
-            XCTFail("SessionMessageAttachment not found in Go manifest")
-            return
-        }
-
-        let swiftHandled: Set<String> = [
-            "contentHash", "id", "mimeType", "name", "path", "type",
-        ]
-        let goSet = Set(goFields)
-        let unhandled = goSet.subtracting(swiftHandled)
-        XCTAssert(
-            unhandled.isEmpty,
-            "Go SessionMessageAttachment has fields not tracked in Swift test: \(unhandled.sorted())"
-        )
-    }
-
-    // MARK: - ModelEntry decode
-
-    func testModelEntryDecode() throws {
-        let manifest = try loadManifest()
-        guard let goFields = manifest.sharedTypes["ModelEntry"] else {
-            XCTFail("ModelEntry not found in Go manifest")
-            return
-        }
-
-        let json: [String: Any] = [
-            "id": "claude-sonnet-4-6",
-            "providerId": "anthropic",
-            "contextWindow": 200000,
-            "costPer1kInput": 0.003,
-            "costPer1kOutput": 0.015,
-            "supportsCaching": true,
-            "supportsThinking": true,
-            "supportsImages": true,
-        ]
-
-        let _ = try JSONSerialization.data(withJSONObject: json)
-        // ModelEntry is a contract type but iOS uses RemoteModelEntry for the wire.
-        // We verify that we can decode the Go-side fields that matter to iOS.
-        // RemoteModelEntry covers: id, providerId, contextWindow, label, hasAuth,
-        // providerLabel (desktop-resolved provider display name), modelKind,
-        // thinkingMode, thinkingEfforts, and isCustom. The remaining Go fields
-        // (costPer1kInput, etc.) are not needed on iOS.
-
-        let swiftHandled: Set<String> = [
-            "id", "providerId", "contextWindow",
-            "costPer1kInput", "costPer1kOutput",
-            "supportsCaching", "supportsThinking", "supportsImages",
-            "thinkingMode", "thinkingEfforts",
-            // Operator-defined model (engine.json `models` entry) rather than
-            // one the provider's catalog reported. Consumed: drives the
-            // `custom` badge in ModelPickerSheet.
-            "isCustom",
-            "modelKind",   // consumed: gates the image-model banner (ConversationView+InputBar, ConversationStatusBar)
-            "tokenizer",   // engine field; iOS does not consume it (thin client)
-            // Output cap and the engine's usable-input limit. Both ARE consumed:
-            // ConversationStatusBar.resolveContextCapacity prefers the published
-            // limit and falls back to subtracting the output reserve from the
-            // raw window, so send admission matches the desktop's figure.
-            "maxOutputTokens", "effectiveContextLimit",
-            // Wire protocol a dialect-dispatching (gateway) provider speaks for
-            // this model ("anthropic" | "openai-chat" | "openai-responses" |
-            // "image"). Protocol selection is an engine-side routing concern —
-            // iOS sends a model id and the engine picks the dialect — so this
-            // is deliberately NOT projected into RemoteModelEntry by the
-            // desktop (see desktop/src/main/ipc/models.ts updateCache).
-            "dialect",
-            // Per-image USD rate for per-image-billed image models. The engine
-            // computes image-run cost itself (cost.ImageCost →
-            // TaskCompleteEvent.CostUsd) and iOS renders the resulting cost, so
-            // the raw rate is not projected into RemoteModelEntry either.
-            "costPerImage",
-        ]
-        let goSet = Set(goFields)
-        let unhandled = goSet.subtracting(swiftHandled)
-        XCTAssert(
-            unhandled.isEmpty,
-            "Go ModelEntry has fields not tracked in Swift test: \(unhandled.sorted())"
-        )
-    }
-
-    // MARK: - ProviderEntry decode
-
-    func testProviderEntryDecode() throws {
-        let manifest = try loadManifest()
-        guard let goFields = manifest.sharedTypes["ProviderEntry"] else {
-            XCTFail("ProviderEntry not found in Go manifest")
-            return
-        }
-
-        let json: [String: Any] = [
-            "id": "anthropic",
-            "hasAuth": true,
-            "authSource": "env",
-        ]
-
-        let _ = try JSONSerialization.data(withJSONObject: json)
-        // ProviderEntry is a Go contract type. iOS doesn't decode it directly
-        // (it uses RemoteModelEntry, onto which the desktop flattens hasAuth
-        // and the resolved provider display name per model), but we verify
-        // awareness of all Go fields.
-
-        let swiftHandled: Set<String> = [
-            "id", "hasAuth", "authSource",
-            "baseURL", "apiKeyRef",
-            // Delegated-CLI backend selection + install/auth status. iOS does
-            // not run CLIs, so it does not act on these, but the contract test
-            // tracks awareness of every Go field (see testProviderCliStatus).
-            "backend", "cli",
-            // Operator-configured human-friendly provider name (engine.json
-            // provider displayName). iOS does not decode ProviderEntry — the
-            // desktop flattens per-provider data onto each model, so this
-            // resolved name arrives as RemoteModelEntry.providerLabel (see
-            // desktop/src/main/ipc/models.ts updateCache) and is rendered as
-            // the section header in the provider-grouped model picker
-            // (ModelPickerGrouping.providerLabel / ModelPickerSheet).
-            "displayName",
-        ]
-        let goSet = Set(goFields)
-        let unhandled = goSet.subtracting(swiftHandled)
-        XCTAssert(
-            unhandled.isEmpty,
-            "Go ProviderEntry has fields not tracked in Swift test: \(unhandled.sorted())"
-        )
-    }
-
-    // MARK: - ProviderCliStatus / ProviderLoginUpdate awareness
-
-    /// Tracks the delegated-CLI status shape carried on ProviderEntry.cli. iOS
-    /// is a thin client and does not render CLI install/auth state (login is
-    /// desktop-only — the CLIs live on the desktop machine), but the test pins
-    /// awareness of every Go field so a future consumer starts from truth.
-    func testProviderCliStatus() throws {
-        let manifest = try loadManifest()
-        guard let goFields = manifest.sharedTypes["ProviderCliStatus"] else {
-            XCTFail("ProviderCliStatus not found in Go manifest")
-            return
-        }
-        let swiftHandled: Set<String> = [
-            "backend", "installed", "binaryPath", "version",
-            "authenticated", "authMethod", "planType", "email", "label", "probedAt",
-        ]
-        let unhandled = Set(goFields).subtracting(swiftHandled)
-        XCTAssert(unhandled.isEmpty, "Go ProviderCliStatus has fields not tracked in Swift test: \(unhandled.sorted())")
-    }
-
-    /// Tracks the engine_provider_login payload (EngineEvent.providerLogin).
-    /// Provider-CLI login is a desktop-only flow; iOS drops the forwarded
-    /// desktop_provider_login events at trace level. The test pins field
-    /// awareness for parity.
-    func testProviderLoginUpdate() throws {
-        let manifest = try loadManifest()
-        guard let goFields = manifest.sharedTypes["ProviderLoginUpdate"] else {
-            XCTFail("ProviderLoginUpdate not found in Go manifest")
-            return
-        }
-        let swiftHandled: Set<String> = [
-            "provider", "backend", "stage",
-            "authUrl", "userCode", "verificationUrl", "loginError", "loginId",
-        ]
-        let unhandled = Set(goFields).subtracting(swiftHandled)
-        XCTAssert(unhandled.isEmpty, "Go ProviderLoginUpdate has fields not tracked in Swift test: \(unhandled.sorted())")
-    }
-
-    /// Tracks the engine_mcp_servers payload (EngineEvent.mcpServers). MCP
-    /// server administration is a desktop-only flow: adding a server writes the
-    /// engine host's engine.json, and authorizing one requires a browser on the
-    /// engine host to complete the OAuth redirect. Neither has a meaningful
-    /// mobile interaction model, so iOS renders no MCP admin surface — but the
-    /// test pins awareness of every Go field so a future consumer starts from
-    /// truth rather than a stale guess.
-    ///
-    /// Note the two independent state flags: `connected` and `authenticated` are
-    /// deliberately separate, because a stored token that is being rejected
-    /// (authenticated, not connected) is exactly the case an operator must see.
-    /// A future iOS surface must not collapse them into one indicator.
-    func testMcpServerStatus() throws {
-        let manifest = try loadManifest()
-        guard let goFields = manifest.sharedTypes["McpServerStatus"] else {
-            XCTFail("McpServerStatus not found in Go manifest")
-            return
-        }
-        let swiftHandled: Set<String> = [
-            "name", "transport", "url", "command",
-            "connected", "authenticated", "toolCount", "lastError",
-            // Negotiated revision and advertised capability identifiers of the
-            // live connection. No mobile admin surface consumes them yet; the
-            // gate pins awareness so a future one starts from truth.
-            "protocolVersion", "capabilities",
-        ]
-        let unhandled = Set(goFields).subtracting(swiftHandled)
-        XCTAssert(unhandled.isEmpty, "Go McpServerStatus has fields not tracked in Swift test: \(unhandled.sorted())")
-    }
-
-    /// Drift-detection gate for ResourceLimits (D-007). iOS does not decode
-    /// ResourceLimits directly — the engine enforces the caps server-side and
-    /// the desktop consumes the policy blob. The test ensures that if Go renames
-    /// maxSessions or maxAgentsPerSession the mismatch surfaces at CI time rather
-    /// than silently diverging in the manifest.
-    func testResourceLimits() throws {
-        let manifest = try loadManifest()
-        guard let goFields = manifest.sharedTypes["ResourceLimits"] else {
-            XCTFail("ResourceLimits not found in Go manifest — was it removed or renamed?")
-            return
-        }
-        // Both fields are declared in Go's ResourceLimits struct in
-        // internal/types/config_resource_limits.go (D-007). iOS does not decode
-        // these at runtime; this test exists purely as a drift-detection gate.
-        let swiftHandled: Set<String> = [
-            "maxSessions",
-            "maxAgentsPerSession",
-        ]
-        let unhandled = Set(goFields).subtracting(swiftHandled)
-        XCTAssert(unhandled.isEmpty, "Go ResourceLimits has fields not tracked in Swift test: \(unhandled.sorted())")
-        let untracked = swiftHandled.subtracting(Set(goFields))
-        XCTAssert(untracked.isEmpty, "Swift test tracks ResourceLimits fields absent from Go manifest: \(untracked.sorted())")
-    }
-
-    // MARK: - EngineEvent dispatch field coverage
-
-    /// Pins that dispatchId and dispatchConversationId are present in the Go
-    /// EngineEvent manifest and that the Swift decoder handles them on
-    /// engineDispatchStart / engineDispatchEnd. Any future Go field added to
-    /// dispatch events that Swift doesn't decode will surface here.
-    func testEngineDispatchFieldsInManifest() throws {
-        let manifest = try loadManifest()
-        let goEventFields = Set(manifest.engineEvent)
-
-        // Fields consumed by engineDispatchStart / engineDispatchEnd on iOS.
-        let swiftConsumed: Set<String> = [
-            "dispatchId",
-            "dispatchConversationId",
-            "dispatchAgent",
-            "dispatchSessionId",
-            "dispatchModel",
-            "dispatchTask",
-            "dispatchDepth",
-            "dispatchParentId",
-            "dispatchExitCode",
-            "dispatchElapsed",
-        ]
-
-        let missingFromGo = swiftConsumed.subtracting(goEventFields)
-        XCTAssert(
-            missingFromGo.isEmpty,
-            "EngineEvent manifest is missing dispatch fields consumed by iOS: \(missingFromGo.sorted())"
-        )
-    }
-
-    /// Pins that the engine_dispatch_lost nested payload field is present in
-    /// the Go EngineEvent manifest. iOS does not yet decode the event (the
-    /// desktop's snapshot carries the corrected agent state, which is what
-    /// iOS renders); this gate exists so its removal from the Go wire — a
-    /// breaking change for loss-surfacing consumers — is caught at PR time.
-    func testEngineDispatchLostFieldInManifest() throws {
-        let manifest = try loadManifest()
-        let goEventFields = Set(manifest.engineEvent)
-        XCTAssert(
-            goEventFields.contains("dispatchLost"),
-            "EngineEvent manifest is missing the dispatchLost payload field (engine_dispatch_lost)"
-        )
-    }
-
-    /// Pins that the engine_tool_gate_request fields are present in the Go
-    /// EngineEvent manifest. iOS does not decode the event — the tool gate is
-    /// answered programmatically by the session's owning client (the desktop
-    /// main process), never surfaced in device UI — but the fields are wire
-    /// contract for gating consumers, so their removal must be caught at PR
-    /// time like any other engine-wire break.
-    func testEngineToolGateFieldsInManifest() throws {
-        let manifest = try loadManifest()
-        let goEventFields = Set(manifest.engineEvent)
-        let gateFields: Set<String> = ["gateRequestId", "gateKind", "gateToolName", "gateToolInput", "gateCwd", "gateSiblingTools"]
-        let missing = gateFields.subtracting(goEventFields)
-        XCTAssert(
-            missing.isEmpty,
-            "EngineEvent manifest is missing tool-gate fields (engine_tool_gate_request): \(missing.sorted())"
-        )
-    }
-
-    // MARK: - context_breakdown normalized-event field coverage
-
-    /// Pins that every field the Go engine declares on the context_breakdown
-    /// normalized event is mirrored by the Swift ContextBreakdownPayload. The
-    /// cacheReadTokens / cacheCreationTokens fields were added in the
-    /// minty-grinning-cocoa plan (C7); this guards against future Go-side
-    /// additions the Swift wire type doesn't handle.
-    func testContextBreakdownNormalizedEventFields() throws {
-        let manifest = try loadManifest()
-        guard let goFields = manifest.normalizedEvents["context_breakdown"] ?? nil else {
-            XCTFail("context_breakdown not found in Go normalizedEvents manifest")
-            return
-        }
-
-        // Fields decoded by ContextBreakdownPayload / ContextBreakdownCategory on iOS.
-        let swiftHandled: Set<String> = [
-            "aggregateCostUsd", "apiReportedTotal", "cacheCreationTokens", "cacheReadTokens",
-            "categories", "contextWindow", "model", "modelBreakdown", "occupancyTokens",
-            "totalTokens", "unaccounted",
-        ]
-        let goSet = Set(goFields)
-        let unhandled = goSet.subtracting(swiftHandled)
-        XCTAssert(
-            unhandled.isEmpty,
-            "Go context_breakdown has fields not tracked in Swift test: \(unhandled.sorted())"
-        )
-    }
-
-    // MARK: - ModelBreakdown decode
-
-    /// Pins that ModelBreakdown decodes all fields correctly. The struct was added
-    /// in the early-grinning-sunset plan (WS2) to carry per-model cost breakdowns
-    /// inside ContextBreakdownPayload. This test must fail if a future Go-side
-    /// field addition goes un-mirrored in Swift.
-    func testModelBreakdownDecode() throws {
-        let json = """
-        [
-          {"model":"claude-opus-4-5","conversations":1,"inputTokens":1500000,"outputTokens":45000,"costUsd":195.71,"isSelf":true},
-          {"model":"claude-opus-4-5","conversations":12,"inputTokens":900000,"outputTokens":30000,"costUsd":80.00},
-          {"model":"claude-sonnet-4-6","conversations":9,"inputTokens":800000,"outputTokens":25000,"costUsd":110.50}
-        ]
-        """.data(using: .utf8)!
-        let rows = try decoder.decode([ModelBreakdown].self, from: json)
-        XCTAssertEqual(rows.count, 3)
-        // Row 0: the viewing conversation's OWN opus spend (isSelf=true, count 1).
-        XCTAssertEqual(rows[0].model, "claude-opus-4-5")
-        XCTAssertEqual(rows[0].conversations, 1)
-        XCTAssertEqual(rows[0].inputTokens, 1_500_000)
-        XCTAssertEqual(rows[0].outputTokens, 45_000)
-        XCTAssertEqual(rows[0].costUsd, 195.71, accuracy: 0.01)
-        XCTAssertEqual(rows[0].isSelf, true)
-        // Row 1: opus DISPATCHES (isSelf omitted on the wire -> nil).
-        XCTAssertEqual(rows[1].model, "claude-opus-4-5")
-        XCTAssertEqual(rows[1].conversations, 12)
-        XCTAssertNil(rows[1].isSelf)
-        // Row 2: sonnet dispatches (also a dispatch -> isSelf nil).
-        XCTAssertEqual(rows[2].model, "claude-sonnet-4-6")
-        XCTAssertEqual(rows[2].conversations, 9)
-        XCTAssertEqual(rows[2].costUsd, 110.50, accuracy: 0.01)
-        XCTAssertNil(rows[2].isSelf)
-        // The self row and the dispatch row share a model but must have distinct
-        // Identifiable ids so SwiftUI ForEach renders both.
-        XCTAssertNotEqual(rows[0].id, rows[1].id)
-    }
-
-    /// Verifies ModelBreakdown fields are covered in the Go contract manifest.
-    func testModelBreakdownFieldsInManifest() throws {
-        let manifest = try loadManifest()
-        guard let goFields = manifest.sharedTypes["ModelBreakdown"] else {
-            XCTFail("ModelBreakdown not found in Go manifest")
-            return
-        }
-
-        let swiftHandled: Set<String> = [
-            "model", "conversations", "inputTokens", "outputTokens", "costUsd", "isSelf",
-        ]
-        let goSet = Set(goFields)
-        let unhandled = goSet.subtracting(swiftHandled)
-        XCTAssert(
-            unhandled.isEmpty,
-            "Go ModelBreakdown has fields not tracked in Swift test: \(unhandled.sorted())"
-        )
-    }
+    let swiftHandled: Set<String> = [
+      "model", "conversations", "inputTokens", "outputTokens", "costUsd", "isSelf",
+    ]
+    let goSet = Set(goFields)
+    let unhandled = goSet.subtracting(swiftHandled)
+    XCTAssert(
+      unhandled.isEmpty,
+      "Go ModelBreakdown has fields not tracked in Swift test: \(unhandled.sorted())"
+    )
+  }
 
 }

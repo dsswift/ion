@@ -12,7 +12,7 @@ extension RemoteEvent {
         switch type {
         case .snapshot:
             // Decode tabs individually so a single malformed tab doesn't kill
-            // the entire snapshot. SafeDecodable wraps each element in a try?
+            // the entire snapshot. SafeDecodable performs a best-effort decode
             // and surfaces nil for failures.
             let rawTabs = try container.decode([SafeDecodable<RemoteTabState>].self, forKey: .tabs)
             let tabs = rawTabs.compactMap(\.value)
@@ -35,6 +35,15 @@ extension RemoteEvent {
             let updatedAtMs = try container.decodeIfPresent(Double.self, forKey: .remoteDisplayUpdatedAt)
             let updatedAt = updatedAtMs.map { Date(timeIntervalSince1970: $0 / 1000.0) }
             let resources = try container.decodeIfPresent([String: [[String: AnyCodable]]].self, forKey: .resources)
+            // Worktree/bench state and settled-tab history, additive to the
+            // core tab list. worktreeStates feeds SessionViewModel's
+            // per-repo worktree cache (SessionViewModel+WorktreeCommands);
+            // settledTabs feeds the Inbox's settled-shelf history
+            // (SessionViewModel+InboxCommands). Both absent on a desktop
+            // snapshot that carries neither (e.g. no worktrees configured).
+            // settledTabs is decoded tab-by-tab via SafeDecodable so one
+            // malformed settled record can't fail the whole snapshot,
+            // matching the primary `tabs` decode above.
             let worktreeStates = try container.decodeIfPresent([RemoteWorktreeState].self, forKey: .worktreeStates)
             let settledTabs = try container.decodeIfPresent([SafeDecodable<RemoteTabState>].self, forKey: .settledTabs)?.compactMap(\.value)
             return .snapshot(tabs: tabs, recentDirectories: recentDirs, tabGroupMode: tabGroupMode, tabGroups: tabGroups, preferredModel: preferredModel, engineDefaultModel: engineDefaultModel, availableModels: availableModels, customName: customName, customIcon: customIcon, remoteDisplayUpdatedAt: updatedAt, resources: resources, worktreeStates: worktreeStates, settledTabs: settledTabs)
@@ -140,11 +149,20 @@ extension RemoteEvent {
             let error = try container.decodeIfPresent(String.self, forKey: .error)
             return .promptResult(tabId: tabId, clientMsgId: clientMsgId, status: status, error: error)
 
-        case .engineRewindResult:
+        case .backgroundWorkDelivered:
             let tabId = try container.decode(String.self, forKey: .tabId)
-            let instanceId = try container.decode(String.self, forKey: .instanceId)
-            let error = try container.decodeIfPresent(String.self, forKey: .error)
-            return .engineRewindResult(tabId: tabId, instanceId: instanceId, error: error)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            let message = try container.decode(Message.self, forKey: .message)
+            return .backgroundWorkDelivered(tabId: tabId, instanceId: instanceId, message: message)
+
+        case .backgroundTaskStopResult:
+            return .backgroundTaskStopResult(
+                requestId: try container.decode(String.self, forKey: .requestId),
+                taskId: try container.decode(String.self, forKey: .taskId),
+                status: try container.decode(String.self, forKey: .status),
+                error: try container.decodeIfPresent(String.self, forKey: .error)
+            )
+
 
         default:
             return nil
@@ -284,13 +302,18 @@ extension RemoteEvent {
             try container.encodeIfPresent(error, forKey: .error)
             return true
 
-        case .engineRewindResult(let tabId, let instanceId, let error):
-            // Encoder mirror of the decoder above. iOS never originates this
-            // event (the desktop emits it on rewind refusal), but the
-            // encoder must round-trip cleanly for tests and diagnostic dumps.
-            try container.encode(TypeKey.engineRewindResult, forKey: .type)
+        case .backgroundWorkDelivered(let tabId, let instanceId, let message):
+            try container.encode(TypeKey.backgroundWorkDelivered, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
-            try container.encode(instanceId, forKey: .instanceId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            try container.encode(message, forKey: .message)
+            return true
+
+        case .backgroundTaskStopResult(let requestId, let taskId, let status, let error):
+            try container.encode(TypeKey.backgroundTaskStopResult, forKey: .type)
+            try container.encode(requestId, forKey: .requestId)
+            try container.encode(taskId, forKey: .taskId)
+            try container.encode(status, forKey: .status)
             try container.encodeIfPresent(error, forKey: .error)
             return true
 

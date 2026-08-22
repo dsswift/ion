@@ -20,8 +20,32 @@ extension SessionViewModel {
     // this file over the Swift 600-line cap. See CLAUDE.md → "When a file
     // exceeds the cap".
 
-    func cancel(tabId: String) {
-        send(.cancel(tabId: tabId), intent: .userInitiated)
+    /// Stop a tab's work. `scope` nil means full teardown (the historical
+    /// behavior); "orchestrator" stops only the active run and leaves
+    /// background dispatches working.
+    func cancel(tabId: String, scope: String? = nil) {
+        DiagnosticLog.log("cancel requested", tag: "viewmodel.commands", fields: [
+            "tab_id": tabId,
+            "abort_scope": scope ?? "all",
+        ])
+        send(.cancel(tabId: tabId, scope: scope), intent: .userInitiated)
+    }
+
+    /// Stop ONE background dispatch, leaving the orchestrator and every sibling
+    /// dispatch running. `dispatchId` is the engine's per-instance dispatch id
+    /// (AgentStateUpdate.dispatches[].id), not the agent name — concurrent
+    /// dispatches can share a name.
+    func abortDispatch(tabId: String, dispatchId: String) {
+        guard !dispatchId.isEmpty else {
+            DiagnosticLog.log("abortDispatch ignored: empty dispatchId", tag: "viewmodel.commands",
+                              level: .warn, fields: ["tab_id": tabId])
+            return
+        }
+        DiagnosticLog.log("abort dispatch requested", tag: "viewmodel.commands", fields: [
+            "tab_id": tabId,
+            "dispatch_id": dispatchId,
+        ])
+        send(.abortDispatch(tabId: tabId, dispatchId: dispatchId), intent: .userInitiated)
     }
 
     func forkFromMessage(tabId: String, messageId: String) {

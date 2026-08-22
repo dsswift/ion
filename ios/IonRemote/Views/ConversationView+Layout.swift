@@ -107,6 +107,7 @@ extension ConversationView {
                 // `tabHasExtensions ? … : nil` gate was an illegitimate fork.
                 extensionName: engineInputs.extensionName,
                 runningAgentCount: runningAgentCount,
+                runningShellCount: runningShellCount,
                 thinkingEffort: activeInst?.thinkingEffort ?? "off",
                 onSelectThinkingEffort: { level in
                     viewModel.setThinkingEffort(tabId: tabId, effort: level)
@@ -174,6 +175,8 @@ extension ConversationView {
                 onOpenDispatch: { dispatch, agent in
                     selectedDispatchId = dispatch.id
                 },
+                tabId: tabId,
+                activeBackgroundTasks: activeBackgroundTasks,
                 isNearBottom: $isNearBottom,
                 forceScrollCounter: forceScrollCounter,
                 onTapPlan: { path in

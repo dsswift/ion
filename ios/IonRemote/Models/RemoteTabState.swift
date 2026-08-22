@@ -294,6 +294,9 @@ struct ConversationInstanceInfo: Codable, Identifiable, Sendable {
     /// `runningAgentCount`; drives the per-instance "waiting on N background
     /// shell(s)" indicator in EngineInstanceBar. Nil/absent means zero.
     var backgroundShellCount: Int? = nil
+    /// Complete active background Bash inventory projected by the desktop.
+    /// Snapshot values replace this list so reconnect removes stale tasks.
+    var activeBackgroundTasks: [BackgroundTaskState]? = nil
     /// Exact engine status verdict for work accepted but not yet visible as a
     /// foreground run, child row, or shell row.
     var hasPendingWork: Bool? = nil
@@ -370,6 +373,7 @@ struct ConversationInstanceInfo: Codable, Identifiable, Sendable {
         case isStarting
         case runningAgentCount
         case backgroundShellCount
+        case activeBackgroundTasks
         case hasPendingWork
         case modelFallback
         case conversationIds
@@ -400,6 +404,7 @@ extension ConversationInstanceInfo {
         isStarting = try container.decodeIfPresent(Bool.self, forKey: .isStarting)
         runningAgentCount = try container.decodeIfPresent(Int.self, forKey: .runningAgentCount)
         backgroundShellCount = try container.decodeIfPresent(Int.self, forKey: .backgroundShellCount)
+        activeBackgroundTasks = try container.decodeIfPresent([BackgroundTaskState].self, forKey: .activeBackgroundTasks)
         hasPendingWork = try container.decodeIfPresent(Bool.self, forKey: .hasPendingWork)
         modelFallback = try container.decodeIfPresent(EngineInstanceModelFallback.self, forKey: .modelFallback)
         conversationIds = try container.decodeIfPresent([String].self, forKey: .conversationIds)
@@ -417,6 +422,7 @@ extension ConversationInstanceInfo {
         try container.encodeIfPresent(isStarting, forKey: .isStarting)
         try container.encodeIfPresent(runningAgentCount, forKey: .runningAgentCount)
         try container.encodeIfPresent(backgroundShellCount, forKey: .backgroundShellCount)
+        try container.encodeIfPresent(activeBackgroundTasks, forKey: .activeBackgroundTasks)
         try container.encodeIfPresent(hasPendingWork, forKey: .hasPendingWork)
         try container.encodeIfPresent(modelFallback, forKey: .modelFallback)
         try container.encodeIfPresent(conversationIds, forKey: .conversationIds)

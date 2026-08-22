@@ -278,6 +278,8 @@ final class SessionViewModel {
 
     // MARK: - Toast Messages
     var toastMessages: [ToastMessage] = []
+    /// Exact task IDs with a stop request awaiting an authoritative result.
+    var stoppingBackgroundTaskIds: Set<String> = []
 
     /// Tab group mode synced from the desktop: "off", "auto", or "manual".
     var tabGroupMode: String = "auto"

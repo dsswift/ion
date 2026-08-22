@@ -331,4 +331,8 @@ final class NormalizedEventNewEngineTypesTests: XCTestCase {
         // exportFormat absent in the JSON (legacy engine) decodes to nil.
         XCTAssertNil(exportFormat)
     }
+
+    // MARK: - desktop_background_task_complete
+
+
 }

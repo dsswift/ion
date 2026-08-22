@@ -87,6 +87,21 @@ struct AgentDetailFullScreenView: View {
         return agent.status == "running"
     }
 
+    /// The dispatch this view is showing, resolved the same way `agent` is.
+    /// Prefers the explicit deep-link id so the Stop targets the instance on
+    /// screen rather than whichever dispatch happens to be last in the list.
+    private var shownDispatchId: String {
+        if !dispatchId.isEmpty { return dispatchId }
+        return agent?.dispatches.last?.id ?? ""
+    }
+
+    /// Stop is offered only for a dispatch that is actually running and
+    /// addressable — a finished dispatch has nothing to stop, and a blank id
+    /// would address nothing.
+    private var canStopDispatch: Bool {
+        latestDispatchRunning && !shownDispatchId.isEmpty
+    }
+
     private let reconcileInterval: TimeInterval = 12
 
     /// Root display title from the tab.
@@ -193,6 +208,11 @@ struct AgentDetailFullScreenView: View {
                         onPreloadDispatches: { excludingConvId in
                             viewModel.preloadAgentDispatches(agent: agent, excluding: excludingConvId)
                         },
+                        tabId: SessionViewModel.parseEngineSessionKey(compoundKey),
+                        activeBackgroundTasks: viewModel.engineInstance(
+                            tabId: SessionViewModel.parseEngineSessionKey(compoundKey),
+                            instanceId: nil
+                        )?.activeBackgroundTasks ?? [],
                         pinHeader: true,
                         childAgents: childAgents ?? [],
                         onOpenChildDispatch: { dispatch, childAgent in
@@ -219,6 +239,25 @@ struct AgentDetailFullScreenView: View {
         .navigationTitle(agent?.displayName ?? "Agent")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            // Stop THIS dispatch. The orchestrator and every sibling dispatch
+            // keep running — the phone peer of the desktop preview's Stop.
+            if canStopDispatch {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(role: .destructive) {
+                        let tabId = SessionViewModel.parseEngineSessionKey(compoundKey)
+                        DiagnosticLog.log("dispatch stop tapped", tag: "view.dispatchpopup", fields: [
+                            "tab_id": tabId,
+                            "dispatch_id": shownDispatchId,
+                            "agent": agent?.name ?? "",
+                        ])
+                        viewModel.abortDispatch(tabId: tabId, dispatchId: shownDispatchId)
+                    } label: {
+                        Label("Stop", systemImage: "stop.circle")
+                    }
+                    .tint(.red)
+                    .accessibilityLabel("Stop this dispatch")
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Done") {
                     dismiss()
@@ -357,6 +396,11 @@ private struct BreadcrumbDestinationView: View {
                     onPreloadDispatches: { excludingConvId in
                         viewModel.preloadAgentDispatches(agent: agent, excluding: excludingConvId)
                     },
+                    tabId: SessionViewModel.parseEngineSessionKey(compoundKey),
+                    activeBackgroundTasks: viewModel.engineInstance(
+                        tabId: SessionViewModel.parseEngineSessionKey(compoundKey),
+                        instanceId: nil
+                    )?.activeBackgroundTasks ?? [],
                     pinHeader: true,
                     childAgents: childAgents,
                     onOpenChildDispatch: { dispatch, childAgent in

@@ -33,8 +33,9 @@ final class SnapshotBackgroundShellMergeTests: XCTestCase {
 
     /// One tab, one instance, with `backgroundShellCount` spliced raw so the
     /// test can cover a value and the field being absent.
-    private func snapshotJSON(shellCountJSON: String?) -> Data {
+    private func snapshotJSON(shellCountJSON: String?, activeTasksJSON: String? = nil) -> Data {
         let shellLine = shellCountJSON.map { "\"backgroundShellCount\":\($0)," } ?? ""
+        let taskLine = activeTasksJSON.map { "\"activeBackgroundTasks\":\($0)," } ?? ""
         let json = """
         {"type":"desktop_snapshot","tabs":[{
           "id":"tab-1",
@@ -45,7 +46,7 @@ final class SnapshotBackgroundShellMergeTests: XCTestCase {
           "permissionMode":"auto",
           "permissionQueue":[],
           "conversationInstances":[
-            {"id":"inst-1","label":"Main",\(shellLine)"isRunning":false}
+            {"id":"inst-1","label":"Main",\(shellLine)\(taskLine)"isRunning":false}
           ],
           "activeConversationInstanceId":"inst-1",
           "lastMessage":null,
@@ -55,8 +56,8 @@ final class SnapshotBackgroundShellMergeTests: XCTestCase {
         return json.data(using: .utf8)!
     }
 
-    private func apply(_ vm: SessionViewModel, shellCountJSON: String?) throws {
-        let event = try decoder.decode(RemoteEvent.self, from: snapshotJSON(shellCountJSON: shellCountJSON))
+    private func apply(_ vm: SessionViewModel, shellCountJSON: String?, activeTasksJSON: String? = nil) throws {
+        let event = try decoder.decode(RemoteEvent.self, from: snapshotJSON(shellCountJSON: shellCountJSON, activeTasksJSON: activeTasksJSON))
         guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _) = event else {
             XCTFail("Expected snapshot"); return
         }
@@ -101,6 +102,15 @@ final class SnapshotBackgroundShellMergeTests: XCTestCase {
         try apply(vm, shellCountJSON: nil)
         XCTAssertNil(try instance(vm).backgroundShellCount,
                      "an absent count must clear the dot, not leave it stuck at the last value")
+    }
+
+    func testActiveTaskInventoryReplacesOnLaterSnapshot() throws {
+        let vm = SessionViewModel()
+        try apply(vm, shellCountJSON: nil, activeTasksJSON: #"[{"taskId":"bg-1","command":"one","startedAt":1,"notifyOnComplete":false},{"taskId":"bg-2","command":"two","startedAt":2,"notifyOnComplete":true}]"#)
+        XCTAssertEqual(try instance(vm).activeBackgroundTasks?.map(\.taskId), ["bg-1", "bg-2"])
+
+        try apply(vm, shellCountJSON: nil, activeTasksJSON: #"[{"taskId":"bg-2","command":"two","startedAt":2,"notifyOnComplete":true}]"#)
+        XCTAssertEqual(try instance(vm).activeBackgroundTasks?.map(\.taskId), ["bg-2"])
     }
 
     /// The merge exists to preserve runtime-only state, so updating the shell

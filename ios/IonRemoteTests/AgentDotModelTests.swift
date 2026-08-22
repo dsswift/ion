@@ -390,6 +390,7 @@ final class AgentDotModelTests: XCTestCase {
             allAgents: all,
             onOpenDispatch: nil,
             title: "Agents",
+            tabId: nil,
             isExpanded: .constant(true),
             isFullscreen: .constant(false)
         )

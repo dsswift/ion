@@ -205,9 +205,21 @@ extension RemoteCommand {
             try container.encode(TypeKey.worktreePipelineDismiss, forKey: .type)
             try container.encode(repoPath, forKey: .repoPath)
 
-        case .cancel(let tabId):
+        case .cancel(let tabId, let scope):
             try container.encode(TypeKey.cancel, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(scope, forKey: .scope)
+
+        case .abortDispatch(let tabId, let dispatchId):
+            try container.encode(TypeKey.abortDispatch, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(dispatchId, forKey: .dispatchId)
+
+        case .stopBackgroundTask(let tabId, let taskId, let requestId):
+            try container.encode(TypeKey.stopBackgroundTask, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(taskId, forKey: .taskId)
+            try container.encode(requestId, forKey: .requestId)
 
         case .respondPermission(let tabId, let questionId, let optionId):
             try container.encode(TypeKey.respondPermission, forKey: .type)

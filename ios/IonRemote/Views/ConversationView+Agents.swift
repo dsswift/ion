@@ -38,4 +38,21 @@ extension ConversationView {
         visibleAgents.filter { AgentDotResolver.isActive($0, in: allAgents) }.count
     }
 
+    // MARK: - Background shells
+
+    /// Background bash commands (Bash run_in_background + notify_on_complete)
+    /// the active instance is waiting on. The shell counterpart to
+    /// `runningAgentCount`, threaded into `ConversationStatusBar` alongside it
+    /// so the status-bar dot ranks agents above shells exactly like
+    /// `EngineInstanceBar`'s statusIndicator cascade.
+    var runningShellCount: Int {
+        activeBackgroundTasks.count
+    }
+
+    /// Complete active Bash inventory for the selected conversation instance.
+    var activeBackgroundTasks: [BackgroundTaskState] {
+        let instance = viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)
+        return instance?.activeBackgroundTasks ?? instance?.statusFields?.activeBackgroundTasks ?? []
+    }
+
 }

@@ -358,6 +358,9 @@ struct StatusFields: Codable, Sendable {
     /// while real work is in flight, and the engine holds the session open
     /// until the commands finish. nil/absent when none are outstanding.
     let backgroundShells: Int?
+    /// Complete inventory of every running session-owned background Bash task.
+    /// Unlike backgroundShells, this includes tasks that do not notify on completion.
+    var activeBackgroundTasks: [BackgroundTaskState]? = nil
     /// Exact engine verdict that the session has accepted work remaining even
     /// while the foreground orchestrator is idle.
     let hasPendingWork: Bool?
@@ -422,6 +425,8 @@ struct SessionStatus: Codable, Sendable {
     /// parked session (idle orchestrator, commands in flight) from a plain
     /// idle one.
     let backgroundShellCount: Int?
+    /// Complete inventory of every running session-owned background Bash task.
+    var activeBackgroundTasks: [BackgroundTaskState]? = nil
     /// Exact engine verdict that the session has accepted work remaining even
     /// while the foreground orchestrator is idle.
     let hasPendingWork: Bool?

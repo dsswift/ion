@@ -224,20 +224,25 @@ extension SessionViewModel {
     }
 
     @MainActor
-    func handleEngineToolEnd(tabId: String, instanceId: String?, toolId: String, result: String?, isError: Bool) {
+    func handleEngineToolEnd(tabId: String, instanceId: String?, toolId: String, result: String?, isError: Bool, backgroundTaskId: String? = nil) {
         DiagnosticLog.log("engine tool end", tag: "session.engine", level: .debug, fields: [
             "tab_id": String(tabId.prefix(8)),
             "reason": String(toolId.prefix(8)),
-            "status": String(isError)
+            "status": String(isError),
+            "bg_task": backgroundTaskId ?? ""
         ])
         activeTools[tabId]?[toolId] = nil
         if activeTools[tabId]?.isEmpty == true {
             activeTools.removeValue(forKey: tabId)
         }
-        // Update tool message status in conversation
         mutateEngineInstance(tabId: tabId, instanceId: instanceId) { inst in
             if let idx = inst.messages.lastIndex(where: { $0.toolId == toolId }) {
-                inst.messages[idx].toolStatus = isError ? .error : .completed
+                if let bgId = backgroundTaskId, !isError {
+                    inst.messages[idx].toolStatus = .asyncPending
+                    inst.messages[idx].backgroundTaskId = bgId
+                } else {
+                    inst.messages[idx].toolStatus = isError ? .error : .completed
+                }
                 if let result { inst.messages[idx].content = result }
             }
         }
@@ -524,6 +529,46 @@ extension SessionViewModel {
         ])
         mutateEngineInstance(tabId: tabId, instanceId: instanceId) {
             $0.contextBreakdown = payload
+        }
+    }
+
+    // MARK: - Background work delivered
+
+    @MainActor
+    func handleBackgroundWorkDelivered(tabId: String, instanceId: String?, message: Message) {
+        let itemIds = Set((message.backgroundWork?.items ?? []).map(\.id))
+        guard !itemIds.isEmpty else {
+            DiagnosticLog.log("background work delivered (no items, dropped)", tag: "session.engine", level: .debug, fields: [
+                "tab_id": String(tabId.prefix(8)),
+                "msg_id": message.id
+            ])
+            return
+        }
+        var matchCount = 0
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { inst in
+            for i in inst.messages.indices {
+                guard let toolBgId = inst.messages[i].backgroundTaskId,
+                      inst.messages[i].toolStatus == .asyncPending,
+                      itemIds.contains(toolBgId) else { continue }
+                let item = message.backgroundWork?.items.first { $0.id == toolBgId }
+                let status = item?.status ?? "completed"
+                inst.messages[i].toolStatus = (status == "completed") ? .completed : .error
+                inst.messages[i].content = message.content
+                inst.messages[i].backgroundWork = message.backgroundWork
+                matchCount += 1
+            }
+        }
+        if matchCount > 0 {
+            DiagnosticLog.log("background work folded onto tools", tag: "session.engine", level: .debug, fields: [
+                "tab_id": String(tabId.prefix(8)),
+                "count": String(matchCount),
+                "items": itemIds.joined(separator: ",")
+            ])
+        } else {
+            DiagnosticLog.log("background work delivered (no match, dropped)", tag: "session.engine", level: .debug, fields: [
+                "tab_id": String(tabId.prefix(8)),
+                "items": itemIds.joined(separator: ",")
+            ])
         }
     }
 

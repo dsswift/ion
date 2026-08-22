@@ -12,6 +12,8 @@ struct AgentTurnRow: View {
     let assistantMessages: [Message]
     let isActive: Bool
     let thinking: Message?
+    var activeBackgroundTasks: [BackgroundTaskState] = []
+    var tabId: String? = nil
 
     @State private var isExpanded = false
     @Environment(\.appTheme) private var theme
@@ -85,6 +87,12 @@ struct AgentTurnRow: View {
                 .background(theme.surfaceElevated.opacity(0.5))
                 .clipShape(RoundedRectangle(cornerRadius: IonRadius.control))
             }
+
+            ActiveBackgroundSummary(
+                tools: tools,
+                activeTasks: activeBackgroundTasks,
+                tabId: tabId
+            )
         }
     }
 
@@ -121,6 +129,10 @@ struct AgentTurnRow: View {
         switch tool.toolStatus {
         case .running:
             ProgressView().scaleEffect(0.6)
+        case .asyncPending:
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.caption2)
+                .foregroundStyle(theme.statusBash)
         case .completed:
             Image(systemName: "checkmark.circle.fill")
                 .font(.caption2)

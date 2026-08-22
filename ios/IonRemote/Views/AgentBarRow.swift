@@ -12,17 +12,22 @@ struct AgentBarRow: View {
     /// behind the status dots — a nested specialist is not in the visible row
     /// set but still determines whether its lead reads as waiting.
     let allAgents: [AgentStateUpdate]
+    /// Owning tab. When present, running dispatches get exact-ID Stop controls.
+    let tabId: String?
     @Environment(\.appTheme) private var theme
+    @Environment(SessionViewModel.self) private var viewModel
     let onTap: (() -> Void)?
     @State private var now = Date()
 
     init(
         agent: AgentStateUpdate,
         allAgents: [AgentStateUpdate] = [],
+        tabId: String? = nil,
         onTap: (() -> Void)? = nil
     ) {
         self.agent = agent
         self.allAgents = allAgents
+        self.tabId = tabId
         self.onTap = onTap
     }
 
@@ -115,6 +120,32 @@ struct AgentBarRow: View {
 
             Spacer(minLength: 0)
 
+            if let tabId, let dispatchId = stoppableDispatchId {
+                Menu {
+                    Button(role: .destructive) {
+                        stopDispatch(tabId: tabId, dispatchId: dispatchId)
+                    } label: {
+                        Label("Stop this dispatch", systemImage: "stop.circle")
+                    }
+
+                    if runningDispatchIds.count > 1 {
+                        Button(role: .destructive) {
+                            stopAllDispatches(tabId: tabId)
+                        } label: {
+                            Label("Stop all in this row", systemImage: "stop.fill")
+                        }
+                    }
+                } label: {
+                    Label("Stop", systemImage: "stop.circle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                } primaryAction: {
+                    stopDispatch(tabId: tabId, dispatchId: dispatchId)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Stop this dispatch")
+            }
+
             // Open-detail chevron. Static: the row never expands in place, so
             // this is an affordance for "this opens", not a state indicator.
             Image(systemName: "chevron.right")
@@ -131,6 +162,42 @@ struct AgentBarRow: View {
         agent.lastWork
     }
 
+    /// Running instance IDs represented by THIS row. Dispatch status wins;
+    /// single/legacy members with no status fall back to the row status.
+    private var runningDispatchIds: [String] {
+        AgentDispatchStopResolver.runningDispatchIds(
+            dispatches: agent.dispatches,
+            agentStatus: agent.status
+        )
+    }
+
+    /// Primary Stop targets the latest running dispatch.
+    private var stoppableDispatchId: String? {
+        AgentDispatchStopResolver.primaryDispatchId(
+            dispatches: agent.dispatches,
+            agentStatus: agent.status
+        )
+    }
+
+    private func stopDispatch(tabId: String, dispatchId: String) {
+        DiagnosticLog.log("agent row stop dispatch tapped", tag: "view.agentrow", fields: [
+            "tab_id": tabId,
+            "dispatch_id": dispatchId,
+            "agent": agent.name,
+        ])
+        viewModel.abortDispatch(tabId: tabId, dispatchId: dispatchId)
+    }
+
+    private func stopAllDispatches(tabId: String) {
+        DiagnosticLog.log("agent row stop all dispatches tapped", tag: "view.agentrow", fields: [
+            "tab_id": tabId,
+            "agent": agent.name,
+            "count": String(runningDispatchIds.count),
+        ])
+        for dispatchId in runningDispatchIds {
+            viewModel.abortDispatch(tabId: tabId, dispatchId: dispatchId)
+        }
+    }
     // MARK: - Helpers
 
     private var agentColor: Color {

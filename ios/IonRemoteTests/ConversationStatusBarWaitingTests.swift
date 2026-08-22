@@ -52,4 +52,54 @@ final class ConversationStatusBarWaitingTests: XCTestCase {
         let a = ConversationStatusBar.resolveRunActivity(isRunning: false, runningAgentCount: 0)
         XCTAssertFalse(a.show)
     }
+
+    // MARK: - Background-shell branch
+    //
+    // The iOS counterpart of the desktop regression fixed alongside this: a
+    // live background Bash task (Bash run_in_background + notify_on_complete)
+    // sets `backgroundShellCount > 0` with zero running agents. Before this
+    // fix, ConversationStatusBar had no shell branch at all — `resolveRunActivity`
+    // took only `isRunning`/`runningAgentCount`, so a plain conversation waiting
+    // on an outstanding shell rendered NOTHING (the same silent-indicator gap
+    // EngineInstanceBar's `statusIndicator` had already closed for the
+    // multi-instance bar). These tests pin the newly-added shell branch and its
+    // priority under agents, matching EngineInstanceBar.statusIndicator.
+
+    func testIdleWithOneBackgroundShellShowsSingularShellLabel() {
+        let a = ConversationStatusBar.resolveRunActivity(isRunning: false, runningAgentCount: 0, runningShellCount: 1)
+        XCTAssertTrue(a.show)
+        XCTAssertFalse(a.isRunning)
+        XCTAssertTrue(a.isWaitingShells)
+        XCTAssertEqual(a.label, "waiting for 1 background shell")
+    }
+
+    func testIdleWithMultipleBackgroundShellsPluralizes() {
+        let a = ConversationStatusBar.resolveRunActivity(isRunning: false, runningAgentCount: 0, runningShellCount: 3)
+        XCTAssertTrue(a.show)
+        XCTAssertTrue(a.isWaitingShells)
+        XCTAssertEqual(a.label, "waiting for 3 background shells")
+    }
+
+    func testRunningAgentsOutrankBackgroundShells() {
+        // REGRESSION-shaped case: both an agent and a shell are outstanding.
+        // The richer agent signal must win, exactly like EngineInstanceBar's
+        // cascade (runningAgentCount checked before backgroundShellCount).
+        let a = ConversationStatusBar.resolveRunActivity(isRunning: false, runningAgentCount: 1, runningShellCount: 5)
+        XCTAssertTrue(a.show)
+        XCTAssertFalse(a.isWaitingShells)
+        XCTAssertEqual(a.label, "waiting for 1 agent")
+    }
+
+    func testRunningOrchestratorWinsOverBackgroundShells() {
+        let a = ConversationStatusBar.resolveRunActivity(isRunning: true, runningAgentCount: 0, runningShellCount: 2)
+        XCTAssertTrue(a.show)
+        XCTAssertTrue(a.isRunning)
+        XCTAssertFalse(a.isWaitingShells)
+        XCTAssertEqual(a.label, "running")
+    }
+
+    func testIdleWithNoAgentsOrShellsShowsNothing() {
+        let a = ConversationStatusBar.resolveRunActivity(isRunning: false, runningAgentCount: 0, runningShellCount: 0)
+        XCTAssertFalse(a.show)
+    }
 }

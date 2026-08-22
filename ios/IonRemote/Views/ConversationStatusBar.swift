@@ -36,6 +36,13 @@ struct ConversationStatusBar: View {
     /// `resolveRunActivity`). Mirrors the desktop's `agentRunningCount`.
     /// Defaults to 0 for older snapshots that don't carry the field.
     var runningAgentCount: Int = 0
+    /// Background bash commands (Bash run_in_background +
+    /// notify_on_complete) this instance is waiting on. The shell
+    /// counterpart to `runningAgentCount`, ranked below it — matches
+    /// `EngineInstanceBar`'s cascade and the desktop's
+    /// `useActiveEngineBackgroundShellCount`. Defaults to 0 for older
+    /// snapshots that don't carry the field.
+    var runningShellCount: Int = 0
 
     // Extended-thinking (per-conversation). Think menu always renders beside
     // permission toggle. It disables when active model has no selectable effort
@@ -82,271 +89,66 @@ struct ConversationStatusBar: View {
 
     /// Run-activity indicator decision for the status-bar dot + label.
     ///
-    /// Derived from the two signals that are reliably present in the iOS view
-    /// layer — `isRunning` (orchestrator run-state, which `ConversationView`
-    /// derives from `tab.status`) and `runningAgentCount` (the live count of
-    /// dispatched agents in the `running` status). It does NOT read
-    /// `StatusFields.state`: that field is non-Codable and snapshot-excluded on
-    /// iOS, so gating the dot on it hid the yellow "waiting for N agent(s)"
-    /// label whenever the orchestrator went idle with a child still running.
+    /// Derived from the signals reliably present in the iOS view layer —
+    /// `isRunning` (orchestrator run-state, which `ConversationView` derives
+    /// from `tab.status`), `runningAgentCount` (dispatched agents), and
+    /// `runningShellCount` (outstanding background bash commands). It does
+    /// NOT read `StatusFields.state`: that field is non-Codable and
+    /// snapshot-excluded on iOS, so gating the dot on it hid the yellow
+    /// "waiting for N agent(s)" label whenever the orchestrator went idle
+    /// with a child still running.
     ///
     /// Priority cascade (matches the desktop `getTabStatusColor` /
-    /// `TabRowView.statusInfo`): foreground orange "running" beats background
-    /// yellow "awaiting children". When neither applies, `show` is false and the
-    /// bar renders no dot/label (this is a run-activity indicator only — there is
-    /// no idle label). Pure + static so it is unit-testable directly, pinning the
-    /// shipped logic rather than a re-derivation.
+    /// `TabRowView.statusInfo` / `EngineInstanceBar.statusIndicator`):
+    /// foreground orange "running" beats background yellow "awaiting
+    /// children" beats background pink "waiting on shells". When none
+    /// applies, `show` is false and the bar renders no dot/label (this is a
+    /// run-activity indicator only — there is no idle label). Pure + static
+    /// so it is unit-testable directly, pinning the shipped logic rather
+    /// than a re-derivation.
     struct RunActivity: Equatable {
         let show: Bool
         let isRunning: Bool
+        let isWaitingShells: Bool
         let label: String
     }
 
-    static func resolveRunActivity(isRunning: Bool, runningAgentCount: Int) -> RunActivity {
+    static func resolveRunActivity(isRunning: Bool, runningAgentCount: Int, runningShellCount: Int = 0) -> RunActivity {
         if isRunning {
-            return RunActivity(show: true, isRunning: true, label: "running")
+            return RunActivity(show: true, isRunning: true, isWaitingShells: false, label: "running")
         }
         if runningAgentCount > 0 {
             let suffix = runningAgentCount == 1 ? "" : "s"
             return RunActivity(
                 show: true,
                 isRunning: false,
+                isWaitingShells: false,
                 label: "waiting for \(runningAgentCount) agent\(suffix)",
             )
         }
-        return RunActivity(show: false, isRunning: false, label: "")
+        // Background shells rank below agents, matching EngineInstanceBar's
+        // statusIndicator cascade and the desktop's isWaitingShells check:
+        // when both are outstanding the richer agent signal wins.
+        if runningShellCount > 0 {
+            let suffix = runningShellCount == 1 ? "" : "s"
+            return RunActivity(
+                show: true,
+                isRunning: false,
+                isWaitingShells: true,
+                label: "waiting for \(runningShellCount) background shell\(suffix)",
+            )
+        }
+        return RunActivity(show: false, isRunning: false, isWaitingShells: false, label: "")
     }
 
     /// The effective model: override > preferred > default fallback.
-    private var effectiveModel: String {
+    var effectiveModel: String {
         let candidate = modelOverride ?? preferredModel
         return candidate.isEmpty ? "claude-sonnet-4-6" : candidate
     }
 
     private var displayLabel: String {
         availableModels.first(where: { $0.id == effectiveModel })?.label ?? effectiveModel
-    }
-
-    /// Resolved context occupancy percentage. UNBOUNDED — may exceed 100.
-    ///
-    /// Tokens-first, matching the desktop: divide the engine's absolute
-    /// occupancy figure by the SELECTED model's window. No engine command can
-    /// change an idle session's model, so a picker-driven recompute has to be
-    /// client-side arithmetic — this is what makes switching a 220k-token
-    /// conversation from a 1M model to a 100k one read 220% immediately.
-    ///
-    /// `contextPercent` is the fallback for a session whose engine has not
-    /// reported a token count (an older engine, or a backend that emits no
-    /// usage). That percentage is anchored to whatever window the engine
-    /// measured against, so it cannot react to the picker.
-    ///
-    /// Not capped: over-budget is real information, and an operator at 220%
-    /// needs to see 220% rather than a figure identical to exactly-full.
-    /// Callers clamp for geometry only.
-    var resolvedContextPercent: Double? {
-        Self.resolveContextPercent(
-            contextPercent: contextPercent,
-            contextTokens: contextTokens,
-            selectedModelWindow: selectedModelWindow,
-        )
-    }
-
-    /// Pure form of the above, so every iOS surface that shows context usage
-    /// (this bar, the conversation header's fill strip) resolves one number
-    /// from one implementation and the two can never disagree.
-    static func resolveContextPercent(
-        contextPercent: Double?,
-        contextTokens: Int?,
-        selectedModelWindow: Int?,
-    ) -> Double? {
-        if let tokens = contextTokens, tokens > 0, let denominator = selectedModelWindow, denominator > 0 {
-            return Double(tokens) / Double(denominator) * 100.0
-        }
-        if let cp = contextPercent {
-            return cp
-        }
-        return nil
-    }
-
-    /// The absolute occupancy figure to divide by the window — the NUMERATOR
-    /// counterpart to `windowForModel`'s denominator. Static for the same reason
-    /// as the two resolvers around it: every iOS surface that shows context usage
-    /// resolves one number from one implementation, so they cannot disagree.
-    ///
-    /// A context breakdown carries three token quantities that are easy to
-    /// confuse, and only one of them is occupancy:
-    ///
-    ///   - `breakdownOccupancy` (`occupancyTokens`) — the engine's authoritative
-    ///     occupancy. The same figure `StatusFields.contextTokens` carries and the
-    ///     same input the engine's proactive-compaction gate measures. THIS is
-    ///     what divides by the context window.
-    ///   - `breakdownTotal` (`totalTokens`) — the ITEMIZED per-category sum. An
-    ///     independent estimate meant for attribution ("what is taking up the
-    ///     space"). It OVER-reports, counting content the provider did not bill
-    ///     for this turn, so it must never be read as occupancy: doing so
-    ///     rendered a conversation occupying 26% of a 1M window as ~103%.
-    ///   - `apiReportedTotal` (not accepted here) — the raw provider
-    ///     input_tokens for the last turn, with nothing added for messages
-    ///     appended since, so it UNDER-reports mid-turn.
-    ///
-    /// `breakdownTotal` is a parameter purely so this contract is stated at the
-    /// one place the decision is made. It is deliberately never returned — a
-    /// caller that has it in hand passes it here and gets back the right number.
-    static func resolveContextTokens(
-        breakdownOccupancy: Int?,
-        breakdownTotal: Int?,
-        fieldsTokens: Int?,
-        instanceTokens: Int?,
-    ) -> Int? {
-        if let t = breakdownOccupancy, t > 0 { return t }
-        if let t = fieldsTokens, t > 0 { return t }
-        if let t = instanceTokens, t > 0 { return t }
-        return nil
-    }
-
-    /// Client-side capacity state. The effective limit reserves response and
-    /// compaction room from the selected model's raw context window.
-    enum ContextCapacityState: Equatable {
-        case normal
-        case warning
-        case full
-    }
-
-    struct ContextCapacity: Equatable {
-        let occupancyTokens: Int
-        let effectiveLimit: Int
-        let percent: Double
-    }
-
-    /// Default output reserve when model metadata declares no output cap.
-    /// Mirrors DEFAULT_CONTEXT_OUTPUT_RESERVE in shared/context-capacity.ts.
-    static let defaultContextOutputReserve = 20_000
-
-    /// Compaction-summary reserve. Mirrors CONTEXT_SUMMARY_RESERVE there.
-    static let contextSummaryReserve = 13_000
-
-    /// Mirror the engine's input-budget calculation. The engine-reported
-    /// effective limit wins when it is present, because it IS the engine's own
-    /// arithmetic for the model the engine used. The client only recomputes from
-    /// the selected model's window and output reserve, which is what makes the
-    /// picker update admission before another request reaches the engine.
-    static func resolveContextCapacity(
-        occupancyTokens: Int?,
-        modelId: String,
-        availableModels: [RemoteModelEntry],
-        engineContextWindow: Int?,
-        engineEffectiveLimit: Int? = nil,
-    ) -> ContextCapacity? {
-        guard let occupancyTokens, occupancyTokens > 0 else { return nil }
-        let selected = availableModels.first(where: { $0.id == modelId })
-        // The engine's answer is only authoritative while the operator has not
-        // moved the picker to a model the engine has not run. A selected model
-        // that declares its own limit or window takes precedence.
-        if let reported = engineEffectiveLimit, reported > 0,
-           selected?.effectiveContextLimit == nil, selected?.contextWindow == nil {
-            return ContextCapacity(
-                occupancyTokens: occupancyTokens,
-                effectiveLimit: reported,
-                percent: Double(occupancyTokens) / Double(reported) * 100,
-            )
-        }
-        // The selected model's own published limit is the engine's arithmetic
-        // for THAT model, so it beats recomputing the reserves locally.
-        if let declared = selected?.effectiveContextLimit, declared > 0 {
-            return ContextCapacity(
-                occupancyTokens: occupancyTokens,
-                effectiveLimit: declared,
-                percent: Double(occupancyTokens) / Double(declared) * 100,
-            )
-        }
-        guard let rawWindow = windowForModel(
-            modelId,
-            availableModels: availableModels,
-            engineContextWindow: engineContextWindow,
-        ), rawWindow > 0 else {
-            guard let reported = engineEffectiveLimit, reported > 0 else { return nil }
-            return ContextCapacity(
-                occupancyTokens: occupancyTokens,
-                effectiveLimit: reported,
-                percent: Double(occupancyTokens) / Double(reported) * 100,
-            )
-        }
-
-        let declaredOutput = selected?.maxOutputTokens ?? 0
-        let outputReserve = declaredOutput > 0 ? declaredOutput : defaultContextOutputReserve
-        let effectiveLimit = rawWindow - outputReserve - contextSummaryReserve
-        let limit = effectiveLimit > 0 ? effectiveLimit : rawWindow
-        return ContextCapacity(
-            occupancyTokens: occupancyTokens,
-            effectiveLimit: limit,
-            percent: Double(occupancyTokens) / Double(limit) * 100,
-        )
-    }
-
-    static func contextCapacityState(_ capacity: ContextCapacity?) -> ContextCapacityState {
-        guard let capacity else { return .normal }
-        if capacity.percent >= 100 { return .full }
-        if capacity.percent >= 80 { return .warning }
-        return .normal
-    }
-
-    /// `/compact` and `/clear` are recovery commands. They remain available
-    /// when a normal prompt would exceed the selected model's input budget.
-    static func isContextRecoveryCommand(_ text: String) -> Bool {
-        let command = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return command == "/compact" || command.hasPrefix("/compact ") ||
-            command == "/clear" || command.hasPrefix("/clear ")
-    }
-
-    static func contextCapacityBlocksPrompt(_ capacity: ContextCapacity?, text: String) -> Bool {
-        contextCapacityState(capacity) == .full && !isContextRecoveryCommand(text)
-    }
-
-    /// Context window of a named model from the catalog, falling back to the
-    /// engine's reported window. Static so non-bar surfaces can resolve the
-    /// same denominator.
-    static func windowForModel(
-        _ modelId: String,
-        availableModels: [RemoteModelEntry],
-        engineContextWindow: Int?,
-    ) -> Int? {
-        if let model = availableModels.first(where: { $0.id == modelId }), model.contextWindow > 0 {
-            return model.contextWindow
-        }
-        if let engineWindow = engineContextWindow, engineWindow > 0 {
-            return engineWindow
-        }
-        return nil
-    }
-
-    /// Context window of the model currently SELECTED in the picker — the
-    /// display denominator. Falls back to the engine's window when the picker
-    /// model is not in the catalog (so the reading degrades to the engine's
-    /// own view rather than vanishing).
-    private var selectedModelWindow: Int? {
-        Self.windowForModel(effectiveModel, availableModels: availableModels, engineContextWindow: engineContextWindow)
-    }
-
-    /// Presentation percentage for the persistent context ring. Missing
-    /// occupancy renders as a neutral 0% ring so a fresh, idle, completed, or
-    /// background-agent-waiting conversation never loses its tap target.
-    var radialContextPercent: Double {
-        resolvedContextPercent ?? 0
-    }
-
-    /// Accessible name for the context ring. Carries the true uncapped
-    /// percentage plus the raw counts, since no number is rendered as text.
-    func contextAccessibilityLabel(pct: Double) -> String {
-        if let tokens = contextTokens, tokens > 0, let window = selectedModelWindow, window > 0 {
-            return "Context usage \(Int(pct)) percent, \(tokens) of \(window) tokens"
-        }
-        return "Context usage \(Int(pct)) percent"
-    }
-
-    private var contextColor: Color {
-        guard let pct = resolvedContextPercent else { return .secondary }
-        // ContextUsageRing owns the one threshold ladder — see its `level(_:)`.
-        return ContextUsageRing.color(for: pct)
     }
 
     /// Rendering state for per-conversation thinking control. Model absent from
@@ -405,32 +207,39 @@ struct ConversationStatusBar: View {
 
             // Running/waiting dot indicator.
             //
-            // Two visual states, priority cascade matches the desktop's
+            // Three visual states, priority cascade matches the desktop's
             // StatusBarEngineState and the getTabStatusColor / TabRowView
-            // .statusInfo cascade:
+            // .statusInfo / EngineInstanceBar.statusIndicator cascade:
             //   - isRunning (orchestrator running/connecting, derived from
             //     tab.status) → orange `theme.statusRunning` dot + "running"
             //   - NOT running AND runningAgentCount > 0 → yellow
             //     `theme.statusWaitingChildren` dot + "waiting for N
             //     agent(s)"
+            //   - NOT running, 0 agents, AND runningShellCount > 0 → pink
+            //     `theme.statusBash` dot + "waiting for N background
+            //     shell(s)"
             //   - otherwise → no dot/label (run-activity indicator only)
             //
-            // Reads `isRunning` + `runningAgentCount` — the signals reliably
-            // present in the iOS view layer — NOT `statusState`, which comes
-            // from `StatusFields.state` and is nil whenever the orchestrator is
-            // idle with a child still running (the bug this fixes). The pulse
-            // is implicit on iOS — the dot is kept static here like the prior
-            // footer to avoid animating two status surfaces at once; the label
-            // color carries the signal. Decision pinned by
-            // ConversationStatusBarWaitingTests via resolveRunActivity.
+            // Reads `isRunning` + `runningAgentCount` + `runningShellCount` —
+            // the signals reliably present in the iOS view layer — NOT
+            // `statusState`, which comes from `StatusFields.state` and is nil
+            // whenever the orchestrator is idle with a child still running
+            // (the bug this fixes). The pulse is implicit on iOS — the dot is
+            // kept static here like the prior footer to avoid animating two
+            // status surfaces at once; the label color carries the signal.
+            // Decision pinned by ConversationStatusBarWaitingTests via
+            // resolveRunActivity.
             let runActivity = Self.resolveRunActivity(
                 isRunning: isRunning,
                 runningAgentCount: runningAgentCount,
+                runningShellCount: runningShellCount,
             )
             if runActivity.show {
                 let activeColor = runActivity.isRunning
                     ? theme.statusRunning
-                    : theme.statusWaitingChildren
+                    : runActivity.isWaitingShells
+                        ? theme.statusBash
+                        : theme.statusWaitingChildren
                 HStack(spacing: 4) {
                     Circle()
                         .fill(activeColor)

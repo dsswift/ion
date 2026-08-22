@@ -51,13 +51,14 @@ extension RemoteEvent {
             try container.encode(toolId, forKey: .toolId)
             return true
 
-        case .engineToolEnd(let tabId, let instanceId, let toolId, let result, let isError):
+        case .engineToolEnd(let tabId, let instanceId, let toolId, let result, let isError, let backgroundTaskId):
             try container.encode(TypeKey.engineToolEnd, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
             try container.encode(toolId, forKey: .toolId)
             try container.encodeIfPresent(result, forKey: .result)
             try container.encode(isError, forKey: .isError)
+            try container.encodeIfPresent(backgroundTaskId, forKey: .backgroundTaskId)
             return true
 
         case .engineToolStalled(let tabId, let instanceId, let toolId, let toolName, let elapsed):
@@ -67,6 +68,40 @@ extension RemoteEvent {
             try container.encode(toolId, forKey: .toolId)
             try container.encode(toolName, forKey: .toolName)
             try container.encode(elapsed, forKey: .elapsed)
+            return true
+
+        case .engineBackgroundTaskStarted(let tabId, let instanceId, let taskId, let command, let startedAt, let notifyOnComplete):
+            try container.encode(TypeKey.engineBackgroundTaskStarted, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            try container.encode(
+                BackgroundTaskState(taskId: taskId, command: command, startedAt: startedAt, notifyOnComplete: notifyOnComplete),
+                forKey: .task
+            )
+            return true
+
+        case .engineBackgroundTaskTerminal(let tabId, let instanceId, let taskId, let status, let exitCode, let elapsedMs, let command, let outputPath, let tail):
+            try container.encode(TypeKey.engineBackgroundTaskTerminal, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            try container.encode(taskId, forKey: .taskId)
+            try container.encode(status, forKey: .status)
+            try container.encodeIfPresent(exitCode, forKey: .exitCode)
+            try container.encodeIfPresent(elapsedMs, forKey: .elapsedMs)
+            try container.encodeIfPresent(command, forKey: .command)
+            try container.encodeIfPresent(outputPath, forKey: .outputPath)
+            try container.encodeIfPresent(tail, forKey: .tail)
+            return true
+
+        case .engineSessionWorkStopped(let tabId, let instanceId, let scope, let cancelledRunId, let recalledDispatchIds, let stoppedTaskIds, let killedAgentProcessCount):
+            try container.encode(TypeKey.engineSessionWorkStopped, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            try container.encode(scope, forKey: .scope)
+            try container.encodeIfPresent(cancelledRunId, forKey: .cancelledRunId)
+            try container.encodeIfPresent(recalledDispatchIds, forKey: .recalledDispatchIds)
+            try container.encode(stoppedTaskIds, forKey: .stoppedBackgroundTaskIds)
+            try container.encodeIfPresent(killedAgentProcessCount, forKey: .killedAgentProcessCount)
             return true
 
         case .engineRunStalled(let tabId, let instanceId, let stalledDuration, let lastActivity):
@@ -88,20 +123,36 @@ extension RemoteEvent {
             try container.encodeIfPresent(reason, forKey: .runRecoveryReason)
             return true
 
-        case .engineSteerInjected(let tabId, let instanceId, let messageLength, let clientMessageId, let entryId):
+        case .engineSteerInjected(let tabId, let instanceId, let messageLength, let clientMessageId, let entryId, let kind, let machineAuthored):
             try container.encode(TypeKey.engineSteerInjected, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
             try container.encode(messageLength, forKey: .steerMessageLength)
             try container.encodeIfPresent(clientMessageId, forKey: .steerClientMessageId)
             try container.encodeIfPresent(entryId, forKey: .steerEntryId)
+            try container.encodeIfPresent(kind, forKey: .steerKind)
+            try container.encodeIfPresent(machineAuthored, forKey: .steerMachineAuthored)
             return true
 
-        case .engineSteerDegraded(let tabId, let instanceId, let messageLength):
+        case .engineSteerDegraded(let tabId, let instanceId, let messageLength, let kind, let machineAuthored):
             try container.encode(TypeKey.engineSteerDegraded, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
             try container.encode(messageLength, forKey: .steerDegradedMessageLength)
+            try container.encodeIfPresent(kind, forKey: .steerKind)
+            try container.encodeIfPresent(machineAuthored, forKey: .steerMachineAuthored)
+            return true
+
+        case .engineRewindResult(let tabId, let instanceId, let error):
+            // Encoder mirror for engine_rewind_result. iOS never originates
+            // this event; the encoder enables round-trip tests. `status` is
+            // omitted — the desktop always sends "rejected" (transactional,
+            // rejection-only), and the Swift case models only the data a
+            // refusal actually carries.
+            try container.encode(TypeKey.engineRewindResult, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(instanceId, forKey: .instanceId)
+            try container.encodeIfPresent(error, forKey: .error)
             return true
 
         case .enginePromptInjected(let tabId, let instanceId, let prompt, let origin, let kind, let machineAuthored):
