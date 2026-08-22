@@ -166,7 +166,7 @@ func TestBashSleepGate_BlockedCommandNeverExecutes(t *testing.T) {
 	if ops.callCount() != 0 {
 		t.Fatalf("backend was invoked %d times for a blocked command; want 0", ops.callCount())
 	}
-	for _, want := range []string{"run_in_background", "notify_on_complete", "sleep 600"} {
+	for _, want := range []string{"run_in_background", "notify_on_complete", "sleep 600", "only remaining work", "end your turn"} {
 		if !strings.Contains(result.Content, want) {
 			t.Errorf("refusal message missing %q; got %q", want, result.Content)
 		}
@@ -286,6 +286,13 @@ func TestBashDescription_NamesSleepMechanics(t *testing.T) {
 	timeoutDesc, _ := timeoutProp["description"].(string)
 	if !strings.Contains(timeoutDesc, "clamped") {
 		t.Errorf("timeout schema description does not mention clamping; got %q", timeoutDesc)
+	}
+	notifyProp, _ := props["notify_on_complete"].(map[string]any)
+	notifyDesc, _ := notifyProp["description"].(string)
+	for _, phrase := range []string{"only remaining work", "end your turn", "parks the session", "resumes it"} {
+		if !strings.Contains(notifyDesc, phrase) {
+			t.Errorf("notify_on_complete schema description missing %q; got %q", phrase, notifyDesc)
+		}
 	}
 	lower := strings.ToLower(def.Description)
 	for _, opinion := range []string{"you should", "always", "never poll", "best practice"} {
