@@ -155,4 +155,60 @@ final class BenchNavigationTests: XCTestCase {
 
         XCTAssertNil(viewModel.pendingBenchConversation)
     }
+
+    /// Regression: the desktop sends `lastAssembly: "assembled"` (see
+    /// `IntegrationWorkspace.lastAssembly` in types-bench.ts), but this view's
+    /// status text used to compare against the string "ok" -- which never
+    /// matched, so a successfully-assembled bench always fell through to
+    /// "Ready" and never showed how long ago it was assembled.
+    func testRelativeAssemblyTimeNeverAssembled() {
+        XCTAssertEqual(BenchAssemblyTime.relative(0), "never assembled")
+    }
+
+    func testRelativeAssemblyTimeJustNow() {
+        let nowMs = Date().timeIntervalSince1970 * 1000
+        let result = BenchAssemblyTime.relative(nowMs)
+        XCTAssertTrue(result.hasPrefix("assembled "), "expected an 'assembled ...' prefix, got \(result)")
+    }
+
+    func testRelativeAssemblyTimeMinutesAgo() {
+        let fiveMinutesAgoMs = (Date().timeIntervalSince1970 - 5 * 60) * 1000
+        let result = BenchAssemblyTime.relative(fiveMinutesAgoMs)
+        XCTAssertTrue(result.hasPrefix("assembled "), "expected an 'assembled ...' prefix, got \(result)")
+        XCTAssertTrue(result.contains("5"), "expected the 5-minute figure to appear, got \(result)")
+    }
+
+    // MARK: - Bench header summary (desktop parity)
+
+    /// The bench header used to show EITHER the stale-member count OR the
+    /// assembly age. A bench with a stale member hid how old the build was,
+    /// and a bench with no stale members hid how many members it held — so a
+    /// bench that had silently lost every member read exactly like a healthy
+    /// one. Both facts now ride the same line, matching the desktop's
+    /// `benchMemberSummary` in shared/worktree-list.ts.
+    func testSummaryReportsMemberCountWithTheAssemblyAge() {
+        let twoHoursAgoMs = (Date().timeIntervalSince1970 - 2 * 3600) * 1000
+        let result = BenchAssemblyTime.summary(total: 2, behind: 0, lastBuiltAtMs: twoHoursAgoMs)
+        XCTAssertTrue(result.hasPrefix("2 members · assembled "), "got \(result)")
+    }
+
+    func testSummaryKeepsTheAgeWhenMembersAreOutOfDate() {
+        let nineHoursAgoMs = (Date().timeIntervalSince1970 - 9 * 3600) * 1000
+        let result = BenchAssemblyTime.summary(total: 3, behind: 2, lastBuiltAtMs: nineHoursAgoMs)
+        XCTAssertTrue(result.hasPrefix("3 members · 2 out of date · assembled "), "got \(result)")
+    }
+
+    func testSummarySingularisesOneMember() {
+        let result = BenchAssemblyTime.summary(total: 1, behind: 1, lastBuiltAtMs: 0)
+        XCTAssertEqual(result, "1 member · 1 out of date · never assembled")
+    }
+
+    func testSummaryReportsAnEmptyBench() {
+        XCTAssertEqual(BenchAssemblyTime.summary(total: 0, behind: 0, lastBuiltAtMs: 0), "no members")
+    }
+
+    func testSummaryReportsANeverAssembledBench() {
+        XCTAssertEqual(BenchAssemblyTime.summary(total: 2, behind: 0, lastBuiltAtMs: 0),
+                       "2 members · never assembled")
+    }
 }

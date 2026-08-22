@@ -3,6 +3,7 @@ import { IPC } from '../../shared/types'
 import { log as _log } from '../logger'
 import { terminalScrollback } from '../state'
 import { terminalManager } from '../terminal-manager-instance'
+import { restoredStudioExitCodes } from '../studio-terminal-persistence'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -45,4 +46,23 @@ export function registerTerminalIpc(): void {
     log('terminal_get_scrollback', { key, bytes: buffer.length })
     return buffer
   })
+
+  // Attach protocol (D2): one call returns {history, running, exitCode,
+  // cwd, cwdFellBack}; the caller then rides the live TERMINAL_INCOMING
+  // stream. restartIfNotRunning respawns a dead terminal on demand (dead
+  // cwd falls back to ~, reported via cwdFellBack for a visible notice).
+  ipcMain.handle(
+    IPC.TERMINAL_ATTACH,
+    (_event, { key, restartIfNotRunning, cwd }: { key: string; restartIfNotRunning?: boolean; cwd?: string }) => {
+      const info = terminalManager.attach(key, { restartIfNotRunning, cwd })
+      // A terminal restored from disk (app restart) has history but no
+      // manager lifecycle until it respawns; report its persisted exit code
+      // so the client renders the exited state instead of "running".
+      if (!info.running && info.exitCode === null && restoredStudioExitCodes.has(key)) {
+        info.exitCode = restoredStudioExitCodes.get(key) ?? null
+      }
+      log('terminal_attach', { key, running: info.running, exit_code: info.exitCode ?? '', history_bytes: info.history.length, restart: !!restartIfNotRunning, cwd_fell_back: info.cwdFellBack })
+      return info
+    },
+  )
 }

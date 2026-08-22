@@ -3,15 +3,15 @@ import { applyRecommendationMembers } from '../overlap-apply-members'
 import { validateOverlapApplySelection } from '../overlap-apply'
 import type { WorktreeOverlapAnalysis } from '../../../shared/types-worktree-overlap'
 
-function member(path: string, enabled = true) {
-  return { worktreePath: path, branchName: path, enabled, pinnedSha: path, pinnedTreeHash: path, pinnedBaseSha: 'base', currentTreeHash: path, pin: 'current' as const, merge: 'unbuilt' as const }
+function member(path: string) {
+  return { worktreePath: path, branchName: path, pinnedSha: path, pinnedTreeHash: path, pinnedBaseSha: 'base', currentTreeHash: path, pin: 'current' as const, merge: 'unbuilt' as const }
 }
 
 describe('applyRecommendationMembers', () => {
-  it('enables fast lane, disables remainder, and persists one ordered member list', () => {
-    const result = applyRecommendationMembers([member('a'), member('b'), member('c', false)], ['c', 'a'], [])
-    expect(result.members.map((item) => [item.worktreePath, item.enabled])).toEqual([['c', true], ['a', true], ['b', false]])
-    expect(result).toMatchObject({ enabled: 1, disabled: 1, reordered: 3 })
+  it('persists only selected members in their exact order', () => {
+    const result = applyRecommendationMembers([member('a'), member('b'), member('c')], ['c', 'a'], [])
+    expect(result.members.map((item) => item.worktreePath)).toEqual(['c', 'a'])
+    expect(result).toMatchObject({ removed: 1, reordered: 2 })
   })
   it('rejects duplicate selected paths rather than persisting duplicate members', () => {
     expect(() => applyRecommendationMembers([member('a')], ['a', 'a'], [])).toThrow('Duplicate worktree paths')
@@ -20,9 +20,10 @@ describe('applyRecommendationMembers', () => {
     expect(() => applyRecommendationMembers([member('a')], ['a'], [member('a')])).toThrow('Duplicate worktree members')
     expect(() => applyRecommendationMembers([], ['missing'], [])).toThrow('Selected worktree member is unavailable')
   })
-  it('merges newly enrolled selections before disabled remainder', () => {
-    const result = applyRecommendationMembers([member('old')], ['new', 'old'], [member('new')])
-    expect(result.members.map((item) => [item.worktreePath, item.enabled])).toEqual([['new', true], ['old', true]])
+  it('merges newly enrolled selections into exact membership', () => {
+    const result = applyRecommendationMembers([member('old'), member('removed')], ['new', 'old'], [member('new')])
+    expect(result.members.map((item) => item.worktreePath)).toEqual(['new', 'old'])
+    expect(result).toMatchObject({ removed: 1 })
   })
   it.each([
     [[member('a'), member('a')], ['a'], [], 'Duplicate worktree members'],

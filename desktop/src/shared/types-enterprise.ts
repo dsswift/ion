@@ -64,6 +64,15 @@ export interface EnterprisePolicy {
    */
   providers?: Record<string, EnterpriseProviderDefinition>
   /**
+   * Enterprise-owned engine identity config. `requireOperatorIdentity` blocks
+   * every session until an interactive operator grant is valid.
+   */
+  auth?: {
+    identityProvider?: string
+    requireOperatorIdentity?: boolean
+    oauth?: Record<string, unknown>
+  }
+  /**
    * Extension loading allowlist (feature 0011 / D-020, issue #308). When
    * non-empty, only listed extensions load; an optional per-entry sha256 pins
    * the entry-point integrity. Empty/absent = no restriction. Enforced engine-
@@ -105,6 +114,16 @@ export interface IonDesktopPolicyFields {
    */
   themePolicy?: {
     themeId: string
+    locked?: boolean
+  }
+  /**
+   * Enterprise active-UI enforcement (single-UI exclusivity). `ui` names
+   * the conversation UI ('overlay' | 'studio'); `locked: true` enforces it
+   * (the Settings picker is disabled and renderer writes are stripped at
+   * the settings funnel). Unlocked = managed default only.
+   */
+  activeUiPolicy?: {
+    ui: string
     locked?: boolean
   }
 }

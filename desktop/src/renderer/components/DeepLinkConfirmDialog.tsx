@@ -30,7 +30,7 @@ import type { DeepLinkConfirmRequest } from '../../shared/types'
 export function DeepLinkConfirmDialog(): React.JSX.Element | null {
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
-  const owner = isMirrorWindow() ? 'atv' : 'overlay'
+  const owner = isMirrorWindow() ? 'studio' : 'overlay'
   const tabs = useSessionStore((s) => s.tabs)
   const [queue, setQueue] = useState<DeepLinkConfirmRequest[]>([])
   const [selectedTabs, setSelectedTabs] = useState<Record<string, string>>({})

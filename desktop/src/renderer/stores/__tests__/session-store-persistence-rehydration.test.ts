@@ -82,6 +82,9 @@ function makeTab(overrides: Record<string, any> = {}): any {
     groupId: null,
     groupPinned: false,
     queuedPrompts: [],
+    // The staged tray persists alongside the draft text; persistTabs reads its
+    // length the same way it reads queuedPrompts', so the fixture carries it.
+    attachments: [],
     contextTokens: 0,
     lastMessagePreview: null,
     lastEventAt: null,
@@ -108,6 +111,9 @@ function makeStoreStub(initialState: Partial<any> = {}) {
     agentDetailGeometry: { x: 0, y: 0, w: 0, h: 0 },
     terminalPanes: new Map(),
     conversationPanes: new Map(),
+    // persistTabs projects the cold settled-history collection unconditionally;
+    // without it the stub throws before any assertion in this file can run.
+    settledHistory: [],
     tabRecoveryEnabled: false,
     rehydrating: false,
     tabsReady: false,

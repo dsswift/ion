@@ -10,6 +10,7 @@ import { usePreferencesStore } from '../preferences'
 import { activeInstance } from '../stores/conversation-instance'
 import { ContextRadial } from './StatusBarContextRadial'
 import { resolveContextDisplay, resolveContextInputs, formatTokens } from './context-usage'
+import { contentRouter } from '../lib/file-open-router'
 
 /* ─── Context Usage Indicator ─── */
 
@@ -86,7 +87,11 @@ export function ContextIndicator() {
         // it does not swap on hover.
         className="px-0.5 ion-focusable"
         style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
-        onClick={toggleStatusDrawer}
+        onClick={() => {
+          const router = contentRouter()
+          if (router?.openStatus) router.openStatus()
+          else toggleStatusDrawer()
+        }}
         onMouseEnter={handleEnter}
         onMouseLeave={() => setHover(false)}
         // The percentage is no longer rendered as text, so the accessible

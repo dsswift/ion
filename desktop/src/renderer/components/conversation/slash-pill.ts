@@ -79,10 +79,11 @@ export function resolveSlashPill(
 }
 
 /**
- * Format the per-run model provenance badge text from the engine-resolved
- * tier and model name. Returns e.g. "Standard · GPT-5.6 Terra" when
- * both are present, just the tier or model alone when only one is set,
- * or null when neither is available.
+ * Format command-owned model provenance. The engine emits a tier selector with
+ * the concrete model it resolved for that command, so a valid tier renders as
+ * `Fast · GPT 5.6 Luna`. A direct model selector repeats its effective model and
+ * therefore renders once. Both fields are engine facts, never desktop picker
+ * state.
  */
 export function formatSlashModelDisplay(tier?: string, model?: string): string | null {
   const tierLabel = tier ? tier[0].toUpperCase() + tier.slice(1) : ''
@@ -91,7 +92,12 @@ export function formatSlashModelDisplay(tier?: string, model?: string): string |
   const modelLabel = gptVariant
     ? `GPT ${gptVariant[1]}.${gptVariant[2]} ${gptVariant[3][0].toUpperCase()}${gptVariant[3].slice(1)}`
     : bareModel ? getModelDisplayLabel(bareModel) : ''
-  if (!tierLabel && !modelLabel) return null
-  if (tierLabel && modelLabel) return `${tierLabel} · ${modelLabel}`
-  return tierLabel || modelLabel || null
+  // A model without a selector can be shown safely. A selector without its
+  // resolved model is not enough evidence for a tier badge.
+  if (!modelLabel) return null
+  if (!tierLabel) return modelLabel
+  // A direct model in command frontmatter is both selector and effective model.
+  // Do not repeat it as `model · model`.
+  if (tier && tier.toLowerCase() === bareModel.toLowerCase()) return modelLabel
+  return `${tierLabel} · ${modelLabel}`
 }

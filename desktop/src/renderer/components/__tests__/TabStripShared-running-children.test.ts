@@ -57,7 +57,7 @@ vi.mock('../../preferences', () => ({
   usePreferencesStore: { getState: () => ({ uiZoom: 1, gitOpsMode: 'standard' }) },
 }))
 
-import { anyEngineInstanceHasRunningChildren, anyEngineInstanceHasRunningShells, effectiveRunningChildrenCount, engineInstanceBackgroundShellCount, isAnyEngineInstanceRunning, getTabStatusColor } from '../TabStripShared'
+import { anyEngineInstanceHasRunningChildren, anyEngineInstanceHasRunningShells, effectiveRunningChildrenCount, engineInstanceBackgroundShellCount, isAnyEngineInstanceRunning, isAnyEngineInstanceStarting, getTabStatusColor } from '../TabStripShared'
 
 function resetState() {
   state.conversationPanes = new Map()
@@ -146,6 +146,36 @@ describe('anyEngineInstanceHasRunningChildren', () => {
     pane.instances[0] = { ...pane.instances[0], statusFields: { state: 'running' } }
     expect(anyEngineInstanceHasRunningChildren('tab1')).toBe(true)
     expect(isAnyEngineInstanceRunning('tab1')).toBe(true)
+  })
+})
+
+
+
+describe('starting activity and status cascade', () => {
+  beforeEach(resetState)
+
+  it('renders a starting instance as still connecting, not foreground work', () => {
+    setPane('tab1', ['inst1'])
+    const pane = state.conversationPanes.get('tab1')
+    pane.instances[0] = { ...pane.instances[0], permissionQueue: [], statusFields: { state: 'starting' } }
+
+    expect(isAnyEngineInstanceRunning('tab1')).toBe(false)
+    expect(isAnyEngineInstanceStarting('tab1')).toBe(true)
+
+    const result = getTabStatusColor(makeTab('tab1'), COLORS)
+    expect(result.bg).toBe(COLORS.statusIdle)
+    expect(result.pulse).toBe(false)
+  })
+
+  it('keeps a real running instance above a starting sibling', () => {
+    setPane('tab1', ['inst1', 'inst2'])
+    const pane = state.conversationPanes.get('tab1')
+    pane.instances[0] = { ...pane.instances[0], permissionQueue: [], statusFields: { state: 'starting' } }
+    pane.instances[1] = { ...pane.instances[1], permissionQueue: [], statusFields: { state: 'running' } }
+
+    const result = getTabStatusColor(makeTab('tab1'), COLORS)
+    expect(result.bg).toBe(COLORS.statusRunning)
+    expect(result.pulse).toBe(true)
   })
 })
 

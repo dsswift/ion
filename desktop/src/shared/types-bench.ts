@@ -9,8 +9,6 @@
  * That is also the ownership seam: a worktree exists whether or not any bench
  * knows about it, while every type in this file is meaningless without one.
  */
-export type EnrollmentState = 'none' | 'included' | 'excluded'
-
 /**
  * How the bench's pinned contribution relates to the worktree's real content.
  *
@@ -61,8 +59,6 @@ export interface IntegrationMember {
   /** Absolute path of the member worktree. Identity within a workspace. */
   worktreePath: string
   branchName: string
-  /** False = kept in the list but skipped in the merge. */
-  enabled: boolean
   /** Pin freshness. Owned by staleness evaluation. */
   pin: PinState
   /** Last merge outcome. Owned by assembly. */
@@ -166,23 +162,21 @@ export interface BenchPriorResolution {
  * relaxes this.
  *
  * **Assembly is atomic.** The bench presents either the exact enrolled
- * combination or nothing: when any enabled member's merge cannot complete
+ * combination or nothing: when any member's merge cannot complete
  * (including via a replayed rerere resolution), the whole assembly fails and
- * the bench is wiped to an empty tree. A partial bench that silently omitted
- * one member's work was the worse alternative — the operator tested a
- * combination that misrepresented what was enrolled. Partial-on-purpose stays
- * available through the per-member exclude toggle.
+ * the bench is wiped to an empty tree. The member list is the exact assembly
+ * set, so a partial bench cannot silently misrepresent membership.
  *
  * **Landing is absorption, not removal.** When a member's work lands into the
  * source branch it becomes part of the bench's BASE — permanently, and with no
- * option to exclude it. The bench is rebuilt from the source tip, so the landed
+ * option to remove it. The bench is rebuilt from the source tip, so the landed
  * work arrives with the base and needs no merge commit; git reports "Already
  * up to date" for it. The member record is then retired from the list, because
  * a member represents *pending* work to layer on top of the base, and this work
  * is no longer pending. Nothing is lost by retiring it: the content is in the
  * source branch, which is exactly where a pull request into the trunk reads
- * from. Disabling a landed member cannot remove its content either — `enabled`
- * governs whether a member's merge is applied, and there is no merge to skip.
+ * from. Removing a landed member cannot remove its content either: the source
+ * branch supplies it as part of the base, and there is no member merge to skip.
  *
  * **Absorption applies only to a pin that carried commits.** A member whose
  * contribution is empty (`pinnedBaseSha === pinnedSha`) has not landed anything;

@@ -32,6 +32,8 @@ import (
 //     no longer exists on disk.
 //
 // Both worktrees are registered with RepoPath=repo and SourceBranch="main".
+// wtB is also marked landed, matching the terminal worktree whose checkout was
+// manually removed in the reported regression.
 func multiWorktreeFixture(t *testing.T) (checker *Checker, repo, wtA, wtB string) {
 	t.Helper()
 	root := t.TempDir()
@@ -81,7 +83,7 @@ func multiWorktreeFixture(t *testing.T) (checker *Checker, repo, wtA, wtB string
 	regDir := t.TempDir()
 	writeWorktreeRegistry(t, regDir, []WorktreeEntry{
 		{WorktreePath: wtA, RepoPath: repo, BranchName: "wt/a", SourceBranch: "main", Title: "worktree A"},
-		{WorktreePath: wtB, RepoPath: repo, BranchName: "wt/b", SourceBranch: "main", Title: "worktree B"},
+		{WorktreePath: wtB, RepoPath: repo, BranchName: "wt/b", SourceBranch: "main", Title: "worktree B", LandedAt: 1700000500000},
 	})
 	checker = NewCheckerAt(regDir)
 	return checker, repo, wtA, wtB

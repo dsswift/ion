@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * Deprecated `benchSetReview` shim — verdict→stage forwarding.
  *

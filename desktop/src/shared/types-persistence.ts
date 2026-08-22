@@ -1,4 +1,4 @@
-import type { TerminalInstance, WorktreeInfo, Attachment, ThinkingEffort } from './types-session'
+import type { TerminalInstance, WorktreeInfo, Attachment, FileAttachment, ThinkingEffort } from './types-session'
 import type { ConversationRef } from './types-engine'
 
 // ─── Schema version constants ───
@@ -194,6 +194,9 @@ export interface PersistedTab {
   modelOverride?: string | null
   forkedFromSessionId?: string | null
   worktree?: WorktreeInfo | null
+  /** Durable host identity for the conversation's execution environment. */
+  executionHost?: string | null
+  executionMachineId?: string | null
   groupId?: string | null
   /** When true, suppresses auto-group movement for this tab. Default false on load for back-compat. */
   groupPinned?: boolean
@@ -204,6 +207,15 @@ export interface PersistedTab {
   queuedPrompts?: string[]
   /** Unsent text typed into the input bar; restored on relaunch. Absent when empty. */
   draftInput?: string
+  /**
+   * Staged-but-unsent attachments (the input bar's tray). Persisted alongside
+   * `draftInput` — before this field the text survived a restart and the images
+   * beside it did not, stranding a half-composed prompt. Written without
+   * `dataUrl` (see shared/staged-attachments.ts): the preview is base64 and the
+   * bytes are re-read from `path` at send time, so the omission is lossless.
+   * Absent when the tray is empty.
+   */
+  attachments?: FileAttachment[]
   /** Latest completed-run metadata. Optional for files written before run footers. */
   lastResult?: import('./types-session').RunResult | null
   /** Per-engine-instance unsent input text, keyed by `instanceId`. Only non-empty values. */
@@ -211,8 +223,8 @@ export interface PersistedTab {
   isTerminalOnly?: boolean
   /** Input-locked conversation (auto-generated conflict fix). See TabState.inputLocked. */
   inputLocked?: boolean
-  /** Why input is locked. Absent legacy locks are automated workflow locks. */
-  inputLockReason?: 'automated-workflow' | 'landed-worktree'
+  /** Why input is locked. `settled` is a cold Inbox history record. */
+  inputLockReason?: 'automated-workflow' | 'landed-worktree' | 'settled'
   /** Explicit tab lifecycle role. See TabState.tabRole. Absent = null (default). */
   tabRole?: 'bench-conversation' | 'conflict-auto-fix' | 'verification-analysis'
   /**
@@ -281,6 +293,27 @@ export interface PersistedTab {
   /** Wall-clock ms of the most recent engine event for this tab. Persisted so
    *  the tab strip can show relative activity ("2m") across app restarts. */
   lastEventAt?: number | null
+  /** Non-message renderer activity, retained for diagnostics only. */
+  lastActivityAt?: number | null
+  /** Last persisted or live real user/assistant message, used by inbox. */
+  lastMessageAt?: number | null
+  /** Last running→idle transition; restored verbatim, never re-stamped. */
+  idleSince?: number | null
+  /** Immutable creation timestamp used by stable inbox sorting. */
+  createdAt?: number
+  /** Newest failure timestamp for snooze raised-hand detection. */
+  lastFailureAt?: number | null
+  /** Inbox pin state and fractional presentation order. */
+  pinnedAt?: number | null
+  pinOrderKey?: string | null
+  /** Last task_complete timestamp. */
+  lastCompletionAt?: number | null
+  settledOverride?: 'settled' | 'active' | 'auto' | null
+  settledAt?: number | null
+  snoozedUntil?: number | null
+  snoozedAt?: number | null
+  lastVisitedAt?: number | null
+  manualUnread?: boolean
   /** Short single-line preview of the last visible message (~80 chars). */
   lastMessagePreview?: string | null
   /** Persisted message count for blank-tab detection when messages are lazily loaded. */
@@ -318,6 +351,8 @@ export interface PersistedTabState {
   /** Index of active tab in the tabs array (handles sessionless tabs) */
   activeTabIndex?: number | null
   tabs: PersistedTab[]
+  /** Recoverable conversation records removed from the active workspace by Close. */
+  settledHistory?: PersistedTab[]
   /** Per-directory editor state. Key = working directory path */
   editorStates?: Record<string, PersistedEditorState>
   /** Whether the conversation view was expanded */

@@ -2,18 +2,19 @@ import React, { useEffect, useCallback, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Paperclip, Camera, Lightning } from '@phosphor-icons/react'
 import { GitPanel } from './components/GitPanel'
-import { FILE_EXPLORER_WIDTH, GIT_PANEL_WIDTH, PANEL_GAP } from './components/panelGeometry'
+import { FILE_EXPLORER_WIDTH, GIT_PANEL_WIDTH, INBOX_PANEL_WIDTH, PANEL_GAP } from './components/panelGeometry'
+import { OVERLAY_COMPOSER_LAYER, OVERLAY_CONVERSATION_LAYER } from './components/composerLayout'
 import { StatusDrawer } from './components/StatusDrawer'
 import { TabStrip } from './components/TabStrip'
 import { ConversationView } from './components/ConversationView'
 import { InputBar, useBashModeStore } from './components/InputBar'
-import { StatusBar } from './components/StatusBar'
 import { SettingsDialog } from './components/SettingsDialog'
 import { TerminalPanel } from './components/TerminalPanel'
 import { TerminalBigScreen } from './components/TerminalBigScreen'
 import { AppOverlays } from './components/AppOverlays'
 import { ConversationErrorBoundary } from './components/conversation'
 import { FileExplorer } from './components/FileExplorer'
+import { InboxPanel } from './components/InboxPanel'
 import { FileEditor } from './components/FileEditor'
 import { QuickToolsTray } from './components/QuickToolsTray'
 import { PopoverLayerProvider } from './components/PopoverLayer'
@@ -24,6 +25,7 @@ import { useEngineEvents } from './hooks/useEngineEvents'
 import { useHealthReconciliation } from './hooks/useHealthReconciliation'
 import { useTrayMenuListeners } from './hooks/useTrayMenuListeners'
 import { useTabRestoration } from './hooks/useTabRestoration'
+import { useOwnerBootstrap } from './hooks/useOwnerBootstrap'
 import { useEnginePermissionDenialBackfill } from './hooks/useEnginePermissionDenialBackfill'
 import { useClickThrough } from './hooks/useClickThrough'
 import { useWorktreeRendererListeners } from './hooks/useWorktreeRendererListeners'
@@ -36,8 +38,10 @@ import { usePreferencesStore } from './preferences'
 import { useUpdateStore } from './stores/update-store'
 import { setupModelSync } from './stores/model-store'
 import { initActiveTabNotifier } from './lib/active-tab-notifier'
+import { initProjectRegistryNotifier } from './lib/project-registry-notifier'
 import { initRemoteProjectionPush } from './stores/remote-projection-push'
-import { rWarn, rError } from './rendererLogger'
+import { rError } from './rendererLogger'
+import { resolveOverlayBodyHeights } from './overlay-body-height'
 
 
 const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
@@ -51,6 +55,7 @@ export default function App() {
   useClickThrough()
   useWorktreeRendererListeners()
   useWorktreeRemoteCommandListeners()
+  useOwnerBootstrap()
 
   // Publish the active tab to the main process (desktop.focus resource +
   // Agent Team Visualizer targeting) on startup and on every change.
@@ -58,9 +63,16 @@ export default function App() {
     return initActiveTabNotifier()
   }, [])
 
+  // Project-registry auto-populate (G1): every conversation tab's base dir
+  // registers; the active tab bumps recency. Owner window only — App.tsx
+  // never mounts in the Studio mirror.
+  useEffect(() => {
+    return initProjectRegistryNotifier()
+  }, [])
+
   // Push the remote tab-state projection to the main process on store change
   // (renderer-push snapshot architecture; replaces the 5 s executeJavaScript
-  // poll). No-ops in the ATV mirror window — owner-only push.
+  // poll). No-ops in the STUDIO mirror window — owner-only push.
   useEffect(() => {
     return initRemoteProjectionPush()
   }, [])
@@ -69,19 +81,19 @@ export default function App() {
   // worktree, or open a bench conversation/terminal — see
   // `useWorktreeRemoteCommandListeners` for all of these.
 
-  // Conversation-picker selections from the ATV window: switch the desktop
+  // Conversation-picker selections from the STUDIO window: switch the desktop
   // tab so both surfaces stay on the same conversation.
   useEffect(() => {
-    return window.ion.onAtvFocusTab((tabId) => {
+    return window.ion.onStudioFocusTab((tabId) => {
       useSessionStore.getState().selectTab(tabId)
     })
   }, [])
 
-  // Click-to-inspect from the ATV window: switch to the tab, then ask the
+  // Click-to-inspect from the STUDIO window: switch to the tab, then ask the
   // agent panel to open that agent's dispatch detail (same as clicking the
   // agent's row).
   useEffect(() => {
-    return window.ion.onAtvFocusAgent((tabId, agentName) => {
+    return window.ion.onStudioFocusAgent((tabId, agentName) => {
       useSessionStore.getState().selectTab(tabId)
       // The orchestrator has no dispatch panel — it IS the main conversation,
       // so switching the tab (with the overlay shown by main) is the whole
@@ -104,45 +116,6 @@ export default function App() {
     setupModelSync()
   }, [])
 
-  // Load persisted read-resource IDs from the main process so the
-  // notifications panel shows correct read/unread state on startup.
-  useEffect(() => {
-    window.ion.getReadResourceIds().then((ids: string[]) => {
-      if (ids.length > 0) {
-        useSessionStore.setState({ readResourceIds: new Set(ids) })
-      }
-    }).catch((err) => rWarn('resources', 'getReadResourceIds failed', { error: String(err) }))
-  }, [])
-
-  // Cold-load persisted resources from disk so the notifications panel
-  // has data immediately, even if engine subscriptions fail or return
-  // empty (e.g. extension subprocess crash-loops during startup).
-  useEffect(() => {
-    window.ion.getPersistedResources().then((items: any[]) => {
-      if (items.length > 0) {
-        const byKind: Record<string, any[]> = {}
-        const readIds: string[] = []
-        for (const item of items) {
-          if (!byKind[item.kind]) byKind[item.kind] = []
-          byKind[item.kind].push(item)
-          if (item.read) readIds.push(item.id)
-        }
-        useSessionStore.setState((state) => {
-          // Merge: don't overwrite if engine subscriptions already populated
-          const merged = { ...state.resources }
-          for (const [kind, kindItems] of Object.entries(byKind)) {
-            if (!merged[kind] || merged[kind].length === 0) {
-              merged[kind] = kindItems
-            }
-          }
-          const mergedReadIds = new Set(state.readResourceIds)
-          for (const id of readIds) mergedReadIds.add(id)
-          return { resources: merged, readResourceIds: mergedReadIds }
-        })
-      }
-    }).catch((err) => rWarn('resources', 'getPersistedResources failed', { error: String(err) }))
-  }, [])
-
   // Initialize remote-fs store (queries main for isRemote)
   useEffect(() => {
     void useRemoteFsStore.getState().init()
@@ -153,7 +126,8 @@ export default function App() {
   // resolves the worktree warning and raises the intent. One confirm surface,
   // so a new entry point cannot introduce a third close behaviour.
   const closeIntent = useSessionStore((s) => s.closeIntent)
-  useKeyboardShortcuts()
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  useKeyboardShortcuts(() => setPaletteOpen((open) => !open))
 
   const settingsOpen = useSessionStore((s) => s.settingsOpen)
   const settingsInitialTab = useSessionStore((s) => s.settingsInitialTab)
@@ -172,9 +146,11 @@ export default function App() {
   const isTerminalTall = useSessionStore((s) => s.terminalTallTabId === s.activeTabId)
   const isTerminalBigScreen = useSessionStore((s) => s.terminalBigScreenTabId === s.activeTabId)
   const gitPanelOpen = useSessionStore((s) => s.gitPanelOpen)
+  const inboxPanelOpen = useSessionStore((s) => s.inboxPanelOpen)
   const statusDrawerOpen = useSessionStore((s) => s.statusDrawerOpen)
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const tabsReady = useSessionStore((s) => s.tabsReady)
+  const startupReady = useSessionStore((s) => s.startupReady)
   const activeTab = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId))
   const isTerminalOnly = activeTab?.isTerminalOnly || false
   // A conversation tab is any non-terminal tab. The unified ConversationView is
@@ -246,7 +222,12 @@ export default function App() {
   // In tall view: fill available vertical space dynamically
   // NON_INPUT_OVERHEAD covers tab strip (~40px) + card border/margins (~12px) + safety buffer (~38px)
   const NON_INPUT_OVERHEAD = 90
-  const tallBodyMax = winHeight - NON_INPUT_OVERHEAD - inputRowHeight
+  const tallBodyMax = Math.max(96, winHeight - NON_INPUT_OVERHEAD - inputRowHeight)
+  const normalBodies = resolveOverlayBodyHeights(
+    winHeight,
+    inputRowHeight,
+    terminalOpen && !isTallView && !isTerminalTall && !isTerminalOnly && !isTerminalBigScreen,
+  )
 
 
   const handleMainUIMouseDown = useCallback(() => {
@@ -267,19 +248,23 @@ export default function App() {
     addAttachments(files)
   }, [addAttachments])
 
+  if (!startupReady) return null
+
   return (
     <PopoverLayerProvider>
-      {/* Shared ⌘K palette (also mounted in the ATV shell — parity by
+      {/* Shared ⌘K palette (also mounted in the STUDIO shell — parity by
           construction); this surface contributes the cross-link action. */}
       <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
         actions={[
-          { id: 'act:atv', label: 'Open Visualizer', keywords: 'atv office agents', section: 'Actions', run: () => window.ion.atvOpen() },
+          { id: 'act:studio', label: 'Open Visualizer', keywords: 'studio office agents', section: 'Actions', run: () => window.ion.studioOpen() },
         ]}
       />
-      <div className="flex flex-col justify-end h-full" style={{ background: 'transparent' }}>
+      <div className="flex flex-col h-full overflow-hidden" style={{ background: 'transparent' }}>
 
         {/* ─── 460px content column, centered. Circles overflow left. ─── */}
-        <div onMouseDown={handleMainUIMouseDown} style={{ width: contentWidth, position: 'relative', margin: '0 auto', transition: 'width 0.26s cubic-bezier(0.4, 0, 0.1, 1)' }}>
+        <div onMouseDown={handleMainUIMouseDown} style={{ width: contentWidth, position: 'relative', margin: 'auto auto 0', transition: 'width 0.26s cubic-bezier(0.4, 0, 0.1, 1)' }}>
 
           <AnimatePresence initial={false}>
             {settingsOpen && (
@@ -318,7 +303,7 @@ export default function App() {
                     background: colors.containerBg,
                     border: `1px solid ${colors.containerBorder}`,
                     boxShadow: colors.cardShadow,
-                    height: 420,
+                    height: normalBodies.terminal,
                   }}
                 >
                   {activeTab && (
@@ -348,7 +333,7 @@ export default function App() {
               borderStyle: 'solid',
               borderRadius: 20,
               position: 'relative',
-              zIndex: isExpanded || isTerminalOnly || isTerminalTall || isConversation ? 20 : 10,
+              zIndex: isExpanded || isTerminalOnly || isTerminalTall || isConversation ? OVERLAY_CONVERSATION_LAYER : 10,
             }}
           >
             {tabsReady && (<>
@@ -365,7 +350,7 @@ export default function App() {
                 the always-present fixed-height geometry for all conversations
                 (no collapse-to-0). */}
             {!isTerminalOnly && !isTerminalTall && activeTab && (
-              <div style={{ height: isTall ? tallBodyMax : 420 }}>
+              <div style={{ height: isTall ? tallBodyMax : normalBodies.conversation }}>
                 <ConversationErrorBoundary>
                   <ConversationView key={activeTabId} tabId={activeTabId} />
                 </ConversationErrorBoundary>
@@ -374,7 +359,7 @@ export default function App() {
 
             {/* Terminal-only tab: full terminal, no conversation */}
             {isTerminalOnly && !isTerminalBigScreen && activeTab && (
-              <div style={{ height: isTerminalTall ? tallBodyMax : 420 }}>
+              <div style={{ height: isTerminalTall ? tallBodyMax : normalBodies.conversation }}>
                 <TerminalPanel tabId={activeTabId} cwd={activeTab.workingDirectory} />
               </div>
             )}
@@ -385,21 +370,16 @@ export default function App() {
                 <TerminalPanel tabId={activeTabId} cwd={activeTab.workingDirectory} />
               </div>
             )}
-            {/* Unified status bar. Single instance, always rendered at
-                the bottom of the active tab body regardless of tab
-                type (conversation, engine, terminal-only, terminal-tall).
-                Every state read inside StatusBar derives from
-                `s.activeTabId` so one mount serves them all — no need
-                for per-branch mounts or a hidden zero-size mount to
-                keep useGitRepo subscribed. */}
-            <StatusBar />
             </>)}
           </motion.div>
 
           {/* ─── Input row — circles float outside left ─── */}
           {/* Hidden when terminal-only tab (no conversation input needed) */}
           {/* marginBottom: shadow buffer so the glass-surface drop shadow isn't clipped at the native window edge */}
-          <div ref={inputRowRef} data-ion-ui className="relative" style={{ minHeight: isTerminalOnly ? 20 : 46, zIndex: 15, marginBottom: isTerminalOnly ? 20 : 60, pointerEvents: isTerminalOnly ? 'none' : undefined, opacity: isTerminalOnly ? 0 : 1 }}>
+          {/* The preview rail expands this row upward. Stacking must stay above
+              conversation chrome, otherwise queued pasted attachments exist
+              but are painted behind the transcript. */}
+          <div ref={inputRowRef} data-ion-ui className="relative" style={{ minHeight: isTerminalOnly ? 20 : 46, zIndex: OVERLAY_COMPOSER_LAYER, marginBottom: isTerminalOnly ? 20 : 60, pointerEvents: isTerminalOnly ? 'none' : undefined, opacity: isTerminalOnly ? 0 : 1 }}>
             {/* Stacked circle buttons — expand on hover */}
             <div
               data-ion-ui
@@ -453,6 +433,22 @@ export default function App() {
               <InputBar />
             </div>
           </div>
+          {/* Inbox and File Explorer share the left edge. Store actions keep
+              exactly one open, so both use the same geometry without overlap. */}
+          <AnimatePresence>
+            {tabsReady && inboxPanelOpen && (
+              <motion.div
+                data-ion-ui
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={TRANSITION}
+                style={{ position: 'absolute', right: '100%', bottom: 60, marginRight: 8, width: INBOX_PANEL_WIDTH, zIndex: 25 }}
+              >
+                <InboxPanel onClose={() => useSessionStore.getState().closeInboxPanel()} />
+              </motion.div>
+            )}
+          </AnimatePresence>
           {/* File explorer — anchored to left edge of content column */}
           <AnimatePresence>
             {tabsReady && explorerOpen && (

@@ -53,7 +53,7 @@ export function applyActiveGroupMove(
   get: () => State,
   source: string,
 ): boolean {
-  // MIRROR GUARD: auto-group movement is an OWNER decision. The ATV mirror
+  // MIRROR GUARD: auto-group movement is an OWNER decision. The Studio mirror
   // ingests the same event stream, so without this guard both windows
   // evaluated every trigger — and the mirror's copy read its own (possibly
   // stale) permission mode, then FORWARDED moveTabToGroup to the owner,

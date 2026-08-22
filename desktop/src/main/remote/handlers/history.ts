@@ -8,27 +8,6 @@ function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
 }
 
-export async function handleRewind(cmd: Extract<RemoteCommand, { type: 'desktop_rewind' }>): Promise<void> {
-  try {
-    const escapedTabId = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    const escapedMsgId = cmd.messageId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    const inputText = await state.mainWindow?.webContents.executeJavaScript(`
-      (function() {
-        var store = window.__Ion_SESSION_STORE__;
-        if (!store) return null;
-        store.getState().rewindToMessage('${escapedTabId}', '${escapedMsgId}');
-        var tab = store.getState().tabs.find(function(t) { return t.id === '${escapedTabId}'; });
-        return tab ? tab.pendingInput || null : null;
-      })()
-    `)
-    if (inputText) {
-      state.remoteTransport?.send({ type: 'desktop_input_prefill', tabId: cmd.tabId, text: inputText })
-    }
-  } catch (err) {
-    log('rewind error', { error: (err as Error).message })
-  }
-}
-
 export async function handleForkFromMessage(cmd: Extract<RemoteCommand, { type: 'desktop_fork_from_message' }>): Promise<void> {
   try {
     const escapedTabId = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
@@ -70,20 +49,54 @@ export async function handleEngineRewind(cmd: Extract<RemoteCommand, { type: 'de
     // when the id is not found. JS-encode null when absent (desktop-initiated
     // rewinds pass only the id and omit the index).
     const userTurnIndexArg = typeof cmd.userTurnIndex === 'number' ? String(cmd.userTurnIndex) : 'null'
-    const inputText = await state.mainWindow?.webContents.executeJavaScript(`
+    // rewindEngineInstance is TRANSACTIONAL and async: it calls the engine
+    // first and mutates local (and Studio/iOS) state only on success. The
+    // executeJavaScript call MUST await the returned promise — reading
+    // tab.pendingInput synchronously right after the fire-and-forget call
+    // would race the truncation and send a prefill for a rewind that had not
+    // actually completed (or had been rejected) yet.
+    const result = await state.mainWindow?.webContents.executeJavaScript(`
       (function() {
         var store = window.__Ion_SESSION_STORE__;
-        if (!store) return null;
-        store.getState().rewindEngineInstance('${escapedTabId}', '${escapedInstId}', '${escapedMsgId}', ${userTurnIndexArg});
-        var tab = store.getState().tabs.find(function(t) { return t.id === '${escapedTabId}'; });
-        return tab ? tab.pendingInput || null : null;
+        if (!store) return { ok: false, error: 'no store', inputText: null };
+        return store.getState().rewindEngineInstance('${escapedTabId}', '${escapedInstId}', '${escapedMsgId}', ${userTurnIndexArg})
+          .then(function(res) {
+            var tab = store.getState().tabs.find(function(t) { return t.id === '${escapedTabId}'; });
+            return { ok: res.ok, error: res.error || null, inputText: (res.ok && tab) ? (tab.pendingInput || null) : null };
+          });
       })()
-    `)
-    if (inputText) {
-      state.remoteTransport?.send({ type: 'desktop_input_prefill', tabId: cmd.tabId, text: inputText, instanceId: cmd.instanceId })
+    `) as { ok: boolean; error: string | null; inputText: string | null } | undefined
+    if (!result || !result.ok) {
+      const error = result?.error ?? 'unknown'
+      log('engine_rewind: rejected', { tab_id: cmd.tabId, instance_id: cmd.instanceId, error })
+      // Tell iOS the rewind was refused. Without this reply the user taps
+      // "Rewind", the transcript never changes (correctly — the engine
+      // refused it), and iOS shows nothing at all: a silent no-op that reads
+      // as the button doing nothing. A successful rewind stays silent by
+      // convention (observable through the existing history/prefill push);
+      // only the failure path needs an explicit notice.
+      state.remoteTransport?.send({
+        type: 'desktop_engine_rewind_result',
+        tabId: cmd.tabId,
+        instanceId: cmd.instanceId,
+        status: 'rejected',
+        error,
+      })
+      return
+    }
+    if (result.inputText) {
+      state.remoteTransport?.send({ type: 'desktop_input_prefill', tabId: cmd.tabId, text: result.inputText, instanceId: cmd.instanceId })
     }
   } catch (err) {
-    log('engine_rewind error', { error: (err as Error).message })
+    const error = (err as Error).message
+    log('engine_rewind error', { error })
+    state.remoteTransport?.send({
+      type: 'desktop_engine_rewind_result',
+      tabId: cmd.tabId,
+      instanceId: cmd.instanceId,
+      status: 'rejected',
+      error,
+    })
   }
 }
 

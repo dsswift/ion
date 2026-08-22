@@ -29,6 +29,7 @@ vi.mock('../../../theme', () => ({
 }))
 vi.mock('../../../rendererLogger', () => ({
   rInfo: vi.fn(),
+  rWarn: vi.fn(),
   rError: vi.fn(),
 }))
 // The viewer pulls in FloatingPanel + the zustand store; the gallery contract

@@ -7,7 +7,7 @@
  * when it has something to do (a row needs sync or sits mid-operation); the
  * banner replaces it while the pipeline runs so the two can never show
  * conflicting stories. All state lives in the store's `worktreePipeline` slot
- * (never component state) — the ATV mirror renders the same banner from the
+ * (never component state) — the Studio mirror renders the same banner from the
  * same record, and every button dispatches a FORWARDED store action.
  *
  * The confirm gate is the cost-visibility stop: agents cost real money, so
@@ -54,11 +54,14 @@ export function WorktreePipelinePanel({
   repoPath,
   sourceBranch,
   entries,
+  showAction = true,
 }: {
   repoPath: string
   /** The active bench's source branch, when one exists — enables phase 4. */
   sourceBranch: string | null
   entries: readonly WorktreeInventoryEntry[]
+  /** Header hosts render their own persistent Sync All button. */
+  showAction?: boolean
 }): React.JSX.Element | null {
   const colors = useColors()
   const pipeline = useSessionStore((s) => s.worktreePipeline)
@@ -74,7 +77,7 @@ export function WorktreePipelinePanel({
     && pipeline.phase !== 'done' && pipeline.phase !== 'failed'
 
   // Nothing to show: no runnable work, nothing running, nothing to report.
-  if (!mine && actionable === 0) return null
+  if (!mine && (!showAction || actionable === 0)) return null
 
   const conflictedNames = mine?.phase === 'awaiting-ai-confirm'
     ? mine.queue.map((wt) => nameOf(mine, wt))
@@ -82,7 +85,7 @@ export function WorktreePipelinePanel({
 
   return (
     <div style={{ flexShrink: 0 }}>
-      {!running && actionable > 0 && (
+      {showAction && !running && actionable > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 6px' }}>
           <Tooltip text={otherRepoBusy
             ? 'A sync pipeline is already running for another project'

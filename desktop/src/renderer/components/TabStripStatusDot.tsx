@@ -27,6 +27,9 @@ interface StatusDotDerived {
    *  the prop-mode cascade below is skipped entirely. */
   derived: { bg: string; pulse: boolean; glow: boolean; glowColor: string }
   pillIcon?: string | null
+  /** Diameter in CSS pixels. Tab pills use the default; compact status callers
+   *  supply their own size without re-implementing pulse and glow behavior. */
+  size?: number
 }
 
 interface StatusDotProps {
@@ -68,7 +71,7 @@ export function StatusDot(props: StatusDotAllProps) {
     // ── Prop mode: inline cascade (must mirror getTabStatusColor priority) ──
     //
     // Priority order (matches TabStripShared.getTabStatusColor):
-    //   error > permission > running > running-children > bash-background >
+    //   error > permission > running > starting > running-children > bash-background >
     //   plan-ready > question > bash > unread > idle
     bg = colors.statusIdle
     pulse = false
@@ -85,6 +88,9 @@ export function StatusDot(props: StatusDotAllProps) {
       // see TabStripShared.getTabStatusColor for the rationale.
       bg = colors.statusRunning
       pulse = true
+    } else if (props.status === 'starting') {
+      // A session is attaching, not running a turn. Keep the idle dot still.
+      bg = colors.statusIdle
     } else if (props.hasRunningChildren) {
       // Yellow "awaiting children" — orchestrator idle, dispatched
       // background agents still running. Mirrors the
@@ -128,21 +134,28 @@ export function StatusDot(props: StatusDotAllProps) {
 
   const pillIcon = props.pillIcon
   const IconComponent = pillIcon ? PILL_ICON_MAP[pillIcon] : null
+  // Icon pills historically render at 8px while circular dots render at 6px.
+  // A caller-supplied size deliberately overrides either default.
+  const size = 'size' in props && props.size != null
+    ? props.size
+    : IconComponent ? 8 : 6
   if (IconComponent) {
     return (
       <span
         className={`flex-shrink-0 inline-flex items-center justify-center ${pulse ? 'animate-pulse-dot' : ''}`}
-        style={{ width: 8, height: 8, ...(glow ? { filter: `drop-shadow(0 0 4px ${glowColor})` } : {}) }}
+        style={{ width: size, height: size, ...(glow ? { filter: `drop-shadow(0 0 4px ${glowColor})` } : {}) }}
       >
-        <IconComponent size={8} weight="fill" color={bg} />
+        <IconComponent size={size} weight="fill" color={bg} />
       </span>
     )
   }
 
   return (
     <span
-      className={`w-[6px] h-[6px] rounded-full flex-shrink-0 ${pulse ? 'animate-pulse-dot' : ''}`}
+      className={`rounded-full flex-shrink-0 ${pulse ? 'animate-pulse-dot' : ''}`}
       style={{
+        width: size,
+        height: size,
         background: bg,
         ...(glow ? { boxShadow: `0 0 6px 2px ${glowColor}` } : {}),
       }}

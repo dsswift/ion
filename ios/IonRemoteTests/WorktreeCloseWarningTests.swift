@@ -109,7 +109,7 @@ final class WorktreeCloseWarningTests: XCTestCase {
         // Reassurance is part of the contract on both clients: the close is not
         // destructive and the operator must know how to get back.
         XCTAssertTrue(summary.lowercased().contains("nothing is deleted"), summary)
-        XCTAssertTrue(summary.contains("Worktrees list"), summary)
+        XCTAssertTrue(summary.contains("Inbox"), summary)
     }
 
     func testSingularisesOneCommit() throws {

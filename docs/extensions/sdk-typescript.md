@@ -485,6 +485,8 @@ await ctx.dispatchAgent({
 
 **Sub-agent governance.** `allowedSubAgents` is the set of agent names the *dispatched* agent may dispatch in turn (the engine enforces membership on its nested dispatches). `subAgentPolicy` selects the enforcement mode: unset keeps the historic semantics (enforced only when the list is non-empty), `'allowlist'` enforces even an **empty** list (an empty list denies all nested dispatch — how a harness declares a leaf agent), and `'unrestricted'` opts out. The engine's self-dispatch rail applies in every mode.
 
+**Dispatch wait metadata.** `await ctx.listDispatchState()` returns active entries. A suspended entry may carry `waitingOn`: `taskIds` names notifying background Bash tasks; `childDispatchIds` names dispatched children. Both arrays are exact current sets, sorted for stable snapshots. `pendingChildren` remains compatibility-only mirror of child IDs. Absent `waitingOn` means running, or a bare `suspend()` awaiting only a prompt.
+
 ```typescript
 await ctx.dispatchAgent({
   name: 'ios-dev',            // a leaf specialist
@@ -778,7 +780,7 @@ If a downstream renderer doesn't recognize the type, it's silently dropped — t
 interface DispatchAgentOpts {
   name: string              // agent name (required)
   task: string              // task description (required)
-  model?: string            // model override
+  model?: string            // deterministic extension-selected model; may select another provider
   extensionDir?: string     // extension directory for the child session
   systemPrompt?: string     // injected system prompt
   projectPath?: string      // working directory for the agent

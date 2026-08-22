@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { parseAttachmentsFromMessages } from '../StatusBarAttachmentsParser'
+import { hasPlanFileBeenWritten, isPlanImplementedInMessages, latestPlanPathFromMessages, parseAttachmentsFromMessages } from '../StatusBarAttachmentsParser'
+import { formatImplementDivider } from '../../../shared/clear-divider'
 
 /**
  * Pins the attachment-detection logic that powers the engine-tab
@@ -264,5 +265,96 @@ describe('parseAttachmentsFromMessages — engine plan detection', () => {
     ]
     const out = parseAttachmentsFromMessages(messages, null)
     expect(out).toEqual([])
+  })
+})
+
+
+describe('latestPlanPathFromMessages', () => {
+  it('keeps live current plan authoritative over transcript history', () => {
+    expect(latestPlanPathFromMessages([
+      { role: 'system', content: '── Implementing plan', planFilePath: '/plans/previous.md' },
+    ], '/plans/current.md')).toBe('/plans/current.md')
+  })
+
+  it('uses latest transcript plan after Implement clears current plan path', () => {
+    expect(latestPlanPathFromMessages([
+      { role: 'tool', content: '', toolName: 'Write', toolInput: JSON.stringify({ file_path: '/plans/first.md' }) },
+      { role: 'system', content: '── Implementing plan', planFilePath: '/plans/first.md' },
+    ], null)).toBe('/plans/first.md')
+  })
+
+  it('uses transcript order, not deduplicated attachment order, for later plans', () => {
+    expect(latestPlanPathFromMessages([
+      { role: 'tool', content: '', toolName: 'Write', toolInput: JSON.stringify({ file_path: '/plans/first.md' }) },
+      { role: 'system', content: '── Implementing plan', planFilePath: '/plans/first.md' },
+      { role: 'tool', content: '', toolName: 'Write', toolInput: JSON.stringify({ file_path: '/plans/second.md' }) },
+    ], null)).toBe('/plans/second.md')
+  })
+})
+
+
+describe('hasPlanFileBeenWritten', () => {
+  it('distinguishes a reserved path from an engine-confirmed authored plan', () => {
+    const path = '/plans/reserved.md'
+    expect(hasPlanFileBeenWritten([], path)).toBe(false)
+    expect(hasPlanFileBeenWritten([
+      { role: 'system', content: '── Plan created at 1:00 PM · reserved ──', planFilePath: path },
+    ], path)).toBe(true)
+  })
+})
+
+/**
+ * isPlanImplementedInMessages — the "Implemented" badge reads recorded
+ * evidence, not an absence.
+ *
+ * REGRESSION: PlanSurface derived `implemented` as
+ * `!!planFilePath && !instance.planFilePath` — i.e. "we know a plan path from
+ * history but the instance field is empty." The implement flow does clear that
+ * field as its last step, so the shape matched. But EVERY other path that nulls
+ * the field produces the identical shape, so the badge asserted an
+ * implementation that never happened. This was observed alongside the lost
+ * Plan Ready card: the same conversation kept its plan path while its card was
+ * cleared by an unrelated lifecycle event.
+ *
+ * The implement divider is the durable record written at user approval, so it
+ * is the evidence. Absence of a field is not evidence.
+ */
+describe('isPlanImplementedInMessages', () => {
+  const path = '/Users/x/.ion/plans/tidy-mixing-brook.md'
+  const slug = 'tidy-mixing-brook'
+
+  it('is true when an implement divider for that plan is in the transcript', () => {
+    const messages = [
+      { role: 'assistant', content: 'here is the plan' },
+      { role: 'system', content: formatImplementDivider(new Date(), slug) },
+    ]
+    expect(isPlanImplementedInMessages(messages, path)).toBe(true)
+  })
+
+  it('is FALSE when the plan path was cleared but no implement divider exists', () => {
+    // The exact false positive: history knows the plan, the instance field is
+    // gone, and nothing was ever implemented.
+    const messages = [
+      { role: 'system', content: '── Plan created at 1:00 PM · tidy-mixing-brook ──', planFilePath: path },
+      { role: 'assistant', content: 'plan written' },
+    ]
+    expect(isPlanImplementedInMessages(messages, path)).toBe(false)
+  })
+
+  it('is false when the implement divider belongs to a DIFFERENT plan', () => {
+    const messages = [
+      { role: 'system', content: formatImplementDivider(new Date(), 'some-other-plan') },
+    ]
+    expect(isPlanImplementedInMessages(messages, path)).toBe(false)
+  })
+
+  it('is false for no plan path, and for an empty transcript', () => {
+    expect(isPlanImplementedInMessages([{ role: 'system', content: formatImplementDivider(new Date(), slug) }], null)).toBe(false)
+    expect(isPlanImplementedInMessages([], path)).toBe(false)
+  })
+
+  it('ignores a non-divider message that merely mentions the slug', () => {
+    const messages = [{ role: 'assistant', content: `I will implement ${slug} later` }]
+    expect(isPlanImplementedInMessages(messages, path)).toBe(false)
   })
 })

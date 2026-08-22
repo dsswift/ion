@@ -66,8 +66,8 @@ describe('attemptRendererRecovery', () => {
   it('budgets are per window kind', () => {
     const recover = vi.fn()
     for (let i = 0; i < 4; i++) attemptRendererRecovery('overlay', CRASH, recover)
-    // The overlay budget being spent must not block the ATV.
-    expect(attemptRendererRecovery('atv', CRASH, recover)).toBe(true)
+    // The overlay budget being spent must not block the Studio window.
+    expect(attemptRendererRecovery('studio', CRASH, recover)).toBe(true)
   })
 
   it('the rolling window forgets old crashes', () => {

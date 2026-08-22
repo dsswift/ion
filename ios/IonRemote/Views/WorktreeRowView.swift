@@ -19,12 +19,16 @@ struct WorktreeRowView: View {
     let busy: Bool
     let onOpen: () -> Void
     let onSync: () -> Void
-    let onLand: () -> Void
+    let onLandAndRetire: () -> Void
     /// Bench verbs. Absent (no-op) when the surface offers no bench actions,
     /// such as the new-tab sheet.
     var onToggleEnrollment: (() -> Void)?
-    var onToggleIncluded: (() -> Void)?
     var onUpdatePin: (() -> Void)?
+    var onRename: (() -> Void)?
+    var onReprovision: (() -> Void)?
+    var onMoveEarlier: (() -> Void)?
+    var onMoveLater: (() -> Void)?
+    var onDiscardRecordings: (() -> Void)?
     /// Set or clear the worktree's workflow stage. Worktree-scoped, so it is
     /// offered on unenrolled rows too. Nil clears.
     var onSetStage: ((WorkStage?) -> Void)?
@@ -35,10 +39,28 @@ struct WorktreeRowView: View {
     /// menu. Absent (no-op row, just a name) when the host doesn't wire
     /// navigation -- mirrors `onNewConversation`'s optionality.
     var onSelectConversation: ((String) -> Void)?
-    /// Retire a landed worktree. Absent when the host doesn't offer retire.
+    /// Verification evidence for this replayed member. The desktop identifies
+    /// suspects in its projection; iOS renders that fact and opens analysis.
+    var verificationFailure: RemoteBenchVerification?
+    /// Retire this worktree (appraised on the desktop; refusals carry the
+    /// reason). Absent on hosts that do not offer lifecycle verbs.
     var onRetire: (() -> Void)?
+    /// The live auto-fix resolver for THIS worktree's directory, when one is
+    /// running. While set, the conflict chip flashes and its tap focuses the
+    /// resolver instead of launching a second one — the desktop's exact
+    /// reactivation block (WorktreeStateSlot).
+    var activeAutoFixTabId: String?
+    /// The live auto-fix resolver for the BENCH directory, for the
+    /// bench-conflict triangle's flash + focus routing.
+    var benchAutoFixTabId: String?
+    /// Launch the AI-assisted resolver on this worktree's conflicted
+    /// operation. iOS supports the assisted flow only (the 3-pane manual
+    /// merge stays desktop-only, the one authorized difference).
+    var onConflictAssist: (() -> Void)?
+    /// Bench chain: recreate the failed assembly merge, then launch the
+    /// assisted resolver on the bench directory.
+    var onBenchConflictAssist: (() -> Void)?
 
-    @State private var confirmRetire = false
 
     private var membership: RemoteMembership? { worktree.membership }
 
@@ -78,71 +100,44 @@ struct WorktreeRowView: View {
     }
 
     var body: some View {
-        if worktree.isLanded {
-            landedBody
-        } else {
-            activeBody
-        }
+        activeBody
     }
 
-    // MARK: - Landed row
-
-    private var landedBody: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.caption2)
-                .foregroundStyle(.green)
-
-            Text(worktree.displayName)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-
-            Text(worktree.branchName)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-
-            Spacer(minLength: 4)
-
-            Text("landed")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-
-            if busy { ProgressView().controlSize(.mini) }
-        }
-        .contextMenu {
-            if !worktree.openConversations.isEmpty {
-                Section("Open here") {
-                    ForEach(worktree.openConversations) { conversation in
-                        if let onSelectConversation {
-                            Button {
-                                onSelectConversation(conversation.tabId)
-                            } label: {
-                                Text(conversation.title)
-                            }
-                        } else {
-                            Text(conversation.title)
-                        }
-                    }
-                }
+    /// One conflict indicator: flashing + focus while a resolver runs,
+    /// assisted-resolution launch otherwise. `onSelectConversation` is the
+    /// focus path (the resolver is an ordinary conversation tab).
+    @ViewBuilder
+    private func conflictBadge(
+        label: String?,
+        resolverTabId: String?,
+        assist: (() -> Void)?,
+        accessibility: String
+    ) -> some View {
+        let resolving = resolverTabId != nil
+        Button {
+            if let resolverTabId, let onSelectConversation {
+                onSelectConversation(resolverTabId)
+            } else {
+                assist?()
             }
-            if let onRetire {
-                Button(role: .destructive) {
-                    confirmRetire = true
-                } label: {
-                    Label("Retire worktree", systemImage: "trash")
-                }
+        } label: {
+            HStack(spacing: 2) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .symbolEffect(.pulse, options: .repeating, isActive: resolving)
+                if let label { Text(label) }
             }
+            .font(.caption2)
+            // A live resolver is work in progress (warning); an unattended
+            // conflict is a failure state (error). Named palette colors resolve
+            // the same under every theme pack, so a pack could not reach this
+            // badge at all.
+            .foregroundStyle(resolving ? theme.statusWarning : theme.statusError)
         }
-        .confirmationDialog("Retire this worktree?",
-                            isPresented: $confirmRetire,
-                            titleVisibility: .visible) {
-            Button("Retire", role: .destructive) { onRetire?() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("The worktree directory and its branch will be removed. All work in this worktree has already landed.")
-        }
+        .buttonStyle(.plain)
+        // Assist requires a wired action or a live resolver; a bare badge
+        // (new-tab sheet host) stays non-interactive.
+        .disabled(assist == nil && resolverTabId == nil)
+        .accessibilityLabel(resolving ? "AI resolution in progress. Tap to focus." : accessibility)
     }
 
     // MARK: - Active row
@@ -151,27 +146,11 @@ struct WorktreeRowView: View {
         Button(action: onOpen) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    // Bench membership leads: it is the only state that changes
-                    // what the BUILD contains. The three readings differ by SHAPE
-                    // and HUE, not by opacity -- `excluded` was a dimmed grey
-                    // diamond and `none` drew nothing, which at this size made an
-                    // excluded member read as one that was never enrolled. An
-                    // excluded member keeps the accent because the fact it must
-                    // convey is "IS a member, currently skipped".
-                    switch worktree.enrollment {
-                    case .included:
-                        Image(systemName: "diamond.fill")
-                            .font(.system(size: 7)) // design-type: SF Symbol membership glyph sized as icon geometry, not text
-                            .foregroundStyle(Color.accentColor)
-                    case .excluded:
-                        Image(systemName: "diamond.bottomhalf.filled")
-                            .font(.system(size: 7)) // design-type: SF Symbol membership glyph sized as icon geometry, not text
-                            .foregroundStyle(Color.accentColor)
-                    case .none:
-                        Image(systemName: "diamond")
-                            .font(.system(size: 7)) // design-type: SF Symbol membership glyph sized as icon geometry, not text
-                            .foregroundStyle(Color.secondary)
-                    }
+                    // Bench membership is binary. A filled diamond means the
+                    // worktree contributes to its bench. An outline means it does not.
+                    Image(systemName: worktree.isBenchMember ? "diamond.fill" : "diamond")
+                        .font(.system(size: 7)) // design-type: SF Symbol membership glyph sized as icon geometry, not text
+                        .foregroundStyle(worktree.isBenchMember ? Color.accentColor : Color.secondary)
 
                     // Activity: the aggregate of this worktree's conversations,
                     // in the app's existing dot vocabulary. This circle used to
@@ -213,25 +192,45 @@ struct WorktreeRowView: View {
 
                     // An in-progress conflicted operation outranks every other
                     // badge: the worktree is mid-rebase and its other numbers
-                    // are conservative defaults. Resolution is desktop-only;
-                    // this chip keeps the state visible instead of the worktree
-                    // looking healthy (or vanishing, as it once did).
+                    // are conservative defaults. Tappable: while an auto-fix
+                    // resolver runs it FLASHES and focuses that conversation
+                    // (the desktop's reactivation block — the resolve verb is
+                    // unreachable while the machine conversation is live);
+                    // otherwise it launches the AI-assisted resolution. The
+                    // 3-pane manual merge stays desktop-only.
                     if worktree.operationState != nil {
-                        HStack(spacing: 2) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                            Text(conflictChipText)
-                        }
-                        .font(.caption2)
-                        .foregroundStyle(.red)
+                        conflictBadge(
+                            label: conflictChipText,
+                            resolverTabId: activeAutoFixTabId,
+                            assist: onConflictAssist,
+                            accessibility: "Resolve conflicts with AI assistance"
+                        )
                     }
 
                     // A bench merge conflict is a different failure from an
                     // in-worktree one: the contribution is not in the build at
-                    // all. Both can be true, so both are shown.
+                    // all. Both can be true, so both are shown. Tappable with
+                    // the same flash + focus/assist routing, against the BENCH
+                    // resolver and the bench assist chain.
                     if membership?.merge == .conflicted {
-                        Image(systemName: "exclamationmark.triangle.fill")
+                        conflictBadge(
+                            label: nil,
+                            resolverTabId: benchAutoFixTabId,
+                            assist: onBenchConflictAssist,
+                            accessibility: "Resolve bench conflict with AI assistance"
+                        )
+                    }
+                    if membership?.mergeResolution == "replayed" {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                            .accessibilityLabel("Merged from replayed resolution")
+                    }
+                    if verificationFailure != nil {
+                        Image(systemName: "checkmark.seal.trianglebadge.exclamationmark")
                             .font(.caption2)
                             .foregroundStyle(.red)
+                            .accessibilityLabel("Verification failed after replayed resolution")
                     }
                     // The operator's workflow stage -- same glyph vocabulary as
                     // the desktop's gutter chip, set from the context menu.
@@ -323,7 +322,8 @@ struct WorktreeRowView: View {
                     // carry what a summary cannot, which is why three axes exist
                     // rather than one collapsed status.
                     if let m = membership {
-                        if !m.enabled { benchWord("excluded") }
+                        if m.mergeResolution == "replayed" { benchWord("replay used") }
+                        if verificationFailure != nil { benchWord("verification failed") }
                         switch m.pin {
                         case .empty: benchWord("no commits yet")
                         case .absorbed: benchWord("landed")
@@ -385,6 +385,10 @@ struct WorktreeRowView: View {
                                 onSelectConversation(conversation.tabId)
                             } label: {
                                 Text(conversation.title)
+                                if let roleLabel = conversation.roleLabel {
+                                    Text(roleLabel)
+                                        .foregroundStyle(.tint)
+                                }
                             }
                         } else {
                             Text(conversation.title)
@@ -405,11 +409,15 @@ struct WorktreeRowView: View {
                 .disabled(worktree.sourceBranch == nil)
             }
             if let m = membership {
-                // The bench conflict's detail. Resolution is desktop-only (a
-                // 3-pane merge does not translate to a phone), but the FACTS --
-                // which files, which member -- ride the wire already, and a bare
-                // red triangle with no explanation was the parity gap: the
-                // desktop names them, so the phone does too.
+                if let verificationFailure {
+                    Section("Verification failed after replay") {
+                        Text(verificationFailure.command).font(.caption2.monospaced())
+                        Text(verificationFailure.outputTail).font(.caption2).lineLimit(4)
+                    }
+                }
+                // The bench conflict's detail. The FACTS -- which files, which
+                // member -- ride the wire; the assisted resolution is one tap.
+                // Only the 3-pane manual merge stays desktop-only.
                 if m.merge == .conflicted {
                     Section("Bench conflict -- assembly failed") {
                         ForEach(m.conflictPaths ?? [], id: \.self) { path in
@@ -420,15 +428,25 @@ struct WorktreeRowView: View {
                         } else {
                             Text("Collides with the base branch")
                         }
-                        Text("The bench is empty until this is resolved on the desktop.")
-                    }
-                }
-                if let onToggleIncluded {
-                    Button {
-                        onToggleIncluded()
-                    } label: {
-                        Label(m.enabled ? "Exclude from the merge" : "Include in the merge",
-                              systemImage: m.enabled ? "minus.circle" : "plus.circle")
+                        if let resolverTabId = benchAutoFixTabId {
+                            // Reactivation block: while a resolver runs, focus
+                            // is the only affordance — never a second launch.
+                            if let onSelectConversation {
+                                Button {
+                                    onSelectConversation(resolverTabId)
+                                } label: {
+                                    Label("AI resolution in progress — go to it", systemImage: "bolt.fill")
+                                }
+                            }
+                        } else if let onBenchConflictAssist {
+                            Button {
+                                onBenchConflictAssist()
+                            } label: {
+                                Label("Resolve with AI assistance", systemImage: "wand.and.stars")
+                            }
+                        } else {
+                            Text("The bench is empty until this is resolved.")
+                        }
                     }
                 }
                 if let onUpdatePin, m.pin == .behind {
@@ -444,6 +462,23 @@ struct WorktreeRowView: View {
                     // lands -- and it publishes pre-rebase content to anyone who
                     // reassembles the bench in between.
                     .disabled(worktree.needsSync)
+                }
+            }
+            if let onRename {
+                Button { onRename() } label: { Label("Rename worktree", systemImage: "pencil") }
+            }
+            if let onReprovision {
+                Button { onReprovision() } label: { Label("Re-provision", systemImage: "arrow.clockwise") }
+            }
+            if membership != nil, let onMoveEarlier, let onMoveLater {
+                Section("Bench order") {
+                    Button { onMoveEarlier() } label: { Label("Move earlier", systemImage: "arrow.up") }
+                    Button { onMoveLater() } label: { Label("Move later", systemImage: "arrow.down") }
+                }
+            }
+            if membership != nil, let onDiscardRecordings {
+                Button(role: .destructive) { onDiscardRecordings() } label: {
+                    Label("Discard recorded resolutions", systemImage: "arrow.counterclockwise")
                 }
             }
             // Workflow stage. Outside the membership block on purpose: the
@@ -485,12 +520,55 @@ struct WorktreeRowView: View {
                 }
                 .disabled(worktree.isDirty || worktree.operationState != nil)
 
-                Button {
-                    onLand()
+                // "Land and retire" also covers the discard case: a worktree
+                // with nothing to land (a mistake, or abandoned before the
+                // first commit) still needs a way to go away. The label and
+                // disabled gate match the desktop's canLandWorktree /
+                // landRefusalReason (WorktreeRowMenu.items.tsx) — dirty or an
+                // unknown source branch still refuses; zero unlanded commits
+                // does not.
+                Button(role: worktree.unlandedCommitCount == 0 ? .destructive : nil) {
+                    onLandAndRetire()
                 } label: {
-                    Label("Land into \(worktree.sourceBranch ?? "source")", systemImage: "arrow.down.to.line")
+                    Label(
+                        worktree.unlandedCommitCount > 0
+                            ? "Land and retire into \(worktree.sourceBranch ?? "source")"
+                            : "Retire (nothing to land)",
+                        systemImage: "arrow.down.to.line"
+                    )
                 }
-                .disabled(worktree.isDirty || worktree.unlandedCommitCount == 0 || worktree.operationState != nil)
+                .disabled(worktree.isDirty || worktree.operationState != nil)
+            }
+            // An in-worktree conflicted operation: assisted resolution, or
+            // focus the resolver already working on it. Placed with the
+            // lifecycle verbs because it unblocks them.
+            if worktree.operationState != nil {
+                if let resolverTabId = activeAutoFixTabId, let onSelectConversation {
+                    Button {
+                        onSelectConversation(resolverTabId)
+                    } label: {
+                        Label("AI resolution in progress — go to it", systemImage: "bolt.fill")
+                    }
+                } else if let onConflictAssist {
+                    Button {
+                        onConflictAssist()
+                    } label: {
+                        Label("Resolve conflicts with AI assistance", systemImage: "wand.and.stars")
+                    }
+                }
+            }
+            // Retire: the explicit removal verb. Destructive styling; the
+            // desktop appraises and refuses when work would be lost
+            // (refusedDirty), and the op result words a refusal differently
+            // from a failure. Disabled mid-operation because the appraisal
+            // fields are conservative defaults then.
+            if let onRetire {
+                Button(role: .destructive) {
+                    onRetire()
+                } label: {
+                    Label("Retire worktree", systemImage: "trash")
+                }
+                .disabled(worktree.operationState != nil)
             }
         }
     }

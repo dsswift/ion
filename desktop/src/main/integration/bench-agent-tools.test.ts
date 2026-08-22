@@ -175,10 +175,9 @@ describe('BenchMemberFile', () => {
     expect(res.rejection).toBeTruthy()
   }, GIT_FIXTURE_TIMEOUT)
 
-  it('refuses a disabled member rather than answering quietly', () => {
+  it('drops a legacy disabled member', () => {
     buildMembers(f)
     assemble(f, 'wt/alpha', 'wt/beta')
-    // Re-record beta as DISABLED: its content is not in the bench.
     writeRecord(f, [
       memberRecord({ worktreePath: '/wt/alpha', branchName: 'wt/alpha', pinnedSha: f.pins['wt/alpha'], pinnedBaseSha: f.baseSha }),
       memberRecord({ worktreePath: '/wt/beta', branchName: 'wt/beta', enabled: false, pinnedSha: f.pins['wt/beta'], pinnedBaseSha: f.baseSha }),
@@ -186,13 +185,12 @@ describe('BenchMemberFile', () => {
 
     const res = memberFile({ benchPath: f.benchPath, path: 'app.txt', member: 'wt/beta' })
 
-    // Returning it silently would answer a question the caller did not ask:
-    // the file they are looking at cannot have come from a skipped member.
-    expect(res.rejection).toBeTruthy()
-    expect(res.rejection).toContain('DISABLED')
+    expect(res.rejection).toContain('no member of this bench matches')
+    expect(res.members?.map((member) => member.branchName)).toEqual(['wt/alpha'])
   }, GIT_FIXTURE_TIMEOUT)
 
-  it('lists the enabled members when the name does not match', () => {
+
+  it('lists the members when the name does not match', () => {
     buildMembers(f)
     assemble(f, 'wt/alpha', 'wt/beta')
 

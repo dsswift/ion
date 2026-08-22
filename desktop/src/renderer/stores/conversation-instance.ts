@@ -183,6 +183,52 @@ export function instanceMessageCount(inst: ConversationInstance | null | undefin
   return inst.messages.length > 0 ? inst.messages.length : (inst.messageCount ?? 0)
 }
 
+/** Roles the renderer injects locally; the engine conversation file has none of them. */
+const RENDERER_ONLY_ROLES = new Set(['system', 'harness'])
+
+/**
+ * True when the renderer injected this row itself instead of receiving it from
+ * the conversation. Session-start / cleared / plan dividers, engine-start
+ * failures, extension notices, and harness banners all land as one of these
+ * roles, and none of them exist in the engine's `.tree.jsonl`.
+ *
+ * This is the single role list two behaviors share: whether an instance needs
+ * an external content file (serialize-conversation-pane.ts) and whether a
+ * conversation carries anything worth keeping (`isEmptyConversation` below).
+ */
+export function isRendererOnlyRow(message: { role: string }): boolean {
+  return RENDERER_ONLY_ROLES.has(message.role)
+}
+
+/**
+ * True only when the renderer can prove that a conversation has never carried
+ * a message. A missing pane is unknown, not empty, because permanent deletion
+ * must not depend on a broken hydration invariant. `lastMessageAt` is the
+ * durable user/assistant activity marker.
+ *
+ * Renderer-only rows are NOT messages. Every conversation tab is born with a
+ * `── Session started at <time> ──` divider (engine-slice-create.ts), so a raw
+ * row count is 1 on a tab nobody ever typed in — which filed untouched tabs
+ * into Settled History as if they held reviewable work. The count is taken over
+ * conversation-bearing rows only.
+ *
+ * An instance whose scrollback is not loaded yet is UNKNOWN, never empty: a
+ * restored skeleton holds a persisted count, not rows, and that count includes
+ * dividers too. Callers that can await (settleTab) hydrate the pane first so
+ * this answer is read off real rows instead of a proxy.
+ */
+export function isEmptyConversation(
+  tab: { lastMessageAt?: number | null },
+  pane: ConversationPane | undefined,
+): boolean {
+  if (!pane || tab.lastMessageAt != null) return false
+  return pane.instances.every((instance) => {
+    if (!Array.isArray(instance.messages)) return false
+    if (needsHistoryHydration(instance)) return false
+    return instance.messages.every(isRendererOnlyRow)
+  })
+}
+
 /**
  * Does this instance still need its on-disk scrollback loaded?
  *

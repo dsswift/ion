@@ -13,7 +13,7 @@ func TestClampSnapshotCopy_BoundsProjectionWithoutMutatingSource(t *testing.T) {
 		"nested": map[string]any{"full": original},
 	}}}
 
-	projected, reports := ClampSnapshotCopy(states, DefaultMetadataLimits())
+	projected, reports := ClampSnapshotCopy(states, DefaultMetadataLimits(), testAttr)
 	if len(reports) == 0 || projected[0].Metadata["_truncated"] != true {
 		t.Fatal("expected bounded projection with a truncation marker")
 	}
@@ -36,7 +36,7 @@ func TestClampSnapshotCopy_BoundsDispatchFieldsWithoutChangingShape(t *testing.T
 		}},
 	}}}
 
-	projected, _ := ClampSnapshotCopy(states, limits)
+	projected, _ := ClampSnapshotCopy(states, limits, testAttr)
 	dispatches, ok := projected[0].Metadata["dispatches"].([]any)
 	if !ok {
 		t.Fatalf("dispatches changed type: %T", projected[0].Metadata["dispatches"])
@@ -60,7 +60,7 @@ func TestClampSnapshotCopy_BoundsDispatchFieldsWithoutChangingShape(t *testing.T
 func TestClampSnapshotCopy_ProtectedScalarIsBoundedAndSourceRemainsExact(t *testing.T) {
 	original := bigString(DefaultMaxValueBytes * 2)
 	states := []types.AgentStateUpdate{{Name: "agent", Metadata: map[string]any{"displayName": original}}}
-	projected, _ := ClampSnapshotCopy(states, DefaultMetadataLimits())
+	projected, _ := ClampSnapshotCopy(states, DefaultMetadataLimits(), testAttr)
 	got := projected[0].Metadata["displayName"].(string)
 	if len(got) > DefaultMaxValueBytes || got == original {
 		t.Fatalf("projected displayName = %d bytes", len(got))

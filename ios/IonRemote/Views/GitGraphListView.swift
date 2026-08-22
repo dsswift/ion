@@ -303,7 +303,7 @@ private struct CommitFileDiffSheet: View {
 
     var body: some View {
         if let response {
-            GitDiffView(fileName: response.fileName, diff: response.diff)
+            GitDiffView(fileName: response.fileName, diff: response.diff, isBinary: response.isBinary)
         } else {
             NavigationStack {
                 VStack(spacing: 12) {

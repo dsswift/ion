@@ -36,6 +36,42 @@ func (b *ApiBackend) dispatchStopReason(
 	turn, maxTurns int,
 	convDir string,
 ) bool {
+	// Reconcile the provider's stop reason against what the turn actually
+	// produced. A provider may report a terminal reason on the same message
+	// that carries tool_use blocks — an OpenAI-compatible gateway emitting
+	// finish_reason "stop" after streaming tool-call deltas translates to
+	// end_turn (translateFinishReason, internal/providers/openai.go) while
+	// processStream has already collected a fully-parsed tool_use block.
+	//
+	// The block payload is authoritative: the engine holds the parsed blocks,
+	// so it does not have to trust a reason that contradicts them. Taking the
+	// reason at face value here discarded the tool call, emitted
+	// TaskCompleteEvent, and ended the run with the requested work never
+	// executed — and because the orphaned tool_use never gained a matching
+	// tool_result, SanitizeMessages then stripped it from every subsequent
+	// provider request, so even a resumed run could not see what was asked.
+	//
+	// This is the complement of the zero-tool-blocks guard in the "tool_use"
+	// case below; the two together mean a stop-reason/payload disagreement is
+	// always resolved in favour of the payload, in both directions.
+	if stopReason == "end_turn" || stopReason == "stop" {
+		toolUseCount := 0
+		for _, block := range assistantBlocks {
+			if block.Type == "tool_use" {
+				toolUseCount++
+			}
+		}
+		if toolUseCount > 0 {
+			utils.LogWithFields(utils.LevelWarn, "backend.runloop", "terminal stop reason with tool blocks present; executing tools", map[string]any{
+				"run_id":      run.requestID,
+				"turn":        turn,
+				"stop_reason": stopReason,
+				"tool_count":  toolUseCount,
+			})
+			stopReason = "tool_use"
+		}
+	}
+
 	switch stopReason {
 	case "end_turn", "stop":
 		// Extract final text for task_complete
@@ -220,7 +256,11 @@ func (b *ApiBackend) dispatchStopReason(
 		}
 
 		if len(toolUseBlocks) == 0 {
-			// No tool calls despite tool_use stop reason; treat as end_turn
+			// No tool calls despite tool_use stop reason; treat as end_turn.
+			// Complement of the terminal-reason-with-tool-blocks
+			// reconciliation at the top of this function: both arms resolve a
+			// stop-reason/payload disagreement in favour of the payload. Do
+			// not collapse either one — they cover opposite skews.
 			utils.LogWithFields(utils.LevelWarn, "backend.runloop", "tool_use stop reason with zero tool blocks", map[string]any{
 				"run_id": run.requestID,
 				"turn":   turn,

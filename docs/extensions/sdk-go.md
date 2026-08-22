@@ -355,6 +355,8 @@ Every RPC-backed method takes a `context.Context` first. This is not decoration:
 
 `DispatchAgent` is asynchronous by default: it returns a stub with `DispatchID`, and the engine routes terminal results to the owner. Set `WaitForCompletion: true` only when explicit blocking terminal output is required.
 
+`ListDispatchState` entries expose `WaitingOn` for suspended dispatches. `TaskIDs` names notifying background Bash commands; `ChildDispatchIDs` names dispatched children. Both are exact current sets. `WaitingOn == nil` means no tracked asynchronous work is holding that dispatch parked.
+
 `AckDispatchLost` confirms durable handling of a `dispatch_lost` hook notice. The engine re-emits an unacknowledged loss after every later restart; call it only after your handler has durably recorded, delivered, or intentionally ignored the loss. Repeated acknowledgements are safe.
 
 ```go

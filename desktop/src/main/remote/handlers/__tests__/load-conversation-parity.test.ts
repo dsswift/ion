@@ -2,7 +2,7 @@
  * handleLoadConversation — engine-sourced history tests.
  *
  * History for iOS is served from the ENGINE (`loadChainHistory` over the
- * daemon socket) — the same source the overlay and ATV hydrate from — never
+ * daemon socket) — the same source the overlay and Studio hydrate from — never
  * from a renderer message scrape or a TS reimplementation of the tree walk.
  * The renderer is consulted only for tab metadata (conversation id, session
  * chain, runtime status).

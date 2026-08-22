@@ -18,7 +18,7 @@ vi.mock('../../../logger', () => ({ log: vi.fn() }))
 vi.mock('../../../state', () => ({ state: {} }))
 vi.mock('../../../settings-store', () => ({ TABS_FILE: '/tmp/ion-nonexistent/tabs.json' }))
 
-import { paginateHistory, planPathFromHistory, MAX_PAGE_MESSAGES } from '../tabs-session-chain'
+import { paginateHistory, planPathFromHistory, resolvePlanPath, MAX_PAGE_MESSAGES } from '../tabs-session-chain'
 import type { Message } from '../../../../shared/types'
 
 function msg(id: string, role: Message['role'], extra: Partial<Message> = {}): Message {
@@ -107,5 +107,70 @@ describe('planPathFromHistory', () => {
 
   it('returns undefined when no plan write exists', () => {
     expect(planPathFromHistory([msg('u0', 'user')])).toBeUndefined()
+  })
+})
+
+/**
+ * resolvePlanPath reports WHERE an ExitPlanMode row's plan path came from.
+ *
+ * A conversation loaded with an unresolvable plan and the desktop logged "no
+ * plan file found for ExitPlanMode" carrying neither a tab id nor a path.
+ * Asked which conversation it was, the log could not answer: a reconnect loads
+ * every conversation at once and the enrichment awaits inside a Promise.all
+ * map, so the lines interleave and timestamp correlation attributes nothing.
+ *
+ * The source is half of the fix. These two failures log the same message and
+ * need opposite responses:
+ *
+ *   'tool_input' / 'history_write' — a path resolved, and the READ failed:
+ *       look at the filesystem.
+ *   'none' — no path resolved, so no read was attempted: look at the
+ *       transcript, which carries no plan path at all.
+ *
+ * The observed case was 'none' (the log had no path field because planPath was
+ * undefined), which reads as a missing file unless the source says otherwise.
+ */
+describe('resolvePlanPath', () => {
+  const planWrite = (path: string) =>
+    msg('w1', 'tool', { toolName: 'Write', toolInput: JSON.stringify({ file_path: path }) })
+
+  it('attributes a path carried on the tool call', () => {
+    expect(resolvePlanPath('/Users/x/.ion/plans/a.md', [])).toEqual({
+      planPath: '/Users/x/.ion/plans/a.md', pathSource: 'tool_input',
+    })
+  })
+
+  it('attributes a path recovered from a transcript Write', () => {
+    expect(resolvePlanPath(undefined, [planWrite('/Users/x/.ion/plans/b.md')])).toEqual({
+      planPath: '/Users/x/.ion/plans/b.md', pathSource: 'history_write',
+    })
+  })
+
+  it('reports none when neither source yields a path', () => {
+    expect(resolvePlanPath(undefined, [msg('u0', 'user')])).toEqual({
+      planPath: undefined, pathSource: 'none',
+    })
+  })
+
+  it('prefers the tool call over the transcript when both exist', () => {
+    // The tool call names the plan THIS proposal refers to; a later unrelated
+    // plan Write in the same transcript must not override it.
+    expect(resolvePlanPath('/Users/x/.ion/plans/proposed.md', [planWrite('/Users/x/.ion/plans/other.md')])).toEqual({
+      planPath: '/Users/x/.ion/plans/proposed.md', pathSource: 'tool_input',
+    })
+  })
+
+  it('treats an empty tool-call path as absent rather than as a path', () => {
+    // '' would otherwise reach readFile and throw a confusing error instead of
+    // taking the honest fallback.
+    expect(resolvePlanPath('', [planWrite('/Users/x/.ion/plans/c.md')])).toEqual({
+      planPath: '/Users/x/.ion/plans/c.md', pathSource: 'history_write',
+    })
+  })
+
+  it('treats a non-string tool-call path as absent', () => {
+    // toolInput is parsed JSON from the wire, so the field is unknown until
+    // checked; a number must not be handed to readFile.
+    expect(resolvePlanPath(42, [])).toEqual({ planPath: undefined, pathSource: 'none' })
   })
 })

@@ -87,10 +87,7 @@ final class AgentTurnRenderOrderTests: XCTestCase {
     /// If the swap accidentally merged the arrays, this would diverge.
     func testToolLabelCountsToolsNotAssistantMessages() {
         let toolCount = 2
-        let isActive  = false
-        let label = isActive
-            ? "Running tools\u{2026}"
-            : "Used \(toolCount) tool\(toolCount == 1 ? "" : "s")"
+        let label = "Used \(toolCount) tool\(toolCount == 1 ? "" : "s")"
         XCTAssertEqual(label, "Used 2 tools",
             "tool-cluster label must count tools; if it diverges the arrays were merged")
     }

@@ -1,6 +1,6 @@
 /**
  * react-root-errors — createRoot error hooks shared by BOTH renderer entries
- * (overlay `main.tsx`, ATV `atv/main.tsx`).
+ * (overlay `main.tsx`, Studio `studio/main.tsx`).
  *
  * Why this exists: React #185 ("maximum update depth exceeded") is thrown by
  * the SCHEDULER, outside the commit an error boundary can catch — so the
@@ -26,7 +26,7 @@ function stack(info: RootErrorInfo): string {
     .join(' < ')
 }
 
-/** Options for `createRoot(container, rootErrorOptions('overlay'|'atv'))`. */
+/** Options for `createRoot(container, rootErrorOptions('overlay'|'studio'))`. */
 export function rootErrorOptions(surface: string): {
   onUncaughtError: (error: unknown, errorInfo: RootErrorInfo) => void
   onCaughtError: (error: unknown, errorInfo: RootErrorInfo) => void

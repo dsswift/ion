@@ -1,35 +1,75 @@
 import React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, FileText, Image, FileCode, File } from '@phosphor-icons/react'
+import { X, FileText, Image, FileCode, File, FilePdf } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { transitions } from '../theme-tokens'
+import { useImageDataUrl } from './ImageViewer'
 import type { FileAttachment } from '../../shared/types'
 
-const FILE_ICONS: Record<string, React.ReactNode> = {
-  'image/png': <Image size={14} />,
-  'image/jpeg': <Image size={14} />,
-  'image/gif': <Image size={14} />,
-  'image/webp': <Image size={14} />,
-  'image/svg+xml': <Image size={14} />,
-  'text/plain': <FileText size={14} />,
-  'text/markdown': <FileText size={14} />,
-  'application/json': <FileCode size={14} />,
-  'text/yaml': <FileCode size={14} />,
-  'text/toml': <FileCode size={14} />,
+const ATTACHMENT_CARD_WIDTH = 160
+const ATTACHMENT_PREVIEW_HEIGHT = 104
+
+function fileIcon(mimeType: string | undefined, size: number): React.ReactNode {
+  if (mimeType?.startsWith('image/')) return <Image size={size} />
+  if (mimeType === 'application/pdf') return <FilePdf size={size} />
+  if (mimeType === 'text/plain' || mimeType === 'text/markdown') {
+    return <FileText size={size} />
+  }
+  if (mimeType === 'application/json' || mimeType === 'text/yaml' || mimeType === 'text/toml') {
+    return <FileCode size={size} />
+  }
+  return <File size={size} />
 }
 
-/**
- * Remove-X button for a chip. Module-level component (one hook instance per
- * chip) so `useInteractiveState` is legal inside the chips map. Keeps the
- * group-hover opacity reveal; `focus-visible:opacity-100` makes the button
- * (and its `.ion-focusable` ring) visible when keyboard-focused, since
- * opacity 0 would hide the ring along with the glyph.
- */
+/** Image previews load from persisted attachment data first, then from disk. */
+function AttachmentImagePreview({ attachment }: { attachment: FileAttachment }) {
+  const colors = useColors()
+  const dataUrl = useImageDataUrl(attachment.path, attachment.dataUrl)
+
+  if (!dataUrl) {
+    return (
+      <div
+        data-testid="attachment-image-placeholder"
+        className="flex items-center justify-center w-full"
+        style={{ height: ATTACHMENT_PREVIEW_HEIGHT, color: colors.textTertiary }}
+      >
+        <Image size={32} />
+      </div>
+    )
+  }
+
+  return (
+    <img
+      data-testid="attachment-image-preview"
+      src={dataUrl}
+      alt={attachment.name}
+      className="block w-full"
+      style={{ height: ATTACHMENT_PREVIEW_HEIGHT, objectFit: 'contain' }}
+    />
+  )
+}
+
+function AttachmentFilePreview({ attachment }: { attachment: FileAttachment }) {
+  const colors = useColors()
+  return (
+    <div
+      data-testid="attachment-file-preview"
+      className="flex items-center justify-center w-full"
+      style={{ height: ATTACHMENT_PREVIEW_HEIGHT, color: colors.textTertiary }}
+    >
+      {fileIcon(attachment.mimeType, 42)}
+    </div>
+  )
+}
+
+/** Remove control stays visible, keyboard reachable, and owns its interaction hook. */
 function AttachmentRemoveButton({
+  attachmentName,
   colors,
   onRemove,
 }: {
+  attachmentName: string
   colors: ReturnType<typeof useColors>
   onRemove: () => void
 }) {
@@ -37,21 +77,64 @@ function AttachmentRemoveButton({
   return (
     <button
       {...handlers}
+      type="button"
+      aria-label={`Remove ${attachmentName}`}
       onClick={onRemove}
-      className="ion-focusable flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+      className="ion-focusable absolute flex items-center justify-center rounded-full"
       style={{
-        color: colors.textTertiary,
+        top: 6,
+        right: 6,
+        width: 24,
+        height: 24,
+        color: colors.dangerFg,
         background: interactiveBg(colors, { hover, pressed }),
-        // Inline transition replaces the .ion-focusable class shorthand, so it
-        // must re-list box-shadow (focus ring) alongside the opacity reveal.
-        transition: `opacity ${transitions.base}, background ${transitions.base}, box-shadow ${transitions.base}`,
+        border: `1px solid ${colors.surfaceSecondary}`,
+        transition: `background ${transitions.base}, box-shadow ${transitions.base}`,
       }}
     >
-      <X size={10} />
+      <X size={14} weight="bold" />
     </button>
   )
 }
 
+function AttachmentCard({ attachment, onRemove }: { attachment: FileAttachment; onRemove: (id: string) => void }) {
+  const colors = useColors()
+  const isImage = attachment.type === 'image'
+
+  return (
+    <motion.div
+      layout
+      data-testid="attachment-card"
+      initial={{ opacity: 0, scale: 0.85 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.85 }}
+      transition={{ duration: 0.12 }}
+      className="relative flex-shrink-0 overflow-hidden"
+      style={{
+        width: ATTACHMENT_CARD_WIDTH,
+        background: colors.surfacePrimary,
+        border: `1px solid ${colors.surfaceSecondary}`,
+        borderRadius: 14,
+      }}
+    >
+      <div className="flex items-center justify-center" style={{ background: colors.surfaceSecondary }}>
+        {isImage ? <AttachmentImagePreview attachment={attachment} /> : <AttachmentFilePreview attachment={attachment} />}
+      </div>
+      <div className="flex items-center" style={{ minHeight: 32, padding: '6px 8px' }}>
+        <span
+          className="text-[11px] font-medium truncate w-full"
+          aria-label={attachment.name}
+          style={{ color: colors.textPrimary }}
+        >
+          {attachment.name}
+        </span>
+      </div>
+      <AttachmentRemoveButton attachmentName={attachment.name} colors={colors} onRemove={() => onRemove(attachment.id)} />
+    </motion.div>
+  )
+}
+
+/** Prominent, horizontally scrolling preview rail for attachments queued to send. */
 export function AttachmentChips({
   attachments,
   onRemove,
@@ -59,55 +142,18 @@ export function AttachmentChips({
   attachments: FileAttachment[]
   onRemove: (id: string) => void
 }) {
-  const colors = useColors()
-
   if (attachments.length === 0) return null
 
   return (
-    <div data-ion-ui className="flex gap-1.5 pb-1" style={{ overflowX: 'auto', scrollbarWidth: 'none' }}>
+    <div
+      data-ion-ui
+      data-testid="attachment-preview-rail"
+      className="flex gap-2"
+      style={{ overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: 2 }}
+    >
       <AnimatePresence mode="popLayout">
-        {attachments.map((a) => (
-          <motion.div
-            key={a.id}
-            layout
-            initial={{ opacity: 0, scale: 0.85 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.85 }}
-            transition={{ duration: 0.12 }}
-            className="flex items-center gap-1.5 group flex-shrink-0"
-            style={{
-              background: colors.surfacePrimary,
-              border: `1px solid ${colors.surfaceSecondary}`,
-              borderRadius: 14,
-              padding: a.dataUrl ? '3px 8px 3px 3px' : '4px 8px',
-              maxWidth: 200,
-            }}
-          >
-            {/* Image preview thumbnail */}
-            {a.dataUrl ? (
-              <img
-                src={a.dataUrl}
-                alt={a.name}
-                className="rounded-[10px] object-cover flex-shrink-0"
-                style={{ width: 24, height: 24 }}
-              />
-            ) : (
-              <span className="flex-shrink-0" style={{ color: colors.textTertiary }}>
-                {FILE_ICONS[a.mimeType || ''] || <File size={14} />}
-              </span>
-            )}
-
-            {/* File name */}
-            <span
-              className="text-[11px] font-medium truncate min-w-0 flex-1"
-              style={{ color: colors.textPrimary }}
-            >
-              {a.name}
-            </span>
-
-            {/* Remove button */}
-            <AttachmentRemoveButton colors={colors} onRemove={() => onRemove(a.id)} />
-          </motion.div>
+        {attachments.map((attachment) => (
+          <AttachmentCard key={attachment.id} attachment={attachment} onRemove={onRemove} />
         ))}
       </AnimatePresence>
     </div>

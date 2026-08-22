@@ -6,6 +6,29 @@ import (
 	"github.com/dsswift/ion/engine/internal/tools"
 )
 
+func TestAgentStatusToolSchemaIsReadOnlyAndOptionalFilter(t *testing.T) {
+	def := tools.AgentStatusTool()
+	if def.Name != tools.AgentStatusToolName {
+		t.Fatalf("AgentStatus tool name = %q, want %q", def.Name, tools.AgentStatusToolName)
+	}
+	if tools.AgentStatusToolName != "AgentStatus" {
+		t.Fatalf("AgentStatus canonical name changed to %q", tools.AgentStatusToolName)
+	}
+	if !def.PlanModeSafe {
+		t.Fatal("AgentStatus must remain plan-mode safe")
+	}
+	properties, ok := def.InputSchema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("AgentStatus properties type = %T", def.InputSchema["properties"])
+	}
+	if _, ok := properties["dispatch_id"]; !ok {
+		t.Fatal("AgentStatus schema missing optional dispatch_id")
+	}
+	if required, ok := def.InputSchema["required"]; ok && required != nil {
+		t.Fatalf("AgentStatus unexpectedly requires input: %v", required)
+	}
+}
+
 // TestAgentToolSchema_HasRequiredProperties pins the canonical Agent tool's
 // input-schema shape so the CLI-backend MCP tool (registered as "ion_agent"
 // in prompt_cli_hooks.go) does not silently lose a property when a future

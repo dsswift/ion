@@ -9,7 +9,7 @@ Ion themes are distributed as **theme packs** — directories containing a `them
 
 | Component | Consumed by | Contents |
 |-----------|-------------|----------|
-| `desktop` | Desktop overlay + ATV windows | A partial ColorPalette token overlay on a built-in base theme, optional forced color scheme, optional assets |
+| `desktop` | Desktop overlay + Studio windows | A partial ColorPalette token overlay on a built-in base theme, optional forced color scheme, optional assets |
 | `ios` | iOS companion app | The iOS AppTheme token set (complete, or partial over a named built-in `base`), optional preferred color scheme, optional assets |
 
 A pack may include either component or both. Only the `ios` component (plus its assets) ever ships to iOS over the desktop↔iOS wire — the desktop component never leaves the desktop.

@@ -44,6 +44,25 @@ Create a Configuration Profile with a Custom Settings payload targeting the `com
   <array>
     <string>anthropic</string>
   </array>
+  <key>auth</key>
+  <dict>
+    <key>identityProvider</key>
+    <string>corp</string>
+    <key>requireOperatorIdentity</key>
+    <true/>
+    <key>oauth</key>
+    <dict>
+      <key>corp</key>
+      <dict>
+        <key>issuerUrl</key>
+        <string>https://login.corp.example.com/tenant/v2.0</string>
+        <key>clientId</key>
+        <string>managed-public-client-id</string>
+        <key>scopes</key>
+        <array><string>openid</string><string>profile</string><string>offline_access</string></array>
+      </dict>
+    </dict>
+  </dict>
   <key>permissions</key>
   <dict>
     <key>mode</key>
@@ -74,6 +93,8 @@ Create a Configuration Profile with a Custom Settings payload targeting the `com
 </plist>
 ```
 
+`auth.requireOperatorIdentity` is a sealed startup gate. The engine refuses `start_session` and `send_prompt` until the selected interactive provider has a usable grant. Ion Desktop keeps its standalone splash visible and shows the organization sign-in control before it creates the owner renderer, so extensions cannot start first. Do not combine this field with an OAuth entry that uses `machineIdentity`; machine sources have no operator login flow.
+
 ### Verification
 
 After the profile is installed, verify the engine reads it:
@@ -101,6 +122,7 @@ Enterprise config maps to registry values under the `IonEngine` key. Complex str
 | `AllowedModels` | `REG_SZ` (JSON array) | `["claude-sonnet-4-6"]` |
 | `BlockedModels` | `REG_SZ` (JSON array) | `[]` |
 | `AllowedProviders` | `REG_SZ` (JSON array) | `["anthropic"]` |
+| `Auth` | `REG_SZ` (JSON object) | `{"identityProvider":"corp","requireOperatorIdentity":true,"oauth":{"corp":{"issuerUrl":"...","clientId":"..."}}}` |
 | `Permissions` | `REG_SZ` (JSON object) | `{"mode":"ask"}` |
 | `Telemetry` | `REG_SZ` (JSON object) | `{"enabled":true}` |
 | `Network` | `REG_SZ` (JSON object) | `{"proxy":{"httpProxy":"..."}}` |
@@ -139,6 +161,17 @@ sudo mkdir -p /etc/ion
 sudo cat > /etc/ion/config.json << 'EOF'
 {
   "allowedProviders": ["anthropic"],
+  "auth": {
+    "identityProvider": "corp",
+    "requireOperatorIdentity": true,
+    "oauth": {
+      "corp": {
+        "issuerUrl": "https://login.corp.example.com/tenant/v2.0",
+        "clientId": "managed-public-client-id",
+        "scopes": ["openid", "profile", "offline_access"]
+      }
+    }
+  },
   "permissions": {
     "mode": "ask"
   },

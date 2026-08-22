@@ -1,4 +1,6 @@
-import React, { memo } from 'react'
+import React, { memo, type RefObject } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
+import { rDebug } from '../../rendererLogger'
 import {
   MessageBubble, AssistantMessage, ToolGroup, AgentTurnGroup,
   ThinkingBlock, HarnessMessage, InterceptBanner, SystemMessage,
@@ -12,7 +14,13 @@ type ActionsRenderer = (msg: Message) => React.ReactNode
 interface TranscriptRowsProps {
   grouped: GroupedItem[]
   actions?: ActionsRenderer
+  scrollRef?: RefObject<HTMLDivElement | null>
+  /** Search scans the DOM, so it temporarily opts into the complete row set. */
+  forceFullRender?: boolean
 }
+
+const VIRTUAL_THRESHOLD = 100
+const ESTIMATED_ROW_HEIGHT = 72
 
 /**
  * Element-wise reference equality. groupMessages rebuilds its wrapper arrays
@@ -146,17 +154,77 @@ function rowKey(item: GroupedItem, idx: number): string {
   }
 }
 
+interface VirtualTranscriptRowsProps {
+  grouped: GroupedItem[]
+  actions?: ActionsRenderer
+  scrollRef: RefObject<HTMLDivElement | null>
+}
+
+/**
+ * The virtualizer mounts only when a large transcript exists. Studio first
+ * renders an empty skeleton and hydrates it later; keeping one virtualizer
+ * alive across that transition caches the skeleton's zero initial offset.
+ */
+function VirtualTranscriptRows({ grouped, actions, scrollRef }: VirtualTranscriptRowsProps) {
+  const virtualizer = useVirtualizer({
+    count: grouped.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ESTIMATED_ROW_HEIGHT,
+    initialRect: scrollRef.current
+      ? { width: scrollRef.current.clientWidth, height: scrollRef.current.clientHeight }
+      : undefined,
+    initialOffset: () => {
+      const viewportHeight = scrollRef.current?.clientHeight ?? 0
+      const initialOffset = Math.max(grouped.length * ESTIMATED_ROW_HEIGHT - viewportHeight, 0)
+      rDebug('conversation.scroll', 'virtual transcript initialized at tail', {
+        row_count: grouped.length,
+        viewport_height: viewportHeight,
+        initial_offset: initialOffset,
+      })
+      return initialOffset
+    },
+    anchorTo: 'end',
+    overscan: 12,
+    getItemKey: (index) => rowKey(grouped[index]!, index),
+  })
+
+  return (
+    <div
+      data-testid="virtual-transcript-rows"
+      style={{ height: virtualizer.getTotalSize(), position: 'relative', paddingTop: 4 }}
+    >
+      {virtualizer.getVirtualItems().map((virtualRow) => {
+        const item = grouped[virtualRow.index]!
+        return (
+          <div
+            key={virtualRow.key}
+            data-index={virtualRow.index}
+            ref={virtualizer.measureElement}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, transform: `translateY(${virtualRow.start}px)` }}
+          >
+            <TranscriptRow item={item} actions={actions} />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 /**
  * Pure render switch for every grouped-item kind, one memoized row per item.
  * Extracted from Transcript.tsx to keep both files under the 600-line cap.
  */
-export function TranscriptRows({ grouped, actions }: TranscriptRowsProps) {
+export function TranscriptRows({ grouped, actions, scrollRef, forceFullRender = false }: TranscriptRowsProps) {
+  const virtual = grouped.length >= VIRTUAL_THRESHOLD && !forceFullRender && scrollRef != null
   if (grouped.length === 0) return null
-  return (
-    <div style={{ paddingTop: 4 }}>
-      {grouped.map((item, idx) => (
-        <TranscriptRow key={rowKey(item, idx)} item={item} actions={actions} />
-      ))}
-    </div>
-  )
+  if (!virtual) {
+    return (
+      <div style={{ paddingTop: 4 }}>
+        {grouped.map((item, idx) => (
+          <TranscriptRow key={rowKey(item, idx)} item={item} actions={actions} />
+        ))}
+      </div>
+    )
+  }
+  return <VirtualTranscriptRows grouped={grouped} actions={actions} scrollRef={scrollRef} />
 }

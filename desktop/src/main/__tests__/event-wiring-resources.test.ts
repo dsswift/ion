@@ -31,6 +31,7 @@ const { mockRequest } = vi.hoisted(() => {
 
 // Mock the engineBridge.request to avoid real RPC calls
 vi.mock('../state', () => ({
+  enterprisePolicyCache: { policy: null },
   state: { mainWindow: null },
   engineBridge: {
     request: mockRequest,
@@ -49,7 +50,7 @@ vi.mock('fs', () => ({
 }))
 
 vi.mock('os', () => ({ homedir: () => '/test-home', hostname: () => 'test-host' }))
-vi.mock('electron', () => ({ ipcMain: { on: vi.fn(), handle: vi.fn() } }))
+vi.mock('electron', () => ({ app: {}, session: { fromPartition: () => ({ webRequest: { onBeforeRequest: () => {} } }) }, globalShortcut: { register: () => true, unregisterAll: () => {} }, ipcMain: { on: vi.fn(), handle: vi.fn() } }))
 
 import {
   recordActiveSessionKey,

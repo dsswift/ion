@@ -20,18 +20,14 @@ final class WorktreeWireCommandTests: XCTestCase {
              "desktop_worktree_open_conversation"),
             (.worktreeSync(worktreePath: "/wt", sourceBranch: "josh", repoPath: "/repo"), "desktop_worktree_sync"),
             (.worktreeSyncAll(repoPath: "/repo"), "desktop_worktree_sync_all"),
-            (.worktreeLand(repoPath: "/repo", worktreePath: "/wt", worktreeBranch: "wt/a", sourceBranch: "josh"),
-             "desktop_worktree_land"),
-            (.worktreeRetire(repoPath: "/repo", worktreePath: "/wt"), "desktop_worktree_retire"),
-            (.worktreeRetireLanded(repoPath: "/repo"), "desktop_worktree_retire_landed"),
+            (.worktreeLandAndRetire(repoPath: "/repo", worktreePath: "/wt", worktreeBranch: "wt/a", sourceBranch: "josh"),
+             "desktop_worktree_land_and_retire"),
             (.benchOpenConversation(repoPath: "/repo", sourceBranch: "josh"), "desktop_bench_open_conversation"),
             (.benchOpenTerminal(repoPath: "/repo", sourceBranch: "josh"), "desktop_bench_open_terminal"),
             (.benchAssemble(repoPath: "/repo", sourceBranch: "josh"), "desktop_bench_assemble"),
             (.benchUpdateMember(repoPath: "/repo", sourceBranch: "josh", worktreePath: "/wt"),
              "desktop_bench_update_member"),
             (.benchUpdateAll(repoPath: "/repo", sourceBranch: "josh"), "desktop_bench_update_all"),
-            (.benchSetEnabled(repoPath: "/repo", sourceBranch: "josh", worktreePath: "/wt", enabled: false),
-             "desktop_bench_set_enabled"),
             (.worktreeSetStage(repoPath: "/repo", worktreePath: "/wt", stage: "verified"),
              "desktop_worktree_set_stage"),
             (.benchReorderMember(repoPath: "/repo", sourceBranch: "josh", worktreePath: "/wt", toIndex: 0),
@@ -40,6 +36,34 @@ final class WorktreeWireCommandTests: XCTestCase {
              "desktop_bench_add_member"),
             (.benchRemoveMember(repoPath: "/repo", sourceBranch: "josh", worktreePath: "/wt"),
              "desktop_bench_remove_member"),
+            (.worktreeRetireLanded(repoPath: "/repo"), "desktop_worktree_retire_landed"),
+            (.worktreeCreate(repoPath: "/repo", sourceBranch: "josh"), "desktop_worktree_create"),
+            (.worktreeConvertConversation(tabId: "tab-1"), "desktop_worktree_convert_conversation"),
+            (.worktreeRename(repoPath: "/repo", worktreePath: "/wt", title: "New title"),
+             "desktop_worktree_rename"),
+            (.worktreeReprovision(repoPath: "/repo", worktreePath: "/wt"), "desktop_worktree_reprovision"),
+            (.benchRecoverConflict(repoPath: "/repo", sourceBranch: "josh"),
+             "desktop_bench_recover_conflict"),
+            (.benchAnalyseVerification(repoPath: "/repo", sourceBranch: "josh"),
+             "desktop_bench_analyse_verification"),
+            (.benchDiscardMemberRecordings(repoPath: "/repo", sourceBranch: "josh", branchNames: ["wt/a"]),
+             "desktop_bench_discard_member_recordings"),
+            (.benchDiscardAllRecordings(repoPath: "/repo", sourceBranch: "josh"),
+             "desktop_bench_discard_all_recordings"),
+            (.worktreeRetire(repoPath: "/repo", worktreePath: "/wt", branchName: "wt/a"),
+             "desktop_worktree_retire"),
+            (.worktreeConflictAssist(repoPath: "/repo", worktreePath: "/wt"),
+             "desktop_worktree_conflict_assist"),
+            (.benchConflictAssist(repoPath: "/repo", sourceBranch: "josh"),
+             "desktop_bench_conflict_assist"),
+            (.worktreePipelineStart(repoPath: "/repo", sourceBranch: "josh"),
+             "desktop_worktree_pipeline_start"),
+            (.worktreePipelineConfirmAi(repoPath: "/repo"),
+             "desktop_worktree_pipeline_confirm_ai"),
+            (.worktreePipelineCancel(repoPath: "/repo"),
+             "desktop_worktree_pipeline_cancel"),
+            (.worktreePipelineDismiss(repoPath: "/repo"),
+             "desktop_worktree_pipeline_dismiss"),
         ]
 
         for (command, expected) in cases {
@@ -50,7 +74,7 @@ final class WorktreeWireCommandTests: XCTestCase {
     }
 
     func testLandCommandCarriesEveryField() throws {
-        let cmd = RemoteCommand.worktreeLand(
+        let cmd = RemoteCommand.worktreeLandAndRetire(
             repoPath: "/repo", worktreePath: "/wt/a", worktreeBranch: "wt/a3f1", sourceBranch: "josh")
 
         let json = try XCTUnwrap(
@@ -62,19 +86,31 @@ final class WorktreeWireCommandTests: XCTestCase {
         XCTAssertEqual(json["sourceBranch"] as? String, "josh")
     }
 
-    func testCommandsRoundTrip() throws {
-        let cmd = RemoteCommand.benchSetEnabled(
-            repoPath: "/repo", sourceBranch: "josh", worktreePath: "/wt/a", enabled: false)
+    func testNewWorktreeCommandsCarryEveryFieldAndRoundTrip() throws {
+        let cases: [(RemoteCommand, (RemoteCommand) -> Bool)] = [
+            (.worktreeRetireLanded(repoPath: "/repo"), { if case let .worktreeRetireLanded(repo) = $0 { return repo == "/repo" }; return false }),
+            (.worktreeCreate(repoPath: "/repo", sourceBranch: "josh"), { if case let .worktreeCreate(repo, source) = $0 { return repo == "/repo" && source == "josh" }; return false }),
+            (.worktreeConvertConversation(tabId: "tab-1"), { if case let .worktreeConvertConversation(tabId) = $0 { return tabId == "tab-1" }; return false }),
+            (.worktreeRename(repoPath: "/repo", worktreePath: "/wt", title: "New title"), { if case let .worktreeRename(repo, path, title) = $0 { return repo == "/repo" && path == "/wt" && title == "New title" }; return false }),
+            (.worktreeReprovision(repoPath: "/repo", worktreePath: "/wt"), { if case let .worktreeReprovision(repo, path) = $0 { return repo == "/repo" && path == "/wt" }; return false }),
+            (.benchRecoverConflict(repoPath: "/repo", sourceBranch: "josh"), { if case let .benchRecoverConflict(repo, source) = $0 { return repo == "/repo" && source == "josh" }; return false }),
+            (.benchAnalyseVerification(repoPath: "/repo", sourceBranch: "josh"), { if case let .benchAnalyseVerification(repo, source) = $0 { return repo == "/repo" && source == "josh" }; return false }),
+            (.benchDiscardMemberRecordings(repoPath: "/repo", sourceBranch: "josh", branchNames: ["wt/a", "wt/b"]), { if case let .benchDiscardMemberRecordings(repo, source, branches) = $0 { return repo == "/repo" && source == "josh" && branches == ["wt/a", "wt/b"] }; return false }),
+            (.benchDiscardAllRecordings(repoPath: "/repo", sourceBranch: "josh"), { if case let .benchDiscardAllRecordings(repo, source) = $0 { return repo == "/repo" && source == "josh" }; return false }),
+            (.worktreeRetire(repoPath: "/repo", worktreePath: "/wt", branchName: "wt/a"), { if case let .worktreeRetire(repo, path, branch) = $0 { return repo == "/repo" && path == "/wt" && branch == "wt/a" }; return false }),
+            (.worktreeConflictAssist(repoPath: "/repo", worktreePath: "/wt"), { if case let .worktreeConflictAssist(repo, path) = $0 { return repo == "/repo" && path == "/wt" }; return false }),
+            (.benchConflictAssist(repoPath: "/repo", sourceBranch: "josh"), { if case let .benchConflictAssist(repo, source) = $0 { return repo == "/repo" && source == "josh" }; return false }),
+            (.worktreePipelineStart(repoPath: "/repo", sourceBranch: "josh"), { if case let .worktreePipelineStart(repo, source) = $0 { return repo == "/repo" && source == "josh" }; return false }),
+            (.worktreePipelineConfirmAi(repoPath: "/repo"), { if case let .worktreePipelineConfirmAi(repo) = $0 { return repo == "/repo" }; return false }),
+            (.worktreePipelineCancel(repoPath: "/repo"), { if case let .worktreePipelineCancel(repo) = $0 { return repo == "/repo" }; return false }),
+            (.worktreePipelineDismiss(repoPath: "/repo"), { if case let .worktreePipelineDismiss(repo) = $0 { return repo == "/repo" }; return false }),
+        ]
 
-        let decoded = try JSONDecoder().decode(RemoteCommand.self, from: try JSONEncoder().encode(cmd))
-
-        guard case let .benchSetEnabled(repo, source, path, enabled) = decoded else {
-            return XCTFail("decoded to the wrong case: \(decoded)")
+        for (command, matches) in cases {
+            let data = try JSONEncoder().encode(command)
+            let decoded = try JSONDecoder().decode(RemoteCommand.self, from: data)
+            XCTAssertTrue(matches(decoded), "round trip changed \(command)")
         }
-        XCTAssertEqual(repo, "/repo")
-        XCTAssertEqual(source, "josh")
-        XCTAssertEqual(path, "/wt/a")
-        XCTAssertFalse(enabled)
     }
 
     /// A shell in the bench and a conversation about it are separate commands,
@@ -170,38 +206,7 @@ final class WorktreeWireCommandTests: XCTestCase {
         XCTAssertTrue(states[0].worktrees[0].isLanded)
     }
 
-    func testRetireCommandRoundTrips() throws {
-        let cmd = RemoteCommand.worktreeRetire(repoPath: "/repo", worktreePath: "/wt/done")
 
-        let data = try JSONEncoder().encode(cmd)
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        XCTAssertEqual(json["repoPath"] as? String, "/repo")
-        XCTAssertEqual(json["worktreePath"] as? String, "/wt/done")
-
-        let decoded = try JSONDecoder().decode(RemoteCommand.self, from: data)
-        guard case let .worktreeRetire(repo, path) = decoded else {
-            return XCTFail("decoded to the wrong case: \(decoded)")
-        }
-        XCTAssertEqual(repo, "/repo")
-        XCTAssertEqual(path, "/wt/done")
-    }
-
-    /// The batch retire command carries only `repoPath` — no `worktreePath`,
-    /// since it acts on every landed worktree in the repo rather than one.
-    func testRetireLandedCommandRoundTrips() throws {
-        let cmd = RemoteCommand.worktreeRetireLanded(repoPath: "/repo")
-
-        let data = try JSONEncoder().encode(cmd)
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        XCTAssertEqual(json["repoPath"] as? String, "/repo")
-        XCTAssertNil(json["worktreePath"])
-
-        let decoded = try JSONDecoder().decode(RemoteCommand.self, from: data)
-        guard case let .worktreeRetireLanded(repo) = decoded else {
-            return XCTFail("decoded to the wrong case: \(decoded)")
-        }
-        XCTAssertEqual(repo, "/repo")
-    }
 
     /// A cleared stage must encode as an explicit null. `encodeIfPresent`
     /// would omit the key, and an absent key reads as "no change" on the
@@ -240,7 +245,7 @@ final class WorktreeWireCommandTests: XCTestCase {
             RemoteCommand.worktreeRefresh(repoPath: "/repo").essentialKey,
             "worktreeRefresh:/repo")
         XCTAssertNil(RemoteCommand.benchAssemble(repoPath: "/repo", sourceBranch: "josh").essentialKey)
-        XCTAssertNil(RemoteCommand.worktreeLand(
+        XCTAssertNil(RemoteCommand.worktreeLandAndRetire(
             repoPath: "/repo", worktreePath: "/wt", worktreeBranch: "wt/a", sourceBranch: "josh").essentialKey)
     }
 }

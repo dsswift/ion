@@ -94,7 +94,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       })
       set((state) => ({
         conversationPanes: panes,
-        tabs: setTabStatus(state.tabs, tabId, 'connecting'),
+        tabs: setTabStatus(state.tabs, tabId, 'connecting', 'engine.add-instance'),
       }))
 
       const key = tabId
@@ -142,7 +142,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
                 conversationPanes.set(tabId, { ...paneInner, instances })
               }
             }
-            const tabs = setTabStatus(state.tabs, tabId, 'idle')
+            const tabs = setTabStatus(state.tabs, tabId, 'idle', 'engine.start-failed')
             return { engineNotifications: notifications, conversationPanes, tabs }
           })
           return
@@ -166,7 +166,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
         // a run that started between engineStart resolving and this callback
         // must not be knocked back to idle.
         set((state) => ({
-          tabs: setTabStatus(state.tabs, tabId, 'idle', (t) => t.status === 'connecting'),
+          tabs: setTabStatus(state.tabs, tabId, 'idle', 'engine.start-online', (t) => t.status === 'connecting'),
         }))
       }).catch((err: any) => {
         rError('engine.session', 'start threw', { error: err.message })
@@ -182,7 +182,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
               conversationPanes.set(tabId, { ...paneInner, instances })
             }
           }
-          const tabs = setTabStatus(state.tabs, tabId, 'idle')
+          const tabs = setTabStatus(state.tabs, tabId, 'idle', 'engine.start-threw')
           return { conversationPanes, tabs }
         })
       })

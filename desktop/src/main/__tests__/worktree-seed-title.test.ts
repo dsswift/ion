@@ -11,7 +11,7 @@
  *
  * The DECISION about whether a seed applies lives in the main process, against
  * the registry, because a renderer-side check would read whichever inventory
- * snapshot that window happens to hold (stale in the ATV mirror, absent in a
+ * snapshot that window happens to hold (stale in the Studio mirror, absent in a
  * window that never opened the git panel) and both windows would race.
  *
  * So these tests pin the decision table:

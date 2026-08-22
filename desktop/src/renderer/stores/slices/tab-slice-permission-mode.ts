@@ -8,7 +8,7 @@
  *   - `implementPlan(tabId, …)` (implement-slice): the plan-approval pipeline
  *     acting on an EXPLICIT tab. The old implement path called the
  *     active-tab-bound action and had to assume "the implement tab IS the
- *     active tab" — an assumption the ATV mirror (which forwards the call to
+ *     active tab" — an assumption the Studio mirror (which forwards the call to
  *     the owner window, whose active tab can differ) broke in practice,
  *     flipping the mode on the wrong tab. Explicit tabId removes the
  *     assumption instead of guarding it.
@@ -79,7 +79,7 @@ export function applyPermissionModeForTab(
   // (autoGroupMovement, manual mode, not pinned, not already in target) decide
   // whether anything moves; an idle tab is left alone since the user has not
   // re-engaged it.
-  if (tab.status === 'running' || tab.status === 'connecting') {
+  if (tab.status === 'running' || tab.status === 'connecting' || tab.status === 'waiting') {
     const movedTab = get().tabs.find((t) => t.id === tabId)
     if (movedTab) {
       applyActiveGroupMove(tabId, movedTab, get().conversationPanes, get, 'permission_mode_change')

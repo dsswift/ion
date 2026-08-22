@@ -69,7 +69,7 @@ export function evaluateRemoteCloseGuard(
 
   // Tab-level status covers the plain single-instance case, where the
   // orchestrator's run state rides the tab rather than an instance entry.
-  if (tab.status === 'running' || tab.status === 'connecting') {
+  if (tab.status === 'running' || tab.status === 'connecting' || tab.status === 'waiting') {
     orchestratorRunning = true
   }
 

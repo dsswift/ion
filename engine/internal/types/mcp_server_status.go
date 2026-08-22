@@ -32,6 +32,11 @@ type McpServerStatus struct {
 	// ToolCount is how many tools the live connection exposed. Zero when not
 	// connected.
 	ToolCount int `json:"toolCount,omitempty"`
+	// ProtocolVersion is the negotiated MCP revision of the live connection.
+	ProtocolVersion string `json:"protocolVersion,omitempty"`
+	// Capabilities names server capability and extension identifiers advertised
+	// by the live connection. Sorted by the session manager for stable snapshots.
+	Capabilities []string `json:"capabilities,omitempty"`
 	// LastError is the most recent connection failure for this server, empty
 	// when the last attempt succeeded or none has been made. This is the field
 	// that makes a failing server diagnosable from a client with no access to

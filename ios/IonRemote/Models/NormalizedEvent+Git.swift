@@ -41,7 +41,8 @@ extension RemoteEvent {
         case .gitDiffResponse:
             let diff = try container.decode(String.self, forKey: .diff)
             let fileName = try container.decode(String.self, forKey: .fileName)
-            let response = GitDiffResponse(diff: diff, fileName: fileName)
+            let binary = try container.decodeIfPresent(Bool.self, forKey: .isBinary) ?? false
+            let response = GitDiffResponse(diff: diff, fileName: fileName, isBinary: binary)
             return .gitDiffResponse(response: response)
 
         case .gitCommitResult:
@@ -81,7 +82,8 @@ extension RemoteEvent {
             let path = try container.decode(String.self, forKey: .path)
             let diff = try container.decode(String.self, forKey: .diff)
             let fileName = try container.decode(String.self, forKey: .fileName)
-            let response = GitCommitFileDiffResponse(hash: hash, path: path, diff: diff, fileName: fileName)
+            let binary = try container.decodeIfPresent(Bool.self, forKey: .isBinary) ?? false
+            let response = GitCommitFileDiffResponse(hash: hash, path: path, diff: diff, fileName: fileName, isBinary: binary)
             return .gitCommitFileDiffResponse(response)
 
         default:
@@ -117,6 +119,7 @@ extension RemoteEvent {
             try container.encode(TypeKey.gitDiffResponse, forKey: .type)
             try container.encode(response.diff, forKey: .diff)
             try container.encode(response.fileName, forKey: .fileName)
+            try container.encode(response.isBinary, forKey: .isBinary)
             return true
 
         case .gitCommitResult(let result):
@@ -154,6 +157,7 @@ extension RemoteEvent {
             try container.encode(response.path, forKey: .path)
             try container.encode(response.diff, forKey: .diff)
             try container.encode(response.fileName, forKey: .fileName)
+            try container.encode(response.isBinary, forKey: .isBinary)
             return true
 
         default:

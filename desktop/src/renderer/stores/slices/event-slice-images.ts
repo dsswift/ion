@@ -22,9 +22,9 @@ type ImageContentEvent = Extract<
 >
 
 /** Build a FileAttachment for an engine-saved image file path. */
-function imageAttachment(path: string, mediaType: string): FileAttachment {
+function imageAttachment(path: string, mediaType: string, contentHash?: string): FileAttachment {
   const name = path.includes('/') ? path.split('/').pop()! : path
-  return { id: `img:${path}`, type: 'image', name, path, mimeType: mediaType }
+  return { id: `img:${path}`, type: 'image', name, path, mimeType: mediaType, contentHash }
 }
 
 /** True when `attachments` already references this file path (dedup guard). */
@@ -46,7 +46,7 @@ function hasImagePath(attachments: import('../../../shared/types').Attachment[] 
  * found for a tool image, the array is returned unchanged.
  */
 export function attachImageToMessages(messages: Message[], event: ImageContentEvent): Message[] {
-  const att = imageAttachment(event.path, event.mediaType)
+  const att = imageAttachment(event.path, event.mediaType, event.contentHash)
 
   if (event.source === 'tool' && event.toolId) {
     const idx = findLastIndex(messages, (m) => m.role === 'tool' && m.toolId === event.toolId)

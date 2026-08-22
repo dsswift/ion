@@ -4,6 +4,8 @@ import { ShieldWarning, ShieldCheck, Terminal, ListChecks, Eye, PushPinSlash } f
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import { PlanViewer } from './PlanViewer'
+import { surfaceRouter } from '../lib/file-open-router'
+import { useSessionStore } from '../stores/sessionStore'
 import { AskQuestionCard } from './AskQuestionCard'
 import type { AskData, AskOption } from './AskQuestionCard'
 import type { Message } from '../../shared/types'
@@ -36,7 +38,7 @@ interface Props {
   onApprove?: (toolNames: string[]) => void
 }
 
-export function PermissionDeniedCard({ tools, tabId: _tabId, sessionId: _sessionId, projectPath: _projectPath, messages, tabPlanFilePath, tabGroupPinned, onDismiss, onImplement, onImplementAndUnpin, onAnswer, onApprove }: Props) {
+export function PermissionDeniedCard({ tools, tabId, sessionId: _sessionId, projectPath: _projectPath, messages, tabPlanFilePath, tabGroupPinned, onDismiss, onImplement, onImplementAndUnpin, onAnswer, onApprove }: Props) {
   const colors = useColors()
   const allowSettingsEdits = usePreferencesStore((s) => s.allowSettingsEdits)
   // Reveals the secondary "Implement, clear context" action on the
@@ -84,6 +86,18 @@ export function PermissionDeniedCard({ tools, tabId: _tabId, sessionId: _session
 
   const handleViewPlan = async () => {
     if (!planFilePath) return
+    // Studio: plan opens as a surface editor tab (unclipped, markdown
+    // preview default); overlay: the floating PlanViewer.
+    const router = surfaceRouter()
+    if (router) {
+      const st = useSessionStore.getState()
+      const tab = st.tabs.find((t) => t.id === tabId)
+      if (tab) {
+        if (router.openPlan) router.openPlan(tab.workingDirectory, tab.id, planFilePath)
+        else router.openTextFile(tab.workingDirectory, tab.id, planFilePath)
+        return
+      }
+    }
     const result = await window.ion.readPlan(planFilePath)
     if (result.content && result.fileName) {
       setPlanData({ content: result.content, fileName: result.fileName, filePath: planFilePath })

@@ -43,7 +43,7 @@ export interface TabGroup {
 
 // ─── Tab State Machine (v2 — from execution plan) ───
 
-export type TabStatus = 'connecting' | 'idle' | 'running' | 'completed' | 'failed' | 'dead'
+export type TabStatus = 'connecting' | 'starting' | 'idle' | 'running' | 'waiting' | 'completed' | 'failed' | 'dead'
 
 export interface PermissionRequest {
   questionId: string
@@ -76,6 +76,14 @@ export interface ElicitationRequest {
   schema?: Record<string, unknown>
   /** Optional deep-link URL for web flows. */
   url?: string
+  /** Extension or subsystem that raised the elicitation. */
+  source?: string
+  /** MCP/tool server name, when the elicitation originates from one. */
+  server?: string
+  /** Human-readable description of what the elicitation is asking. */
+  message?: string
+  /** Label for the primary approval action (e.g. "Install", "Connect"). */
+  action?: string
 }
 
 export interface FileAttachment {
@@ -84,6 +92,8 @@ export interface FileAttachment {
   name: string
   path: string
   mimeType?: string
+  /** Exact SHA-256 identity of decoded image bytes. Absent on legacy rows. */
+  contentHash?: string
   /** Base64 data URL for image previews */
   dataUrl?: string
   /** File size in bytes */
@@ -115,8 +125,66 @@ export interface TabState {
   pendingParentConversationId?: string | null
   status: TabStatus
   activeRequestId: string | null
-  /** Wall-clock ms of last engine-originated event for this tab. Drives the stuck-tab watchdog. Not persisted. */
+  /**
+   * Wall-clock ms of last engine-originated event for this tab. Drives the
+   * stuck-tab watchdog and the "any event counts" freshness pill. Persisted
+   * (1s coalescer in store-identity.ts) and restored.
+   *
+   * NOT an activity signal: reconnects, heartbeats, and status re-emissions
+   * all stamp it. Honest activity is `lastActivityAt` below.
+   */
   lastEventAt: number | null
+  /**
+   * Wall-clock ms of the last non-message renderer activity. This remains
+   * useful for diagnostics, but is NEVER an inbox sort, age, or settle signal.
+   */
+  lastActivityAt: number | null
+  /** True while a machine-authored injected run streams. Never persisted. */
+  inboxMessageSuppressed?: boolean
+  /**
+   * Wall-clock ms of the newest real user or assistant message. This is the
+   * inbox source of truth. Background delivery, schedules, webhooks, status
+   * events, and task completion do not write it.
+   */
+  lastMessageAt?: number | null
+  /**
+   * Wall-clock ms of the last running→idle transition (renderer-observed).
+   * Persisted verbatim; after restore only a live running→idle transition
+   * overwrites it — never re-stamped at boot (D9).
+   *
+   * Engine SessionStatus.stateSince records the authoritative state transition
+   * time. This renderer field records its observed tab transition because tab
+   * state can also change through local recovery and event reduction.
+   */
+  idleSince: number | null
+  /** Immutable creation timestamp for stable inbox and pinned fallback order. */
+  createdAt?: number
+  /** Wall-clock ms of the newest failure; compares against snoozedAt for wake. */
+  lastFailureAt?: number | null
+  /** Inbox pin timestamp. Pinned rows keep a full-card position above active rows. */
+  pinnedAt?: number | null
+  /** Fractional base-26 ordering key for pinned rows. */
+  pinOrderKey?: string | null
+  /** Wall-clock ms of the last task_complete (inbox unread derivation). */
+  lastCompletionAt: number | null
+  /**
+   * Inbox settle provenance: 'settled' = operator, 'auto' = idle clock,
+   * 'active' = explicit keep-active, null = not settled. Both settled values
+   * are hard, input-locked states; only their provenance differs.
+   */
+  settledOverride: 'settled' | 'active' | 'auto' | null
+  /** When the tab was settled (settled-shelf sort key). */
+  settledAt: number | null
+  /** Snooze wake time (ms). Snoozed tabs sit on the snoozed shelf until
+   *  wake or a raised hand (pending ask / fresh error / completion). */
+  snoozedUntil: number | null
+  /** When the snooze was set (raised-hand comparisons). */
+  snoozedAt: number | null
+  /** Last time the user visited (selected) this tab. Inbox unread =
+   *  manualUnread || lastCompletionAt > lastVisitedAt; never-visited = read. */
+  lastVisitedAt: number | null
+  /** User-forced unread marker (cleared on visit). */
+  manualUnread: boolean
   /**
    * Auto-recovery bookkeeping for the stuck-tab watchdog. When a running tab
    * goes silent past the recovery threshold, the watchdog automatically
@@ -127,7 +195,8 @@ export interface TabState {
    * auto-resuming and surfaces an honest, actionable message instead. Not
    * persisted — recovery is a live-session concern that resets on restart.
    */
-  hasUnread: boolean
+  autoRecoveryAttempts?: number
+  autoRecoveryWindowStartedAt?: number | null
   currentActivity: string
   attachments: FileAttachment[]
   /**
@@ -165,6 +234,10 @@ export interface TabState {
   pillIcon: string | null
   /** Session ID this tab was forked from (null if not a fork) */
   forkedFromSessionId: string | null
+  /** Host where this conversation executes. Durable for future remote execution. */
+  executionHost?: string | null
+  /** Stable execution-machine identity when the host exposes one. */
+  executionMachineId?: string | null
   /** Worktree metadata when tab operates inside a managed worktree */
   worktree: WorktreeInfo | null
   /** True while waiting for the user to pick a source branch in the BranchPickerDialog */
@@ -219,10 +292,10 @@ export interface TabState {
    * new prompts.
    */
   inputLocked: boolean
-  /** Why input is locked. `landed-worktree` seals review-only conversations and
-   * blocks even machine-origin prompts; automated workflows admit their one
-   * initial `source: 'machine'` prompt. */
-  inputLockReason?: 'automated-workflow' | 'landed-worktree' | null
+  /** Why input is locked. `landed-worktree` seals review-only conversations,
+   * `settled` seals a cold Inbox history record, and automated workflows admit
+   * their one initial `source: 'machine'` prompt. */
+  inputLockReason?: 'automated-workflow' | 'landed-worktree' | 'settled' | null
   /**
    * Explicit lifecycle role for tabs that share one directory. A bench can
    * simultaneously hold the persistent operator conversation, its dedicated
@@ -232,14 +305,13 @@ export interface TabState {
    *
    * - `'bench-conversation'`: the ONE persistent operator conversation for a
    *   bench (the singleton slot). Focused, never duplicated, by every open
-   *   entry point (desktop git panel, ATV, iOS).
+   *   entry point (desktop git panel, Studio, iOS).
    * - `'conflict-auto-fix'`: an ephemeral, input-locked machine conversation
-   *   created by the conflict assist, or by the bench-verification analysis
-   *   flow (which uses the same role deliberately: locked input, exclusion
-   *   from the operator-conversation count, and self-close on a clean
-   *   completion all apply identically to an analysis-only conversation).
-   *   Closes itself only on a typed `normal` completion; every failure shape
-   *   is retained for diagnosis.
+   *   created by conflict assist. It closes only on a typed `normal` completion
+   *   with no denied or pending operator input. Every other completion stays for
+   *   diagnosis.
+   * - `'verification-analysis'`: an input-locked machine analysis conversation.
+   *   It stays open after completion so the operator can inspect its report.
    * - `null`/absent: every other tab (default). Terminal identity stays
    *   derived via `isTerminalOnly` + `pickDirTerminal`, not a role.
    */
@@ -307,9 +379,9 @@ export interface Message {
   slashArgs?: string
   /** Origin of the resolved template: "extension"|"ion"|"claude"|"skill"|"project". */
   slashSource?: string
-  /** Model alias for the slash-command run (e.g. "Standard", "Extended"). */
+  /** Command-owned model selector from slash frontmatter, such as `fast`. */
   slashModelAlias?: string
-  /** Effective model for the slash-command run (e.g. "GPT-5.6 Terra"). */
+  /** Concrete model the engine selected for this slash invocation after tier and provider resolution. */
   slashModelEffective?: string
   /**
    * Intercept level carried from `engine_intercept.interceptLevel`.
@@ -553,6 +625,8 @@ export interface RunOptions {
 
 /** Pre-encoded image bytes that ride alongside a user prompt. */
 export interface ImageAttachmentPayload {
+  /** SHA-256 identity of original user-visible image bytes. */
+  contentHash?: string
   /** MIME type, e.g. "image/jpeg", "image/png", "image/webp", "image/gif". */
   mediaType: string
   /** Base64-encoded image bytes (no data URL prefix). */
@@ -683,6 +757,8 @@ export interface SessionLoadMessage {
   markerPlanSlug?: string
   /** Steer marker fields (markerKind === 'steer'). */
   markerMessageLength?: number
+  /** Engine-derived machine-origin classification for a historical user turn. */
+  machineAuthored?: boolean
   /**
    * Classifies engine-side injected user turns on historical reload.
    * "agent_completion" marks a machine-to-machine dispatch callback (a child
@@ -691,14 +767,6 @@ export interface SessionLoadMessage {
    * legacy history rows, which correctly read as ordinary turns.
    */
   injectionKind?: string
-  /**
-   * Engine-derived: an engine-side actor authored this turn, not a user.
-   * Read by `suppressesInjection` (shared/injection-policy.ts) so the reload
-   * filter and the live-event filter classify from the SAME field and cannot
-   * disagree. Absent on rows persisted before the flag existed, where the
-   * kind remains the fallback.
-   */
-  machineAuthored?: boolean
 }
 
 // ─── Terminal Multiplexing ───
@@ -734,11 +802,11 @@ export interface TerminalPaneState {
 // 600-line cap). Re-exported here so existing import paths keep working.
 export type {
   GitCommit, GitRef, GitCommitDetail, GitCommitFile, GitGraphData,
-  GitConflictKind, GitChangedFile, GitChangesData, GitBranchInfo,
+  GitConflictKind, GitDiffResult, GitChangedFile, GitChangesData, GitBranchInfo,
   LandMode, LandResult, WorktreeMoveResult, WorktreeInventoryEntry, WorktreeAppraisalWire,
   WorktreeProvisionState, GitOperationState, WorkStage, WorkStageDescriptor,
   SyncAllResult, SyncAllWorktreeOutcome,
-  EnrollmentState, PinState, MergeOutcome,
+  PinState, MergeOutcome,
   IntegrationMember, IntegrationWorkspace, BenchAssembleResult,
 } from './types-git'
 

@@ -2,7 +2,7 @@
  * useViewportClamp — keeps a portaled popover inside the window bounds.
  *
  * Popovers across the app compute anchor positions assuming the overlay's
- * geometry (TabStrip at the bottom of a full-screen glass). The ATV shell
+ * geometry (TabStrip at the bottom of a full-screen glass). The Studio shell
  * renders the same components in a normal window where the strip sits at
  * the TOP — anchor math that opens "above" flies off-screen. Rather than
  * forking per-component positioning, this hook measures the rendered

@@ -27,6 +27,13 @@ type OAuthToken struct {
 	TokenType    string    `json:"token_type"`
 	ExpiresAt    time.Time `json:"expires_at"`
 	Scope        string    `json:"scope,omitempty"`
+	// Issuer is the authorization server that minted this token. Used for
+	// credential binding: a token minted by issuer A is not sent to a
+	// server whose metadata now points at issuer B.
+	Issuer string `json:"issuer,omitempty"`
+	// Resource is the RFC 8707 resource indicator the token was obtained
+	// for. Used for credential binding alongside Issuer.
+	Resource string `json:"resource,omitempty"`
 }
 
 // OAuthConfig holds the OAuth 2.0 configuration for an MCP server.
@@ -38,6 +45,8 @@ type OAuthConfig struct {
 	Scope        string `json:"scope,omitempty"`
 	RedirectURI  string `json:"redirect_uri,omitempty"`
 	UsePKCE      bool   `json:"use_pkce,omitempty"`
+	// Resource is the RFC 8707 resource indicator for this server.
+	Resource string `json:"resource,omitempty"`
 }
 
 // OAuthStore manages per-server OAuth tokens with file persistence.
@@ -114,6 +123,9 @@ func (s *OAuthStore) RefreshToken(serverName string, config *OAuthConfig) (*OAut
 	if config.ClientSecret != "" {
 		form.Set("client_secret", config.ClientSecret)
 	}
+	if config.Resource != "" {
+		form.Set("resource", config.Resource)
+	}
 
 	// Routed through the shared client so an enterprise proxy / custom CA
 	// applies (D-018); http.PostForm would bypass the configured transport.
@@ -175,6 +187,8 @@ func (s *OAuthStore) RefreshToken(serverName string, config *OAuthConfig) (*OAut
 		TokenType:   tokenResp.TokenType,
 		ExpiresAt:   time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second),
 		Scope:       tokenResp.Scope,
+		Issuer:      existing.Issuer,
+		Resource:    existing.Resource,
 	}
 	if tokenResp.RefreshToken != "" {
 		token.RefreshToken = tokenResp.RefreshToken

@@ -163,14 +163,9 @@ func EffectiveContextWindow(window, maxOutputTokens, summaryReserve int) int {
 	return effective
 }
 
-// AutoCompactTokenLimit returns the absolute token count at which proactive
-// compaction should fire for a given window and per-call max output tokens.
-// This is the effective window minus the configured summary reserve.
-func AutoCompactTokenLimit(window, maxOutputTokens int) int {
-	result := EffectiveContextWindow(window, maxOutputTokens, DefaultCompactSummaryReserve)
-	utils.LogWithFields(utils.LevelDebug, "conversation.compact", "auto compact token limit", map[string]any{"count": window, "max": maxOutputTokens, "turn": result})
-	return result
-}
+// AutoCompactTokenLimit is retained in capacity.go as the compatibility entry
+// point for callers that only have a raw context window and an explicit output
+// limit.
 
 // lastAssistantUsageLocked scans conv.Messages backward for the most recent
 // assistant message carrying API-reported Usage and returns its index, or -1

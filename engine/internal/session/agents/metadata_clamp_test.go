@@ -23,7 +23,7 @@ func TestClampMetadata_TruncatesOversizedStringValue(t *testing.T) {
 		},
 	}
 
-	rep := clampEntry(&state, DefaultMetadataLimits())
+	rep := clampEntry(&state, DefaultMetadataLimits(), testAttr)
 	if rep == nil {
 		t.Fatal("expected a clamp report for a 3 MB value")
 	}
@@ -50,7 +50,7 @@ func TestClampMetadata_IsUTF8Safe(t *testing.T) {
 		Metadata: map[string]any{"lastWork": strings.Repeat("🙂", 4000)},
 	}
 
-	clampEntry(&state, DefaultMetadataLimits())
+	clampEntry(&state, DefaultMetadataLimits(), testAttr)
 
 	got, _ := state.Metadata["lastWork"].(string)
 	if !utf8.ValidString(got) {
@@ -79,7 +79,7 @@ func TestClampMetadata_PreservesProtectedKeys(t *testing.T) {
 	}
 	state := types.AgentStateUpdate{Name: "cloud-architect", Metadata: md}
 
-	clampEntry(&state, DefaultMetadataLimits())
+	clampEntry(&state, DefaultMetadataLimits(), testAttr)
 
 	for _, key := range []string{"displayName", "type", "visibility", "invited", "dispatchId"} {
 		if _, ok := state.Metadata[key]; !ok {
@@ -97,7 +97,7 @@ func TestClampMetadata_ProtectedKeyValuesAreBoundedInProjection(t *testing.T) {
 	original := bigString(3 * 1024 * 1024)
 	state := types.AgentStateUpdate{Name: "a", Metadata: map[string]any{"displayName": original}}
 
-	clampEntry(&state, DefaultMetadataLimits())
+	clampEntry(&state, DefaultMetadataLimits(), testAttr)
 	got, ok := state.Metadata["displayName"].(string)
 	if !ok || len(got) > DefaultMaxValueBytes {
 		t.Fatalf("projected displayName = %d bytes", len(got))
@@ -117,7 +117,7 @@ func TestClampMetadata_RecursesIntoDispatchesArray(t *testing.T) {
 		},
 	}
 
-	clampEntry(&state, DefaultMetadataLimits())
+	clampEntry(&state, DefaultMetadataLimits(), testAttr)
 
 	arr, ok := state.Metadata["dispatches"].([]any)
 	if !ok || len(arr) != 1 {
@@ -152,7 +152,7 @@ func TestClampMetadata_SnapshotBudgetKeepsEveryAgent(t *testing.T) {
 		}
 	}
 
-	clampStates(states, DefaultMetadataLimits())
+	clampStates(states, DefaultMetadataLimits(), testAttr)
 
 	total := 0
 	for i := range states {
@@ -181,7 +181,7 @@ func TestClampMetadata_DisabledWithNegativeOne(t *testing.T) {
 	limits.MaxEntryBytes = LimitsDisabled
 	limits.MaxSnapshotBytes = LimitsDisabled
 
-	if rep := clampEntry(&state, limits); rep != nil {
+	if rep := clampEntry(&state, limits, testAttr); rep != nil {
 		t.Errorf("expected no clamp when every tier is disabled, got %+v", rep)
 	}
 	if state.Metadata["lastWork"] != original {
@@ -198,7 +198,7 @@ func TestClampSnapshotCopy_BoundsOversizedRoster(t *testing.T) {
 			"displayName": "Agent", "visibility": "always", "invited": true, "lastWork": bigString(3 * 1024 * 1024),
 		}}
 	}
-	projected, reports := ClampSnapshotCopy(roster, DefaultMetadataLimits())
+	projected, reports := ClampSnapshotCopy(roster, DefaultMetadataLimits(), testAttr)
 	if len(reports) == 0 {
 		t.Fatal("expected clamp reports")
 	}
@@ -217,7 +217,7 @@ func TestClampSnapshotCopy_BoundsOversizedRoster(t *testing.T) {
 // TestClampReports_CarryNoOffendingContent pins the no-echo guarantee.
 func TestClampReports_CarryNoOffendingContent(t *testing.T) {
 	needle := strings.Repeat("SECRETNEEDLE", 100000)
-	_, reports := ClampSnapshotCopy([]types.AgentStateUpdate{{Name: "a", Metadata: map[string]any{"displayName": "A", "lastWork": needle}}}, DefaultMetadataLimits())
+	_, reports := ClampSnapshotCopy([]types.AgentStateUpdate{{Name: "a", Metadata: map[string]any{"displayName": "A", "lastWork": needle}}}, DefaultMetadataLimits(), testAttr)
 	encoded, err := json.Marshal(reports)
 	if err != nil {
 		t.Fatalf("marshal reports: %v", err)
@@ -237,8 +237,8 @@ func TestClampMetadata_IsDeterministic(t *testing.T) {
 	}
 
 	a, b := build(), build()
-	clampEntry(&a, DefaultMetadataLimits())
-	clampEntry(&b, DefaultMetadataLimits())
+	clampEntry(&a, DefaultMetadataLimits(), testAttr)
+	clampEntry(&b, DefaultMetadataLimits(), testAttr)
 
 	ja, _ := json.Marshal(a)
 	jb, _ := json.Marshal(b)

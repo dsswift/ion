@@ -8,7 +8,7 @@
  * makes every getSnapshot call produce a new snapshot. React then treats the
  * snapshot as perpetually changed and throws #185 ("maximum update depth
  * exceeded") — abandoning the StatusBar subtree mid-render, which is exactly
- * the half-painted ATV/overlay status bar. This test calls the selector
+ * the half-painted Studio/overlay status bar. This test calls the selector
  * twice with the SAME state and asserts zustand-shallow equality — it fails
  * on the pre-fix selector.
  */

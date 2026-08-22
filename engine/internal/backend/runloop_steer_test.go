@@ -434,3 +434,177 @@ func TestDrainSteer_CarriesKindFromSteerWithKind(t *testing.T) {
 		t.Error("MachineAuthored = false on an agent_completion steer, want true")
 	}
 }
+
+// ─── client correlation id + durable entry id echo ───
+//
+// The defect these pin: a client's optimistic UI row for an outstanding steer
+// has no stable identity to resolve against once drainSteer confirms it, so
+// clients were reduced to trusting arrival order / buffer position — which
+// breaks the moment more than one steer is outstanding, or a machine
+// injection interleaves with a human one. SteerWithClientID plumbs a client
+// correlation id onto the buffered steerMessage; drainSteer echoes it back
+// (along with the durable persisted entry id) ONLY for a genuine
+// client-originated steer (kind == "").
+
+// TestDrainSteer_EchoesClientMessageIDAndEntryIDForClientSteer is the
+// regression test for the identity-vs-position defect: a client-originated
+// steer delivered via SteerWithClientID must surface both its own correlation
+// id and the durable entry id drainSteer persisted it under, on the emitted
+// SteerInjectedEvent.
+func TestDrainSteer_EchoesClientMessageIDAndEntryIDForClientSteer(t *testing.T) {
+	b := NewApiBackend()
+	const requestID = "steer-client-id-echo"
+	run, conv := newSteerDrainRun(requestID)
+	conv.Entries = []conversation.SessionEntry{} // ensure AddUserMessageWithKind persists an entry
+
+	b.mu.Lock()
+	b.activeRuns[requestID] = run
+	b.mu.Unlock()
+	defer func() {
+		b.mu.Lock()
+		delete(b.activeRuns, requestID)
+		b.mu.Unlock()
+	}()
+
+	var captured *types.SteerInjectedEvent
+	b.OnNormalized(func(_ string, ev types.NormalizedEvent) {
+		if se, ok := ev.Data.(*types.SteerInjectedEvent); ok {
+			captured = se
+		}
+	})
+
+	const clientID = "client-corr-123"
+	if got := b.SteerWithClientID(requestID, "please redirect", "", clientID); got != SteerResultDelivered {
+		t.Fatalf("SteerWithClientID = %s, want delivered", got)
+	}
+	if !b.drainSteer(run, conv) {
+		t.Fatal("drainSteer reported no message consumed")
+	}
+
+	if captured == nil {
+		t.Fatal("expected a SteerInjectedEvent to be emitted")
+	}
+	if captured.ClientMessageID != clientID {
+		t.Errorf("SteerInjectedEvent.ClientMessageID = %q, want %q", captured.ClientMessageID, clientID)
+	}
+	if captured.EntryID == "" {
+		t.Error("SteerInjectedEvent.EntryID is empty, want the persisted entry's id")
+	}
+
+	// The persisted entry's id must match what was echoed, so a client can
+	// use EntryID as an exact future rewind_session target.
+	md := findUserMessageEntry(t, conv)
+	_ = md // findUserMessageEntry already asserts a user entry exists
+	var persistedID string
+	for _, e := range conv.Entries {
+		if e.Type == conversation.EntryMessage {
+			if md, ok := e.Data.(conversation.MessageData); ok && md.Role == "user" {
+				persistedID = e.ID
+				break
+			}
+		}
+	}
+	if persistedID == "" {
+		t.Fatal("no persisted user entry found to compare against")
+	}
+	if captured.EntryID != persistedID {
+		t.Errorf("SteerInjectedEvent.EntryID = %q, want %q (the persisted entry id)", captured.EntryID, persistedID)
+	}
+}
+
+// TestDrainSteer_MachineSteerNeverEchoesClientOrEntryID is the isolation
+// regression: a machine-to-machine injection (kind != "") must never resolve
+// a client's optimistic UI row, even if a caller mistakenly supplied a
+// clientMessageID alongside a non-empty kind — the InjectionKind classifies
+// the persisted turn as machine-authored, and drainSteer's echo guard keys off
+// exactly that, not off whether a client id happens to be present.
+func TestDrainSteer_MachineSteerNeverEchoesClientOrEntryID(t *testing.T) {
+	b := NewApiBackend()
+	const requestID = "steer-machine-no-echo"
+	run, conv := newSteerDrainRun(requestID)
+
+	b.mu.Lock()
+	b.activeRuns[requestID] = run
+	b.mu.Unlock()
+	defer func() {
+		b.mu.Lock()
+		delete(b.activeRuns, requestID)
+		b.mu.Unlock()
+	}()
+
+	var captured *types.SteerInjectedEvent
+	b.OnNormalized(func(_ string, ev types.NormalizedEvent) {
+		if se, ok := ev.Data.(*types.SteerInjectedEvent); ok {
+			captured = se
+		}
+	})
+
+	// Even with a client id present, a non-empty kind must suppress the echo.
+	if got := b.SteerWithClientID(requestID, "child result", string(types.InjectionKindAgentCompletion), "should-never-echo"); got != SteerResultDelivered {
+		t.Fatalf("SteerWithClientID = %s, want delivered", got)
+	}
+	if !b.drainSteer(run, conv) {
+		t.Fatal("drainSteer reported no message consumed")
+	}
+
+	if captured == nil {
+		t.Fatal("expected a SteerInjectedEvent to be emitted")
+	}
+	if captured.ClientMessageID != "" {
+		t.Errorf("SteerInjectedEvent.ClientMessageID = %q on a machine steer, want empty", captured.ClientMessageID)
+	}
+	if captured.EntryID != "" {
+		t.Errorf("SteerInjectedEvent.EntryID = %q on a machine steer, want empty", captured.EntryID)
+	}
+}
+
+// TestDrainSteer_OmittedClientIDLeavesEventFieldsEmpty pins the legacy path:
+// a client-originated steer with no clientMessageID supplied (older client, or
+// a caller using the plain SteerWithKind entry point) still emits an event —
+// just without the new correlation fields — never regressing the pre-existing
+// length-only confirmation.
+func TestDrainSteer_OmittedClientIDLeavesEventFieldsEmpty(t *testing.T) {
+	b := NewApiBackend()
+	const requestID = "steer-no-client-id"
+	run, conv := newSteerDrainRun(requestID)
+
+	b.mu.Lock()
+	b.activeRuns[requestID] = run
+	b.mu.Unlock()
+	defer func() {
+		b.mu.Lock()
+		delete(b.activeRuns, requestID)
+		b.mu.Unlock()
+	}()
+
+	var captured *types.SteerInjectedEvent
+	b.OnNormalized(func(_ string, ev types.NormalizedEvent) {
+		if se, ok := ev.Data.(*types.SteerInjectedEvent); ok {
+			captured = se
+		}
+	})
+
+	if got := b.SteerWithKind(requestID, "plain steer", ""); got != SteerResultDelivered {
+		t.Fatalf("SteerWithKind = %s, want delivered", got)
+	}
+	if !b.drainSteer(run, conv) {
+		t.Fatal("drainSteer reported no message consumed")
+	}
+
+	if captured == nil {
+		t.Fatal("expected a SteerInjectedEvent to be emitted")
+	}
+	if captured.ClientMessageID != "" {
+		t.Errorf("SteerInjectedEvent.ClientMessageID = %q, want empty when caller supplied none", captured.ClientMessageID)
+	}
+	// EntryID is still populated because this is a genuine client-originated
+	// (kind=="") steer — only ClientMessageID depends on the caller supplying
+	// one. This distinguishes "no correlation id was given" from "this was a
+	// machine injection", per the SteerInjectedEvent contract.
+	if captured.EntryID == "" {
+		t.Error("SteerInjectedEvent.EntryID is empty for a genuine client steer, want the persisted entry id")
+	}
+	if captured.MessageLength != len("plain steer") {
+		t.Errorf("MessageLength = %d, want %d", captured.MessageLength, len("plain steer"))
+	}
+}

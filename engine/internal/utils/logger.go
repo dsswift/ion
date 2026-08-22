@@ -305,6 +305,21 @@ func logAtFull(level LogLevel, component, tag, msg string, fields map[string]any
 		return
 	}
 
+	// Per-message rate limit. A runaway caller must not be able to rotate away
+	// the log window holding the evidence of itself — see log_rate_limit.go.
+	// Withheld lines are counted, and the count is written as its own line below
+	// once the logger is known to be open; nothing is dropped silently.
+	//
+	// Checked before the test sink so a suppressed line is invisible to every
+	// consumer identically, and the summary is emitted through logger.LogAttrs
+	// directly rather than by recursing into logAtFull, which is not reentrant
+	// (logMu is held for the whole body).
+	allow, withheld := admitLogLine(level, tag, msg, time.Now())
+	if !allow {
+		logMu.Unlock()
+		return
+	}
+
 	// Test seam: forward the structured record to the sink (if installed)
 	// before the file write. Runs under logMu so the sink observes a
 	// consistent ordering.
@@ -329,6 +344,20 @@ func logAtFull(level LogLevel, component, tag, msg string, fields map[string]any
 			logMu.Unlock()
 			return
 		}
+	}
+
+	if withheld > 0 {
+		logger.LogAttrs(context.Background(), slog.LevelWarn, "log lines suppressed by rate limit",
+			slog.String("component", component),
+			slog.String("tag", "logger"),
+			slog.Any("fields", map[string]any{
+				"suppressed_level": level.String(),
+				"suppressed_tag":   tag,
+				"suppressed_msg":   msg,
+				"log_suppressed":   withheld,
+				"window_secs":      logRateWindow.Seconds(),
+			}),
+		)
 	}
 
 	attrs := make([]slog.Attr, 0, 6)

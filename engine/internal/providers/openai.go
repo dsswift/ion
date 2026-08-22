@@ -583,23 +583,23 @@ func formatOpenAIMessages(system string, messages []types.LlmMessage) []map[stri
 						})
 					}
 				case "compact_boundary":
-					// Flatten the engine-internal compaction marker to a
-					// plain text part so the model still sees the
-					// rendered summary in context. See the matching case
-					// in anthropic.go formatAnthropicBlock for rationale.
+					// Engine-internal marker; flatten to text (see anthropic.go).
 					text := b.Summary
 					if text == "" {
 						text = "[Previous conversation compacted]"
 					}
 					parts = append(parts, map[string]any{"type": "text", "text": text})
 				case "context_injection":
-					// Flatten the engine-internal nested-context marker to a
-					// plain text part so the model still sees the rendered
-					// "# Context from <path>" body. See the matching case in
-					// anthropic.go formatAnthropicBlock for rationale.
+					// Engine-internal marker; flatten to text (see anthropic.go).
 					text := b.Text
 					if text == "" {
 						text = "[Nested context loaded]"
+					}
+					parts = append(parts, map[string]any{"type": "text", "text": text})
+				case "skill_content", "skill_listing":
+					text := b.Text
+					if text == "" {
+						text = "[Skill content]"
 					}
 					parts = append(parts, map[string]any{"type": "text", "text": text})
 				}

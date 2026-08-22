@@ -55,7 +55,7 @@ export function maybeApplyPlanModeGroupMove(
   }
 
   const status = freshTab.status
-  if (status !== 'running' && status !== 'connecting') {
+  if (status !== 'running' && status !== 'connecting' && status !== 'waiting') {
     rDebug('auto-move.plan-mode', 'tab not active, skipping', { tab_id: tabId.slice(0, 8), status })
     return
   }

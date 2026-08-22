@@ -18,6 +18,7 @@ import { join } from 'node:path'
 import {
   PANEL_CHROME, PANEL_BODY_DEFAULT, PANEL_BODY_EXPANDED,
   PANEL_BOTTOM_OFFSET, PANEL_TOP_RESERVE, GIT_PANEL_WIDTH, FILE_EXPLORER_WIDTH,
+  INBOX_PANEL_WIDTH, STATUS_DRAWER_WIDTH,
   defaultPanelHeight, maxPanelHeight, resolvePanelHeight,
 } from '../panelGeometry'
 
@@ -78,12 +79,19 @@ describe('panel widths — one declaration each', () => {
   const appSrc = readFileSync(join(__dirname, '../../App.tsx'), 'utf-8')
   const explorerSrc = readFileSync(join(__dirname, '../FileExplorer.tsx'), 'utf-8')
 
-  it('the file explorer is 264, a ~10% widening of the previous 240', () => {
-    expect(FILE_EXPLORER_WIDTH).toBe(264)
+  it('Explorer matches Status Drawer width', () => {
+    expect(STATUS_DRAWER_WIDTH).toBe(300)
+    expect(FILE_EXPLORER_WIDTH).toBe(STATUS_DRAWER_WIDTH)
+  })
+
+  it('Inbox matches Git width', () => {
+    expect(GIT_PANEL_WIDTH).toBe(440)
+    expect(INBOX_PANEL_WIDTH).toBe(GIT_PANEL_WIDTH)
   })
 
   it('App.tsx positions both panels from the constants, never a literal', () => {
     expect(appSrc).toContain('FILE_EXPLORER_WIDTH')
+    expect(appSrc).toContain('INBOX_PANEL_WIDTH')
     expect(appSrc).toContain('GIT_PANEL_WIDTH')
     // The explorer wrapper's old literal. Re-typing it is how a width restated
     // at a second site drifts from the constant.
@@ -91,7 +99,7 @@ describe('panel widths — one declaration each', () => {
   })
 
   it('FileExplorer fills its wrapper rather than restating a width', () => {
-    // This is why FILE_EXPLORER_WIDTH has exactly one reader, and why the ATV
+    // This is why FILE_EXPLORER_WIDTH has exactly one reader, and why the Studio window
     // dock can mount the same component at a different width.
     expect(explorerSrc).toContain("width: '100%'")
   })

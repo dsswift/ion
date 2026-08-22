@@ -12,7 +12,7 @@
  * consumer could reach it.
  *
  * So the join lives here, in `shared/`, for the same reason
- * `worktree-conversations.ts` does: the renderer, the ATV mirror, and the
+ * `worktree-conversations.ts` does: the renderer, the Studio mirror, and the
  * main-process wire projection all need the same answer, and three
  * implementations of one fact is how surfaces disagree. It is deliberately PURE
  * -- plain arrays in, plain data out, no store and no Electron -- so it is
@@ -28,7 +28,6 @@ import type {
   WorktreeInventoryEntry,
   IntegrationWorkspace,
   IntegrationMember,
-  EnrollmentState,
 } from './types-git'
 
 /** One row in the unified list: a worktree, plus its bench membership if any. */
@@ -41,7 +40,6 @@ export interface WorktreeListItem {
    * Derived from array position at join time -- see the header note.
    */
   order?: number
-  enrollment: EnrollmentState
   /**
    * This worktree's work reached its source branch. `landedAt` is a terminal
    * witness, not a live Git classification: once recorded it is never cleared
@@ -53,7 +51,7 @@ export interface WorktreeListItem {
    *
    * Exactly one row can carry it (or none, when the active conversation is in a
    * bench, the main clone, or an unrelated directory). Derived HERE rather than
-   * in a component because every worktree surface — the overlay panel, the ATV
+   * in a component because every worktree surface — the overlay panel, the Studio window
    * mirror, the wire projection — decorates through this one function, and a
    * second local computation is precisely the drift this module exists to stop.
    */
@@ -77,12 +75,6 @@ export interface OrphanMembership {
 export interface WorktreeListResult {
   items: WorktreeListItem[]
   orphans: OrphanMembership[]
-}
-
-/** Enrollment is derived: no record at all is `none`, a record reads `enabled`. */
-function enrollmentOf(membership: IntegrationMember | undefined): EnrollmentState {
-  if (!membership) return 'none'
-  return membership.enabled ? 'included' : 'excluded'
 }
 
 /**
@@ -131,7 +123,6 @@ export function buildWorktreeList(
       entry,
       membership: hit?.membership,
       order: hit?.order,
-      enrollment: enrollmentOf(hit?.membership),
       // `landedAt` is only written by a successful Land and is never cleared.
       // Git cannot recover that witness after the fact, so no current branch
       // count may override it.
@@ -168,9 +159,9 @@ export function buildWorktreeList(
  * order the inventory has already decided.
  */
 function compareListItems(a: WorktreeListItem, b: WorktreeListItem): number {
-  // Landedness is the OUTERMOST band, ahead of enrollment. A landed worktree
+  // Landedness is the OUTERMOST band, ahead of membership. A landed worktree
   // needs no attention even while it is still nominally a bench member, and
-  // ranking enrollment first kept exactly that row pinned to the top of the
+  // ranking membership first kept exactly that row pinned to the top of the
   // list -- the bug this ordering fixes. Its merge position is meaningless once
   // the bench is taking the content from its base instead.
   if (a.landed !== b.landed) return a.landed ? 1 : -1
@@ -200,4 +191,59 @@ export function findMembership(
     if (membership) return { membership, sourceBranch: ws.sourceBranch }
   }
   return undefined
+}
+
+/**
+ * Human-readable age of a bench's last assembly, e.g. "assembled 5m ago".
+ *
+ * Both bench surfaces (the overlay git panel's BenchBar and the Studio
+ * Inbox's InboxBenchBar) need the exact same wording, so it lives here
+ * rather than in either component -- a second, textually-drifted copy is
+ * exactly the outcome this shared module exists to prevent.
+ */
+export function benchAssembledRelativeTime(lastBuiltAtMs: number): string {
+  if (!lastBuiltAtMs) return 'never assembled'
+  const secs = Math.round((Date.now() - lastBuiltAtMs) / 1000)
+  if (secs < 60) return 'assembled just now'
+  if (secs < 3600) return `assembled ${Math.round(secs / 60)}m ago`
+  if (secs < 86400) return `assembled ${Math.round(secs / 3600)}h ago`
+  return `assembled ${Math.round(secs / 86400)}d ago`
+}
+
+/**
+ * The bench header's one-line status: how many members it holds, how many of
+ * them are out of date, and when it was last assembled.
+ *
+ * ── Why all three facts, and why they are one string ────────────────────────
+ * These answer one question ("can I trust what the bench currently holds?") and
+ * each is useless alone. The previous version showed the member-behind count
+ * INSTEAD of the assembly age, so a bench with a stale member hid how old the
+ * build was, and a bench with no stale members hid how many members it had at
+ * all -- a bench that has silently lost every member reads identically to a
+ * healthy one. An operator looking at "assembled 9h ago" cannot tell whether
+ * that is fine (nothing has moved since) or badly stale (four members have
+ * committed since), which is exactly the judgement the count supplies.
+ *
+ * Assembly FAILURE still replaces everything: when the last assembly failed the
+ * bench is empty, and member freshness is not the operator's problem yet.
+ *
+ * Shared for the same reason `benchAssembledRelativeTime` is: the overlay's
+ * BenchBar, the Studio Inbox's InboxBenchBar, and iOS all render this line, and
+ * three copies of the wording is how they drift.
+ */
+export function benchMemberSummary(
+  workspace: Pick<IntegrationWorkspace, 'members' | 'lastBuiltAt' | 'lastAssembly' | 'lastAssemblyFailure'>,
+): string {
+  if (workspace.lastAssembly === 'failed') {
+    return workspace.lastAssemblyFailure === 'verification' ? 'Verification failed' : 'Assembly failed'
+  }
+  const total = workspace.members.length
+  if (total === 0) return 'no members'
+  // `behind` is the pin verdict for "the worktree has content the bench does
+  // not hold". `gone` is deliberately excluded: it is a broken membership, not
+  // a stale one, and it already surfaces as an orphan on the bench bar.
+  const behind = workspace.members.filter((member) => member.pin === 'behind').length
+  const members = `${total} member${total === 1 ? '' : 's'}`
+  const age = benchAssembledRelativeTime(workspace.lastBuiltAt)
+  return behind > 0 ? `${members} · ${behind} out of date · ${age}` : `${members} · ${age}`
 }

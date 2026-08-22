@@ -28,8 +28,10 @@ vi.mock('os', async () => {
   return { ...actual, homedir: () => process.env.ION_TEST_HOME_WT_LIFECYCLE || actual.homedir() }
 })
 
-import { landWorktree, syncWorktreeFromSource, findWorktreeForBranch, parseWorktreeList } from '../worktree/integrate'
+import { landWorktree, landAndRetireWorktree, syncWorktreeFromSource, findWorktreeForBranch, parseWorktreeList } from '../worktree/integrate'
+import * as gitRunner from '../git-runner'
 import { retireWorktree, reattachWorktree } from '../worktree/relocate'
+import { registerWorktree } from '../worktree/inventory'
 import * as recovery from '../worktree/recovery'
 import { writeRecoveryRef } from '../worktree/recovery'
 
@@ -215,6 +217,88 @@ describe('syncWorktreeFromSource', () => {
     expect(existsSync(join(a.path, 'from-main.txt'))).toBe(true)
     // The worktree's own work survived the rebase.
     expect(existsSync(join(a.path, 'a.txt'))).toBe(true)
+  })
+})
+
+describe('landAndRetireWorktree', () => {
+  it('lands and removes the clean worktree and branch as one operation', async () => {
+    const a = makeWorktree('a')
+
+    const result = await landAndRetireWorktree({
+      repoPath: repo,
+      worktreePath: a.path,
+      worktreeBranch: a.branch,
+      branchName: a.branch,
+      sourceBranch: 'main',
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.landed).toBe(true)
+    expect(result.workingDirectory).toBe(repo)
+    expect(existsSync(a.path)).toBe(false)
+    expect(git(repo, 'branch', '--list', a.branch).trim()).toBe('')
+    expect(existsSync(join(repo, 'a.txt'))).toBe(true)
+  })
+
+  it('keeps the worktree when landing conflicts', async () => {
+    const a = makeWorktree('a', 'main', 'shared.txt')
+    const b = makeWorktree('b', 'main', 'shared.txt')
+    expect((await landWorktree({
+      repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: 'main',
+    })).ok).toBe(true)
+
+    const result = await landAndRetireWorktree({
+      repoPath: repo,
+      worktreePath: b.path,
+      worktreeBranch: b.branch,
+      branchName: b.branch,
+      sourceBranch: 'main',
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.hasConflicts).toBe(true)
+    expect(existsSync(b.path)).toBe(true)
+    expect(git(repo, 'branch', '--list', b.branch).trim()).toContain(b.branch)
+  })
+
+  it('retries only cleanup after integration succeeded but removal failed', async () => {
+    const a = makeWorktree('a')
+    expect(registerWorktree({
+      repoPath: repo,
+      worktreePath: a.path,
+      branchName: a.branch,
+      sourceBranch: 'main',
+    })).toBe(true)
+    const originalRunGit = gitRunner.runGit
+    let failRemoval = true
+    const runGitSpy = vi.spyOn(gitRunner, 'runGit').mockImplementation(async (cwd, args, options) => {
+      if (failRemoval && args[0] === 'worktree' && args[1] === 'remove' && args[2] === a.path) {
+        failRemoval = false
+        throw new Error('remove blocked')
+      }
+      return originalRunGit(cwd, args, options)
+    })
+    try {
+      const first = await landAndRetireWorktree({
+        repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch,
+        branchName: a.branch, sourceBranch: 'main',
+      })
+      expect(first.ok).toBe(false)
+      expect(first.landed).toBe(true)
+      expect(first.error).toContain('removal failed')
+      expect(existsSync(a.path)).toBe(true)
+
+      const mergeCallsAfterFirst = runGitSpy.mock.calls.filter(([, args]) => args[0] === 'merge').length
+      const second = await landAndRetireWorktree({
+        repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch,
+        branchName: a.branch, sourceBranch: 'main',
+      })
+      expect(second.ok).toBe(true)
+      expect(existsSync(a.path)).toBe(false)
+      expect(runGitSpy.mock.calls.filter(([, args]) => args[0] === 'merge')).toHaveLength(mergeCallsAfterFirst)
+    } finally {
+      runGitSpy.mockRestore()
+    }
   })
 })
 

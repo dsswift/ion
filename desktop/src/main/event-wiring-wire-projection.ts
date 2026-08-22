@@ -75,6 +75,7 @@ export function projectEngineEventToWire(
       path: event.imagePath,
       mediaType: event.imageMediaType,
       source: event.imageSource,
+      ...(event.imageContentHash ? { contentHash: event.imageContentHash } : {}),
       ...(event.imageToolId ? { toolId: event.imageToolId } : {}),
     }
   }

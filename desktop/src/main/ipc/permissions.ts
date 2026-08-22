@@ -17,11 +17,11 @@ export function registerPermissionsIpc(): void {
     IPC.RESPOND_ELICITATION,
     (
       _event,
-      { tabId, requestId, response, cancelled }:
-        { tabId: string; requestId: string; response?: Record<string, unknown>; cancelled: boolean },
+      { tabId, requestId, response, cancelled, declined }:
+        { tabId: string; requestId: string; response?: Record<string, unknown>; cancelled: boolean; declined?: boolean },
     ) => {
-      log('respond_elicitation', { tab_id: tabId, request_id: requestId, cancelled })
-      return sessionPlane.respondToElicitation(tabId, requestId, response, cancelled)
+      log('respond_elicitation', { tab_id: tabId, request_id: requestId, cancelled, declined: declined ?? false })
+      return sessionPlane.respondToElicitation(tabId, requestId, response, cancelled, declined ?? false)
     },
   )
 

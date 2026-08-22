@@ -88,11 +88,13 @@ extension RemoteEvent {
             try container.encodeIfPresent(reason, forKey: .runRecoveryReason)
             return true
 
-        case .engineSteerInjected(let tabId, let instanceId, let messageLength):
+        case .engineSteerInjected(let tabId, let instanceId, let messageLength, let clientMessageId, let entryId):
             try container.encode(TypeKey.engineSteerInjected, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
             try container.encode(messageLength, forKey: .steerMessageLength)
+            try container.encodeIfPresent(clientMessageId, forKey: .steerClientMessageId)
+            try container.encodeIfPresent(entryId, forKey: .steerEntryId)
             return true
 
         case .engineSteerDegraded(let tabId, let instanceId, let messageLength):
@@ -473,7 +475,7 @@ extension RemoteEvent {
             try container.encode(breakdown, forKey: .contextBreakdown)
             return true
 
-        case .engineImageContent(let tabId, let instanceId, let path, let mediaType, let source, let toolId):
+        case .engineImageContent(let tabId, let instanceId, let path, let mediaType, let contentHash, let source, let toolId):
             // Encoder mirror for engine_image_content. iOS never originates
             // this event; the encoder enables round-trip tests.
             try container.encode(TypeKey.engineImageContent, forKey: .type)
@@ -481,6 +483,7 @@ extension RemoteEvent {
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
             try container.encode(path, forKey: .path)
             try container.encode(mediaType, forKey: .mediaType)
+            try container.encodeIfPresent(contentHash, forKey: .contentHash)
             try container.encode(source, forKey: .source)
             try container.encodeIfPresent(toolId, forKey: .toolId)
             return true

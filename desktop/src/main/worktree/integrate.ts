@@ -47,7 +47,8 @@ import { repositoryManager } from '../git/repositoryManager'
 import { log as _log, warn as _warn } from '../logger'
 import { markWorktreeLanded, lookupWorktreeLandedAt } from './inventory'
 import { disenrollWorktree } from '../integration/bench-ops'
-import type { LandResult } from '../../shared/types'
+import type { LandResult, WorktreeMoveResult } from '../../shared/types'
+import { retireWorktreeUnqueued } from './relocate'
 
 const TAG = 'worktree.land'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
@@ -156,6 +157,93 @@ export interface LandOptions {
 // integration module keep one stable path for the whole lifecycle API.
 import { syncWorktreeFromSource, isDirty } from './sync'
 export { syncWorktreeFromSource, completeRebaseIfReplayed, isDirty } from './sync'
+
+export interface LandAndRetireOptions extends LandOptions {
+  /** Branch removed with the worktree after integration succeeds. */
+  branchName: string
+}
+
+export interface LandAndRetireResult extends LandResult {
+  /** True when integration completed, even if worktree cleanup failed. */
+  landed?: boolean
+  workingDirectory?: string
+  recoveryRef?: string
+}
+
+/**
+ * Integrate and remove a worktree as one terminal operation.
+ *
+ * Both halves run in one repository queue slot. If integration succeeded on a
+ * prior attempt but removal failed, the landed registry witness selects a
+ * cleanup-only retry instead of trying to integrate the same branch again.
+ */
+export async function landAndRetireWorktree(opts: LandAndRetireOptions): Promise<LandAndRetireResult> {
+  const repo = repositoryManager.get(opts.repoPath)
+  return repo.queue.enqueueMutation(async () => {
+    const cleanupOnly = lookupWorktreeLandedAt(opts.worktreePath) != null
+    log('land-and-retire: starting', {
+      repo_path: opts.repoPath,
+      worktree_path: opts.worktreePath,
+      worktree_branch: opts.worktreeBranch,
+      source_branch: opts.sourceBranch,
+      cleanup_only: cleanupOnly,
+    })
+
+    let landResult: LandResult = { ok: true }
+    if (!cleanupOnly) {
+      landResult = await landWorktreeUnqueued(opts)
+      if (!landResult.ok) {
+        warn('land-and-retire: integration refused; worktree kept', {
+          worktree_path: opts.worktreePath,
+          has_conflicts: !!landResult.hasConflicts,
+          error: landResult.error ?? '',
+        })
+        return landResult
+      }
+    } else {
+      log('land-and-retire: prior integration found; retrying cleanup only', {
+        worktree_path: opts.worktreePath,
+      })
+    }
+
+    const retireResult: WorktreeMoveResult = await retireWorktreeUnqueued({
+      repoPath: opts.repoPath,
+      worktreePath: opts.worktreePath,
+      branchName: opts.branchName,
+    })
+    const prunedBenchPaths = Array.from(new Set([
+      ...(landResult.prunedBenchPaths ?? []),
+      ...(retireResult.prunedBenchPaths ?? []),
+    ]))
+    if (!retireResult.ok) {
+      warn('land-and-retire: integrated but cleanup failed', {
+        worktree_path: opts.worktreePath,
+        error: retireResult.error ?? '',
+      })
+      return {
+        ...landResult,
+        ok: false,
+        landed: true,
+        error: `Land succeeded, but worktree removal failed: ${retireResult.error ?? 'Unknown error.'}`,
+        prunedBenchPaths,
+      }
+    }
+
+    log('land-and-retire: done', {
+      worktree_path: opts.worktreePath,
+      cleanup_only: cleanupOnly,
+      pruned_benches: prunedBenchPaths.length,
+    })
+    return {
+      ...landResult,
+      ...retireResult,
+      ok: true,
+      landed: true,
+      prunedBenchPaths,
+      warning: retireResult.warning ?? landResult.warning,
+    }
+  })
+}
 
 /**
  * Land a worktree's branch into its source branch.

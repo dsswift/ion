@@ -20,6 +20,7 @@
  *   8. submitRemotePrompt slash → NOT called.
  *   9. The ONE generated string reaches both the tab and the worktree seed.
  *  10. A slash command seeds nothing — it is an operation, not a description.
+ *  11. Failed title generation keeps fallback, skips seed, and logs a warning.
  *
  * Regression direction for case 1: removing the slash guard in
  * event-slice-titling.ts causes generateTitle to be called and case 1 goes red.
@@ -64,7 +65,16 @@ vi.mock('../../preferences', () => ({
   },
 }))
 
+vi.mock('../../rendererLogger', () => ({
+  rInfo: vi.fn(),
+  rDebug: vi.fn(),
+  rWarn: vi.fn(),
+  rError: vi.fn(),
+  rTrace: vi.fn(),
+}))
+
 import { usePreferencesStore } from '../../preferences'
+import { rWarn } from '../../rendererLogger'
 import { createSendSlice } from '../slices/send-slice'
 import { createTabSlice } from '../slices/tab-slice'
 import type { State } from '../session-store-types'
@@ -97,8 +107,7 @@ function makeTab(overrides: Partial<TabState> = {}): TabState {
     lastKnownSessionId: null,
     status: 'idle',
     activeRequestId: null,
-    lastEventAt: null,
-    hasUnread: false,
+    lastEventAt: null,    lastActivityAt: null,    idleSince: null,    lastCompletionAt: null,    settledOverride: null,    settledAt: null,    snoozedUntil: null,    snoozedAt: null,    lastVisitedAt: null,    manualUnread: false,
     currentActivity: '',
     attachments: [],
     title: 'New Tab',
@@ -367,6 +376,26 @@ describe('send-slice — worktree seeding', () => {
 
     expect(mockGenerateTitle).not.toHaveBeenCalled()
     expect(mockWorktreeSeedTitle).not.toHaveBeenCalled()
+  })
+
+  it('keeps truncated fallback, skips worktree seed, and warns when title generation rejects', async () => {
+    const error = new Error('title service unavailable')
+    mockGenerateTitle.mockRejectedValueOnce(error)
+    const { state } = buildHarness(makeTab({ title: 'New Tab', workingDirectory: '/wt/ion-a3f1' }))
+    const prompt = 'plain prose that should remain the fallback title after title generation fails'
+    const fallback = `${prompt.substring(0, 37)}...`
+
+    state.submit('tab-1', prompt)
+    await vi.waitFor(() => expect(vi.mocked(rWarn)).toHaveBeenCalled())
+
+    expect(state.tabs[0].title).toBe(fallback)
+    expect(state.tabs[0].customTitle).toBeNull()
+    expect(mockWorktreeSeedTitle).not.toHaveBeenCalled()
+    expect(rWarn).toHaveBeenCalledWith(
+      'event.title',
+      'AI title generation failed; keeping truncated fallback',
+      { tab_id: 'tab-1', error: 'Error: title service unavailable' },
+    )
   })
 
   it('seeds nothing when generation returns an empty title', async () => {

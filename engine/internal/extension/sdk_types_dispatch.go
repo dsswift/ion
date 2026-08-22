@@ -11,13 +11,16 @@ import (
 
 // DispatchAgentOpts configures an engine-native agent dispatch.
 type DispatchAgentOpts struct {
-	Name         string `json:"name"`
-	Task         string `json:"task"`
-	Model        string `json:"model,omitempty"`
-	ExtensionDir string `json:"extensionDir,omitempty"`
-	SystemPrompt string `json:"systemPrompt,omitempty"`
-	ProjectPath  string `json:"projectPath,omitempty"`
-	SessionID    string `json:"sessionId,omitempty"`
+	Name  string `json:"name"`
+	Task  string `json:"task"`
+	Model string `json:"model,omitempty"`
+	// ModelOrigin is engine-internal provenance. SDK calls always receive the
+	// extension origin at the transport boundary; extensions cannot spoof it.
+	ModelOrigin  types.ModelOrigin `json:"-"`
+	ExtensionDir string            `json:"extensionDir,omitempty"`
+	SystemPrompt string            `json:"systemPrompt,omitempty"`
+	ProjectPath  string            `json:"projectPath,omitempty"`
+	SessionID    string            `json:"sessionId,omitempty"`
 
 	// CallbackID is an SDK-generated unique token for this dispatch call.
 	// The host echoes it on every lifecycle and terminal notification so

@@ -58,7 +58,7 @@
 /** Minimal instance shape the guard reads. */
 interface GuardInstance {
   id: string
-  statusFields?: { state?: string; backgroundShells?: number } | null
+  statusFields?: { state?: string; backgroundAgents?: number; backgroundShells?: number; hasPendingWork?: boolean } | null
   agentStates?: Array<{ status?: string } | null> | null
 }
 
@@ -101,9 +101,13 @@ export function evaluateSessionBusyGuard(pane: GuardPane | null | undefined): Se
       orchestratorRunning = true
     }
     const agents = inst.agentStates || []
-    const running = agents.filter((a) => a?.status === 'running').length
+    const rosterRunning = agents.filter((a) => a?.status === 'running').length
+    const running = Math.max(rosterRunning, inst.statusFields?.backgroundAgents ?? 0)
     childCounts.push({ id: inst.id, count: running })
     shellCount += inst.statusFields?.backgroundShells ?? 0
+    if (inst.statusFields?.hasPendingWork) {
+      childCounts.push({ id: `${inst.id}:pending`, count: 1 })
+    }
   }
   const childRunning = childCounts.some((c) => c.count > 0)
   return {

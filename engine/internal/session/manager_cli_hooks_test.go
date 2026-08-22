@@ -601,6 +601,17 @@ func TestWireAgentToolServer_RegistersToolForCliBackend(t *testing.T) {
 	if opts.McpConfig == "" {
 		t.Error("expected McpConfig to be set")
 	}
+	if !ts.HasTool("ion_agent") || !ts.HasTool("ion_agent_status") {
+		t.Error("expected CLI ToolServer to expose ion_agent and ion_agent_status")
+	}
+	statusHandler := buildAgentStatusToolHandler(s.dispatchRegistry)
+	status, err := statusHandler(map[string]interface{}{})
+	if err != nil {
+		t.Fatalf("ion_agent_status: %v", err)
+	}
+	if status.IsError || status.Content != "No active agent dispatches." {
+		t.Fatalf("ion_agent_status result = %#v", status)
+	}
 
 	// Cleanup
 	ts.Stop()

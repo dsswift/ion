@@ -54,6 +54,10 @@ func (m *Manager) elicit(s *engineSession, key string, info extension.Elicitatio
 		ElicitSchema:    info.Schema,
 		ElicitURL:       info.URL,
 		ElicitMode:      info.Mode,
+		ElicitSource:    info.Source,
+		ElicitServer:    info.Server,
+		ElicitMessage:   info.Message,
+		ElicitAction:    info.Action,
 	})
 
 	// Fire the extension hook in parallel — extensions can also reply.
@@ -122,6 +126,7 @@ func (m *Manager) elicit(s *engineSession, key string, info extension.Elicitatio
 				RequestID: requestID,
 				Response:  reply.Response,
 				Cancelled: reply.Cancelled,
+				Declined:  reply.Declined,
 			})
 		}
 		return reply.Response, reply.Cancelled, nil
@@ -138,7 +143,8 @@ func (m *Manager) elicit(s *engineSession, key string, info extension.Elicitatio
 
 // HandleElicitationResponse resolves a pending elicitation from a client.
 // Called by the server when an `elicitation_response` command is received.
-func (m *Manager) HandleElicitationResponse(key, requestID string, response map[string]interface{}, cancelled bool) {
+// declined is the ternary middle: "no, but continue" vs cancelled "no, and abort".
+func (m *Manager) HandleElicitationResponse(key, requestID string, response map[string]interface{}, cancelled bool, declined ...bool) {
 	m.mu.RLock()
 	s, ok := m.sessions[key]
 	m.mu.RUnlock()
@@ -146,7 +152,8 @@ func (m *Manager) HandleElicitationResponse(key, requestID string, response map[
 		utils.LogWithFields(utils.LevelInfo, "session", "elicitation_response for unknown session", map[string]any{"key": key})
 		return
 	}
-	if !s.pending.ResolveElicit(requestID, pending.ElicitReply{Response: response, Cancelled: cancelled}) {
+	declinedReply := len(declined) > 0 && declined[0]
+	if !s.pending.ResolveElicit(requestID, pending.ElicitReply{Response: response, Cancelled: cancelled, Declined: declinedReply}) {
 		utils.LogWithFields(utils.LevelInfo, "session", "no pending elicitation for session", map[string]any{"elicit_request_id": requestID, "key": key})
 	}
 }

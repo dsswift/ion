@@ -4,11 +4,11 @@ import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { useOutsideDismiss } from '../hooks/useOutsideDismiss'
 import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
-import { zoomViewport } from '../viewport-zoom'
 import { transitions } from '../theme-tokens'
 import { ConfirmDialog } from './git/ConfirmDialog'
 import { rError } from '../rendererLogger'
 import type { GitCommit } from '../../shared/types'
+import { scrollableMenuStyle } from '../menu-viewport'
 
 // ─── Commit context menu ───
 
@@ -62,7 +62,6 @@ export function CommitContextMenu({ anchor, commit, directory, onRefresh, onClos
   // commit sits at the bottom of the panel and the menu used to open below the
   // window edge. `onRebase` gates two extra rows, so it changes the height.
   const pos = useAnchoredPopover(anchor, { deps: [!!onRebase] })
-  const vp = zoomViewport()
 
   const items = [
     { label: 'Copy Commit Hash', action: () => navigator.clipboard.writeText(commit.fullHash) },
@@ -111,8 +110,7 @@ export function CommitContextMenu({ anchor, commit, directory, onRefresh, onClos
           left: pos.left,
           top: pos.top,
           visibility: pos.ready ? 'visible' : 'hidden',
-          maxHeight: vp.height - 16,
-          overflowY: 'auto',
+          ...scrollableMenuStyle(),
           pointerEvents: 'auto',
           background: colors.popoverBg,
           backdropFilter: 'blur(20px)',

@@ -307,15 +307,19 @@ describe('projectRemoteTabStates — conversationInstances', () => {
     expect(projectRemoteTabStates(s).tabs[0].conversationInstances?.[0].waitingState).toBe('plan-ready')
   })
 
-  it('sets isRunning from statusFields.state (running/connecting/starting)', () => {
-    for (const st of ['running', 'connecting', 'starting']) {
+  it('projects attaching separately from foreground running', () => {
+    for (const st of ['running', 'connecting']) {
       const inst = makeInstance({ statusFields: { label: '', state: st, model: '', contextPercent: 0, contextWindow: 0 } })
       const s = makeState([makeTab({ id: 't-r' })], [['t-r', { instances: [inst], activeInstanceId: 'main' }]])
-      expect(projectRemoteTabStates(s).tabs[0].conversationInstances?.[0].isRunning).toBe(true)
+      const projected = projectRemoteTabStates(s).tabs[0].conversationInstances?.[0]
+      expect(projected?.isRunning).toBe(true)
+      expect(projected?.isStarting).toBeUndefined()
     }
-    const idleInst = makeInstance({ statusFields: { label: '', state: 'idle', model: '', contextPercent: 0, contextWindow: 0 } })
-    const s2 = makeState([makeTab({ id: 't-i' })], [['t-i', { instances: [idleInst], activeInstanceId: 'main' }]])
-    expect(projectRemoteTabStates(s2).tabs[0].conversationInstances?.[0].isRunning).toBeUndefined()
+    const startingInst = makeInstance({ statusFields: { label: '', state: 'starting', model: '', contextPercent: 0, contextWindow: 0 } })
+    const startingState = makeState([makeTab({ id: 't-s' })], [['t-s', { instances: [startingInst], activeInstanceId: 'main' }]])
+    const starting = projectRemoteTabStates(startingState).tabs[0].conversationInstances?.[0]
+    expect(starting?.isRunning).toBeUndefined()
+    expect(starting?.isStarting).toBe(true)
   })
 
   it('projects the per-instance model fallback from engineModelFallbacks (strings only)', () => {
@@ -534,5 +538,27 @@ describe('projectResourceManifest', () => {
 
   it('returns an empty manifest for empty resources', () => {
     expect(projectResourceManifest({ resources: {}, readResourceIds: new Set() })).toEqual({})
+  })
+})
+
+// ─── Settled permanence (client parity) ──────────────────────────────────────
+//
+// iOS reads an ABSENT canRestoreSettled as restorable, so the projection has to
+// state the blocking answer for an ephemeral role. Without it the phone renders
+// Un-settle on a live bench or machine conversation, and the desktop store then
+// refuses the tap — an affordance that exists only to fail.
+describe('projectRemoteTabStates — settled permanence', () => {
+  for (const tabRole of ['bench-conversation', 'conflict-auto-fix', 'verification-analysis']) {
+    it(`marks a ${tabRole} as permanently settling`, () => {
+      const s = makeState([makeTab({ tabRole })])
+      expect(projectRemoteTabStates(s).tabs[0].canRestoreSettled).toBe(false)
+    })
+  }
+
+  it('omits the field for an ordinary conversation', () => {
+    // Omitted rather than `true`: absent already means restorable on every
+    // client, and sending the default would grow every tab's payload.
+    const s = makeState([makeTab({ tabRole: null })])
+    expect(projectRemoteTabStates(s).tabs[0].canRestoreSettled).toBeUndefined()
   })
 })

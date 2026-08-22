@@ -99,7 +99,7 @@ A `position: 'fixed'` element is placed in viewport coordinates, so nothing in t
 
 Both primitives are zoom-aware. The operator's UI zoom is applied as `document.documentElement.style.zoom`, which means DOM measurements come back in real viewport pixels while CSS lengths are interpreted in the zoomed space. `viewport-zoom.ts` (`zoomRect` / `zoomViewport`) is the conversion; do not compare a raw `getBoundingClientRect()` against a CSS length without it.
 
-`components/__tests__/popover-bounds-scan.test.ts` enforces this structurally: every `position: 'fixed'` in `renderer/components` and `renderer/atv` must resolve to `inset: 0`, the anchored positioner's output, a clamped ref, or a `// viewport-ok: <reason>` tag. A tag is for an element that is genuinely bounded some other way (a draggable panel with its own clamp, a corner-pinned toast) and must cite what bounds it.
+`components/__tests__/popover-bounds-scan.test.ts` enforces this structurally: every `position: 'fixed'` in `renderer/components` and `renderer/studio` must resolve to `inset: 0`, the anchored positioner's output, a clamped ref, or a `// viewport-ok: <reason>` tag. A tag is for an element that is genuinely bounded some other way (a draggable panel with its own clamp, a corner-pinned toast) and must cite what bounds it.
 
 ## Subprocess env
 
@@ -182,15 +182,20 @@ The TabStrip contains a bell icon for global notifications (workspace-scoped res
 
 Session-scoped resources appear in the per-conversation attachments panel (ConversationAttachmentsSheet on iOS, equivalent on desktop).
 
-## ATV shell rules (overlay ↔ ATV parity)
+## Studio shell rules (overlay ↔ Studio parity)
 
-The ATV window (`src/renderer/atv/`) runs the session store in MIRROR mode — see [ADR-021](../docs/architecture/adr/021-atv-shell-mirror-store.md) and `src/renderer/atv/README.md`. The rules that bite:
+The Ion Studio window (`src/renderer/studio/`) runs the session store in MIRROR mode — see [ADR-021](../docs/architecture/adr/021-studio-shell-mirror-store.md) and `src/renderer/studio/README.md`. The rules that bite:
 
-- **New store action** → classify in `src/shared/atv-mirror-actions.ts` (FORWARDED vs MIRROR_LOCAL with justification) or `mirror-parity.test.ts` fails.
+- **New store action** → classify in `src/shared/studio-mirror-actions.ts` (FORWARDED vs MIRROR_LOCAL with justification) or `mirror-parity.test.ts` fails.
 - **Multi-step business flow** (approve-plan, implement, anything that reads store state between mutations) → ONE store action classified FORWARDED, never a component handler chaining store calls. A component handler runs in whichever window hosts it; in the mirror that mixes forwarded and local calls and its decisions read stale mirror state (the "Implement and Unpin filed under Planning" bug). `implementPlan` in `stores/slices/implement-slice.ts` is the pattern.
-- **New event push from main** → route through `broadcast()`; `make check-atv-parity` fails direct `webContents.send` outside the owner-only allowlist in `scripts/check-atv-parity.sh`.
-- **New shared surface** → mount the overlay's component in the ATV (one component, one store); bespoke ATV widgets only for canvas-coupled surfaces.
-- **New ATV setting** → `SETTINGS_DEFAULTS` + the `ATV_SETTING_KEYS` allowlist in `main/ipc/atv.ts` + `AtvSettings`; cross-window convergence rides `ion:settings-changed` from the settings funnel.
+- **New event push from main** → route through `broadcast()`; `make check-studio-parity` fails direct `webContents.send` outside the owner-only allowlist in `scripts/check-studio-parity.sh`.
+- **New shared surface** → mount the overlay's component in the Studio shell (one component, one store); bespoke Studio widgets only for canvas-coupled surfaces.
+- **New Studio setting** → `SETTINGS_DEFAULTS` + the `STUDIO_SETTING_KEYS` allowlist in `main/ipc/studio.ts` + `StudioSettings`; cross-window convergence rides `ion:settings-changed` from the settings funnel.
+- **Surface tabs** (`src/renderer/studio/surface/`) live in a window-local Zustand store OUTSIDE useSessionStore. `studioSurface` persists one descriptor record per conversation, the global Diff/Plan/Visualizer pin set, and one workspace-scoped Notification tab. Opening a notification replaces that global tab's resource and it remains open across conversations until the user closes it. Explorer, Git, browser, terminal, and file tabs never pin. The surface store selects the mirrored active conversation synchronously. Geometry remains global in `studioLayout`; the desktop preference controls whether visibility stays live across a tab switch or restores each conversation's saved state. Shape/ordering/persistence contracts are shared modules (`shared/studio-surface-*.ts`) — one parser is both the renderer restore and the main-side `studioSurface` validator. File tabs are descriptors whose buffers stay in `fileEditorStates`.
+- **File-open routing** goes through `renderer/lib/file-open-router.ts`: Studio registers a router at boot, the overlay never does — shared components ask `surfaceRouter()` first and keep their legacy fallback. Never add `windowRole()` branches to shared components for file-open behavior.
+- **Single-UI exclusivity (D1)**: `activeUi` picks the ONE conversation UI; the live switch is `main/active-ui.ts`; the enterprise lock is `activeUiPolicy` (`shared/enterprise-active-ui-policy.ts`). Inactive-UI affordances are ABSENT, not disabled.
+- **Terminals** are main-owned with the attach protocol (`TERMINAL_ATTACH`): renderers attach/detach, only explicit close destroys; surface terminals use the `studio:` key namespace (immune to conversation-tab cleanup).
+- **Inbox**: the desktop computes inbox classification (`shared/inbox-classify.ts`); clients render. Settle/snooze/unread are FORWARDED tab-metadata actions; iOS parity rides `RemoteTabState.inboxState`/`unread`/`wokeAt` + the `desktop_tab_*` inbox commands.
 
 ## Done criteria
 

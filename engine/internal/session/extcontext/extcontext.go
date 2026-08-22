@@ -125,6 +125,17 @@ type SessionAccessor interface {
 	// Best-effort: failures are logged, never propagated (a dispatch must
 	// not fail because its durability record could not be written).
 	PersistDispatchRegistered(agentID, agentName, displayName, task, model, parentDispatchID string, depth int)
+
+	// PersistDispatchTerminal writes the superseding terminal agent_dispatch
+	// record for one dispatch, called immediately after its slot reaches
+	// done/error/cancelled. This is the other half of the durability pair: the
+	// run-exit sweep (persistTerminalDispatches) only runs when the parent
+	// exits a run, so a dispatch that completes while the parent is parked had
+	// no durable outcome until the parent's NEXT run exit — and if the engine
+	// died first, the next start read the stale `running` record and reported a
+	// cleanly-completed dispatch as lost. Best-effort, same as the
+	// registration write: failures log and never propagate.
+	PersistDispatchTerminal(agentID string)
 	// DispatchRegistry returns the session's dispatch registry. Required by
 	// the context paths that build an extension.Context without already
 	// holding one in scope (extension-tool dispatch, the LLM-call hook
@@ -557,6 +568,7 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 					LastActivityMs:      s.LastActivityMs,
 					ChildConversationID: s.ChildConversationID,
 					PendingChildren:     s.PendingChildren,
+					WaitingOn:           mapDispatchWaitingOn(s.WaitingOn),
 				}
 			}
 			return entries, nil
@@ -763,4 +775,14 @@ func steerSelfWithKind(
 		return extension.SteerDispatchResult{Delivered: false, Outcome: "sent"}, err
 	}
 	return extension.SteerDispatchResult{Delivered: true, Outcome: "sent"}, nil
+}
+
+func mapDispatchWaitingOn(waiting *DispatchWaitingOn) *extension.DispatchWaitingOn {
+	if waiting == nil {
+		return nil
+	}
+	return &extension.DispatchWaitingOn{
+		TaskIDs:          append([]string(nil), waiting.TaskIDs...),
+		ChildDispatchIDs: append([]string(nil), waiting.ChildDispatchIDs...),
+	}
 }

@@ -32,13 +32,14 @@ import SwiftUI
 /// Semantic state returned by shared cascade. Views own shape rendering;
 /// classifier owns only priority and state.
 enum TabStatusState: Equatable {
-    case error, permission, running, children, bash, planReady, question, idle
+    case error, permission, running, starting, children, bash, planReady, question, idle
 
     func color(_ theme: AppTheme) -> Color {
         switch self {
         case .error: theme.statusError
         case .permission: theme.statusWarning
         case .running: theme.statusRunning
+        case .starting: theme.statusIdle
         case .children: theme.statusWaitingChildren
         case .bash: theme.statusBash
         case .planReady: theme.statusDone
@@ -62,7 +63,7 @@ struct GroupTabStatus: Equatable {
 
 enum TabStatusRollup {
     static let statusCascade: [(name: String, iosReachable: Bool)] = [
-        ("error", true), ("permission", true), ("running", true),
+        ("error", true), ("permission", true), ("running", true), ("starting", true),
         ("children", true), ("bash-background", true), ("plan-ready", true),
         ("question", true), ("bash", false), ("unread", false), ("idle", true)
     ]
@@ -87,6 +88,7 @@ enum TabStatusRollup {
     static let priorityError = priority(for: "error")
     static let priorityPermission = priority(for: "permission")
     static let priorityRunning = priority(for: "running")
+    static let priorityStarting = priority(for: "starting")
     static let priorityChildren = priority(for: "children")
     static let priorityBashBackground = priority(for: "bash-background")
     static let priorityPlanReady = priority(for: "plan-ready")
@@ -100,6 +102,8 @@ enum TabStatusRollup {
         let question = tab.permissionQueue.contains { $0.toolName == "AskUserQuestion" }
         if genericPermission { return .init(priority: priorityPermission, state: .permission) }
         if tab.status == .running || tab.status == .connecting { return .init(priority: priorityRunning, state: .running) }
+        if tab.status == .starting { return .init(priority: priorityStarting, state: .starting) }
+        if tab.status == .waiting || tab.hasPendingWork == true { return .init(priority: priorityChildren, state: .children) }
         if tab.hasRunningChildren == true { return .init(priority: priorityChildren, state: .children) }
         if (tab.backgroundShellCount ?? 0) > 0 { return .init(priority: priorityBashBackground, state: .bash) }
         if planReady && (tab.status == .idle || tab.status == .completed) { return .init(priority: priorityPlanReady, state: .planReady) }

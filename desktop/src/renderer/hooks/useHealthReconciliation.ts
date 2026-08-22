@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
 import { useSessionStore } from '../stores/sessionStore'
 import { commitInstance } from '../stores/conversation-instance'
+import { logTabStatusWrite, logTabStatusPatch } from '../stores/slices/tab-status-transition'
+import type { TabStatus } from '../../shared/types'
 
 const HEALTH_POLL_INTERVAL_MS = 1500
 
@@ -46,12 +48,30 @@ async function reconcile(): Promise<void> {
       if (t.status !== 'running' && t.status !== 'connecting') return t
 
       const healthEntry = stateByTab.get(t.id)
-      if (!healthEntry) return t
+      if (!healthEntry) {
+        // This hook is the safety net for a tab stuck showing activity, and
+        // this is the branch where the net has a hole: the tab looks busy but
+        // the backend health poll returned nothing for it, so there is no
+        // authority to reconcile against and the tab keeps its status. A
+        // conversation that stays 'connecting' with a locked composer while
+        // nothing runs passes through here on every poll, silently — which is
+        // why the miss is recorded rather than skipped quietly.
+        logTabStatusWrite(t.id, t.status, t.status, 'health.reconcile', 'tab-missing',
+          { detail: 'no health entry for an active-looking tab' })
+        return t
+      }
+
+      /** Record a reconciliation before returning the patched tab. */
+      const unstick = (to: TabStatus, backendStatus: string): void => {
+        logTabStatusPatch(t.id, t.status as TabStatus, to, 'health.reconcile',
+          { backend_status: backendStatus, backend_alive: healthEntry.alive })
+      }
 
       // Backend says dead but UI thinks it's running → unstick
       if (healthEntry.status === 'dead') {
         changed = true
         instanceClears.set(t.id, 'queue+denied')
+        unstick('dead', 'dead')
         return { ...t, status: 'dead' as const, currentActivity: 'Session ended', activeRequestId: null }
       }
 
@@ -60,6 +80,7 @@ async function reconcile(): Promise<void> {
       if (healthEntry.status === 'idle' && !healthEntry.alive) {
         changed = true
         instanceClears.set(t.id, 'queue')
+        unstick('completed', 'idle')
         return { ...t, status: 'completed' as const, currentActivity: '', activeRequestId: null }
       }
 
@@ -67,6 +88,7 @@ async function reconcile(): Promise<void> {
       if (healthEntry.status === 'failed') {
         changed = true
         instanceClears.set(t.id, 'queue+denied')
+        unstick('failed', 'failed')
         return { ...t, status: 'failed' as const, currentActivity: '', activeRequestId: null }
       }
 
@@ -75,6 +97,7 @@ async function reconcile(): Promise<void> {
       if (healthEntry.status === 'completed') {
         changed = true
         instanceClears.set(t.id, 'queue')
+        unstick('completed', 'completed')
         return { ...t, status: 'completed' as const, currentActivity: '', activeRequestId: null }
       }
 
@@ -82,9 +105,15 @@ async function reconcile(): Promise<void> {
       if (healthEntry.status === 'running' && !healthEntry.alive) {
         changed = true
         instanceClears.set(t.id, 'queue+denied')
+        unstick('dead', 'running')
         return { ...t, status: 'dead' as const, currentActivity: 'Session ended', activeRequestId: null }
       }
 
+      // The backend agrees the tab is genuinely busy: no reconciliation is due.
+      // Logged so a stuck tab's polls read as "backend still calls this alive"
+      // rather than as an absent decision.
+      logTabStatusWrite(t.id, t.status as TabStatus, t.status as TabStatus, 'health.reconcile', 'already-at-target',
+        { backend_status: healthEntry.status, backend_alive: healthEntry.alive })
       return t
     })
 

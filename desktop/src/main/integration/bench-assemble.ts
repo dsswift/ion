@@ -50,8 +50,8 @@
  * empty-tree commit — so a terminal or conversation opened in the bench finds
  * nothing to falsely test. The earlier behaviour (skip the member, keep the
  * rest) produced a silent partial bench: the operator tested a combination
- * that misrepresented what was enrolled, and nothing said so. Partial-on-
- * purpose remains available via the per-member exclude toggle.
+ * that misrepresented what was enrolled. The member list is the exact assembly
+ * set, so a partial bench requires removing members before assembly.
  *
  * ── Resolve once: `git rerere` ──────────────────────────────────────────────
  * Before declaring a merge conflicted, `git rerere` is given the chance to
@@ -101,13 +101,11 @@ export async function assembleBench(ws: IntegrationWorkspace): Promise<BenchAsse
  * callers already holding the repo mutation slot.
  */
 export async function assembleBenchUnqueued(ws: IntegrationWorkspace): Promise<BenchAssembleResult> {
-  const enabled = ws.members.filter((m) => m.enabled)
   log('assemble: starting', {
     repo_path: ws.repoPath,
     source_branch: ws.sourceBranch,
     bench_path: ws.benchPath,
     members_total: ws.members.length,
-    members_enabled: enabled.length,
   })
 
   try {
@@ -229,10 +227,8 @@ export async function assembleBenchUnqueued(ws: IntegrationWorkspace): Promise<B
     }
 
     // ── Landed absorption ─────────────────────────────────────────────────
-    // Checked BEFORE `enabled`, on purpose. Once a member's work is contained
-    // in the source branch it arrives with the bench's base and there is no
-    // merge to skip, so disabling the member cannot remove its content.
-    // Reporting it as `excluded` would be a lie: the work is present.
+    // Once a member's work is contained in the source branch it arrives with
+    // the bench's base, so there is no member contribution left to merge.
     //
     // This is the land path: the operator lands a worktree into the FEATURE
     // branch (the workspace's source branch), typically after squashing a long
@@ -249,7 +245,6 @@ export async function assembleBenchUnqueued(ws: IntegrationWorkspace): Promise<B
         branch: member.branchName,
         sha: member.pinnedSha.slice(0, 7),
         source_branch: ws.sourceBranch,
-        was_enabled: member.enabled,
       })
       retired.push({
         ...member,
@@ -264,15 +259,6 @@ export async function assembleBenchUnqueued(ws: IntegrationWorkspace): Promise<B
       continue
     }
 
-    if (!member.enabled) {
-      log('assemble: member excluded', { branch: member.branchName })
-      // Only the MERGE axis moves. The pin keeps reporting how fresh this
-      // member is, so an excluded member that has also moved on still says so --
-      // the collapsed enum erased that and re-enabling merged a stale pin
-      // silently.
-      updatedMembers.push({ ...member, merge: 'skipped', conflictPaths: undefined, conflictsWith: undefined, mergeResolution: undefined })
-      continue
-    }
     if (!member.pinnedSha) {
       warn('assemble: member has no pinned contribution', { branch: member.branchName })
       updatedMembers.push({ ...member, pin: 'gone', merge: 'unbuilt', conflictPaths: undefined, conflictsWith: undefined, mergeResolution: undefined })
@@ -406,7 +392,7 @@ export async function assembleBenchUnqueued(ws: IntegrationWorkspace): Promise<B
             mergeResolution: undefined,
             priorResolutions: priorResolutions.length > 0 ? priorResolutions : undefined,
           }
-          : { ...m, merge: m.enabled ? 'unbuilt' : 'skipped', conflictPaths: undefined, conflictsWith: undefined, mergeResolution: undefined, priorResolutions: undefined }
+          : { ...m, merge: 'unbuilt', conflictPaths: undefined, conflictsWith: undefined, mergeResolution: undefined, priorResolutions: undefined }
       ))
 
       const failed: IntegrationWorkspace = {
@@ -469,7 +455,7 @@ export async function assembleBenchUnqueued(ws: IntegrationWorkspace): Promise<B
         ...ws,
         members: updatedMembers.map((member) => ({
           ...member,
-          merge: member.enabled ? 'unbuilt' : 'skipped',
+          merge: 'unbuilt',
           conflictPaths: undefined,
           conflictsWith: undefined,
           mergeResolution: undefined,
@@ -521,7 +507,6 @@ export async function assembleBenchUnqueued(ws: IntegrationWorkspace): Promise<B
     landed_retired: retired.length,
     empty_pin: updatedMembers.filter((m) => m.pin === 'empty').length,
     gone: updatedMembers.filter((m) => m.pin === 'gone').length,
-    excluded: updatedMembers.filter((m) => !m.enabled).length,
     behind: updatedMembers.filter((m) => m.pin === 'behind').length,
   })
   return { ok: true, workspace: result, retired }

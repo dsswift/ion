@@ -88,8 +88,39 @@ describe('appraiseRefPair', () => {
   it('drops pruned paths so a retired worktree cannot pin stale state', async () => {
     runGitMock.mockResolvedValue('0\t1\n')
     await appraiseRefPair('/wt', HEAD, TIP)
-    pruneAppraisalCache(new Set(['/other-wt']))
+    pruneAppraisalCache('/repo', new Set(['/other-wt']))
     await appraiseRefPair('/wt', HEAD, TIP)
+    expect(runGitMock).toHaveBeenCalledTimes(2)
+  })
+
+  // The cache is one module-level map shared by every repo, but a crawl's
+  // livePaths only describes ITS OWN repo. An unscoped prune therefore read
+  // every other repo's entries as retired and deleted them. With six repos
+  // open, the five empty ones crawled first each tick and wiped the sixth's
+  // entries before it ran — the cache logged hits:0 / misses:7 forever and the
+  // sha-pair fast path could never be taken.
+  it('leaves another repo\'s entries alone when one repo prunes', async () => {
+    runGitMock.mockResolvedValue('0\t1\n')
+    await appraiseRefPair('/repo-a/wt', HEAD, TIP, undefined, '/repo-a')
+    await appraiseRefPair('/repo-b/wt', HEAD, TIP, undefined, '/repo-b')
+    expect(runGitMock).toHaveBeenCalledTimes(2)
+
+    // repo-b crawls and reports only its own worktrees. repo-a's entry is not
+    // in that listing, but it is also not repo-b's to evict.
+    pruneAppraisalCache('/repo-b', new Set(['/repo-b/wt']))
+
+    const counters: AppraisalCounters = { hits: 0, misses: 0 }
+    await appraiseRefPair('/repo-a/wt', HEAD, TIP, counters, '/repo-a')
+    await appraiseRefPair('/repo-b/wt', HEAD, TIP, counters, '/repo-b')
+    expect(counters).toEqual({ hits: 2, misses: 0 })
+    expect(runGitMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('still evicts a retired worktree of the pruning repo', async () => {
+    runGitMock.mockResolvedValue('0\t1\n')
+    await appraiseRefPair('/repo-a/gone', HEAD, TIP, undefined, '/repo-a')
+    pruneAppraisalCache('/repo-a', new Set(['/repo-a/kept']))
+    await appraiseRefPair('/repo-a/gone', HEAD, TIP, undefined, '/repo-a')
     expect(runGitMock).toHaveBeenCalledTimes(2)
   })
 })

@@ -62,7 +62,7 @@ func TestClampEntry_BoundInvariant_ProtectedCollection(t *testing.T) {
 		},
 	}
 
-	rep := clampEntry(&state, l)
+	rep := clampEntry(&state, l, testAttr)
 	if rep == nil {
 		t.Fatal("expected a clamp report for an oversized entry")
 	}
@@ -111,7 +111,7 @@ func TestClampEntry_BoundInvariant_Property(t *testing.T) {
 			}
 		}
 		state := types.AgentStateUpdate{Name: fmt.Sprintf("agent-%d", trial), Metadata: md}
-		clampEntry(&state, l)
+		clampEntry(&state, l, testAttr)
 		if got := approxMapBytes(state.Metadata); got > l.MaxEntryBytes {
 			t.Fatalf("trial %d: entry bound violated: %d > %d (keys: %v)", trial, got, l.MaxEntryBytes, sortedKeys(state.Metadata))
 		}
@@ -140,7 +140,7 @@ func TestClampSnapshot_BoundInvariant(t *testing.T) {
 		}
 	}
 
-	clampStates(states, l)
+	clampStates(states, l, testAttr)
 
 	total := 0
 	for i := range states {
@@ -169,7 +169,7 @@ func TestClampEntry_DispatchesKeepsMostRecent(t *testing.T) {
 		Metadata: map[string]any{"displayName": "A", "dispatches": dispatchArray(137, 20)},
 	}
 
-	clampEntry(&state, l)
+	clampEntry(&state, l, testAttr)
 
 	d, ok := state.Metadata["dispatches"].([]any)
 	if !ok {
@@ -210,7 +210,7 @@ func TestClampReport_ClampedBytesWithinLimit(t *testing.T) {
 		},
 	}
 
-	rep := clampEntry(&state, l)
+	rep := clampEntry(&state, l, testAttr)
 	if rep == nil {
 		t.Fatal("expected a clamp report")
 	}

@@ -1,6 +1,7 @@
 import { useSessionStore } from "../stores/sessionStore";
 import { usePreferencesStore } from "../preferences";
 import type { useColors } from "../theme";
+import { tabUnread } from '../../shared/inbox-classify'
 import type { TabState } from "../../shared/types";
 import type { ConversationPane } from "../../shared/types-engine";
 import { activeInstance } from "../stores/conversation-instance";
@@ -16,6 +17,7 @@ import {
   STATUS_PRIORITY_PLAN_READY,
   STATUS_PRIORITY_QUESTION,
   STATUS_PRIORITY_RUNNING,
+  STATUS_PRIORITY_STARTING,
   STATUS_PRIORITY_UNREAD,
 } from "./TabStripStatusPriority";
 export { tabHasExtensions } from "../../shared/tab-predicates";
@@ -147,8 +149,10 @@ export * from "./TabStripActivityFolds";
 // unqualified, and `export *` alone does not bind them in this module's scope.
 import {
   isAnyEngineInstanceRunning,
+  isAnyEngineInstanceStarting,
   anyEngineInstanceHasRunningChildren,
   anyEngineInstanceHasRunningShells,
+  anyEngineInstanceHasPendingWork,
 } from "./TabStripActivityFolds";
 
 // ─── Harness badge helpers ─────────────────────────────────────────────────
@@ -251,8 +255,13 @@ export function getTabStatusColor(
     bg = colors.statusRunning;
     pulse = true;
     priority = STATUS_PRIORITY_RUNNING;
-  } else if (anyEngineInstanceHasRunningChildren(tab.id)) {
-    // Yellow "awaiting children" — orchestrator idle, dispatched
+  } else if (tab.status === "starting" || isAnyEngineInstanceStarting(tab.id)) {
+    // Session attachment has started, but no foreground LLM turn exists. Keep
+    // the still idle-color dot and never pulse: attachment is not work.
+    priority = STATUS_PRIORITY_STARTING;
+  } else if (anyEngineInstanceHasRunningChildren(tab.id) || anyEngineInstanceHasPendingWork(tab.id)) {
+    // Yellow "awaiting work" — use the engine's exact pending-work verdict
+    // when a delivery has been accepted but no child/shell row is visible yet.
     // background agents still running. Visually distinct from the
     // terracotta running state so users can tell at a glance whether
     // foreground or background work is in flight. Glow uses the
@@ -293,7 +302,7 @@ export function getTabStatusColor(
     glow = true;
     glowColor = colors.statusBashGlow;
     priority = STATUS_PRIORITY_BASH;
-  } else if (tab.hasUnread) {
+  } else if (tabUnread(tab)) {
     bg = colors.statusComplete;
     priority = STATUS_PRIORITY_UNREAD;
   } else {

@@ -15,6 +15,7 @@ export * from './types-tool-gate'
 export * from './types-persistence'
 export * from './types-ipc'
 export * from './types-git-events'
+export * from './types-git'
 export * from './types-model-tiers'
 export * from './types-worktree-overlap'
 

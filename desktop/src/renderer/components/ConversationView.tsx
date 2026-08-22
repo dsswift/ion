@@ -21,7 +21,7 @@ import { TimelineMinimap } from './conversation/TimelineMinimap'
 import { deriveTimelineMinimapItems } from './conversation/TimelineMinimap.logic'
 import { rDebug, rInfo, rError } from '../rendererLogger'
 import {
-  groupMessages,
+  groupMessages, suppressUserImageEchoes,
   MessageActions, InterruptButton,
   QueuedMessage, EmptyState, RunDurationFooter,
 } from './conversation'
@@ -34,6 +34,7 @@ const EMPTY_NOTIFICATIONS: any[] = []
 const EMPTY_MESSAGES: any[] = []
 const EMPTY_AGENTS: any[] = []
 const EMPTY_TELEMETRY: import('../../shared/types-engine').DispatchTelemetryEntry[] = []
+const CONVERSATION_ACTIVITY_OVERLAY_HEIGHT = 56
 
 // ─── Main Component ───
 //
@@ -54,7 +55,7 @@ export function ConversationView({ tabId }: ConversationViewProps) {
   const pane = useSessionStore(s => s.conversationPanes.get(tabId))
   const activeInstanceId = pane?.activeInstanceId || ''
   const key = activeInstanceId ? tabId : ''
-  const conversationFontSize = usePreferencesStore((s) => s.conversationFontSize)
+  const dataViewFontSize = usePreferencesStore((s) => s.dataViewFontSize)
   const queuedPrompts = useSessionStore(s => s.tabs.find(t => t.id === tabId)?.queuedPrompts ?? EMPTY_ARRAY)
   const editQueuedMessage = useSessionStore(s => s.editQueuedMessage)
 
@@ -107,6 +108,7 @@ export function ConversationView({ tabId }: ConversationViewProps) {
   const isRunning = tabStatus === 'running' || tabStatus === 'connecting'
   const runningChildCount = agentStates.filter(a => a.status === 'running').length
   const hasRunningChildren = runningChildCount > 0
+  const activityOverlayVisible = isRunning || hasRunningChildren
   const suppressPlanCard = resolvePlanCardSuppression({
     toolNames: permissionDenied?.tools.map((t) => t.toolName),
     hasRunningChildren,
@@ -118,8 +120,8 @@ export function ConversationView({ tabId }: ConversationViewProps) {
   const [agentPanelHeights, setAgentPanelHeights] = useState<Map<string, number>>(new Map())
 
   // Scroll-follow via shared hook.
-  const { scrollRef, isNearBottomRef: _isNearBottomRef, showScrollBtn, handleScroll, scrollToBottom } = useScrollFollow([
-    messages.length, agentStates.length, workingMessage, isRunning,
+  const { scrollRef, contentRef, isNearBottomRef: _isNearBottomRef, showScrollBtn, handleScroll, scrollToBottom } = useScrollFollow([
+    messages.length, agentStates.length, isRunning,
   ])
 
   // Conversation search, scoped to scrollRef.
@@ -139,13 +141,14 @@ export function ConversationView({ tabId }: ConversationViewProps) {
   // Full history renders — no pagination. Rows are memoized in
   // TranscriptRows, so a streaming chunk re-renders only the affected row;
   // the rest of the transcript (and its markdown parses) are skipped.
-  const grouped = useMemo(() => groupMessages(messages, { includeUser: true, unifiedTurnView }), [messages, unifiedTurnView])
-  const minimapItems = useMemo(() => deriveTimelineMinimapItems(messages), [messages])
+  const visibleMessages = useMemo(() => suppressUserImageEchoes(messages), [messages])
+  const grouped = useMemo(() => groupMessages(visibleMessages, { includeUser: true, unifiedTurnView }), [visibleMessages, unifiedTurnView])
+  const minimapItems = useMemo(() => deriveTimelineMinimapItems(visibleMessages), [visibleMessages])
 
-  const hasContent = messages.some(m => m.role === 'assistant' && (m.content || '').length > 0)
-  const showThinkingForeground = isRunning && !hasContent && runningChildCount === 0
-  const showWaitingChildren = !isRunning && hasRunningChildren
-  const showThinking = showThinkingForeground || showWaitingChildren
+  const isThinking = isRunning && messages.some(
+    (message) => message.role === 'thinking' && message.thinkingActive,
+  )
+  const orchestratorActivityLabel = workingMessage || (isThinking ? 'Thinking…' : 'Running…')
 
   // Auto-create first instance
   const tabsReady = useSessionStore(s => s.tabsReady)
@@ -174,7 +177,12 @@ export function ConversationView({ tabId }: ConversationViewProps) {
     interrupt(tabId)
   }, [interrupt, tabId])
 
+  // Answering clears the card locally and then submits. The submitted prompt
+  // is itself what releases the engine's retention (prompt_dispatch.go), so
+  // this path needs no explicit resolve — unlike a bare dismissal, which
+  // produces no prompt and goes through dismissPermissionDenied below.
   const clearPermissionDenied = useClearPermissionDenied(key, tabId, activeInstanceId)
+  const dismissPermissionDenied = useSessionStore(s => s.dismissPermissionDenied)
 
   const handleAnswerDenial = useCallback((answer: string) => {
     rInfo('conversation', 'handleAnswerDenial', { tab_id: tabId.slice(0, 8), answer_len: answer.length })
@@ -182,8 +190,12 @@ export function ConversationView({ tabId }: ConversationViewProps) {
     submit(tabId, answer)
   }, [tabId, clearPermissionDenied, submit])
 
+  const handleDismissDenial = useCallback(() => {
+    dismissPermissionDenied(tabId)
+  }, [dismissPermissionDenied, tabId])
+
   // One pipeline for every surface: implementPlan is a store action, so in
-  // the overlay it executes here (the owner) and in the ATV mirror the same
+  // the overlay it executes here (the owner) and in the Studio mirror the same
   // click forwards to the owner — the component never runs the business
   // logic itself (unpin ordering, mode flip, group move all happen in one
   // window against one store).
@@ -236,7 +248,8 @@ export function ConversationView({ tabId }: ConversationViewProps) {
       )}
 
       {/* Scrollable conversation area (with reserved minimap gutter on the left) */}
-      <div style={{ flex: agentPanelFullscreen ? 0 : 1, maxHeight: agentPanelFullscreen ? 100 : undefined, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'row' }}>
+      <div style={{ flex: agentPanelFullscreen ? 0 : 1, maxHeight: agentPanelFullscreen ? 100 : undefined, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <div style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'row' }}>
         <ConversationSearch
           state={searchState}
           actions={searchActions}
@@ -244,103 +257,113 @@ export function ConversationView({ tabId }: ConversationViewProps) {
         {/* Dedicated timeline gutter — reserved layout space, so the
             transcript can never render underneath the history rail. */}
         <TimelineMinimap items={minimapItems} scrollRef={scrollRef} />
-        <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, minWidth: 0, height: '100%', overflowY: 'auto', padding: '8px 12px 8px 4px', ['--ion-conv-font-size' as string]: `${conversationFontSize}px` } as React.CSSProperties}>
-          {messages.length === 0 && !isRunning && <EmptyState />}
-          {/* Thinking indicator */}
-          <AnimatePresence>
-            {showThinking && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '8px 0', fontSize: 12, color: colors.textTertiary,
-                }}
-              >
-                <span
-                  className="animate-pulse-dot"
-                  style={{
-                    width: 6, height: 6, borderRadius: '50%',
-                    background: showWaitingChildren ? colors.statusWaitingChildren : colors.accent, display: 'inline-block',
-                  }}
-                />
-                <span>
-                  {showWaitingChildren
-                    ? `Waiting for agent${runningChildCount === 1 ? '' : 's'}…`
-                    : 'Thinking...'}
-                </span>
-              </motion.div>
+        <div
+          ref={scrollRef}
+          data-testid="conversation-transcript"
+          onScroll={handleScroll}
+          style={{
+            flex: 1, minWidth: 0, height: '100%', overflowY: 'auto',
+            padding: `8px 12px ${activityOverlayVisible ? CONVERSATION_ACTIVITY_OVERLAY_HEIGHT + 8 : 8}px 4px`,
+            ['--ion-conv-font-size' as string]: `${dataViewFontSize}px`,
+          } as React.CSSProperties}
+        >
+          <div ref={contentRef}>
+            {messages.length === 0 && !isRunning && <EmptyState />}
+
+            {/* Grouped conversation messages via shared TranscriptRows */}
+            <TranscriptRows grouped={grouped} actions={renderActions} scrollRef={scrollRef} forceFullRender={searchState.active} />
+
+            {!isRunning && messages.length > 0 && lastResult && (
+              <RunDurationFooter durationMs={lastResult.durationMs} reason={lastResult.reason} />
             )}
-          </AnimatePresence>
 
-          {/* Grouped conversation messages via shared TranscriptRows */}
-          <TranscriptRows grouped={grouped} actions={renderActions} />
+            {/* Queued prompts */}
+            <AnimatePresence>
+              {queuedPrompts.map((prompt: string, i: number) => (
+                <QueuedMessage key={`queued-${i}`} content={prompt} onEdit={() => editQueuedMessage(tabId)} />
+              ))}
+            </AnimatePresence>
 
-          {!isRunning && messages.length > 0 && lastResult && (
-            <RunDurationFooter durationMs={lastResult.durationMs} reason={lastResult.reason} />
-          )}
-
-          {/* Queued prompts */}
-          <AnimatePresence>
-            {queuedPrompts.map((prompt: string, i: number) => (
-              <QueuedMessage key={`queued-${i}`} content={prompt} onEdit={() => editQueuedMessage(tabId)} />
-            ))}
-          </AnimatePresence>
-
-          {/* Working message */}
-          {workingMessage && (
-            <div style={{
-              padding: '6px 0', fontSize: 12,
-              color: colors.textTertiary, fontStyle: 'italic',
-            }}>
-              {workingMessage}
-            </div>
-          )}
-
-          {/* Streaming indicator */}
-          {isRunning && hasContent && (
-            <div style={{ padding: '4px 0' }}>
-              <span
-                className="animate-pulse-dot"
-                style={{
-                  width: 5, height: 5, borderRadius: '50%',
-                  background: colors.accent, display: 'inline-block',
-                }}
-              />
-            </div>
-          )}
-
-          {/* Dead / failed state rows */}
-          {tabStatus === 'dead' && (
-            <div style={{ padding: '6px 0', fontSize: 11, color: colors.statusError }}>
-              Session ended unexpectedly
-            </div>
-          )}
-          {tabStatus === 'failed' && (
-            <div style={{ padding: '6px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ color: colors.statusError, fontSize: 11 }}>Failed</span>
-              <button
-                onClick={handleRetry}
-                style={{ color: colors.accent, fontSize: 11, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-              >
-                Retry
-              </button>
-            </div>
-          )}
+            {/* Dead / failed state rows */}
+            {tabStatus === 'dead' && (
+              <div style={{ padding: '6px 0', fontSize: 11, color: colors.statusError }}>
+                Session ended unexpectedly
+              </div>
+            )}
+            {tabStatus === 'failed' && (
+              <div style={{ padding: '6px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: colors.statusError, fontSize: 11 }}>Failed</span>
+                <button
+                  onClick={handleRetry}
+                  style={{ color: colors.accent, fontSize: 11, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+          </div>
         </div>
-        {/* Scroll-to-bottom FAB (shared component) */}
+        {/* Scroll-to-bottom overlays only the transcript. */}
         <ScrollToBottomButton visible={showScrollBtn} onClick={scrollToBottom} />
 
-        {/* Interrupt button */}
+        {/* Activity stays in the transcript's reading flow. A translucent
+            gradient plus backdrop blur makes ending text recede beneath controls
+            without splitting the conversation into a separate panel.
+            The blur lives on its own static layer (no animating children) —
+            an element with backdrop-filter re-samples everything behind it
+            on every paint, so an animating child inside it (the pulse dot)
+            forced that resample every frame the dot ticked, for as long as
+            a message was streaming. The dot animates on a sibling layer on
+            top instead, where it can't invalidate the blur. */}
         <AnimatePresence>
-          {(isRunning || hasRunningChildren) && (
-            <div style={{ position: 'absolute', bottom: 4, right: 12, zIndex: 2 }}>
-              <InterruptButton onInterrupt={handleAbort} />
-            </div>
+          {activityOverlayVisible && (
+            <motion.div
+              data-testid="conversation-activity-row"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.12 }}
+              style={{
+                position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 2,
+                minHeight: 40,
+                pointerEvents: 'none',
+              }}
+            >
+              <div
+                aria-hidden="true"
+                style={{
+                  position: 'absolute', inset: 0,
+                  background: `linear-gradient(to bottom, transparent, ${colors.containerBg} 55%)`,
+                  backdropFilter: 'blur(5px)', WebkitBackdropFilter: 'blur(5px)',
+                }}
+              />
+              <div
+                style={{
+                  position: 'relative',
+                  padding: '12px 12px 4px',
+                  display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
+                }}
+              >
+                {isRunning ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: colors.textTertiary }}>
+                    <span
+                      className="animate-pulse-dot"
+                      style={{
+                        width: 6, height: 6, borderRadius: '50%',
+                        background: colors.statusRunning, display: 'inline-block',
+                      }}
+                    />
+                    <span data-testid="conversation-activity-indicator">{orchestratorActivityLabel}</span>
+                  </div>
+                ) : <span />}
+                <div data-testid="conversation-interrupt-row" style={{ pointerEvents: 'auto' }}>
+                  <InterruptButton onInterrupt={handleAbort} />
+                </div>
+              </div>
+            </motion.div>
           )}
         </AnimatePresence>
+        </div>
       </div>
 
       {/* Permission-denied / AskUserQuestion card */}
@@ -354,7 +377,7 @@ export function ConversationView({ tabId }: ConversationViewProps) {
             messages={messages}
             tabPlanFilePath={tabPlanFilePath}
             tabGroupPinned={tabGroupPinned}
-            onDismiss={clearPermissionDenied}
+            onDismiss={handleDismissDenial}
             onAnswer={handleAnswerDenial}
             onImplement={handleImplement}
             onImplementAndUnpin={handleImplementAndUnpin}

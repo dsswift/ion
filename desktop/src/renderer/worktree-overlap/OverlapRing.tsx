@@ -15,20 +15,20 @@ export function OverlapRing({ analysis, selectedPaths, keptPaths, onToggle, onTo
   const size = 520
   const center = size / 2
   const selected = selectedPaths.map((path) => analysis.footprints.find((item) => item.worktreePath === path)).filter((item): item is NonNullable<typeof item> => !!item)
-  const excluded = analysis.footprints.filter((item) => !selectedPaths.includes(item.worktreePath))
+  const unselected = analysis.footprints.filter((item) => !selectedPaths.includes(item.worktreePath))
   const selectedPos = positions(selected.map((item) => item.worktreePath), 140, center)
-  const excludedPos = positions(excluded.map((item) => item.worktreePath), 225, center)
+  const unselectedPos = positions(unselected.map((item) => item.worktreePath), 225, center)
   const tethers = useMemo(() => analysis.pairs.filter((pair) => pair.prediction === 'conflict' && ((selectedPaths.includes(pair.leftPath) && !selectedPaths.includes(pair.rightPath)) || (selectedPaths.includes(pair.rightPath) && !selectedPaths.includes(pair.leftPath)))), [analysis.pairs, selectedPaths])
   return <section style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><strong style={{ fontSize: 12 }}>Bench ring</strong><span style={{ fontSize: 10, color: colors.textTertiary }}>Inside = selected. Outside = held out. Pin = keep.</span></div>
-    <svg viewBox={`0 0 ${size} ${size}`} role="img" aria-label="Bench ring showing selected worktrees and excluded conflict blockers" style={{ width: '100%', maxHeight: 520, background: colors.surfacePrimary, borderRadius: 10, border: `1px solid ${colors.containerBorder}` }}>
+    <svg viewBox={`0 0 ${size} ${size}`} role="img" aria-label="Bench ring showing selected worktrees and unselected conflict blockers" style={{ width: '100%', maxHeight: 520, background: colors.surfacePrimary, borderRadius: 10, border: `1px solid ${colors.containerBorder}` }}>
       <circle cx={center} cy={center} r={170} fill="none" stroke={colors.containerBorder} strokeWidth="2" />
       <text x={center} y={center - 4} textAnchor="middle" fill={colors.textSecondary} fontSize="14">Integration bench</text>
       <text x={center} y={center + 16} textAnchor="middle" fill={colors.textTertiary} fontSize="10">{selected.length} selected</text>
       {tethers.map((pair) => {
         const insidePath = selectedPaths.includes(pair.leftPath) ? pair.leftPath : pair.rightPath
         const outsidePath = insidePath === pair.leftPath ? pair.rightPath : pair.leftPath
-        const from = selectedPos.get(insidePath); const to = excludedPos.get(outsidePath)
+        const from = selectedPos.get(insidePath); const to = unselectedPos.get(outsidePath)
         if (!from || !to) return null
         return <g key={`${pair.leftPath}:${pair.rightPath}`} onClick={() => onSelectPair(pair)} style={{ cursor: 'pointer' }}>
           <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={colors.dangerFg} strokeWidth="2" strokeDasharray="4 3" />
@@ -36,7 +36,7 @@ export function OverlapRing({ analysis, selectedPaths, keptPaths, onToggle, onTo
         </g>
       })}
       {selected.map((item) => <Chip key={item.worktreePath} item={item} point={selectedPos.get(item.worktreePath)!} selected kept={keptPaths.includes(item.worktreePath)} sameHunk={hasSameHunk(analysis, item.worktreePath, selectedPaths)} colors={colors} onToggle={onToggle} onToggleKeep={onToggleKeep} />)}
-      {excluded.map((item) => <Chip key={item.worktreePath} item={item} point={excludedPos.get(item.worktreePath)!} selected={false} kept={keptPaths.includes(item.worktreePath)} sameHunk={false} colors={colors} onToggle={onToggle} onToggleKeep={onToggleKeep} />)}
+      {unselected.map((item) => <Chip key={item.worktreePath} item={item} point={unselectedPos.get(item.worktreePath)!} selected={false} kept={keptPaths.includes(item.worktreePath)} sameHunk={false} colors={colors} onToggle={onToggle} onToggleKeep={onToggleKeep} />)}
     </svg>
     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 10, color: colors.textSecondary }}><span><CheckCircle size={11} /> selected</span><span><WarningCircle size={11} /> same hunk</span><span><XCircle size={11} /> exact blocker tether</span><span><PushPin size={11} /> keep constraint</span></div>
   </section>

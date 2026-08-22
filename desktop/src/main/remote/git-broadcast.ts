@@ -1,6 +1,7 @@
 import { log as _log, debug as _debug } from '../logger'
 import { state } from '../state'
 import { runGit } from '../git-runner'
+import { partitionStatus } from '../git/diffs'
 import { computeGraphLayout } from '../../shared/gitGraphLayout'
 import type { GitRef } from '../../shared/types'
 
@@ -29,26 +30,8 @@ export async function broadcastGitChanges(directory: string): Promise<void> {
       ahead = parseInt((await runGit(directory, ['rev-list', '--count', '@{upstream}..HEAD'])).trim(), 10) || 0
       behind = parseInt((await runGit(directory, ['rev-list', '--count', 'HEAD..@{upstream}'])).trim(), 10) || 0
     } catch (err) { debug('git_changes: ahead/behind read failed (no upstream?)', { dir: directory, error: String(err) }) }
-    const statusOutput = await runGit(directory, ['status', '--porcelain=v1', '-uall'])
-    const files: Array<{ path: string; status: string; staged: boolean; oldPath?: string }> = []
-    for (const line of statusOutput.split('\n').filter((l) => l.length >= 4)) {
-      const match = line.match(/^(.)(.) (.+)$/)
-      if (!match) continue
-      const x = match[1], y = match[2]
-      let filePath = match[3]
-      let oldPath: string | undefined
-      if (filePath.includes(' -> ')) { const parts = filePath.split(' -> '); oldPath = parts[0]; filePath = parts[1] }
-      if (x !== ' ' && x !== '?' && x !== '!') {
-        let status: string
-        if (x === 'A') status = 'added'; else if (x === 'D') status = 'deleted'; else if (x === 'R') status = 'renamed'; else status = 'modified'
-        files.push({ path: filePath, status, staged: true, oldPath })
-      }
-      if (y !== ' ' && y !== '!') {
-        let status: string
-        if (y === '?') status = 'untracked'; else if (y === 'A') status = 'added'; else if (y === 'D') status = 'deleted'; else if (y === 'R') status = 'renamed'; else status = 'modified'
-        files.push({ path: filePath, status, staged: false, oldPath })
-      }
-    }
+    const statusOutput = await runGit(directory, ['status', '--porcelain=v1', '-z', '-uall'])
+    const files = partitionStatus(statusOutput).flat
     const stagedCount = files.filter(f => f.staged).length
     const unstagedCount = files.filter(f => !f.staged).length
     log('git_changes', { dir: directory, branch, ahead, behind, staged: stagedCount, unstaged: unstagedCount })

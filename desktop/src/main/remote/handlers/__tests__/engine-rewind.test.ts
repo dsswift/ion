@@ -1,13 +1,19 @@
 /**
  * Tests for engine-tab rewind plumbing:
  *   1. handleEngineRewind (remote/handlers/history.ts) threads the command's
- *      userTurnIndex into the injected rewindEngineInstance() call, and passes
- *      `null` when it is absent (desktop-initiated rewinds pass only the id).
+ *      userTurnIndex into the injected rewindEngineInstance() call, awaits its
+ *      transactional {ok,error?} result, and only sends the input-prefill
+ *      wire message when the engine confirmed success.
  *   2. broadcastEngineHistory (remote/handlers/engine-history.ts) sends an
- *      engine_conversation_history to ALL devices via remoteTransport.send.
+ *      engine_conversation_history to ALL devices via remoteTransport.send,
+ *      AND pushes the same committed transcript to the Studio mirror
+ *      unconditionally (even with no remote transport paired).
  *
- * These pin the two halves of the iOS-rewind fix: the desktop must accept the
- * ordinal (Fix B) and must push the truncated history after restart (Fix A).
+ * These pin the two halves of the iOS-rewind fix (the desktop must accept
+ * the ordinal and must push the truncated history after restart) plus the
+ * transactional-rewind fix (a rejected engine branch must never send a
+ * prefill) and the Studio-convergence fix (the mirror must receive the exact
+ * committed transcript, not just iOS).
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest'
@@ -15,6 +21,7 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 const mocks = vi.hoisted(() => ({
   executeJsMock: vi.fn().mockResolvedValue(null),
   sendMock: vi.fn(),
+  notifyStudioHistoryReplaceMock: vi.fn(),
 }))
 
 vi.mock('../../../state', () => ({
@@ -26,6 +33,10 @@ vi.mock('../../../state', () => ({
 
 vi.mock('../../../logger', () => ({
   log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn(),
+}))
+
+vi.mock('../../../studio-window-manager', () => ({
+  notifyStudioHistoryReplace: (...a: any[]) => mocks.notifyStudioHistoryReplaceMock(...a),
 }))
 
 // history.ts statically imports ../revoke, whose chain
@@ -48,10 +59,12 @@ import { broadcastEngineHistory } from '../engine-history'
 beforeEach(() => {
   mocks.executeJsMock.mockReset().mockResolvedValue(null)
   mocks.sendMock.mockReset()
+  mocks.notifyStudioHistoryReplaceMock.mockReset()
 })
 
-describe('handleEngineRewind — userTurnIndex pass-through', () => {
+describe('handleEngineRewind — userTurnIndex pass-through and transactional gate', () => {
   it('threads a numeric userTurnIndex into the injected rewindEngineInstance call', async () => {
+    mocks.executeJsMock.mockResolvedValueOnce({ ok: true, error: null, inputText: null })
     await handleEngineRewind({
       type: 'desktop_engine_rewind',
       tabId: 'tab-abc',
@@ -65,6 +78,7 @@ describe('handleEngineRewind — userTurnIndex pass-through', () => {
   })
 
   it('passes null for userTurnIndex when the command omits it (desktop-initiated)', async () => {
+    mocks.executeJsMock.mockResolvedValueOnce({ ok: true, error: null, inputText: null })
     await handleEngineRewind({
       type: 'desktop_engine_rewind',
       tabId: 'tab-abc',
@@ -76,6 +90,7 @@ describe('handleEngineRewind — userTurnIndex pass-through', () => {
   })
 
   it('escapes single quotes and backslashes in ids', async () => {
+    mocks.executeJsMock.mockResolvedValueOnce({ ok: true, error: null, inputText: null })
     await handleEngineRewind({
       type: 'desktop_engine_rewind',
       tabId: "tab'x",
@@ -85,6 +100,76 @@ describe('handleEngineRewind — userTurnIndex pass-through', () => {
     })
     const jsBody = mocks.executeJsMock.mock.calls[0][0] as string
     expect(jsBody).toContain("rewindEngineInstance('tab\\'x', 'inst\\\\y', 'm\\'z', 0)")
+  })
+
+  it('sends the input-prefill wire message when the engine rewind succeeds', async () => {
+    mocks.executeJsMock.mockResolvedValueOnce({ ok: true, error: null, inputText: 'previous prompt' })
+    await handleEngineRewind({
+      type: 'desktop_engine_rewind',
+      tabId: 'tab-abc',
+      instanceId: 'inst-xyz',
+      messageId: 'real-id',
+      userTurnIndex: 1,
+    })
+    expect(mocks.sendMock).toHaveBeenCalledWith({ type: 'desktop_input_prefill', tabId: 'tab-abc', text: 'previous prompt', instanceId: 'inst-xyz' })
+  })
+
+  it('does NOT send an input-prefill when the engine rejects the rewind, but DOES send a rejection notice', async () => {
+    mocks.executeJsMock.mockResolvedValueOnce({ ok: false, error: 'entry is not a user turn on the current path', inputText: null })
+    await handleEngineRewind({
+      type: 'desktop_engine_rewind',
+      tabId: 'tab-abc',
+      instanceId: 'inst-xyz',
+      messageId: 'real-id',
+      userTurnIndex: 1,
+    })
+    // No prefill: the transcript must never advance on a refusal.
+    expect(mocks.sendMock).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'desktop_input_prefill' }))
+    // A rejection notice IS sent — without this iOS shows zero feedback for
+    // a tapped Rewind that the engine refused (a silent no-op).
+    expect(mocks.sendMock).toHaveBeenCalledWith({
+      type: 'desktop_engine_rewind_result',
+      tabId: 'tab-abc',
+      instanceId: 'inst-xyz',
+      status: 'rejected',
+      error: 'entry is not a user turn on the current path',
+    })
+  })
+
+  it('sends a rejection notice with a generic error when executeJavaScript resolves with nothing', async () => {
+    mocks.executeJsMock.mockResolvedValueOnce(null)
+    await handleEngineRewind({
+      type: 'desktop_engine_rewind',
+      tabId: 'tab-abc',
+      instanceId: 'inst-xyz',
+      messageId: 'real-id',
+      userTurnIndex: 1,
+    })
+    expect(mocks.sendMock).toHaveBeenCalledWith({
+      type: 'desktop_engine_rewind_result',
+      tabId: 'tab-abc',
+      instanceId: 'inst-xyz',
+      status: 'rejected',
+      error: 'unknown',
+    })
+  })
+
+  it('sends a rejection notice when the injected call throws', async () => {
+    mocks.executeJsMock.mockRejectedValueOnce(new Error('renderer crashed'))
+    await handleEngineRewind({
+      type: 'desktop_engine_rewind',
+      tabId: 'tab-abc',
+      instanceId: 'inst-xyz',
+      messageId: 'real-id',
+      userTurnIndex: 1,
+    })
+    expect(mocks.sendMock).toHaveBeenCalledWith({
+      type: 'desktop_engine_rewind_result',
+      tabId: 'tab-abc',
+      instanceId: 'inst-xyz',
+      status: 'rejected',
+      error: 'renderer crashed',
+    })
   })
 })
 
@@ -107,6 +192,20 @@ describe('broadcastEngineHistory', () => {
     expect(event.messages).toEqual([{ id: 'u-0', role: 'user', content: 'hi', timestamp: 1 }])
     // desktop_engine_conversation_history must not be sent (retired string).
     expect(event.type).not.toBe('desktop_engine_conversation_history')
+  })
+
+  it('pushes the same committed transcript to the Studio mirror', async () => {
+    mocks.executeJsMock.mockResolvedValueOnce({
+      resolvedId: 'main',
+      messages: [{ id: 'u-0', role: 'user', content: 'hi', timestamp: 1 }],
+    })
+    await broadcastEngineHistory('tab-1', 'main')
+    expect(mocks.notifyStudioHistoryReplaceMock).toHaveBeenCalledTimes(1)
+    expect(mocks.notifyStudioHistoryReplaceMock).toHaveBeenCalledWith({
+      tabId: 'tab-1',
+      instanceId: 'main',
+      messages: [{ id: 'u-0', role: 'user', content: 'hi', timestamp: 1 }],
+    })
   })
 })
 

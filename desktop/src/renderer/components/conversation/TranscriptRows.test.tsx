@@ -193,6 +193,63 @@ describe('TranscriptRows memoization', () => {
     unmount()
   })
 
+  it('virtualizes large transcripts so first paint mounts only a bounded row window', () => {
+    renderCounts.clear()
+    const grouped = Array.from({ length: 4_000 }, (_, index): GroupedItem => ({
+      kind: 'user', message: msg(`u-${index}`, 'user', `message ${index}`),
+    }))
+    const viewport = document.createElement('div')
+    Object.defineProperty(viewport, 'clientHeight', { value: 600 })
+    Object.defineProperty(viewport, 'clientWidth', { value: 800 })
+    Object.defineProperty(viewport, 'scrollHeight', { value: 288_000, configurable: true })
+    document.body.appendChild(viewport)
+    const container = document.createElement('div')
+    viewport.appendChild(container)
+    const root = createRoot(container)
+    const scrollRef = { current: viewport }
+
+    act(() => { root.render(React.createElement(TranscriptRows, { grouped, scrollRef })) })
+
+    expect(container.querySelector('[data-testid="virtual-transcript-rows"]')).not.toBeNull()
+    expect(renderCounts.size).toBeGreaterThan(0)
+    expect(renderCounts.size).toBeLessThan(100)
+    expect(renderCounts.has('u-3999')).toBe(true)
+    expect(renderCounts.has('u-0')).toBe(false)
+    act(() => { root.unmount() })
+    document.body.removeChild(viewport)
+  })
+
+  it('opens hydrated virtual history at the last row after an empty skeleton mount', () => {
+    renderCounts.clear()
+    const grouped = Array.from({ length: 4_000 }, (_, index): GroupedItem => ({
+      kind: 'user', message: msg(`hydrated-${index}`, 'user', `message ${index}`),
+    }))
+    const viewport = document.createElement('div')
+    Object.defineProperty(viewport, 'clientHeight', { value: 600 })
+    Object.defineProperty(viewport, 'clientWidth', { value: 800 })
+    Object.defineProperty(viewport, 'scrollHeight', { value: 288_000, configurable: true })
+    Object.defineProperty(viewport, 'scrollTop', { value: 0, writable: true, configurable: true })
+    Object.defineProperty(viewport, 'scrollTo', {
+      value: ({ top }: ScrollToOptions) => {
+        viewport.scrollTop = top ?? 0
+      },
+    })
+    document.body.appendChild(viewport)
+    const container = document.createElement('div')
+    viewport.appendChild(container)
+    const root = createRoot(container)
+    const scrollRef = { current: viewport }
+
+    act(() => { root.render(React.createElement(TranscriptRows, { grouped: [], scrollRef })) })
+    act(() => { root.render(React.createElement(TranscriptRows, { grouped, scrollRef })) })
+
+    expect(renderCounts.has('hydrated-3999')).toBe(true)
+    expect(renderCounts.has('hydrated-0')).toBe(false)
+    expect(viewport.scrollTop).toBeGreaterThan(0)
+    act(() => { root.unmount() })
+    document.body.removeChild(viewport)
+  })
+
   it('only the row whose message changed re-renders', () => {
     renderCounts.clear()
     const u1 = msg('u1', 'user', 'question')

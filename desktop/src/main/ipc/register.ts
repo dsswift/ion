@@ -25,13 +25,15 @@ import { registerOAuthIpc } from "./oauth";
 import { registerProvidersIpc } from "./providers";
 import { registerConversationBackupIpc } from "./conversation-backup";
 import { registerLogIpc } from "./log";
-import { registerAtvIpc } from "./atv";
+import { registerStudioIpc } from "./studio";
 import { registerThemesIpc } from "./themes";
 import { registerFaviconIpc } from "./favicon";
 import { registerWorktreeOverlapIpc } from "./worktree-overlap";
 import { registerDeepLinkIpc } from "./deeplink";
+import { registerStartupIpc } from "./startup";
 
 export function registerAllIpc(): void {
+  registerStartupIpc();
   registerWindowIpc();
   registerSessionIpc();
   registerEngineIpc();
@@ -59,7 +61,7 @@ export function registerAllIpc(): void {
   registerProvidersIpc();
   registerConversationBackupIpc();
   registerLogIpc();
-  registerAtvIpc();
+  registerStudioIpc();
   registerThemesIpc();
   registerFaviconIpc();
   registerWorktreeOverlapIpc();

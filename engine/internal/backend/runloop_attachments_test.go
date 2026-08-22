@@ -24,7 +24,7 @@ func TestBuildUserContentBlocks_TextOnly_NoAttachments(t *testing.T) {
 
 func TestBuildUserContentBlocks_TextPlusOneImage(t *testing.T) {
 	atts := []types.ImageAttachment{
-		{MediaType: "image/jpeg", Data: "AAA=", Path: "/tmp/x.jpg"},
+		{MediaType: "image/jpeg", Data: "AAA=", Path: "/tmp/x.jpg", ContentHash: "input-hash"},
 	}
 	blocks := buildUserContentBlocks("what is this", atts)
 	if len(blocks) != 2 {
@@ -47,6 +47,9 @@ func TestBuildUserContentBlocks_TextPlusOneImage(t *testing.T) {
 	}
 	if blocks[1].Source.Data != "AAA=" {
 		t.Fatalf("image data: want AAA=, got %q", blocks[1].Source.Data)
+	}
+	if blocks[1].Source.ContentHash != "input-hash" {
+		t.Fatalf("image content hash: want input-hash, got %q", blocks[1].Source.ContentHash)
 	}
 }
 
@@ -105,6 +108,19 @@ func TestBuildUserContentBlocks_EmptyPromptAllInvalidAttachments(t *testing.T) {
 	}
 	if blocks[0].Type != "text" || blocks[0].Text == "" {
 		t.Fatalf("want non-empty placeholder text, got type=%q text=%q", blocks[0].Type, blocks[0].Text)
+	}
+}
+
+func TestBuildUserContentBlocks_DerivesMissingImageHash(t *testing.T) {
+	blocks := buildUserContentBlocks("inspect", []types.ImageAttachment{{
+		MediaType: "image/png",
+		Data:      "AAECAwQ=",
+	}})
+	if len(blocks) != 2 || blocks[1].Source == nil {
+		t.Fatalf("blocks = %#v, want text and image", blocks)
+	}
+	if blocks[1].Source.ContentHash == "" {
+		t.Fatal("image block missing derived content hash")
 	}
 }
 
@@ -195,4 +211,3 @@ func TestBuildUserContentBlocks_UnknownMediaType_Skipped(t *testing.T) {
 		t.Fatalf("second block should be image (csv skipped), got %q", blocks[1].Type)
 	}
 }
-

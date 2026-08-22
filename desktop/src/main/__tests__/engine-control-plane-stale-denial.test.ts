@@ -41,7 +41,7 @@ const mockBridge = {
   updateSessionConversationId: vi.fn(),
   stopByPrefix: vi.fn(),
   stopSession: vi.fn(),
-  stopAll: vi.fn(),
+  disconnect: vi.fn(),
   on: vi.fn((event: string, handler: any) => {
     if (event === 'event') capturedEventHandler = handler
   }),

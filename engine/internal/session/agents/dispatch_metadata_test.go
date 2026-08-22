@@ -50,6 +50,23 @@ func TestUpdateDispatchEntry(t *testing.T) {
 		}
 	})
 
+	t.Run("stamps suspended wait reason and clears it on revive", func(t *testing.T) {
+		metadata := map[string]interface{}{
+			"dispatches": []interface{}{map[string]interface{}{"id": "agent-1", "status": "running"}},
+		}
+
+		UpdateDispatchEntry(metadata, "agent-1", "suspended", 1.0, "", "shell")
+		dm := metadata["dispatches"].([]interface{})[0].(map[string]interface{})
+		if got := dm["waitingOn"]; got != "shell" {
+			t.Errorf("waitingOn = %v, want shell", got)
+		}
+
+		UpdateDispatchEntry(metadata, "agent-1", "running", 2.0, "")
+		if _, exists := dm["waitingOn"]; exists {
+			t.Errorf("waitingOn must clear on revive, got %v", dm["waitingOn"])
+		}
+	})
+
 	t.Run("no-op when id not found", func(t *testing.T) {
 		metadata := map[string]interface{}{
 			"dispatches": []interface{}{

@@ -67,7 +67,7 @@ export function QuickToolsTray({ anchorRef, onClose }: QuickToolsTrayProps) {
     (s) => s.tabs.find((t) => t.id === s.activeTabId)?.workingDirectory || ''
   )
   const trayRef = useRef<HTMLDivElement>(null)
-  // Keep the portaled popover inside the window (ATV top-anchored strip).
+  // Keep the portaled popover inside the window (Studio top-anchored strip).
   useViewportClamp(trayRef, true)
 
   // Filter tools by directory scope

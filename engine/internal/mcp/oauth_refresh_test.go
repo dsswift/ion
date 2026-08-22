@@ -96,6 +96,8 @@ func newRefreshFixture(t *testing.T, initialAccepted string) *refreshFixture {
 		}
 		result := map[string]any{}
 		switch req.Method {
+		case "initialize":
+			result = map[string]any{"protocolVersion": "2025-11-25", "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": map[string]any{"name": "fixture", "version": "1"}}
 		case "tools/list":
 			result["tools"] = []map[string]any{
 				{"name": "search", "description": "d", "inputSchema": map[string]any{"type": "object"}},
@@ -168,8 +170,8 @@ func TestTokenExpiresMidSession_ToolCallStillSucceeds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tool call after token expiry failed; the refresh token was not used: %v", err)
 	}
-	if out != "tool ok" {
-		t.Errorf("tool output = %q", out)
+	if out.Content != "tool ok" {
+		t.Errorf("tool output = %q", out.Content)
 	}
 	if fix.refreshCalls.Load() == 0 {
 		t.Error("expected a token refresh before the request")
@@ -212,8 +214,8 @@ func TestRevokedTokenRetriedOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tool call with a revoked token failed; expected a refresh-and-retry: %v", err)
 	}
-	if out != "tool ok" {
-		t.Errorf("tool output = %q", out)
+	if out.Content != "tool ok" {
+		t.Errorf("tool output = %q", out.Content)
 	}
 	if fix.authFailures.Load() != 1 {
 		t.Errorf("server saw %d rejections, want exactly 1 (the initial attempt)", fix.authFailures.Load())
@@ -263,12 +265,12 @@ func TestAuthRejectionRetriedOnlyOnce(t *testing.T) {
 		t.Fatal("expected Connect to fail against a server that always rejects")
 	}
 
-	// Exactly two requests for the initialize attempt: the original and one retry.
-	if got := requests.Load(); got != 2 {
-		t.Errorf("server saw %d requests, want 2 (original + one retry)", got)
+	// Modern discovery and legacy initialize each receive one bounded retry.
+	if got := requests.Load(); got != 4 {
+		t.Errorf("server saw %d requests, want 4 (one retry per dual-era probe)", got)
 	}
-	if got := refreshes.Load(); got != 1 {
-		t.Errorf("token endpoint hit %d times, want 1; a retry loop would hammer the provider", got)
+	if got := refreshes.Load(); got != 2 {
+		t.Errorf("token endpoint hit %d times, want 2 (one retry per dual-era probe)", got)
 	}
 }
 
@@ -302,8 +304,8 @@ func TestAuthRejectionWithoutCredentialsIsNotRetried(t *testing.T) {
 	// Exactly one request: the initialize attempt, with no retry after it.
 	// (Connect would go on to listTools, but initialize failing aborts first, so
 	// a second request here could only be a retry.)
-	if got := requests.Load(); got != 1 {
-		t.Errorf("server saw %d requests, want 1; there is no credential to refresh", got)
+	if got := requests.Load(); got != 2 {
+		t.Errorf("server saw %d requests, want 2; modern discovery falls back to legacy initialize without credentials", got)
 	}
 	// And the error still names the remediation.
 	if !strings.Contains(err.Error(), "ion mcp login no-creds") {
@@ -326,8 +328,8 @@ func TestRefreshFailureSurfacesOriginalRejection(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected Connect to fail")
 	}
-	if !strings.Contains(err.Error(), "401") {
-		t.Errorf("error should carry the server's 401, got %q", err)
+	if !strings.Contains(err.Error(), "stored authorization") {
+		t.Errorf("error should name failed stored authorization, got %q", err)
 	}
 	if fix.refreshCalls.Load() != 1 {
 		t.Errorf("refresh attempted %d times, want 1", fix.refreshCalls.Load())

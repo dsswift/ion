@@ -73,6 +73,58 @@ private func takeHeldSteer(_ held: inout [(key: String, msg: Message)], dividerI
     return held.remove(at: idx).msg
 }
 
+// MARK: - Prior-user image deduplication
+
+/// Removes later image attachments that exactly match an earlier user-image
+/// content hash. Providers can return an input image in a later tool or
+/// assistant message; rendering both copies duplicates one user-supplied image.
+///
+/// This is display-only. It returns copies of affected messages and never
+/// mutates the source transcript, so history reconciliation keeps full data.
+/// Only non-empty hashes match. Paths and names are deliberately ignored: they
+/// are transport details, not image identity.
+func filterPriorUserContentHashAttachments(_ messages: [Message]) -> [Message] {
+    var priorUserHashes = Set<String>()
+    var visible: [Message] = []
+
+    for message in messages {
+        var filtered = message
+        var removedEcho = false
+        if (message.role == .assistant || message.role == .tool), let attachments = message.attachments {
+            let remaining = attachments.filter { attachment in
+                guard attachment.type == .image,
+                      let contentHash = attachment.contentHash,
+                      contentHash.range(of: "^[A-Fa-f0-9]{64}$", options: .regularExpression) != nil else {
+                    return true
+                }
+                let keep = !priorUserHashes.contains(contentHash.lowercased())
+                if !keep { removedEcho = true }
+                return keep
+            }
+            filtered.attachments = remaining.isEmpty ? nil : remaining
+        }
+
+        if message.role == .user {
+            for attachment in message.attachments ?? [] where attachment.type == .image {
+                if let contentHash = attachment.contentHash,
+                   contentHash.range(of: "^[A-Fa-f0-9]{64}$", options: .regularExpression) != nil {
+                    priorUserHashes.insert(contentHash.lowercased())
+                }
+            }
+        }
+
+        // An image-only provider row exists solely to carry its attachment. If
+        // every attachment repeated a prior user image, remove this display row
+        // too; otherwise iOS leaves blank vertical space after deduplication.
+        if message.role == .assistant, removedEcho, filtered.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           filtered.attachments == nil {
+            continue
+        }
+        visible.append(filtered)
+    }
+    return visible
+}
+
 // MARK: - Grouping
 
 /// Buffer-and-flush: accumulate consecutive `.tool` messages, flush them as a
@@ -82,10 +134,11 @@ private func takeHeldSteer(_ held: inout [(key: String, msg: Message)], dividerI
 /// user boundaries into `.agentTurn` items (mirroring the desktop's
 /// turn-grouping algorithm).
 func groupConversationItems(_ messages: [Message], unifiedTurnView: Bool = false) -> [ConversationItem] {
+    let displayMessages = filterPriorUserContentHashAttachments(messages)
     if unifiedTurnView {
-        return groupConversationItemsUnified(messages)
+        return groupConversationItemsUnified(displayMessages)
     }
-    return groupConversationItemsClassic(messages)
+    return groupConversationItemsClassic(displayMessages)
 }
 
 /// Classic grouping: consecutive tools → `.toolGroup`, everything else standalone.
@@ -322,6 +375,22 @@ func toolGroupSummary(_ tools: [Message]) -> String {
     if tools.count == 1 { return desc }
     let remaining = tools.count - 1
     return "\(desc) and \(remaining) more tool\(remaining > 1 ? "s" : "")"
+}
+
+/// Live progress for a collapsed tool group. The last running row is current
+/// because message order matches tool event order. Failed tools count as used.
+func activeToolProgress(_ tools: [Message]) -> (currentToolDescription: String, usedCount: Int)? {
+    guard let currentTool = tools.last(where: { $0.toolStatus == .running }) else {
+        return nil
+    }
+
+    return (
+        currentToolDescription: toolDescription(
+            name: currentTool.toolName ?? "Tool",
+            input: currentTool.toolInput
+        ),
+        usedCount: tools.filter { $0.toolStatus != .running }.count
+    )
 }
 
 /// Failure summary for a collapsed tool group.

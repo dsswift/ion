@@ -8,7 +8,7 @@ import { ToolImagesStrip } from './ToolImagesStrip'
 import { AssistantMessage } from './AssistantMessage'
 import { ThinkingBlock } from './ThinkingBlock'
 import { CopyButton } from './CopyButton'
-import { toolFailureSummary } from './tool-helpers'
+import { activeToolProgress, toolFailureSummary } from './tool-helpers'
 import type { Message } from '../../../shared/types'
 
 const TASK_NOTIFICATION_RE = /<task-notification>[\s\S]*?<\/task-notification>\s*(?:Read the output file to retrieve the result:[^\n]*)?\n?/g
@@ -38,6 +38,7 @@ export const AgentTurnGroup = React.memo(function AgentTurnGroup({
   const [expanded, setExpanded] = useState(false)
 
   const toolCount = tools.length
+  const activeProgress = activeToolProgress(tools)
 
   // Failure summary for the activity header three-state icon (only when !isActive).
   const { failed, total, running: hasRunningTool } = toolFailureSummary(tools)
@@ -86,12 +87,19 @@ export const AgentTurnGroup = React.memo(function AgentTurnGroup({
       )}
       {headerStatusIcon}
       <span
-        className="text-[11px] leading-[1.4]"
+        className="min-w-0 flex-1 flex items-center gap-1.5 text-[11px] leading-[1.4]"
         style={{ color: isActive ? colors.textSecondary : colors.textTertiary }}
       >
-        {isActive
-          ? `Running tools…`
-          : `Used ${toolCount} tool${toolCount !== 1 ? 's' : ''}${headerFailureSuffix}`}
+        {isActive ? (
+          activeProgress ? (
+            <>
+              <span className="min-w-0 truncate">Running {activeProgress.currentToolDescription}</span>
+              <span className="flex-shrink-0 tabular-nums">· Used {activeProgress.usedCount} tool{activeProgress.usedCount !== 1 ? 's' : ''}</span>
+            </>
+          ) : 'Running tools…'
+        ) : (
+          `Used ${toolCount} tool${toolCount !== 1 ? 's' : ''}${headerFailureSuffix}`
+        )}
       </span>
     </div>
   )

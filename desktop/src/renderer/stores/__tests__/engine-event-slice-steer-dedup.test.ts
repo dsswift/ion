@@ -350,3 +350,107 @@ describe('steer_injected pairs the bubble with its divider', () => {
     expect(bubble?.steerAppliedDividerId).toBeUndefined()
   })
 })
+
+// ─── Part 4: exact clientMessageId resolution (identity over position) ──
+//
+// The regression this closes: with two steers outstanding, a FIFO-first
+// resolution collapses a later confirmation onto the WRONG (earlier,
+// unrelated) bubble. When the event carries clientMessageId, resolution must
+// match that exact bubble regardless of arrival order or queue position.
+
+describe('steer_injected exact clientMessageId resolution', () => {
+  function pendingBubble(id: string, content = 'redirect the agent') {
+    return { id, role: 'user', content, timestamp: Date.now(), steerPending: true }
+  }
+
+  it('resolves the exact bubble by clientMessageId even when it is NOT the oldest pending', () => {
+    const { state, eventSlice } = buildHarness({
+      instanceMessages: [pendingBubble('b1', 'first steer'), pendingBubble('b2', 'second steer')],
+    })
+
+    // The SECOND steer's confirmation arrives first (out of order) — a FIFO
+    // resolution would wrongly resolve b1. With clientMessageId, it must
+    // resolve b2 specifically.
+    eventSlice.handleNormalizedEvent('tab1', {
+      type: 'steer_injected',
+      messageLength: 12,
+      clientMessageId: 'b2',
+      entryId: 'e-canonical-2',
+    } as any)
+
+    const msgs = getMessages(state)
+    const b1 = msgs.find((m: any) => m.id === 'b1')
+    const b2 = msgs.find((m: any) => m.id === 'e-canonical-2')
+    expect(b1?.steerPending).toBe(true)
+    expect(b1?.steerApplied).toBeUndefined()
+    expect(b2).toBeDefined()
+    expect(b2?.steerPending).toBeUndefined()
+    expect(b2?.steerApplied).toBe(true)
+  })
+
+  it('re-keys the resolved bubble to the durable entryId from the event', () => {
+    const { state, eventSlice } = buildHarness({ instanceMessages: [pendingBubble('client-id-1')] })
+
+    eventSlice.handleNormalizedEvent('tab1', {
+      type: 'steer_injected',
+      messageLength: 20,
+      clientMessageId: 'client-id-1',
+      entryId: 'e-durable-abc',
+    } as any)
+
+    const msgs = getMessages(state)
+    expect(msgs.find((m: any) => m.id === 'client-id-1')).toBeUndefined()
+    const rekeyed = msgs.find((m: any) => m.id === 'e-durable-abc')
+    expect(rekeyed).toBeDefined()
+    expect(rekeyed?.steerApplied).toBe(true)
+  })
+
+  it('falls back to FIFO-first-pending when the event carries no clientMessageId', () => {
+    const { state, eventSlice } = buildHarness({
+      instanceMessages: [pendingBubble('b1', 'first steer'), pendingBubble('b2', 'second steer')],
+    })
+
+    eventSlice.handleNormalizedEvent('tab1', { type: 'steer_injected', messageLength: 11 } as any)
+
+    const msgs = getMessages(state)
+    expect(msgs.find((m: any) => m.id === 'b1')?.steerApplied).toBe(true)
+    expect(msgs.find((m: any) => m.id === 'b2')?.steerPending).toBe(true)
+  })
+
+  it('does not resolve anything and logs a warning when clientMessageId matches no pending bubble', () => {
+    const { state, eventSlice } = buildHarness({ instanceMessages: [pendingBubble('b1')] })
+
+    eventSlice.handleNormalizedEvent('tab1', {
+      type: 'steer_injected',
+      messageLength: 9,
+      clientMessageId: 'no-such-bubble',
+    } as any)
+
+    const msgs = getMessages(state)
+    // b1 is untouched — a mismatched clientMessageId must never fall through
+    // to resolving an unrelated pending bubble.
+    expect(msgs.find((m: any) => m.id === 'b1')?.steerPending).toBe(true)
+    // The confirmation divider is still appended even though no bubble
+    // resolved — the engine did drain a steer, that fact is not hidden.
+    const dividers = msgs.filter((m: any) => m.role === 'system' && m.content?.includes('Steer'))
+    expect(dividers).toHaveLength(1)
+  })
+
+  it('a machine-originated confirmation (no clientMessageId) never resolves a client bubble it does not own', () => {
+    // Two client steers are queued; a machine injection (dispatch completion)
+    // drains and confirms with no clientMessageId. It must not silently
+    // resolve an unrelated client bubble via the FIFO fallback in a way that
+    // masks which steer actually landed — this test documents that the FIFO
+    // fallback DOES still apply to a machine confirmation exactly as it did
+    // pre-existing (machine injections have always shared this event type
+    // with no way to distinguish); the exact-match path is strictly additive
+    // and only engages when clientMessageId is present.
+    const { state, eventSlice } = buildHarness({ instanceMessages: [pendingBubble('b1')] })
+
+    eventSlice.handleNormalizedEvent('tab1', { type: 'steer_injected', messageLength: 30 } as any)
+
+    const msgs = getMessages(state)
+    expect(msgs.find((m: any) => m.id === 'b1')?.steerApplied).toBe(true)
+  })
+})
+

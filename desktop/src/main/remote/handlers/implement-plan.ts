@@ -127,6 +127,13 @@ export async function handleImplementPlan(
     log('handle_implement_plan: renderer model/group step failed', { error: (err as Error).message })
   }
 
+  // Approval resolves the plan question, so release the engine's retention of
+  // the ExitPlanMode denial. Parity with the renderer's implementPlan: without
+  // this, a heartbeat during the reset/submit window re-offers the card iOS
+  // just approved. Runs before the reset so the notify reaches the session
+  // that still holds the retention.
+  sessionPlane.resolvePermissionDenials(tabId)
+
   // Step 5: clearContext branch — reset engine session before implementing.
   // Matches the implementPlan clearContext branch. The main-process resetTabSession call
   // must happen before the renderer state mutation so the engine session is

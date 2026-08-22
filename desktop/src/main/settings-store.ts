@@ -1,43 +1,46 @@
-import { existsSync, mkdirSync, readFileSync } from 'fs'
-import { homedir } from 'os'
-import { join } from 'path'
-import { log as _log, warn as _warn } from './logger'
-import { atomicWriteFileSync } from './utils/atomicWrite'
-import { encryptSensitiveSettings, decryptSensitiveSettings } from './utils/secretStore'
-import { expandHome } from './git/ignore-paths'
-import type { ThinkingConfig } from '../shared/types-engine'
-import type { ThinkingEffort } from '../shared/types-session'
-import { isThinkingEffort } from '../shared/thinking-options'
+import { existsSync, mkdirSync, readFileSync } from "fs";
+import { homedir } from "os";
+import { join } from "path";
+import { log as _log, warn as _warn } from "./logger";
+import { atomicWriteFileSync } from "./utils/atomicWrite";
+import {
+  encryptSensitiveSettings,
+  decryptSensitiveSettings,
+} from "./utils/secretStore";
+import { expandHome } from "./git/ignore-paths";
+import type { ThinkingConfig } from "../shared/types-engine";
+import type { ThinkingEffort } from "../shared/types-session";
+import { isThinkingEffort } from "../shared/thinking-options";
 
 function log(msg: string, fields?: Record<string, unknown>): void {
-  _log('main', msg, fields)
+  _log("main", msg, fields);
 }
 
 function warn(msg: string, fields?: Record<string, unknown>): void {
-  _warn('main', msg, fields)
+  _warn("main", msg, fields);
 }
 
-export const SETTINGS_DIR = join(homedir(), '.ion')
-export const SETTINGS_FILE = join(SETTINGS_DIR, 'settings.json')
-export const ENGINE_CONFIG_FILE = join(SETTINGS_DIR, 'engine.json')
+export const SETTINGS_DIR = join(homedir(), ".ion");
+export const SETTINGS_FILE = join(SETTINGS_DIR, "settings.json");
+export const ENGINE_CONFIG_FILE = join(SETTINGS_DIR, "engine.json");
 
 export const SETTINGS_DEFAULTS = {
-  selectedTheme: 'ion-dark',
+  selectedTheme: "ion-dark",
   soundEnabled: true,
   expandedUI: false,
   ultraWide: false,
-  defaultBaseDirectory: '',
+  defaultBaseDirectory: "",
   showDirLabel: true,
-  preferredOpenWith: 'cli',
+  preferredOpenWith: "cli",
   expandToolResults: false,
-  terminalFontFamily: 'Menlo, Monaco, monospace',
+  terminalFontFamily: "Menlo, Monaco, monospace",
   terminalFontSize: 13,
   allowSettingsEdits: false,
   // Claude Code compatibility is a migration feature, not a default: .claude
   // roots (commands, skills, CLAUDE.md context) load only when the user
   // explicitly enables it. Greenfield installs are .ion-only.
   enableClaudeCompat: false,
-  preferredModel: 'claude-opus-4-6',
+  preferredModel: "claude-opus-4-6",
   // Early-stop continuation nudge: when the model emits end_turn below the
   // configured output-token target, ask it to keep working. Default OFF per
   // ADR-002 2026-05-25 amendment (the feature is opt-in; users who want the
@@ -65,77 +68,97 @@ export const SETTINGS_DEFAULTS = {
   // Directories where the git file watcher is suppressed. The panel still
   // refreshes on focus, tab switch, and manual refresh. Supports ~ and $HOME
   // expansion. Default excludes ~/.ion (high-write log/conversation storage).
-  gitWatcherIgnoredDirectories: ['~/.ion'] as string[],
+  gitWatcherIgnoredDirectories: ["~/.ion"] as string[],
+  // Multi-root workspace folders, per-project: normalized primary/base dir
+  // → extra roots shown in the explorer and git panel. Machine-local
+  // absolute paths — never projectable to iOS.
+  workspaceFolders: {} as Record<string, string[]>,
+  // Per-repo collapse state of git-panel repo sections.
+  gitPanelRepoSectionsCollapsed: {} as Record<string, boolean>,
+  // Inbox auto-settle: days of inactivity before an idle conversation
+  // files itself. 0 = off. Projectable (user preference, group 'tabs').
+  inboxAutoSettleDays: 0,
+  inboxAutoSettleOnMerge: true,
+  // Studio conversation navigation: 'tabs' keeps the TabStrip; 'inbox'
+  // hides Studio's TabStrip and defaults the left dock to the inbox view.
+  // Per-device (iOS has its own switcher) — never projectable.
+  conversationNav: 'tabs',
+  // Project registry (G1): known base dirs, auto-populated from
+  // conversation tabs + manual adds. Machine-local paths — never
+  // projectable (iOS derives chips from tab workingDirectory).
+  projects: {} as Record<string, { name?: string; addedManually: boolean; lastUsedAt: number }>,
   // Per-conversation thinking effort default. 'high' is the desktop's
   // opinionated default; users can override in Settings. Per-conversation
   // changes live on the instance (StatusBarThinkingPicker).
-  defaultThinkingEffort: 'high' as ThinkingEffort,
-  // Agent Team Visualizer (desktop-only window; none of these keys are iOS
-  // projectable). atvSeeds maps an extension scope (engineProfileId, or
+  defaultThinkingEffort: "high" as ThinkingEffort,
+  // Ion Studio (desktop-only window; none of these keys are iOS
+  // projectable). studioSeeds maps an extension scope (engineProfileId, or
   // 'local' for plain tabs) to a user-chosen office seed string.
-  atvTheme: 'ion-works',
-  atvPinned: false,
+  studioTheme: "ion-works",
   // 0 = fit-to-window (default); 1..6 = manual integer zoom.
-  atvZoom: 0,
+  studioZoom: 0,
   // One office seed for the whole desktop ('' = built-in default). The
   // office layout is the user's office — identical across conversations.
-  atvSeed: '',
-  // While the ATV window is open, flip the app's activation policy to
+  studioSeed: "",
+  // While the Studio window is open, flip the app's activation policy to
   // 'regular' so Ion appears in the Dock and Cmd-Tab (immersive-app
   // behavior); reverts to accessory when the window closes.
-  atvDockPresence: true,
-  // Which surface(s) appear at startup: 'overlay' | 'atv' | 'both'. The
-  // overlay RENDERER always runs (it owns session state); this only governs
-  // what the user sees first.
-  launchSurface: 'overlay',
-  // Global shortcut toggling the ATV shell (Electron accelerator; '' = none).
-  atvShortcut: 'Alt+Shift+Space',
-  // Footstep-heat overlay on the ATV canvas (traffic visualization).
-  atvHeat: false,
-  // ATV shell layout (dock open/width/tab) — one global state persisted
-  // across opens and restarts, never per-session.
-  atvLayout: { dockOpen: false, dockWidth: 420, dockTab: 'conversation' },
-  // Ambient soundscape in the ATV (procedurally synthesized; mute toggle
+  studioDockPresence: true,
+  // Which conversation UI is active: 'overlay' | 'studio'. Single-UI
+  // exclusivity: exactly one at a time (never both). The overlay RENDERER
+  // always runs (it owns session state); this governs which UI the user
+  // sees and which launchers/shortcuts exist.
+  activeUi: "overlay",
+  // Global shortcut toggling the Studio shell (Electron accelerator; '' = none).
+  studioShortcut: "Alt+Shift+Space",
+  // Footstep-heat overlay on the Studio window canvas (traffic visualization).
+  studioHeat: false,
+  // Studio shell geometry. Pane visibility is owned by its content: the bottom
+  // terminal uses per-conversation session-store state, and surface visibility
+  // is saved with each conversation in studioSurface.
+  studioLayout: {
+    leftSidebarVisible: false,
+    leftSidebarView: "explorer",
+    surfaceWidth: 520,
+    terminalHeight: 240,
+    dispatchSplitRatio: 0.45,
+  },
+  // Studio surface records by conversation plus core tabs pinned across them.
+  studioSurface: { version: 2, pinnedTabs: ['plan'], notification: null, conversations: {} },
+  // Ambient soundscape in the Studio window (procedurally synthesized; mute toggle
   // in the control bar — office users need one-click silence).
-  atvSound: true,
-  // Dock bounce + title prefix when a permission arrives while the ATV is
+  studioSound: true,
+  // Dock bounce + title prefix when a permission arrives while the Studio window is
   // open but unfocused.
-  atvBeacon: true,
-  // Beta gate for the Agent Team Visualizer. Default false — the ATV is
-  // shipping as a beta feature that is intentionally not advertised. Set
-  // to true in ~/.ion/settings.json to enable the launcher button, tray
-  // item, global shortcut, and window. The ATV window itself cannot write
-  // this key (it is not in ATV_SETTING_KEYS in ipc/atv.ts).
-  atvBeta: false,
-  // Auto-open the ATV side dock when the conversation awaits user input
-  // (plan ready / question / permission).
-  atvAutoDrawer: true,
-  // Enterprise/operator surface gate: 'both' | 'overlay-only' | 'atv-only'.
-  // Deployable via managed settings.json; clamps launchSurface and disables
-  // the gated surface's launchers (tray item, button, shortcut, atv:open).
-  surfacePolicy: 'both',
-}
+  studioBeacon: true,
+  // LEGACY enterprise/operator surface gate: 'both' | 'overlay-only' |
+  // 'atv-only'. The boot migration folds this into activeUi and drops the
+  // key; the resolver still honors it for a managed settings.json pushed
+  // mid-cycle. The Active UI workstream replaces it with the MDM
+  // activeUiPolicy blob and retires this key entirely.
+  surfacePolicy: "both",
+};
 
 export function readSettings(): Record<string, any> {
-  if (!existsSync(SETTINGS_FILE)) return {}
+  if (!existsSync(SETTINGS_FILE)) return {};
   try {
-    const raw = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'))
-    return decryptSensitiveSettings(raw)
+    const raw = JSON.parse(readFileSync(SETTINGS_FILE, "utf-8"));
+    return decryptSensitiveSettings(raw);
   } catch (err) {
-    log('settings_store: failed to read settings', { error: String(err) })
-    return {}
+    log("settings_store: failed to read settings", { error: String(err) });
+    return {};
   }
 }
 
 export function writeSettings(data: Record<string, any>): void {
-  if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true })
-  const encrypted = encryptSensitiveSettings(data)
-  atomicWriteFileSync(SETTINGS_FILE, JSON.stringify(encrypted, null, 2), 0o600)
+  if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true });
+  const encrypted = encryptSensitiveSettings(data);
+  atomicWriteFileSync(SETTINGS_FILE, JSON.stringify(encrypted, null, 2), 0o600);
   // Any settings write may have flipped a hot-path-cached projectable flag.
   // Invalidate the cache here, at the single write helper, so the next read
   // re-pulls from disk. Cheap (clears a primitive); correctness over saving
   // one disk read.
-  invalidateStreamThinkingToRemoteCache()
+  invalidateStreamThinkingToRemoteCache();
 }
 
 // ─── streamThinkingToRemote hot-path cache (issue #158) ───
@@ -147,11 +170,11 @@ export function writeSettings(data: Record<string, any>): void {
 // on every delta would be wasteful, so we cache the resolved boolean and
 // invalidate it on every settings write (the single funnel above) — settings
 // changes are infrequent, deltas are not.
-let streamThinkingCache: boolean | null = null
+let streamThinkingCache: boolean | null = null;
 
 /** Drop the cached `streamThinkingToRemote` value; next read re-pulls disk. */
 export function invalidateStreamThinkingToRemoteCache(): void {
-  streamThinkingCache = null
+  streamThinkingCache = null;
 }
 
 /**
@@ -161,12 +184,12 @@ export function invalidateStreamThinkingToRemoteCache(): void {
  * `writeSettings` so a toggle change takes effect on the next delta.
  */
 export function shouldStreamThinkingToRemote(): boolean {
-  if (streamThinkingCache !== null) return streamThinkingCache
-  const raw = readSettings()
-  const v = raw.streamThinkingToRemote
+  if (streamThinkingCache !== null) return streamThinkingCache;
+  const raw = readSettings();
+  const v = raw.streamThinkingToRemote;
   // Default ON: only an explicit `false` disables streaming.
-  streamThinkingCache = v === false ? false : true
-  return streamThinkingCache
+  streamThinkingCache = v === false ? false : true;
+  return streamThinkingCache;
 }
 
 /**
@@ -178,14 +201,14 @@ export function shouldStreamThinkingToRemote(): boolean {
  * SETTINGS_DEFAULTS. 'high' is the desktop's opinionated default.
  */
 export function readDefaultThinkingEffort(): ThinkingEffort {
-  const raw = readSettings()
-  const v = raw.defaultThinkingEffort
+  const raw = readSettings();
+  const v = raw.defaultThinkingEffort;
   // 'adaptive' is deliberately NOT accepted here: this preference seeds
   // effort-based models, and adaptive models derive their own default from
   // capability metadata (see defaultEffortForMode). A hand-edited 'adaptive'
   // would otherwise be sent to a model that cannot use it.
-  if (isThinkingEffort(v) && v !== 'adaptive') return v
-  return 'high'
+  if (isThinkingEffort(v) && v !== "adaptive") return v;
+  return "high";
 }
 
 /**
@@ -213,14 +236,16 @@ export function readDefaultThinkingEffort(): ThinkingEffort {
  * desktop.
  */
 export function resolveSessionThinkingConfig(): ThinkingConfig | undefined {
-  const effort = readDefaultThinkingEffort()
-  if (effort === 'off') {
-    log('thinking config: enabled but default level off, omitting session default')
-    return undefined
+  const effort = readDefaultThinkingEffort();
+  if (effort === "off") {
+    log(
+      "thinking config: enabled but default level off, omitting session default",
+    );
+    return undefined;
   }
-  const cfg: ThinkingConfig = { enabled: true, effort }
-  log('thinking config: resolved session default', { reason: effort })
-  return cfg
+  const cfg: ThinkingConfig = { enabled: true, effort };
+  log("thinking config: resolved session default", { reason: effort });
+  return cfg;
 }
 
 /**
@@ -234,29 +259,33 @@ export function resolveSessionThinkingConfig(): ThinkingConfig | undefined {
  */
 export function readClaudeCompat(): boolean {
   try {
-    const v = readSettings().enableClaudeCompat
-    return typeof v === 'boolean' ? v : SETTINGS_DEFAULTS.enableClaudeCompat
+    const v = readSettings().enableClaudeCompat;
+    return typeof v === "boolean" ? v : SETTINGS_DEFAULTS.enableClaudeCompat;
   } catch {
-    return SETTINGS_DEFAULTS.enableClaudeCompat
+    return SETTINGS_DEFAULTS.enableClaudeCompat;
   }
 }
 
 export function readEngineConfig(): Record<string, any> {
   try {
     if (existsSync(ENGINE_CONFIG_FILE)) {
-      return JSON.parse(readFileSync(ENGINE_CONFIG_FILE, 'utf-8'))
+      return JSON.parse(readFileSync(ENGINE_CONFIG_FILE, "utf-8"));
     }
   } catch (err) {
     // A corrupt engine.json silently yields empty config and downstream reads
     // defaults with no trace — log the failure.
-    warn('settings: engine config read failed', { error: String(err) })
+    warn("settings: engine config read failed", { error: String(err) });
   }
-  return {}
+  return {};
 }
 
 export function writeEngineConfig(config: Record<string, any>): void {
-  if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true })
-  atomicWriteFileSync(ENGINE_CONFIG_FILE, JSON.stringify(config, null, 2), 0o644)
+  if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true });
+  atomicWriteFileSync(
+    ENGINE_CONFIG_FILE,
+    JSON.stringify(config, null, 2),
+    0o644,
+  );
 }
 
 /**
@@ -269,13 +298,13 @@ export function writeEngineConfig(config: Record<string, any>): void {
  * running engine re-reads the config).
  */
 export function ensureHybridBackendConfig(): boolean {
-  const cfg = readEngineConfig()
-  if (cfg.backend === 'hybrid') return false
-  const previous = cfg.backend ?? '(unset)'
-  cfg.backend = 'hybrid'
-  writeEngineConfig(cfg)
-  log('settings_store: engine backend set to hybrid', { previous })
-  return true
+  const cfg = readEngineConfig();
+  if (cfg.backend === "hybrid") return false;
+  const previous = cfg.backend ?? "(unset)";
+  cfg.backend = "hybrid";
+  writeEngineConfig(cfg);
+  log("settings_store: engine backend set to hybrid", { previous });
+  return true;
 }
 
 /**
@@ -286,59 +315,85 @@ export function ensureHybridBackendConfig(): boolean {
  * merge migration (tab-backend-merge.ts) and to the cleanup guards during
  * the migration window; nothing writes them anymore.
  */
-export const TABS_FILE = join(SETTINGS_DIR, 'tabs.json')
-export const SESSION_LABELS_FILE = join(SETTINGS_DIR, 'session-labels.json')
-export const SESSION_CHAINS_FILE = join(SETTINGS_DIR, 'session-chains.json')
+export const TABS_FILE = join(SETTINGS_DIR, "tabs.json");
+export const SESSION_LABELS_FILE = join(SETTINGS_DIR, "session-labels.json");
+export const SESSION_CHAINS_FILE = join(SETTINGS_DIR, "session-chains.json");
 
-export function legacyTabsFileForBackend(backend: 'api' | 'cli'): string {
-  return join(SETTINGS_DIR, `tabs-${backend}.json`)
+export function legacyTabsFileForBackend(backend: "api" | "cli"): string {
+  return join(SETTINGS_DIR, `tabs-${backend}.json`);
 }
 
-export function legacySessionLabelsFileForBackend(backend: 'api' | 'cli'): string {
-  return join(SETTINGS_DIR, `session-labels-${backend}.json`)
+export function legacySessionLabelsFileForBackend(
+  backend: "api" | "cli",
+): string {
+  return join(SETTINGS_DIR, `session-labels-${backend}.json`);
 }
 
-export function legacySessionChainsFileForBackend(backend: 'api' | 'cli'): string {
-  return join(SETTINGS_DIR, `session-chains-${backend}.json`)
+export function legacySessionChainsFileForBackend(
+  backend: "api" | "cli",
+): string {
+  return join(SETTINGS_DIR, `session-chains-${backend}.json`);
 }
 
 export function loadSessionLabels(): Record<string, string> {
   try {
     if (existsSync(SESSION_LABELS_FILE)) {
-      return JSON.parse(readFileSync(SESSION_LABELS_FILE, 'utf-8'))
+      return JSON.parse(readFileSync(SESSION_LABELS_FILE, "utf-8"));
     }
   } catch (err) {
-    log('settings_store: failed to load session labels', { error: String(err) })
+    log("settings_store: failed to load session labels", {
+      error: String(err),
+    });
   }
-  return {}
+  return {};
 }
 
 export function saveSessionLabels(labels: Record<string, string>): void {
   try {
-    if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true })
-    atomicWriteFileSync(SESSION_LABELS_FILE, JSON.stringify(labels, null, 2), 0o644)
+    if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true });
+    atomicWriteFileSync(
+      SESSION_LABELS_FILE,
+      JSON.stringify(labels, null, 2),
+      0o644,
+    );
   } catch (err) {
-    log('settings_store: failed to save session labels', { error: String(err) })
+    log("settings_store: failed to save session labels", {
+      error: String(err),
+    });
   }
 }
 
-export function loadSessionChains(): { chains: Record<string, string[]>; reverse: Record<string, string> } {
+export function loadSessionChains(): {
+  chains: Record<string, string[]>;
+  reverse: Record<string, string>;
+} {
   try {
     if (existsSync(SESSION_CHAINS_FILE)) {
-      return JSON.parse(readFileSync(SESSION_CHAINS_FILE, 'utf-8'))
+      return JSON.parse(readFileSync(SESSION_CHAINS_FILE, "utf-8"));
     }
   } catch (err) {
-    log('settings_store: failed to load session chains', { error: String(err) })
+    log("settings_store: failed to load session chains", {
+      error: String(err),
+    });
   }
-  return { chains: {}, reverse: {} }
+  return { chains: {}, reverse: {} };
 }
 
-export function saveSessionChains(data: { chains: Record<string, string[]>; reverse: Record<string, string> }): void {
+export function saveSessionChains(data: {
+  chains: Record<string, string[]>;
+  reverse: Record<string, string>;
+}): void {
   try {
-    if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true })
-    atomicWriteFileSync(SESSION_CHAINS_FILE, JSON.stringify(data, null, 2), 0o644)
+    if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true });
+    atomicWriteFileSync(
+      SESSION_CHAINS_FILE,
+      JSON.stringify(data, null, 2),
+      0o644,
+    );
   } catch (err) {
-    log('settings_store: failed to save session chains', { error: String(err) })
+    log("settings_store: failed to save session chains", {
+      error: String(err),
+    });
   }
 }
 
@@ -352,15 +407,19 @@ export function saveSessionChains(data: { chains: Record<string, string[]>; reve
  * Individual non-string items within a valid array are silently dropped.
  */
 export function readGitWatcherIgnoredDirectories(): string[] {
-  const raw = readSettings()
-  const defaultList = SETTINGS_DEFAULTS.gitWatcherIgnoredDirectories
+  const raw = readSettings();
+  const defaultList = SETTINGS_DEFAULTS.gitWatcherIgnoredDirectories;
 
-  if (!Object.prototype.hasOwnProperty.call(raw, 'gitWatcherIgnoredDirectories')) {
-    return defaultList.map(expandHome)
+  if (
+    !Object.prototype.hasOwnProperty.call(raw, "gitWatcherIgnoredDirectories")
+  ) {
+    return defaultList.map(expandHome);
   }
-  const stored = raw.gitWatcherIgnoredDirectories
+  const stored = raw.gitWatcherIgnoredDirectories;
   if (!Array.isArray(stored)) {
-    return defaultList.map(expandHome)
+    return defaultList.map(expandHome);
   }
-  return (stored as unknown[]).filter((v): v is string => typeof v === 'string').map(expandHome)
+  return (stored as unknown[])
+    .filter((v): v is string => typeof v === "string")
+    .map(expandHome);
 }

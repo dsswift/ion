@@ -20,6 +20,9 @@ struct Transcript: View {
     var runDurationMs: Int? = nil
     var runCompletionReason: TaskCompletionReason? = nil
     let onRewind: ((String) -> Void)?
+    /// Optional fork action for a user turn. The main conversation wires this;
+    /// read-only/agent transcript call sites intentionally leave it absent.
+    var onFork: ((String) -> Void)? = nil
     let agents: [AgentStateUpdate]?
     /// Full unfiltered agent list for descendant walks and running-count
     /// resolution. When nil, falls back to `agents` (the visible set). The
@@ -180,7 +183,7 @@ struct Transcript: View {
                                 }
                                 if msg.role == .user && !isRunning {
                                     if let rewind = onRewind {
-                                        EngineMessageRow(message: msg, onRewind: rewind)
+                                        EngineMessageRow(message: msg, onRewind: rewind, onFork: onFork)
                                     } else {
                                         EngineMessageRow(message: msg)
                                     }

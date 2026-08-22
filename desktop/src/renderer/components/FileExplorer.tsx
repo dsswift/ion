@@ -1,27 +1,35 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+/**
+ * FileExplorer — multi-root workspace orchestrator.
+ *
+ * Renders one FileExplorerRootSection per workspace root: the active tab's
+ * own directory first (primary, accent header), then the project's extra
+ * workspace folders (per-project setting, D3) in localeCompare order —
+ * ordering/dedupe via the shared orderedWorkspaceRoots helper the git panel
+ * also consumes, so the two surfaces can never diverge.
+ *
+ * A no-directory tab ('~') renders nothing (no project, no workspace
+ * entry). New File/Folder target the root containing the current selection
+ * (default primary). Root collapse is window-local session state
+ * (fileExplorerRootCollapsed, MIRROR_LOCAL).
+ */
+import React, { useState, useCallback, useMemo } from 'react'
 import {
-  X, FilePlus, FolderPlus, ArrowsClockwise, ArrowsInLineVertical,
+  X, FilePlus, FolderPlus, ArrowsClockwise, ArrowsInLineVertical, FolderSimplePlus,
 } from '@phosphor-icons/react'
-import { useSessionStore, isTextFile } from '../stores/sessionStore'
-import { usePopoverLayer } from './PopoverLayer'
+import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { transitions } from '../theme-tokens'
 import { usePreferencesStore } from '../preferences'
 import { usePanelVerticalResize } from '../hooks/usePanelVerticalResize'
-import { FileExplorerContextMenu, type ContextMenuState } from './FileExplorerContextMenu'
-import { FileExplorerTreeRow, FileExplorerInlineInput } from './FileExplorerTreeRow'
+import { FileExplorerRootSection } from './FileExplorerRootSection'
 import { ImageViewer } from './ImageViewer'
-import type { FsEntry } from '../../shared/types'
-import { rDebug, rInfo, rWarn, rError } from '../rendererLogger'
-
-const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp', '.tiff'])
+import { orderedWorkspaceRoots } from '../../shared/workspace-roots'
+import { rDebug, rError } from '../rendererLogger'
 
 /**
- * Header icon button (close X, New File, New Folder, Refresh, Collapse All).
- * Standard interactive states: hover keeps the existing color swap to
- * accent, pressed adds the surfacePressed background, keyboard focus gets
- * the `.ion-focusable` ring.
+ * Header icon button (close X, New File, New Folder, Refresh, Collapse All,
+ * Add Folder). Standard interactive states.
  */
 function ExplorerHeaderButton({
   title,
@@ -61,304 +69,77 @@ function ExplorerHeaderButton({
   )
 }
 
-export function FileExplorer() {
+export function FileExplorer({
+  docked = false,
+  onClose,
+}: {
+  docked?: boolean
+  onClose?: () => void
+}) {
   const colors = useColors()
-  const popoverLayer = usePopoverLayer()
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const tabs = useSessionStore((s) => s.tabs)
   const explorerStates = useSessionStore((s) => s.fileExplorerStates)
-  const {
-    setFileExplorerExpanded,
-    setFileExplorerSelected,
-    collapseAllExplorer,
-    openFileInEditor,
-    toggleFileExplorer,
-  } = useSessionStore.getState()
+  const rootCollapsed = useSessionStore((s) => s.fileExplorerRootCollapsed)
+  const { collapseAllExplorer, toggleFileExplorer, setExplorerRootCollapsed } = useSessionStore.getState()
+  const workspaceFolders = usePreferencesStore((s) => s.workspaceFolders)
+  const addWorkspaceFolder = usePreferencesStore((s) => s.addWorkspaceFolder)
+  const removeWorkspaceFolder = usePreferencesStore((s) => s.removeWorkspaceFolder)
 
   const workingDir = useMemo(() => {
     const tab = tabs.find((t) => t.id === activeTabId)
     return tab?.workingDirectory || null
   }, [tabs, activeTabId])
 
-  const explorerState = useMemo(() => {
-    if (!workingDir) return { expandedPaths: new Set<string>(), selectedPath: null }
-    return explorerStates.get(workingDir) || { expandedPaths: new Set<string>(), selectedPath: null }
-  }, [explorerStates, workingDir])
+  const roots = useMemo(() => orderedWorkspaceRoots(workingDir, workspaceFolders), [workingDir, workspaceFolders])
+  const allRoots = useMemo(
+    () => (roots.primary ? [roots.primary, ...roots.secondary] : []),
+    [roots],
+  )
 
-  // Directory listing cache
-  const [dirCache, setDirCache] = useState<Map<string, FsEntry[]>>(new Map())
-  const [ignoredPaths, setIgnoredPaths] = useState<Set<string>>(new Set())
-  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
-  const [inlineInput, setInlineInput] = useState<{ type: 'file' | 'folder'; parentDir: string; depth: number } | null>(null)
-  /**
-   * Inline-rename state. When set, the row whose `path === renaming.path`
-   * is replaced (not augmented) by a `FileExplorerInlineInput` pre-filled
-   * with `renaming.initialName`. The state is cleared on submit or
-   * cancel. This pattern mirrors `inlineInput` above but operates on an
-   * existing entry rather than synthesizing a new one above its
-   * siblings.
-   */
-  const [renaming, setRenaming] = useState<{ path: string; initialName: string } | null>(null)
   const [imagePreview, setImagePreview] = useState<{ path: string; name: string } | null>(null)
-  const refreshCounter = useRef(0)
+  const [inlineCreate, setInlineCreate] = useState<{ rootDir: string; type: 'file' | 'folder'; parentDir: string; depth: number } | null>(null)
+  const [refreshNonce, setRefreshNonce] = useState(0)
 
-  const fetchDir = useCallback(async (dirPath: string) => {
-    const result = await window.ion.fsReadDir(dirPath)
-    if (result.entries) {
-      setDirCache((prev) => {
-        const next = new Map(prev)
-        // Sort: directories first, then alphabetical
-        const sorted = [...result.entries].sort((a, b) => {
-          if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
-          return a.name.localeCompare(b.name)
-        })
-        next.set(dirPath, sorted)
-        return next
+  /** The root that owns the current selection (New File/Folder target). */
+  const selectionRoot = useMemo(() => {
+    for (const root of allRoots) {
+      if (explorerStates.get(root)?.selectedPath) return root
+    }
+    return roots.primary
+  }, [allRoots, explorerStates, roots.primary])
+
+  const startInlineCreate = useCallback(
+    (type: 'file' | 'folder') => {
+      const rootDir = selectionRoot
+      if (!rootDir) return
+      // Target the selected directory when the selection is a dir path,
+      // else the root itself. Depth is visual only; the section resolves
+      // placement by parentDir.
+      const selected = explorerStates.get(rootDir)?.selectedPath
+      const expandedPaths = explorerStates.get(rootDir)?.expandedPaths ?? new Set<string>()
+      const parentDir = selected && expandedPaths.has(selected) ? selected : rootDir
+      setInlineCreate({ rootDir, type, parentDir, depth: 0 })
+      rDebug('file-explorer', 'inline create started', { type, root: rootDir, parent: parentDir })
+    },
+    [selectionRoot, explorerStates],
+  )
+
+  const handleAddFolder = useCallback(() => {
+    if (!roots.primary) return
+    const primary = roots.primary
+    void window.ion
+      .selectDirectory()
+      .then((dir) => {
+        if (dir) addWorkspaceFolder(primary, dir)
       })
-    }
-  }, [])
-
-  // Refresh all expanded directories + root
-  const refreshAll = useCallback(() => {
-    if (!workingDir) return
-    fetchDir(workingDir).catch((err) => rWarn('file-explorer', 'refreshAll root fetch failed', { dir: workingDir, error: String(err) }))
-    for (const p of explorerState.expandedPaths) {
-      fetchDir(p).catch((err) => rWarn('file-explorer', 'refreshAll expanded fetch failed', { dir: p, error: String(err) }))
-    }
-  }, [workingDir, explorerState.expandedPaths, fetchDir])
-
-  // Fetch gitignored files
-  const fetchIgnored = useCallback((dir: string) => {
-    window.ion.gitIgnoredFiles(dir).then(result => {
-      setIgnoredPaths(new Set(result.paths))
-    }).catch((err) => rDebug("file-explorer", "gitIgnoredFiles failed", { dir, error: String(err) }))
-  }, [])
-
-  // Initial load + auto-refresh every 5 seconds
-  useEffect(() => {
-    if (!workingDir) return
-    refreshAll()
-    fetchIgnored(workingDir)
-    const interval = setInterval(() => {
-      refreshCounter.current++
-      refreshAll()
-      fetchIgnored(workingDir)
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [workingDir, refreshAll, fetchIgnored])
-
-  // Fetch newly expanded dirs
-  const handleToggleDir = useCallback((entry: FsEntry) => {
-    if (!workingDir) return
-    const isExpanded = explorerState.expandedPaths.has(entry.path)
-    setFileExplorerExpanded(workingDir, entry.path, !isExpanded)
-    setFileExplorerSelected(workingDir, entry.path)
-    if (!isExpanded && !dirCache.has(entry.path)) {
-      fetchDir(entry.path).catch((err) => rWarn('file-explorer', 'expand dir fetch failed', { dir: entry.path, error: String(err) }))
-    }
-  }, [workingDir, explorerState.expandedPaths, dirCache, fetchDir, setFileExplorerExpanded, setFileExplorerSelected])
-
-  const handleFileClick = useCallback((entry: FsEntry) => {
-    rDebug('file-explorer', 'handleFileClick', { name: entry.name, path: entry.path, working_dir: workingDir, active_tab: activeTabId, is_text: isTextFile(entry.name) })
-    if (!workingDir || !activeTabId) {
-      rDebug('file-explorer', 'handleFileClick bailed: no workingDir or activeTabId')
-      return
-    }
-    setFileExplorerSelected(workingDir, entry.path)
-    const ext = entry.name.includes('.') ? '.' + entry.name.split('.').pop()!.toLowerCase() : ''
-    if (IMAGE_EXTS.has(ext)) {
-      rDebug('file-explorer', 'opening image preview', { path: entry.path })
-      setImagePreview({ path: entry.path, name: entry.name })
-    } else if (isTextFile(entry.name)) {
-      rDebug('file-explorer', 'opening file in editor', { dir: workingDir, tab_id: activeTabId, path: entry.path })
-      openFileInEditor(workingDir, activeTabId, entry.path)
-    } else {
-      rDebug('file-explorer', 'skipped: not a text or image file')
-    }
-  }, [workingDir, activeTabId, openFileInEditor, setFileExplorerSelected])
-
-  const handleContextMenu = useCallback((e: React.MouseEvent, entry: FsEntry) => {
-    e.preventDefault()
-    setContextMenu({ x: e.clientX, y: e.clientY, entry })
-  }, [])
-
-  // Find directory depth for inline-input placement.
-  const findInlineTarget = useCallback((selectedPath: string | null): { dir: string; depth: number } => {
-    if (!workingDir) return { dir: '', depth: 0 }
-    if (!selectedPath) return { dir: workingDir, depth: 0 }
-    const find = (dir: string, d: number): { dir: string; depth: number } | null => {
-      const items = dirCache.get(dir)
-      if (!items) return null
-      for (const item of items) {
-        if (item.path === selectedPath) {
-          return item.isDirectory ? { dir: item.path, depth: d + 1 } : { dir, depth: d }
-        }
-        if (item.isDirectory && explorerState.expandedPaths.has(item.path)) {
-          const found = find(item.path, d + 1)
-          if (found) return found
-        }
-      }
-      return null
-    }
-    return find(workingDir, 0) || { dir: workingDir, depth: 0 }
-  }, [workingDir, explorerState.expandedPaths, dirCache])
-
-  const handleNewFile = useCallback(() => {
-    if (!workingDir) return
-    const target = findInlineTarget(explorerState.selectedPath)
-    setInlineInput({ type: 'file', parentDir: target.dir, depth: target.depth })
-  }, [workingDir, explorerState.selectedPath, findInlineTarget])
-
-  const handleNewFolder = useCallback(() => {
-    if (!workingDir) return
-    const target = findInlineTarget(explorerState.selectedPath)
-    setInlineInput({ type: 'folder', parentDir: target.dir, depth: target.depth })
-  }, [workingDir, explorerState.selectedPath, findInlineTarget])
-
-  const handleInlineSubmit = useCallback(async (name: string) => {
-    if (!inlineInput) return
-    const fullPath = `${inlineInput.parentDir}/${name}`
-    if (inlineInput.type === 'file') {
-      await window.ion.fsCreateFile(fullPath)
-    } else {
-      await window.ion.fsCreateDir(fullPath)
-    }
-    setInlineInput(null)
-    // Refresh the parent directory
-    fetchDir(inlineInput.parentDir).catch((err) => rWarn('file-explorer', 'inline submit refresh failed', { dir: inlineInput.parentDir, error: String(err) }))
-  }, [inlineInput, fetchDir])
-
-  /**
-   * Begin an in-place rename for `entry`. Called from the context menu.
-   * The row is swapped for an inline input pre-filled with the current
-   * name. Submit calls `window.ion.fsRename`; cancel restores the row.
-   */
-  const handleRenameStart = useCallback((entry: FsEntry) => {
-    rDebug('file-explorer', 'handleRenameStart', { path: entry.path, name: entry.name })
-    setRenaming({ path: entry.path, initialName: entry.name })
-  }, [])
-
-  /**
-   * Submit an in-place rename. Builds the new path under the same parent
-   * directory as the original entry (rename, not move), invokes the
-   * existing IPC, and refreshes the parent listing. Logs both success
-   * and failure with the `[FileExplorer]` tag so the renderer log
-   * stream tells the full story (see CLAUDE.md → Logging policy).
-   */
-  const handleRenameSubmit = useCallback(async (newName: string) => {
-    if (!renaming) return
-    const trimmed = newName.trim()
-    // No-op when the user submitted the same name (or empty after trim).
-    if (!trimmed || trimmed === renaming.initialName) {
-      rDebug('file-explorer', 'handleRenameSubmit: skipped', { reason: trimmed ? 'unchanged' : 'empty', old_path: renaming.path })
-      setRenaming(null)
-      return
-    }
-    const lastSlash = renaming.path.lastIndexOf('/')
-    const parentDir = lastSlash >= 0 ? renaming.path.slice(0, lastSlash) : renaming.path
-    const newPath = `${parentDir}/${trimmed}`
-    rInfo('file-explorer', 'handleRenameSubmit', { old_path: renaming.path, new_path: newPath })
-    try {
-      const result = await window.ion.fsRename(renaming.path, newPath)
-      if (result.ok) {
-        rInfo('file-explorer', 'rename success', { old_path: renaming.path, new_path: newPath })
-      } else {
-        rDebug('file-explorer', 'rename failed', { old_path: renaming.path, new_path: newPath, error: result.error })
-      }
-    } catch (err) {
-      rDebug('file-explorer', 'rename threw', { old_path: renaming.path, new_path: newPath, error: (err as Error).message })
-    }
-    setRenaming(null)
-    fetchDir(parentDir).catch((err) => rWarn('file-explorer', 'rename submit refresh failed', { dir: parentDir, error: String(err) }))
-  }, [renaming, fetchDir])
-
-  const handleRenameCancel = useCallback(() => {
-    rDebug('file-explorer', 'handleRenameCancel', { path: renaming?.path ?? '' })
-    setRenaming(null)
-  }, [renaming])
-
-  const isIgnored = useCallback((filePath: string) => {
-    if (ignoredPaths.has(filePath)) return true
-    // Directory entries from git end with '/' but FsEntry paths don't
-    if (ignoredPaths.has(filePath + '/')) return true
-    // Check if any parent directory is ignored
-    for (const p of ignoredPaths) {
-      if (p.endsWith('/') && filePath.startsWith(p)) return true
-      if (!p.endsWith('/') && filePath.startsWith(p + '/')) return true
-    }
-    return false
-  }, [ignoredPaths])
-
-  // Render tree recursively
-  const renderTree = useCallback((dirPath: string, depth: number): React.ReactNode[] => {
-    const entries = dirCache.get(dirPath) || []
-    const nodes: React.ReactNode[] = []
-
-    // Show inline input at this level if applicable
-    if (inlineInput && inlineInput.parentDir === dirPath) {
-      nodes.push(
-        <FileExplorerInlineInput
-          key="__inline__"
-          depth={depth}
-          onSubmit={(name) => { void handleInlineSubmit(name).catch((err) => rError('file-explorer', 'inline submit failed', { error: String(err) })) }}
-          onCancel={() => setInlineInput(null)}
-          placeholder={inlineInput.type === 'file' ? 'filename' : 'folder name'}
-          colors={colors}
-        />,
-      )
-    }
-
-    for (const entry of entries) {
-      const isExpanded = explorerState.expandedPaths.has(entry.path)
-      const isSelected = explorerState.selectedPath === entry.path
-
-      if (renaming && renaming.path === entry.path) {
-        // Replace the row with the inline input (NOT add above siblings).
-        // The placeholder mirrors the file/folder placeholder used for
-        // new-entry creation; the pre-filled `initialValue` makes the
-        // distinction obvious to the user.
-        nodes.push(
-          <FileExplorerInlineInput
-            key={`__rename__${entry.path}`}
-            depth={depth}
-            onSubmit={(name) => { void handleRenameSubmit(name).catch((err) => rError('file-explorer', 'rename submit failed', { error: String(err) })) }}
-            onCancel={handleRenameCancel}
-            placeholder={entry.isDirectory ? 'folder name' : 'filename'}
-            initialValue={renaming.initialName}
-            colors={colors}
-          />,
-        )
-      } else {
-        nodes.push(
-          <FileExplorerTreeRow
-            key={entry.path}
-            entry={entry}
-            depth={depth}
-            expanded={isExpanded}
-            selected={isSelected}
-            isGitIgnored={isIgnored(entry.path)}
-            onToggle={() => handleToggleDir(entry)}
-            onClick={() => handleFileClick(entry)}
-            onContextMenu={(e) => handleContextMenu(e, entry)}
-            colors={colors}
-          />,
-        )
-      }
-
-      if (entry.isDirectory && isExpanded) {
-        nodes.push(...renderTree(entry.path, depth + 1))
-      }
-    }
-
-    return nodes
-  }, [dirCache, explorerState, inlineInput, renaming, handleInlineSubmit, handleRenameSubmit, handleRenameCancel, handleToggleDir, handleFileClick, handleContextMenu, isIgnored, colors])
+      .catch((err) => rError('file-explorer', 'add workspace folder failed', { error: String(err) }))
+  }, [roots.primary, addWorkspaceFolder])
 
   const expandedUI = usePreferencesStore((s) => s.expandedUI)
   // Declared BEFORE the early return: hooks must run on every render. The same
   // hook the git panel uses, so the two cannot drift apart in either their
-  // default height or their drag behaviour -- this used to be the same
-  // arithmetic copied into both with a comment asking readers to keep them
-  // matching.
+  // default height or their drag behaviour.
   const { height: panelHeight, renderHandle } = usePanelVerticalResize({
     panelId: 'file-explorer',
     expandedUI,
@@ -366,9 +147,8 @@ export function FileExplorer() {
     onCommit: usePreferencesStore((s) => s.setFileExplorerHeight),
   })
 
-  if (!workingDir) return null
-
-  const projectName = workingDir.split('/').pop()?.toUpperCase() || 'PROJECT'
+  if (!roots.primary) return null
+  const primary = roots.primary
 
   return (
     <div
@@ -376,19 +156,20 @@ export function FileExplorer() {
       className="glass-surface"
       style={{
         width: '100%',
-        height: panelHeight,
+        height: docked ? '100%' : panelHeight,
+        flex: docked ? 1 : undefined,
+        minHeight: 0,
         display: 'flex',
         flexDirection: 'column',
         background: colors.containerBg,
-        border: `1px solid ${colors.containerBorder}`,
-        borderRadius: 16,
-        boxShadow: colors.cardShadow,
+        border: docked ? 'none' : `1px solid ${colors.containerBorder}`,
+        borderRadius: docked ? 0 : 16,
+        boxShadow: docked ? 'none' : colors.cardShadow,
         overflow: 'hidden',
-        // The drag handle is absolutely positioned against this box.
         position: 'relative',
       }}
     >
-      {renderHandle()}
+      {!docked && renderHandle()}
 
       {/* Header */}
       <div
@@ -403,14 +184,16 @@ export function FileExplorer() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
-          <ExplorerHeaderButton
-            title="Close explorer"
-            onClick={() => toggleFileExplorer(activeTabId)}
-            colors={colors}
-            style={{ flexShrink: 0, padding: 1, justifyContent: 'center' }}
-          >
-            <X size={11} />
-          </ExplorerHeaderButton>
+          {!docked && (
+            <ExplorerHeaderButton
+              title="Close explorer"
+              onClick={() => onClose ? onClose() : toggleFileExplorer(activeTabId)}
+              colors={colors}
+              style={{ flexShrink: 0, padding: 1, justifyContent: 'center' }}
+            >
+              <X size={11} />
+            </ExplorerHeaderButton>
+          )}
           <span
             style={{
               fontSize: 10,
@@ -422,15 +205,16 @@ export function FileExplorer() {
               whiteSpace: 'nowrap',
             }}
           >
-            {projectName}
+            {roots.secondary.length > 0 ? 'WORKSPACE' : (primary.split('/').pop()?.toUpperCase() || 'PROJECT')}
           </span>
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
           {[
-            { Icon: FilePlus, title: 'New File', action: handleNewFile },
-            { Icon: FolderPlus, title: 'New Folder', action: handleNewFolder },
-            { Icon: ArrowsClockwise, title: 'Refresh', action: refreshAll },
-            { Icon: ArrowsInLineVertical, title: 'Collapse All', action: () => workingDir && collapseAllExplorer(workingDir) },
+            { Icon: FilePlus, title: 'New File', action: () => startInlineCreate('file') },
+            { Icon: FolderPlus, title: 'New Folder', action: () => startInlineCreate('folder') },
+            { Icon: FolderSimplePlus, title: 'Add Folder to Workspace', action: handleAddFolder },
+            { Icon: ArrowsClockwise, title: 'Refresh', action: () => setRefreshNonce((n) => n + 1) },
+            { Icon: ArrowsInLineVertical, title: 'Collapse All', action: () => allRoots.forEach((r) => collapseAllExplorer(r)) },
           ].map(({ Icon, title, action }) => (
             <ExplorerHeaderButton key={title} title={title} onClick={action} colors={colors}>
               <Icon size={14} />
@@ -439,29 +223,26 @@ export function FileExplorer() {
         </div>
       </div>
 
-      {/* Tree */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: '4px 0',
-        }}
-      >
-        {renderTree(workingDir, 0)}
+      {/* Root sections */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
+        {allRoots.map((root) => (
+          <FileExplorerRootSection
+            // refreshNonce in the key forces a remount (and thereby a fresh
+            // fetch) on manual refresh — cheap and unambiguous.
+            key={`${root}:${refreshNonce}`}
+            rootDir={root}
+            isPrimary={root === primary}
+            collapsed={rootCollapsed.has(root)}
+            onToggleCollapsed={() => setExplorerRootCollapsed(root, !rootCollapsed.has(root))}
+            onOpenImage={setImagePreview}
+            onRemoveFromWorkspace={root === primary ? undefined : () => removeWorkspaceFolder(primary, root)}
+            inlineCreate={inlineCreate && inlineCreate.rootDir === root ? inlineCreate : null}
+            onInlineCreateDone={() => setInlineCreate(null)}
+          />
+        ))}
       </div>
 
-      {/* Context menu */}
-      {contextMenu && popoverLayer && (
-        <FileExplorerContextMenu
-          menu={contextMenu}
-          workingDir={workingDir}
-          onClose={() => setContextMenu(null)}
-          onRename={handleRenameStart}
-          portalTarget={popoverLayer}
-        />
-      )}
-
-      {/* Image preview */}
+      {/* Image preview (overlay legacy popup; Studio routes via the router) */}
       {imagePreview && (
         <ImageViewer
           filePath={imagePreview.path}

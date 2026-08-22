@@ -16,29 +16,35 @@
  * handler so iOS is not double-echoed.
  */
 
-import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { vi, describe, it, expect, beforeEach } from "vitest";
 
-const handlers = new Map<string, (...args: any[]) => any>()
+const handlers = new Map<string, (...args: any[]) => any>();
 
-vi.mock('electron', () => ({
+vi.mock("electron", () => ({
+  app: {},
+  session: {
+    fromPartition: () => ({ webRequest: { onBeforeRequest: () => {} } }),
+  },
+  globalShortcut: { register: () => true, unregisterAll: () => {} },
   ipcMain: {
     handle: (channel: string, handler: (...args: any[]) => any) => {
-      handlers.set(channel, handler)
+      handlers.set(channel, handler);
     },
     on: (channel: string, handler: (...args: any[]) => any) => {
-      handlers.set(channel, handler)
+      handlers.set(channel, handler);
     },
   },
-}))
+}));
 
 const mocks = vi.hoisted(() => ({
   processIncomingPrompt: vi.fn(),
   remoteSend: vi.fn(),
   hasTab: vi.fn().mockReturnValue(true),
   ensureTab: vi.fn(),
-}))
+}));
 
-vi.mock('../state', () => ({
+vi.mock("../state", () => ({
+  enterprisePolicyCache: { policy: null },
   state: {
     remoteTransport: { send: mocks.remoteSend },
     mainWindow: null,
@@ -57,96 +63,111 @@ vi.mock('../state', () => ({
   engineBridge: { stopByPrefix: vi.fn() },
   activeAssistantMessages: { delete: vi.fn() },
   DEBUG_MODE: false,
-}))
+}));
 
-vi.mock('../terminal-manager-instance', () => ({
+vi.mock("../terminal-manager-instance", () => ({
   terminalManager: { destroyByPrefix: vi.fn() },
-}))
+}));
 
-vi.mock('../remote/snapshot', () => ({
+vi.mock("../remote/snapshot", () => ({
   getRemoteTabStates: vi.fn(),
-}))
+}));
 
-vi.mock('../settings-store', () => ({
+vi.mock("../settings-store", () => ({
   readSettings: () => ({ enableClaudeCompat: true }),
   SETTINGS_DEFAULTS: { enableClaudeCompat: true },
-}))
+}));
 
-vi.mock('../broadcast', () => ({
+vi.mock("../broadcast", () => ({
   broadcast: vi.fn(),
-}))
+}));
 
-vi.mock('../logger', () => ({
+vi.mock("../logger", () => ({
   log: vi.fn(),
-}))
+}));
 
-vi.mock('../prompt-pipeline', () => ({
-  processIncomingPrompt: (...args: any[]) => mocks.processIncomingPrompt(...args),
-}))
+vi.mock("../prompt-pipeline", () => ({
+  processIncomingPrompt: (...args: any[]) =>
+    mocks.processIncomingPrompt(...args),
+}));
 
-import { registerSessionIpc } from '../ipc/session'
+import { registerSessionIpc } from "../ipc/session";
 
 beforeEach(() => {
-  handlers.clear()
-  mocks.processIncomingPrompt.mockReset().mockResolvedValue(undefined)
-  mocks.remoteSend.mockReset()
-  mocks.hasTab.mockReset().mockReturnValue(true)
-  mocks.ensureTab.mockReset()
-  registerSessionIpc()
-})
+  handlers.clear();
+  mocks.processIncomingPrompt.mockReset().mockResolvedValue(undefined);
+  mocks.remoteSend.mockReset();
+  mocks.hasTab.mockReset().mockReturnValue(true);
+  mocks.ensureTab.mockReset();
+  registerSessionIpc();
+});
 
-describe('IPC.PROMPT handler', () => {
-  it('passes source=desktop to the pipeline even when options.source=remote (sink behaviour)', async () => {
-    const handler = handlers.get('ion:prompt')
-    expect(handler).toBeDefined()
+describe("IPC.PROMPT handler", () => {
+  it("passes source=desktop to the pipeline even when options.source=remote (sink behaviour)", async () => {
+    const handler = handlers.get("ion:prompt");
+    expect(handler).toBeDefined();
     await handler!(null, {
-      tabId: 'tab-1',
-      requestId: 'req-1',
-      options: { prompt: 'hello from ios', projectPath: '/proj', source: 'remote' },
-    })
-    expect(mocks.processIncomingPrompt).toHaveBeenCalledTimes(1)
-    expect(mocks.processIncomingPrompt).toHaveBeenCalledWith(expect.objectContaining({
-      tabId: 'tab-1',
-      reqId: 'req-1',
-      source: 'desktop',
-      hasExtensions: false,
-    }))
-  })
+      tabId: "tab-1",
+      requestId: "req-1",
+      options: {
+        prompt: "hello from ios",
+        projectPath: "/proj",
+        source: "remote",
+      },
+    });
+    expect(mocks.processIncomingPrompt).toHaveBeenCalledTimes(1);
+    expect(mocks.processIncomingPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tabId: "tab-1",
+        reqId: "req-1",
+        source: "desktop",
+        hasExtensions: false,
+      }),
+    );
+  });
 
-  it('passes source=desktop when options.source is undefined (desktop-typed prompt)', async () => {
-    const handler = handlers.get('ion:prompt')
+  it("passes source=desktop when options.source is undefined (desktop-typed prompt)", async () => {
+    const handler = handlers.get("ion:prompt");
     await handler!(null, {
-      tabId: 'tab-2',
-      requestId: 'req-2',
-      options: { prompt: 'typed in desktop', projectPath: '/proj' },
-    })
-    expect(mocks.processIncomingPrompt).toHaveBeenCalledWith(expect.objectContaining({
-      tabId: 'tab-2',
-      source: 'desktop',
-    }))
-  })
+      tabId: "tab-2",
+      requestId: "req-2",
+      options: { prompt: "typed in desktop", projectPath: "/proj" },
+    });
+    expect(mocks.processIncomingPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tabId: "tab-2",
+        source: "desktop",
+      }),
+    );
+  });
 
-  it('skips the message_added echo to iOS when options.source=remote', async () => {
-    const handler = handlers.get('ion:prompt')
+  it("skips the message_added echo to iOS when options.source=remote", async () => {
+    const handler = handlers.get("ion:prompt");
     await handler!(null, {
-      tabId: 'tab-3',
-      requestId: 'req-3',
-      options: { prompt: 'from ios', source: 'remote' },
-    })
-    expect(mocks.remoteSend).not.toHaveBeenCalled()
-  })
+      tabId: "tab-3",
+      requestId: "req-3",
+      options: { prompt: "from ios", source: "remote" },
+    });
+    expect(mocks.remoteSend).not.toHaveBeenCalled();
+  });
 
-  it('echoes message_added to iOS when options.source is undefined (desktop-typed)', async () => {
-    const handler = handlers.get('ion:prompt')
+  it("echoes message_added to iOS when options.source is undefined (desktop-typed)", async () => {
+    const handler = handlers.get("ion:prompt");
     await handler!(null, {
-      tabId: 'tab-4',
-      requestId: 'req-4',
-      options: { prompt: 'typed in desktop' },
-    })
-    expect(mocks.remoteSend).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'desktop_message_added',
-      tabId: 'tab-4',
-      message: expect.objectContaining({ id: 'req-4', role: 'user', content: 'typed in desktop' }),
-    }))
-  })
-})
+      tabId: "tab-4",
+      requestId: "req-4",
+      options: { prompt: "typed in desktop" },
+    });
+    expect(mocks.remoteSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "desktop_message_added",
+        tabId: "tab-4",
+        message: expect.objectContaining({
+          id: "req-4",
+          role: "user",
+          content: "typed in desktop",
+        }),
+      }),
+    );
+  });
+});

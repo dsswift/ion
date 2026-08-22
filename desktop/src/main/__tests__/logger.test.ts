@@ -15,13 +15,12 @@ import {
   trace,
   debug,
   error,
-  setSessionContext,
-  clearSessionContext,
   configureLogger,
   setLogLevel,
   flushLogs,
   _resetForTest,
 } from '../logger'
+import { setConversationResolver } from '../log-correlation'
 
 /**
  * Read back the single line last written to the log. INFO lines are buffered
@@ -78,28 +77,49 @@ describe('logger structured JSONL', () => {
     expect(line.fields).not.toBeNull()
   })
 
-  it('omits session_id entirely when no context is set', () => {
+  it('omits session_id entirely when the line names no subject', () => {
     log('session', 'no context')
     const line = lastLine()
     expect('session_id' in line).toBe(false)
     expect('conversation_id' in line).toBe(false)
   })
 
-  it('stamps session_id and conversation_id when context is set', () => {
-    setSessionContext('sess-1', 'conv-1')
-    log('session', 'with context')
+  it('derives session_id from the line own tab_id subject', () => {
+    log('session', 'with subject', { tab_id: 'sess-1' })
     const line = lastLine()
     expect(line.session_id).toBe('sess-1')
-    expect(line.conversation_id).toBe('conv-1')
   })
 
-  it('removes IDs after clearSessionContext', () => {
-    setSessionContext('sess-1', 'conv-1')
-    clearSessionContext()
-    log('session', 'cleared')
+  it('resolves conversation_id for the line own subject, not an ambient session', () => {
+    // Two live conversations, exactly as a restored desktop has.
+    setConversationResolver((key) => (key === 'tab-a' ? 'conv-a' : key === 'tab-b' ? 'conv-b' : undefined))
+
+    log('session', 'about a', { tab_id: 'tab-a' })
+    expect(lastLine().conversation_id).toBe('conv-a')
+
+    // The previous line must not colour this one. This is the regression:
+    // with a single shared context, whichever session started last won and
+    // every subsequent line carried ITS id regardless of subject.
+    log('session', 'about b', { key: 'tab-b' })
+    expect(lastLine().conversation_id).toBe('conv-b')
+
+    // A line belonging to no conversation stays unstamped rather than
+    // inheriting a neighbour's identity.
+    log('git_watcher', 'heartbeat')
+    expect('conversation_id' in lastLine()).toBe(false)
+  })
+
+  it('prefers an explicit conversation_id field over the resolver', () => {
+    setConversationResolver(() => 'conv-from-registry')
+    log('session', 'explicit wins', { tab_id: 'tab-a', conversation_id: 'conv-explicit' })
+    expect(lastLine().conversation_id).toBe('conv-explicit')
+  })
+
+  it('treats a none placeholder as absent rather than as an id', () => {
+    log('session', 'placeholder', { tab_id: 'tab-a', conversation_id: 'none' })
     const line = lastLine()
-    expect('session_id' in line).toBe(false)
     expect('conversation_id' in line).toBe(false)
+    expect(line.session_id).toBe('tab-a')
   })
 
   it('writes ERROR lines synchronously', () => {

@@ -13,14 +13,10 @@
  *
  * ── Priority is severity, and nothing is hidden ─────────────────────────────
  * The slot shows the most severe fact. Every fact it does NOT show still
- * reaches the operator: the second line carries the words (`excluded`,
- * `behind`, `sync blocked`), and the hover card carries the full identity. That
+ * reaches the operator: the second line carries the words (`behind`, `sync
+ * blocked`), and the hover card carries the full identity. That
  * is what makes a single slot honest -- it is a summary, not a filter.
  *
- * This is only possible because member state is three orthogonal axes. Under
- * the old collapsed `MemberStatus` an excluded member that had also moved on
- * reported only `excluded`; the other facts were not lower priority, they were
- * destroyed at write time and no renderer could have recovered them.
  */
 import type { IntegrationMember, WorktreeInventoryEntry } from '../../shared/types'
 
@@ -46,8 +42,12 @@ export type RowStateIndicator =
   | { kind: 'provision-failed'; reason?: string }
   /** The worktree has committed past what the bench holds. Click updates the pin. */
   | { kind: 'pin-behind'; pinnedSha: string }
-  /** The source branch moved and a sync would change this worktree. */
-  | { kind: 'needs-sync'; blocked: boolean; syncing: boolean }
+  /**
+   * The source branch moved AND the bench pin is behind. One slot, two verbs,
+   * and the operator needs both — so the slot carries the sync control and says
+   * the pin is also behind, rather than silently dropping one of them.
+   */
+  | { kind: 'needs-sync'; blocked: boolean; syncing: boolean; pinAlsoBehind?: boolean }
   /** Dependencies are being installed right now. */
   | { kind: 'provisioning' }
   /** Nothing needs attention. The slot still reserves its width. */
@@ -139,8 +139,21 @@ export function resolveRowState(input: RowStateInput): RowStateIndicator {
   // the honest answer in both cases is the same: clean the worktree, sync, then
   // pin. The blocked control says so rather than offering the step that must
   // come second.
+  //
+  // What the ordering must NOT do is hide the pin fact. A long-lived worktree is
+  // routinely both behind its base and ahead of its pin, and when that happened
+  // the row showed only the sync control: the second line's `behind` word was
+  // suppressed too (it was gated on the slot not showing pin-behind, which it
+  // never did here), so an out-of-date pin became completely invisible. The
+  // recommendation still stands -- sync first -- but the row now states both
+  // facts and `resolveRowWords` keeps emitting `behind`.
   if (entry.needsSync) {
-    return { kind: 'needs-sync', blocked: entry.isDirty, syncing: !!syncing }
+    return {
+      kind: 'needs-sync',
+      blocked: entry.isDirty,
+      syncing: !!syncing,
+      pinAlsoBehind: membership?.pin === 'behind' || undefined,
+    }
   }
 
   if (membership?.pin === 'behind') {
@@ -177,10 +190,11 @@ export function resolveRowWords(input: RowStateInput): string[] {
   if (input.verificationSuspect && shown.kind !== 'bench-verification') words.push('verify suspect')
   if (entry.provisionState === 'failed' && shown.kind !== 'provision-failed') words.push('setup failed')
 
-  // The exclusion fact has no slot of its own -- the enrollment control already
-  // shows it -- but it belongs in the words so a dimmed row explains itself.
-  if (membership && !membership.enabled) words.push('excluded')
-
+  // `behind` is emitted whenever the pin is behind and the slot is not itself
+  // the pin control. That includes the needs-sync case, where the slot shows
+  // sync: the pin fact has no other surface on the row, and suppressing it
+  // there is what made an out-of-date pin invisible on any worktree that was
+  // also behind its base.
   if (membership?.pin === 'behind' && shown.kind !== 'pin-behind') words.push('behind')
   if (membership?.pin === 'empty') words.push('no commits yet')
   if (membership?.pin === 'absorbed') words.push('landed')

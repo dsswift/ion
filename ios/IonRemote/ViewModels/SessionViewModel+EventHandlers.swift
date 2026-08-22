@@ -53,8 +53,8 @@ extension SessionViewModel {
         case .lanSecretUnusable:
             handleLANSecretUnusable()
 
-        case .snapshot(let snapshotTabs, let recentDirs, let snapshotGroupMode, let snapshotGroups, let snapshotPreferredModel, let snapshotEngineDefaultModel, let snapshotAvailableModels, let snapshotCustomName, let snapshotCustomIcon, let snapshotRemoteDisplayUpdatedAt, let snapshotResources):
-            handleSnapshot(snapshotTabs: snapshotTabs, recentDirs: recentDirs, groupMode: snapshotGroupMode, groups: snapshotGroups, preferredModel: snapshotPreferredModel, engineDefaultModel: snapshotEngineDefaultModel, availableModels: snapshotAvailableModels)
+        case .snapshot(let snapshotTabs, let recentDirs, let snapshotGroupMode, let snapshotGroups, let snapshotPreferredModel, let snapshotEngineDefaultModel, let snapshotAvailableModels, let snapshotCustomName, let snapshotCustomIcon, let snapshotRemoteDisplayUpdatedAt, let snapshotResources, let snapshotWorktreeStates, let snapshotSettledTabs):
+            handleSnapshot(snapshotTabs: snapshotTabs, recentDirs: recentDirs, groupMode: snapshotGroupMode, groups: snapshotGroups, preferredModel: snapshotPreferredModel, engineDefaultModel: snapshotEngineDefaultModel, availableModels: snapshotAvailableModels, worktreeStates: snapshotWorktreeStates, settledTabs: snapshotSettledTabs)
             applySnapshotRemoteDisplay(customName: snapshotCustomName, customIcon: snapshotCustomIcon, updatedAt: snapshotRemoteDisplayUpdatedAt)
             if let snapshotResources {
                 for (kind, rawItems) in snapshotResources {
@@ -210,8 +210,8 @@ extension SessionViewModel {
             _ = instanceId // unused post-#256, bare tabId is the key
             activeTools[tabId]?[toolId]?.isStalled = true
 
-        case .engineImageContent(let tabId, let instanceId, let path, let mediaType, let source, let toolId):
-            handleEngineImageContent(tabId: tabId, instanceId: instanceId, path: path, mediaType: mediaType, source: source, toolId: toolId)
+        case .engineImageContent(let tabId, let instanceId, let path, let mediaType, let contentHash, let source, let toolId):
+            handleEngineImageContent(tabId: tabId, instanceId: instanceId, path: path, mediaType: mediaType, contentHash: contentHash, source: source, toolId: toolId)
 
         case .engineRunStalled(let tabId, let instanceId, let stalledDuration, let lastActivity):
             handleEngineRunStalled(tabId: tabId, instanceId: instanceId, stalledDuration: stalledDuration, lastActivity: lastActivity)
@@ -219,8 +219,8 @@ extension SessionViewModel {
         case .engineRunRecovery(let tabId, let instanceId, let recoveryId, let phase, let attempt, let maxAttempts, let reason):
             handleEngineRunRecovery(tabId: tabId, instanceId: instanceId, recoveryId: recoveryId, phase: phase, attempt: attempt, maxAttempts: maxAttempts, reason: reason)
 
-        case .engineSteerInjected(let tabId, let instanceId, let messageLength):
-            handleEngineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength)
+        case .engineSteerInjected(let tabId, let instanceId, let messageLength, let clientMessageId, let entryId):
+            handleEngineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength, clientMessageId: clientMessageId, entryId: entryId)
 
         case .engineSteerDegraded(let tabId, let instanceId, let messageLength):
             handleEngineSteerDegraded(tabId: tabId, instanceId: instanceId, messageLength: messageLength)
@@ -445,6 +445,9 @@ extension SessionViewModel {
         case .worktreeOpResult(let result):
             handleWorktreeOpResult(result)
 
+        case .worktreePipeline(let pipeline):
+            handleWorktreePipeline(pipeline)
+
         // Git events
         case .gitChangesResponse(let directory, let response):
             gitChanges[directory] = response
@@ -521,8 +524,8 @@ extension SessionViewModel {
                 }
             }
 
-        case .uploadAttachmentResult(let id, let name, let path, let correlationId, let error):
-            handleUploadAttachmentResult(id: id, name: name, path: path, correlationId: correlationId, error: error)
+        case .uploadAttachmentResult(let id, let name, let path, let correlationId, let contentHash, let error):
+            handleUploadAttachmentResult(id: id, name: name, path: path, correlationId: correlationId, contentHash: contentHash, error: error)
 
         case .tabAttachments(let tabId, let attachments):
             let names = attachments.map { "\($0.type):\($0.name)" }.joined(separator: ", ")
@@ -584,6 +587,9 @@ extension SessionViewModel {
 
         case .promptResult(let tabId, let clientMsgId, let status, let error):
             handlePromptResult(tabId: tabId, clientMsgId: clientMsgId, status: status, error: error)
+
+        case .engineRewindResult(let tabId, let instanceId, let error):
+            handleEngineRewindResult(tabId: tabId, instanceId: instanceId, error: error)
         }
     }
 

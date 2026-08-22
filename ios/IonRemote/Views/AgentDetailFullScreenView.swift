@@ -62,6 +62,11 @@ struct AgentDetailFullScreenView: View {
         return "\(ids)|\(agent.status)|\(agent.dispatches.count)"
     }
 
+    private var allAgents: [AgentStateUpdate] {
+        let tabId = SessionViewModel.parseEngineSessionKey(compoundKey)
+        return viewModel.engineInstance(tabId: tabId, instanceId: nil)?.agentStates ?? []
+    }
+
     /// Dispatch this detail view currently represents. Preserve an explicitly
     /// selected dispatch from a pager/deep link; otherwise default to the same
     /// start-time-most-recent dispatch rendered by the row foreground dot.
@@ -177,6 +182,7 @@ struct AgentDetailFullScreenView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     AgentExpandedContent(
                         agent: agent,
+                        allAgents: allAgents,
                         messages: viewModel.agentConversationMessages[agent.name],
                         convMessageCache: viewModel.agentConversationMessages,
                         isLoadingMessages: viewModel.agentConversationLoading.contains(agent.name)
@@ -197,7 +203,8 @@ struct AgentDetailFullScreenView: View {
                                 dispatchId: dispatch.id
                             ))
                         },
-                        agentPanelExpanded: agentsPanelExpandedBinding
+                        agentPanelExpanded: agentsPanelExpandedBinding,
+                        initialDispatchId: dispatchId
                     )
                 }
             } else {
@@ -320,6 +327,11 @@ private struct BreadcrumbDestinationView: View {
     /// DURABLE agent-state list (see the primary `childAgents` above for the
     /// rationale: survives late attach, per-instance correct). Keyed on the
     /// breadcrumb agent's own dispatch id.
+    private var allAgents: [AgentStateUpdate] {
+        let tabId = SessionViewModel.parseEngineSessionKey(compoundKey)
+        return viewModel.engineInstance(tabId: tabId, instanceId: nil)?.agentStates ?? []
+    }
+
     private var childAgents: [AgentStateUpdate] {
         guard let agent = childAgent else { return [] }
         let tabId = SessionViewModel.parseEngineSessionKey(compoundKey)
@@ -335,6 +347,7 @@ private struct BreadcrumbDestinationView: View {
             if let agent = childAgent {
                 AgentExpandedContent(
                     agent: agent,
+                    allAgents: allAgents,
                     messages: viewModel.agentConversationMessages[entry.conversationId],
                     convMessageCache: viewModel.agentConversationMessages,
                     isLoadingMessages: viewModel.agentConversationLoading.contains(entry.conversationId),
@@ -354,7 +367,8 @@ private struct BreadcrumbDestinationView: View {
                             dispatchId: dispatch.id
                         ))
                     },
-                    agentPanelExpanded: agentsPanelExpandedBinding
+                    agentPanelExpanded: agentsPanelExpandedBinding,
+                    initialDispatchId: entry.dispatchId
                 )
             } else {
                 ContentUnavailableView(

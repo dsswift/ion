@@ -23,14 +23,16 @@ import { existsSync, readFileSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import { state, sessionPlane, lastMessagePreview } from '../state'
-import { TABS_FILE } from '../settings-store'
+import { TABS_FILE, readSettings } from '../settings-store'
 import { isResourceRead } from '../event-wiring-resources'
 import { log, debug, warn } from '../logger'
 import type { RemoteTabState } from './protocol'
 import type { TabStatus } from '../../shared/types'
+import { classifyInbox, inboxUnread, wokeAt, type InboxState, type InboxTabView } from '../../shared/inbox-classify'
 import type { RemoteTabStatesPayload, ProjectedRendererTab, ResourceManifest } from '../../shared/remote-projection-types'
 import { projectRendererTab } from './snapshot-project'
 import { pollRendererTabStates } from './snapshot-renderer-poll'
+import { getMachineIdentity } from '../machine-identity'
 
 // Re-export so existing `import type { ResourceManifest } from './snapshot'`
 // consumers keep working; the type's home is shared/remote-projection-types.ts
@@ -258,13 +260,78 @@ function mapProjectedTab(t: ProjectedRendererTab): RemoteTabState {
     url: e.url,
   }))
   const lastMessage = t.lastMessageContent || lastMessagePreview.get(t.id) || null
+  const machine = getMachineIdentity()
+  // Main owns the machine identity. Add it after the renderer projection so
+  // every active tab reports the desktop that executes it.
+  const execution = machine ? {
+    executionHost: machine.host,
+    executionMachineId: machine.machineId || undefined,
+  } : {}
   // Pure field projection — contract pinned by snapshot-project.ts and
   // tested in __tests__/snapshot-project + the snapshot-*-parity suites.
-  return projectRendererTab(t, {
+  return projectRendererTab({ ...t, ...execution }, {
     lastMessage,
     permissionQueue: permissionQueue as unknown as RemoteTabState['permissionQueue'],
     elicitationQueue,
   })
+}
+
+/**
+ * Classify one persisted tab record for the cold-start path.
+ *
+ * The cold path has no renderer, so it cannot reuse the renderer's projection —
+ * but it CAN reuse the shared classifier, and it must. Omitting these fields
+ * (as this path once did) means iOS receives rows with no inbox classification
+ * and files every one of them as Active, so a cold snapshot arriving between
+ * store-backed ones reshuffles the Inbox on screen.
+ *
+ * The inputs are all persisted on the tab record (types-persistence.ts), so the
+ * only genuine cold-start gaps are the live-session signals: pending asks, a
+ * waiting pane, and background work. Those are absent rather than wrong — each
+ * one can only ever push a conversation OUT of settled (they are exclusions in
+ * effectiveSettled), so a cold row can under-report settled but never invent it.
+ * The first store-backed snapshot corrects it.
+ */
+function coldInboxFields(t: Record<string, unknown>, status: TabStatus, autoSettleDays: number | null): {
+  inboxState: InboxState
+  unread: boolean
+  snoozedUntil: number | null
+  settledAt: number | null
+  settledOverride: 'settled' | 'active' | 'auto' | null
+  wokeAt: number | null
+} {
+  const now = Date.now()
+  // The persisted record is untyped JSON, so every field is narrowed at the
+  // boundary rather than asserted. A wrong-typed value on disk reads as absent,
+  // which the classifier already handles.
+  const num = (v: unknown): number | null => (typeof v === 'number' ? v : null)
+  const override = t.settledOverride === 'settled' || t.settledOverride === 'active' || t.settledOverride === 'auto'
+    ? t.settledOverride
+    : null
+  const view: InboxTabView = {
+    status,
+    settledOverride: override,
+    settledAt: num(t.settledAt),
+    snoozedUntil: num(t.snoozedUntil),
+    snoozedAt: num(t.snoozedAt),
+    lastVisitedAt: num(t.lastVisitedAt),
+    lastCompletionAt: num(t.lastCompletionAt),
+    lastMessageAt: num(t.lastMessageAt),
+    manualUnread: t.manualUnread === true,
+    // Live-only signals: no renderer, so no pane to read. See the doc above —
+    // absence is safe in one direction only, which is the direction we need.
+    pendingAskCount: 0,
+    waiting: false,
+    failed: status === 'failed',
+  }
+  return {
+    inboxState: classifyInbox(view, now, autoSettleDays),
+    unread: inboxUnread(view),
+    snoozedUntil: view.snoozedUntil,
+    settledAt: view.settledAt,
+    settledOverride: override,
+    wokeAt: wokeAt(view, now),
+  }
 }
 
 /**
@@ -280,6 +347,11 @@ function coldStartSnapshot(): RemoteTabSnapshot {
       healthBySession[t.conversationId] = t
     }
   }
+
+  // Same preference the renderer projection reads, from the main-process
+  // settings store. A zero/absent value disables the auto-settle clock.
+  const autoSettleRaw = readSettings().inboxAutoSettleDays
+  const autoSettleDays = typeof autoSettleRaw === 'number' && autoSettleRaw > 0 ? autoSettleRaw : null
 
   let persistedTabs: any[] = []
   try {
@@ -304,11 +376,13 @@ function coldStartSnapshot(): RemoteTabSnapshot {
       // unified conversationPane when present (post-migration shape). Corrected
       // on the first real store-backed snapshot.
       const coldMain = t.conversationPane?.instances?.find((x: any) => x.id === 'main') ?? t.conversationPane?.instances?.[0]
+      const status = (h?.status || 'idle') as TabStatus
+      const inbox = coldInboxFields(t, status, autoSettleDays)
       results.push({
         id: h?.tabId || `persisted-${i}`,
         title: t.customTitle || t.title || `Tab ${i + 1}`,
         customTitle: t.customTitle || null,
-        status: (h?.status || 'idle') as TabStatus,
+        status,
         workingDirectory: t.workingDirectory || '',
         // Prefer the instance-persisted mode (WI-002). Fall back to the legacy
         // tab-level field for tabs.json written before WI-002.
@@ -323,6 +397,27 @@ function coldStartSnapshot(): RemoteTabSnapshot {
         lastRunReason: t.lastResult?.reason,
         modelOverride: coldMain?.modelOverride ?? null,
         lastActivityAt: h?.lastActivityAt || undefined,
+        createdAt: typeof t.createdAt === 'number' ? t.createdAt : undefined,
+        // Inbox classification, computed from the persisted record via the
+        // SHARED classifier. Never omitted: a row with no inboxState files as
+        // Active on iOS, so omission here reshuffles the user's Inbox whenever a
+        // cold snapshot lands between store-backed ones.
+        inboxState: inbox.inboxState,
+        unread: inbox.unread || undefined,
+        snoozedUntil: inbox.snoozedUntil ?? undefined,
+        settledAt: inbox.settledAt ?? undefined,
+        settledOverride: inbox.settledOverride ?? undefined,
+        wokeAt: inbox.wokeAt ?? undefined,
+        idleSince: typeof t.idleSince === 'number' ? t.idleSince : undefined,
+        // Worktree identity persists on the tab record; carry it cold so the
+        // iOS inbox groups correctly before the renderer's first push.
+        worktree: t.worktree ? {
+          worktreePath: t.worktree.worktreePath,
+          branchName: t.worktree.branchName,
+          sourceBranch: t.worktree.sourceBranch,
+          repoPath: t.worktree.repoPath,
+          landedAt: t.worktree.landedAt,
+        } : undefined,
         // Omit convFingerprint on the cold path — do NOT send ''. iOS compares
         // the snapshot fingerprint against its real local tail; an empty string
         // never matches a non-empty local fingerprint, so sending '' forces an

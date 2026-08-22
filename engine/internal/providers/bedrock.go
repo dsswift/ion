@@ -449,6 +449,12 @@ func formatBedrockMessages(messages []types.LlmMessage) []map[string]any {
 					text = "[Nested context loaded]"
 				}
 				content = append(content, map[string]any{"text": text})
+			case "skill_content", "skill_listing":
+				text := b.Text
+				if text == "" {
+					text = "[Skill content]"
+				}
+				content = append(content, map[string]any{"text": text})
 			}
 		}
 		if len(content) > 0 {

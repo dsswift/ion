@@ -316,18 +316,26 @@ type DispatchLostInfo struct {
 }
 
 // ElicitationRequestInfo carries details about an elicitation request.
+// Source/Server/Message/Action are optional extension-provided metadata
+// for richer client-side card rendering.
 type ElicitationRequestInfo struct {
 	RequestID string                 `json:"request_id"`
 	Schema    map[string]interface{} `json:"schema,omitempty"`
 	URL       string                 `json:"url,omitempty"`
 	Mode      string                 `json:"mode"`
+	Source    string                 `json:"source,omitempty"`
+	Server    string                 `json:"server,omitempty"`
+	Message   string                 `json:"message,omitempty"`
+	Action    string                 `json:"action,omitempty"`
 }
 
 // ElicitationResultInfo carries details about an elicitation result.
+// Declined is the ternary middle: "no, but continue" vs Cancelled "no, and abort".
 type ElicitationResultInfo struct {
 	RequestID string                 `json:"request_id"`
 	Response  map[string]interface{} `json:"response,omitempty"`
 	Cancelled bool                   `json:"cancelled"`
+	Declined  bool                   `json:"declined,omitempty"`
 }
 
 // ModelSelectInfo describes a model selection event.

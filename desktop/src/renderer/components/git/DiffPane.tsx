@@ -1,6 +1,7 @@
 /**
  * Unified diff pane with side-by-side toggle, word-diff highlights, per-hunk
- * and partial-line staging, and image/binary fallbacks.
+ * and partial-line staging. Binary files render an explicit unsupported-content
+ * notice rather than passing content to a diff table.
  *
  * Rendering tables live in `DiffTable.tsx` (unified) and `DiffSideBySide.tsx`
  * (split). Staging math sits in `diffParse.ts`. View mode is persisted to
@@ -8,37 +9,36 @@
  */
 
 import React, { useMemo, useCallback, useState, useEffect } from 'react'
-import { rDebug, rError } from '../../rendererLogger'
+import { rError } from '../../rendererLogger'
 import { X, Rows, Columns } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { parseDiffWithHunks, buildHunkPatch, buildPartialLinePatch } from './diffParse'
 import type { ParsedDiff, DiffLine } from './diffParse'
 import { DiffTable } from './DiffTable'
 import { DiffSideBySide } from './DiffSideBySide'
+import { UnsupportedDiffNotice } from './UnsupportedDiffNotice'
 
 const VIEW_MODE_KEY = 'ion:diff-view-mode'
+const EMPTY_PARSED_DIFF: ParsedDiff = { fileHeader: [], hunks: [], lines: [] }
 
 interface DiffPaneProps {
   diff: string
   fileName: string
   filePath: string
+  isBinary: boolean
   staged: boolean
   directory: string
   onClose: () => void
   onRefresh: () => void
 }
 
-function isImageFile(name: string): boolean {
-  return /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i.test(name)
-}
 
-function isBinaryDiff(raw: string): boolean {
-  return /^Binary files .* differ$/m.test(raw) || /^GIT binary patch$/m.test(raw)
-}
-
-export function DiffPane({ diff, fileName, filePath, staged, directory, onClose, onRefresh }: DiffPaneProps) {
+export function DiffPane({ diff, fileName, filePath, isBinary, staged, directory, onClose, onRefresh }: DiffPaneProps) {
   const colors = useColors()
-  const parsed: ParsedDiff = useMemo(() => parseDiffWithHunks(diff), [diff])
+  const parsed = useMemo<ParsedDiff>(
+    () => isBinary ? EMPTY_PARSED_DIFF : parseDiffWithHunks(diff),
+    [diff, isBinary],
+  )
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [anchor, setAnchor] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -50,8 +50,6 @@ export function DiffPane({ diff, fileName, filePath, staged, directory, onClose,
 
   const insertions = parsed.lines.filter((l) => l.type === 'add').length
   const deletions = parsed.lines.filter((l) => l.type === 'remove').length
-  const binary = isBinaryDiff(diff)
-  const image = isImageFile(fileName)
 
   const clearSelection = (): void => { setSelected(new Set()); setAnchor(null) }
 
@@ -123,7 +121,7 @@ export function DiffPane({ diff, fileName, filePath, staged, directory, onClose,
         <div className="flex items-center gap-1.5 text-[10px] truncate" style={{ color: colors.textSecondary }}>
           <span className="truncate font-medium">{fileName}</span>
           <span style={{ color: colors.textMuted, fontSize: 9 }}>{filePath}</span>
-          {!binary && (insertions > 0 || deletions > 0) && (
+          {!isBinary && (insertions > 0 || deletions > 0) && (
             <span style={{ color: colors.textTertiary }}>
               <span style={{ color: colors.successFg }}>+{insertions}</span>{' '}
               <span style={{ color: colors.dangerFg }}>−{deletions}</span>
@@ -134,7 +132,7 @@ export function DiffPane({ diff, fileName, filePath, staged, directory, onClose,
           )}
         </div>
         <div className="flex items-center gap-1">
-          {!binary && (
+          {!isBinary && (
             <button
               onClick={() => setViewMode((m) => m === 'unified' ? 'split' : 'unified')}
               className="p-0.5 rounded"
@@ -151,12 +149,8 @@ export function DiffPane({ diff, fileName, filePath, staged, directory, onClose,
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', minHeight: 0 }}>
-        {image ? (
-          <ImageDiff directory={directory} filePath={filePath} />
-        ) : binary ? (
-          <div className="p-4 text-center text-[11px]" style={{ color: colors.textTertiary }}>
-            Binary file changed
-          </div>
+        {isBinary ? (
+          <UnsupportedDiffNotice />
         ) : parsed.lines.length === 0 ? (
           <div className="p-4 text-center text-[11px]" style={{ color: colors.textTertiary }}>No changes</div>
         ) : viewMode === 'split' ? (
@@ -178,43 +172,6 @@ export function DiffPane({ diff, fileName, filePath, staged, directory, onClose,
           {error}
         </div>
       )}
-    </div>
-  )
-}
-
-function ImageDiff({ directory, filePath }: { directory: string; filePath: string }) {
-  const colors = useColors()
-  const [before, setBefore] = useState<string | null>(null)
-  const [after, setAfter] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    window.ion.gitShowFile(directory, 'HEAD', filePath).then((r) => {
-      if (cancelled) return
-      if (r.ok && r.content) setBefore(`data:image/*;base64,${btoa(r.content)}`)
-    }).catch((err) => rDebug("git", "gitShowFile (before) failed", { filePath, error: String(err) }))
-    return () => { cancelled = true }
-  }, [directory, filePath])
-
-  useEffect(() => {
-    let cancelled = false
-    window.ion.fsReadFile(`${directory}/${filePath}`).then((r) => {
-      if (cancelled) return
-      if (r.content) setAfter(`data:image/*;base64,${btoa(r.content)}`)
-    }).catch((err) => rDebug("git", "fsReadFile (after) failed", { filePath, error: String(err) }))
-    return () => { cancelled = true }
-  }, [directory, filePath])
-
-  return (
-    <div className="p-4 flex items-center justify-around gap-4" style={{ color: colors.textSecondary }}>
-      <div className="flex flex-col items-center gap-2">
-        <span className="text-[10px]" style={{ color: colors.textTertiary }}>Before</span>
-        {before ? <img src={before} style={{ maxWidth: '40vw', maxHeight: '60vh', border: `1px solid ${colors.containerBorder}` }} /> : <div className="text-[10px]" style={{ color: colors.textMuted }}>(not in HEAD)</div>}
-      </div>
-      <div className="flex flex-col items-center gap-2">
-        <span className="text-[10px]" style={{ color: colors.textTertiary }}>After</span>
-        {after ? <img src={after} style={{ maxWidth: '40vw', maxHeight: '60vh', border: `1px solid ${colors.containerBorder}` }} /> : <div className="text-[10px]" style={{ color: colors.textMuted }}>(removed)</div>}
-      </div>
     </div>
   )
 }

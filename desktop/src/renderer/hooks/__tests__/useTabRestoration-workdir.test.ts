@@ -50,6 +50,15 @@ describe('resolveRestoredWorkingDirectory', () => {
     expect(resolveRestoredWorkingDirectory(t, false)).toBe(REPO)
   })
 
+  it('keeps a settled record bound to its retired worktree', () => {
+    const t = tab({
+      workingDirectory: WORKTREE,
+      settledOverride: 'settled',
+      worktree: { worktreePath: WORKTREE, branchName: 'wt/a', sourceBranch: 'josh', repoPath: REPO },
+    })
+    expect(resolveRestoredWorkingDirectory(t, false)).toBe(WORKTREE)
+  })
+
   it('keeps the persisted directory for a tab that never had a worktree', () => {
     expect(resolveRestoredWorkingDirectory(tab({ workingDirectory: REPO }), false)).toBe(REPO)
   })

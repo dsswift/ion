@@ -64,13 +64,17 @@ func (m *Manager) emitAgentSnapshot(key, reason string, force bool, snapshot []t
 	// No session (teardown races, some test harnesses): no gate state exists,
 	// so emit unconditionally rather than dropping an authoritative frame.
 	if s == nil || s.agentEmitter == nil {
-		projected, reports := agents.ClampSnapshotCopy(snapshot, m.agentMetadataLimits())
+		// No session to read a conversation id from; the clamp still logs,
+		// correlated by session key alone.
+		projected, reports := agents.ClampSnapshotCopy(snapshot, m.agentMetadataLimits(),
+			agents.ClampAttribution{Key: key})
 		m.publishAgentSnapshot(key, reason, force, projected, reports)
 		return
 	}
 
 	metadataLimits := m.agentMetadataLimits()
-	projected, reports := agents.ClampSnapshotCopy(snapshot, metadataLimits)
+	attr := agents.ClampAttribution{Key: key, ConversationID: s.conversationID}
+	projected, reports := agents.ClampSnapshotCopy(snapshot, metadataLimits, attr)
 	limits := m.agentStateEmitLimits()
 	decision := s.agentEmitter.decide(projected, reason, force, limits,
 		func(flushReason string, coalesced int) {
@@ -88,7 +92,7 @@ func (m *Manager) emitAgentSnapshot(key, reason string, force bool, snapshot []t
 			utils.LogWithFields(utils.LevelDebug, "session", "agent_state: flushing coalesced burst", map[string]any{
 				"key": key, "reason": flushReason, "absorbed": coalesced,
 			})
-			projectedLatest, latestReports := agents.ClampSnapshotCopy(latest, metadataLimits)
+			projectedLatest, latestReports := agents.ClampSnapshotCopy(latest, metadataLimits, attr)
 			m.publishAgentSnapshot(key, flushReason, false, projectedLatest, latestReports)
 		})
 

@@ -27,6 +27,9 @@ struct DispatchInfo: Codable, Identifiable, Sendable {
     let elapsed: Double?
     let status: String
     let startTime: Double?
+    /// What keeps a suspended dispatch alive. `"shell"` means it is waiting
+    /// for background Bash work rather than for a dispatched child agent.
+    let waitingOn: String?
 
     init(from dict: [String: Any]) {
         id = dict["id"] as? String ?? ""
@@ -34,6 +37,7 @@ struct DispatchInfo: Codable, Identifiable, Sendable {
         model = dict["model"] as? String ?? ""
         conversationId = dict["conversationId"] as? String ?? ""
         status = dict["status"] as? String ?? ""
+        waitingOn = dict["waitingOn"] as? String
         if let e = dict["elapsed"] as? Double { elapsed = e }
         else if let e = dict["elapsed"] as? Int { elapsed = Double(e) }
         else { elapsed = nil }
@@ -51,7 +55,8 @@ struct DispatchInfo: Codable, Identifiable, Sendable {
         conversationId: String,
         elapsed: Double?,
         status: String,
-        startTime: Double?
+        startTime: Double?,
+        waitingOn: String? = nil
     ) {
         self.id = id
         self.task = task
@@ -60,6 +65,7 @@ struct DispatchInfo: Codable, Identifiable, Sendable {
         self.elapsed = elapsed
         self.status = status
         self.startTime = startTime
+        self.waitingOn = waitingOn
     }
 
     // Explicit Decoder/Encoder conformance so DispatchInfo survives snapshot
@@ -69,7 +75,7 @@ struct DispatchInfo: Codable, Identifiable, Sendable {
     // lost if dispatches decoded empty from a persisted snapshot. The custom
     // `init(from dict:)` above (different label) coexists with this initializer.
     private enum CodingKeys: String, CodingKey {
-        case id, task, model, conversationId, elapsed, status, startTime
+        case id, task, model, conversationId, elapsed, status, startTime, waitingOn
     }
 
     init(from decoder: Decoder) throws {
@@ -81,6 +87,7 @@ struct DispatchInfo: Codable, Identifiable, Sendable {
         status = try container.decodeIfPresent(String.self, forKey: .status) ?? ""
         elapsed = try container.decodeIfPresent(Double.self, forKey: .elapsed)
         startTime = try container.decodeIfPresent(Double.self, forKey: .startTime)
+        waitingOn = try container.decodeIfPresent(String.self, forKey: .waitingOn)
     }
 }
 
@@ -320,6 +327,16 @@ struct StatusFields: Codable, Sendable {
     /// engine command can change an idle session's model, so the
     /// picker-driven recompute is necessarily client-side arithmetic.
     let contextTokens: Int?
+    /// Usable input capacity after the engine reserves response and summary
+    /// space. This is the engine's own arithmetic, so it is authoritative for
+    /// the model the engine actually used; the client only recomputes when the
+    /// operator selects a DIFFERENT model, which the engine has not seen.
+    ///
+    /// The JSON key is `contextEffectiveLimit` — the name the engine emits
+    /// (StatusFields.ContextEffectiveLimit). This decoded as `contextLimit`
+    /// before, a key the engine never sends, so the value was always nil and
+    /// every capacity reading fell back to the client's reserve estimate.
+    var contextEffectiveLimit: Int? = nil
     /// Cost of the most recent run in USD (cache-aware, descendants included).
     /// Replaces the former totalCostUsd; the rename makes the scope unambiguous.
     let runCostUsd: Double?
@@ -341,6 +358,9 @@ struct StatusFields: Codable, Sendable {
     /// while real work is in flight, and the engine holds the session open
     /// until the commands finish. nil/absent when none are outstanding.
     let backgroundShells: Int?
+    /// Exact engine verdict that the session has accepted work remaining even
+    /// while the foreground orchestrator is idle.
+    let hasPendingWork: Bool?
     /// Number of LLM turns completed in the most recent run. Stamped from
     /// TaskCompleteEvent.NumTurns; nil/absent on idle and heartbeat status
     /// events that have no associated run.
@@ -402,6 +422,9 @@ struct SessionStatus: Codable, Sendable {
     /// parked session (idle orchestrator, commands in flight) from a plain
     /// idle one.
     let backgroundShellCount: Int?
+    /// Exact engine verdict that the session has accepted work remaining even
+    /// while the foreground orchestrator is idle.
+    let hasPendingWork: Bool?
     let permissionDenialsPending: [PermissionDenialEntry]?
     let model: String?
     /// UNBOUNDED — see StatusFields.contextPercent.
@@ -410,6 +433,8 @@ struct SessionStatus: Codable, Sendable {
     /// Absolute context-window occupancy in tokens. Mirrors
     /// StatusFields.contextTokens.
     let contextTokens: Int?
+    /// Mirrors StatusFields.contextEffectiveLimit.
+    let contextEffectiveLimit: Int? = nil
     /// Cost of the most recent run in USD. Renamed from totalCostUsd per Commit 2.
     let runCostUsd: Double?
     /// Cumulative conversation cost (this session + all descendant dispatches).
@@ -478,6 +503,15 @@ struct AnyCodable: Codable, Sendable {
     let value: any Sendable
 
     init(_ value: any Sendable) { self.value = value }
+
+    /// JSONDecoder preserves whole numbers as Int. Settings number rows need a
+    /// common numeric view so an integer value such as auto-settle days does
+    /// not fall back to its schema default of zero.
+    var doubleValue: Double? {
+        if let double = value as? Double { return double }
+        if let integer = value as? Int { return Double(integer) }
+        return nil
+    }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()

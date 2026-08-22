@@ -1,0 +1,5 @@
+export const INPUT_MIN_HEIGHT = 20
+export const INPUT_MAX_HEIGHT = 140
+export const MULTILINE_ENTER_HEIGHT = 52
+export const MULTILINE_EXIT_HEIGHT = 50
+export const INLINE_CONTROLS_RESERVED_WIDTH = 104

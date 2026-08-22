@@ -29,6 +29,7 @@ type CompactMeta struct {
 	Summary            string
 	FactCount          int
 	RecentFiles        []string
+	RestoredSkills     []types.SkillInvocation
 }
 
 // BuildCompactBoundaryMessage is the single construction site for
@@ -46,21 +47,26 @@ type CompactMeta struct {
 // a magic prefix. Scan passes recognise the boundary via the block Type
 // constant, never via substring matching on Text.
 func BuildCompactBoundaryMessage(meta CompactMeta) types.LlmMessage {
-	return types.LlmMessage{
-		Role: "user",
-		Content: []types.LlmContentBlock{{
-			Type:               CompactBoundaryBlockType,
-			Trigger:            meta.Trigger,
-			MessagesSummarized: meta.MessagesSummarized,
-			MessagesBefore:     meta.MessagesBefore,
-			MessagesAfter:      meta.MessagesAfter,
-			ClearedBlocks:      meta.ClearedBlocks,
-			TokensBefore:       meta.TokensBefore,
-			Summary:            meta.Summary,
-			FactCount:          meta.FactCount,
-			RecentFiles:        meta.RecentFiles,
-		}},
+	blocks := []types.LlmContentBlock{{
+		Type:               CompactBoundaryBlockType,
+		Trigger:            meta.Trigger,
+		MessagesSummarized: meta.MessagesSummarized,
+		MessagesBefore:     meta.MessagesBefore,
+		MessagesAfter:      meta.MessagesAfter,
+		ClearedBlocks:      meta.ClearedBlocks,
+		TokensBefore:       meta.TokensBefore,
+		Summary:            meta.Summary,
+		FactCount:          meta.FactCount,
+		RecentFiles:        meta.RecentFiles,
+		RestoredSkills:     meta.RestoredSkills,
+	}}
+	for _, skill := range meta.RestoredSkills {
+		blocks = append(blocks, types.LlmContentBlock{
+			Type: SkillContentBlockType, Text: skillLoadingText(skill),
+			SkillName: skill.Name, SkillSource: skill.Source, SkillInvokedAt: skill.InvokedAt,
+		})
 	}
+	return types.LlmMessage{Role: "user", Content: blocks}
 }
 
 // IsCompactBoundary reports whether a message's content is a single

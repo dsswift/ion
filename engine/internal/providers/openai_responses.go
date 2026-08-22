@@ -474,6 +474,12 @@ func formatResponsesInput(messages []types.LlmMessage) []map[string]any {
 					text = "[Nested context loaded]"
 				}
 				parts = append(parts, map[string]any{"type": "input_text", "text": text})
+			case "skill_content", "skill_listing":
+				text := b.Text
+				if text == "" {
+					text = "[Skill content]"
+				}
+				parts = append(parts, map[string]any{"type": "input_text", "text": text})
 			case "tool_use":
 				// Flush accumulated parts as a message first to preserve order.
 				appendMessage(msg.Role, parts)

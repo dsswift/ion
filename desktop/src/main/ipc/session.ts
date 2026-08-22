@@ -2,11 +2,11 @@ import { ipcMain } from 'electron'
 import { IPC } from '../../shared/types'
 import { takeRemotePromptDelivery } from '../remote/prompt-delivery'
 import type { RunOptions } from '../../shared/types'
-import { log as _log, warn as _warn, setSessionContext } from '../logger'
+import { log as _log, warn as _warn } from '../logger'
 import { state, sessionPlane, engineBridge, activeAssistantMessages, lastMessagePreview, lastForwardedTabStatus, lastForwardedTabMeta, extensionCommandRegistry, DEBUG_MODE } from '../state'
 import { terminalManager } from '../terminal-manager-instance'
-import { evictAtvTab } from '../atv-state-cache'
-import { notifyAtvUserMessageEcho } from '../atv-window-manager'
+import { evictStudioTab } from '../studio-state-cache'
+import { notifyStudioUserMessageEcho } from '../studio-window-manager'
 import { getRemoteTabStates } from '../remote/snapshot'
 import { processIncomingPrompt } from '../prompt-pipeline'
 import { isValidProjectPath } from '../ipc-validation'
@@ -97,12 +97,11 @@ export function registerSessionIpc(): void {
     async (_event, { tabId, workingDirectory, conversationId, permissionMode }: { tabId: string; workingDirectory: string; conversationId?: string | null; permissionMode?: 'auto' | 'plan' }) => {
       log('ensure_engine_session', { tab_id: tabId, conversation_id: conversationId ?? 'none', dir: workingDirectory })
       const result = await sessionPlane.ensureSession(tabId, { workingDirectory, conversationId, permissionMode })
-      // Stamp the logger context once the session is confirmed. tabId is the
-      // desktop session_id (stable tab/session identifier); conversationId maps
-      // to conversation_id when known.
-      if (conversationId) {
-        setSessionContext(tabId, conversationId)
-      }
+      // No logger context is stamped here. Correlation IDs are resolved per
+      // line from the line's own `tab_id`/`key` subject (see log-correlation.ts).
+      // Stamping a process-wide "current session" from this handler was the
+      // defect: every restored tab runs it, so the last one to start relabelled
+      // every subsequent line — including lines about other conversations.
       return result
     },
   )
@@ -150,10 +149,14 @@ export function registerSessionIpc(): void {
 
   ipcMain.handle(IPC.PROMPT, async (_event, { tabId, requestId, options }: { tabId: string; requestId: string; options: RunOptions }) => {
     // Mirror echo: the OWNER renderer does the optimistic transcript insert
-    // in its own store; user turns never ride normalized events, so the ATV
+    // in its own store; user turns never ride normalized events, so the Studio window
     // mirror needs this push to show the message (whether it was typed in
-    // the overlay, the ATV, or iOS — every prompt funnels through here).
-    notifyAtvUserMessageEcho(tabId, options.prompt)
+    // the overlay, the Studio window, or iOS — every prompt funnels through here).
+    notifyStudioUserMessageEcho(tabId, {
+      id: requestId,
+      content: options.prompt,
+      timestamp: Date.now(),
+    })
     if (DEBUG_MODE) {
       log('prompt', { tab_id: tabId, request_id: requestId, prompt: options.prompt.substring(0, 100) })
     } else {
@@ -256,7 +259,7 @@ export function registerSessionIpc(): void {
     return sessionPlane.cancel(requestId)
   })
 
-  ipcMain.on(IPC.STEER, (_event, { tabId, message }: { tabId: string; message: string }) => {
+  ipcMain.on(IPC.STEER, (_event, { tabId, message, clientMessageId }: { tabId: string; message: string; clientMessageId?: string }) => {
     // Unified steer for EVERY conversation tab — plain or extension-backed
     // (the engine-vs-plain split was collapsed; there is no separate
     // ENGINE_STEER any more). Dispatch straight to engineBridge.sendSteer,
@@ -273,8 +276,22 @@ export function registerSessionIpc(): void {
       log('steer: not registered, dropping', { tab_id: tabId, len: message.length })
       return
     }
-    log('steer', { tab_id: tabId, len: message.length })
-    engineBridge.sendSteer(tabId, message)
+    log('steer', { tab_id: tabId, len: message.length, client_message_id: clientMessageId ?? '' })
+    // Mirror echo: user turns never ride normalized events, and the owner's
+    // optimistic insert lives in the owner store only. PROMPT already echoes;
+    // a steer typed into ANY surface (overlay, Studio, iOS) funnels through
+    // here and must reach the Studio transcript the same way. The echo reuses
+    // the SAME clientMessageId as the optimistic id when one was supplied, so
+    // the owner's own steer_injected re-key (by clientMessageId) and the
+    // mirror's echo-inserted row refer to the identical bubble instead of two
+    // independently-minted ids racing each other.
+    const echoId = clientMessageId || crypto.randomUUID()
+    notifyStudioUserMessageEcho(tabId, {
+      id: echoId,
+      content: message,
+      timestamp: Date.now(),
+    })
+    engineBridge.sendSteer(tabId, message, clientMessageId)
   })
 
   ipcMain.handle(IPC.STOP_TAB, (_event, tabId: string) => {
@@ -311,7 +328,7 @@ export function registerSessionIpc(): void {
     lastMessagePreview.delete(tabId)
     lastForwardedTabStatus.delete(tabId)
     lastForwardedTabMeta.delete(tabId)
-    evictAtvTab(tabId)
+    evictStudioTab(tabId)
     for (const key of extensionCommandRegistry.keys()) {
       if (key === tabId || key.startsWith(`${tabId}:`)) extensionCommandRegistry.delete(key)
     }

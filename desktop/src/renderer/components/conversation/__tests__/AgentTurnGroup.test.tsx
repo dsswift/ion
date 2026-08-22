@@ -166,6 +166,43 @@ function toolMsg(id: string, status: Message['toolStatus']): Message {
   return { id, role: 'tool', content: '', timestamp: 0, toolStatus: status }
 }
 
+describe('AgentTurnGroup — active tool progress', () => {
+  it('updates current tool and used count as consecutive calls progress', () => {
+    const read = {
+      ...toolMsg('read', 'running'),
+      toolName: 'Read',
+      toolInput: JSON.stringify({ file_path: '/src/first.ts' }),
+    }
+    const bash = {
+      ...toolMsg('bash', 'running'),
+      toolName: 'Bash',
+      toolInput: JSON.stringify({ command: 'pwd' }),
+    }
+
+    const el = renderGroup({
+      tools: [read],
+      assistantMessages: [],
+      isActive: true,
+      skipMotion: true,
+    })
+    const header = el.querySelector('[data-ion-ui]')
+    expect(header?.textContent).toContain('Running Read /src/first.ts')
+    expect(header?.textContent).toContain('Used 0 tools')
+
+    act(() => {
+      root!.render(React.createElement(AgentTurnGroup, {
+        tools: [{ ...read, toolStatus: 'completed' }, bash],
+        assistantMessages: [],
+        isActive: true,
+        skipMotion: true,
+      }))
+    })
+
+    expect(header?.textContent).toContain('Running pwd')
+    expect(header?.textContent).toContain('Used 1 tool')
+  })
+})
+
 describe('AgentTurnGroup — activity header three-state status', () => {
   it('renders failure count in header for mixed group when not active', () => {
     const tools = [

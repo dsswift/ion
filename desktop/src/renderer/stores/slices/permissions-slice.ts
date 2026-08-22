@@ -3,6 +3,7 @@ import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId } from '../session-store-helpers'
 import { activeInstance, commitInstance } from '../conversation-instance'
 import { rWarn, rError } from '../../rendererLogger'
+import { logTabStatusPatch } from './tab-status-transition'
 
 export function createPermissionsSlice(set: StoreSet, _get: StoreGet): Partial<State> {
   return {
@@ -35,8 +36,11 @@ export function createPermissionsSlice(set: StoreSet, _get: StoreGet): Partial<S
       })
     },
 
-    respondElicitation: (tabId, requestId, response, cancelled) => {
-      window.ion.respondElicitation(tabId, requestId, response, cancelled).catch((err) => {
+    respondElicitation: (tabId, requestId, response, cancelled, declined = false) => {
+      const delivery = declined
+        ? window.ion.respondElicitation(tabId, requestId, response, cancelled, true)
+        : window.ion.respondElicitation(tabId, requestId, response, cancelled)
+      delivery.catch((err) => {
         rError('permissions', 'respondElicitation failed', { tab_id: tabId, error: String(err) })
       })
 
@@ -92,6 +96,7 @@ export function createPermissionsSlice(set: StoreSet, _get: StoreGet): Partial<S
         }))
         const tabs = s.tabs.map((t) => {
           if (t.id !== tabId) return t
+          logTabStatusPatch(tabId, t.status, 'idle', 'permissions.force-recover', { reason })
           return {
             ...t,
             status: 'idle' as TabStatus,

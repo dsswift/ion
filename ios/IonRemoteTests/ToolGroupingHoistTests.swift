@@ -15,7 +15,7 @@ import XCTest
 ///                    emitted standalone mid-turn. Desktop lockstep:
 ///                    mergeThinkingMessages in thinking-block-helpers.ts.
 ///   (d) Label      — AgentTurnRow idle label "Used N tools", active
-///                    "Running tools…" (desktop parity).
+///                    current tool and used-tool progress (desktop parity).
 final class ToolGroupingHoistTests: XCTestCase {
 
     // MARK: - Helpers
@@ -204,40 +204,51 @@ final class ToolGroupingHoistTests: XCTestCase {
         XCTAssertEqual(second?.content, "content-thB")
     }
 
-    // MARK: - (d) Label parity with desktop
+    // MARK: - (d) Active tool progress parity with desktop
+
+    func testActiveProgressShowsCurrentToolAndUsedCount() {
+        var read = makeMsg(id: "read", role: .tool, toolStatus: .completed)
+        read.toolName = "Read"
+        read.toolInput = #"{"file_path":"/src/first.swift"}"#
+        var bash = makeMsg(id: "bash", role: .tool, toolStatus: .running)
+        bash.toolName = "Bash"
+        bash.toolInput = #"{"command":"pwd"}"#
+
+        let progress = activeToolProgress([read, bash])
+        XCTAssertEqual(progress?.currentToolDescription, "pwd")
+        XCTAssertEqual(progress?.usedCount, 1)
+    }
+
+    func testActiveProgressUsesLatestRunningToolAndExcludesParallelCalls() {
+        var read = makeMsg(id: "read", role: .tool, toolStatus: .running)
+        read.toolName = "Read"
+        read.toolInput = #"{"file_path":"/src/first.swift"}"#
+        var grep = makeMsg(id: "grep", role: .tool, toolStatus: .running)
+        grep.toolName = "Grep"
+        grep.toolInput = #"{"pattern":"active tool"}"#
+
+        let progress = activeToolProgress([read, grep])
+        XCTAssertEqual(progress?.currentToolDescription, "Search: active tool")
+        XCTAssertEqual(progress?.usedCount, 0)
+    }
+
+    func testActiveProgressIsNilAfterAllToolsSettle() {
+        let tool = makeMsg(id: "read", role: .tool, toolStatus: .completed)
+        XCTAssertNil(activeToolProgress([tool]))
+    }
 
     /// AgentTurnRow idle label: "Used N tools".
-    /// AgentTurnRow active label: "Running tools…".
-    ///
-    /// These are UI-layer tests that inspect the label string logic directly
-    /// by extracting it from the view. We verify via the public isActive
-    /// property by replicating the label expression used in the view.
     func testIdleLabelUsedNTools() {
         // Mirrors the Text(...) expression in AgentTurnRow.
         let toolCount = 3
-        let isActive = false
-        let label = isActive
-            ? "Running tools\u{2026}"
-            : "Used \(toolCount) tool\(toolCount == 1 ? "" : "s")"
+        let label = "Used \(toolCount) tool\(toolCount == 1 ? "" : "s")"
         XCTAssertEqual(label, "Used 3 tools")
     }
 
     func testIdleLabelUsedOneToolSingular() {
         let toolCount = 1
-        let isActive = false
-        let label = isActive
-            ? "Running tools\u{2026}"
-            : "Used \(toolCount) tool\(toolCount == 1 ? "" : "s")"
+        let label = "Used \(toolCount) tool\(toolCount == 1 ? "" : "s")"
         XCTAssertEqual(label, "Used 1 tool")
-    }
-
-    func testActiveLabelRunningTools() {
-        let toolCount = 2
-        let isActive = true
-        let label = isActive
-            ? "Running tools\u{2026}"
-            : "Used \(toolCount) tool\(toolCount == 1 ? "" : "s")"
-        XCTAssertEqual(label, "Running tools\u{2026}")
     }
 
     // MARK: - toolGroupFailureSummary

@@ -121,6 +121,13 @@ export async function inventoryWorktreesDetailed(
     return { canonicalRepoPath: null, aliasPaths: [], entries: [] }
   }
 
+  // The cache-scope key for this crawl. NOT the caller's `repoPath`, which may
+  // be any checkout of the repo (the main clone, a worktree, the bench) — three
+  // aliases crawling the same repo would otherwise write three differently
+  // scoped copies of one entry and prune each other's. Git always lists the
+  // MAIN worktree first, so its path is the one identity every alias agrees on.
+  const canonicalRepoPath = listed[0]?.path ?? repoPath
+
   // Every source branch's tip in one spawn. A worktree whose source branch is
   // missing from this map gets no land-relative answers and fails CLOSED on
   // `safeToDiscard` — same contract as the appraisal it replaces.
@@ -211,7 +218,7 @@ export async function inventoryWorktreesDetailed(
 
       const sourceTip = sourceBranch ? branchTips.get(sourceBranch) : undefined
       if (sourceBranch && sourceTip && wt.head) {
-        const pair = await appraiseRefPair(wt.path, wt.head, sourceTip, counters)
+        const pair = await appraiseRefPair(wt.path, wt.head, sourceTip, counters, canonicalRepoPath)
         if (pair) {
           unlandedCommitCount = pair.ahead
           safeToDiscard = !isDirty && pair.ahead === 0
@@ -246,8 +253,9 @@ export async function inventoryWorktreesDetailed(
     })
   }
 
-  // Retired paths must not pin cached appraisals.
-  pruneAppraisalCache(new Set(listed.map((w) => w.path)))
+  // Retired paths must not pin cached appraisals. Scoped to this repo: the
+  // listing only knows about this repo's checkouts (see pruneAppraisalCache).
+  pruneAppraisalCache(canonicalRepoPath, new Set(listed.map((w) => w.path)))
 
   const durationMs = Date.now() - startedAt
   log('inventoried worktrees', {

@@ -38,7 +38,10 @@ interface FileEditorCodeMirrorProps {
 export function FileEditorCodeMirror({ dir, activeFile, onSave, onCursorChange, editorViewRef, languageOverride }: FileEditorCodeMirrorProps) {
   rTrace('file-editor.codemirror', 'render', { dir, file_id: activeFile.id, file_name: activeFile.fileName, is_read_only: activeFile.isReadOnly, content_len: activeFile.content.length })
   const colors = useColors()
-  const editorWordWrap = usePreferencesStore((s) => s.editorWordWrap)
+  const editorWordWrapPref = usePreferencesStore((s) => s.editorWordWrap)
+  // Per-tab override wins; the preference is the default (Studio surface
+  // editor tabs toggle wrap per-tab, the overlay floating editor globally).
+  const editorWordWrap = activeFile.wordWrap ?? editorWordWrapPref
   const editorFontSize = usePreferencesStore((s) => s.editorFontSize)
   const updateEditorContent = useSessionStore((s) => s.updateEditorContent)
 
@@ -76,8 +79,8 @@ export function FileEditorCodeMirror({ dir, activeFile, onSave, onCursorChange, 
     '&': {
       backgroundColor: colors.containerBg,
       color: colors.textPrimary,
-      fontSize: `${editorFontSize}px`,
-      fontFamily: 'monospace',
+      fontSize: 'var(--ion-editor-font-size, 12px)',
+      fontFamily: 'var(--ion-font-mono, monospace)',
       height: '100%',
     },
     '.cm-scroller': {
@@ -103,7 +106,7 @@ export function FileEditorCodeMirror({ dir, activeFile, onSave, onCursorChange, 
     '.cm-activeLine': {
       backgroundColor: colors.surfaceHover,
     },
-  }), [colors, editorFontSize])
+  }), [colors])
 
   // ---- Build extensions for active file ----
   const buildExtensions = useCallback((file: FileEditorTab): Extension[] => {
@@ -280,7 +283,7 @@ export function FileEditorCodeMirror({ dir, activeFile, onSave, onCursorChange, 
             top: 6,
             right: 12,
             fontSize: 9,
-            fontFamily: 'monospace',
+            fontFamily: 'var(--ion-font-mono, monospace)',
             color: colors.textTertiary,
             background: colors.surfacePrimary,
             padding: '1px 6px',
@@ -299,7 +302,7 @@ export function FileEditorCodeMirror({ dir, activeFile, onSave, onCursorChange, 
           top: 6,
           right: activeFile.isReadOnly ? 80 : 12,
           fontSize: 9,
-          fontFamily: 'monospace',
+          fontFamily: 'var(--ion-font-mono, monospace)',
           color: blameActive ? colors.accent : colors.textTertiary,
           background: colors.surfacePrimary,
           padding: '1px 6px',

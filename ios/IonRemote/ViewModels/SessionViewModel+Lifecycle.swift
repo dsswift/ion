@@ -498,7 +498,6 @@ extension SessionViewModel {
         desktopSettings = nil
         enterpriseNewConversationPolicy = nil
         pendingCloseTabIds = []
-        pendingInputByTab = [:]
         // Hard reset only (switch desktop / unpair): drop in-flight creates so a
         // stale create never spawns a tab against a different pairing. Survives
         // soft reconnect because that path never calls wipeTransientState.

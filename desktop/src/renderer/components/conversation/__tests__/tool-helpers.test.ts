@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { stripCdPrefix, getToolDescription, groupMessages, toolFailureSummary } from '../tool-helpers'
+import { activeToolProgress, stripCdPrefix, getToolDescription, groupMessages, suppressUserImageEchoes, toolFailureSummary } from '../tool-helpers'
 import type { GroupedItem } from '../tool-helpers'
 import type { Message } from '../../../../shared/types'
 
@@ -94,6 +94,77 @@ describe('getToolDescription non-Bash sanity', () => {
 
   it('returns the tool name when no input is provided', () => {
     expect(getToolDescription('Grep')).toBe('Grep')
+  })
+})
+
+describe('activeToolProgress', () => {
+  it('shows current running tool and counts completed plus failed tools as used', () => {
+    const progress = activeToolProgress([
+      msg('tool', '', { toolName: 'Read', toolStatus: 'completed' }),
+      msg('tool', '', { toolName: 'Edit', toolStatus: 'error' }),
+      msg('tool', '', { toolName: 'Bash', toolInput: JSON.stringify({ command: 'pwd' }), toolStatus: 'running' }),
+    ])
+
+    expect(progress).toEqual({ currentToolDescription: 'pwd', usedCount: 2 })
+  })
+
+  it('uses partial input and latest running tool when parallel calls exist', () => {
+    const progress = activeToolProgress([
+      msg('tool', '', { toolName: 'Read', toolStatus: 'running' }),
+      msg('tool', '', { toolName: 'Grep', toolInput: '{"pattern":"active tool"', toolStatus: 'running' }),
+    ])
+
+    expect(progress).toEqual({ currentToolDescription: 'Search: active tool', usedCount: 0 })
+  })
+
+  it('returns null after all tools settle', () => {
+    expect(activeToolProgress([
+      msg('tool', '', { toolName: 'Read', toolStatus: 'completed' }),
+    ])).toBeNull()
+  })
+})
+
+describe('image echo suppression', () => {
+  const inputHash = 'a'.repeat(64)
+  const generatedHash = 'b'.repeat(64)
+  it('keeps user image while removing same-hash later tool output', () => {
+    const messages = [
+      msg('user', 'look', { attachments: [{ id: 'u', type: 'image', name: 'input.png', path: '/user/input.png', contentHash: inputHash }] }),
+      msg('tool', '', { toolName: 'Read', attachments: [{ id: 't', type: 'image', name: 'copy.png', path: '/conversation/copy.png', contentHash: inputHash }] }),
+    ]
+
+    const visible = suppressUserImageEchoes(messages)
+    expect(visible).toHaveLength(2)
+    expect(visible[0].attachments).toHaveLength(1)
+    expect(visible[1].attachments).toBeUndefined()
+  })
+
+  it('keeps generated output, same-path legacy data, and duplicate tool output without a user match', () => {
+    const messages = [
+      msg('user', 'look', { attachments: [{ id: 'u', type: 'image', name: 'input.png', path: '/user/input.png', contentHash: inputHash }] }),
+      msg('tool', '', { toolName: 'Read', attachments: [{ id: 'a', type: 'image', name: 'generated.png', path: '/out/a.png', contentHash: generatedHash }] }),
+      msg('tool', '', { toolName: 'Read', attachments: [{ id: 'b', type: 'image', name: 'legacy.png', path: '/out/b.png' }] }),
+      msg('tool', '', { toolName: 'Read', attachments: [{ id: 'c', type: 'image', name: 'generated.png', path: '/out/c.png', contentHash: generatedHash }] }),
+    ]
+
+    const visible = suppressUserImageEchoes(messages)
+    expect(visible.slice(1).map((message) => {
+      const attachment = message.attachments?.[0]
+      return attachment?.type === 'image' ? attachment.contentHash : undefined
+    })).toEqual([generatedHash, undefined, generatedHash])
+  })
+
+  it('drops an empty assistant row only when every image repeats a user image', () => {
+    const messages = [
+      msg('user', 'look', { attachments: [{ id: 'u', type: 'image', name: 'input.png', path: '/user/input.png', contentHash: inputHash }] }),
+      msg('assistant', '', { attachments: [{ id: 'a', type: 'image', name: 'copy.png', path: '/out/copy.png', contentHash: inputHash }] }),
+      msg('assistant', 'kept text', { attachments: [{ id: 'b', type: 'image', name: 'copy.png', path: '/out/copy2.png', contentHash: inputHash }] }),
+    ]
+
+    const visible = suppressUserImageEchoes(messages)
+    expect(visible).toHaveLength(2)
+    expect(visible[1].content).toBe('kept text')
+    expect(visible[1].attachments).toBeUndefined()
   })
 })
 

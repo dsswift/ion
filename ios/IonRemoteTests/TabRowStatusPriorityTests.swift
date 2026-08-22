@@ -21,4 +21,27 @@ final class TabRowStatusPriorityTests: XCTestCase {
         XCTAssertEqual(TabStatusRollup.classify(tab(permissions: [permission("AskUserQuestion")])).state, .question)
         XCTAssertFalse(TabStatusRollup.classify(tab(permissions: [permission("AskUserQuestion")])).state.breathes)
     }
+
+    func testStartingIsAStillIdleSemanticState() {
+        let result = TabStatusRollup.classify(tab(status: .starting))
+
+        XCTAssertEqual(result.state, .starting)
+        XCTAssertEqual(result.priority, TabStatusRollup.priorityStarting)
+        XCTAssertFalse(result.state.breathes)
+    }
+
+    func testStartingOutranksChildren() {
+        let result = TabStatusRollup.classify(tab(status: .starting, children: true))
+
+        XCTAssertEqual(result.state, .starting)
+        XCTAssertEqual(result.priority, TabStatusRollup.priorityStarting)
+    }
+
+    func testGroupRollupPreservesStartingWhenNoHigherStatusExists() {
+        let result = TabStatusRollup.groupStatus(tabs: [tab(status: .idle), tab(status: .starting)])
+
+        XCTAssertEqual(result.state, .starting)
+        XCTAssertEqual(result.priority, TabStatusRollup.priorityStarting)
+        XCTAssertFalse(result.state.breathes)
+    }
 }

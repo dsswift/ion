@@ -3,160 +3,53 @@
  * worktree surface.
  *
  * One slice feeds all of them (git-panel Worktrees section, the new-tab picker
- * group, the ATV mount, and the iOS projection), so there is no second
- * implementation to drift. Per AGENTS.md § ATV shell rules, the multi-step
+ * group, the Studio window mount, and the iOS projection), so there is no second
+ * implementation to drift. Per AGENTS.md § Studio shell rules, the multi-step
  * flows live here as single store actions rather than in component handlers:
- * a handler runs in whichever window hosts it, and in the ATV mirror that mixes
+ * a handler runs in whichever window hosts it, and in the Studio mirror that mixes
  * forwarded and local calls while reading stale mirror state.
  */
-import type { StoreSet, StoreGet, State } from '../session-store-types'
-import { rInfo, rWarn, rDebug } from '../../rendererLogger'
-import { closeOccupants, resolveRetireBlockers } from './worktree-occupant-close'
-import { legacyReviewToStage } from '../../../shared/types-git'
-import { isWithinRepo } from '../../../shared/repo-containment'
-import { collectAllDirConversations, pickNextConversation } from '../../../shared/worktree-conversations'
-import { resolveRegisteredWorktree } from '../worktree-registration'
+import type { StoreSet, StoreGet, State } from "../session-store-types";
+import { rInfo, rWarn } from "../../rendererLogger";
+import {
+  closeOccupants,
+  resolveRetireBlockers,
+} from "./worktree-occupant-close";
+import { legacyReviewToStage } from "../../../shared/types-git";
+import {
+  collectAllDirConversations,
+  pickNextConversation,
+} from "../../../shared/worktree-conversations";
+import { resolveRegisteredWorktree } from "../worktree-registration";
+import { createWorktreeRefreshActions } from "./worktree-inventory-refresh";
+import { inboxActivityOrder } from "../../studio/inbox/inbox-collapse";
+import { usePreferencesStore } from '../../preferences'
+import { landFlagsForStrategy } from '../../../shared/worktree-land-strategy'
 
-export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Partial<State> {
+export function createWorktreeInventorySlice(
+  set: StoreSet,
+  get: StoreGet,
+): Partial<State> {
   return {
-    /**
-     * Refresh the worktree list for a repo.
-     *
-     * Keyed by repo path so several projects can be open at once without their
-     * inventories overwriting each other.
-     */
-    refreshWorktreeInventory: async (repoPath) => {
-      if (!repoPath || repoPath === '~') return
-      try {
-        const { worktrees } = await window.ion.gitWorktreeInventory(repoPath)
-        set((s) => ({
-          worktreeInventory: new Map(s.worktreeInventory).set(repoPath, worktrees),
-        }))
-        // Conflict state rides same refresh. An in-progress operation can have
-        // started outside Ion or before restart, and must reach Git panel before
-        // user opens a row. State clears when operation ends.
-        const inventoryPaths = new Set(worktrees.map((wt) => wt.worktreePath))
-        for (const wt of worktrees) {
-          if (wt.landedAt) {
-            void get().sealLandedWorktree(wt.worktreePath).catch((err) => rWarn(
-              'worktree.inventory',
-              'could not seal landed worktree conversations',
-              { worktree_path: wt.worktreePath, error: String(err) },
-            ))
-            continue
-          }
-          if (wt.operationState) {
-            get().recordConflictAlert(wt.worktreePath, {
-              operationState: wt.operationState,
-              label: wt.label,
-            })
-          } else {
-            get().clearConflictAlert(wt.worktreePath)
-          }
-        }
-        // A land conflict can stop in repo root, which is not an inventory row.
-        // Re-probe those alert directories or banner would survive resolution.
-        for (const [directory, alert] of get().gitConflictAlerts) {
-          if (inventoryPaths.has(directory) || !isWithinRepo(directory, repoPath)) continue
-          try {
-            const operation = await window.ion.gitOpState(directory)
-            if (!operation.ok) {
-              rWarn('worktree.inventory', 'could not refresh non-worktree conflict state', {
-                repo_path: repoPath,
-                directory,
-                error: operation.error ?? '',
-              })
-            } else if (operation.state) {
-              get().recordConflictAlert(directory, {
-                operationState: operation.state,
-                label: alert.label,
-              })
-            } else {
-              get().clearConflictAlert(directory)
-            }
-          } catch (err) {
-            rWarn('worktree.inventory', 'non-worktree conflict state probe threw', {
-              repo_path: repoPath,
-              directory,
-              error: String(err),
-            })
-          }
-        }
-        rDebug('worktree.inventory', 'refreshed', { repo_path: repoPath, count: worktrees.length })
-      } catch (err) {
-        rWarn('worktree.inventory', 'refresh failed', { repo_path: repoPath, error: String(err) })
-      }
-    },
+    ...createWorktreeRefreshActions(set, get),
 
-    /**
-     * Re-read both worktree surfaces for a repo: the inventory and the bench.
-     *
-     * ── Why this exists as ONE named action ─────────────────────────────────
-     * Any flow that changes git state a worktree row describes has to refresh
-     * both caches, because the row is a join of them — the inventory carries
-     * dirty/unlanded/operationState, the bench record carries pin and merge
-     * verdicts, and a row showing a stale conflict badge after a resolution is
-     * the visible cost of refreshing only one. The auto-fix close path forgot
-     * both entirely (it called `closeTab` and nothing else), which left the red
-     * badge up until the panel's 5s poll happened to fire.
-     *
-     * Naming the pair keeps the next caller from re-deriving it: two ad-hoc
-     * call sites are two chances to refresh one and forget the other.
-     *
-     * Deliberately NOT a reassembly. Refreshing reads git and the records;
-     * reassembling MUTATES the bench and carries its own refusal semantics. A
-     * post-resolution refresh must never rebuild — the operator decides when a
-     * rebuild is the right move.
-     *
-     * `allSettled`: both actions log their own failures, and one failing must
-     * not skip the other. Read-only IPC into per-window derived caches, so it
-     * is mirror-local by classification (see atv-mirror-actions.ts).
-     */
-    refreshWorkspaceViews: async (repoPath) => {
-      if (!repoPath || repoPath === '~') {
-        rDebug('worktree.inventory', 'workspace refresh skipped: no repo path', { repo_path: repoPath })
-        return
+    /** Change a worktree title without changing the titles of its conversations. */
+    renameWorktree: async (repoPath, worktreePath, title) => {
+      const trimmed = title.trim();
+      if (!trimmed) return { ok: false, error: "A worktree title is required." };
+      const result = await window.ion.gitWorktreeSetTitle({
+        repoPath,
+        worktreePath,
+        title: trimmed,
+      });
+      if (!result.ok) {
+        rWarn("worktree.inventory", "worktree rename failed", {
+          worktree_path: worktreePath,
+          error: result.error ?? "",
+        });
       }
-      const [inventory, bench] = await Promise.allSettled([
-        get().refreshWorktreeInventory(repoPath),
-        get().refreshBench(repoPath),
-      ])
-      rDebug('worktree.inventory', 'workspace views refreshed', {
-        repo_path: repoPath,
-        inventory: inventory.status,
-        bench: bench.status,
-      })
-    },
-
-    sealLandedWorktree: async (worktreePath) => {
-      const tabs = get().tabs.filter((tab) => tab.workingDirectory === worktreePath)
-      if (tabs.length === 0) return
-      set((s) => ({
-        tabs: s.tabs.map((tab) => tab.workingDirectory === worktreePath && !tab.isTerminalOnly
-          ? {
-            ...tab,
-            inputLocked: true,
-            inputLockReason: 'landed-worktree' as const,
-            worktree: tab.worktree ? { ...tab.worktree, landedAt: tab.worktree.landedAt ?? Date.now() } : null,
-          }
-          : tab),
-      }))
-      for (const tab of tabs) {
-        if (tab.isTerminalOnly) {
-          get().closeTab(tab.id)
-          continue
-        }
-        try {
-          await window.ion.engineStop(tab.id)
-          rInfo('worktree.inventory', 'sealed landed review session', {
-            worktree_path: worktreePath, tab_id: tab.id.slice(0, 8),
-          })
-        } catch (err) {
-          rWarn('worktree.inventory', 'could not stop sealed review session', {
-            worktree_path: worktreePath, tab_id: tab.id.slice(0, 8), error: String(err),
-          })
-        }
-      }
+      await get().refreshWorkspaceViews(repoPath);
+      return { ok: result.ok, error: result.error };
     },
 
     /**
@@ -175,18 +68,26 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
      * attachment cannot be forgotten by a caller again.
      */
     newWorktreeConversation: async (worktreePath) => {
-      const worktree = await resolveRegisteredWorktree(worktreePath)
+      const worktree = await resolveRegisteredWorktree(worktreePath);
       if (worktree?.landedAt) {
-        rWarn('worktree.inventory', 'new conversation refused: worktree has landed', {
-          worktree_path: worktreePath,
-        })
-        throw new Error('This worktree has already landed and is sealed for review. Retire it when review is complete.')
+        rWarn(
+          "worktree.inventory",
+          "new conversation refused: worktree has landed",
+          {
+            worktree_path: worktreePath,
+          },
+        );
+        throw new Error(
+          "This worktree has already landed and is sealed for review. Retire it when review is complete.",
+        );
       }
-      rInfo('worktree.inventory', 'opening new conversation in worktree', { worktree_path: worktreePath })
+      rInfo("worktree.inventory", "opening new conversation in worktree", {
+        worktree_path: worktreePath,
+      });
       // createTabInDirectory with useWorktree=false: the worktree already
       // exists, so this must NOT create another one inside it.
       // skipDuplicateCheck=true: an additional conversation here is the request.
-      const tabId = await get().createTabInDirectory(worktreePath, false, true)
+      const tabId = await get().createTabInDirectory(worktreePath, false, true);
 
       // Attach the worktree metadata so the tab gets the worktree affordances
       // (land, sync, retire) AND so the git panel can resolve its owning repo.
@@ -209,19 +110,21 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
       // exactly the substitution that drifts.
       if (worktree) {
         set((s) => ({
-          tabs: s.tabs.map((t) => t.id === tabId
-            ? { ...t, worktree }
-            : t),
-        }))
+          tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, worktree } : t)),
+        }));
       } else {
         // Without a known source branch the lifecycle verbs are unanswerable.
         // Leave `worktree` unset rather than inventing a source branch: the tab
         // still works as a directory conversation, and the UI asks.
-        rWarn('worktree.inventory', 'opened worktree conversation without known source branch', {
-          worktree_path: worktreePath,
-        })
+        rWarn(
+          "worktree.inventory",
+          "opened worktree conversation without known source branch",
+          {
+            worktree_path: worktreePath,
+          },
+        );
       }
-      return tabId
+      return tabId;
     },
 
     /**
@@ -236,7 +139,7 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
      * This used to `find(...)` the first match and re-select it forever, so
      * every conversation after the first was unreachable from the row. The
      * rotation is stateless — it reads the currently active tab and steps past
-     * it — so there is no cursor for the overlay and the ATV mirror to disagree
+     * it — so there is no cursor for the overlay and the Studio mirror to disagree
      * about, and closing a tab cannot leave it dangling.
      *
      * The cycle is ALL-INCLUSIVE — `collectAllDirConversations`, not the
@@ -248,29 +151,98 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
      * make it permanently unreachable from the worktree that owns it.
      */
     openWorktreeConversation: async (worktreePath) => {
-      const matches = collectAllDirConversations(get().tabs, worktreePath)
-      const next = pickNextConversation(matches, get().activeTabId)
+      const matches = collectAllDirConversations(
+        inboxActivityOrder(get().tabs),
+        worktreePath,
+      );
+      const next = pickNextConversation(matches, get().activeTabId);
       if (next) {
-        rInfo('worktree.inventory', 'focusing existing conversation for worktree', {
-          worktree_path: worktreePath,
-          match_count: matches.length,
-          from_tab: (get().activeTabId ?? 'none').slice(0, 8),
-          to_tab: next.tabId.slice(0, 8),
-        })
-        get().selectTab(next.tabId)
-        return next.tabId
+        rInfo(
+          "worktree.inventory",
+          "focusing existing conversation for worktree",
+          {
+            worktree_path: worktreePath,
+            match_count: matches.length,
+            from_tab: (get().activeTabId ?? "none").slice(0, 8),
+            to_tab: next.tabId.slice(0, 8),
+          },
+        );
+        get().selectTab(next.tabId);
+        return next.tabId;
       }
 
-      return get().newWorktreeConversation(worktreePath)
+      return get().newWorktreeConversation(worktreePath);
     },
 
     /**
-     * Retire a worktree: refuse while anything in it is still working, then
-     * close every conversation that lived there.
+     * Terminal worktree completion. Preflight the directories that removal can
+     * affect, merge and remove under one main-process queue slot, then close the
+     * finished conversations whose checkout no longer exists.
+     */
+    landAndRetireWorktree: async (repoPath, entry, strategyOverride) => {
+      let benchPaths: string[] = []
+      try {
+        benchPaths = (await window.ion.gitWorktreeRetirePreview(entry.worktreePath)).prunedBenchPaths ?? []
+      } catch (error) {
+        rWarn('worktree.inventory', 'terminal completion preview failed', {
+          worktree_path: entry.worktreePath,
+          error: String(error),
+        })
+      }
+      const blockers = resolveRetireBlockers(get, entry.worktreePath, benchPaths)
+      if (blockers) return { ok: false, error: blockers.error }
+
+      const strategy = strategyOverride ?? usePreferencesStore.getState().worktreeCompletionStrategy
+      const flags = landFlagsForStrategy(strategy)
+      const result = await window.ion.gitWorktreeLandAndRetire({
+        repoPath,
+        worktreePath: entry.worktreePath,
+        worktreeBranch: entry.branchName,
+        branchName: entry.branchName,
+        sourceBranch: entry.sourceBranch,
+        noFf: flags.noFf,
+        syncFirst: flags.syncFirst,
+        requireFastForward: flags.requireFastForward,
+      })
+      if (!result.ok) {
+        rWarn('worktree.inventory', 'land and retire refused', {
+          worktree_path: entry.worktreePath,
+          landed: !!result.landed,
+          has_conflicts: !!result.hasConflicts,
+          error: result.error ?? '',
+        })
+        if (result.hasConflicts && result.conflictDirectory) {
+          get().recordConflictAlert(result.conflictDirectory, {
+            source: 'land',
+            operationState: result.conflictDirectory === entry.worktreePath ? 'rebasing' : 'merging',
+            label: result.conflictDirectory === entry.worktreePath ? entry.title || entry.label : result.conflictDirectory.split('/').filter(Boolean).pop(),
+          })
+        }
+        await get().refreshWorkspaceViews(repoPath)
+        return result
+      }
+      await closeOccupants(
+        set,
+        get,
+        [entry.worktreePath, ...(result.prunedBenchPaths ?? [])],
+        result.workingDirectory,
+      )
+      await get().refreshWorkspaceViews(repoPath)
+      rInfo('worktree.inventory', 'land and retire complete', {
+        worktree_path: entry.worktreePath,
+        pruned_benches: result.prunedBenchPaths?.length ?? 0,
+      })
+      return result
+    },
+
+    /**
+     * Internal legacy cleanup for records that were landed before terminal
+     * completion: remove the worktree and close every conversation that lived
+     * there.
      *
      * ── Why this is a store action, not a component handler ─────────────────
      * It reads store state between mutations (which tabs occupy this worktree,
-     * are any of them busy, then close them). Per AGENTS.md § ATV shell rules a
+     * are any of them busy, then close them). Per AGENTS.md § Studio shell rules a
      * component handler doing that would mix forwarded and local calls in the
      * mirror and decide against stale mirror state.
      *
@@ -302,47 +274,55 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
       // Which OTHER directories would this retire delete? Asked of the main
       // process rather than derived here: the emptiness rule lives with
       // `disenrollWorktree`, and a second copy in the renderer would drift.
-      let benchPaths: string[] = []
+      let benchPaths: string[] = [];
       try {
-        const preview = await window.ion.gitWorktreeRetirePreview(worktreePath)
-        benchPaths = preview.prunedBenchPaths ?? []
+        const preview = await window.ion.gitWorktreeRetirePreview(worktreePath);
+        benchPaths = preview.prunedBenchPaths ?? [];
       } catch (err) {
         // Fail SAFE on the pre-flight's scope, not open: with no prediction the
         // worktree's own occupants are still checked and closed. A bench tab
         // could be missed, so this is logged at WARN rather than swallowed.
-        rWarn('worktree.inventory', 'retire preview failed; checking the worktree only', {
-          worktree_path: worktreePath, error: String(err),
-        })
+        rWarn(
+          "worktree.inventory",
+          "retire preview failed; checking the worktree only",
+          {
+            worktree_path: worktreePath,
+            error: String(err),
+          },
+        );
       }
 
-      const blockers = resolveRetireBlockers(get, worktreePath, benchPaths)
+      const blockers = resolveRetireBlockers(get, worktreePath, benchPaths);
       if (blockers) {
         // Nothing on disk has been touched. Refresh so the row reflects current
         // state, and hand the named refusal back for the caller to render.
-        await get().refreshWorktreeInventory(repoPath)
-        return { ok: false, error: blockers.error }
+        await get().refreshWorktreeInventory(repoPath);
+        return { ok: false, error: blockers.error };
       }
 
-      rInfo('worktree.inventory', 'retire requested', {
+      rInfo("worktree.inventory", "retire requested", {
         worktree_path: worktreePath,
         branch: branchName,
         bench_paths: benchPaths.length,
-      })
+      });
 
-      const result = await window.ion.gitWorktreeRetire({
+      const result = await window.ion.gitWorktreeLandAndRetire({
         repoPath,
         worktreePath,
+        worktreeBranch: branchName,
         branchName,
-        // Force only after the caller confirmed against a concrete appraisal.
-        force: true,
-      })
+        // A legacy landed record selects backend cleanup-only mode, so this is
+        // never used to integrate the branch again.
+        sourceBranch: (get().worktreeInventory.get(repoPath) ?? []).find((entry) => entry.worktreePath === worktreePath)?.sourceBranch ?? '',
+      });
 
       if (!result.ok) {
-        rWarn('worktree.inventory', 'retire refused; nothing closed', {
-          worktree_path: worktreePath, error: result.error ?? '',
-        })
-        await get().refreshWorktreeInventory(repoPath)
-        return result
+        rWarn("worktree.inventory", "retire refused; nothing closed", {
+          worktree_path: worktreePath,
+          error: result.error ?? "",
+        });
+        await get().refreshWorktreeInventory(repoPath);
+        return result;
       }
 
       // The directories are gone. Close their conversations, keeping the repo
@@ -353,35 +333,47 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
         get,
         [worktreePath, ...(result.prunedBenchPaths ?? [])],
         result.workingDirectory,
-      )
+      );
 
-      await get().refreshWorktreeInventory(repoPath)
-      return result
+      await get().refreshWorktreeInventory(repoPath);
+      return result;
     },
 
     retireLandedWorktrees: async (repoPath) => {
-      const landed = (get().worktreeInventory.get(repoPath) ?? [])
-        .filter((entry) => !!entry.landedAt)
-      if (landed.length === 0) return { ok: true, retired: 0 }
+      const landed = (get().worktreeInventory.get(repoPath) ?? []).filter(
+        (entry) => !!entry.landedAt,
+      );
+      if (landed.length === 0) return { ok: true, retired: 0 };
 
       // Preflight every directory before removing any one. A partial bulk retire
       // would leave a misleading "all" outcome and is never safer than refusing
       // before disk state changes.
       for (const entry of landed) {
-        const blockers = resolveRetireBlockers(get, entry.worktreePath, [])
-        if (blockers) return { ok: false, retired: 0, error: blockers.error }
+        const blockers = resolveRetireBlockers(get, entry.worktreePath, []);
+        if (blockers) return { ok: false, retired: 0, error: blockers.error };
       }
 
-      let retired = 0
+      let retired = 0;
       for (const entry of landed) {
-        const result = await get().retireWorktree(repoPath, entry.worktreePath, entry.branchName)
+        const result = await get().retireWorktree(
+          repoPath,
+          entry.worktreePath,
+          entry.branchName,
+        );
         if (!result.ok) {
-          return { ok: false, retired, error: result.error ?? 'Could not retire a landed worktree.' }
+          return {
+            ok: false,
+            retired,
+            error: result.error ?? "Could not retire a landed worktree.",
+          };
         }
-        retired++
+        retired++;
       }
-      rInfo('worktree.inventory', 'retired landed worktrees', { repo_path: repoPath, retired })
-      return { ok: true, retired }
+      rInfo("worktree.inventory", "retired landed worktrees", {
+        repo_path: repoPath,
+        retired,
+      });
+      return { ok: true, retired };
     },
 
     /**
@@ -390,38 +382,54 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
      *
      * A store action rather than a component handler because it mutates
      * owner-side state and then reads it back through the inventory — the
-     * pattern the ATV mirror rules require (a handler would run locally in the
+     * pattern the Studio mirror rules require (a handler would run locally in the
      * mirror and decide against stale state).
      */
     reprovisionWorktree: async (repoPath, worktreePath) => {
-      rInfo('worktree.inventory', 'reprovision requested', { worktree_path: worktreePath })
-      const result = await window.ion.gitWorktreeReprovision({ repoPath, worktreePath })
+      rInfo("worktree.inventory", "reprovision requested", {
+        worktree_path: worktreePath,
+      });
+      const result = await window.ion.gitWorktreeReprovision({
+        repoPath,
+        worktreePath,
+      });
       if (!result.ok) {
-        rWarn('worktree.inventory', 'reprovision failed', {
-          worktree_path: worktreePath, state: result.state, error: result.error ?? '',
-        })
+        rWarn("worktree.inventory", "reprovision failed", {
+          worktree_path: worktreePath,
+          state: result.state,
+          error: result.error ?? "",
+        });
       }
-      await get().refreshWorktreeInventory(repoPath)
-      return result
+      await get().refreshWorktreeInventory(repoPath);
+      return result;
     },
 
     /**
      * Set or clear the operator's workflow stage on a worktree, then refresh
      * so every row shows the new marker.
      *
-     * A store action (FORWARDED in the ATV mirror) rather than a component
+     * A store action (FORWARDED in the Studio mirror) rather than a component
      * handler: the write must run in the owner window, and the refresh that
      * follows must read owner truth, not stale mirror state.
      */
     setWorktreeStage: async (repoPath, worktreePath, stage) => {
-      rInfo('worktree.inventory', 'stage set', { worktree_path: worktreePath, stage: stage ?? 'none' })
-      const result = await window.ion.gitWorktreeSetStage({ worktreePath, repoPath, stage })
+      rInfo("worktree.inventory", "stage set", {
+        worktree_path: worktreePath,
+        stage: stage ?? "none",
+      });
+      const result = await window.ion.gitWorktreeSetStage({
+        worktreePath,
+        repoPath,
+        stage,
+      });
       if (!result.ok) {
-        rWarn('worktree.inventory', 'stage set refused', {
-          worktree_path: worktreePath, stage: stage ?? 'none', error: result.error ?? '',
-        })
+        rWarn("worktree.inventory", "stage set refused", {
+          worktree_path: worktreePath,
+          stage: stage ?? "none",
+          error: result.error ?? "",
+        });
       }
-      await get().refreshWorktreeInventory(repoPath)
+      await get().refreshWorktreeInventory(repoPath);
     },
 
     /**
@@ -432,10 +440,15 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
      * cannot drift. `sourceBranch` is ignored: stages are worktree-scoped.
      */
     benchSetReview: async (repoPath, _sourceBranch, worktreePath, review) => {
-      rInfo('worktree.inventory', 'deprecated benchSetReview shim invoked', {
-        worktree_path: worktreePath, review: review ?? 'none',
-      })
-      await get().setWorktreeStage(repoPath, worktreePath, legacyReviewToStage(review) ?? null)
+      rInfo("worktree.inventory", "deprecated benchSetReview shim invoked", {
+        worktree_path: worktreePath,
+        review: review ?? "none",
+      });
+      await get().setWorktreeStage(
+        repoPath,
+        worktreePath,
+        legacyReviewToStage(review) ?? null,
+      );
     },
 
     /**
@@ -443,28 +456,35 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
      * refresh the inventory so the badge clears.
      */
     syncWorktree: async (worktreePath, sourceBranch, repoPath) => {
-      rInfo('worktree.inventory', 'sync requested', { worktree_path: worktreePath, source_branch: sourceBranch })
-      const result = await window.ion.gitWorktreeSync(worktreePath, sourceBranch)
+      rInfo("worktree.inventory", "sync requested", {
+        worktree_path: worktreePath,
+        source_branch: sourceBranch,
+      });
+      const result = await window.ion.gitWorktreeSync(
+        worktreePath,
+        sourceBranch,
+      );
       if (!result.ok) {
-        rWarn('worktree.inventory', 'sync failed', {
+        rWarn("worktree.inventory", "sync failed", {
           worktree_path: worktreePath,
           refused_dirty: !!result.refusedDirty,
           has_conflicts: !!result.hasConflicts,
-          error: result.error ?? '',
-        })
+          error: result.error ?? "",
+        });
         // A conflict leaves an in-progress operation. Record it immediately
         // so Git panel banner can open ConflictsDialog before inventory refresh.
         // Dirty refusals start no operation; disabled row tooltip already gives
         // remediation, while this logged failure remains observable.
         if (result.hasConflicts) {
           get().recordConflictAlert(worktreePath, {
-            operationState: 'rebasing',
-            label: worktreePath.split('/').filter(Boolean).pop(),
-          })
+            source: "sync",
+            operationState: "rebasing",
+            label: worktreePath.split("/").filter(Boolean).pop(),
+          });
         }
       }
-      await get().refreshWorktreeInventory(repoPath)
-      return result
+      await get().refreshWorktreeInventory(repoPath);
+      return result;
     },
-  }
+  };
 }

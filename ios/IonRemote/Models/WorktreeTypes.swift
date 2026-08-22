@@ -9,7 +9,7 @@ import Foundation
 //
 // The desktop computes every derived fact -- staleness, safety, drift -- so
 // iOS renders main-process truth rather than deriving its own. That is what
-// keeps the vocabulary identical across the overlay, the ATV mirror, and here.
+// keeps the vocabulary identical across the overlay, the Studio mirror, and here.
 
 /// One conversation open inside a worktree or bench directory.
 ///
@@ -145,6 +145,45 @@ struct RemoteWorktree: Codable, Identifiable, Hashable {
         }
     }
 
+    /// A placeholder record for a worktree the desktop's inventory has not
+    /// reported yet, built from the identity the desktop already stamped on the
+    /// conversation. Mirrors `fallbackWorktree` in the desktop's
+    /// inbox-navigator.ts.
+    ///
+    /// Every appraisal field is the conservative "nothing known" value, so a row
+    /// built from this offers no verb that needs an answer this app does not
+    /// have. It exists because the inventory crawl can lag a freshly created
+    /// worktree: without it, the worktree's header and every conversation filed
+    /// under it disappear until the next crawl reports the path.
+    static func placeholder(
+        worktreePath: String,
+        branchName: String,
+        label: String,
+        sourceBranch: String?,
+        landedAt: Double?
+    ) -> RemoteWorktree {
+        var worktree = RemoteWorktree(unreportedPath: worktreePath)
+        worktree.branchName = branchName
+        worktree.label = label
+        worktree.sourceBranch = sourceBranch
+        worktree.landedAt = landedAt
+        return worktree
+    }
+
+    /// Conservative zero record. Private so a placeholder can only be built
+    /// through `placeholder(...)`, which documents why it exists.
+    private init(unreportedPath: String) {
+        worktreePath = unreportedPath
+        branchName = ""
+        label = unreportedPath
+        head = ""
+        lastCommitSubject = ""
+        isDirty = false
+        unlandedCommitCount = 0
+        needsSync = false
+        safeToDiscard = false
+    }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         worktreePath = try c.decode(String.self, forKey: .worktreePath)
@@ -178,15 +217,8 @@ struct RemoteWorktree: Codable, Identifiable, Hashable {
     /// assembly retires the member outright.
     var isLanded: Bool { landedAt != nil }
 
-    /// Enrollment as one value, for a row that renders three visually distinct
-    /// states. Nil membership is `none` -- NOT the same as `excluded`, which is
-    /// enrolled and skipped.
-    enum Enrollment { case none, included, excluded }
-
-    var enrollment: Enrollment {
-        guard let m = membership else { return .none }
-        return m.enabled ? .included : .excluded
-    }
+    /// Membership is binary: a worktree is either in a bench or it is not.
+    var isBenchMember: Bool { membership != nil }
 }
 
 /// One worktree's bench membership.
@@ -215,10 +247,9 @@ struct RemoteMembership: Codable, Hashable {
 
     /// Which bench: the source branch this integrates into.
     var sourceBranch: String
-    var enabled: Bool
-    /// Three independent axes. A member can be excluded AND behind AND
-    /// conflicted at once; the single `status` they replaced could report only
-    /// one of those, so two facts were lost on every evaluation.
+    /// Pin freshness and merge outcome are independent. A member can be behind
+    /// and conflicted at once; the single `status` they replaced could report
+    /// only one of those facts.
     var pin: Pin
     var merge: Merge
     /// The contribution currently integrated. Shown separately from the pin
@@ -239,7 +270,6 @@ struct RemoteMembership: Codable, Hashable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         sourceBranch = try c.decode(String.self, forKey: .sourceBranch)
-        enabled = try c.decode(Bool.self, forKey: .enabled)
         pin = Pin(rawValue: try c.decode(String.self, forKey: .pin)) ?? .current
         merge = Merge(rawValue: try c.decode(String.self, forKey: .merge)) ?? .unbuilt
         pinnedSha = try c.decode(String.self, forKey: .pinnedSha)
@@ -312,6 +342,16 @@ struct RemoteBench: Codable, Identifiable, Hashable {
         return openConversations.count == 1 ? "\(roleText) open" : "Go to · \(roleText)"
     }
 
+    /// The running auto-fix is the only machine conversation that needs an
+    /// attention signal. Its identity stays in the desktop projection; iOS only
+    /// focuses the projected tab and never creates or infers a replacement.
+    var activeAutoFixTabId: String? {
+        openConversations.first {
+            $0.tabRole == "conflict-auto-fix" &&
+                ($0.status == "running" || $0.status == "connecting")
+        }?.tabId
+    }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         repoPath = try c.decode(String.self, forKey: .repoPath)
@@ -341,6 +381,42 @@ struct RemoteBenchVerification: Codable, Hashable {
     var replayedBranches: [String]
 }
 
+/// Live projection of the desktop's worktree sync pipeline
+/// (`desktop_worktree_pipeline`). The desktop pushes one on every phase or
+/// progress change; `phase == nil` means the pipeline was dismissed and the
+/// banner clears. All wording (summary) is desktop-authored so every client
+/// renders the same sentence.
+struct RemoteWorktreePipeline: Codable, Hashable {
+    /// Mirrors WorktreePipelineState.phase plus the nil dismissal.
+    enum Phase: String, Codable {
+        case syncing
+        case awaitingAiConfirm = "awaiting-ai-confirm"
+        case resolving, assembling, done, failed
+
+        /// Lenient like the other worktree enums: an unknown phase from a
+        /// newer desktop renders as the generic in-progress state rather than
+        /// failing the event decode.
+        init(from decoder: Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            self = Phase(rawValue: raw) ?? .syncing
+        }
+    }
+
+    var repoPath: String
+    var sourceBranch: String?
+    /// Nil when the pipeline was dismissed (clear the banner).
+    var phase: Phase?
+    /// Conflicted worktree paths awaiting AI confirmation / resolution.
+    var queue: [String]
+    /// Worktree path the current agent is resolving, when phase == .resolving.
+    var current: String?
+    /// Worktree paths parked for manual resolution.
+    var needsManual: [String]
+    var resolvedByAi: Int
+    /// Terminal one-line summary (done/failed), desktop-worded.
+    var summary: String?
+}
+
 /// Worktree + bench state for one project.
 struct RemoteWorktreeState: Codable, Identifiable, Hashable {
     var repoPath: String
@@ -365,8 +441,8 @@ struct RemoteWorktreeState: Codable, Identifiable, Hashable {
             .sorted { ($0.membership?.order ?? 0) < ($1.membership?.order ?? 0) }
     }
 
-    func enabledMemberCount(of bench: RemoteBench) -> Int {
-        members(of: bench).filter { $0.membership?.enabled == true }.count
+    func memberCount(of bench: RemoteBench) -> Int {
+        members(of: bench).count
     }
 
     /// Members holding work newer than the bench's pin.
@@ -387,10 +463,24 @@ struct RemoteWorktreeState: Codable, Identifiable, Hashable {
 /// Result of a worktree/bench verb, so a toast can attribute the outcome.
 struct RemoteWorktreeOpResult: Codable, Hashable {
     enum Operation: String, Codable {
-        case open, sync, land, retire, assemble, update
+        case open, sync, assemble, update
+        /// The combined land verb. Raw value matches the desktop's
+        /// `land_and_retire` — an earlier `land` case never matched what the
+        /// desktop sends, so every successful land decoded through the
+        /// `.assemble` fallback and toasted "Bench assembled."
+        case landAndRetire = "land_and_retire"
+        case retire
         case updateAll = "update_all"
         case syncAll = "sync_all"
         case retireAll = "retire_all"
+        case create, convert, rename, reprovision
+        case recoverConflict = "recover_conflict"
+        /// AI-assisted conflict resolution launched (worktree or bench chain).
+        case conflictAssist = "conflict_assist"
+        case analyseVerification = "analyse_verification"
+        case discardRecordings = "discard_recordings"
+        /// Acknowledgement (or refusal) of a remote pipeline start.
+        case pipelineStart = "pipeline_start"
     }
 
     var ok: Bool

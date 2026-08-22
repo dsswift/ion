@@ -1,9 +1,9 @@
 import React, { useEffect, useRef } from 'react'
 import { useColors } from '../theme'
 import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
-import { zoomViewport } from '../viewport-zoom'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { transitions } from '../theme-tokens'
+import { scrollableMenuStyle } from '../menu-viewport'
 
 /** Menu entry button with the standard hover/pressed/disabled states. */
 function TabMenuButton({
@@ -103,7 +103,6 @@ export function FileEditorTabContextMenu({
   // added, a label wraps, or the font size changes, and the drift is invisible
   // until the menu hangs off the screen edge again.
   const pos = useAnchoredPopover({ x, y }, { deps: [items.length] })
-  const vp = zoomViewport()
 
   const menuW = 200
 
@@ -115,8 +114,7 @@ export function FileEditorTabContextMenu({
         left: pos.left,
         top: pos.top,
         visibility: pos.ready ? 'visible' : 'hidden',
-        maxHeight: vp.height - 16,
-        overflowY: 'auto',
+        ...scrollableMenuStyle(),
         width: menuW,
         background: colors.containerBg,
         border: `1px solid ${colors.containerBorder}`,

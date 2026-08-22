@@ -62,6 +62,20 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	if provider == nil {
 		return
 	}
+	if opts.ResolvedSlashModelAlias != "" && opts.ResolvedSlashModelEffective != model {
+		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "slash command model fell back before persistence", map[string]any{
+			"model_alias":    opts.ResolvedSlashModelAlias,
+			"resolved_model": opts.ResolvedSlashModelEffective,
+			"serving_model":  model,
+			"run_id":         run.requestID,
+		})
+		// A selector badge means the command ran on that selector's resolved
+		// model. Once provider fallback selects a different model, retain only
+		// the actual serving model on the user turn; ModelFallbackEvent carries
+		// the requested selector and fallback relationship separately.
+		opts.ResolvedSlashModelAlias = ""
+		opts.ResolvedSlashModelEffective = model
+	}
 
 	// Image-generation models (ModelKind == "image") use a completely
 	// different API endpoint and have no conversation history, tools, or
@@ -162,6 +176,9 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	var userEntry *conversation.SessionEntry
 	if opts.PrePersistedUserEntryID == "" {
 		userEntry = AppendInboundUserMessage(conv, &opts)
+		// Skill discovery augments the inbound user carrier so providers retain legal
+		// role alternation. Its structural fields persist with that turn for resume.
+		injectSkillListingDelta(conv, opts, hooks)
 		// Persist immediately: if the engine dies mid-stream, the user prompt
 		// must survive so the user does not lose what they just typed.
 		if err := conversation.Save(conv, ""); err != nil {
@@ -366,7 +383,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		// compaction summary). A non-zero opts.CompactThreshold preserves
 		// the legacy percent-of-window override so callers that already
 		// tuned this value keep their behavior.
-		compactLimit := conversation.AutoCompactTokenLimit(contextWindow, opts.MaxTokens)
+		compactLimit := conversation.ResolveModelContextCapacity(contextWindow, opts.MaxTokens, providers.GetModelInfo(model)).EffectiveLimit
 		if opts.CompactThreshold > 0 {
 			compactLimit = int(float64(contextWindow) * opts.CompactThreshold / 100.0)
 			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "source=legacy-override %", map[string]any{

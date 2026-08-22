@@ -14,7 +14,6 @@
 import { useState } from "react";
 import { useSessionStore } from "../stores/sessionStore";
 import { usePreferencesStore } from "../preferences";
-import { landFlagsForStrategy } from "../../shared/worktree-land-strategy";
 import { findMembership } from "../../shared/worktree-list";
 import { resolveRetireBlockers } from "../stores/slices/worktree-occupant-close";
 import { rDebug, rError, rInfo, rWarn } from "../rendererLogger";
@@ -35,7 +34,11 @@ export function useWorktreeRowMenuVerbs({
     s.benchWorkspaces.get(repoPath),
   );
   const strategy = usePreferencesStore((s) => s.worktreeCompletionStrategy);
-  const [busy, setBusy] = useState(false);
+  const operation = useSessionStore((s) => {
+    const ledger = (s as unknown as { worktreeOperations?: Map<string, { worktreePath?: string; status: string }> }).worktreeOperations
+    return [...(ledger?.values() ?? [])].find((item) => item.worktreePath === entry.worktreePath)
+  });
+  const busy = operation?.status === 'pending' || operation?.status === 'running';
   const [confirmRetire, setConfirmRetire] = useState<string | null>(null);
   const [confirmDiscardRecordings, setConfirmDiscardRecordings] = useState<
     string | null
@@ -46,9 +49,6 @@ export function useWorktreeRowMenuVerbs({
   // A land refusal (diverged branch, conflict) is actionable and must be shown,
   // not swallowed into the log while the menu closes as if it had worked.
   const [landError, setLandError] = useState<string | null>(null);
-  // The retire outcome the operator must read: either the recovery ref that now
-  // holds their uncommitted work, or the reason the worktree was kept.
-  const [retireOutcome, setRetireOutcome] = useState<string | null>(null);
   // Inline rename state. The generated title is a good default, not an
   // authority — the operator must be able to correct one that missed.
   const [renaming, setRenaming] = useState(false);
@@ -57,206 +57,60 @@ export function useWorktreeRowMenuVerbs({
   // value the verbs act on rather than deriving it a second time.
   const enrolled = findMembership(benchWorkspaces ?? [], entry.worktreePath);
 
-  async function doLand(): Promise<void> {
-    if (!entry.sourceBranch) return;
-    setBusy(true);
-    try {
-      // Honour the operator's configured strategy. This used to pass no flags
-      // at all, so a "Merge (ff)" setting silently produced a merge commit
-      // whenever the source branch had moved on.
-      const flags = landFlagsForStrategy(strategy);
-      const result = await window.ion.gitWorktreeLand({
-        repoPath,
-        worktreePath: entry.worktreePath,
-        worktreeBranch: entry.branchName,
-        sourceBranch: entry.sourceBranch,
-        noFf: flags.noFf,
-        syncFirst: flags.syncFirst,
-        requireFastForward: flags.requireFastForward,
-      });
-      if (!result.ok) {
-        rWarn("worktree.menu", "land refused", {
-          branch: entry.branchName,
-          has_conflicts: !!result.hasConflicts,
-          error: result.error ?? "",
-        });
-        // A conflict is not a refusal. A refusal (diverged branch or dirty
-        // tree) is answered by this dialog and leaves nothing behind. A conflict
-        // stops merge halfway, leaving a checkout that needs resolution. Record
-        // it for Git panel banner while inventory refresh updates row controls.
-        //
-        // Keyed on the directory the LAND reported, not on this worktree: the
-        // merge runs in whichever checkout holds the source branch (usually the
-        // base repo), and only a pre-sync conflict lands in the worktree.
-        // Pointing the resolution dialog at the wrong directory would open it
-        // on a clean tree.
-        if (result.hasConflicts && result.conflictDirectory) {
-          useSessionStore
-            .getState()
-            .recordConflictAlert(result.conflictDirectory, {
-              operationState: result.conflictDirectory === entry.worktreePath
-                ? 'rebasing'
-                : 'merging',
-              label:
-                result.conflictDirectory === entry.worktreePath
-                  ? entry.title || entry.label
-                  : result.conflictDirectory.split("/").filter(Boolean).pop(),
-            });
-        }
-        // A refusal is actionable (sync first, resolve a conflict) and must not
-        // vanish: surface it rather than leaving the operator to wonder why the
-        // branch did not move.
-        setLandError(result.error ?? "Land failed.");
-        return;
-      }
-      rInfo("worktree.menu", "landed", {
-        branch: entry.branchName,
-        mode: result.mode ?? "",
-        pruned_benches: result.prunedBenchPaths?.length ?? 0,
-      });
-      await useSessionStore.getState().sealLandedWorktree(entry.worktreePath);
-      onRefresh();
-      // Success dismisses the menu. The refusal path above returns early and
-      // leaves it mounted on purpose, because the error dialog it raised is a
-      // child of this component and would go with it.
-      onClose();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  /**
-   * Retire first checks every conversation its deletion would close, including
-   * conversations in a bench the retirement would prune. Active work is never
-   * confirmable, so this path reports the blocker rather than offering a button
-   * the store action must refuse.
-   *
-   * The appraisal then decides confirmation wording. It never decides whether
-   * confirmation is required: removing a checkout is destructive even when all
-   * work has landed.
-   */
-  async function requestRetire(): Promise<void> {
-    let benchPaths: string[] = [];
-    try {
-      const preview = await window.ion.gitWorktreeRetirePreview(
-        entry.worktreePath,
-      );
-      benchPaths = preview.prunedBenchPaths ?? [];
-    } catch (err) {
-      rWarn(
-        "worktree.menu",
-        "retire preview failed; checking the worktree only",
-        {
-          worktree_path: entry.worktreePath,
-          error: String(err),
-        },
-      );
-    }
-
-    const blockers = resolveRetireBlockers(
-      useSessionStore.getState,
-      entry.worktreePath,
-      benchPaths,
-    );
-    if (blockers) {
-      rInfo(
-        "worktree.menu",
-        "retire not offered: active work in the worktree",
-        {
-          branch: entry.branchName,
-          active_count: blockers.active.length,
-        },
-      );
-      setRetireOutcome(blockers.error);
-      return;
-    }
-
+  async function requestLandAndRetire(): Promise<void> {
     if (!entry.sourceBranch) {
-      setConfirmRetire(
-        "Ion cannot tell what this worktree still holds, because its source branch is unknown.",
-      );
-      return;
+      setLandError('Ion does not know what branch this worktree came from.')
+      return
     }
-    const appraisal = await window.ion.gitWorktreeAppraise(
-      entry.worktreePath,
-      entry.sourceBranch,
-    );
-    rInfo("worktree.menu", "retire appraised", {
-      branch: entry.branchName,
-      safe_to_discard: appraisal.safeToDiscard,
-      uncommitted: appraisal.uncommittedPaths.length,
-      unlanded: appraisal.unlandedCommitCount,
-    });
+    let benchPaths: string[] = []
+    try {
+      benchPaths = (await window.ion.gitWorktreeRetirePreview(entry.worktreePath)).prunedBenchPaths ?? []
+    } catch (error) {
+      rWarn('worktree.menu', 'terminal completion preview failed', {
+        worktree_path: entry.worktreePath,
+        error: String(error),
+      })
+    }
+    const blockers = resolveRetireBlockers(useSessionStore.getState, entry.worktreePath, benchPaths)
+    if (blockers) {
+      setLandError(blockers.error)
+      return
+    }
+    // A worktree with nothing to land (a mistakenly created one, or work
+    // abandoned before the first commit) still needs a way to be discarded.
+    // The confirmation says so honestly rather than promising a merge that
+    // `landAndRetireWorktree` will skip.
     setConfirmRetire(
-      appraisal.safeToDiscard
-        ? "Everything in this worktree has landed, so nothing would be lost."
-        : (appraisal.reason ?? "This worktree may still hold work."),
-    );
+      entry.unlandedCommitCount > 0
+        ? `This merges into ${entry.sourceBranch}, then removes the worktree, branch, and its finished conversations.`
+        : `This worktree has nothing to land. It will be discarded: nothing merges into ${entry.sourceBranch}, and the worktree, branch, and its finished conversations are removed.`
+    )
   }
 
-  async function doRetire(): Promise<void> {
-    setBusy(true);
+  async function doLandAndRetire(): Promise<void> {
+    if (!entry.sourceBranch) return
     try {
-      // Routed through the store action rather than calling the IPC directly:
-      // retire deletes the directory, so any conversation living in it must be
-      // relocated first, and that read-then-mutate sequence must run in the
-      // owner window. See retireWorktree in worktree-inventory-slice.ts.
-      const result = await useSessionStore
-        .getState()
-        .retireWorktree(repoPath, entry.worktreePath, entry.branchName);
-      // In the ATV window this is a FORWARDED action: the owner executes it and
-      // its return value rides back over the round trip, so `result` is the
-      // owner's real answer (see applyMirrorOverrides). It is absent only when
-      // the round trip itself failed — no owner window, or no reply before
-      // main's deadline — which is "no answer available", not "it failed", so
-      // that case is logged rather than read as a refusal.
-      if (!result) {
-        rDebug(
-          "worktree.menu",
-          "retire returned no result (owner round trip did not complete)",
-          {
-            branch: entry.branchName,
-          },
-        );
-      } else if (!result.ok) {
-        rWarn("worktree.menu", "retire failed", {
-          branch: entry.branchName,
-          error: result.error ?? "",
-        });
-        // A refusal is actionable — most often "the recovery snapshot could not
-        // be written, so the worktree was kept". Leaving it in the log while the
-        // menu closes is what made the original defect look like a dead button.
-        setRetireOutcome(result.error ?? "Retire failed.");
-        onRefresh();
-        return;
+      const result = await useSessionStore.getState().landAndRetireWorktree(repoPath, {
+        worktreePath: entry.worktreePath,
+        branchName: entry.branchName,
+        sourceBranch: entry.sourceBranch,
+        title: entry.title,
+        label: entry.label,
+      })
+      if (!result.ok) {
+        setLandError(result.error ?? 'Land and retire failed.')
+        return
       }
-      // Name the recovery ref. The confirmation promised the work was preserved;
-      // a ref the operator never sees is indistinguishable from one that was
-      // never written.
-      if (result.recoveryRef) {
-        rInfo("worktree.menu", "retired with recovery ref", {
-          branch: entry.branchName,
-          recovery_ref: result.recoveryRef,
-        });
-        setRetireOutcome(
-          `Retired. Uncommitted work was preserved to ${result.recoveryRef} in the repo. ` +
-            `Recover it with: git checkout -b recovered ${result.recoveryRef}`,
-        );
-        onRefresh();
-        return;
-      }
-      rInfo("worktree.menu", "retired", { branch: entry.branchName });
-      onRefresh();
-      setConfirmRetire(null);
-      onClose();
+      onRefresh()
+      setConfirmRetire(null)
+      onClose()
     } finally {
-      setBusy(false);
+      onRefresh()
     }
   }
 
   async function doDiscardRecordings(): Promise<void> {
     if (!enrolled) return;
-    setBusy(true);
     try {
       const result = await useSessionStore
         .getState()
@@ -312,7 +166,6 @@ export function useWorktreeRowMenuVerbs({
         `Could not discard this worktree’s recorded resolutions: ${String(err)}`,
       );
     } finally {
-      setBusy(false);
       onRefresh();
     }
   }
@@ -365,6 +218,20 @@ export function useWorktreeRowMenuVerbs({
     onRefresh();
   }
 
+  async function doRemoveFromBench(): Promise<void> {
+    if (!enrolled) return;
+    await useSessionStore.getState().benchRemoveMember(
+      repoPath,
+      enrolled.sourceBranch,
+      entry.worktreePath,
+    );
+    rInfo("worktree.menu", "removed from bench", {
+      worktree_path: entry.worktreePath,
+      source_branch: enrolled.sourceBranch,
+    });
+    onRefresh();
+  }
+
   /**
    * Apply an operator-supplied title. Empty input is a cancel, not a clear:
    * blanking the name would drop the row back to its hex slug, which is never
@@ -377,7 +244,6 @@ export function useWorktreeRowMenuVerbs({
       onClose();
       return;
     }
-    setBusy(true);
     try {
       const result = await window.ion.gitWorktreeSetTitle({
         worktreePath: entry.worktreePath,
@@ -397,7 +263,6 @@ export function useWorktreeRowMenuVerbs({
       }
       onRefresh();
     } finally {
-      setBusy(false);
       setRenaming(false);
       onClose();
     }
@@ -432,10 +297,10 @@ export function useWorktreeRowMenuVerbs({
   }
 
   return {
-    doLand,
-    requestRetire,
-    doRetire,
+    requestLandAndRetire,
+    doLandAndRetire,
     doAddToBench,
+    doRemoveFromBench,
     doDiscardRecordings,
     doRename,
     moveInBench,
@@ -453,8 +318,6 @@ export function useWorktreeRowMenuVerbs({
     setConfirmDiscardRecordings,
     discardRecordingsOutcome,
     setDiscardRecordingsOutcome,
-    retireOutcome,
-    setRetireOutcome,
     landError,
     setLandError,
     renaming,

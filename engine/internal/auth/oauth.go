@@ -252,6 +252,15 @@ type PKCEFlowConfig struct {
 	// explicit audience rather than encoding it in the scope string.
 	Audience      string
 	AudienceParam string
+	// Resource is the RFC 8707 resource indicator. When non-empty, it is
+	// sent as the `resource` parameter on authorization and token-exchange
+	// requests. Distinct from Audience/AudienceParam because it is always
+	// the literal `resource` parameter, never an IdP-specific dialect.
+	Resource string
+	// ExpectedIssuer is the issuer URL from RFC 8414 authorization-server
+	// metadata. When non-empty, the callback validates the RFC 9207 `iss`
+	// parameter against it -- a mix-up attack defense.
+	ExpectedIssuer string
 }
 
 // PKCEFlowResult contains the started flow's URL and completion channel.
@@ -356,6 +365,18 @@ func StartPKCEFlow(cfg PKCEFlowConfig) (*PKCEFlowResult, error) {
 			}
 			go windDown("auth-error")
 			return
+		}
+
+		// RFC 9207: validate the `iss` parameter before checking state.
+		// A missing `iss` is tolerated when the server did not advertise
+		// support, but a present `iss` that does not match is always fatal.
+		if cfg.ExpectedIssuer != "" {
+			if iss := q.Get("iss"); iss != "" && iss != cfg.ExpectedIssuer {
+				errCh <- fmt.Errorf("issuer mismatch: callback iss=%q, expected %q", iss, cfg.ExpectedIssuer)
+				http.Error(w, "issuer mismatch", http.StatusBadRequest)
+				go windDown("iss-mismatch")
+				return
+			}
 		}
 
 		if q.Get("state") != state {
@@ -477,6 +498,9 @@ func buildAuthorizationURL(cfg PKCEFlowConfig, redirectURI, challenge, state str
 	if cfg.Audience != "" {
 		q.Set(audienceParamName(cfg.AudienceParam), cfg.Audience)
 	}
+	if cfg.Resource != "" {
+		q.Set("resource", cfg.Resource)
+	}
 	u.RawQuery = q.Encode()
 	return u.String(), nil
 }
@@ -495,6 +519,9 @@ func exchangeCodeForToken(cfg PKCEFlowConfig, code, verifier, redirectURI string
 	}
 	if cfg.ClientSecret != "" {
 		form.Set("client_secret", cfg.ClientSecret)
+	}
+	if cfg.Resource != "" {
+		form.Set("resource", cfg.Resource)
 	}
 
 	client := &http.Client{Timeout: 30 * time.Second}

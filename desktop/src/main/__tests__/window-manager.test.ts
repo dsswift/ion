@@ -79,6 +79,7 @@ vi.mock('electron', () => {
 })
 
 vi.mock('../state', () => ({
+  enterprisePolicyCache: { policy: null },
   state: { mainWindow: null, tray: null, toggleSequence: 0, forceQuit: false },
   SPACES_DEBUG: false,
   sessionPlane: { hasRunningTabs: vi.fn().mockReturnValue(false), shutdown: vi.fn() },
@@ -104,9 +105,9 @@ vi.mock('../engine-bootstrap', () => ({
 }))
 
 const mockReassertPolicy = vi.hoisted(() => vi.fn())
-vi.mock('../atv-window-manager', () => ({
-  openAtvWindow: vi.fn(),
-  reassertAtvActivationPolicy: mockReassertPolicy,
+vi.mock('../studio-window-manager', () => ({
+  openStudioWindow: vi.fn(),
+  reassertStudioActivationPolicy: mockReassertPolicy,
 }))
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -145,8 +146,8 @@ describe('window-manager createWindow()', () => {
 
   it('re-asserts the activation policy after setVisibleOnAllWorkspaces (accessory side-effect regression)', async () => {
     // visibleOnFullScreen flips the app to 'accessory' as a macOS/Electron
-    // side effect. With the ATV open ('regular' policy) that removed Ion
-    // from Cmd-Tab and backgrounded the ATV window on every overlay show.
+    // side effect. With the Studio window open ('regular' policy) that removed Ion
+    // from Cmd-Tab and backgrounded the Studio window on every overlay show.
     const { createWindow, showWindow } = await import('../window-manager')
     createWindow()
     expect(_mockSetVisibleOnAllWorkspaces).toHaveBeenCalled()

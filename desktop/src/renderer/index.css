@@ -6,14 +6,21 @@
  * Do NOT define --ion-* vars here — JS tokens are the single source of truth.
  */
 
-html, body, #root {
+html, body {
   height: 100%;
+  width: 100%;
   margin: 0;
   background: transparent !important;
   overflow: hidden;
   user-select: none;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
 }
 
 /* ─── Scrollbar — thin & subtle ─── */
@@ -101,6 +108,10 @@ input::placeholder {
 }
 
 /* ─── Prose overrides for markdown ─── */
+.ion-data-view {
+  --ion-conv-font-size: var(--ion-data-font-size, 13px);
+}
+
 .prose-cloud {
   color: var(--ion-text-primary);
   line-height: 1.6;
@@ -115,7 +126,7 @@ input::placeholder {
   border: 1px solid var(--ion-container-border);
   border-radius: 10px;
   padding: 0.75em 1em;
-  font-size: 12px;
+  font-size: var(--ion-data-code-font-size, 13px);
   overflow-x: auto;
   max-width: 100%;
   white-space: pre-wrap;
@@ -185,7 +196,7 @@ input::placeholder {
 .prose-cloud table {
   border-collapse: collapse;
   max-width: 100%;
-  font-size: 12px;
+  font-size: var(--ion-data-code-font-size, 13px);
   width: 100%;
 }
 .prose-cloud th, .prose-cloud td {
@@ -275,6 +286,29 @@ input::placeholder {
 }
 .animate-bounce-dot {
   animation: bounce-dot 1.2s ease-in-out infinite;
+}
+
+/* ─── Pause decorative animations when the window isn't visible ───
+ * WindowVisibilityGate (renderer root) toggles this class from
+ * document.visibilitychange, which Electron fires on BrowserWindow
+ * hide/minimize/restore/show. A hidden window has no pixels on screen, but
+ * an `infinite` CSS animation still ticks the compositor every vsync unless
+ * paused explicitly — this is what let a minimized/hidden Ion window keep
+ * burning GPU indefinitely. */
+.ion-window-hidden .animate-pulse-dot,
+.ion-window-hidden .animate-border-pulse,
+.ion-window-hidden .animate-bounce-dot {
+  animation-play-state: paused;
+}
+
+/* Honour the OS reduced-motion preference for every infinite decorative
+ * animation, not just the ones with bespoke JS handling (ContextRadial). */
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-dot,
+  .animate-border-pulse,
+  .animate-bounce-dot {
+    animation: none;
+  }
 }
 
 @keyframes spin {

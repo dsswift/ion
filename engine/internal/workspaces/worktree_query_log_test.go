@@ -126,6 +126,11 @@ func TestWorktreeListLogs_Success(t *testing.T) {
 	if r := findLog(recs, "worktree list start"); r == nil {
 		t.Error("must log start")
 	}
+	if skipped := findLog(recs, "worktree list skipped missing landed checkout"); skipped == nil {
+		t.Error("must log the removed checkout omitted from the list")
+	} else if skipped.fields["worktree_path"] == nil || skipped.fields["branch"] == nil {
+		t.Error("missing-checkout log must identify the worktree path and branch")
+	}
 	r := findLog(recs, "worktree list success")
 	if r == nil {
 		t.Fatal("must log success")

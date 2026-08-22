@@ -240,7 +240,7 @@ type BeforeProviderRequestInfo struct {
 | `message_update` | Message content updated | `MessageUpdateInfo{Role, Content}` | ignored | Observe only |
 | `tool_result` | Tool returns a result | tool result data | ignored | Observe only |
 | `input` | User input received | `string` (prompt) | `string` | Last non-nil string wins. Rewrites the user prompt. |
-| `model_select` | Model selection occurs | `ModelSelectInfo{RequestedModel, AvailableModels, Prompt}` | `string` (model ID) | Last non-nil string wins. Overrides model selection. Wired in session manager -- fires on every model resolution. Routes on the RAW prompt (`Prompt`); see the routing-vs-payload note below. |
+| `model_select` | Model selection occurs | `ModelSelectInfo{RequestedModel, AvailableModels, Prompt}` | `string` (model ID) | Last non-nil string wins for ordinary prompts and resolved slash commands with no `model:` field. A non-empty slash-command model is authoritative and skips this hook. Routes on the RAW prompt (`Prompt`); see the routing-vs-payload note below. |
 | `user_bash` | User runs bash command | `string` (command) | ignored | Observe only |
 
 ### Payload Types

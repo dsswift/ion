@@ -35,6 +35,11 @@ vi.mock('../../state', () => ({
 
 vi.mock('../../settings-store', () => ({
   TABS_FILE: '/nonexistent/for-tests/tabs.json',
+  // The cold-start path classifies persisted rows through the shared inbox
+  // classifier and reads the auto-settle preference to do it. Zero disables
+  // the clock, which is what these cache/fallback tests want: they assert
+  // routing (cache vs poll vs cold), not classification.
+  readSettings: () => ({ inboxAutoSettleDays: 0 }),
 }))
 
 vi.mock('../../event-wiring-resources', () => ({
@@ -66,6 +71,12 @@ function projectedTab(id: string, overrides: Partial<ProjectedRendererTab> = {})
     conversationId: null,
     lastMessageContent: null,
     lastActivityTs: 0,
+    idleSince: null,
+    inboxState: 'active' as const,
+    unread: false,
+    snoozedUntil: null,
+    settledAt: null,
+    wokeAt: null,
     convFingerprint: '',
     pillColor: null,
     pillIcon: null,

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/skills"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -143,6 +144,42 @@ func buildSkillToolDescription() string {
 	}
 	return "Execute a skill by name. Returns the skill content for execution. " +
 		skillProactiveInstruction + manifest
+}
+
+// BuildSkillListingDelta returns only model-invocable skill names not already
+// structurally announced by this conversation, plus their budgeted manifest.
+// An empty result means no initial or delta announcement is needed.
+func BuildSkillListingDelta(sessionKey string, announced map[string]bool) ([]string, string) {
+	all := skills.GetAllSkillsFor(sessionKey)
+	sort.Slice(all, func(i, j int) bool { return all[i].Name < all[j].Name })
+	var names []string
+	var lines []string
+	total := 0
+	for _, skill := range all {
+		if skill.DisableModelInvocation || announced[skill.Name] {
+			continue
+		}
+		line := "- " + skill.Name
+		if skill.Description != "" {
+			line += ": " + skill.Description
+		}
+		if skill.WhenToUse != "" {
+			line += " - " + skill.WhenToUse
+		}
+		if len(line) > SkillManifestPerEntryMaxChars {
+			line = line[:SkillManifestPerEntryMaxChars-3] + "…"
+		}
+		if total+len(line)+1 > SkillManifestDefaultBudget {
+			break
+		}
+		names = append(names, skill.Name)
+		lines = append(lines, line)
+		total += len(line) + 1
+	}
+	if len(names) == 0 {
+		return nil, ""
+	}
+	return names, "# Available Skills\n\nThe following skills are available via the Skill tool. " + skillProactiveInstruction + "\n\n" + strings.Join(lines, "\n")
 }
 
 // BuildSkillSystemPromptSection returns a system prompt section that lists all
@@ -291,5 +328,15 @@ func executeSkill(ctx context.Context, input map[string]any, _ string) (*types.T
 
 	utils.LogWithFields(utils.LevelInfo, "tools.skill", "skill executed", map[string]any{"model": name, "path": baseDir, "count": len(args), "key": sessionKey})
 
-	return &types.ToolResult{Content: sb.String()}, nil
+	return &types.ToolResult{
+		// The full body reaches this continuation through typed skill_content,
+		// not an opaque tool result that subsequent turns mistake for task output.
+		Content: fmt.Sprintf("Loaded skill %q. Follow its instructions for this task.", skill.Name),
+		SkillInvocation: &types.SkillInvocation{
+			Name:      skill.Name,
+			Source:    skill.Source,
+			Content:   sb.String(),
+			InvokedAt: time.Now().UnixMilli(),
+		},
+	}, nil
 }

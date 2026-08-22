@@ -5,6 +5,7 @@ import SwiftUI
 struct GitDiffView: View {
     let fileName: String
     let diff: String
+    var isBinary: Bool = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appTheme) private var theme
 
@@ -12,7 +13,9 @@ struct GitDiffView: View {
         NavigationStack {
             GeometryReader { geo in
                 ScrollView([.horizontal, .vertical]) {
-                    if diffLines.isEmpty {
+                    if isBinary {
+                        binaryPlaceholder(width: geo.size.width)
+                    } else if diffLines.isEmpty {
                         Text("No changes")
                             .foregroundStyle(.secondary)
                             .padding(.top, 40) // design-geometry: 40pt inset beyond screenInset; off the 4pt ratio scale
@@ -34,7 +37,7 @@ struct GitDiffView: View {
                     VStack(spacing: 1) {
                         Text(fileName)
                             .font(.subheadline.weight(.semibold))
-                        if stats.insertions > 0 || stats.deletions > 0 {
+                        if !isBinary, stats.insertions > 0 || stats.deletions > 0 {
                             HStack(spacing: 4) {
                                 Text("+\(stats.insertions)")
                                     .foregroundStyle(.green)
@@ -46,11 +49,13 @@ struct GitDiffView: View {
                     }
                 }
                 ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        UIPasteboard.general.string = diff
-                        Haptic.success()
-                    } label: {
-                        Image(systemName: "doc.on.doc")
+                    if !isBinary {
+                        Button {
+                            UIPasteboard.general.string = diff
+                            Haptic.success()
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                        }
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -59,6 +64,24 @@ struct GitDiffView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Binary placeholder
+
+    private func binaryPlaceholder(width: CGFloat) -> some View {
+        VStack(spacing: IonSpace.compactGap) {
+            Image(systemName: "doc.fill")
+                .font(.system(size: 32)) // design-type: SF Symbol empty-state glyph sized as icon geometry, not text
+                .foregroundStyle(.secondary)
+            Text("Binary file changed")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+            Text("This file type is not supported in Diff Viewer.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.top, 40) // design-geometry: 40pt inset beyond screenInset; off the 4pt ratio scale
+        .frame(width: width)
     }
 
     // MARK: - Diff line row

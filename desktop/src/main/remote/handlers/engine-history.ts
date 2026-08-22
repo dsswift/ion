@@ -14,6 +14,7 @@
 
 import { log as _log } from '../../logger'
 import { state } from '../../state'
+import { notifyStudioHistoryReplace } from '../../studio-window-manager'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -38,7 +39,7 @@ export interface EngineHistoryMessage {
    * Matches the RemoteAttachment wire shape (id/type/name/path) — the same
    * fields tabs.ts projects on the non-rewind load path. Omitted when the
    * message has no attachments. */
-  attachments?: Array<{ id: string; type: string; name: string; path: string }>
+  attachments?: Array<{ id: string; type: string; name: string; path: string; contentHash?: string }>
 }
 
 /**
@@ -94,7 +95,7 @@ export async function readEngineHistoryFromStore(
         // Codable field. Without this, images are dropped after rewind.
         if (m.attachments && m.attachments.length > 0) {
           out.attachments = m.attachments.map(function(a) {
-            return { id: a.id, type: a.type, name: a.name, path: a.path };
+            return { id: a.id, type: a.type, name: a.name, path: a.path, ...(a.contentHash ? { contentHash: a.contentHash } : {}) };
           });
         }
         return out;
@@ -109,25 +110,35 @@ export async function readEngineHistoryFromStore(
 
 /**
  * Broadcast a fresh conversation history for the given tab to ALL connected
- * remote devices (not a single device). Invoked by the renderer after
- * rewindEngineInstance truncates the instance's messages and restarts the
- * engine session, so connected iOS clients replace their now-stale message
- * list immediately instead of waiting for a sub-tab switch to re-issue
- * load_conversation. Uses the unified desktop_conversation_history wire type
- * (WI-004 / #259) — the same response the load_conversation handler sends.
+ * remote devices (not a single device), AND push the same committed
+ * transcript to the Studio mirror. Invoked by the renderer after
+ * rewindEngineInstance's engine call succeeds and truncates the instance's
+ * messages, so connected iOS clients replace their now-stale message list
+ * immediately instead of waiting for a sub-tab switch to re-issue
+ * load_conversation, and the Studio window's transcript converges to the
+ * exact same committed state instead of keeping a stale tail. Uses the
+ * unified desktop_conversation_history wire type (WI-004 / #259) for iOS —
+ * the same response the load_conversation handler sends.
+ *
+ * Studio delivery is unconditional on remote transport: a Studio-only setup
+ * (no paired iOS device) must still see the rewind converge. Only the iOS
+ * send is gated on state.remoteTransport.
  */
 export async function broadcastEngineHistory(tabId: string, instanceId: string | null): Promise<void> {
-  if (!state.remoteTransport) {
-    log('broadcast_engine_history: no remote transport, skipping', { tab_id: tabId, instance_id: instanceId || '' })
-    return
-  }
   if (!state.mainWindow) {
     log('broadcast_engine_history: no main window, skipping', { tab_id: tabId, instance_id: instanceId || '' })
     return
   }
   try {
-    const { messages } = await readEngineHistoryFromStore(tabId, instanceId)
+    const { instanceId: resolvedInstanceId, messages } = await readEngineHistoryFromStore(tabId, instanceId)
     log('broadcast_engine_history', { tab_id: tabId, count: messages.length })
+    // Studio mirror: replace the pane instance's messages wholesale,
+    // regardless of whether an iOS device is paired.
+    notifyStudioHistoryReplace({ tabId, instanceId: resolvedInstanceId, messages })
+    if (!state.remoteTransport) {
+      log('broadcast_engine_history: no remote transport, skipping iOS send', { tab_id: tabId, instance_id: instanceId || '' })
+      return
+    }
     // Use the unified desktop_conversation_history response type. The hasMore
     // flag is false because a post-rewind broadcast sends all messages; the
     // client replaces its message list wholesale on history receipt.

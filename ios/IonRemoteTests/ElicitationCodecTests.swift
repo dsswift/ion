@@ -43,18 +43,28 @@ final class ElicitationCodecTests: XCTestCase {
         XCTAssertNil(json["response"])
     }
 
+    func testEncodeRespondElicitationDecline() throws {
+        let cmd = RemoteCommand.respondElicitation(
+            tabId: "t4", requestId: "elicit-4", response: nil, cancelled: false, declined: true
+        )
+        let data = try encoder.encode(cmd)
+        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        XCTAssertEqual(json["cancelled"] as? Bool, false)
+        XCTAssertEqual(json["declined"] as? Bool, true)
+    }
     func testRespondElicitationRoundTrip() throws {
         let cmd = RemoteCommand.respondElicitation(
             tabId: "t3", requestId: "elicit-3", response: [:], cancelled: false
         )
         let data = try encoder.encode(cmd)
         let decoded = try decoder.decode(RemoteCommand.self, from: data)
-        guard case let .respondElicitation(tabId, requestId, _, cancelled) = decoded else {
+        guard case let .respondElicitation(tabId, requestId, _, cancelled, declined) = decoded else {
             return XCTFail("decoded to wrong case: \(decoded)")
         }
         XCTAssertEqual(tabId, "t3")
         XCTAssertEqual(requestId, "elicit-3")
         XCTAssertFalse(cancelled)
+        XCTAssertFalse(declined)
     }
 
     func testTabStateElicitationQueueDecodes() throws {

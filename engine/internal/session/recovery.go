@@ -72,8 +72,10 @@ func (m *Manager) recordRunRecovery(s *engineSession, key, requestID string, opt
 	return userEntryID, true
 }
 
-// clearRunRecovery removes a journal only when it still belongs to recoveryID.
-// Empty recoveryID retains explicit-stop behavior and clears any active journal.
+// clearRunRecovery removes a journal only when it still belongs to its owner.
+// Terminal ordinary exits pass their requestID; terminal recovery exits pass
+// recoveryID. Empty recoveryID retains explicit-stop behavior and clears any
+// active journal.
 func (m *Manager) clearRunRecovery(conversationID, key string, args ...string) bool {
 	recoveryID, reason := "", ""
 	if len(args) == 1 {

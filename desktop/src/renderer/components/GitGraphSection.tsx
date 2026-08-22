@@ -15,7 +15,7 @@ import { FloatingPanel } from './FloatingPanel'
 import { DiffPane } from './git/DiffPane'
 import { useRepoState } from '../stores/git'
 import { useGitGraphFocus } from './git/useGitGraphFocus'
-import type { GitCommit, GitCommitDetail, GitCommitFile } from '../../shared/types'
+import type { GitCommit, GitCommitDetail, GitCommitFile, GitDiffResult } from '../../shared/types'
 import { BranchPicker } from './GitBranchPicker'
 import { CommitPopup } from './GitCommitPopup'
 import { CommitContextMenu } from './GitCommitContextMenu'
@@ -211,7 +211,7 @@ export function GitGraphSection({
   const [expandedHash, setExpandedHash] = useState<string | null>(null)
   const [expandedDetail, setExpandedDetail] = useState<GitCommitDetail | null>(null)
   const [commitFiles, setCommitFiles] = useState<GitCommitFile[]>([])
-  const [commitFileDiff, setCommitFileDiff] = useState<{ diff: string; fileName: string } | null>(null)
+  const [commitFileDiff, setCommitFileDiff] = useState<GitDiffResult | null>(null)
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const popupHoveredRef = useRef(false)
@@ -560,6 +560,7 @@ export function GitGraphSection({
               diff={commitFileDiff.diff}
               fileName={commitFileDiff.fileName}
               filePath={commitFileDiff.fileName}
+              isBinary={commitFileDiff.isBinary}
               staged={false}
               directory={directory}
               onClose={() => setCommitFileDiff(null)}

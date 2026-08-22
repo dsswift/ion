@@ -15,6 +15,8 @@ import {
   describeOpenConversations,
   pickDirTerminal,
   benchTerminalTitle,
+  isBenchDirectory,
+  settlingIsPermanent,
   type DirConversationSource,
 } from '../worktree-conversations'
 
@@ -246,5 +248,53 @@ describe('pickDirTerminal', () => {
   it('never matches on an empty directory — "no directory" is not a place', () => {
     const tabs = [tab({ id: 'shell', workingDirectory: '', isTerminalOnly: true })]
     expect(pickDirTerminal(tabs, '', TITLE)).toBeNull()
+  })
+})
+
+describe('isBenchDirectory', () => {
+  it('matches the bench checkout itself', () => {
+    expect(isBenchDirectory(BENCH, [BENCH])).toBe(true)
+  })
+
+  it('matches a directory nested inside the bench', () => {
+    // A conversation in a subdirectory is still in the bench, so it must be
+    // refused snooze exactly as one at the root is.
+    expect(isBenchDirectory(`${BENCH}/desktop/src`, [BENCH])).toBe(true)
+  })
+
+  it('does not match a sibling whose path merely shares the prefix', () => {
+    expect(isBenchDirectory(`${BENCH}-other`, [BENCH])).toBe(false)
+  })
+
+  it('does not match a worktree or the source repo', () => {
+    expect(isBenchDirectory(WT, [BENCH])).toBe(false)
+    expect(isBenchDirectory(OTHER, [BENCH])).toBe(false)
+  })
+
+  it('treats an absent directory and an empty bench list as not-a-bench', () => {
+    expect(isBenchDirectory('', [BENCH])).toBe(false)
+    expect(isBenchDirectory(null, [BENCH])).toBe(false)
+    expect(isBenchDirectory(undefined, [BENCH])).toBe(false)
+    expect(isBenchDirectory(BENCH, [])).toBe(false)
+    expect(isBenchDirectory(BENCH, [''])).toBe(false)
+  })
+})
+
+describe('settlingIsPermanent', () => {
+  it('is permanent for the bench operator conversation', () => {
+    // The bench checkout is recreated from its members' pins on every
+    // assembly, so a restored conversation would resume against replaced
+    // content.
+    expect(settlingIsPermanent('bench-conversation')).toBe(true)
+  })
+
+  it('is permanent for machine conversations the operator cannot type in', () => {
+    expect(settlingIsPermanent('conflict-auto-fix')).toBe(true)
+    expect(settlingIsPermanent('verification-analysis')).toBe(true)
+  })
+
+  it('is not permanent for an ordinary conversation', () => {
+    expect(settlingIsPermanent(null)).toBe(false)
+    expect(settlingIsPermanent(undefined)).toBe(false)
   })
 })

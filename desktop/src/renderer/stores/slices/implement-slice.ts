@@ -4,11 +4,11 @@
  * `implementPlan(tabId, opts)` is a STORE ACTION (not component logic) so
  * every surface runs the identical pipeline in the OWNER window:
  *   - Overlay: ConversationView's Implement buttons call it directly.
- *   - ATV shell: the mirror forwards it (FORWARDED_ACTIONS) — one IPC hop,
+ *   - Studio shell: the mirror forwards it (FORWARDED_ACTIONS) — one IPC hop,
  *     then the owner executes every step against owner state. The mirror
  *     never runs business logic. Before this action existed, the flow lived
  *     in a component helper that executed in whichever window hosted the
- *     card: in the ATV that meant a mix of forwarded and mirror-local calls
+ *     card: in the Studio window that meant a mix of forwarded and mirror-local calls
  *     (unpin forwarded but the pin check read stale mirror state → the
  *     in-progress auto-move was suppressed; the mode flip ran against the
  *     owner's ACTIVE tab, not the card's tab; the divider landed only in the
@@ -29,6 +29,39 @@ import { setTabStatus } from './tab-status-transition'
 
 export function createImplementSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
+    /**
+     * Dismiss a pending plan/question card and tell the engine the question is
+     * resolved.
+     *
+     * The engine retains an unresolved AskUserQuestion / ExitPlanMode and
+     * re-publishes it on every status snapshot, releasing it only when a new
+     * prompt supersedes the question or `/clear` discards it. A dismissal is
+     * neither, so without the notify the engine keeps re-offering the card and
+     * the desktop has to suppress the echo locally and forever — state with no
+     * recovery path, which is what stranded a conversation showing a plan it
+     * could not act on.
+     *
+     * Lives here rather than in a component handler because it is two coupled
+     * mutations that must both run in the OWNER window (see the Studio mirror
+     * rules): clearing the mirror's own copy while the owner notified the
+     * engine about a different tab is exactly the class of split-brain the
+     * forwarded-composite pattern exists to prevent.
+     */
+    dismissPermissionDenied: (tabId) => {
+      const inst = activeInstance(get().conversationPanes, tabId)
+      const tools = (inst?.permissionDenied?.tools ?? []).map((t) => t.toolName).join(',')
+      rInfo('implement', 'dismissPermissionDenied', { tab_id: tabId.slice(0, 8), tools })
+      set((s) => ({
+        conversationPanes: commitInstance(s.conversationPanes, tabId, (i) => ({
+          ...i,
+          permissionDenied: null,
+        })),
+      }))
+      // Release the engine's retention so no later heartbeat re-offers it.
+      window.ion.resolvePermissionDenials(tabId)
+    },
+
+
     implementPlan: async (tabId, opts = {}) => {
       const { clearContext = false, unpin = false } = opts
       const tab0 = get().tabs.find((t) => t.id === tabId)
@@ -57,13 +90,19 @@ export function createImplementSlice(set: StoreSet, get: StoreGet): Partial<Stat
           permissionDenied: null,
         })),
       }))
+      // Approval resolves the question, so release the engine's retention too.
+      // The implement prompt below would also clear it (prompt_dispatch.go),
+      // but only once it actually dispatches — and the clearContext branch
+      // destroys and restarts the session first, so a heartbeat in that window
+      // would otherwise re-offer the card we just approved.
+      window.ion.resolvePermissionDenials(tabId)
 
       // Set tab to running immediately to close the race window between
       // clearing the denial card and submitting the implement prompt.
       // Without this, heartbeat ticks during the async plan read can
       // re-promote stale denials (see engine_status handler in event-slice.ts).
       set((s) => ({
-        tabs: setTabStatus(s.tabs, tabId, 'running'),
+        tabs: setTabStatus(s.tabs, tabId, 'running', 'implement.plan'),
       }))
 
       // Insert an "Implementing plan" divider so the user can see the
@@ -138,7 +177,7 @@ export function createImplementSlice(set: StoreSet, get: StoreGet): Partial<Stat
       // instance AND routes the engine plan-mode flip (engineSetPlanMode for
       // extension-hosted tabs, setPermissionMode → set_plan_mode(false) for
       // plain tabs). Explicit tabId: no "the implement tab is the active tab"
-      // assumption — a forwarded ATV call executes here with the card's tab.
+      // assumption — a forwarded Studio call executes here with the card's tab.
       applyPermissionModeForTab(set, get, tabId, 'auto', 'plan_approved')
 
       // Auto-switch to the implementation model if the split feature is enabled

@@ -4,10 +4,11 @@ import { motion } from 'framer-motion'
 import { X } from '@phosphor-icons/react'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
-import { usePreferencesStore } from '../preferences'
 import { useSessionStore } from '../stores/sessionStore'
 import { useEdgeResize } from '../hooks/useEdgeResize'
 import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
+import { contentRouter } from '../lib/file-open-router'
+import { zoomDelta, zoomViewport } from '../viewport-zoom'
 
 /**
  * Clamp a geometry so it fits within the current viewport: never larger than
@@ -19,12 +20,11 @@ function clampToViewport(
   minWidth: number,
   minHeight: number,
 ): { x: number; y: number; w: number; h: number } {
-  const vw = window.innerWidth
-  const vh = window.innerHeight
-  const w = Math.max(minWidth, Math.min(geo.w, vw))
-  const h = Math.max(minHeight, Math.min(geo.h, vh))
-  const x = Math.max(0, Math.min(geo.x, vw - w))
-  const y = Math.max(0, Math.min(geo.y, vh - h))
+  const viewport = zoomViewport()
+  const w = Math.max(minWidth, Math.min(geo.w, viewport.width))
+  const h = Math.max(minHeight, Math.min(geo.h, viewport.height))
+  const x = Math.max(0, Math.min(geo.x, viewport.width - w))
+  const y = Math.max(0, Math.min(geo.y, viewport.height - h))
   return { x, y, w, h }
 }
 
@@ -59,7 +59,6 @@ export function FloatingPanel({
 }: FloatingPanelProps) {
   const popoverLayer = usePopoverLayer()
   const colors = useColors()
-  const previewFontSize = usePreferencesStore((s) => s.previewFontSize)
   const incOpenFloatingPanelCount = useSessionStore((s) => s.incOpenFloatingPanelCount)
   const decOpenFloatingPanelCount = useSessionStore((s) => s.decOpenFloatingPanelCount)
 
@@ -117,11 +116,14 @@ export function FloatingPanel({
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (dragRef.current) {
-        const dx = e.clientX - dragRef.current.startX
-        const dy = e.clientY - dragRef.current.startY
+        const delta = zoomDelta({
+          x: e.clientX - dragRef.current.startX,
+          y: e.clientY - dragRef.current.startY,
+        })
+        const viewport = zoomViewport()
         // Clamp so the header bar (top 32px) always stays within the viewport
-        const newX = Math.max(-200, Math.min(window.innerWidth - 100, dragRef.current.originX + dx))
-        const newY = Math.max(0, Math.min(window.innerHeight - 32, dragRef.current.originY + dy))
+        const newX = Math.max(-200, Math.min(viewport.width - 100, dragRef.current.originX + delta.x))
+        const newY = Math.max(0, Math.min(viewport.height - 32, dragRef.current.originY + delta.y))
         setPos({ x: newX, y: newY })
       }
     }
@@ -175,6 +177,44 @@ export function FloatingPanel({
     deps: [!!titleCtxMenu],
   })
 
+  const panelRouteId = useRef<string | null>(null)
+  const panelRouterRef = useRef<ReturnType<typeof contentRouter>>(null)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+  const [routedToSurface, setRoutedToSurface] = useState(false)
+
+  // Studio's content router turns every legacy floating content panel into an
+  // ephemeral surface tab. The registry owns non-serializable children and its
+  // close callback; overlay has no router and keeps this panel unchanged.
+  useEffect(() => {
+    const router = contentRouter()
+    if (!router?.openPanel) return
+    const id = router.openPanel(title, children, () => onCloseRef.current())
+    panelRouteId.current = id
+    panelRouterRef.current = router
+    setRoutedToSurface(true)
+    return () => {
+      // Parent teardown releases its surface entry. User tab close unregisters
+      // before it invokes this callback, making this idempotent.
+      panelRouterRef.current?.closePanel?.(id)
+      panelRouteId.current = null
+      panelRouterRef.current = null
+    }
+    // A panel's body can re-render frequently; registry owns the initial body
+    // for its short runtime and avoids closing/reopening on stream updates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Panel children often gain state asynchronously (for example, gitOpState in
+  // ConflictsDialog). Re-publish each render under the same panel identity so
+  // Studio never keeps its initial empty React snapshot.
+  useEffect(() => {
+    const id = panelRouteId.current
+    if (!id) return
+    panelRouterRef.current?.updatePanel?.(id, title, children)
+  }, [title, children])
+
+  if (routedToSurface) return null
   if (!popoverLayer) return null
 
   const panel = (
@@ -241,8 +281,8 @@ export function FloatingPanel({
 
       {/* Content area — apply preview font-size variable here only (not on
           header/chrome). Pop-up content bodies read var(--ion-conv-font-size)
-          so they scale with previewFontSize while buttons/headers stay fixed. */}
-      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', ['--ion-conv-font-size' as string]: `${previewFontSize}px` }}>
+          so they scale with dataViewFontSize while buttons/headers stay fixed. */}
+      <div className="ion-data-view" style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {children}
       </div>
 

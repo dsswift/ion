@@ -13,9 +13,10 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useColors } from '../../theme'
-import { formatChord, parseChord } from '../../shortcuts/chord'
-import type { ShortcutEntry } from '../../shortcuts/shortcut-catalog'
+import { formatChord, parseChord, baseKeyFromCode } from '../../shortcuts/chord'
+import type { ShortcutEntry } from '../../shortcuts/shortcut-types'
 import type { Chord } from '../../shortcuts/chord'
+import { Tooltip } from '../git/Tooltip'
 
 interface ShortcutRowProps {
   entry: ShortcutEntry
@@ -35,7 +36,11 @@ function eventToChordString(e: KeyboardEvent): string | null {
   if (e.ctrlKey && e.metaKey) parts.push('Ctrl')
   if (e.shiftKey) parts.push('Shift')
   if (e.altKey) parts.push('Alt')
-  parts.push(e.key)
+  // With Option held, macOS reports the Option-layer character in `key`
+  // (⌥1 arrives as `¡`). Persisting that would store a chord the matcher can
+  // never see again, so an Alt capture records the physical key instead.
+  const base = e.altKey && e.code ? baseKeyFromCode(e.code) : null
+  parts.push(base ?? e.key)
   return parts.join('+')
 }
 
@@ -114,20 +119,21 @@ export function ShortcutRow({ entry, resolvedChord, isCustom, conflictsWith, onS
 
       {/* Conflict badge */}
       {conflictsWith && (
-        <span
-          title={`Conflict with: ${conflictsWith}`}
-          style={{
-            fontSize: 10,
-            padding: '1px 5px',
-            borderRadius: 4,
-            background: colors.permissionDenyBg,
-            color: colors.dangerFg,
-            border: `1px solid ${colors.permissionDenyBorder}`,
-            flexShrink: 0,
-          }}
-        >
-          conflict
-        </span>
+        <Tooltip text={`Conflict with: ${conflictsWith}`}>
+          <span
+            style={{
+              fontSize: 10,
+              padding: '1px 5px',
+              borderRadius: 4,
+              background: colors.permissionDenyBg,
+              color: colors.dangerFg,
+              border: `1px solid ${colors.permissionDenyBorder}`,
+              flexShrink: 0,
+            }}
+          >
+            conflict
+          </span>
+        </Tooltip>
       )}
 
       {/* Custom badge */}
@@ -171,22 +177,23 @@ export function ShortcutRow({ entry, resolvedChord, isCustom, conflictsWith, onS
 
       {/* Per-row reset button (only when customized) */}
       {isCustom && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onReset(entry.id) }}
-          style={{
-            fontSize: 11,
-            padding: '2px 7px',
-            borderRadius: 5,
-            border: `1px solid ${colors.inputBorder}`,
-            background: 'transparent',
-            color: colors.textTertiary,
-            cursor: 'pointer',
-            flexShrink: 0,
-          }}
-          title="Reset to default"
-        >
-          Reset
-        </button>
+        <Tooltip text="Reset to default">
+          <button
+            onClick={(e) => { e.stopPropagation(); onReset(entry.id) }}
+            style={{
+              fontSize: 11,
+              padding: '2px 7px',
+              borderRadius: 5,
+              border: `1px solid ${colors.inputBorder}`,
+              background: 'transparent',
+              color: colors.textTertiary,
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+          >
+            Reset
+          </button>
+        </Tooltip>
       )}
     </div>
   )

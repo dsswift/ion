@@ -65,11 +65,11 @@ enum WorktreeCloseWarning {
         // so this must not report "nothing to lose". Warn on the operation
         // itself, which is also the more urgent fact.
         if worktree.operationState != nil {
-            return "This worktree is mid-\(operationName(worktree.operationState)) and still exists. Nothing is deleted — reopen it any time from the Worktrees list."
+            return "This worktree is mid-\(operationName(worktree.operationState)) and still exists. Nothing is deleted — reopen it any time from Inbox."
         }
 
         guard !parts.isEmpty else { return nil }
-        return "This worktree keeps \(parts.joined(separator: " and ")). Nothing is deleted — reopen it any time from the Worktrees list."
+        return "This worktree keeps \(parts.joined(separator: " and ")). Nothing is deleted — reopen it any time from Inbox."
     }
 
     /// Operation name for display. Matches `WorktreeRowView.conflictChipText`,

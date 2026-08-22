@@ -17,6 +17,7 @@
  */
 import React from 'react'
 import { useColors } from '../theme'
+import { WorktreeConversationStatusDot } from './WorktreeConversationStatusDot'
 import { conversationRoleLabel, type DirConversation } from '../../shared/worktree-conversations'
 
 export interface WorktreeConversationsCardProps {
@@ -47,20 +48,9 @@ export interface WorktreeConversationsCardProps {
 }
 
 /**
- * A status is rendered as a dot in the same vocabulary the tab strip uses:
- * running is the only state worth a colour here, because it is the only one
- * that changes what clicking through will find.
- *
- * Exported so `WorktreeRowGoToTabSubmenu` (the row menu's "Go to tab" list)
- * renders the identical dot vocabulary rather than a second, drifting copy of
- * this cascade — the two are the only surfaces that render a conversation
- * list with a status dot per row.
+ * Conversation-list status uses `WorktreeConversationStatusDot`, which resolves
+ * live tab and pane state and delegates to the same cascade as tab pills.
  */
-export function statusColor(status: string, colors: ReturnType<typeof useColors>): string {
-  if (status === 'running' || status === 'connecting') return colors.accent
-  if (status === 'error') return colors.dangerFg
-  return colors.textTertiary
-}
 
 export function WorktreeConversationsCard({
   heading,
@@ -110,10 +100,7 @@ export function WorktreeConversationsCard({
                 cursor: onSelectConversation ? 'pointer' : 'default',
               }}
             >
-              <span style={{
-                width: 5, height: 5, borderRadius: 3, flexShrink: 0,
-                background: statusColor(c.status, colors),
-              }} />
+              <WorktreeConversationStatusDot tabId={c.tabId} />
               <span style={{
                 fontSize: 10, color: colors.textPrimary,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',

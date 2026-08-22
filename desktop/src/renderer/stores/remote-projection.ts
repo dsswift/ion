@@ -31,12 +31,15 @@ import type {
 import type { TabState, TerminalPaneState } from '../../shared/types'
 import type { ConversationPane, ResourceItem } from '../../shared/types-engine'
 import { tabHasExtensions } from '../../shared/tab-predicates'
-import { effectiveRunningChildrenCount } from '../components/TabStripShared'
+import { settlingIsPermanent } from '../../shared/worktree-conversations'
+import { effectiveRunningChildrenCount, waitingStateOfPane } from '../components/TabStripShared'
+import { classifyInbox, inboxUnread, wokeAt } from '../../shared/inbox-classify'
+import { usePreferencesStore } from '../preferences'
 import { rDebug } from '../rendererLogger'
 
 /**
  * The slice of session-store state the projection reads. Structural subset of
- * the full store State so tests can build minimal fixtures and the ATV mirror
+ * the full store State so tests can build minimal fixtures and the Studio mirror
  * store satisfies it too (though the mirror never pushes — see
  * remote-projection-push.ts).
  */
@@ -105,6 +108,31 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
   const activeInst = (activeInstId && cPane) ? cPane.instances.find((i) => i.id === activeInstId) ?? null : null
 
   const msgs = activeInst?.messages ?? []
+
+  // Inbox classification (desktop computes, clients render). The waiting/
+  // pending inputs mirror useInboxPartition's derivation over the pane.
+  const nowMs = Date.now()
+  const inboxView = {
+    status: t.status,
+    settledOverride: t.settledOverride,
+    settledAt: t.settledAt,
+    snoozedUntil: t.snoozedUntil,
+    snoozedAt: t.snoozedAt,
+    lastVisitedAt: t.lastVisitedAt,
+    lastCompletionAt: t.lastCompletionAt,
+    lastMessageAt: t.lastMessageAt,
+    lastActivityAt: t.lastActivityAt,
+    manualUnread: t.manualUnread,
+    pendingAskCount: (activeInst?.permissionQueue.length ?? 0) + (activeInst?.elicitationQueue.length ?? 0),
+    waiting: waitingStateOfPane(cPane ?? undefined) !== null,
+    failed: t.status === 'failed',
+    hasPendingWork: activeInst?.statusFields?.hasPendingWork === true
+      || (activeInst?.statusFields?.backgroundAgents ?? 0) > 0
+      || (activeInst?.statusFields?.backgroundShells ?? 0) > 0
+      || activeInst?.agentStates.some((agent) => agent.status === 'running') === true,
+  }
+  const autoSettleDaysPref = usePreferencesStore.getState().inboxAutoSettleDays
+  const inboxState = classifyInbox(inboxView, nowMs, autoSettleDaysPref > 0 ? autoSettleDaysPref : null)
   // lastMsg (the tab-list preview text) comes from the last user/assistant
   // row — a tool row has no useful preview string.
   let lastMsg: string | null = null
@@ -114,19 +142,9 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
       break
     }
   }
-  // lastActivityAt (the tab SORT key) must reflect the newest activity of ANY
-  // role, including a trailing tool run. Scanning only user/assistant rows
-  // let a tab whose tail is a long tool sequence report a stale timestamp and
-  // sink below idle tabs on iOS (and in the main-process sort). Take the max
-  // timestamp across all rows so an actively-tool-working tab sorts as
-  // recently active. Rows are appended in time order, so the last row
-  // generally holds the max; but a re-keyed/edited row can carry an older
-  // stamp, so we scan rather than trust position. Cheap: bounded by page size.
-  let lastTs = 0
-  for (let ti = msgs.length - 1; ti >= 0; ti--) {
-    const rowTs = msgs[ti].timestamp || 0
-    if (rowTs > lastTs) lastTs = rowTs
-  }
+  // A trailing tool can still be doing work after the last assistant text, so
+  // the snapshot's activity timestamp must include every transcript row.
+  const lastActivityTs = msgs.reduce((latest, message) => Math.max(latest, message.timestamp || 0), 0)
 
   // Conversation tail fingerprint — the staleness signal for the iOS
   // main-conversation heal. iOS computes the SAME fingerprint over its local
@@ -231,7 +249,8 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
       // Per-instance running state so iOS EngineInstanceBar can show a
       // pulsing dot on each running sub-tab.
       const st = inst.statusFields?.state
-      const instRunning = st === 'running' || st === 'connecting' || st === 'starting'
+      const instRunning = st === 'running' || st === 'connecting'
+      const instStarting = st === 'starting'
       // Per-instance running-agent-count via the CANONICAL helper
       // (effectiveRunningChildrenCount, TabStripShared.ts) — max of
       // agentStates and statusFields.backgroundAgents, because the two
@@ -264,8 +283,10 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
         label: inst.label,
         waitingState: ws,
         isRunning: instRunning || undefined,
+        isStarting: instStarting || undefined,
         runningAgentCount: instRunningAgents > 0 ? instRunningAgents : undefined,
         backgroundShellCount: instBackgroundShells > 0 ? instBackgroundShells : undefined,
+        hasPendingWork: inst.statusFields?.hasPendingWork || undefined,
         modelFallback: mfOut,
         conversationIds: inst.conversationIds && inst.conversationIds.length > 0 ? inst.conversationIds : undefined,
         thinkingEffort: (inst.thinkingEffort && inst.thinkingEffort !== 'off') ? inst.thinkingEffort : undefined,
@@ -293,6 +314,11 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
     for (const ci of conversationInstances) {
       backgroundShellCount += ci.backgroundShellCount || 0
     }
+  }
+
+  let hasPendingWork = false
+  if (cPane) {
+    hasPendingWork = cPane.instances.some((inst) => inst.statusFields?.hasPendingWork === true)
   }
 
   const sf = activeInst?.statusFields ?? null
@@ -365,9 +391,40 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
     // Top-level sum of outstanding background bash commands across instances.
     // iOS reads it on the parent tab pill for the pink shell dot.
     backgroundShellCount: backgroundShellCount > 0 ? backgroundShellCount : undefined,
+    hasPendingWork: hasPendingWork || undefined,
     conversationId: t.conversationId || null,
     lastMessageContent: lastMsg,
-    lastActivityTs: lastTs || 0,
+    // Honest activity ⊕ row scan: the max keeps a tool-working tail fresh
+    // while a restored idle tab keeps its true (persisted/backfilled) age.
+    lastActivityTs: Math.max(lastActivityTs, t.lastMessageAt ?? 0),
+    idleSince: t.idleSince ?? null,
+    createdAt: t.createdAt,
+    // Explicit worktree identity so clients group without path guessing.
+    // A worktree tab groups under worktree.repoPath even before the
+    // inventory learns about the directory.
+    worktree: t.worktree ? {
+      worktreePath: t.worktree.worktreePath,
+      branchName: t.worktree.branchName,
+      sourceBranch: t.worktree.sourceBranch,
+      repoPath: t.worktree.repoPath,
+      landedAt: t.worktree.landedAt,
+    } : undefined,
+    inboxState,
+    unread: inboxUnread(inboxView),
+    snoozedUntil: t.snoozedUntil ?? null,
+    settledAt: t.settledAt ?? null,
+    // Stated, never inferred by the client: an ephemeral role settles
+    // permanently. Only the blocking answer is sent — a client reads an absent
+    // value as restorable, which is the default for every ordinary tab.
+    canRestoreSettled: settlingIsPermanent(t.tabRole) ? false : undefined,
+    wokeAt: wokeAt(inboxView, nowMs),
+    pinnedAt: t.pinnedAt,
+    pinOrderKey: t.pinOrderKey,
+    backgroundLiveness: anyInstanceHasRunningChildren
+      ? 'working'
+      : backgroundShellCount > 0
+        ? 'monitoring'
+        : undefined,
     convFingerprint,
     pillColor: t.pillColor || null,
     pillIcon: t.pillIcon || null,

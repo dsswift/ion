@@ -1,4 +1,4 @@
-import { dialog, ipcMain, shell } from 'electron'
+import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { homedir } from 'os'
 import { join } from 'path'
 import { IPC } from '../../shared/types'
@@ -17,20 +17,28 @@ function log(msg: string, fields?: Record<string, unknown>): void {
 }
 
 export function registerFileDialogIpc(): void {
-  ipcMain.handle(IPC.SELECT_DIRECTORY, async () => {
-    if (!state.mainWindow) return null
-    state.mainWindow.hide()
+  ipcMain.handle(IPC.SELECT_DIRECTORY, async (event) => {
+    // Resolve the window that ASKED — invoking from the Studio window used
+    // to hide the overlay (state.mainWindow) instead: wrong window vanished
+    // and the dialog parented to nothing.
+    const sender = BrowserWindow.fromWebContents(event.sender)
+    const isOverlay = sender != null && sender === state.mainWindow
+    // Only the overlay glass needs hiding (it floats above everything and
+    // would cover the native dialog). A normal window (Studio) stays put.
+    if (isOverlay) state.mainWindow!.hide()
     const options = { properties: ['openDirectory' as const] }
-    const result = process.platform === 'darwin'
+    const result = process.platform === 'darwin' || !sender
       ? await dialog.showOpenDialog(options)
-      : await dialog.showOpenDialog(state.mainWindow, options)
-    showWindow('dialog-return')
+      : await dialog.showOpenDialog(sender, options)
+    if (isOverlay) showWindow('dialog-return')
     return result.canceled ? null : result.filePaths[0]
   })
 
-  ipcMain.handle(IPC.SELECT_EXTENSION_FILES, async () => {
-    if (!state.mainWindow) return null
-    state.mainWindow.hide()
+  ipcMain.handle(IPC.SELECT_EXTENSION_FILES, async (event) => {
+    // Same wrong-window pattern as SELECT_DIRECTORY above — fixed together.
+    const sender = BrowserWindow.fromWebContents(event.sender)
+    const isOverlay = sender != null && sender === state.mainWindow
+    if (isOverlay) state.mainWindow!.hide()
     const extensionsDir = join(homedir(), '.ion', 'extensions')
     const options = {
       defaultPath: extensionsDir,
@@ -51,10 +59,10 @@ export function registerFileDialogIpc(): void {
         { name: 'Script Entry Points', extensions: ['ts', 'js', 'mjs', 'cjs'] },
       ],
     }
-    const result = process.platform === 'darwin'
+    const result = process.platform === 'darwin' || !sender
       ? await dialog.showOpenDialog(options)
-      : await dialog.showOpenDialog(state.mainWindow!, options)
-    state.mainWindow?.show()
+      : await dialog.showOpenDialog(sender, options)
+    if (isOverlay) state.mainWindow?.show()
     if (result.canceled) {
       log('extension file picker cancelled')
       return null

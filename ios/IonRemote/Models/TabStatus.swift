@@ -10,6 +10,8 @@ import Foundation
 ///     and cleared when the engine responds with run_start or any
 ///     terminal event.
 ///   - `idle`: no run is in flight.
+///   - `starting`: engine startup is in progress. This is distinct from a
+///     running turn, so status surfaces use the still idle color.
 ///   - `running`: at least one run is in flight.
 ///   - `completed`: run finished cleanly, possibly with an unresolved
 ///     AskUserQuestion / ExitPlanMode permission denial still on the
@@ -19,5 +21,5 @@ import Foundation
 ///     state-management overhaul; the desktop reflects this on tabs
 ///     whose engine session can no longer be resumed).
 enum TabStatus: String, Codable, Sendable {
-    case connecting, idle, running, completed, failed, dead
+    case connecting, idle, starting, running, waiting, completed, failed, dead
 }

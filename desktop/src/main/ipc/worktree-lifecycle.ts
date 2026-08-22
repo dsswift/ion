@@ -15,9 +15,9 @@ import { ipcMain } from 'electron'
 import { broadcast } from '../broadcast'
 import { IPC } from '../../shared/types'
 import { log as _log, warn as _warn } from '../logger'
-import { landWorktree, syncWorktreeFromSource } from '../worktree/integrate'
+import { landAndRetireWorktree, syncWorktreeFromSource } from '../worktree/integrate'
 import { syncAllWorktrees } from '../worktree/sync-all'
-import { retireWorktree, reattachWorktree } from '../worktree/relocate'
+import { reattachWorktree } from '../worktree/relocate'
 import { appraiseBase } from '../worktree/base-staleness'
 import { lookupWorktreeRegistration } from '../worktree/inventory'
 import { getWorktreeInventory } from '../worktree/inventory-service'
@@ -30,18 +30,32 @@ function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, 
 
 export function registerWorktreeLifecycleIpc(): void {
   ipcMain.handle(
-    IPC.GIT_WORKTREE_LAND,
+    IPC.GIT_WORKTREE_LAND_AND_RETIRE,
     async (
       _event,
-      { repoPath, worktreePath, worktreeBranch, sourceBranch, noFf, syncFirst, requireFastForward }:
-        { repoPath: string; worktreePath: string; worktreeBranch: string; sourceBranch: string; noFf?: boolean; syncFirst?: boolean; requireFastForward?: boolean },
+      { repoPath, worktreePath, worktreeBranch, branchName, sourceBranch, noFf, syncFirst, requireFastForward }:
+        { repoPath: string; worktreePath: string; worktreeBranch: string; branchName?: string; sourceBranch: string; noFf?: boolean; syncFirst?: boolean; requireFastForward?: boolean },
     ) => {
-      log('land request', { repo_path: repoPath, worktree_branch: worktreeBranch, source_branch: sourceBranch, no_ff: !!noFf, sync_first: !!syncFirst, require_fast_forward: !!requireFastForward })
-      const result = await landWorktree({ repoPath, worktreePath, worktreeBranch, sourceBranch, noFf, syncFirst, requireFastForward })
+      const resolvedBranch = branchName ?? worktreeBranch
+      log('land-and-retire request', {
+        repo_path: repoPath, worktree_path: worktreePath, worktree_branch: worktreeBranch,
+        source_branch: sourceBranch, no_ff: !!noFf, sync_first: !!syncFirst,
+        require_fast_forward: !!requireFastForward,
+      })
+      const result = await landAndRetireWorktree({
+        repoPath, worktreePath, worktreeBranch, branchName: resolvedBranch,
+        sourceBranch, noFf, syncFirst, requireFastForward,
+      })
       if (!result.ok) {
-        warn('land refused', { worktree_branch: worktreeBranch, source_branch: sourceBranch, has_conflicts: !!result.hasConflicts, error: result.error ?? '' })
+        warn('land-and-retire failed', {
+          worktree_branch: worktreeBranch, source_branch: sourceBranch,
+          landed: !!result.landed, has_conflicts: !!result.hasConflicts, error: result.error ?? '',
+        })
       } else {
-        log('land ok', { worktree_branch: worktreeBranch, source_branch: sourceBranch, mode: result.mode ?? '', sha: (result.sha ?? '').slice(0, 7) })
+        log('land-and-retire ok', {
+          worktree_branch: worktreeBranch, source_branch: sourceBranch,
+          mode: result.mode ?? '', sha: (result.sha ?? '').slice(0, 7),
+        })
         broadcast('ion:worktree-landed', {
           repoPath,
           worktreePath,
@@ -157,28 +171,6 @@ export function registerWorktreeLifecycleIpc(): void {
         behind: result.behindCount,
         needs_sync: result.needsSync,
       })
-      return result
-    },
-  )
-
-  ipcMain.handle(
-    IPC.GIT_WORKTREE_RETIRE,
-    async (
-      _event,
-      { repoPath, worktreePath, branchName, force }:
-        { repoPath: string; worktreePath: string; branchName: string; force?: boolean },
-    ) => {
-      log('retire request', { repo_path: repoPath, worktree_path: worktreePath, branch: branchName, force: !!force })
-      const result = await retireWorktree({ repoPath, worktreePath, branchName, force })
-      if (!result.ok) {
-        warn('retire refused', { worktree_path: worktreePath, error: result.error ?? '' })
-      } else {
-        log('retire ok', {
-          worktree_path: worktreePath,
-          relocate_to: result.workingDirectory ?? '',
-          pruned_benches: (result.prunedBenchPaths ?? []).length,
-        })
-      }
       return result
     },
   )

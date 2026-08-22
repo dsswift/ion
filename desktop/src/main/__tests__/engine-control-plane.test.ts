@@ -51,7 +51,7 @@ const mockBridge = {
   getSessionConfig: vi.fn().mockReturnValue(undefined),
   stopByPrefix: vi.fn(),
   stopSession: vi.fn().mockResolvedValue(undefined),
-  stopAll: vi.fn(),
+  disconnect: vi.fn(),
   on: vi.fn((event: string, handler: any) => {
     if (event === 'event') {
       capturedEventHandler = handler

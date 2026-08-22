@@ -1,28 +1,62 @@
 /**
- * Git conflict state — immediate conflict visibility for Git panel and
- * worktree rows.
+ * Git conflict alerts — the store model behind "a sync failed and you need to
+ * know".
  *
- * A sync or land can report a conflict before the next inventory refresh. This
- * slice records that in-progress operation so the persistent Git panel banner
- * can offer resolution immediately. Inventory refresh clears state when the
- * operation completes or aborts.
+ * ── Why this exists ─────────────────────────────────────────────────────────
+ * A conflicted sync used to fail into the log file and nowhere else: the
+ * result carried `hasConflicts: true` and an operator-facing message, and the
+ * UI discarded both. The operator pressed "Sync from josh", saw nothing, and
+ * reasonably believed it succeeded — while the worktree sat mid-rebase with
+ * its work invisible. This slice is where that signal becomes visible state.
  *
- * `openConflictAssist` remains one store action: create a fresh conversation in
- * conflicted directory, then submit its fixed resolution prompt. Components must
- * not chain these calls, because ATV mirror state can be stale between steps.
+ * ── Sources ─────────────────────────────────────────────────────────────────
+ * Alerts are keyed by DIRECTORY (the checkout that is conflicted), fed by:
+ *   - sync/land results with `hasConflicts` (recorded by syncWorktree and the
+ *     land path the moment they fail);
+ *   - inventory refreshes that find a worktree with `operationState` set
+ *     (covers a conflict that happened outside Ion, or before a restart).
+ *
+ * An alert clears when the directory's operation completes or aborts — the
+ * inventory refresh notices `operationState` is gone — or when the operator
+ * dismisses the toast. Dismissing hides the TOAST only; the row badge and
+ * panel banner derive from live inventory state, not from this map, so the
+ * truth stays visible until the conflict is actually resolved.
+ *
+ * ── AI Assisted ─────────────────────────────────────────────────────────────
+ * `openConflictAssist` is ONE store action (Studio multi-step rule): create a
+ * FRESH conversation in the conflicted directory, then submit the fixed
+ * prompt. Always a new tab — commandeering an existing conversation would
+ * interrupt it and let its context sway the fix. A component handler chaining
+ * these calls would run in whichever window hosts it and decide against stale
+ * mirror state.
+ *
+ * The assist prefers the Desktop-managed `workbench-sync` tier and logs a
+ * fallback to `standard` when it is unconfigured. It refuses only when both
+ * are absent. The fresh conversation is pinned to the resolved model and
+ * forced into auto mode — a plan-mode default would park the fix writing a plan.
  */
-import type { StoreSet, StoreGet, State } from '../session-store-types'
-import { rInfo, rDebug, rWarn } from '../../rendererLogger'
-import { usePreferencesStore } from '../../preferences'
-import { applyPermissionModeForTab } from './tab-slice-permission-mode'
-import { resolveWorkbenchTier } from '../resolve-workbench-tier'
+import type {
+  StoreSet,
+  StoreGet,
+  State,
+  GitConflictAlert,
+} from "../session-store-types";
+import { rInfo, rDebug, rWarn } from "../../rendererLogger";
+import { usePreferencesStore } from "../../preferences";
+import { applyPermissionModeForTab } from "./tab-slice-permission-mode";
+import { resolveWorkbenchTier } from "../resolve-workbench-tier";
+import {
+  findActiveAutoFix,
+  getInflight,
+  setInflight,
+  clearInflight,
+} from "./conflict-assist-dedupe";
 import {
   aiAssistWorkflow,
   effectiveAiAssistTemplate,
   renderAiAssistTemplate,
   type AiAssistWorkflowId,
-} from '../../../shared/ai-assist-workflows'
-import { findActiveAutoFix, getInflight, setInflight, clearInflight } from './conflict-assist-dedupe'
+} from "../../../shared/ai-assist-workflows";
 
 /**
  * The exact prompt the AI Assisted button sends, parameterized by the
@@ -48,66 +82,142 @@ import { findActiveAutoFix, getInflight, setInflight, clearInflight } from './co
  * a resolution left merely staged).
  */
 export function conflictAssistPrompt(
-  operation: 'rebasing' | 'merging' | 'cherry-picking' | null,
+  operation: "rebasing" | "merging" | "cherry-picking" | null,
   /** True when the conflicted directory is an integration bench. */
   inBench = false,
-  directory = '.',
+  directory = ".",
 ): string {
-  const workflowId = conflictWorkflowId(operation)
+  const workflowId = conflictWorkflowId(operation);
   const result = renderAiAssistTemplate(
     workflowId,
     aiAssistWorkflow(workflowId).defaultTemplate,
     conflictTemplateValues(directory, inBench),
-  )
-  if (!result.ok) throw new Error(result.error)
-  return result.prompt
+  );
+  if (!result.ok) throw new Error(result.error);
+  return result.prompt;
 }
 
-function conflictWorkflowId(operation: 'rebasing' | 'merging' | 'cherry-picking' | null): AiAssistWorkflowId {
-  if (operation === 'merging') return 'merge-resolution'
-  if (operation === 'cherry-picking') return 'cherry-pick-resolution'
-  return 'rebase-resolution'
+function conflictWorkflowId(
+  operation: "rebasing" | "merging" | "cherry-picking" | null,
+): AiAssistWorkflowId {
+  if (operation === "merging") return "merge-resolution";
+  if (operation === "cherry-picking") return "cherry-pick-resolution";
+  return "rebase-resolution";
 }
 
-function conflictTemplateValues(directory: string, inBench: boolean): Record<string, string> {
+function conflictTemplateValues(
+  directory: string,
+  inBench: boolean,
+): Record<string, string> {
   return {
     directory,
     benchContext: inBench
       ? [
-          'This is an integration bench.',
-          'Before reasoning about the merge, call BenchResolutionHistory for the conflicted paths: the same file often conflicts once per member, and a previous resolution of it carries the reasoning git rerere cannot replay across members.',
-          'Read each side with BenchMemberFile rather than opening a member worktree directly, because a worktree holds work done since its pin and the bench merges the pin.',
-          'Use WorkspaceAttribution to decide which member owns a hunk when that is unclear.',
-        ].join(' ')
-      : '',
-  }
+          "This is an integration bench.",
+          "Before reasoning about the merge, call BenchResolutionHistory for the conflicted paths: the same file often conflicts once per member, and a previous resolution of it carries the reasoning git rerere cannot replay across members.",
+          "Read each side with BenchMemberFile rather than opening a member worktree directly, because a worktree holds work done since its pin and the bench merges the pin.",
+          "Use WorkspaceAttribution to decide which member owns a hunk when that is unclear.",
+        ].join(" ")
+      : "",
+  };
 }
 
 /** Back-compat name for the default (rebase) prompt. */
-export const CONFLICT_ASSIST_PROMPT = conflictAssistPrompt(null)
+export const CONFLICT_ASSIST_PROMPT = conflictAssistPrompt(null);
 
-export function createGitConflictSlice(set: StoreSet, get: StoreGet): Partial<State> {
+function refreshConflictWorkspace(directory: string, get: StoreGet): Promise<void> {
+  const repoPath = [...get().worktreeInventory.entries()]
+    .find(([, worktrees]) => worktrees.some((worktree) => worktree.worktreePath === directory))?.[0]
+  return repoPath ? get().refreshWorkspaceViews(repoPath) : Promise.resolve()
+}
+
+export function createGitConflictSlice(
+  set: StoreSet,
+  get: StoreGet,
+): Partial<State> {
   return {
-    /** Record an in-progress operation before inventory's next refresh. */
+    /**
+     * Record that a directory is conflicted. Called from the sync/land failure
+     * paths (source 'sync' / 'land') and from inventory refreshes that find an
+     * in-progress operation (source 'detected').
+     *
+     * Re-recording the same directory updates the message but keeps the alert
+     * un-dismissed only if it was not already dismissed — a poll must not
+     * resurrect a toast the operator closed.
+     */
     recordConflictAlert: (directory, alert) => {
       set((s) => {
-        rInfo('git.conflicts', 'conflict state recorded', {
+        const existing = s.gitConflictAlerts.get(directory);
+        const next: GitConflictAlert = {
+          ...alert,
+          // A fresh sync/land failure is new information and re-raises the
+          // toast; a periodic 'detected' record keeps a prior dismissal.
+          dismissed:
+            alert.source === "detected"
+              ? (existing?.dismissed ?? false)
+              : false,
+          recordedAt: Date.now(),
+        };
+        rInfo("git.conflicts", "conflict alert recorded", {
           directory,
-          operation: alert.operationState ?? '',
-        })
-        return { gitConflictAlerts: new Map(s.gitConflictAlerts).set(directory, alert) }
-      })
+          source: alert.source,
+          operation: alert.operationState ?? "",
+          re_raised: !next.dismissed,
+        });
+        return {
+          gitConflictAlerts: new Map(s.gitConflictAlerts).set(directory, next),
+        };
+      });
     },
 
-    /** Drop conflict state when operation completes or aborts. */
+    /** Drop a directory's alert entirely — its operation completed or aborted. */
     clearConflictAlert: (directory) => {
       set((s) => {
-        if (!s.gitConflictAlerts.has(directory)) return {}
-        rDebug('git.conflicts', 'conflict state cleared', { directory })
-        const next = new Map(s.gitConflictAlerts)
-        next.delete(directory)
-        return { gitConflictAlerts: next }
-      })
+        if (!s.gitConflictAlerts.has(directory)) return {};
+        rDebug("git.conflicts", "conflict alert cleared", { directory });
+        const next = new Map(s.gitConflictAlerts);
+        next.delete(directory);
+        return { gitConflictAlerts: next };
+      });
+    },
+
+    /** Hide the toast for a directory. The row badge stays until resolved. */
+    dismissConflictAlert: (directory) => {
+      set((s) => {
+        const existing = s.gitConflictAlerts.get(directory);
+        if (!existing || existing.dismissed) return {};
+        rDebug("git.conflicts", "conflict toast dismissed", { directory });
+        return {
+          gitConflictAlerts: new Map(s.gitConflictAlerts).set(directory, {
+            ...existing,
+            dismissed: true,
+          }),
+        };
+      });
+    },
+
+    continueConflictOperation: async (directory) => {
+      const result = await window.ion.gitRebaseContinue(directory)
+      if (!result.ok) {
+        rWarn('git.conflicts', 'continue failed', { directory, error: result.error ?? '' })
+        return { ok: false, error: result.error }
+      }
+      get().clearConflictAlert(directory)
+      await refreshConflictWorkspace(directory, get)
+      rInfo('git.conflicts', 'continue completed', { directory })
+      return { ok: true }
+    },
+
+    abortConflictOperation: async (directory) => {
+      const result = await window.ion.gitRebaseAbort(directory)
+      if (!result.ok) {
+        rWarn('git.conflicts', 'abort failed', { directory, error: result.error ?? '' })
+        return { ok: false, error: result.error }
+      }
+      get().clearConflictAlert(directory)
+      await refreshConflictWorkspace(directory, get)
+      rInfo('git.conflicts', 'abort completed', { directory })
+      return { ok: true }
     },
 
     /**
@@ -123,79 +233,91 @@ export function createGitConflictSlice(set: StoreSet, get: StoreGet): Partial<St
      * development conversation stays untouched.
      */
     openConflictAssist: async (directory) => {
-      const existing = findActiveAutoFix(get().tabs, directory)
+      // Dedup guarantee 1: an existing conflict-auto-fix tab for this
+      // directory is surfaced, never duplicated (a second fix conversation
+      // would race the first over the same checkout).
+      const existing = findActiveAutoFix(get().tabs, directory);
       if (existing) {
-        rInfo('git.conflicts', 'assist: reusing existing auto-fix tab', {
-          directory, tab_id: existing.slice(0, 8),
-        })
-        get().selectTab(existing)
-        return existing
+        rInfo("git.conflicts", "assist: reusing existing auto-fix tab", {
+          directory,
+          tab_id: existing.slice(0, 8),
+        });
+        get().selectTab(existing);
+        return existing;
       }
-
-      const pending = getInflight(directory)
-      if (pending) {
-        rDebug('git.conflicts', 'assist: awaiting in-flight creation for directory', { directory })
-        return pending
+      // Dedup guarantee 2: concurrent calls for the same directory share one
+      // promise — the tab exists before its `conflict-auto-fix` tag lands,
+      // so guarantee 1 alone cannot cover the in-flight window.
+      const inflight = getInflight(directory);
+      if (inflight) {
+        rDebug("git.conflicts", "assist: joining in-flight open", { directory });
+        return inflight;
       }
-
-      const creation = (async () => {
-        try {
-          return await openConflictAssistInner(directory, set, get)
-        } finally {
-          clearInflight(directory)
-        }
-      })()
-      setInflight(directory, creation)
-      return creation
-    },
-  }
-}
-
-async function openConflictAssistInner(
-  directory: string,
-  set: StoreSet,
-  get: StoreGet,
-): Promise<string> {
-      const tier = await resolveWorkbenchTier({ workflow: 'conflict-resolution', directory })
-      if (!tier.ok) throw new Error(tier.error)
-
-      rInfo('git.conflicts', 'assist: opening fresh conversation in conflicted directory', {
+      const run = (async (): Promise<string> => {
+      const tier = await resolveWorkbenchTier({
+        workflow: "conflict-resolution",
         directory,
-        tier: tier.tier,
-        model: tier.model,
-      })
+      });
+      if (!tier.ok) throw new Error(tier.error);
+
+      rInfo(
+        "git.conflicts",
+        "assist: opening fresh conversation in conflicted directory",
+        {
+          directory,
+          tier: tier.tier,
+          model: tier.model,
+        },
+      );
 
       // Name the operation actually in progress — a bench resolve-once leaves
       // a MERGE, a conflicted sync leaves a rebase — so the model is not told
       // to fix an operation that does not exist. Probe failure falls back to
       // the rebase wording rather than blocking the assist.
-      let operation: 'rebasing' | 'merging' | 'cherry-picking' | null = null
+      let operation: "rebasing" | "merging" | "cherry-picking" | null = null;
       try {
-        const op = await window.ion.gitOpState(directory)
-        if (op.ok) operation = op.state ?? null
+        const op = await window.ion.gitOpState(directory);
+        if (op.ok) operation = op.state ?? null;
       } catch (err) {
-        rWarn('git.conflicts', 'assist could not probe operation state, defaulting to rebase wording', {
-          directory, error: String(err),
-        })
+        rWarn(
+          "git.conflicts",
+          "assist could not probe operation state, defaulting to rebase wording",
+          {
+            directory,
+            error: String(err),
+          },
+        );
       }
 
-      const inBench = [...get().benchWorkspaces.values()]
-        .some((list) => list.some((workspace) => workspace.benchPath === directory))
-      const workflowId = conflictWorkflowId(operation)
+      const inBench = [...get().benchWorkspaces.values()].some((list) =>
+        list.some((workspace) => workspace.benchPath === directory),
+      );
+      const workflowId = conflictWorkflowId(operation);
       const { template, overridden } = effectiveAiAssistTemplate(
         workflowId,
         usePreferencesStore.getState().aiAssistPromptOverrides,
-      )
-      const rendered = renderAiAssistTemplate(workflowId, template, conflictTemplateValues(directory, inBench))
+      );
+      const rendered = renderAiAssistTemplate(
+        workflowId,
+        template,
+        conflictTemplateValues(directory, inBench),
+      );
       if (!rendered.ok) {
-        rWarn('git.conflicts', 'assist prompt validation failed', {
-          directory, workflow: workflowId, overridden, error: rendered.error,
-        })
-        throw new Error(`AI-assisted workflow prompt is invalid: ${rendered.error}`)
+        rWarn("git.conflicts", "assist prompt validation failed", {
+          directory,
+          workflow: workflowId,
+          overridden,
+          error: rendered.error,
+        });
+        throw new Error(
+          `AI-assisted workflow prompt is invalid: ${rendered.error}`,
+        );
       }
-      rInfo('git.conflicts', 'assist prompt rendered', {
-        directory, workflow: workflowId, overridden,
-      })
+      rInfo("git.conflicts", "assist prompt rendered", {
+        directory,
+        workflow: workflowId,
+        overridden,
+      });
 
       // useWorktree=false: the directory IS the checkout to fix; a nested
       // worktree would point the conversation somewhere else entirely.
@@ -203,16 +325,16 @@ async function openConflictAssistInner(
       // NON-blank conversation must never be commandeered — and the duplicate
       // check's blank-reuse path is only safe because a blank tab has no
       // context to sway the fix. Skipping keeps the guarantee unconditional.
-      const tabId = await get().createTabInDirectory(directory, false, true)
+      const tabId = await get().createTabInDirectory(directory, false, true);
 
       // Select the workflow tier on the fresh conversation. Automatic model
       // selection yields to slash-command frontmatter on any later command.
-      get().setTabAutomaticModel(tabId, tier.model)
+      get().setTabAutomaticModel(tabId, tier.model);
 
       // Force auto mode regardless of the operator's default. The assist's
       // whole job is to EXECUTE the fix; a plan-mode default would park it
       // writing a plan for work that was already requested verbatim.
-      applyPermissionModeForTab(set, get, tabId, 'auto', 'conflict_assist')
+      applyPermissionModeForTab(set, get, tabId, "auto", "conflict_assist");
 
       // Tag role + lock BEFORE the machine prompt goes in: the auto-fix
       // lifecycle (event-slice-auto-fix-lifecycle.ts) keys its close/retain
@@ -226,26 +348,34 @@ async function openConflictAssistInner(
       // conversation stays readable and abortable; submit() and the InputBar
       // both honor the flag, and role + lock persist across restarts.
       set((s) => ({
-        tabs: s.tabs.map((t) => (t.id === tabId ? {
-          ...t,
-          tabRole: 'conflict-auto-fix' as const,
-          inputLocked: true,
-          inputLockReason: 'automated-workflow' as const,
-        } : t)),
-      }))
+        tabs: s.tabs.map((t) =>
+          t.id === tabId
+            ? { ...t, tabRole: "conflict-auto-fix" as const, inputLocked: true }
+            : t,
+        ),
+      }));
 
-      const prompt = rendered.prompt
+      const prompt = rendered.prompt;
       // 'machine' source: the one submission allowed through the lock this
       // flow just installed (see send-slice submit guard).
-      get().submit(tabId, prompt, { source: 'machine' })
+      get().submit(tabId, prompt, { source: "machine" });
 
-      rInfo('git.conflicts', 'assist prompt submitted', {
+      rInfo("git.conflicts", "assist prompt submitted", {
         directory,
         tab_id: tabId.slice(0, 8),
         model: tier.model,
-        operation: operation ?? 'unknown',
+        operation: operation ?? "unknown",
         in_bench: inBench,
         input_locked: true,
-      })
-      return tabId
+      });
+      return tabId;
+      })();
+      setInflight(directory, run);
+      try {
+        return await run;
+      } finally {
+        clearInflight(directory);
+      }
+    },
+  };
 }

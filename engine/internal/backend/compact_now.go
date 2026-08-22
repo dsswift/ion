@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
+	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -183,7 +184,7 @@ func (b *ApiBackend) CompactNow(ctx context.Context, req CompactRequest) error {
 	// tokenLimit is informational here (the user is forcing compaction
 	// regardless of usage). Pass the auto-trigger threshold so the hook
 	// payload and logs show what the proactive system would have used.
-	tokenLimit := conversation.AutoCompactTokenLimit(contextWindow, opts.MaxTokens)
+	tokenLimit := conversation.ResolveModelContextCapacity(contextWindow, opts.MaxTokens, providers.GetModelInfo(req.Model)).EffectiveLimit
 
 	return b.performCompact(performCompactParams{
 		ctx:           ctx,

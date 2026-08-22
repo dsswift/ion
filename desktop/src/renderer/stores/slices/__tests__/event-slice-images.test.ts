@@ -52,6 +52,19 @@ describe('attachImageToMessages', () => {
     expect(created.attachments![0]).toMatchObject({ type: 'image', path: '/img/cat.png' })
   })
 
+  it('preserves an engine-provided content hash for transcript echo suppression', () => {
+    const messages: Message[] = [
+      { id: 'm2', role: 'tool', content: 'done', toolId: 'tc-1', toolName: 'read', timestamp: 2 },
+    ]
+    const out = attachImageToMessages(messages, {
+      ...toolImageEvent('/img/a.png', 'tc-1'),
+      contentHash: 'sha256-image',
+    })
+    const attachment = out[0].attachments![0]
+    expect(attachment.type).toBe('image')
+    expect(attachment.type === 'image' ? attachment.contentHash : undefined).toBe('sha256-image')
+  })
+
   it('dedups by path — a repeated event does not attach twice', () => {
     const messages: Message[] = [
       { id: 'm2', role: 'tool', content: 'done', toolId: 'tc-1', toolName: 'render', timestamp: 2 },

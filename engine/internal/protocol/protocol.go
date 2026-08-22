@@ -51,9 +51,12 @@ type ClientCommand struct {
 	Fallbacks []string `json:"fallbacks,omitempty"`
 
 	// elicitation_response: client reply to an engine_elicitation_request event.
+	// ElicitDeclined is the ternary middle: "no, but continue" vs
+	// ElicitCancelled "no, and abort".
 	ElicitRequestID string                 `json:"elicitRequestId,omitempty"`
 	ElicitResponse  map[string]interface{} `json:"elicitResponse,omitempty"`
 	ElicitCancelled bool                   `json:"elicitCancelled,omitempty"`
+	ElicitDeclined  bool                   `json:"elicitDeclined,omitempty"`
 
 	// early_stop_decision_response: client reply to an
 	// engine_early_stop_decision_request event. All fields are optional; an
@@ -308,6 +311,32 @@ type ClientCommand struct {
 	MaxAgeDays int      `json:"maxAgeDays,omitempty"`
 	ExcludeIDs []string `json:"excludeIds,omitempty"`
 	DryRun     bool     `json:"dryRun,omitempty"`
+	// delete_stored_conversations: exact, operator-requested deletion.
+	// SessionIDs carries the complete file-set identities to remove.
+
+	// steer_agent: optional client-generated correlation id for this one
+	// steer message. When the steer reaches a live API-backed main-loop run
+	// (agentName empty) and persists as a genuine client-originated user
+	// turn, the engine echoes ClientMessageID back on engine_steer_injected
+	// alongside the durable EntryID it assigned the persisted entry — so the
+	// sender can re-key its optimistic UI row by identity instead of trusting
+	// buffer position, without the engine ever needing to know the client's
+	// row-rendering scheme. Omitted or empty: no correlation identity is
+	// echoed (legacy behavior, unchanged). Additive optional field on the
+	// scrutinized engine wire — non-breaking.
+	ClientMessageID string `json:"clientMessageId,omitempty"`
+
+	// rewind_session: exact durable engine entry id to rewind before. Takes
+	// priority over UserTurnIndex when both are present. A client that has
+	// learned a persisted user turn's EntryID (from a prior
+	// engine_steer_injected confirmation, or from loaded conversation
+	// history) should send it here instead of an ordinal it computed from
+	// its own rendered rows — a queued-but-undelivered message occupying a
+	// position in the client's local list has no corresponding tree entry,
+	// so an ordinal computed against that list can point at the wrong turn.
+	// Reuses the EntryID field already defined above for branch/branch_before.
+	// Additive: a rewind_session command that omits EntryID and sends only
+	// UserTurnIndex behaves exactly as before.
 }
 
 var validCommands = map[string]bool{
@@ -319,6 +348,15 @@ var validCommands = map[string]bool{
 	"dialog_response":              true,
 	"command":                      true,
 	"stop_session":                 true,
+	// settle_session: pause a session's async subsystems (schedules,
+	// webhooks) and cancel any active run WITHOUT destroying the session.
+	// The session stays in the map; StartSession for the same key is
+	// still idempotent. Extension subprocesses and MCP connections stay
+	// alive. Resume with resume_session. Requires key.
+	"settle_session": true,
+	// resume_session: reverse a settle — re-wire async hosts, clear the
+	// settled flag, and emit idle status. Requires key.
+	"resume_session":               true,
 	"stop_by_prefix":               true,
 	"list_sessions":                true,
 	"fork_session":                 true,
@@ -346,6 +384,24 @@ var validCommands = map[string]bool{
 	// without waiting for the next heartbeat tick or paying the cost of
 	// a full reconcile. Phase 2 of the state-management overhaul.
 	"query_session_status": true,
+	// resolve_permission_denials: drop the session's retained
+	// AskUserQuestion / ExitPlanMode denials because the consumer has
+	// resolved them by its own means (the user dismissed the card, answered
+	// out of band, or the consumer decided the question no longer applies).
+	//
+	// The engine retains unresolved denials so that a re-attaching consumer
+	// sees the still-pending question on every status snapshot, and clears
+	// them when a new prompt supersedes them (prompt_dispatch.go) or on
+	// /clear (clear_core.go). Neither covers a resolution that produces no
+	// prompt: a consumer that dismisses the card had no way to say so, so the
+	// engine kept re-publishing the denial and the consumer had to suppress
+	// the echo locally and permanently — which turns any later loss of its
+	// local state into an unrecoverable one.
+	//
+	// This is the missing third path. Mechanism only: the engine takes no
+	// position on WHY the consumer resolved the question, and a consumer that
+	// never sends it behaves exactly as before. Requires key.
+	"resolve_permission_denials": true,
 	// get_agent_state returns a full-fidelity roster in the requesting
 	// command result. It is intentionally not an engine event because events
 	// broadcast to every socket consumer.
@@ -418,6 +474,8 @@ var validCommands = map[string]bool{
 	// delete_stored_sessions: removes stale conversation files from disk.
 	// All fields optional with sane defaults (maxAgeDays=14, dryRun=false).
 	"delete_stored_sessions": true,
+	// delete_stored_conversations: exact inactive conversation deletion. Requires sessionIds.
+	"delete_stored_conversations": true,
 	// resource_subscribe / resource_unsubscribe: client-side resource
 	// collection management. resource_subscribe attaches a live subscription
 	// to a resource kind; the engine streams snapshot + delta events back

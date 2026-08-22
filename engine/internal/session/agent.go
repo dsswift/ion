@@ -1,7 +1,6 @@
 package session
 
 import (
-
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -137,6 +136,15 @@ type steerable interface {
 	SteerWithKind(requestID, message, kind string) backend.SteerResult
 }
 
+// steerableWithClientID is the optional extension of steerable that also
+// accepts a client correlation id. Asserted separately (rather than folded
+// into steerable) so a backend or test double that predates the correlation-id
+// feature keeps compiling and falls back to the kind-only path — the
+// correlation id is purely additive UX, never required for a steer to deliver.
+type steerableWithClientID interface {
+	SteerWithClientID(requestID, message, kind, clientMessageID string) backend.SteerResult
+}
+
 // SteerAgent sends a message to a running agent's stdin, or steers the main
 // session loop if agentName is empty. It returns a SteerOutcome describing how
 // the steer was resolved so the caller (and the logs) can never lose track of
@@ -154,7 +162,16 @@ func (m *Manager) SteerAgent(key, agentName, message string) SteerOutcome {
 // typing into a running turn. A machine originator passes its own kind so the
 // persisted turn records that no user authored it.
 func (m *Manager) SteerAgentWithKind(key, agentName, message, kind string) SteerOutcome {
-	utils.LogWithFields(utils.LevelInfo, "session", "steeragent: attempt", map[string]any{"session_id": key, "agent_name": agentName, "count": len(message), "kind": kind})
+	return m.SteerAgentWithClientID(key, agentName, message, kind, "")
+}
+
+// SteerAgentWithClientID is the correlation-id-carrying variant of
+// SteerAgentWithKind. clientMessageID is only meaningful for the main-loop
+// (agentName == "") API-steer path — a named-agent stdin steer and the
+// stdin-pipe main-loop fallback have no channel to echo a confirmation
+// through, so the id is accepted but has no effect on those paths.
+func (m *Manager) SteerAgentWithClientID(key, agentName, message, kind, clientMessageID string) SteerOutcome {
+	utils.LogWithFields(utils.LevelInfo, "session", "steeragent: attempt", map[string]any{"session_id": key, "agent_name": agentName, "count": len(message), "kind": kind, "client_message_id": clientMessageID})
 
 	m.mu.RLock()
 	s, ok := m.sessions[key]
@@ -177,7 +194,18 @@ func (m *Manager) SteerAgentWithKind(key, agentName, message, kind string) Steer
 		// rejection (channel full) from "this backend/run is not
 		// API-steerable" (no run), the latter falling through to the stdin
 		// pipe path used by Claude Code subprocesses.
-		if steer, ok := m.backend.(steerable); ok {
+		if steerCID, ok := m.backend.(steerableWithClientID); ok {
+			switch res := steerCID.SteerWithClientID(rid, message, kind, clientMessageID); res {
+			case backend.SteerResultDelivered:
+				utils.LogWithFields(utils.LevelInfo, "session", "steeragent: delivered to main loop via channel", map[string]any{"session_id": key, "rid": rid, "count": len(message), "client_message_id": clientMessageID, "steer_delivered": SteerDelivered})
+				return SteerDelivered
+			case backend.SteerResultChannelFull:
+				utils.LogWithFields(utils.LevelWarn, "session", "steeragent: rejected, steer channel full", map[string]any{"session_id": key, "rid": rid, "count": len(message), "steer_rejected_channel_full": SteerRejectedChannelFull})
+				return SteerRejectedChannelFull
+			default:
+				utils.LogWithFields(utils.LevelInfo, "session", "steeragent: backend not api-steerable, falling back to stdin", map[string]any{"res": res, "session_id": key, "rid": rid})
+			}
+		} else if steer, ok := m.backend.(steerable); ok {
 			switch res := steer.SteerWithKind(rid, message, kind); res {
 			case backend.SteerResultDelivered:
 				utils.LogWithFields(utils.LevelInfo, "session", "steeragent: delivered to main loop via channel", map[string]any{"session_id": key, "rid": rid, "count": len(message), "steer_delivered": SteerDelivered})

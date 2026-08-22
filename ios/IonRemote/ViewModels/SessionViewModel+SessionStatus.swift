@@ -135,14 +135,14 @@ enum SessionStatusSynthesis {
             contextPercent: resolvedPercent,
             contextWindow: resolvedWindow,
             contextTokens: resolvedTokens,
+            contextEffectiveLimit: status.contextEffectiveLimit,
             runCostUsd: status.runCostUsd,
             conversationCostUsd: status.conversationCostUsd,
             permissionDenials: status.permissionDenialsPending,
             extensionName: status.extensionName,
             backgroundAgents: status.backgroundAgentCount,
-            // No SessionStatus source for the shell count (it rides
-            // StatusFields on the legacy engine_status path only).
-            backgroundShells: nil,
+            backgroundShells: status.backgroundShellCount,
+            hasPendingWork: status.hasPendingWork,
             numTurns: priorNumTurns,
             conversationTurns: priorConversationTurns
         )

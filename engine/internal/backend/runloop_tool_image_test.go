@@ -91,6 +91,10 @@ func TestExecuteToolsMcpImagesSurviveAndEmit(t *testing.T) {
 	if tre.Images[0].Path == b64 || tre.Images[0].Path == "" {
 		t.Errorf("ToolResultImage.Path = %q, want an on-disk file path (not base64)", tre.Images[0].Path)
 	}
+	const wantContentHash = "08bb5e5d6eaac1049ede0893d30ed022b1a4d9b5b48db414871f51c9cb35283d"
+	if tre.Images[0].ContentHash != wantContentHash {
+		t.Errorf("ToolResultImage.ContentHash = %q, want %q", tre.Images[0].ContentHash, wantContentHash)
+	}
 
 	// (3) ImageContentEvent with Source="tool" and the producing ToolID.
 	if ice == nil {
@@ -101,6 +105,9 @@ func TestExecuteToolsMcpImagesSurviveAndEmit(t *testing.T) {
 	}
 	if ice.ToolID != "tc-img-1" {
 		t.Errorf("ImageContentEvent.ToolID = %q, want tc-img-1", ice.ToolID)
+	}
+	if ice.ContentHash != wantContentHash {
+		t.Errorf("ImageContentEvent.ContentHash = %q, want %q", ice.ContentHash, wantContentHash)
 	}
 
 	// The saved file exists under the conversation images dir and holds the

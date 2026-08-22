@@ -105,7 +105,7 @@ final class DataDrivenConversationTests: XCTestCase {
         ]}
         """.data(using: .utf8)!
         let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
-        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _) = event else {
+        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _) = event else {
             return XCTFail("Expected snapshot")
         }
         // Sanity: the wire payload really is a plain tab.
@@ -151,7 +151,7 @@ final class DataDrivenConversationTests: XCTestCase {
         ]}
         """.data(using: .utf8)!
         let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
-        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _) = event else {
+        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _) = event else {
             return XCTFail("Expected snapshot")
         }
         vm.handleSnapshot(snapshotTabs: tabs, recentDirs: [], groupMode: nil, groups: nil)

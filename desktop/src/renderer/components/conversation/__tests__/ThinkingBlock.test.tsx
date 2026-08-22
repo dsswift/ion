@@ -9,7 +9,7 @@
  *   (b) The collapsed text div uses `textTertiary` (#bbb in the mock), NOT
  *       the darker `textMuted` (#aaa) that made the preview unreadable.
  *   (c) The expanded reasoning-text element's inline fontSize is
- *       `calc(var(--ion-conv-font-size, 13px) - 2px)` and it no longer
+ *       `calc(var(--ion-data-font-size, 13px) - 2px)` and it no longer
  *       carries the text-[11px] Tailwind class.
  *   (d) The header-label element keeps fixed text-[11px] (chrome) and does
  *       NOT carry an inline fontSize referencing the zoom variable.
@@ -109,7 +109,7 @@ describe('ThinkingBlock — collapsed preview layout and color', () => {
     const clampDiv = allDivs.find((d) => {
       const s = d.style
       return (
-        s.maxHeight.includes('--ion-conv-font-size') &&
+        s.maxHeight.includes('--ion-data-font-size') &&
         s.overflow === 'hidden' &&
         s.display === 'flex' &&
         s.flexDirection === 'column' &&
@@ -119,7 +119,7 @@ describe('ThinkingBlock — collapsed preview layout and color', () => {
 
     expect(clampDiv).toBeDefined()
     expect(clampDiv!.style.maxHeight).toBe(
-      'calc((var(--ion-conv-font-size, 13px) - 2px) * 1.45 * 3)',
+      'calc((var(--ion-data-font-size, 13px) - 2px) * 1.45 * 3)',
     )
     expect(clampDiv!.style.justifyContent).toBe('flex-end')
     expect(clampDiv!.style.overflow).toBe('hidden')
@@ -133,12 +133,12 @@ describe('ThinkingBlock — collapsed preview layout and color', () => {
       root.render(React.createElement(ThinkingBlock, { message, skipMotion: true }))
     })
 
-    // Find the inner text div: has fontSize with --ion-conv-font-size AND contains preview text.
+    // Find the inner text div: has fontSize with --ion-data-font-size AND contains preview text.
     const allDivs = Array.from(container.querySelectorAll('div')) as HTMLDivElement[]
     const textDiv = allDivs.find((d) => {
       const s = d.style
       return (
-        s.fontSize.includes('--ion-conv-font-size') &&
+        s.fontSize.includes('--ion-data-font-size') &&
         (d.textContent ?? '').length > 10
       )
     })
@@ -189,7 +189,7 @@ describe('ThinkingBlock — content-vs-chrome font sizing', () => {
     const allDivs = Array.from(container.querySelectorAll('div'))
     const zoomScaledDivs = allDivs.filter((div) => {
       const fs = (div as HTMLElement).style.fontSize
-      return fs.includes('--ion-conv-font-size')
+      return fs.includes('--ion-data-font-size')
     })
 
     expect(zoomScaledDivs.length).toBeGreaterThanOrEqual(1)
@@ -205,7 +205,7 @@ describe('ThinkingBlock — content-vs-chrome font sizing', () => {
     )
     expect(reasoningDiv).toBeDefined()
     expect((reasoningDiv as HTMLElement).style.fontSize).toBe(
-      'calc(var(--ion-conv-font-size, 13px) - 2px)',
+      'calc(var(--ion-data-font-size, 13px) - 2px)',
     )
   })
 
@@ -227,6 +227,6 @@ describe('ThinkingBlock — content-vs-chrome font sizing', () => {
 
     expect(labelSpan).toBeDefined()
     expect(labelSpan!.classList.contains('text-[11px]')).toBe(true)
-    expect((labelSpan as HTMLElement).style.fontSize).not.toContain('--ion-conv-font-size')
+    expect((labelSpan as HTMLElement).style.fontSize).not.toContain('--ion-data-font-size')
   })
 })

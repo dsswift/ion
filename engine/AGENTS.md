@@ -190,7 +190,7 @@ No SDK dependencies. Adding a provider: extend the OpenAI-compatible factory or 
 
 ## Tools
 
-Core: Read, Write, Edit, Bash, Grep, Glob, Agent, WebFetch, WebSearch, NotebookEdit, LSP, Skill, ListMcpResources, ReadMcpResource, SearchHistory, WorktreeList, WorktreeCommits, WorktreeDiff.
+Core: Read, Write, Edit, Bash, Grep, Glob, Agent, AgentStatus, WebFetch, WebSearch, NotebookEdit, LSP, Skill, ListMcpResources, ReadMcpResource, SearchHistory, WorktreeList, WorktreeCommits, WorktreeDiff.
 Optional (harness opt-in): TaskCreate, TaskList, TaskGet, TaskStop.
 
 ## Hooks

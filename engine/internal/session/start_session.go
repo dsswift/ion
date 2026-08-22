@@ -253,6 +253,7 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 			s.lastContextWindow = ctxWindow
 			s.lastContextTokens = usage.Tokens
 			s.lastContextPct = usage.Percent
+			updateContextCapacityLocked(s, windowModel, ctxWindow, s.config.MaxTokens)
 			m.mu.Unlock()
 			utils.LogWithFields(utils.LevelInfo, "session", "startsession: seeded from", map[string]any{
 				"key": key, "model": convModel, "window_model": windowModel, "ctx_window": ctxWindow,
@@ -449,6 +450,7 @@ func (m *Manager) rebindSession(s *engineSession, key, newConvID string) {
 		s.lastContextWindow = ctxWindow
 		s.lastContextTokens = usage.Tokens
 		s.lastContextPct = usage.Percent
+		updateContextCapacityLocked(s, windowModel, ctxWindow, s.config.MaxTokens)
 		m.mu.Unlock()
 		utils.LogWithFields(utils.LevelInfo, "session", "rebindsession: seeded model and context from target conversation", map[string]any{
 			"key": key, "model": convModel, "window_model": windowModel, "context_window": ctxWindow,

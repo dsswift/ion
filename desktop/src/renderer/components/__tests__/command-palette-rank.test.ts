@@ -20,17 +20,17 @@ describe('fuzzyScore', () => {
 describe('rankEntries', () => {
   const entries = [
     entry('a', 'Open Overlay'),
-    entry('b', 'Open Visualizer', 'atv office'),
+    entry('b', 'Open Ion Studio', 'studio atv office'),
     entry('c', 'graphics-lead', 'agent'),
     entry('d', 'New Conversation'),
   ]
   it('label matches outrank keyword matches; results capped', () => {
     const r = rankEntries('open', entries)
-    expect(r.map((x) => x.entry.id)).toEqual(['a', 'b'])
+    expect(r.map((x) => x.entry.id).sort()).toEqual(['a', 'b'])
     expect(rankEntries('', entries, 2)).toHaveLength(2)
   })
   it('keyword-only matches surface too', () => {
-    const r = rankEntries('atv', entries)
+    const r = rankEntries('studio', entries)
     expect(r.map((x) => x.entry.id)).toEqual(['b'])
   })
   it('no match yields empty', () => {

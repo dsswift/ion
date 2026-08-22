@@ -424,8 +424,6 @@ final class SessionViewModel {
     /// Cleared on hard disconnect so a stale create never spawns a tab against a
     /// different pairing. See `SessionViewModel+PendingCreate.swift`.
     var pendingCreates: [String: PendingCreate] = [:]
-    /// Text to prefill into the input bar (set by rewind/fork responses).
-    var pendingInputByTab: [String: String] = [:]
     /// Per-tab unsent input text. Persisted to UserDefaults across launches.
     /// Keyed by bare `tabId` for both plain and engine tabs (the single unified
     /// draft store, post-#256). Updated on every keystroke via the InputBar

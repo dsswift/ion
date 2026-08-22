@@ -317,7 +317,7 @@ export interface BenchClientTool {
 export const BENCH_CLIENT_TOOLS: BenchClientTool[] = [
   {
     name: 'WorkspaceAttribution',
-    description: 'Attribute a file or inclusive line range in the current integration bench to its source branch, enabled member worktree(s), or recorded merge resolution. Returns every candidate and warning; never edits files.',
+    description: 'Attribute a file or inclusive line range in the current integration bench to its source branch, member worktree(s), or recorded merge resolution. Returns every candidate and warning; never edits files.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -341,7 +341,7 @@ export const BENCH_CLIENT_TOOLS: BenchClientTool[] = [
         file: { type: 'string', description: 'Absolute or bench-relative file path' },
         member: {
           type: 'string',
-          description: 'Member branch name or worktree path. Required unless source is "base". The result lists the enabled members when this does not match.',
+          description: 'Member branch name or worktree path. Required unless source is "base". The result lists the members when this does not match.',
         },
         source: {
           type: 'string',

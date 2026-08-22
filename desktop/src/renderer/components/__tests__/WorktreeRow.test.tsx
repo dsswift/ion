@@ -25,10 +25,27 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
+const store = vi.hoisted(() => ({
+  tabs: [] as Array<Record<string, unknown>>,
+  conversationPanes: new Map<string, unknown>(),
+  selectTab: vi.fn(),
+}))
+
+vi.mock('../../stores/sessionStore', () => ({
+  useSessionStore: Object.assign(
+    (selector: (s: typeof store) => unknown) => selector(store),
+    { getState: () => store },
+  ),
+}))
+
 vi.mock('@phosphor-icons/react', () => ({
   ArrowsClockwise: () => null, ArrowCircleUp: () => null, Bug: () => null,
   ChatCircle: () => null, Check: () => null, CircleNotch: () => null,
   DotsThree: () => null, Warning: () => null,
+  Diamond: () => null, Square: () => null, StarFour: () => null,
+  Triangle: () => null, Heart: () => null, Hexagon: () => null,
+  Lightning: () => null, Terminal: () => null, DeviceMobile: () => null,
+  Monitor: () => null, Gear: () => null,
 }))
 
 vi.mock('../../theme', () => ({
@@ -97,6 +114,9 @@ function hoverName(branch: string): void {
 
 beforeEach(() => {
   vi.useFakeTimers()
+  store.tabs = []
+  store.conversationPanes = new Map()
+  store.selectTab.mockClear()
   container = document.createElement('div')
   document.body.appendChild(container)
   root = createRoot(container)
@@ -194,6 +214,23 @@ describe('WorktreeRow — hover card', () => {
     expect(card.textContent).not.toMatch(/tab \d/)
   })
 
+  it('renders canonical live status for every listed conversation', () => {
+    store.tabs = [
+      { id: 'a', status: 'running', pillIcon: null, manualUnread: false, lastCompletionAt: null, lastVisitedAt: null },
+      { id: 'b', status: 'idle', pillIcon: null, manualUnread: false, lastCompletionAt: null, lastVisitedAt: null },
+    ]
+    render({
+      entry: entry(),
+      openConversations: [conv({ tabId: 'a', title: 'Run' }), conv({ tabId: 'b', title: 'Wait' })],
+    })
+
+    hoverName('wt/ion-a3f1')
+
+    const running = document.querySelector('[data-testid="worktree-conversation-status-a"]')!
+    const idle = document.querySelector('[data-testid="worktree-conversation-status-b"]')!
+    expect(running.firstElementChild?.className).toContain('animate-pulse-dot')
+    expect(idle.firstElementChild?.className).not.toContain('animate-pulse-dot')
+  })
   it('says so plainly when no conversation is open there', () => {
     render({ entry: entry(), openConversations: [] })
 

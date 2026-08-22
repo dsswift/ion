@@ -255,3 +255,10 @@ Each axis is part of the contract. Future event design should pick one role
 per axis and stick to it; the discriminated-event pattern (a `kind` field
 on the variant struct) is preferred over conflating multiple roles into one
 event type.
+
+## Run recovery journal lifecycle
+
+Run recovery records accepted work before dispatch. A terminal root-run exit
+clears the journal for that run identity. A parked root exit (`suspended`) keeps
+it because the engine will wake that same work later. This preserves restart
+recovery for interrupted work without replaying a run that already finished.

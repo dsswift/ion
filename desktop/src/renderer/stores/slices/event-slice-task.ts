@@ -9,7 +9,9 @@ import type { ConversationInstance } from '../../../shared/types-engine'
 import type { State, StoreGet } from '../session-store-types'
 import { nextMsgId, playNotificationIfHidden } from '../session-store-helpers'
 import { maybeScheduleDoneMove } from './event-slice-done-move'
-import { rDebug, rInfo, rWarn } from '../../rendererLogger'
+import { rInfo, rWarn } from '../../rendererLogger'
+import { logTabStatusPatch } from './tab-status-transition'
+import { isPendingUserCardDenial } from '../../../shared/pending-card'
 
 /**
  * Mutable context shared with the parent reducer for one task-lifecycle event.
@@ -45,8 +47,8 @@ export interface TaskCtx {
    * Set by the task_complete arm for auto-fix tabs: the pre-clear evidence the
    * post-commit lifecycle decision needs (the reducer clears the queues and
    * denial state in the same set() that flips status, so the decision cannot
-   * re-read them afterwards). The parent hands this to maybeCloseAutoFixTab
-   * after committing.
+   * re-read them afterwards). The parent reports this to the owner action after
+   * committing.
    */
   autoFixEvidence?: import('./event-slice-auto-fix-lifecycle').AutoFixCompletionEvidence
 }
@@ -130,9 +132,18 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
           runRequestId: ctx.tab.activeRequestId,
         }
       }
+      logTabStatusPatch(tabId, ctx.tab.status, 'completed', 'event.task-complete',
+        { reason: event.reason ?? 'absent' })
       ctx.updated.status = 'completed'
       ctx.updated.activeRequestId = null
       ctx.updated.currentActivity = ''
+      // Completion sets an idle timestamp even when no assistant text was
+      // produced. This is status truth, deliberately separate from inbox time.
+      const suppressInboxMessage = ctx.updated.inboxMessageSuppressed === true
+      ctx.updated.lastCompletionAt = Date.now()
+      ctx.updated.idleSince = Date.now()
+      // A settled conversation is inert. A late completion is a shutdown race,
+      // not new activity, so it must never clear the settlement lock.
       ctx.permissionQueue = []
       ctx.elicitationQueue = []
       if (event.sessionId) {
@@ -159,14 +170,20 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
           .slice(lastUserIdx2 + 1)
           .some((m) => m.role === 'assistant' && !m.toolName)
         if (!hasAnyText) {
+          const timestamp = Date.now()
           ctx.messages = [
             ...ctx.messages,
-            { id: nextMsgId(), role: 'assistant' as const, content: event.result, timestamp: Date.now() },
+            { id: nextMsgId(), role: 'assistant' as const, content: event.result, timestamp },
           ]
+          if (!suppressInboxMessage) ctx.updated.lastMessageAt = timestamp
         }
       }
-      if (tabId !== ctx.activeTabId || !s.isExpanded) {
-        ctx.updated.hasUnread = true
+      // Unread derivation (R9): lastCompletionAt vs lastVisitedAt replaces
+      // the old hasUnread flag. A completion the user is WATCHING (active
+      // tab, expanded) counts as visited-in-the-moment so the dot never
+      // lights under their eyes.
+      if (tabId === ctx.activeTabId && s.isExpanded) {
+        ctx.updated.lastVisitedAt = Date.now()
       }
       if (event.permissionDenials && event.permissionDenials.length > 0) {
         // The engine no longer emits PlanModeChangedEvent{Enabled:false}
@@ -178,29 +195,35 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
         // card renders cleanly from the unfiltered denials.
         ctx.instPatch.permissionDenied = { tools: event.permissionDenials }
         ctx.instTouched = true
-        rDebug('event.task', 'permission denied set', { tab_id: tabId.slice(0, 8), tools: event.permissionDenials.map((t: any) => t.toolName), perm_mode: ctx.instPatch.permissionMode ?? ctx.inst0?.permissionMode ?? 'auto' })
+        rInfo('event.task', 'permission denied set', { tab_id: tabId.slice(0, 8), tools: event.permissionDenials.map((t: any) => t.toolName), perm_mode: ctx.instPatch.permissionMode ?? ctx.inst0?.permissionMode ?? 'auto' })
       } else {
         // task_complete carries no denials. Normally that means "clear the
-        // approval card." But a pending ExitPlanMode plan proposal is a
-        // workflow signal task_complete does NOT own: some backends (codex,
-        // grok's ACP) capture the plan via a native plan item and emit
+        // approval card." But a pending user-facing card is a workflow signal
+        // task_complete does NOT own: some backends (codex, grok's ACP)
+        // capture the plan via a native plan item and emit
         // engine_plan_proposal, which the plan-mode reducer already
         // synthesized into permissionDenied — WITHOUT ever putting an
         // ExitPlanMode denial on task_complete (only claude-code does that).
         // Nulling here would wipe the just-synthesized card, so the user gets
-        // a clickable plan marker but no approve/implement card. Preserve a
-        // permissionDenied whose sole entry is a pending ExitPlanMode proposal;
-        // it is cleared instead on the next prompt (send-slice) or on approval.
+        // a clickable plan marker but no approve/implement card. Preserve any
+        // outstanding AskUserQuestion / ExitPlanMode entry; it is cleared
+        // instead on the next prompt (send-slice) or on approval.
         const existingDenied =
           'permissionDenied' in ctx.instPatch ? ctx.instPatch.permissionDenied : ctx.inst0?.permissionDenied
-        const isPendingPlanProposal =
-          !!existingDenied &&
-          existingDenied.tools?.length === 1 &&
-          existingDenied.tools[0]?.toolName === 'ExitPlanMode'
+        // Any outstanding user-facing card survives, not just a lone
+        // ExitPlanMode: an AskUserQuestion is equally a question awaiting the
+        // user, and a proposal that arrives alongside another denial is still a
+        // proposal. The shared predicate is the one definition of that rule
+        // (shared/pending-card.ts), so this branch and the session_init branch
+        // in event-slice.ts cannot drift apart.
+        const isPendingPlanProposal = isPendingUserCardDenial(existingDenied)
         if (isPendingPlanProposal) {
-          rDebug('event.task', 'no denials but preserving pending ExitPlanMode plan proposal', { tab_id: tabId.slice(0, 8) })
+          rInfo('event.task', 'no denials but preserving pending user card', {
+            tab_id: tabId.slice(0, 8),
+            tools: (existingDenied?.tools ?? []).map((t) => t.toolName).join(','),
+          })
         } else {
-          rDebug('event.task', 'no denials', { tab_id: tabId.slice(0, 8) })
+          rInfo('event.task', 'no denials, clearing card', { tab_id: tabId.slice(0, 8), had_denial: existingDenied != null })
           ctx.instPatch.permissionDenied = null
           ctx.instTouched = true
         }
@@ -234,10 +257,15 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
       const resolvedDenied =
         'permissionDenied' in ctx.instPatch ? ctx.instPatch.permissionDenied : ctx.inst0?.permissionDenied
       maybeScheduleDoneMove(tabId, ctx.tab.status, 'completed', ctx.updated, s.conversationPanes, ctx.get, 'task_complete', resolvedDenied != null)
+      ctx.updated.inboxMessageSuppressed = false
       return true
 
     case 'error':
+      logTabStatusPatch(tabId, ctx.tab.status, 'failed', 'event.task-failed')
       ctx.updated.status = 'failed'
+      ctx.updated.lastActivityAt = Date.now()
+      ctx.updated.lastFailureAt = Date.now()
+      ctx.updated.idleSince = Date.now()
       ctx.updated.activeRequestId = null
       ctx.updated.currentActivity = ''
       ctx.permissionQueue = []
@@ -256,6 +284,8 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
 
     case 'session_dead':
       rWarn('event.session', 'session dead', { tab_id: tabId, exit_code: event.exitCode })
+      logTabStatusPatch(tabId, ctx.tab.status, 'dead', 'event.task-dead',
+        { exit_code: event.exitCode })
       ctx.updated.status = 'dead'
       ctx.updated.activeRequestId = null
       ctx.updated.currentActivity = ''

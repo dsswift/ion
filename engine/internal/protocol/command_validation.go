@@ -87,7 +87,7 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "key") && hasObject(raw, "config")
 	case "send_prompt":
 		return hasNonEmptyString(raw, "key") && hasString(raw, "text")
-	case "abort", "stop_session", "get_tree":
+	case "abort", "stop_session", "settle_session", "resume_session", "get_tree":
 		return hasNonEmptyString(raw, "key")
 	case "abort_agent":
 		return hasNonEmptyString(raw, "key") && hasString(raw, "agentName")
@@ -108,7 +108,10 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 	case "branch_before":
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "entryId")
 	case "rewind_session":
-		return hasNonEmptyString(raw, "key") && hasNumber(raw, "userTurnIndex")
+		// Exact entry id takes priority when present; otherwise fall back to
+		// the legacy ordinal. At least one of the two addressing modes must
+		// be supplied.
+		return hasNonEmptyString(raw, "key") && (hasNonEmptyString(raw, "entryId") || hasNumber(raw, "userTurnIndex"))
 	case "navigate_tree":
 		return hasNonEmptyString(raw, "key") && hasString(raw, "targetId")
 	case "permission_response":
@@ -129,12 +132,14 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "earlyStopRequestId")
 	case "tool_gate_response":
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "gateRequestId")
-	case "reconcile_state", "query_session_status", "get_agent_state":
+	case "reconcile_state", "query_session_status", "get_agent_state", "resolve_permission_denials":
 		return hasNonEmptyString(raw, "key")
 	case "migrate_conversation":
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "text") && hasNonEmptyString(raw, "message")
 	case "list_models", "list_model_tiers", "oidc_begin_login", "oidc_logout", "oidc_identity", "oidc_token", "refresh_models", "get_host_info", "list_directory", "discover_slash_commands", "delete_stored_sessions", "get_enterprise_policy", "plugin_list", "mcp_list":
 		return true
+	case "delete_stored_conversations":
+		return hasArray(raw, "sessionIds")
 	case "resolve_model_tier", "remove_model_tier":
 		return hasNonEmptyString(raw, "text")
 	case "set_model_tier":

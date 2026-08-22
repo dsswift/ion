@@ -20,7 +20,7 @@ export function shouldCollapseUserMessage(text: string): boolean {
 
 /**
  * Collapsible wrapper for long user-message bodies. Collapsed state is
- * component-local (no persistence, no store action — ATV parity is free by
+ * component-local (no persistence, no store action — Studio parity is free by
  * construction), height-capped with a bottom fade mask rather than a hard
  * clip, and toggled by a ghost footer button. The hover CopyButton on the
  * bubble is unaffected: it copies the full text regardless of collapse.

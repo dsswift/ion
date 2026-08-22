@@ -55,13 +55,14 @@ type ProtectedResourceMetadata struct {
 // server does not support RFC 7591 dynamic client registration, in which case
 // an operator-supplied client_id is required.
 type ServerMetadata struct {
-	Issuer                        string   `json:"issuer"`
-	AuthorizationEndpoint         string   `json:"authorization_endpoint"`
-	TokenEndpoint                 string   `json:"token_endpoint"`
-	RegistrationEndpoint          string   `json:"registration_endpoint"`
-	ScopesSupported               []string `json:"scopes_supported"`
-	CodeChallengeMethodsSupported []string `json:"code_challenge_methods_supported"`
-	GrantTypesSupported           []string `json:"grant_types_supported"`
+	Issuer                                     string   `json:"issuer"`
+	AuthorizationEndpoint                      string   `json:"authorization_endpoint"`
+	TokenEndpoint                              string   `json:"token_endpoint"`
+	RegistrationEndpoint                       string   `json:"registration_endpoint"`
+	ScopesSupported                            []string `json:"scopes_supported"`
+	CodeChallengeMethodsSupported              []string `json:"code_challenge_methods_supported"`
+	GrantTypesSupported                        []string `json:"grant_types_supported"`
+	AuthorizationResponseIssParameterSupported bool     `json:"authorization_response_iss_parameter_supported,omitempty"`
 }
 
 // SupportsS256 reports whether the authorization server advertises the S256

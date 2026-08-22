@@ -11,6 +11,16 @@ type ToolDef struct {
 	Execute      func(ctx context.Context, input map[string]any, cwd string) (*ToolResult, error)
 }
 
+// SkillInvocation is the durable metadata emitted only by the built-in Skill
+// tool. Content is full rendered SKILL.md body for current continuation;
+// conversation persistence stores a short tool acknowledgment plus typed body.
+type SkillInvocation struct {
+	Name      string `json:"name"`
+	Source    string `json:"source,omitempty"`
+	Content   string `json:"content"`
+	InvokedAt int64  `json:"invokedAt"`
+}
+
 // ToolResult is the output of a tool execution.
 type ToolResult struct {
 	Content string         `json:"content"`
@@ -23,4 +33,7 @@ type ToolResult struct {
 	// MCP bytes never enter extension RPC, events, telemetry, or conversation
 	// persistence by default.
 	EphemeralImages []*ImageSource `json:"-"`
+	// SkillInvocation is populated by the built-in Skill tool only. It is
+	// engine-internal transfer metadata, never extension RPC or wire output.
+	SkillInvocation *SkillInvocation `json:"-"`
 }

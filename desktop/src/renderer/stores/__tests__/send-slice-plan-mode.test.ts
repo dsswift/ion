@@ -27,8 +27,7 @@ vi.mock('../session-store-helpers', () => ({
     lastKnownSessionId: null,
     status: 'idle' as const,
     activeRequestId: null,
-    lastEventAt: null,
-    hasUnread: false,
+    lastEventAt: null,    lastActivityAt: null,    idleSince: null,    lastCompletionAt: null,    settledOverride: null,    settledAt: null,    snoozedUntil: null,    snoozedAt: null,    lastVisitedAt: null,    manualUnread: false,
     currentActivity: '',
     attachments: [],
     customTitle: null,
@@ -130,8 +129,7 @@ function makeTab(overrides: Partial<TabState> = {}): TabState {
     lastKnownSessionId: null,
     status: 'idle',
     activeRequestId: null,
-    lastEventAt: null,
-    hasUnread: false,
+    lastEventAt: null,    lastActivityAt: null,    idleSince: null,    lastCompletionAt: null,    settledOverride: null,    settledAt: null,    snoozedUntil: null,    snoozedAt: null,    lastVisitedAt: null,    manualUnread: false,
     currentActivity: '',
     attachments: [],
     title: 'New Tab',
@@ -377,7 +375,9 @@ describe('prompt_sync parity — setPermissionMode before prompt', () => {
     )
   })
 
-  it('keeps an operator-selected model explicit for a slash command', () => {
+  it('omits an operator-selected model for a slash command', () => {
+    // Command frontmatter owns slash execution. The conversation picker remains
+    // the default for ordinary prompts but cannot override the command tier.
     const { state } = buildHarness(makeTab(), {
       modelOverride: 'gpt-5.6-sol',
       modelOverrideSource: 'user',
@@ -388,7 +388,7 @@ describe('prompt_sync parity — setPermissionMode before prompt', () => {
     expect(mockPrompt).toHaveBeenCalledWith(
       'tab-1',
       expect.any(String),
-      expect.objectContaining({ model: 'gpt-5.6-sol' }),
+      expect.objectContaining({ model: undefined }),
     )
   })
 

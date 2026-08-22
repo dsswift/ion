@@ -7,6 +7,7 @@ import { homedir } from 'os'
 import { expandHome, isPathIgnoredByGitWatcher } from '../git/ignore-paths'
 
 const HOME = homedir()
+const HOME_ION = HOME + '/.ion'
 
 describe('expandHome', () => {
   it('expands bare ~ to homedir', () => {
@@ -38,7 +39,6 @@ describe('expandHome', () => {
 })
 
 describe('isPathIgnoredByGitWatcher', () => {
-  const HOME_ION = HOME + '/.ion'
 
   it('returns false for empty ignored list', () => {
     expect(isPathIgnoredByGitWatcher(HOME_ION, [])).toBe(false)
@@ -84,5 +84,57 @@ describe('isPathIgnoredByGitWatcher', () => {
     expect(fromTilde).toEqual(fromHome)
     expect(isPathIgnoredByGitWatcher(HOME_ION, fromTilde)).toBe(true)
     expect(isPathIgnoredByGitWatcher(HOME_ION, fromHome)).toBe(true)
+  })
+})
+
+/**
+ * The exemption is what keeps a worktree's Diff panel live.
+ *
+ * `gitWatcherIgnoredDirectories` defaults to `~/.ion`, and Ion stores real
+ * source checkouts under it (`~/.ion/worktrees/...`, `~/.ion/integration/...`).
+ * Before the exemption every one of those matched the ignore rule and ran with
+ * the watcher suppressed, so the Diff panel and the git Changes list received
+ * no file events at all and only refreshed on window focus.
+ */
+describe('isPathIgnoredByGitWatcher — managed-checkout exemption', () => {
+  const WORKTREE = HOME_ION + '/worktrees/ion-6d15c16e'
+  const BENCH = HOME_ION + '/integration/ion-josh'
+
+  it('watches a registered worktree that sits inside an ignored directory', () => {
+    expect(isPathIgnoredByGitWatcher(WORKTREE, [HOME_ION])).toBe(true)
+    expect(isPathIgnoredByGitWatcher(WORKTREE, [HOME_ION], [WORKTREE])).toBe(false)
+  })
+
+  it('watches an integration bench on the same rule', () => {
+    expect(isPathIgnoredByGitWatcher(BENCH, [HOME_ION], [WORKTREE, BENCH])).toBe(false)
+  })
+
+  it('still ignores everything else under the ignored directory', () => {
+    for (const other of [HOME_ION, HOME_ION + '/conversations', HOME_ION + '/worktrees']) {
+      expect(isPathIgnoredByGitWatcher(other, [HOME_ION], [WORKTREE, BENCH])).toBe(true)
+    }
+  })
+
+  // The exemption names a checkout root, not a subtree. A nested path is not
+  // separately retained as a repository, and implying a subtree would let an
+  // exemption silently widen past what the records actually describe.
+  it('does not exempt a subdirectory of an exempt checkout', () => {
+    expect(isPathIgnoredByGitWatcher(WORKTREE + '/desktop', [HOME_ION], [WORKTREE])).toBe(true)
+  })
+
+  it('leaves unignored paths unignored whether or not they are exempt', () => {
+    expect(isPathIgnoredByGitWatcher('/tmp/repo', [HOME_ION], [])).toBe(false)
+    expect(isPathIgnoredByGitWatcher('/tmp/repo', [HOME_ION], ['/tmp/repo'])).toBe(false)
+  })
+
+  // A more specific ignore entry is the more specific instruction. An operator
+  // who explicitly ignores one worktree must not be overridden by the blanket
+  // exemption that covers every registered checkout.
+  it('honours an ignore entry more specific than the exemption', () => {
+    expect(isPathIgnoredByGitWatcher(WORKTREE, [HOME_ION, WORKTREE], [WORKTREE])).toBe(true)
+  })
+
+  it('is a no-op when nothing is exempt', () => {
+    expect(isPathIgnoredByGitWatcher(WORKTREE, [HOME_ION], [])).toBe(true)
   })
 })

@@ -153,4 +153,147 @@ final class ContextOccupancyTests: XCTestCase {
         XCTAssertEqual(got, 227_099)
     }
 
+    // MARK: - Capacity admission
+
+    func test_contextCapacityWarnsAtEightyPercentOfEffectiveLimit() {
+        let models = [
+            RemoteModelEntry(
+                id: "test-model",
+                providerId: "test",
+                label: "Test",
+                contextWindow: 200_000,
+                maxOutputTokens: 20_000,
+                hasAuth: true,
+            ),
+        ]
+        // 200k raw minus 20k output and 13k compaction reserve leaves 167k.
+        let capacity = ConversationStatusBar.resolveContextCapacity(
+            occupancyTokens: 133_600,
+            modelId: "test-model",
+            availableModels: models,
+            engineContextWindow: nil,
+        )
+        XCTAssertEqual(capacity?.effectiveLimit, 167_000)
+        XCTAssertEqual(ConversationStatusBar.contextCapacityState(capacity), .warning)
+    }
+
+    /// The engine publishes its own usable-input limit on StatusFields as
+    /// `contextEffectiveLimit`. iOS decoded a `contextLimit` key the engine
+    /// never sends, so the value was always nil and every reading fell back to
+    /// the client's reserve estimate.
+    func test_statusFieldsDecodesTheEnginesEffectiveLimitKey() throws {
+        let json = """
+        {"label":"tab","state":"idle","model":"m","contextPercent":42,
+         "contextWindow":200000,"contextTokens":84000,"contextEffectiveLimit":167000}
+        """.data(using: .utf8)!
+        let fields = try JSONDecoder().decode(StatusFields.self, from: json)
+        XCTAssertEqual(fields.contextEffectiveLimit, 167_000)
+    }
+
+    /// The engine's reported limit is authoritative for the model the engine
+    /// ran, so it wins over recomputing the reserves locally.
+    func test_contextCapacityPrefersTheEngineReportedEffectiveLimit() {
+        let capacity = ConversationStatusBar.resolveContextCapacity(
+            occupancyTokens: 100_000,
+            modelId: "unknown-to-this-client",
+            availableModels: [],
+            engineContextWindow: 200_000,
+            engineEffectiveLimit: 150_000,
+        )
+        XCTAssertEqual(capacity?.effectiveLimit, 150_000)
+    }
+
+    /// Moving the picker to a model the engine has not run must recompute from
+    /// THAT model, never from the stale engine figure — otherwise admission
+    /// reports the previous model's budget.
+    func test_selectedModelOverridesTheEngineReportedLimit() {
+        let models = [
+            RemoteModelEntry(
+                id: "selected-model",
+                providerId: "test",
+                label: "Selected",
+                contextWindow: 100_000,
+                maxOutputTokens: 20_000,
+                hasAuth: true,
+            ),
+        ]
+        let capacity = ConversationStatusBar.resolveContextCapacity(
+            occupancyTokens: 67_000,
+            modelId: "selected-model",
+            availableModels: models,
+            engineContextWindow: 1_000_000,
+            engineEffectiveLimit: 900_000,
+        )
+        // 100k raw minus 20k output and 13k compaction reserve leaves 67k.
+        XCTAssertEqual(capacity?.effectiveLimit, 67_000)
+        XCTAssertEqual(ConversationStatusBar.contextCapacityState(capacity), .full)
+    }
+
+    /// A model that publishes its own effective limit uses it directly rather
+    /// than subtracting the reserves a second time.
+    func test_publishedModelLimitIsUsedWithoutRecomputingReserves() {
+        let models = [
+            RemoteModelEntry(
+                id: "selected-model",
+                providerId: "test",
+                label: "Selected",
+                contextWindow: 200_000,
+                maxOutputTokens: 20_000,
+                effectiveContextLimit: 180_000,
+                hasAuth: true,
+            ),
+        ]
+        let capacity = ConversationStatusBar.resolveContextCapacity(
+            occupancyTokens: 90_000,
+            modelId: "selected-model",
+            availableModels: models,
+            engineContextWindow: nil,
+        )
+        XCTAssertEqual(capacity?.effectiveLimit, 180_000)
+    }
+
+    func test_contextCapacityBlocksOnlyAtEffectiveLimitAndAllowsRecoveryCommands() {
+        let models = [
+            RemoteModelEntry(
+                id: "test-model",
+                providerId: "test",
+                label: "Test",
+                contextWindow: 200_000,
+                maxOutputTokens: 20_000,
+                hasAuth: true,
+            ),
+        ]
+        let capacity = ConversationStatusBar.resolveContextCapacity(
+            occupancyTokens: 167_000,
+            modelId: "test-model",
+            availableModels: models,
+            engineContextWindow: nil,
+        )
+        XCTAssertEqual(ConversationStatusBar.contextCapacityState(capacity), .full)
+        XCTAssertTrue(ConversationStatusBar.contextCapacityBlocksPrompt(capacity, text: "ordinary prompt"))
+        XCTAssertFalse(ConversationStatusBar.contextCapacityBlocksPrompt(capacity, text: " /compact now"))
+        XCTAssertFalse(ConversationStatusBar.contextCapacityBlocksPrompt(capacity, text: "/clear"))
+    }
+
+    func test_contextCapacityUsesSelectedModelInsteadOfPriorEngineWindow() {
+        let models = [
+            RemoteModelEntry(
+                id: "selected-model",
+                providerId: "test",
+                label: "Selected",
+                contextWindow: 200_000,
+                maxOutputTokens: 20_000,
+                hasAuth: true,
+            ),
+        ]
+        let capacity = ConversationStatusBar.resolveContextCapacity(
+            occupancyTokens: 167_000,
+            modelId: "selected-model",
+            availableModels: models,
+            engineContextWindow: 1_000_000,
+        )
+        XCTAssertEqual(capacity?.effectiveLimit, 167_000)
+        XCTAssertEqual(ConversationStatusBar.contextCapacityState(capacity), .full)
+    }
+
 }

@@ -32,7 +32,7 @@ function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, 
  * A failed assembly aborts its merge and wipes the bench (atomicity: the bench
  * presents the enrolled combination or nothing). So at resolve time there is
  * no conflict on disk. This runs the same deterministic sequence the assembly
- * ran — reset to source tip, merge every enabled member in order — and stops
+ * ran — reset to source tip, merge every member in order — and stops
  * AT the conflicted merge instead of aborting it. The bench then has a real
  * `MERGE_HEAD`, real unmerged index entries, and the ConflictsDialog operates
  * on it exactly as it does on any conflicted checkout.
@@ -81,7 +81,7 @@ export async function prepareConflictResolution(
     }
 
     for (const member of ws.members) {
-      if (!member.enabled || !member.pinnedSha) continue
+      if (!member.pinnedSha) continue
       // Landed members already arrive with the source base. Re-merging one can
       // create a false conflict after its worktree has been sealed.
       if (await isLandedIntoSource(ws.benchPath, member, ws.sourceBranch)) {

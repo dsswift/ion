@@ -57,6 +57,11 @@ type EnterpriseConfig struct {
 	// need not also appear in AllowedProviders. Empty means no provider pinning.
 	Providers     map[string]ProviderConfig `json:"providers,omitempty"`
 	RequiredHooks []HookDef                 `json:"requiredHooks,omitempty"`
+	// Auth carries enterprise-owned identity configuration. It is merged over
+	// user auth at EnforceEnterprise time; RequireOperatorIdentity is one-way
+	// restrictive, so a lower layer may also require identity but cannot disable
+	// an enterprise requirement.
+	Auth *AuthConfig `json:"auth,omitempty"`
 	// ExtensionAllowlist, when non-empty, restricts which extensions the engine
 	// will load (feature 0011 / D-020, issue #308). Each entry is an exact
 	// extension identifier (manifest name, else directory basename) with an
@@ -758,6 +763,16 @@ type McpOAuthConfig struct {
 	Scope        string `json:"scope,omitempty"`
 	RedirectURI  string `json:"redirect_uri,omitempty"`
 	UsePKCE      bool   `json:"use_pkce,omitempty"`
+	// ClientMetadataURI is a URI pointing to an OAuth Client ID Metadata
+	// Document. When set, the engine fetches client metadata from this URI
+	// instead of using dynamic client registration. Takes precedence over
+	// DCR but yields to an explicit client_id in this block.
+	ClientMetadataURI string `json:"client_metadata_uri,omitempty"`
+	// Resource is the RFC 8707 resource indicator for this MCP server.
+	// When set, it is sent as the `resource` parameter on authorization,
+	// token-exchange, and refresh requests. When empty, the engine uses
+	// the resource URL from RFC 9728 protected-resource discovery.
+	Resource string `json:"resource,omitempty"`
 }
 
 // CompactionConfig controls context window compaction behavior.
@@ -977,6 +992,10 @@ type AuthConfig struct {
 	// token forwarding, and authenticated log egress. Empty means no
 	// operator identity is configured.
 	IdentityProvider string `json:"identityProvider,omitempty"`
+	// RequireOperatorIdentity blocks session creation until the selected
+	// interactive identity provider has a usable operator grant. It does not
+	// apply to machine identity providers, which have no operator login flow.
+	RequireOperatorIdentity bool `json:"requireOperatorIdentity,omitempty"`
 	// HasKeyNegativeCacheSeconds bounds how long a "this provider has no
 	// credentials" result is remembered, so repeated lookups for an
 	// unconfigured provider do not re-walk the keychain and file store every
@@ -1033,6 +1052,26 @@ type TelemetryConfig struct {
 	// (which remains a separate config on OtelConfig).
 	FlushIntervalMs int64       `json:"flushIntervalMs,omitempty"`
 	Otel            *OtelConfig `json:"otel,omitempty"`
+
+	// MaxSizeMB is the size cap on the "file" target before rename-rotate
+	// rotation, mirroring LoggingConfig.MaxSizeMB. Zero means use the
+	// compiled default (20 MB). Only the file target is affected; stdout and
+	// http sinks have no local file to bound.
+	MaxSizeMB int `json:"maxSizeMB,omitempty"`
+
+	// MaxFiles is the number of rotated archives retained alongside the live
+	// telemetry file. At the cap the live file becomes telemetry.jsonl.1
+	// (shifting older generations to .2, .3, … up to MaxFiles) and a fresh
+	// file is opened; generations beyond MaxFiles are deleted. Zero means use
+	// the compiled default (3). A negative value retains no archives — the
+	// live file is discarded at the cap, which bounds disk to MaxSizeMB.
+	MaxFiles int `json:"maxFiles,omitempty"`
+
+	// DisableRotation disables size-based rotation of the file target
+	// entirely, restoring unbounded append. An operator who ships telemetry
+	// downstream and wants the local file kept whole sets this; nothing else
+	// in the engine trims it afterwards.
+	DisableRotation bool `json:"disableRotation,omitempty"`
 }
 
 // TelemetryEvent is a structured telemetry span or point event.

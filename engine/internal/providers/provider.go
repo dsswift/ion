@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -53,6 +54,15 @@ func RegisterProvider(p LlmProvider) {
 	mu.Lock()
 	defer mu.Unlock()
 	providerRegistry[p.ID()] = p
+}
+
+// UnregisterProvider removes a provider from the global registry. It exists for
+// test cleanup and provider lifecycle replacement; callers that remove a provider
+// must also unregister any model entries that resolve to it.
+func UnregisterProvider(id string) {
+	mu.Lock()
+	defer mu.Unlock()
+	delete(providerRegistry, id)
 }
 
 // GetProvider returns a registered provider by ID.
@@ -238,22 +248,23 @@ func ListModels() []types.ModelEntry {
 
 	for id, info := range modelRegistry {
 		entry := types.ModelEntry{
-			ID:               id,
-			ProviderID:       info.ProviderID,
-			ContextWindow:    info.ContextWindow,
-			CostPer1kInput:   info.CostPer1kInput,
-			CostPer1kOutput:  info.CostPer1kOutput,
-			SupportsCaching:  info.SupportsCaching,
-			SupportsThinking: info.SupportsThinking,
-			SupportsImages:   info.SupportsImages,
-			MaxOutputTokens:  info.MaxOutputTokens,
-			ThinkingMode:     info.ThinkingMode,
-			ThinkingEfforts:  info.ThinkingEfforts,
-			Tokenizer:        info.Tokenizer,
-			ModelKind:        info.ModelKind,
-			Dialect:          info.Dialect,
-			CostPerImage:     info.CostPerImage,
-			IsCustom:         info.IsCustom,
+			ID:                    id,
+			ProviderID:            info.ProviderID,
+			ContextWindow:         info.ContextWindow,
+			CostPer1kInput:        info.CostPer1kInput,
+			CostPer1kOutput:       info.CostPer1kOutput,
+			SupportsCaching:       info.SupportsCaching,
+			SupportsThinking:      info.SupportsThinking,
+			SupportsImages:        info.SupportsImages,
+			MaxOutputTokens:       info.MaxOutputTokens,
+			EffectiveContextLimit: conversation.ResolveModelContextCapacity(info.ContextWindow, 0, &info).EffectiveLimit,
+			ThinkingMode:          info.ThinkingMode,
+			ThinkingEfforts:       info.ThinkingEfforts,
+			Tokenizer:             info.Tokenizer,
+			ModelKind:             info.ModelKind,
+			Dialect:               info.Dialect,
+			CostPerImage:          info.CostPerImage,
+			IsCustom:              info.IsCustom,
 		}
 		if info.IsCustom {
 			customModels = append(customModels, entry)

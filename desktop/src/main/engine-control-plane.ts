@@ -14,9 +14,11 @@ import { resolveSessionThinkingConfig } from './settings-store'
 import { resolveClaudeCompat, resolveRunRecoveryConfig } from './engine-control-plane-config'
 import { toolGateSessionConfig } from './tool-gate-responder'
 import { benchClientWorkspaceContext } from './integration/bench-prompt-context'
-import { resolveAtvPermission } from './atv-state-cache'
+import { resolveStudioPermission } from './studio-state-cache'
 import { installRecoveredAgentStateListener, makeEventContext } from './engine-control-plane-recovered-agent-state'
 import { installAbortDeliveredListener, installReconnectResetListener } from './engine-control-plane-reconnect'
+import { makeDrainLatch, drain as drainImpl, checkDrain, shutdown as shutdownImpl } from './engine-control-plane-drain'
+import { resolvePermissionDenials as resolvePermissionDenialsImpl } from './engine-control-plane-resolve-denials'
 import type {
   EngineConfig,
   ThinkingConfig,
@@ -47,8 +49,7 @@ function error(msg: string, fields?: Record<string, unknown>): void { _error(TAG
 export class EngineControlPlane extends EventEmitter {
   private bridge: EngineBridge
   private tabs = new Map<string, TabEntry>()
-  private drainResolve: (() => void) | null = null
-  private drainExternalCheck: (() => boolean) | null = null
+  private drainLatch = makeDrainLatch()
 
   constructor(bridge: EngineBridge) {
     super()
@@ -156,6 +157,17 @@ export class EngineControlPlane extends EventEmitter {
     log('notify_conversation_cleared', { tab_id: tabId, prompt_count: tab.promptCount, prompt_count_since_checkpoint: tab.promptCountSinceCheckpoint, conversation_id: tab.conversationId ?? '' })
     tab.promptCountSinceCheckpoint = 0
     tab.clearedSinceLastPrompt = true
+  }
+
+  /**
+   * A pending plan/question card was resolved in the client (dismissed,
+   * answered, or approved via Implement). Releases BOTH retentions that would
+   * otherwise keep re-offering it — the engine's and this control plane's
+   * surfaced-proposal latch. See engine-control-plane-resolve-denials.ts for
+   * why clearing only one leaves the defect in place.
+   */
+  resolvePermissionDenials(tabId: string): void {
+    resolvePermissionDenialsImpl(this.bridge, this.tabs, tabId)
   }
 
   /**
@@ -497,12 +509,12 @@ export class EngineControlPlane extends EventEmitter {
     this.bridge.sendPermissionResponse(tabId, questionId, optionId)
     // Cross-surface reconcile (mirror-store architecture): this is the ONE
     // spot every surface's answer funnels through — overlay card, iOS
-    // remote, ATV approval. Resolving the ATV pending queue and pushing the
+    // remote, Studio approval. Resolving the Studio window pending queue and pushing the
     // resolution here means an answer from ANY surface clears the others
     // instantly, instead of waiting for the next status transition.
-    resolveAtvPermission(tabId, questionId)
-    // Emitted (not called directly): importing atv-window-manager here forms
-    // the module cycle engine-control-plane → atv-window-manager → state →
+    resolveStudioPermission(tabId, questionId)
+    // Emitted (not called directly): importing studio-window-manager here forms
+    // the module cycle engine-control-plane → studio-window-manager → state →
     // engine-control-plane, which only loads by import-order luck. The
     // listener lives in event-wiring.ts (wireSessionPlaneEvents), the same
     // seam as every other control-plane push.
@@ -510,9 +522,9 @@ export class EngineControlPlane extends EventEmitter {
     return true
   }
 
-  respondToElicitation(tabId: string, requestId: string, response: Record<string, unknown> | undefined, cancelled: boolean): boolean {
+  respondToElicitation(tabId: string, requestId: string, response: Record<string, unknown> | undefined, cancelled: boolean, declined = false): boolean {
     if (!this.tabs.has(tabId)) { log('respond_to_elicitation: dropped, unknown tab', { tab_id: tabId, request_id: requestId, cancelled }); return false }
-    this.bridge.sendElicitationResponse(tabId, requestId, response, cancelled)
+    this.bridge.sendElicitationResponse(tabId, requestId, response, cancelled, declined)
     return true
   }
 
@@ -544,30 +556,22 @@ export class EngineControlPlane extends EventEmitter {
     return historyReads.saveSessionLabel(this.bridge, sessionId, label)
   }
 
+  /** Drain/shutdown seam lives in engine-control-plane-drain.ts. */
   async drain(hasExternalWork?: () => boolean): Promise<void> {
-    if (!this.hasRunningTabs() && (!hasExternalWork || !hasExternalWork())) {
-      return
-    }
-    this.drainExternalCheck = hasExternalWork || null
-    return new Promise<void>((resolve) => {
-      this.drainResolve = resolve
-    })
+    return drainImpl(
+      this.drainLatch,
+      () => this.hasRunningTabs(),
+      () => this.runningTabBlockers(),
+      hasExternalWork,
+    )
   }
 
   notifyExternalWorkDone(): void {
     this._checkDrain()
   }
 
-  shutdown(): void {
-    for (const tabId of this.tabs.keys()) {
-      this.bridge.stopSession(tabId).catch((err) => warn('shutdown: stop session failed', { tab_id: tabId, error: String(err) }))
-    }
-    this.bridge.stopAll().catch((err) => warn('shutdown: stop all sessions failed', { error: String(err) }))
-    this.tabs.clear()
-    if (this.drainResolve) {
-      this.drainResolve()
-      this.drainResolve = null
-    }
+  shutdown(opts: { stopSessions: boolean }): void {
+    shutdownImpl(this.drainLatch, this.tabs, this.bridge, opts)
   }
 
   /** Status seam lives in engine-control-plane-status.ts; see resyncStatus there. */
@@ -581,14 +585,16 @@ export class EngineControlPlane extends EventEmitter {
 
   private _setStatus(tabId: string, newStatus: TabStatus): void {
     applyStatus(this.tabs, tabId, newStatus, this._emitStatus)
+    this._checkDrain()
   }
 
   private _checkDrain(): void {
-    if (!this.drainResolve) return
-    if (this.hasRunningTabs()) return
-    if (this.drainExternalCheck && this.drainExternalCheck()) return
-    this.drainResolve()
-    this.drainResolve = null
-    this.drainExternalCheck = null
+    checkDrain(this.drainLatch, () => this.hasRunningTabs(), () => this.runningTabBlockers())
+  }
+
+  private runningTabBlockers(): Array<{ tabId: string; status: TabStatus }> {
+    return [...this.tabs.values()]
+      .filter((tab) => tab.status === 'running' || tab.status === 'connecting' || tab.status === 'starting')
+      .map((tab) => ({ tabId: tab.tabId, status: tab.status }))
   }
 }

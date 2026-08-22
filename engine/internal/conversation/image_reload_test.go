@@ -96,6 +96,9 @@ func TestToolResultImage_ReplayedOnLoad(t *testing.T) {
 	if att.Path == b64 {
 		t.Error("attachment Path is the base64 payload; want a FILE PATH (never base64 on the wire)")
 	}
+	if att.ContentHash == "" {
+		t.Error("attachment ContentHash is empty")
+	}
 	// The re-derived file must actually exist on disk (the reload saver either
 	// found the live-written file or recreated it content-addressed).
 	if _, statErr := os.Stat(att.Path); statErr != nil {

@@ -422,6 +422,12 @@ func formatGeminiMessages(messages []types.LlmMessage) []map[string]any {
 					text = "[Nested context loaded]"
 				}
 				parts = append(parts, map[string]any{"text": text})
+			case "skill_content", "skill_listing":
+				text := b.Text
+				if text == "" {
+					text = "[Skill content]"
+				}
+				parts = append(parts, map[string]any{"text": text})
 			}
 		}
 		if len(parts) > 0 {

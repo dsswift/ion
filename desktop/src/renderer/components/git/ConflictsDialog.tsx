@@ -58,6 +58,7 @@ export function ConflictsDialog({
 }): React.JSX.Element {
   const colors = useColors()
   const [op, setOp] = useState<OpState | null>(null)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busyPath, setBusyPath] = useState<string | null>(null)
   const [mergePath, setMergePath] = useState<string | null>(null)
@@ -85,11 +86,16 @@ export function ConflictsDialog({
   }, [])
 
   const refresh = useCallback(async () => {
-    const result = await window.ion.gitOpState(directory)
-    if (applyOpStateResult(result)) {
-      setError(null)
-    } else {
-      setError(result.error ?? 'Could not read the repository state.')
+    setLoading(true)
+    try {
+      const result = await window.ion.gitOpState(directory)
+      if (applyOpStateResult(result)) {
+        setError(null)
+      } else {
+        setError(result.error ?? 'Could not read the repository state.')
+      }
+    } finally {
+      setLoading(false)
     }
   }, [directory, applyOpStateResult])
 
@@ -143,6 +149,12 @@ export function ConflictsDialog({
         return
       }
       rInfo('git.conflicts', 'operation verb succeeded', { verb, directory })
+      // The operation ledger owns completion state. This keeps every shared
+      // worktree control in sync after an Abort or Continue, including Studio.
+      const ledger = useSessionStore.getState() as unknown as {
+        completeConflictOperation?: (path: string, completedVerb: 'abort' | 'continue') => void
+      }
+      ledger.completeConflictOperation?.(directory, verb)
       // The operation is over either way — the alert clears on the next
       // inventory refresh; close so the operator sees the panel state.
       useSessionStore.getState().clearConflictAlert(directory)
@@ -178,14 +190,19 @@ export function ConflictsDialog({
         )}
 
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-          {op && op.files.length === 0 && (
+          {loading && (
+            <div data-testid="conflict-state-loading" style={{ padding: '18px 12px', fontSize: 12, color: colors.textSecondary }}>
+              Loading conflict state…
+            </div>
+          )}
+          {!loading && op && op.files.length === 0 && (
             <div style={{ padding: '18px 12px', fontSize: 12, color: colors.textSecondary }}>
               {op.state
                 ? 'All conflicts are resolved. Continue completes the operation.'
                 : 'No conflicted files in this directory.'}
             </div>
           )}
-          {op?.files.map((f) => (
+          {!loading && op?.files.map((f) => (
             <div
               key={f.path}
               data-testid={`conflict-row-${f.path}`}
@@ -240,7 +257,7 @@ export function ConflictsDialog({
           <button
             data-testid="conflict-ai-assist"
             onClick={() => {
-              // One forwarded store action (ATV rule): a fresh conversation in
+              // One forwarded store action (Studio rule): a fresh conversation in
               // the directory with the fixed prompt, on the standard tier, in
               // auto mode. The dialog stays open until the action succeeds so
               // a refusal (no standard tier configured) lands in the error

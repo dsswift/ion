@@ -39,7 +39,7 @@ describe('resolveBenchContext — inside a bench', () => {
   })
 
   it('carries the member list through', () => {
-    const members = [{ worktreePath: '/wt/a', branchName: 'wt/a', label: 'a', enabled: true, pinnedSha: 'x' }] as any
+    const members = [{ worktreePath: '/wt/a', branchName: 'wt/a', label: 'a', pinnedSha: 'x' }] as any
     const ctx = resolveBenchContext(BENCH, [workspace({ members })])
     expect(ctx!.members).toHaveLength(1)
   })

@@ -3,7 +3,9 @@ import XCTest
 
 /// Lifecycle / session events: snapshot, tab create/close/status, display
 /// title, the generic command set (sync, create_tab, close_tab, cancel,
-/// rename_tab), and decoding edge cases.
+/// rename_tab), plan-mode state events, and decoding edge cases.
+/// engine_steer_injected / engine_steer_degraded live in
+/// NormalizedEventSteerTests.swift (file-size cap split).
 final class NormalizedEventLifecycleTests: XCTestCase {
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
@@ -22,7 +24,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         {"type":"desktop_snapshot","tabs":[\(sampleTabJSON)]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _) = event {
+        if case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _) = event {
             XCTAssertEqual(tabs.count, 1)
             XCTAssertEqual(tabs[0].id, "t1")
             XCTAssertEqual(tabs[0].title, "Tab 1")
@@ -131,7 +133,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         {"type":"desktop_snapshot","tabs":[\(sampleTabJSON),\(tab2)]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _) = event {
+        if case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _) = event {
             XCTAssertEqual(tabs.count, 2)
             XCTAssertEqual(tabs[1].id, "t2")
             XCTAssertEqual(tabs[1].customTitle, "My Tab")
@@ -150,7 +152,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         {"type":"desktop_snapshot","tabs":[]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _) = event {
+        if case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _) = event {
             XCTAssertTrue(tabs.isEmpty)
         } else {
             XCTFail("Expected snapshot with empty tabs")
@@ -232,7 +234,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         )
         let data = try encoder.encode(original)
         let decoded = try decoder.decode(RemoteEvent.self, from: data)
-        if case .snapshot(let tabs, let recentDirs, _, _, _, _, _, _, _, _, _) = decoded {
+        if case .snapshot(let tabs, let recentDirs, _, _, _, _, _, _, _, _, _, _, _) = decoded {
             XCTAssertEqual(recentDirs, ["/Users/test/project"])
             XCTAssertEqual(tabs.count, 1)
             XCTAssertEqual(tabs[0].id, "rt1")
@@ -469,97 +471,6 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         } else {
             XCTFail("Expected enginePlanModeChanged, got \(event)")
         }
-    }
-
-    // MARK: - engine_steer_injected (mid-turn steer drain confirmation)
-
-    /// Round-trips engine_steer_injected through JSON to lock in CodingKeys.
-    /// The Go-side EngineEvent uses json tag "steerMessageLength" (see
-    /// engine/internal/types/types.go SteerMessageLength field); the iOS
-    /// CodingKeys must match verbatim.
-    func testDecodeEngineSteerInjected() throws {
-        let json = """
-        {
-            "type": "desktop_steer_injected",
-            "tabId": "t1",
-            "instanceId": "i1",
-            "steerMessageLength": 42
-        }
-        """.data(using: .utf8)!
-        let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineSteerInjected(let tabId, let instanceId, let messageLength) = event {
-            XCTAssertEqual(tabId, "t1")
-            XCTAssertEqual(instanceId, "i1")
-            XCTAssertEqual(messageLength, 42)
-        } else {
-            XCTFail("Expected engineSteerInjected, got \(event)")
-        }
-    }
-
-    func testRoundTripEngineSteerInjected() throws {
-        let original = RemoteEvent.engineSteerInjected(
-            tabId: "t1",
-            instanceId: "i1",
-            messageLength: 27
-        )
-        let data = try encoder.encode(original)
-        let decoded = try decoder.decode(RemoteEvent.self, from: data)
-        if case .engineSteerInjected(let tabId, let instanceId, let messageLength) = decoded {
-            XCTAssertEqual(tabId, "t1")
-            XCTAssertEqual(instanceId, "i1")
-            XCTAssertEqual(messageLength, 27)
-        } else {
-            XCTFail("Round-trip engineSteerInjected failed")
-        }
-    }
-
-    /// CLI tabs receive the event without an instanceId (the runloop
-    /// emits steer events at the run level; the instanceId is added by
-    /// the desktop's remote bridge for engine tabs).
-    func testDecodeEngineSteerInjectedWithoutInstanceId() throws {
-        let json = """
-        {
-            "type": "desktop_steer_injected",
-            "tabId": "t1",
-            "steerMessageLength": 5
-        }
-        """.data(using: .utf8)!
-        let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineSteerInjected(let tabId, let instanceId, let messageLength) = event {
-            XCTAssertEqual(tabId, "t1")
-            XCTAssertNil(instanceId)
-            XCTAssertEqual(messageLength, 5)
-        } else {
-            XCTFail("Expected engineSteerInjected, got \(event)")
-        }
-    }
-
-    // MARK: - engine_steer_degraded (idle/no-owning-run fallback)
-
-    func testRoundTripEngineSteerDegraded() throws {
-        let original = RemoteEvent.engineSteerDegraded(tabId: "t1", instanceId: "i1", messageLength: 27)
-        let data = try encoder.encode(original)
-        let decoded = try decoder.decode(RemoteEvent.self, from: data)
-        if case .engineSteerDegraded(let tabId, let instanceId, let messageLength) = decoded {
-            XCTAssertEqual(tabId, "t1")
-            XCTAssertEqual(instanceId, "i1")
-            XCTAssertEqual(messageLength, 27)
-        } else {
-            XCTFail("Round-trip engineSteerDegraded failed")
-        }
-    }
-
-    func testDecodeEngineSteerDegradedDoesNotAliasLiveSteer() throws {
-        let json = """
-        {"type":"desktop_steer_degraded","tabId":"t1","steerDegradedMessageLength":5}
-        """.data(using: .utf8)!
-        let event = try decoder.decode(RemoteEvent.self, from: json)
-        guard case .engineSteerDegraded(let tabId, let instanceId, let messageLength) = event else {
-            return XCTFail("Expected engineSteerDegraded, got \(event)")
-        }
-        XCTAssertEqual(tabId, "t1")
-        XCTAssertNil(instanceId)
-        XCTAssertEqual(messageLength, 5)
     }
 
     // MARK: - lanAuthRejected (synthesized by TransportManager)

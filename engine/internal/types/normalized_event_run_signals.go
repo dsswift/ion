@@ -62,6 +62,30 @@ type SteerInjectedEvent struct {
 	// Provided so clients can display a non-empty confirmation without
 	// echoing the full message back over the wire.
 	MessageLength int `json:"messageLength"`
+
+	// ClientMessageID echoes back the correlation id the client supplied on
+	// its steer_agent command (protocol.ClientCommand.ClientMessageID), when
+	// present. Empty when the client omitted it, or when this steer did not
+	// originate from a client-facing steer_agent call at all. Clients use
+	// this — never MessageLength or arrival order — to identify which of
+	// possibly several outstanding optimistic UI rows this confirmation
+	// resolves; buffer position is not a stable identity once more than one
+	// steer can be outstanding, or a machine-originated injection interleaves
+	// with a human one. Additive optional field — non-breaking.
+	ClientMessageID string `json:"clientMessageId,omitempty"`
+
+	// EntryID is the durable conversation-tree entry id the steer text was
+	// persisted under, present ONLY when this was a genuine client-originated
+	// steer (never for a machine-to-machine injection, which persists under a
+	// distinct InjectionKind and must not be mistakable for a rewindable user
+	// turn). This is the canonical identity a client should retain for a
+	// later exact-entry rewind_session command — resolving "the user turn to
+	// rewind before" by an engine-issued id removes the client's need to
+	// recompute a fragile ordinal against its own rendered row list, which
+	// silently drifts the moment a queued-but-undelivered steer occupies a
+	// position in that list with no corresponding tree entry yet. Additive
+	// optional field — non-breaking.
+	EntryID string `json:"entryId,omitempty"`
 }
 
 func (SteerInjectedEvent) eventType() string { return EventSteerInjected }

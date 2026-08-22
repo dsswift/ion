@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest'
-import { sendOpenResult } from '../useWorktreeRemoteCommandListeners'
+import { sendOpenResult, projectPipelineToWire } from '../useWorktreeRemoteCommandListeners'
 
 const sendRemote = vi.fn()
 
@@ -31,6 +31,44 @@ describe('sendOpenResult', () => {
       ok: false,
       tabId: undefined,
       error: 'Could not open bench terminal.',
+    })
+  })
+})
+
+describe('projectPipelineToWire', () => {
+  it('projects a live pipeline state field-for-field', () => {
+    expect(projectPipelineToWire({
+      repoPath: '/repo',
+      sourceBranch: 'josh',
+      phase: 'awaiting-ai-confirm',
+      queue: ['/wt/a', '/wt/b'],
+      current: null,
+      needsManual: ['/wt/c'],
+      resolvedByAi: 2,
+      summary: undefined,
+    })).toEqual({
+      type: 'desktop_worktree_pipeline',
+      repoPath: '/repo',
+      sourceBranch: 'josh',
+      phase: 'awaiting-ai-confirm',
+      queue: ['/wt/a', '/wt/b'],
+      current: null,
+      needsManual: ['/wt/c'],
+      resolvedByAi: 2,
+      summary: undefined,
+    })
+  })
+
+  it('projects dismissal as phase null with the last repo path', () => {
+    expect(projectPipelineToWire(null, '/repo')).toEqual({
+      type: 'desktop_worktree_pipeline',
+      repoPath: '/repo',
+      sourceBranch: null,
+      phase: null,
+      queue: [],
+      current: null,
+      needsManual: [],
+      resolvedByAi: 0,
     })
   })
 })

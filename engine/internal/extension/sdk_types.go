@@ -533,10 +533,16 @@ type DispatchStateEntry struct {
 	// Lets a consumer read the child's live transcript (or harvest partial
 	// work) directly from the conversation store.
 	ChildConversationID string `json:"childConversationId,omitempty"`
-	// PendingChildren lists the child dispatch IDs a suspended parent is
-	// waiting on. Non-empty only when Status is "suspended" with awaited
-	// children; empty for a bare suspend.
-	PendingChildren []string `json:"pendingChildren,omitempty"`
+	// PendingChildren is retained for compatibility. WaitingOn carries the
+	// complete task-and-child wait metadata for parked dispatches.
+	PendingChildren []string           `json:"pendingChildren,omitempty"`
+	WaitingOn       *DispatchWaitingOn `json:"waitingOn,omitempty"`
+}
+
+// DispatchWaitingOn identifies work holding a dispatch parked.
+type DispatchWaitingOn struct {
+	TaskIDs          []string `json:"taskIds,omitempty"`
+	ChildDispatchIDs []string `json:"childDispatchIds,omitempty"`
 }
 
 // ContextUsage reports current context window utilization.

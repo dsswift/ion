@@ -310,18 +310,26 @@ type DispatchLostInfo struct {
 // --- Elicitation ---
 
 // ElicitationRequestInfo is the payload for elicitation_request.
+// Source, Server, Message, and Action carry optional origin and resolution
+// metadata supplied by an extension or MCP server.
 type ElicitationRequestInfo struct {
 	RequestID string         `json:"request_id"`
 	Schema    map[string]any `json:"schema,omitempty"`
 	URL       string         `json:"url,omitempty"`
 	Mode      string         `json:"mode"`
+	Source    string         `json:"source,omitempty"`
+	Server    string         `json:"server,omitempty"`
+	Message   string         `json:"message,omitempty"`
+	Action    string         `json:"action,omitempty"`
 }
 
 // ElicitationResultInfo is the payload for elicitation_result.
+// Declined distinguishes an explicit refusal from a cancelled request.
 type ElicitationResultInfo struct {
 	RequestID string         `json:"request_id"`
 	Response  map[string]any `json:"response,omitempty"`
 	Cancelled bool           `json:"cancelled"`
+	Declined  bool           `json:"declined,omitempty"`
 }
 
 // --- Plan mode ---

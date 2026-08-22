@@ -5,11 +5,12 @@ import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
-import { zoomViewport } from '../viewport-zoom'
 import { transitions } from '../theme-tokens'
 import { maybeCloseExplorerBeforeExternal } from '../utils/externalLaunch'
+import { surfaceRouter } from '../lib/file-open-router'
 import { rError } from '../rendererLogger'
 import type { FsEntry } from '../../shared/types'
+import { scrollableMenuStyle } from '../menu-viewport'
 
 export interface ContextMenuState {
   x: number
@@ -94,7 +95,28 @@ export function FileExplorerContextMenu({
     const relativePath = menu.entry.path.startsWith(workingDir + '/')
       ? menu.entry.path.slice(workingDir.length + 1)
       : menu.entry.path
+    const ext = menu.entry.name.includes('.') ? '.' + menu.entry.name.split('.').pop()!.toLowerCase() : ''
+    const isHtml = ext === '.html' || ext === '.htm'
     return [
+      // HTML defaults to browser preview on click (Studio); "Edit" is the
+      // explicit editor path. Overlay (no router) opens the floating editor.
+      ...(isHtml && !menu.entry.isDirectory
+        ? [
+            {
+              label: 'Edit',
+              icon: PencilSimple,
+              action: () => {
+                const s = useSessionStore.getState()
+                const tabId = s.activeTabId
+                if (!tabId) return
+                const router = surfaceRouter()
+                if (router) router.openTextFile(workingDir, tabId, menu.entry.path)
+                else s.openFileInEditor(workingDir, tabId, menu.entry.path)
+              },
+            },
+            { separator: true as const },
+          ]
+        : []),
       { label: 'Attach to Conversation', icon: Paperclip, action: () => {
         void (async () => {
           const attachment = await window.ion.attachFileByPath(menu.entry.path)
@@ -122,7 +144,6 @@ export function FileExplorerContextMenu({
   // that ran off the bottom of the window. `items.length` is the only thing
   // that changes the rendered height.
   const pos = useAnchoredPopover({ x: menu.x, y: menu.y }, { deps: [items.length] })
-  const vp = zoomViewport()
 
   return createPortal(
     <div
@@ -134,8 +155,7 @@ export function FileExplorerContextMenu({
         left: pos.left,
         top: pos.top,
         visibility: pos.ready ? 'visible' : 'hidden',
-        maxHeight: vp.height - 16,
-        overflowY: 'auto',
+        ...scrollableMenuStyle(),
         background: colors.popoverBg,
         border: `1px solid ${colors.popoverBorder}`,
         borderRadius: 8,

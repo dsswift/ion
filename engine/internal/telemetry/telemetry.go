@@ -302,6 +302,23 @@ func NewCollector(config types.TelemetryConfig) *Collector {
 	// stack knows what schema version is live.
 	if config.Enabled && config.FilePath != "" {
 		checkpointAndRotate(utils.ExpandHomePath(config.FilePath), engineVersion())
+
+		// Report the resolved rotation policy so the live bound on the file is
+		// readable from engine.jsonl without reading engine.json. Both arms log:
+		// an unbounded file is the case an operator most needs to see.
+		p := resolveRotation(config.MaxSizeMB, config.MaxFiles, config.DisableRotation)
+		if p.maxBytes <= 0 {
+			utils.LogWithFields(utils.LevelWarn, "telemetry", "file target rotation disabled file will grow unbounded", map[string]any{
+				"path": utils.ExpandHomePath(config.FilePath),
+			})
+		} else {
+			utils.LogWithFields(utils.LevelInfo, "telemetry", "file target rotation policy resolved", map[string]any{
+				"path":      utils.ExpandHomePath(config.FilePath),
+				"max_bytes": p.maxBytes,
+				"max_files": p.maxFiles,
+				"max_total": p.maxBytes * int64(p.maxFiles+1),
+			})
+		}
 	}
 
 	// Start the periodic flush loop when enabled and a persistent target is
@@ -527,7 +544,8 @@ func (c *Collector) Flush() error {
 	for _, target := range c.config.Targets {
 		switch target {
 		case "file":
-			if err := flushToFile(events, c.config.FilePath); err != nil {
+			rotation := resolveRotation(c.config.MaxSizeMB, c.config.MaxFiles, c.config.DisableRotation)
+			if err := flushToFile(events, c.config.FilePath, rotation); err != nil {
 				lastErr = err
 			}
 		case "stdout":
@@ -543,7 +561,7 @@ func (c *Collector) Flush() error {
 	return lastErr
 }
 
-func flushToFile(events []Event, path string) error {
+func flushToFile(events []Event, path string, rotation rotationPolicy) error {
 	if path == "" {
 		return fmt.Errorf("telemetry file path not configured")
 	}
@@ -552,6 +570,10 @@ func flushToFile(events []Event, path string) error {
 	// a directory literally named "~" and fail. Expand here, at the point the
 	// path reaches the filesystem, so every caller resolves the path uniformly.
 	path = utils.ExpandHomePath(path)
+	// Bound the file before appending. Rotation is by rename, so a reader
+	// following the path (the desktop egress tailer) picks up the new inode
+	// rather than re-shipping or losing lines.
+	rotateIfOversize(path, rotation)
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err

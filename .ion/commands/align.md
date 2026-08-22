@@ -65,7 +65,7 @@ Grounding reads are tiered. Read the mandatory doc every invocation; read each c
 - `docs/architecture/adr/001-engine-vs-harness.md` — when engine or extension surface is touched. Engine-vs-harness boundary.
 - `docs/architecture/agent-state.md` — when events, agent lifecycle, or snapshot semantics are touched. The exemplar of how event contracts are reasoned about.
 - `docs/architecture/file-organization.md` — when code files are added or any touched file is near its size cap. Cohesion of change, size caps, file-organization rules.
-- `docs/architecture/adr/021-atv-shell-mirror-store.md` and `desktop/src/renderer/atv/README.md` — when `desktop/src/renderer/` or store slices are touched. Overlay↔ATV mirror-store parity.
+- `docs/architecture/adr/021-studio-shell-mirror-store.md` and `desktop/src/renderer/studio/README.md` — when `desktop/src/renderer/` or store slices are touched. Overlay↔Studio mirror-store parity.
 - `docs/architecture/adr/019-logging-architecture-and-standards.md` and `docs/observability/log-schema.md` — when logging surface is touched (new log statements, logger plumbing, log schema fields).
 - `docs/architecture/adr/008-wire-event-naming-and-ownership.md` — when wire events or protocol members are touched.
 - `docs/architecture/adr/017-opinionless-tool-instructions.md` — when tool instructions or tool definitions are touched.
@@ -207,9 +207,9 @@ A plan that names one half of a cross-platform feature without its counterpart i
 - Shared Go type changes → does the plan name `desktop/src/shared/types-engine.ts`, `contract-sync.test.ts`, and the Swift model?
 - Desktop user-facing change → does the plan acknowledge the iOS counterpart?
 - New SDK hook or type → does the plan name the SDK and hook reference docs?
-- Overlay UI/state change → does the plan address the ATV shell (root `AGENTS.md` § "Cross-client parity (overlay ↔ ATV)", ADR-021)? A shared surface is ONE component mounted in both windows; a plan proposing a bespoke ATV widget for a surface the overlay already has a component for is a finding.
-- New store action → does the plan classify it in `desktop/src/shared/atv-mirror-actions.ts` (FORWARDED vs MIRROR_LOCAL, with justification)? Unclassified actions fail `mirror-parity.test.ts`.
-- New main-process event push → does the plan route it through `broadcast()`? Direct `webContents.send` outside the owner-only allowlist fails `make check-atv-parity`.
+- Overlay UI/state change → does the plan address the Studio shell (root `AGENTS.md` § "Cross-client parity (overlay ↔ Studio)", ADR-021)? A shared surface is ONE component mounted in both windows; a plan proposing a bespoke Studio widget for a surface the overlay already has a component for is a finding.
+- New store action → does the plan classify it in `desktop/src/shared/studio-mirror-actions.ts` (FORWARDED vs MIRROR_LOCAL, with justification)? Unclassified actions fail `mirror-parity.test.ts`.
+- New main-process event push → does the plan route it through `broadcast()`? Direct `webContents.send` outside the owner-only allowlist fails `make check-studio-parity`.
 
 List the exact companion file paths the plan should add.
 
@@ -659,9 +659,9 @@ Flag every half-shipped feature:
 - Desktop user-facing setting changed → iOS counterpart considered (Remote settings tab, main-process write helper, broadcast path, sync snapshot)?
 - New SDK hook or type → SDK docs (`docs/extensions/sdk-typescript.md`, `sdk-go.md`, `sdk-raw.md`) and hook reference (`docs/hooks/reference.md`) updated?
 - New normalized event variant or field → protocol docs (`docs/protocol/normalized-events.md` and/or `docs/protocol/server-events.md`) updated?
-- Overlay UI/state change → ATV shell counterpart present (root `AGENTS.md` § "Cross-client parity (overlay ↔ ATV)", ADR-021)? A shared surface is ONE component mounted in both windows; a bespoke ATV widget for a surface the overlay already has a component for is a finding.
-- New store action → classified in `desktop/src/shared/atv-mirror-actions.ts` (FORWARDED vs MIRROR_LOCAL, with justification)? Unclassified actions fail `mirror-parity.test.ts`.
-- New main-process event push → routed through `broadcast()`? Direct `webContents.send` outside the owner-only allowlist fails `make check-atv-parity`.
+- Overlay UI/state change → Studio shell counterpart present (root `AGENTS.md` § "Cross-client parity (overlay ↔ Studio)", ADR-021)? A shared surface is ONE component mounted in both windows; a bespoke Studio widget for a surface the overlay already has a component for is a finding.
+- New store action → classified in `desktop/src/shared/studio-mirror-actions.ts` (FORWARDED vs MIRROR_LOCAL, with justification)? Unclassified actions fail `mirror-parity.test.ts`.
+- New main-process event push → routed through `broadcast()`? Direct `webContents.send` outside the owner-only allowlist fails `make check-studio-parity`.
 
 Name the exact missing file paths.
 
@@ -1021,7 +1021,7 @@ Rules that make this safe:
 When the operator approves:
 
 1. **Implement every plan step.** Edit source to resolve each finding exactly as the plan specifies — code change, contract change, code deletion, or a test that pins behavior. Honor the "Plan resolution rules — no document-instead-of-fix moves" section: no TODO/FIXME/HACK/XXX markers, no "open a follow-up issue", no narrative-scope comments standing in for a fix.
-2. **Run the scoped quality gates for what you touched** (root `AGENTS.md` § "Quality gates (run while developing)"): scoped Go tests + `golangci-lint` for touched engine packages, `npm run typecheck` + scoped `npm test` for touched desktop areas, `make check-file-sizes`, `make check-contracts` when a shared type changed, `make check-logging` when logging-adjacent code changed, `make check-atv-parity` when main-process event pushes or the ATV shell changed, and `make check-status-writers` when `engine_status` / `engine_session_status` emitters changed. Do **not** run the heavy PR-time gates (`make test-linux`, full `go test -race ./...`, `govulncheck`, full `npm test`, `make ios-check`) — those are the operator's `/create-pr` gate.
+2. **Run the scoped quality gates for what you touched** (root `AGENTS.md` § "Quality gates (run while developing)"): scoped Go tests + `golangci-lint` for touched engine packages, `npm run typecheck` + scoped `npm test` for touched desktop areas, `make check-file-sizes`, `make check-contracts` when a shared type changed, `make check-logging` when logging-adjacent code changed, `make check-studio-parity` when main-process event pushes or the Studio shell changed, and `make check-status-writers` when `engine_status` / `engine_session_status` emitters changed. Do **not** run the heavy PR-time gates (`make test-linux`, full `go test -race ./...`, `govulncheck`, full `npm test`, `make ios-check`) — those are the operator's `/create-pr` gate.
 3. **For a bug-fix finding, confirm the test fails on the unfixed code** before claiming it pins the fix (revert the fix mentally or temporarily, watch the test go red). A test that passes with the fix reverted does not pin the fix.
 4. **Land the completed work** per the delivery table above — amended into each originating branch-local commit, or as a new conventional, correctly-scoped commit where no branch-local commit introduced the defect. New commits follow root `AGENTS.md` § "Commits": `type(scope): subject`, scope matching the primary path, subject ≤ 65 chars, body wrapped ≤ 100 chars (commitlint enforces this), and the issue trailer (`Fixes #N` / `Closes #N` + ` (#N)` subject suffix) when the work came from an issue. Split new commits at clean scope seams when the fixes span scopes (e.g. one `chore(engine)`, one `chore(desktop)`, one `docs(repo)`). An amended commit keeps its existing scope and trailer; update its body when the fix changed what the commit does.
 5. **Never** squash, split, reorder, drop, force-push, push, or open/modify a PR, and never amend a commit that exists on `{base}`, on `main`, on a remote, or in a PR's published history. Amending a genuinely branch-local commit (one in `{base}..HEAD`) is the sanctioned delivery mechanism (see above); every other form of history rewriting belongs to the operator's `/squash` and `/create-pr`.

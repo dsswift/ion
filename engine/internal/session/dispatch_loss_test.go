@@ -439,3 +439,99 @@ func TestDispatchLoss_ConcurrentPersistencePreservesEveryLifecycleRecord(t *test
 		t.Errorf("tree temp file remains after concurrent saves: %v", err)
 	}
 }
+
+// TestDispatchLoss_PerCompletionPersistSurvivesWithoutRunExit is the regression
+// bar for the false-loss report: a dispatch that completes while its parent is
+// parked must be durable WITHOUT any run exit. Before the per-completion write,
+// the only terminal writer was the run-exit sweep, so a completed dispatch stayed
+// on disk as `running`, the next start read it as an orphan, and a clean exit-0
+// dispatch rendered red with "engine restarted while dispatch was running".
+//
+// The scoping half matters too: a sibling still running must not be dragged into
+// the write, and must still be detected as lost on restart.
+func TestDispatchLoss_PerCompletionPersistSurvivesWithoutRunExit(t *testing.T) {
+	m, s, events := lossTestEnv(t, "loss-conv-percompletion", []conversation.SessionEntry{
+		dispatchEntry("dispatch-finished-1", "finisher", "running", "conv-child-fin"),
+		dispatchEntry("dispatch-inflight-1", "inflight", "running", "conv-child-fly"),
+	})
+
+	// Registry state at the moment ONE dispatch reaches its terminal status.
+	// The sibling is still live; the parent has not exited a run and never will
+	// before the simulated restart below.
+	s.agents.AppendOrUpdateByID(types.AgentStateUpdate{
+		Name: "finisher", ID: "dispatch-finished-1", Status: "done",
+		Metadata: map[string]interface{}{"task": "some task", "model": "test-model", "conversationId": "conv-child-fin"},
+	}, nil)
+	s.agents.AppendOrUpdateByID(types.AgentStateUpdate{
+		Name: "inflight", ID: "dispatch-inflight-1", Status: "running",
+		Metadata: map[string]interface{}{"task": "some task", "model": "test-model"},
+	}, nil)
+
+	m.persistTerminalDispatch(s.key, s.conversationID, "dispatch-finished-1")
+
+	// Restart: fresh registry, no run exit ever happened.
+	s.agents = agents.NewRegistry()
+	m.rehydrateDispatchState(s, s.key)
+
+	statuses := make(map[string]string)
+	for _, st := range s.agents.MergedSnapshot() {
+		statuses[st.ID] = st.Status
+	}
+	if statuses["dispatch-finished-1"] != "done" {
+		t.Fatalf("completed dispatch resolved to %q, want done (per-completion persist must not wait on a run exit)", statuses["dispatch-finished-1"])
+	}
+	if statuses["dispatch-inflight-1"] != "error" {
+		t.Errorf("in-flight dispatch resolved to %q, want error (a genuine orphan)", statuses["dispatch-inflight-1"])
+	}
+
+	m.announceLostDispatches(s, s.key)
+	var lostIDs []string
+	for _, ev := range events() {
+		if ev.Type == "engine_dispatch_lost" {
+			lostIDs = append(lostIDs, ev.DispatchLost.DispatchID)
+		}
+	}
+	if len(lostIDs) != 1 || lostIDs[0] != "dispatch-inflight-1" {
+		t.Fatalf("loss announcements = %v, want only the genuine orphan dispatch-inflight-1", lostIDs)
+	}
+}
+
+// TestDispatchLoss_PerCompletionPersistIsScopedToOneDispatch pins the filter
+// itself at the file level: the per-completion writer touches only its own
+// dispatch, even when another terminal row is sitting in the registry.
+//
+// Revert-red: drop the onlyID filter in persistTerminalDispatchesFiltered and
+// the sibling's terminal row lands here too, turning every completion into a
+// full sweep of the registry.
+func TestDispatchLoss_PerCompletionPersistIsScopedToOneDispatch(t *testing.T) {
+	m, s, _ := lossTestEnv(t, "loss-conv-scoped", []conversation.SessionEntry{
+		dispatchEntry("dispatch-a", "agent-a", "running", ""),
+		dispatchEntry("dispatch-b", "agent-b", "running", ""),
+	})
+
+	for _, id := range []string{"dispatch-a", "dispatch-b"} {
+		s.agents.AppendOrUpdateByID(types.AgentStateUpdate{
+			Name: id, ID: id, Status: "done",
+			Metadata: map[string]interface{}{"task": "some task", "model": "test-model"},
+		}, nil)
+	}
+
+	m.persistTerminalDispatch(s.key, s.conversationID, "dispatch-a")
+
+	conv, err := conversation.Load(s.conversationID, "")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	last := make(map[string]string)
+	for _, entry := range conv.Entries {
+		if d := conversation.AsAgentDispatchData(entry.Data); d != nil {
+			last[d.AgentID] = d.Status
+		}
+	}
+	if last["dispatch-a"] != "done" {
+		t.Errorf("dispatch-a persisted status = %q, want done", last["dispatch-a"])
+	}
+	if last["dispatch-b"] != "running" {
+		t.Errorf("dispatch-b persisted status = %q, want running (a per-completion write must not sweep siblings)", last["dispatch-b"])
+	}
+}

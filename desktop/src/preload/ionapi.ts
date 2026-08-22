@@ -3,21 +3,24 @@
  * keep that file under the 600-line cap. index.ts implements this interface and
  * re-exports it (renderer/env.d.ts imports it from ../preload/index).
  */
-import type { AtvApi } from './atv-api'
-import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, LandResult, SyncAllResult, WorktreeMoveResult, WorktreeInventoryEntry, WorktreeAppraisalWire, WorktreeProvisionState, WorkStage, IntegrationWorkspace, BenchAssembleResult, EngineConfig, EngineEvent, EngineHostInfo, EngineDirListing, RemoteTransportState, DiscoveredCommand, GitEvent, RepoSnapshot, NewConversationDefaultsPolicy } from '../shared/types'
+import type { StudioApi } from './studio-api'
+import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, GitDiffResult, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, LandResult, SyncAllResult, WorktreeMoveResult, WorktreeInventoryEntry, WorktreeAppraisalWire, WorktreeProvisionState, WorkStage, IntegrationWorkspace, BenchAssembleResult, EngineConfig, EngineEvent, EngineHostInfo, EngineDirListing, RemoteTransportState, DiscoveredCommand, GitEvent, RepoSnapshot, NewConversationDefaultsPolicy } from '../shared/types'
 import type { DeepLinkConfirmRequest, DeepLinkConfirmResult } from '../shared/types-ipc'
 import type { EnterprisePolicy } from '../shared/types-engine'
+import type { StartupReport } from '../shared/startup-state'
 import type { ModelTier } from '../shared/types-model-tiers'
 import type { CustomThemeForRenderer } from '../shared/theme-pack-types'
 
-export interface IonAPI extends AtvApi {
+export interface IonAPI extends StudioApi {
+  /** Report a factual bootstrap phase to the main-process splash coordinator. */
+  startupReport(report: StartupReport): void
   // ─── Request-response (renderer → main) ───
   start(): Promise<{ version: string; auth: { email?: string; subscriptionType?: string; authMethod?: string }; mcpServers: string[]; projectPath: string; homePath: string }>
   createTab(): Promise<{ tabId: string }>
   adoptTab(tabId: string): Promise<{ tabId: string }>
   prompt(tabId: string, requestId: string, options: RunOptions): Promise<void>
   cancel(requestId: string): Promise<boolean>
-  steer(tabId: string, message: string): void
+  steer(tabId: string, message: string, clientMessageId?: string): void
   stopTab(tabId: string): Promise<boolean>
   retry(tabId: string, requestId: string, options: RunOptions): Promise<void>
   status(): Promise<HealthReport>
@@ -53,7 +56,7 @@ export interface IonAPI extends AtvApi {
   getFavicon(host: string): Promise<string | null>
   /** iOS asked to open (or focus) a conversation in a worktree. */
   onRemoteOpenWorktreeConversation(callback: (arg: { worktreePath: string; newConversation: boolean }) => void): () => void
-  /** iOS asked the owner renderer to retire a landed worktree safely. */
+  /** iOS asked the owner renderer to retire one worktree (appraised; refusals carry the reason). */
   onRemoteRetireWorktree(callback: (arg: { repoPath: string; worktreePath: string; branchName: string }) => void): () => void
   /** iOS asked the owner renderer to retire every landed worktree in a repo. */
   onRemoteRetireLandedWorktrees(callback: (arg: { repoPath: string }) => void): () => void
@@ -61,10 +64,20 @@ export interface IonAPI extends AtvApi {
   onRemoteOpenBenchConversation(callback: (arg: { repoPath: string; sourceBranch: string }) => void): () => void
   /** iOS asked to open (or focus) the integration bench's dedicated terminal. */
   onRemoteOpenBenchTerminal(callback: (arg: { repoPath: string; sourceBranch: string }) => void): () => void
+  /** iOS requests that the owner renderer perform a worktree or bench mutation. */
+  onRemoteWorktreeAction(callback: (action: string, arg: Record<string, unknown>) => void): () => void
+  /** iOS drives the sync pipeline (start / confirm-ai / cancel / dismiss). */
+  onRemoteWorktreePipeline(callback: (arg: { verb: 'start' | 'confirm-ai' | 'cancel' | 'dismiss'; repoPath: string; sourceBranch?: string }) => void): () => void
   /** A worktree was named (generated or renamed). Both windows re-read the row. */
   onWorktreeTitled(callback: (arg: { repoPath: string; worktreePath: string; title: string }) => void): () => void
   /** A successful Land sealed the worktree; owners lock existing review tabs. */
   onWorktreeLanded(callback: (arg: { repoPath: string; worktreePath: string; prunedBenchPaths: string[] }) => void): () => void
+  /**
+   * The main-process freshness poll re-crawled these repos. The owner renderer
+   * re-reads its worktree + bench caches; both refreshes no-op when git has not
+   * moved, which is what keeps a forever-ticking poll quiescent.
+   */
+  onWorktreeFreshnessTick(callback: (arg: { repoPaths: string[] }) => void): () => void
   /** Reveal a directory in the OS file manager. */
   revealPath(path: string): Promise<boolean>
 
@@ -75,7 +88,7 @@ export interface IonAPI extends AtvApi {
   transcribeAudio(audioBase64: string): Promise<{ error: string | null; transcript: string | null }>
   getDiagnostics(): Promise<any>
   respondPermission(tabId: string, questionId: string, optionId: string): Promise<boolean>
-  respondElicitation(tabId: string, requestId: string, response: Record<string, unknown> | undefined, cancelled: boolean): Promise<boolean>
+  respondElicitation(tabId: string, requestId: string, response: Record<string, unknown> | undefined, cancelled: boolean, declined?: boolean): Promise<boolean>
   approveDeniedTools(tabId: string, toolNames: string[]): Promise<boolean>
   initSession(tabId: string): void
   ensureEngineSession(args: { tabId: string; workingDirectory: string; conversationId?: string | null; permissionMode?: 'auto' | 'plan' }): Promise<{ ok: boolean; error?: string; conversationId?: string }>
@@ -98,6 +111,12 @@ export interface IonAPI extends AtvApi {
   terminalWrite(key: string, data: string): void
   terminalResize(key: string, cols: number, rows: number): void
   terminalDestroy(key: string): Promise<void>
+  /** Attach protocol (D2): history snapshot + lifecycle; optional respawn. */
+  terminalAttach(key: string, opts?: { restartIfNotRunning?: boolean; cwd?: string }): Promise<{ history: string; running: boolean; exitCode: number | null; cwd: string; cwdFellBack: boolean }>
+  /** Active-UI picker: current resolution + enterprise lock state. */
+  getActiveUi(): Promise<{ activeUi: 'overlay' | 'studio'; locked: boolean }>
+  /** Set the active conversation UI (live switch, no restart). False = rejected/locked. */
+  setActiveUi(ui: 'overlay' | 'studio'): Promise<boolean>
   /**
    * Main-process scrollback for a terminal key.
    *
@@ -115,7 +134,7 @@ export interface IonAPI extends AtvApi {
    */
   onDeepLinkConfirmRequest(callback: (request: DeepLinkConfirmRequest) => void): () => void
   onDeepLinkConfirmSettled(callback: (id: string) => void): () => void
-  setDeepLinkConfirmAvailability(owner: 'overlay' | 'atv', available: boolean): void
+  setDeepLinkConfirmAvailability(owner: 'overlay' | 'studio', available: boolean): void
   resolveDeepLinkConfirm(result: DeepLinkConfirmResult): void
   onTerminalData(callback: (key: string, data: string) => void): () => void
   onTerminalExit(callback: (key: string, exitCode: number) => void): () => void
@@ -123,6 +142,12 @@ export interface IonAPI extends AtvApi {
   cancelBash(id: string): void
   sendRemote(event: any): void
   setPermissionMode(tabId: string, mode: string, source?: string, planFilePath?: string): void
+  /**
+   * Report that a pending AskUserQuestion / ExitPlanMode card was resolved by
+   * this client (dismissed, answered, or superseded by an approval), so the
+   * engine releases its retention and stops re-publishing the denial.
+   */
+  resolvePermissionDenials(tabId: string): void
   loadSettings(): Promise<Record<string, any>>
   saveSettings(data: Record<string, any>): Promise<void>
   loadTabs(): Promise<PersistedTabState | null>
@@ -136,6 +161,7 @@ export interface IonAPI extends AtvApi {
   loadSessionChains(): Promise<{ chains: Record<string, string[]>; reverse: Record<string, string> }>
   saveSessionChains(data: { chains: Record<string, string[]>; reverse: Record<string, string> }): Promise<void>
   getConversation(conversationId: string, offset?: number, limit?: number): Promise<{ messages: any[]; total: number; hasMore: boolean }>
+  deleteStoredConversations(sessionIds: string[]): Promise<{ deleted: number }>
   loadChainHistory(sessionIds: string[]): Promise<SessionLoadMessage[]>
 
   // ─── Conversation backup (export/restore zip archives) ───
@@ -155,14 +181,14 @@ export interface IonAPI extends AtvApi {
   gitBranches(directory: string): Promise<{ branches: GitBranchInfo[]; current: string }>
   gitCheckout(directory: string, branch: string): Promise<{ ok: boolean; error?: string }>
   gitCreateBranch(directory: string, name: string): Promise<{ ok: boolean; error?: string }>
-  gitDiff(directory: string, path: string, staged: boolean): Promise<{ diff: string; fileName: string }>
+  gitDiff(directory: string, path: string, staged: boolean): Promise<GitDiffResult>
   gitStage(directory: string, paths: string[]): Promise<{ ok: boolean; error?: string }>
   gitUnstage(directory: string, paths: string[]): Promise<{ ok: boolean; error?: string }>
   gitDiscard(directory: string, paths: string[]): Promise<{ ok: boolean; error?: string }>
   gitDeleteBranch(directory: string, branch: string): Promise<{ ok: boolean; error?: string }>
   gitCommitDetail(directory: string, hash: string): Promise<GitCommitDetail>
   gitCommitFiles(directory: string, hash: string): Promise<{ files: Array<{ path: string; status: string; oldPath?: string }> }>
-  gitCommitFileDiff(directory: string, hash: string, path: string): Promise<{ diff: string; fileName: string }>
+  gitCommitFileDiff(directory: string, hash: string, path: string): Promise<GitDiffResult>
   gitIgnoredFiles(directory: string): Promise<{ paths: string[] }>
   gitStashList(directory: string): Promise<{ stashes: Array<{ ref: string; message: string; date: string; parentSha?: string }> }>
   gitStashSave(directory: string, message?: string): Promise<{ ok: boolean; error?: string }>
@@ -215,12 +241,8 @@ export interface IonAPI extends AtvApi {
   gitWorktreeMerge(repoPath: string, worktreeBranch: string, sourceBranch: string, noFf?: boolean): Promise<{ ok: boolean; error?: string; hasConflicts?: boolean }>
   gitWorktreePush(worktreePath: string, sourceBranch: string): Promise<{ ok: boolean; error?: string; remoteBranch?: string; remoteUrl?: string }>
   gitWorktreeRebase(worktreePath: string, sourceBranch: string): Promise<{ ok: boolean; error?: string; hasConflicts?: boolean }>
-  /**
-   * Worktree lifecycle verbs. `land` integrates repeatably without clobbering
-   * a checkout; `retire` and `reattach` return the directory the caller should
-   * relocate the conversation into (see relocateTabSession).
-   */
-  gitWorktreeLand(args: { repoPath: string; worktreePath: string; worktreeBranch: string; sourceBranch: string; noFf?: boolean; syncFirst?: boolean; requireFastForward?: boolean }): Promise<LandResult>
+  /** Integrate a clean worktree, then remove it and its branch. */
+  gitWorktreeLandAndRetire(args: { repoPath: string; worktreePath: string; worktreeBranch: string; branchName?: string; sourceBranch: string; noFf?: boolean; syncFirst?: boolean; requireFastForward?: boolean }): Promise<LandResult & { landed?: boolean; workingDirectory?: string }>
   gitWorktreeSync(worktreePath: string, sourceBranch: string): Promise<{ ok: boolean; error?: string; hasConflicts?: boolean; refusedDirty?: boolean; replayed?: boolean; dropped?: number; warning?: string }>
   /**
    * Bulk sync: every managed worktree of a repo, sequentially, with rerere
@@ -269,7 +291,6 @@ export interface IonAPI extends AtvApi {
   benchEnsure(repoPath: string, sourceBranch: string): Promise<{ workspace: IntegrationWorkspace }>
   benchAddMember(args: { repoPath: string; sourceBranch: string; worktreePath: string; branchName: string }): Promise<{ ok: boolean; error?: string; workspace?: IntegrationWorkspace }>
   benchRemoveMember(args: { repoPath: string; sourceBranch: string; worktreePath: string }): Promise<{ workspace: IntegrationWorkspace | null }>
-  benchSetEnabled(args: { repoPath: string; sourceBranch: string; worktreePath: string; enabled: boolean }): Promise<{ workspace: IntegrationWorkspace | null }>
   /**
    * The registry's record for a worktree. The authoritative answer for which
    * repo owns it -- never derive that from the renderer's inventory cache, which
@@ -332,7 +353,6 @@ export interface IonAPI extends AtvApi {
   }>
   /** Base staleness: has the feature branch moved ahead of this worktree? */
   gitWorktreeBaseStatus(worktreePath: string, sourceBranch: string): Promise<{ behindCount: number; behindSubjects: string[]; needsSync: boolean; hasUncommittedChanges: boolean; appraisalFailed?: boolean }>
-  gitWorktreeRetire(args: { repoPath: string; worktreePath: string; branchName: string; force?: boolean }): Promise<WorktreeMoveResult>
   /**
    * Read-only preview of a retire's blast radius: the bench directories the
    * retire would remove because disenrolling this worktree empties them.
@@ -356,7 +376,7 @@ export interface IonAPI extends AtvApi {
   fsCreateFile(filePath: string): Promise<{ ok: boolean; error?: string }>
   fsRename(oldPath: string, newPath: string): Promise<{ ok: boolean; error?: string }>
   fsDelete(targetPath: string): Promise<{ ok: boolean; error?: string }>
-  fsSaveDialog(defaultPath?: string): Promise<{ filePath: string | null }>
+  fsSaveDialog(defaultPath?: string, defaultFileName?: string): Promise<{ filePath: string | null; error?: string }>
   fsRevealInFinder(targetPath: string): Promise<void>
   fsOpenNative(targetPath: string): Promise<{ ok: boolean; error?: string }>
   fsExists(targetPath: string): Promise<{ exists: boolean }>
@@ -377,12 +397,16 @@ export interface IonAPI extends AtvApi {
    *  sibling branch) instead of appending a duplicate after the old leaf.
    *  Rejects when the session/entry is unknown. */
   engineBranchBefore(key: string, entryId: string): Promise<void>
-  /** Ordinal-addressed tree-native rewind: the engine resolves the 0-based
-   *  user-turn ordinal against its own tree, moves the leaf to before that turn,
-   *  and restores plan-file continuity, so the next prompt replaces the turn on
-   *  a fresh branch with no duplicate. Resolves with {ok,error?}; ok=false when
-   *  the ordinal is out of range or the session is unknown. */
-  engineRewind(key: string, userTurnIndex: number): Promise<{ ok: boolean; error?: string }>
+  /** Ordinal- or exact-entry-addressed tree-native rewind: with `entryId`,
+   *  the engine validates it names a live user turn on the current context
+   *  path before branching (preferred once a client has learned an exact
+   *  durable id from a prior steer confirmation or loaded history); with only
+   *  `userTurnIndex`, the engine resolves the legacy 0-based ordinal against
+   *  its own tree. Moves the leaf to before that turn and restores plan-file
+   *  continuity, so the next prompt replaces the turn on a fresh branch with
+   *  no duplicate. Resolves with {ok,error?}; ok=false when the target is
+   *  invalid/out of range or the session is unknown. */
+  engineRewind(key: string, target: { entryId?: string; userTurnIndex?: number }): Promise<{ ok: boolean; error?: string }>
   /** Fire get_context_breakdown for the given engine key. Fire-and-forget:
    *  the engine emits engine_context_breakdown on its event bus; the renderer
    *  observes the result via the existing context_breakdown normalized event. */

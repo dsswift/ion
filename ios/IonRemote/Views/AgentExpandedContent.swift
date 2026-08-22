@@ -12,6 +12,8 @@ import SwiftUI
 /// all — keeping the inline AgentBarRow expand unchanged.
 struct AgentExpandedContent: View {
     let agent: AgentStateUpdate
+    /// Full unfiltered state for per-dispatch descendant liveness resolution.
+    let allAgents: [AgentStateUpdate]
     let messages: [Message]?
     let convMessageCache: [String: [Message]]
     let isLoadingMessages: Bool
@@ -35,8 +37,10 @@ struct AgentExpandedContent: View {
     /// BreadcrumbDestinationView) supplies this; the inline AgentBarRow
     /// leaves it nil, which is fine because AgentBarRow builds no Transcript.
     var agentPanelExpanded: Binding<Bool>?
+    /// Explicit opening target. Empty selects detailSubject's most recent dispatch.
+    var initialDispatchId: String = ""
     @Environment(\.appTheme) private var theme
-    @State private var selectedDispatchIndex: Int?
+    @State private var selectedDispatchId: String?
     /// Live clock for the duration ticker — only ticks when pinHeader is true
     /// and the agent is running, to avoid a needless timer in every inline row.
     @State private var now = Date()
@@ -45,11 +49,24 @@ struct AgentExpandedContent: View {
 
     // MARK: - Computed
 
+    private var selectedDispatch: DispatchInfo? {
+        AgentDotResolver.detailSubject(
+            agent.dispatches,
+            dispatchId: selectedDispatchId ?? initialDispatchId
+        )
+    }
+
     private var activeDispatch: DispatchInfo? {
         guard agent.dispatches.count > 1 else { return nil }
-        let idx = selectedDispatchIndex ?? agent.dispatches.count - 1
-        guard idx >= 0 && idx < agent.dispatches.count else { return nil }
-        return agent.dispatches[idx]
+        return selectedDispatch
+    }
+
+    private func seedDispatchSelection() {
+        guard selectedDispatchId == nil else { return }
+        selectedDispatchId = AgentDotResolver.detailSubject(
+            agent.dispatches,
+            dispatchId: initialDispatchId
+        )?.id
     }
 
     /// Whether the "Working…" spinner should show for the current selection.
@@ -115,8 +132,11 @@ struct AgentExpandedContent: View {
                 bodyView
             }
             .padding(.vertical, IonSpace.compactInset)
-            .onAppear { logDispatchState(event: "onAppear") }
-            .onChange(of: selectedDispatchIndex) { _ in logDispatchState(event: "selectionChange") }
+            .onAppear {
+                seedDispatchSelection()
+                logDispatchState(event: "onAppear")
+            }
+            .onChange(of: selectedDispatchId) { _ in logDispatchState(event: "selectionChange") }
         }
     }
 
@@ -162,6 +182,7 @@ struct AgentExpandedContent: View {
             }
         }
         .padding(.bottom, pinHeader ? 4 : 0)
+        .onAppear { seedDispatchSelection() }
     }
 
     // MARK: - Body view (conversation transcript)
@@ -238,7 +259,7 @@ struct AgentExpandedContent: View {
             if !pinHeader { return }
             logDispatchState(event: "onAppear")
         }
-        .onChange(of: selectedDispatchIndex) { _ in
+        .onChange(of: selectedDispatchId) { _ in
             if !pinHeader { return }
             logDispatchState(event: "selectionChange")
         }
@@ -371,15 +392,24 @@ struct AgentExpandedContent: View {
                     .foregroundStyle(theme.textSecondary.opacity(0.5))
                 ForEach(Array(agent.dispatches.enumerated().reversed()), id: \.element.id) { idx, d in
                     let displayNum = idx + 1
-                    let isActive = idx == (selectedDispatchIndex ?? agent.dispatches.count - 1)
+                    let isActive = d.id == selectedDispatch?.id
+                    let dot = AgentDotResolver.resolveDispatchDot(
+                        agent: agent,
+                        dispatch: d,
+                        allAgents: allAgents,
+                        theme: theme
+                    )
                     Button {
-                        selectedDispatchIndex = idx
+                        selectedDispatchId = d.id
                         if !d.conversationId.isEmpty {
                             onLoadDispatch?(d.conversationId)
                         }
                     } label: {
-                        Text("#\(displayNum)")
-                            .ionCompactSelectionLabel(isSelected: isActive, selectedWeight: .semibold)
+                        HStack(spacing: 4) {
+                            AgentStatusDot(dot: dot, size: 6)
+                            Text("#\(displayNum)")
+                        }
+                        .ionCompactSelectionLabel(isSelected: isActive, selectedWeight: .semibold)
                             .foregroundStyle(isActive ? theme.textPrimary : theme.textSecondary.opacity(0.5))
                             .padding(.horizontal, IonSpace.compactInset)
                             .padding(.vertical, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
@@ -417,8 +447,7 @@ struct AgentExpandedContent: View {
     }
 
     private func logDispatchState(event: String) {
-        let idx = selectedDispatchIndex ?? (agent.dispatches.count - 1)
-        let dispatch = agent.dispatches.indices.contains(idx) ? agent.dispatches[idx] : nil
+        let dispatch = selectedDispatch
         let dispatchId = dispatch?.id ?? ""
         let convId = dispatch?.conversationId ?? ""
         let rawCount = activeMessages?.count ?? 0

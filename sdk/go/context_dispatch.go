@@ -167,17 +167,27 @@ type SteerDispatchResult struct {
 	Outcome   string `json:"outcome"`
 }
 
-// DispatchStateEntry is one in-flight dispatch from
-// [Context.ListDispatchState]. Status is always "running": the registry holds
-// only live dispatches.
+// DispatchStateEntry is one in-flight dispatch from [Context.ListDispatchState].
 type DispatchStateEntry struct {
-	DispatchID       string `json:"dispatchId"`
-	Name             string `json:"name"`
-	Status           string `json:"status"`
-	ParentDispatchID string `json:"parentDispatchId,omitempty"`
-	Depth            int    `json:"depth"`
-	StartedAt        string `json:"startedAt"`
-	ElapsedMs        int64  `json:"elapsedMs"`
+	DispatchID          string             `json:"dispatchId"`
+	Name                string             `json:"name"`
+	Status              string             `json:"status"`
+	ParentDispatchID    string             `json:"parentDispatchId,omitempty"`
+	Depth               int                `json:"depth"`
+	StartedAt           string             `json:"startedAt"`
+	ElapsedMs           int64              `json:"elapsedMs"`
+	ToolCount           int                `json:"toolCount"`
+	LastWork            string             `json:"lastWork,omitempty"`
+	LastActivityMs      int64              `json:"lastActivityMs"`
+	ChildConversationID string             `json:"childConversationId,omitempty"`
+	PendingChildren     []string           `json:"pendingChildren,omitempty"`
+	WaitingOn           *DispatchWaitingOn `json:"waitingOn,omitempty"`
+}
+
+// DispatchWaitingOn identifies work holding a suspended dispatch parked.
+type DispatchWaitingOn struct {
+	TaskIDs          []string `json:"taskIds,omitempty"`
+	ChildDispatchIDs []string `json:"childDispatchIds,omitempty"`
 }
 
 // DispatchToolStartInfo reports a child beginning a tool call.

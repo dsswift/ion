@@ -8,9 +8,9 @@
  * the moment one grows a new surface.
  *
  * Broadcast (not webContents.send): both renderer windows must repaint their
- * rows — the git panel and the ATV mirror would otherwise disagree, one
+ * rows — the git panel and the Studio mirror would otherwise disagree, one
  * showing the machine slug while the other shows the title (and
- * `make check-atv-parity` fails the build for exactly this reason). The iOS
+ * `make check-studio-parity` fails the build for exactly this reason). The iOS
  * push goes through the worktree state projection so phones see the rename
  * without waiting for their next manual refresh.
  */

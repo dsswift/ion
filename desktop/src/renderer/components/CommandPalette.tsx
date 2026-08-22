@@ -1,11 +1,12 @@
 /**
  * CommandPalette — shared ⌘K fuzzy jump, mounted in BOTH the overlay and
- * the ATV shell (overlay↔ATV parity mechanism 1: one component, one store).
+ * the Studio shell (overlay↔Studio parity mechanism 1: one component, one store).
  * Entries: every tab (select forwards/executes per window role) plus
  * host-injected actions (each surface contributes its own — "Open
- * Visualizer" in the overlay, "Open Overlay" in the ATV, canvas actions...).
+ * Visualizer" in the overlay, "Open Overlay" in the Studio window, canvas actions...).
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { usePaletteEscape } from './command-palette-control'
 import { createPortal } from 'react-dom'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
@@ -15,35 +16,28 @@ import { rankEntries, type PaletteEntry } from './command-palette-rank'
 export interface CommandPaletteProps {
   /** Host-surface actions appended to the tab entries. */
   actions?: PaletteEntry[]
+  /** Controlled by unified shortcut dispatcher, never by a component listener. */
+  open: boolean
+  onOpenChange: (open: boolean) => void
 }
 
 export function CommandPalette(props: CommandPaletteProps): React.JSX.Element | null {
   const colors = useColors()
   const layer = usePopoverLayer()
-  const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const tabs = useSessionStore((s) => s.tabs)
+  const { open, onOpenChange } = props
+
+  usePaletteEscape(open, onOpenChange)
 
   useEffect(() => {
-    function onKey(e: KeyboardEvent): void {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        setOpen((v) => !v)
-        setQuery('')
-        setIndex(0)
-      } else if (e.key === 'Escape' && open) {
-        e.preventDefault()
-        setOpen(false)
-      }
+    if (open) {
+      setQuery('')
+      setIndex(0)
+      inputRef.current?.focus()
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open])
-
-  useEffect(() => {
-    if (open) inputRef.current?.focus()
   }, [open])
 
   const entries = useMemo<PaletteEntry[]>(() => {
@@ -72,7 +66,7 @@ export function CommandPalette(props: CommandPaletteProps): React.JSX.Element | 
         pointerEvents: 'auto',
         background: 'rgba(0,0,0,0.25)', // hardcoded-ok: pure-black modal scrim
       }}
-      onClick={() => setOpen(false)}
+      onClick={() => onOpenChange(false)}
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -106,7 +100,7 @@ export function CommandPalette(props: CommandPaletteProps): React.JSX.Element | 
               setIndex((i) => Math.max(i - 1, 0))
             } else if (e.key === 'Enter' && ranked[clamped]) {
               e.preventDefault()
-              setOpen(false)
+              onOpenChange(false)
               ranked[clamped].entry.run()
             }
           }}
@@ -128,7 +122,7 @@ export function CommandPalette(props: CommandPaletteProps): React.JSX.Element | 
             <div
               key={entry.id}
               onClick={() => {
-                setOpen(false)
+                onOpenChange(false)
                 entry.run()
               }}
               onMouseEnter={() => setIndex(i)}

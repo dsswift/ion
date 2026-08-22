@@ -59,7 +59,6 @@ const INTEGRATION_RECORD_KEYS = [
   'workspaces.lastAssembly',
   'workspaces.members.worktreePath',
   'workspaces.members.branchName',
-  'workspaces.members.enabled',
   'workspaces.members.pin',
   'workspaces.members.merge',
   'workspaces.members.pinnedSha',
@@ -177,7 +176,6 @@ describe('integration workspaces writer and reader agree on the record schema', 
     const m = w.members[0]
     expect(m.worktreePath).toBe('/wt/project-aaa')
     expect(m.branchName).toBe('wt/project-aaa')
-    expect(m.enabled).toBe(true)
     expect(m.pin).toBe('current')
     expect(m.merge).toBe('unbuilt')
     expect(m.pinnedSha).toBe('89abcdef0123456789abcdef0123456789abcdef')

@@ -5,7 +5,8 @@ import { IPC, type ImageAttachmentPayload } from '../../shared/types'
 import {
   type QueuedItem, enqueueEvent, enqueueStatus, enqueueError, dropQueuedTextFor, countMergedChunks,
 } from './engine-event-frame-queue'
-import { FORWARDED_ACTIONS } from '../../shared/atv-mirror-actions'
+import { FORWARDED_ACTIONS } from '../../shared/studio-mirror-actions'
+import { isMirrorWindow } from '../lib/window-role'
 import { rTrace, rWarn, rDebug } from '../rendererLogger'
 
 /**
@@ -150,7 +151,7 @@ export function useEngineEvents() {
     // `attachments` is the raw iOS attachment metadata (type/name/path) the pipeline
     // forwards so the optimistic user message renders inline image previews — the
     // rewritten prompt only carries the pathless "(content attached)" marker form.
-    const remoteUserMsgHandler = (_e: any, data: { tabId: string; requestId: string; prompt: string; timestamp: number; imageAttachments?: ImageAttachmentPayload[]; attachments?: Array<{ type: string; name: string; path: string }>; resolveSlash?: boolean }) => {
+    const remoteUserMsgHandler = (_e: any, data: { tabId: string; requestId: string; prompt: string; timestamp: number; imageAttachments?: ImageAttachmentPayload[]; attachments?: Array<{ type: string; name: string; path: string; contentHash?: string }>; resolveSlash?: boolean }) => {
       useSessionStore.getState().submitRemotePrompt(data.tabId, data.prompt, data.imageAttachments, data.resolveSlash, data.attachments, data.requestId)
     }
     window.ion.on(IPC.REMOTE_USER_MESSAGE, remoteUserMsgHandler)
@@ -214,22 +215,15 @@ export function useEngineEvents() {
     }
     window.ion.on(IPC.REMOTE_SET_THINKING_EFFORT, remoteSetThinkingHandler)
 
-    // Remote close tab (from iOS swipe-to-delete)
+    // Direct main-process fallback already stopped the remote tab's sessions and
+    // broadcast its permanent removal. Only overlay owns durable tab state;
+    // Studio follows owner sync.
     const remoteCloseTabHandler = (_e: any, tabId: string) => {
-      const store = useSessionStore.getState()
-      const pane = store.terminalPanes.get(tabId)
-      if (pane) {
-        for (const inst of pane.instances) {
-          void window.ion.terminalDestroy?.(`${tabId}:${inst.id}`)?.catch((err) => rWarn('remote.close-tab', 'terminalDestroy failed during remote close', { error: String(err) }))
-        }
+      if (isMirrorWindow()) {
+        rDebug('remote.close-tab', 'mirror ignored remote close; awaiting owner sync', { tab_id: tabId })
+        return
       }
-      const tabs = store.tabs.filter((t) => t.id !== tabId)
-      const panes = new Map(store.terminalPanes)
-      panes.delete(tabId)
-      const selected = store.activeTabId === tabId
-        ? (tabs[0]?.id ?? null)
-        : store.activeTabId
-      useSessionStore.setState({ tabs, terminalPanes: panes, activeTabId: selected })
+      useSessionStore.getState().closeTab(tabId, 'remote-delete')
     }
     window.ion.on(IPC.REMOTE_CLOSE_TAB, remoteCloseTabHandler)
 
@@ -252,7 +246,7 @@ export function useEngineEvents() {
     // IPC.PROMPT handler skips its redundant desktop_message_added echo — the
     // canonical echo was already sent by tabs-prompt.ts; a second echo with a
     // renderer-generated id would cause a duplicate user bubble on iOS.
-    const remoteEnginePromptHandler = (_e: any, data: { tabId: string; text: string; reqId?: string; appendSystemPrompt?: string; imageAttachments?: ImageAttachmentPayload[]; attachments?: Array<{ type: string; name: string; path: string }>; resolveSlash?: boolean }) => {
+    const remoteEnginePromptHandler = (_e: any, data: { tabId: string; text: string; reqId?: string; appendSystemPrompt?: string; imageAttachments?: ImageAttachmentPayload[]; attachments?: Array<{ type: string; name: string; path: string; contentHash?: string }>; resolveSlash?: boolean }) => {
       useSessionStore.getState().submit(data.tabId, data.text, { appendSystemPrompt: data.appendSystemPrompt, imageAttachments: data.imageAttachments, remoteAttachments: data.attachments, source: 'remote', resolveSlash: data.resolveSlash, requestId: data.reqId })
     }
     window.ion.on(IPC.REMOTE_ENGINE_PROMPT, remoteEnginePromptHandler)
@@ -269,32 +263,32 @@ export function useEngineEvents() {
     }
     window.ion.on(IPC.REMOTE_SET_PILL_ICON, remoteSetPillIconHandler)
 
-    // Forwarded actions from the ATV mirror window: this renderer is the
+    // Forwarded actions from the Studio mirror window: this renderer is the
     // session-store OWNER, so owner-durable mutations execute here (main
     // already validated the action against FORWARDED_ACTIONS). The resulting
     // state flows back to the mirror via events and sync pushes.
-    const unsubExecAction = window.ion.onAtvExecAction((action, args, callId) => {
+    const unsubExecAction = window.ion.onStudioExecAction((action, args, callId) => {
       // A round-trip call (callId set) must ALWAYS get exactly one reply, on
       // every path — including the two rejections below. A mirror caller is
       // awaiting it, and main only unblocks them on a reply or a timeout, so a
       // silent return here would cost them 30s of hang for a fault we already
       // know about right now.
       const reply = (value: unknown): void => {
-        if (callId) window.ion.atvActionResult(callId, value)
+        if (callId) window.ion.studioActionResult(callId, value)
       }
       if (!(action in FORWARDED_ACTIONS)) {
-        rWarn('event.atv', 'exec-action outside the forwarded set', { action })
+        rWarn('event.studio', 'exec-action outside the forwarded set', { action })
         reply(undefined)
         return
       }
       const store = useSessionStore.getState() as unknown as Record<string, unknown>
       const fn = store[action]
       if (typeof fn !== 'function') {
-        rWarn('event.atv', 'exec-action has no store implementation', { action })
+        rWarn('event.studio', 'exec-action has no store implementation', { action })
         reply(undefined)
         return
       }
-      rDebug('event.atv', 'executing forwarded action', {
+      rDebug('event.studio', 'executing forwarded action', {
         action, arg_count: args.length, call_id: callId ?? '',
       })
       // Fire-and-forget (no callId) keeps its existing `void` shape. A round
@@ -310,7 +304,7 @@ export function useEngineEvents() {
       Promise.resolve(ret)
         .then((value) => reply(value))
         .catch((err) => {
-          rWarn('event.atv', 'forwarded action threw; replying with no value', {
+          rWarn('event.studio', 'forwarded action threw; replying with no value', {
             action, call_id: callId, error: String(err),
           })
           reply(undefined)

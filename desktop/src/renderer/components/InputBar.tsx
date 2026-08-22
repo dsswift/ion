@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence } from 'framer-motion'
 import { create } from 'zustand'
 import { useSessionStore } from '../stores/sessionStore'
 import { activeInstance } from '../stores/conversation-instance'
@@ -12,20 +12,21 @@ import { getRendererExtensionCommands } from '../stores/slices/engine-event-slic
 import { useVoiceRecording, VoiceButtons } from './InputBarVoiceButton'
 import { SendButton } from './InputBarSendButton'
 import { UpdateButton } from './UpdateButton'
-import { rDebug, rError } from '../rendererLogger'
+import { rDebug, rError, rWarn } from '../rendererLogger'
+import { dispatchSend } from './InputBarSend'
+import { dispatchBashCommand } from './InputBarBash'
 import { useModelStore } from '../stores/model-store'
-
+import { useActiveContextCapacity } from '../hooks/useActiveContextCapacity'
+import { ComposerControls } from './ComposerControls'
+import { InputLockNotice } from './InputLockNotice'
+import { ContextCapacityNotice } from './ContextCapacityNotice'
+import { ImageModelNotice } from './ImageModelNotice'
+import { INLINE_CONTROLS_RESERVED_WIDTH, INPUT_MAX_HEIGHT, INPUT_MIN_HEIGHT, MULTILINE_ENTER_HEIGHT, MULTILINE_EXIT_HEIGHT } from './input-bar-layout'
 /** Shared transient state for bash command mode (consumed by App.tsx for pill styling) */
 export const useBashModeStore = create<{ active: boolean; set: (v: boolean) => void }>((set) => ({
   active: false,
   set: (v) => set({ active: v }),
 }))
-
-const INPUT_MIN_HEIGHT = 20
-const INPUT_MAX_HEIGHT = 140
-const MULTILINE_ENTER_HEIGHT = 52
-const MULTILINE_EXIT_HEIGHT = 50
-const INLINE_CONTROLS_RESERVED_WIDTH = 104
 
 /**
  * InputBar renders inside a glass-surface rounded-full pill provided by App.tsx.
@@ -72,6 +73,7 @@ export function InputBar() {
   const preferredModel = usePreferencesStore((s) => s.preferredModel)
   const findModel = useModelStore((s) => s.findModel)
   const effectiveModelId = modelOverride ?? preferredModel ?? ''
+  const { capacityLimit: contextCapacityLimit, state: contextCapacityStatus, tokens: contextTokens } = useActiveContextCapacity(effectiveModelId)
   const isImageModel = effectiveModelId !== '' && findModel(effectiveModelId)?.modelKind === 'image'
   const isBusy = tab?.status === 'running' || tab?.status === 'connecting'
   const isConnecting = tab?.status === 'connecting' || !tabsReady
@@ -287,64 +289,72 @@ export function InputBar() {
       }
     }
     // Bash command mode: execute directly and store result as pending context
+    // (ordering and refusal rules live in InputBarBash.ts).
     if (bashMode) {
-      const cmd = input.trim()
-      if (!cmd) return
-      if (bashExecuting) return
-      if (isConnecting) return
-      const cwd = tab?.workingDirectory || '~'
-      const execId = crypto.randomUUID()
-      setInput('')
-      if (activeTabId) setDraftInput(activeTabId, '')
-      setBashMode(false)
-      if (textareaRef.current) {
-        textareaRef.current.style.height = `${INPUT_MIN_HEIGHT}px`
-      }
-      const { toolMsgId, tabId } = startBashCommand(cmd, execId)
-      window.ion.executeBash(execId, cmd, cwd).then((result) => {
-        completeBashCommand(tabId, toolMsgId, cmd, result.stdout, result.stderr, result.exitCode)
-        requestAnimationFrame(() => textareaRef.current?.focus())
-      }).catch(() => {
-        completeBashCommand(tabId, toolMsgId, cmd, '', 'IPC error: bash execution failed', 1)
+      dispatchBashCommand({
+        command: input.trim(),
+        bashExecuting,
+        isConnecting,
+        cwd: tab?.workingDirectory || '~',
+        activeTabId,
+        clearInput: () => {
+          setInput('')
+          if (textareaRef.current) {
+            textareaRef.current.style.height = `${INPUT_MIN_HEIGHT}px`
+          }
+        },
+        clearDraft: (tabId) => setDraftInput(tabId, ''),
+        exitBashMode: () => setBashMode(false),
+        startBashCommand,
+        completeBashCommand,
+        executeBash: (execId, cmd, cwd) => window.ion.executeBash(execId, cmd, cwd),
+        onSettled: () => requestAnimationFrame(() => textareaRef.current?.focus()),
       })
       return
     }
     const prompt = input.trim()
     if (!prompt && attachments.length === 0) return
-    if (isConnecting) return
-    setInput('')
-    if (activeTabId) setDraftInput(activeTabId, '')
-    setSlashFilter(null)
-    if (textareaRef.current) {
-      textareaRef.current.style.height = `${INPUT_MIN_HEIGHT}px`
-    }
-    // Route to engine if this is an engine tab.
+
+    // Decide, then clear, then submit — the ordering lives in dispatchSend
+    // (InputBarSend.ts) so it is pinned by a unit test rather than by this
+    // component's render path.
     //
-    // Slash-command routing is NOT done here any more. After the unified
-    // prompt pipeline (desktop/src/main/prompt-pipeline.ts) the renderer is
-    // a dumb pipe: it hands raw text — including any leading "/" — to the
-    // main process via window.ion.prompt (the single unified prompt IPC), and the
-    // main-process pipeline decides between extension command dispatch,
-    // .md template expansion, and normal LLM prompt submission. This makes
-    // desktop and remote (iOS) paths behaviourally identical and removes
-    // the four-way regex drift that motivated the refactor.
+    // Slash-command routing is NOT done here — see the "Slash commands" note
+    // above: raw text (leading "/" included) goes to the main-process prompt
+    // pipeline, which makes the desktop and remote (iOS) paths identical. The
+    // `/clear` divider likewise comes back from the engine as an
+    // engine_command_result event rather than being drawn locally.
     //
-    // The `/clear` divider is no longer drawn locally either; it is now
-    // emitted by the engine via engine_command_result events and inserted
-    // by the engine-event-slice subscriber, so the same trigger works for
-    // both desktop-initiated and iOS-initiated /clear.
-    // Unified submit for EVERY tab — plain or extension-backed. No tab-type
-    // fork: `submit` reads tab.attachments internally and resolves the tab's
-    // extensions from its profile (data), which routes the prompt through the
-    // engine pipeline for extension-backed tabs and the CLI pipeline otherwise.
-    const currentTab = useSessionStore.getState().tabs.find(t => t.id === useSessionStore.getState().activeTabId)
-    if (!currentTab) return
-    // Clear the per-tab draft (bare tabId key — single instance per tab).
-    setDraftInput(currentTab.id, '')
-    submit(currentTab.id, prompt || (attachments.length > 0 ? 'See attached files' : ''))
+    // submit() is unified for EVERY tab — plain or extension-backed. No
+    // tab-type fork: it reads tab.attachments internally and resolves the
+    // tab's extensions from its profile (data).
+    const outcome = dispatchSend(prompt, attachments.length, {
+      getSnapshot: () => {
+        const s = useSessionStore.getState()
+        const active = s.tabs.find((candidate) => candidate.id === s.activeTabId)
+        return {
+          tabs: s.tabs.map((candidate) => candidate.id === active?.id
+            ? { ...candidate, contextTokens, contextLimit: contextCapacityLimit }
+            : candidate),
+          activeTabId: s.activeTabId,
+          tabsReady: s.tabsReady,
+        }
+      },
+      clearInput: () => {
+        setInput('')
+        setSlashFilter(null)
+        if (textareaRef.current) {
+          textareaRef.current.style.height = `${INPUT_MIN_HEIGHT}px`
+        }
+      },
+      clearDraft: (tabId) => setDraftInput(tabId, ''),
+      submit,
+      warn: (msg, fields) => rWarn('input-bar', msg, fields),
+    })
+    if (!outcome.accepted) return
     // Refocus after React re-renders from the state update
     requestAnimationFrame(() => textareaRef.current?.focus())
-  }, [input, submit, attachments.length, showSlashMenu, slashFilter, slashIndex, handleSlashSelect, bashMode, bashExecuting, tab?.workingDirectory, startBashCommand, completeBashCommand, extraCommands, isConnecting, activeTabId, setDraftInput, setBashMode])
+  }, [input, submit, attachments.length, showSlashMenu, slashFilter, slashIndex, handleSlashSelect, bashMode, bashExecuting, tab?.workingDirectory, startBashCommand, completeBashCommand, extraCommands, isConnecting, activeTabId, setDraftInput, setBashMode, contextTokens, contextCapacityLimit])
 
   // ─── Keyboard ───
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -443,9 +453,7 @@ export function InputBar() {
     return (
       <div ref={wrapperRef} data-ion-ui data-testid="input-locked-notice" className="flex items-center w-full" style={{ minHeight: 50 }}>
         <span style={{ fontSize: 12, color: colors.textTertiary, paddingLeft: 2 }}>
-          {tab.inputLockReason === 'landed-worktree'
-            ? 'Landed worktree review — input is disabled. Retire this worktree when review is complete.'
-            : 'Automated fix conversation — input is disabled. Continue the work in its worktree.'}
+          <InputLockNotice tab={tab} accent={colors.accent} />
         </span>
       </div>
     )
@@ -466,40 +474,28 @@ export function InputBar() {
         )}
       </AnimatePresence>
 
-      {/* Attachment chips — renders inside the pill, above textarea */}
+      <ImageModelNotice visible={isImageModel} border={colors.containerBorder} text={colors.textTertiary} hasAttachments={hasAttachments} />
+
+      <ContextCapacityNotice
+        state={contextCapacityStatus}
+        colors={colors}
+        onNewConversation={() => { void useSessionStore.getState().createTab() }}
+      />
+
+      {/* Preview cards stay above conversation-scoped controls in both hosts. */}
       {hasAttachments && (
         <div style={{ paddingTop: 6, marginLeft: -6 }}>
           <AttachmentChips attachments={attachments} onRemove={removeAttachment} />
+          <div
+            data-testid="attachment-composer-divider"
+            aria-hidden="true"
+            style={{ borderTop: `1px solid ${colors.containerBorder}`, margin: '8px 0 0 6px' }}
+          />
         </div>
       )}
 
-      {/* Image model disclosure banner — shown when an image-generation model
-          is selected. Informs the user that only the current message is sent
-          (no conversation history). Animates in/out on model switch. */}
-      <AnimatePresence>
-        {isImageModel && (
-          <motion.div
-            key="image-model-banner"
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.15 }}
-            style={{ overflow: 'hidden' }}
-          >
-            <div style={{
-              fontSize: 10,
-              color: colors.textTertiary,
-              borderLeft: `2px solid ${colors.containerBorder}`,
-              paddingLeft: 6,
-              paddingTop: 4,
-              paddingBottom: 2,
-              marginTop: hasAttachments ? 4 : 6,
-            }}>
-              Image model — only your current message is sent (no conversation history)
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Conversation-scoped controls stay with composer in both clients. */}
+      <ComposerControls />
 
       {/* Single-line: inline controls. Multi-line: controls in bottom row */}
       <div className="w-full" style={{ minHeight: 50 }}>

@@ -19,6 +19,8 @@ import { rError } from '../rendererLogger'
 interface GroupPickerDropdownProps {
   group: TabGroupView
   anchor: { x: number; y: number }
+  /** Coordinates from the caller's raw pointer or an already-normalized pill rect. */
+  anchorSpace?: 'viewport' | 'css'
   onSelectTab: (tabId: string) => void
   onCloseTab: (tabId: string) => void
   onClose: () => void
@@ -28,6 +30,7 @@ interface GroupPickerDropdownProps {
 export function GroupPickerDropdown({
   group,
   anchor,
+  anchorSpace = 'viewport',
   onSelectTab,
   onCloseTab,
   onClose,
@@ -102,7 +105,7 @@ export function GroupPickerDropdown({
   // Measured placement. This used to clamp against hardcoded 300x280 numbers
   // that had to be kept in sync by hand with the maxHeight/minWidth below —
   // a guess, and wrong for any dropdown that renders shorter than its cap.
-  const pos = useAnchoredPopover(anchor, { deps: [localTabs.length, editingTabId] })
+  const pos = useAnchoredPopover(anchor, { anchorSpace, deps: [localTabs.length, editingTabId] })
   const vp = zoomViewport()
 
   if (!popoverLayer) return null
@@ -139,14 +142,13 @@ export function GroupPickerDropdown({
         values={localTabs}
         onReorder={(reordered) => {
           setLocalTabs(reordered)
-          const reorderMap = new Map(reordered.map((t, i) => [t.id, i]))
-          const allTabs = useSessionStore.getState().tabs
-          const result = [...allTabs]
-          const groupIndices = allTabs
-            .map((t, i) => reorderMap.has(t.id) ? i : -1)
-            .filter((i) => i >= 0)
-          reordered.forEach((t, i) => { result[groupIndices[i]] = t })
-          useSessionStore.getState().reorderTabs(result)
+          // reorderTabs takes an ORDER OF IDS (see tab-slice.ts): send this
+          // group's ids in their new relative order and let the owner apply
+          // that ordering to its own authoritative tabs, preserving every
+          // tab outside the group untouched. Building a full replacement
+          // array from `useSessionStore.getState().tabs` here would forward
+          // a full-array snapshot that could be stale in the Studio mirror.
+          useSessionStore.getState().reorderTabs(reordered.map((t) => t.id))
         }}
         style={{ listStyle: 'none', padding: 0, margin: 0 }}
       >

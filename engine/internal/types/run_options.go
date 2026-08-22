@@ -7,6 +7,18 @@ package types
 
 import "context"
 
+// ModelOrigin records who selected Model. It is internal dispatch policy, not
+// a wire field: provider changes affect billing and data residency, so the
+// engine must distinguish an operator/extension choice from LLM-authored text.
+type ModelOrigin string
+
+const (
+	ModelOriginConfig    ModelOrigin = "config"
+	ModelOriginUser      ModelOrigin = "user"
+	ModelOriginExtension ModelOrigin = "extension"
+	ModelOriginAgent     ModelOrigin = "agent"
+)
+
 // --- Run Options ---
 
 // RunOptions configures a Claude run.
@@ -69,12 +81,15 @@ type RunOptions struct {
 	MaxBudgetUsd         float64  `json:"maxBudgetUsd,omitempty"`
 	SystemPrompt         string   `json:"systemPrompt,omitempty"`
 	Model                string   `json:"model,omitempty"`
-	HookSettingsPath     string   `json:"hookSettingsPath,omitempty"`
-	AddDirs              []string `json:"addDirs,omitempty"`
-	PermissionModeCli    string   `json:"permissionModeCli,omitempty"`
-	AppendSystemPrompt   string   `json:"appendSystemPrompt,omitempty"`
-	Source               string   `json:"source,omitempty"`
-	McpConfig            string   `json:"mcpConfig,omitempty"`
+	// ModelOrigin controls provider-selection authority for Model. Empty is
+	// config for backward compatibility with existing deterministic callers.
+	ModelOrigin        ModelOrigin `json:"-"`
+	HookSettingsPath   string      `json:"hookSettingsPath,omitempty"`
+	AddDirs            []string    `json:"addDirs,omitempty"`
+	PermissionModeCli  string      `json:"permissionModeCli,omitempty"`
+	AppendSystemPrompt string      `json:"appendSystemPrompt,omitempty"`
+	Source             string      `json:"source,omitempty"`
+	McpConfig          string      `json:"mcpConfig,omitempty"`
 	// CliMcpServers carries structured per-session MCP-server specs to inject
 	// into a delegated-CLI backend that accepts inline MCP servers on session
 	// creation — the ACP backends (grok, cursor) pass these on `session/new`.
@@ -341,14 +356,12 @@ type RunOptions struct {
 	// the expanded body as a forked sub-agent with its own context/token budget).
 	// In-process run field. Empty for non-slash prompts.
 	ResolvedSlashContext string `json:"-"`
-	// ResolvedSlashModelAlias is the model string from the slash command's
-	// frontmatter (`model:` key) -- the alias the command author requested.
-	// Empty when the command declared no model hint. In-process run field.
+	// ResolvedSlashModelAlias is the command-owned selector from slash
+	// frontmatter (`model:` key). Empty when the command declared no selector.
+	// In-process run field.
 	ResolvedSlashModelAlias string `json:"-"`
-	// ResolvedSlashModelEffective is the model that the engine actually uses
-	// for this run after tier resolution and documented precedence: an explicit
-	// per-prompt model override wins; otherwise slash frontmatter can select the
-	// run model over conversation continuity. Empty when no model was resolved.
+	// ResolvedSlashModelEffective is the concrete model selected to start this
+	// run after tier and provider resolution. Empty when no model was resolved.
 	// In-process run field.
 	ResolvedSlashModelEffective string `json:"-"`
 

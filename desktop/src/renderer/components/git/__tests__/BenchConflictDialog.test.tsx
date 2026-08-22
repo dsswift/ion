@@ -45,8 +45,7 @@ function conflictedMember(over: Partial<IntegrationMember> = {}): IntegrationMem
   return {
     worktreePath: '/wt/a',
     branchName: 'wt/a',
-    enabled: true,
-    pin: 'current',
+        pin: 'current',
     merge: 'conflicted',
     pinnedSha: 'abc1234',
     pinnedTreeHash: 't1',

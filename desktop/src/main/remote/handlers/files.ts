@@ -1,6 +1,7 @@
 import { join } from 'path'
-import { tmpdir } from 'os'
-import { existsSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'fs'
+import { createHash } from 'crypto'
+import { homedir } from 'os'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'fs'
 import { log as _log } from '../../logger'
 import { state } from '../../state'
 import { isValidProjectPath } from '../../ipc-validation'
@@ -156,16 +157,20 @@ export async function handleUploadAttachment(cmd: Extract<RemoteCommand, { type:
       state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_upload_attachment_result', id: '', name: cmd.name, path: '', correlationId: cmd.correlationId, error: 'Invalid data URL format' })
       return
     }
-    const [, , base64Data] = match
+    const [, mimeType, base64Data] = match
     const buf = Buffer.from(base64Data, 'base64')
-    const timestamp = Date.now()
-    // Derive extension from the original filename
-    const nameExt = cmd.name.includes('.') ? cmd.name.substring(cmd.name.lastIndexOf('.')) : '.bin'
-    const filePath = join(tmpdir(), `ion-remote-${timestamp}${nameExt}`)
-    writeFileSync(filePath, buf)
-    const id = crypto.randomUUID()
-    log('upload_attachment: saved', { bytes: buf.length, path: filePath })
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_upload_attachment_result', id, name: cmd.name, path: filePath, correlationId: cmd.correlationId })
+    const hash = createHash('sha256').update(buf).digest('hex')
+    const mimeExt = mimeType === 'image/jpeg' ? 'jpg' : mimeType.split('/')[1]
+    const nameExt = mimeExt && /^[a-z0-9]+$/i.test(mimeExt)
+      ? `.${mimeExt}`
+      : (cmd.name.includes('.') ? cmd.name.substring(cmd.name.lastIndexOf('.')) : '.bin')
+    const dir = join(homedir(), '.ion', 'remote-uploads')
+    mkdirSync(dir, { recursive: true })
+    const filePath = join(dir, `${hash}${nameExt}`)
+    if (!existsSync(filePath)) writeFileSync(filePath, buf)
+    const id = `upload:${hash}`
+    log('upload_attachment: saved', { bytes: buf.length, path: filePath, content_hash: hash })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_upload_attachment_result', id, name: cmd.name, path: filePath, contentHash: hash, correlationId: cmd.correlationId })
   } catch (err) {
     log('upload_attachment error', { error: (err as Error).message })
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_upload_attachment_result', id: '', name: cmd.name, path: '', correlationId: cmd.correlationId, error: (err as Error).message })

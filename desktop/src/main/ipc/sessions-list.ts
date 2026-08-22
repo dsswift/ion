@@ -322,6 +322,7 @@ export function registerSessionsListIpc(): void {
         ext.endsWith('.png') ? 'image/png' :
         ext.endsWith('.webp') ? 'image/webp' :
         ext.endsWith('.gif') ? 'image/gif' :
+        ext.endsWith('.svg') ? 'image/svg+xml' :
         (ext.endsWith('.jpg') || ext.endsWith('.jpeg')) ? 'image/jpeg' :
         null
       if (!mime) return { dataUrl: null }
@@ -342,6 +343,18 @@ export function registerSessionsListIpc(): void {
     } catch (err) {
       log('get_conversation: error', { error: String(err) })
       return { messages: [], total: 0, hasMore: false }
+    }
+  })
+
+  ipcMain.handle(IPC.DELETE_STORED_CONVERSATIONS, async (_e, sessionIds: string[]) => {
+    if (!Array.isArray(sessionIds) || sessionIds.length === 0 || sessionIds.some((id) => !isValidSessionId(id))) {
+      throw new Error('invalid conversation IDs')
+    }
+    try {
+      return await engineBridge.deleteStoredConversations(sessionIds)
+    } catch (err) {
+      log('delete_stored_conversations: error', { count: sessionIds.length, error: String(err) })
+      throw err
     }
   })
 

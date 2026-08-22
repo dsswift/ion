@@ -7,10 +7,12 @@ import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
 import { usePreferencesStore, getEffectiveTabGroups } from '../preferences'
 import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
-import { zoomViewport } from '../viewport-zoom'
+import { scrollableMenuStyle } from '../menu-viewport'
 
 interface MoveToGroupSubmenuProps {
   anchor: { x: number; y: number }
+  /** Coordinates from the caller's raw pointer or an already-normalized row rect. */
+  anchorSpace?: 'viewport' | 'css'
   tabId: string
   currentGroupId: string
   /** Closes this portalled submenu while keeping its parent menu open. */
@@ -40,6 +42,7 @@ interface MoveToGroupSubmenuProps {
 /** Submenu listing destination tab-groups for a single tab. Auto and manual modes show different target sets. */
 export function MoveToGroupSubmenu({
   anchor,
+  anchorSpace = 'viewport',
   tabId,
   currentGroupId,
   onClose,
@@ -113,7 +116,6 @@ export function MoveToGroupSubmenu({
       .map((g) => ({ id: g.id, label: g.label }))
   }
 
-  const vp = zoomViewport()
   // Position is computed by the shared hook so the submenu always
   // stays on-screen. `showNewGroupInput` is in `deps` because
   // expanding the inline input changes the submenu's rendered
@@ -122,6 +124,7 @@ export function MoveToGroupSubmenu({
   const pos = useAnchoredPopover(anchor, {
     prefer: 'rightOf',
     parentRect,
+    anchorSpace,
     deps: [showNewGroupInput, targets.length],
   })
 
@@ -140,8 +143,7 @@ export function MoveToGroupSubmenu({
         left: pos.left,
         top: pos.top,
         visibility: pos.ready ? 'visible' : 'hidden',
-        maxHeight: vp.height - 16,
-        overflowY: 'auto',
+        ...scrollableMenuStyle(),
         pointerEvents: 'auto',
         background: colors.popoverBg,
         border: `1px solid ${colors.popoverBorder}`,

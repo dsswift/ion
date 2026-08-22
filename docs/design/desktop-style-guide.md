@@ -214,6 +214,21 @@ chevrons, 14px tree/menu icons, 16–17px action buttons. Icon color follows the
 text-token ladder unless the icon is semantic (file types → `icon*` tokens,
 status → status tokens). `weight="fill"` for solid glyphs, default otherwise.
 
+## Typography and scale contract
+
+Ion has four independent desktop scale axes.
+
+- **Interface scale** changes UI chrome, geometry, icons, controls, and spacing. It is a Desktop Appearance setting only. Cmd/Ctrl zoom shortcuts never change it.
+- **Data-view scale** changes read-only long-form data: conversation text and output, plans, resources, Markdown previews, diffs, merge text, and their empty/error states.
+- **Editor scale** changes only editable CodeMirror text.
+- **Terminal scale** changes only xterm cells.
+
+Mixed surfaces must mark these boundaries in code. Headers, menus, buttons, tabs, status rows, labels, and action affordances are interface chrome. Readable document or transcript payload is data. A UI scale change must not change data-view, editor, or terminal text size. A data-view scale change must update every data host, in Overlay and Studio, without changing chrome.
+
+Root `document.documentElement.style.zoom` owns interface scale. `TypographySync` applies it in both renderer windows and applies the compensated `--ion-data-font-size`, `--ion-data-code-font-size`, `--ion-editor-font-size`, and canonical `--ion-font-mono` CSS variables. Do not set root zoom directly in a preference setter. New typography consumers use those variables instead of literal pixel font sizes.
+
+CSS zoom creates viewport-pixel and zoomed-CSS coordinate spaces. `viewport-zoom.ts` owns conversion. A `position: fixed` implementation must use `zoomRect`, `zoomViewport`, and point/delta helpers as applicable. `useAnchoredPopover` accepts an explicit anchor coordinate space. Do not combine raw `getBoundingClientRect()`, `clientX`/`clientY`, or `window.innerWidth`/`window.innerHeight` with CSS fixed coordinates.
+
 ## Do / Don't
 
 - **Do** read every color from `useColors()`; the scan test is the enforcement.
@@ -228,7 +243,7 @@ status → status tokens). `weight="fill"` for solid glyphs, default otherwise.
 - **Don't** restate token values or counts in docs or comments; link to
   `palette-dark.ts`.
 - **Don't** reach for `darkColors` directly in overlay components —
-  `useColors()` keeps Ion Light and HUD working. (The ATV shell is the
+  `useColors()` keeps Ion Light and HUD working. (The Studio shell is the
   sanctioned dark-only exception.)
 
 ## Verification for UI changes

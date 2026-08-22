@@ -127,7 +127,7 @@ export const ThinkingBlock = React.memo(function ThinkingBlock({
     !expanded && hasText ? (
       <div
         style={{
-          maxHeight: `calc((var(--ion-conv-font-size, 13px) - 2px) * 1.45 * ${PREVIEW_LINES})`,
+          maxHeight: `calc((var(--ion-data-font-size, 13px) - 2px) * 1.45 * ${PREVIEW_LINES})`,
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
@@ -139,7 +139,7 @@ export const ThinkingBlock = React.memo(function ThinkingBlock({
         <div
           className="ml-1 pl-3 leading-[1.45] whitespace-pre-wrap break-words"
           style={{
-            fontSize: 'calc(var(--ion-conv-font-size, 13px) - 2px)',
+            fontSize: 'calc(var(--ion-data-font-size, 13px) - 2px)',
             color: colors.textTertiary,
             borderLeft: `1px solid ${colors.timelineLine}`,
             opacity: isActive ? 1 : 0.9,
@@ -167,7 +167,7 @@ export const ThinkingBlock = React.memo(function ThinkingBlock({
             <div
               className="ml-1 pl-3 mb-1 leading-[1.5] whitespace-pre-wrap break-words"
               style={{
-                fontSize: 'calc(var(--ion-conv-font-size, 13px) - 2px)',
+                fontSize: 'calc(var(--ion-data-font-size, 13px) - 2px)',
                 color: colors.textTertiary,
                 borderLeft: `1px solid ${colors.timelineLine}`,
               }}

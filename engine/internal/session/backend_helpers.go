@@ -25,12 +25,9 @@ func modelRefFor(model string) *extension.ModelRef {
 // or any test mock), it returns m.backend unchanged so existing type-
 // assertion call sites continue to work without modification.
 //
-// For HybridBackend, it delegates to HybridBackend.ResolveFor, which resolves
-// the model's provider ID, applies any operator per-provider backend
-// preference (providers.<id>.backend), and otherwise falls back to the default
-// rule (anthropic → claude-code, everything else → api). Routing logic lives in
-// exactly one place (the HybridBackend); this helper is the session-package
-// seam onto it.
+// For HybridBackend, it delegates to HybridBackend.ResolveFor after model
+// provenance has validated provider authority at the dispatch boundary. The
+// hybrid only selects API versus CLI inside that entitled provider.
 func (m *Manager) resolvedBackend(model string) backend.RunBackend {
 	h, ok := m.backend.(*backend.HybridBackend)
 	if !ok {

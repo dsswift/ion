@@ -56,10 +56,6 @@ die() { printf '[build-pkg] ERROR: %s\n' "$1" >&2; exit 1; }
 
 command -v pkgbuild >/dev/null 2>&1 || die "pkgbuild not found (macOS command line tools required)"
 
-# --- Version from package.json (the source of truth) -------------------------
-VERSION="$(node -p "require('${DESKTOP_DIR}/package.json').version")"
-[ -n "${VERSION}" ] || die "could not read version from package.json"
-
 # --- Locate the built Ion.app ------------------------------------------------
 # electron-builder writes the app under release/mac, release/mac-universal, or
 # release/mac-arm64 depending on the target arch. Take the first match.
@@ -77,6 +73,13 @@ done
 
 [ -n "${APP_PATH}" ] || die "no built ${APP_NAME} found under ${RELEASE_DIR}/mac*. Run 'npm run dist' first."
 log "found app: ${APP_PATH}"
+
+# --- Version from built app metadata -----------------------------------------
+# The app is authoritative: release CI stamps release SemVer, while local dist
+# stamps the next development SemVer plus commit identity in CFBundleShortVersionString.
+APP_PLIST="${APP_PATH}/Contents/Info.plist"
+VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${APP_PLIST}")"
+[ -n "${VERSION}" ] || die "could not read version from built app metadata"
 log "version:   ${VERSION}"
 
 OUT_PKG="${RELEASE_DIR}/Ion-${VERSION}.pkg"

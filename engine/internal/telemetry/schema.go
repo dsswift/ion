@@ -222,7 +222,10 @@ func emitSchemaWriterChanged(filePath string, prevSchema, currentSchema int, eng
 			"engine_version":          engineVersion,
 		},
 	}
-	if err := flushToFile([]Event{event}, filePath); err != nil {
+	// No rotation on this write: the checkpoint runs before the collector's
+	// config is consulted, and a sentinel line must not be the thing that
+	// archives the file. The first real flush bounds it.
+	if err := flushToFile([]Event{event}, filePath, rotationPolicy{}); err != nil {
 		utils.LogWithFields(utils.LevelError, "telemetry", "checkpoint emit schema writer changed event failed", map[string]any{"error": err.Error()})
 	}
 }

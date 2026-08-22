@@ -1,8 +1,12 @@
+import type { ProjectRegistry } from '../shared/project-registry'
 import type { GitOpsMode, WorktreeCompletionStrategy, TabGroupMode, TabGroup, QuickTool, RemotePairedDevice, EngineProfile, NewConversationDefaultsPolicy, ThinkingEffort } from '../shared/types'
 import type { ModelEntry } from '../shared/types-models'
 import type { AiAssistWorkflowId } from '../shared/ai-assist-workflows'
 import type { EnterprisePolicy } from '../shared/types-engine'
+import type { KeyboardShortcuts, ShortcutView } from './preferences-shortcuts'
 
+
+export type StudioSurfaceSwitchMode = 'preserve' | 'per-conversation'
 
 export interface PreferencesState {
   /** Selected theme ID from the theme registry. Persisted in localStorage. */
@@ -15,10 +19,12 @@ export interface PreferencesState {
   directoryUsageCounts: Record<string, number>
   defaultPermissionMode: 'auto' | 'plan'
   expandOnTabSwitch: boolean
+  /** Controls whether Studio surface visibility follows the current window or each conversation. */
+  studioSurfaceSwitchMode: StudioSurfaceSwitchMode
   bashCommandEntry: boolean
   /**
    * Per-pane share of the git panel, keyed by pane id. Proportions rather than
-   * pixels so a sizing survives a window resize and the overlay/ATV height
+   * pixels so a sizing survives a window resize and the overlay/Studio height
    * difference — the same model VS Code's SplitView persists.
    *
    * A missing pane takes an equal share, so this can be partial or empty.
@@ -35,19 +41,16 @@ export interface PreferencesState {
   fileExplorerHeight: number | null
   gitPanelChangesOpen: boolean
   gitPanelGraphOpen: boolean
-  gitPanelWorktreesOpen: boolean
   expandToolResults: boolean
   terminalFontFamily: string
   terminalFontSize: number
   closeExplorerOnFileOpen: boolean
   openMarkdownInPreview: boolean
   editorWordWrap: boolean
-  /** Font size for the file editor in pixels */
+  /** Font size for editable CodeMirror content in pixels. */
   editorFontSize: number
-  /** Font size in px for conversation message body text. 8–24. */
-  conversationFontSize: number
-  /** Font size in px for floating pop-up previews (plan, diff, resource). 8–24. */
-  previewFontSize: number
+  /** Font size for read-only long-form data views in pixels. */
+  dataViewFontSize: number
   /** Git operations mode: manual (no automation) or worktree (managed per-tab worktrees) */
   gitOpsMode: GitOpsMode
   /** How to complete worktree work: merge --no-ff or push + PR */
@@ -181,8 +184,10 @@ export interface PreferencesState {
    *  specific default was collapsed away), plus a terminal-specific flag. */
   defaultTallConversation: boolean
   defaultTallTerminal: boolean
-  /** Automatic conversation recovery (recovers unresponsive conversations) */
+  /** Auto-recover tabs that appear stuck (no engine events for a period) */
   tabRecoveryEnabled: boolean
+  /** Idle threshold in seconds before a stuck tab is force-recovered */
+  tabRecoveryTimeoutSec: number
   /** Automatically switch models at the plan→implement boundary */
   planModelSplitEnabled: boolean
   /** Model to use when entering plan mode (empty = use preferredModel) */
@@ -191,6 +196,32 @@ export interface PreferencesState {
   implementModeModel: string
   /** Directories where the git file watcher is suppressed. Supports ~ and $HOME. */
   gitWatcherIgnoredDirectories: string[]
+  /**
+   * Multi-root workspace folders, PER-PROJECT (D3): normalized primary/base
+   * dir → additional roots shown in the explorer and git panel when a
+   * conversation in that project is active. Machine-local absolute paths —
+   * NOT projectable to iOS (directory-picker precedent).
+   */
+  workspaceFolders: Record<string, string[]>
+  /** Persisted per-repo collapse state of git-panel repo sections. */
+  gitPanelRepoSectionsCollapsed: Record<string, boolean>
+  /** Inbox auto-settle threshold in days (0 = off). */
+  inboxAutoSettleDays: number
+  setInboxAutoSettleDays: (days: number) => void
+  /** Automatically settle merged change requests. Closed change requests always settle. */
+  inboxAutoSettleOnMerge: boolean
+  setInboxAutoSettleOnMerge: (enabled: boolean) => void
+  /** Studio conversation navigation: 'tabs' (TabStrip) | 'inbox' (inbox dock, TabStrip hidden). Per-device. */
+  conversationNav: 'tabs' | 'inbox'
+  setConversationNav: (nav: 'tabs' | 'inbox') => void
+  /** Project registry (G1): dir → {name?, addedManually, lastUsedAt}. Machine-local. */
+  projects: ProjectRegistry
+  /** Auto-populate seam: bump/insert a project on conversation use. */
+  registerProjectUse: (dir: string) => void
+  /** Manual add from the picker's browse. */
+  addProject: (dir: string) => void
+  /** Remove hides from pickers; never deletes conversations; auto-repopulates on next use. */
+  removeProject: (dir: string) => void
   /**
    * Resource kinds the user has chosen to hide from the global/workspace
    * notification tray. Blocklist semantics: empty (the default) shows every
@@ -226,11 +257,12 @@ export interface PreferencesState {
    * iOS-driven CLI tabs honor the action fully.
    */
   showImplementClearContext: boolean
-  /** Keyboard shortcut overrides (command id -> chord string). Only non-default entries stored. */
-  keyboardShortcuts: Record<string, string>
+  /** Per-view keyboard shortcut overrides. Only non-default entries are stored. */
+  keyboardShortcuts: KeyboardShortcuts
   setDefaultTallConversation: (enabled: boolean) => void
   setDefaultTallTerminal: (enabled: boolean) => void
   setTabRecoveryEnabled: (enabled: boolean) => void
+  setTabRecoveryTimeoutSec: (sec: number) => void
   setSelectedTheme: (id: string) => void
   setSoundEnabled: (enabled: boolean) => void
   setExpandedUI: (expanded: boolean) => void
@@ -240,13 +272,13 @@ export interface PreferencesState {
   removeRecentBaseDirectory: (dir: string) => void
   setDefaultPermissionMode: (mode: 'auto' | 'plan') => void
   setExpandOnTabSwitch: (enabled: boolean) => void
+  setStudioSurfaceSwitchMode: (mode: StudioSurfaceSwitchMode) => void
   setBashCommandEntry: (enabled: boolean) => void
   setGitPanelPaneProportions: (proportions: Record<string, number>) => void
   setGitPanelHeight: (height: number | null) => void
   setFileExplorerHeight: (height: number | null) => void
   setGitPanelChangesOpen: (open: boolean) => void
   setGitPanelGraphOpen: (open: boolean) => void
-  setGitPanelWorktreesOpen: (open: boolean) => void
   setExpandToolResults: (enabled: boolean) => void
   setTerminalFontFamily: (font: string) => void
   setTerminalFontSize: (size: number) => void
@@ -254,8 +286,7 @@ export interface PreferencesState {
   setOpenMarkdownInPreview: (enabled: boolean) => void
   setEditorWordWrap: (enabled: boolean) => void
   setEditorFontSize: (size: number) => void
-  setConversationFontSize: (size: number) => void
-  setPreviewFontSize: (size: number) => void
+  setDataViewFontSize: (size: number) => void
   setGitOpsMode: (mode: GitOpsMode) => void
   setWorktreeCompletionStrategy: (strategy: WorktreeCompletionStrategy) => void
   setWorktreeBranchDefault: (repoPath: string, branch: string) => void
@@ -327,17 +358,25 @@ export interface PreferencesState {
   /** Atomically normalize persisted model preferences from live provider entries. */
   normalizeModelPreferences: (models: ModelEntry[]) => void
   setGitWatcherIgnoredDirectories: (dirs: string[]) => void
+  /** Add an extra workspace root for a project (both paths normalized). */
+  addWorkspaceFolder: (primaryDir: string, dir: string) => void
+  /** Remove a workspace root; prunes its persisted collapse state. */
+  removeWorkspaceFolder: (primaryDir: string, dir: string) => void
+  /** Persist a git-panel repo section's collapse state. */
+  setGitPanelRepoSectionCollapsed: (dir: string, collapsed: boolean) => void
   setExcludedResourceKinds: (kinds: string[]) => void
   setShowImplementClearContext: (enabled: boolean) => void
-  /** Set a single keyboard shortcut override (command id -> chord). Rejects invalid chords. */
-  setKeyboardShortcut: (commandId: string, chord: string) => void
-  /** Remove a single override, restoring the catalog default. */
-  resetKeyboardShortcut: (commandId: string) => void
-  /** Clear all overrides, restoring every command to its catalog default. */
+  /** Set a single view-specific keyboard shortcut override. Rejects invalid chords. */
+  setKeyboardShortcut: (view: ShortcutView, commandId: string, chord: string) => void
+  /** Remove one view-specific override, restoring its catalog default. */
+  resetKeyboardShortcut: (view: ShortcutView, commandId: string) => void
+  /** Clear a view's overrides, restoring its catalog defaults. */
+  resetKeyboardShortcuts: (view: ShortcutView) => void
+  /** Clear overrides for every view, restoring every catalog default. */
   resetAllKeyboardShortcuts: () => void
   /** Called by OS theme change listener -- updates system value */
   /** Apply a settings preset (batch-set multiple fields at once) */
   applyPreset: (preset: Record<string, unknown>) => void
 }
 
-export const SETTINGS_DEFAULTS = { selectedTheme: 'ion-dark', soundEnabled: true, expandedUI: false, ultraWide: false, defaultBaseDirectory: '', recentBaseDirectories: [] as string[], directoryUsageCounts: {} as Record<string, number>, defaultPermissionMode: 'plan' as 'auto' | 'plan', expandOnTabSwitch: true, bashCommandEntry: false, gitPanelPaneProportions: {} as Record<string, number>, gitPanelHeight: null as number | null, fileExplorerHeight: null as number | null, gitPanelChangesOpen: true, gitPanelGraphOpen: true, gitPanelWorktreesOpen: true, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, closeExplorerOnFileOpen: true, openMarkdownInPreview: true, editorWordWrap: true, editorFontSize: 12, conversationFontSize: 13, previewFontSize: 13, gitOpsMode: 'manual' as GitOpsMode, worktreeCompletionStrategy: 'merge-ff' as WorktreeCompletionStrategy, worktreeBranchDefaults: {} as Record<string, string>, worktreeSkipPrTitle: false, allowSettingsEdits: false, enableClaudeCompat: false, enableEarlyStopContinuation: false, showTodoList: true, agentPanelDefaultOpen: true, unifiedTurnView: true, aiGeneratedTitles: true, hideOnExternalLaunch: true, keepExplorerOnCollapse: false, keepTerminalOnCollapse: false, keepGitPanelOnCollapse: false, keepStatusDrawerOnCollapse: false, tabGroupMode: 'off' as TabGroupMode, tabGroups: [] as TabGroup[], autoGroupOrder: [] as string[], stashedManualGroups: [] as TabGroup[], stashedManualTabAssignments: {} as Record<string, string>, inProgressGroupId: null as string | null, doneGroupId: null as string | null, planningGroupId: null as string | null, autoGroupMovement: false, commitCommand: '', aiAssistPromptOverrides: {} as Partial<Record<AiAssistWorkflowId, string>>, gitChangesTreeView: false, quickTools: [] as QuickTool[], uiZoom: 1, remoteEnabled: false, relayUrl: '', relayApiKey: '', lanServerPort: 19837, pairedDevices: [] as RemotePairedDevice[], streamThinkingToRemote: true, defaultThinkingEffort: 'high' as ThinkingEffort, remoteDisplay: null as { customName: string | null; customIcon: string | null; updatedAt: number } | null, engineDefaultModel: '', preferredModel: 'claude-opus-4-6', defaultEngineProfileId: '', engineProfiles: [] as EngineProfile[], defaultTallConversation: false, defaultTallTerminal: false, tabRecoveryEnabled: true, planModelSplitEnabled: false, planModeModel: '', implementModeModel: '', showImplementClearContext: false, gitWatcherIgnoredDirectories: ['~/.ion'] as string[], excludedResourceKinds: [] as string[], keyboardShortcuts: {} as Record<string, string> }
+export const SETTINGS_DEFAULTS = { selectedTheme: 'ion-dark', soundEnabled: true, expandedUI: false, ultraWide: false, defaultBaseDirectory: '', recentBaseDirectories: [] as string[], directoryUsageCounts: {} as Record<string, number>, defaultPermissionMode: 'plan' as 'auto' | 'plan', expandOnTabSwitch: true, studioSurfaceSwitchMode: 'preserve' as StudioSurfaceSwitchMode, bashCommandEntry: false, gitPanelPaneProportions: {} as Record<string, number>, gitPanelHeight: null as number | null, fileExplorerHeight: null as number | null, gitPanelChangesOpen: true, gitPanelGraphOpen: true, expandToolResults: false, terminalFontFamily: 'Menlo, Monaco, monospace', terminalFontSize: 13, closeExplorerOnFileOpen: true, openMarkdownInPreview: true, editorWordWrap: true, editorFontSize: 12, dataViewFontSize: 13, gitOpsMode: 'manual' as GitOpsMode, worktreeCompletionStrategy: 'merge-ff' as WorktreeCompletionStrategy, worktreeBranchDefaults: {} as Record<string, string>, worktreeSkipPrTitle: false, allowSettingsEdits: false, enableClaudeCompat: false, enableEarlyStopContinuation: false, showTodoList: true, agentPanelDefaultOpen: true, unifiedTurnView: true, aiGeneratedTitles: true, hideOnExternalLaunch: true, keepExplorerOnCollapse: false, keepTerminalOnCollapse: false, keepGitPanelOnCollapse: false, keepStatusDrawerOnCollapse: false, tabGroupMode: 'off' as TabGroupMode, tabGroups: [] as TabGroup[], autoGroupOrder: [] as string[], stashedManualGroups: [] as TabGroup[], stashedManualTabAssignments: {} as Record<string, string>, inProgressGroupId: null as string | null, doneGroupId: null as string | null, planningGroupId: null as string | null, autoGroupMovement: false, commitCommand: '', aiAssistPromptOverrides: {} as Partial<Record<AiAssistWorkflowId, string>>, gitChangesTreeView: false, quickTools: [] as QuickTool[], uiZoom: 1, remoteEnabled: false, relayUrl: '', relayApiKey: '', lanServerPort: 19837, pairedDevices: [] as RemotePairedDevice[], streamThinkingToRemote: true, defaultThinkingEffort: 'high' as ThinkingEffort, remoteDisplay: null as { customName: string | null; customIcon: string | null; updatedAt: number } | null, engineDefaultModel: '', preferredModel: 'claude-opus-4-6', defaultEngineProfileId: '', engineProfiles: [] as EngineProfile[], defaultTallConversation: false, defaultTallTerminal: false, tabRecoveryEnabled: true, tabRecoveryTimeoutSec: 120, planModelSplitEnabled: false, planModeModel: '', implementModeModel: '', showImplementClearContext: false, gitWatcherIgnoredDirectories: ['~/.ion'] as string[], workspaceFolders: {} as Record<string, string[]>, gitPanelRepoSectionsCollapsed: {} as Record<string, boolean>, inboxAutoSettleDays: 0, inboxAutoSettleOnMerge: true, conversationNav: 'tabs' as 'tabs' | 'inbox', projects: {} as ProjectRegistry, excludedResourceKinds: [] as string[], keyboardShortcuts: { overlay: {}, studio: {} } as KeyboardShortcuts }

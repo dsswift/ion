@@ -8,6 +8,7 @@
  * the tab close guards.
  *
  *   isAnyEngineInstanceRunning        — foreground orchestrator activity
+ *   isAnyEngineInstanceStarting       — engine attachment in progress
  *   effectiveRunningChildrenCount     — dispatched background agents (per instance)
  *   anyEngineInstanceHasRunningChildren — dispatched background agents (per tab)
  *   engineInstanceBackgroundShellCount / anyEngineInstanceHasRunningShells
@@ -29,9 +30,17 @@ export function isAnyEngineInstanceRunning(tabId: string): boolean {
   if (!pane || pane.instances.length === 0) return false
   for (const inst of pane.instances) {
     const state = inst.statusFields?.state
-    if (state === 'running' || state === 'connecting' || state === 'starting') return true
+    if (state === 'running' || state === 'connecting') return true
   }
   return false
+}
+
+/** True when an engine has attached the session but has not started a run. */
+export function isAnyEngineInstanceStarting(tabId: string): boolean {
+  const s = useSessionStore.getState()
+  const pane = s.conversationPanes.get(tabId)
+  if (!pane || pane.instances.length === 0) return false
+  return pane.instances.some((inst) => inst.statusFields?.state === 'starting')
 }
 
 /**
@@ -57,7 +66,7 @@ export function isAnyEngineInstanceRunning(tabId: string): boolean {
  */
 export function effectiveRunningChildrenCount(inst: {
   agentStates: ReadonlyArray<{ status: string }>
-  statusFields?: Pick<StatusFields, 'backgroundAgents'> | null
+  statusFields?: Pick<StatusFields, 'backgroundAgents' | 'backgroundShells' | 'hasPendingWork'> | null
 }): number {
   let fromAgentStates = 0
   for (const a of inst.agentStates) {
@@ -136,5 +145,17 @@ export function engineInstanceBackgroundShellCount(tabId: string): number {
  */
 export function anyEngineInstanceHasRunningShells(tabId: string): boolean {
   return engineInstanceBackgroundShellCount(tabId) > 0
+}
+
+/**
+ * Returns true when an engine status snapshot says accepted work remains even
+ * though no foreground run or visible child/shell count is present yet. This
+ * exact engine verdict closes the delivery-window gap between a terminal child
+ * and the root wake that will consume its result.
+ */
+export function anyEngineInstanceHasPendingWork(tabId: string): boolean {
+  const pane = useSessionStore.getState().conversationPanes.get(tabId)
+  if (!pane) return false
+  return pane.instances.some((inst) => inst.statusFields?.hasPendingWork === true)
 }
 

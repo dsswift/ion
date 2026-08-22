@@ -8,9 +8,12 @@ export function createFileExplorerSlice(set: StoreSet, _get: StoreGet): Partial<
         if (!tab) return {}
         const dir = tab.workingDirectory
         const next = new Set(s.fileExplorerOpenDirs)
-        if (next.has(dir)) next.delete(dir)
-        else next.add(dir)
-        return { fileExplorerOpenDirs: next }
+        if (next.has(dir)) {
+          next.delete(dir)
+          return { fileExplorerOpenDirs: next }
+        }
+        next.add(dir)
+        return { fileExplorerOpenDirs: next, inboxPanelOpen: false }
       })
     },
 
@@ -41,6 +44,15 @@ export function createFileExplorerSlice(set: StoreSet, _get: StoreGet): Partial<
         const current = states.get(dir)
         if (current) states.set(dir, { ...current, expandedPaths: new Set() })
         return { fileExplorerStates: states }
+      })
+    },
+
+    setExplorerRootCollapsed: (rootDir, collapsed) => {
+      set((s) => {
+        const next = new Set(s.fileExplorerRootCollapsed)
+        if (collapsed) next.add(rootDir)
+        else next.delete(rootDir)
+        return { fileExplorerRootCollapsed: next }
       })
     },
   }

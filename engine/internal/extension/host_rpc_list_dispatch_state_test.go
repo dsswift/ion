@@ -58,6 +58,10 @@ func TestExtListDispatchState_ReturnsEnvelopeWithEntries(t *testing.T) {
 					Depth:            2,
 					StartedAt:        now.Format(time.RFC3339Nano),
 					ElapsedMs:        200,
+					WaitingOn: &DispatchWaitingOn{
+						TaskIDs:          []string{"bash-17"},
+						ChildDispatchIDs: []string{"dispatch-gamma-125-ghi"},
+					},
 				},
 			}, nil
 		},
@@ -118,6 +122,29 @@ func TestExtListDispatchState_ReturnsEnvelopeWithEntries(t *testing.T) {
 	if got := second["parentDispatchId"]; got != "dispatch-alpha-123-abc" {
 		t.Errorf("dispatches[1].parentDispatchId = %v, want %q", got, "dispatch-alpha-123-abc")
 	}
+	waitingOn, ok := second["waitingOn"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("dispatches[1].waitingOn = %T, want object", second["waitingOn"])
+	}
+	if got := waitingOn["taskIds"]; !equalRPCStrings(got, []string{"bash-17"}) {
+		t.Errorf("waitingOn.taskIds = %v, want [bash-17]", got)
+	}
+	if got := waitingOn["childDispatchIds"]; !equalRPCStrings(got, []string{"dispatch-gamma-125-ghi"}) {
+		t.Errorf("waitingOn.childDispatchIds = %v, want [dispatch-gamma-125-ghi]", got)
+	}
+}
+
+func equalRPCStrings(got interface{}, want []string) bool {
+	values, ok := got.([]interface{})
+	if !ok || len(values) != len(want) {
+		return false
+	}
+	for i, wantValue := range want {
+		if values[i] != wantValue {
+			return false
+		}
+	}
+	return true
 }
 
 // TestExtListDispatchState_EmptyEnvelopeWhenUnwired verifies that a nil ctx

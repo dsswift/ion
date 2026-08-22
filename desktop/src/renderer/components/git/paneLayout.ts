@@ -7,25 +7,14 @@
  * orientation.
  *
  * ── Why a port rather than bespoke arithmetic ───────────────────────────────
- * The previous model was a single `splitRatio` scalar governing Changes vs
- * Graph, with Worktrees and Integration pinned to hardcoded body constants.
- * Three consequences the operator hit directly:
- *
- *   - Only two of four sections could ever be resized. The other two were
- *     stuck at 132px and 148px regardless of content or free space.
- *   - Collapsing sections shrank the PANEL instead of redistributing their
- *     space, because nothing was allowed to grow into it.
- *   - With one section open it still could not take the full height.
- *
- * None of that is fixable by extending the scalar; it needs a real sizing
- * model. VS Code's is the reference implementation of exactly this UI, so the
- * algorithm is ported rather than reinvented.
+ * The old model kept Worktrees in this panel. Worktree and Bench navigation now
+ * live in Inbox, so the Git panel has two resizable inspection panes.
  *
  * ── The three functions that matter ─────────────────────────────────────────
  * 1. `layout()` — pixels are DERIVED from proportions on every layout:
  *    `clamp(round(proportion * size / total), min, max)`. Proportions are the
  *    persisted form, which is what makes a sizing survive a window resize or a
- *    different panel height (overlay vs ATV).
+ *    different panel height (overlay vs Studio).
  * 2. `distributeEmptySpace()` — after any sizing pass, any pixel not assigned
  *    to a pane is pushed into panes that can still grow. This is the
  *    conservation guarantee; its absence is what produced the dead band.
@@ -50,9 +39,9 @@ export const PANEL_HEADER = 28
 export const SASH_SIZE = 4
 
 /** Stable identity for each pane. Order here is render order. */
-export type PaneId = 'changes' | 'worktrees' | 'graph'
+export type PaneId = 'changes' | 'graph'
 
-export const PANE_ORDER: readonly PaneId[] = ['changes', 'worktrees', 'graph']
+export const PANE_ORDER: readonly PaneId[] = ['changes', 'graph']
 
 /**
  * Smallest body height per pane, in pixels.
@@ -69,9 +58,6 @@ export const PANE_ORDER: readonly PaneId[] = ['changes', 'worktrees', 'graph']
  */
 export const MIN_BODY: Record<PaneId, number> = {
   changes: 56,
-  // Holds the bench bar plus the worktree rows, which used to be two panes with
-  // two floors and two headers for one concept.
-  worktrees: 72,
   graph: 72,
 }
 

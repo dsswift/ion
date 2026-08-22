@@ -6,7 +6,7 @@ import { usePreferencesStore } from '../../preferences'
 import { ToolIcon } from './ToolIcon'
 import { ToolRow } from './ToolRow'
 import { ToolImagesStrip } from './ToolImagesStrip'
-import { getToolDescription, toolSummary, toolFailureSummary } from './tool-helpers'
+import { activeToolProgress, getToolDescription, toolSummary, toolFailureSummary } from './tool-helpers'
 import type { Message } from '../../../shared/types'
 
 interface ToolGroupProps {
@@ -141,6 +141,7 @@ export const ToolGroup = React.memo(function ToolGroup({ tools, skipMotion, embe
   //   all-failed → red XCircle   + ", all failed" suffix
   //   all-ok    → green CheckCircle (no suffix)
   const summary = toolSummary(tools)
+  const activeProgress = activeToolProgress(tools)
   const showCount = tools.length > 1
   const { failed, total, running: isRunning } = toolFailureSummary(tools)
   const settled = total - tools.filter((t) => t.toolStatus === 'running').length
@@ -180,8 +181,15 @@ export const ToolGroup = React.memo(function ToolGroup({ tools, skipMotion, embe
           ({tools.length})
         </span>
       )}
-      <span className="text-[11px] leading-[1.4]" style={{ color: isRunning ? colors.textSecondary : colors.textTertiary }}>
-        {summary}{failureSuffix}
+      <span className="min-w-0 flex-1 flex items-center gap-1 text-[11px] leading-[1.4]" style={{ color: isRunning ? colors.textSecondary : colors.textTertiary }}>
+        {isRunning && activeProgress ? (
+        <>
+          <span className="min-w-0 truncate">Running {activeProgress.currentToolDescription}</span>
+          <span className="flex-shrink-0 tabular-nums">· Used {activeProgress.usedCount} tool{activeProgress.usedCount !== 1 ? 's' : ''}</span>
+        </>
+      ) : (
+        `${summary}${failureSuffix}`
+      )}
       </span>
     </div>
   )

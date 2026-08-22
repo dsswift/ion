@@ -2,6 +2,8 @@ import { appendFile, appendFileSync, statSync, renameSync, unlinkSync, mkdirSync
 import { homedir } from 'os'
 import { join } from 'path'
 import { shipToEgress } from './log-egress'
+import { admitLogLine, drainSuppressions, _resetForTest as resetRateLimitForTest } from './log-rate-limit'
+import { correlate, _resetForTest as resetCorrelationForTest } from './log-correlation'
 
 const LOG_DIR = join(homedir(), '.ion')
 const LOG_FILE = join(LOG_DIR, 'desktop.jsonl')
@@ -39,8 +41,6 @@ let bytesWritten = 0
 let bytesInitialized = false
 let disableRotation = false
 
-let sessionContext: { session_id?: string; conversation_id?: string } = {}
-
 /**
  * Stable machine-identity fields stamped on every log line. Populated once via
  * initLoggerMachineIdentity() at app startup; empty until then. Caller-supplied
@@ -74,8 +74,14 @@ function serialize(level: LogLevel, tag: string, msg: string, fields?: Record<st
     fields: mergedFields,
   }
   if (tag) line.tag = tag
-  if (sessionContext.session_id) line.session_id = sessionContext.session_id
-  if (sessionContext.conversation_id) line.conversation_id = sessionContext.conversation_id
+  // Correlation IDs are resolved from THIS line's own subject — never from an
+  // ambient "current session" global. A single global is wrong in a process
+  // that runs many conversations at once: the last session to start overwrote
+  // the stamp for every subsequent line, so filtering by conversation_id
+  // returned a neighbour's lines and omitted real ones. See log-correlation.ts.
+  const ids = correlate({ fields: mergedFields })
+  if (ids.session_id) line.session_id = ids.session_id
+  if (ids.conversation_id) line.conversation_id = ids.conversation_id
   return JSON.stringify(line) + '\n'
 }
 
@@ -151,6 +157,20 @@ function ensureTimer(): void {
 
 function logAt(level: LogLevel, tag: string, msg: string, fields?: Record<string, unknown>): void {
   if (LEVEL_ORDER[level] < LEVEL_ORDER[minLevel]) return
+
+  // Per-message rate limit. A runaway loop must not be able to rotate the log
+  // window that holds the evidence of itself — see log-rate-limit.ts. Withheld
+  // lines are counted and the count is emitted, never dropped silently.
+  const decision = admitLogLine(level, tag, msg, Date.now())
+  if (decision.summary) {
+    emitLine(serialize('WARN', 'logger', 'log lines suppressed by rate limit', {
+      suppressed_key: decision.summary.key,
+      log_suppressed: decision.summary.count,
+      window_ms: decision.summary.windowMs,
+    }), 'WARN')
+  }
+  if (!decision.allow) return
+
   const line = serialize(level, tag, msg, fields)
 
   // Ship to egress forwarder (non-blocking; no-op when egress is not configured).
@@ -172,11 +192,26 @@ function logAt(level: LogLevel, tag: string, msg: string, fields?: Record<string
       fields: fields ?? {},
     }
     if (tag) egressRec.tag = tag
-    if (sessionContext.session_id) egressRec.session_id = sessionContext.session_id
-    if (sessionContext.conversation_id) egressRec.conversation_id = sessionContext.conversation_id
+    // Same per-line resolution as the file record above: the egress copy must
+    // carry the same IDs as the line it mirrors, or a remote query and a local
+    // `jq` would disagree about which conversation a line belongs to.
+    const egressIds = correlate({ fields: fields ?? {} })
+    if (egressIds.session_id) egressRec.session_id = egressIds.session_id
+    if (egressIds.conversation_id) egressRec.conversation_id = egressIds.conversation_id
     shipToEgress(egressRec)
   }
 
+  emitLine(line, level)
+}
+
+/**
+ * Commit one serialized line to the file.
+ *
+ * Split out of logAt so the rate limiter's suppression summary reaches the file
+ * through the same write path as any other line — including its rotation
+ * accounting — without re-entering logAt and being rate-limited itself.
+ */
+function emitLine(line: string, level: LogLevel): void {
   // ERROR lines are written synchronously so a crash immediately after an
   // error cannot lose the diagnostic. They bypass the async buffer entirely.
   if (level === 'ERROR') {
@@ -224,20 +259,6 @@ export function configureLogger(opts: { disableRotation?: boolean; maxGeneration
   }
 }
 
-/**
- * Stamp every subsequent log line with the given session (and conversation)
- * identifiers. `sessionId` is the desktop session_id (the stable tab id).
- */
-export function setSessionContext(sessionId: string, conversationId?: string): void {
-  sessionContext = { session_id: sessionId }
-  if (conversationId) sessionContext.conversation_id = conversationId
-}
-
-/** Remove session context so subsequent lines omit the ID fields. */
-export function clearSessionContext(): void {
-  sessionContext = {}
-}
-
 /** Backward-compatible log function (INFO level). */
 export function log(tag: string, msg: string, fields?: Record<string, unknown>): void {
   logAt('INFO', tag, msg, fields)
@@ -269,6 +290,16 @@ export function error(tag: string, msg: string, fields?: Record<string, unknown>
  */
 export function flushLogs(): void {
   if (timer) { clearInterval(timer); timer = null }
+  // A storm that stopped just before exit has no successor line to carry its
+  // withheld count. Drain them into the buffer before it is written out, so the
+  // limiter never takes a count to the grave with it.
+  for (const summary of drainSuppressions()) {
+    buffer.push(serialize('WARN', 'logger', 'log lines suppressed by rate limit', {
+      suppressed_key: summary.key,
+      log_suppressed: summary.count,
+      window_ms: summary.windowMs,
+    }))
+  }
   initBytes()
   if (bytesWritten >= MAX_FILE_SIZE) rotate()
   const pendingInflight = Array.from(inFlight.values()).join('')
@@ -299,10 +330,11 @@ export function _resetForTest(): void {
   bytesInitialized = false
   disableRotation = false
   maxLogGenerations = MAX_LOG_GENERATIONS
-  sessionContext = {}
+  resetCorrelationForTest()
   ambientMachineFields = {}
   inFlight.clear()
   nextChunkId = 1
+  resetRateLimitForTest()
 }
 
 export { LOG_FILE }

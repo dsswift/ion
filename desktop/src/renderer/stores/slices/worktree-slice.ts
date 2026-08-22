@@ -1,6 +1,5 @@
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
-import { landFlagsForStrategy } from '../../../shared/worktree-land-strategy'
 import { rDebug, rInfo, rWarn } from '../../rendererLogger'
 import { seedWorktreeFromTab } from './event-slice-titling'
 import { evaluateSessionBusyGuard, formatSessionBusyRefusal } from './session-busy-guard'
@@ -8,6 +7,25 @@ import { setTabWorkingDirectory } from './tab-working-directory'
 
 export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
+    createWorktree: async (repoPath, sourceBranch) => {
+      const result = await window.ion.gitWorktreeAdd(repoPath, sourceBranch)
+      if (!result.ok || !result.worktree) {
+        rWarn('worktree', 'remote worktree creation failed', {
+          repo_path: repoPath,
+          source_branch: sourceBranch,
+          error: result.error ?? 'unknown',
+        })
+        return { ok: false, error: result.error ?? 'Could not create worktree.' }
+      }
+      rInfo('worktree', 'created worktree', {
+        repo_path: repoPath,
+        source_branch: sourceBranch,
+        worktree_path: result.worktree.worktreePath,
+      })
+      await get().refreshWorkspaceViews(repoPath)
+      return { ok: true, worktreePath: result.worktree.worktreePath }
+    },
+
     setupWorktree: async (tabId, sourceBranch, setAsDefault) => {
       const tab = get().tabs.find((t) => t.id === tabId)
       if (!tab) return
@@ -40,50 +58,32 @@ export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State
 
     convertToWorktree: async (tabId) => {
       const tab = get().tabs.find((t) => t.id === tabId)
-      if (!tab) return
+      if (!tab) return { ok: false, error: 'Conversation not found.' }
 
-      // Action-layer guard, mirroring closeTab's. Conversion relocates the tab,
-      // and relocation restarts the engine session (setTabWorkingDirectory ->
-      // relocateTabSession -> restartTabEntry -> stopSession), so converting a
-      // busy tab aborts its in-flight run and kills its dispatched children and
-      // background shells. The context-menu row is already disabled for this,
-      // but the row is not the only entry point: convertToWorktree is a
-      // FORWARDED ATV mirror action, so it can be dispatched from the mirror
-      // window against state that has since moved.
       const guard = evaluateSessionBusyGuard(get().conversationPanes.get(tabId))
-      const busy = tab.status === 'running' || tab.status === 'connecting' || tab.bashExecuting || guard.blocked
+      const busy = tab.status === 'running' || tab.status === 'connecting' || tab.status === 'waiting' || tab.bashExecuting || guard.blocked
       if (busy) {
+        const error = formatSessionBusyRefusal(tabId, guard, 'convert the tab to a worktree')
         rWarn('worktree', 'convert refused: tab busy', {
-          tab_id: tabId.slice(0, 8),
-          tab_status: tab.status,
-          bash_executing: tab.bashExecuting,
-          reason: formatSessionBusyRefusal(tabId, guard, 'convert the tab to a worktree'),
+          tab_id: tabId.slice(0, 8), tab_status: tab.status, bash_executing: tab.bashExecuting, reason: error,
         })
-        return
+        return { ok: false, error }
       }
 
-      const defaults = usePreferencesStore.getState().worktreeBranchDefaults
-      const defaultBranch = defaults[tab.workingDirectory]
+      const defaultBranch = usePreferencesStore.getState().worktreeBranchDefaults[tab.workingDirectory]
       if (defaultBranch) {
         const result = await window.ion.gitWorktreeAdd(tab.workingDirectory, defaultBranch)
         if (result.ok && result.worktree) {
           rInfo('worktree', 'converting tab to a worktree', {
-            tab_id: tabId.slice(0, 8),
-            from: tab.workingDirectory,
-            to: result.worktree.worktreePath,
-            branch: result.worktree.branchName,
-            source_branch: defaultBranch,
+            tab_id: tabId.slice(0, 8), from: tab.workingDirectory, to: result.worktree.worktreePath,
+            branch: result.worktree.branchName, source_branch: defaultBranch,
           })
-          // The `abc` case: a named conversation becomes a worktree, and the
-          // worktree carries that same name.
           seedWorktreeFromTab(tab, result.worktree.worktreePath)
-          // Same reasoning as setupWorktree: the session is already live in the
-          // base repo and must be moved, not just re-labelled.
           await setTabWorkingDirectory(set, get, tabId, result.worktree.worktreePath, {
             worktree: result.worktree,
             pendingWorktreeSetup: false,
           })
-          return
+          return { ok: true }
         }
         rWarn('worktree', 'convert refused; falling back to the branch picker', {
           tab_id: tabId.slice(0, 8), error: result.error ?? 'unknown',
@@ -91,10 +91,9 @@ export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State
       }
 
       set((s) => ({
-        tabs: s.tabs.map((t) =>
-          t.id === tabId ? { ...t, pendingWorktreeSetup: true } : t
-        ),
+        tabs: s.tabs.map((t) => t.id === tabId ? { ...t, pendingWorktreeSetup: true } : t),
       }))
+      return { ok: true }
     },
 
     cancelWorktreeSetup: (tabId) => {
@@ -110,7 +109,7 @@ export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State
      *
      * ── Why this is a store action, not a component handler ─────────────────
      * It reads store state between mutations (rename the tab, then resolve that
-     * tab's worktree to rename it too). Per the ATV rules a component handler
+     * tab's worktree to rename it too). Per the Studio window rules a component handler
      * doing that would mix forwarded and mirror-local calls and decide against
      * stale mirror state — so this is ONE action, classified FORWARDED, and the
      * owner window executes both halves.
@@ -178,36 +177,20 @@ export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State
       }
     },
 
-    /**
-     * Land this worktree and leave it sealed for review. Retire is deliberately
-     * separate: landing must never erase the checkout the operator may inspect.
-     */
+    /** Terminal completion. Successful integration removes the checkout and closes its finished conversations. */
     finishWorktreeTab: async (tabId, strategyOverride) => {
-      const tab = get().tabs.find((t) => t.id === tabId)
+      const tab = get().tabs.find((item) => item.id === tabId)
       if (!tab?.worktree) return
-
-      const strategy = strategyOverride || usePreferencesStore.getState().worktreeCompletionStrategy
-      const { repoPath, worktreePath, branchName, sourceBranch } = tab.worktree
-      const flags = landFlagsForStrategy(strategy)
-      const result = await window.ion.gitWorktreeLand({
-        repoPath,
-        worktreePath,
-        worktreeBranch: branchName,
-        sourceBranch,
-        noFf: flags.noFf,
-        syncFirst: flags.syncFirst,
-        requireFastForward: flags.requireFastForward,
-      })
-      if (!result.ok) {
-        rWarn('worktree', 'land refused from finish-work command', {
-          tab_id: tabId.slice(0, 8),
-          worktree_path: worktreePath,
-          error: result.error ?? '',
-        })
-        return
-      }
-      await get().sealLandedWorktree(worktreePath)
-      await get().refreshWorkspaceViews(repoPath)
+      await get().landAndRetireWorktree(
+        tab.worktree.repoPath,
+        {
+          worktreePath: tab.worktree.worktreePath,
+          branchName: tab.worktree.branchName,
+          sourceBranch: tab.worktree.sourceBranch,
+          label: tab.title,
+        },
+        strategyOverride,
+      )
     },
   }
 }

@@ -43,11 +43,12 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 		// or ignore it; the engine has no opinion (see CLAUDE.md § "The
 		// typed-event corollary").
 		return types.EngineEvent{
-			Type:           "engine_image_content",
-			ImagePath:      e.Path,
-			ImageMediaType: e.MediaType,
-			ImageSource:    e.Source,
-			ImageToolID:    e.ToolID,
+			Type:             "engine_image_content",
+			ImagePath:        e.Path,
+			ImageMediaType:   e.MediaType,
+			ImageContentHash: e.ContentHash,
+			ImageSource:      e.Source,
+			ImageToolID:      e.ToolID,
 		}
 
 	case *types.TaskCompleteEvent:
@@ -135,6 +136,9 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 			RetryAfterMs:  e.RetryAfterMs,
 			HttpStatus:    e.HttpStatus,
 			StderrTail:    e.StderrTail,
+			ContextTokens: e.ContextTokens,
+			ContextLimit:  e.ContextLimit,
+			ContextWindow: e.ContextWindow,
 		}
 
 	case *types.UsageEvent:
@@ -314,8 +318,16 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 		// clients can render a confirmation (divider, toast, log line).
 		// The character count is enough for the UI; the message body is
 		// already in the conversation as a user turn and does not need
-		// to be echoed back over the wire.
-		return types.EngineEvent{Type: "engine_steer_injected", SteerMessageLength: e.MessageLength}
+		// to be echoed back over the wire. ClientMessageID/EntryID ride
+		// along only for a genuine client-originated steer so a client
+		// can re-key its optimistic row by identity and retain the
+		// durable entry id as an exact future rewind target.
+		return types.EngineEvent{
+			Type:                 "engine_steer_injected",
+			SteerMessageLength:   e.MessageLength,
+			SteerClientMessageID: e.ClientMessageID,
+			SteerEntryID:         e.EntryID,
+		}
 
 	case *types.SteerDegradedEvent:
 		// The no-live-run peer of SteerInjectedEvent. The message became a

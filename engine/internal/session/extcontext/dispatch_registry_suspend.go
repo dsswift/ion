@@ -19,6 +19,21 @@ import (
 // immediately instead of blocking. Returns true when the dispatch is parked
 // (or unknown, the historical no-op). Thread-safe.
 func (r *DispatchRegistry) SetSuspendedState(id string, reviveCh chan struct{}, pendingChildIDs []string) bool {
+	return r.SetSuspendedStateWithWaitingOn(id, reviveCh, pendingChildIDs, nil)
+}
+
+// SetSuspendedStateWithWaitingOn parks a dispatch with its complete async wait
+// set. Child IDs and task IDs come from the run's TaskSuspendEvent.
+//
+// Both halves are pruned against work that already settled in the window
+// between the park emission and this arming: children against the entry's
+// recorded results, tasks against the registry's settled-task table (a
+// completion that arrived before any dispatch awaited it — see
+// dispatch_task_revive.go). A settled task's result is moved onto the entry so
+// the immediate revive still carries it. Returns false when the prune empties
+// a non-empty wait set, meaning the caller must revive immediately rather than
+// park on work that will never notify again.
+func (r *DispatchRegistry) SetSuspendedStateWithWaitingOn(id string, reviveCh chan struct{}, pendingChildIDs, pendingTaskIDs []string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -27,6 +42,8 @@ func (r *DispatchRegistry) SetSuspendedState(id string, reviveCh chan struct{}, 
 		utils.LogWithFields(utils.LevelWarn, "session.extcontext.dispatch_registry", "setsuspendedstate: dispatch not found (no-op)", map[string]any{"run_id": id})
 		return true
 	}
+
+	awaitedAny := len(pendingChildIDs) > 0 || len(pendingTaskIDs) > 0
 
 	// Prune children that already completed (their results are recorded on
 	// this entry); they will never notify again.
@@ -43,13 +60,29 @@ func (r *DispatchRegistry) SetSuspendedState(id string, reviveCh chan struct{}, 
 			}
 			pruned = append(pruned, cid)
 		}
-		if len(pruned) == 0 {
-			// Every awaited child already finished: the park is already
-			// satisfied. Do not arm; the caller revives immediately.
-			utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "setsuspendedstate: all awaited children already complete, immediate revive", map[string]any{"run_id": id, "count": len(pendingChildIDs)})
-			return false
-		}
 		pendingChildIDs = pruned
+	}
+
+	// Prune background tasks that completed before this arming. Their results
+	// move onto the entry so an immediate revive is not blind.
+	if len(pendingTaskIDs) > 0 {
+		pruned := pendingTaskIDs[:0:0]
+		for _, taskID := range pendingTaskIDs {
+			if rec, settled := r.takeSettledTaskLocked(taskID); settled {
+				d.CompletedTaskResults = append(d.CompletedTaskResults, rec)
+				utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "setsuspendedstate: pending task already completed, pruned", map[string]any{"run_id": id, "task_id": taskID, "exit_code": rec.ExitCode})
+				continue
+			}
+			pruned = append(pruned, taskID)
+		}
+		pendingTaskIDs = pruned
+	}
+
+	if awaitedAny && len(pendingChildIDs) == 0 && len(pendingTaskIDs) == 0 {
+		// Everything awaited already finished: the park is already satisfied.
+		// Do not arm; the caller revives immediately.
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "setsuspendedstate: all awaited work already complete, immediate revive", map[string]any{"run_id": id})
+		return false
 	}
 
 	d.ReviveCh = reviveCh
@@ -62,7 +95,15 @@ func (r *DispatchRegistry) SetSuspendedState(id string, reviveCh chan struct{}, 
 	} else {
 		d.PendingChildren = nil
 	}
-	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "setsuspendedstate: dispatch parked", map[string]any{"run_id": id, "count": len(pendingChildIDs)})
+	if len(pendingTaskIDs) > 0 {
+		d.PendingTasks = make(map[string]struct{}, len(pendingTaskIDs))
+		for _, taskID := range pendingTaskIDs {
+			d.PendingTasks[taskID] = struct{}{}
+		}
+	} else {
+		d.PendingTasks = nil
+	}
+	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "setsuspendedstate: dispatch parked", map[string]any{"run_id": id, "count": len(pendingChildIDs), "awaiting_tasks": len(pendingTaskIDs)})
 	return true
 }
 
@@ -79,6 +120,7 @@ func (r *DispatchRegistry) ClearSuspendedState(id string) {
 	}
 	d.ReviveCh = nil
 	d.PendingChildren = nil
+	d.PendingTasks = nil
 	d.Suspended = false
 }
 
@@ -111,6 +153,17 @@ func (r *DispatchRegistry) NotifyChildComplete(dispatchID, childID string) bool 
 			utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "notifychildcomplete: child done, still waiting", map[string]any{"run_id": dispatchID, "reason": childID, "count": remaining})
 			return false
 		}
+	}
+
+	// A mixed park (children AND background commands) is not satisfied by the
+	// children alone. Reviving here would resume the agent while its own shell
+	// commands are still running, and DeliverTaskResult would then find an
+	// unarmed entry — the same lost-wake shape this half already fixes.
+	if len(d.PendingTasks) > 0 {
+		remainingTasks := len(d.PendingTasks)
+		r.mu.Unlock()
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "notifychildcomplete: children done, still waiting on background commands", map[string]any{"run_id": dispatchID, "reason": childID, "awaiting_tasks": remainingTasks})
+		return false
 	}
 
 	// All pending children done (or bare suspend): signal revive.

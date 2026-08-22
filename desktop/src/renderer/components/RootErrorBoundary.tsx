@@ -11,7 +11,7 @@ interface ErrorState {
 }
 
 /**
- * Root-level error boundary wrapping each renderer root (overlay and ATV).
+ * Root-level error boundary wrapping each renderer root (overlay and Studio).
  *
  * Catches render errors — including React #185 "Maximum update depth exceeded"
  * (infinite setState loops) — that escape inner boundaries. Shows a full-page

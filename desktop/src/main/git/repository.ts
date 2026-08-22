@@ -28,6 +28,7 @@ import type {
 import type { GitChangedFile } from '../../shared/types-session'
 import { log as _log, debug as _debug } from '../logger'
 import { isPathIgnoredByGitWatcher } from './ignore-paths'
+import { watchedCheckoutPaths } from './watcher-exempt'
 import { readGitWatcherIgnoredDirectories } from '../settings-store'
 
 function log(msg: string, fields?: Record<string, unknown>): void { _log('main', msg, fields) }
@@ -70,8 +71,6 @@ export class GitRepository extends EventEmitter {
 
   readonly commitDetailCache = new LruCache<string, { filesChanged: number; insertions: number; deletions: number }>(200)
   readonly commitFilesCache = new LruCache<string, CommitFileEntry[]>(200)
-  readonly commitFileDiffCache = new LruCache<string, { diff: string; fileName: string }>(500)
-  readonly diffCache = new LruCache<string, { diff: string; fileName: string }>(100)
   readonly branchCache = new LruCache<string, { branches: BranchEntry[]; current: string }>(1)
   readonly graphCache = new LruCache<string, { commits: GitCommitRaw[]; totalCount: number }>(20)
 
@@ -108,7 +107,10 @@ export class GitRepository extends EventEmitter {
     this._refCount++
     if (this._refCount === 1) {
       const ignoredDirs = readGitWatcherIgnoredDirectories()
-      this._watcherIgnored = isPathIgnoredByGitWatcher(this.path, ignoredDirs)
+      // Managed checkouts (worktrees, benches) live under `~/.ion`, which the
+      // default ignore covers — they are source, not Ion's data, and without
+      // this every one of them ran unwatched. See git/watcher-exempt.ts.
+      this._watcherIgnored = isPathIgnoredByGitWatcher(this.path, ignoredDirs, watchedCheckoutPaths())
       if (this._watcherIgnored) {
         log('git_repository: watcher suppressed for ignored path', { path: this.path })
         // Still register focus-return refresh so the panel updates on window focus.
@@ -137,7 +139,6 @@ export class GitRepository extends EventEmitter {
 
   bumpRevision(): void {
     this._revision++
-    this.diffCache.clear()
     this.branchCache.clear()
     this.graphCache.clear()
   }
@@ -145,10 +146,6 @@ export class GitRepository extends EventEmitter {
   /** Resolves once the initial retain() snapshot has completed (or immediately if already done). */
   async waitForReady(): Promise<void> {
     if (this._initialRefresh) await this._initialRefresh
-  }
-
-  invalidatePath(p: string): void {
-    this.diffCache.invalidate((key) => key.startsWith(p + ':'))
   }
 
   private handleWatchEvent(event: GitWatchEvent): void {
@@ -159,7 +156,6 @@ export class GitRepository extends EventEmitter {
         this.refreshSnapshot().catch((err: Error) => debug("git: background refreshSnapshot failed", { directory: this.path, error: String(err) }))
         break
       case 'status:dirty':
-        this.diffCache.clear()
         this._revision++
         this.refreshSnapshot().catch((err: Error) => debug("git: background refreshSnapshot failed", { directory: this.path, error: String(err) }))
         break
@@ -267,7 +263,7 @@ export class GitRepository extends EventEmitter {
 
     let groups: PartitionedStatus = { flat: [], index: [], workingTree: [], untracked: [], merge: [] }
     try {
-      const output = await runGit(this.path, ['status', '--porcelain=v1', '-uall'])
+      const output = await runGit(this.path, ['status', '--porcelain=v1', '-z', '-uall'])
       groups = partitionStatus(output)
     } catch (err) { debug('git: status read failed', { directory: this.path, error: String(err) }) }
 
@@ -378,15 +374,6 @@ export class GitRepository extends EventEmitter {
     })
   }
 
-  async getCommitFileDiff(hash: string, filePath: string): Promise<{ diff: string; fileName: string }> {
-    const key = `${hash}:${filePath}`
-    return this.commitFileDiffCache.getOrComputeDedup(key, async () => {
-      const output = await runGit(this.path, ['diff-tree', '-p', '--root', hash, '--', filePath])
-      const fileName = filePath.split('/').pop() || filePath
-      return { diff: output, fileName }
-    })
-  }
-
   async getBranches(): Promise<{ branches: BranchEntry[]; current: string }> {
     return this.branchCache.getOrComputeDedup('branches', async () => {
       const output = await runGit(this.path, [
@@ -402,8 +389,6 @@ export class GitRepository extends EventEmitter {
     this.queue.cancelAll()
     this.commitDetailCache.clear()
     this.commitFilesCache.clear()
-    this.commitFileDiffCache.clear()
-    this.diffCache.clear()
     this.branchCache.clear()
     this.graphCache.clear()
     this.removeAllListeners()

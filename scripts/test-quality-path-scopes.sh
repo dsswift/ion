@@ -51,7 +51,7 @@ for name, (changed, want) in cases.items():
 job_scopes = {
     "actionlint": "workflows",
     "status-writers": "desktop",
-    "atv-parity": "desktop",
+    "studio-parity": "desktop",
     "check-logging": "logging",
     "check-swiftlint": "ios",
     "dashboards": "dashboards",

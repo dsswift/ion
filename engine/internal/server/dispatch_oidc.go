@@ -51,6 +51,31 @@ func (s *Server) identityManager() *auth.IdentityManager {
 	return s.identity
 }
 
+// requireOperatorIdentityForSession enforces the generic engine mechanism at
+// the session boundary, before Manager.StartSession can load extensions. OIDC
+// lifecycle commands remain available so any client can establish the grant.
+func (s *Server) requireOperatorIdentityForSession() error {
+	s.mu.RLock()
+	required := s.config != nil && s.config.Auth != nil && s.config.Auth.RequireOperatorIdentity
+	identity := s.identity
+	s.mu.RUnlock()
+	if !required {
+		return nil
+	}
+	if identity == nil {
+		utils.LogWithFields(utils.LevelError, "server.oidc", "required operator identity unavailable", map[string]any{"reason": "provider_not_configured"})
+		return fmt.Errorf("operator OIDC identity is required but no interactive identity provider is available")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := identity.ValidateGrant(ctx); err != nil {
+		utils.LogWithFields(utils.LevelWarn, "server.oidc", "session refused: required operator identity unavailable", map[string]any{"error": err.Error()})
+		return fmt.Errorf("operator OIDC identity is required; complete oidc_begin_login before starting a session: %w", err)
+	}
+	utils.LogWithFields(utils.LevelInfo, "server.oidc", "required operator identity accepted for session", nil)
+	return nil
+}
+
 // dispatchOidcBeginLogin starts an interactive (PKCE) or headless (device
 // code) login. The flow's user-facing half is delivered to the requesting
 // client as an engine_oidc_login_url event; completion broadcasts an
@@ -140,6 +165,23 @@ func (s *Server) dispatchOidcLogout(conn net.Conn, cmd *protocol.ClientCommand) 
 	s.broadcastOidcIdentity()
 }
 
+func (s *Server) operatorIdentityValid() bool {
+	m := s.identityManager()
+	if m == nil {
+		return false
+	}
+	if !s.operatorIdentityRequired() {
+		return m.Identity() != nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := m.ValidateGrant(ctx); err != nil {
+		utils.LogWithFields(utils.LevelWarn, "server.oidc", "operator identity validation failed", map[string]any{"error": err.Error()})
+		return false
+	}
+	return true
+}
+
 // dispatchOidcIdentity answers with the current identity snapshot,
 // delivered as an engine_oidc_identity event to the requester plus a
 // result payload for the await-result pattern.
@@ -152,11 +194,12 @@ func (s *Server) dispatchOidcIdentity(conn net.Conn, cmd *protocol.ClientCommand
 	evt := s.oidcIdentityEvent()
 	s.emitOidcEventTo(conn, cmd.Key, evt)
 	s.sendResult(conn, cmd, nil, map[string]any{
-		"signedIn": evt.OidcSignedIn != nil && *evt.OidcSignedIn,
-		"subject":  evt.OidcSubject,
-		"username": evt.OidcUsername,
-		"name":     evt.OidcDisplayName,
-		"provider": evt.OidcProvider,
+		"signedIn":                evt.OidcSignedIn != nil && *evt.OidcSignedIn,
+		"requireOperatorIdentity": s.operatorIdentityRequired(),
+		"subject":                 evt.OidcSubject,
+		"username":                evt.OidcUsername,
+		"name":                    evt.OidcDisplayName,
+		"provider":                evt.OidcProvider,
 	})
 }
 
@@ -197,7 +240,13 @@ func (s *Server) dispatchOidcToken(conn net.Conn, cmd *protocol.ClientCommand) {
 		s.sendResult(conn, cmd, err, nil)
 		return
 	}
-	utils.LogWithFields(utils.LevelInfo, "server.oidc", "client token minted", map[string]any{"tag": cmd.OidcScope, "expires_at": expiresAt})
+	// DEBUG, and "issued" rather than "minted": most calls here are answered
+	// from the identity manager's scope cache and mint nothing. A genuine mint
+	// still logs at INFO from `auth.identity` ("minted access token"), which is
+	// where the state transition actually happens — so this line is per-request
+	// detail, and at INFO it both overstated what happened and let a client
+	// polling for credentials bury the log (79,368 lines in one window).
+	utils.LogWithFields(utils.LevelDebug, "server.oidc", "client token issued", map[string]any{"tag": cmd.OidcScope, "expires_at": expiresAt})
 	result := map[string]any{"accessToken": token}
 	if !expiresAt.IsZero() {
 		result["expiresAt"] = expiresAt.UnixMilli()
@@ -205,12 +254,18 @@ func (s *Server) dispatchOidcToken(conn net.Conn, cmd *protocol.ClientCommand) {
 	s.sendResult(conn, cmd, nil, result)
 }
 
+func (s *Server) operatorIdentityRequired() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.config != nil && s.config.Auth != nil && s.config.Auth.RequireOperatorIdentity
+}
+
 // oidcIdentityEvent builds the complete identity snapshot event.
 func (s *Server) oidcIdentityEvent() types.EngineEvent {
 	m := s.identityManager()
 	signedIn := false
 	evt := types.EngineEvent{Type: types.EventOidcIdentity}
-	if m != nil {
+	if m != nil && s.operatorIdentityValid() {
 		if id := m.Identity(); id != nil {
 			signedIn = true
 			evt.OidcProvider = id.Provider
@@ -220,6 +275,8 @@ func (s *Server) oidcIdentityEvent() types.EngineEvent {
 		}
 	}
 	evt.OidcSignedIn = &signedIn
+	required := s.operatorIdentityRequired()
+	evt.OidcRequired = &required
 	return evt
 }
 
@@ -232,7 +289,9 @@ func (s *Server) broadcastOidcIdentity() {
 
 	attribution := ""
 	if m := s.identityManager(); m != nil {
-		attribution = m.Identity().AttributionValue() // nil-safe: nil identity → ""
+		if identity := m.Identity(); identity != nil {
+			attribution = identity.AttributionValue()
+		}
 	}
 	utils.SetEgressUser(attribution)
 	telemetry.SetUserIdentity(attribution)

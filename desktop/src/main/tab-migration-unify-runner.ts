@@ -53,7 +53,8 @@ export function verifyUnifyMigration(
       'conversationId', 'title', 'customTitle', 'workingDirectory',
       'hasChosenDirectory', 'permissionMode', 'groupId', 'groupPinned',
       'pillColor', 'pillIcon', 'engineProfileId', 'lastKnownSessionId',
-      'isTerminalOnly', 'lastEventAt', 'lastMessagePreview',
+      'isTerminalOnly', 'lastEventAt', 'lastActivityAt', 'idleSince', 'lastCompletionAt',
+      'settledOverride', 'settledAt', 'snoozedUntil', 'snoozedAt', 'lastVisitedAt', 'manualUnread', 'lastMessagePreview',
     ]
     for (const k of identity) {
       if (JSON.stringify(a[k]) !== JSON.stringify(b[k])) {

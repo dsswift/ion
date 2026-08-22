@@ -42,6 +42,7 @@ vi.mock('../conversation/TranscriptRows', () => ({
 }))
 vi.mock('../conversation/tool-helpers', () => ({
   groupMessages: () => [],
+  suppressUserImageEchoes: (messages: unknown[]) => messages,
 }))
 vi.mock('../conversation', () => ({
   groupMessages: () => [],

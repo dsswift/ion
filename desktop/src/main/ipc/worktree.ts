@@ -148,7 +148,7 @@ export function registerWorktreeIpc(): void {
    * ── Why the main process decides ────────────────────────────────────────
    * "Is this directory a worktree, and has it been named yet?" is answered by
    * the registry, which is main-process state. A renderer-side check would read
-   * the inventory snapshot it happens to hold — stale in the ATV mirror, absent
+   * the inventory snapshot it happens to hold — stale in the Studio mirror, absent
    * in a window that never opened the git panel — and both windows would race
    * on the same send. Deciding here means the answer is read from the one
    * authoritative record.

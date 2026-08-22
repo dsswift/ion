@@ -54,10 +54,36 @@ function hasForegroundChildProcess(term: Pick<IPty, 'process'>, shell: string): 
   return basename(term.process) !== basename(shell)
 }
 
+/** Lifecycle record for a terminal key (D2 attach model). */
+export interface TerminalLifecycle {
+  running: boolean
+  /** Exit code of the last run; null while running or never exited. */
+  exitCode: number | null
+  /** The cwd the pty was created with (respawn target). */
+  cwd: string
+  /** True when the requested cwd was dead and the spawn fell back to ~. */
+  cwdFellBack: boolean
+}
+
+/** Snapshot returned to an attaching client. */
+export interface TerminalAttachInfo {
+  history: string
+  running: boolean
+  exitCode: number | null
+  cwd: string
+  cwdFellBack: boolean
+}
+
 export class TerminalManager {
   private sessions = new Map<string, IPty>()
   private activeKeys = new Set<string>()
   private activityTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  /**
+   * Lifecycle state OUTLIVES the pty (attach model): a pty EXIT retains the
+   * scrollback + exit code so a dead terminal stays readable until explicit
+   * destroy. Only destroy()/destroyByPrefix()/destroyAll() delete.
+   */
+  private lifecycle = new Map<string, TerminalLifecycle>()
   private broadcast: (channel: string, ...args: unknown[]) => void
   private spawner: PtySpawner | null
   private processProbe: ProcessProbe
@@ -69,6 +95,32 @@ export class TerminalManager {
     this.spawner = spawner ?? null
   }
 
+  /**
+   * Attach snapshot: full history + lifecycle state. With
+   * restartIfNotRunning, a dead (or never-created) terminal respawns on
+   * demand; a dead cwd falls back to ~ and says so (visible notice).
+   */
+  attach(key: string, opts?: { restartIfNotRunning?: boolean; cwd?: string }): TerminalAttachInfo {
+    let life = this.lifecycle.get(key)
+    if (opts?.restartIfNotRunning && !this.sessions.has(key)) {
+      const cwd = opts.cwd ?? life?.cwd ?? '~'
+      this.create(key, cwd)
+      life = this.lifecycle.get(key)
+    }
+    return {
+      history: terminalScrollback.get(key) ?? '',
+      running: this.sessions.has(key),
+      exitCode: life?.exitCode ?? null,
+      cwd: life?.cwd ?? '~',
+      cwdFellBack: life?.cwdFellBack ?? false,
+    }
+  }
+
+  /** Lifecycle state for a key (undefined = never created). */
+  getLifecycle(key: string): TerminalLifecycle | undefined {
+    return this.lifecycle.get(key)
+  }
+
   create(key: string, cwd: string): void {
     if (this.sessions.has(key)) return
 
@@ -77,10 +129,9 @@ export class TerminalManager {
       throw new Error('node-pty is not available')
     }
 
-    const resolvedCwd = (() => {
-      const p = cwd === '~' ? homedir() : cwd
-      return existsSync(p) ? p : homedir()
-    })()
+    const requested = cwd === '~' ? homedir() : cwd
+    const cwdFellBack = !existsSync(requested)
+    const resolvedCwd = cwdFellBack ? homedir() : requested
     const shell = process.env.SHELL || '/bin/zsh'
 
     // Conversation identity, injected into the PTY environment.
@@ -121,11 +172,19 @@ export class TerminalManager {
       this.sessions.delete(key)
       this.stopActivityWatch(key)
       this.setActivity(key, false)
+      // Exit RETAINS scrollback + exit code (attach model): the dead
+      // terminal stays readable until explicit destroy.
+      const life = this.lifecycle.get(key)
+      if (life) this.lifecycle.set(key, { ...life, running: false, exitCode })
       this.broadcast(IPC.TERMINAL_EXIT, key, exitCode)
     })
 
     this.sessions.set(key, term)
     this.startActivityWatch(key, term, shell)
+    this.lifecycle.set(key, { running: true, exitCode: null, cwd: resolvedCwd, cwdFellBack })
+    // A fresh run's transcript starts clean (a respawn after exit would
+    // otherwise repeat the dead run's history ahead of the new shell).
+    terminalScrollback.delete(key)
   }
 
   write(key: string, data: string): void {
@@ -198,6 +257,10 @@ export class TerminalManager {
         // Already dead
       }
     }
+    // Explicit destroy is the ONE path that forgets a terminal: scrollback
+    // and lifecycle state go together (exit alone retains both).
+    terminalScrollback.delete(key)
+    this.lifecycle.delete(key)
   }
 
   /** Destroy all PTYs matching a prefix (e.g. "tabId:" destroys all terminals for that tab) */

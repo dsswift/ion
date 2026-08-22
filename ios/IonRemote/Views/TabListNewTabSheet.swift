@@ -29,19 +29,12 @@ struct TabListNewTabSheet: View {
     /// directory. The caller applies `resolveNewConversationAction` routing
     /// and creates the tab (plain or profiled) or shows the profile picker.
     let onNewConversation: (_ dir: String, _ pinToGroupId: String?) -> Void
+    let onCreateWorktree: (_ repoPath: String, _ sourceBranch: String) -> Void
     let onCreateTerminalTab: (_ dir: String) -> Void
 
     var body: some View {
         NavigationStack {
             List {
-                // Worktrees + benches first. This is the ZERO-KNOWLEDGE
-                // recovery path: closing a worktree conversation no longer
-                // destroys anything, but the operator still needs a way back in
-                // without knowing a generated ~/.ion/worktrees/... path -- and
-                // on iOS the git pane is two navigations away, so it cannot be
-                // the only route.
-                worktreeSections
-
                 Section("Directories") {
                 ForEach(directories, id: \.fullPath) { dir in
                     HStack {
@@ -57,6 +50,17 @@ struct TabListNewTabSheet: View {
                         }
                         .buttonStyle(.bordered)
                         .buttonBorderShape(.circle)
+                        if let sourceBranch = viewModel.worktreeStates[dir.fullPath]?.benches.first?.sourceBranch {
+                            Button {
+                                isPresented = false
+                                onCreateWorktree(dir.fullPath, sourceBranch)
+                            } label: {
+                                Image(systemName: "arrow.triangle.branch")
+                            }
+                            .accessibilityLabel("Create worktree from \(sourceBranch)")
+                            .buttonStyle(.bordered)
+                            .buttonBorderShape(.circle)
+                        }
                         // Terminal: unchanged.
                         Button {
                             isPresented = false
@@ -78,99 +82,6 @@ struct TabListNewTabSheet: View {
                 }
             }
         }
-        .task { viewModel.refreshAllWorktrees() }
         .presentationDetents([.medium])
-    }
-}
-
-extension TabListNewTabSheet {
-
-    /// Bench and worktree rows, grouped per project.
-    @ViewBuilder
-    var worktreeSections: some View {
-        ForEach(viewModel.worktreeProjects) { state in
-            let builtBenches = state.benches.filter(\.hasBeenBuilt)
-            if !builtBenches.isEmpty || !state.worktrees.isEmpty {
-                Section(projectLabel(state.repoPath)) {
-                    // Built bench exposes both singleton destinations: Talk for
-                    // conversation context and Terminal for shell work.
-                    ForEach(builtBenches) { bench in
-                        HStack(spacing: 8) {
-                            Image(systemName: "flask").foregroundStyle(.tint)
-                            Text("Bench · \(bench.sourceBranch)").lineLimit(1)
-                            Spacer()
-                            ViewThatFits(in: .horizontal) {
-                                HStack(spacing: 6) {
-                                    benchAction(bench.conversationActionTitle,
-                                                icon: "bubble.left") {
-                                        viewModel.openBenchConversation(repoPath: state.repoPath,
-                                                                        sourceBranch: bench.sourceBranch)
-                                    }
-                                    benchAction("Terminal", icon: "terminal") {
-                                        viewModel.openBenchTerminal(repoPath: state.repoPath,
-                                                                    sourceBranch: bench.sourceBranch)
-                                    }
-                                }
-                                HStack(spacing: 6) {
-                                    benchAction(nil, icon: "bubble.left") {
-                                        viewModel.openBenchConversation(repoPath: state.repoPath,
-                                                                        sourceBranch: bench.sourceBranch)
-                                    }
-                                    benchAction(nil, icon: "terminal") {
-                                        viewModel.openBenchTerminal(repoPath: state.repoPath,
-                                                                    sourceBranch: bench.sourceBranch)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    ForEach(state.worktrees.filter { !$0.isLanded }) { wt in
-                        Button {
-                            isPresented = false
-                            viewModel.openWorktreeConversation(worktreePath: wt.worktreePath)
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "arrow.triangle.branch")
-                                    .foregroundStyle(.green)
-                                // Title-first, matching every other worktree
-                                // surface on both clients.
-                                Text(wt.displayName).lineLimit(1)
-                                Spacer()
-                                if wt.isDirty {
-                                    Text("dirty").font(.caption2).foregroundStyle(.green)
-                                }
-                                if wt.needsSync {
-                                    Text("base moved").font(.caption2).foregroundStyle(.orange)
-                                }
-                                if let openConversationCountLabel = wt.openConversationCountLabel {
-                                    Text(openConversationCountLabel).font(.caption2).foregroundStyle(.tint)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func benchAction(_ title: String?, icon: String, action: @escaping () -> Void) -> some View {
-        Button {
-            isPresented = false
-            action()
-        } label: {
-            if let title {
-                Label(title, systemImage: icon).font(.caption)
-            } else {
-                Image(systemName: icon)
-                    .font(.caption)
-                    .accessibilityLabel(icon == "terminal" ? "Terminal" : "Talk")
-            }
-        }
-        .buttonStyle(.bordered)
-    }
-
-    private func projectLabel(_ repoPath: String) -> String {
-        repoPath.split(separator: "/").last.map(String.init) ?? repoPath
     }
 }

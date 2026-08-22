@@ -124,7 +124,7 @@ struct ConversationView: View {
     }
     var isRunning: Bool {
         let tab = viewModel.tab(for: tabId)
-        return tab?.status == .running || tab?.status == .connecting
+        return tab?.status == .running || tab?.status == .connecting || tab?.status == .waiting
     }
 
     /// Slash-command autocomplete cluster (`slashCommands`, `updateSlashFilter`)

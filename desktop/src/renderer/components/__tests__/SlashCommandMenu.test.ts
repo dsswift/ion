@@ -31,7 +31,34 @@ vi.mock('../../hooks/useViewportClamp', () => ({
   useViewportClamp: () => {},
 }))
 
-import { SLASH_COMMANDS, slashMenuEnterAction } from '../SlashCommandMenu'
+vi.mock('../../viewport-zoom', () => ({
+  zoomRect: (rect: DOMRect) => ({
+    ...rect,
+    x: rect.x / 1.5,
+    y: rect.y / 1.5,
+    top: rect.top / 1.5,
+    left: rect.left / 1.5,
+    right: rect.right / 1.5,
+    bottom: rect.bottom / 1.5,
+    width: rect.width / 1.5,
+    height: rect.height / 1.5,
+  }),
+  zoomViewport: () => ({ width: 800, height: 600 }),
+}))
+
+import { SLASH_COMMANDS, slashMenuEnterAction, slashMenuPlacement } from '../SlashCommandMenu'
+
+describe('slashMenuPlacement', () => {
+  it('anchors in zoom-adjusted fixed coordinates', () => {
+    const anchor = { x: 300, y: 450, top: 450, left: 300, right: 900, bottom: 510, width: 600, height: 60, toJSON: () => ({}) } as DOMRect
+    expect(slashMenuPlacement(anchor)).toMatchObject({
+      bottom: 304,
+      left: 212,
+      right: 212,
+    })
+  })
+})
+
 
 describe('SLASH_COMMANDS', () => {
   it('includes the three engine built-ins', () => {

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -39,6 +40,32 @@ func TestConfigureIdentityProviders_EmptyIdentityProvider(t *testing.T) {
 	}
 	if CurrentTokenProvider() != nil {
 		t.Error("expected token provider to be cleared")
+	}
+}
+
+func TestConfigureIdentityProviders_RequiredWithoutProvider(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	defer SetTokenProvider(nil)
+
+	_, err := ConfigureIdentityProviders(&types.AuthConfig{RequireOperatorIdentity: true})
+	if err == nil || err.Error() != "auth.requireOperatorIdentity requires auth.identityProvider" {
+		t.Fatalf("expected required-provider error, got %v", err)
+	}
+}
+
+func TestConfigureIdentityProviders_RequiredRejectsMachineIdentity(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	defer SetTokenProvider(nil)
+
+	_, err := ConfigureIdentityProviders(&types.AuthConfig{
+		IdentityProvider:        "machine",
+		RequireOperatorIdentity: true,
+		OAuth: map[string]types.OAuthConfig{
+			"machine": {MachineIdentity: &types.MachineIdentityConfig{Source: "client_secret"}},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "requires an interactive operator provider") {
+		t.Fatalf("expected machine-identity rejection, got %v", err)
 	}
 }
 

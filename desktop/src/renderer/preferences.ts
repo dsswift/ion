@@ -4,12 +4,13 @@ import { applyTheme, resolveColors, type ColorPalette } from './theme-tokens'
 import type { PreferencesState } from './preferences-types'
 import { saveSettings, getAllSettings, INITIAL_SAVED } from './preferences-persist'
 import { bootstrapPreferences } from './preferences-bootstrap'
-import { parseChord } from './shortcuts/chord'
-import { SHORTCUT_CATALOG } from './shortcuts/shortcut-catalog'
+import { createKeyboardShortcutActions } from './preferences-shortcuts'
 import { deriveEnterpriseThemePolicy } from '../shared/enterprise-theme-policy'
 import { normalizePreferencesModels } from './preferences-model-normalization'
 import { rInfo, rWarn } from './rendererLogger'
 import { isEphemeralWorkspaceDirectory } from '../shared/recent-directories'
+import { clampFontSize, clampUiZoom } from './typography'
+import { createWorkspaceFolderActions, createInboxPreferenceActions, createProjectRegistryActions } from './preferences-workspace'
 export type { PreferencesState } from './preferences-types'
 export { getEffectiveTabGroups } from './preferences-persist'
 
@@ -42,13 +43,13 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   directoryUsageCounts: saved.directoryUsageCounts,
   defaultPermissionMode: saved.defaultPermissionMode,
   expandOnTabSwitch: saved.expandOnTabSwitch,
+  studioSurfaceSwitchMode: saved.studioSurfaceSwitchMode,
   bashCommandEntry: saved.bashCommandEntry,
   gitPanelPaneProportions: saved.gitPanelPaneProportions,
   gitPanelHeight: saved.gitPanelHeight,
   fileExplorerHeight: saved.fileExplorerHeight,
   gitPanelChangesOpen: saved.gitPanelChangesOpen,
   gitPanelGraphOpen: saved.gitPanelGraphOpen,
-  gitPanelWorktreesOpen: saved.gitPanelWorktreesOpen,
   expandToolResults: saved.expandToolResults,
   terminalFontFamily: saved.terminalFontFamily,
   terminalFontSize: saved.terminalFontSize,
@@ -56,8 +57,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   openMarkdownInPreview: saved.openMarkdownInPreview,
   editorWordWrap: saved.editorWordWrap,
   editorFontSize: saved.editorFontSize,
-  conversationFontSize: saved.conversationFontSize,
-  previewFontSize: saved.previewFontSize,
+  dataViewFontSize: saved.dataViewFontSize,
   gitOpsMode: saved.gitOpsMode,
   worktreeCompletionStrategy: saved.worktreeCompletionStrategy,
   worktreeBranchDefaults: saved.worktreeBranchDefaults,
@@ -106,11 +106,18 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   defaultTallConversation: saved.defaultTallConversation,
   defaultTallTerminal: saved.defaultTallTerminal,
   tabRecoveryEnabled: saved.tabRecoveryEnabled,
+  tabRecoveryTimeoutSec: saved.tabRecoveryTimeoutSec,
   planModelSplitEnabled: saved.planModelSplitEnabled,
   planModeModel: saved.planModeModel,
   implementModeModel: saved.implementModeModel,
   showImplementClearContext: saved.showImplementClearContext,
   gitWatcherIgnoredDirectories: saved.gitWatcherIgnoredDirectories,
+  workspaceFolders: saved.workspaceFolders,
+  gitPanelRepoSectionsCollapsed: saved.gitPanelRepoSectionsCollapsed,
+  inboxAutoSettleDays: saved.inboxAutoSettleDays,
+  inboxAutoSettleOnMerge: saved.inboxAutoSettleOnMerge,
+  conversationNav: saved.conversationNav,
+  projects: saved.projects,
   excludedResourceKinds: saved.excludedResourceKinds,
   keyboardShortcuts: saved.keyboardShortcuts,
   setDefaultTallConversation: (enabled) => {
@@ -123,6 +130,11 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setTabRecoveryEnabled: (enabled) => {
     set({ tabRecoveryEnabled: enabled })
+    saveSettings(getAllSettings(get))
+  },
+  setTabRecoveryTimeoutSec: (sec) => {
+    const clamped = Math.max(30, Math.min(600, Math.round(sec)))
+    set({ tabRecoveryTimeoutSec: clamped })
     saveSettings(getAllSettings(get))
   },
   // Theme selection is the single control: every built-in theme declares
@@ -187,6 +199,10 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     set({ expandOnTabSwitch: enabled })
     saveSettings(getAllSettings(get))
   },
+  setStudioSurfaceSwitchMode: (mode) => {
+    set({ studioSurfaceSwitchMode: mode })
+    saveSettings(getAllSettings(get))
+  },
   setBashCommandEntry: (enabled) => {
     set({ bashCommandEntry: enabled })
     saveSettings(getAllSettings(get))
@@ -214,10 +230,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     set({ gitPanelGraphOpen: open })
   },
 
-  setGitPanelWorktreesOpen: (open) => {
-    set({ gitPanelWorktreesOpen: open })
-  },
-
   setExpandToolResults: (enabled) => {
     set({ expandToolResults: enabled })
     saveSettings(getAllSettings(get))
@@ -227,7 +239,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     saveSettings(getAllSettings(get))
   },
   setTerminalFontSize: (size) => {
-    set({ terminalFontSize: size })
+    set({ terminalFontSize: clampFontSize(size) })
     saveSettings(getAllSettings(get))
   },
   setCloseExplorerOnFileOpen: (enabled) => {
@@ -243,12 +255,13 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     saveSettings(getAllSettings(get))
   },
   setEditorFontSize: (size) => {
-    const clamped = Math.max(8, Math.min(24, Math.round(size)))
-    set({ editorFontSize: clamped })
+    set({ editorFontSize: clampFontSize(size, 12) })
     saveSettings(getAllSettings(get))
   },
-  setConversationFontSize: (size) => { const c = Math.max(8, Math.min(24, Math.round(size))); set({ conversationFontSize: c }); saveSettings(getAllSettings(get)) },
-  setPreviewFontSize: (size) => { const c = Math.max(8, Math.min(24, Math.round(size))); set({ previewFontSize: c }); saveSettings(getAllSettings(get)) },
+  setDataViewFontSize: (size) => {
+    set({ dataViewFontSize: clampFontSize(size) })
+    saveSettings(getAllSettings(get))
+  },
   setGitOpsMode: (mode) => {
     set({ gitOpsMode: mode })
     saveSettings(getAllSettings(get))
@@ -425,9 +438,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     saveSettings(getAllSettings(get))
   },
   setUiZoom: (zoom) => {
-    const clamped = Math.round(Math.max(0.5, Math.min(2.0, zoom)) * 10) / 10
-    document.documentElement.style.zoom = String(clamped)
-    set({ uiZoom: clamped })
+    set({ uiZoom: clampUiZoom(zoom) })
     saveSettings(getAllSettings(get))
   },
   zoomIn: () => {
@@ -524,10 +535,9 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     saveSettings(getAllSettings(get))
   },
   normalizeModelPreferences: (models) => normalizePreferencesModels(set, get, models),
-  setGitWatcherIgnoredDirectories: (dirs) => {
-    set({ gitWatcherIgnoredDirectories: dirs })
-    saveSettings(getAllSettings(get))
-  },
+  ...createWorkspaceFolderActions(set, get),
+  ...createInboxPreferenceActions(set, get),
+  ...createProjectRegistryActions(set, get),
   setExcludedResourceKinds: (kinds) => {
     set({ excludedResourceKinds: kinds })
     saveSettings(getAllSettings(get))
@@ -536,35 +546,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     set({ showImplementClearContext: enabled })
     saveSettings(getAllSettings(get))
   },
-  setKeyboardShortcut: (commandId, chord) => {
-    if (!parseChord(chord)) {
-      rWarn('preferences', 'setKeyboardShortcut: invalid chord', { chord, command_id: commandId })
-      return
-    }
-    const entry = SHORTCUT_CATALOG.find((e) => e.id === commandId)
-    if (!entry) {
-      rWarn('preferences', 'setKeyboardShortcut: unknown command id', { command_id: commandId })
-      return
-    }
-    const current = { ...get().keyboardShortcuts }
-    if (chord === entry.defaultBinding) {
-      delete current[commandId]
-    } else {
-      current[commandId] = chord
-    }
-    set({ keyboardShortcuts: current })
-    saveSettings(getAllSettings(get))
-  },
-  resetKeyboardShortcut: (commandId) => {
-    const current = { ...get().keyboardShortcuts }
-    delete current[commandId]
-    set({ keyboardShortcuts: current })
-    saveSettings(getAllSettings(get))
-  },
-  resetAllKeyboardShortcuts: () => {
-    set({ keyboardShortcuts: {} })
-    saveSettings(getAllSettings(get))
-  },
+  ...createKeyboardShortcutActions(set, get, () => saveSettings(getAllSettings(get))),
   applyPreset: (preset) => {
     set(preset)
     saveSettings(getAllSettings(get))

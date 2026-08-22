@@ -35,7 +35,9 @@ extension RemoteEvent {
             let updatedAtMs = try container.decodeIfPresent(Double.self, forKey: .remoteDisplayUpdatedAt)
             let updatedAt = updatedAtMs.map { Date(timeIntervalSince1970: $0 / 1000.0) }
             let resources = try container.decodeIfPresent([String: [[String: AnyCodable]]].self, forKey: .resources)
-            return .snapshot(tabs: tabs, recentDirectories: recentDirs, tabGroupMode: tabGroupMode, tabGroups: tabGroups, preferredModel: preferredModel, engineDefaultModel: engineDefaultModel, availableModels: availableModels, customName: customName, customIcon: customIcon, remoteDisplayUpdatedAt: updatedAt, resources: resources)
+            let worktreeStates = try container.decodeIfPresent([RemoteWorktreeState].self, forKey: .worktreeStates)
+            let settledTabs = try container.decodeIfPresent([SafeDecodable<RemoteTabState>].self, forKey: .settledTabs)?.compactMap(\.value)
+            return .snapshot(tabs: tabs, recentDirectories: recentDirs, tabGroupMode: tabGroupMode, tabGroups: tabGroups, preferredModel: preferredModel, engineDefaultModel: engineDefaultModel, availableModels: availableModels, customName: customName, customIcon: customIcon, remoteDisplayUpdatedAt: updatedAt, resources: resources, worktreeStates: worktreeStates, settledTabs: settledTabs)
 
         case .tabCreated:
             let tab = try container.decode(RemoteTabState.self, forKey: .tab)
@@ -138,6 +140,12 @@ extension RemoteEvent {
             let error = try container.decodeIfPresent(String.self, forKey: .error)
             return .promptResult(tabId: tabId, clientMsgId: clientMsgId, status: status, error: error)
 
+        case .engineRewindResult:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decode(String.self, forKey: .instanceId)
+            let error = try container.decodeIfPresent(String.self, forKey: .error)
+            return .engineRewindResult(tabId: tabId, instanceId: instanceId, error: error)
+
         default:
             return nil
         }
@@ -146,7 +154,7 @@ extension RemoteEvent {
     /// Encode lifecycle events. Returns `true` if the receiver was a lifecycle event.
     func encodeLifecycle(into container: inout KeyedEncodingContainer<CodingKeys>) throws -> Bool {
         switch self {
-        case .snapshot(let tabs, let recentDirectories, let tabGroupMode, let tabGroups, let preferredModel, let engineDefaultModel, let availableModels, let customName, let customIcon, let remoteDisplayUpdatedAt, let resources):
+        case .snapshot(let tabs, let recentDirectories, let tabGroupMode, let tabGroups, let preferredModel, let engineDefaultModel, let availableModels, let customName, let customIcon, let remoteDisplayUpdatedAt, let resources, let worktreeStates, let settledTabs):
             try container.encode(TypeKey.snapshot, forKey: .type)
             try container.encode(tabs, forKey: .tabs)
             if !recentDirectories.isEmpty {
@@ -163,6 +171,8 @@ extension RemoteEvent {
                 try container.encode(remoteDisplayUpdatedAt.timeIntervalSince1970 * 1000.0, forKey: .remoteDisplayUpdatedAt)
             }
             try container.encodeIfPresent(resources, forKey: .resources)
+            try container.encodeIfPresent(worktreeStates, forKey: .worktreeStates)
+            try container.encodeIfPresent(settledTabs, forKey: .settledTabs)
             return true
 
         case .tabCreated(let tab, let clientCmdId):
@@ -271,6 +281,16 @@ extension RemoteEvent {
             try container.encode(tabId, forKey: .tabId)
             try container.encode(clientMsgId, forKey: .clientMsgId)
             try container.encode(status, forKey: .status)
+            try container.encodeIfPresent(error, forKey: .error)
+            return true
+
+        case .engineRewindResult(let tabId, let instanceId, let error):
+            // Encoder mirror of the decoder above. iOS never originates this
+            // event (the desktop emits it on rewind refusal), but the
+            // encoder must round-trip cleanly for tests and diagnostic dumps.
+            try container.encode(TypeKey.engineRewindResult, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(instanceId, forKey: .instanceId)
             try container.encodeIfPresent(error, forKey: .error)
             return true
 

@@ -76,7 +76,7 @@ func CallToolFromExtension(ctx context.Context, sa SessionAccessor, toolName str
 		for _, conn := range mcpConns {
 			if conn.Name() == serverName {
 				callCtx, callCancel := context.WithTimeout(ctx, mcp.DefaultCallTimeout)
-				mcpResult, err := conn.CallToolResult(callCtx, innerName, input)
+				mcpResult, err := conn.CallTool(callCtx, innerName, input)
 				callCancel()
 				if err != nil {
 					// Log at the call site so an MCP tool failure — which server,
@@ -85,7 +85,7 @@ func CallToolFromExtension(ctx context.Context, sa SessionAccessor, toolName str
 					utils.LogWithFields(utils.LevelError, "extcontext", "mcp tool call failed", map[string]any{"serverName": serverName, "toolName": innerName, "error": utils.ErrStr(err)})
 					return nil, err
 				}
-				return mcpResult.ToToolResult(serverName, innerName), nil
+				return mcpResult, nil
 			}
 		}
 		utils.LogWithFields(utils.LevelWarn, "extcontext", "mcp server not connected", map[string]any{"serverName": serverName, "toolName": innerName})

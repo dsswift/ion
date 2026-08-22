@@ -195,12 +195,47 @@ func TestWireAgentToolServer_McpRoundTrip(t *testing.T) {
 	decoder := json.NewDecoder(conn)
 	encoder := json.NewEncoder(conn)
 
+	// Complete the MCP lifecycle before using tools. The ToolServer rejects
+	// tools/list and tools/call until the client initializes the session.
+	if err := encoder.Encode(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      0,
+		"method":  "initialize",
+		"params": map[string]interface{}{
+			"protocolVersion": "2024-11-05",
+			"capabilities":    map[string]interface{}{},
+			"clientInfo": map[string]interface{}{
+				"name":    "integration-test",
+				"version": "1.0.0",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("encode initialize request: %v", err)
+	}
+	var initializeResp struct {
+		Error interface{} `json:"error"`
+	}
+	if err := decoder.Decode(&initializeResp); err != nil {
+		t.Fatalf("decode initialize response: %v", err)
+	}
+	if initializeResp.Error != nil {
+		t.Fatalf("initialize returned error: %v", initializeResp.Error)
+	}
+	if err := encoder.Encode(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  "notifications/initialized",
+	}); err != nil {
+		t.Fatalf("encode initialized notification: %v", err)
+	}
+
 	// 1. tools/list should include "ion_agent"
-	encoder.Encode(map[string]interface{}{
+	if err := encoder.Encode(map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      1,
 		"method":  "tools/list",
-	})
+	}); err != nil {
+		t.Fatalf("encode tools/list request: %v", err)
+	}
 
 	var listResp struct {
 		Result struct {
@@ -224,7 +259,7 @@ func TestWireAgentToolServer_McpRoundTrip(t *testing.T) {
 	}
 
 	// 2. tools/call with missing prompt → error
-	encoder.Encode(map[string]interface{}{
+	if err := encoder.Encode(map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      2,
 		"method":  "tools/call",
@@ -232,7 +267,9 @@ func TestWireAgentToolServer_McpRoundTrip(t *testing.T) {
 			"name":      "ion_agent",
 			"arguments": map[string]interface{}{},
 		},
-	})
+	}); err != nil {
+		t.Fatalf("encode tools/call request: %v", err)
+	}
 
 	var callResp struct {
 		Result struct {

@@ -1010,7 +1010,7 @@ For non-socket integrations, `ion rpc` reads commands from stdin and writes even
 
 ## Built-in Tools
 
-Read, Write, Edit, Bash, Grep, Glob, Agent, WebFetch, WebSearch, NotebookEdit, LSP, Skill, ListMcpResources, ReadMcpResource, and SearchHistory. Task tools (TaskCreate, TaskList, TaskGet, TaskStop) are opt-in via harness configuration. Extensions can register additional tools or replace the built-ins entirely.
+Read, Write, Edit, Bash, Grep, Glob, Agent, AgentStatus, WebFetch, WebSearch, NotebookEdit, LSP, Skill, ListMcpResources, ReadMcpResource, and SearchHistory. Task tools (TaskCreate, TaskList, TaskGet, TaskStop) are opt-in via harness configuration. Extensions can register additional tools or replace the built-ins entirely.
 
 ## Reference Clients
 

@@ -16,7 +16,7 @@
 import type { IncomingPrompt } from './prompt-pipeline'
 import { log as _log } from './logger'
 import { state } from './state'
-import { notifyAtvUserMessageEcho } from './atv-window-manager'
+import { notifyStudioUserMessageEcho } from './studio-window-manager'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -132,14 +132,14 @@ export async function insertRendererSystemMessage(p: IncomingPrompt, content: st
  * slashArgs?) on the store, which appends a user message to the active
  * instance without triggering a new prompt to the engine.
  *
- * Also echoes the content to the ATV mirror window via
- * notifyAtvUserMessageEcho so the ATV transcript includes the user turn.
- * Without this echo the ATV shows assistant text with no preceding user
+ * Also echoes the content to the Studio mirror window via
+ * notifyStudioUserMessageEcho so the Studio window transcript includes the user turn.
+ * Without this echo the Studio window shows assistant text with no preceding user
  * bubble for iOS-originated slash commands that resolve as extension
  * commands (commandError === ''). The IPC.PROMPT path fires
- * notifyAtvUserMessageEcho automatically; this path reaches the renderer
+ * notifyStudioUserMessageEcho automatically; this path reaches the renderer
  * via executeJavaScript on mainWindow only and therefore needs an explicit
- * echo. notifyAtvUserMessageEcho guards against the ATV window being absent
+ * echo. notifyStudioUserMessageEcho guards against the Studio window being absent
  * or destroyed, so the call is unconditional here.
  *
  * Note: clearConnectingStatus in this file uses executeJavaScript with an
@@ -171,11 +171,15 @@ export async function insertRendererRemoteUserMessage(
   } catch (err) {
     log('insertRendererRemoteUserMessage error: ' + (err as Error).message)
   }
-  // Echo to ATV mirror. The IPC.PROMPT path fires notifyAtvUserMessageEcho
+  // Echo to Studio mirror. The IPC.PROMPT path fires notifyStudioUserMessageEcho
   // automatically; this executeJavaScript path bypasses that channel and
-  // needs its own echo so the ATV transcript is complete.
-  log('insertRendererRemoteUserMessage: echoing to atv', { tab_id: p.tabId, content_len: content.length })
-  notifyAtvUserMessageEcho(p.tabId, content)
+  // needs its own echo so the Studio window transcript is complete.
+  log('insertRendererRemoteUserMessage: echoing to studio', { tab_id: p.tabId, content_len: content.length })
+  notifyStudioUserMessageEcho(p.tabId, {
+    id: p.reqId,
+    content,
+    timestamp: Date.now(),
+  })
 }
 
 /**

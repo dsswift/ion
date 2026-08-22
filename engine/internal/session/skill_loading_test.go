@@ -311,14 +311,17 @@ func TestSkillLoading_SkillToolExecution(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("unexpected error result: %s", result.Content)
 	}
-	if !strings.Contains(result.Content, "# Skill: greet") {
-		t.Errorf("expected skill header, got %q", result.Content)
+	if result.SkillInvocation == nil {
+		t.Fatal("expected structured skill invocation")
 	}
-	if !strings.Contains(result.Content, "Greets the user") {
-		t.Errorf("expected description, got %q", result.Content)
+	if !strings.Contains(result.SkillInvocation.Content, "# Skill: greet") {
+		t.Errorf("expected skill header, got %q", result.SkillInvocation.Content)
 	}
-	if !strings.Contains(result.Content, "Hello! How can I help you today?") {
-		t.Errorf("expected content, got %q", result.Content)
+	if !strings.Contains(result.SkillInvocation.Content, "Greets the user") {
+		t.Errorf("expected description, got %q", result.SkillInvocation.Content)
+	}
+	if !strings.Contains(result.SkillInvocation.Content, "Hello! How can I help you today?") {
+		t.Errorf("expected content, got %q", result.SkillInvocation.Content)
 	}
 }
 
@@ -588,17 +591,21 @@ func TestSkillLoading_EndToEndIonSkillViaTool(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("unexpected error: %s", result.Content)
 	}
-	if !strings.Contains(result.Content, "# Skill: code-review") {
-		t.Error("expected skill header in output")
+	if result.SkillInvocation == nil {
+		t.Fatal("expected structured skill invocation")
 	}
-	if !strings.Contains(result.Content, "Reviews code for quality issues") {
-		t.Error("expected description in output")
+	content := result.SkillInvocation.Content
+	if !strings.Contains(content, "# Skill: code-review") {
+		t.Error("expected skill header in invocation")
 	}
-	if !strings.Contains(result.Content, "Arguments: main.go") {
-		t.Error("expected arguments in output")
+	if !strings.Contains(content, "Reviews code for quality issues") {
+		t.Error("expected description in invocation")
 	}
-	if !strings.Contains(result.Content, "Review the code and identify bugs") {
-		t.Error("expected skill content in output")
+	if !strings.Contains(content, "Arguments: main.go") {
+		t.Error("expected arguments in invocation")
+	}
+	if !strings.Contains(content, "Review the code and identify bugs") {
+		t.Error("expected skill content in invocation")
 	}
 }
 
@@ -647,10 +654,13 @@ func TestSkillLoading_EndToEndClaudeSkillViaTool(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("unexpected error: %s", result.Content)
 	}
-	if !strings.Contains(result.Content, "# Skill: terraform") {
+	if result.SkillInvocation == nil {
+		t.Fatal("expected structured skill invocation")
+	}
+	if !strings.Contains(result.SkillInvocation.Content, "# Skill: terraform") {
 		t.Error("expected skill header")
 	}
-	if !strings.Contains(result.Content, "Apply best practices for Terraform") {
+	if !strings.Contains(result.SkillInvocation.Content, "Apply best practices for Terraform") {
 		t.Error("expected skill content")
 	}
 }

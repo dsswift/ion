@@ -134,7 +134,8 @@ The engine ships a set of always-available core tools, plus optional task tools 
 | `Bash` | Execute shell commands |
 | `Grep` | Search file contents (ripgrep-based) |
 | `Glob` | Find files by pattern |
-| `Agent` | Spawn a sub-agent |
+| `Agent` | Spawn a new sub-agent |
+| `AgentStatus` | Inspect active sub-agents without spawning |
 | `WebFetch` | Fetch a URL |
 | `WebSearch` | Search the web |
 | `NotebookEdit` | Edit Jupyter notebooks |

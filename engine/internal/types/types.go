@@ -263,6 +263,10 @@ type StatusFields struct {
 	// model, so a client-side model picker must own that arithmetic).
 	// Cache-aware: input + cache_read + cache_creation.
 	ContextTokens int `json:"contextTokens,omitempty"`
+	// ContextEffectiveLimit is the usable input capacity after the engine
+	// reserves output and compaction-summary tokens. ContextPercent continues
+	// to describe raw-window occupancy for backward compatibility.
+	ContextEffectiveLimit int `json:"contextEffectiveLimit,omitempty"`
 	// RunCostUsd is the cumulative cost of the most recent run in USD. It
 	// represents the sum of all turns in the run (cache-aware, descendants
 	// included). Replaces the former totalCostUsd field; the rename makes
@@ -294,6 +298,11 @@ type StatusFields struct {
 	// outstanding. Commands started WITHOUT notify_on_complete are not counted
 	// — nothing is waiting on them.
 	BackgroundShells int `json:"backgroundShells,omitempty"`
+	// HasPendingWork is true when the engine has accepted work that prevents a
+	// session from being terminal, even if the foreground orchestrator is idle.
+	// It includes live dispatches, notifying shells, queued prompts, durable
+	// completion deliveries, queued background completions, and parked runs.
+	HasPendingWork bool `json:"hasPendingWork,omitempty"`
 	// NumTurns is the number of LLM turns completed in the most recent run.
 	// Stamped from TaskCompleteEvent.NumTurns in translateToEngineEvent; zero
 	// on idle and heartbeat status events that have no associated run.
@@ -373,6 +382,9 @@ type SessionStatus struct {
 	// parked session (idle orchestrator, commands in flight) from a plain
 	// idle one without re-deriving it.
 	BackgroundShellCount int `json:"backgroundShellCount,omitempty"`
+	// HasPendingWork mirrors StatusFields.HasPendingWork so consumers that read
+	// only engine_session_status can distinguish a terminal idle from waiting.
+	HasPendingWork bool `json:"hasPendingWork,omitempty"`
 	// PermissionDenialsPending mirrors StatusFields.PermissionDenials.
 	// Same retention contract — unresolved AskUserQuestion / ExitPlanMode
 	// entries surface here so a re-attaching consumer sees them.
@@ -389,7 +401,8 @@ type SessionStatus struct {
 	// Mirrors StatusFields.ContextTokens — the numerator a consumer needs
 	// to recompute the percentage against a different model's window.
 	ContextTokens int `json:"contextTokens,omitempty"`
-	// RunCostUsd is the cumulative cost of the most recent run in USD.
+	// ContextEffectiveLimit mirrors StatusFields.ContextEffectiveLimit.
+	ContextEffectiveLimit int `json:"contextEffectiveLimit,omitempty"`
 	// Matches StatusFields.RunCostUsd semantics — run-scoped, cache-aware,
 	// descendants included.
 	RunCostUsd float64 `json:"runCostUsd,omitempty"`
@@ -448,15 +461,17 @@ type EarlyStopContinueConfig struct {
 // continuation feature. Defaults to OFF: the engine provides the mechanism
 // (cumulative output-token tracking, before_early_stop_decision /
 // early_stop_continued hooks, re-run-turn machinery) but ships no opinion
-// about whether to nudge or what text to nudge with. A harness consumer
-// must opt in — either through engine.json (`earlyStopContinue.enabled =
-// true`) for a config-level toggle, or by wiring a
-// before_early_stop_decision handler that returns ForceContinue and a
+// about whether to nudge or what text to nudge with. A continuation consumes
+// the operator's tokens and pre-empts their choice to accept a stopped run and
+// decide what to do next, so the engine must never enable it by default. A
+// harness consumer must opt in — either through engine.json
+// (`earlyStopContinue.enabled = true`) for a config-level toggle, or by wiring
+// a before_early_stop_decision handler that returns ForceContinue and a
 // ContinueMessage. The numeric tuning knobs (budget, thresholdPct,
-// maxContinuations, diminishingDelta) are calibration values that only
-// take effect when something higher up the resolution chain has enabled
-// the feature; the 8000-token budget matches one substantial multi-step
-// turn and harness engineers should retune per agent.
+// maxContinuations, diminishingDelta) are calibration values that only take
+// effect when something higher up the resolution chain has enabled the
+// feature; the 8000-token budget matches one substantial multi-step turn and
+// harness engineers should retune per agent.
 func EarlyStopDefaults() EarlyStopContinueConfig {
 	enabled := false
 	return EarlyStopContinueConfig{
@@ -574,11 +589,12 @@ type SessionMessage struct {
 // the on-disk location under the conversation's images/ directory; the engine
 // never puts base64 on the wire.
 type SessionMessageAttachment struct {
-	ID        string `json:"id"`
-	Type      string `json:"type"` // "image"
-	Name      string `json:"name"`
-	Path      string `json:"path"`
-	MediaType string `json:"mimeType,omitempty"`
+	ID          string `json:"id"`
+	Type        string `json:"type"` // "image"
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	MediaType   string `json:"mimeType,omitempty"`
+	ContentHash string `json:"contentHash,omitempty"`
 }
 
 // PermissionDenialEntry is the wire format for permission denials in ResultEvent.

@@ -1,10 +1,11 @@
 import { EventEmitter } from 'events'
 import { Socket } from 'net'
 import { log as _log, debug as _debug, warn as _warn, error as _error } from './logger'
+import { installLogCorrelation } from './engine-bridge-log-correlation'
 import { doConnect, scheduleReconnect } from './engine-bridge-connection'
 import { startSession as startSessionImpl, reRegisterSessions as reRegisterSessionsImpl } from './engine-bridge-start-session'
-import { sendReconcileState as sendReconcileStateImpl, sendQuerySessionStatus as sendQuerySessionStatusImpl } from './engine-bridge-state-sync'
-import { stopAll as stopAllImpl, shutdownAndWait as shutdownAndWaitImpl } from './engine-bridge-lifecycle'
+import { sendReconcileState as sendReconcileStateImpl, sendQuerySessionStatus as sendQuerySessionStatusImpl, sendResolvePermissionDenials as sendResolvePermissionDenialsImpl } from './engine-bridge-state-sync'
+import { disconnect as disconnectImpl, shutdownAndWait as shutdownAndWaitImpl } from './engine-bridge-lifecycle'
 import { buildSendPromptMessage, buildSendPromptLogLine } from './engine-bridge-prompts'
 import { installAgentStateRecovery } from './engine-bridge-agent-state'
 import * as conv from './engine-bridge-conversations'
@@ -73,6 +74,9 @@ export class EngineBridge extends EventEmitter {
   constructor() {
     super()
     installAgentStateRecovery(this)
+    // Let the logger resolve each line's conversation from its own session key
+    // (see engine-bridge-log-correlation.ts). The bridge owns that mapping.
+    installLogCorrelation(this as unknown as Parameters<typeof installLogCorrelation>[0])
   }
 
   // ─── Connection lifecycle ───
@@ -421,9 +425,9 @@ export class EngineBridge extends EventEmitter {
     }
   }
 
-  sendSteer(key: string, message: string): void {
-    log('send_steer', { key, len: message.length })
-    this._send({ cmd: 'steer_agent', key, agentName: '', message })
+  sendSteer(key: string, message: string, clientMessageId?: string): void {
+    log('send_steer', { key, len: message.length, client_message_id: clientMessageId ?? '' })
+    this._send({ cmd: 'steer_agent', key, agentName: '', message, ...(clientMessageId ? { clientMessageId } : {}) })
   }
 
   sendAbortAgent(key: string, agentName: string, subtree: boolean): void {
@@ -451,7 +455,7 @@ export class EngineBridge extends EventEmitter {
   // Tree-native rewind RPCs. Bodies live in engine-bridge-conversations.ts
   // (same delegation pattern as the conversation-data RPCs below).
   async branchSessionBefore(key: string, entryId: string): Promise<void> { return conv.branchSessionBefore(this, key, entryId) }
-  async rewindSession(key: string, userTurnIndex: number): Promise<{ ok: boolean; error?: string }> { return conv.rewindSession(this, key, userTurnIndex) }
+  async rewindSession(key: string, target: { entryId?: string; userTurnIndex?: number }): Promise<{ ok: boolean; error?: string }> { return conv.rewindSession(this, key, target) }
 
   sendPermissionResponse(key: string, questionId: string, optionId: string): void {
     log('send_permission_response', { key, question_id: questionId, option_id: optionId })
@@ -463,14 +467,16 @@ export class EngineBridge extends EventEmitter {
     requestId: string,
     response: Record<string, unknown> | undefined,
     cancelled: boolean,
+    declined = false,
   ): void {
-    log('send_elicitation_response', { key, request_id: requestId, cancelled })
+    log('send_elicitation_response', { key, request_id: requestId, cancelled, declined })
     this._send({
       cmd: 'elicitation_response',
       key,
       elicitRequestId: requestId,
       elicitResponse: response,
       elicitCancelled: cancelled,
+      elicitDeclined: declined,
     })
   }
 
@@ -516,6 +522,10 @@ export class EngineBridge extends EventEmitter {
 
   async getConversation(conversationId: string, offset = 0, limit = 50): Promise<any> { return conv.getConversation(this, conversationId, offset, limit) }
 
+  async deleteStoredConversations(sessionIds: string[]): Promise<{ deleted: number }> {
+    return conv.deleteStoredConversations(this, sessionIds)
+  }
+
   async clearConversationFile(conversationId: string): Promise<void> { return conv.clearConversationFile(this, conversationId) }
 
   async saveSessionLabel(sessionId: string, label: string): Promise<{ ok: boolean; error?: string }> {
@@ -551,6 +561,7 @@ export class EngineBridge extends EventEmitter {
 
   sendReconcileState(key: string): void { sendReconcileStateImpl(this, key) }
   sendQuerySessionStatus(key: string): void { sendQuerySessionStatusImpl(this, key) }
+  sendResolvePermissionDenials(key: string): void { sendResolvePermissionDenialsImpl(this, key) }
 
   stopByPrefix(prefix: string): void {
     for (const key of this.activeSessions.keys()) {
@@ -562,7 +573,12 @@ export class EngineBridge extends EventEmitter {
     this._send({ cmd: 'stop_by_prefix', prefix })
   }
 
-  async stopAll(): Promise<void> { return stopAllImpl(this) }
+  /**
+   * Drop this desktop's socket to the engine daemon. Stops NO sessions — see
+   * engine-bridge-lifecycle.disconnect for why the old name (`stopAll`) was a
+   * defect generator.
+   */
+  async disconnect(): Promise<void> { return disconnectImpl(this) }
   shutdown(): void { this._send({ cmd: 'shutdown' }) }
   async shutdownAndWait(timeoutMs = 3000): Promise<void> { return shutdownAndWaitImpl(this, timeoutMs) }
 

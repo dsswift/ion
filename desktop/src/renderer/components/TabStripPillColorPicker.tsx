@@ -6,7 +6,7 @@ import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
 import { PILL_COLOR_PRESETS, PILL_ICON_PRESETS, PILL_ICON_MAP } from './TabStripShared'
 import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
-import { zoomViewport } from '../viewport-zoom'
+import { scrollableMenuStyle } from '../menu-viewport'
 
 interface PillColorPickerProps {
   anchor: { x: number; y: number }
@@ -33,7 +33,6 @@ export function PillColorPicker({
   // sits at the bottom of the overlay, so "below the pill" is off-screen there
   // without a flip. The icon row is optional and changes the height.
   const pos = useAnchoredPopover(anchor, { deps: [!!onSelectIcon] })
-  const vp = zoomViewport()
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -65,8 +64,7 @@ export function PillColorPicker({
         left: pos.left,
         top: pos.top,
         visibility: pos.ready ? 'visible' : 'hidden',
-        maxHeight: vp.height - 16,
-        overflowY: 'auto',
+        ...scrollableMenuStyle(),
         pointerEvents: 'auto',
         background: colors.popoverBg,
         border: `1px solid ${colors.popoverBorder}`,

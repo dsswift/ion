@@ -51,11 +51,29 @@ struct TabListView: View {
     @State private var renameText: String = ""
     /// A close held for confirmation because the tab's worktree still holds work.
     /// Nil for every uneventful close, which proceeds without a prompt.
-    @State private var pendingCloseWarning: PendingCloseWarning?
+    /// Internal so the +Inbox extension's requestCloseTab path shares the gate.
+    @State var pendingCloseWarning: PendingCloseWarning?
     @State var collapsedGroupIds: Set<String> = {
         Set(UserDefaults.standard.stringArray(forKey: "collapsedGroupIds") ?? [])
     }()
     @State var searchText: String = ""
+
+    // ─── Inbox | Ion Classic view switcher (per-device, persisted) ───────
+    // Mirrors the desktop's per-device conversationNav preference: never
+    // synced, never projectable — each device picks its own navigation.
+    @State var listViewMode: String = UserDefaults.standard.string(forKey: "tabListViewMode") ?? "classic"
+    // Inbox shelf UI state (internal: the +Inbox extension reads these).
+    @State var activeInboxExpansion: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "inboxActiveExpansion") ?? [])
+    @State var snoozedInboxExpansion: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "inboxSnoozedExpansion") ?? [])
+    @State var settledShelfCollapsed = UserDefaults.standard.object(forKey: "inboxSettledShelfCollapsed") as? Bool ?? true
+    @State var settledShown = 15
+    @State var inboxProjectFilter = UserDefaults.standard.string(forKey: "inboxProjectFilter") ?? "all"
+    @State var inboxSort = InboxNavigator.Sort(rawValue: UserDefaults.standard.string(forKey: "inboxSort") ?? "recent") ?? .recent
+    @State var showSettledHistory = false
+    /// Tab awaiting a snooze-preset choice (confirmationDialog).
+    @State var snoozeSheetTabId: String? = nil
+    @State var inboxRenameTabId: String? = nil
+    @State var inboxRenameTitle = ""
 
     // iPad: selection-based navigation. selectedTabId is internal (not private)
     // so the same-module TabListView+DetailViews extension can read it — see the
@@ -89,6 +107,47 @@ struct TabListView: View {
         }
         .sheet(isPresented: $showNotifications) {
             NotificationsView(resourceStore: viewModel.resourceStore, viewModel: viewModel)
+        }
+        // Snooze preset picker (inbox swipe action). confirmationDialog over
+        // a sheet: four options, no custom chrome needed.
+        .confirmationDialog(
+            "Snooze until…",
+            isPresented: Binding(get: { snoozeSheetTabId != nil }, set: { if !$0 { snoozeSheetTabId = nil } }),
+            titleVisibility: .visible,
+        ) {
+            ForEach(InboxSnoozePresets.available(), id: \.label) { preset in
+                Button(preset.label) {
+                    if let tabId = snoozeSheetTabId {
+                        viewModel.snoozeTab(tabId: tabId, untilMs: preset.untilMs)
+                    }
+                    snoozeSheetTabId = nil
+                }
+            }
+            Button("Cancel", role: .cancel) { snoozeSheetTabId = nil }
+        }
+        .alert("Rename conversation", isPresented: Binding(get: { inboxRenameTabId != nil }, set: { if !$0 { inboxRenameTabId = nil } })) {
+            TextField("Conversation name", text: $inboxRenameTitle)
+            Button("Save") {
+                if let tabId = inboxRenameTabId { viewModel.renameTab(tabId: tabId, customTitle: inboxRenameTitle) }
+                inboxRenameTabId = nil
+            }
+            Button("Cancel", role: .cancel) { inboxRenameTabId = nil }
+        }
+        .sheet(isPresented: $showSettledHistory) {
+            InboxSettledHistorySheet(tabs: InboxNavigator.settledStack(liveTabs: viewModel.tabs, coldTabs: viewModel.settledTabs)) { tab in
+                guard tab.canRestoreSettled != false else { return }
+                viewModel.reviewSettledTab(tabId: tab.id)
+                showSettledHistory = false
+            }
+        }
+        .onChange(of: activeInboxExpansion) { _, value in
+            UserDefaults.standard.set(Array(value), forKey: "inboxActiveExpansion")
+        }
+        .onChange(of: snoozedInboxExpansion) { _, value in
+            UserDefaults.standard.set(Array(value), forKey: "inboxSnoozedExpansion")
+        }
+        .onChange(of: settledShelfCollapsed) { _, value in
+            UserDefaults.standard.set(value, forKey: "inboxSettledShelfCollapsed")
         }
         .onAppear {
             // Always refresh git info for every tab dir on appear — covers
@@ -134,6 +193,9 @@ struct TabListView: View {
                     // (SwiftUI silently drops overlapping sheet/dialog presentations).
                     pendingNewConversationDir = dir
                     pendingNewConversationPin = pin
+                },
+                onCreateWorktree: { repoPath, sourceBranch in
+                    viewModel.createWorktree(repoPath: repoPath, sourceBranch: sourceBranch)
                 },
                 onCreateTerminalTab: { dir in
                     viewModel.createTerminalTab(workingDirectory: dir)
@@ -239,7 +301,7 @@ struct TabListView: View {
             .padding(.vertical, IonSpace.compactGap)
 
             List(selection: $selectedTabId) {
-                tabGroupSections(selectionStyle: .selection)
+                tabSections(selectionStyle: .selection)
             }
             .scrollContentBackground(.hidden)
             .refreshable {
@@ -267,6 +329,35 @@ struct TabListView: View {
     }
 
     // MARK: - Tab Group Sections
+
+    /// Section dispatcher: Classic (groups) or Inbox, per the persisted
+    /// per-device mode. Both layout roots render THIS, so the switcher
+    /// applies to iPhone and iPad alike.
+    @ViewBuilder
+    func tabSections(selectionStyle: TabSelectionStyle) -> some View {
+        if listViewMode == "inbox" {
+            inboxControls
+                // Ride the same cached crawl the desktop panels use so the
+                // hierarchy renders from fresh state the moment the inbox
+                // appears, instead of waiting out the snapshot interval.
+                .onAppear { viewModel.refreshAllWorktrees() }
+            inboxSections(selectionStyle: selectionStyle)
+        } else {
+            tabGroupSections(selectionStyle: selectionStyle)
+        }
+    }
+
+    /// Toolbar toggle between the two list modes.
+    var viewModeToggle: some View {
+        Button {
+            listViewMode = listViewMode == "inbox" ? "classic" : "inbox"
+            UserDefaults.standard.set(listViewMode, forKey: "tabListViewMode")
+            DiagnosticLog.log("tab list view mode switched", tag: "view.tablist", fields: ["mode": listViewMode])
+        } label: {
+            Image(systemName: listViewMode == "inbox" ? "tray.full" : "tray")
+        }
+        .accessibilityLabel(listViewMode == "inbox" ? "Switch to Ion Classic view" : "Switch to Inbox view")
+    }
 
     // Internal (not private): both layout roots in TabListView+Layouts render it.
     @ViewBuilder
@@ -365,8 +456,10 @@ struct TabListView: View {
     /// Mirrors the desktop's `requestCloseTab`: every close goes through one
     /// place, so the warning cannot be bypassed by a future entry point that
     /// calls `closeTab` directly. Silent for the uneventful case, so the common
-    /// swipe-to-close keeps its single-gesture feel.
-    private func requestCloseTab(_ tab: RemoteTabState) {
+    /// swipe-to-close keeps its single-gesture feel. Internal (not private):
+    /// the +Inbox extension's "Delete conversation" routes through this same
+    /// gate — it used to call `closeTab` directly and skipped the warning.
+    func requestCloseTab(_ tab: RemoteTabState) {
         if let summary = WorktreeCloseWarning.summary(for: tab, worktreeStates: viewModel.worktreeStates) {
             DiagnosticLog.log("close held for worktree warning", tag: "tabs", fields: [
                 "tab_id": String(tab.id.prefix(8)),

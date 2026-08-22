@@ -1,7 +1,7 @@
 /**
  * WorktreeRow — one worktree, rendered identically everywhere it appears.
  *
- * Used by the git-panel Worktrees section and the ATV mount. One component so
+ * Used by the git-panel Worktrees section and the Studio window mount. One component so
  * the state vocabulary (dirty dot, unlanded count, stale-base indicator) cannot
  * drift between surfaces.
  *
@@ -41,7 +41,7 @@ import { WorktreeEnrollmentSlot } from './WorktreeEnrollmentSlot'
 import { WorktreeStageSlot } from './WorktreeStageSlot'
 import { resolveRowState, resolveRowWords } from './worktreeRowState'
 import { describeOpenConversations, type DirConversation } from '../../shared/worktree-conversations'
-import type { WorktreeInventoryEntry, IntegrationMember, EnrollmentState, WorkStage } from '../../shared/types'
+import type { WorktreeInventoryEntry, IntegrationMember, WorkStage } from '../../shared/types'
 
 /**
  * Width of every gutter slot, and the gutter total.
@@ -65,7 +65,7 @@ import type { WorktreeInventoryEntry, IntegrationMember, EnrollmentState, WorkSt
  * gesture the row already had -- and a permanently reserved 14px of a gutter
  * competing with the worktree name for width.
  */
-const SLOT = { bench: 14, activity: 6, dirty: 7, unlanded: 16, state: 13 } as const
+const SLOT = { bench: 14, activity: 6, dirty: 7, unlanded: 24, state: 13 } as const
 const GUTTER_GAP = 3
 export const WORKTREE_ROW_GUTTER_WIDTH =
   SLOT.bench + SLOT.activity + SLOT.dirty + SLOT.unlanded + SLOT.state + GUTTER_GAP * 4
@@ -79,10 +79,7 @@ export interface WorktreeRowProps {
    * of them advertised one and hid the rest.
    */
   openConversations?: readonly DirConversation[]
-  /**
-   * This worktree's bench membership, when it has one. Absent means unenrolled
-   * -- a different fact from `enabled: false`, which is enrolled-but-skipped.
-   */
+  /** This worktree's bench membership, when it has one. */
   membership?: IntegrationMember
   /** 1-based merge position within the bench. Present exactly when enrolled. */
   order?: number
@@ -122,9 +119,7 @@ export interface WorktreeRowProps {
   /** Open the conflict-resolution dialog. Offered when `operationState` is set. */
   onResolve?(): void
   /** Add to / remove from the bench. */
-  onToggleEnrollment?(): void
-  /** Flip included/excluded on an already-enrolled worktree. */
-  onToggleIncluded?(): void
+  onToggleMembership?(): void
   /** True while this row's pin update and bench reassembly are in flight. */
   updatingPin?: boolean
   /** Another member's pin update owns this bench reassembly. */
@@ -202,9 +197,7 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
     hasActiveResolver: props.hasActiveResolver,
   })
   const words = resolveRowWords({ entry, membership: props.membership, syncing, verificationSuspect: props.verificationSuspect })
-  const enrollment: EnrollmentState = props.membership
-    ? (props.membership.enabled ? 'included' : 'excluded')
-    : 'none'
+  const enrolled = !!props.membership
 
   return (
     <div
@@ -271,14 +264,13 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
               top of the list makes its column read as the bench's stack. */}
           {isLanded ? <Slot width={SLOT.bench} /> : (
             <WorktreeEnrollmentSlot
-              enrollment={enrollment}
+              enrolled={enrolled}
               order={props.order}
               railStarts={!!props.railStarts}
               railContinues={!!props.railContinues}
               branchName={entry.branchName}
               width={SLOT.bench}
-              onToggleEnrollment={() => props.onToggleEnrollment?.()}
-              onToggleIncluded={() => props.onToggleIncluded?.()}
+              onToggleMembership={() => props.onToggleMembership?.()}
             />
           )}
 
@@ -335,7 +327,9 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
 
           {/* Unlanded commits: what this worktree is holding that the feature
               branch does not have yet. Right-aligned so the digits line up
-              down the list rather than jittering with the count's width. */}
+              down the list rather than jittering with the count's width. Its
+              24px slot reserves three digits plus the upward arrow, leaving
+              the following state indicator its own fixed column. */}
           <Slot width={SLOT.unlanded} justify="flex-end">
             {!isLanded && entry.unlandedCommitCount > 0 && (
               <Tooltip text={`${entry.unlandedCommitCount} commit${entry.unlandedCommitCount === 1 ? '' : 's'} not yet landed`}>
@@ -417,7 +411,7 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
 
       {/* Second line, aligned under the name: the WORDS.
           Every fact the single state slot could not show lands here and never
-          shrinks, because "why is this excluded" and "why can I not sync" are
+          shrinks, because the bench and sync state are more urgent than which
           more urgent than which commit is on top. The commit subject then takes
           what is left and ellipsises -- it tells worktrees apart far better
           than a generated slug does. */}

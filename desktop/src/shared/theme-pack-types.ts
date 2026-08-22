@@ -5,7 +5,7 @@
  * manifest and optional image assets. Packs carry up to two components:
  *
  *   - `desktop` — a partial ColorPalette overlay on a built-in base theme,
- *     rendered by the desktop overlay/ATV windows.
+ *     rendered by the desktop overlay/Studio windows.
  *   - `ios`     — the iOS AppTheme token set. A component supplying the
  *     complete required set loads with no `base`; one omitting any required
  *     token names a built-in `base` from which the rest inherit on iOS. Only
@@ -22,7 +22,7 @@
  * identical-across-platforms guarantee. */
 export const BUILTIN_THEME_IDS = ['ion-dark', 'ion-light', 'ion-classic', 'jarvis-hud', 'ion-contrast-dark', 'ion-contrast-light'] as const
 
-/** Pack ids match the ATV pack-id convention: lowercase alphanumeric + dashes,
+/** Pack ids match the Studio window pack-id convention: lowercase alphanumeric + dashes,
  * 1–64 chars, and must equal the directory name. */
 export const THEME_PACK_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/
 

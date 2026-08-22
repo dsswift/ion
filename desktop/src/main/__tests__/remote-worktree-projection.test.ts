@@ -27,6 +27,7 @@ const WT_A = '/Users/dev/.ion/worktrees/ion-a3f1'
 const WT_B = '/Users/dev/.ion/worktrees/ion-7b0c'
 const BENCH = '/Users/dev/.ion/integration/ion-josh'
 const REPO = '/Users/dev/src/ion'
+const REPO_ALIAS = '/Users/dev/.ion/worktrees/ion-a3f1'
 
 /** A tab as the renderer snapshot projects it. */
 function tab(over: Record<string, unknown> & { id: string }) {
@@ -52,42 +53,65 @@ function inventoryEntry(over: Record<string, unknown> = {}) {
   }
 }
 
+const remoteWorktreeStates = new Map()
+const remoteTransport = { send: vi.fn() }
+
 const mocks = {
   worktrees: [] as ReturnType<typeof inventoryEntry>[],
   workspaces: [] as any[],
   tabs: [] as ReturnType<typeof tab>[],
+  workspaceRepoPaths: [] as string[],
+  stalenessRepoPaths: [] as string[],
+  sourceTipRepoPaths: [] as string[],
 }
 
 async function loadBuilder() {
   vi.resetModules()
-  vi.doMock('../state', () => ({ state: { remoteTransport: null } }))
+  vi.doMock('../state', () => ({ state: { remoteTransport, remoteWorktreeStates } }))
   vi.doMock('../broadcast', () => ({ broadcast: vi.fn() }))
   // The handler reads through the caching service, not the raw crawl; mocking
   // the service keeps each test in control of exactly what the handler sees.
   vi.doMock('../worktree/inventory-service', () => ({
     getWorktreeInventory: vi.fn(async () => mocks.worktrees),
   }))
+  vi.doMock('../worktree/inventory-cache', () => ({
+    resolveInventoryAlias: vi.fn((path: string) => path === REPO_ALIAS ? REPO : path),
+  }))
   vi.doMock('../worktree/integrate', () => ({
     syncWorktreeFromSource: vi.fn(), landWorktree: vi.fn(),
   }))
   vi.doMock('../integration/bench-ops', () => ({
-    listWorkspaces: vi.fn(() => mocks.workspaces),
-    refreshStaleness: vi.fn(async () => null),
-    sourceBranchTip: vi.fn(async () => ''),
+    listWorkspaces: vi.fn((repoPath: string) => {
+      mocks.workspaceRepoPaths.push(repoPath)
+      return mocks.workspaces
+    }),
+    refreshStaleness: vi.fn(async (repoPath: string) => {
+      mocks.stalenessRepoPaths.push(repoPath)
+      return null
+    }),
+    sourceBranchTip: vi.fn(async (repoPath: string) => {
+      mocks.sourceTipRepoPaths.push(repoPath)
+      return ''
+    }),
     assembleWorkspace: vi.fn(), updateMember: vi.fn(), updateAllStale: vi.fn(),
-    setMemberEnabled: vi.fn(), addMember: vi.fn(), removeMember: vi.fn(),
+    addMember: vi.fn(), removeMember: vi.fn(),
   }))
   vi.doMock('../remote/snapshot', () => ({
     getRemoteTabStates: vi.fn(async () => ({ tabs: mocks.tabs })),
   }))
   const mod = await import('../remote/handlers/worktree')
-  return mod.buildWorktreeState
+  return mod
 }
 
 beforeEach(() => {
   mocks.worktrees = []
   mocks.workspaces = []
   mocks.tabs = []
+  mocks.workspaceRepoPaths = []
+  mocks.stalenessRepoPaths = []
+  mocks.sourceTipRepoPaths = []
+  remoteWorktreeStates.clear()
+  remoteTransport.send.mockClear()
 })
 
 afterEach(() => { vi.resetModules() })
@@ -95,7 +119,7 @@ afterEach(() => { vi.resetModules() })
 describe('buildWorktreeState — worktrees', () => {
   it('projects the human title so iOS can render something other than a slug', async () => {
     mocks.worktrees = [inventoryEntry({ title: 'Fix the token expiry check' })]
-    const build = await loadBuilder()
+    const { buildWorktreeState: build } = await loadBuilder()
 
     const state = await build(REPO)
 
@@ -108,7 +132,7 @@ describe('buildWorktreeState — worktrees', () => {
 
   it('omits the title for a worktree that has never been named', async () => {
     mocks.worktrees = [inventoryEntry()]
-    const build = await loadBuilder()
+    const { buildWorktreeState: build } = await loadBuilder()
 
     expect((await build(REPO)).worktrees[0].title).toBeUndefined()
   })
@@ -120,7 +144,7 @@ describe('buildWorktreeState — worktrees', () => {
       tab({ id: 'wt-1', workingDirectory: WT_A, title: 'Fix the parser', status: 'running' }),
       tab({ id: 'wt-2', workingDirectory: WT_A, title: 'auto', customTitle: 'Add tests' }),
     ]
-    const build = await loadBuilder()
+    const { buildWorktreeState: build } = await loadBuilder()
 
     const state = await build(REPO)
 
@@ -130,15 +154,63 @@ describe('buildWorktreeState — worktrees', () => {
     ])
   })
 
-  it('reports an empty list rather than omitting the field when nothing is open', async () => {
+  it('does not count a settled review preview as an open worktree conversation', async () => {
     mocks.worktrees = [inventoryEntry()]
-    mocks.tabs = [tab({ id: 'elsewhere', workingDirectory: REPO })]
-    const build = await loadBuilder()
+    mocks.tabs = [
+      tab({ id: 'settled-preview', workingDirectory: WT_A, title: 'Archived work', inboxState: 'settled', inputLocked: true }),
+    ]
+    const { buildWorktreeState: build } = await loadBuilder()
 
     expect((await build(REPO)).worktrees[0].openConversations).toEqual([])
   })
 
-  // ── In-progress operations ────────────────────────────────────────────────
+  it('reports an empty list rather than omitting the field when nothing is open', async () => {
+    mocks.worktrees = [inventoryEntry()]
+    mocks.tabs = [tab({ id: 'elsewhere', workingDirectory: REPO })]
+    const { buildWorktreeState: build } = await loadBuilder()
+
+    expect((await build(REPO)).worktrees[0].openConversations).toEqual([])
+  })
+
+  it('canonicalizes a worktree request after inventory learns its source repo', async () => {
+    mocks.workspaces = [{
+      repoPath: REPO,
+      sourceBranch: 'josh',
+      benchPath: BENCH,
+      benchBranch: 'ion/bench/josh',
+      baseSha: 'aaaa111',
+      lastBuiltAt: 1_700_000_000_000,
+      members: [],
+    }]
+    const { buildWorktreeState: build } = await loadBuilder()
+
+    const state = await build(REPO_ALIAS)
+
+    expect(state.repoPath).toBe(REPO)
+    expect(mocks.workspaceRepoPaths).toEqual([REPO])
+    expect(mocks.stalenessRepoPaths).toEqual([REPO])
+    expect(mocks.sourceTipRepoPaths).toEqual([REPO])
+  })
+
+  it('caches and pushes one canonical state after alias refreshes', async () => {
+    remoteWorktreeStates.set('/stale-worktree-alias', {
+      repoPath: REPO,
+      worktrees: [],
+      benches: [],
+    })
+    const { pushWorktreeState: push } = await loadBuilder()
+
+    await push(REPO_ALIAS)
+
+    expect(remoteWorktreeStates.has(REPO_ALIAS)).toBe(false)
+    expect(remoteWorktreeStates.has('/stale-worktree-alias')).toBe(false)
+    expect(remoteWorktreeStates.get(REPO)?.repoPath).toBe(REPO)
+    expect(remoteTransport.send).toHaveBeenCalledWith({
+      type: 'desktop_worktree_state',
+      states: [{ repoPath: REPO, worktrees: [], benches: [] }],
+    })
+  })
+
   //
   // iOS renders a conflict chip from `operationState` + `conflictedCount`, and
   // its wire test decodes both. Neither reached the payload: the projection
@@ -155,7 +227,7 @@ describe('buildWorktreeState — worktrees', () => {
       operationState: 'rebasing',
       conflictedPaths: ['src/a.ts', 'src/b.ts', 'docs/c.md'],
     })]
-    const build = await loadBuilder()
+    const { buildWorktreeState: build } = await loadBuilder()
 
     const wt = (await build(REPO)).worktrees[0]
 
@@ -170,7 +242,7 @@ describe('buildWorktreeState — worktrees', () => {
   it('projects an operation with no conflicts as a zero count', async () => {
     // A clean rebase mid-flight: the operation is real, nothing is unmerged.
     mocks.worktrees = [inventoryEntry({ operationState: 'merging', conflictedPaths: undefined })]
-    const build = await loadBuilder()
+    const { buildWorktreeState: build } = await loadBuilder()
 
     const wt = (await build(REPO)).worktrees[0]
 
@@ -180,7 +252,7 @@ describe('buildWorktreeState — worktrees', () => {
 
   it('omits both fields for a quiescent worktree', async () => {
     mocks.worktrees = [inventoryEntry()]
-    const build = await loadBuilder()
+    const { buildWorktreeState: build } = await loadBuilder()
 
     const wt = (await build(REPO)).worktrees[0]
 
@@ -196,11 +268,14 @@ describe('buildWorktreeState — worktrees', () => {
     vi.doMock('../state', () => ({ state: { remoteTransport: null } }))
     vi.doMock('../broadcast', () => ({ broadcast: vi.fn() }))
     vi.doMock('../worktree/inventory-service', () => ({ getWorktreeInventory: vi.fn(async () => mocks.worktrees) }))
+    vi.doMock('../worktree/inventory-cache', () => ({
+      resolveInventoryAlias: vi.fn((path: string) => path === REPO_ALIAS ? REPO : path),
+    }))
     vi.doMock('../worktree/integrate', () => ({ syncWorktreeFromSource: vi.fn(), landWorktree: vi.fn() }))
     vi.doMock('../integration/bench-ops', () => ({
       listWorkspaces: vi.fn(() => []), refreshStaleness: vi.fn(), sourceBranchTip: vi.fn(),
       assembleWorkspace: vi.fn(), updateMember: vi.fn(), updateAllStale: vi.fn(),
-      setMemberEnabled: vi.fn(), addMember: vi.fn(), removeMember: vi.fn(),
+      addMember: vi.fn(), removeMember: vi.fn(),
     }))
     vi.doMock('../remote/snapshot', () => ({
       getRemoteTabStates: vi.fn(async () => { throw new Error('renderer gone') }),
@@ -225,7 +300,6 @@ describe('buildWorktreeState — membership rides the worktree', () => {
     members: [{
       worktreePath: WT_B,
       branchName: 'wt/ion-7b0c',
-      enabled: true,
       pin: 'current' as const,
       merge: 'merged' as const,
       pinnedSha: 'bbbb222',
@@ -243,14 +317,14 @@ describe('buildWorktreeState — membership rides the worktree', () => {
       inventoryEntry({ worktreePath: WT_B, branchName: 'wt/ion-7b0c', label: 'ion-7b0c', title: 'Rework the relay auth' }),
     ]
     mocks.workspaces = [workspace]
-    const build = await loadBuilder()
+    const { buildWorktreeState: build } = await loadBuilder()
 
     const state = await build(REPO)
 
     expect(state.worktrees).toHaveLength(1)
     expect(state.worktrees[0].title).toBe('Rework the relay auth')
     expect(state.worktrees[0].membership).toMatchObject({
-      sourceBranch: 'josh', enabled: true, pin: 'current', merge: 'merged', order: 1,
+      sourceBranch: 'josh', pin: 'current', merge: 'merged', order: 1,
     })
     // Nothing duplicated into the bench.
     expect(state.benches[0].orphans).toEqual([])
@@ -262,26 +336,24 @@ describe('buildWorktreeState — membership rides the worktree', () => {
       ...workspace,
       members: [{
         ...workspace.members[0],
-        enabled: false, pin: 'behind' as const, merge: 'conflicted' as const,
+        pin: 'behind' as const, merge: 'conflicted' as const,
         conflictPaths: ['x.ts'],
       }],
     }]
-    const build = await loadBuilder()
+    const { buildWorktreeState: build } = await loadBuilder()
 
     const membership = (await build(REPO)).worktrees[0].membership!
 
-    // The single `status` field could carry exactly one of these three.
-    expect(membership.enabled).toBe(false)
+    // The single `status` field could carry exactly one of these facts.
     expect(membership.pin).toBe('behind')
     expect(membership.merge).toBe('conflicted')
   })
 
   it('leaves membership absent for an unenrolled worktree', async () => {
-    // Absent is a different fact from `enabled: false`: not in the bench at all
-    // versus in the bench and skipped.
+    // Absent means this worktree is not in the bench.
     mocks.worktrees = [inventoryEntry({ worktreePath: '/wt/other', branchName: 'wt/other', label: 'other' })]
     mocks.workspaces = [workspace]
-    const build = await loadBuilder()
+    const { buildWorktreeState: build } = await loadBuilder()
 
     expect((await build(REPO)).worktrees[0].membership).toBeUndefined()
   })
@@ -298,7 +370,7 @@ describe('buildWorktreeState — membership rides the worktree', () => {
         { ...workspace.members[0], worktreePath: '/wt/first', branchName: 'wt/first' },
       ],
     }]
-    const build = await loadBuilder()
+    const { buildWorktreeState: build } = await loadBuilder()
 
     const state = await build(REPO)
     const byPath = (p: string) => state.worktrees.find((w) => w.worktreePath === p)!.membership!
@@ -311,7 +383,7 @@ describe('buildWorktreeState — membership rides the worktree', () => {
     // rather than the record vanishing without explanation.
     mocks.worktrees = []
     mocks.workspaces = [workspace]
-    const build = await loadBuilder()
+    const { buildWorktreeState: build } = await loadBuilder()
 
     const state = await build(REPO)
 
@@ -331,7 +403,7 @@ describe('buildWorktreeState — membership rides the worktree', () => {
       tab({ id: 'member-1', workingDirectory: WT_B, title: 'Relay auth work' }),
       tab({ id: 'member-fix', workingDirectory: WT_B, title: 'Member fix', tabRole: 'conflict-auto-fix' }),
     ]
-    const build = await loadBuilder()
+    const { buildWorktreeState: build } = await loadBuilder()
 
     const state = await build(REPO)
 
@@ -365,7 +437,7 @@ describe('buildWorktreeState — the bench terminal', () => {
     mocks.tabs = [
       tab({ id: 'shell', workingDirectory: BENCH, isTerminalOnly: true, customTitle: 'Bench · josh' }),
     ]
-    const build = await loadBuilder()
+    const { buildWorktreeState: build } = await loadBuilder()
 
     expect((await build(REPO)).benches[0].benchTerminalTabId).toBe('shell')
   })
@@ -375,7 +447,7 @@ describe('buildWorktreeState — the bench terminal', () => {
     // shell the desktop has not named yet, or it would open a second one.
     mocks.workspaces = [workspace]
     mocks.tabs = [tab({ id: 'stray', workingDirectory: BENCH, isTerminalOnly: true })]
-    const build = await loadBuilder()
+    const { buildWorktreeState: build } = await loadBuilder()
 
     expect((await build(REPO)).benches[0].benchTerminalTabId).toBe('stray')
   })
@@ -383,7 +455,7 @@ describe('buildWorktreeState — the bench terminal', () => {
   it('is absent when no terminal is open in the bench', async () => {
     mocks.workspaces = [workspace]
     mocks.tabs = [tab({ id: 'talk', workingDirectory: BENCH, title: 'Bench build' })]
-    const build = await loadBuilder()
+    const { buildWorktreeState: build } = await loadBuilder()
 
     expect((await build(REPO)).benches[0].benchTerminalTabId).toBeUndefined()
   })
@@ -391,7 +463,7 @@ describe('buildWorktreeState — the bench terminal', () => {
   it('never reports a terminal from another directory', async () => {
     mocks.workspaces = [workspace]
     mocks.tabs = [tab({ id: 'elsewhere', workingDirectory: WT_A, isTerminalOnly: true, customTitle: 'Bench · josh' })]
-    const build = await loadBuilder()
+    const { buildWorktreeState: build } = await loadBuilder()
 
     expect((await build(REPO)).benches[0].benchTerminalTabId).toBeUndefined()
   })
@@ -407,7 +479,7 @@ describe('buildWorktreeState — the bench terminal', () => {
       tab({ id: 'wt-shell', workingDirectory: WT_A, isTerminalOnly: true }),
       tab({ id: 'wt-talk', workingDirectory: WT_A, title: 'Fix the parser' }),
     ]
-    const build = await loadBuilder()
+    const { buildWorktreeState: build } = await loadBuilder()
 
     const state = await build(REPO)
 
@@ -426,7 +498,7 @@ describe('buildWorktreeState — the bench terminal', () => {
       tab({ id: 'josh-shell', workingDirectory: BENCH, isTerminalOnly: true, customTitle: 'Bench · josh' }),
       tab({ id: 'main-shell', workingDirectory: '/Users/dev/.ion/integration/ion-main', isTerminalOnly: true, customTitle: 'Bench · main' }),
     ]
-    const build = await loadBuilder()
+    const { buildWorktreeState: build } = await loadBuilder()
 
     const benches = (await build(REPO)).benches
     expect(benches.find((b) => b.sourceBranch === 'josh')!.benchTerminalTabId).toBe('josh-shell')

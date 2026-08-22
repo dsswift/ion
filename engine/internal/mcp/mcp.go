@@ -1,22 +1,22 @@
-// Package mcp implements a client for the Model Context Protocol (MCP),
-// supporting both stdio (subprocess) and SSE (HTTP) transports.
+// Package mcp implements Ion's MCP client adapter.
 package mcp
 
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/url"
+	"iter"
 	"os"
 	"os/exec"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
-	"github.com/dsswift/ion/engine/internal/auth"
+	mcpgo "github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -36,614 +36,297 @@ type McpResource struct {
 	MimeType    string `json:"mimeType,omitempty"`
 }
 
-// McpResourceContent holds the content of a resource read from an MCP server.
+// McpResourceContent holds content returned by an MCP resource read.
 type McpResourceContent struct {
 	URI      string `json:"uri"`
 	MimeType string `json:"mimeType,omitempty"`
 	Text     string `json:"text,omitempty"`
-	Blob     string `json:"blob,omitempty"` // base64
+	Blob     string `json:"blob,omitempty"`
 }
 
-// Package-level connection registry for module-level access.
-var (
-	connRegistry   = make(map[string]*Connection)
-	connRegistryMu sync.RWMutex
+const (
+	mcpCallTimeoutDefault       = 60 * time.Second
+	clientImplementationVersion = "1.0.0"
 )
 
-// registerConnection stores a connection in the package-level registry.
-func registerConnection(name string, conn *Connection) {
-	connRegistryMu.Lock()
-	defer connRegistryMu.Unlock()
-	connRegistry[name] = conn
-}
-
-// Register (re)points the package-level registry at a connection.
-//
-// Connect already registers, so this exists for one specific ordering problem:
-// replacing a connection means closing the old one, and Close unregisters by
-// NAME — which evicts the new connection's entry, because both share the name.
-// A caller that closes a superseded connection after opening its replacement
-// calls this to restore the live entry. Without it, ListMcpResources and
-// ReadMcpResource would report the server as not connected.
-func Register(conn *Connection) {
-	if conn == nil {
-		return
-	}
-	registerConnection(conn.name, conn)
-	utils.LogWithFields(utils.LevelDebug, "mcp", "connection re-registered in package registry", map[string]any{
-		"serverName": conn.name,
-	})
-}
-
-// unregisterConnection removes a connection from the registry.
-func unregisterConnection(name string) {
-	connRegistryMu.Lock()
-	defer connRegistryMu.Unlock()
-	delete(connRegistry, name)
-}
-
-// getConnection retrieves a connection by server name.
-func getConnection(name string) *Connection {
-	connRegistryMu.RLock()
-	defer connRegistryMu.RUnlock()
-	return connRegistry[name]
-}
-
-// ListMcpResources lists resources from a connected MCP server by name.
-func ListMcpResources(serverName string) ([]McpResource, error) {
-	conn := getConnection(serverName)
-	if conn == nil {
-		return nil, fmt.Errorf("MCP server %q not connected", serverName)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultMetadataTimeout)
-	defer cancel()
-	return conn.ListResources(ctx)
-}
-
-// ReadMcpResource reads a resource from a connected MCP server by name and URI.
-func ReadMcpResource(serverName, uri string) (*McpResourceContent, error) {
-	conn := getConnection(serverName)
-	if conn == nil {
-		return nil, fmt.Errorf("MCP server %q not connected", serverName)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultMetadataTimeout)
-	defer cancel()
-	return conn.ReadResource(ctx, uri)
-}
-
-// mcpProtocolVersion is the MCP protocol revision this client speaks. Sent in
-// the initialize handshake, and advisory on the OAuth metadata fetches in
-// discovery.go (some gateways route on the header).
-const mcpProtocolVersion = "2024-11-05"
-
-const mcpCallTimeoutDefault = 60 * time.Second
-
-// DefaultCallTimeout is the fallback MCP tool call timeout when no per-server
-// override is configured. Set at startup from TimeoutsConfig.McpCall().
+// DefaultCallTimeout is fallback timeout for MCP tool calls.
 var DefaultCallTimeout = mcpCallTimeoutDefault
 
-// DefaultMetadataTimeout is the timeout for MCP metadata operations
-// (initialize, listTools, listResources, readResource).
+// DefaultMetadataTimeout bounds MCP metadata calls.
 var DefaultMetadataTimeout = 30 * time.Second
 
 // SetDefaultCallTimeout overrides the default MCP tool call timeout.
 func SetDefaultCallTimeout(d time.Duration) { DefaultCallTimeout = d }
 
-// SetDefaultMetadataTimeout overrides the default MCP metadata timeout.
+// SetDefaultMetadataTimeout overrides default MCP metadata timeout.
 func SetDefaultMetadataTimeout(d time.Duration) { DefaultMetadataTimeout = d }
 
-// Connection is an active MCP server connection.
+// ElicitationRequest is an MCP-server request for user input. RequestState is
+// intentionally absent: SDK MRTR middleware owns its opaque replay.
+type ElicitationRequest struct {
+	ServerName string
+	Mode       string
+	Message    string
+	Schema     map[string]any
+	URL        string
+}
+
+// ElicitationReply maps Ion's user decision onto MCP's three-action model.
+type ElicitationReply struct {
+	Action   string
+	Response map[string]any
+}
+
+// ConnectionOptions attach Ion-owned behavior around generic protocol mechanics.
+type ConnectionOptions struct {
+	Elicit func(context.Context, ElicitationRequest) (ElicitationReply, error)
+}
+
+// Connection is a negotiated MCP client session. Protocol mechanics belong to
+// the official SDK; this adapter owns Ion routing, observability, and result
+// conversion only.
 type Connection struct {
-	name        string
-	tools       []ToolDef
-	transport   mcpTransport
-	nextID      atomic.Int64
-	mu          sync.Mutex
-	callTimeout time.Duration
-	dead        chan struct{} // closed when connection is marked dead (e.g. timeout)
-	deadOnce    sync.Once
-	deadErr     error // the error that caused the connection to be marked dead
+	name            string
+	session         *mcpgo.ClientSession
+	close           func() error
+	tools           []ToolDef
+	protocolVersion string
+	capabilities    map[string]any
+	callTimeout     time.Duration
+	mu              sync.RWMutex
 }
 
-// mcpTransport abstracts stdio vs SSE communication.
-type mcpTransport interface {
-	Send(msg json.RawMessage) error
-	Receive() (json.RawMessage, error)
-	Close() error
-}
-
-// --- JSON-RPC 2.0 types ---
-
-type jsonRPCRequest struct {
-	JSONRPC string `json:"jsonrpc"`
-	ID      int64  `json:"id"`
-	Method  string `json:"method"`
-	Params  any    `json:"params,omitempty"`
-}
-
-type jsonRPCResponse struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      int64           `json:"id"`
-	Result  json.RawMessage `json:"result,omitempty"`
-	Error   *jsonRPCError   `json:"error,omitempty"`
-}
-
-type jsonRPCError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-// jsonRPCNotification is a JSON-RPC 2.0 notification (no "id" field).
-// Per the spec, notifications MUST NOT include an "id" member.
-type jsonRPCNotification struct {
-	JSONRPC string `json:"jsonrpc"`
-	Method  string `json:"method"`
-	Params  any    `json:"params,omitempty"`
-}
-
-// validateTransportConfig rejects config that cannot reach the selected MCP transport.
-func validateTransportConfig(name string, config types.McpServerConfig) error {
-	switch config.Type {
-	case "", "stdio":
-		if config.Command == "" {
-			return fmt.Errorf("MCP server %q: type %q requires command", name, config.Type)
-		}
-	case "http", "sse":
-		parsed, err := url.Parse(config.URL)
-		if err != nil || parsed.Scheme == "" || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-			return fmt.Errorf("MCP server %q: type %q requires an absolute http(s) URL; got %q — did you mean type \"stdio\" with command %q?", name, config.Type, config.URL, config.URL)
-		}
-	case "ws", "websocket":
-		parsed, err := url.Parse(config.URL)
-		if err != nil || parsed.Scheme == "" || parsed.Host == "" || (parsed.Scheme != "ws" && parsed.Scheme != "wss") {
-			return fmt.Errorf("MCP server %q: type %q requires an absolute ws(s) URL; got %q", name, config.Type, config.URL)
-		}
-	}
-	return nil
-}
-
-// Connect establishes a connection to an MCP server.
+// Connect establishes a dual-era MCP connection using default Ion behavior.
 func Connect(name string, config types.McpServerConfig) (*Connection, error) {
-	if err := validateTransportConfig(name, config); err != nil {
-		utils.LogWithFields(utils.LevelError, "mcp", "MCP transport configuration rejected", map[string]any{"serverName": name, "transport": config.Type, "error": utils.ErrStr(err)})
-		return nil, err
-	}
+	return ConnectWithOptions(name, config, ConnectionOptions{})
+}
 
-	var transport mcpTransport
-	var err error
-
-	// Build auth headers from config and OAuth.
-	headers := make(map[string]string)
-	for k, v := range config.Headers {
-		headers[k] = v
-	}
-	// Token resolution runs whether or not an explicit `oauth` block exists:
-	// a server authenticated via `ion mcp login` (dynamic registration, no
-	// engine.json oauth block) has its client stored, and resolveOAuthHeaders
-	// finds it there. Gating this on config.OAuth != nil would make every
-	// discovery-authenticated server connect unauthenticated.
-	var oauthCfg *OAuthConfig
-	if config.OAuth != nil {
-		oauthCfg = &OAuthConfig{
-			ClientID:     config.OAuth.ClientID,
-			ClientSecret: config.OAuth.ClientSecret,
-			AuthURL:      config.OAuth.AuthURL,
-			TokenURL:     config.OAuth.TokenURL,
-			Scope:        config.OAuth.Scope,
-			RedirectURI:  config.OAuth.RedirectURI,
-			UsePKCE:      config.OAuth.UsePKCE,
-		}
-	}
-	// Build a per-server OAuth resolver. The http transport consults it on
-	// every request so a refreshed token reaches the wire mid-session; the SSE
-	// and WebSocket transports have no per-request seam here, so they still take
-	// a connect-time header (see the notes at their construction below).
-	oauthResolver := newTokenResolver(name, oauthCfg)
-	if authHeaders := resolveOAuthHeaders(name, oauthCfg); authHeaders != nil {
-		for k, v := range authHeaders {
-			headers[k] = v
-		}
-	}
-
-	// Brokered identity-token forwarding. Generic fields take precedence; the
-	// published user-token names remain permanent compatibility aliases.
-	var identityToken func() (string, error)
-	if config.ForwardIdentityToken || config.ForwardUserToken {
-		scope := config.UserTokenScope
-		audience := config.UserTokenAudience
-		if config.ForwardIdentityToken {
-			scope = config.IdentityTokenScope
-			audience = config.IdentityTokenAudience
-		}
-		identityToken = func() (string, error) {
-			provider := auth.CurrentTokenProvider()
-			if provider == nil {
-				return "", fmt.Errorf("identity-token forwarding configured but no bearer provider is available (set auth.identityProvider in engine.json)")
-			}
-			return provider.GetTokenWithAudience(context.Background(), scope, audience)
-		}
-	}
-	userToken := identityToken
-
-	switch config.Type {
-	case "stdio", "":
-		transport, err = newStdioTransport(name, config)
-	case "sse":
-		var sseTr *sseTransport
-		sseTr, err = newSSETransport(name, config, headers, userToken)
-		if sseTr != nil {
-			sseTr.oauth = oauthResolver
-			transport = sseTr
-		}
-	case "http":
-		var httpTr *httpTransport
-		httpTr, err = newHTTPTransport(config.URL, headers, userToken)
-		if httpTr != nil {
-			// Per-request OAuth resolution + the 401 retry. Without this the
-			// Authorization header would stay frozen at its connect-time value
-			// and every tool call after the token's expiry would 401 while the
-			// stored refresh token went unused.
-			httpTr.oauth = oauthResolver
-			transport = httpTr
-		}
-	case "ws", "websocket":
-		// WebSocket headers apply once at dial time, so neither an operator
-		// token nor this server's OAuth token can be refreshed per request the
-		// way http and sse refresh theirs. Both are resolved fresh here and ride
-		// the upgrade request; renewing either requires a reconnect. Prefer the
-		// http transport for any server whose credential expires -- the
-		// connect-time header on a long-lived socket is exactly the staleness the
-		// resolver exists to avoid.
-		if oauthResolver != nil {
-			if value, tokenErr := oauthResolver.Token(); tokenErr != nil {
-				utils.LogWithFields(utils.LevelError, "mcp", "oauth token unavailable for websocket dial", map[string]any{
-					"serverName": name, "error": tokenErr.Error(),
-				})
-			} else {
-				headers["Authorization"] = value
-			}
-		}
-		if userToken != nil {
-			token, tokenErr := userToken()
-			if tokenErr != nil {
-				return nil, fmt.Errorf("mcp connect %s: %w", name, tokenErr)
-			}
-			headers["Authorization"] = "Bearer " + token
-		}
-		transport, err = newWSTransport(config.URL, headers)
-	default:
-		return nil, fmt.Errorf("unsupported MCP transport type: %s", config.Type)
-	}
+// ConnectWithOptions establishes a connection and negotiates modern MCP or a
+// legacy handshake. The official SDK probes server/discover then falls back to
+// initialize for older peers.
+func ConnectWithOptions(name string, config types.McpServerConfig, opts ConnectionOptions) (*Connection, error) {
+	transport, cleanup, err := newSDKTransport(name, config)
 	if err != nil {
 		return nil, fmt.Errorf("mcp connect %s: %w", name, err)
 	}
-
-	conn := &Connection{
-		name:      name,
-		transport: transport,
-		dead:      make(chan struct{}),
+	if cleanup == nil {
+		cleanup = func() error { return nil }
 	}
+
+	clientOpts := &mcpgo.ClientOptions{
+		Logger: newSDKLogger(name),
+		Capabilities: &mcpgo.ClientCapabilities{Elicitation: &mcpgo.ElicitationCapabilities{
+			Form: &mcpgo.FormElicitationCapabilities{},
+			URL:  &mcpgo.URLElicitationCapabilities{},
+		}},
+	}
+	if opts.Elicit != nil {
+		clientOpts.ElicitationHandler = func(ctx context.Context, req *mcpgo.ElicitRequest) (*mcpgo.ElicitResult, error) {
+			params := req.Params
+			schema, ok := params.RequestedSchema.(map[string]any)
+			if !ok && params.RequestedSchema != nil {
+				return nil, fmt.Errorf("MCP elicitation schema from %s is not an object", name)
+			}
+			if params.Mode != "" && params.Mode != "form" && params.Mode != "url" {
+				return nil, fmt.Errorf("MCP elicitation mode %q from %s is unsupported", params.Mode, name)
+			}
+			if params.Mode == "url" && params.URL == "" {
+				return nil, fmt.Errorf("MCP URL elicitation from %s lacks URL", name)
+			}
+			reply, elicitErr := opts.Elicit(ctx, ElicitationRequest{
+				ServerName: name,
+				Mode:       params.Mode,
+				Message:    params.Message,
+				Schema:     schema,
+				URL:        params.URL,
+			})
+			if elicitErr != nil {
+				return nil, elicitErr
+			}
+			return &mcpgo.ElicitResult{Action: reply.Action, Content: reply.Response}, nil
+		}
+	}
+
+	client := mcpgo.NewClient(&mcpgo.Implementation{Name: "ion-engine", Version: clientImplementationVersion}, clientOpts)
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultMetadataTimeout)
+	defer cancel()
+	session, err := client.Connect(ctx, transport, nil)
+	if err != nil {
+		if closeErr := cleanup(); closeErr != nil {
+			utils.LogWithFields(utils.LevelInfo, "mcp", "transport close after connection failure", map[string]any{"serverName": name, "error": closeErr.Error()})
+		}
+		return nil, annotateAuthFailure(name, config, fmt.Errorf("mcp connect %s: %w", name, err))
+	}
+
+	conn := &Connection{name: name, session: session, close: cleanup}
 	if config.TimeoutSeconds > 0 {
 		conn.callTimeout = time.Duration(config.TimeoutSeconds) * time.Second
 	}
-
-	// Initialize the connection.
-	if err := conn.initialize(); err != nil {
-		if closeErr := transport.Close(); closeErr != nil {
-			utils.LogWithFields(utils.LevelInfo, "mcp", "transport close after initialize failure", map[string]any{"tool": name, "error": closeErr.Error()})
-		}
-		return nil, annotateAuthFailure(name, config, fmt.Errorf("mcp initialize %s: %w", name, err))
+	if init := session.InitializeResult(); init != nil {
+		conn.protocolVersion = init.ProtocolVersion
+		conn.capabilities = capabilitiesMap(init.Capabilities)
 	}
-
-	// Discover tools.
-	tools, err := conn.listTools()
-	if err != nil {
-		if closeErr := transport.Close(); closeErr != nil {
-			utils.LogWithFields(utils.LevelInfo, "mcp", "transport close after list tools failure", map[string]any{"tool": name, "error": closeErr.Error()})
+	if err := conn.refreshTools(ctx); err != nil {
+		if closeErr := session.Close(); closeErr != nil {
+			utils.LogWithFields(utils.LevelInfo, "mcp", "SDK session close after tool discovery failure", map[string]any{"serverName": name, "error": closeErr.Error()})
+		}
+		if closeErr := cleanup(); closeErr != nil {
+			utils.LogWithFields(utils.LevelInfo, "mcp", "transport close after tool discovery failure", map[string]any{"serverName": name, "error": closeErr.Error()})
 		}
 		return nil, annotateAuthFailure(name, config, fmt.Errorf("mcp list tools %s: %w", name, err))
 	}
-	conn.tools = tools
-
-	// Register in the package-level registry.
-	registerConnection(name, conn)
-
+	utils.LogWithFields(utils.LevelInfo, "mcp", "server connected", map[string]any{
+		"serverName": name, "protocolVersion": conn.protocolVersion,
+		"toolCount": len(conn.tools), "capabilities": conn.capabilities,
+	})
 	return conn, nil
 }
 
-func (c *Connection) initialize() error {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultMetadataTimeout)
-	defer cancel()
-	resp, err := c.call(ctx, "initialize", map[string]any{
-		"protocolVersion": mcpProtocolVersion,
-		"capabilities":    map[string]any{},
-		"clientInfo": map[string]any{
-			"name":    "ion-engine",
-			"version": "1.0.0",
-		},
-	})
+func capabilitiesMap(v any) map[string]any {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	var out map[string]any
+	if err := json.Unmarshal(data, &out); err != nil {
+		return nil
+	}
+	return out
+}
+
+func (c *Connection) refreshTools(ctx context.Context) error {
+	tools, err := collect(ctx, c.session.Tools(ctx, nil))
 	if err != nil {
 		return err
 	}
-	_ = resp
-
-	// Send initialized notification (no response expected).
-	notif := jsonRPCNotification{
-		JSONRPC: "2.0",
-		Method:  "notifications/initialized",
+	defs := make([]ToolDef, 0, len(tools))
+	for _, tool := range tools {
+		if tool == nil {
+			continue
+		}
+		schema, ok := tool.InputSchema.(map[string]any)
+		if !ok || schema == nil {
+			utils.LogWithFields(utils.LevelWarn, "mcp", "tool excluded because input schema is not an object", map[string]any{"serverName": c.name, "toolName": tool.Name})
+			continue
+		}
+		defs = append(defs, ToolDef{Name: tool.Name, Description: tool.Description, InputSchema: schema})
 	}
-	data, _ := json.Marshal(notif) //nolint:errcheck // marshal of a local struct
-	return c.transport.Send(data)
+	c.mu.Lock()
+	c.tools = defs
+	c.mu.Unlock()
+	return nil
 }
 
-func (c *Connection) listTools() ([]ToolDef, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultMetadataTimeout)
-	defer cancel()
-
-	const maxToolPages = 50
-	var tools []ToolDef
-	cursor := ""
-	for page := 0; page < maxToolPages; page++ {
-		var params any
-		if cursor != "" {
-			params = map[string]any{"cursor": cursor}
-		}
-		resp, err := c.call(ctx, "tools/list", params)
+func collect[T any](ctx context.Context, sequence iter.Seq2[T, error]) ([]T, error) {
+	var values []T
+	for value, err := range sequence {
 		if err != nil {
 			return nil, err
 		}
-		var result struct {
-			Tools      []ToolDef `json:"tools"`
-			NextCursor string    `json:"nextCursor"`
-		}
-		if err := json.Unmarshal(resp, &result); err != nil {
-			return nil, fmt.Errorf("parse tools: %w", err)
-		}
-		tools = append(tools, result.Tools...)
-		if result.NextCursor == "" {
-			return tools, nil
-		}
-		cursor = result.NextCursor
+		values = append(values, value)
 	}
-	utils.LogWithFields(utils.LevelWarn, "mcp", "MCP tool listing reached pagination limit", map[string]any{"serverName": c.name, "maxPages": maxToolPages})
-	return tools, nil
+	return values, nil
 }
 
-func (c *Connection) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
-	// Fast-fail if the connection was previously marked dead.
-	select {
-	case <-c.dead:
-		return nil, fmt.Errorf("mcp connection %s is dead: %w", c.name, c.deadErr)
-	default:
+// CallTool invokes an MCP tool and preserves text, image, resource, and
+// structured content for the engine tool pipeline.
+func (c *Connection) CallTool(ctx context.Context, toolName string, params map[string]interface{}) (*types.ToolResult, error) {
+	if params == nil {
+		params = map[string]interface{}{}
 	}
+	callCtx, cancel := c.callContext(ctx)
+	defer cancel()
+	if suspender := types.DeadlineSuspenderFrom(ctx); suspender != nil {
+		suspender.Pause()
+		defer suspender.Resume()
+	}
+	result, err := c.session.CallTool(callCtx, &mcpgo.CallToolParams{Name: toolName, Arguments: params})
+	if err != nil {
+		return nil, fmt.Errorf("call %s: %w", toolName, err)
+	}
+	converted := convertToolResult(result)
+	utils.LogWithFields(utils.LevelInfo, "mcp", "tool call completed", map[string]any{
+		"serverName": c.name, "toolName": toolName, "isError": converted.IsError,
+		"imageCount": len(converted.Images),
+	})
+	return converted, nil
+}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
+func (c *Connection) callContext(parent context.Context) (context.Context, context.CancelFunc) {
 	timeout := c.callTimeout
 	if timeout == 0 {
 		timeout = DefaultCallTimeout
 	}
+	return context.WithTimeout(parent, timeout)
+}
 
-	id := c.nextID.Add(1)
-	req := jsonRPCRequest{
-		JSONRPC: "2.0",
-		ID:      id,
-		Method:  method,
-		Params:  params,
+func convertToolResult(result *mcpgo.CallToolResult) *types.ToolResult {
+	if result == nil {
+		return &types.ToolResult{Content: "MCP server returned no tool result.", IsError: true}
 	}
-
-	data, err := json.Marshal(req)
-	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
-	}
-
-	if err := c.transport.Send(data); err != nil {
-		return nil, fmt.Errorf("send: %w", err)
-	}
-
-	// Read responses in a goroutine so we can enforce a timeout.
-	type callResult struct {
-		data json.RawMessage
-		err  error
-	}
-	ch := make(chan callResult, 1)
-	go func() {
-		for {
-			respData, err := c.transport.Receive()
-			if err != nil {
-				ch <- callResult{nil, fmt.Errorf("receive: %w", err)}
-				return
-			}
-
-			var resp jsonRPCResponse
-			if err := json.Unmarshal(respData, &resp); err != nil {
-				// Skip non-response messages (notifications). Log at debug so a
-				// server emitting only unparseable frames (which loops until
-				// timeout) is diagnosable.
-				utils.LogWithFields(utils.LevelDebug, "mcp", "skipping unparseable rpc frame", map[string]any{"serverName": c.name, "error": err.Error()})
+	var text []string
+	out := &types.ToolResult{IsError: result.IsError}
+	for _, block := range result.Content {
+		switch value := block.(type) {
+		case *mcpgo.TextContent:
+			text = append(text, value.Text)
+			out.ContentItems = append(out.ContentItems, types.ToolContent{Type: "text", Text: value.Text})
+		case *mcpgo.ImageContent:
+			data := base64.StdEncoding.EncodeToString(value.Data)
+			out.ContentItems = append(out.ContentItems, types.ToolContent{Type: "image", Data: data, MimeType: value.MIMEType})
+		case *mcpgo.EmbeddedResource:
+			if value.Resource == nil {
 				continue
 			}
-
-			if resp.ID != id {
-				continue // Skip responses for other requests.
+			blob := base64.StdEncoding.EncodeToString(value.Resource.Blob)
+			out.ContentItems = append(out.ContentItems, types.ToolContent{Type: "resource", Resource: &types.EmbeddedResource{URI: value.Resource.URI, MimeType: value.Resource.MIMEType, Text: value.Resource.Text, Blob: blob}})
+			if value.Resource.Text != "" {
+				text = append(text, value.Resource.Text)
+			} else if len(value.Resource.Blob) > 0 {
+				text = append(text, fmt.Sprintf("[resource blob, %d bytes, mime: %s]", len(value.Resource.Blob), value.Resource.MIMEType))
 			}
-
-			if resp.Error != nil {
-				ch <- callResult{nil, fmt.Errorf("rpc error %d: %s", resp.Error.Code, resp.Error.Message)}
-				return
+		case *mcpgo.ResourceLink:
+			out.ContentItems = append(out.ContentItems, types.ToolContent{Type: "resource_link", URI: value.URI, Name: value.Name, Title: value.Title, Description: value.Description, MimeType: value.MIMEType})
+			text = append(text, value.URI)
+		default:
+			encoded, err := json.Marshal(block)
+			if err != nil {
+				text = append(text, fmt.Sprintf("[unsupported MCP content %T]", block))
+			} else {
+				out.ContentItems = append(out.ContentItems, types.ToolContent{Type: "unknown", Unknown: encoded})
+				text = append(text, string(encoded))
 			}
-			ch <- callResult{resp.Result, nil}
-			return
-		}
-	}()
-
-	select {
-	case r := <-ch:
-		return r.data, r.err
-	case <-ctx.Done():
-		c.markDead(fmt.Errorf("mcp call %s: %w", method, ctx.Err()))
-		return nil, c.deadErr
-	case <-time.After(timeout):
-		c.markDead(fmt.Errorf("mcp call %s: timeout after %s", method, timeout))
-		return nil, c.deadErr
-	}
-}
-
-// markDead marks the connection as permanently failed. Subsequent calls will
-// fast-fail. The leaked Receive goroutine will be cleaned up when Close() is
-// called on the transport.
-func (c *Connection) markDead(err error) {
-	c.deadOnce.Do(func() {
-		c.deadErr = err
-		close(c.dead)
-	})
-}
-
-// CallTool invokes an MCP tool and returns its text convenience result. It is
-// retained for internal callers that only consume text; use CallToolResult when
-// typed content such as embedded resources must survive the boundary.
-func (c *Connection) CallTool(ctx context.Context, toolName string, params map[string]interface{}) (string, error) {
-	result, err := c.CallToolResult(ctx, toolName, params)
-	if err != nil {
-		return "", err
-	}
-	if result.IsError {
-		return "", fmt.Errorf("tool error: %s", result.Text())
-	}
-	return result.Text(), nil
-}
-
-// CallToolResult invokes an MCP tool and preserves every returned content item.
-func (c *Connection) CallToolResult(ctx context.Context, toolName string, params map[string]interface{}) (*ToolCallResult, error) {
-	resp, err := c.call(ctx, "tools/call", map[string]any{
-		"name":      toolName,
-		"arguments": params,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	result, err := parseToolCallResult(resp)
-	if err != nil {
-		// Raw MCP responses can contain arbitrary blobs. Never include one in an
-		// error, log, telemetry event, or conversation record.
-		return nil, fmt.Errorf("unexpected tool response format: %w", err)
-	}
-	return result, nil
-}
-
-// Tools returns the list of tools available on this connection.
-func (c *Connection) Tools() []ToolDef {
-	return c.tools
-}
-
-// ListResources returns resources available on the MCP server.
-func (c *Connection) ListResources(ctx context.Context) ([]McpResource, error) {
-	resp, err := c.call(ctx, "resources/list", nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var result struct {
-		Resources []McpResource `json:"resources"`
-	}
-	if err := json.Unmarshal(resp, &result); err != nil {
-		return nil, fmt.Errorf("parse resources: %w", err)
-	}
-	return result.Resources, nil
-}
-
-// ReadResource reads a specific resource by URI from the MCP server.
-func (c *Connection) ReadResource(ctx context.Context, uri string) (*McpResourceContent, error) {
-	resp, err := c.call(ctx, "resources/read", map[string]any{
-		"uri": uri,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	var result struct {
-		Contents []McpResourceContent `json:"contents"`
-	}
-	if err := json.Unmarshal(resp, &result); err != nil {
-		return nil, fmt.Errorf("parse resource content: %w", err)
-	}
-	if len(result.Contents) == 0 {
-		return nil, fmt.Errorf("no content returned for resource %s", uri)
-	}
-	return &result.Contents[0], nil
-}
-
-// Close shuts down the MCP connection and removes it from the registry.
-func (c *Connection) Close() error {
-	unregisterConnection(c.name)
-	return c.transport.Close()
-}
-
-// Name returns the connection name.
-func (c *Connection) Name() string {
-	return c.name
-}
-
-// --- stdio transport ---
-
-type stdioTransport struct {
-	cmd        *exec.Cmd
-	stdin      io.WriteCloser
-	reader     *bufio.Reader
-	serverName string
-}
-
-func newStdioTransport(serverName string, config types.McpServerConfig) (*stdioTransport, error) {
-	if config.Command == "" {
-		return nil, fmt.Errorf("stdio transport requires command")
-	}
-
-	cmd := exec.Command(config.Command, config.Args...)
-	if len(config.Env) > 0 {
-		cmd.Env = os.Environ()
-		for k, v := range config.Env {
-			cmd.Env = append(cmd.Env, k+"="+v)
 		}
 	}
-
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return nil, fmt.Errorf("stdin pipe: %w", err)
+	if result.StructuredContent != nil {
+		encoded, err := json.Marshal(result.StructuredContent)
+		if err == nil {
+			text = append(text, string(encoded))
+		}
 	}
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, fmt.Errorf("stdout pipe: %w", err)
+	if len(text) == 0 {
+		text = append(text, "MCP tool returned empty content.")
 	}
-
-	// Capture stderr so a subprocess crash reason (missing dependency, bad
-	// env, panic, auth message) is observable instead of vanishing. Without
-	// this, a downstream listTools failure shows only a generic error and the
-	// root cause is invisible.
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return nil, fmt.Errorf("stderr pipe: %w", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start command: %w", err)
-	}
-
-	go drainStdioStderr(serverName, stderr)
-
-	return &stdioTransport{
-		cmd:        cmd,
-		stdin:      stdin,
-		reader:     bufio.NewReader(stdout),
-		serverName: serverName,
-	}, nil
+	out.Content = joinNonEmpty(text)
+	out.EphemeralImages = types.ToolContentEphemeralImages(out.ContentItems)
+	return out
 }
 
-// drainStdioStderr logs every line the MCP subprocess writes to stderr so a
-// crash or auth rejection is visible in the engine log, correlated by server.
-func drainStdioStderr(serverName string, stderr io.ReadCloser) {
+func joinNonEmpty(parts []string) string {
+	out := ""
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+		if out != "" {
+			out += "\n"
+		}
+		out += part
+	}
+	return out
+}
+
+func drainStdioStderr(serverName string, stderr io.Reader) {
 	scanner := bufio.NewScanner(stderr)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -652,39 +335,122 @@ func drainStdioStderr(serverName string, stderr io.ReadCloser) {
 		}
 		utils.LogWithFields(utils.LevelDebug, "mcp.stdio", "server stderr", map[string]any{"serverName": serverName, "line": line})
 	}
-}
-
-func (t *stdioTransport) Send(msg json.RawMessage) error {
-	_, err := t.stdin.Write(append(msg, '\n'))
-	return err
-}
-
-func (t *stdioTransport) Receive() (json.RawMessage, error) {
-	for {
-		line, err := t.reader.ReadBytes('\n')
-		if err != nil {
-			return nil, err
-		}
-		line = []byte(strings.TrimSpace(string(line)))
-		if len(line) == 0 {
-			continue
-		}
-		if !json.Valid(line) {
-			// Non-JSON stdout line (server logging to the wrong stream, or a
-			// malformed frame). Skip it, but log so a server that never
-			// produces a valid frame is diagnosable instead of timing out.
-			utils.LogWithFields(utils.LevelDebug, "mcp.stdio", "skipping non-JSON stdout line", map[string]any{"serverName": t.serverName})
-			continue
-		}
-		return json.RawMessage(line), nil
+	if err := scanner.Err(); err != nil {
+		utils.LogWithFields(utils.LevelInfo, "mcp.stdio", "server stderr drain ended", map[string]any{"serverName": serverName, "error": err.Error()})
 	}
 }
 
-func (t *stdioTransport) Close() error {
-	t.stdin.Close()      //nolint:errcheck // resource close
-	t.cmd.Process.Kill() //nolint:errcheck // process teardown
-	// Wait reaps the child process to prevent zombies. The error from Wait is
-	// always non-nil after Kill, so we ignore it.
-	t.cmd.Wait() //nolint:errcheck // process teardown
+// Tools returns a copy of currently discovered tools.
+func (c *Connection) Tools() []ToolDef {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return append([]ToolDef(nil), c.tools...)
+}
+
+// ListResources returns every page in deterministic server order.
+func (c *Connection) ListResources(ctx context.Context) ([]McpResource, error) {
+	resources, err := collect(ctx, c.session.Resources(ctx, nil))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]McpResource, 0, len(resources))
+	for _, resource := range resources {
+		if resource == nil {
+			continue
+		}
+		out = append(out, McpResource{URI: resource.URI, Name: resource.Name, Description: resource.Description, MimeType: resource.MIMEType})
+	}
+	return out, nil
+}
+
+// ReadResource reads a resource and joins every returned content item.
+func (c *Connection) ReadResource(ctx context.Context, uri string) (*McpResourceContent, error) {
+	result, err := c.session.ReadResource(ctx, &mcpgo.ReadResourceParams{URI: uri})
+	if err != nil {
+		return nil, err
+	}
+	if len(result.Contents) == 0 {
+		return nil, fmt.Errorf("no content returned for resource %s", uri)
+	}
+	out := &McpResourceContent{URI: uri}
+	var texts []string
+	for _, content := range result.Contents {
+		if content == nil {
+			continue
+		}
+		if out.MimeType == "" {
+			out.MimeType = content.MIMEType
+		}
+		if content.Text != "" {
+			texts = append(texts, content.Text)
+		}
+		if len(content.Blob) > 0 {
+			if out.Blob != "" {
+				out.Blob += "\n"
+			}
+			out.Blob += base64.StdEncoding.EncodeToString(content.Blob)
+		}
+	}
+	out.Text = joinNonEmpty(texts)
+	return out, nil
+}
+
+// Name returns configured server name.
+func (c *Connection) Name() string { return c.name }
+
+// ProtocolVersion returns version negotiated for this connection.
+func (c *Connection) ProtocolVersion() string { return c.protocolVersion }
+
+// Capabilities returns a defensive copy of advertised server capabilities.
+func (c *Connection) Capabilities() map[string]any {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	out := make(map[string]any, len(c.capabilities))
+	for key, value := range c.capabilities {
+		out[key] = value
+	}
+	return out
+}
+
+// Register is retained for callers that replace a session connection. MCP
+// resource lookup is context-bound, so this no longer mutates package state.
+func Register(_ *Connection) {}
+
+// Close closes the SDK session then its underlying Ion transport.
+func (c *Connection) Close() error {
+	var errs []error
+	if c.session != nil {
+		if err := c.session.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if c.close != nil {
+		if err := c.close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return joinErrors(errs)
+}
+
+func joinErrors(errs []error) error {
+	for _, err := range errs {
+		if err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func commandTransport(config types.McpServerConfig) (*mcpgo.CommandTransport, error) {
+	if config.Command == "" {
+		return nil, fmt.Errorf("stdio transport requires command")
+	}
+	cmd := exec.Command(config.Command, config.Args...)
+	if len(config.Env) > 0 {
+		cmd.Env = append([]string(nil), os.Environ()...)
+		for key, value := range config.Env {
+			cmd.Env = append(cmd.Env, key+"="+value)
+		}
+	}
+	return &mcpgo.CommandTransport{Command: cmd}, nil
 }

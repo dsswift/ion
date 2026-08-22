@@ -7,6 +7,7 @@ import { useColors } from '../theme'
 import { useInteractiveState } from '../hooks/useInteractiveState'
 import { useViewportClamp } from '../hooks/useViewportClamp'
 import { transitions } from '../theme-tokens'
+import { zoomRect, zoomViewport } from '../viewport-zoom'
 import { fuzzyFilterAndSort } from '../../shared/fuzzy-match'
 
 export interface SlashCommand {
@@ -121,6 +122,15 @@ function SlashCommandRow({ cmd, index, isSelected, onSelect }: {
   )
 }
 
+export function slashMenuPlacement(anchorRect: DOMRect, viewport = zoomViewport()): React.CSSProperties {
+  const anchor = zoomRect(anchorRect)
+  return {
+    bottom: viewport.height - anchor.top + 4,
+    left: anchor.left + 12,
+    right: viewport.width - anchor.right + 12,
+  }
+}
+
 export function SlashCommandMenu({ filter, selectedIndex, onSelect, anchorRect, extraCommands = [] }: Props) {
   const listRef = useRef<HTMLDivElement>(null)
   // Edge-anchored: the menu grows UPWARD out of the input row (`bottom:` is
@@ -151,9 +161,7 @@ export function SlashCommandMenu({ filter, selectedIndex, onSelect, anchorRect, 
       transition={{ duration: 0.12 }}
       style={{
         position: 'fixed',
-        bottom: window.innerHeight - anchorRect.top + 4,
-        left: anchorRect.left + 12,
-        right: window.innerWidth - anchorRect.right + 12,
+        ...slashMenuPlacement(anchorRect),
         pointerEvents: 'auto',
       }}
     >

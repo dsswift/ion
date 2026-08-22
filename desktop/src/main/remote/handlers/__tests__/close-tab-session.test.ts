@@ -9,12 +9,14 @@
  *      only matches compound keys (terminals, legacy `${tabId}:main`) and
  *      would silently leave the bare-key conversation session orphaned in
  *      both the desktop activeSessions map and the engine daemon.
- *   2. `engineBridge.stopByPrefix(`${tabId}:`)` is still called so terminal
+ *   2. A live owner renderer receives `closeTab`, so normal close can settle a
+ *      non-empty conversation and permanently delete only an empty one.
+ *   3. `engineBridge.stopByPrefix(`${tabId}:`)` is still called so terminal
  *      and legacy compound-key sessions on the same tab are also stopped.
  *
  * Regression contract
  * ───────────────────
- * Revert the `void engineBridge.stopSession(tabId)` line in
+ * Revert the direct-fallback `void engineBridge.stopSession(tabId)` line in
  * handlers/tabs.ts and test #1 goes red — the bare-key conversation
  * session is never stopped, which was the orphaned-session leak.
  */
@@ -42,6 +44,7 @@ vi.mock('electron', () => ({
 const mocks = vi.hoisted(() => ({
   stopSession: vi.fn().mockResolvedValue(undefined),
   stopByPrefix: vi.fn(),
+  executeJavaScript: vi.fn(),
   closeTab: vi.fn(),
   destroyByPrefix: vi.fn(),
   broadcast: vi.fn(),
@@ -51,7 +54,13 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../../state', () => ({
   state: {
     remoteTransport: { send: (...a: any[]) => mocks.send(...a) },
-    mainWindow: null,
+    mainWindow: {
+      isDestroyed: () => false,
+      webContents: {
+        executeJavaScript: (...a: any[]) => mocks.executeJavaScript(...a),
+        send: vi.fn(),
+      },
+    },
   },
   sessionPlane: { closeTab: (...a: any[]) => mocks.closeTab(...a) },
   engineBridge: {
@@ -80,18 +89,30 @@ import { handleCloseTab } from '../tabs'
 beforeEach(() => {
   mocks.stopSession.mockReset().mockResolvedValue(undefined)
   mocks.stopByPrefix.mockReset()
+  mocks.closeTab.mockReset()
+  mocks.executeJavaScript.mockReset().mockResolvedValue(false)
 })
 
 describe('handleCloseTab — engine session teardown', () => {
-  it('stops the bare-key conversation session (ADR-010 orphan fix)', () => {
-    handleCloseTab({ type: 'desktop_close_tab', tabId: 'tab-abc' })
+  it('stops the bare-key conversation session (ADR-010 orphan fix)', async () => {
+    await handleCloseTab({ type: 'desktop_close_tab', tabId: 'tab-abc' })
 
     expect(mocks.stopSession).toHaveBeenCalledTimes(1)
     expect(mocks.stopSession).toHaveBeenCalledWith('tab-abc')
   })
 
-  it('still stops compound-key (terminal/legacy) sessions by prefix', () => {
-    handleCloseTab({ type: 'desktop_close_tab', tabId: 'tab-abc' })
+  it('routes through the owner so close and settle share lifecycle policy', async () => {
+    mocks.executeJavaScript.mockResolvedValueOnce(true)
+
+    await handleCloseTab({ type: 'desktop_close_tab', tabId: 'tab-abc' })
+
+    expect(mocks.executeJavaScript).toHaveBeenCalledWith(expect.stringContaining("closeTab('tab-abc')"))
+    expect(mocks.closeTab).not.toHaveBeenCalled()
+    expect(mocks.stopSession).not.toHaveBeenCalled()
+  })
+
+  it('still stops compound-key (terminal/legacy) sessions by prefix', async () => {
+    await handleCloseTab({ type: 'desktop_close_tab', tabId: 'tab-abc' })
 
     expect(mocks.stopByPrefix).toHaveBeenCalledTimes(1)
     expect(mocks.stopByPrefix).toHaveBeenCalledWith('tab-abc:')

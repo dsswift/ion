@@ -1,21 +1,29 @@
 /**
  * engine-slice-rewind — unit tests
  *
- * Tests rewindEngineInstance's target resolution in isolation over a hand-built
- * set/get pair. Two resolution paths matter:
- *   - id match (desktop-initiated rewind): messageId present in inst.messages.
- *   - user-turn ordinal fallback (iOS-initiated rewind): messageId is an
- *     optimistic UUID the desktop never minted, so we resolve the Nth
- *     role==='user' message via userTurnIndex.
+ * Tests rewindEngineInstance's target resolution AND its transactional
+ * behavior in isolation over a hand-built set/get pair.
  *
- * The ordinal path is pinned against a message list with interleaved
+ * Target resolution has two id "shapes" that matter, keyed on whether the
+ * resolved row's id is a desktop-minted optimistic id (nextMsgId() → the
+ * `msg-N` shape, mocked as `mock-msg-id`) or a durable engine-assigned entry
+ * id (any other shape — a canonical hex id from history, or a row re-keyed by
+ * `user_turn_persisted` / `steer_injected`):
+ *   - A row with a DURABLE entry id → the action sends {entryId} to
+ *     window.ion.engineRewind, exact-addressed.
+ *   - A row with only an OPTIMISTIC id (found by id, or resolved via the
+ *     user-turn-ordinal fallback for a not-yet-confirmed / iOS-forwarded
+ *     target) → the action sends {userTurnIndex} instead.
+ *
+ * The ordinal fallback path is pinned against a message list with interleaved
  * tool/assistant rows to lock the invariant that user-turn ordinal is stable
- * regardless of interleaving (the whole reason ordinal beats raw index).
+ * regardless of interleaving.
  *
- * It also verifies the engine call: rewindEngineInstance drives the engine's
- * tree-native rewind via window.ion.engineRewind(key, userTurnOrdinal) — NOT
- * the old engineStop/engineStart hack — then broadcasts the truncated history
- * so remote devices update immediately.
+ * TRANSACTIONAL: window.ion.engineRewind is awaited BEFORE any local mutation.
+ * A rejected result must leave conversationPanes and tabs completely
+ * untouched — the historical bug was truncating local state synchronously
+ * and only THEN checking the engine's result, so a rejected rewind silently
+ * diverged the owner's transcript from the engine's tree.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
@@ -30,6 +38,7 @@ import { createEngineRewindActions } from '../slices/engine-slice-rewind'
 import type { State } from '../session-store-types'
 import type { ConversationRef, ConversationPane, ConversationInstance } from '../../../shared/types-engine'
 import { formatClearDivider } from '../../../shared/clear-divider'
+import { MAIN_INSTANCE_ID } from '../../../shared/session-key'
 
 function makeTab(id: string) {
   return {
@@ -93,13 +102,25 @@ function buildHarness(messages: Array<{ id: string; role: string; content: strin
 }
 
 // A representative engine instance message list: two user turns with
-// interleaved assistant + tool rows. User-turn ordinal 0 = first user msg;
-// ordinal 1 = second user msg.
-const INTERLEAVED = [
-  { id: 'u-real-0', role: 'user', content: 'first prompt', timestamp: 1 },
+// interleaved assistant + tool rows, DURABLE ids throughout (as a
+// history-loaded or re-keyed conversation would carry). User-turn ordinal 0 =
+// first user msg; ordinal 1 = second user msg.
+const INTERLEAVED_DURABLE = [
+  { id: 'e-real-0', role: 'user', content: 'first prompt', timestamp: 1 },
   { id: 'a-1', role: 'assistant', content: 'thinking', timestamp: 2 },
   { id: 't-1', role: 'tool', content: 'ran tool', timestamp: 3, toolName: 'Bash' },
-  { id: 'u-real-1', role: 'user', content: 'second prompt', timestamp: 4 },
+  { id: 'e-real-1', role: 'user', content: 'second prompt', timestamp: 4 },
+  { id: 'a-2', role: 'assistant', content: 'replying', timestamp: 5 },
+  { id: 't-2', role: 'tool', content: 'ran another', timestamp: 6, toolName: 'Read' },
+]
+
+// The same shape, but the SECOND user turn is still an unconfirmed optimistic
+// bubble (msg-N id) — e.g. a fresh send the engine has not yet drained/keyed.
+const INTERLEAVED_OPTIMISTIC_TARGET = [
+  { id: 'e-real-0', role: 'user', content: 'first prompt', timestamp: 1 },
+  { id: 'a-1', role: 'assistant', content: 'thinking', timestamp: 2 },
+  { id: 't-1', role: 'tool', content: 'ran tool', timestamp: 3, toolName: 'Bash' },
+  { id: 'msg-42', role: 'user', content: 'second prompt', timestamp: 4 },
   { id: 'a-2', role: 'assistant', content: 'replying', timestamp: 5 },
   { id: 't-2', role: 'tool', content: 'ran another', timestamp: 6, toolName: 'Read' },
 ]
@@ -124,95 +145,144 @@ beforeEach(() => {
   }
 })
 
-describe('rewindEngineInstance — target resolution', () => {
-  it('resolves by id when messageId is present (desktop-initiated path)', () => {
-    const { state, slice } = buildHarness(INTERLEAVED)
-    // Rewind to the second user message by its real id.
-    slice.rewindEngineInstance('tab1', 'inst1', 'u-real-1')
+describe('rewindEngineInstance — target resolution and addressing mode', () => {
+  it('resolves by id and sends {entryId} when the row carries a durable engine entry id', async () => {
+    const { state, slice } = buildHarness(INTERLEAVED_DURABLE)
+    // Rewind to the second user message by its durable id.
+    const result = await slice.rewindEngineInstance('tab1', 'inst1', 'e-real-1')
+    expect(result.ok).toBe(true)
+    expect(rewindSpy).toHaveBeenCalledWith('tab1', { entryId: 'e-real-1' })
     const inst = state.conversationPanes.get('tab1')!.instances[0]
-    // keepMsgs = index of u-real-1 (3) → first 3 messages retained.
-    expect(inst.messages.map((m: any) => m.id)).toEqual(['u-real-0', 'a-1', 't-1'])
+    // keepMsgs = index of e-real-1 (3) → first 3 messages retained.
+    expect(inst.messages.map((m: any) => m.id)).toEqual(['e-real-0', 'a-1', 't-1'])
     expect(state.tabs[0].pendingInput).toBe('second prompt')
+    expect(result.prefill).toEqual({ text: 'second prompt', attachments: [] })
   })
 
-  it('resolves by userTurnIndex when id is absent (iOS-initiated path), stable across interleaving', () => {
-    const { state, slice } = buildHarness(INTERLEAVED)
+  it('rewinds a Plain tab transactionally through its MAIN_INSTANCE_ID', async () => {
+    // Plain is a profile choice, not a different conversation topology. It
+    // still has one active `main` instance and must take the same engine-first
+    // rewind path as an extension-hosted tab — never the retired destructive
+    // resetTabSession rewind.
+    const { state, slice } = buildHarness(INTERLEAVED_DURABLE)
+    state.tabs[0].engineProfileId = null
+    state.tabs[0].conversationId = 'plain-conversation'
+    state.conversationPanes = new Map([
+      ['tab1', { instances: [makeInstance(MAIN_INSTANCE_ID, INTERLEAVED_DURABLE)], activeInstanceId: MAIN_INSTANCE_ID }],
+    ])
+
+    const result = await slice.rewindEngineInstance('tab1', MAIN_INSTANCE_ID, 'e-real-1')
+
+    expect(result.ok).toBe(true)
+    expect(rewindSpy).toHaveBeenCalledWith('tab1', { entryId: 'e-real-1' })
+    expect(stopSpy).not.toHaveBeenCalled()
+    expect(startSpy).not.toHaveBeenCalled()
+    expect(state.tabs[0].conversationId).toBe('plain-conversation')
+    expect(state.tabs[0].pendingInput).toBe('second prompt')
+    expect(result.prefill).toEqual({ text: 'second prompt', attachments: [] })
+  })
+
+  it('resolves by id but falls back to {userTurnIndex} when the row carries only an optimistic id', async () => {
+    const { state, slice } = buildHarness(INTERLEAVED_OPTIMISTIC_TARGET)
+    // The target row IS found by id, but its id is the desktop's own
+    // not-yet-confirmed optimistic bubble — never send that as entryId, the
+    // engine would reject an id it never persisted.
+    const result = await slice.rewindEngineInstance('tab1', 'inst1', 'msg-42')
+    expect(result.ok).toBe(true)
+    expect(rewindSpy).toHaveBeenCalledWith('tab1', { userTurnIndex: 1 })
+    const inst = state.conversationPanes.get('tab1')!.instances[0]
+    expect(inst.messages.map((m: any) => m.id)).toEqual(['e-real-0', 'a-1', 't-1'])
+    expect(result.prefill).toEqual({ text: 'second prompt', attachments: [] })
+  })
+
+  it('resolves by userTurnIndex when id is absent (iOS-initiated path), stable across interleaving', async () => {
+    const { state, slice } = buildHarness(INTERLEAVED_DURABLE)
     // iOS sends an optimistic-UUID id that does not exist, plus userTurnIndex=1
-    // (the second user turn). Must resolve to u-real-1 at index 3 despite the
-    // interleaved assistant/tool rows.
-    slice.rewindEngineInstance('tab1', 'inst1', 'UUID-NOT-IN-STORE', 1)
+    // (the second user turn). Must resolve to e-real-1 at index 3 despite the
+    // interleaved assistant/tool rows, and address the engine EXACTLY since
+    // the resolved row does carry a durable entry id.
+    const result = await slice.rewindEngineInstance('tab1', 'inst1', 'UUID-NOT-IN-STORE', 1)
+    expect(result.ok).toBe(true)
+    expect(rewindSpy).toHaveBeenCalledWith('tab1', { entryId: 'e-real-1' })
     const inst = state.conversationPanes.get('tab1')!.instances[0]
-    expect(inst.messages.map((m: any) => m.id)).toEqual(['u-real-0', 'a-1', 't-1'])
+    expect(inst.messages.map((m: any) => m.id)).toEqual(['e-real-0', 'a-1', 't-1'])
     expect(state.tabs[0].pendingInput).toBe('second prompt')
+    expect(result.prefill).toEqual({ text: 'second prompt', attachments: [] })
   })
 
-  it('resolves userTurnIndex=0 to the first user message', () => {
-    const { state, slice } = buildHarness(INTERLEAVED)
-    slice.rewindEngineInstance('tab1', 'inst1', 'UUID-NOT-IN-STORE', 0)
+  it('resolves userTurnIndex=0 to the first user message', async () => {
+    const { state, slice } = buildHarness(INTERLEAVED_DURABLE)
+    const result = await slice.rewindEngineInstance('tab1', 'inst1', 'UUID-NOT-IN-STORE', 0)
+    expect(result.ok).toBe(true)
     const inst = state.conversationPanes.get('tab1')!.instances[0]
     expect(inst.messages).toEqual([]) // nothing kept before the first user turn
     expect(state.tabs[0].pendingInput).toBe('first prompt')
+    expect(result.prefill).toEqual({ text: 'first prompt', attachments: [] })
   })
 
-  it('no-ops when id is absent and userTurnIndex is out of range', () => {
-    const { state, slice } = buildHarness(INTERLEAVED)
+  it('refuses when id is absent and userTurnIndex is out of range — no engine call, no mutation', async () => {
+    const { state, slice } = buildHarness(INTERLEAVED_DURABLE)
     const before = state.conversationPanes.get('tab1')!.instances[0].messages.length
-    slice.rewindEngineInstance('tab1', 'inst1', 'UUID-NOT-IN-STORE', 99)
+    const result = await slice.rewindEngineInstance('tab1', 'inst1', 'UUID-NOT-IN-STORE', 99)
+    expect(result.ok).toBe(false)
+    expect(rewindSpy).not.toHaveBeenCalled()
     expect(state.conversationPanes.get('tab1')!.instances[0].messages.length).toBe(before)
   })
 
-  it('no-ops when id is absent and no userTurnIndex is supplied', () => {
-    const { state, slice } = buildHarness(INTERLEAVED)
+  it('refuses when id is absent and no userTurnIndex is supplied — no engine call, no mutation', async () => {
+    const { state, slice } = buildHarness(INTERLEAVED_DURABLE)
     const before = state.conversationPanes.get('tab1')!.instances[0].messages.length
-    slice.rewindEngineInstance('tab1', 'inst1', 'UUID-NOT-IN-STORE')
+    const result = await slice.rewindEngineInstance('tab1', 'inst1', 'UUID-NOT-IN-STORE')
+    expect(result.ok).toBe(false)
+    expect(rewindSpy).not.toHaveBeenCalled()
     expect(state.conversationPanes.get('tab1')!.instances[0].messages.length).toBe(before)
   })
 })
 
-describe('rewindEngineInstance — engine-native branch by user-turn ordinal', () => {
-  it('calls engineRewind with the user-turn ordinal, not engineStop/engineStart', async () => {
-    const { slice } = buildHarness(INTERLEAVED)
-    // Rewind to the second user turn (id resolves to index 3). Its user-turn
-    // ordinal is 1 (u-real-0 is ordinal 0, u-real-1 is ordinal 1), counted from
-    // the user rows before it — the same Nth-user the engine resolves.
-    slice.rewindEngineInstance('tab1', 'inst1', 'u-real-1')
-    await new Promise((r) => setTimeout(r, 0))
-    expect(rewindSpy).toHaveBeenCalledWith('tab1', 1)
+describe('rewindEngineInstance — transactional gate: engine call precedes every local mutation', () => {
+  it('calls engineRewind with the exact entry id, not engineStop/engineStart', async () => {
+    const { slice } = buildHarness(INTERLEAVED_DURABLE)
+    const result = await slice.rewindEngineInstance('tab1', 'inst1', 'e-real-1')
+    expect(result.ok).toBe(true)
+    expect(rewindSpy).toHaveBeenCalledWith('tab1', { entryId: 'e-real-1' })
     // The stop/start hack must be gone — it rebound to the same conversation
     // and duplicated the turn.
     expect(stopSpy).not.toHaveBeenCalled()
     expect(startSpy).not.toHaveBeenCalled()
   })
 
-  it('passes ordinal 0 when rewinding to the first user turn', async () => {
-    const { slice } = buildHarness(INTERLEAVED)
-    slice.rewindEngineInstance('tab1', 'inst1', 'u-real-0')
-    await new Promise((r) => setTimeout(r, 0))
-    expect(rewindSpy).toHaveBeenCalledWith('tab1', 0)
-  })
-
-  it('computes the ordinal from the iOS userTurnIndex path too', async () => {
-    const { slice } = buildHarness(INTERLEAVED)
-    // iOS sends an unknown id + userTurnIndex=1; resolves to u-real-1 at index 3,
-    // whose ordinal is 1.
-    slice.rewindEngineInstance('tab1', 'inst1', 'UUID-NOT-IN-STORE', 1)
-    await new Promise((r) => setTimeout(r, 0))
-    expect(rewindSpy).toHaveBeenCalledWith('tab1', 1)
-  })
-
   it('broadcasts the truncated history after the engine branch succeeds', async () => {
-    const { slice } = buildHarness(INTERLEAVED)
-    slice.rewindEngineInstance('tab1', 'inst1', 'u-real-1')
-    await new Promise((r) => setTimeout(r, 0))
+    const { slice } = buildHarness(INTERLEAVED_DURABLE)
+    await slice.rewindEngineInstance('tab1', 'inst1', 'e-real-1')
     expect(broadcastSpy).toHaveBeenCalledWith('tab1', 'inst1')
   })
 
-  it('does not broadcast when the engine rewind fails', async () => {
-    rewindSpy.mockResolvedValueOnce({ ok: false, error: 'out of range' })
-    const { slice } = buildHarness(INTERLEAVED)
-    slice.rewindEngineInstance('tab1', 'inst1', 'u-real-1')
-    await new Promise((r) => setTimeout(r, 0))
+  it('does NOT truncate local state, does NOT broadcast, and returns ok:false when the engine rewind fails', async () => {
+    rewindSpy.mockResolvedValueOnce({ ok: false, error: 'entry is not a user turn on the current path' })
+    const { state, slice } = buildHarness(INTERLEAVED_DURABLE)
+    const before = state.conversationPanes.get('tab1')!.instances[0].messages.length
+    const result = await slice.rewindEngineInstance('tab1', 'inst1', 'e-real-1')
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('entry is not a user turn on the current path')
     expect(broadcastSpy).not.toHaveBeenCalled()
+    // The instance's messages must be UNTOUCHED — no partial truncation on a
+    // rejected engine branch. This is the exact regression the transactional
+    // rewrite closes: the prior implementation truncated synchronously and
+    // only THEN checked window.ion.engineRewind's resolved value.
+    expect(state.conversationPanes.get('tab1')!.instances[0].messages.length).toBe(before)
+    expect(state.tabs[0].pendingInput).toBeUndefined()
+    expect(result.prefill).toBeUndefined()
+  })
+
+  it('returns ok:false and mutates nothing when the engine call itself rejects', async () => {
+    rewindSpy.mockRejectedValueOnce(new Error('socket closed'))
+    const { state, slice } = buildHarness(INTERLEAVED_DURABLE)
+    const before = state.conversationPanes.get('tab1')!.instances[0].messages.length
+    const result = await slice.rewindEngineInstance('tab1', 'inst1', 'e-real-1')
+    expect(result.ok).toBe(false)
+    expect(result.prefill).toBeUndefined()
+    expect(broadcastSpy).not.toHaveBeenCalled()
+    expect(state.conversationPanes.get('tab1')!.instances[0].messages.length).toBe(before)
   })
 })
 
@@ -220,16 +290,16 @@ describe('rewindEngineInstance — pending-card restoration after rewind', () =>
   // History whose kept slice (everything before the rewind target) ends with a
   // pending AskUserQuestion → the card must be restored on the rewound instance.
   const ASK_THEN_TARGET = [
-    { id: 'u-0', role: 'user', content: 'do a thing', timestamp: 1 },
+    { id: 'e-0', role: 'user', content: 'do a thing', timestamp: 1 },
     { id: 'a-1', role: 'assistant', content: 'thinking', timestamp: 2 },
     { id: 'q-1', role: 'assistant', content: '', timestamp: 3, toolName: 'AskUserQuestion', toolId: 'tu-q', toolInput: '{"question":"which?"}' } as any,
-    { id: 'u-1', role: 'user', content: 'rewind here', timestamp: 4 },
+    { id: 'e-1', role: 'user', content: 'rewind here', timestamp: 4 },
   ]
 
-  it('restores the AskUserQuestion card when the kept history ends with it', () => {
+  it('restores the AskUserQuestion card when the kept history ends with it', async () => {
     const { state, slice } = buildHarness(ASK_THEN_TARGET)
-    // Rewind to u-1 → keep [u-0, a-1, q-1]; that slice ends with the question.
-    slice.rewindEngineInstance('tab1', 'inst1', 'u-1')
+    // Rewind to e-1 → keep [e-0, a-1, q-1]; that slice ends with the question.
+    await slice.rewindEngineInstance('tab1', 'inst1', 'e-1')
     const inst = state.conversationPanes.get('tab1')!.instances[0]
     expect(inst.permissionDenied).not.toBeNull()
     expect(inst.permissionDenied!.tools[0].toolName).toBe('AskUserQuestion')
@@ -239,16 +309,16 @@ describe('rewindEngineInstance — pending-card restoration after rewind', () =>
   // rewind target → the kept slice ends with the clear, which dismisses the
   // card. Regression guard: a cleared question must NOT be resurrected.
   const ASK_THEN_CLEAR_THEN_TARGET = [
-    { id: 'u-0', role: 'user', content: 'do a thing', timestamp: 1 },
+    { id: 'e-0', role: 'user', content: 'do a thing', timestamp: 1 },
     { id: 'q-1', role: 'assistant', content: '', timestamp: 2, toolName: 'AskUserQuestion', toolId: 'tu-q', toolInput: '{"question":"which?"}' } as any,
     { id: 'c-1', role: 'system', content: formatClearDivider(new Date()), timestamp: 3 },
-    { id: 'u-1', role: 'user', content: 'rewind here', timestamp: 4 },
+    { id: 'e-1', role: 'user', content: 'rewind here', timestamp: 4 },
   ]
 
-  it('does NOT restore the card when a /clear divider follows the question in the kept history', () => {
+  it('does NOT restore the card when a /clear divider follows the question in the kept history', async () => {
     const { state, slice } = buildHarness(ASK_THEN_CLEAR_THEN_TARGET)
-    // Rewind to u-1 → keep [u-0, q-1, c-1]; the clear divider dismisses it.
-    slice.rewindEngineInstance('tab1', 'inst1', 'u-1')
+    // Rewind to e-1 → keep [e-0, q-1, c-1]; the clear divider dismisses it.
+    await slice.rewindEngineInstance('tab1', 'inst1', 'e-1')
     const inst = state.conversationPanes.get('tab1')!.instances[0]
     expect(inst.permissionDenied).toBeNull()
   })
@@ -261,16 +331,16 @@ describe('rewindEngineInstance — planFilePath restoration after rewind', () =>
   // same file instead of allocating a fresh slug.
   const EXIT_PLAN_PATH = '/home/user/.ion/plans/fancy-wishing-cookie.md'
   const EXIT_PLAN_THEN_TARGET = [
-    { id: 'u-0', role: 'user', content: 'write a plan', timestamp: 1 },
+    { id: 'e-0', role: 'user', content: 'write a plan', timestamp: 1 },
     { id: 'a-1', role: 'assistant', content: 'planning...', timestamp: 2 },
     { id: 'e-1', role: 'assistant', content: '', timestamp: 3, toolName: 'ExitPlanMode', toolId: 'tu-e', toolInput: `{"planFilePath":"${EXIT_PLAN_PATH}"}` } as any,
-    { id: 'u-1', role: 'user', content: 'implement it', timestamp: 4 },
+    { id: 'e-2', role: 'user', content: 'implement it', timestamp: 4 },
   ]
 
-  it('restores planFilePath from ExitPlanMode toolInput when the kept history ends with it', () => {
+  it('restores planFilePath from ExitPlanMode toolInput when the kept history ends with it', async () => {
     const { state, slice } = buildHarness(EXIT_PLAN_THEN_TARGET)
-    // Rewind to u-1 → keep [u-0, a-1, e-1]; the kept slice ends with ExitPlanMode.
-    slice.rewindEngineInstance('tab1', 'inst1', 'u-1')
+    // Rewind to e-2 → keep [e-0, a-1, e-1]; the kept slice ends with ExitPlanMode.
+    await slice.rewindEngineInstance('tab1', 'inst1', 'e-2')
     const inst = state.conversationPanes.get('tab1')!.instances[0]
     expect(inst.planFilePath).toBe(EXIT_PLAN_PATH)
     // The ExitPlanMode card must also be restored.
@@ -281,28 +351,28 @@ describe('rewindEngineInstance — planFilePath restoration after rewind', () =>
   // When the pending card is NOT ExitPlanMode (e.g. AskUserQuestion),
   // planFilePath must remain null — the old behavior is preserved.
   const ASK_THEN_TARGET_FOR_PLAN = [
-    { id: 'u-0', role: 'user', content: 'do a thing', timestamp: 1 },
+    { id: 'e-0', role: 'user', content: 'do a thing', timestamp: 1 },
     { id: 'q-1', role: 'assistant', content: '', timestamp: 2, toolName: 'AskUserQuestion', toolId: 'tu-q', toolInput: '{"question":"which approach?"}' } as any,
-    { id: 'u-1', role: 'user', content: 'rewind here', timestamp: 3 },
+    { id: 'e-1', role: 'user', content: 'rewind here', timestamp: 3 },
   ]
 
-  it('leaves planFilePath null when the pending card is AskUserQuestion (non-plan-mode rewind)', () => {
+  it('leaves planFilePath null when the pending card is AskUserQuestion (non-plan-mode rewind)', async () => {
     const { state, slice } = buildHarness(ASK_THEN_TARGET_FOR_PLAN)
-    slice.rewindEngineInstance('tab1', 'inst1', 'u-1')
+    await slice.rewindEngineInstance('tab1', 'inst1', 'e-1')
     const inst = state.conversationPanes.get('tab1')!.instances[0]
     expect(inst.planFilePath).toBeNull()
   })
 
   // When there is no pending card at all, planFilePath must also be null.
   const NO_CARD_THEN_TARGET = [
-    { id: 'u-0', role: 'user', content: 'first turn', timestamp: 1 },
+    { id: 'e-0', role: 'user', content: 'first turn', timestamp: 1 },
     { id: 'a-1', role: 'assistant', content: 'done', timestamp: 2 },
-    { id: 'u-1', role: 'user', content: 'rewind here', timestamp: 3 },
+    { id: 'e-1', role: 'user', content: 'rewind here', timestamp: 3 },
   ]
 
-  it('leaves planFilePath null when there is no pending card in the kept history', () => {
+  it('leaves planFilePath null when there is no pending card in the kept history', async () => {
     const { state, slice } = buildHarness(NO_CARD_THEN_TARGET)
-    slice.rewindEngineInstance('tab1', 'inst1', 'u-1')
+    await slice.rewindEngineInstance('tab1', 'inst1', 'e-1')
     const inst = state.conversationPanes.get('tab1')!.instances[0]
     expect(inst.planFilePath).toBeNull()
   })

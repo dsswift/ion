@@ -181,6 +181,33 @@ describe('handleStatusEvent — proposal-bearing idle (Bug #2)', () => {
     ).toBeUndefined()
   })
 
+  it('a proposal RE-SURFACES after the card is resolved (the latch is not permanent)', () => {
+    // ROOT FIX. The dedup latch means "this exact proposal is currently
+    // surfaced". Resolution ends that state, so the latch must clear — without
+    // this, the first delivery was the ONLY delivery for the life of the run:
+    // once anything dropped the renderer's copy of the card, the latch
+    // suppressed the very re-publication needed to restore it. Observed live
+    // as 20+ minutes of "skipping proposal idle, already surfaced" on a tab
+    // showing no card.
+    const tab = makeTab({ status: 'completed', activeRequestId: null, startedAt: 0, lastSurfacedProposalSig: null })
+    handleEngineEvent(ctx, 'tab-001', tab, makeProposalIdleEvent('conv-plan'))
+    expect(
+      emitted.filter((e) => e.name === 'event' && (e.args[1] as any)?.type === 'task_complete').length,
+    ).toBe(1)
+
+    // The user dismisses the card. EngineControlPlane.resolvePermissionDenials
+    // clears the latch (and notifies the engine); simulate just the latch half
+    // here, which is what governs this guard.
+    tab.lastSurfacedProposalSig = null
+
+    // The same proposal echoes again. Because the card is no longer surfaced,
+    // it must reach the renderer rather than be deduped into silence.
+    handleEngineEvent(ctx, 'tab-001', tab, makeProposalIdleEvent('conv-plan'))
+    expect(
+      emitted.filter((e) => e.name === 'event' && (e.args[1] as any)?.type === 'task_complete').length,
+    ).toBe(2)
+  })
+
   it('non-proposal heartbeat idle on a completed tab is still suppressed (unchanged)', () => {
     // Regression guard: the no-denial cost-only heartbeat must STILL skip.
     const tab = makeTab({ status: 'completed', activeRequestId: null, startedAt: 0, lastSurfacedProposalSig: null })

@@ -8,43 +8,68 @@
  * reference `State`, so extracting them here is a clean seam rather than an
  * arbitrary split.
  */
-import type { SyncAllResult, SyncAllWorktreeOutcome } from '../../shared/types'
+import type { SyncAllResult, SyncAllWorktreeOutcome } from "../../shared/types";
 
-/** One conflicted directory, as Git panel and worktree rows see it. */
+/** One conflicted or refused directory, as the alert surfaces see it. */
 export interface GitConflictAlert {
+  /** What raised it: a failed sync, a failed land, or an inventory detection. */
+  source: "sync" | "land" | "detected";
+  /**
+   * What kind of failure this is. `conflict` (the default when absent) means
+   * an operation is stuck mid-way and the ConflictsDialog can resolve it.
+   * `refusal` means the verb declined to start — a dirty worktree refusing a
+   * sync — so there is NO in-progress operation to resolve; the remediation
+   * is in `message` (commit or stash), and the toast offers no Resolve.
+   *
+   * Lifecycle differs too: a conflict clears when the inventory sees the
+   * operation finish, a refusal clears when the worktree goes clean or the
+   * next sync succeeds (there is no git state that says "was refused").
+   */
+  kind?: "conflict" | "refusal";
   /** The in-progress operation, when known. */
-  operationState?: 'rebasing' | 'merging' | 'cherry-picking'
+  operationState?: "rebasing" | "merging" | "cherry-picking";
+  /** Operator-facing message from the failing verb, when there was one. */
+  message?: string;
   /** Display label for the directory (worktree label or basename). */
-  label?: string
+  label?: string;
+  /** True when the operator closed the toast. Badges ignore this. */
+  dismissed: boolean;
+  recordedAt: number;
 }
 
 /**
  * The sync-all pipeline's live state — what the progress banner, the confirm
- * gate, and the ATV mirror render. One object because the phases are a strict
+ * gate, and the Studio mirror render. One object because the phases are a strict
  * sequence; see stores/slices/worktree-pipeline-slice.ts for the machine.
  */
 export interface WorktreePipelineState {
-  repoPath: string
+  repoPath: string;
   /** Bench selector for phase 4; null when the repo has no bench context. */
-  sourceBranch: string | null
-  phase: 'syncing' | 'awaiting-ai-confirm' | 'resolving' | 'assembling' | 'done' | 'failed'
+  sourceBranch: string | null;
+  phase:
+    | "syncing"
+    | "awaiting-ai-confirm"
+    | "resolving"
+    | "assembling"
+    | "done"
+    | "failed";
   /** Per-worktree outcomes of the LAST mechanical pass (refreshed between agents). */
-  outcomes: SyncAllWorktreeOutcome[]
+  outcomes: SyncAllWorktreeOutcome[];
   /** Counts from the last mechanical pass, for the summary sentence. */
-  lastSummary?: SyncAllResult['summary']
+  lastSummary?: SyncAllResult["summary"];
   /** Worktree paths still conflicted and queued for AI escalation, in pass order. */
-  queue: string[]
+  queue: string[];
   /** The worktree an assist agent is working on right now, or null. */
-  current: string | null
+  current: string | null;
   /** Worktrees an agent could not clear — their conflict badges stay live. */
-  needsManual: string[]
+  needsManual: string[];
   /** How many rebases an assist agent completed (excludes rerere replays). */
-  resolvedByAi: number
+  resolvedByAi: number;
   /** Set by cancel; the machine stops between steps and finishes with a cancelled summary. */
-  cancelled: boolean
-  startedAt: number
+  cancelled: boolean;
+  startedAt: number;
   /** Terminal sentence for the banner, set when phase reaches done/failed. */
-  summary?: string
+  summary?: string;
 }
 
 /**
@@ -55,35 +80,35 @@ export interface WorktreePipelineState {
  * readiness principle") rather than growing a warning line after it opens.
  */
 export interface CloseIntent {
-  tabId: string
+  tabId: string;
   /** Resolved display title, so the dialog needs no second lookup. */
-  title: string
-  directory: string
+  title: string;
+  directory: string;
   /**
    * What the operator is walking away from, or null when the close is
    * uneventful. Null for every plain conversation (no second lifetime) and for
    * a worktree that is clean and fully landed.
    */
-  warning: string | null
+  warning: string | null;
 }
 
 export interface StaticInfo {
-  version: string
-  email: string | null
-  subscriptionType: string | null
-  projectPath: string
-  homePath: string
+  version: string;
+  email: string | null;
+  subscriptionType: string | null;
+  projectPath: string;
+  homePath: string;
 }
 
 export interface FileEditorTab {
-  id: string
-  filePath: string | null
-  fileName: string
-  content: string
-  savedContent: string
-  isDirty: boolean
-  isReadOnly: boolean
-  isPreview: boolean
+  id: string;
+  filePath: string | null;
+  fileName: string;
+  content: string;
+  savedContent: string;
+  isDirty: boolean;
+  isReadOnly: boolean;
+  isPreview: boolean;
   /**
    * Set when the file's on-disk content could not be read (deleted or
    * unreadable path). Restored non-dirty files reload from disk (schema v4
@@ -91,10 +116,16 @@ export interface FileEditorTab {
    * an explicit error, never a silent blank buffer the user might save over
    * the real file. Runtime-only — never persisted.
    */
-  readError?: string
+  readError?: string;
+  /**
+   * Per-tab word-wrap override. undefined = follow the editorWordWrap
+   * preference (the default); true/false = this tab's explicit choice
+   * (Studio surface editor tabs expose the toggle per-tab).
+   */
+  wordWrap?: boolean;
 }
 
 export interface FileEditorDirState {
-  activeFileId: string | null
-  files: FileEditorTab[]
+  activeFileId: string | null;
+  files: FileEditorTab[];
 }

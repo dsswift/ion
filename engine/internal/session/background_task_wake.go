@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/extension"
+	"github.com/dsswift/ion/engine/internal/session/extcontext"
 	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -103,9 +104,20 @@ func (m *Manager) onBackgroundTaskComplete(c tools.TaskCompletion) {
 		return
 	}
 	remaining, tracked := drainOutstandingBackgroundTaskLocked(s, c.TaskID)
+	registry := s.dispatchRegistry
 	runActive := s.requestID != ""
+	// A task a parked dispatch is waiting on does not wake the root: the
+	// dispatch consumes it. Claiming the root's park here would clear the
+	// park record (and its timeout) for a completion the root never sees.
+	// Probed under the same lock as the drain; the authoritative routing
+	// decision is DeliverTaskResult's return below, which falls back to the
+	// root paths if the dispatch went away in between.
+	dispatchOwner := ""
+	if registry != nil {
+		dispatchOwner = registry.PendingTaskOwner(c.TaskID)
+	}
 	claimedPark := false
-	if s.parked != nil && !runActive {
+	if s.parked != nil && !runActive && dispatchOwner == "" {
 		// This completion wakes the parked session. Clear the park under the
 		// same lock that drained the task so a concurrent completion cannot
 		// also claim it.
@@ -125,7 +137,7 @@ func (m *Manager) onBackgroundTaskComplete(c tools.TaskCompletion) {
 	utils.LogWithFields(utils.LevelInfo, "session.bgtask", "background task completion received", map[string]any{
 		"task_id": c.TaskID, "session_id": key, "status": c.Status, "exit_code": c.ExitCode,
 		"tracked": tracked, "run_active": runActive, "claimed_park": claimedPark,
-		"remaining": len(remainingIDs),
+		"remaining": len(remainingIDs), "dispatch_id": dispatchOwner,
 	})
 
 	// ── Obligation 1: signal ────────────────────────────────────────────────
@@ -148,6 +160,32 @@ func (m *Manager) onBackgroundTaskComplete(c tools.TaskCompletion) {
 	// ── Obligation 2: deliver ───────────────────────────────────────────────
 	mode := m.backgroundTasksConfig().Delivery
 	payload := buildBackgroundWakePayload(c, remaining)
+
+	// A dispatched agent that started this command and then suspended is
+	// parked on it. Task ownership is session-scoped, so the completion
+	// arrives here rather than at the dispatch — routing it to the root
+	// instead would leave the dispatch (and every ancestor parked on it)
+	// blocked on a signal that never comes. Deliver to the owning dispatch
+	// and stop: the root learns the outcome through that dispatch's own
+	// completion. An empty owner means no parked dispatch awaits the task, so
+	// the root paths below run exactly as before.
+	if registry != nil {
+		owner, revived := registry.DeliverTaskResult(c.TaskID, extcontext.TaskResultRecord{
+			Status:   c.Status,
+			ExitCode: c.ExitCode,
+			Payload:  payload,
+		})
+		if owner != "" {
+			utils.LogWithFields(utils.LevelInfo, "session.bgtask", "completion delivered to parked dispatch", map[string]any{
+				"task_id": c.TaskID, "session_id": key, "delivery": "dispatch_revive",
+				"dispatch_id": owner, "revived": revived,
+			})
+			return
+		}
+		utils.LogWithFields(utils.LevelDebug, "session.bgtask", "no parked dispatch awaits this task; routing to session", map[string]any{
+			"task_id": c.TaskID, "session_id": key,
+		})
+	}
 
 	if runActive {
 		// The orchestrator is mid-turn. Steer the result in so it lands at the

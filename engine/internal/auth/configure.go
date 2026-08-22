@@ -14,12 +14,18 @@ func ConfigureIdentityProviders(cfg *types.AuthConfig) (*IdentityManager, error)
 	SetTokenProvider(nil)
 	SetAWSCredentialsProvider(nil)
 	if cfg == nil || cfg.IdentityProvider == "" {
+		if cfg != nil && cfg.RequireOperatorIdentity {
+			return nil, fmt.Errorf("auth.requireOperatorIdentity requires auth.identityProvider")
+		}
 		utils.LogWithFields(utils.LevelInfo, "auth.identity", "no identity provider configured", nil)
 		return nil, nil
 	}
 	oauthCfg, ok := cfg.OAuth[cfg.IdentityProvider]
 	if !ok {
 		return nil, fmt.Errorf("auth.identityProvider %q names a missing auth.oauth entry", cfg.IdentityProvider)
+	}
+	if cfg.RequireOperatorIdentity && oauthCfg.MachineIdentity != nil {
+		return nil, fmt.Errorf("auth.requireOperatorIdentity requires an interactive operator provider; auth.identityProvider %q uses machineIdentity", cfg.IdentityProvider)
 	}
 	if oauthCfg.MachineIdentity == nil {
 		operator := NewIdentityManager(cfg.IdentityProvider, oauthCfg, cfg.RefreshThresholdMs)

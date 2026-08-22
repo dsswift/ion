@@ -32,10 +32,8 @@ export function AppearanceCategory() {
   const setEditorWordWrap = usePreferencesStore((s) => s.setEditorWordWrap)
   const editorFontSize = usePreferencesStore((s) => s.editorFontSize)
   const setEditorFontSize = usePreferencesStore((s) => s.setEditorFontSize)
-  const conversationFontSize = usePreferencesStore((s) => s.conversationFontSize)
-  const setConversationFontSize = usePreferencesStore((s) => s.setConversationFontSize)
-  const previewFontSize = usePreferencesStore((s) => s.previewFontSize)
-  const setPreviewFontSize = usePreferencesStore((s) => s.setPreviewFontSize)
+  const dataViewFontSize = usePreferencesStore((s) => s.dataViewFontSize)
+  const setDataViewFontSize = usePreferencesStore((s) => s.setDataViewFontSize)
   const closeExplorerOnFileOpen = usePreferencesStore((s) => s.closeExplorerOnFileOpen)
   const setCloseExplorerOnFileOpen = usePreferencesStore((s) => s.setCloseExplorerOnFileOpen)
   const hideOnExternalLaunch = usePreferencesStore((s) => s.hideOnExternalLaunch)
@@ -46,6 +44,8 @@ export function AppearanceCategory() {
   const setTerminalFontFamily = usePreferencesStore((s) => s.setTerminalFontFamily)
   const terminalFontSize = usePreferencesStore((s) => s.terminalFontSize)
   const setTerminalFontSize = usePreferencesStore((s) => s.setTerminalFontSize)
+  const uiZoom = usePreferencesStore((s) => s.uiZoom)
+  const setUiZoom = usePreferencesStore((s) => s.setUiZoom)
 
   const allThemes = useAllThemes()
   const enterprisePolicy = usePreferencesStore((s) => s.enterprisePolicy)
@@ -267,16 +267,21 @@ export function AppearanceCategory() {
         {fontStepper(editorFontSize, setEditorFontSize)}
       </SettingSection>
 
-      <SettingHeading>Conversation</SettingHeading>
+      <SettingHeading>Data views</SettingHeading>
 
-      <SettingSection description="Conversation message font size in pixels.">
-        {fontStepper(conversationFontSize, setConversationFontSize)}
+      <SettingSection description="Long-form conversation, plan, resource, Markdown preview, and diff text size in pixels.">
+        {fontStepper(dataViewFontSize, setDataViewFontSize)}
       </SettingSection>
 
-      <SettingHeading>Preview</SettingHeading>
+      <SettingHeading>Interface scale</SettingHeading>
 
-      <SettingSection description="Plan, diff, and other pop-up preview font size in pixels.">
-        {fontStepper(previewFontSize, setPreviewFontSize)}
+      <SettingSection description="Scale UI controls, menus, panels, and spacing. Data, editor, and terminal text keep their own sizes.">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={() => setUiZoom(uiZoom - 0.1)} style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${colors.inputBorder}`, background: colors.surfacePrimary, color: colors.textPrimary, fontSize: 16, cursor: 'pointer' }}>-</button>
+          <span style={{ color: colors.textPrimary, fontSize: 13, minWidth: 44, textAlign: 'center' }}>{Math.round(uiZoom * 100)}%</span>
+          <button onClick={() => setUiZoom(uiZoom + 0.1)} style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${colors.inputBorder}`, background: colors.surfacePrimary, color: colors.textPrimary, fontSize: 16, cursor: 'pointer' }}>+</button>
+          <button onClick={() => setUiZoom(1)} style={{ border: 'none', background: 'transparent', color: colors.accent, cursor: 'pointer', fontSize: 12 }}>Reset</button>
+        </div>
       </SettingSection>
 
       <SettingHeading>Terminal</SettingHeading>

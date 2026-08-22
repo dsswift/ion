@@ -21,6 +21,23 @@ struct EngineInstanceBar: View {
     /// idiomatic disclosure surface for this kind of one-shot detail.
     @State private var fallbackDetail: (instanceLabel: String, info: EngineInstanceModelFallback)? = nil
 
+    enum StatusIndicator: Equatable {
+        case question, planReady, running, starting, children, shells
+    }
+
+    /// Chooses the single visible per-instance indicator. Startup stays distinct
+    /// from a running turn so it can use the still idle-color dot.
+    static func statusIndicator(for instance: ConversationInstanceInfo) -> StatusIndicator? {
+        if let waitingState = instance.waitingState {
+            return waitingState == "question" ? .question : .planReady
+        }
+        if instance.isRunning == true { return .running }
+        if instance.isStarting == true { return .starting }
+        if (instance.runningAgentCount ?? 0) > 0 { return .children }
+        if (instance.backgroundShellCount ?? 0) > 0 { return .shells }
+        return nil
+    }
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 2) {
@@ -69,21 +86,31 @@ struct EngineInstanceBar: View {
             // Per-instance status dot. Priority:
             // 1. waitingState (question → blue, plan-ready → green)
             // 2. isRunning → pulsing orange
-            // 3. runningAgentCount > 0 → pulsing yellow
-            // 4. backgroundShellCount > 0 → pulsing pink (background bash
+            // 3. isStarting → still idle gray
+            // 4. runningAgentCount > 0 → pulsing yellow
+            // 5. backgroundShellCount > 0 → pulsing pink (background bash
             //    commands the session is holding for; ranked under agents,
             //    matching the tab-dot cascade in TabStatusRollup)
-            // 5. None → no dot shown
-            if let ws = instance.waitingState {
+            // 6. None → no dot shown
+            switch Self.statusIndicator(for: instance) {
+            case .question:
                 Circle()
-                    .fill(ws == "question" ? theme.statusQuestion : theme.statusDone) // theme-color-ok: question and model-fallback blue lack AppTheme role
+                    .fill(theme.statusQuestion) // theme-color-ok: question and model-fallback blue lack AppTheme role
                     .frame(width: 6, height: 6)
-            } else if instance.isRunning == true {
+            case .planReady:
+                Circle()
+                    .fill(theme.statusDone)
+                    .frame(width: 6, height: 6)
+            case .running:
                 InstancePulsingDot()
-            } else if (instance.runningAgentCount ?? 0) > 0 {
+            case .starting:
+                InstanceStartingDot()
+            case .children:
                 InstanceWaitingChildrenDot()
-            } else if (instance.backgroundShellCount ?? 0) > 0 {
+            case .shells:
                 InstanceWaitingShellsDot()
+            case nil:
+                EmptyView()
             }
             Image(systemName: "bolt")
                 .font(.caption2)
@@ -94,8 +121,7 @@ struct EngineInstanceBar: View {
             // Background-shell count. Shown only when the instance is not
             // otherwise busy, so the bar reports the ONE thing the session is
             // actually waiting on rather than stacking indicators.
-            if instance.isRunning != true,
-               (instance.runningAgentCount ?? 0) == 0,
+            if Self.statusIndicator(for: instance) == .shells,
                let shells = instance.backgroundShellCount, shells > 0 {
                 Text("\(shells) shell\(shells == 1 ? "" : "s")")
                     .font(.caption2)
@@ -135,6 +161,20 @@ struct EngineInstanceBar: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - InstanceStartingDot
+
+/// Still idle-color dot for an engine instance while it starts. Startup is not
+/// a running turn, so this deliberately has no animation.
+private struct InstanceStartingDot: View {
+    @Environment(\.appTheme) private var theme
+
+    var body: some View {
+        Circle()
+            .fill(theme.statusIdle)
+            .frame(width: 6, height: 6)
     }
 }
 

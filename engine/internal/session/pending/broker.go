@@ -7,9 +7,11 @@ import (
 )
 
 // ElicitReply carries a client's response to an engine_elicitation_request event.
+// Declined is the ternary middle: "no, but continue" vs Cancelled "no, and abort".
 type ElicitReply struct {
 	Response  map[string]interface{}
 	Cancelled bool
+	Declined  bool
 }
 
 // EarlyStopReply carries a wire-protocol response to an

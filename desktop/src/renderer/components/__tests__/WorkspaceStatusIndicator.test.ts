@@ -14,7 +14,7 @@
  *   permissionQueue non-empty OR waitingState === 'question' → questions
  *   waitingState === 'plan-ready' → planReady
  *   bashExecuting → bash
- *   hasUnread   → unread
+ *   unread (R9 derivation: manualUnread || completion > visit) → unread
  *   else        → idle
  */
 
@@ -66,7 +66,7 @@ import { globalRunningTier, computeStatusCounts } from '../WorkspaceStatusIndica
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function makeTab(id: string, status: string, overrides: Record<string, unknown> = {}): any {
-  return { id, status, title: id, customTitle: null, isTerminalOnly: false, bashExecuting: false, hasUnread: false, ...overrides }
+  return { id, status, title: id, customTitle: null, isTerminalOnly: false, bashExecuting: false, manualUnread: false, lastMessageAt: null, lastVisitedAt: null, ...overrides }
 }
 
 // ─── globalRunningTier tests ──────────────────────────────────────────────────
@@ -200,7 +200,7 @@ describe('WorkspaceStatusIndicator.computeStatusCounts', () => {
 
   it('plan-ready outranks unread', () => {
     waitingStateMap.set('t1', 'plan-ready')
-    const c = computeStatusCounts([makeTab('t1', 'idle', { hasUnread: true })])
+    const c = computeStatusCounts([makeTab('t1', 'idle', { lastMessageAt: 200, lastVisitedAt: 100 })])
     expect(c.planReady).toBe(1)
     expect(c.unread).toBe(0)
   })
@@ -255,7 +255,7 @@ describe('WorkspaceStatusIndicator.computeStatusCounts', () => {
   })
 
   it('unread tab lands in unread bucket when no higher-priority state applies', () => {
-    const c = computeStatusCounts([makeTab('t1', 'idle', { hasUnread: true })])
+    const c = computeStatusCounts([makeTab('t1', 'idle', { lastMessageAt: 200, lastVisitedAt: 100 })])
     expect(c.unread).toBe(1)
     expect(c.idle).toBe(0)
   })
@@ -278,7 +278,7 @@ describe('WorkspaceStatusIndicator.computeStatusCounts', () => {
       makeTab('t5', 'idle'),
       makeTab('t6', 'idle'),
       makeTab('t7', 'idle', { bashExecuting: true }),
-      makeTab('t8', 'idle', { hasUnread: true }),
+      makeTab('t8', 'idle', { lastMessageAt: 200, lastVisitedAt: 100 }),
     ]
     const c = computeStatusCounts(tabs)
     expect(c.running).toBe(1)
@@ -333,7 +333,7 @@ describe('WorkspaceStatusIndicator.computeStatusCounts', () => {
       makeTab('t2', 'idle'),
       makeTab('t3', 'idle'),
       makeTab('t4', 'idle', { bashExecuting: true }),
-      makeTab('t5', 'idle', { hasUnread: true }),
+      makeTab('t5', 'idle', { lastMessageAt: 200, lastVisitedAt: 100 }),
     ]
     const c = computeStatusCounts(tabs)
     expect(c.runningTabs).toEqual([])
@@ -382,7 +382,7 @@ describe('WorkspaceStatusIndicator.computeStatusCounts', () => {
   })
 
   it('unreadTabs collects unread tabs', () => {
-    const c = computeStatusCounts([makeTab('t1', 'idle'), makeTab('t2', 'idle', { hasUnread: true })])
+    const c = computeStatusCounts([makeTab('t1', 'idle'), makeTab('t2', 'idle', { lastMessageAt: 200, lastVisitedAt: 100 })])
     expect(c.unreadTabs.map((t) => t.id)).toEqual(['t2'])
     expect(c.unread).toBe(c.unreadTabs.length)
   })

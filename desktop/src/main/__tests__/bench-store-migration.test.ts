@@ -107,24 +107,16 @@ describe('legacy status migration', () => {
     expect(m.merge).toBe('unbuilt')
   })
 
-  it('maps excluded to enabled:false plus a skipped merge', () => {
-    writeLegacy([legacyMember({ status: 'excluded', enabled: false })])
-    const m = loadWorkspaces()[0].members[0]
-    expect(m.enabled).toBe(false)
-    expect(m.merge).toBe('skipped')
-  })
+  it('drops disabled and excluded members but preserves their workspace', () => {
+    writeLegacy([
+      legacyMember({ enabled: false }),
+      legacyMember({ worktreePath: '/wt/b', branchName: 'wt/b', status: 'excluded' }),
+    ])
 
-  // The recovery that matters. `excluded` said nothing about freshness, so the
-  // pin is recomputed from the tree hashes -- this is the fact the old ladder
-  // destroyed when exclusion outranked staleness.
-  it('recovers a behind pin from an excluded record', () => {
-    writeLegacy([legacyMember({
-      status: 'excluded', enabled: false,
-      pinnedTreeHash: 'tree-pinned', currentTreeHash: 'tree-newer',
-    })])
-    const m = loadWorkspaces()[0].members[0]
-    expect(m.enabled).toBe(false)
-    expect(m.pin).toBe('behind')
+    const [workspace] = loadWorkspaces()
+    expect(workspace.members).toEqual([])
+    expect(readFileSync(workspacesFile(), 'utf-8')).not.toContain('"enabled"')
+    expect(readFileSync(workspacesFile(), 'utf-8')).not.toContain('"excluded"')
   })
 
   it('recovers a behind pin from a conflicted record', () => {

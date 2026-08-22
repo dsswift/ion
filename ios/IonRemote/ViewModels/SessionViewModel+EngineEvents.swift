@@ -115,15 +115,34 @@ extension SessionViewModel {
     }
 
     @MainActor
-    func handleEngineSteerInjected(tabId: String, instanceId: String?, messageLength: Int) {
-        // A live run-loop drain resolves the oldest optimistic pending steer,
-        // then appends its divider at the actual application point.
+    func handleEngineSteerInjected(tabId: String, instanceId: String?, messageLength: Int, clientMessageId: String? = nil, entryId: String? = nil) {
+        // Resolve which outstanding optimistic steer bubble this confirmation
+        // belongs to. EXACT match by clientMessageId first — the desktop's
+        // submit() passes the optimistic bubble's own id as the correlation
+        // id on window.ion.steer, so when iOS supplied one on its own
+        // .prompt (steer) send and the engine echoes it back here, the two
+        // ids agree and this always finds the correct row even with more than
+        // one steer outstanding. Falls back to "oldest pending" (arrival
+        // order) only when no id is present — a machine-originated steer, or
+        // an older desktop that hasn't started echoing the correlation id yet.
         let dividerId = UUID().uuidString
         let resolvePendingSteer: (inout [Message]) -> Void = { msgs in
-            if let idx = msgs.firstIndex(where: { $0.steerPending }) {
-                msgs[idx].steerPending = false
-                msgs[idx].steerApplied = true
-                msgs[idx].steerAppliedDividerId = dividerId
+            let idx: Int?
+            if let clientMessageId {
+                idx = msgs.firstIndex(where: { $0.steerPending && $0.id == clientMessageId })
+            } else {
+                idx = nil
+            }
+            let resolvedIdx = idx ?? msgs.firstIndex(where: { $0.steerPending })
+            guard let resolvedIdx else { return }
+            msgs[resolvedIdx].steerPending = false
+            msgs[resolvedIdx].steerApplied = true
+            msgs[resolvedIdx].steerAppliedDividerId = dividerId
+            // Adopt the durable engine entry id so a later rewind can target
+            // this exact turn by id instead of falling back to the ordinal
+            // (see engineRewindInstance's isDurableEntryId check).
+            if let entryId, !entryId.isEmpty {
+                msgs[resolvedIdx].id = entryId
             }
         }
         if instanceId != nil {
@@ -225,7 +244,7 @@ extension SessionViewModel {
     }
 
     @MainActor
-    func handleEngineImageContent(tabId: String, instanceId: String?, path: String, mediaType: String, source: String, toolId: String?) {
+    func handleEngineImageContent(tabId: String, instanceId: String?, path: String, mediaType: String, contentHash: String?, source: String, toolId: String?) {
         DiagnosticLog.log("engine image content", tag: "session.engine", level: .debug, fields: [
             "tab_id": String(tabId.prefix(8)),
             "reason": source,
@@ -242,7 +261,9 @@ extension SessionViewModel {
             id: "img:\(path)",
             type: .image,
             name: (path as NSString).lastPathComponent,
-            path: path
+            path: path,
+            mimeType: mediaType,
+            contentHash: contentHash
         )
         mutateEngineInstance(tabId: tabId, instanceId: instanceId) { inst in
             // RC-25: dedup by scanning ALL messages for the path, not just the

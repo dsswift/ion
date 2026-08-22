@@ -25,21 +25,21 @@ beforeEach(() => {
   mocks.lines.length = 0
   rejectAllDeepLinkConfirmations('reset')
   markDeepLinkConfirmationReady('overlay')
-  markDeepLinkConfirmationReady('atv')
+  markDeepLinkConfirmationReady('studio')
 })
 
-function lastRequest(): { id: string; owner: 'overlay' | 'atv'; action: string; selectTab?: boolean } {
+function lastRequest(): { id: string; owner: 'overlay' | 'studio'; action: string; selectTab?: boolean } {
   return mocks.broadcast.mock.calls.filter((call) => call[0] === IPC.DEEPLINK_CONFIRM_REQUEST).at(-1)![1] as never
 }
 
 describe('deep-link confirmation', () => {
   it('delivers detailed request only after selected owner is ready', async () => {
-    markDeepLinkConfirmationUnavailable('atv', 'test')
-    const pending = requestDeepLinkConfirmation(TERMINAL, 'atv')
+    markDeepLinkConfirmationUnavailable('studio', 'test')
+    const pending = requestDeepLinkConfirmation(TERMINAL, 'studio')
     expect(mocks.broadcast).not.toHaveBeenCalledWith(IPC.DEEPLINK_CONFIRM_REQUEST, expect.anything())
-    markDeepLinkConfirmationReady('atv')
-    expect(lastRequest()).toMatchObject({ owner: 'atv', action: 'terminal', tabId: 'tab-a', cmd: 'npm start' })
-    resolveDeepLinkConfirmation({ id: lastRequest().id, owner: 'atv', approved: false })
+    markDeepLinkConfirmationReady('studio')
+    expect(lastRequest()).toMatchObject({ owner: 'studio', action: 'terminal', tabId: 'tab-a', cmd: 'npm start' })
+    resolveDeepLinkConfirmation({ id: lastRequest().id, owner: 'studio', approved: false })
     await expect(pending).resolves.toEqual({ approved: false })
   })
 
@@ -60,11 +60,11 @@ describe('deep-link confirmation', () => {
   })
 
   it('rejects response from non-owner and settles owner response once', async () => {
-    const pending = requestDeepLinkConfirmation(PROMPT, 'atv')
+    const pending = requestDeepLinkConfirmation(PROMPT, 'studio')
     const request = lastRequest()
     resolveDeepLinkConfirmation({ id: request.id, owner: 'overlay', approved: true })
     expect(pendingConfirmationCountForTests()).toBe(1)
-    resolveDeepLinkConfirmation({ id: request.id, owner: 'atv', approved: true })
+    resolveDeepLinkConfirmation({ id: request.id, owner: 'studio', approved: true })
     await expect(pending).resolves.toEqual({ approved: true, tabId: undefined })
     expect(mocks.broadcast).toHaveBeenCalledWith(IPC.DEEPLINK_CONFIRM_SETTLED, request.id)
   })
@@ -74,8 +74,8 @@ describe('deep-link confirmation', () => {
     const timeout = requestDeepLinkConfirmation(PROMPT, 'overlay')
     vi.advanceTimersByTime(CONFIRM_TIMEOUT_MS + 1)
     await expect(timeout).resolves.toEqual({ approved: false })
-    const gone = requestDeepLinkConfirmation(PROMPT, 'atv')
-    markDeepLinkConfirmationUnavailable('atv', 'closed')
+    const gone = requestDeepLinkConfirmation(PROMPT, 'studio')
+    markDeepLinkConfirmationUnavailable('studio', 'closed')
     await expect(gone).resolves.toEqual({ approved: false })
     vi.useRealTimers()
   })

@@ -104,16 +104,17 @@ func (b *ApiBackend) performCompact(p performCompactParams) error {
 			}
 		} else {
 			recentFiles := compaction.ExtractRecentFiles(p.conv.Messages[cut.CutIndex:])
+			restoredSkills := conversation.BoundRestoredSkills(conversation.CollectInvokedSkills(p.conv.Messages))
 			meta := conversation.CompactMeta{
 				Trigger: p.trigger, MessagesSummarized: cut.Dropped,
 				MessagesBefore: msgBefore, MessagesAfter: msgBefore - cut.Dropped + 1,
 				ClearedBlocks: cleared, TokensBefore: tokensBefore, Summary: summary,
-				FactCount: len(facts), RecentFiles: recentFiles,
+				FactCount: len(facts), RecentFiles: recentFiles, RestoredSkills: restoredSkills,
 			}
 			data := conversation.CompactionData{
 				Summary: summary, TokensBefore: tokensBefore, MessagesSummarized: cut.Dropped,
 				MessagesBefore: msgBefore, MessagesAfter: meta.MessagesAfter, ClearedBlocks: cleared,
-				Strategy: p.trigger, FactCount: len(facts), RecentFiles: recentFiles,
+				Strategy: p.trigger, FactCount: len(facts), RecentFiles: recentFiles, RestoredSkills: restoredSkills,
 			}
 			if _, err := conversation.CommitCompaction(p.conv, cut, data, conversation.BuildCompactBoundaryMessage(meta)); err != nil {
 				b.emit(p.run, types.NormalizedEvent{Data: &types.CompactingEvent{Active: false, MessagesBefore: msgBefore, MessagesAfter: msgBefore, Strategy: p.trigger}})

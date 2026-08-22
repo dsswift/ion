@@ -7,6 +7,7 @@ import { activeInstance, effectivePermissionMode } from '../conversation-instanc
 import { isMirrorWindow } from '../../lib/window-role'
 import { rDebug, rInfo } from '../../rendererLogger'
 import { applyActiveGroupMove } from './event-slice-running-move'
+import { hasPendingWorkInPane } from './pending-work'
 
 /**
  * Schedule the auto-move-to-done-group for a tab that has just reached a clean
@@ -107,7 +108,7 @@ export function maybeScheduleDoneMove(
   // agent reports running via a subsequent agent_state snapshot. That snapshot
   // persists in the store, so this fold is not racy — if children are running,
   // the store already knows.
-  const hasRunningChildren = hasRunningAgents(panes, tabId)
+  const hasRunningChildren = hasPendingWork(panes, tabId)
   if (hasRunningChildren) {
     rDebug('auto-move.done', 'skipped: running children', { source, tab_id: tabId.slice(0, 8) })
     return
@@ -130,7 +131,7 @@ export function maybeScheduleDoneMove(
     // real work, or a relaunch+resume re-activated the tab). Only move if the
     // tab is actually done.
     const currentTab = get().tabs.find((t) => t.id === tabId)
-    if (currentTab && (currentTab.status === 'running' || currentTab.status === 'connecting')) {
+    if (currentTab && (currentTab.status === 'running' || currentTab.status === 'connecting' || currentTab.status === 'waiting')) {
       rDebug('auto-move.done', 'cancelled: tab still active', { source, tab_id: tabId.slice(0, 8), status: currentTab.status })
       return
     }
@@ -159,15 +160,13 @@ export function maybeScheduleDoneMove(
  * Exported: the auto-fix lifecycle (event-slice-auto-fix-lifecycle.ts) reads
  * the same signal to decide close-vs-retain-vs-retry.
  */
+export function hasPendingWork(panes: Map<string, ConversationPane>, tabId: string): boolean {
+  return hasPendingWorkInPane(panes.get(tabId))
+}
+
+/** Backward-compatible name for callers that only know the agent-state path. */
 export function hasRunningAgents(panes: Map<string, ConversationPane>, tabId: string): boolean {
-  const pane = panes.get(tabId)
-  if (!pane) return false
-  for (const inst of pane.instances) {
-    for (const a of inst.agentStates) {
-      if (a.status === 'running') return true
-    }
-  }
-  return false
+  return hasPendingWork(panes, tabId)
 }
 
 /**
@@ -205,7 +204,7 @@ export function maybeApplyAgentStateGroupMove(
   const tab = s.tabs.find((t) => t.id === tabId)
   if (!tab) return
 
-  const hasRunningChildren = newAgentStates.some((a) => a.status === 'running')
+  const hasRunningChildren = newAgentStates.some((a) => a.status === 'running') || hasPendingWork(s.conversationPanes, tabId)
   const { doneGroupId, inProgressGroupId } = usePreferencesStore.getState()
 
   if (hasRunningChildren) {

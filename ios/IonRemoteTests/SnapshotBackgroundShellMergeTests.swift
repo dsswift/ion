@@ -57,7 +57,7 @@ final class SnapshotBackgroundShellMergeTests: XCTestCase {
 
     private func apply(_ vm: SessionViewModel, shellCountJSON: String?) throws {
         let event = try decoder.decode(RemoteEvent.self, from: snapshotJSON(shellCountJSON: shellCountJSON))
-        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _) = event else {
+        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _) = event else {
             XCTFail("Expected snapshot"); return
         }
         vm.handleSnapshot(snapshotTabs: tabs, recentDirs: [], groupMode: nil, groups: nil)

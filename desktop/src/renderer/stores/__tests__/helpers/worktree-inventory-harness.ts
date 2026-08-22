@@ -120,9 +120,12 @@ export const ion = {
   // Deliberately returns a repo that is NOT a key in the inventory cache, so a
   // test cannot pass by accidentally scanning that cache instead.
   gitWorktreeRegistration: vi.fn(),
-  gitWorktreeRetire: vi.fn(),
+  gitWorktreeLandAndRetire: vi.fn(),
   gitWorktreeRetirePreview: vi.fn(),
   relocateTabSession: vi.fn(),
+  // Sealing a landed worktree stops the engine session behind each of its
+  // conversations. Counting these calls is how the seal's idempotence is pinned.
+  engineStop: vi.fn(),
 }
 
 /** Install `window.ion` and the default happy-path resolutions. */
@@ -134,7 +137,8 @@ export function resetIon(): void {
     registration: { repoPath: REPO, branchName: 'wt/a3f1', sourceBranch: 'josh', title: null },
   })
   ion.gitWorktreeSync.mockResolvedValue({ ok: true })
-  ion.gitWorktreeRetire.mockResolvedValue({ ok: true, workingDirectory: REPO, prunedBenchPaths: [] })
+  ion.gitWorktreeLandAndRetire.mockResolvedValue({ ok: true, workingDirectory: REPO, prunedBenchPaths: [] })
   ion.gitWorktreeRetirePreview.mockResolvedValue({ prunedBenchPaths: [] })
   ion.relocateTabSession.mockResolvedValue({ ok: true, conversationId: 'conv-1' })
+  ion.engineStop.mockResolvedValue(undefined)
 }

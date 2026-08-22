@@ -54,8 +54,8 @@ un-merge logic, and permits drift that no test can pin.
 
 Each member records the exact contribution currently integrated
 (`pinnedSha`, `pinnedTreeHash`). Assembly merges the **pins**, never a fresh read
-of a member's current tip. Pins advance only by an explicit act: enrollment, or
-*Update* on that member.
+of a member's current tip. Pins advance only when a worktree becomes a member,
+or through *Update* on that member.
 
 This is what makes manual integration real. Members A and B are both stale; A is
 ready, B is one commit into a two-commit change. Update A and reassemble: A's work
@@ -124,46 +124,30 @@ Uncommitted paths appear only as a marked advisory layer because they cannot
 enter a bench. The visualizer can recommend a low-friction cohort using the same
 ordered in-memory merge simulation as assembly, maximizing cleanly compatible
 members before minimizing overlap evidence and naming a concrete conflict
-counterpart for every exclusion.
+counterpart for every worktree outside the selected member set.
 
 Applying a selected cohort is explicit and confirmed. The desktop re-runs exact
 simulation against fresh analysis, rejects duplicate or stale paths, then
-atomically persists bench membership, enabled state, and merge order. It never
+atomically persists the exact bench member set and merge order. It never
 assembles the bench or advances an existing pin: those remain separate operator
 verbs.
 
 ### Member state is three orthogonal axes, not one enum
 
-A member's state was a single `MemberStatus` union mixing three independent
-questions: is it enrolled (`excluded`), how fresh is its pin (`pending`,
-`integrated`, `stale`, `landed`), and what did the last merge do (`conflicted`,
-`missing`). A member can be all three at once, and one enum can report one.
-
-This was not a theoretical concern. The staleness evaluator carried a priority
-ladder whose own comment admitted the collision — *"never overwrite a conflict
-verdict with a staleness verdict"* — and the ordering meant an excluded member
-that had also moved on reported only `excluded`. Re-enabling it merged a stale
-pin with no warning on any surface, because the freshness fact had been
-destroyed at write time and no renderer could recover it.
-
-So the state is three fields with three owners:
+Bench membership is binary: a worktree is either a member or it is not. The
+persisted member list is the exact assembly set. Pin freshness and merge outcome
+remain independent fields because a member can be behind and conflicted at the
+same time.
 
 | Axis | Field | Owned by |
 |---|---|---|
-| Enrollment | `enabled` | the operator |
+| Membership | `members` list | the operator |
 | Pin freshness | `pin` (`empty`/`current`/`behind`/`absorbed`/`gone`) | staleness evaluation |
 | Merge outcome | `merge` (`unbuilt`/`merged`/`conflicted`/`skipped`) | assembly |
 
-No evaluation can clobber a fact it has nothing to say about, so the ladder is
-gone rather than reordered. Clients summarise the axes into one indicator when
-space is scarce, but the summary is a rendering choice made against complete
-data — not a lossy write.
-
-Persisted records migrate on read: the pins are operator intent, so resetting
-would silently re-pin everyone at their current tip. For `excluded` and
-`conflicted`, which carried no freshness information at all, the pin is
-recomputed from the tree hashes, recovering exactly what the old ladder threw
-away.
+Persisted records migrate on read. Legacy members outside the binary membership
+set are dropped. The workspace record remains when that removal leaves
+it empty, so its bench identity and other workspace state survive.
 
 ### Membership is a sidecar, keyed by worktree path
 
@@ -175,7 +159,7 @@ projection no other consumer could reach.
 
 A member is therefore **a pin, keyed by worktree path**, holding no worktree
 fields at all. `shared/worktree-list.ts` performs the join for every
-surface, so the desktop list, the ATV mirror, and the iOS projection cannot
+surface, so the desktop list, the Studio mirror, and the iOS projection cannot
 disagree about what a worktree is or where it sorts.
 
 Merge order stays **array position**. Assembly iterates the member array, so an
@@ -219,25 +203,22 @@ Legacy `review` verdicts migrate once at workspaces-file load (`good` →
 `verified`, `issue` → `bug`, never overwriting a stage the operator already
 set) and the key is stripped from the file so the migration cannot re-run.
 
-### Landing is terminal and immediately removes bench membership
+### Terminal completion immediately removes bench membership
 
-A successful Land writes the worktree's stored `landedAt` witness, immediately
-removes that worktree from every bench, and prunes any bench left with no
-members. No assembly runs as part of Land and no remaining member pin moves:
-the bench becomes current when the operator Syncs each remaining worktree from
-the source branch, then explicitly Updates its pin.
+A successful **Land and retire** integrates the clean worktree, immediately
+removes it from every bench, prunes any empty bench, then removes the worktree
+checkout and branch. No assembly runs as part of completion and no remaining
+member pin moves: the bench becomes current when the operator Syncs each
+remaining worktree from the source branch, then explicitly Updates its pin.
 
-The landed checkout remains temporarily as a **sealed review record**. Its
-conversations stay readable but are input-locked, its engine sessions stop, and
-new conversations, terminals, syncs, stages, enrollment, and edits are refused.
-The only lifecycle action is explicit Retire, which removes the directory and
-branch after the existing safety preflight. `landedAt` is terminal and never
-reverts when a stale client or external command moves the branch.
+Finished conversations close when their checkout disappears. A conversation
+that becomes active during the narrow deletion race moves to the source
+repository so it is never left on a deleted path. New work starts in a new
+worktree.
 
-This lifecycle is enforced by the desktop registry and engine workspace
-containment. A worktree recorded as landed before a rebuild receives the same
-seal during restoration. Worktrees that predate `landedAt` remain active because
-Git cannot distinguish them from a never-started checkout.
+Legacy records with `landedAt` remain readable only for cleanup. Git cannot
+reconstruct that historic state, so the registry retains it until the old
+checkout is removed.
 
 ### Landing is absorption, not removal
 
@@ -252,7 +233,7 @@ stream of iteration commits before landing:
 
 1. the pinned commit is an ancestor of the source branch (the common case);
 2. the pinned **tree** appears anywhere in the source branch's history — this is
-   what survives *Land & retire* deleting the branch, without which a
+   what survives terminal completion deleting the branch, without which a
    landed-then-retired member is misreported as `missing` and its work looks
    lost;
 3. the member branch no longer differs from the source branch.
@@ -335,7 +316,7 @@ The dialog's AI Assisted button opens a FRESH conversation in the conflicted
 directory (never an existing one — a live thread would be interrupted and its
 context could sway the fix) and submits the workflow prompt matching the live
 operation (rebase, merge, or cherry-pick) — one forwarded store action, per the
-ATV multi-step rule. Desktop resolves the managed `workbench-sync` model tier
+Studio multi-step rule. Desktop resolves the managed `workbench-sync` model tier
 first; when absent it logs a warning and resolves `standard`, refusing before it
 creates a tab only when both are absent. Tier CRUD still runs through the
 engine's typed model-tier administration; this fallback order is Desktop policy,
@@ -375,11 +356,9 @@ Rejected: skip the conflicted member and keep the rest (the original
 behaviour). It produced a silent partial bench — the operator tested a
 combination that misrepresented what was enrolled, and nothing said so. The
 members merged before the conflict even reported `merged` while their content
-sat in a tree that no longer existed. Partial-on-purpose remains available
-through the per-member exclude toggle, which is an *explicit* subset rather
-than an accidental one; every non-conflicted enabled member reports `unbuilt`
-after a failed assembly, because claiming anything else would describe a wiped
-tree.
+sat in a tree that no longer existed. Every non-conflicted member reports
+`unbuilt` after a failed assembly, because claiming anything else would describe
+a wiped tree.
 
 ### A bench conflict is resolved once, then replayed (`git rerere`)
 
@@ -607,9 +586,9 @@ wire (`engine_tool_gate_request` kind `tool` → `tool_gate_response`).
 That distinction is the reason it exists as a primitive: a worktree's files
 include work done since its pin, and the bench merges the pin — so reading the
 directory answers a subtly different question than the one the resolver is
-asking. Refusals are explicit and actionable: a disabled member is refused with
-the reason (its content is not in the bench), an unknown member is refused with
-the enabled set listed, and an absent path is an *answer* rather than a failure.
+asking. Refusals are explicit and actionable: a path that is not a member is
+refused with the reason, an unknown member is refused with the member set
+listed, and an absent path is an *answer* rather than a failure.
 
 The bench prompt context names all three together, in the order a conflict is
 worked. That matters more than it sounds: the agent in the fifteen-minute merge
@@ -625,8 +604,8 @@ expensive path this removes.
 assembly (`git merge-tree --write-tree` — in memory, no checkout) and attach a
 non-blocking warning naming the files when it will conflict. **Warn, never
 gate**: overlapping in-flight work is the bench's most valuable case, conflicts
-are not knowable at enrollment time anyway, and the operator decides whether to
-resolve now or keep working. The warning rides the op result to every client.
+are not knowable when a worktree becomes a member anyway, and the operator
+decides whether to resolve now or keep working. The warning rides the op result to every client.
 
 ### Retirement is surfaced, never silent
 
@@ -813,23 +792,22 @@ rather than discarding the prompt's path (`engine-control-plane-cwd.ts`). This
 gate is the net for the next way a directory drifts, not a substitute for
 pointing sessions correctly.
 
-### Enrollment is manual; disenrollment is automatic
+### Membership is explicit; retirement removes members
 
-The bench is created on **first enrollment**, not on first use of a directory:
+The bench is created when its **first member is added**, not on first use of a
+directory:
 `ensureWorkspace` writes a record rather than a worktree, so it is cheap enough
 to happen implicitly, and which bench a worktree belongs to is fully determined
 by its `(repo, sourceBranch)`. A separate "create a bench" step would commit the
 operator to nothing and offer no choice, so it does not exist.
 
-Enrollment stays explicit because it is a judgement: putting a worktree in the
-bench asserts that its work should be integrated.
+Adding a member stays explicit because it is a judgement: putting a worktree in
+the bench asserts that its work should be integrated. Membership is binary. A
+worktree is present in the member list or absent from it.
 
-Disenrollment is automatic on **retire**, because it is not a judgement. A
-member whose worktree no longer exists can never be updated, rebuilt from, or
-landed; leaving it produces a permanent `missing` row the operator can only
-clear by hand. When the last member leaves, the bench is pruned — record and
-worktree — since an empty bench holds nothing unique and keeping them would
-accumulate one dead bench per feature branch ever integrated into.
+Retire removes a member because a worktree that no longer exists can never be
+updated, rebuilt from, or landed. The workspace record remains even when its
+member list is empty, so its identity and other workspace state remain stable.
 
 The hook is retire, **not tab close**. Closing a conversation deliberately
 leaves the worktree intact so the operator can return to it, so its membership
@@ -839,7 +817,7 @@ remains valid.
 
 The workspace record lives in the main process
 (`~/.ion/integration-workspaces.json`), keyed by `(repoPath, sourceBranch)`. The
-desktop overlay, the ATV mirror, and iOS all render that one projection, so the
+desktop overlay, the Studio mirror, and iOS all render that one projection, so the
 pin/staleness vocabulary cannot drift between clients.
 
 The key is also the mechanism that keeps projects separate: two worktrees from

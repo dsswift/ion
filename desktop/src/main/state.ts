@@ -1,26 +1,27 @@
-import type { BrowserWindow, Tray } from 'electron'
-import type { ChildProcess } from 'child_process'
-import type { watch } from 'fs'
-import type { RemoteTransport } from './remote/transport'
-import type { RendererSnapshotCache } from '../shared/remote-projection-types'
-import { EngineBridge } from './engine-bridge'
-import { EngineControlPlane } from './engine-control-plane'
-import { wireEarlyStopPolicy } from './early-stop-policy'
-import { wireToolGateResponder } from './tool-gate-responder'
-import { PairingManager } from './remote/pairing'
-import { RelayDiscovery } from './remote/discovery'
+import type { BrowserWindow, Tray } from "electron";
+import type { ChildProcess } from "child_process";
+import type { watch } from "fs";
+import type { RemoteTransport } from "./remote/transport";
+import type { RendererSnapshotCache } from "../shared/remote-projection-types";
+import type { RemoteWorktreeState } from "./remote/protocol-worktree";
+import { EngineBridge } from "./engine-bridge";
+import { EngineControlPlane } from "./engine-control-plane";
+import { wireEarlyStopPolicy } from "./early-stop-policy";
+import { wireToolGateResponder } from "./tool-gate-responder";
+import { PairingManager } from "./remote/pairing";
+import { RelayDiscovery } from "./remote/discovery";
 
-export const DEBUG_MODE = process.env.Ion_DEBUG === '1'
-export const SPACES_DEBUG = DEBUG_MODE || process.env.Ion_SPACES_DEBUG === '1'
+export const DEBUG_MODE = process.env.Ion_DEBUG === "1";
+export const SPACES_DEBUG = DEBUG_MODE || process.env.Ion_SPACES_DEBUG === "1";
 
 export interface FileWatcherEntry {
-  watcher: ReturnType<typeof watch>
-  refCount: number
-  debounceTimer: ReturnType<typeof setTimeout> | null
+  watcher: ReturnType<typeof watch>;
+  refCount: number;
+  debounceTimer: ReturnType<typeof setTimeout> | null;
 }
 
-export const engineBridge = new EngineBridge()
-export const sessionPlane = new EngineControlPlane(engineBridge)
+export const engineBridge = new EngineBridge();
+export const sessionPlane = new EngineControlPlane(engineBridge);
 
 // Wire the reference policy for the engine's wire-protocol early-stop
 // continuation hook. The desktop is one specific consumer of this hook;
@@ -28,7 +29,10 @@ export const sessionPlane = new EngineControlPlane(engineBridge)
 // by subscribing to engine_early_stop_decision_request on their socket
 // connection. See desktop/src/main/early-stop-policy.ts for the
 // architectural rationale.
-wireEarlyStopPolicy(sessionPlane as unknown as Parameters<typeof wireEarlyStopPolicy>[0], engineBridge)
+wireEarlyStopPolicy(
+  sessionPlane as unknown as Parameters<typeof wireEarlyStopPolicy>[0],
+  engineBridge,
+);
 
 // Wire the tool-gate responder: the desktop's half of the engine's client
 // tool gate. Answers engine_tool_gate_request events — bench containment
@@ -36,16 +40,19 @@ wireEarlyStopPolicy(sessionPlane as unknown as Parameters<typeof wireEarlyStopPo
 // member-file, resolution-history). The engine keeps the generic worktree
 // isolation; the bench rules belong to the client that owns the bench.
 // See desktop/src/main/tool-gate-responder.ts.
-wireToolGateResponder(engineBridge)
-export const pairingManager = new PairingManager()
-export const relayDiscovery = new RelayDiscovery()
+wireToolGateResponder(engineBridge);
+export const pairingManager = new PairingManager();
+export const relayDiscovery = new RelayDiscovery();
 
-export const bashProcesses = new Map<string, ChildProcess>()
-export const fileWatchers = new Map<string, FileWatcherEntry>()
-export const recentlyWrittenPaths = new Set<string>()
-export const activeAssistantMessages = new Map<string, { id: string; content: string }>()
-export const lastMessagePreview = new Map<string, string>()
-export const terminalOutputAccumulator = new Map<string, string>()
+export const bashProcesses = new Map<string, ChildProcess>();
+export const fileWatchers = new Map<string, FileWatcherEntry>();
+export const recentlyWrittenPaths = new Set<string>();
+export const activeAssistantMessages = new Map<
+  string,
+  { id: string; content: string }
+>();
+export const lastMessagePreview = new Map<string, string>();
+export const terminalOutputAccumulator = new Map<string, string>();
 
 /**
  * Main-process scrollback buffer per terminal key.
@@ -54,31 +61,29 @@ export const terminalOutputAccumulator = new Map<string, string>()
  * for the terminal (e.g. terminal tabs created remotely from iOS).
  * Capped at MAX_SCROLLBACK_SIZE bytes per key.
  */
-export const terminalScrollback = new Map<string, string>()
-export const MAX_SCROLLBACK_SIZE = 100_000
+export const terminalScrollback = new Map<string, string>();
+export const MAX_SCROLLBACK_SIZE = 100_000;
 
 interface MutableState {
-  mainWindow: BrowserWindow | null
-  tray: Tray | null
-  remoteTransport: RemoteTransport | null
-  forceQuit: boolean
-  toggleSequence: number
-  screenshotCounter: number
-  pasteCounter: number
-  cachedFonts: string[] | null
-  terminalOutputFlushTimer: ReturnType<typeof setInterval> | null
-  tabSnapshotInterval: ReturnType<typeof setInterval> | null
-  /** The Agent Team Visualizer window (single instance; null when closed). */
-  atvWindow: BrowserWindow | null
+  mainWindow: BrowserWindow | null;
+  tray: Tray | null;
+  remoteTransport: RemoteTransport | null;
+  forceQuit: boolean;
+  toggleSequence: number;
+  screenshotCounter: number;
+  pasteCounter: number;
+  cachedFonts: string[] | null;
+  terminalOutputFlushTimer: ReturnType<typeof setInterval> | null;
+  tabSnapshotInterval: ReturnType<typeof setInterval> | null;
+  /** The Ion Studio window (single instance; null when closed). */
+  studioWindow: BrowserWindow | null;
+  /** Standalone startup card, visible until the selected product surface is ready. */
+  splashWindow: BrowserWindow | null;
   /** The desktop-only Worktree Overlap visualizer window. */
-  worktreeOverlapWindow: BrowserWindow | null
-  /**
-   * Last active tab reported by the main renderer's active-tab notifier.
-   * Seeds the ATV window's target tab on open, before any live tab switch.
-   */
-  atvActiveTabId: string | null
-  /** The active tab's engineProfileId (extension scope for the ATV seed). */
-  atvActiveProfileId: string | null
+  worktreeOverlapWindow: BrowserWindow | null;
+  /** The active tab ID and engine profile used to seed the Studio window. */
+  studioActiveTabId: string | null;
+  studioActiveProfileId: string | null;
   /**
    * Last renderer-pushed remote tab-state projection (renderer-push snapshot
    * architecture). The OWNER renderer pushes RemoteTabStatesPayload over
@@ -87,7 +92,9 @@ interface MutableState {
    * legacy executeJavaScript poll when the cache is empty or stale
    * (renderer not ready / hung). Null until the first push.
    */
-  rendererSnapshotCache: RendererSnapshotCache | null
+  rendererSnapshotCache: RendererSnapshotCache | null;
+  /** Last full worktree projection per repo, used by first-render snapshots. */
+  remoteWorktreeStates: Map<string, RemoteWorktreeState>;
 }
 
 export const state: MutableState = {
@@ -101,12 +108,14 @@ export const state: MutableState = {
   cachedFonts: null,
   terminalOutputFlushTimer: null,
   tabSnapshotInterval: null,
-  atvWindow: null,
+  studioWindow: null,
+  splashWindow: null,
   worktreeOverlapWindow: null,
-  atvActiveTabId: null,
-  atvActiveProfileId: null,
+  studioActiveTabId: null,
+  studioActiveProfileId: null,
   rendererSnapshotCache: null,
-}
+  remoteWorktreeStates: new Map(),
+};
 
 /**
  * Cached model list from engine, populated by LIST_MODELS IPC and included in
@@ -119,9 +128,20 @@ export const state: MutableState = {
  * picker gets its section headers without duplicating the name table.
  */
 export const modelCache = {
-  models: [] as Array<{ id: string; providerId: string; providerLabel: string; label: string; contextWindow: number; hasAuth: boolean; thinkingMode?: string; thinkingEfforts?: string[]; modelKind?: string; isCustom?: boolean }>,
+  models: [] as Array<{
+    id: string;
+    providerId: string;
+    providerLabel: string;
+    label: string;
+    contextWindow: number;
+    hasAuth: boolean;
+    thinkingMode?: string;
+    thinkingEfforts?: string[];
+    modelKind?: string;
+    isCustom?: boolean;
+  }>,
   lastFetched: 0,
-}
+};
 
 /**
  * Enterprise policy cache (D-004), populated once at startup in
@@ -131,7 +151,7 @@ export const modelCache = {
  * desktop's own pickers (D-011 parity).
  */
 export const enterprisePolicyCache = {
-  policy: null as import('../shared/types-engine').EnterprisePolicy | null,
+  policy: null as import("../shared/types-engine").EnterprisePolicy | null,
   /**
    * The resolved new-conversation defaults policy (pre-D-004 single-policy
    * key). Populated at startup alongside `policy` and refreshed on every
@@ -139,11 +159,11 @@ export const enterprisePolicyCache = {
    * (broadcastDesktopSettingsSnapshot) can project it without an RPC.
    */
   newConversationDefaults: null as {
-    baseDirectory: string
-    engineProfileId: string
-    locked: boolean
+    baseDirectory: string;
+    engineProfileId: string;
+    locked: boolean;
   } | null,
-}
+};
 
 /**
  * Per-session extension-command registry cache.
@@ -172,7 +192,7 @@ export const enterprisePolicyCache = {
  * dispatch code. Reads are O(1) Set.has lookups, called once per slash
  * command parsed by the unified pipeline.
  */
-export const extensionCommandRegistry = new Map<string, Set<string>>()
+export const extensionCommandRegistry = new Map<string, Set<string>>();
 
 /**
  * Per-device iOS focus and intercept-preference state.
@@ -186,7 +206,10 @@ export const extensionCommandRegistry = new Map<string, Set<string>>()
  * tabId null means the iOS device is backgrounded or has no tab focused.
  * Entries are removed when the device disconnects (see transport-init.ts).
  */
-export const deviceFocusMap = new Map<string, { tabId: string | null; interceptEnabled: boolean }>()
+export const deviceFocusMap = new Map<
+  string,
+  { tabId: string | null; interceptEnabled: boolean }
+>();
 
 /**
  * Dedupe set for AskUserQuestion / ExitPlanMode `permission_request`
@@ -209,7 +232,7 @@ export const deviceFocusMap = new Map<string, { tabId: string | null; interceptE
  * already long-lived; if it becomes a leak we can prune on engine_dead
  * or on snapshot reconcile.
  */
-export const forwardedEnginePermissionDenials = new Set<string>()
+export const forwardedEnginePermissionDenials = new Set<string>();
 
 /**
  * Last tab status forwarded to iOS for extension-hosted conversations.
@@ -227,7 +250,7 @@ export const forwardedEnginePermissionDenials = new Set<string>()
  * Keyed by bare tabId (not compound key) since `tab_status` is a per-tab
  * concept on iOS.
  */
-export const lastForwardedTabStatus = new Map<string, string>()
+export const lastForwardedTabStatus = new Map<string, string>();
 
 /**
  * Dedup guard for desktop_tab_meta cost deltas emitted by event-wiring.ts on
@@ -235,5 +258,4 @@ export const lastForwardedTabStatus = new Map<string, string>()
  * Prevents flooding iOS with repeated cost pushes when engine_status fires
  * repeatedly at the same cost during idle polling.
  */
-export const lastForwardedTabMeta = new Map<string, number>()
-
+export const lastForwardedTabMeta = new Map<string, number>();

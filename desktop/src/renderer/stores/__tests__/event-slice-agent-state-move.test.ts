@@ -289,7 +289,7 @@ describe('event-slice — agent_state auto-group re-evaluation', () => {
   })
 
   /**
-   * Mirror window: the ATV mirror receives the same event stream. The mirror
+   * Mirror window: the Studio mirror receives the same event stream. The mirror
    * guard must prevent duplicate group moves originating from the mirror.
    */
   it('skipped entirely when in mirror window', () => {

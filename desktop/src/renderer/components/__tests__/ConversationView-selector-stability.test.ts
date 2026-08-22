@@ -45,6 +45,10 @@ const appSrc = readFileSync(
   resolve(__dirname, '../../App.tsx'),
   'utf8',
 )
+const studioCenterSrc = readFileSync(
+  resolve(__dirname, '../../studio/StudioCenter.tsx'),
+  'utf8',
+)
 
 // ── Stable fallback constants (same as ConversationView module-level) ─────────
 
@@ -165,12 +169,18 @@ describe('ConversationView selector — shallow stability (#185 regression)', ()
 //      streaming cheap. The old renderOffset/INITIAL_RENDER_CAP mechanism (and
 //      its tab-switch stale-offset bug class) must not return.
 //
-//   2. `key={activeTabId}` on <ConversationView> in App.tsx — forces React to
+//   2. `key={activeTabId}` on every ConversationView mount — forces React to
 //      unmount/remount the component on tab switch, resetting all component
-//      state (scroll position, search state, etc.) to initial values.
+//      state (scroll position, search state, and pending optimistic rows) to
+//      initial values instead of showing state from another conversation.
 //
-// Revert contract: reintroducing renderOffset/pagination or removing
-// key={activeTabId} causes the corresponding assertion to fail immediately.
+// The overlay and Studio render the same component from separate roots, so each
+// mount needs the same key. Protecting only App.tsx left Studio able to reuse a
+// conversation fiber while its tabId prop changed, which bled queued steers into
+// unrelated transcripts.
+//
+// Revert contract: reintroducing renderOffset/pagination or removing either
+// ConversationView key causes the corresponding assertion to fail immediately.
 
 describe('ConversationView tab-switch reset — structural guards', () => {
   it('[STRUCTURAL] pagination is removed — full history renders with memoized rows', () => {
@@ -180,18 +190,16 @@ describe('ConversationView tab-switch reset — structural guards', () => {
     expect(conversationViewSrc).not.toContain('INITIAL_RENDER_CAP')
     expect(conversationViewSrc).not.toContain('Load older')
     // The full messages array feeds grouping directly (no visibleMessages slice).
-    expect(conversationViewSrc).toContain('groupMessages(messages')
+    expect(conversationViewSrc).toContain('groupMessages(visibleMessages')
   })
 
-  it('[STRUCTURAL] App.tsx mounts ConversationView with key={activeTabId}', () => {
-    // key={activeTabId} forces a full remount on tab switch, resetting scroll,
-    // search state, and any other component-local state accumulated for the
-    // previous tab. Reverting to no key (or a different key expression) causes
-    // this assertion to fail.
+  it('[STRUCTURAL] overlay and Studio key ConversationView by activeTabId', () => {
+    // Every shell must remount on tab selection. Without a key, React reuses the
+    // previous conversation fiber and its local transcript state can render under
+    // the new tab before the store-driven rows reconcile.
     expect(appSrc).toContain('key={activeTabId}')
-
-    // Scope: the key must appear on the ConversationView element specifically.
     expect(appSrc).toMatch(/<ConversationView key=\{activeTabId\}/)
+    expect(studioCenterSrc).toMatch(/<ConversationView key=\{activeTabId\} tabId=\{activeTabId\}/)
   })
 })
 

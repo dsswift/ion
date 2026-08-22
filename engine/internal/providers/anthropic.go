@@ -319,6 +319,10 @@ func (p *anthropicProvider) buildRequestBody(opts types.LlmStreamOptions) map[st
 			"budget_tokens": budgetTokens,
 		}
 	case "none":
+		if opts.DisableThinking {
+			utils.LogWithFields(utils.LevelDebug, "Thinking", "build request body self-engaged thinking disabled by caller", map[string]any{"model": opts.Model})
+			break
+		}
 		// Self-engaged adaptive thinking (no consumer directive): adaptive
 		// models reason on their own even when the consumer sent no thinking
 		// config — but without a directive the API defaults display to
@@ -534,6 +538,12 @@ func formatAnthropicBlock(b types.LlmContentBlock) map[string]any {
 			// Defensive: an injection with no rendered body still needs a
 			// non-empty text block so Anthropic accepts the message.
 			text = "[Nested context loaded]"
+		}
+		return map[string]any{"type": "text", "text": text}
+	case "skill_content", "skill_listing":
+		text := b.Text
+		if text == "" {
+			text = "[Skill content]"
 		}
 		return map[string]any{"type": "text", "text": text}
 	default:

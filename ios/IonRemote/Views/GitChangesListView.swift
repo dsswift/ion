@@ -117,7 +117,7 @@ struct GitChangesListView: View {
             }
             .fullScreenCover(isPresented: $showDiff) {
                 if let result = viewModel.gitDiffResult {
-                    GitDiffView(fileName: result.fileName, diff: result.diff)
+                    GitDiffView(fileName: result.fileName, diff: result.diff, isBinary: result.isBinary)
                 } else {
                     ProgressView("Loading diff…")
                 }

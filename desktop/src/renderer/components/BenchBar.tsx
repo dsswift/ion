@@ -23,18 +23,9 @@ import { WorktreeRowGoToTabSubmenu } from './WorktreeRowGoToTabSubmenu'
 import { useSessionStore } from '../stores/sessionStore'
 import { zoomRect } from '../viewport-zoom'
 import { describeBenchOpenConversations, type DirConversation } from '../../shared/worktree-conversations'
+import { benchAssembledRelativeTime } from '../../shared/worktree-list'
 import type { IntegrationWorkspace, IntegrationMember } from '../../shared/types'
 import type { OrphanMembership } from '../../shared/worktree-list'
-
-/** Human-readable age of the last assembly. */
-function relativeTime(ms: number): string {
-  if (!ms) return 'never assembled'
-  const secs = Math.round((Date.now() - ms) / 1000)
-  if (secs < 60) return 'assembled just now'
-  if (secs < 3600) return `assembled ${Math.round(secs / 60)}m ago`
-  if (secs < 86400) return `assembled ${Math.round(secs / 3600)}h ago`
-  return `assembled ${Math.round(secs / 86400)}d ago`
-}
 
 export interface BenchBarProps {
   workspaces: readonly IntegrationWorkspace[]
@@ -134,7 +125,7 @@ export function BenchBar(props: BenchBarProps): React.JSX.Element {
               identifiers={[
                 { label: 'branch', value: active.benchBranch },
                 { label: 'base', value: active.baseSha ? active.baseSha.slice(0, 7) : 'never built' },
-                { label: 'members', value: `${active.members.filter((m) => m.enabled).length} enabled of ${active.members.length}` },
+                { label: 'members', value: `${active.members.length} member${active.members.length === 1 ? '' : 's'}` },
                 { label: 'path', value: active.benchPath },
               ]}
               conversations={allConversations}
@@ -192,7 +183,7 @@ export function BenchBar(props: BenchBarProps): React.JSX.Element {
             </Tooltip>
           )
         ) : (
-          <span style={{ fontSize: 9, color: colors.textTertiary }}>{relativeTime(active.lastBuiltAt)}</span>
+          <span style={{ fontSize: 9, color: colors.textTertiary }}>{benchAssembledRelativeTime(active.lastBuiltAt)}</span>
         )}
 
         <span style={{ flex: 1 }} />
@@ -316,6 +307,7 @@ export function BenchBar(props: BenchBarProps): React.JSX.Element {
       {goToTabAnchor && (
         <WorktreeRowGoToTabSubmenu
           anchor={goToTabAnchor}
+          anchorSpace="css"
           conversations={allConversations}
           prefer="below"
           triggerRef={chatButtonRef}

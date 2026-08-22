@@ -27,12 +27,8 @@ extension DiagnosticLog {
             log("CMD: worktreeSync wt=\(worktreePath.suffix(30)) source=\(sourceBranch)", tag: "ipc", level: .info)
         case .worktreeSyncAll(let repoPath):
             log("CMD: worktreeSyncAll repo=\(repoPath.suffix(30))", tag: "ipc", level: .info)
-        case .worktreeLand(_, let worktreePath, let worktreeBranch, let sourceBranch):
-            log("CMD: worktreeLand wt=\(worktreePath.suffix(30)) branch=\(worktreeBranch) source=\(sourceBranch)", tag: "ipc", level: .info)
-        case .worktreeRetire(_, let worktreePath):
-            log("CMD: worktreeRetire wt=\(worktreePath.suffix(30))", tag: "ipc", level: .info)
-        case .worktreeRetireLanded(let repoPath):
-            log("CMD: worktreeRetireLanded repo=\(repoPath.suffix(30))", tag: "ipc", level: .info)
+        case .worktreeLandAndRetire(_, let worktreePath, let worktreeBranch, let sourceBranch):
+            log("CMD: worktreeLandAndRetire wt=\(worktreePath.suffix(30)) branch=\(worktreeBranch) source=\(sourceBranch)", tag: "ipc", level: .info)
         case .benchOpenConversation(_, let sourceBranch):
             log("CMD: benchOpenConversation source=\(sourceBranch)", tag: "ipc", level: .info)
         case .benchOpenTerminal(_, let sourceBranch):
@@ -43,8 +39,6 @@ extension DiagnosticLog {
             log("CMD: benchUpdateMember source=\(sourceBranch) wt=\(worktreePath.suffix(30))", tag: "ipc", level: .info)
         case .benchUpdateAll(_, let sourceBranch):
             log("CMD: benchUpdateAll source=\(sourceBranch)", tag: "ipc", level: .info)
-        case .benchSetEnabled(_, let sourceBranch, let worktreePath, let enabled):
-            log("CMD: benchSetEnabled source=\(sourceBranch) wt=\(worktreePath.suffix(30)) enabled=\(enabled)", tag: "ipc", level: .info)
         case .worktreeSetStage(_, let worktreePath, let stage):
             log("CMD: worktreeSetStage wt=\(worktreePath.suffix(30)) stage=\(stage ?? "none")", tag: "ipc", level: .info)
         case .benchReorderMember(_, let sourceBranch, let worktreePath, let toIndex):
@@ -53,6 +47,39 @@ extension DiagnosticLog {
             log("CMD: benchAddMember source=\(sourceBranch) branch=\(branchName)", tag: "ipc", level: .info)
         case .benchRemoveMember(_, let sourceBranch, let worktreePath):
             log("CMD: benchRemoveMember source=\(sourceBranch) wt=\(worktreePath.suffix(30))", tag: "ipc", level: .info)
+
+        case .worktreeRetireLanded(let repoPath):
+            log("CMD: worktreeRetireLanded repo=\(repoPath.suffix(30))", tag: "ipc", level: .info)
+        case .worktreeCreate(let repoPath, let sourceBranch):
+            log("CMD: worktreeCreate repo=\(repoPath.suffix(30)) source=\(sourceBranch)", tag: "ipc", level: .info)
+        case .worktreeConvertConversation(let tabId):
+            log("CMD: worktreeConvertConversation tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
+        case .worktreeRename(_, let worktreePath, let title):
+            log("CMD: worktreeRename wt=\(worktreePath.suffix(30)) title=\(title.prefix(30))", tag: "ipc", level: .info)
+        case .worktreeReprovision(_, let worktreePath):
+            log("CMD: worktreeReprovision wt=\(worktreePath.suffix(30))", tag: "ipc", level: .info)
+        case .benchRecoverConflict(_, let sourceBranch):
+            log("CMD: benchRecoverConflict source=\(sourceBranch)", tag: "ipc", level: .info)
+        case .benchAnalyseVerification(_, let sourceBranch):
+            log("CMD: benchAnalyseVerification source=\(sourceBranch)", tag: "ipc", level: .info)
+        case .benchDiscardMemberRecordings(_, let sourceBranch, let branchNames):
+            log("CMD: benchDiscardMemberRecordings source=\(sourceBranch) branches=\(branchNames.count)", tag: "ipc", level: .info)
+        case .benchDiscardAllRecordings(_, let sourceBranch):
+            log("CMD: benchDiscardAllRecordings source=\(sourceBranch)", tag: "ipc", level: .info)
+        case .worktreeRetire(_, let worktreePath, _):
+            log("CMD: worktreeRetire path=\(worktreePath.suffix(30))", tag: "ipc", level: .info)
+        case .worktreeConflictAssist(_, let worktreePath):
+            log("CMD: worktreeConflictAssist path=\(worktreePath.suffix(30))", tag: "ipc", level: .info)
+        case .benchConflictAssist(_, let sourceBranch):
+            log("CMD: benchConflictAssist source=\(sourceBranch)", tag: "ipc", level: .info)
+        case .worktreePipelineStart(let repoPath, let sourceBranch):
+            log("CMD: worktreePipelineStart repo=\(repoPath.suffix(30)) source=\(sourceBranch)", tag: "ipc", level: .info)
+        case .worktreePipelineConfirmAi(let repoPath):
+            log("CMD: worktreePipelineConfirmAi repo=\(repoPath.suffix(30))", tag: "ipc", level: .info)
+        case .worktreePipelineCancel(let repoPath):
+            log("CMD: worktreePipelineCancel repo=\(repoPath.suffix(30))", tag: "ipc", level: .info)
+        case .worktreePipelineDismiss(let repoPath):
+            log("CMD: worktreePipelineDismiss repo=\(repoPath.suffix(30))", tag: "ipc", level: .info)
 
         case .createTerminalTab(let dir, _):
             log("CMD: createTerminalTab dir=\(dir?.suffix(30) ?? "nil")", tag: "ipc", level: .info)
@@ -78,14 +105,36 @@ extension DiagnosticLog {
         case .respondPermission(let tabId, let qId, let optId):
             log("CMD: respondPermission tabId=\(tabId.prefix(8)) qId=\(qId.prefix(8)) opt=\(optId)", tag: "ipc", level: .info)
 
-        case .respondElicitation(let tabId, let requestId, _, let cancelled):
-            log("CMD: respondElicitation tabId=\(tabId.prefix(8)) requestId=\(requestId.prefix(12)) cancelled=\(cancelled)", tag: "ipc", level: .info)
+        case .respondElicitation(let tabId, let requestId, _, let cancelled, let declined):
+            log("CMD: respondElicitation tabId=\(tabId.prefix(8)) requestId=\(requestId.prefix(12)) cancelled=\(cancelled) declined=\(declined)", tag: "ipc", level: .info)
 
         case .setPermissionMode(let tabId, let mode):
             log("CMD: setPermissionMode tabId=\(tabId.prefix(8)) mode=\(mode.rawValue)", tag: "ipc", level: .info)
 
         case .setThinkingEffort(let tabId, let effort):
             log("CMD: setThinkingEffort tabId=\(tabId.prefix(8)) effort=\(effort)", tag: "ipc", level: .info)
+
+        // ── Inbox actions ──
+        case .tabSettle(let tabId):
+            log("CMD: tabSettle tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
+        case .tabUnsettle(let tabId):
+            log("CMD: tabUnsettle tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
+        case .tabSnooze(let tabId, let untilMs):
+            log("CMD: tabSnooze tabId=\(tabId.prefix(8)) until=\(Int(untilMs))", tag: "ipc", level: .info)
+        case .tabUnsnooze(let tabId):
+            log("CMD: tabUnsnooze tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
+        case .tabMarkUnread(let tabId):
+            log("CMD: tabMarkUnread tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
+        case .tabPin(let tabId):
+            log("CMD: tabPin tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
+        case .tabUnpin(let tabId):
+            log("CMD: tabUnpin tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
+        case .tabReorderPin(let assignments):
+            log("CMD: tabReorderPin assignmentCount=\(assignments.count)", tag: "ipc", level: .info)
+        case .tabRegenerateTitle(let tabId):
+            log("CMD: tabRegenerateTitle tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
+        case .reviewSettledTab(let tabId):
+            log("CMD: reviewSettledTab tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
 
         case .loadConversation(let tabId, let before):
             log("CMD: loadConversation tabId=\(tabId.prefix(8)) before=\(before?.prefix(8) ?? "nil")", tag: "ipc", level: .info)
@@ -121,9 +170,6 @@ extension DiagnosticLog {
 
         case .renameTerminalInstance(let tabId, let instId, let label):
             log("CMD: renameTerminalInstance tabId=\(tabId.prefix(8)) inst=\(instId.prefix(8)) label=\(label)", tag: "ipc", level: .info)
-
-        case .rewind(let tabId, let msgId):
-            log("CMD: rewind tabId=\(tabId.prefix(8)) msgId=\(msgId.prefix(8))", tag: "ipc", level: .info)
 
         case .forkFromMessage(let tabId, let msgId):
             log("CMD: forkFromMessage tabId=\(tabId.prefix(8)) msgId=\(msgId.prefix(8))", tag: "ipc", level: .info)

@@ -51,16 +51,40 @@ export const nextMsgId = () => `msg-${++msgCounter}`
 export const peekMsgCounter = () => msgCounter
 export const bumpMsgCounter = () => ++msgCounter
 
-const notificationAudio = new Audio(notificationSrc)
-notificationAudio.volume = 1.0
+/**
+ * The notification element, built on first play instead of at module load.
+ *
+ * `new Audio()` at import time made this module unloadable anywhere the DOM
+ * constructor is absent, and this module is the home of `makeLocalTab` /
+ * `nextMsgId` — which every store slice imports. Suites that only wanted a tab
+ * factory therefore had to replace the whole module with a hand-written mock,
+ * and each of those mocks then drifted from the real export list as helpers were
+ * added. Constructing lazily keeps the import side-effect-free: the element is
+ * created the first time a notification actually plays, in the renderer, where
+ * the constructor exists.
+ */
+let notificationAudio: HTMLAudioElement | null = null
+
+function resolveNotificationAudio(): HTMLAudioElement | null {
+  if (notificationAudio) return notificationAudio
+  if (typeof Audio !== 'function') return null
+  notificationAudio = new Audio(notificationSrc)
+  notificationAudio.volume = 1.0
+  return notificationAudio
+}
 
 export async function playNotificationIfHidden(): Promise<void> {
   if (!usePreferencesStore.getState().soundEnabled) return
+  const audio = resolveNotificationAudio()
+  if (!audio) {
+    rTrace('notify', 'notification skipped because the audio constructor is unavailable')
+    return
+  }
   try {
     const visible = await window.ion.isVisible()
     if (!visible) {
-      notificationAudio.currentTime = 0
-      notificationAudio.play().catch((err) => rTrace('notify', 'notification audio play rejected', { error: String(err) }))
+      audio.currentTime = 0
+      audio.play().catch((err) => rTrace('notify', 'notification audio play rejected', { error: String(err) }))
     }
   } catch (err) {
     rTrace('notify', 'notification audio gate failed', { error: String(err) })
@@ -112,7 +136,20 @@ export function makeLocalTab(): TabState {
     status: 'idle',
     activeRequestId: null,
     lastEventAt: null,
-    hasUnread: false,
+    lastActivityAt: null,
+    lastMessageAt: null,
+    idleSince: null,
+    createdAt: Date.now(),
+    lastFailureAt: null,
+    pinnedAt: null,
+    pinOrderKey: null,
+    lastCompletionAt: null,
+    settledOverride: null,
+    settledAt: null,
+    snoozedUntil: null,
+    snoozedAt: null,
+    lastVisitedAt: null,
+    manualUnread: false,
     currentActivity: '',
     attachments: [],
     title: 'New Tab',
@@ -133,6 +170,8 @@ export function makeLocalTab(): TabState {
     pillColor: null,
     pillIcon: null,
     forkedFromSessionId: null,
+    executionHost: null,
+    executionMachineId: null,
     worktree: null,
     pendingWorktreeSetup: false,
     groupId: null,

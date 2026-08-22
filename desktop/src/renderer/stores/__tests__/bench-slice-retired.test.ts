@@ -18,6 +18,7 @@ vi.mock('../../rendererLogger', () => ({
 }))
 
 import { createBenchSlice } from '../slices/bench-slice'
+import { createBenchAssemblySlice } from '../slices/bench-slice-assembly'
 import type { State } from '../session-store-types'
 import type { IntegrationMember, BenchAssembleResult } from '../../../shared/types'
 
@@ -27,8 +28,7 @@ function member(branchName: string): IntegrationMember {
   return {
     worktreePath: `/wt/${branchName}`,
     branchName,
-    enabled: true,
-    pinnedSha: 'abc1234',
+        pinnedSha: 'abc1234',
     pinnedTreeHash: 'tree1',
     pinnedBaseSha: 'base1',
     currentTreeHash: 'tree1',
@@ -62,10 +62,16 @@ function harness(assembleResult: BenchAssembleResult) {
     },
   }
 
-  const slice = createBenchSlice(
-    set as unknown as Parameters<typeof createBenchSlice>[0],
-    get as unknown as Parameters<typeof createBenchSlice>[1],
-  ) as Partial<State>
+  const slice = {
+    ...createBenchSlice(
+      set as unknown as Parameters<typeof createBenchSlice>[0],
+      get as unknown as Parameters<typeof createBenchSlice>[1],
+    ),
+    ...createBenchAssemblySlice(
+      set as unknown as Parameters<typeof createBenchAssemblySlice>[0],
+      get as unknown as Parameters<typeof createBenchAssemblySlice>[1],
+    ),
+  } as Partial<State>
 
   // The slice calls its own refreshBench through get(), so the harness state must
   // carry the slice's actions the way the real store does.

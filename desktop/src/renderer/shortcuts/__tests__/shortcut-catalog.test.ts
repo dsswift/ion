@@ -38,7 +38,7 @@ afterEach(() => {
 describe('resolveBindings — defaults', () => {
   it('returns a Map with an entry for every catalog command', () => {
     const bindings = resolveBindings({})
-    for (const entry of SHORTCUT_CATALOG) {
+    for (const entry of SHORTCUT_CATALOG.filter((candidate) => candidate.views.includes('overlay'))) {
       // Every entry that has a valid defaultBinding should appear in the map
       // (unless it was trumped by a conflict, which default-only can't produce).
       const chord = parseChord(entry.defaultBinding)
@@ -131,10 +131,8 @@ describe('resolveBindings — conflict handling', () => {
 
 // ── panel.statusDrawer (Cmd+4) ──────────────────────────────────────────────
 //
-// The drawer joins the numbered panel row: Cmd+1 explorer, Cmd+2 terminal,
-// Cmd+3 git, Cmd+4 drawer. Cmd+4 was genuinely free before this entry -- the
-// no-conflict assertion below is what proves it, since resolveBindings would
-// have dropped the loser and logged a warning had anything else claimed it.
+// Numbered panel defaults are shared across views: Inbox, Explorer, Git; the
+// fourth command is view-specific behavior (Overlay status, Studio right pane).
 
 describe('panel.statusDrawer', () => {
   it('is in the catalog, in the Panels group, bound to Mod+4', () => {
@@ -150,16 +148,43 @@ describe('panel.statusDrawer', () => {
     expect(rWarnMock).not.toHaveBeenCalled()
   })
 
-  it('sits beside the other numbered panel commands', () => {
-    // Cmd+1/2/3 keep their bindings: the new entry displaced nothing.
+  it('sits beside shared numbered panel commands', () => {
     const bindings = resolveBindings({})
-    expect(bindings.get('panel.explorer')).toMatchObject({ mod: true, key: '1' })
-    expect(bindings.get('panel.terminal')).toMatchObject({ mod: true, key: '2' })
+    expect(bindings.get('panel.inbox')).toMatchObject({ mod: true, key: '1' })
+    expect(bindings.get('panel.explorer')).toMatchObject({ mod: true, key: '2' })
     expect(bindings.get('panel.git')).toMatchObject({ mod: true, key: '3' })
+    expect(bindings.has('panel.terminal')).toBe(false)
+    expect(bindings.get('terminal.toggle')).toMatchObject({ ctrl: true, key: '`' })
   })
 
   it('is rebindable like any other command', () => {
     const bindings = resolveBindings({ 'panel.statusDrawer': 'Mod+9' })
     expect(bindings.get('panel.statusDrawer')).toMatchObject({ mod: true, key: '9' })
+  })
+})
+
+describe('resolveViewBindings', () => {
+  it('keeps Overlay and Studio conflicts independent', async () => {
+    const { resolveViewBindings } = await import('../../shortcuts/shortcut-catalog')
+    const overlay = resolveViewBindings('overlay', { 'tab.prev': 'Mod+l' })
+    const studio = resolveViewBindings('studio', {})
+    expect(overlay.shortcuts.find((entry) => entry.entry.id === 'tab.next')?.enabled).toBe(false)
+    expect(studio.shortcuts.find((entry) => entry.entry.id === 'tab.next')?.enabled).toBe(true)
+  })
+
+  it('retains conflict loser binding for Settings display', async () => {
+    const { resolveViewBindings } = await import('../../shortcuts/shortcut-catalog')
+    const result = resolveViewBindings('studio', { 'tab.prev': 'Mod+l' })
+    const loser = result.shortcuts.find((entry) => entry.entry.id === 'tab.next')
+    expect(loser).toMatchObject({ binding: 'Mod+l', enabled: false, conflictsWith: 'tab.prev' })
+  })
+
+  it('makes Cmd+K palette-only and Cmd+Y the tall control', async () => {
+    const { SHORTCUT_CATALOG } = await import('../../shortcuts/shortcut-catalog')
+    const palette = SHORTCUT_CATALOG.find((entry) => entry.id === 'app.commandPalette')
+    const tall = SHORTCUT_CATALOG.find((entry) => entry.id === 'layout.tall')
+    expect(palette?.defaultBinding).toBe('Mod+k')
+    expect(tall?.defaultBinding).toBe('Mod+y')
+    expect(SHORTCUT_CATALOG.some((entry) => entry.id === 'layout.expand')).toBe(false)
   })
 })

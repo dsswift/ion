@@ -170,6 +170,12 @@ func (m *Manager) fireModelSelect(s *engineSession, key string, extGroup *extens
 	if extGroup == nil || extGroup.IsEmpty() || skipExtensions {
 		return
 	}
+	if opts.ResolvedSlashModelAlias != "" {
+		utils.LogWithFields(utils.LevelInfo, "session.slash", "skipping model_select for command-owned model", map[string]any{
+			"key": key, "command": opts.ResolvedSlashCommand, "model_alias": opts.ResolvedSlashModelAlias, "model": opts.Model,
+		})
+		return
+	}
 	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: firing model_select ()", map[string]any{"key": key, "model": opts.Model})
 	msCtx := m.newExtContext(s, key)
 	if overridden, _ := extGroup.FireModelSelect(msCtx, extension.ModelSelectInfo{ //nolint:errcheck // errors logged internally by fireVoid/s.fire

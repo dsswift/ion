@@ -150,23 +150,28 @@ func (m *Manager) clearConversationCore(conversationID, preferKey string) (clear
 	return res, nil
 }
 
-// clearSessionDenials drops the retained PermissionDenials and resets the
-// context-percent on the live session keyed by key. Returns the key (echoed
-// for caller convenience) and the number of denials cleared. Safe to call
-// when the session does not exist (returns "", 0). Holds the manager lock for
-// the mutation so the clear is race-free with concurrent status emits.
+// clearSessionDenials drops the retained PermissionDenials AND resets context
+// occupancy on the live session keyed by key — the /clear semantics, where the
+// conversation's messages are wiped so zero tokens is the truth. Returns the
+// key (echoed for caller convenience) and the number of denials cleared. Safe
+// to call when the session does not exist (returns "", 0).
+//
+// Callers that dismiss a card WITHOUT emptying the conversation must use
+// dropRetainedDenials instead; see its comment for why conflating the two
+// would make the engine misreport occupancy.
 func (m *Manager) clearSessionDenials(key string) (string, int) {
+	sessionKey, n := m.dropRetainedDenials(key, "/clear dismisses pending question/plan card")
+	if sessionKey == "" {
+		return "", 0
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s, ok := m.sessions[key]
 	if !ok {
-		utils.LogWithFields(utils.LevelDebug, "session", "clearsessiondenials: not found", map[string]any{"key": key})
-		return "", 0
-	}
-	n := len(s.lastPermissionDenials)
-	if n > 0 {
-		utils.LogWithFields(utils.LevelInfo, "session", "clearsessiondenials: clearing retained permission_denials (/clear dismisses pending question/plan card)", map[string]any{"key": key, "n": n})
-		s.lastPermissionDenials = nil
+		// The session exited between the two locks. The denial drop already
+		// happened and there is no occupancy left to reset.
+		utils.LogWithFields(utils.LevelDebug, "session", "clearsessiondenials: session gone before occupancy reset", map[string]any{"key": key})
+		return sessionKey, n
 	}
 	// /clear empties the LLM-visible messages, so occupancy really is zero.
 	// Both the percent and its numerator reset together — leaving the token
@@ -174,6 +179,40 @@ func (m *Manager) clearSessionDenials(key string) (string, int) {
 	// a conversation that no longer holds anything.
 	s.lastContextPct = 0
 	s.lastContextTokens = 0
+	return sessionKey, n
+}
+
+// dropRetainedDenials drops ONLY the retained PermissionDenials on the live
+// session keyed by key, leaving context occupancy untouched. Returns the key
+// (echoed for caller convenience) and the number of denials cleared. Safe to
+// call when the session does not exist (returns "", 0). Holds the manager lock
+// for the mutation so the clear is race-free with concurrent status emits.
+//
+// Split out of clearSessionDenials because the two callers dismiss a card for
+// different reasons and only one of them empties the conversation. /clear wipes
+// the LLM-visible messages, so zeroing occupancy alongside the denial is
+// correct there. Resolving a card changes no messages at all: the conversation
+// still holds everything it did a moment earlier, so reporting zero tokens
+// would make the engine lie about occupancy and every consumer's context meter
+// would read empty until the next real usage event.
+//
+// `reason` is logged so the two dismissal paths stay distinguishable in
+// engine.jsonl.
+func (m *Manager) dropRetainedDenials(key, reason string) (string, int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[key]
+	if !ok {
+		utils.LogWithFields(utils.LevelDebug, "session", "dropretaineddenials: not found", map[string]any{"key": key, "reason": reason})
+		return "", 0
+	}
+	n := len(s.lastPermissionDenials)
+	if n > 0 {
+		utils.LogWithFields(utils.LevelInfo, "session", "dropretaineddenials: clearing retained permission_denials", map[string]any{"key": key, "n": n, "reason": reason})
+		s.lastPermissionDenials = nil
+	} else {
+		utils.LogWithFields(utils.LevelDebug, "session", "dropretaineddenials: none retained", map[string]any{"key": key, "reason": reason})
+	}
 	return key, n
 }
 
@@ -242,4 +281,46 @@ func (m *Manager) emitClearSignal(key string) {
 		},
 	})
 	m.emitCommandResult(key, "clear", nil)
+}
+
+// ResolvePermissionDenials drops the session's retained AskUserQuestion /
+// ExitPlanMode denials because the consumer resolved them by its own means.
+// Wire-protocol entrypoint for the resolve_permission_denials client command.
+//
+// Why this exists as a first-class command. The engine retains unresolved
+// denials so every status snapshot tells a re-attaching consumer that a
+// question is still outstanding (status_work_snapshot.go). Retention is
+// released on exactly two paths: a new prompt supersedes the question
+// (prompt_dispatch.go), or /clear discards it (clearConversationCore above).
+// Neither covers a resolution that produces no prompt and no clear — a user
+// dismissing the card is the common case. A consumer in that position had no
+// way to inform the engine, so the engine kept re-publishing the denial on
+// every heartbeat and the consumer had to suppress the echo locally, forever.
+// That local suppression is load-bearing state with no recovery: if anything
+// drops the consumer's copy of the card, the re-publication it needs to heal
+// is the very thing its own suppression is discarding.
+//
+// This is the third path, and it is mechanism only. The engine takes no
+// position on WHY the question was resolved (dismissed, answered elsewhere, no
+// longer relevant) and holds no opinion about what the consumer shows. A
+// consumer that never sends this command behaves exactly as before.
+//
+// Emits a fresh status snapshot after clearing so every attached consumer —
+// not just the caller — converges on the same authoritative state. Without the
+// emit, a second client would keep showing a card the first client resolved.
+//
+// Returns silently when no session owns the key, matching ReconcileState and
+// QuerySessionStatus. A consumer may resolve a card for a conversation whose
+// session has already exited; there is nothing to clear and it is not an error.
+func (m *Manager) ResolvePermissionDenials(key string) {
+	sessionKey, n := m.dropRetainedDenials(key, "consumer resolved the card")
+	if sessionKey == "" {
+		utils.LogWithFields(utils.LevelDebug, "session", "resolvepermissiondenials: no live session for key", map[string]any{"key": key})
+		return
+	}
+	utils.LogWithFields(utils.LevelInfo, "session", "resolvepermissiondenials: consumer resolved retained denials", map[string]any{"key": key, "denied_cleared": n})
+	// Re-emit status so the cleared snapshot reaches every consumer. Reuses
+	// the shared snapshot path, so the payload is identical to a heartbeat
+	// tick and carries the now-empty PermissionDenials.
+	m.emitStatusSnapshot(key, "denials_resolved")
 }

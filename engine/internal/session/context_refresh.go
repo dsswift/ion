@@ -72,6 +72,7 @@ func (m *Manager) refreshContextUsage(key, reason string) {
 		s2.lastContextTokens = usage.Tokens
 		s2.lastContextPct = usage.Percent
 		s2.lastContextWindow = ctxWindow
+		updateContextCapacityLocked(s2, model, ctxWindow, s2.config.MaxTokens)
 	}
 	m.mu.Unlock()
 

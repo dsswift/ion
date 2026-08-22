@@ -23,6 +23,7 @@ func (noopPluginMethods) PluginTurnMessages(_ string) []types.LlmMessage { retur
 func (noopPluginMethods) EngineBuildIdentity() string                    { return "" }
 func (noopPluginMethods) PersistDispatchRegistered(_, _, _, _, _, _ string, _ int) {
 }
+func (noopPluginMethods) PersistDispatchTerminal(_ string) {}
 
 // noopSA is a minimal SessionAccessor used in tests that only care about
 // RunOptions fields unrelated to plugins. It satisfies the interface by

@@ -110,7 +110,7 @@ export function AnsiRenderer({ lines, style }: AnsiRendererProps) {
   }, [lines, colors.textPrimary, ansi16])
 
   return (
-    <div style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 12, ...style }}>
+    <div style={{ fontFamily: 'var(--ion-font-mono, monospace)', fontSize: 'var(--ion-data-code-font-size, 13px)', ...style }}>
       {rendered}
     </div>
   )

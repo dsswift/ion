@@ -65,6 +65,9 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
     'usage',
   ],
   error: [
+    'contextLimit',
+    'contextTokens',
+    'contextWindow',
     'errorCode',
     'httpStatus',
     'isError',
@@ -98,7 +101,7 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
   stream_reset: [],
   compacting: ['active', 'clearedBlocks', 'messagesAfter', 'messagesBefore', 'microOnly', 'strategy', 'summary'],
   tool_stalled: ['elapsed', 'toolId', 'toolName'],
-  steer_injected: ['messageLength'],
+  steer_injected: ['clientMessageId', 'entryId', 'messageLength'],
   steer_degraded: ['messageLength'],
   agent_state_clamped: ['agentName', 'scope', 'clampedKeys', 'droppedKeys', 'originalBytes', 'clampedBytes', 'limitBytes'],
   prompt_injected: ['kind', 'machineAuthored', 'origin', 'prompt'],
@@ -133,7 +136,7 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
   extension_respawned: ['attemptNumber', 'extensionName'],
   extension_dead_permanent: ['attemptNumber', 'extensionName'],
   events_dropped: ['count'],
-  image_content: ['mediaType', 'path', 'source', 'toolId'],
+  image_content: ['contentHash', 'mediaType', 'path', 'source', 'toolId'],
   // Per-category token breakdown. Emitted after prompt assembly and again
   // after first usage-event reconciliation. Tier encodes the resolution path.
   context_breakdown: [
@@ -157,8 +160,10 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
   StatusFields: [
     'backgroundAgents',
     'backgroundShells',
+    'hasPendingWork',
     'contextPercent',
     'contextTokens',
+    'contextEffectiveLimit',
     'contextWindow',
     'completionReason',
     'conversationCostUsd',
@@ -176,8 +181,10 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
   SessionStatus: [
     'backgroundAgentCount',
     'backgroundShellCount',
+    'hasPendingWork',
     'contextPercent',
     'contextTokens',
+    'contextEffectiveLimit',
     'contextWindow',
     'conversationCostUsd',
     'extensionName',
@@ -223,6 +230,7 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
   AgentStateUpdate: ['id', 'metadata', 'name', 'status'],
   ModelEntry: [
     'contextWindow',
+    'effectiveContextLimit',
     'costPer1kInput',
     'costPer1kOutput',
     'costPerImage',
@@ -294,6 +302,8 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'connected',
     'lastError',
     'name',
+    'protocolVersion',
+    'capabilities',
     'toolCount',
     'transport',
     'url',
@@ -354,7 +364,7 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'toolInput',
     'toolName',
   ],
-  SessionMessageAttachment: ['id', 'mimeType', 'name', 'path', 'type'],
+  SessionMessageAttachment: ['contentHash', 'id', 'mimeType', 'name', 'path', 'type'],
   // Wire shape for content blocks carried inside LlmMessage payloads.
   // The compact_boundary variant (gentle-knitting-cup plan) added the
   // optional summary / trigger / messages* / clearedBlocks / tokensBefore
@@ -373,6 +383,11 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'messagesSummarized',
     'name',
     'recentFiles',
+    'restoredSkills',
+    'skillInvokedAt',
+    'skillName',
+    'skillNames',
+    'skillSource',
     'source',
     'summary',
     'text',
@@ -532,6 +547,11 @@ describe('Contract sync: EngineEvent dispatch fields', () => {
       missing,
       `Go EngineEvent is missing dispatch fields consumed by desktop/iOS: ${missing.join(', ')}`,
     ).toEqual([])
+  })
+
+  it('the engine_oidc_identity requirement field is present in the Go EngineEvent manifest', () => {
+    const goFields = new Set(manifest.engineEvent)
+    expect(goFields.has('oidcRequired'), 'Go EngineEvent is missing oidcRequired').toBe(true)
   })
 
   it('the engine_dispatch_lost payload field is present in the Go EngineEvent manifest', () => {

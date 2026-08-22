@@ -33,9 +33,9 @@ import { loadWorkspaces } from './bench-store'
  * AttributionOutcome is the verdict for one attribution request. Exhaustive
  * and explicit: there is no "probably" state.
  *
- * - `member` — exactly one enabled member owns the requested content.
+ * - `member` — exactly one member owns the requested content.
  * - `ambiguous` — more than one origin contributes; candidates lists every one.
- * - `source` — no enabled member changed this content; it comes from the
+ * - `source` — no member changed this content; it comes from the
  *   bench's source branch.
  * - `resolution` — the content exists because a conflict resolution was
  *   recorded in an assembly merge commit, so it is not verbatim from any
@@ -87,12 +87,7 @@ export interface AttributionCandidate {
   worktreePath: string
   branchName?: string
   title?: string
-  /**
-   * Always true for a bench contributor. A disabled member is reported only
-   * in disabledMembersTouching, never as a candidate, because its content is
-   * not in the bench.
-   */
-  enabled: boolean
+  /** The pinned contribution range identifies this member's Bench content. */
   pinnedRange?: string
   pinnedSha?: string
   pinnedBaseSha?: string
@@ -154,13 +149,6 @@ export interface AttributionResult {
   sourceLines?: LineRange[]
   resolutionLines?: LineRange[]
   unknownLines?: LineRange[]
-  /**
-   * Enrolled-but-disabled members whose pinned range also touches this file.
-   * They own NO bench content — surfaced because "the fix looks like it
-   * belongs to a member that is switched off" is a real diagnosis, and
-   * silence there reads as "no such member".
-   */
-  disabledMembersTouching?: AttributionCandidate[]
   binary?: boolean
   deletedInBench?: boolean
   existsInBench: boolean
@@ -433,7 +421,6 @@ export function memberEmptyContribution(m: IntegrationMember): boolean {
 export function baseCandidate(m: IntegrationMember): AttributionCandidate {
   const cand: AttributionCandidate = {
     worktreePath: m.worktreePath,
-    enabled: m.enabled,
     status: CandidateUnknown,
     stalenessKnown: memberStalenessKnown(m),
   }

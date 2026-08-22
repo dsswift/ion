@@ -5,6 +5,11 @@
  * banner, close-confirmation intent, static app info, file-editor tab state)
  * live in session-store-aux-types.ts (file-size cap) and are re-exported here
  * so every existing `from '../session-store-types'` import keeps working.
+ *
+ * Worktree, bench, and conflict-alert action signatures live in
+ * session-store-worktree-types.ts (same file-size-cap reason) — `State`
+ * extends `WorktreeBenchActions` below rather than declaring those members
+ * inline, so every existing call site keeps working unchanged.
  */
 export type {
   GitConflictAlert, WorktreePipelineState, CloseIntent, StaticInfo, FileEditorTab, FileEditorDirState,
@@ -12,16 +17,38 @@ export type {
 import type {
   GitConflictAlert, WorktreePipelineState, CloseIntent, StaticInfo, FileEditorTab, FileEditorDirState,
 } from './session-store-aux-types'
+import type { WorktreeBenchActions } from './session-store-worktree-types'
 
-import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, ConversationPane, ImageAttachmentPayload, WorktreeInventoryEntry, WorktreeProvisionState, WorkStage, IntegrationWorkspace, IntegrationMember, BenchAssembleResult, WorktreeMoveResult } from '../../shared/types'
+import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, ConversationPane, ImageAttachmentPayload, WorktreeInventoryEntry, IntegrationWorkspace, IntegrationMember } from '../../shared/types'
 import type { ResourceItem } from '../../shared/types-engine'
 
-export interface State {
+export interface RewindResult {
+  ok: boolean
+  error?: string
+  /** Composer state restored only after the engine accepts the rewind. */
+  prefill?: {
+    text: string
+    attachments: FileAttachment[]
+  }
+}
+
+export interface DispatchSplitSubject {
+  agentName: string
+  dispatchId: string
+  /** Conversation that opened this Studio-local split. */
+  tabId: string
+}
+
+export interface State extends WorktreeBenchActions {
   tabs: TabState[]
+  /** Recoverable closed conversations. They are cold settled records. */
+  settledHistory: TabState[]
   activeTabId: string
   isExpanded: boolean
   staticInfo: StaticInfo | null
   gitPanelOpen: boolean
+  /** Overlay left-side Inbox panel. Mutually exclusive with File Explorer. */
+  inboxPanelOpen: boolean
   /**
    * Whether the Status Drawer (right-side panel) is open. Toggled by the ⓘ
    * button in StatusBar's right cluster. When open alongside other panels
@@ -36,6 +63,8 @@ export interface State {
    * Status Drawer is closed or the panel navigates away.
    */
   statusDrawerDispatchId: string | null
+  /** Studio inline dispatch split subject (null = closed). Scoped to its opening conversation. */
+  dispatchSplit: DispatchSplitSubject | null
   terminalOpenTabIds: Set<string>
   terminalActiveTabIds: Set<string>
   terminalPendingCommands: Map<string, string>
@@ -43,6 +72,8 @@ export interface State {
   terminalTallTabId: string | null
   terminalBigScreenTabId: string | null
   fileExplorerOpenDirs: Set<string>
+  /** Workspace root sections currently collapsed (window-local UI). */
+  fileExplorerRootCollapsed: Set<string>
   fileExplorerStates: Map<string, { expandedPaths: Set<string>; selectedPath: string | null }>
   fileEditorOpenDirs: Set<string>
   fileEditorFocused: boolean
@@ -52,6 +83,10 @@ export interface State {
   resourceViewerGeometry: { x: number; y: number; w: number; h: number }
   agentDetailGeometry: { x: number; y: number; w: number; h: number }
   tabsReady: boolean
+  /** Complete owner bootstrap gate. Product shells stay unmounted until true. */
+  startupReady: boolean
+  /** Fatal startup error shown only by the standalone splash. */
+  startupError: string | null
   /** True while useTabRestoration's restore loop is running. The persist subscriber
    * skips saves during this window to avoid the ~25 GUARD rejections that occur when
    * each per-tab setState triggers a partial-state save before all tabs are loaded.
@@ -90,6 +125,8 @@ export interface State {
    * banner can show the terminal summary until dismissed.
    */
   worktreePipeline: WorktreePipelineState | null
+  /** Current and recent owner-executed workspace mutations for Studio progress UI. */
+  workspaceOperationLedger: Map<string, import('./session-store-worktree-sync').WorkspaceOperation>
 
   engineWorkingMessages: Map<string, string>
   engineNotifications: Map<string, Array<{ id: string; message: string; level: string; timestamp: number }>>
@@ -156,6 +193,8 @@ export interface State {
 
   initStaticInfo: () => Promise<void>
   setPermissionMode: (mode: 'auto' | 'plan', source?: string) => void
+  /** Flip active instance mode atomically in the owner store. */
+  togglePermissionMode: (source?: string) => void
   /**
    * The single plan-approval → implementation pipeline (implement-slice.ts):
    * optional unpin, denial-card dismissal, implement divider, per-tab mode
@@ -163,6 +202,18 @@ export interface State {
    * prompt submit. Owner-executed everywhere — the ATV mirror forwards it.
    */
   implementPlan: (tabId: string, opts?: { clearContext?: boolean; unpin?: boolean }) => Promise<void>
+  /**
+   * Dismiss a pending AskUserQuestion / ExitPlanMode card and tell the engine
+   * the question is resolved, so it releases its retention and stops
+   * re-publishing the denial on every status snapshot.
+   *
+   * One action rather than a component handler because it is two coupled
+   * mutations (store clear + engine notify) that must both happen in the OWNER
+   * window: a Studio-hosted card running these as separate calls would clear
+   * the mirror's copy while the owner's engine notify targeted whatever tab the
+   * owner considered active.
+   */
+  dismissPermissionDenied: (tabId: string) => void
   /**
    * Set the per-conversation extended-thinking effort for the active
    * conversation. Isolated per-tab (bare) and per-instance (engine subtab),
@@ -173,7 +224,8 @@ export interface State {
   createTab: (useWorktree?: boolean) => Promise<string>
   createTabInDirectory: (dir: string, useWorktree?: boolean, skipDuplicateCheck?: boolean, pinToGroupId?: string) => Promise<string>
   selectTab: (tabId: string) => void
-  closeTab: (tabId: string) => void
+  /** `remote` means main already closed; `delete` means history is deleted; `remote-delete` means both. */
+  closeTab: (tabId: string, origin?: 'local' | 'remote' | 'delete' | 'remote-delete') => void
   /**
    * The pending close request. Every confirm surface reads this one field, so
    * there is exactly one close dialog regardless of which entry point raised it.
@@ -189,7 +241,21 @@ export interface State {
   confirmCloseTab: () => void
   /** Dismiss the pending close intent without closing. */
   cancelCloseTab: () => void
-  reorderTabs: (reorderedTabs: TabState[]) => void
+  /**
+   * Reorder tabs to match the given ORDER OF IDS, not a full replacement
+   * array. The store applies the ordering to its OWN current `tabs`: ids that
+   * appear are moved into that relative order, ids that do not appear (a tab
+   * created after the caller last synced, or one the caller's copy is simply
+   * missing) are appended in their existing relative order, and any id in the
+   * argument that no longer names a real tab is ignored.
+   *
+   * Accepting only ids (not full TabState objects) is deliberate: a full
+   * array handed straight to `set({ tabs: ... })` would silently drop or
+   * resurrect tabs whenever the caller's copy had drifted from the owner's —
+   * exactly the risk a forwarded Studio-mirror call carries, since the
+   * mirror's own `tabs` can be a beat behind the owner's.
+   */
+  reorderTabs: (orderedIds: string[]) => void
   renameTab: (tabId: string, customTitle: string | null) => void
   /** Records a direct picker/remote model choice as explicit user intent. */
   setTabModel: (tabId: string, model: string) => void
@@ -218,6 +284,32 @@ export interface State {
    * durable agentStates (dispatchParentId walk) before presenting the panel.
    */
   openDispatchPreview: (dispatchId: string) => void
+  openDispatchSplit: (subject: { agentName: string; dispatchId: string }) => void
+  closeDispatchSplit: () => void
+  /** Inbox: seal a conversation, stop its engine session, and lock input. */
+  settleTab: (tabId: string) => Promise<void>
+  /** Inbox: auto-settle an idle conversation with the same hard lock as manual settlement. */
+  autoSettleTab: (tabId: string) => Promise<void>
+  /** Inbox: unseal a conversation and resume the saved engine session. */
+  unsettleTab: (tabId: string, reason: 'user' | 'activity') => Promise<boolean>
+  /** Materialize a cold settled record for read-only history review when its execution directory still exists. */
+  restoreSettledHistoryTab: (tabId: string) => Promise<boolean>
+  /** Inbox: snooze until the given wall-clock ms. */
+  snoozeTab: (tabId: string, untilMs: number) => void
+  unsnoozeTab: (tabId: string) => void
+  /** Inbox: force the unread dot until the next visit. */
+  markTabUnread: (tabId: string) => void
+  /** Promote a conversation above active rows and clear parked lifecycle state. */
+  pinTab: (tabId: string) => void
+  unpinTab: (tabId: string) => void
+  /** Apply fractional order keys produced by the shared pin planner. */
+  reorderPinnedTabs: (assignments: ReadonlyArray<{ id: string; orderKey: string }>) => void
+  /** Generate a new title from existing conversation context. */
+  regenerateTabTitle: (tabId: string) => Promise<void>
+  /** Permanently delete persisted conversation data, then close its tab. */
+  deleteConversationTab: (tabId: string) => Promise<void>
+  toggleInboxPanel: () => void
+  closeInboxPanel: () => void
   toggleTerminal: (tabId: string) => void
   runInTerminal: (tabId: string, cmd: string) => void
   consumeTerminalPendingCommand: (key: string) => string | undefined
@@ -235,6 +327,8 @@ export interface State {
   setFileExplorerExpanded: (dir: string, path: string, expanded: boolean) => void
   setFileExplorerSelected: (dir: string, path: string | null) => void
   collapseAllExplorer: (dir: string) => void
+  /** Collapse/expand a whole workspace root section (multi-root explorer). */
+  setExplorerRootCollapsed: (rootDir: string, collapsed: boolean) => void
   toggleFileEditor: (tabId: string) => void
   focusFileEditor: () => void
   blurFileEditor: () => void
@@ -247,12 +341,13 @@ export interface State {
   reorderEditorFiles: (dir: string, reordered: FileEditorTab[]) => void
   toggleEditorPreview: (dir: string, fileId: string) => void
   toggleEditorReadOnly: (dir: string, fileId: string) => void
+  /** Per-tab word-wrap override toggle (undefined follows the preference). */
+  toggleEditorWordWrap: (dir: string, fileId: string) => void
   setEditorGeometry: (geo: { x: number; y: number; w: number; h: number }) => void
   setPlanGeometry: (geo: { x: number; y: number; w: number; h: number }) => void
   setResourceViewerGeometry: (geo: { x: number; y: number; w: number; h: number }) => void
   setAgentDetailGeometry: (geo: { x: number; y: number; w: number; h: number }) => void
   forkTab: (sourceTabId: string) => Promise<string | null>
-  rewindToMessage: (tabId: string, messageId: string) => void
   forkFromMessage: (tabId: string, messageId: string) => Promise<string | null>
   resumeSession: (sessionId: string, title?: string, projectPath?: string, customTitle?: string | null, encodedDir?: string | null) => Promise<string>
   resumeSessionWithChain: (sessionId: string, historicalSessionIds: string[], title?: string, projectPath?: string, customTitle?: string | null, encodedDir?: string | null) => Promise<string>
@@ -280,7 +375,7 @@ export interface State {
      *  When present, stored on the optimistic user message so InlineMessageImages
      *  renders inline previews and parseAttachmentsFromMessages populates the
      *  attachments panel on the desktop side. */
-    remoteAttachments?: Array<{ type: string; name: string; path: string }>
+    remoteAttachments?: Array<{ type: string; name: string; path: string; contentHash?: string }>
     source?: 'remote' | 'machine'
     resolveSlash?: boolean
     requestId?: string
@@ -307,29 +402,30 @@ export interface State {
   interrupt: (tabId: string) => void
   submitRemoteBash: (tabId: string, command: string) => void
   respondPermission: (tabId: string, questionId: string, optionId: string) => void
-  respondElicitation: (tabId: string, requestId: string, response: Record<string, unknown> | undefined, cancelled: boolean) => void
+  respondElicitation: (tabId: string, requestId: string, response: Record<string, unknown> | undefined, cancelled: boolean, declined?: boolean) => void
   addDirectory: (dir: string) => void
   removeDirectory: (dir: string) => void
   setBaseDirectory: (dir: string) => void
-  setupWorktree: (tabId: string, sourceBranch: string, setAsDefault: boolean) => Promise<void>
-  convertToWorktree: (tabId: string) => Promise<void>
-  cancelWorktreeSetup: (tabId: string) => void
-  /**
-   * Rename a conversation AND the worktree it lives in, to the same name.
-   *
-   * The one path that changes both. Ordinary renames are independent by design
-   * (a worktree's topic does not follow every relabelling of a conversation in
-   * it), so this exists as an explicit operator verb rather than a heuristic.
-   */
-  renameTabAndWorktree: (tabId: string, title: string) => Promise<void>
-  finishWorktreeTab: (tabId: string, strategyOverride?: 'merge-ff' | 'merge' | 'pr') => Promise<void>
   addAttachments: (attachments: FileAttachment[]) => void
   removeAttachment: (attachmentId: string) => void
   clearAttachments: () => void
+  /**
+   * Re-derive image previews for staged attachments restored from disk, which
+   * are persisted without their base64 `dataUrl`. Reads each row back from its
+   * content-addressed `path`; a row whose file is gone keeps its metadata and
+   * stays previewless rather than vanishing from the tray.
+   */
+  rehydrateAttachmentPreviews: () => Promise<void>
   editQueuedMessage: (tabId: string) => void
   setDraftInput: (tabId: string, text: string) => void
   clearPendingInput: (tabId: string) => void
   handleNormalizedEvent: (tabId: string, event: NormalizedEvent) => void
+  /** Owner-durable completion report for a conflict auto-fix run. The owner alone
+   * evaluates close eligibility after each normalized-event reducer commit. */
+  reportAutoFixCompletion: (
+    tabId: string,
+    evidence: import('./slices/event-slice-auto-fix-lifecycle').AutoFixCompletionEvidence,
+  ) => void
   handleStatusChange: (tabId: string, newStatus: string, oldStatus: string) => void
   handleError: (tabId: string, error: EnrichedError) => void
   forceRecoverTab: (tabId: string, reason: string) => void
@@ -337,121 +433,6 @@ export interface State {
   moveTabToGroupAndPin: (tabId: string, groupId: string) => void
   setTabGroupId: (tabId: string, groupId: string | null) => void
   toggleTabGroupPin: (tabId: string) => void
-  setWorktreeUncommitted: (tabId: string, hasChanges: boolean) => void
-  refreshWorktreeInventory: (repoPath: string) => Promise<void>
-  /**
-   * Re-read both worktree surfaces (inventory + bench) for a repo.
-   *
-   * The pair, named once, for any flow that changes git state a worktree row
-   * describes — the row is a join of the two caches, so refreshing one leaves a
-   * half-stale row. Never reassembles; refreshing reads, assembly mutates.
-   */
-  refreshWorkspaceViews: (repoPath: string) => Promise<void>
-  /** Seal every existing conversation in a landed worktree for read-only review. */
-  sealLandedWorktree: (worktreePath: string) => Promise<void>
-  /** Open (or focus) a conversation in an existing worktree. */
-  openWorktreeConversation: (worktreePath: string) => Promise<string>
-  /**
-   * Create an ADDITIONAL conversation in a worktree, with its worktree metadata
-   * attached. Distinct from `openWorktreeConversation`, which focuses or cycles
-   * the ones that already exist.
-   */
-  newWorktreeConversation: (worktreePath: string) => Promise<string>
-  syncWorktree: (worktreePath: string, sourceBranch: string, repoPath: string) => Promise<{ ok: boolean; error?: string; hasConflicts?: boolean; refusedDirty?: boolean; replayed?: boolean }>
-  /**
-   * Phase 1 of the sync-all pipeline: the free mechanical pass over every
-   * worktree of the repo. Pauses at `awaiting-ai-confirm` when conflicts
-   * survive it — agents cost money, so launching them is the operator's
-   * explicit act (confirmWorktreePipelineAi) — and runs straight through to
-   * the bench phase when none do. See stores/slices/worktree-pipeline-slice.ts.
-   */
-  startWorktreePipeline: (repoPath: string, sourceBranch?: string | null) => Promise<void>
-  /** The confirm gate's Yes: sequential AI escalation with rerere replay between agents. */
-  confirmWorktreePipelineAi: () => Promise<void>
-  /** Stop between steps; never aborts an in-flight rebase or a running agent. */
-  cancelWorktreePipeline: () => void
-  /** Clear the finished pipeline banner. */
-  dismissWorktreePipeline: () => void
-  /**
-   * Retire a worktree, relocating any conversation inside it first so the tab is
-   * never left pointed at a deleted directory. Callers must confirm against
-   * `gitWorktreeAppraise` before invoking: this forces removal.
-   *
-   * Returns the full `WorktreeMoveResult` so callers can surface `recoveryRef` —
-   * the ref holding any uncommitted work the forced removal preserved. A caller
-   * that cannot see it cannot tell the operator where their work went.
-   */
-  retireWorktree: (repoPath: string, worktreePath: string, branchName: string) => Promise<WorktreeMoveResult>
-  /** Retire every worktree already sealed by a successful Land. The batch
-   * preflights all current occupants before deleting any checkout. */
-  retireLandedWorktrees: (repoPath: string) => Promise<{ ok: boolean; retired: number; error?: string }>
-  /**
-   * Re-run provisioning for a worktree whose dependency state looks wrong
-   * (missing node_modules, a half-finished install). Same path creation uses.
-   */
-  reprovisionWorktree: (repoPath: string, worktreePath: string) => Promise<{ ok: boolean; state: WorktreeProvisionState; error?: string }>
-  refreshBench: (repoPath: string) => Promise<void>
-  /** Open (or focus) a conversation in the bench worktree. */
-  openBenchConversation: (repoPath: string, sourceBranch: string) => Promise<string | null>
-  /**
-   * Open (or focus) the bench's ONE dedicated terminal tab, building the bench
-   * first when its directory is not there. Returns the tab id, or null when the
-   * workspace is unknown or the build failed.
-   */
-  openBenchTerminal: (repoPath: string, sourceBranch: string) => Promise<string | null>
-  benchAssemble: (repoPath: string, sourceBranch: string) => Promise<BenchAssembleResult>
-  /**
-   * Resolve-once: prepare the failed assembly merge in the bench (left in
-   * progress for the ConflictsDialog), or reassemble immediately when
-   * recordings already cover the conflict. Returns the bench path to open the
-   * dialog on, or null when nothing needed resolving / preparation failed.
-   */
-  benchResolveConflict: (repoPath: string, sourceBranch: string) => Promise<string | null>
-  benchRerereCount: (directory: string) => Promise<number>
-  benchRerereForget: (directory: string, paths: string[]) => Promise<number>
-  benchRerereDiscardAll: (directory: string) => Promise<number>
-  /**
-   * AI-assisted analysis of a bench verification failure (never a fix — see
-   * git-conflict-slice.ts's openConflictAssist for the parallel conflict-fix
-   * flow this deliberately does NOT mirror on mode). ONE forwarded action:
-   * materialises the failing tree back into the bench, then opens a
-   * plan-mode, input-locked conversation there whose only job is to name
-   * whether the failure is a poisoned recording or a genuine cross-member
-   * incompatibility. Throws with a remediation message when the `standard`
-   * model tier is not configured, or when the diagnostic tree could not be
-   * rebuilt (the bench state moved since the failure).
-   */
-  openBenchVerificationAnalysis: (repoPath: string, sourceBranch: string) => Promise<string>
-  /** Forget recordings for selected bench members, then reassemble unchanged pins. */
-  benchDiscardMemberRecordings: (
-    repoPath: string, sourceBranch: string, branchNames: string[],
-  ) => Promise<BenchAssembleResult & { forgottenCount?: number; branchesWithNothingToForget?: string[] }>
-  benchUpdateMember: (repoPath: string, sourceBranch: string, worktreePath: string) => Promise<BenchAssembleResult>
-  benchUpdateAll: (repoPath: string, sourceBranch: string) => Promise<BenchAssembleResult>
-  /** Apply a confirmed overlap fast lane atomically, without assembling it. */
-  benchApplyOverlapFastLane: (repoPath: string, sourceBranch: string, basis: import('../../shared/types-worktree-overlap').WorktreeOverlapBasis, orderedPaths: string[]) => Promise<import('../../shared/types-worktree-overlap').WorktreeOverlapApplyResult>
-  benchAddMember: (repoPath: string, sourceBranch: string, worktreePath: string, branchName: string) => Promise<{ ok: boolean; error?: string }>
-  benchRemoveMember: (repoPath: string, sourceBranch: string, worktreePath: string) => Promise<void>
-  benchSetEnabled: (repoPath: string, sourceBranch: string, worktreePath: string, enabled: boolean) => Promise<void>
-  /** Set or clear the operator's workflow stage on a worktree. `null` clears. */
-  setWorktreeStage: (repoPath: string, worktreePath: string, stage: WorkStage | null) => Promise<void>
-  /**
-   * @deprecated Compatibility shim over `setWorktreeStage` for call sites that
-   * predate the work-stage system (`good` → `verified`, `issue` → `bug`,
-   * `null` clears; `sourceBranch` ignored — stages are worktree-scoped).
-   * Removable once every sibling branch has migrated to `setWorktreeStage`:
-   * wt/ion-98d550f3, wt/ion-d2101138, wt/ion-c151d648, wt/ion-02804dd4.
-   */
-  benchSetReview: (repoPath: string, sourceBranch: string, worktreePath: string, review: 'good' | 'issue' | null) => Promise<void>
-  benchSetOrder: (repoPath: string, sourceBranch: string, worktreePath: string, toIndex: number) => Promise<void>
-  /** Dismiss the absorbed-into-base notice for one workspace. */
-  clearBenchRetired: (repoPath: string, sourceBranch: string) => void
-  /** Record a conflicted directory (sync/land failure or detected mid-operation). */
-  recordConflictAlert: (directory: string, alert: GitConflictAlert) => void
-  /** Drop a directory's conflict alert — its operation completed or aborted. */
-  clearConflictAlert: (directory: string) => void
-  /** Open (or focus) a conversation in the conflicted directory and submit the assist prompt. */
-  openConflictAssist: (directory: string) => Promise<string>
   /**
    * Unified tab + engine-instance creation entry point (Phase 2, #256).
    * Both plain and engine tabs are created through this path. The extension
@@ -478,12 +459,23 @@ export interface State {
    */
   resetEngineInstance: (tabId: string, instanceId: string) => void
   /**
-   * Rewind an engine instance to a previous user message. Truncates messages
-   * to before the target, tears down the running session, and pre-fills the
-   * input bar with the target message's text. Prior conversation context is
-   * injected as a system prompt on the next send (one-shot).
+   * Rewind an engine instance to a previous user message. Prefers the exact
+   * durable engine entryId when the target row already carries one (the
+   * canonical id is present on any row the engine has confirmed persisted —
+   * a run-opening turn re-keyed by `user_turn_persisted`, a delivered steer
+   * re-keyed by `steer_injected`, or any history-loaded row); falls back to
+   * the legacy user-turn ordinal only when the row has no such id yet (a
+   * fresh, still-unconfirmed optimistic bubble, or a forwarded mirror call
+   * whose id the owner never minted).
+   *
+   * TRANSACTIONAL: calls the engine first and mutates local state (message
+   * truncation, draft/prefill, Studio/iOS history replacement) only after
+   * the engine confirms success. A rejected rewind (unknown/foreign/non-user
+   * target) leaves every client's transcript untouched — no local truncation
+   * ever precedes engine confirmation. Returns the async outcome so a caller
+   * can react to a refusal (e.g. keep showing "Sure?" instead of resetting).
    */
-  rewindEngineInstance: (tabId: string, instanceId: string, messageId: string, userTurnIndex?: number) => void
+  rewindEngineInstance: (tabId: string, instanceId: string, messageId: string, userTurnIndex?: number) => Promise<RewindResult>
   addEngineSystemMessage: (tabId: string, content: string, planFilePath?: string) => void
   /** Insert a user-role message into the active conversation instance for a
    *  remote-originated prompt that bypassed the renderer's submit() path. Used

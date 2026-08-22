@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef } from 'react'
+import { zoomDelta, zoomViewport } from '../viewport-zoom'
 
 /**
  * Shared 8-direction edge/corner resize hook for floating panels
@@ -247,8 +248,10 @@ export function useEdgeResize(params: UseEdgeResizeParams): UseEdgeResizeResult 
       const drag = dragRef.current
       if (!drag) return
       const { minWidth: mw, minHeight: mh, onResize: onR } = cbRef.current
-      const dx = e.clientX - drag.anchorX
-      const dy = e.clientY - drag.anchorY
+      const delta = zoomDelta({ x: e.clientX - drag.anchorX, y: e.clientY - drag.anchorY })
+      const viewport = zoomViewport()
+      const dx = delta.x
+      const dy = delta.y
       const geo = computeResizeGeometry(
         drag.start,
         drag.direction,
@@ -256,8 +259,8 @@ export function useEdgeResize(params: UseEdgeResizeParams): UseEdgeResizeResult 
         dy,
         mw,
         mh,
-        window.innerWidth,
-        window.innerHeight,
+        viewport.width,
+        viewport.height,
       )
       onR(geo)
     }
@@ -267,8 +270,10 @@ export function useEdgeResize(params: UseEdgeResizeParams): UseEdgeResizeResult 
       if (!drag) return
       dragRef.current = null
       const { minWidth: mw, minHeight: mh, onResizeEnd: onEnd } = cbRef.current
-      const dx = e.clientX - drag.anchorX
-      const dy = e.clientY - drag.anchorY
+      const delta = zoomDelta({ x: e.clientX - drag.anchorX, y: e.clientY - drag.anchorY })
+      const viewport = zoomViewport()
+      const dx = delta.x
+      const dy = delta.y
       const geo = computeResizeGeometry(
         drag.start,
         drag.direction,
@@ -276,8 +281,8 @@ export function useEdgeResize(params: UseEdgeResizeParams): UseEdgeResizeResult 
         dy,
         mw,
         mh,
-        window.innerWidth,
-        window.innerHeight,
+        viewport.width,
+        viewport.height,
       )
       onEnd(geo)
     }

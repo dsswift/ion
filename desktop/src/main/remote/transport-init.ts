@@ -19,6 +19,11 @@ import {
   sendRelayConfigToPeers,
   setResolvedRelayAuth,
 } from './relay-config-push'
+import {
+  clearTokenRefreshTimer,
+  scheduleTokenRefresh as scheduleTokenRefreshImpl,
+  type TokenRefreshDeps,
+} from './token-refresh'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -36,59 +41,24 @@ function error(msg: string, fields?: Record<string, unknown>): void {
 // Token refresh timer
 // ---------------------------------------------------------------------------
 
-/** How long before token expiry to rotate relay sockets. */
-const TOKEN_REFRESH_LEAD_MS = 30 * 1000
-
-/** Module-level token refresh timer. Cleared when transport is torn down. */
-let tokenRefreshTimer: ReturnType<typeof setTimeout> | null = null
-
-function clearTokenRefreshTimer(): void {
-  if (tokenRefreshTimer !== null) {
-    clearTimeout(tokenRefreshTimer)
-    tokenRefreshTimer = null
-  }
+/**
+ * The scheduler itself lives in token-refresh.ts, which documents the spin-loop
+ * defect it bounds. This module supplies the real world it acts on.
+ */
+const tokenRefreshDeps: TokenRefreshDeps = {
+  requestToken: (oidcScope) =>
+    engineBridge.request<{ accessToken?: string; expiresAt?: number }>('oidc_token', { oidcScope }),
+  rotateSockets: (oidcScope) => {
+    state.remoteTransport?.updateConfig({ getCredential: buildGetCredential(oidcScope) })
+  },
+  pushConfigToPeers: () => sendRelayConfigToPeers('proactive-token-refresh'),
+  log,
+  warn,
+  now: () => Date.now(),
 }
 
-/**
- * Schedule a proactive token refresh before expiry. When the timer fires, mint
- * a fresh token and push a relay_config update to iOS as persisted bootstrap
- * recovery data. Autonomous OIDC clients keep their authenticated live socket;
- * legacy clients use the refreshed credential on their next reconnect.
- */
 function scheduleTokenRefresh(oidcScope: string, expiresAtMs: number): void {
-  clearTokenRefreshTimer()
-  const refreshAt = expiresAtMs - TOKEN_REFRESH_LEAD_MS
-  const delayMs = Math.max(0, refreshAt - Date.now())
-  log('remote_transport: scheduling token refresh', { delay_ms: Math.round(delayMs), expires_at: new Date(expiresAtMs).toISOString() })
-
-  tokenRefreshTimer = setTimeout(() => {
-    tokenRefreshTimer = null
-    void (async () => {
-      try {
-        const result = await engineBridge.request<{ accessToken?: string; expiresAt?: number }>('oidc_token', { oidcScope })
-        if (!result.ok || !result.data?.accessToken) {
-          warn('remote_transport: proactive token refresh failed, relay will reconnect on expiry', { error: result.error ?? 'no token' })
-          return
-        }
-        const freshExpiry = result.data.expiresAt
-        if (!freshExpiry) {
-          warn('remote_transport: proactive token refresh returned no expiry; relay will reconnect on expiry')
-          return
-        }
-        log('remote_transport: proactive token refresh succeeded, rotating relay sockets')
-
-        // Relay auth happens during WebSocket upgrade. Existing sockets keep
-        // their old bearer until relay closes them, so refresh must rebuild the
-        // per-device relay clients now rather than only persisting bootstrap
-        // config for iOS.
-        state.remoteTransport?.updateConfig({ getCredential: buildGetCredential(oidcScope) })
-        await sendRelayConfigToPeers('proactive-token-refresh')
-        scheduleTokenRefresh(oidcScope, freshExpiry)
-      } catch (err) {
-        warn('remote_transport: proactive token refresh threw', { error: String(err) })
-      }
-    })()
-  }, delayMs)
+  scheduleTokenRefreshImpl(oidcScope, expiresAtMs, tokenRefreshDeps)
 }
 
 // ---------------------------------------------------------------------------

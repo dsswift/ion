@@ -237,12 +237,8 @@ describe('conflict resolution', () => {
   }, GIT_FIXTURE_TIMEOUT)
 })
 
-describe('disabled members', () => {
-  // A disabled member's content is NOT in the bench, so it is never a
-  // candidate — but it IS reported separately, because "the fix looks like it
-  // belongs to a member that is switched off" is a real diagnosis and silence
-  // reads as "no such member".
-  it('separates disabled members from candidates', () => {
+describe('legacy membership migration', () => {
+  it('drops a disabled member before attribution', () => {
     buildMembers(f)
     assemble(f, 'wt/alpha')
 
@@ -254,11 +250,6 @@ describe('disabled members', () => {
     const res = attr({ path: 'app.txt' })
 
     expect(hasCandidate(res, 'wt/gamma')).toBe(false)
-    expect(res.disabledMembersTouching).toHaveLength(1)
-    expect(res.disabledMembersTouching![0].branchName).toBe('wt/gamma')
-    expect(anyContains(res.warnings, 'excluded from the assembly')).toBe(true)
-    // With gamma excluded, alpha is the sole owner: the disabled member must
-    // not have made the answer ambiguous.
     expect(res.outcome).toBe('member')
   }, GIT_FIXTURE_TIMEOUT)
 })

@@ -3,6 +3,8 @@ import { unlink } from 'fs/promises'
 import { basename, join } from 'path'
 import { IPC } from '../../shared/types'
 import { runGit } from '../git-runner'
+import { loadCommitFileDiff, loadGitDiff } from '../git/diff-content'
+import { partitionStatus } from '../git/diffs'
 import { benchGuard } from '../integration/bench-guard'
 import { error as _error, debug as _debug } from '../logger'
 
@@ -142,11 +144,10 @@ export function registerGitIpc(): void {
 
   ipcMain.handle(IPC.GIT_COMMIT_FILE_DIFF, async (_event, { directory, hash, path }: { directory: string; hash: string; path: string }) => {
     try {
-      const output = await runGit(directory, ['diff-tree', '-p', '--root', hash, '--', path])
-      const fileName = path.split('/').pop() || path
-      return { diff: output, fileName }
-    } catch {
-      return { diff: '', fileName: path.split('/').pop() || path }
+      return await loadCommitFileDiff(directory, hash, path)
+    } catch (err) {
+      logDebug('git: commit file diff failed', { directory, hash, path, error: String(err) })
+      return { diff: '', fileName: basename(path), isBinary: false }
     }
   })
 
@@ -180,40 +181,8 @@ export function registerGitIpc(): void {
     } catch (err) { logDebug("git: ahead/behind read failed (no upstream?)", { directory, error: String(err) }) }
 
     try {
-      const statusOutput = await runGit(directory, ['status', '--porcelain=v1', '-uall'])
-
-      const result: Array<{ path: string; status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'; staged: boolean; oldPath?: string }> = []
-      for (const line of statusOutput.split('\n').filter((l) => l.length >= 4)) {
-        const match = line.match(/^(.)(.) (.+)$/)
-        if (!match) continue
-        const x = match[1]
-        const y = match[2]
-        let filePath = match[3]
-        let oldPath: string | undefined
-        if (filePath.includes(' -> ')) {
-          const parts = filePath.split(' -> ')
-          oldPath = parts[0]
-          filePath = parts[1]
-        }
-
-        if (x !== ' ' && x !== '?' && x !== '!') {
-          let status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
-          if (x === 'A') status = 'added'
-          else if (x === 'D') status = 'deleted'
-          else if (x === 'R') status = 'renamed'
-          else status = 'modified'
-          result.push({ path: filePath, status, staged: true, oldPath })
-        }
-        if (y !== ' ' && y !== '!') {
-          let status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
-          if (y === '?') status = 'untracked'
-          else if (y === 'A') status = 'added'
-          else if (y === 'D') status = 'deleted'
-          else if (y === 'R') status = 'renamed'
-          else status = 'modified'
-          result.push({ path: filePath, status, staged: false, oldPath })
-        }
-      }
+      const statusOutput = await runGit(directory, ['status', '--porcelain=v1', '-z', '-uall'])
+      const result = partitionStatus(statusOutput).flat
 
       return { files: result, branch, isGitRepo: true, ahead, behind }
     } catch {
@@ -312,27 +281,10 @@ export function registerGitIpc(): void {
 
   ipcMain.handle(IPC.GIT_DIFF, async (_event, { directory, path, staged }: { directory: string; path: string; staged: boolean }) => {
     try {
-      let diff: string
-      if (staged) {
-        diff = await runGit(directory, ['diff', '--cached', '--', path])
-      } else {
-        diff = await runGit(directory, ['diff', '--', path])
-        if (!diff.trim()) {
-          try {
-            const { readFileSync } = require('fs')
-            const fullPath = join(directory, path)
-            const content = readFileSync(fullPath, 'utf-8')
-            const lines = content.split('\n')
-            diff = `--- /dev/null\n+++ b/${path}\n@@ -0,0 +1,${lines.length} @@\n` +
-              lines.map((l: string) => `+${l}`).join('\n')
-          } catch {
-            diff = ''
-          }
-        }
-      }
-      return { diff, fileName: basename(path) }
-    } catch {
-      return { diff: '', fileName: basename(path) }
+      return await loadGitDiff(directory, path, staged)
+    } catch (err) {
+      logDebug('git: diff failed', { directory, path, staged, error: String(err) })
+      return { diff: '', fileName: basename(path), isBinary: false }
     }
   })
 
@@ -358,22 +310,12 @@ export function registerGitIpc(): void {
 
   ipcMain.handle(IPC.GIT_DISCARD, async (_event, { directory, paths }: { directory: string; paths: string[] }) => {
     try {
-      const statusOutput = await runGit(directory, ['status', '--porcelain=v1', '-uall', '--', ...paths])
-      const trackedPaths: string[] = []
-      const untrackedPaths: string[] = []
-      for (const line of statusOutput.split('\n').filter((l) => l.length >= 4)) {
-        const dm = line.match(/^(.)(.) (.+)$/)
-        if (!dm) continue
-        const x = dm[1]
-        const y = dm[2]
-        let p = dm[3]
-        if (p.includes(' -> ')) p = p.split(' -> ')[1]
-        if (x === '?' && y === '?') {
-          untrackedPaths.push(p)
-        } else {
-          trackedPaths.push(p)
-        }
-      }
+      const statusOutput = await runGit(directory, ['status', '--porcelain=v1', '-z', '-uall', '--', ...paths])
+      const groups = partitionStatus(statusOutput)
+      const untrackedPaths = groups.untracked.map((file) => file.path)
+      const trackedPaths = groups.flat
+        .filter((file) => file.status !== 'untracked')
+        .map((file) => file.path)
       if (trackedPaths.length > 0) {
         await runGit(directory, ['checkout', 'HEAD', '--', ...trackedPaths])
       }

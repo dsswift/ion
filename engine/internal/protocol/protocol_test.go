@@ -78,6 +78,16 @@ func TestParseClientCommand_ValidCommands(t *testing.T) {
 			cmd:  "stop_session",
 		},
 		{
+			name: "settle_session",
+			line: `{"cmd":"settle_session","key":"s1"}`,
+			cmd:  "settle_session",
+		},
+		{
+			name: "resume_session",
+			line: `{"cmd":"resume_session","key":"s1"}`,
+			cmd:  "resume_session",
+		},
+		{
 			name: "stop_by_prefix",
 			line: `{"cmd":"stop_by_prefix","prefix":"proj-"}`,
 			cmd:  "stop_by_prefix",
@@ -172,6 +182,18 @@ func TestParseClientCommand_ValidCommands(t *testing.T) {
 			line: `{"cmd":"provider_logout","provider":"openai","requestId":"r1"}`,
 			cmd:  "provider_logout",
 		},
+		{
+			// resolve_permission_denials releases the engine's retention of an
+			// unresolved AskUserQuestion / ExitPlanMode when the consumer
+			// resolved it without sending a prompt or a /clear. It must be in
+			// the validCommands allowlist AND pass field validation, or the
+			// engine rejects it before dispatch and the retention can never be
+			// released — leaving every consumer to suppress the re-published
+			// denial locally and forever.
+			name: "resolve_permission_denials",
+			line: `{"cmd":"resolve_permission_denials","key":"s1"}`,
+			cmd:  "resolve_permission_denials",
+		},
 	}
 
 	for _, tt := range tests {
@@ -219,6 +241,17 @@ func TestParseClientCommand_MissingRequired(t *testing.T) {
 		{
 			name: "abort missing key",
 			line: `{"cmd":"abort"}`,
+		},
+		{
+			// A denial resolution is session-scoped; without a key there is no
+			// retention to release, so the command is rejected rather than
+			// silently applied to nothing.
+			name: "resolve_permission_denials missing key",
+			line: `{"cmd":"resolve_permission_denials"}`,
+		},
+		{
+			name: "resolve_permission_denials empty key",
+			line: `{"cmd":"resolve_permission_denials","key":""}`,
 		},
 		{
 			name: "tool_gate_response missing gateRequestId",
@@ -287,6 +320,14 @@ func TestParseClientCommand_MissingRequired(t *testing.T) {
 		{
 			name: "stop_session missing key",
 			line: `{"cmd":"stop_session"}`,
+		},
+		{
+			name: "settle_session missing key",
+			line: `{"cmd":"settle_session"}`,
+		},
+		{
+			name: "resume_session missing key",
+			line: `{"cmd":"resume_session"}`,
 		},
 	}
 
@@ -601,6 +642,8 @@ func TestParseClientCommand_AllCommandTypes(t *testing.T) {
 		"dialog_response": `{"cmd":"dialog_response","key":"k","dialogId":"d"}`,
 		"command":         `{"cmd":"command","key":"k","command":"c"}`,
 		"stop_session":    `{"cmd":"stop_session","key":"k"}`,
+		"settle_session":  `{"cmd":"settle_session","key":"k"}`,
+		"resume_session":  `{"cmd":"resume_session","key":"k"}`,
 		"stop_by_prefix":  `{"cmd":"stop_by_prefix","prefix":"p"}`,
 		"list_sessions":   `{"cmd":"list_sessions"}`,
 		"fork_session":    `{"cmd":"fork_session","key":"k","messageIndex":0}`,

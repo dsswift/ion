@@ -1,7 +1,9 @@
-import { basename, join } from 'path'
+import { basename } from 'path'
 import { log as _log, debug as _debug } from '../../logger'
 import { state } from '../../state'
 import { runGit } from '../../git-runner'
+import { loadCommitFileDiff, loadGitDiff } from '../../git/diff-content'
+import { partitionStatus } from '../../git/diffs'
 import { computeGraphLayout } from '../../../shared/gitGraphLayout'
 import type { RemoteCommand } from '../protocol'
 import type { GitRef } from '../../../shared/types'
@@ -41,39 +43,8 @@ export async function handleGitChanges(cmd: Extract<RemoteCommand, { type: 'desk
       debug('git: ahead/behind read failed (no upstream?)', { directory, error: String(err) })
     }
 
-    const statusOutput = await runGit(directory, ['status', '--porcelain=v1', '-uall'])
-    const files: Array<{ path: string; status: string; staged: boolean; oldPath?: string }> = []
-    for (const line of statusOutput.split('\n').filter((l) => l.length >= 4)) {
-      const match = line.match(/^(.)(.) (.+)$/)
-      if (!match) continue
-      const x = match[1]
-      const y = match[2]
-      let filePath = match[3]
-      let oldPath: string | undefined
-      if (filePath.includes(' -> ')) {
-        const parts = filePath.split(' -> ')
-        oldPath = parts[0]
-        filePath = parts[1]
-      }
-
-      if (x !== ' ' && x !== '?' && x !== '!') {
-        let status: string
-        if (x === 'A') status = 'added'
-        else if (x === 'D') status = 'deleted'
-        else if (x === 'R') status = 'renamed'
-        else status = 'modified'
-        files.push({ path: filePath, status, staged: true, oldPath })
-      }
-      if (y !== ' ' && y !== '!') {
-        let status: string
-        if (y === '?') status = 'untracked'
-        else if (y === 'A') status = 'added'
-        else if (y === 'D') status = 'deleted'
-        else if (y === 'R') status = 'renamed'
-        else status = 'modified'
-        files.push({ path: filePath, status, staged: false, oldPath })
-      }
-    }
+    const statusOutput = await runGit(directory, ['status', '--porcelain=v1', '-z', '-uall'])
+    const files = partitionStatus(statusOutput).flat
 
     const stagedCount = files.filter(f => f.staged).length
     const unstagedCount = files.filter(f => !f.staged).length
@@ -156,28 +127,11 @@ export async function handleGitGraph(cmd: Extract<RemoteCommand, { type: 'deskto
 export async function handleGitDiff(cmd: Extract<RemoteCommand, { type: 'desktop_git_diff' }>, deviceId: string): Promise<void> {
   const { directory, path: filePath, staged } = cmd
   try {
-    let diff: string
-    if (staged) {
-      diff = await runGit(directory, ['diff', '--cached', '--', filePath])
-    } else {
-      diff = await runGit(directory, ['diff', '--', filePath])
-      if (!diff.trim()) {
-        try {
-          const { readFileSync } = require('fs')
-          const fullPath = join(directory, filePath)
-          const content = readFileSync(fullPath, 'utf-8')
-          const lines = content.split('\n')
-          diff = `--- /dev/null\n+++ b/${filePath}\n@@ -0,0 +1,${lines.length} @@\n` +
-            lines.map((l: string) => `+${l}`).join('\n')
-        } catch {
-          diff = ''
-        }
-      }
-    }
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_diff_response', diff, fileName: basename(filePath) })
+    const result = await loadGitDiff(directory, filePath, staged)
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_diff_response', ...result })
   } catch (err) {
-    log('git_diff error', { error: (err as Error).message })
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_diff_response', diff: '', fileName: basename(filePath) })
+    log('git_diff error', { directory, path: filePath, staged, error: String(err) })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_diff_response', diff: '', fileName: basename(filePath), isBinary: false })
   }
 }
 
@@ -271,34 +225,23 @@ export async function handleGitCommitFiles(cmd: Extract<RemoteCommand, { type: '
 export async function handleGitCommitFileDiff(cmd: Extract<RemoteCommand, { type: 'desktop_git_commit_file_diff' }>, deviceId: string): Promise<void> {
   const { directory, hash, path: filePath } = cmd
   try {
-    const output = await runGit(directory, ['diff-tree', '-p', '--root', hash, '--', filePath])
-    const fileName = basename(filePath)
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_commit_file_diff_response', hash, path: filePath, diff: output, fileName })
+    const result = await loadCommitFileDiff(directory, hash, filePath)
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_commit_file_diff_response', hash, path: filePath, ...result })
   } catch (err) {
-    log('git_commit_file_diff error', { error: (err as Error).message })
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_commit_file_diff_response', hash, path: filePath, diff: '', fileName: basename(filePath) })
+    log('git_commit_file_diff error', { directory, hash, path: filePath, error: String(err) })
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_git_commit_file_diff_response', hash, path: filePath, diff: '', fileName: basename(filePath), isBinary: false })
   }
 }
 
 export async function handleGitDiscard(cmd: Extract<RemoteCommand, { type: 'desktop_git_discard' }>): Promise<void> {
   const { directory, paths } = cmd
   try {
-    const statusOutput = await runGit(directory, ['status', '--porcelain=v1', '-uall', '--', ...paths])
-    const trackedPaths: string[] = []
-    const untrackedPaths: string[] = []
-    for (const line of statusOutput.split('\n').filter((l) => l.length >= 4)) {
-      const dm = line.match(/^(.)(.) (.+)$/)
-      if (!dm) continue
-      const x = dm[1]
-      const y = dm[2]
-      let p = dm[3]
-      if (p.includes(' -> ')) p = p.split(' -> ')[1]
-      if (x === '?' && y === '?') {
-        untrackedPaths.push(p)
-      } else {
-        trackedPaths.push(p)
-      }
-    }
+    const statusOutput = await runGit(directory, ['status', '--porcelain=v1', '-z', '-uall', '--', ...paths])
+    const groups = partitionStatus(statusOutput)
+    const untrackedPaths = groups.untracked.map((file) => file.path)
+    const trackedPaths = groups.flat
+      .filter((file) => file.status !== 'untracked')
+      .map((file) => file.path)
     if (trackedPaths.length > 0) {
       await runGit(directory, ['checkout', 'HEAD', '--', ...trackedPaths])
     }

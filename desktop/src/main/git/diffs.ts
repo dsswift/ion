@@ -88,9 +88,56 @@ export interface PartitionedStatus {
 function statusFromCode(code: string): GitChangedFile['status'] {
   if (code === 'A') return 'added'
   if (code === 'D') return 'deleted'
-  if (code === 'R') return 'renamed'
+  if (code === 'R' || code === 'C') return 'renamed'
   if (code === '?') return 'untracked'
   return 'modified'
+}
+
+interface StatusRecord {
+  x: string
+  y: string
+  path: string
+  oldPath?: string
+}
+
+/**
+ * Git's `-z` porcelain format is the only status format safe for arbitrary
+ * paths. Its rename records carry the destination first, followed by the
+ * original path in a second NUL-delimited record.
+ */
+function parseStatusRecords(porcelainOutput: string): StatusRecord[] {
+  if (porcelainOutput.includes('\0')) return parseNulStatusRecords(porcelainOutput)
+
+  return porcelainOutput.split('\n').flatMap((line) => {
+    const match = line.match(/^(.)(.) (.+)$/)
+    if (!match) return []
+    let path = match[3]
+    let oldPath: string | undefined
+    if (path.includes(' -> ')) {
+      const [old, next] = path.split(' -> ')
+      oldPath = old
+      path = next
+    }
+    return [{ x: match[1], y: match[2], path, oldPath }]
+  })
+}
+
+function parseNulStatusRecords(porcelainOutput: string): StatusRecord[] {
+  const fields = porcelainOutput.split('\0')
+  const records: StatusRecord[] = []
+
+  for (let i = 0; i < fields.length; i++) {
+    const field = fields[i]
+    if (field.length < 4 || field[2] !== ' ') continue
+    const x = field[0]
+    const y = field[1]
+    const path = field.slice(3)
+    const renamed = x === 'R' || x === 'C' || y === 'R' || y === 'C'
+    const oldPath = renamed ? fields[++i] : undefined
+    records.push({ x, y, path, oldPath })
+  }
+
+  return records
 }
 
 export function parseGitStatus(porcelainOutput: string): StatusEntry[] {
@@ -104,19 +151,8 @@ export function partitionStatus(porcelainOutput: string): PartitionedStatus {
   const untracked: GitChangedFile[] = []
   const merge: GitChangedFile[] = []
 
-  for (const line of porcelainOutput.split('\n').filter((l) => l.length >= 4)) {
-    const match = line.match(/^(.)(.) (.+)$/)
-    if (!match) continue
-    const x = match[1]
-    const y = match[2]
+  for (const { x, y, path: filePath, oldPath } of parseStatusRecords(porcelainOutput)) {
     const xy = `${x}${y}`
-    let filePath = match[3]
-    let oldPath: string | undefined
-    if (filePath.includes(' -> ')) {
-      const parts = filePath.split(' -> ')
-      oldPath = parts[0]
-      filePath = parts[1]
-    }
 
     const conflictKind = CONFLICT_CODES[xy]
     if (conflictKind) {

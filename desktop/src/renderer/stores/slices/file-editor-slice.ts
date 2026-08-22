@@ -224,6 +224,24 @@ export function createFileEditorSlice(set: StoreSet, _get: StoreGet): Partial<St
       })
     },
 
+    toggleEditorWordWrap: (dir, fileId) => {
+      const globalDefault = usePreferencesStore.getState().editorWordWrap
+      set((s) => {
+        const states = new Map(s.fileEditorStates)
+        const current = states.get(dir)
+        if (!current) return {}
+        states.set(dir, {
+          ...current,
+          files: current.files.map((f) =>
+            // First toggle flips AWAY from the effective value (preference
+            // default when no override yet), then alternates.
+            f.id === fileId ? { ...f, wordWrap: !(f.wordWrap ?? globalDefault) } : f
+          ),
+        })
+        return { fileEditorStates: states }
+      })
+    },
+
     setEditorGeometry: (geo) => set({ editorGeometry: geo }),
     setPlanGeometry: (geo) => set({ planGeometry: geo }),
     setResourceViewerGeometry: (geo) => set({ resourceViewerGeometry: geo }),

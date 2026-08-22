@@ -13,7 +13,7 @@ vi.mock("../../rendererLogger", () => ({
   rTrace: vi.fn(),
 }));
 
-import { createBenchSlice } from "../slices/bench-slice";
+import { createBenchAssemblySlice as createBenchSlice } from "../slices/bench-slice-assembly";
 import type { State } from "../session-store-types";
 
 const REPO = "/repo";

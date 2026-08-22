@@ -67,7 +67,7 @@ export function DirectoryPicker({
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
-  // Keep the portaled popover inside the window (ATV top-anchored strip).
+  // Keep the portaled popover inside the window (Studio top-anchored strip).
   useViewportClamp(ref, true)
   const recentDirs = usePreferencesStore((s) => s.recentBaseDirectories)
   const usageCounts = usePreferencesStore((s) => s.directoryUsageCounts)
@@ -207,7 +207,7 @@ export function DirectoryPicker({
           <FlaskIcon size={14} color={colors.accent} style={{ flexShrink: 0, marginRight: 8 }} />
           <span style={{ whiteSpace: 'nowrap', flex: 1 }}>Bench · {ws.sourceBranch}</span>
           <span style={{ fontSize: 10, color: colors.textTertiary }}>
-            {ws.members.filter((m) => m.enabled).length} member{ws.members.filter((m) => m.enabled).length === 1 ? '' : 's'}
+            {ws.members.length} member{ws.members.length === 1 ? '' : 's'}
           </span>
         </div>
       ))}

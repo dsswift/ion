@@ -47,6 +47,13 @@ function updateCache(result: { models: any[]; providers: any[] }): void {
     providerLabel: getProviderDisplayName(m.providerId, providers),
     label: getModelDisplayLabel(m),
     contextWindow: m.contextWindow,
+    // Output cap and the engine's own usable-input limit. Both feed the
+    // client-side capacity calculation, which is why they must reach iOS:
+    // without them the phone subtracts a generic 20k output reserve from the
+    // raw window and reports a different remaining budget than the desktop
+    // does for the same conversation.
+    maxOutputTokens: m.maxOutputTokens,
+    effectiveContextLimit: m.effectiveContextLimit,
     hasAuth: providerAuth.get(m.providerId) ?? false,
     thinkingMode: m.thinkingMode,
     thinkingEfforts: m.thinkingEfforts,

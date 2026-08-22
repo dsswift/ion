@@ -8,7 +8,7 @@
  * module is pure record projection.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -43,7 +43,7 @@ const benchPath = '/bench/project-main'
 /** Member record with the full shape the desktop's normalizer expects. */
 function member(over: Record<string, unknown>): Record<string, unknown> {
   return {
-    enabled: true, pin: 'current', merge: 'merged',
+    pin: 'current', merge: 'merged',
     pinnedSha: '', pinnedBaseSha: '', pinnedTreeHash: '', currentTreeHash: '',
     ...over,
   }
@@ -133,30 +133,44 @@ describe('bench prose', () => {
     }
   })
 
-  it('states a bench with no enabled members explicitly', () => {
+  it('states a bench with no members explicitly', () => {
     writeRecord({ lastAssembly: 'assembled' })
-    expect(benchPromptContext(benchPath)).toContain('No enabled members')
+    expect(benchPromptContext(benchPath)).toContain('No members')
   })
 
-  // Disabled members are reported SEPARATELY. Merging them into the member
-  // list would attribute assembled bytes to work the bench never received.
-  it('lists disabled members separately with the DISABLED wording', () => {
+  it('drops legacy membership records and retains an empty workspace', () => {
     writeRecord({
       lastAssembly: 'assembled',
       members: [
-        member({ worktreePath: '/wt/on', branchName: 'wt/on', enabled: true, pinnedSha: '1', pinnedBaseSha: '0' }),
+        member({ worktreePath: '/wt/disabled', branchName: 'wt/disabled', enabled: false }),
+        member({ worktreePath: '/wt/excluded', branchName: 'wt/excluded', status: 'excluded' }),
+      ],
+    })
+
+    expect(benchPromptContext(benchPath)).toContain('No members')
+
+    const persisted = JSON.parse(readFileSync(join(home, '.ion', 'integration-workspaces.json'), 'utf-8')) as {
+      workspaces: Array<{ members: unknown[] }>
+    }
+    expect(persisted.workspaces).toHaveLength(1)
+    expect(persisted.workspaces[0].members).toEqual([])
+  })
+
+  it('drops legacy disabled members from the member list', () => {
+    writeRecord({
+      lastAssembly: 'assembled',
+      members: [
+        member({ worktreePath: '/wt/on', branchName: 'wt/on', pinnedSha: '1', pinnedBaseSha: '0' }),
         member({ worktreePath: '/wt/off', branchName: 'wt/off', enabled: false, pinnedSha: '2', pinnedBaseSha: '0' }),
       ],
     })
 
     const prose = benchPromptContext(benchPath)
 
-    expect(prose).toContain('DISABLED')
-    expect(prose).toContain('not in this bench')
-    // The disabled member must not appear in the numbered enabled list.
-    expect(prose).not.toMatch(/^\d+\. wt\/off/m)
-    expect(prose).toContain('- wt/off')
+    expect(prose).toContain('wt/on')
+    expect(prose).not.toContain('wt/off')
   })
+
 })
 
 describe('warnings', () => {
@@ -257,17 +271,17 @@ describe('warnings', () => {
     expect(prose).toContain('empty contribution')
   })
 
-  // A disabled member's pins are not merged, so its staleness must not warn.
-  it('derives staleness warnings from enabled members only', () => {
+  it('derives staleness warnings from every retained member', () => {
     writeRecord({
       lastAssembly: 'assembled',
       members: [member({
-        worktreePath: '/wt/off', branchName: 'wt/off', enabled: false,
+        worktreePath: '/wt/member', branchName: 'wt/member',
         pinnedSha: '1', pinnedBaseSha: '0', pinnedTreeHash: 'old', currentTreeHash: 'new',
       })],
     })
-    expect(benchPromptContext(benchPath)).not.toContain('behind their worktrees')
+    expect(benchPromptContext(benchPath)).toContain('behind their worktrees')
   })
+
 })
 
 describe('benchClientWorkspaceContext', () => {

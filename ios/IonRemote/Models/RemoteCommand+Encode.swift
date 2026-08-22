@@ -1,3 +1,4 @@
+// @file-size-exception: Worktree wire encoding shares RemoteCommand's existing Codable extension; extracting it requires an Xcode project edit outside this task.
 import Foundation
 
 // MARK: - RemoteCommand encoding
@@ -65,21 +66,12 @@ extension RemoteCommand {
             try container.encode(TypeKey.worktreeSyncAll, forKey: .type)
             try container.encode(repoPath, forKey: .repoPath)
 
-        case .worktreeLand(let repoPath, let worktreePath, let worktreeBranch, let sourceBranch):
-            try container.encode(TypeKey.worktreeLand, forKey: .type)
+        case .worktreeLandAndRetire(let repoPath, let worktreePath, let worktreeBranch, let sourceBranch):
+            try container.encode(TypeKey.worktreeLandAndRetire, forKey: .type)
             try container.encode(repoPath, forKey: .repoPath)
             try container.encode(worktreePath, forKey: .worktreePath)
             try container.encode(worktreeBranch, forKey: .worktreeBranch)
             try container.encode(sourceBranch, forKey: .sourceBranch)
-
-        case .worktreeRetire(let repoPath, let worktreePath):
-            try container.encode(TypeKey.worktreeRetire, forKey: .type)
-            try container.encode(repoPath, forKey: .repoPath)
-            try container.encode(worktreePath, forKey: .worktreePath)
-
-        case .worktreeRetireLanded(let repoPath):
-            try container.encode(TypeKey.worktreeRetireLanded, forKey: .type)
-            try container.encode(repoPath, forKey: .repoPath)
 
         case .benchOpenConversation(let repoPath, let sourceBranch):
             try container.encode(TypeKey.benchOpenConversation, forKey: .type)
@@ -106,13 +98,6 @@ extension RemoteCommand {
             try container.encode(TypeKey.benchUpdateAll, forKey: .type)
             try container.encode(repoPath, forKey: .repoPath)
             try container.encode(sourceBranch, forKey: .sourceBranch)
-
-        case .benchSetEnabled(let repoPath, let sourceBranch, let worktreePath, let enabled):
-            try container.encode(TypeKey.benchSetEnabled, forKey: .type)
-            try container.encode(repoPath, forKey: .repoPath)
-            try container.encode(sourceBranch, forKey: .sourceBranch)
-            try container.encode(worktreePath, forKey: .worktreePath)
-            try container.encode(enabled, forKey: .enabled)
 
         case .worktreeSetStage(let repoPath, let worktreePath, let stage):
             try container.encode(TypeKey.worktreeSetStage, forKey: .type)
@@ -142,6 +127,84 @@ extension RemoteCommand {
             try container.encode(sourceBranch, forKey: .sourceBranch)
             try container.encode(worktreePath, forKey: .worktreePath)
 
+        case .worktreeRetireLanded(let repoPath):
+            try container.encode(TypeKey.worktreeRetireLanded, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+
+        case .worktreeCreate(let repoPath, let sourceBranch):
+            try container.encode(TypeKey.worktreeCreate, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+            try container.encode(sourceBranch, forKey: .sourceBranch)
+
+        case .worktreeConvertConversation(let tabId):
+            try container.encode(TypeKey.worktreeConvertConversation, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+
+        case .worktreeRename(let repoPath, let worktreePath, let title):
+            try container.encode(TypeKey.worktreeRename, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+            try container.encode(worktreePath, forKey: .worktreePath)
+            try container.encode(title, forKey: .title)
+
+        case .worktreeReprovision(let repoPath, let worktreePath):
+            try container.encode(TypeKey.worktreeReprovision, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+            try container.encode(worktreePath, forKey: .worktreePath)
+
+        case .benchRecoverConflict(let repoPath, let sourceBranch):
+            try container.encode(TypeKey.benchRecoverConflict, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+            try container.encode(sourceBranch, forKey: .sourceBranch)
+
+        case .benchAnalyseVerification(let repoPath, let sourceBranch):
+            try container.encode(TypeKey.benchAnalyseVerification, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+            try container.encode(sourceBranch, forKey: .sourceBranch)
+
+        case .benchDiscardMemberRecordings(let repoPath, let sourceBranch, let branchNames):
+            try container.encode(TypeKey.benchDiscardMemberRecordings, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+            try container.encode(sourceBranch, forKey: .sourceBranch)
+            try container.encode(branchNames, forKey: .branchNames)
+
+        case .benchDiscardAllRecordings(let repoPath, let sourceBranch):
+            try container.encode(TypeKey.benchDiscardAllRecordings, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+            try container.encode(sourceBranch, forKey: .sourceBranch)
+
+        case .worktreeRetire(let repoPath, let worktreePath, let branchName):
+            try container.encode(TypeKey.worktreeRetire, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+            try container.encode(worktreePath, forKey: .worktreePath)
+            try container.encode(branchName, forKey: .branchName)
+
+        case .worktreeConflictAssist(let repoPath, let worktreePath):
+            try container.encode(TypeKey.worktreeConflictAssist, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+            try container.encode(worktreePath, forKey: .worktreePath)
+
+        case .benchConflictAssist(let repoPath, let sourceBranch):
+            try container.encode(TypeKey.benchConflictAssist, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+            try container.encode(sourceBranch, forKey: .sourceBranch)
+
+        case .worktreePipelineStart(let repoPath, let sourceBranch):
+            try container.encode(TypeKey.worktreePipelineStart, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+            try container.encode(sourceBranch, forKey: .sourceBranch)
+
+        case .worktreePipelineConfirmAi(let repoPath):
+            try container.encode(TypeKey.worktreePipelineConfirmAi, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+
+        case .worktreePipelineCancel(let repoPath):
+            try container.encode(TypeKey.worktreePipelineCancel, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+
+        case .worktreePipelineDismiss(let repoPath):
+            try container.encode(TypeKey.worktreePipelineDismiss, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+
         case .cancel(let tabId):
             try container.encode(TypeKey.cancel, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
@@ -151,12 +214,15 @@ extension RemoteCommand {
             try container.encode(tabId, forKey: .tabId)
             try container.encode(questionId, forKey: .questionId)
             try container.encode(optionId, forKey: .optionId)
-        case .respondElicitation(let tabId, let requestId, let response, let cancelled):
+        case .respondElicitation(let tabId, let requestId, let response, let cancelled, let declined):
             try container.encode(TypeKey.respondElicitation, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encode(requestId, forKey: .requestId)
             try container.encodeIfPresent(response, forKey: .response)
             try container.encode(cancelled, forKey: .cancelled)
+            if declined {
+                try container.encode(true, forKey: .declined)
+            }
         case .setPermissionMode(let tabId, let mode):
             try container.encode(TypeKey.setPermissionMode, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
@@ -165,6 +231,37 @@ extension RemoteCommand {
             try container.encode(TypeKey.setThinkingEffort, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encode(effort, forKey: .effort)
+        case .tabSettle(let tabId):
+            try container.encode(TypeKey.tabSettle, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+        case .tabUnsettle(let tabId):
+            try container.encode(TypeKey.tabUnsettle, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+        case .tabSnooze(let tabId, let untilMs):
+            try container.encode(TypeKey.tabSnooze, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(untilMs, forKey: .untilMs)
+        case .tabUnsnooze(let tabId):
+            try container.encode(TypeKey.tabUnsnooze, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+        case .tabMarkUnread(let tabId):
+            try container.encode(TypeKey.tabMarkUnread, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+        case .tabPin(let tabId):
+            try container.encode(TypeKey.tabPin, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+        case .tabUnpin(let tabId):
+            try container.encode(TypeKey.tabUnpin, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+        case .tabReorderPin(let assignments):
+            try container.encode(TypeKey.tabReorderPin, forKey: .type)
+            try container.encode(assignments, forKey: .assignments)
+        case .tabRegenerateTitle(let tabId):
+            try container.encode(TypeKey.tabRegenerateTitle, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+        case .reviewSettledTab(let tabId):
+            try container.encode(TypeKey.reviewSettledTab, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
         case .loadConversation(let tabId, let before):
             try container.encode(TypeKey.loadConversation, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
@@ -228,11 +325,6 @@ extension RemoteCommand {
             try container.encode(tabId, forKey: .tabId)
             try container.encode(instanceId, forKey: .instanceId)
             try container.encode(label, forKey: .label)
-
-        case .rewind(let tabId, let messageId):
-            try container.encode(TypeKey.rewind, forKey: .type)
-            try container.encode(tabId, forKey: .tabId)
-            try container.encode(messageId, forKey: .messageId)
 
         case .forkFromMessage(let tabId, let messageId):
             try container.encode(TypeKey.forkFromMessage, forKey: .type)

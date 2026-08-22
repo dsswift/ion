@@ -116,10 +116,23 @@ export function handleStreamSignalEvent(
       // message between turns, inside the end_turn checkpoint, or after
       // tool execution; this event tells consumers the steer landed in
       // the conversation as a user turn before the next LLM call.
-      log('steer_injected', { tab_id: tabId, message_length: event.steerMessageLength })
+      // steerClientMessageId/steerEntryId are additive: present only for a
+      // genuine client-originated steer whose sender supplied a correlation
+      // id (steerClientMessageId) — the engine always supplies steerEntryId
+      // for a genuine client-originated steer regardless of whether the
+      // client sent an id, so a client that omitted correlation still learns
+      // the durable rewind target.
+      log('steer_injected', {
+        tab_id: tabId,
+        message_length: event.steerMessageLength,
+        client_message_id: event.steerClientMessageId ?? '',
+        entry_id: event.steerEntryId ?? '',
+      })
       ctx.emit('event', tabId, {
         type: 'steer_injected',
         messageLength: event.steerMessageLength,
+        ...(event.steerClientMessageId ? { clientMessageId: event.steerClientMessageId } : {}),
+        ...(event.steerEntryId ? { entryId: event.steerEntryId } : {}),
       } as NormalizedEvent)
       return true
 

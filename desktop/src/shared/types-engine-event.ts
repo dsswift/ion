@@ -54,6 +54,8 @@ export interface McpServerStatus {
   connected: boolean
   authenticated: boolean
   toolCount?: number
+  protocolVersion?: string
+  capabilities?: string[]
   lastError?: string
 }
 
@@ -70,7 +72,7 @@ export type EngineEvent =
   // hook to answer). `mode` selects the renderer ("approval", "select", ...);
   // `schema` describes what is being requested. Mirrors the Go fields
   // ElicitRequestID/ElicitSchema/ElicitURL/ElicitMode in engine_event.go.
-  | { type: 'engine_elicitation_request'; requestId: string; schema?: Record<string, unknown>; url?: string; elicitMode?: string }
+  | { type: 'engine_elicitation_request'; requestId: string; schema?: Record<string, unknown>; url?: string; elicitMode?: string; elicitSource?: string; elicitServer?: string; elicitMessage?: string; elicitAction?: string }
   // `metadata` is an opaque pass-through map the harness sets via ctx.emit
   // that the engine forwards verbatim. The desktop renderer honors
   // `metadata.dedupKey` (string) to suppress repeated harness messages
@@ -97,7 +99,7 @@ export type EngineEvent =
   // control plane translates this to the `image_content` NormalizedEvent the
   // renderer's event-slice-images materializer consumes. Mirror of the Go
   // EngineEvent Image* fields (engine/internal/types/engine_event.go).
-  | { type: 'engine_image_content'; imagePath: string; imageMediaType: string; imageSource: string; imageToolId?: string }
+  | { type: 'engine_image_content'; imagePath: string; imageMediaType: string; imageSource: string; imageToolId?: string; imageContentHash?: string }
   | { type: 'engine_tool_update'; toolId: string; partialInput: string }
   | { type: 'engine_tool_complete'; index?: number }
   | { type: 'engine_dead'; exitCode: number | null; signal: string | null; stderrTail: string[] }
@@ -127,7 +129,7 @@ export type EngineEvent =
   // answered to oidc_identity queries. Consumers REPLACE their local
   // identity view with the payload; claim fields are absent when signed
   // out.
-  | { type: 'engine_oidc_identity'; oidcSignedIn: boolean; oidcProvider?: string; oidcSubject?: string; oidcUsername?: string; oidcDisplayName?: string }
+  | { type: 'engine_oidc_identity'; oidcSignedIn: boolean; oidcRequired: boolean; oidcProvider?: string; oidcSubject?: string; oidcUsername?: string; oidcDisplayName?: string }
   // engine_mcp_login_url — delivered to the client that issued mcp_login.
   // mcpAuthorizationUrl is opened in a browser; the engine's loopback callback
   // completes the code exchange and persists the token. mcpServerName says
@@ -183,9 +185,15 @@ export type EngineEvent =
   // steer channel) and injects it into the conversation as a user turn
   // before the next LLM call. `steerMessageLength` is the character
   // count; the body is not echoed back over the wire because it is
-  // already part of the conversation. See
+  // already part of the conversation. `steerClientMessageId` echoes the
+  // client's steer_agent correlation id when supplied and this was a
+  // genuine client-originated steer (never present for a machine-to-machine
+  // injection). `steerEntryId` is the durable conversation-tree entry id
+  // the steer text was persisted under, present only for a genuine
+  // client-originated steer -- the exact target for a later
+  // engine_rewind command. See
   // engine/internal/types/normalized_event.go (SteerInjectedEvent).
-  | { type: 'engine_steer_injected'; steerMessageLength: number }
+  | { type: 'engine_steer_injected'; steerMessageLength: number; steerClientMessageId?: string; steerEntryId?: string }
   // No owning run was live, so ctx.steerSelf delivered a fresh prompt instead.
   | { type: 'engine_steer_degraded'; steerDegradedMessageLength: number }
   | {

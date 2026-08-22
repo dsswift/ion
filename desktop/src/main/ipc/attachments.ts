@@ -37,6 +37,13 @@ const MIME_MAP: Record<string, string> = {
   '.yaml': 'text/yaml',
   '.toml': 'text/toml',
 }
+const PASTE_IMAGE_EXTENSIONS: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpeg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/svg+xml': 'svg',
+}
 
 /**
  * Permanent, content-addressed store for user-supplied images (pastes and
@@ -72,21 +79,23 @@ function saveUserImage(buf: Buffer, ext: string): string | null {
   }
 }
 
-function describeFile(fp: string): { id: string; type: 'image' | 'file'; name: string; path: string; mimeType: string; dataUrl?: string; size: number } | null {
+function describeFile(fp: string): { id: string; type: 'image' | 'file'; name: string; path: string; mimeType: string; contentHash?: string; dataUrl?: string; size: number } | null {
   try {
     const ext = extname(fp).toLowerCase()
     const mime = MIME_MAP[ext] || 'application/octet-stream'
     const stat = statSync(fp)
     let dataUrl: string | undefined
+    let contentHash: string | undefined
 
-    if (IMAGE_EXTS.has(ext) && stat.size < 2 * 1024 * 1024) {
+    if (IMAGE_EXTS.has(ext)) {
       try {
         const buf = readFileSync(fp)
-        dataUrl = `data:${mime};base64,${buf.toString('base64')}`
+        contentHash = createHash('sha256').update(buf).digest('hex')
+        if (stat.size < 2 * 1024 * 1024) dataUrl = `data:${mime};base64,${buf.toString('base64')}`
       } catch (err) {
-        // Read failure drops the image preview (dataUrl stays undefined);
-        // the user sees a broken thumbnail. Log so the cause is visible.
-        debug('attachments: dataUrl read failed', { path: fp, error: String(err) })
+        // Read failure drops the image preview and its identity; renderers keep
+        // the attachment visible rather than guessing an identity from its path.
+        debug('attachments: dataUrl/hash read failed', { path: fp, error: String(err) })
       }
     }
 
@@ -96,6 +105,7 @@ function describeFile(fp: string): { id: string; type: 'image' | 'file'; name: s
       name: basename(fp),
       path: fp,
       mimeType: mime,
+      ...(contentHash ? { contentHash } : {}),
       dataUrl,
       size: stat.size,
     }
@@ -167,10 +177,12 @@ export function registerAttachmentsIpc(): void {
         name: `screenshot ${++state.screenshotCounter}.png`,
         path: permanentPath,
         mimeType: 'image/png',
+        contentHash: createHash('sha256').update(buf).digest('hex'),
         dataUrl,
         size: buf.length,
       }
-    } catch {
+    } catch (err) {
+      warn('attachments: screenshot capture failed', { error: String(err) })
       return null
     } finally {
       if (state.mainWindow) {
@@ -187,11 +199,24 @@ export function registerAttachmentsIpc(): void {
   })
 
   ipcMain.handle(IPC.PASTE_IMAGE, async (_event, dataUrl: string) => {
-    try {
-      const match = dataUrl.match(/^data:(image\/(\w+));base64,(.+)$/)
-      if (!match) return null
+    if (typeof dataUrl !== 'string') {
+      warn('attachments: paste image rejected invalid data URL', { length: 0, mime: 'invalid' })
+      return null
+    }
 
-      const [, mimeType, ext, base64Data] = match
+    try {
+      const match = dataUrl.match(/^data:([^;,]+);base64,([A-Za-z0-9+/]+={0,2})$/)
+      const mimeType = match?.[1].toLowerCase()
+      const ext = mimeType ? PASTE_IMAGE_EXTENSIONS[mimeType] : undefined
+      if (!match || !mimeType || !ext) {
+        warn('attachments: paste image rejected invalid data URL', {
+          length: typeof dataUrl === 'string' ? dataUrl.length : 0,
+          mime: mimeType ?? 'invalid',
+        })
+        return null
+      }
+
+      const base64Data = match[2]
       const buf = Buffer.from(base64Data, 'base64')
 
       // Save to permanent content-addressed storage instead of tmpdir so the
@@ -206,10 +231,12 @@ export function registerAttachmentsIpc(): void {
         name: `pasted image ${++state.pasteCounter}.${ext}`,
         path: filePath,
         mimeType,
+        contentHash: createHash('sha256').update(buf).digest('hex'),
         dataUrl,
         size: buf.length,
       }
-    } catch {
+    } catch (err) {
+      warn('attachments: paste image failed', { error: String(err) })
       return null
     }
   })

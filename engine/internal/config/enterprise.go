@@ -179,6 +179,9 @@ func mergeEnterprisePartial(base, overlay *types.EnterpriseConfig) *types.Enterp
 	if len(overlay.RequiredHooks) > 0 {
 		result.RequiredHooks = overlay.RequiredHooks
 	}
+	if overlay.Auth != nil {
+		result.Auth = overlay.Auth
+	}
 	// ExtensionAllowlist: whole-slice replace, existing convention.
 	if len(overlay.ExtensionAllowlist) > 0 {
 		result.ExtensionAllowlist = overlay.ExtensionAllowlist

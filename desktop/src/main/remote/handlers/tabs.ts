@@ -10,7 +10,7 @@ import { readClaudeCompat } from '../../settings-store'
 import { autoPullDiagnosticLogs } from './diagnostics'
 import { sendSync } from './tabs-sync'
 import { evaluateRemoteCloseGuard, formatRemoteCloseGuardRefusal } from './tabs-close-guard'
-import { resolveTabSessionChain, paginateHistory, planPathFromHistory, toRemoteMessage } from './tabs-session-chain'
+import { resolveTabSessionChain, paginateHistory, resolvePlanPath, toRemoteMessage } from './tabs-session-chain'
 import { mapSessionHistory } from '../../../shared/session-message-mapper'
 import { decideLoad, recordLoadResponse } from './load-conversation-gate'
 import { resolveDiscoveryWorkingDir } from '../../ipc-validation'
@@ -121,7 +121,7 @@ export async function handleSync(deviceId: string): Promise<void> {
   autoPullDiagnosticLogs(deviceId)
 }
 
-export function handleCloseTab(cmd: Extract<RemoteCommand, { type: 'desktop_close_tab' }>): void {
+export async function handleCloseTab(cmd: Extract<RemoteCommand, { type: 'desktop_close_tab' }>): Promise<void> {
   const tabId = cmd.tabId
 
   // Same rule the desktop enforces on Cmd+W: refuse the close while the
@@ -140,6 +140,34 @@ export function handleCloseTab(cmd: Extract<RemoteCommand, { type: 'desktop_clos
     return
   }
 
+  if (state.mainWindow) {
+    try {
+      const escapedTab = tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const applied = await state.mainWindow.webContents.executeJavaScript(`
+        (function() {
+          var store = window.__Ion_SESSION_STORE__;
+          if (!store) return false;
+          store.getState().closeTab('${escapedTab}');
+          return true;
+        })()
+      `)
+      if (applied) {
+        log('close_tab routed through owner lifecycle', { tab_id: tabId })
+        return
+      }
+      warn('close_tab owner store unavailable; applying direct close', { tab_id: tabId })
+    } catch (err) {
+      warn('close_tab owner routing failed; applying direct close', { tab_id: tabId, error: String(err) })
+    }
+  } else {
+    warn('close_tab owner window unavailable; applying direct close', { tab_id: tabId })
+  }
+
+  closeRemoteTabDirect(tabId)
+}
+
+/** Direct teardown fallback when the owner renderer cannot apply lifecycle policy. */
+function closeRemoteTabDirect(tabId: string): void {
   sessionPlane.closeTab(tabId)
   terminalManager.destroyByPrefix(`${tabId}:`)
   // Conversations now key their engine session by the bare tabId (ADR-010),
@@ -266,7 +294,7 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
   }
   try {
     // History is served from the ENGINE — the same `load_session_history`
-    // source the overlay and ATV hydrate from — so every client renders one
+    // source the overlay and Studio hydrate from — so every client renders one
     // canonical transcript with the engine's stable row ids. The renderer is
     // consulted only for tab metadata (never message content); the persisted
     // tabs file covers the renderer-unavailable case, and the engine daemon
@@ -295,8 +323,11 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
           if (!input.planContent) {
             // Fallback plan path comes from the loaded transcript itself (the
             // most recent plan-file Write) — same data the old renderer scrape
-            // read, without touching the renderer.
-            const planPath = (input.planFilePath as string | undefined) || planPathFromHistory(all)
+            // read, without touching the renderer. resolvePlanPath also reports
+            // WHICH source produced the path, which is what distinguishes a
+            // resolved-but-unreadable file from a transcript that carried no
+            // path at all; the two log identically otherwise.
+            const { planPath, pathSource } = resolvePlanPath(input.planFilePath, all)
             // Async read off the main thread: readFileSync here blocked the
             // event loop (and the relay send drain) once per ExitPlanMode
             // message per load, in the hot path a flapping client hammers.
@@ -309,18 +340,24 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
               } catch (err) {
                 // ENOENT (plan file absent) is the common case; log at debug so
                 // the fallback is observable without noise at higher levels.
-                log('remote: plan file read failed; treating as no plan', { path: planPath, error: String(err) })
+                log('remote: plan file read failed; treating as no plan', {
+                  tab_id: cmd.tabId, message_id: m.id, path: planPath, path_source: pathSource, error: String(err),
+                })
                 planContent = null
               }
             }
             if (planPath && planContent !== null) {
               return { ...m, toolInput: JSON.stringify({ ...input, planFilePath: planPath, planContent }) }
             } else {
-              log('load_conversation: no plan file found for ExitPlanMode', { path: planPath })
+              log('load_conversation: no plan file found for ExitPlanMode', {
+                tab_id: cmd.tabId, message_id: m.id, path: planPath ?? '', path_source: pathSource,
+              })
             }
           }
         } catch (err) {
-          log('load_conversation: enrichment error', { error: (err as Error).message })
+          log('load_conversation: enrichment error', {
+            tab_id: cmd.tabId, message_id: m.id, error: (err as Error).message,
+          })
         }
       }
       return m

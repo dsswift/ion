@@ -19,6 +19,10 @@ export interface RemoteTabState {
   customTitle: string | null
   status: TabStatus
   workingDirectory: string
+  /** Execution host that owns this desktop snapshot. */
+  executionHost?: string
+  /** Stable hardware identity for the execution host, when available. */
+  executionMachineId?: string
   permissionMode: 'auto' | 'plan'
   /**
    * Per-conversation extended-thinking effort (bare conversation / active
@@ -115,8 +119,9 @@ export interface RemoteTabState {
   /** Input-locked conversation (auto-generated conflict fix): clients must
    *  not offer a prompt input for this tab. See TabState.inputLocked. */
   inputLocked?: boolean
-  /** Why the tab is locked. `landed-worktree` is a sealed review session. */
-  inputLockReason?: 'automated-workflow' | 'landed-worktree'
+  /** Why the tab is locked. `landed-worktree` is a sealed review session and
+   * `settled` is a cold Inbox history record. */
+  inputLockReason?: 'automated-workflow' | 'landed-worktree' | 'settled'
   /** Explicit tab lifecycle role (see TabState.tabRole). Desktop-internal
    *  policy: iOS does not switch on it — it rides the snapshot so the main
    *  process can resolve the bench singleton and exclude auto-fix tabs from
@@ -131,11 +136,15 @@ export interface RemoteTabState {
     label: string
     waitingState?: 'plan-ready' | 'question' | null
     isRunning?: boolean
+    /** Engine session is attaching without a foreground run. */
+    isStarting?: boolean
     runningAgentCount?: number
     /** Background bash commands this instance is waiting on (Bash
      *  run_in_background + notify_on_complete). The shell counterpart to
      *  runningAgentCount; drives the iOS pink shell dot. */
     backgroundShellCount?: number
+    /** Exact engine status verdict for accepted work with no foreground run. */
+    hasPendingWork?: boolean
     modelFallback?: { requestedModel: string; fallbackModel: string }
     conversationIds?: string[]
     thinkingEffort?: 'adaptive' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
@@ -165,10 +174,55 @@ export interface RemoteTabState {
    * separate processes.
    */
   backgroundShellCount?: number
+  /** Engine-owned verdict that this tab still has accepted asynchronous or
+   * queued work, even when no foreground run is active. */
+  hasPendingWork?: boolean
   /** The current conversation/session ID for this tab. Engine tabs use StatusFields.sessionId instead. */
   conversationId?: string | null
-  /** Unix ms timestamp of the last status-changing activity (message, status change). */
+  /**
+   * Unix ms timestamp of the last GENUINE activity (user message, turn
+   * start, completion — never reconnect/heartbeat). The snapshot sort key.
+   * Semantics FIXED to the honest value in the inbox change: iOS never
+   * sorts, so Classic reorders once when this became honest (intentional,
+   * stated in the PR).
+   */
   lastActivityAt?: number
+  /** Unix ms of the last running→idle transition (renderer-observed). */
+  idleSince?: number
+  /** Immutable creation timestamp — the "Newest created" inbox sort key. */
+  createdAt?: number
+  /**
+   * Explicit worktree identity when the tab lives in a managed worktree.
+   * Clients group by THIS (repoPath / worktreePath), never by path-prefix
+   * guessing against the worktree inventory — a freshly created worktree the
+   * inventory has not crawled yet still groups under its source repository.
+   */
+  worktree?: {
+    worktreePath: string
+    branchName: string
+    sourceBranch: string
+    repoPath: string
+    landedAt?: number
+  }
+  /** Desktop-derived inbox classification. iOS renders, never re-derives. */
+  inboxState?: 'active' | 'snoozed' | 'settled'
+  /** Inbox unread (manual marker || completion newer than last visit). */
+  unread?: boolean
+  /** Snooze wake time (ms) while snoozed. */
+  snoozedUntil?: number
+  /** When the conversation was settled (settled-shelf ordering). */
+  settledAt?: number
+  /** Why the hard settled state was entered. Only 'auto' changes the row marker. */
+  settledOverride?: 'settled' | 'active' | 'auto'
+  /** True when a cold settled record can be opened and resumed. False when its worktree was retired. */
+  canRestoreSettled?: boolean
+  /** Wake moment for the Woke pill (expired snooze not yet visited). */
+  wokeAt?: number
+  /** Inbox pin timestamp and fractional presentation order. */
+  pinnedAt?: number
+  pinOrderKey?: string
+  /** Desktop-derived background state: agent work outranks monitor-only shells. */
+  backgroundLiveness?: 'working' | 'monitoring'
   /** Custom pill background color hex string (e.g. "#f08c4a"). Null means use theme default. */
   pillColor?: string | null
   /** Custom pill icon key (e.g. "diamond", "star"). Null means use the default status dot. */
@@ -224,4 +278,5 @@ export interface RemoteAttachment {
   type: 'image' | 'file' | 'plan'
   name: string
   path: string
+  contentHash?: string
 }

@@ -74,9 +74,9 @@ beforeEach(() => {
     enterpriseNewConversationDefaults: null,
     defaultBaseDirectory: '/home/user',
     editorFontSize: 14,
-    conversationFontSize: 13,
+    dataViewFontSize: 13,
     setEditorFontSize: vi.fn(),
-    setConversationFontSize: vi.fn(),
+    setDataViewFontSize: vi.fn(),
   }
 })
 

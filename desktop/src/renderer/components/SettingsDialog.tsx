@@ -20,6 +20,8 @@ import { KeyboardShortcutsCategory } from './settings/KeyboardShortcutsCategory'
 import { EntraCategory } from './settings/EntraCategory'
 import { McpCategory } from './settings/McpCategory'
 import { searchSettings } from './settings/settings-search-index'
+import { zoomDelta, zoomViewport } from '../viewport-zoom'
+import { usePreferencesStore } from '../preferences'
 import type { Icon } from '@phosphor-icons/react'
 
 interface Category {
@@ -113,8 +115,27 @@ interface SettingsDialogProps {
 const DIALOG_WIDTH = 910
 const DIALOG_HEIGHT = 780
 
+export interface SettingsDialogGeometry {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export function resolveSettingsDialogGeometry(viewport = zoomViewport()): SettingsDialogGeometry {
+  const width = Math.min(DIALOG_WIDTH, Math.max(0, viewport.width - 16))
+  const height = Math.min(DIALOG_HEIGHT, Math.max(0, viewport.height - 16))
+  return {
+    x: Math.max(0, (viewport.width - width) / 2),
+    y: Math.max(0, (viewport.height - height) / 2),
+    width,
+    height,
+  }
+}
+
 export function SettingsDialog({ onClose, initialTab }: SettingsDialogProps) {
   const colors = useColors()
+  const uiZoom = usePreferencesStore((s) => s.uiZoom)
   const popoverLayer = usePopoverLayer()
   const closeIx = useInteractiveState()
   const [activeCategory, setActiveCategory] = useState(resolveTab(initialTab))
@@ -134,28 +155,34 @@ export function SettingsDialog({ onClose, initialTab }: SettingsDialogProps) {
     }
   }, [isSearching, visibleCategories, matchedCategories, activeCategory])
 
-  const [pos, setPos] = useState(() => ({
-    x: (window.innerWidth - DIALOG_WIDTH) / 2,
-    y: (window.innerHeight - DIALOG_HEIGHT) / 2,
-  }))
+  const [geometry, setGeometry] = useState(resolveSettingsDialogGeometry)
   const dragRef = useRef<{
     startX: number; startY: number; originX: number; originY: number
   } | null>(null)
 
+  useEffect(() => {
+    // UI scale changes alter fixed-coordinate space. Settings has no persisted
+    // geometry, so it must re-center rather than keep an old scale's position.
+    setGeometry(resolveSettingsDialogGeometry())
+  }, [uiZoom])
+
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return
     e.preventDefault()
-    dragRef.current = { startX: e.clientX, startY: e.clientY, originX: pos.x, originY: pos.y }
-  }, [pos])
+    dragRef.current = { startX: e.clientX, startY: e.clientY, originX: geometry.x, originY: geometry.y }
+  }, [geometry.x, geometry.y])
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!dragRef.current) return
-      const dx = e.clientX - dragRef.current.startX
-      const dy = e.clientY - dragRef.current.startY
-      const newX = Math.max(-200, Math.min(window.innerWidth - 100, dragRef.current.originX + dx))
-      const newY = Math.max(0, Math.min(window.innerHeight - 32, dragRef.current.originY + dy))
-      setPos({ x: newX, y: newY })
+      const delta = zoomDelta({
+        x: e.clientX - dragRef.current.startX,
+        y: e.clientY - dragRef.current.startY,
+      })
+      const viewport = zoomViewport()
+      const newX = Math.max(-200, Math.min(viewport.width - 100, dragRef.current.originX + delta.x))
+      const newY = Math.max(0, Math.min(viewport.height - 32, dragRef.current.originY + delta.y))
+      setGeometry((current) => ({ ...current, x: newX, y: newY }))
     }
     const handleMouseUp = () => { dragRef.current = null }
     document.addEventListener('mousemove', handleMouseMove)
@@ -164,7 +191,7 @@ export function SettingsDialog({ onClose, initialTab }: SettingsDialogProps) {
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [])
+  }, [uiZoom])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -194,10 +221,10 @@ export function SettingsDialog({ onClose, initialTab }: SettingsDialogProps) {
       style={{
         // viewport-ok: draggable dialog, centred on open from the live window size and bounded by the drag handler so a title bar always stays grabbable.
         position: 'fixed',
-        left: pos.x,
-        top: pos.y,
-        width: DIALOG_WIDTH,
-        maxHeight: DIALOG_HEIGHT,
+        left: geometry.x,
+        top: geometry.y,
+        width: geometry.width,
+        height: geometry.height,
         borderRadius: 20,
         display: 'flex',
         flexDirection: 'column',

@@ -390,6 +390,26 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
   // editable preference.
   // ═══════════════════════════════════════════════════════════════════
   {
+    key: 'inboxAutoSettleDays',
+    iosSurface: 'phone',
+    type: 'number',
+    group: 'tabs',
+    label: 'Auto-settle after (days)',
+    description:
+      'Optional idle-only filing. 0 disables automatic settlement. Conversations with a pending plan, user question, permission request, or background work never auto-settle.',
+    defaultValue: 0,
+    range: { min: 0, max: 90, step: 1 },
+  },
+  {
+    key: 'inboxAutoSettleOnMerge',
+    iosSurface: 'phone',
+    type: 'boolean',
+    group: 'tabs',
+    label: 'Auto-settle merged pull requests',
+    description: 'Move conversations with merged pull requests to Settled. Closed pull requests always settle.',
+    defaultValue: true,
+  },
+  {
     key: 'expandOnTabSwitch',
     iosSurface: 'phone',
     type: 'boolean',

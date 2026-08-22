@@ -8,12 +8,14 @@
 //
 // The reducer in event-slice.ts owns the commit; these handlers only stage
 // the same local mutations the inline cases used to.
-import type { Message } from '../../../shared/types'
+import type { Message, TabStatus } from '../../../shared/types'
 import type { ConversationInstance } from '../../../shared/types-engine'
 import type { State } from '../session-store-types'
 import type { NormalizedEvent } from '../../../shared/types-events'
 import { nextMsgId } from '../session-store-helpers'
-import { rTrace, rWarn } from '../../rendererLogger'
+import { rInfo, rTrace, rWarn } from '../../rendererLogger'
+import { logTabStatusPatch } from './tab-status-transition'
+import { isPendingUserCardDenial } from '../../../shared/pending-card'
 
 /**
  * Mutable context shared with the parent reducer for one event. The parent
@@ -43,6 +45,19 @@ export interface ExtensionSurfaceCtx {
 }
 
 /**
+ * The tab's status before this event's patch is committed. This context carries
+ * only a patch object (`updated`), not the tab, so the pre-write value has to
+ * come from state — and it is what makes a status line diagnosable: "to: idle"
+ * alone cannot distinguish a run ending from a no-op on an already-idle tab.
+ * An earlier arm in the same event may have staged its own status, so that
+ * takes precedence over the committed value.
+ */
+function priorStatus(ctx: ExtensionSurfaceCtx): TabStatus {
+  if (typeof ctx.updated.status === 'string') return ctx.updated.status as TabStatus
+  return (ctx.s.tabs.find((t) => t.id === ctx.tabId)?.status ?? 'idle') as TabStatus
+}
+
+/**
  * Handle the extension-surface event arms. Returns true when the event type
  * was one of these arms (so the parent can skip its own switch for them),
  * false otherwise. Behavior is identical to the former inline cases.
@@ -69,6 +84,46 @@ export function handleExtensionSurfaceEvent(ctx: ExtensionSurfaceCtx, event: Nor
       // field was null forever.
       rTrace('event.status', 'statusFields updated', { tab_id: tabId, state: event.fields.state })
       ctx.instPatch.statusFields = event.fields
+      // Self-heal a lost card from the heartbeat snapshot.
+      //
+      // The engine retains unresolved AskUserQuestion / ExitPlanMode denials on
+      // the session and re-publishes them on every idle heartbeat
+      // (session/status_work_snapshot.go), clearing them only when a new prompt
+      // supersedes them (session/prompt_dispatch.go). So while this field is
+      // populated, the engine's authoritative position is "the user still owes
+      // an answer."
+      //
+      // The main-process pass-through surfaces such an idle only ONCE per
+      // distinct proposal (lastSurfacedProposalSig in
+      // engine-control-plane-status-event.ts) because it cannot see whether the
+      // user has since dismissed the card, and re-synthesizing task_complete on
+      // every heartbeat would resurrect a dismissed one. That dedup is correct
+      // for its own purpose but it makes the first delivery the ONLY delivery:
+      // when anything else nulls permissionDenied immediately afterwards (a
+      // conversation load pushing live state on top of a just-synthesized
+      // proposal was the observed case), no later heartbeat ever restores it and
+      // the tab sits with a plan the user cannot act on.
+      //
+      // Reconciling here closes that hole without weakening the dedup: the
+      // renderer is the side that KNOWS whether a card is currently displayed.
+      // We restore only when the engine still retains the denial AND we hold
+      // none — never overwriting a live entry (which carries richer toolInput),
+      // and never inventing one the engine did not report. A user dismissal is
+      // not undone, because dismissing is followed by a prompt that clears the
+      // engine's retention; an idle that still carries denials means no such
+      // prompt happened.
+      if (event.fields.state === 'idle') {
+        const retained = event.fields.permissionDenials
+        const held =
+          'permissionDenied' in ctx.instPatch ? ctx.instPatch.permissionDenied : ctx.inst0?.permissionDenied
+        if (isPendingUserCardDenial({ tools: retained }) && !isPendingUserCardDenial(held)) {
+          ctx.instPatch.permissionDenied = { tools: retained! }
+          rInfo('event.status', 'restored pending user card from retained denials', {
+            tab_id: tabId,
+            tools: (retained ?? []).map((t) => t.toolName).join(','),
+          })
+        }
+      }
       // Mirror the context scalars onto the tab. The renderer's own
       // indicator reads inst.statusFields directly; this copy exists purely
       // because the desktop→iOS snapshot projects per-tab scalars and does
@@ -124,6 +179,8 @@ export function handleExtensionSurfaceEvent(ctx: ExtensionSurfaceCtx, event: Nor
         capability: event.capability,
         backend: event.backend,
       })
+      logTabStatusPatch(tabId, priorStatus(ctx), 'idle', 'event.extension-surface-idle',
+        { capability: event.capability, backend: event.backend })
       ctx.updated.status = 'idle'
       ctx.updated.activeRequestId = null
       ctx.updated.currentActivity = ''
@@ -331,6 +388,8 @@ export function handleExtensionSurfaceEvent(ctx: ExtensionSurfaceCtx, event: Nor
           timestamp: Date.now(),
         },
       ]
+      logTabStatusPatch(tabId, priorStatus(ctx), 'failed', 'event.extension-surface-failed',
+        { extension: event.extensionName, attempts: event.attemptNumber })
       ctx.updated.status = 'failed'
       return true
 

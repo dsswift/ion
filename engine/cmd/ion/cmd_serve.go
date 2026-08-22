@@ -15,10 +15,8 @@ import (
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/compaction"
 	"github.com/dsswift/ion/engine/internal/config"
-	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/featureflags"
 	"github.com/dsswift/ion/engine/internal/filelock"
-	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/modelconfig"
 	"github.com/dsswift/ion/engine/internal/network"
 	"github.com/dsswift/ion/engine/internal/plugins"
@@ -165,13 +163,7 @@ func cmdServe() {
 
 	resolver := auth.NewResolver(cfg.Auth)
 
-	// Wire configurable timeouts into MCP and extension subsystems.
-	if cfg.Timeouts != nil {
-		mcp.SetDefaultCallTimeout(cfg.Timeouts.McpCall())
-		mcp.SetDefaultMetadataTimeout(cfg.Timeouts.McpMetadata())
-		mcp.SetDefaultWriteTimeout(cfg.Timeouts.McpWrite())
-		extension.ConfiguredDefaultTimeout = cfg.Timeouts.HookDefault()
-	}
+	configureSubsystemTimeouts(cfg.Timeouts)
 
 	for name, pcfg := range cfg.Providers {
 		if pcfg.APIKey != "" {
@@ -234,13 +226,21 @@ func cmdServe() {
 
 	// Engine-owned operator or machine identity. Token acquisition routes
 	// through one generic registry; only a real operator manager is attached to
-	// the server's interactive OIDC lifecycle commands.
-	if cfg.Auth != nil && cfg.Auth.IdentityProvider != "" {
+	// the server's interactive OIDC lifecycle commands. Configuration failures
+	// are fatal when operator identity is required, because continuing would leave
+	// a daemon that can never satisfy its own session gate.
+	if cfg.Auth != nil {
 		im, identityErr := auth.ConfigureIdentityProviders(cfg.Auth)
 		if identityErr != nil {
-			utils.LogWithFields(utils.LevelError, "main", "identity provider configuration failed; continuing without brokered credentials", map[string]any{
-				"provider": cfg.Auth.IdentityProvider, "error": identityErr.Error(),
-			})
+			if cfg.Auth.RequireOperatorIdentity {
+				utils.LogWithFields(utils.LevelError, "main", "required operator identity configuration failed; sessions will remain gated", map[string]any{
+					"provider": cfg.Auth.IdentityProvider, "error": identityErr.Error(),
+				})
+			} else {
+				utils.LogWithFields(utils.LevelError, "main", "identity provider configuration failed; continuing without brokered credentials", map[string]any{
+					"provider": cfg.Auth.IdentityProvider, "error": identityErr.Error(),
+				})
+			}
 		} else if im != nil {
 			srv.SetIdentityManager(im)
 			if id := im.Identity(); id != nil {
@@ -440,5 +440,19 @@ func cmdServe() {
 			utils.LogWithFields(utils.LevelWarn, "main", "pid lock release failed during shutdown", map[string]any{"error": utils.ErrStr(err)})
 		}
 	}
+	// Report any log lines the per-message rate limiter withheld and never got a
+	// successor line to account for. A storm that stopped just before shutdown
+	// would otherwise take its count to the grave, which is the one case where
+	// the limiter would genuinely have hidden something.
+	for _, s := range utils.DrainLogSuppressions() {
+		utils.LogWithFields(utils.LevelWarn, "logger", "log lines suppressed by rate limit", map[string]any{
+			"suppressed_level": s.Level.String(),
+			"suppressed_tag":   s.Tag,
+			"suppressed_msg":   s.Msg,
+			"log_suppressed":   s.Count,
+			"window_secs":      s.WindowSecs,
+		})
+	}
+
 	fmt.Println("Engine stopped.")
 }

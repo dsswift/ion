@@ -47,3 +47,25 @@ export function sendQuerySessionStatus(bridge: EngineBridge, key: string): void 
   debug('send_query_session_status', { key })
   bridge._send({ cmd: 'query_session_status', key })
 }
+
+/**
+ * Tells the engine that a pending AskUserQuestion / ExitPlanMode was resolved
+ * by this client, so it may release its retention of that denial.
+ *
+ * The engine retains an unresolved denial and re-publishes it on every status
+ * snapshot, releasing it only when a new prompt supersedes the question or
+ * `/clear` discards it. A card the user simply DISMISSES produces neither, so
+ * without this call the engine keeps re-offering it and every consumer has to
+ * suppress the echo locally and permanently. That local suppression is
+ * load-bearing state with no recovery path: if anything drops the client's copy
+ * of the card, the re-publication it needs to heal is exactly what its own
+ * suppression discards.
+ *
+ * Fire-and-forget, like its siblings above. The engine emits the resulting
+ * cleared snapshot on its normal event bus, so every attached consumer
+ * converges — including a second client that was showing the same card.
+ */
+export function sendResolvePermissionDenials(bridge: EngineBridge, key: string): void {
+  log('send_resolve_permission_denials', { key })
+  bridge._send({ cmd: 'resolve_permission_denials', key })
+}

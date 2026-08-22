@@ -198,7 +198,8 @@ final class MarkerReloadDecodeGroupingTests: XCTestCase {
               "id": "img:/home/u/.ion/conversations/c/images/abc.png",
               "type": "image",
               "name": "abc.png",
-              "path": "/home/u/.ion/conversations/c/images/abc.png"
+              "path": "/home/u/.ion/conversations/c/images/abc.png",
+              "contentHash": "hash-engine"
             }
           ]
         }
@@ -210,6 +211,7 @@ final class MarkerReloadDecodeGroupingTests: XCTestCase {
         XCTAssertEqual(msg.attachments?.first?.type, .image)
         XCTAssertEqual(msg.attachments?.first?.path,
                        "/home/u/.ion/conversations/c/images/abc.png")
+        XCTAssertEqual(msg.attachments?.first?.contentHash, "hash-engine")
     }
 
     /// The desktop→iOS conversationHistory path decodes Message via standard
@@ -229,7 +231,8 @@ final class MarkerReloadDecodeGroupingTests: XCTestCase {
               "id": "img:/c/images/abc.png",
               "type": "image",
               "name": "abc.png",
-              "path": "/c/images/abc.png"
+              "path": "/c/images/abc.png",
+              "contentHash": "hash-standard"
             }
           ]
         }
@@ -238,6 +241,7 @@ final class MarkerReloadDecodeGroupingTests: XCTestCase {
         XCTAssertEqual(msg.attachments?.count, 1)
         XCTAssertEqual(msg.attachments?.first?.type, .image)
         XCTAssertEqual(msg.attachments?.first?.path, "/c/images/abc.png")
+        XCTAssertEqual(msg.attachments?.first?.contentHash, "hash-standard")
     }
 
     // MARK: - Mixed reload transcript

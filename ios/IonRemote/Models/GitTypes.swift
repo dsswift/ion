@@ -96,6 +96,24 @@ struct GitGraphResponse: Codable, Sendable {
 struct GitDiffResponse: Codable, Sendable {
     let diff: String
     let fileName: String
+    let isBinary: Bool
+
+    init(diff: String, fileName: String, isBinary: Bool = false) {
+        self.diff = diff
+        self.fileName = fileName
+        self.isBinary = isBinary
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        diff = try container.decode(String.self, forKey: .diff)
+        fileName = try container.decode(String.self, forKey: .fileName)
+        isBinary = try container.decodeIfPresent(Bool.self, forKey: .isBinary) ?? false
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case diff, fileName, isBinary
+    }
 }
 
 /// A file changed in a specific commit.
@@ -147,6 +165,28 @@ struct GitCommitFileDiffResponse: Codable, Sendable {
     let path: String
     let diff: String
     let fileName: String
+    let isBinary: Bool
+
+    init(hash: String, path: String, diff: String, fileName: String, isBinary: Bool = false) {
+        self.hash = hash
+        self.path = path
+        self.diff = diff
+        self.fileName = fileName
+        self.isBinary = isBinary
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        hash = try container.decode(String.self, forKey: .hash)
+        path = try container.decode(String.self, forKey: .path)
+        diff = try container.decode(String.self, forKey: .diff)
+        fileName = try container.decode(String.self, forKey: .fileName)
+        isBinary = try container.decodeIfPresent(Bool.self, forKey: .isBinary) ?? false
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case hash, path, diff, fileName, isBinary
+    }
 }
 
 // MARK: - Graph layout (pre-computed by desktop)

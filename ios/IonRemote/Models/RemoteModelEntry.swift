@@ -2,13 +2,24 @@ import Foundation
 
 /// Model entry received from the desktop via the snapshot event.
 /// Matches the wire shape: `{ id, providerId, providerLabel, label,
-/// contextWindow, hasAuth, thinkingMode?, thinkingEfforts?, modelKind?,
+/// contextWindow, maxOutputTokens?, hasAuth, thinkingMode?, thinkingEfforts?, modelKind?,
 /// isCustom? }`.
 struct RemoteModelEntry: Codable, Sendable, Identifiable, Equatable {
     let id: String
     let providerId: String
     let label: String
     let contextWindow: Int
+    /// Maximum output tokens the engine can request in one response. The desktop
+    /// projects this model capability into the snapshot so iOS can disclose the
+    /// selected model's response capacity before the next request. Nil means the
+    /// provider did not declare a cap; zero is treated as absent by the UI.
+    var maxOutputTokens: Int?
+    /// Usable input capacity after the engine reserves this model's output
+    /// capacity and the compaction-summary reserve. The engine's own
+    /// arithmetic, so it is preferred over recomputing the reserves here;
+    /// nil / zero means the engine did not publish one and the client
+    /// subtracts the reserves from `contextWindow` itself.
+    var effectiveContextLimit: Int?
     let hasAuth: Bool
     /// Human-facing provider name resolved by the desktop at projection time
     /// (operator `engine.json` displayName > built-in name map > capitalized

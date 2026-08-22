@@ -26,6 +26,7 @@ vi.mock('../logger', () => ({
 }))
 
 import { EngineBridge } from '../engine-bridge'
+import { correlate } from '../log-correlation'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -139,6 +140,52 @@ describe('EngineBridge.remapSession', () => {
     const entry = activeSessions.get('B:i2')
     expect(entry).toBeDefined()
     expect(entry.conversationId).toBe('conv-123')
+  })
+})
+
+/**
+ * The bridge installs the logger's conversation resolver, because its
+ * activeSessions map is the authoritative `session key -> conversationId`
+ * binding. Correlation must survive a remap: remapSession MOVES the entry to
+ * the new key, so a line logged against the OLD key resolves only if the
+ * resolver takes the same alias hop that incoming events already take.
+ */
+describe('EngineBridge conversation resolver', () => {
+  it('resolves a live session key to its conversation', () => {
+    const { bridge } = makeBridge()
+    const activeSessions: Map<string, any> = (bridge as any)['activeSessions']
+    activeSessions.set('tab-a', { config: {}, conversationId: 'conv-a' })
+
+    expect(correlate({ fields: { tab_id: 'tab-a' } }).conversation_id).toBe('conv-a')
+  })
+
+  it('keeps two live conversations apart', () => {
+    const { bridge } = makeBridge()
+    const activeSessions: Map<string, any> = (bridge as any)['activeSessions']
+    activeSessions.set('tab-a', { config: {}, conversationId: 'conv-a' })
+    activeSessions.set('tab-b', { config: {}, conversationId: 'conv-b' })
+
+    expect(correlate({ fields: { tab_id: 'tab-a' } }).conversation_id).toBe('conv-a')
+    expect(correlate({ fields: { key: 'tab-b' } }).conversation_id).toBe('conv-b')
+  })
+
+  it('still resolves the old key after a remap', () => {
+    const { bridge } = makeBridge()
+    const activeSessions: Map<string, any> = (bridge as any)['activeSessions']
+    activeSessions.set('A:i1', { config: {}, conversationId: 'conv-a' })
+
+    bridge.remapSession('A:i1', 'B:i1')
+
+    // New key resolves directly; old key resolves through the alias.
+    expect(correlate({ fields: { key: 'B:i1' } }).conversation_id).toBe('conv-a')
+    expect(correlate({ fields: { key: 'A:i1' } }).conversation_id).toBe('conv-a')
+  })
+
+  it('leaves an unknown key unstamped', () => {
+    makeBridge()
+    const ids = correlate({ fields: { tab_id: 'never-started' } })
+    expect(ids.session_id).toBe('never-started')
+    expect('conversation_id' in ids).toBe(false)
   })
 })
 

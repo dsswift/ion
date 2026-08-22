@@ -146,7 +146,7 @@ class CommitClassifier {
     }
 
     for (const m of bench.members) {
-      if (!m.enabled || !m.pinnedSha) continue
+      if (!m.pinnedSha) continue
       const inRange = commitInContribution(bench, m, commit)
       if (inRange.error !== undefined) {
         addError(res, `could not test whether ${shortSha(commit)} is in member ${m.branchName}'s contribution: ${inRange.error}`)
@@ -342,7 +342,7 @@ function candidateFromBlame(bench: IntegrationWorkspace, worktreePath: string) {
   const m = bench.members.find((mm) => mm.worktreePath === worktreePath)
   if (m) return baseCandidate(m)
   return {
-    worktreePath, enabled: true, status: 'unknown', stalenessKnown: false,
+    worktreePath, status: 'unknown', stalenessKnown: false,
   }
 }
 

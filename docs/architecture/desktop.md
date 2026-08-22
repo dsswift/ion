@@ -231,7 +231,7 @@ rejected alternatives are in
 | IPC | `main/ipc/worktree-lifecycle.ts`, `main/ipc/bench.ts` |
 | iOS wire | `main/remote/protocol-worktree.ts`, `main/remote/handlers/worktree.ts` |
 | Renderer state | `renderer/stores/slices/worktree-inventory-slice.ts`, `bench-slice.ts` |
-| UI | `renderer/components/WorktreeListSection.tsx`, `BenchBar.tsx`, `WorktreeRow.tsx`, `worktreeRowState.ts` |
+| UI | `renderer/studio/inbox/`, `BenchBar.tsx`, `WorktreeRow.tsx`, `worktreeRowState.ts` |
 | Join | `shared/worktree-list.ts` (worktrees × memberships, one ordered list) |
 
 ### State flow
@@ -243,21 +243,20 @@ attribution. Three clients render that one projection:
 
 ```
 main-process workspace record
-  ├─ broadcast()                     → overlay renderer + ATV mirror
+  ├─ broadcast()                     → overlay renderer + Studio mirror
   └─ desktop_worktree_state (wire)   → iOS
 ```
 
 Clients never derive these values locally. That is what keeps the pin and
-staleness vocabulary identical across surfaces, and it is why the ATV dock
+staleness vocabulary identical across surfaces, and it is why the Studio dock
 mounts the overlay's own components rather than bespoke widgets.
 
 ### Invariants worth knowing before changing this code
 
-- **Landing is terminal.** `landedAt` is the stored, irreversible witness of a
-  successful Land. Land immediately removes the member from every bench without
-  rebuilding or advancing remaining pins; the sealed checkout is review-only
-  until explicit Retire. Remaining worktrees receive landed content through
-  normal Sync, then explicit pin Update/assembly.
+- **Land and retire is terminal.** A successful operation integrates the branch,
+  removes the member from every bench, then removes the checkout, branch, and
+  registry record. Remaining worktrees receive the landed content through normal
+  Sync, then explicit pin Update/assembly.
 - **Assembly merges pins, never tips**, and never advances a pin. Only
   `updateMember` / `updateAllStale` in `bench-ops.ts` advance one. Breaking this
   means an assembly for one member drags in another's half-finished work.

@@ -27,7 +27,6 @@ export async function collectFootprint(target: FootprintTarget): Promise<Worktre
     treeHash: tree || undefined,
     files: [],
     enrolled: !!member,
-    enabled: member?.enabled,
     order,
     landed: !!entry.landedAt,
   }

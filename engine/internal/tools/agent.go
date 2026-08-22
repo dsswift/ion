@@ -65,13 +65,13 @@ func AgentSpawnerFromContext(ctx context.Context) AgentSpawner {
 func AgentTool() *types.ToolDef {
 	return &types.ToolDef{
 		Name:        AgentToolName,
-		Description: "Dispatch a child agent asynchronously. The call returns its dispatch ID immediately; the engine delivers the terminal result back to this conversation. Set wait_for_completion only when this turn must block for the final output.",
+		Description: "Dispatch a new child agent asynchronously. Every call creates a new dispatch; use AgentStatus to inspect dispatches that already exist. The call returns its dispatch ID immediately, and the engine delivers the terminal result back to this conversation. Set wait_for_completion only when this turn must block for the final output.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"prompt":              map[string]any{"type": "string", "description": "The task for the agent to perform"},
 				"description":         map[string]any{"type": "string", "description": "A short description of what the agent will do"},
-				"model":               map[string]any{"type": "string", "description": "Optional model override for this agent (e.g. claude-opus-4-6)"},
+				"model":               map[string]any{"type": "string", "description": "Optional model request. Omit it to inherit the parent. A direct model request is locked to the parent provider; only configured tiers can deliberately select another provider."},
 				"wait_for_completion": map[string]any{"type": "boolean", "description": "Wait for terminal child output. Default false: dispatch asynchronously and receive automatic completion delivery."},
 				"name":                map[string]any{"type": "string", "description": "Optional specialist agent name (e.g. 'code-reviewer'). If set, the engine resolves the spec from the session's agent registry; the capability_match hook fires when the name is not registered."},
 			},

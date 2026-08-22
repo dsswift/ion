@@ -387,7 +387,8 @@ Custom providers and models via `~/.ion/models.json`.
 | `Bash` | Shell command execution (sandboxable) |
 | `Grep` | Regex search (ripgrep when available) |
 | `Glob` | File pattern matching (`**` support) |
-| `Agent` | Spawn sub-agent processes |
+| `Agent` | Spawn a new sub-agent process |
+| `AgentStatus` | Inspect active sub-agent processes without spawning |
 | `WebFetch` | HTTP GET with SSRF guard and markdown conversion |
 | `WebSearch` | Web search via configurable backend (Brave, Tavily, SearXNG) |
 | `TaskCreate/List/Get/Stop` | Background task management |

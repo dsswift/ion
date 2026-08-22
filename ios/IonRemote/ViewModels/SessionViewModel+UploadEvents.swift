@@ -11,11 +11,11 @@ import Foundation
 extension SessionViewModel {
 
     @MainActor
-    func handleUploadAttachmentResult(id: String, name: String, path: String, correlationId: String?, error: String?) {
+    func handleUploadAttachmentResult(id: String, name: String, path: String, correlationId: String?, contentHash: String?, error: String?) {
         if let error, !error.isEmpty {
-            pendingUploadResults.append(UploadAttachmentResult(id: "", name: name, path: "", correlationId: correlationId, error: error))
+            pendingUploadResults.append(UploadAttachmentResult(id: "", name: name, path: "", correlationId: correlationId, contentHash: nil, error: error))
         } else {
-            pendingUploadResults.append(UploadAttachmentResult(id: id, name: name, path: path, correlationId: correlationId, error: nil))
+            pendingUploadResults.append(UploadAttachmentResult(id: id, name: name, path: path, correlationId: correlationId, contentHash: contentHash, error: nil))
         }
     }
 }

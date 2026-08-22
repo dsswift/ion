@@ -15,6 +15,7 @@ const makeImage = (buf: Buffer, w = 100, h = 100): any => ({
   toJPEG: (_q: number) => buf,
 })
 
+import { createHash } from 'crypto'
 import { encodeAttachments, _setNativeImageForTest, type RawAttachment } from '../attachment-encoder'
 
 _setNativeImageForTest({
@@ -71,6 +72,7 @@ describe('encodeAttachments — images', () => {
     expect(encoded[0].mediaType).toBe('image/jpeg')
     expect(encoded[0].data).toBe(Buffer.from([0xff, 0xd8, 0xff, 0xe0]).toString('base64'))
     expect(encoded[0].path).toBe(path)
+    expect(encoded[0].contentHash).toBe(createHash('sha256').update(Buffer.from([0xff, 0xd8, 0xff, 0xe0])).digest('hex'))
   })
 
   it('the rewritten marker matches neither harness MARKER_RE nor engine attachmentMarkerRe', () => {

@@ -29,13 +29,10 @@ afterAll(() => {
 // ── Store mocks ────────────────────────────────────────────────────────────
 
 let prefState = {
-  editorFontSize: 14,
-  conversationFontSize: 13,
-  previewFontSize: 13,
+  editorFontSize: 14, dataViewFontSize: 13,
   keyboardShortcuts: {} as Record<string, string>,
   setEditorFontSize: vi.fn(),
-  setConversationFontSize: vi.fn(),
-  setPreviewFontSize: vi.fn(),
+  setDataViewFontSize: vi.fn(),
   defaultBaseDirectory: '',
   engineProfiles: [],
   defaultEngineProfileId: '',
@@ -99,13 +96,9 @@ beforeEach(() => {
   vi.clearAllMocks()
   selectTabMock = vi.fn()
   prefState = {
-    editorFontSize: 14,
-    conversationFontSize: 13,
-    previewFontSize: 13,
+    editorFontSize: 14, dataViewFontSize: 13, setDataViewFontSize: vi.fn(),
     keyboardShortcuts: {},
     setEditorFontSize: vi.fn(),
-    setConversationFontSize: vi.fn(),
-    setPreviewFontSize: vi.fn(),
     defaultBaseDirectory: '',
     engineProfiles: [],
     defaultEngineProfileId: '',

@@ -81,6 +81,10 @@ func (m *Manager) buildAsyncContextResolver() func(*extension.Host) (*extension.
 		}
 		m.mu.RLock()
 		s, ok := m.sessions[key]
+		if ok && s.settled {
+			m.mu.RUnlock()
+			return nil, fmt.Errorf("session %q is settled; async triggers are paused", key)
+		}
 		m.mu.RUnlock()
 		if !ok {
 			return nil, fmt.Errorf("session %q not found for host %s", key, host.Name())

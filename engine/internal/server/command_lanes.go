@@ -98,11 +98,13 @@ func classifyCommand(cmd *protocol.ClientCommand) commandClass {
 
 	case "start_session", "send_prompt", "abort", "abort_agent",
 		"steer_agent", "dialog_response", "command", "stop_session",
+		"settle_session", "resume_session",
 		"fork_session", "set_plan_mode", "branch", "branch_before",
 		"rewind_session", "navigate_tree", "get_tree",
 		"permission_response", "tool_gate_response",
 		"elicitation_response", "early_stop_decision_response",
 		"reconcile_state", "query_session_status", "get_agent_state",
+		"resolve_permission_denials",
 		"get_context_breakdown", "clear_conversation_file":
 		if cmd.Key != "" {
 			return classSession

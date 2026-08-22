@@ -164,3 +164,128 @@ func TestBranchSession_ReturnsErrorOnUnknownEntry(t *testing.T) {
 		t.Fatalf("expected error branching to unknown entry, got nil")
 	}
 }
+
+// TestRewindSessionToEntry_ExactMatch pins the exact-entry-addressed rewind
+// path: given the real entry id of the 2nd user turn (resolved the same way a
+// client would learn it, via UserMessageEntryID), RewindSessionToEntry
+// branches to the same point RewindSession(key, 1) would reach by ordinal.
+// This is the regression test for the identity-vs-ordinal defect: a client
+// that retained an exact EntryID from a prior engine_steer_injected
+// confirmation must be able to rewind to precisely that turn without
+// recomputing (and potentially mis-deriving) an ordinal.
+func TestRewindSessionToEntry_ExactMatch(t *testing.T) {
+	tempHome := t.TempDir()
+	t.Setenv("HOME", tempHome)
+
+	planPath := filepath.Join(tempHome, "plans", "x.md")
+	if err := os.MkdirAll(filepath.Dir(planPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(planPath, []byte("# plan x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	const key = "rewind-exact-match"
+	if _, err := mgr.StartSession(key, defaultConfig()); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	t.Cleanup(func() { _ = mgr.StopSession(key) })
+
+	convID := seedRewindConv(t, key, planPath)
+	mgr.mu.Lock()
+	s := mgr.sessions[key]
+	s.conversationID = convID
+	mgr.mu.Unlock()
+
+	convDir := filepath.Join(tempHome, ".ion", "conversations")
+	loaded, err := conversation.Load(convID, convDir)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	entryID, found := conversation.UserMessageEntryID(loaded, 1)
+	if !found {
+		t.Fatal("expected to resolve entry id for user turn 1")
+	}
+
+	if err := mgr.RewindSessionToEntry(key, entryID); err != nil {
+		t.Fatalf("RewindSessionToEntry: %v", err)
+	}
+
+	reloaded, err := conversation.Load(convID, convDir)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if len(reloaded.Messages) != 1 {
+		t.Fatalf("after exact-entry rewind, context = %d messages, want 1 (first turn only)", len(reloaded.Messages))
+	}
+
+	mgr.mu.RLock()
+	got := mgr.sessions[key].planFilePath
+	mgr.mu.RUnlock()
+	if got != planPath {
+		t.Fatalf("session planFilePath = %q, want %q", got, planPath)
+	}
+}
+
+// TestRewindSessionToEntry_RejectsUnknownEntry pins that an entry id with no
+// match on the current path is rejected loudly rather than silently branching
+// (or panicking) — the exact-entry validation gate must run BEFORE
+// BranchBefore, which has no independent notion of "is this a real entry".
+func TestRewindSessionToEntry_RejectsUnknownEntry(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	const key = "rewind-exact-unknown"
+	if _, err := mgr.StartSession(key, defaultConfig()); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	t.Cleanup(func() { _ = mgr.StopSession(key) })
+
+	convID := seedRewindConv(t, key, filepath.Join(t.TempDir(), "x.md"))
+	mgr.mu.Lock()
+	mgr.sessions[key].conversationID = convID
+	mgr.mu.Unlock()
+
+	if err := mgr.RewindSessionToEntry(key, "does-not-exist"); err == nil {
+		t.Fatalf("expected error rewinding to unknown entry id, got nil")
+	}
+}
+
+// TestRewindSessionToEntry_RejectsNonUserEntry pins that an entry id naming a
+// real but non-user row (the assistant turn seeded by seedRewindConv) is
+// rejected. A client must never be able to rewind "before" an assistant
+// response by exact id — only a genuine user turn is a valid rewind target,
+// mirroring the ordinal path's implicit guarantee (UserMessageEntryID only
+// ever returns ids for role=="user" rows).
+func TestRewindSessionToEntry_RejectsNonUserEntry(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	const key = "rewind-exact-non-user"
+	if _, err := mgr.StartSession(key, defaultConfig()); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	t.Cleanup(func() { _ = mgr.StopSession(key) })
+
+	convID := seedRewindConv(t, key, filepath.Join(t.TempDir(), "x.md"))
+	mgr.mu.Lock()
+	mgr.sessions[key].conversationID = convID
+	mgr.mu.Unlock()
+
+	loaded, err := conversation.Load(convID, "")
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	// The conversation's leaf entry is the assistant response appended last by
+	// seedRewindConv. Its own id is not a user row.
+	if loaded.LeafID == nil {
+		t.Fatal("expected a non-nil leaf id in seeded conversation")
+	}
+	assistantEntryID := *loaded.LeafID
+
+	if err := mgr.RewindSessionToEntry(key, assistantEntryID); err == nil {
+		t.Fatalf("expected error rewinding to a non-user entry id, got nil")
+	}
+}

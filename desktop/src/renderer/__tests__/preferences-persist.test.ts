@@ -264,6 +264,47 @@ describe('loadPersistedSettings — defaultThinkingEffort validation', () => {
   })
 })
 
+describe('loadPersistedSettings — Studio surface switch mode validation', () => {
+  let originalIon: unknown
+  let originalDocument: unknown
+
+  beforeEach(() => {
+    originalIon = (globalThis as { window?: { ion?: unknown } }).window?.ion
+    originalDocument = (globalThis as { document?: unknown }).document
+    ;(globalThis as { document?: unknown }).document = {
+      documentElement: { style: {}, classList: { toggle: () => {}, add: () => {}, remove: () => {} } },
+    }
+  })
+
+  afterEach(() => {
+    ;(globalThis as { window?: { ion?: unknown } }).window = { ion: originalIon } as Window & typeof globalThis
+    ;(globalThis as { document?: unknown }).document = originalDocument
+  })
+
+  async function hydrate(diskValue: unknown): Promise<Record<string, unknown>> {
+    ;(globalThis as { window?: { ion?: unknown } }).window = {
+      ion: { loadSettings: () => Promise.resolve({ studioSurfaceSwitchMode: diskValue }) },
+    } as unknown as Window & typeof globalThis
+    const setStateMock = vi.fn()
+    loadPersistedSettings(
+      setStateMock,
+      () => ({ _systemIsDark: false } as unknown as PreferencesState),
+      vi.fn(),
+    )
+    await new Promise((resolve) => setImmediate(resolve))
+    return setStateMock.mock.calls[0][0] as Record<string, unknown>
+  }
+
+  it('preserves the per-conversation mode', async () => {
+    expect((await hydrate('per-conversation')).studioSurfaceSwitchMode).toBe('per-conversation')
+  })
+
+  it.each(['preserve', 'invalid', true, null])('uses preserve for %s', async (value) => {
+    expect((await hydrate(value)).studioSurfaceSwitchMode).toBe('preserve')
+  })
+})
+
+
 describe('loadPersistedSettings applies forced-scheme theme by id on startup', () => {
   let originalIon: unknown
   let originalDocument: unknown

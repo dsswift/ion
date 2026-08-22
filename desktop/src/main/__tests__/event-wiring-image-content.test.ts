@@ -113,6 +113,7 @@ describe('wireEngineBridgeEvents — engine_image_content projection', () => {
       imagePath: '/Users/x/.ion/conversations/abc/images/img1.png',
       imageMediaType: 'image/png',
       imageSource: 'provider',
+      imageContentHash: 'abc123',
     })
 
     const sent = sentOfType('desktop_image_content')
@@ -124,6 +125,7 @@ describe('wireEngineBridgeEvents — engine_image_content projection', () => {
       path: '/Users/x/.ion/conversations/abc/images/img1.png',
       mediaType: 'image/png',
       source: 'provider',
+      contentHash: 'abc123',
     })
     // A provider image has no producing tool call — toolId must be OMITTED,
     // not present-as-empty (iOS distinguishes attach-to-tool-row vs
@@ -159,6 +161,7 @@ describe('wireEngineBridgeEvents — engine_image_content projection', () => {
       imagePath: '/tmp/img.png',
       imageMediaType: 'image/png',
       imageSource: 'provider',
+      imageContentHash: 'abc123',
     })
 
     expect(sentOfType('engine_image_content')).toHaveLength(0)

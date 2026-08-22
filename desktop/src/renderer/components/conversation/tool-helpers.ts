@@ -63,6 +63,51 @@ interface GroupOptions {
   unifiedTurnView?: boolean
 }
 
+/**
+ * Removes a run-output image only when an earlier user turn supplied the exact
+ * same decoded-byte SHA-256. Paths and filenames are not identity: a tool can
+ * save the same bytes elsewhere, while a generated image can share a name.
+ *
+ * This is render-only. Stored messages remain complete for history, rewind,
+ * attachments, and external consumers. Legacy attachments without a hash stay
+ * visible because guessing would hide real output.
+ */
+export function suppressUserImageEchoes(messages: Message[]): Message[] {
+  const userHashes = new Set<string>()
+  const visible: Message[] = []
+
+  for (const message of messages) {
+    if (message.role === 'user') {
+      for (const attachment of message.attachments || []) {
+        if (attachment.type === 'image') {
+          const normalized = attachment.contentHash?.toLowerCase() ?? ''
+          if (/^[a-f0-9]{64}$/.test(normalized)) userHashes.add(normalized)
+        }
+      }
+      visible.push(message)
+      continue
+    }
+
+    if (message.role !== 'assistant' && message.role !== 'tool') {
+      visible.push(message)
+      continue
+    }
+
+    const attachments = message.attachments
+    if (!attachments?.some((attachment) => attachment.type === 'image' && !!attachment.contentHash && userHashes.has(attachment.contentHash.toLowerCase()))) {
+      visible.push(message)
+      continue
+    }
+
+    const filtered = attachments.filter((attachment) =>
+      attachment.type !== 'image' || !attachment.contentHash || !userHashes.has(attachment.contentHash.toLowerCase()))
+    if (message.role === 'assistant' && !message.content.trim() && filtered.length === 0) continue
+    visible.push({ ...message, attachments: filtered.length > 0 ? filtered : undefined })
+  }
+
+  return visible
+}
+
 export function groupMessages(messages: Message[], opts?: GroupOptions): GroupedItem[] {
   const includeUser = opts?.includeUser ?? true
 
@@ -323,6 +368,26 @@ export function toolFailureSummary(tools: Message[]): { failed: number; total: n
     if (t.toolStatus === 'running') running = true
   }
   return { failed, total: tools.length, running }
+}
+
+export interface ActiveToolProgress {
+  currentToolDescription: string
+  usedCount: number
+}
+
+/**
+ * Returns live tool activity for a collapsed transcript header. The latest
+ * running row is current because tool rows preserve engine event order. Every
+ * settled row counts as used, including failed calls, because it ran.
+ */
+export function activeToolProgress(tools: Message[]): ActiveToolProgress | null {
+  const currentTool = [...tools].reverse().find((tool) => tool.toolStatus === 'running')
+  if (!currentTool) return null
+
+  return {
+    currentToolDescription: getToolDescription(currentTool.toolName || 'Tool', currentTool.toolInput),
+    usedCount: tools.filter((tool) => tool.toolStatus !== 'running').length,
+  }
 }
 
 // ─── toolSummary ───

@@ -5,11 +5,16 @@ import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId, cancelDoneGroupMove } from '../session-store-helpers'
 import { activeInstance, commitInstance, effectivePermissionMode, effectiveThinkingEffort } from '../conversation-instance'
 import { useModelStore } from '../model-store'
+import { getDynamicContextWindow } from '../model-labels'
+import { resolveContextInputs } from '../../components/context-usage'
 import { resolveEffortForModel } from '../../../shared/thinking-options'
 import { applyActiveGroupMove } from './event-slice-running-move'
 import { maybeSendTimeTitle, isPlaceholderTitle } from './event-slice-titling'
 import { parseSlash } from '../../../main/slash-parse'
 import { rDebug, rInfo, rWarn } from '../../rendererLogger'
+import { logTabStatusPatch } from './tab-status-transition'
+import { promptRefusal } from '../../../shared/prompt-acceptance'
+import { selectedModelContextLimit } from '../../../shared/context-capacity'
 import { createSendBashSlice } from './send-slice-bash'
 
 type PromptModelSelection = Pick<import('../../../shared/types-engine').ConversationInstance, 'modelOverride' | 'modelOverrideSource' | 'sessionModel'> | null | undefined
@@ -40,7 +45,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
     // Bash-execution actions (startBashCommand, completeBashCommand,
     // submitRemoteBash) live in send-slice-bash.ts — extracted to keep this
     // file under the 600-line cap. Spread here so the composed slice shape is
-    // unchanged for the store and the ATV mirror classification.
+    // unchanged for the store and the Studio mirror classification.
     ...createSendBashSlice(set, get),
     /**
      * Move a tab to planning/in-progress on send, based on its AUTHORITATIVE
@@ -147,7 +152,13 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const { tabs, staticInfo } = get()
       const { projectPath, extraAttachments, appendSystemPrompt, implementationPhase, imageAttachments, remoteAttachments, source, resolveSlash, requestId: clientRequestId } = opts
       const tab = tabs.find((t) => t.id === tabId)
-      if (!tab) return
+      if (!tab) {
+        // A dropped operator prompt is never a debug detail: the text is gone
+        // from the input by the time any caller reaches here, so an unlogged
+        // return is a silent data loss.
+        rWarn('submit', 'refused: no such tab', { tab_id: tabId.slice(0, 8), count: text.length })
+        return
+      }
       const resolvedPath = projectPath || (tab.hasChosenDirectory ? tab.workingDirectory : (staticInfo?.homePath || tab.workingDirectory || '~'))
 
       // Snapshot the active instance BEFORE the set() below so the fork-context
@@ -155,22 +166,40 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // reads are pre-mutation.
       const sendInst = activeInstance(get().conversationPanes, tabId)
 
-      if (tab.status === 'connecting') {
-        rDebug('submit', 'blocked: status=connecting, dropping prompt', { tab_id: tab.id.slice(0, 8), count: text.length })
-        return
-      }
-
-      // A locked conversation accepts no further prompts, from ANY entry
-      // point — the InputBar hides itself, but the guard lives here so a
-      // remote command, a queued prompt, or a future caller cannot route
-      // around it. The one passage is `source: 'machine'`: the auto-fix flow
-      // tags role + lock atomically BEFORE submitting its single machine
-      // prompt (so a fast completion cannot race the lifecycle tagging), so
-      // that first machine-origin submission must pass the lock it itself
-      // installed. Operator and remote prompts never carry that source.
-      if (tab.inputLocked && (tab.inputLockReason === 'landed-worktree' || source !== 'machine')) {
-        rWarn('submit', 'blocked: conversation is input-locked (auto-generated fix conversation)', {
-          tab_id: tab.id.slice(0, 8), count: text.length, source: source ?? 'local',
+      // Both refusals — still connecting, and input-locked — come from the one
+      // shared predicate (shared/prompt-acceptance.ts), which is also what the
+      // InputBar consults BEFORE it clears the operator's text. When these two
+      // decisions were separate predicates the InputBar could admit a send
+      // that this guard then refused, and the text was already destroyed.
+      //
+      // The guard stays here regardless of the caller's own check: this is the
+      // enforcement point no remote command, queued prompt, or future caller
+      // can route around.
+      const capacityInputs = resolveContextInputs(sendInst)
+      const effectiveModel = sendInst?.modelOverride ?? sendInst?.sessionModel ?? usePreferencesStore.getState().preferredModel ?? ''
+      const modelCapacity = useModelStore.getState().findModel(effectiveModel)
+      const rawWindow = getDynamicContextWindow(effectiveModel, capacityInputs.engineWindow)
+      const contextLimit = selectedModelContextLimit(rawWindow, modelCapacity?.maxOutputTokens)
+      const refusal = promptRefusal({
+        tab: {
+          ...tab,
+          contextTokens: capacityInputs.tokens,
+          contextLimit,
+        },
+        source,
+        text,
+      })
+      if (refusal) {
+        // WARN, not DEBUG. The main-process logger's minimum level is INFO
+        // (main/logger.ts), so a DEBUG line here never reaches
+        // ~/.ion/desktop.jsonl — which is precisely how a dropped prompt
+        // became unattributable after the fact.
+        rWarn('submit', 'refused prompt', {
+          tab_id: tab.id.slice(0, 8),
+          count: text.length,
+          source: source ?? 'local',
+          reason: refusal.reason,
+          detail: refusal.detail,
         })
         return
       }
@@ -214,6 +243,11 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         ? (text.length > 40 ? text.substring(0, 37) + '...' : text)
         : tab.title
 
+      // Set inside the set() closure below (to the optimistic bubble's own
+      // id) when this send is a mid-turn steer; read after set() to pass as
+      // the client correlation id on window.ion.steer.
+      let steerClientMessageId: string | undefined
+
       set((s) => {
         // Optimistic user message onto the active instance; pinned prompt for
         // every tab (the view renders it iff present — harmless for plain).
@@ -224,18 +258,33 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         // below), so mark the bubble steerPending: the engine has not drained it
         // yet. steer_injected clears the flag and pairs the bubble with its
         // "Steer applied" divider; error/session_dead flip it to steerFailed.
+        // The bubble's own id is passed to window.ion.steer as the client
+        // correlation id, so the engine's confirming steer_injected event (and
+        // the Studio mirror's echo insert) both resolve to THIS exact bubble by
+        // identity rather than by first-pending-row position — the latter
+        // breaks the moment more than one steer is outstanding.
+        //
+        // A remote-sourced steer (iOS) already minted its own optimistic id
+        // and sent it as `requestId` (clientMsgId on the wire) — reuse THAT id
+        // rather than minting a fresh desktop-local one. Without this, the
+        // engine echoes back the desktop's msg-N id (steerEntryId's
+        // correlation), which never matches the id iOS's own optimistic
+        // bubble carries, so iOS can never resolve the confirmation by id and
+        // silently falls back to its oldest-pending heuristic — exactly the
+        // ambiguity a durable correlation id exists to remove.
         const isSteer = isBusy && !implementationPhase
         const userMessage = {
-          id: nextMsgId(),
+          id: (source === 'remote' && isSteer && clientRequestId) ? clientRequestId : nextMsgId(),
           role: 'user' as const,
           content: text,
           attachments: msgAttachments.length > 0 ? msgAttachments
             : (remoteAttachments || []).length > 0
-              ? (remoteAttachments || []).map((a) => ({ id: a.path, type: a.type as Attachment['type'], name: a.name, path: a.path }))
+              ? (remoteAttachments || []).map((a) => ({ id: a.path, type: a.type as Attachment['type'], name: a.name, path: a.path, ...(a.contentHash ? { contentHash: a.contentHash } : {}) }))
               : undefined,
           timestamp: Date.now(),
           ...(isSteer ? { steerPending: true } : {}),
         }
+        steerClientMessageId = isSteer ? userMessage.id : undefined
         const conversationPanes = commitInstance(s.conversationPanes, tabId, (inst) => ({
           ...inst,
           messages: [...inst.messages, userMessage],
@@ -261,12 +310,28 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
               bashResults: [],
             }
           }
+          // The optimistic pre-dispatch write. It is the origin of every
+          // 'connecting' in the renderer, and it is answered only by a later
+          // engine event — so when a conversation is stuck showing a spinner
+          // with a locked composer, this line is the start of that trail.
+          logTabStatusPatch(tabId, t.status, 'connecting', 'send.submit',
+            { request_id: requestId, implementation_phase: !!implementationPhase })
           return {
             ...withEffectiveBase,
             status: 'connecting' as TabStatus,
             activeRequestId: requestId,
             lastResult: null,
             lastEventAt: Date.now(),
+            // A user message is a real conversation message. It clears settle
+            // and snooze; task/status events are intentionally not equivalent.
+            lastActivityAt: Date.now(),
+            ...(source === 'machine'
+              ? { inboxMessageSuppressed: true }
+              : { lastMessageAt: Date.now() }),
+            settledOverride: null,
+            settledAt: null,
+            snoozedUntil: null,
+            snoozedAt: null,
             currentActivity: 'Starting...',
             title,
             attachments: [],
@@ -296,7 +361,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       }
 
       if (isBusy && !implementationPhase) {
-        window.ion.steer(tabId, fullPrompt)
+        window.ion.steer(tabId, fullPrompt, steerClientMessageId)
         return
       }
 
@@ -374,12 +439,11 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         prompt: fullPrompt,
         projectPath: resolvedPath,
         sessionId: tab.conversationId || undefined,
-        // `preferredModel` and plan/implementation/workflow models are ambient
-        // defaults. Sending either as `send_prompt.model` would turn it into an
-        // explicit override and defeat slash frontmatter (`standard` / `fast`).
-        // Only a direct picker choice remains explicit for a slash command.
+        // A slash command owns its model through command frontmatter. Never
+        // send conversation picker/default state as send_prompt.model here:
+        // engine resolves the command selector and records the serving model.
         model: isSlashPrompt
-          ? (sendInst?.modelOverrideSource === 'user' ? sendInst.modelOverride || undefined : undefined)
+          ? undefined
           : sendInst?.modelOverride || preferredModel || undefined,
         addDirs: tab.additionalDirs.length > 0 ? tab.additionalDirs : undefined,
         appendSystemPrompt: effectiveSystemPrompt,
@@ -429,18 +493,23 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const preferredModel = usePreferencesStore.getState().preferredModel
       const tab = tabs.find((t) => t.id === tabId)
       if (!tab) return
-      if (tab.status === 'connecting') {
-        rDebug('submit.remote', 'blocked: status=connecting, dropping prompt', { tab_id: tab.id.slice(0, 8), count: prompt.length })
-        return
-      }
-
-      // Same lock as submit(): a remote prompt from iOS must not route around
-      // the input-locked guard on an auto-generated fix conversation. iOS
-      // hides its own input bar and guards its submit too, but the desktop is
-      // the authority on what reaches the engine.
-      if (tab.inputLocked) {
-        rWarn('submit.remote', 'blocked: conversation is input-locked (auto-generated fix conversation)', {
-          tab_id: tab.id.slice(0, 8), count: prompt.length,
+      const remoteInst = activeInstance(get().conversationPanes, tabId)
+      const remoteCapacity = resolveContextInputs(remoteInst)
+      const remoteEffectiveModel = remoteInst?.modelOverride ?? remoteInst?.sessionModel ?? preferredModel ?? ''
+      const remoteModelCapacity = useModelStore.getState().findModel(remoteEffectiveModel)
+      const remoteRawWindow = getDynamicContextWindow(remoteEffectiveModel, remoteCapacity.engineWindow)
+      const remoteContextLimit = selectedModelContextLimit(remoteRawWindow, remoteModelCapacity?.maxOutputTokens)
+      const refusal = promptRefusal({
+        tab: {
+          ...tab,
+          contextTokens: remoteCapacity.tokens,
+          contextLimit: remoteContextLimit,
+        },
+        text: prompt,
+      })
+      if (refusal) {
+        rWarn('submit.remote', 'blocked prompt', {
+          tab_id: tab.id.slice(0, 8), count: prompt.length, reason: refusal.reason, detail: refusal.detail,
         })
         return
       }
@@ -456,16 +525,18 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const requestId = reqId || crypto.randomUUID()
       const isBusy = tab.status === 'running'
 
-      // Per-conversation state lives on the active instance; snapshot it before
-      // the set() so the prompt-call reads pre-send modelOverride/planFilePath.
-      const remoteInst = activeInstance(get().conversationPanes, tabId)
-
       // Gate on customTitle too — see submit() above. Prevents a mid-conversation
       // remote prompt from re-titling a tab that already has a real title.
       const needsTitle = !tab.customTitle && isPlaceholderTitle(tab.title)
       const title = needsTitle
         ? (prompt.length > 40 ? prompt.substring(0, 37) + '...' : prompt)
         : tab.title
+
+      // Set inside the set() closure below (to the optimistic bubble's own
+      // id) when this send is a mid-turn steer; read after set() to pass as
+      // the client correlation id on window.ion.steer. Same reasoning as
+      // submit() above.
+      let steerClientMessageId: string | undefined
 
       set((s) => {
         // remoteAttachments: raw iOS attachment metadata forwarded through
@@ -474,8 +545,19 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         // only carries the pathless `[Attachment: NAME (content attached)]`
         // form. Use a.path as synthetic id — AttachmentImageCache keys by
         // path on iOS; matches the engine-path convention in submit().
+        //
+        // Busy tab → routes through window.ion.steer below; same pending
+        // lifecycle as submit(). See the steerPending doc in types-session.ts.
+        //
+        // This path is always remote-sourced (iOS), so `requestId` is
+        // always iOS's own supplied id (falling back to a fresh one only
+        // when iOS omitted reqId entirely). Reuse it as the message id on a
+        // busy-tab (steer) send — same correlation-id reasoning as submit()'s
+        // remote-steer branch — so the engine's confirming steer_injected
+        // event resolves to THIS exact bubble by id instead of iOS falling
+        // back to its oldest-pending heuristic.
         const userMessage = {
-          id: nextMsgId(),
+          id: isBusy ? requestId : nextMsgId(),
           role: 'user' as const,
           content: prompt,
           attachments: (remoteAttachments || []).length > 0
@@ -483,10 +565,9 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
             : undefined,
           timestamp: Date.now(),
           source: 'remote' as const,
-          // Busy tab → routes through window.ion.steer below; same pending
-          // lifecycle as submit(). See the steerPending doc in types-session.ts.
           ...(isBusy ? { steerPending: true } : {}),
         }
+        steerClientMessageId = isBusy ? userMessage.id : undefined
         const conversationPanes = commitInstance(s.conversationPanes, tabId, (inst) => ({
           ...inst,
           messages: [...inst.messages, userMessage],
@@ -498,11 +579,22 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           if (isBusy) {
             return { ...t, title }
           }
+          // Same optimistic write as submit(), reached from an iOS prompt.
+          logTabStatusPatch(tabId, t.status, 'connecting', 'send.remote',
+            { request_id: requestId })
           return {
             ...t,
             status: 'connecting' as TabStatus,
             activeRequestId: requestId,
             lastEventAt: Date.now(),
+            // A remote user prompt is a real message and therefore resets
+            // the inbox message clock.
+            lastActivityAt: Date.now(),
+            lastMessageAt: Date.now(),
+            settledOverride: null,
+            settledAt: null,
+            snoozedUntil: null,
+            snoozedAt: null,
             currentActivity: 'Starting...',
             title,
           }
@@ -521,7 +613,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       }
 
       if (isBusy) {
-        window.ion.steer(tabId, prompt)
+        window.ion.steer(tabId, prompt, steerClientMessageId)
         return
       }
 
@@ -558,10 +650,10 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         prompt,
         projectPath: resolvedPath,
         sessionId: tab.conversationId || undefined,
-        // Mirror desktop sends: model frontmatter owns a slash command unless
-        // the operator explicitly selected a model for this conversation.
+        // Slash frontmatter owns model selection for every client. Do not send
+        // conversation picker/default state as send_prompt.model on this path.
         model: isSlashPrompt
-          ? (remoteInst?.modelOverrideSource === 'user' ? remoteInst.modelOverride || undefined : undefined)
+          ? undefined
           : remoteInst?.modelOverride || preferredModel || undefined,
         addDirs: tab.additionalDirs.length > 0 ? tab.additionalDirs : undefined,
         source: 'remote',

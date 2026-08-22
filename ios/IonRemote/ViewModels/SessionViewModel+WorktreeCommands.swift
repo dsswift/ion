@@ -54,12 +54,18 @@ extension SessionViewModel {
         send(.worktreeRefresh(repoPath: repoPath), intent: .automaticEssential)
     }
 
-    /// Refresh every project that currently has a tab open, so the new-tab
-    /// sheet lists worktrees the moment it appears rather than a beat later.
+    /// Refresh every unique project with a live tab. A tab can be rooted in the
+    /// source checkout, a worktree, or a bench, but those paths can all belong
+    /// to one repository. Sending each alias made the desktop project the same
+    /// inventory repeatedly and let legacy duplicate records reach the Inbox.
     func refreshAllWorktrees() {
-        let repos = Set(tabs.map(\.workingDirectory).filter { !$0.isEmpty && $0 != "~" })
-        for repo in repos {
-            send(.worktreeRefresh(repoPath: repo), intent: .automaticEssential)
+        let projects = WorktreeProjectIdentity.refreshProjectPaths(tabs: tabs, states: worktreeStates)
+        DiagnosticLog.log("refreshing inbox worktree projects", tag: "worktree", fields: [
+            "tab_count": String(tabs.count),
+            "project_count": String(projects.count)
+        ])
+        for repoPath in projects {
+            send(.worktreeRefresh(repoPath: repoPath), intent: .automaticEssential)
         }
     }
 
@@ -180,34 +186,112 @@ extension SessionViewModel {
         send(.worktreeSyncAll(repoPath: repoPath), intent: .userInitiated)
     }
 
-    /// Land a worktree into its source branch.
-    func landWorktree(_ worktree: RemoteWorktree, repoPath: String) {
+    /// Start the desktop's FULL sync pipeline: mechanical pass → AI-confirm
+    /// gate → sequential resolver agents → bench assembly. This is what the
+    /// desktop's Sync All button runs; `syncAllWorktrees` above remains the
+    /// gate-free mechanical pass. Progress arrives as
+    /// `desktop_worktree_pipeline` events (see `worktreePipelines`).
+    func startWorktreePipeline(repoPath: String, sourceBranch: String) {
+        DiagnosticLog.log("pipeline start requested", tag: "worktree",
+                          fields: ["repo": repoPath, "source_branch": sourceBranch])
+        send(.worktreePipelineStart(repoPath: repoPath, sourceBranch: sourceBranch), intent: .userInitiated)
+    }
+
+    /// Approve the pipeline's AI escalation. Money is spent only after this
+    /// explicit confirmation — the same cost-visibility gate the desktop has.
+    func confirmWorktreePipelineAi(repoPath: String) {
+        DiagnosticLog.log("pipeline AI escalation confirmed", tag: "worktree",
+                          fields: ["repo": repoPath])
+        send(.worktreePipelineConfirmAi(repoPath: repoPath), intent: .userInitiated)
+    }
+
+    /// Stop the pipeline between steps (never aborts a running rebase/agent).
+    func cancelWorktreePipeline(repoPath: String) {
+        send(.worktreePipelineCancel(repoPath: repoPath), intent: .userInitiated)
+    }
+
+    /// Clear the finished pipeline banner on every client.
+    func dismissWorktreePipeline(repoPath: String) {
+        send(.worktreePipelineDismiss(repoPath: repoPath), intent: .userInitiated)
+    }
+
+    /// Launch the AI-assisted resolver on a conflicted worktree. The desktop
+    /// dedupes per directory, so a repeat tap while a resolver runs focuses it
+    /// rather than stacking a second agent.
+    func worktreeConflictAssist(_ worktree: RemoteWorktree, repoPath: String) {
+        worktreeBusyPath = worktree.worktreePath
+        DiagnosticLog.log("conflict assist requested", tag: "worktree",
+                          fields: ["worktree_path": worktree.worktreePath])
+        send(.worktreeConflictAssist(repoPath: repoPath, worktreePath: worktree.worktreePath),
+             intent: .userInitiated)
+    }
+
+    /// Bench chain: recreate the failed assembly merge, then launch the
+    /// assisted resolver on the bench directory.
+    func benchConflictAssist(repoPath: String, sourceBranch: String) {
+        benchBusy = true
+        DiagnosticLog.log("bench conflict assist requested", tag: "worktree",
+                          fields: ["repo": repoPath, "source_branch": sourceBranch])
+        send(.benchConflictAssist(repoPath: repoPath, sourceBranch: sourceBranch), intent: .userInitiated)
+    }
+
+    /// Merge the worktree into its source branch, then remove its checkout and branch. */
+    func landAndRetireWorktree(_ worktree: RemoteWorktree, repoPath: String) {
         guard let sourceBranch = worktree.sourceBranch else {
             gitToast = GitToast(message: "Ion does not know what branch this worktree came from.", isError: true)
             return
         }
         worktreeBusyPath = worktree.worktreePath
-        send(.worktreeLand(repoPath: repoPath,
-                           worktreePath: worktree.worktreePath,
-                           worktreeBranch: worktree.branchName,
-                           sourceBranch: sourceBranch),
+        send(.worktreeLandAndRetire(repoPath: repoPath,
+                                    worktreePath: worktree.worktreePath,
+                                    worktreeBranch: worktree.branchName,
+                                    sourceBranch: sourceBranch),
              intent: .userInitiated)
     }
 
+    /// Retire every worktree that the desktop marked as landed.
+    func retireLandedWorktrees(repoPath: String) {
+        benchBusy = true
+        send(.worktreeRetireLanded(repoPath: repoPath), intent: .userInitiated)
+    }
+
+    /// Retire ONE worktree. The desktop appraises what would be lost and can
+    /// refuse (`refusedDirty`) — the op result words a refusal differently
+    /// from a failure, and any conversation still living there is relocated
+    /// by the desktop before removal.
     func retireWorktree(_ worktree: RemoteWorktree, repoPath: String) {
         worktreeBusyPath = worktree.worktreePath
-        send(.worktreeRetire(repoPath: repoPath, worktreePath: worktree.worktreePath),
+        DiagnosticLog.log("retire requested", tag: "worktree",
+                          fields: ["worktree_path": worktree.worktreePath])
+        send(.worktreeRetire(repoPath: repoPath,
+                             worktreePath: worktree.worktreePath,
+                             branchName: worktree.branchName),
              intent: .userInitiated)
     }
 
-    /// Retire every worktree in the repo already sealed by a successful Land —
-    /// mirrors the desktop's "Retire all" batch control in the Landed group.
-    /// The confirmation gate lives in the view; this only sends the command.
-    func retireAllLandedWorktrees(repoPath: String) {
+    /// Create a worktree from the selected source branch.
+    func createWorktree(repoPath: String, sourceBranch: String) {
         benchBusy = true
-        DiagnosticLog.log("retire all landed worktrees requested", tag: "worktree",
-                          fields: ["repo_path": repoPath])
-        send(.worktreeRetireLanded(repoPath: repoPath), intent: .userInitiated)
+        send(.worktreeCreate(repoPath: repoPath, sourceBranch: sourceBranch), intent: .userInitiated)
+    }
+
+    /// Move an existing conversation into a new worktree.
+    func convertConversationToWorktree(tabId: String) {
+        send(.worktreeConvertConversation(tabId: tabId), intent: .userInitiated)
+    }
+
+    /// Change the operator title for a worktree.
+    func renameWorktree(repoPath: String, worktreePath: String, title: String) {
+        worktreeBusyPath = worktreePath
+        send(.worktreeRename(repoPath: repoPath, worktreePath: worktreePath, title: title),
+             intent: .userInitiated)
+    }
+
+    /// Run the declared dependency provisioning for a worktree again.
+    func reprovisionWorktree(repoPath: String, worktreePath: String) {
+        worktreeBusyPath = worktreePath
+        send(.worktreeReprovision(repoPath: repoPath, worktreePath: worktreePath),
+             intent: .userInitiated)
     }
 
     // MARK: - Bench verbs
@@ -223,15 +307,34 @@ extension SessionViewModel {
              intent: .userInitiated)
     }
 
+    /// Rebuild a bench after a conflict, using any recorded resolutions.
+    func recoverBenchConflict(repoPath: String, sourceBranch: String) {
+        benchBusy = true
+        send(.benchRecoverConflict(repoPath: repoPath, sourceBranch: sourceBranch), intent: .userInitiated)
+    }
+
+    /// Open the desktop-owned verification analysis conversation.
+    func analyseBenchVerification(repoPath: String, sourceBranch: String) {
+        benchBusy = true
+        send(.benchAnalyseVerification(repoPath: repoPath, sourceBranch: sourceBranch), intent: .userInitiated)
+    }
+
+    /// Remove saved conflict resolutions for selected bench members.
+    func discardBenchMemberRecordings(repoPath: String, sourceBranch: String, branchNames: [String]) {
+        benchBusy = true
+        send(.benchDiscardMemberRecordings(
+            repoPath: repoPath, sourceBranch: sourceBranch, branchNames: branchNames), intent: .userInitiated)
+    }
+
+    /// Remove every saved conflict resolution for a bench.
+    func discardAllBenchRecordings(repoPath: String, sourceBranch: String) {
+        benchBusy = true
+        send(.benchDiscardAllRecordings(repoPath: repoPath, sourceBranch: sourceBranch), intent: .userInitiated)
+    }
+
     func updateAllBenchMembers(repoPath: String, sourceBranch: String) {
         benchBusy = true
         send(.benchUpdateAll(repoPath: repoPath, sourceBranch: sourceBranch), intent: .userInitiated)
-    }
-
-    func setBenchMemberEnabled(repoPath: String, sourceBranch: String, worktreePath: String, enabled: Bool) {
-        send(.benchSetEnabled(repoPath: repoPath, sourceBranch: sourceBranch,
-                              worktreePath: worktreePath, enabled: enabled),
-             intent: .userInitiated)
     }
 
     /// Set or clear the operator's workflow stage on a worktree. `nil` clears.
@@ -291,6 +394,15 @@ extension SessionViewModel {
             if result.operation == .open, let tabId = result.tabId {
                 navigateToTab(tabId)
                 DiagnosticLog.log("worktree conversation navigation resolved", tag: "worktree",
+                                  fields: ["tab_id": tabId])
+                return
+            }
+            // The assisted resolver is a live conversation; focusing it is the
+            // whole point of the verb (same posture as the desktop, where the
+            // flashing slot's only affordance while a resolver runs is focus).
+            if result.operation == .conflictAssist, let tabId = result.tabId {
+                navigateToTab(tabId)
+                DiagnosticLog.log("conflict assist resolver focused", tag: "worktree",
                                   fields: ["tab_id": tabId])
                 return
             }
@@ -354,13 +466,22 @@ extension SessionViewModel {
         switch op {
         case .open: return "Worktree conversation opened."
         case .sync: return "Synced from the source branch."
-        case .land: return "Landed into the source branch."
+        case .landAndRetire: return "Landed into the source branch."
         case .retire: return "Worktree retired."
         case .assemble: return "Bench assembled."
         case .update: return "Member updated and bench assembled."
         case .updateAll: return "All stale members updated and bench assembled."
         case .syncAll: return "All worktrees synced."
         case .retireAll: return "Landed worktrees retired."
+        case .create: return "Worktree created."
+        case .convert: return "Conversation moved into a worktree."
+        case .rename: return "Worktree renamed."
+        case .reprovision: return "Worktree provisioned."
+        case .recoverConflict: return "Bench conflict recovery started."
+        case .conflictAssist: return "AI-assisted resolution started."
+        case .analyseVerification: return "Verification analysis opened."
+        case .discardRecordings: return "Recorded resolutions discarded."
+        case .pipelineStart: return "Sync pipeline started."
         }
     }
 }

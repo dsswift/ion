@@ -189,23 +189,41 @@ func buildUserContentBlocks(prompt string, attachments []types.ImageAttachment) 
 			utils.LogWithFields(utils.LevelWarn, "ApiBackend", "buildUserContentBlocks: dropping attachment with empty data or media type", map[string]any{"mimeType": a.MediaType})
 			continue
 		}
+		contentHash := a.ContentHash
+		if strings.HasPrefix(a.MediaType, "image/") && contentHash == "" {
+			var hashErr error
+			contentHash, hashErr = conversation.ContentHashFromBase64(a.Data)
+			if hashErr != nil {
+				// Preserve the established attachment pass-through contract. Providers
+				// own final base64 validation; omitting an identity is safer than
+				// dropping a caller's image because a legacy/test payload is malformed.
+				utils.LogWithFields(utils.LevelDebug, "ApiBackend", "buildUserContentBlocks: image hash unavailable", map[string]any{
+					"mimeType": a.MediaType,
+					"path":     a.Path,
+					"error":    utils.ErrStr(hashErr),
+				})
+				contentHash = ""
+			}
+		}
 		switch {
 		case a.MediaType == "application/pdf":
 			blocks = append(blocks, types.LlmContentBlock{
 				Type: "document",
 				Source: &types.ImageSource{
-					Type:      "base64",
-					MediaType: "application/pdf",
-					Data:      a.Data,
+					Type:        "base64",
+					MediaType:   "application/pdf",
+					Data:        a.Data,
+					ContentHash: contentHash,
 				},
 			})
 		case strings.HasPrefix(a.MediaType, "image/"):
 			blocks = append(blocks, types.LlmContentBlock{
 				Type: "image",
 				Source: &types.ImageSource{
-					Type:      "base64",
-					MediaType: a.MediaType,
-					Data:      a.Data,
+					Type:        "base64",
+					MediaType:   a.MediaType,
+					Data:        a.Data,
+					ContentHash: contentHash,
 				},
 			})
 		default:

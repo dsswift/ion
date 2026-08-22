@@ -2,7 +2,7 @@ import type { TabState, Message } from '../../../shared/types'
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { makeLocalTab, nextMsgId } from '../session-store-helpers'
-import { makeMainPane, commitInstance, activeInstance } from '../conversation-instance'
+import { makeMainPane } from '../conversation-instance'
 import { buildRestoredDenied } from './resume-slice-restore-denied'
 import { mapSessionHistory, mapSessionMessage } from '../../../shared/session-message-mapper'
 import { loadSkeletonMessagesImpl } from '../resume-slice-hydration'
@@ -12,57 +12,6 @@ import { resolveRegisteredWorktree } from '../worktree-registration'
 
 export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
-    rewindToMessage: (tabId, messageId) => {
-      const tab = get().tabs.find((t) => t.id === tabId)
-      if (!tab) return
-      // Scrollback lives on the active conversation instance now.
-      const inst = activeInstance(get().conversationPanes, tabId)
-      if (!inst) throw new Error('Cannot rewind a tab whose conversation instance is missing')
-      const idx = inst.messages.findIndex((m) => m.id === messageId)
-      if (idx < 0) return
-
-      const targetMessage = inst.messages[idx]
-      const oldSessionId = tab.conversationId
-      const historicalSessionIds = oldSessionId
-        ? [...tab.historicalSessionIds, oldSessionId]
-        : [...tab.historicalSessionIds]
-
-      rInfo('session.rewind', 'rewind to message', { tab_id: tabId.slice(0, 8), msg_idx: idx, total_msgs: inst.messages.length, keep_msgs: idx, old_session_id: oldSessionId?.slice(0, 16) ?? '', historical_chain_len: historicalSessionIds.length })
-
-      const rewoundMessages = inst.messages.slice(0, idx)
-      const restoredDenied = buildRestoredDenied(rewoundMessages)
-
-      window.ion.resetTabSession(tabId)
-      // Conversation state (messages, permissionQueue, permissionDenied,
-      // draftInput) resets on the active instance; tab-level run state and the
-      // one-shot pendingInput reset on the tab.
-      set((s) => {
-        const conversationPanes = commitInstance(s.conversationPanes, tabId, (i) => ({
-          ...i,
-          messages: rewoundMessages,
-          permissionQueue: [],
-          elicitationQueue: [],
-          permissionDenied: restoredDenied,
-          draftInput: targetMessage.content,
-        }))
-        const tabs = s.tabs.map((t) =>
-          t.id === tabId
-            ? {
-                ...t,
-                conversationId: null,
-                historicalSessionIds,
-                forkedFromSessionId: oldSessionId,
-                lastResult: null,
-                currentActivity: '',
-                queuedPrompts: [],
-                pendingInput: targetMessage.content,
-              }
-            : t
-        )
-        return { tabs, conversationPanes }
-      })
-    },
-
     resumeSession: async (sessionId, title, projectPath, customTitle, encodedDir) => {
       const defaultDir = projectPath || get().staticInfo?.homePath || '~'
       // HistoryPicker and boot restoration both enter here. Resolve before either

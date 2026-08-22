@@ -4,6 +4,8 @@ import { useColors } from '../../theme'
 import { CopyButton } from './CopyButton'
 import { isPlanCreatedDivider, isPlanUpdatedDivider, isImplementDivider } from '../../../shared/clear-divider'
 import { PlanViewer } from '../PlanViewer'
+import { surfaceRouter } from '../../lib/file-open-router'
+import { useSessionStore } from '../../stores/sessionStore'
 import type { Message } from '../../../shared/types'
 import { rWarn } from '../../rendererLogger'
 
@@ -33,6 +35,18 @@ export function SystemMessage({ message, skipMotion }: SystemMessageProps) {
 
   const handlePlanClick = useCallback(async () => {
     if (!message.planFilePath) return
+    // Studio: plan documents open as surface editor tabs (markdown preview
+    // default) — no in-window floating popup. Overlay keeps PlanViewer.
+    const router = surfaceRouter()
+    if (router) {
+      const st = useSessionStore.getState()
+      const tab = st.tabs.find((t) => t.id === st.activeTabId)
+      if (tab) {
+        if (router.openPlan) router.openPlan(tab.workingDirectory, tab.id, message.planFilePath)
+        else router.openTextFile(tab.workingDirectory, tab.id, message.planFilePath)
+        return
+      }
+    }
     try {
       const result = await window.ion.readPlan(message.planFilePath)
       if (result.content && result.fileName) {

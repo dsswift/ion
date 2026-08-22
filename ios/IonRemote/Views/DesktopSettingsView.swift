@@ -211,7 +211,7 @@ struct DesktopSettingsView: View {
     /// (uiZoom shows "1.5", tabRecoveryTimeoutSec shows "120").
     @ViewBuilder
     func numberRow(entry: DesktopSettingSchemaEntry, state: DesktopSettingsState) -> some View {
-        let current = (state.currentValue(for: entry.key)?.value as? Double) ?? 0
+        let current = state.currentValue(for: entry.key)?.doubleValue ?? 0
         let bounds = entry.range.map { $0.min...$0.max } ?? 0...10000
         let step = entry.range?.step ?? 1
         VStack(alignment: .leading, spacing: 4) {

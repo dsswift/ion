@@ -33,8 +33,6 @@ struct GitPaneView: View {
                 VStack(spacing: 0) {
                     branchHeader
                     summaryBar
-                    worktreeLink
-
                     // Changes section
                     collapsibleSection(
                         title: "Changes",
@@ -107,49 +105,6 @@ struct GitPaneView: View {
                 }
             }
         }
-    }
-
-    // MARK: - Worktree console link
-
-    /// Entry point to the worktree + bench console. A NavigationLink rather
-    /// than an inline section: the phone has one view at a time, and the
-    /// console needs the whole screen to show per-member state.
-    private var worktreeLink: some View {
-        let state = viewModel.worktreeState(for: directory)
-        let worktreeCount = state?.worktrees.count ?? 0
-        let staleBases = state?.staleBaseCount ?? 0
-        // Derived from the worktrees, because membership rides the worktree
-        // record -- there is no separate member list to count.
-        let benchStale = (state?.benches ?? []).reduce(0) { $0 + (state?.behindMemberCount(of: $1) ?? 0) }
-
-        return NavigationLink {
-            WorktreeListView(repoPath: directory)
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "arrow.triangle.branch")
-                    .foregroundStyle(.secondary)
-                Text("Worktrees & Bench")
-                    .font(.subheadline)
-                Spacer()
-                if worktreeCount > 0 {
-                    Text("\(worktreeCount)")
-                        .font(.caption2)
-                        .padding(.horizontal, IonSpace.compactInset)
-                        .padding(.vertical, 2) // design-geometry: 2pt sub-base inset, tighter than the 4pt grid allows; off the ratio scale
-                        .background(Color.accentColor.opacity(0.15), in: Capsule())
-                }
-                if staleBases + benchStale > 0 {
-                    Text("\(staleBases + benchStale) stale")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                }
-            }
-            .padding(.horizontal, IonSpace.contentGap)
-            .padding(.vertical, 10) // design-geometry: 10pt gap between compactGap and contentGap; off the 4pt ratio scale
-            .background(theme.surfaceSecondary)
-        }
-        .buttonStyle(.plain)
-        .task { viewModel.refreshWorktrees(repoPath: directory) }
     }
 
     // MARK: - Branch header

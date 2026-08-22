@@ -48,7 +48,7 @@ export function DirectoryPicker() {
   const addDirState = useInteractiveState()
   const dirRef = useRef<HTMLButtonElement>(null)
   const dirPopRef = useRef<HTMLDivElement>(null)
-  // Keep the portaled popover inside the window (ATV top-anchored strip).
+  // Keep the portaled popover inside the window (Studio top-anchored strip).
   useViewportClamp(dirPopRef, dirOpen)
   const [dirPos, setDirPos] = useState({ bottom: 0, left: 0 })
 

@@ -21,6 +21,10 @@ export interface ProcessInfo {
 export interface DispatchAgentOpts {
   name: string
   task: string
+  /**
+   * Deterministic extension-selected model. Extensions may select another
+   * provider; model-authored Agent tool requests cannot.
+   */
   model?: string
   /**
    * Extension to load into the child session so the child receives the
@@ -628,8 +632,9 @@ export interface HistoryMatch {
  * - `childConversationId`: the child session's conversation ID once known.
  *   Read the child's live transcript (or harvest partial work) from the
  *   conversation store by this ID.
- * - `pendingChildren`: the child dispatch IDs a suspended parent is waiting
- *   on. Non-empty only when `status` is `"suspended"` with awaited children.
+ * - `waitingOn`: complete async work set holding a suspended dispatch parked.
+ *   `taskIds` are notifying Bash tasks; `childDispatchIds` are child dispatches.
+ * - `pendingChildren`: compatibility projection of `waitingOn.childDispatchIds`.
  */
 export interface DispatchEntry {
   dispatchId: string
@@ -644,6 +649,13 @@ export interface DispatchEntry {
   lastActivityMs: number
   childConversationId?: string
   pendingChildren?: string[]
+  waitingOn?: DispatchWaitingOn
+}
+
+/** Complete task and child wait metadata for a parked dispatch. */
+export interface DispatchWaitingOn {
+  taskIds?: string[]
+  childDispatchIds?: string[]
 }
 
 /**
@@ -1370,10 +1382,9 @@ export interface IonContext {
 
   /**
    * Returns a point-in-time snapshot of every dispatch currently active in
-   * this session's engine registry. All returned entries carry
-   * `status: "running"` because the registry only tracks in-flight dispatches
-   * — terminal entries are deregistered on completion and absent from the
-   * snapshot.
+   * this session's engine registry. Entries carry `status: "running"` while
+   * actively working and `status: "suspended"` while parked. Terminal entries
+   * are deregistered on completion and absent from the snapshot.
    *
    * Use this to enumerate running asynchronous agents and their nesting
    * relationships without subscribing to `engine_agent_state` events.
@@ -2117,6 +2128,14 @@ export interface ElicitationRequestInfo {
   schema?: Record<string, unknown>
   url?: string
   mode: string
+  /** Origin: extension or MCP server. */
+  source?: string
+  /** MCP server name when source is mcp. */
+  server?: string
+  /** Human-readable MCP reason for the request. */
+  message?: string
+  /** Action when this payload reflects a resolved request. */
+  action?: 'accept' | 'decline' | 'cancel'
 }
 
 /** Payload for `elicitation_result`. */
@@ -2124,6 +2143,8 @@ export interface ElicitationResultInfo {
   request_id: string
   response?: Record<string, unknown>
   cancelled: boolean
+  /** User explicitly declined rather than dismissing. */
+  declined?: boolean
 }
 
 /** Payload for `capability_match`. */

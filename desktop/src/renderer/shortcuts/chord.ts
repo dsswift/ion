@@ -32,7 +32,39 @@ export interface Chord {
   shiftOptional?: boolean
 }
 
-const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
+export const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
+
+/**
+ * The unmodified key a physical code produces, or null when the code is not
+ * one we can resolve without a keyboard-layout map.
+ *
+ * This exists because macOS applies its Option-key layer BEFORE the browser
+ * reports `KeyboardEvent.key`: with ⌥ held, Digit1 arrives as `¡`, KeyB as
+ * `∫`, and so on. A chord written `Mod+Alt+1` would therefore never match on
+ * the platform it was written for. `code` is the physical key and is immune
+ * to that layer, so it is the reliable signal for any Alt-bearing chord.
+ *
+ * Only the ASCII rows are mapped. A layout-dependent key (a non-US symbol) has
+ * no fixed code→character relationship, so it falls back to `key` matching.
+ */
+export function baseKeyFromCode(code: string): string | null {
+  if (/^Digit[0-9]$/.test(code)) return code.slice(5)
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3).toLowerCase()
+  switch (code) {
+    case 'Backquote': return '`'
+    case 'Minus': return '-'
+    case 'Equal': return '='
+    case 'BracketLeft': return '['
+    case 'BracketRight': return ']'
+    case 'Backslash': return '\\'
+    case 'Semicolon': return ';'
+    case 'Quote': return "'"
+    case 'Comma': return ','
+    case 'Period': return '.'
+    case 'Slash': return '/'
+    default: return null
+  }
+}
 
 /**
  * Parse a normalized chord string into a structured Chord.
@@ -120,8 +152,36 @@ export function matchesChord(e: KeyboardEvent, chord: Chord | null): boolean {
     ctrlNotPressed &&
     shiftNotPressed &&
     altNotPressed &&
-    e.key === chord.key
+    keyMatches(e, chord)
   )
+}
+
+/**
+ * Compare the event's key against the chord's key.
+ *
+ * The physical `code` is consulted first for any Alt-bearing chord, because
+ * macOS has already replaced `key` with the Option-layer character by the time
+ * the event arrives. When `code` cannot be resolved to a base character (a
+ * layout-dependent symbol), or the chord has no Alt, `key` is authoritative.
+ */
+function keyMatches(e: KeyboardEvent, chord: Chord): boolean {
+  const wanted = chord.key.toLowerCase()
+  if (chord.alt && e.code) {
+    const base = baseKeyFromCode(e.code)
+    if (base !== null) return base.toLowerCase() === wanted
+  }
+  return e.key.toLowerCase() === wanted
+}
+
+/**
+ * Render a chord's key for display.
+ *
+ * A single letter is uppercased because that is how every platform prints a
+ * chord: macOS menus show ⌘B, never ⌘b, and Windows shows Ctrl+B. A named key
+ * (`Tab`, `Escape`) and a symbol are left exactly as written.
+ */
+function displayKey(key: string): string {
+  return key.length === 1 && /[a-z]/i.test(key) ? key.toUpperCase() : key
 }
 
 /**
@@ -143,7 +203,7 @@ export function formatChord(s: string): string {
     if (chord.ctrl) out += '⌃'
     if (chord.shift) out += '⇧'
     if (chord.alt) out += '⌥'
-    out += chord.key
+    out += displayKey(chord.key)
     return out
   }
 
@@ -152,6 +212,6 @@ export function formatChord(s: string): string {
   if (chord.ctrl && !chord.mod) parts.push('Ctrl')
   if (chord.shift) parts.push('Shift')
   if (chord.alt) parts.push('Alt')
-  parts.push(chord.key)
+  parts.push(displayKey(chord.key))
   return parts.join('+')
 }
