@@ -10,6 +10,22 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.64.0](https://github.com/dsswift/ion/compare/ios-v1.63.0...ios-v1.64.0) (2026-08-22)
+
+### Features
+
+* **ios:** support mcp elicitation decisions ([04b6220](https://github.com/dsswift/ion/commit/04b6220f6197c581b4adadeac9754884a8c41f64))
+* **ios:** support settled state in input bar ([1d73151](https://github.com/dsswift/ion/commit/1d731519f86e6d84227ef38d7e4803e280631ab4))
+* **ios:** bring the inbox navigator to desktop parity ([940e184](https://github.com/dsswift/ion/commit/940e184e33bb9e08b1c962e2934253dd6f507a68))
+* **ios:** show connecting status for attached sessions ([97082a1](https://github.com/dsswift/ion/commit/97082a148a45a18df0eb52e347ff71d796b738aa))
+* **ios:** add convert to worktree to inbox row menu ([8408e46](https://github.com/dsswift/ion/commit/8408e469b6d8a2dbffbbd3f0c3863c087761c4b4))
+
+### Bug Fixes
+
+* **ios:** learn exact rewind entry from steer confirmations ([b3825cb](https://github.com/dsswift/ion/commit/b3825cb711a6dc3f73867ec20a3985033559424b))
+* **ios:** mirror context capacity and capabilities ([aac3e22](https://github.com/dsswift/ion/commit/aac3e2263123568bb90c2fbb30b86c03461e6d04))
+* **ios:** allow land and retire when nothing is unlanded ([7965119](https://github.com/dsswift/ion/commit/7965119153d635a60eab34dd18bc5199f9b6ca09))
+
 ## [1.63.0](https://github.com/dsswift/ion/compare/ios-v1.62.0...ios-v1.63.0) (2026-08-18)
 
 ### Features

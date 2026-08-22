@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.5](https://github.com/dsswift/ion/compare/sdk/go-v0.1.4...sdk/go-v0.1.5) (2026-08-22)
+
+### Features
+
+* **sdk:** expose dispatch wait metadata ([6648800](https://github.com/dsswift/ion/commit/664880009cd097c0dd835cb4670f33216221e43c))
+
+### Bug Fixes
+
+* **sdk:** mirror elicitation payload fields ([7d2809b](https://github.com/dsswift/ion/commit/7d2809b74a06831c65aecceab729ae9070d8e21b))
+
 ## [0.1.4](https://github.com/dsswift/ion/compare/sdk/go-v0.1.3...sdk/go-v0.1.4) (2026-08-18)
 
 ### Features

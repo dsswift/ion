@@ -13,6 +13,23 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.72.0](https://github.com/dsswift/ion/compare/engine-v1.71.1...engine-v1.72.0) (2026-08-22)
+
+### Features
+
+* **engine:** modernize mcp protocol support ([5dcb8bd](https://github.com/dsswift/ion/commit/5dcb8bd845d426ac7befabffd9a7ba1bebe4473f))
+* **engine:** wire settle/resume commands through server dispatch ([b9d7f33](https://github.com/dsswift/ion/commit/b9d7f3372bae0b319dd30d78534017253cec30f6))
+* **engine:** add resolve_permission_denials to release retained denials ([0612157](https://github.com/dsswift/ion/commit/06121573cb6f90eb59145cb96f059768a28333aa))
+
+### Bug Fixes
+
+* **engine:** restore reliable generated titles ([e549701](https://github.com/dsswift/ion/commit/e549701b6f5c565225297bcc98f0e1776706d3dc))
+* **engine:** retain status detail across log storms and title checks ([0318c6f](https://github.com/dsswift/ion/commit/0318c6fb7f8091d4c1ccea5955a31ec2b6bf4145))
+* **engine:** omit removed landed worktrees from list ([39ba45c](https://github.com/dsswift/ion/commit/39ba45c454a5434be5eb15ce586abe17e752d650))
+* **engine:** harden tool execution, telemetry, and permission release ([a4cea56](https://github.com/dsswift/ion/commit/a4cea56bcf91b4fb70fab10bde6b2a916acf955c))
+* **engine:** test dispatch panic recovery directly ([d90e1a2](https://github.com/dsswift/ion/commit/d90e1a24ec00c8b8aacc8ab2cee689570077d031))
+* **engine:** initialize mcp integration client ([c23d9f1](https://github.com/dsswift/ion/commit/c23d9f1e4c33c27fe73552fd255e1dac10272b53))
+
 ## [1.71.1](https://github.com/dsswift/ion/compare/engine-v1.71.0...engine-v1.71.1) (2026-08-20)
 
 ### Bug Fixes

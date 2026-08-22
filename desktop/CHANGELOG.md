@@ -10,6 +10,31 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.84.0](https://github.com/dsswift/ion/compare/desktop-v1.83.0...desktop-v1.84.0) (2026-08-22)
+
+### Features
+
+* **desktop:** support mcp elicitation decisions ([f3fb298](https://github.com/dsswift/ion/commit/f3fb298feaf0ed06a11b96fc5ed8f796bcf4f807))
+* **desktop:** recover closed tabs through settled history ([2c72098](https://github.com/dsswift/ion/commit/2c72098d9f08b737a07ec0975e3763eb0aa7def0))
+* **desktop:** persist studio surface and notifications per conversation ([6f6d3c8](https://github.com/dsswift/ion/commit/6f6d3c89280ffed0abe21156ec422c8324343a4f))
+* **desktop:** add plan surface shortcuts, export, and lifecycle fixes ([fcffba8](https://github.com/dsswift/ion/commit/fcffba8a852ac672303efe8d6f1fdb2eeb445c69))
+* **desktop:** show connecting status while sessions attach ([3e06d34](https://github.com/dsswift/ion/commit/3e06d343bb8f963b132d82f76447bf5d04490b18))
+* **desktop:** bind every canvas tab to one chord family ([fd235e3](https://github.com/dsswift/ion/commit/fd235e30486bf011f84bdbdce2b95f9d182ab397))
+* **desktop:** add convert to worktree to inbox row menu ([bc0ba1a](https://github.com/dsswift/ion/commit/bc0ba1abd440d6cdef78d94be9afbcd105f9c1a6))
+
+### Bug Fixes
+
+* **desktop:** retain title fallback on generation failure ([ec8a141](https://github.com/dsswift/ion/commit/ec8a1413cc53849b9092ba95bf0dd466fdcfbab0))
+* **desktop:** reuse remote steer id and unify rewind and fork ([d330980](https://github.com/dsswift/ion/commit/d330980c40059aecf75eb2d36068a3125719b07c))
+* **desktop:** polish splash, quit, and conversation persistence; remove legacy ATV ([96e1a5b](https://github.com/dsswift/ion/commit/96e1a5bfef5bc675dc781b1b24afa58355bb0719))
+* **desktop:** unify Inbox navigator, bench, and worktree controls ([c7b798f](https://github.com/dsswift/ion/commit/c7b798f0f260520171ee9585d260797faa3a7e09))
+* **desktop:** mirror worktree and bench state across studio windows ([843ecf1](https://github.com/dsswift/ion/commit/843ecf104ae27d839e190b8223d3321e11875f58))
+* **desktop:** mirror context capacity and quiet compaction hints ([7d4d122](https://github.com/dsswift/ion/commit/7d4d122c51319127420d6058ae328d29fdff59f7))
+* **desktop:** log every renderer tab-status write with its source ([da30e4a](https://github.com/dsswift/ion/commit/da30e4a56b8e8119cf4474ca55bfb4e5688d3c43))
+* **desktop:** align restore and drain state ([8dbb3c2](https://github.com/dsswift/ion/commit/8dbb3c2b42574bf989a356775ee7405a19d08998))
+* **desktop:** allow land and retire when nothing is unlanded ([3b40dcb](https://github.com/dsswift/ion/commit/3b40dcbdc9bad4dfda3fadb4f23eae46d89a9d52))
+* **desktop:** align tests with current contracts ([9dfbf1a](https://github.com/dsswift/ion/commit/9dfbf1a97977bfefb63b81de091872f6fc8e1077))
+
 ## [1.83.0](https://github.com/dsswift/ion/compare/desktop-v1.82.0...desktop-v1.83.0) (2026-08-18)
 
 ### Features
