@@ -136,6 +136,7 @@ interface IonContext {
   sendPrompt(text: string, opts?: SendPromptOpts): Promise<void>
   dispatchAgent(opts: DispatchAgentOpts): Promise<DispatchAgentResult>
   recallAgent(name: string, opts?: RecallAgentOpts): Promise<boolean>
+  recallDispatch(dispatchId: string, opts?: RecallDispatchOpts): Promise<boolean>
   discoverAgents(opts?: DiscoverAgentsOpts): Promise<DiscoveredAgent[]>
 }
 ```
@@ -514,7 +515,7 @@ await ctx.dispatchAgent({
 })
 ```
 
-**`recallAgent(name, opts?)`** -- terminate a running asynchronous dispatch by agent name. Returns `true` if a dispatch was found and recalled, `false` otherwise. The recalled agent's `onRecall` callback fires with the provided reason. Has no effect on foreground dispatches.
+**`recallAgent(name, opts?)`** — retained compatibility API that terminates one running asynchronous dispatch resolved by agent name. When several dispatches share a name, the engine selects one live match. Prefer `recallDispatch` when the dispatch ID is available.
 
 ```typescript
 const found = await ctx.recallAgent('code-reviewer', { reason: 'user requested' })
@@ -527,6 +528,21 @@ ion.on('dispatch_lost', async (ctx, info) => {
   // ...handle the loss...
   await ctx.ackDispatchLost(info.dispatch_id)
 })
+```
+
+**`recallDispatch(dispatchId, opts?)`** -- terminate a running background dispatch by its **dispatch ID**. Returns `true` if a live dispatch was found and recalled, `false` otherwise. Descendants of the recalled dispatch are cancelled with it, and its `onRecall` callback fires with the provided reason.
+
+This is the preferred exact-ID peer of `recallAgent`. Where `recallAgent` resolves one live dispatch by agent name, `recallDispatch` targets exactly one instance and is safe when names collide. The relationship mirrors `steerDispatch` vs `steerDispatchByName`.
+
+```typescript
+const { dispatchId } = await ctx.dispatchAgent({
+  name: 'code-reviewer',
+  task: 'Review the PR',
+  background: true,
+})
+
+// Cancel exactly that dispatch, even if others share its name
+const found = await ctx.recallDispatch(dispatchId!, { reason: 'superseded' })
 ```
 
 **`llmCall(opts)`** -- run a single-turn, no-tools LLM completion through the engine's provider registry. Resolves with an `LLMCallResult` (text plus token/cost telemetry). This is the lightweight one-shot primitive for extraction, classification, routing, and summarisation prompts — it has no agent loop and no tool access. Going through `llmCall` (rather than calling a provider SDK directly) keeps the call visible to Ion's hook surface (it fires `before_provider_request` once per invocation) and to per-call observability (the `engine_llm_call` event).
@@ -855,6 +871,14 @@ interface RecallInfo {
 
 ```typescript
 interface RecallAgentOpts {
+  reason?: string    // human-readable reason for the recall
+}
+```
+
+## RecallDispatchOpts
+
+```typescript
+interface RecallDispatchOpts {
   reason?: string    // human-readable reason for the recall
 }
 ```

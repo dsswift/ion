@@ -94,14 +94,56 @@ Signals that tool input streaming is finished for a content block.
 
 The output of a tool execution.
 
-| Field     | Type            | Description                      |
-|-----------|-----------------|----------------------------------|
-| `type`    | `"tool_result"` | Event type                       |
-| `toolId`  | string          | Tool use ID                      |
-| `content` | string          | Tool output text                 |
-| `isError` | boolean         | `true` if the tool failed        |
+| Field              | Type            | Description                      |
+|--------------------|-----------------|----------------------------------|
+| `type`             | `"tool_result"` | Event type                       |
+| `toolId`           | string          | Tool use ID                      |
+| `content`          | string          | Tool output text                 |
+| `isError`          | boolean         | `true` if the tool failed        |
+| `backgroundTaskId` | string          | Correlates this tool result with an asynchronous task: Bash background task ID or Agent dispatch ID. Additive (`omitempty`): absent for synchronous tool results. Clients may use this to fold a later `background_work_delivered` item onto the originating tool row. |
 
 **Produced from:** User-type events containing `tool_result` content blocks
+
+---
+
+### background_task_started
+
+Incremental lifecycle event emitted when a session-owned background Bash process starts. It fires for notifying and detached tasks. Consumers use `taskId` as the stable identity and may use `toolId` to attach controls to the originating tool row.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"background_task_started"` | Event type |
+| `taskId` | string | Stable background task ID |
+| `command` | string | Command that started |
+| `startedAt` | number | Unix timestamp in milliseconds |
+| `notifyOnComplete` | boolean | Whether completion delivery was requested |
+
+### background_task_terminal
+
+Incremental lifecycle event emitted when a session-owned background Bash process completes, fails, or is stopped.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"background_task_terminal"` | Event type |
+| `taskId` | string | Stable background task ID |
+| `status` | string | `completed`, `failed`, or `stopped` |
+| `exitCode` | number | Process exit code |
+| `elapsedMs` | number | Wall-clock duration in milliseconds |
+| `command` | string | Command that ran, when available |
+| `outputPath` | string | Full output file, when available |
+| `tail` | string | Bounded output tail, when available |
+
+### session_work_stopped
+
+Incremental confirmation emitted after an `all_work` abort signals the targeted work.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"session_work_stopped"` | Event type |
+| `scope` | string | Stop scope; currently `all_work` |
+| `stoppedBackgroundTaskIds` | string[] | Background task IDs targeted by the stop |
+
+These lifecycle events are incremental. On connection or reconciliation, consumers replace their live task inventory with `activeBackgroundTasks` from `status` or `session_status`; that snapshot is the reconnect-safe source of truth.
 
 ---
 
@@ -436,6 +478,19 @@ Emitted once per completion, before the engine resolves delivery. This is the en
 | `remainingTaskIds` | string[]                        | Task IDs still outstanding for the session after this completion |
 
 **Produced from:** `BackgroundTaskCompleteEvent` in [`engine/internal/types/normalized_event_run_signals.go`](https://github.com/dsswift/ion/blob/main/engine/internal/types/normalized_event_run_signals.go). Wire name: `engine_background_task_complete`.
+
+---
+
+### background_work_delivered
+
+Emitted only after an engine-owned background result is durably appended to the orchestrator conversation. `content` is the exact LLM-facing payload; `work` gives clients typed metadata without parsing text. It does not replace `background_task_complete`, which reports a Bash process terminal state regardless of delivery policy.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"background_work_delivered"` | Event type |
+| `entryId` | string | Canonical persisted conversation-entry identity |
+| `content` | string | Exact completion payload supplied to the model |
+| `work` | object | Source, classification, delivery mode, and terminal item metadata |
 
 ---
 

@@ -96,30 +96,80 @@ Send a user message to an active session.
 
 Abort the current run in a session. Fire-and-forget; no result is sent.
 
-| Field  | Type       | Required | Description              |
-|--------|------------|----------|--------------------------|
-| `cmd`  | `"abort"`  | yes      | Command discriminator    |
-| `key`  | string     | yes      | Session key              |
+| Field        | Type       | Required | Description                                  |
+|--------------|------------|----------|----------------------------------------------|
+| `cmd`        | `"abort"`  | yes      | Command discriminator                        |
+| `key`        | string     | yes      | Session key                                  |
+| `abortScope` | string     | no       | How much of the session tree to tear down    |
+
+`abortScope` accepts:
+
+| Value | Session root | Current run | Background dispatches | Background Bash tasks | Queued prompts |
+|-------|--------------|-------------|-----------------------|-----------------------|----------------|
+| `all` (default) | cancelled | cancelled | recalled and reaped | left running | dropped |
+| `all_work` | cancelled | cancelled | recalled and reaped | stopped | dropped |
+| `orchestrator` | untouched | cancelled | left running | left running | dropped |
+
+Omitting the field means `all`, so a client written before the field existed
+keeps its original behavior. An unrecognized value also resolves to `all` — the
+safe reading of "stop" — and is logged.
+
+`all_work` stops every session-owned background Bash task but retains the session object. The next prompt rearms its cancellation root and starts normally.
+
+Under `orchestrator`, foreground dispatches (the orchestrator's `Agent` tool)
+stop with the run, because they *are* the run rather than peers of it. In-flight
+`ctx.llmCall()` one-shots keep running: they hang off the session root, which
+this scope deliberately leaves alive.
 
 ```json
 {"cmd":"abort","key":"abc-123"}
+{"cmd":"abort","key":"abc-123","abortScope":"orchestrator"}
 ```
 
 ---
 
 ### abort_agent
 
-Abort a specific named agent within a session. Fire-and-forget.
+Retained compatibility command that aborts registered agent processes by name. New clients should use `abort_dispatch` when they have a dispatch ID, because names can collide across concurrent dispatches.
 
-| Field       | Type             | Required | Description                        |
-|-------------|------------------|----------|------------------------------------|
-| `cmd`       | `"abort_agent"`  | yes      | Command discriminator              |
-| `key`       | string           | yes      | Session key                        |
-| `agentName` | string           | yes      | Name of the agent to abort         |
-| `subtree`   | boolean          | no       | Also abort child agents            |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"abort_agent"` | yes | Command discriminator |
+| `key` | string | yes | Session key |
+| `agentName` | string | yes | Registered agent name; empty with `subtree: true` reaps all descendants |
+| `subtree` | boolean | no | Also abort descendant registered processes |
 
 ```json
 {"cmd":"abort_agent","key":"abc-123","agentName":"researcher","subtree":true}
+```
+
+---
+
+### abort_dispatch
+
+Abort exactly one background dispatch by its dispatch ID, leaving the
+orchestrator and every sibling dispatch running. Fire-and-forget.
+
+| Field        | Type                | Required | Description                          |
+|--------------|---------------------|----------|--------------------------------------|
+| `cmd`        | `"abort_dispatch"`  | yes      | Command discriminator                |
+| `key`        | string              | yes      | Session key                          |
+| `dispatchId` | string              | yes      | Collision-safe dispatch instance ID  |
+
+`dispatchId` is the ID minted when the dispatch starts, surfaced to clients as
+`dispatchId` on each `engine_agent_state` dispatch member. This is the
+preferred deterministic address: it distinguishes concurrent dispatches that
+share an agent name.
+
+Descendants of the addressed dispatch are cancelled with it. The dispatch
+transitions to `cancelled` and the engine emits the usual agent-state snapshot
+and updated background-agent count — no separate completion event.
+
+A dispatch that already finished is not an error: the command is a no-op and the
+miss is logged.
+
+```json
+{"cmd":"abort_dispatch","key":"abc-123","dispatchId":"dispatch-code-reviewer-1719500000000-a1b2c3d4e5f6"}
 ```
 
 ---

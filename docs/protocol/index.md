@@ -45,7 +45,7 @@ If `requestId` is omitted, the engine does not send a result for that command.
 
 ### 2. Fire-and-Forget
 
-Some commands (`abort`, `abort_agent`, `steer_agent`, `dialog_response`, `command`, `permission_response`) never produce a result. They take effect immediately.
+Some commands (`abort`, `abort_dispatch`, `steer_agent`, `dialog_response`, `command`, `permission_response`) never produce a result. They take effect immediately.
 
 ```
 Client -> {"cmd":"abort","key":"s1"}

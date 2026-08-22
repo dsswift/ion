@@ -465,11 +465,12 @@ Signals the start of a tool execution.
 
 Signals the completion of a tool execution.
 
-| Field     | Type    | Description                          |
-|-----------|---------|--------------------------------------|
-| `type`    | `"engine_tool_end"` | Event type                  |
-| `result`  | string  | Tool output                          |
-| `isError` | boolean | `true` if the tool execution failed  |
+| Field              | Type    | Description                          |
+|--------------------|---------|--------------------------------------|
+| `type`             | `"engine_tool_end"` | Event type                  |
+| `result`           | string  | Tool output                          |
+| `isError`          | boolean | `true` if the tool execution failed  |
+| `backgroundTaskId` | string  | Correlates this tool result with an asynchronous task: Bash background task ID or Agent dispatch ID. Additive (`omitempty`): absent for synchronous tool results. Clients may use this to fold a later `engine_background_work_delivered` item onto the originating tool row. |
 
 #### engine_dispatch_activity
 
@@ -883,7 +884,8 @@ Typed per-session status snapshot. Emitted alongside the legacy `engine_status` 
 | `hasInflightRun` | boolean | True when the backend has a live run |
 | `backgroundAgentCount` | number | Number of background dispatch agents still running |
 | `backgroundShellCount` | number | Outstanding background bash commands the session is waiting on. The shell counterpart to `backgroundAgentCount`, so a consumer reading only this event can tell a parked session (idle orchestrator, commands in flight) from a plain idle one. |
-| `hasPendingWork` | boolean | True when the engine has accepted work that remains non-terminal even though `state` is `"idle"`. Includes live dispatches, notifying shells, queued prompts, durable completion deliveries, queued background completions, and parked runs. Clients must render this as waiting work, not completion. |
+| `activeBackgroundTasks` | array | Exact live session-owned Bash task snapshots: task ID, tool ID, command, start time, and notification mode. |
+| `hasPendingWork` | boolean | True when accepted non-terminal work remains while the session may be idle, including dispatches, background shells, queued prompts, queued completion deliveries, and parked runs. |
 | `permissionDenialsPending` | array | Unresolved AskUserQuestion / ExitPlanMode entries |
 | `model` | string | Model the most recent run resolved to |
 | `contextPercent` | number | Context-window usage percent |
@@ -929,6 +931,47 @@ The event carries the **counts** of each awaited set, not the IDs. Clients may r
 | `taskSuspendAwaitingCount` | number | Pending child dispatches. Zero for a bare `suspend()`. |
 | `taskSuspendAwaitingTaskCount` | number | Outstanding background bash commands. Zero for dispatch-driven suspends. |
 
+#### engine_background_task_started
+
+Incremental event emitted when any session-owned background Bash process starts. It includes detached tasks and tasks that requested completion delivery. Consumers use `activeBackgroundTasks` from status snapshots to reconcile after reconnect.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_background_task_started"` | Event type |
+| `backgroundTaskStarted.taskId` | string | Stable background task ID |
+| `backgroundTaskStarted.toolId` | string | Originating tool-use ID, when available |
+| `backgroundTaskStarted.command` | string | Command that started |
+| `backgroundTaskStarted.startedAt` | number | Unix timestamp in milliseconds |
+| `backgroundTaskStarted.notifyOnComplete` | boolean | Whether completion delivery was requested |
+
+#### engine_background_task_terminal
+
+Incremental event emitted when any session-owned background Bash process completes, fails, or is stopped.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_background_task_terminal"` | Event type |
+| `backgroundTaskTerminal.taskId` | string | Stable background task ID |
+| `backgroundTaskTerminal.status` | string | `completed`, `failed`, or `stopped` |
+| `backgroundTaskTerminal.exitCode` | number | Process exit code |
+| `backgroundTaskTerminal.elapsedMs` | number | Wall-clock duration in milliseconds |
+| `backgroundTaskTerminal.command` | string | Command that ran, when available |
+| `backgroundTaskTerminal.outputPath` | string | Full output file, when available |
+| `backgroundTaskTerminal.tail` | string | Bounded output tail, when available |
+
+#### engine_session_work_stopped
+
+Incremental confirmation emitted after an `abort` with `abortScope: "all_work"` signals the targeted work.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_session_work_stopped"` | Event type |
+| `sessionWorkStopped.scope` | string | Stop scope; currently `all_work` |
+| `sessionWorkStopped.cancelledRunId` | string | Cancelled root run ID, when present |
+| `sessionWorkStopped.recalledDispatchIds` | string[] | Dispatch IDs targeted by the stop |
+| `sessionWorkStopped.stoppedBackgroundTaskIds` | string[] | Background task IDs targeted by the stop |
+| `sessionWorkStopped.killedAgentProcessCount` | number | Agent processes signalled by the stop |
+
 #### engine_background_task_complete
 
 A background bash command started with `Bash(run_in_background: true, notify_on_complete: true)` reached a terminal state. Emitted once per completion, before the engine resolves delivery — the typed event is the engine's complete signaling obligation, and what happens next (start a run, queue the result, do nothing) is the operator's opinion configured with `backgroundTasks.delivery`. See [`docs/tools/task-tools.md`](../tools/task-tools.md) § "Background bash completion" and [ADR-023](../architecture/adr/023-root-session-park-and-wake.md).
@@ -936,14 +979,28 @@ A background bash command started with `Bash(run_in_background: true, notify_on_
 | Field | Type | Description |
 |-------|------|-------------|
 | `type` | `"engine_background_task_complete"` | Event type |
-| `taskId` | string | Tasks-registry task ID, format `bash-<n>-<millis>` |
-| `status` | string | `completed`, `failed`, or `stopped` |
-| `exitCode` | number | Process exit code |
-| `elapsedMs` | number | Wall-clock duration in milliseconds |
-| `outputPath` | string | Path to the captured output file |
-| `tail` | string | Trailing output excerpt |
-| `command` | string | The command that ran |
-| `remainingTaskIds` | string[] | Task IDs still outstanding for the session after this completion |
+| `backgroundTaskComplete.taskId` | string | Tasks-registry task ID, format `bash-<n>-<millis>` |
+| `backgroundTaskComplete.status` | string | `completed`, `failed`, or `stopped` |
+| `backgroundTaskComplete.exitCode` | number | Process exit code |
+| `backgroundTaskComplete.elapsedMs` | number | Wall-clock duration in milliseconds |
+| `backgroundTaskComplete.outputPath` | string | Path to the captured output file |
+| `backgroundTaskComplete.tail` | string | Trailing output excerpt |
+| `backgroundTaskComplete.command` | string | The command that ran |
+| `backgroundTaskComplete.remainingTaskIds` | string[] | Task IDs still outstanding for the session after this completion |
+
+#### engine_background_work_delivered
+
+Emitted only after an engine-owned completion result has been persisted as an input to an orchestrator conversation. This is distinct from `engine_background_task_complete`, which reports a Bash process terminal state even when delivery is queued or disabled. `backgroundWorkDelivered.content` is the exact payload supplied to the model; `backgroundWorkDelivered.work` carries structured source, status, duration, and stable work identifiers for clients that present a collapsible audit row.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_background_work_delivered"` | Event type |
+| `backgroundWorkDelivered.entryId` | string | Canonical persisted conversation entry ID |
+| `backgroundWorkDelivered.content` | string | Exact model-facing completion payload |
+| `backgroundWorkDelivered.work.kind` | string | Injection classification, such as `background_task_completion` or `agent_completion` |
+| `backgroundWorkDelivered.work.deliveryMode` | string | Delivery transport, such as `steer` or `wake` |
+| `backgroundWorkDelivered.work.items` | array | Delivered work identities and terminal metadata |
+| `backgroundWorkDelivered.work.remainingTaskIds` | string[] | Bash tasks still outstanding after this completion |
 
 #### engine_dispatch_lost
 
@@ -999,7 +1056,7 @@ The kinds are enumerated in `engine/internal/types/injection_kind.go`, which is 
 
 An empty kind means the injection is a genuine extension-initiated turn with no special classification, and is never machine-authored: silently hiding content the engine could not identify is worse than showing a turn a consumer did not expect. Consumers must treat an unrecognized kind as unclassified rather than failing to decode — the vocabulary grows additively.
 
-**A degraded self-steer has no kind of its own.** When `ctx.steerSelf` finds no live run it delivers a fresh prompt instead, carrying whatever kind the caller supplied. The engine emits additive `engine_steer_degraded` and persists a steer marker on that path. `engine_steer_injected` remains exclusive to a message a live run-loop checkpoint drained; consumers that need to distinguish the two must use their distinct event types. `engine_steer_degraded` carries only message length; `engine_steer_injected` additionally carries the client's correlation id and the durable entry id for a genuine client-originated steer (see below). The persisted marker lets history reload replay the confirmation.
+**A degraded self-steer has no kind of its own.** When `ctx.steerSelf` finds no live run it delivers a fresh prompt instead, carrying whatever kind the caller supplied. The engine emits additive `engine_steer_degraded` and persists a steer marker on that path. `engine_steer_injected` remains exclusive to a message a live run-loop checkpoint drained; consumers that need to distinguish the two must use their distinct event types. Both carry only message length, and the persisted marker lets history reload replay the confirmation.
 
 #### engine_steer_injected
 
@@ -1009,8 +1066,8 @@ A live run-loop checkpoint drained a steer message into the conversation before 
 |-------|------|-------------|
 | `type` | `"engine_steer_injected"` | Event type |
 | `steerMessageLength` | integer | Character count of the drained message |
-| `steerClientMessageId` | string, optional | Echoes the client's `steer_agent` correlation id (`clientMessageId`) when the client supplied one and this was a genuine client-originated steer. Absent for a machine-to-machine injection (a dispatch completion, a scheduled check-in) and for any client that omitted the field. Use this — never message length or arrival order — to identify which outstanding optimistic UI row this confirmation resolves. |
-| `steerEntryId` | string, optional | The durable conversation-tree entry id the steer text was persisted under, present only for a genuine client-originated steer. Retain this as the exact target for a later `rewind_session` command's `entryId` field — it removes the class of bug where a client-computed ordinal points at the wrong turn once a queued-but-undelivered steer occupies a row position with no corresponding tree entry yet. |
+| `steerKind` | string | Optional injection classification. Empty for a user-authored steer. |
+| `steerMachineAuthored` | boolean | Engine-derived classification for the steer source. |
 
 #### engine_steer_degraded
 
@@ -1020,6 +1077,8 @@ A live run-loop checkpoint drained a steer message into the conversation before 
 |-------|------|-------------|
 | `type` | `"engine_steer_degraded"` | Event type |
 | `steerDegradedMessageLength` | integer | Character count of the accepted fresh-prompt message |
+| `steerKind` | string | Optional injection classification. Empty for a user-authored steer. |
+| `steerMachineAuthored` | boolean | Engine-derived classification for the steer source. |
 
 
 #### engine_intercept
@@ -1154,8 +1213,8 @@ The `load_session_history` response includes these fields on user-role `SessionM
 | `slashCommand`  | string | The full command as the user typed it, including the leading slash (e.g. `/spec`). Present only on turns that originated from a slash invocation. |
 | `slashArgs`     | string | The argument text that followed the command name. May be empty. |
 | `slashSource`   | string | Where the command was resolved: `"ion"` (`.ion/commands`), `"claude"` (`.claude/commands`), `"skill"`, or `"extension"` (registered via `RegisterCommand`). |
-| `slashModelAlias` | string | Command-owned model selector from frontmatter (for example, `"standard"`, `"reasoning"`, or `"fast"`) when that selector's resolved model starts the run. Empty after provider fallback selects a different model. |
-| `slashModelEffective` | string | Concrete model selected to start this invocation after tier and provider resolution (for example, `"dci-marketing/gpt-5.6-terra"` or an unqualified direct model ID). Can be present without `slashModelAlias` after provider fallback. |
+| `slashModelAlias` | string | The model alias requested by the command's frontmatter `model:` field (e.g. `"standard"`, `"reasoning"`, `"fast"`). Present only when the command specifies a per-run model. |
+| `slashModelEffective` | string | The resolved model ID used for this invocation (for example, `"dci-marketing/gpt-5.6-terra"` or an unqualified direct model ID). Present only when `slashModelAlias` is set. |
 
 ### `desktop_message_added` / `desktop_conversation_history` — RemoteMessage
 
@@ -1166,9 +1225,9 @@ The same fields appear on `RemoteMessage` objects sent to paired iOS clients via
 | `slashCommand`   | string | Full slash invocation (e.g. `/spec`). |
 | `slashArgs`      | string | Arguments following the command name. |
 | `slashSource`    | string | Resolution origin: `"ion"`, `"claude"`, `"skill"`, or `"extension"`. |
-| `slashModelAlias` | string | Command-owned selector when its resolved model starts the invocation. Empty after provider fallback selects a different model. |
-| `slashModelEffective` | string | Concrete model selected to start the invocation. Can be present without `slashModelAlias` after provider fallback. |
+| `slashModelAlias` | string | Optional model alias from command frontmatter (e.g. `"standard"`). |
+| `slashModelEffective` | string | Optional resolved model ID, qualified or direct, used for this invocation. |
 
-The engine also carries these model fields on [`engine_user_turn_persisted`](#engine_user_turn_persisted) as `userTurnSlashModelAlias` and `userTurnSlashModelEffective`, letting clients stamp an optimistic slash bubble before history reload. Clients show `Selector · Model` only when both engine facts are present, so a badge such as `Fast · GPT 5.6 Luna` means that command selector started on that model. If provider fallback changes the serving model, the user turn shows only that model and the separate [`engine_model_fallback`](#engine_model_fallback) event reports the requested selector and fallback relationship. The fields describe only that invocation's run and never change the conversation-level model shown by a status bar.
+The engine also carries these model fields on [`engine_user_turn_persisted`](#engine_user_turn_persisted) as `userTurnSlashModelAlias` and `userTurnSlashModelEffective`, letting clients stamp an optimistic slash bubble before history reload. The fields describe only that invocation's run and never change the conversation-level model shown by a status bar.
 
 The engine sets these fields via the session layer's slash-stash mechanism (see `pendingSlashInvocation` in `engine/internal/session/types.go`). For extension-dispatched prompts, the stash is written by `dispatchCommand` and consumed by `SendPrompt`; for direct `send_prompt` invocations the engine resolves the command inline when `resolveSlash` is `true` on the command.
