@@ -769,24 +769,22 @@ func registerPipeClient(t *testing.T, srv *Server) (serverConn, clientConn net.C
 	return serverConn, clientConn
 }
 
-// TestDispatchPanicRecovery verifies that a panic in dispatch() is recovered and
-// returns a structured error result to the client, and the connection remains
-// functional for subsequent commands.
+// TestDispatchPanicRecovery verifies that the dispatch recovery boundary returns
+// a structured error result to the client and leaves the server functional.
 func TestDispatchPanicRecovery(t *testing.T) {
 	mb := newMockBackend()
 	srv := newShortPathTestServer(t, mb)
 
 	serverConn, clientConn := registerPipeClient(t, srv)
 
-	// dispatch() dereferences *cmd.Config, which panics on nil. The recovery
-	// guard should catch it and send an error result.
 	cmd := &protocol.ClientCommand{
-		Cmd:       "start_session",
+		Cmd:       "panic_test",
 		Key:       "panic-test",
 		RequestID: "req-panic",
-		Config:    nil, // will cause nil-pointer dereference
 	}
-	srv.dispatch(serverConn, cmd)
+	srv.dispatchWithRecovery(serverConn, cmd, func(net.Conn, *protocol.ClientCommand) {
+		panic("forced dispatch panic")
+	})
 
 	// Read the error result sent by the recovery guard.
 	lines := readLines(t, clientConn, 5, 2*time.Second)
@@ -828,18 +826,16 @@ func TestDispatchPanicRecoveryRelayPath(t *testing.T) {
 	mb := newMockBackend()
 	srv := newShortPathTestServer(t, mb)
 
-	// DispatchCommand calls dispatch(nil, cmd). The nil-config causes a panic
-	// in dispatch(). The recovery guard calls sendResult(nil, ...) which must
-	// not panic itself (writeToClient has a nil-conn guard).
+	// DispatchCommand uses the same recovery wrapper with a nil connection.
+	// Verify that recovery does not cause a second panic while sending the result.
 	cmd := &protocol.ClientCommand{
-		Cmd:       "start_session",
+		Cmd:       "panic_test",
 		Key:       "relay-panic",
 		RequestID: "req-relay-panic",
-		Config:    nil,
 	}
-	// This must not panic. If recovery or the nil-conn path is broken,
-	// the test process crashes.
-	srv.DispatchCommand(cmd)
+	srv.dispatchWithRecovery(nil, cmd, func(net.Conn, *protocol.ClientCommand) {
+		panic("forced relay dispatch panic")
+	})
 
 	// Verify the server is still functional: a new client can connect and
 	// execute commands.
@@ -873,14 +869,15 @@ func TestDispatchPanicRecoveryServerSurvives(t *testing.T) {
 	conn2 := dialServer(t, srv)
 	defer conn2.Close()
 
-	// Trigger a panic on the pipe client's dispatch path.
+	// Trigger a panic through the same recovery boundary used by dispatch.
 	cmd := &protocol.ClientCommand{
-		Cmd:       "start_session",
+		Cmd:       "panic_test",
 		Key:       "panic-victim",
 		RequestID: "req-victim",
-		Config:    nil,
 	}
-	srv.dispatch(serverConn, cmd)
+	srv.dispatchWithRecovery(serverConn, cmd, func(net.Conn, *protocol.ClientCommand) {
+		panic("forced client dispatch panic")
+	})
 
 	// Drain the error result from the pipe client.
 	readLines(t, clientConn, 5, 1*time.Second)

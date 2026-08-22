@@ -26,6 +26,17 @@ import (
 )
 
 func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
+	s.dispatchWithRecovery(conn, cmd, s.dispatchCommand)
+}
+
+// dispatchWithRecovery keeps one malformed or failing command from taking down
+// the client loop. The handler argument makes the recovery boundary directly
+// testable without relying on an accidental panic in a command implementation.
+func (s *Server) dispatchWithRecovery(
+	conn net.Conn,
+	cmd *protocol.ClientCommand,
+	handler func(net.Conn, *protocol.ClientCommand),
+) {
 	defer func() {
 		if r := recover(); r != nil {
 			utils.LogWithFields(utils.LevelError, "server", "panic in dispatch", map[string]any{"status": cmd.Cmd, "session_id": cmd.Key, "error": r})
@@ -33,6 +44,10 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		}
 	}()
 
+	handler(conn, cmd)
+}
+
+func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 	utils.LogWithFields(utils.LevelDebug, "server", "dispatch", map[string]any{"status": cmd.Cmd, "session_id": cmd.Key, "run_id": cmd.RequestID})
 	switch cmd.Cmd {
 	case "start_session":
