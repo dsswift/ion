@@ -495,6 +495,16 @@ extension TabListView {
                     inboxRenameTabId = tab.id
                 }
                 Button("Regenerate title") { viewModel.regenerateTabTitle(tabId: tab.id) }
+                // Same gate TabRowContextMenu uses for the classic tab list:
+                // absent once the tab already has an explicit worktree
+                // identity, present only when the desktop has projected
+                // worktree state for this directory (i.e. it is a known git
+                // repo). One mechanism, two menus.
+                if tab.worktree == nil && viewModel.worktreeStates[tab.workingDirectory] != nil {
+                    Button("Move conversation into a worktree") {
+                        viewModel.convertConversationToWorktree(tabId: tab.id)
+                    }
+                }
                 Button("Copy working path") { UIPasteboard.general.string = tab.workingDirectory }
                 if let branch = branch { Button("Copy worktree branch") { UIPasteboard.general.string = branch } }
                 if let conversationId = tab.conversationId, !conversationId.isEmpty {
