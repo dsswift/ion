@@ -75,19 +75,33 @@ export interface WorktreeMenuEntriesInput {
   actions: WorktreeMenuActions;
 }
 
-/** Why land is unavailable, or an empty string when it can run. */
+/**
+ * Why land is unavailable, or an empty string when it can run.
+ *
+ * A worktree with nothing to land (a mistake, or work abandoned before the
+ * first commit) is still landable: the land step is a no-op and retire
+ * removes the checkout. Only a dirty checkout or an unknown source branch
+ * blocks the verb, because those are the cases where "land" could either
+ * destroy uncommitted work or has nowhere to go.
+ */
 export function landRefusalReason(entry: WorktreeInventoryEntry): string {
   if (!entry.sourceBranch) return "Source branch unknown";
   if (entry.isDirty) return "Commit changes first";
-  if (entry.unlandedCommitCount === 0) return "Nothing to land";
   return "";
 }
 
-/** True when the land verb can run against this worktree. */
+/**
+ * True when the land verb can run against this worktree.
+ *
+ * Deliberately does NOT require `unlandedCommitCount > 0`: a worktree with
+ * nothing to land still needs a way to be discarded, and "Land and retire" is
+ * that way — merge is skipped when there is nothing to merge, and retire
+ * proceeds regardless. See `landAndRetireWorktree` (main/worktree/integrate.ts)
+ * for the skip and `describeLandAndRetireOutcome` for how the confirmation and
+ * result wording distinguish "merged" from "nothing to merge".
+ */
 export function canLandWorktree(entry: WorktreeInventoryEntry): boolean {
-  return (
-    !!entry.sourceBranch && entry.unlandedCommitCount > 0 && !entry.isDirty
-  );
+  return !!entry.sourceBranch && !entry.isDirty;
 }
 
 /** Append a non-empty group, with one separator between adjacent groups. */
@@ -219,7 +233,12 @@ export function buildWorktreeMenuEntries(
     {
       type: "action",
       id: "land-and-retire",
-      label: `Land and retire into ${entry.sourceBranch ?? "source"}`,
+      // Nothing to merge is still stated honestly: a worktree with zero
+      // unlanded commits has nothing for "land" to do, so the label says what
+      // will actually happen — the worktree goes away, nothing merges.
+      label: entry.unlandedCommitCount > 0
+        ? `Land and retire into ${entry.sourceBranch ?? "source"}`
+        : "Retire (nothing to land)",
       icon: (
         <ArrowLineDown
           size={12}
@@ -229,9 +248,11 @@ export function buildWorktreeMenuEntries(
       disabled: !canLand,
       hint:
         landReason ||
-        (entry.sourceBranch
-          ? describeLandStrategy(strategy, entry.sourceBranch)
-          : undefined),
+        (entry.unlandedCommitCount === 0
+          ? "Discards the worktree; nothing is merged"
+          : entry.sourceBranch
+            ? describeLandStrategy(strategy, entry.sourceBranch)
+            : undefined),
       keepsMenuOpen: true,
       run: actions.onLandAndRetire,
     },

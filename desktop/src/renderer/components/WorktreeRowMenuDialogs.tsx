@@ -26,6 +26,7 @@ export function WorktreeRowMenuDialogs({
   setLandError,
   setConfirmRetire,
   doLandAndRetire,
+  hasNothingToLand,
   onClose,
 }: {
   landError: string | null;
@@ -39,6 +40,9 @@ export function WorktreeRowMenuDialogs({
   confirmRetire: string | null;
   setConfirmRetire: (value: string | null) => void;
   doLandAndRetire: () => Promise<void>;
+  /** True when the worktree has zero unlanded commits: the verb discards it
+   *  rather than merging anything, so the dialog's title/button say so. */
+  hasNothingToLand: boolean;
   onClose: () => void;
 }): React.ReactElement {
   return (
@@ -103,13 +107,13 @@ export function WorktreeRowMenuDialogs({
 
       {confirmRetire !== null && (
         <ConfirmDialog
-          title="Land and retire this worktree?"
+          title={hasNothingToLand ? "Retire this worktree?" : "Land and retire this worktree?"}
           message={confirmRetire}
-          confirmLabel="Land and retire"
+          confirmLabel={hasNothingToLand ? "Retire" : "Land and retire"}
           cancelLabel="Keep it"
           danger
           busy={busy}
-          busyLabel="Landing and retiring the worktree…"
+          busyLabel={hasNothingToLand ? "Retiring the worktree…" : "Landing and retiring the worktree…"}
           onConfirm={() => {
             void doLandAndRetire().catch((err) =>
               rError("worktree.menu", "land and retire threw", { error: String(err) }),

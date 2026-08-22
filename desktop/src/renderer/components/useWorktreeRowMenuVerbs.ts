@@ -76,7 +76,15 @@ export function useWorktreeRowMenuVerbs({
       setLandError(blockers.error)
       return
     }
-    setConfirmRetire(`This merges into ${entry.sourceBranch}, then removes the worktree, branch, and its finished conversations.`)
+    // A worktree with nothing to land (a mistakenly created one, or work
+    // abandoned before the first commit) still needs a way to be discarded.
+    // The confirmation says so honestly rather than promising a merge that
+    // `landAndRetireWorktree` will skip.
+    setConfirmRetire(
+      entry.unlandedCommitCount > 0
+        ? `This merges into ${entry.sourceBranch}, then removes the worktree, branch, and its finished conversations.`
+        : `This worktree has nothing to land. It will be discarded: nothing merges into ${entry.sourceBranch}, and the worktree, branch, and its finished conversations are removed.`
+    )
   }
 
   async function doLandAndRetire(): Promise<void> {

@@ -162,7 +162,10 @@ describe('WorktreeRowMenu organization', () => {
       'Stage',
       'Add to integration bench',
       'Sync from mainCommit changes first',
-      'Land and retire into mainCommit changes first',
+      // The fixture is dirty with zero unlanded commits: dirty still refuses
+      // (hint stays "Commit changes first"), but with nothing to land the
+      // label now says what actually happens — discard, not merge.
+      'Retire (nothing to land)Commit changes first',
       'Reveal in Finder',
       'Re-provision',
           ])
