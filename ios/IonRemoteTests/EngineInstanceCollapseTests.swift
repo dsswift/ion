@@ -108,6 +108,24 @@ final class EngineInstanceCollapseTests: XCTestCase {
         XCTAssertEqual(EngineInstanceBar.statusIndicator(for: instance), .running)
     }
 
+    func testRunningInstanceKeepsBackgroundShellCountVisible() {
+        let instance = ConversationInstanceInfo(
+            id: "main",
+            label: "Main",
+            isRunning: true,
+            backgroundShellCount: 2
+        )
+
+        XCTAssertEqual(EngineInstanceBar.statusIndicator(for: instance), .running)
+        XCTAssertEqual(EngineInstanceBar.backgroundShellLabel(for: instance), "2 shells")
+    }
+
+    func testInstanceWithoutBackgroundShellsHasNoShellLabel() {
+        let instance = ConversationInstanceInfo(id: "main", label: "Main", isRunning: true)
+
+        XCTAssertNil(EngineInstanceBar.backgroundShellLabel(for: instance))
+    }
+
     // MARK: - 3. Instance-management TypeKeys absent from enum
 
     func testEngineAddInstanceTypeKeyAbsent() {

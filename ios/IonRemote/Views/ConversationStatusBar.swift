@@ -98,14 +98,10 @@ struct ConversationStatusBar: View {
     /// "waiting for N agent(s)" label whenever the orchestrator went idle
     /// with a child still running.
     ///
-    /// Priority cascade (matches the desktop `getTabStatusColor` /
-    /// `TabRowView.statusInfo` / `EngineInstanceBar.statusIndicator`):
-    /// foreground orange "running" beats background yellow "awaiting
-    /// children" beats background pink "waiting on shells". When none
-    /// applies, `show` is false and the bar renders no dot/label (this is a
-    /// run-activity indicator only — there is no idle label). Pure + static
-    /// so it is unit-testable directly, pinning the shipped logic rather
-    /// than a re-derivation.
+    /// Priority cascade keeps the foreground color when the orchestrator runs,
+    /// but its label also includes any concurrent background-shell count. An
+    /// idle orchestrator shows agents before shells. When no work applies,
+    /// `show` is false and the bar renders no dot or label.
     struct RunActivity: Equatable {
         let show: Bool
         let isRunning: Bool
@@ -115,7 +111,11 @@ struct ConversationStatusBar: View {
 
     static func resolveRunActivity(isRunning: Bool, runningAgentCount: Int, runningShellCount: Int = 0) -> RunActivity {
         if isRunning {
-            return RunActivity(show: true, isRunning: true, isWaitingShells: false, label: "running")
+            let shellSuffix = runningShellCount == 1 ? "" : "s"
+            let label = runningShellCount > 0
+                ? "running · \(runningShellCount) background shell\(shellSuffix)"
+                : "running"
+            return RunActivity(show: true, isRunning: true, isWaitingShells: false, label: label)
         }
         if runningAgentCount > 0 {
             let suffix = runningAgentCount == 1 ? "" : "s"
@@ -211,7 +211,8 @@ struct ConversationStatusBar: View {
             // StatusBarEngineState and the getTabStatusColor / TabRowView
             // .statusInfo / EngineInstanceBar.statusIndicator cascade:
             //   - isRunning (orchestrator running/connecting, derived from
-            //     tab.status) → orange `theme.statusRunning` dot + "running"
+            //     tab.status) → orange `theme.statusRunning` dot + "running",
+            //     with the background-shell count appended when present
             //   - NOT running AND runningAgentCount > 0 → yellow
             //     `theme.statusWaitingChildren` dot + "waiting for N
             //     agent(s)"

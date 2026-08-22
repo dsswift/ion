@@ -90,12 +90,16 @@ final class ConversationStatusBarWaitingTests: XCTestCase {
         XCTAssertEqual(a.label, "waiting for 1 agent")
     }
 
-    func testRunningOrchestratorWinsOverBackgroundShells() {
-        let a = ConversationStatusBar.resolveRunActivity(isRunning: true, runningAgentCount: 0, runningShellCount: 2)
-        XCTAssertTrue(a.show)
-        XCTAssertTrue(a.isRunning)
-        XCTAssertFalse(a.isWaitingShells)
-        XCTAssertEqual(a.label, "running")
+    func testRunningOrchestratorIncludesBackgroundShellCount() {
+        let activity = ConversationStatusBar.resolveRunActivity(
+            isRunning: true,
+            runningAgentCount: 0,
+            runningShellCount: 2
+        )
+        XCTAssertTrue(activity.show)
+        XCTAssertTrue(activity.isRunning)
+        XCTAssertFalse(activity.isWaitingShells)
+        XCTAssertEqual(activity.label, "running · 2 background shells")
     }
 
     func testIdleWithNoAgentsOrShellsShowsNothing() {
