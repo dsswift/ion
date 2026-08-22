@@ -151,6 +151,9 @@ export function ConversationView({ tabId }: ConversationViewProps) {
     (message) => message.role === 'thinking' && message.thinkingActive,
   )
   const orchestratorActivityLabel = workingMessage || (isThinking ? 'Thinking…' : 'Running…')
+  const orchestratorActivityWithShells = backgroundTaskCount > 0
+    ? `${orchestratorActivityLabel} · ${backgroundTaskCount} background shell${backgroundTaskCount === 1 ? '' : 's'}`
+    : orchestratorActivityLabel
 
   // Auto-create first instance
   const tabsReady = useSessionStore(s => s.tabsReady)
@@ -358,7 +361,7 @@ export function ConversationView({ tabId }: ConversationViewProps) {
                         background: colors.statusRunning, display: 'inline-block',
                       }}
                     />
-                    <span data-testid="conversation-activity-indicator">{orchestratorActivityLabel}</span>
+                    <span data-testid="conversation-activity-indicator">{orchestratorActivityWithShells}</span>
                   </div>
                 ) : <span />}
                 <div data-testid="conversation-interrupt-row" style={{ pointerEvents: 'auto' }}>

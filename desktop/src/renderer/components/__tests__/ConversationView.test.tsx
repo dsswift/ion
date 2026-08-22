@@ -83,7 +83,11 @@ function renderConversation(): { container: HTMLDivElement; root: ReturnType<typ
 }
 
 describe('ConversationView composer activity row', () => {
-  beforeEach(() => { vi.clearAllMocks(); setConversation('idle', 0) })
+  beforeEach(() => {
+    vi.clearAllMocks()
+    state.engineWorkingMessages = new Map()
+    setConversation('idle', 0)
+  })
   afterEach(() => { document.body.replaceChildren() })
 
   it('uses a gradient blur overlay, not a divider panel', () => {
@@ -129,6 +133,15 @@ describe('ConversationView composer activity row', () => {
 
     expect(container.querySelector('[data-testid="conversation-activity-indicator"]')?.textContent)
       .toContain('Compacting…')
+    act(() => { root.unmount() })
+  })
+
+  it('shows active background shells beside running activity', () => {
+    setConversation('running', -1)
+    const { container, root } = renderConversation()
+
+    expect(container.querySelector('[data-testid="conversation-activity-indicator"]')?.textContent)
+      .toContain('Running… · 1 background shell')
     act(() => { root.unmount() })
   })
 

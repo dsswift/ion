@@ -1,18 +1,9 @@
 // @vitest-environment jsdom
 /**
- * Regression: the engine-state status-bar slot ("[running]" /
- * "[waiting for N agent(s)]") must render from the signals that are
- * actually populated in the renderer — `tab.status` for the orchestrator's own
- * run-state and `useActiveEngineAgentRunningCount()` for the dispatched
- * agent count — NOT from `inst.statusFields`, which the renderer
- * never populates.
- *
- * Pre-fix, `StatusBarEngineState` did `const status = useActiveEngineStatusFields()`
- * then `if (!status) return null`. Because `inst.statusFields` is always null in
- * the renderer, the slot rendered nothing on EVERY tab — the yellow
- * "waiting for N agent(s)" text never appeared. The idle+running-agent
- * case below is the regression assertion: it is red on the pre-fix code (slot
- * returns null) and green after the fix.
+ * Regression coverage for the status-bar activity slot. It combines
+ * `tab.status` for the orchestrator, the active instance's agent-state fold,
+ * and `statusFields.backgroundShells` for notifying background Bash commands.
+ * The tests pin both idle waiting labels and the combined active-run label.
  *
  * The store is stubbed so the component's narrow `useSessionStore(useShallow(...))`
  * selector folds a fixed snapshot, and `useActiveEngineAgentRunningCount` (which
@@ -180,12 +171,10 @@ describe('StatusBarEngineState — background-shell branch', () => {
     expect(html).not.toContain('background shell')
   })
 
-  it('a running orchestrator outranks shells', () => {
+  it('a running orchestrator includes the active shell count', () => {
     setActiveTab({ id: 'tab1', engineProfileId: null, status: 'running' })
     setPaneAgents('tab1', [], 2)
-    const html = renderHTML()
-    expect(html).toContain('[running]')
-    expect(html).not.toContain('background shell')
+    expect(renderHTML()).toContain('[running · 2 background shells]')
   })
 
   it('renders nothing when idle with no agents and no shells', () => {
