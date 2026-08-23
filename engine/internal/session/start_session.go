@@ -684,6 +684,18 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 			return found, nil
 		})
 
+		// Persistent ID-addressed recall for ext/recall_dispatch when the
+		// parent run is idle. Same rationale as the name-based recall above;
+		// this arm is what a consumer holding a dispatchId reaches.
+		host.SetPersistentRecallByID(func(dispatchID, reason string) (bool, error) {
+			reg := s.dispatchRegistry
+			if reg == nil {
+				return false, fmt.Errorf("dispatch registry not available")
+			}
+			found := reg.RecallByID(dispatchID, reason)
+			return found, nil
+		})
+
 		// Persistent steer for ext/steer_dispatch when the parent run is idle.
 		host.SetPersistentSteer(func(dispatchID, message string) (extension.SteerDispatchResult, error) {
 			reg := s.dispatchRegistry

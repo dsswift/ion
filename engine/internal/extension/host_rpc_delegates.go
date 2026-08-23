@@ -26,7 +26,6 @@ func (h *Host) rpcRecallAgent(ctx *Context, id int64, raw []byte) {
 func (h *Host) rpcRecallDispatch(ctx *Context, id int64, raw []byte) {
 	h.handleRecallDispatchRPC(ctx, id, raw)
 }
-
 func (h *Host) rpcAnswerDispatchQuestion(_ *Context, id int64, raw []byte) {
 	h.handleAnswerDispatchQuestion(id, raw)
 }
