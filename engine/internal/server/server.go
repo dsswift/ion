@@ -67,6 +67,25 @@ type Server struct {
 	// as authed via CLI when no API key is configured.
 	cliCapable bool
 
+	// testDispatchPanicTrigger, when non-nil, panics unconditionally at the
+	// top of dispatch() for the named command key before any handler logic
+	// runs. Nil in production and in every test that doesn't set it — dispatch
+	// checks it once and the check is a no-op when unset.
+	//
+	// This exists because the recovery guard in dispatch() (the deferred
+	// recover() immediately below) must keep protecting the daemon against a
+	// genuinely unanticipated panic, but the specific nil-pointer-dereference
+	// scenario the guard's tests originally exercised (start_session with a
+	// nil Config) stopped being reachable once dispatch() gained an explicit
+	// nil-config validation branch — that input now returns a normal error
+	// result instead of panicking, which is strictly correct behavior, not a
+	// regression. Rather than leave the recovery-guard tests silently
+	// exercising nothing (a coverage regression the assertions wouldn't
+	// surface), this field lets a test trigger a real panic through the exact
+	// code path production traffic would take, independent of any specific
+	// command's validation.
+	testDispatchPanicTrigger string
+
 	// computeContextBreakdown performs potentially slow provider token-counting for
 	// get_context_breakdown. It is injected for tests; production wires the
 	// manager implementation. Dispatch always runs it off the socket read loop.

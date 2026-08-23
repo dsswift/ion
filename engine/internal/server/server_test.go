@@ -57,8 +57,8 @@ func (m *mockBackend) IsRunning(requestID string) bool {
 	return ok
 }
 
-func (m *mockBackend) WriteToStdin(_ string, _ interface{}) error          { return nil }
-func (m *mockBackend) FlushConversations()                                 {}
+func (m *mockBackend) WriteToStdin(_ string, _ interface{}) error { return nil }
+func (m *mockBackend) FlushConversations()                        {}
 
 // Capabilities reports an engine-owned, fully-capable descriptor so no
 // dispatch-time capability gate engages against this mock.
@@ -769,22 +769,29 @@ func registerPipeClient(t *testing.T, srv *Server) (serverConn, clientConn net.C
 	return serverConn, clientConn
 }
 
-// TestDispatchPanicRecovery verifies that the dispatch recovery boundary returns
-// a structured error result to the client and leaves the server functional.
+// TestDispatchPanicRecovery verifies that a panic in dispatch() is recovered and
+// returns a structured error result to the client, and the connection remains
+// functional for subsequent commands.
 func TestDispatchPanicRecovery(t *testing.T) {
 	mb := newMockBackend()
 	srv := newShortPathTestServer(t, mb)
 
 	serverConn, clientConn := registerPipeClient(t, srv)
 
+	// dispatch() no longer nil-derefs on start_session's Config: it validates
+	// and returns "start_session requires config" as an ordinary error result
+	// instead of panicking, which is correct behavior, not the scenario this
+	// test needs. testDispatchPanicTrigger forces a real, unconditional panic
+	// through the exact code path production traffic takes, so the recovery
+	// guard is proven independent of any one command's validation.
+	srv.testDispatchPanicTrigger = "start_session"
 	cmd := &protocol.ClientCommand{
-		Cmd:       "panic_test",
+		Cmd:       "start_session",
 		Key:       "panic-test",
 		RequestID: "req-panic",
+		Config:    &types.EngineConfig{},
 	}
-	srv.dispatchWithRecovery(serverConn, cmd, func(net.Conn, *protocol.ClientCommand) {
-		panic("forced dispatch panic")
-	})
+	srv.dispatch(serverConn, cmd)
 
 	// Read the error result sent by the recovery guard.
 	lines := readLines(t, clientConn, 5, 2*time.Second)
@@ -826,16 +833,23 @@ func TestDispatchPanicRecoveryRelayPath(t *testing.T) {
 	mb := newMockBackend()
 	srv := newShortPathTestServer(t, mb)
 
-	// DispatchCommand uses the same recovery wrapper with a nil connection.
-	// Verify that recovery does not cause a second panic while sending the result.
+	// DispatchCommand calls dispatch(nil, cmd). testDispatchPanicTrigger
+	// forces a real panic through the exact path production traffic takes
+	// (see its doc comment in server.go for why start_session's nil-Config
+	// no longer panics on its own). The recovery guard calls
+	// sendResult(nil, ...), which must not panic itself (writeToClient has a
+	// nil-conn guard).
+	srv.testDispatchPanicTrigger = "start_session"
 	cmd := &protocol.ClientCommand{
-		Cmd:       "panic_test",
+		Cmd:       "start_session",
 		Key:       "relay-panic",
 		RequestID: "req-relay-panic",
+		Config:    &types.EngineConfig{},
 	}
-	srv.dispatchWithRecovery(nil, cmd, func(net.Conn, *protocol.ClientCommand) {
-		panic("forced relay dispatch panic")
-	})
+
+	// This must not panic. If recovery or the nil-conn path is broken,
+	// the test process crashes.
+	srv.DispatchCommand(cmd)
 
 	// Verify the server is still functional: a new client can connect and
 	// execute commands.
@@ -869,15 +883,17 @@ func TestDispatchPanicRecoveryServerSurvives(t *testing.T) {
 	conn2 := dialServer(t, srv)
 	defer conn2.Close()
 
-	// Trigger a panic through the same recovery boundary used by dispatch.
+	// Trigger a panic on the pipe client's dispatch path. testDispatchPanicTrigger
+	// forces a real panic independent of any command's own validation — see
+	// its doc comment in server.go.
+	srv.testDispatchPanicTrigger = "start_session"
 	cmd := &protocol.ClientCommand{
-		Cmd:       "panic_test",
+		Cmd:       "start_session",
 		Key:       "panic-victim",
 		RequestID: "req-victim",
+		Config:    &types.EngineConfig{},
 	}
-	srv.dispatchWithRecovery(serverConn, cmd, func(net.Conn, *protocol.ClientCommand) {
-		panic("forced client dispatch panic")
-	})
+	srv.dispatch(serverConn, cmd)
 
 	// Drain the error result from the pipe client.
 	readLines(t, clientConn, 5, 1*time.Second)

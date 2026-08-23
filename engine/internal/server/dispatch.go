@@ -50,6 +50,17 @@ func (s *Server) dispatchWithRecovery(
 
 func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 	utils.LogWithFields(utils.LevelDebug, "server", "dispatch", map[string]any{"status": cmd.Cmd, "session_id": cmd.Key, "run_id": cmd.RequestID})
+
+	// Test-only: see testDispatchPanicTrigger's doc comment in server.go.
+	// Zero-cost in production — the field is always empty and this is a
+	// single string comparison per dispatch call. One-shot: disarms itself
+	// so a test that issues the same command again afterward (e.g. to prove
+	// the connection still works) does not re-trigger.
+	if s.testDispatchPanicTrigger != "" && s.testDispatchPanicTrigger == cmd.Cmd {
+		s.testDispatchPanicTrigger = ""
+		panic("testDispatchPanicTrigger: forced panic for " + cmd.Cmd)
+	}
+
 	switch cmd.Cmd {
 	case "start_session":
 		if cmd.Config == nil {
