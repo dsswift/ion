@@ -401,6 +401,7 @@ export function ConversationView({ tabId }: ConversationViewProps) {
         <AgentPanel
           agents={agentStates}
           dispatchTelemetry={dispatchTelemetry}
+          tabId={tabId}
           rootOnly
           isFullscreen={agentPanelFullscreen}
           onToggleFullscreen={() => setAgentPanelFullscreen(!agentPanelFullscreen)}

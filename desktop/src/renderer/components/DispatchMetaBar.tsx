@@ -6,7 +6,6 @@ import type { DispatchInfo } from "./agent-panel-helpers";
 interface Props {
   dispatch: DispatchInfo | undefined;
   agentStatus: string;
-  tabId?: string;
 }
 
 /**
@@ -18,8 +17,9 @@ interface Props {
  * Dispatch controls live in two consistent places instead: every running
  * AgentRow, and the bottom-right corner of the open dispatch transcript. The
  * old header-only Stop was easy to miss and did not exist at nested tiers.
+ * There is no tabId here for the same reason — this component is display-only.
  */
-export function DispatchMetaBar({ dispatch, agentStatus, tabId: _tabId }: Props) {
+export function DispatchMetaBar({ dispatch, agentStatus }: Props) {
   const colors = useColors();
 
   if (!dispatch) return null;

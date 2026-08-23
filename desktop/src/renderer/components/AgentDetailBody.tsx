@@ -274,6 +274,36 @@ export function AgentDetailBody({
   const headerSelectedIndex = isRoot ? selectedDispatch : 0;
   const headerOnSelect = isRoot ? onSelectDispatch : () => {};
 
+  // Row resolution for the transcript's activity/Stop overlay, mirrored from
+  // the row-level control in AgentRow.tsx: root frame stops among the root
+  // dispatches; a drilled-in frame stops among the OWNING row's dispatches
+  // (the agent whose own dispatches[] contains the current frame's dispatch
+  // id), not just the single displayed dispatch, so "Stop all in this row"
+  // reaches every sibling instance the row actually represents.
+  const topStatus = topDispatch?.status || agent.status;
+  const owningAgent = isRoot
+    ? agent
+    : (allAgents ?? []).find((candidate) =>
+        getDispatches(candidate).some(
+          (dispatch) => dispatch.id === top.dispatchId,
+        ),
+      );
+  const rowDispatches = isRoot
+    ? dispatches
+    : owningAgent
+      ? getDispatches(owningAgent)
+      : topDispatch
+        ? [topDispatch]
+        : [];
+  const runningRowDispatchIds = rowDispatches
+    .filter((dispatch) => (dispatch.status || topStatus) === "running")
+    .map((dispatch) => dispatch.id)
+    .filter(Boolean);
+  // Activity text mirrors AgentRow's own lastWork readout — the same
+  // displayed-dispatch subject the meta bar and Stop button describe, so all
+  // three agree about what "running" refers to.
+  const activityText = owningAgent ? meta(owningAgent, "lastWork", "") : "";
+
   // Breadcrumb bar rendered into the header portal.
   const breadcrumb = (
     <div
@@ -328,13 +358,16 @@ export function AgentDetailBody({
             <DispatchMetaBar
               dispatch={topDispatch}
               agentStatus={agent.status}
-              tabId={tabId}
             />
           </>,
           headerHost,
         )}
 
-      {/* Scrolling transcript body */}
+      {/* Scrolling transcript body. The activity/Stop overlay for THIS
+          dispatch lives INSIDE Transcript, pinned to the bottom of its own
+          scroll region — not as a footer after it. That is what keeps Stop
+          reading as "stop the conversation on screen" rather than as a
+          control belonging to the embedded agent panel beneath it. */}
       <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
         {topLoading && (
           <div
@@ -354,11 +387,21 @@ export function AgentDetailBody({
             pinnedPrompt={pinnedPrompt}
             isRunning={agent.status === "running"}
             agents={childAgentStates}
-            allAgents={allAgents}
             dispatchTelemetry={childTelemetry}
             tabId={tabId}
             onOpenDispatch={handleOpenDispatch}
             subDispatch
+            // Only addressable when the displayed dispatch is itself a live
+            // member of the owning row's running set — mirrors the exact
+            // guard the removed flow-footer used, so a stale/mismatched
+            // agent-level status can never show a dead Stop.
+            activityDispatchId={
+              topDispatch && runningRowDispatchIds.includes(topDispatch.id)
+                ? topDispatch.id
+                : undefined
+            }
+            activityRunningDispatchIds={runningRowDispatchIds}
+            activityText={activityText}
           />
         )}
         {!topLoading && !topMessages && (

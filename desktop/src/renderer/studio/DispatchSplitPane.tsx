@@ -21,6 +21,7 @@ export function DispatchSplitPane(): React.JSX.Element | null {
   const colors = useColors()
   const subject = useSessionStore((s) => activeDispatchSplit(s.dispatchSplit, s.activeTabId))
   const closeDispatchSplit = useSessionStore((s) => s.closeDispatchSplit)
+  const tabId = useSessionStore((s) => s.activeTabId)
   const agentStates = useSessionStore((s) => {
     const inst = activeInstance(s.conversationPanes, s.activeTabId)
     return inst?.agentStates ?? EMPTY_AGENTS
@@ -106,6 +107,7 @@ export function DispatchSplitPane(): React.JSX.Element | null {
             dispatchTelemetry={dispatchTelemetry}
             allAgents={agentStates.length > 0 ? agentStates : agent ? [agent] : []}
             hideRootBreadcrumb
+            tabId={tabId}
           />
         ) : (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.textTertiary, fontSize: 12, fontFamily: 'system-ui, sans-serif' }}>

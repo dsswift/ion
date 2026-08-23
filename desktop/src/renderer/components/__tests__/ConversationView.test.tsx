@@ -32,7 +32,13 @@ vi.mock('../../rendererLogger', () => ({ rDebug: vi.fn(), rInfo: vi.fn(), rError
 vi.mock('zustand/shallow', () => ({ useShallow: (selector: unknown) => selector }))
 vi.mock('../EngineDialog', () => ({ EngineDialog: () => null }))
 vi.mock('../EngineNotificationToasts', () => ({ EngineNotificationToasts: () => null }))
-vi.mock('../AgentPanel', () => ({ AgentPanel: () => null }))
+const agentPanelProps: Array<Record<string, unknown>> = []
+vi.mock('../AgentPanel', () => ({
+  AgentPanel: (props: Record<string, unknown>) => {
+    agentPanelProps.push(props)
+    return null
+  },
+}))
 vi.mock('../PermissionDeniedCard', () => ({ PermissionDeniedCard: () => null }))
 vi.mock('../ElicitationCardHost', () => ({ ElicitationCardHost: () => null }))
 vi.mock('../TodoListPanel', () => ({ TodoListPanel: () => null }))
@@ -163,6 +169,28 @@ describe('ConversationView composer activity row', () => {
     const transcript = container.querySelector('[data-testid="conversation-transcript"]') as HTMLElement | null
     expect(transcript?.style.paddingBottom).toBe('64px')
     expect(interruptRow?.textContent).not.toContain('Waiting for agent')
+    act(() => { root.unmount() })
+  })
+})
+
+// Regression pin for the reported bug: ConversationView must pass its own
+// tabId to AgentPanel. Without it, AgentRow's row-level Stop control is gated
+// off entirely (AgentRow.tsx guards on `tabId && stoppableDispatchId`), so
+// every running Agent row in the main conversation loses its Stop button.
+// Reverting the tabId prop on <AgentPanel> in ConversationView.tsx turns this
+// red.
+describe('ConversationView agent panel wiring', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    agentPanelProps.length = 0
+    state.engineWorkingMessages = new Map()
+    setConversation('idle', 0)
+  })
+  afterEach(() => { document.body.replaceChildren() })
+
+  it('forwards its own tabId to AgentPanel', () => {
+    const { root } = renderConversation()
+    expect(agentPanelProps.at(-1)?.tabId).toBe('tab-1')
     act(() => { root.unmount() })
   })
 })
