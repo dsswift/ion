@@ -84,6 +84,19 @@ jobs:
       - name: Check file-size caps
         run: bash scripts/check-file-sizes.sh
 
+  vocabulary:
+    # Always runs: registry references can point at source in any product scope.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Node
+        # The vocabulary validator uses only Node built-ins, so no npm install is needed.
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: Vocabulary registry and generated index
+        run: make check-vocabulary
+
   status-writers:
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true'

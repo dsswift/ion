@@ -243,9 +243,11 @@ The following gates are **slow** — Docker container spin-up, full-network vuln
 | Harness | `~/.ion/extensions/` (TS) | Extensions via SDK. Decides behavior. |
 | Client | `desktop/`, `ios/` | Renders UI from engine events. |
 
+This mechanism table is not the vocabulary domain model. Classify work and vocabulary with `engine`, `harness-sdk`, `clients`, and `relay` (see the naming authority section). Relay is transport infrastructure.
+
 Engine executes, harness decides. Engine never blocks for user input, never persists memory, never decides policy.
 
-When labeling work: engine, harness, or client. If a harness gap is caused by missing engine capability, note both.
+When labeling work: `engine`, `harness-sdk`, `clients`, or `relay`. If a harness-sdk gap is caused by missing engine capability, note both.
 
 ## Opinionless mechanics, extensible opinions
 
@@ -351,14 +353,26 @@ The trigger is any moment where the honest description of a plan is "the SDK can
 
 This is not license to gold-plate every extension task into an engine change. Most harness work is genuinely harness work. The rule fires specifically when a feature is *blocked by* an engine/SDK limitation and I own the engine: in that case the engine enhancement is the plan, and the workaround is the defect to avoid. When I ask for cutting-edge extension features, assume engine/SDK enhancements are in scope and surface them rather than defaulting to a harness-local hack. If there is a genuine reason the engine change is out of scope (published-contract break needing my approval, or the capability truly belongs in the harness), say so and let me decide — never silently pick the workaround.
 
-## Cross-client parity (overlay ↔ Studio)
+## Naming authority — the vocabulary registry
 
-The desktop has two clients in one process: the overlay glass and the Ion Studio shell (`desktop/src/renderer/studio/`). Same parity obligation as desktop ↔ iOS: a feature that exists in both must be the same in both. Full architecture: [ADR-021](docs/architecture/adr/021-studio-shell-mirror-store.md).
+`docs/vocabulary/terms.json` is the naming authority for every shared Ion concept. The generated glossary is `docs/vocabulary/index.md` ([Ion Vocabulary](docs/vocabulary/index.md)).
 
-- **Reuse is the parity system.** A shared surface is ONE component reading the same store, mounted in both windows (the Studio shell runs the session store in mirror mode). Never build a bespoke Studio widget for something the overlay already has a component for; bespoke is only for canvas-coupled surfaces (marquee, inspector, control bar).
+- **Use the canonical term.** When you write a doc, a comment, a UI string, or a plan about a shared concept, use that concept's canonical term exactly as the registry lists it. Aliases and legacy names are index entries only.
+- **Add the term when it is missing.** A new shared concept gets a registry entry in the same change that introduces it. An entry needs a definition, a domain, a kind, a contract classification, and at least one implementation citing a real symbol in a real file.
+- **Regenerate and check.** Run `make generate-vocabulary` after every registry edit, then `make check-vocabulary`. The check fails when the committed index does not match the registry.
+- **A rename is a registry edit first.** Move the old canonical term into `legacyNames`, then regenerate. Code and published contracts change only under an explicit request.
+
+The registry uses four domains: `engine`, `harness-sdk`, `clients`, `relay`. Desktop and iOS are client implementations. Overlay and Studio are Desktop presentations, not clients. Relay is transport infrastructure, not a UI client.
+
+## Cross-presentation parity (Overlay ↔ Studio)
+
+The Desktop is ONE client with two presentations: the Overlay glass and the Ion Studio shell (`desktop/src/renderer/studio/`). Exactly one presentation is active at a time, and the Overlay renderer is the session-store owner in both modes. Same parity obligation as Desktop ↔ iOS: a feature that exists in both presentations must be the same in both. Full architecture: [ADR-021](docs/architecture/adr/021-studio-shell-mirror-store.md).
+
+- **Reuse is the parity system.** A shared surface is ONE component reading the same store, mounted in both presentations (the Studio shell runs the session store in mirror mode). Never build a bespoke Studio widget for something the Overlay already has a component for; bespoke is only for canvas-coupled surfaces (marquee, inspector, control bar).
 - **New store action** → classify it in `desktop/src/shared/studio-mirror-actions.ts` (forwarded vs mirror-local, with justification); the mirror-parity test fails otherwise.
 - **New main-process event push** → route through `broadcast()`; `make check-studio-parity` (CI) fails direct `webContents.send` outside the owner-only allowlist.
-- **Checklist for overlay UI/state changes:** does the surface exist in the Studio shell? Shared component → done by construction. Not shared → mount it in Studio, or state why it is overlay-only. The inverse holds for Studio changes.
+- **Checklist for Overlay UI/state changes:** does the surface exist in the Studio shell? Shared component → done by construction. Not shared → mount it in Studio, or state why it is Overlay-only. The inverse holds for Studio changes.
+- **Name the shared surface with its registry term.** A surface that both presentations render uses its canonical term from `docs/vocabulary/terms.json` (Conversation View, Input Bar, Tab Strip, Status Drawer, and so on). A Studio-only region carries a Studio-qualified term.
 
 ## Cross-platform parity (desktop ↔ iOS)
 

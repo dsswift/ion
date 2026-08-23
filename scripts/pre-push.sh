@@ -86,6 +86,9 @@ run "file-size cap" bash scripts/check-file-sizes.sh
 run "Go toolchain alignment" bash scripts/check-go-toolchains.sh
 run "Go toolchain regression checks" bash scripts/check-go-toolchains.test.sh
 
+# Vocabulary uses Node built-ins with zero install and always runs because registry path and symbol references can be invalidated by any tree change.
+run "vocabulary registry + drift" make check-vocabulary
+
 # Dashboards-as-code drift + overcount audit. Runs when the query module,
 # recipes, or the committed dashboard JSONs are touched. Cheap (Node native
 # type-stripping, zero install) and catches hand-edited JSON or un-regenerated

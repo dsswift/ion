@@ -1,4 +1,4 @@
-.PHONY: default desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test sdk-test test test-all test-linux test-linux-engine test-linux-engine-summary test-linux-desktop clean check-file-sizes check-contracts check-status-writers check-studio-parity check-logging check-swiftlint check-dashboards claude-symlinks bootstrap graph graph-ensure graph-refresh hooks lint-desktop
+.PHONY: default desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test sdk-test test test-all test-linux test-linux-engine test-linux-engine-summary test-linux-desktop clean check-file-sizes check-contracts check-status-writers check-studio-parity check-logging check-swiftlint check-dashboards check-vocabulary generate-vocabulary claude-symlinks bootstrap graph graph-ensure graph-refresh hooks lint-desktop
 
 # Homebrew installs node/npm under /opt/homebrew/bin on Apple Silicon.
 # Make runs recipes with /bin/sh which only has /usr/bin:/bin in PATH,
@@ -96,7 +96,7 @@ test:
 # Run every test surface end-to-end before merging. Stops at the first
 # failure so you don't waste minutes on a downstream failure that's really
 # caused by an earlier component.
-test-all: check-file-sizes check-contracts check-status-writers check-studio-parity check-logging check-swiftlint check-dashboards engine-test sdk-test desktop-test ios-test
+test-all: check-file-sizes check-contracts check-status-writers check-studio-parity check-logging check-swiftlint check-dashboards check-vocabulary engine-test sdk-test desktop-test ios-test
 	@echo "✅ test-all: all surfaces green"
 
 # ---------------------------------------------------------------------------
@@ -273,6 +273,16 @@ check-file-sizes:
 # TypeScript type-stripping) — no npm install needed.
 check-dashboards:
 	@node docs/observability/dashboards/src/check.ts
+
+# Vocabulary registry validation and generated-index drift gate.
+# Fix failures with `make generate-vocabulary` after correcting the registry.
+check-vocabulary:
+	@node --test scripts/vocabulary.test.mjs
+	@node scripts/vocabulary.mjs check
+
+# Regenerate the committed vocabulary index from its machine-validated registry. Use this after changing docs/vocabulary/terms.json.
+generate-vocabulary:
+	@node scripts/vocabulary.mjs generate
 
 # Phase 4 of the state-management overhaul. Prohibits new direct writes
 # to tab.status / inst.statusFields outside the dispatcher chokepoints
