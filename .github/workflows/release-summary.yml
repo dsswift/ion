@@ -64,21 +64,7 @@ jobs:
           RELEASE_REPORT: ${{ inputs.release_report }}
         run: |
           set -euo pipefail
-          jq -r '
-            .releases[] |
-            "## \(.component) v\(.new_version)\n" +
-            "Release: \(.release_url // \"not available\")\n" +
-            (if (.commits | length) > 0 then
-              "Commits:\n" +
-              (.commits | map(
-                "- \(.type)" +
-                (if .scope then "(\(.scope))" else "" end) +
-                ": \(.description) (\(.sha[0:7]))"
-              ) | join("\n"))
-             else
-              "Commits: none (linked version update)"
-             end) + "\n"
-          ' <<< "$RELEASE_REPORT" > /tmp/ion-context.md
+          bash .github/scripts/build-release-summary-context.sh /tmp/ion-context.md
           echo "Context document size: $(wc -c < /tmp/ion-context.md) bytes"
 
       - name: Compose final prompt

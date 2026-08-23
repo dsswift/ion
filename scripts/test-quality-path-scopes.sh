@@ -31,6 +31,7 @@ for line in path.read_text(encoding="utf-8").splitlines():
 cases = {
     "docs-only": ("docs/design/theme-packs.md", set()),
     "workflow-only": (".github/workflows/quality.yml", {"workflows"}),
+    "workflow-script": (".github/scripts/build-release-summary-context.sh", {"workflows"}),
     "engine": ("engine/internal/session/manager.go", {"engine", "logging"}),
     "relay": ("relay/main.go", {"relay", "logging"}),
     "sdk": ("sdk/go/context.go", {"sdk", "logging"}),
