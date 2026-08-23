@@ -116,9 +116,8 @@ extension ConversationView {
         viewModel.tab(for: tabId)?.inputLocked == true
     }
 
-    /// Whether capacity telemetry says the selected model has no remaining
-    /// ordinary-prompt budget. The capacity calculation shares the selected
-    /// model's window and output reserve with the desktop policy.
+    /// Current capacity telemetry for the active conversation. This drives status
+    /// display only. The engine owns prompt admission and automatic compaction.
     var contextCapacity: ConversationStatusBar.ContextCapacity? {
         let instance = viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)
         let fieldsTokens = instance?.statusFields?.contextTokens
@@ -165,48 +164,9 @@ extension ConversationView {
                 .padding(.vertical, IonSpace.contentGap)
                 .accessibilityIdentifier("input-locked-notice")
             }
-        } else if ConversationStatusBar.contextCapacityBlocksPrompt(contextCapacity, text: promptText) {
-            contextFullInputNotice
         } else {
             engineInputBarUnlocked
         }
-    }
-
-    private var contextFullInputNotice: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "lock")
-                .font(.system(size: 10)) // design-type: SF Symbol lock glyph sized as icon geometry, not text
-                .foregroundStyle(theme.statusError)
-            Text("Context is full. Use /compact or /clear, or start a new conversation.")
-                .ionType(.microLabel)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-            Spacer()
-            Button("Compact") {
-                viewModel.setEngineDraft(tabId: tabId, instanceId: activeInstanceId, "/compact")
-            }
-            .accessibilityIdentifier("context-full-compact-button")
-            Button("Clear") {
-                viewModel.setEngineDraft(tabId: tabId, instanceId: activeInstanceId, "/clear")
-            }
-            .accessibilityIdentifier("context-full-clear-button")
-            Button {
-                DiagnosticLog.log("context capacity new conversation requested", tag: "view.inputbar", fields: [
-                    "tab_id": String(tabId.prefix(8)),
-                    "occupancy": String(contextCapacity?.occupancyTokens ?? 0),
-                    "limit": String(contextCapacity?.effectiveLimit ?? 0),
-                ])
-                viewModel.createTab(workingDirectory: workingDirectory)
-            } label: {
-                Text("New")
-                    .ionType(.microLabel)
-                    .foregroundStyle(theme.accent)
-            }
-            .accessibilityIdentifier("context-full-new-conversation-button")
-        }
-        .padding(.horizontal, 14) // design-geometry: 14pt gap between contentGap and rowInset; off the 4pt ratio scale
-        .padding(.vertical, IonSpace.contentGap)
-        .accessibilityIdentifier("context-full-input-notice")
     }
 
     private var permanentlySettledInputNotice: some View {
@@ -254,7 +214,7 @@ extension ConversationView {
 
     private var engineInputBarUnlocked: some View {
         VStack(spacing: 0) {
-            if contextCapacityState == .warning {
+            if contextCapacityState != .normal {
                 contextCapacityWarning
             }
 
@@ -406,7 +366,9 @@ extension ConversationView {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 9)) // design-type: SF Symbol warning glyph sized as icon geometry, not text
                 .foregroundStyle(theme.statusWarning)
-            Text("Context is \(Int(contextCapacity?.percent ?? 0))% full")
+            Text(contextCapacityState == .full
+                ? "Context is full — the engine will compact automatically when enabled"
+                : "Context is \(Int(contextCapacity?.percent ?? 0))% full")
                 .ionType(.microLabel)
                 .foregroundStyle(.secondary)
             Spacer()
@@ -492,9 +454,25 @@ extension ConversationView {
     // MARK: - Actions
 
     var cannotSend: Bool {
+        ConversationView.computeCannotSend(
+            promptText: promptText,
+            attachmentCount: pendingAttachments.count,
+            hasUploading: hasUploading,
+            contextCapacityState: contextCapacityState
+        )
+    }
+
+    /// Pure submit-button gate. Context capacity is accepted for an explicit
+    /// contract check but does not block: the engine owns admission and can run
+    /// automatic compaction before its provider request.
+    static func computeCannotSend(
+        promptText: String,
+        attachmentCount: Int,
+        hasUploading: Bool,
+        contextCapacityState _: ConversationStatusBar.ContextCapacityState
+    ) -> Bool {
         let empty = promptText.trimmingCharacters(in: .whitespaces).isEmpty
-        let contextBlocksPrompt = ConversationStatusBar.contextCapacityBlocksPrompt(contextCapacity, text: promptText)
-        return (empty && pendingAttachments.isEmpty) || hasUploading || contextBlocksPrompt
+        return (empty && attachmentCount == 0) || hasUploading
     }
 
     /// Re-sync history when we recover from a transient disconnect
@@ -530,14 +508,6 @@ extension ConversationView {
         let trimmed = promptText.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty || !pendingAttachments.isEmpty else { return }
         guard !hasUploading else { return }
-        guard !ConversationStatusBar.contextCapacityBlocksPrompt(contextCapacity, text: promptText) else {
-            DiagnosticLog.log("submit blocked: context capacity full", tag: "view.inputbar", level: .warn, fields: [
-                "tab_id": String(tabId.prefix(8)),
-                "occupancy": String(contextCapacity?.occupancyTokens ?? 0),
-                "limit": String(contextCapacity?.effectiveLimit ?? 0),
-            ])
-            return
-        }
         // Submitting while a voice recording is active: the transcript is
         // already in the field (live transcription writes into the draft), so
         // whatever was being transcribed is what is being sent. Stop the

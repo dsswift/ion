@@ -5,8 +5,6 @@ import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId, cancelDoneGroupMove } from '../session-store-helpers'
 import { activeInstance, commitInstance, effectivePermissionMode, effectiveThinkingEffort } from '../conversation-instance'
 import { useModelStore } from '../model-store'
-import { getDynamicContextWindow } from '../model-labels'
-import { resolveContextInputs } from '../../components/context-usage'
 import { resolveEffortForModel } from '../../../shared/thinking-options'
 import { applyActiveGroupMove } from './event-slice-running-move'
 import { maybeSendTimeTitle, isPlaceholderTitle } from './event-slice-titling'
@@ -17,7 +15,6 @@ import { promptRefusal } from '../../../shared/prompt-acceptance'
 import {
   PROMPT_ACCEPTED, promptRefused, promptRefusalMessage,
 } from '../../../shared/prompt-submit-result'
-import { selectedModelContextLimit } from '../../../shared/context-capacity'
 import { createSendBashSlice } from './send-slice-bash'
 
 type PromptModelSelection = Pick<import('../../../shared/types-engine').ConversationInstance, 'modelOverride' | 'modelOverrideSource' | 'sessionModel'> | null | undefined
@@ -194,28 +191,18 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // reads are pre-mutation.
       const sendInst = activeInstance(get().conversationPanes, tabId)
 
-      // Both refusals — still connecting, and input-locked — come from the one
-      // shared predicate (shared/prompt-acceptance.ts), which is also what the
-      // InputBar consults BEFORE it clears the operator's text. When these two
-      // decisions were separate predicates the InputBar could admit a send
-      // that this guard then refused, and the text was already destroyed.
+      // Connection and input-lock refusals come from the one shared predicate
+      // (shared/prompt-acceptance.ts), which is also what the Input Bar consults
+      // BEFORE it clears the operator's text. Context capacity is deliberately
+      // absent: the engine owns admission and can auto-compact before provider
+      // dispatch.
       //
       // The guard stays here regardless of the caller's own check: this is the
       // enforcement point no remote command, queued prompt, or future caller
       // can route around.
-      const capacityInputs = resolveContextInputs(sendInst)
-      const effectiveModel = sendInst?.modelOverride ?? sendInst?.sessionModel ?? usePreferencesStore.getState().preferredModel ?? ''
-      const modelCapacity = useModelStore.getState().findModel(effectiveModel)
-      const rawWindow = getDynamicContextWindow(effectiveModel, capacityInputs.engineWindow)
-      const contextLimit = selectedModelContextLimit(rawWindow, modelCapacity?.maxOutputTokens)
       const refusal = promptRefusal({
-        tab: {
-          ...tab,
-          contextTokens: capacityInputs.tokens,
-          contextLimit,
-        },
+        tab,
         source,
-        text,
       })
       if (refusal) {
         // WARN, not DEBUG. The main-process logger's minimum level is INFO
@@ -543,19 +530,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const tab = tabs.find((t) => t.id === tabId)
       if (!tab) return
       const remoteInst = activeInstance(get().conversationPanes, tabId)
-      const remoteCapacity = resolveContextInputs(remoteInst)
-      const remoteEffectiveModel = remoteInst?.modelOverride ?? remoteInst?.sessionModel ?? preferredModel ?? ''
-      const remoteModelCapacity = useModelStore.getState().findModel(remoteEffectiveModel)
-      const remoteRawWindow = getDynamicContextWindow(remoteEffectiveModel, remoteCapacity.engineWindow)
-      const remoteContextLimit = selectedModelContextLimit(remoteRawWindow, remoteModelCapacity?.maxOutputTokens)
-      const refusal = promptRefusal({
-        tab: {
-          ...tab,
-          contextTokens: remoteCapacity.tokens,
-          contextLimit: remoteContextLimit,
-        },
-        text: prompt,
-      })
+      const refusal = promptRefusal({ tab })
       if (refusal) {
         rWarn('submit.remote', 'blocked prompt', {
           tab_id: tab.id.slice(0, 8), count: prompt.length, reason: refusal.reason, detail: refusal.detail,

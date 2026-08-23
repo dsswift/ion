@@ -73,7 +73,7 @@ export function InputBar() {
   const preferredModel = usePreferencesStore((s) => s.preferredModel)
   const findModel = useModelStore((s) => s.findModel)
   const effectiveModelId = modelOverride ?? preferredModel ?? ''
-  const { capacityLimit: contextCapacityLimit, state: contextCapacityStatus, tokens: contextTokens } = useActiveContextCapacity(effectiveModelId)
+  const { state: contextCapacityStatus } = useActiveContextCapacity(effectiveModelId)
   const isImageModel = effectiveModelId !== '' && findModel(effectiveModelId)?.modelKind === 'image'
   const isBusy = tab?.status === 'running' || tab?.status === 'connecting'
   const isConnecting = tab?.status === 'connecting' || !tabsReady
@@ -331,11 +331,8 @@ export function InputBar() {
     const outcome = dispatchSend(prompt, attachments.length, {
       getSnapshot: () => {
         const s = useSessionStore.getState()
-        const active = s.tabs.find((candidate) => candidate.id === s.activeTabId)
         return {
-          tabs: s.tabs.map((candidate) => candidate.id === active?.id
-            ? { ...candidate, contextTokens, contextLimit: contextCapacityLimit }
-            : candidate),
+          tabs: s.tabs,
           activeTabId: s.activeTabId,
           tabsReady: s.tabsReady,
         }
@@ -362,7 +359,7 @@ export function InputBar() {
     if (!outcome.accepted) return
     // Refocus after React re-renders from the state update
     requestAnimationFrame(() => textareaRef.current?.focus())
-  }, [input, submit, attachments.length, showSlashMenu, slashFilter, slashIndex, handleSlashSelect, bashMode, bashExecuting, tab?.workingDirectory, startBashCommand, completeBashCommand, extraCommands, isConnecting, activeTabId, setDraftInput, setBashMode, contextTokens, contextCapacityLimit])
+  }, [input, submit, attachments.length, showSlashMenu, slashFilter, slashIndex, handleSlashSelect, bashMode, bashExecuting, tab?.workingDirectory, startBashCommand, completeBashCommand, extraCommands, isConnecting, activeTabId, setDraftInput, setBashMode])
 
   // ─── Keyboard ───
   const handleKeyDown = (e: React.KeyboardEvent) => {

@@ -58,8 +58,6 @@ export function promptRefusalMessage(reason: PromptRefusalReason | 'no-tab'): st
       return 'Not sent: the conversation is still connecting. Your text was kept — send it again in a moment.'
     case 'input-locked':
       return 'Not sent: this conversation is locked and accepts no new input. Your text was kept.'
-    case 'context-full':
-      return 'Not sent: the context is full. Your text was kept — run /compact or /clear, then send again.'
     case 'tabs-not-ready':
       return 'Not sent: conversations are still being restored. Your text was kept — send it again in a moment.'
     case 'no-tab':

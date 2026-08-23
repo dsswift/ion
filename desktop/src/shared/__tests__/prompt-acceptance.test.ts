@@ -58,17 +58,14 @@ describe('promptRefusal', () => {
     }
   })
 
-  it('blocks a normal prompt at the effective context limit but permits recovery', () => {
+  it('allows a normal prompt at the effective context limit so the engine can compact', () => {
     const tab = { status: 'idle', contextTokens: 100, contextLimit: 100 }
-    expect(promptRefusal({ tab, text: 'continue' })?.reason).toBe('context-full')
-    expect(promptRefusal({ tab, text: '/compact' })).toBeNull()
-    expect(promptRefusal({ tab, text: '/clear and start over' })).toBeNull()
+    expect(promptRefusal({ tab })).toBeNull()
   })
 
-  it('orders lock refusal before a context-capacity refusal', () => {
+  it('orders lock refusal before other tab state', () => {
     expect(promptRefusal({
       tab: { status: 'idle', inputLocked: true, contextTokens: 100, contextLimit: 100 },
-      text: 'continue',
     })?.reason).toBe('input-locked')
   })
 

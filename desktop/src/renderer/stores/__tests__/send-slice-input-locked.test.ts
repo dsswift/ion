@@ -221,6 +221,20 @@ describe('submit() on an input-locked conversation', () => {
     expect(notices).toHaveLength(0)
   })
 
+  it('an unlocked full-context tab still reaches the engine for automatic compaction', () => {
+    const tab = makeTab({ inputLocked: false, contextTokens: 911_135, contextWindow: 1_000_000 })
+    const { state } = buildHarness(tab)
+
+    state.submit('tab-1', 'resume')
+
+    expect(mockPrompt).toHaveBeenCalledTimes(1)
+    expect(mockPrompt).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(String),
+      expect.objectContaining({ prompt: 'resume' }),
+    )
+  })
+
   it('submitRemotePrompt is guarded too: an iOS prompt cannot route around the lock', () => {
     // The desktop is the authority on what reaches the engine — iOS hides its
     // input bar and guards its own submit, but the wire path must refuse

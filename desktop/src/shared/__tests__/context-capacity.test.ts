@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  contextCapacityBlocksPrompt,
   contextCapacityState,
   resolveContextCapacity,
   selectedModelContextLimit,
@@ -19,13 +18,10 @@ describe('context capacity', () => {
   it('warns at 80 percent before it blocks', () => {
     const capacity = resolveContextCapacity(133_600, 167_000)
     expect(contextCapacityState(capacity)).toBe('warning')
-    expect(contextCapacityBlocksPrompt(capacity, 'continue')).toBe(false)
   })
 
-  it('keeps context recovery commands available when full', () => {
+  it('reports full capacity without imposing client-side prompt admission', () => {
     const full = resolveContextCapacity(167_000, 167_000)
-    expect(contextCapacityBlocksPrompt(full, 'continue')).toBe(true)
-    expect(contextCapacityBlocksPrompt(full, '/compact')).toBe(false)
-    expect(contextCapacityBlocksPrompt(full, ' /clear now')).toBe(false)
+    expect(contextCapacityState(full)).toBe('full')
   })
 })

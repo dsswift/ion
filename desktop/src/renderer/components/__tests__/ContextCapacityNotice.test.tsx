@@ -57,6 +57,7 @@ describe('ContextCapacityNotice', () => {
     })
 
     expect(host.textContent).toContain('Context is full')
+    expect(host.textContent).toContain('automatic compaction')
     expect(host.textContent).toContain('/compact')
   })
 })

@@ -68,7 +68,7 @@ export function dispatchSend(
 ): SendOutcome {
   const snap = deps.getSnapshot()
   const currentTab = snap.tabs.find((t) => t.id === snap.activeTabId)
-  const refusal = promptRefusal({ tab: currentTab, tabsReady: snap.tabsReady, text: prompt })
+  const refusal = promptRefusal({ tab: currentTab, tabsReady: snap.tabsReady })
 
   // `!currentTab` is also what promptRefusal reports as 'no-tab'; it is
   // repeated because that correlation is not expressible to the type checker,
