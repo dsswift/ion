@@ -69,11 +69,14 @@ Each entry in the conversation tree has a type that determines how `data` is int
 
 ```go
 type MessageData struct {
-    Role    string     // "user" or "assistant"
-    Content any        // string or []LlmContentBlock
-    Usage   *LlmUsage // token counts (assistant messages only)
+    Role                string     // "user" or "assistant"
+    Content             any        // string or []LlmContentBlock
+    Usage               *LlmUsage  // token counts (assistant messages only)
+    ImplementationPhase bool       // true when this user turn began plan implementation
 }
 ```
+
+`implementationPhase` is optional durable provenance for a user turn. When it is `true`, the matching run received `RunOptions.ImplementationPhase: true`. The engine uses that run option to suppress the `EnterPlanMode` tool. The persisted field lets history consumers recover this run decision after reload. It is absent for ordinary prompts and legacy rows.
 
 ### CompactionData
 

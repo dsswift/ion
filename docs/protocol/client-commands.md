@@ -667,6 +667,7 @@ Provide either `key` (load a single session) or `sessionIds` (load a chain of se
 | `toolInput` | string | Serialized tool input         |
 | `timestamp` | number | Unix timestamp (milliseconds) |
 | `internal`  | bool (optional) | `true` when the message was injected by the engine for LLM steering (e.g. plan mode reminders, turn limit warnings). Clients should filter these from user-facing display. Absent or `false` for normal user/assistant messages. |
+| `implementationPhase` | bool (optional) | `true` when the user turn began an approved plan implementation. Absent for ordinary and legacy turns. |
 
 ---
 

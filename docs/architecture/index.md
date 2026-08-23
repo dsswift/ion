@@ -6,7 +6,9 @@ sidebar_position: 1
 
 # Architecture
 
-Ion is a headless agent runtime with client applications that connect to it. The engine is the product. Desktop, iOS, and Relay are reference clients and infrastructure.
+Ion is a headless agent runtime with client applications that connect to it. The engine is the product. Desktop and iOS are reference client implementations; the relay is transport infrastructure.
+
+Naming is not free-form. Every shared concept in this document has one canonical term, and the [Ion Vocabulary](../vocabulary/index.md) is the authority for it.
 
 ## System overview
 
@@ -29,17 +31,24 @@ iOS (SwiftUI) ──[WebSocket]──→ Relay ──[WS]──→ Engine
                                    (lifecycle, events, routing)
 ```
 
-## Three-layer terminology
+## Four-domain vocabulary model
 
-Ion has three distinct layers. Every feature, bug, or design decision belongs to exactly one.
+Ion has four domains. Every feature, bug, or design decision belongs to exactly one. The canonical name for every shared concept lives in the [vocabulary registry](../vocabulary/index.md).
 
-| Layer | Location | Language | What it does |
-|-------|----------|----------|-------------|
-| **Engine** | `engine/` | Go | Hooks, events, tool execution, LLM streaming, extension host, socket protocol. Headless -- no UI concepts. |
-| **Harness** | `~/.ion/extensions/` | TypeScript (or any) | Extension code built on top of the engine via the SDK. Registers hooks, tools, commands. Manages agent state, spawns subprocesses. |
-| **Client** | `desktop/`, `ios/` | TS, Swift | Connects to engine via socket. Renders UI from engine events. No engine internals. |
+| Domain | Location | Language | What it does |
+|--------|----------|----------|-------------|
+| **engine** | `engine/` | Go | Hooks, events, tool execution, LLM streaming, extension host, socket protocol. Headless -- no UI concepts. |
+| **harness-sdk** | `~/.ion/extensions/` | TypeScript (or any) | Extension code built on the engine through the SDK. Registers hooks, tools, and commands. Decides policy. |
+| **clients** | `desktop/`, `ios/` | TS, Swift | Connect to the engine over the socket. Render UI from engine events. No engine internals. |
+| **relay** | `relay/` | Go | Transport infrastructure. Pairs two peers on a channel and forwards opaque frames. |
 
-When analyzing a feature gap or bug, always label it as engine (Go changes in `engine/internal/`), harness (extension code), or client (renderer/main process). If a harness gap is caused by a missing engine capability, note both layers.
+### What is a client, and what is not
+
+- **Desktop is ONE client** with **two presentations**: the **Overlay** (the transparent glass window) and the **Studio** (the standalone workspace window). Exactly one presentation is active at a time. They are not two clients. See [ADR-021](adr/021-studio-shell-mirror-store.md).
+- **iOS is another client implementation.** Desktop and iOS are co-equal clients of the engine.
+- **Relay is transport infrastructure, not a client.** It renders nothing, holds no session state, and never inspects a payload. Classifying it as a client is a category error.
+
+When you analyze a feature gap or a bug, label it with its domain: engine (Go changes in `engine/internal/`), harness-sdk (extension code), clients (renderer, iOS, or main process), or relay. When a harness gap is caused by a missing engine capability, note both domains.
 
 ## Core principle
 
@@ -57,6 +66,7 @@ The engine is also UI-agnostic. It emits typed data events over the socket. It h
 | Desktop (Electron) | [desktop.md](desktop.md) |
 | Relay (WebSocket) | [relay.md](relay.md) |
 | iOS (SwiftUI) | [ios.md](ios.md) |
+| Canonical terms | [Ion Vocabulary](../vocabulary/index.md) |
 
 ## Architecture decisions
 

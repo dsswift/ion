@@ -59,6 +59,11 @@ Tool-role `SessionMessage` entries and `LlmContentBlock` tool-result blocks carr
 
 On `SessionMessage` the JSON key is `backgroundTaskId` (camelCase, matching the engine wire convention). On `LlmContentBlock` the JSON key is `background_task_id` (snake_case, matching the Anthropic API content-block convention).
 
+
+## Plan implementation provenance
+
+A user `MessageData` entry may carry `implementationPhase: true`. This additive field records that the matching run received `RunOptions.ImplementationPhase: true`. The engine uses the run option to omit the `EnterPlanMode` tool. The stored field lets history clients retain that workflow boundary after reload. It is absent for ordinary prompts and legacy entries.
+
 ## Key source files
 
 | What | Where |

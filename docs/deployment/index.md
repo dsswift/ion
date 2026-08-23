@@ -6,7 +6,7 @@ sidebar_position: 1
 
 # Deployment
 
-Ion is engine-first. The engine is a single static binary with zero runtime dependencies. Everything else -- Desktop, Relay, iOS -- connects to it as a client.
+Ion is engine-first. The engine is a single static binary with zero runtime dependencies. Desktop and iOS connect to it as clients. Relay is transport infrastructure that connects to the engine.
 
 ## Components
 
