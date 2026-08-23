@@ -29,9 +29,9 @@ describe('mirror-parity classification', async () => {
 
   it('only forwards actions that exist on the current store', () => {
     const actions = new Set(storeActions)
-    const forwardedStoreActions = Object.keys(FORWARDED_ACTIONS).filter((action) => actions.has(action))
-    expect(forwardedStoreActions).not.toContain('continueConflictOperation')
-    expect(forwardedStoreActions).not.toContain('abortConflictOperation')
+    const staleForwardedActions = Object.keys(FORWARDED_ACTIONS)
+      .filter((action) => !actions.has(action))
+    expect(staleForwardedActions).toEqual([])
   })
 
   it('every mirror-local entry carries a justification', () => {
