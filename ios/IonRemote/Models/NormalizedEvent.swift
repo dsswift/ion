@@ -499,6 +499,7 @@ enum RemoteEvent: Sendable {
     /// WorktreePipelinePanel so iOS renders the identical banner/gate.
     case worktreePipeline(pipeline: RemoteWorktreePipeline)
     case gitChangesResponse(directory: String, response: GitChangesResponse)
+    case gitBranchesResponse(directory: String, response: GitBranchesResponse)
     case gitGraphResponse(directory: String, response: GitGraphResponse)
     case gitDiffResponse(response: GitDiffResponse)
     case gitCommitResult(GitMutationResult)
@@ -683,6 +684,7 @@ enum RemoteEvent: Sendable {
         case worktreeOpResult = "desktop_worktree_op_result"
         case worktreePipeline = "desktop_worktree_pipeline"
         case gitChangesResponse = "desktop_git_changes_response"
+        case gitBranchesResponse = "desktop_git_branches_response"
         case gitGraphResponse = "desktop_git_graph_response"
         case gitDiffResponse = "desktop_git_diff_response"
         case gitCommitResult = "desktop_git_commit_result"
@@ -785,6 +787,7 @@ enum RemoteEvent: Sendable {
         case tabGroupMode, tabGroups, preferredModel, engineDefaultModel, availableModels
         case directory, files, branch, isGitRepo, ahead, behind, stagedCount, unstagedCount
         case commits, totalCount, diff, fileName, graphLayout, hash, stats
+        case branches
         case entries, filePath, ok, error
         // fs_rename_result payload — the command carries `oldPath`/`newPath`
         // and the result echoes them so the iOS handler can refresh the

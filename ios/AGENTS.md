@@ -114,6 +114,17 @@ The desktop↔iOS wire operates under a **lockstep model**: every wire rename sh
 
 See root `AGENTS.md` § "Contract stability" and [docs/architecture/adr/008-wire-event-naming-and-ownership.md](../docs/architecture/adr/008-wire-event-naming-and-ownership.md).
 
+## Vocabulary — use the shared client term, qualify only when needed
+
+iOS is one client implementation, and the Desktop is the other. When a concept exists on both, both use the **same** canonical term from `docs/vocabulary/terms.json` (the generated glossary is [`docs/vocabulary/index.md`](../docs/vocabulary/index.md)). A shared concept never gets a second iOS-flavored name.
+
+- **Use the shared canonical term** in every view name, comment, doc, log message, and plan: Conversation View, Input Bar, Tab Strip, Status Drawer, New Conversation Picker, Inbox, Worktree, Integration bench. A Swift type name may carry the platform's own suffix convention (`ConversationStatusBar`, `StatusDrawerView`, `WorktreeRowView`) — that is a language idiom, not a different term.
+- **Add an iOS qualifier only when the two clients genuinely differ.** If the iOS rendering is a distinct thing with no Desktop counterpart, name it with an explicit iOS qualifier and record it in the registry with an iOS implementation. Never invent a synonym for a concept the Desktop already names.
+- **A new shared concept gets a registry entry in the same change**, with an implementation citing the real Swift symbol and file. Then run `make generate-vocabulary` and `make check-vocabulary`.
+- **Record an honest mismatch instead of hiding it.** When iOS has a named view and the Desktop places the same controls elsewhere, mark the entry `review-needed` and state the difference in its notes. Conversation Status Bar is the current example: iOS has `ConversationStatusBar`, while the Desktop places those controls in the Input Bar.
+
+Naming is prose only. It never renames a wire string, a TypeKey raw value, or a `CodingKeys` key — those follow the lockstep and contract-sync rules above.
+
 ## Contract sync (cross-language types)
 
 Shared types (`StatusFields`, `MessageEndUsage`, etc.) are validated against the Go-generated manifest (`engine/internal/types/testdata/contracts.json`) by `IonRemoteTests/ContractSyncTests.swift`.

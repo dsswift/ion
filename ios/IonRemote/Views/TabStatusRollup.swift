@@ -18,9 +18,9 @@ import SwiftUI
 // `bash-background` is reachable: the desktop projects
 // `backgroundShellCount` onto RemoteTabState, so a session holding for
 // background bash commands renders the pink dot here exactly as it does on the
-// desktop. `bash` (user-typed `!` bash) and `unread` remain unreachable on
-// iOS: the wire carries neither `bashExecuting` nor `hasUnread`, which are
-// desktop-renderer-only `TabState` fields.
+// desktop. `bash` (user-typed `!` bash) remains unreachable on iOS because the
+// wire does not carry `bashExecuting`. `unread` is desktop-derived and arrives
+// in each snapshot, so both clients can show the same completed-review state.
 //
 // iOS wire nuance vs. desktop: on the desktop, ExitPlanMode / AskUserQuestion
 // denials live on a separate `permissionDenied` field while `permissionQueue`
@@ -32,7 +32,7 @@ import SwiftUI
 /// Semantic state returned by shared cascade. Views own shape rendering;
 /// classifier owns only priority and state.
 enum TabStatusState: Equatable {
-    case error, permission, running, starting, children, bash, planReady, question, idle
+    case error, permission, running, starting, children, bash, planReady, question, unread, idle
 
     func color(_ theme: AppTheme) -> Color {
         switch self {
@@ -44,6 +44,7 @@ enum TabStatusState: Equatable {
         case .bash: theme.statusBash
         case .planReady: theme.statusDone
         case .question: theme.statusQuestion
+        case .unread: theme.statusDone
         case .idle: theme.statusIdle
         }
     }
@@ -65,7 +66,7 @@ enum TabStatusRollup {
     static let statusCascade: [(name: String, iosReachable: Bool)] = [
         ("error", true), ("permission", true), ("running", true), ("starting", true),
         ("children", true), ("bash-background", true), ("plan-ready", true),
-        ("question", true), ("bash", false), ("unread", false), ("idle", true)
+        ("question", true), ("bash", false), ("unread", true), ("idle", true)
     ]
 
     private static func priority(for name: String) -> Int {
@@ -93,6 +94,7 @@ enum TabStatusRollup {
     static let priorityBashBackground = priority(for: "bash-background")
     static let priorityPlanReady = priority(for: "plan-ready")
     static let priorityQuestion = priority(for: "question")
+    static let priorityUnread = priority(for: "unread")
     static let priorityIdle = priority(for: "idle")
 
     static func classify(_ tab: RemoteTabState) -> GroupTabStatus {
@@ -108,6 +110,7 @@ enum TabStatusRollup {
         if (tab.backgroundShellCount ?? 0) > 0 { return .init(priority: priorityBashBackground, state: .bash) }
         if planReady && (tab.status == .idle || tab.status == .completed) { return .init(priority: priorityPlanReady, state: .planReady) }
         if question && (tab.status == .idle || tab.status == .completed) { return .init(priority: priorityQuestion, state: .question) }
+        if tab.unread == true { return .init(priority: priorityUnread, state: .unread) }
         return .init(priority: priorityIdle, state: .idle)
     }
 

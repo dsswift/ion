@@ -11,11 +11,14 @@ extension DiagnosticLog {
         case .sync:
             log("CMD: sync", tag: "ipc", level: .info)
 
-        case .createTab(let dir, let pinToGroupId, let profileId, _, _):
+        case .createTab(let dir, let pinToGroupId, let profileId, _, _, let useWorktree, let sourceBranch):
             if let profileId {
                 log("CMD: createTab(engine) dir=\(dir?.suffix(30) ?? "nil") profile=\(profileId) pinToGroup=\(pinToGroupId?.prefix(8) ?? "nil")", tag: "ipc", level: .info)
             } else {
                 log("CMD: createTab dir=\(dir?.suffix(30) ?? "nil") pinToGroup=\(pinToGroupId?.prefix(8) ?? "nil")", tag: "ipc", level: .info)
+            }
+            if useWorktree == true || sourceBranch != nil {
+                log("CMD: createTab worktree source=\(sourceBranch ?? "default")", tag: "ipc", level: .info)
             }
 
         // ── Worktree + integration bench ──
@@ -126,6 +129,8 @@ extension DiagnosticLog {
         // ── Inbox actions ──
         case .tabSettle(let tabId):
             log("CMD: tabSettle tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
+        case .tabDelete(let tabId):
+            log("CMD: tabDelete tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
         case .tabUnsettle(let tabId):
             log("CMD: tabUnsettle tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
         case .tabSnooze(let tabId, let untilMs):
@@ -223,6 +228,9 @@ extension DiagnosticLog {
 
         case .gitChanges(let dir):
             log("CMD: gitChanges dir=\(dir.suffix(30))", tag: "ipc", level: .info)
+
+        case .gitBranches(let dir):
+            log("CMD: gitBranches dir=\(dir.suffix(30))", tag: "ipc", level: .info)
 
         case .gitGraph(let dir, _, _):
             log("CMD: gitGraph dir=\(dir.suffix(30))", tag: "ipc", level: .info)

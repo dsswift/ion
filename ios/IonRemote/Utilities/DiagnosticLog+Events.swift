@@ -339,6 +339,11 @@ extension DiagnosticLog {
             log("EVT: worktreePipeline repo=\(pipeline.repoPath.suffix(30)) phase=\(pipeline.phase?.rawValue ?? "dismissed") queue=\(pipeline.queue.count) resolved=\(pipeline.resolvedByAi)", tag: "ipc", level: .info)
 
         case .gitChangesResponse(let dir, _):
+            log("EVENT: gitChangesResponse dir=\(dir.suffix(30))", tag: "git", level: .debug)
+
+        case .gitBranchesResponse(let dir, let response):
+            log("EVENT: gitBranchesResponse dir=\(dir.suffix(30)) branches=\(response.branches.count)", tag: "git", level: .info)
+
             log("EVENT: gitChangesResponse dir=\(dir.suffix(30))", tag: "session", level: .info)
 
         case .gitGraphResponse(let dir, _):

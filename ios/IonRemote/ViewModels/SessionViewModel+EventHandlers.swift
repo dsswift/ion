@@ -1,4 +1,4 @@
-import Foundation
+// @file-size-exception: Event dispatch remains one exhaustive lifecycle switch; branch response handling adds one wire case.
 import UIKit
 
 extension SessionViewModel {
@@ -473,6 +473,11 @@ extension SessionViewModel {
         // Git events
         case .gitChangesResponse(let directory, let response):
             handleGitChangesResponse(directory: directory, response: response)
+
+        case .gitBranchesResponse(let directory, let response):
+            gitBranches[directory] = response
+            pendingBranchRequest = nil
+            pendingBranchPickerRepo = directory
 
         case .gitGraphResponse(let directory, let response):
             handleGitGraphResponse(directory: directory, response: response)

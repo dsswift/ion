@@ -228,6 +228,9 @@ final class SessionViewModel {
 
     // Git state (per working directory)
     var gitChanges: [String: GitChangesResponse] = [:]     // directory -> changes
+    var gitBranches: [String: GitBranchesResponse] = [:]
+    var pendingBranchRequest: String?
+    var pendingBranchPickerRepo: String?
     var gitGraph: [String: GitGraphResponse] = [:]          // directory -> graph
     var gitDiffResult: GitDiffResponse? = nil
     var gitDiffLoading = false

@@ -49,6 +49,20 @@ final class MarkerReloadDecodeGroupingTests: XCTestCase {
         try decoder.decode(Message.self, from: Data(json.utf8))
     }
 
+    func testImplementationPhaseDecodesOnBothHistoryPaths() throws {
+        let engine = try decodeEngine(
+            #"{"role":"user","content":"Implement the plan.","implementationPhase":true}"#
+        )
+        let standard = try decodeStandard(
+            #"{"id":"m1","role":"user","content":"Implement the plan.","implementationPhase":true}"#
+        )
+        let legacy = try decodeStandard(#"{"id":"m2","role":"user","content":"done"}"#)
+
+        XCTAssertEqual(engine.implementationPhase, true)
+        XCTAssertEqual(standard.implementationPhase, true)
+        XCTAssertNil(legacy.implementationPhase)
+    }
+
     // MARK: - Compaction
 
     func testCompactionRowDecodesAndGroups() throws {

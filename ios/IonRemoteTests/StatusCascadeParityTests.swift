@@ -65,7 +65,7 @@ final class StatusCascadeParityTests: XCTestCase {
 
         XCTAssertEqual(declaredReachable, fixtureReachable)
         XCTAssertFalse(fixture.statuses.first { $0.name == "bash" }!.iosReachable)
-        XCTAssertFalse(fixture.statuses.first { $0.name == "unread" }!.iosReachable)
+        XCTAssertTrue(fixture.statuses.first { $0.name == "unread" }!.iosReachable)
     }
 
     func testFixtureGivesEveryStatusSemantics() throws {

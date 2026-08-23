@@ -6,7 +6,8 @@
 	objectVersion = 56;
 	objects = {
 
-/* Begin PBXBuildFile section */
+		GITBRANCHTEST0000002 /* GitBranchesWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = GITBRANCHTEST0000001 /* GitBranchesWireTests.swift */; };
+		GITBRANCHRESP00000002 /* GitBranchesResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = GITBRANCHRESP00000001 /* GitBranchesResponse.swift */; };
 		A1B2C3D4E5F60001000001AA /* IonRemoteApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000002AA /* IonRemoteApp.swift */; };
 		A1B2C3D4E5F60001000003AA /* NormalizedEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000004AA /* NormalizedEvent.swift */; };
 		A1B2C3D4E5F60001000005AA /* RemoteTabState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000006AA /* RemoteTabState.swift */; };
@@ -64,6 +65,8 @@
 		C0DE00000000000000000003 /* InboxConversationPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000004 /* InboxConversationPreview.swift */; };
 		C0DE00000000000000000005 /* InboxWorktreeGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000006 /* InboxWorktreeGroup.swift */; };
 		C0DE00000000000000000007 /* InboxBenchGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000008 /* InboxBenchGroup.swift */; };
+		B3NCHTERM000000000000002 /* InboxBenchTerminalRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3NCHTERM000000000000001 /* InboxBenchTerminalRow.swift */; };
+		INBOXSNOOZE000000000002 /* InboxSnoozePresets.swift in Sources */ = {isa = PBXBuildFile; fileRef = INBOXSNOOZE000000000001 /* InboxSnoozePresets.swift */; };
 		WTPROJIDENT000000000001 /* WorktreeProjectIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = WTPROJIDENT000000000002 /* WorktreeProjectIdentity.swift */; };
 		WTPROJIDENT000000000003 /* WorktreeProjectIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WTPROJIDENT000000000004 /* WorktreeProjectIdentityTests.swift */; };
 		A1B2C3D4E5F6000100001BAA /* PermissionCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100001CAA /* PermissionCardView.swift */; };
@@ -514,6 +517,8 @@
 		SSVMDT000000000000001 /* SessionViewModel+DispatchTranscript.swift in Sources */ = {isa = PBXBuildFile; fileRef = SSVMDT000000000000002 /* SessionViewModel+DispatchTranscript.swift */; };
 		RTSDECODE000000000001 /* RemoteTabStateDecodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTSDECODE000000000002 /* RemoteTabStateDecodeTests.swift */; };
 		C0DE00000000000000000009 /* InboxNavigatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE0000000000000000000A /* InboxNavigatorTests.swift */; };
+		B3NCHTERMTST000000000002 /* InboxBenchTerminalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3NCHTERMTST000000000001 /* InboxBenchTerminalTests.swift */; };
+		IBORDER0000000000000001 /* InboxNavigatorBenchOrderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = IBORDER0000000000000002 /* InboxNavigatorBenchOrderTests.swift */; };
 		ICWT0000000000000001 /* InboxConvertToWorktreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ICWT0000000000000002 /* InboxConvertToWorktreeTests.swift */; };
 		WLNTL0000000000000001 /* WorktreeLandAndRetireNothingToLandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WLNTL0000000000000002 /* WorktreeLandAndRetireNothingToLandTests.swift */; };
 		C0DE0000000000000000000B /* InboxSnapshotWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE0000000000000000000C /* InboxSnapshotWireTests.swift */; };
@@ -541,7 +546,8 @@
 		};
 /* End PBXContainerItemProxy section */
 
-/* Begin PBXFileReference section */
+		GITBRANCHTEST0000001 /* GitBranchesWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitBranchesWireTests.swift; sourceTree = "<group>"; };
+		GITBRANCHRESP00000001 /* GitBranchesResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitBranchesResponse.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000002AA /* IonRemoteApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IonRemoteApp.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000004AA /* NormalizedEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEvent.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000006AA /* RemoteTabState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTabState.swift; sourceTree = "<group>"; };
@@ -599,6 +605,8 @@
 		C0DE0000000000000000000E /* InboxSettledHistorySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxSettledHistorySheet.swift; sourceTree = "<group>"; };
 		C0DE00000000000000000006 /* InboxWorktreeGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxWorktreeGroup.swift; sourceTree = "<group>"; };
 		C0DE00000000000000000008 /* InboxBenchGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxBenchGroup.swift; sourceTree = "<group>"; };
+		B3NCHTERM000000000000001 /* InboxBenchTerminalRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxBenchTerminalRow.swift; sourceTree = "<group>"; };
+		INBOXSNOOZE000000000001 /* InboxSnoozePresets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxSnoozePresets.swift; sourceTree = "<group>"; };
 		WTPROJIDENT000000000002 /* WorktreeProjectIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeProjectIdentity.swift; sourceTree = "<group>"; };
 		WTPROJIDENT000000000004 /* WorktreeProjectIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeProjectIdentityTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100001CAA /* PermissionCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionCardView.swift; sourceTree = "<group>"; };
@@ -1052,6 +1060,8 @@
 		SSVMDT000000000000002 /* SessionViewModel+DispatchTranscript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+DispatchTranscript.swift"; sourceTree = "<group>"; };
 		RTSDECODE000000000002 /* RemoteTabStateDecodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTabStateDecodeTests.swift; sourceTree = "<group>"; };
 		C0DE0000000000000000000A /* InboxNavigatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxNavigatorTests.swift; sourceTree = "<group>"; };
+		B3NCHTERMTST000000000001 /* InboxBenchTerminalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxBenchTerminalTests.swift; sourceTree = "<group>"; };
+		IBORDER0000000000000002 /* InboxNavigatorBenchOrderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxNavigatorBenchOrderTests.swift; sourceTree = "<group>"; };
 		ICWT0000000000000002 /* InboxConvertToWorktreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxConvertToWorktreeTests.swift; sourceTree = "<group>"; };
 		WLNTL0000000000000002 /* WorktreeLandAndRetireNothingToLandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeLandAndRetireNothingToLandTests.swift; sourceTree = "<group>"; };
 		C0DE0000000000000000000C /* InboxSnapshotWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxSnapshotWireTests.swift; sourceTree = "<group>"; };
@@ -1174,6 +1184,7 @@
 				A1B2C3D4E5F60001000093AA /* MessageAttachment.swift */,
 				A1B2C3D4E5F600010000F1AA /* EngineProfile.swift */,
 				A1B2C3D4E5F60001000300AA /* GitTypes.swift */,
+				GITBRANCHRESP00000001 /* GitBranchesResponse.swift */,
 				A1B2C3D4E5F60001000400AA /* FileTypes.swift */,
 				A1B2C3D4E5F60001000500AA /* ConnectionQuality.swift */,
 				CONNHLTH00000000000001 /* ConnectionHealth.swift */,
@@ -1245,6 +1256,8 @@
 				C0DE0000000000000000000E /* InboxSettledHistorySheet.swift */,
 				C0DE00000000000000000006 /* InboxWorktreeGroup.swift */,
 				C0DE00000000000000000008 /* InboxBenchGroup.swift */,
+				B3NCHTERM000000000000001 /* InboxBenchTerminalRow.swift */,
+				INBOXSNOOZE000000000001 /* InboxSnoozePresets.swift */,
 				A1B2C3D4E5F60001009B00AA /* TabListNewTabSheet.swift */,
 				A1B2C3D4E5F60001009C00AA /* TabListGroupHeader.swift */,
 				TABSTATUSROLLUP0000002 /* TabStatusRollup.swift */,
@@ -1440,6 +1453,7 @@
 				THEMESTORETST000000001 /* SyncedThemeStoreTests.swift */,
 				THEMEWIRETST0000000001 /* ThemeSyncWireTests.swift */,
 				GITDIFFWIRE00000000001 /* GitDiffWireTests.swift */,
+				GITBRANCHTEST0000001 /* GitBranchesWireTests.swift */,
 				IONGEOGATETST0000000001 /* IonGeometrySourceGatesTests.swift */,
 				SYNCTHMINHTST0000000001 /* SyncedThemeInheritanceTests.swift */,
 				THEMEENFTST00000000001 /* ThemeEnforcementTests.swift */,
@@ -1525,6 +1539,8 @@
 				E11C17CA0001F00013AB0001 /* ElicitationCodecTests.swift */,
 				RTSDECODE000000000002 /* RemoteTabStateDecodeTests.swift */,
 				C0DE0000000000000000000A /* InboxNavigatorTests.swift */,
+				B3NCHTERMTST000000000001 /* InboxBenchTerminalTests.swift */,
+				IBORDER0000000000000002 /* InboxNavigatorBenchOrderTests.swift */,
 				ICWT0000000000000002 /* InboxConvertToWorktreeTests.swift */,
 				WLNTL0000000000000002 /* WorktreeLandAndRetireNothingToLandTests.swift */,
 				C0DE0000000000000000000C /* InboxSnapshotWireTests.swift */,
@@ -1918,6 +1934,8 @@
 				C0DE0000000000000000000D /* InboxSettledHistorySheet.swift in Sources */,
 				C0DE00000000000000000005 /* InboxWorktreeGroup.swift in Sources */,
 				C0DE00000000000000000007 /* InboxBenchGroup.swift in Sources */,
+				B3NCHTERM000000000000002 /* InboxBenchTerminalRow.swift in Sources */,
+				INBOXSNOOZE000000000002 /* InboxSnoozePresets.swift in Sources */,
 				WTPROJIDENT000000000001 /* WorktreeProjectIdentity.swift in Sources */,
 				A1B2C3D4E5F60001009B01AA /* TabListNewTabSheet.swift in Sources */,
 				A1B2C3D4E5F60001009C01AA /* TabListGroupHeader.swift in Sources */,
@@ -2034,6 +2052,7 @@
 				A1B2C3D4E5F6000100049A02 /* NormalizedEvent+Worktree.swift in Sources */,
 				A1B2C3D4E5F60001000303AA /* NormalizedEvent+Git.swift in Sources */,
 				A1B2C3D4E5F60001000301AA /* GitTypes.swift in Sources */,
+				GITBRANCHRESP00000002 /* GitBranchesResponse.swift in Sources */,
 				A1B2C3D4E5F6000100049A06 /* WorktreeRowView.swift in Sources */,
 				A1B2C3D4E5F6000100049C01 /* WorktreeCloseWarning.swift in Sources */,
 				A1B2C3D4E5F60001000305AA /* GitPaneView.swift in Sources */,
@@ -2194,6 +2213,7 @@
 				THEMESTORETST000000002 /* SyncedThemeStoreTests.swift in Sources */,
 				THEMEWIRETST0000000002 /* ThemeSyncWireTests.swift in Sources */,
 				GITDIFFWIRE00000000002 /* GitDiffWireTests.swift in Sources */,
+				GITBRANCHTEST0000002 /* GitBranchesWireTests.swift in Sources */,
 				IONGEOGATETST0000000002 /* IonGeometrySourceGatesTests.swift in Sources */,
 				SYNCTHMINHTST0000000002 /* SyncedThemeInheritanceTests.swift in Sources */,
 				THEMEENFTST00000000002 /* ThemeEnforcementTests.swift in Sources */,
@@ -2294,6 +2314,8 @@
 				E11C17CA0001F00012AB0001 /* ElicitationCodecTests.swift in Sources */,
 				RTSDECODE000000000001 /* RemoteTabStateDecodeTests.swift in Sources */,
 				C0DE00000000000000000009 /* InboxNavigatorTests.swift in Sources */,
+				B3NCHTERMTST000000000002 /* InboxBenchTerminalTests.swift in Sources */,
+				IBORDER0000000000000001 /* InboxNavigatorBenchOrderTests.swift in Sources */,
 				ICWT0000000000000001 /* InboxConvertToWorktreeTests.swift in Sources */,
 				WLNTL0000000000000001 /* WorktreeLandAndRetireNothingToLandTests.swift in Sources */,
 				C0DE0000000000000000000B /* InboxSnapshotWireTests.swift in Sources */,

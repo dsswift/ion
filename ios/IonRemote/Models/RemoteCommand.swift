@@ -29,7 +29,8 @@ enum RemoteCommand: Codable, Sendable {
   /// duplicate. Absent (nil) for any non-tracked caller.
   case createTab(
     workingDirectory: String?, pinToGroupId: String? = nil, profileId: String? = nil,
-    extensions: [String]? = nil, clientCmdId: String? = nil)
+    extensions: [String]? = nil, clientCmdId: String? = nil,
+    useWorktree: Bool? = nil, sourceBranch: String? = nil)
   case createTerminalTab(workingDirectory: String?, clientCmdId: String? = nil)
   case closeTab(tabId: String)
   case resetTabSession(tabId: String)
@@ -86,6 +87,8 @@ enum RemoteCommand: Codable, Sendable {
   /// into the owner renderer's forwarded store action; the next snapshot
   /// reflects the change on every client. Lockstep desktop↔iOS wire.
   case tabSettle(tabId: String)
+  /// Permanently delete a conversation and its stored transcript on the desktop.
+  case tabDelete(tabId: String)
   case tabUnsettle(tabId: String)
   case tabSnooze(tabId: String, untilMs: Double)
   case tabUnsnooze(tabId: String)
@@ -160,6 +163,7 @@ enum RemoteCommand: Codable, Sendable {
   case setPreferredModel(model: String)
   case setEngineDefaultModel(model: String)
   case gitChanges(directory: String)
+  case gitBranches(directory: String)
   case gitGraph(directory: String, skip: Int? = nil, limit: Int? = nil)
   case gitDiff(directory: String, path: String, staged: Bool)
   case gitStage(directory: String, paths: [String])
@@ -356,6 +360,7 @@ enum RemoteCommand: Codable, Sendable {
     case setPermissionMode = "desktop_set_permission_mode"
     case setThinkingEffort = "desktop_set_thinking_effort"
     case tabSettle = "desktop_tab_settle"
+    case tabDelete = "desktop_tab_delete"
     case tabUnsettle = "desktop_tab_unsettle"
     case tabSnooze = "desktop_tab_snooze"
     case tabUnsnooze = "desktop_tab_unsnooze"
@@ -396,6 +401,7 @@ enum RemoteCommand: Codable, Sendable {
     case setPreferredModel = "desktop_set_preferred_model"
     case setEngineDefaultModel = "desktop_set_engine_default_model"
     case gitChanges = "desktop_git_changes"
+    case gitBranches = "desktop_git_branches"
     case gitGraph = "desktop_git_graph"
     case gitDiff = "desktop_git_diff"
     case gitStage = "desktop_git_stage"
@@ -491,6 +497,7 @@ enum RemoteCommand: Codable, Sendable {
     case systemPrompt, stage, toIndex, newConversation, enabled
     case logs, pairingId, nextSeq
     case sourceTabId, targetTabId
+    case useWorktree
     case assignments, orderKey
     case customName, customIcon, updatedAt
     // setDesktopSetting payload. `key` is unique to this command;

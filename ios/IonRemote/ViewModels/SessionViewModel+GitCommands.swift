@@ -8,6 +8,12 @@ import Foundation
 
 extension SessionViewModel {
 
+    func requestGitBranches(directory: String) {
+        pendingBranchRequest = directory
+        DiagnosticLog.log("requesting git branches", tag: "git", fields: ["directory": directory])
+        send(.gitBranches(directory: directory), intent: .userInitiated)
+    }
+
     func requestGitChanges(directory: String) {
         send(.gitChanges(directory: directory), intent: .automaticEssential)
     }

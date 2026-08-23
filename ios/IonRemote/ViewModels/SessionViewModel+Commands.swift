@@ -215,7 +215,7 @@ extension SessionViewModel {
         conversationLoadRetryCount.removeValue(forKey: tabId)
     }
 
-    func createTab(workingDirectory: String? = nil, pinToGroupId: String? = nil, profileId: String? = nil) {
+    func createTab(workingDirectory: String? = nil, pinToGroupId: String? = nil, profileId: String? = nil, useWorktree: Bool? = nil, sourceBranch: String? = nil) {
         let dir = workingDirectory ?? defaultBaseDirectory
         // Route through the confirm-or-resend tracker rather than a fire-once
         // `send(_:intent: .userInitiated)`: a create dropped into a wedged
@@ -235,7 +235,7 @@ extension SessionViewModel {
         // unified post-#256 wire path — both plain and engine tabs go through
         // the same `desktop_create_tab` command shape.
         sendTrackedCreate(
-            .createTab(workingDirectory: dir, pinToGroupId: pinToGroupId, profileId: profileId, clientCmdId: clientCmdId),
+            .createTab(workingDirectory: dir, pinToGroupId: pinToGroupId, profileId: profileId, clientCmdId: clientCmdId, useWorktree: useWorktree, sourceBranch: sourceBranch),
             clientCmdId: clientCmdId
         )
     }

@@ -93,8 +93,8 @@ struct EngineInstanceBar: View {
             // 2. isRunning → pulsing orange
             // 3. isStarting → still idle gray
             // 4. runningAgentCount > 0 → pulsing yellow
-            // 5. backgroundShellCount > 0 → pulsing pink (background bash
-            //    commands the session is holding for; ranked under agents,
+            // 5. backgroundShellCount > 0 → pulsing pink (live background bash
+            //    processes, notifying or detached; ranked under agents,
             //    matching the tab-dot cascade in TabStatusRollup)
             // 6. None → no dot shown
             switch Self.statusIndicator(for: instance) {

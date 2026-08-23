@@ -13,9 +13,11 @@ import Foundation
 ///   - Worktree groups include every non-landed inventory worktree in the Active
 ///     tree, even with zero conversations. The worktree row owns its empty-state
 ///     action, so the same workspace remains discoverable on both clients.
-///   - Projects sort alphabetically by name (desktop inbox-navigator.ts:197).
-///   - Terminal-only tabs never earn a group; the bench terminal is rendered
-///     from `bench.benchTerminalTabId`, not from the tab list.
+///   - Worktrees in the active integration bench stay together first, in the
+///     bench's merge order. Other worktrees keep their Inbox encounter order.
+///   - Projects sort alphabetically by name (desktop inbox-navigator.ts).
+///   - Terminal-only tabs never earn a group. Only a terminal whose ID matches
+///     a projected `benchTerminalTabId` becomes a dedicated bench occupant.
 ///   - A bench is a permanent structural bucket: it is visible whenever an
 ///     IntegrationWorkspace exists, even with zero open conversations.
 struct InboxNavigator {
@@ -25,15 +27,19 @@ struct InboxNavigator {
         let state: RemoteWorktreeState?
         let directTabs: [RemoteTabState]
         let benchTabs: [RemoteTabState]
+        /// Dedicated terminals whose IDs match a projected benchTerminalTabId.
+        let benchTerminals: [RemoteTabState]
         let sourceTabs: [RemoteTabState]
         let worktreeTabs: [String: [RemoteTabState]]
-        /// Worktree paths in rendered order. Conversation-owned paths preserve
-        /// encounter order; inventory-only non-landed paths follow so every
-        /// active worktree remains discoverable even when it has no tab.
+        /// Worktree paths in rendered order. Bench members come first in merge
+        /// order. Other conversation-owned paths keep encounter order, followed
+        /// by inventory-only non-landed paths.
         let worktreeOrder: [String]
 
+        /// Every rendered occupant, including recognized bench terminals.
+        /// Conversation counts intentionally exclude benchTerminals.
         var allTabs: [RemoteTabState] {
-            InboxNavigator.sorted(directTabs + benchTabs + sourceTabs + worktreeTabs.values.flatMap { $0 })
+            InboxNavigator.sorted(directTabs + benchTabs + benchTerminals + sourceTabs + worktreeTabs.values.flatMap { $0 })
         }
         /// The project header's conversation count (desktop: flatTabs + group tabs).
         var conversationCount: Int {
@@ -64,11 +70,23 @@ struct InboxNavigator {
         buckets: BucketPolicy = .structural
     ) -> [Project] {
         var tabsByProject: [String: [RemoteTabState]] = [:]
+        var recognizedTerminalOwners: [String: String] = [:]
+        for state in states.values {
+            for bench in state.benches {
+                guard let terminalTabId = bench.benchTerminalTabId else { continue }
+                recognizedTerminalOwners[terminalTabId] = WorktreeProjectIdentity.projectPath(
+                    forDirectory: bench.benchPath,
+                    states: states
+                ) ?? state.repoPath
+            }
+        }
         for tab in tabs {
-            // Terminal-only tabs never earn a project entry (desktop
-            // inbox-navigator.ts:100). The bench terminal is reachable through
-            // bench.benchTerminalTabId instead.
-            if tab.isTerminalOnly == true { continue }
+            if tab.isTerminalOnly == true {
+                if let repoPath = recognizedTerminalOwners[tab.id] {
+                    tabsByProject[repoPath, default: []].append(tab)
+                }
+                continue
+            }
             // WorktreeProjectIdentity prefers the desktop-stamped identity,
             // then uses authoritative containment. Its owner table tolerates a
             // legacy snapshot that repeats a worktree under checkout aliases.
@@ -108,6 +126,7 @@ struct InboxNavigator {
             let state = states[repoPath]
             var directTabs: [RemoteTabState] = []
             var benchTabs: [RemoteTabState] = []
+            var benchTerminals: [RemoteTabState] = []
             var sourceTabs: [RemoteTabState] = []
             var worktreeTabs: [String: [RemoteTabState]] = [:]
             var worktreeOrder: [String] = []
@@ -129,6 +148,12 @@ struct InboxNavigator {
             }
 
             for tab in projectTabs {
+                if tab.isTerminalOnly == true {
+                    if state?.benches.contains(where: { $0.benchTerminalTabId == tab.id }) == true {
+                        benchTerminals.append(tab)
+                    }
+                    continue
+                }
                 // Bench containment outranks the stamped worktree identity,
                 // matching the desktop's assignment priority: a conversation
                 // whose cwd is inside a bench belongs to the bench.
@@ -151,12 +176,31 @@ struct InboxNavigator {
                     worktreeOrder.append(worktree.worktreePath)
                 }
             }
+            // Bench membership is the primary worktree order. Members stay
+            // together first in the exact merge order supplied by the desktop.
+            // Swift's sort is not stable, so the original position is the
+            // explicit final key for worktrees outside the active bench.
+            let originalOrder = Dictionary(uniqueKeysWithValues: worktreeOrder.enumerated().map { ($0.element, $0.offset) })
+            let memberOrder = Dictionary(uniqueKeysWithValues: (state?.worktrees ?? []).compactMap { worktree in
+                worktree.membership.map { (worktree.worktreePath, $0.order) }
+            })
+            worktreeOrder.sort { left, right in
+                let leftOrder = memberOrder[left]
+                let rightOrder = memberOrder[right]
+                switch (leftOrder, rightOrder) {
+                case let (.some(left), .some(right)): return left < right
+                case (.some, .none): return true
+                case (.none, .some): return false
+                case (.none, .none): return originalOrder[left, default: 0] < originalOrder[right, default: 0]
+                }
+            }
             return Project(
                 id: repoPath,
                 name: label(for: repoPath),
                 state: state,
                 directTabs: sorted(directTabs),
                 benchTabs: sorted(benchTabs),
+                benchTerminals: sorted(benchTerminals),
                 sourceTabs: sorted(sourceTabs),
                 worktreeTabs: worktreeTabs.mapValues(sorted),
                 worktreeOrder: worktreeOrder
@@ -168,11 +212,10 @@ struct InboxNavigator {
         "worktree:\(worktreePath)"
     }
 
-    /// The worktree records for a project's worktree band. Conversation-owned
-    /// paths retain their encounter order; inventory-only active worktrees then
-    /// follow. Every rendered path resolves to an inventory record or to a
-    /// stamped-tab fallback, so empty worktrees and fresh unreported worktrees
-    /// both keep a usable header.
+    /// The worktree records for a project's worktree band. Bench members come
+    /// first in merge order. Other conversation-owned paths retain encounter
+    /// order, followed by inventory-only active worktrees. Every rendered path
+    /// resolves to an inventory record or to a stamped-tab fallback.
     static func orderedWorktrees(for project: Project) -> [RemoteWorktree] {
         project.worktreeOrder.map { path in
             if let entry = project.state?.worktrees.first(where: { $0.worktreePath == path }) {
@@ -283,11 +326,41 @@ struct InboxNavigator {
         return (nextGroupTab(tabs, currentTabId: currentTabId), didExpand)
     }
 
+    /// Rows shown while a group is collapsed. Pins stay first in their explicit
+    /// order. The selected tab remains visible even when it is not pinned or
+    /// working. Remaining active work is ordered like the expanded navigator.
     static func collapsedRows(_ tabs: [RemoteTabState], activeTabId: String?) -> [RemoteTabState] {
-        tabs.filter { $0.pinnedAt != nil }.sorted {
+        let pinned = tabs.filter { $0.pinnedAt != nil }.sorted {
             let left = $0.pinOrderKey ?? "~\($0.id)"
             let right = $1.pinOrderKey ?? "~\($1.id)"
             return left == right ? $0.id < $1.id : left < right
+        }
+        var rowIDs = Set<String>()
+        var rows: [RemoteTabState] = []
+
+        func appendIfAbsent(_ tab: RemoteTabState) {
+            if rowIDs.insert(tab.id).inserted {
+                rows.append(tab)
+            }
+        }
+
+        pinned.forEach(appendIfAbsent)
+        if let activeTabId, let selected = tabs.first(where: { $0.id == activeTabId }) {
+            appendIfAbsent(selected)
+        }
+        sorted(tabs).filter(isWorking).forEach(appendIfAbsent)
+
+        return rows
+    }
+
+    /// Collapsed groups preserve rows that indicate live work. The semantic
+    /// classifier is the shared source of truth for status-state meaning.
+    private static func isWorking(_ tab: RemoteTabState) -> Bool {
+        switch TabStatusRollup.classify(tab).state {
+        case .running, .starting, .children, .bash:
+            true
+        case .error, .permission, .planReady, .question, .unread, .idle:
+            false
         }
     }
 

@@ -28,7 +28,9 @@ extension RemoteCommand {
             let profileId = try container.decodeIfPresent(String.self, forKey: .profileId)
             let extensions = try container.decodeIfPresent([String].self, forKey: .extensions)
             let clientCmdId = try container.decodeIfPresent(String.self, forKey: .clientCmdId)
-            self = .createTab(workingDirectory: workingDirectory, pinToGroupId: pinToGroupId, profileId: profileId, extensions: extensions, clientCmdId: clientCmdId)
+            let useWorktree = try container.decodeIfPresent(Bool.self, forKey: .useWorktree)
+            let sourceBranch = try container.decodeIfPresent(String.self, forKey: .sourceBranch)
+            self = .createTab(workingDirectory: workingDirectory, pinToGroupId: pinToGroupId, profileId: profileId, extensions: extensions, clientCmdId: clientCmdId, useWorktree: useWorktree, sourceBranch: sourceBranch)
 
         case .closeTab:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -107,6 +109,8 @@ extension RemoteCommand {
         // the TypeKey switch exhaustive and support round-trip tests.
         case .tabSettle:
             self = .tabSettle(tabId: try container.decode(String.self, forKey: .tabId))
+        case .tabDelete:
+            self = .tabDelete(tabId: try container.decode(String.self, forKey: .tabId))
         case .tabUnsettle:
             self = .tabUnsettle(tabId: try container.decode(String.self, forKey: .tabId))
         case .tabSnooze:
@@ -264,6 +268,10 @@ extension RemoteCommand {
         case .gitChanges:
             let directory = try container.decode(String.self, forKey: .directory)
             self = .gitChanges(directory: directory)
+
+        case .gitBranches:
+            let directory = try container.decode(String.self, forKey: .directory)
+            self = .gitBranches(directory: directory)
 
         case .gitGraph:
             let directory = try container.decode(String.self, forKey: .directory)
