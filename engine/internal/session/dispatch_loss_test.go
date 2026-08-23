@@ -324,7 +324,7 @@ func TestDispatchLoss_RecallIntentCrossFile(t *testing.T) {
 	m.sessions[childSession.key] = childSession
 	parent.dispatchRegistry.RegisterWithID("parent-dispatch", "parent", func() {}, nil, parent.key, "", 1)
 	parent.dispatchRegistry.RegisterWithID("child-dispatch", "child", func() {}, nil, childSession.key, "parent-dispatch", 2)
-	parent.dispatchRegistry.SetRecallObserver(m.persistRecallIntents)
+	parent.dispatchRegistry.SetDispatchLossRecallObserver(m.persistRecallIntents)
 	if !parent.dispatchRegistry.RecallByID("parent-dispatch", "test recall") {
 		t.Fatal("Recall = false, want true")
 	}

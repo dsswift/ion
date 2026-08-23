@@ -76,9 +76,11 @@ type DispatchWaitingOn struct {
 // Two primary consumers:
 //
 //   - Recall: when the parent session needs to cancel a running background
-//     agent, RecallByID targets a specific dispatch instance, RecallByName
-//     cancels all dispatches matching a name, and RecallAll cancels everything
-//     (session teardown).
+//     agent, RecallByID and RecallOwnedByID target one specific dispatch
+//     instance by its collision-safe ID, and RecallAll cancels everything
+//     (session teardown). There is no name-based recall — agent names are
+//     display metadata, not dispatch identities, and cannot safely select one
+//     instance among concurrent same-name dispatches.
 //
 //   - Background completion callbacks: when a background agent finishes, the
 //     callback uses Deregister to clean up the entry.
@@ -243,13 +245,6 @@ func (r *DispatchRegistry) SetDispatchLossRecallObserver(observer func([]Recalle
 }
 
 // NewDispatchRegistry returns an empty, ready-to-use registry.
-// SetRecallObserver receives every target and descendant before cancellation.
-// It lets the session manager persist recall intent across conversation files.
-func (r *DispatchRegistry) SetRecallObserver(observer func([]RecalledDispatch)) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.recallObserver = observer
-}
 
 func NewDispatchRegistry() *DispatchRegistry {
 	utils.Debug("DispatchRegistry", "created new dispatch registry")
@@ -695,6 +690,40 @@ func waitingOnSnapshot(d *activeDispatch) *DispatchWaitingOn {
 	return waiting
 }
 
+// snapshotEntryLocked builds one DispatchStateEntry from live dispatch state.
+// Caller must hold r.mu. Shared by Snapshot (root, unfiltered) and
+// OwnedSnapshot (ancestry-filtered) so the two views cannot drift apart when a
+// field is added to one and not the other.
+func snapshotEntryLocked(d *activeDispatch, now time.Time) DispatchStateEntry {
+	status := "running"
+	var pending []string
+	if d.Suspended {
+		status = "suspended"
+		for cid := range d.PendingChildren {
+			pending = append(pending, cid)
+		}
+	}
+	var lastActivityMs int64
+	if !d.LastActivityAt.IsZero() {
+		lastActivityMs = now.Sub(d.LastActivityAt).Milliseconds()
+	}
+	return DispatchStateEntry{
+		DispatchID:          d.ID,
+		Name:                d.Name,
+		Status:              status,
+		ParentDispatchID:    d.ParentID,
+		Depth:               d.Depth,
+		StartedAt:           d.StartedAt,
+		ElapsedMs:           now.Sub(d.StartedAt).Milliseconds(),
+		ToolCount:           d.ToolCount,
+		LastWork:            d.LastWork,
+		LastActivityMs:      lastActivityMs,
+		ChildConversationID: d.ChildConvID,
+		PendingChildren:     pending,
+		WaitingOn:           waitingOnSnapshot(d),
+	}
+}
+
 // Snapshot returns a point-in-time copy of every currently in-flight dispatch
 // as a slice of DispatchStateEntry values. Status is "running" for active
 // entries and "suspended" for parked ones (see DispatchStateEntry.Status).
@@ -707,33 +736,7 @@ func (r *DispatchRegistry) Snapshot() []DispatchStateEntry {
 
 	entries := make([]DispatchStateEntry, 0, len(r.dispatches))
 	for _, d := range r.dispatches {
-		status := "running"
-		var pending []string
-		if d.Suspended {
-			status = "suspended"
-			for cid := range d.PendingChildren {
-				pending = append(pending, cid)
-			}
-		}
-		var lastActivityMs int64
-		if !d.LastActivityAt.IsZero() {
-			lastActivityMs = now.Sub(d.LastActivityAt).Milliseconds()
-		}
-		entries = append(entries, DispatchStateEntry{
-			DispatchID:          d.ID,
-			Name:                d.Name,
-			Status:              status,
-			ParentDispatchID:    d.ParentID,
-			Depth:               d.Depth,
-			StartedAt:           d.StartedAt,
-			ElapsedMs:           now.Sub(d.StartedAt).Milliseconds(),
-			ToolCount:           d.ToolCount,
-			LastWork:            d.LastWork,
-			LastActivityMs:      lastActivityMs,
-			ChildConversationID: d.ChildConvID,
-			PendingChildren:     pending,
-			WaitingOn:           waitingOnSnapshot(d),
-		})
+		entries = append(entries, snapshotEntryLocked(d, now))
 	}
 	return entries
 }

@@ -100,6 +100,41 @@ func TestRecallOwnedByID_RejectsSibling(t *testing.T) {
 	}
 }
 
+func TestOwnedSnapshot_CarriesWaitingOn(t *testing.T) {
+	r := NewDispatchRegistry()
+	r.RegisterWithID("a", "parent-a", func() {}, nil, "s", "", 1)
+	r.RegisterWithID("a1", "child-a", func() {}, nil, "s", "a", 2)
+	if !r.SetSuspendedStateWithWaitingOn("a1", make(chan struct{}, 1), []string{"a2"}, []string{"bash-1"}) {
+		t.Fatal("failed to suspend a1")
+	}
+
+	// Root's ownership-scoped view must carry the same wait metadata Snapshot
+	// does — the two entry builders share one construction path so a field
+	// added to one cannot silently go missing from the other.
+	owned := r.OwnedSnapshot("")
+	var a1 DispatchStateEntry
+	for _, entry := range owned {
+		if entry.DispatchID == "a1" {
+			a1 = entry
+		}
+	}
+	if a1.DispatchID == "" {
+		t.Fatal("OwnedSnapshot missing a1")
+	}
+	if a1.Status != "suspended" {
+		t.Fatalf("a1.Status = %q, want suspended", a1.Status)
+	}
+	if a1.WaitingOn == nil {
+		t.Fatal("OwnedSnapshot dropped WaitingOn")
+	}
+	if len(a1.WaitingOn.TaskIDs) != 1 || a1.WaitingOn.TaskIDs[0] != "bash-1" {
+		t.Errorf("WaitingOn.TaskIDs = %v, want [bash-1]", a1.WaitingOn.TaskIDs)
+	}
+	if len(a1.WaitingOn.ChildDispatchIDs) != 1 || a1.WaitingOn.ChildDispatchIDs[0] != "a2" {
+		t.Errorf("WaitingOn.ChildDispatchIDs = %v, want [a2]", a1.WaitingOn.ChildDispatchIDs)
+	}
+}
+
 func TestOwnsDispatch_CycleFailsClosed(t *testing.T) {
 	r := NewDispatchRegistry()
 	r.RegisterWithID("a", "a", func() {}, nil, "s", "b", 1)
