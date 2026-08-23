@@ -68,4 +68,16 @@ describe('build-pkg.sh', () => {
     expect(body).toContain('--install-location "/Applications"')
     expect(body).toContain('--component "${APP_PATH}"')
   })
+
+  it('verifies the built package by expanding its PackageInfo metadata', () => {
+    const checkerPath = join(scriptsDir, 'check-release-version.js')
+    const body = readFileSync(checkerPath, 'utf8')
+    expect(body).toContain("['--expand', pkgPath, expandedPath]")
+    expect(body).toContain("const expandedPath = join(temporaryPath, 'package')")
+    expect(body).toContain("const packageInfo = readFileSync(join(expandedPath, 'PackageInfo'), 'utf8')")
+    expect(body).toContain('PackageInfo has no pkg-info version')
+    expect(body).toContain("mkdtempSync(join(tmpdir(), 'ion-package-'))")
+    expect(body).toContain('rmSync(temporaryPath, { recursive: true, force: true })')
+    expect(body).not.toContain('--pkg-info-plist')
+  })
 })
