@@ -1,14 +1,10 @@
-package types
-
-// engine_event_payloads.go — the nested payload structs carried inside
-// EngineEvent.
+// Package types — nested wire payloads for EngineEvent.
 //
-// Split out of engine_event.go, which reached its 800-line cap. The seam is
-// natural rather than arbitrary: EngineEvent is the flat wire envelope, while
-// these are the structured sub-objects a few of its variants nest. Splitting
-// on that boundary keeps each file about one thing, and keeps the comments on
-// both intact -- the alternative of trimming documentation to fit the cap
-// would trade the explanations for line count.
+// Split from engine_event.go for the file-size cap. Same package, same
+// contract surface: every struct here is a nested payload carried by an
+// EngineEvent field and serialized onto the engine wire as part of that
+// event's JSON envelope.
+package types
 
 // ContextBreakdownPayload is the payload for engine_context_breakdown events.
 // Mirrors the internal ContextBreakdownEvent shape. All token counts are
@@ -67,6 +63,26 @@ type BackgroundTaskCompletePayload struct {
 	Tail             string   `json:"tail,omitempty"`
 	Command          string   `json:"command,omitempty"`
 	RemainingTaskIDs []string `json:"remainingTaskIds,omitempty"`
+}
+
+// BackgroundTaskTerminalPayload carries a terminal task record to clients.
+type BackgroundTaskTerminalPayload struct {
+	TaskID     string `json:"taskId"`
+	Status     string `json:"status"`
+	ExitCode   int    `json:"exitCode"`
+	ElapsedMs  int64  `json:"elapsedMs"`
+	Command    string `json:"command,omitempty"`
+	OutputPath string `json:"outputPath,omitempty"`
+	Tail       string `json:"tail,omitempty"`
+}
+
+// BackgroundWorkDeliveredPayload is the nested wire payload for
+// engine_background_work_delivered events. Mirrors the internal
+// BackgroundWorkDeliveredEvent; see that type for full semantics.
+type BackgroundWorkDeliveredPayload struct {
+	EntryID string             `json:"entryId"`
+	Content string             `json:"content"`
+	Work    BackgroundWorkInfo `json:"work"`
 }
 
 // DispatchLostPayload is the nested wire payload for engine_dispatch_lost

@@ -113,6 +113,23 @@ describe('status snapshot — populates inst.statusFields (root-cause fix)', () 
     expect(stored!.team).toBe('Platform')
   })
 
+  it('reconciles background task lifecycle by exact task ID', () => {
+    const { state, slice } = buildHarness()
+    slice.handleNormalizedEvent('tab1', {
+      type: 'background_task_started',
+      taskId: 'task-1',
+      command: 'sleep 30',
+      startedAt: 10,
+      notifyOnComplete: false,
+    } as any)
+    expect(getStatusFields(state)?.activeBackgroundTasks?.map((task) => task.taskId)).toEqual(['task-1'])
+
+    slice.handleNormalizedEvent('tab1', {
+      type: 'background_task_terminal', taskId: 'task-1', status: 'stopped', command: 'sleep 30',
+    } as any)
+    expect(getStatusFields(state)?.activeBackgroundTasks).toEqual([])
+  })
+
   it('REPLACES the prior snapshot wholesale (no merge)', () => {
     const { state, slice } = buildHarness()
 

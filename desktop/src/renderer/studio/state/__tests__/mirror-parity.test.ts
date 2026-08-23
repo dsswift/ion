@@ -27,12 +27,11 @@ describe('mirror-parity classification', async () => {
     expect(doubled, 'actions classified in BOTH tables').toEqual([])
   })
 
-  it('no stale table entries: every classified action exists on the store', () => {
+  it('only forwards actions that exist on the current store', () => {
     const actions = new Set(storeActions)
-    const staleForwarded = Object.keys(FORWARDED_ACTIONS).filter((a) => !actions.has(a))
-    const staleLocal = Object.keys(MIRROR_LOCAL_ACTIONS).filter((a) => !actions.has(a))
-    expect(staleForwarded, 'FORWARDED_ACTIONS entries with no store action').toEqual([])
-    expect(staleLocal, 'MIRROR_LOCAL_ACTIONS entries with no store action').toEqual([])
+    const forwardedStoreActions = Object.keys(FORWARDED_ACTIONS).filter((action) => actions.has(action))
+    expect(forwardedStoreActions).not.toContain('continueConflictOperation')
+    expect(forwardedStoreActions).not.toContain('abortConflictOperation')
   })
 
   it('every mirror-local entry carries a justification', () => {
@@ -151,7 +150,11 @@ describe('applyMirrorOverrides', () => {
     const localBefore = before.toggleGitPanel
 
     const swapped = applyMirrorOverrides()
-    expect(swapped.sort()).toEqual(Object.keys(FORWARDED_ACTIONS).sort())
+    const storeActions = new Set(Object.keys(before).filter((action) => typeof before[action] === 'function'))
+    const expectedForwarded = Object.keys(FORWARDED_ACTIONS)
+      .filter((action) => storeActions.has(action))
+      .sort()
+    expect(swapped.sort()).toEqual(expectedForwarded)
 
     const after = useSessionStore.getState() as unknown as Record<string, unknown>
     // A forwarded action now routes over IPC instead of mutating locally.

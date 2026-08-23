@@ -75,6 +75,18 @@ const (
 	// with notify_on_complete reaches a terminal state. See
 	// BackgroundTaskCompleteEvent in normalized_event_run_signals.go.
 	EventBackgroundTaskComplete = "background_task_complete"
+	// EventBackgroundTaskStarted and EventBackgroundTaskTerminal describe every
+	// session-owned Bash task, including non-notifying tasks.
+	EventBackgroundTaskStarted  = "background_task_started"
+	EventBackgroundTaskTerminal = "background_task_terminal"
+	EventSessionWorkStopped     = "session_work_stopped"
+	// EventBackgroundWorkDelivered fires when a background bash completion is
+	// successfully delivered into a session -- steered into an active run or
+	// injected as a wake prompt. Distinct from EventBackgroundTaskComplete,
+	// which signals the completion regardless of delivery. This event
+	// confirms the result reached the model. See
+	// BackgroundWorkDeliveredEvent in normalized_event_run_signals.go.
+	EventBackgroundWorkDelivered = "background_work_delivered"
 	// EventDispatchLost fires once per dispatch that was running when the
 	// engine process died and is therefore unrecoverable after restart. See
 	// DispatchLostEvent in normalized_event_run_signals.go.

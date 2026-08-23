@@ -281,7 +281,7 @@ extension SessionViewModel {
                 //
                 //   - Snapshot-projected (Codable): id, label, waitingState,
                 //     isRunning, runningAgentCount, backgroundShellCount,
-                //     modelFallback, thinkingEffort. These are authoritative
+                //     activeBackgroundTasks, modelFallback, thinkingEffort. These are authoritative
                 //     from the desktop snapshot every tick, so EVERY one of
                 //     them must be copied in the merge below — a field added to
                 //     the struct but not to the merge is silently frozen at
@@ -309,6 +309,7 @@ extension SessionViewModel {
                         prior.isRunning = snap.isRunning
                         prior.runningAgentCount = snap.runningAgentCount
                         prior.backgroundShellCount = snap.backgroundShellCount
+                        prior.activeBackgroundTasks = snap.activeBackgroundTasks
                         prior.modelFallback = snap.modelFallback
                         // thinkingEffort is snapshot-projected (desktop sends it
                         // from the active instance). Update it every tick so a
@@ -483,6 +484,7 @@ extension SessionViewModel {
                 let statusChar: String
                 switch msg.toolStatus {
                 case .running: statusChar = "r"
+                case .asyncPending: statusChar = "p"
                 case .completed: statusChar = "c"
                 case .error: statusChar = "e"
                 case .none: statusChar = "-"

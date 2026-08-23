@@ -109,7 +109,7 @@ func blockingSleepMessage(seconds int, threshold time.Duration, taskToolsRegiste
 	fmt.Fprintf(&b, "A leading sleep of %s or longer is refused; the command was not executed.\n\n", threshold)
 	b.WriteString("To wait for a long-running command, start it with `run_in_background: true` and `notify_on_complete: true`. ")
 	b.WriteString("Its result is delivered to this session when it finishes — you do not poll and you do not sleep. ")
-	b.WriteString("You may end your turn; the session resumes on completion.\n")
+	b.WriteString("Continue with other useful work, or end your turn when the task is the only remaining work; the engine parks the session and resumes it on completion.\n")
 	if taskToolsRegistered {
 		b.WriteString("To check progress before then, call TaskGet with the task ID.\n")
 	} else {

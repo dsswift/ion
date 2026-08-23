@@ -69,9 +69,9 @@ func (a *llmCallTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ stri
 func (a *llmCallTestAccessor) SendPromptDegradedSteer(text string, model string, bash []string, kind string) error {
 	return a.SendPromptWithKind(text, model, bash, kind)
 }
-func (a *llmCallTestAccessor) SteerSelfMainLoop(_ string) bool                            { return false }
-func (a *llmCallTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool                 { return false }
-func (a *llmCallTestAccessor) ParkSelfMainLoop() bool                                     { return false }
+func (a *llmCallTestAccessor) SteerSelfMainLoop(_ string) bool            { return false }
+func (a *llmCallTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
+func (a *llmCallTestAccessor) ParkSelfMainLoop() bool                     { return false }
 func (a *llmCallTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }

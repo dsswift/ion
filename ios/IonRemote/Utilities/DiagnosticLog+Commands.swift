@@ -99,8 +99,17 @@ extension DiagnosticLog {
                 log("CMD: prompt tabId=\(tabId.prefix(8)) len=\(text.count) msgId=\(clientMsgId?.prefix(8) ?? "nil") att=\(attachments?.count ?? 0)", tag: "ipc", level: .info)
             }
 
-        case .cancel(let tabId):
-            log("CMD: cancel tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
+        case .cancel(let tabId, let scope):
+            log("CMD: cancel tabId=\(tabId.prefix(8)) scope=\(scope ?? "all")", tag: "ipc", level: .info)
+
+        case .abortDispatch(let tabId, let dispatchId):
+            log("CMD: abortDispatch tabId=\(tabId.prefix(8)) dispatchId=\(dispatchId.prefix(24))", tag: "ipc", level: .info)
+        case .stopBackgroundTask(let tabId, let taskId, let requestId):
+            log("background task stop command", tag: "ipc", level: .info, fields: [
+                "tab_id": tabId,
+                "task_id": taskId,
+                "request_id": requestId,
+            ])
 
         case .respondPermission(let tabId, let qId, let optId):
             log("CMD: respondPermission tabId=\(tabId.prefix(8)) qId=\(qId.prefix(8)) opt=\(optId)", tag: "ipc", level: .info)

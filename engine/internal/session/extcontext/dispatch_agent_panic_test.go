@@ -56,9 +56,9 @@ func (p *panicTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string
 func (p *panicTestAccessor) SendPromptDegradedSteer(text string, model string, bash []string, kind string) error {
 	return p.SendPromptWithKind(text, model, bash, kind)
 }
-func (p *panicTestAccessor) SteerSelfMainLoop(_ string) bool                            { return false }
-func (p *panicTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool                 { return false }
-func (p *panicTestAccessor) ParkSelfMainLoop() bool                                     { return false }
+func (p *panicTestAccessor) SteerSelfMainLoop(_ string) bool            { return false }
+func (p *panicTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
+func (p *panicTestAccessor) ParkSelfMainLoop() bool                     { return false }
 func (p *panicTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }

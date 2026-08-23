@@ -189,9 +189,22 @@ type Context struct {
 	// with optional extension loading, system prompt injection, and event streaming.
 	DispatchAgent func(opts DispatchAgentOpts) (*DispatchAgentResult, error)
 
-	// RecallAgent terminates a running background dispatch by agent name.
-	// Returns true if a dispatch was found and recalled, false otherwise.
+	// RecallAgent retains the published name-addressed recall surface. When
+	// several dispatches share a name, one matching live dispatch is recalled.
+	// Prefer RecallDispatch when the caller has an exact dispatch identity.
 	RecallAgent func(name string, opts RecallAgentOpts) (bool, error)
+
+	// RecallDispatch terminates a running background dispatch identified by
+	// its dispatchId. A root context can recall every dispatch in its session;
+	// a dispatched context can recall only strict descendants of its own
+	// DispatchId. Recalling self, an ancestor, sibling, or another branch
+	// returns an authorization error. Descendants of the target cascade with it.
+	// Returns false without error only when target already completed.
+	//
+	// Agent names are intentionally NOT accepted: a name is not a dispatch
+	// identity, and concurrent same-name dispatches make every resolution rule
+	// unsafe.
+	RecallDispatch func(dispatchID string, opts RecallDispatchOpts) (bool, error)
 
 	// SteerDispatch delivers a steering message to a running background
 	// dispatch identified by its dispatchId. The message is injected into
@@ -206,7 +219,7 @@ type Context struct {
 	// dispatch ID returned by DispatchAgent, SteerDispatchByName resolves
 	// by the human-readable agent name (e.g. "code-reviewer"). When multiple
 	// dispatches share a name, the first one found is steered (matching
-	// RecallAgent's non-deterministic name-based semantics). Use SteerDispatch
+	// SteerDispatchByName's non-deterministic name-based semantics). Use SteerDispatch
 	// when the exact dispatch ID is available for precise targeting.
 	SteerDispatchByName func(name, message string) (SteerDispatchResult, error)
 

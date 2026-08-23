@@ -47,6 +47,8 @@ func toolDescriptionText(name: String?, input: String?) -> String? {
 /// second transcript.
 struct EngineToolGroupRow: View {
     let tools: [Message]
+    var activeBackgroundTasks: [BackgroundTaskState] = []
+    var tabId: String? = nil
     @Environment(\.appTheme) private var theme
     @State private var isExpanded = false
 
@@ -56,6 +58,10 @@ struct EngineToolGroupRow: View {
 
     private var hasRunningTool: Bool {
         tools.contains { $0.toolStatus == .running }
+    }
+
+    private var hasAsyncPending: Bool {
+        tools.contains { $0.toolStatus == .asyncPending }
     }
 
     private var collapses: Bool {
@@ -69,6 +75,7 @@ struct EngineToolGroupRow: View {
                     HStack(spacing: IonSpace.hairlineGap) {
                         Image(systemName: "command")
                         Text("\(completedTools.count) tool calls")
+                            .foregroundStyle(hasAsyncPending ? theme.statusBash : theme.textTertiary)
                         Image(systemName: "chevron.right")
                         Spacer(minLength: 0)
                     }
@@ -82,6 +89,12 @@ struct EngineToolGroupRow: View {
                     ToolCallAtom(message: tool)
                 }
             }
+
+            ActiveBackgroundSummary(
+                tools: tools,
+                activeTasks: activeBackgroundTasks,
+                tabId: tabId
+            )
         }
     }
 }
@@ -102,9 +115,9 @@ private struct ToolCallAtom: View {
                     if isBash { isBashExpanded.toggle() }
                 } label: {
                     HStack(spacing: IonSpace.hairlineGap) {
-                        Image(systemName: "command")
+                        Image(systemName: message.toolStatus == .asyncPending ? "clock.arrow.circlepath" : "command")
                             .font(IonType.metadata)
-                            .foregroundStyle(theme.textTertiary)
+                            .foregroundStyle(message.toolStatus == .asyncPending ? theme.statusBash : theme.textTertiary)
                         Text(message.toolName ?? "Tool")
                             .font(IonType.meaning)
                             .foregroundStyle(isRunning ? theme.textPrimary : theme.textSecondary)

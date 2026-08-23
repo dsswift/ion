@@ -125,6 +125,9 @@ type PromptOverrides struct {
 	// onto the persisted user-message entry via RunOptions so retries are
 	// durable across engine restarts. Empty preserves legacy semantics.
 	DeliveryId string
+
+	// BackgroundWork carries engine-owned completion metadata for an injected turn.
+	BackgroundWork types.BackgroundWorkInfo
 }
 
 // ReserveDeliveryID atomically reserves an idempotency key for a prompt. It

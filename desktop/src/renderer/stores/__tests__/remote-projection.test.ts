@@ -278,6 +278,15 @@ describe('projectRemoteTabStates — background-shell fold (backgroundShellCount
     expect(tab.backgroundShellCount).toBe(3)
   })
 
+  it('projects the authoritative active task inventory per instance', () => {
+    const activeBackgroundTasks = [{ taskId: 'task-1', command: 'sleep 30', startedAt: 10, notifyOnComplete: false }]
+    const inst = makeInstance({
+      statusFields: { label: '', state: 'idle', model: '', contextPercent: 0, contextWindow: 0, activeBackgroundTasks },
+    })
+    const s = makeState([makeTab({ id: 't-active-shell' })], [['t-active-shell', { instances: [inst], activeInstanceId: 'main' }]])
+    expect(projectRemoteTabStates(s).tabs[0].conversationInstances?.[0].activeBackgroundTasks).toEqual(activeBackgroundTasks)
+  })
+
   it('omits the count at zero and when statusFields is absent (older engine)', () => {
     const s = makeState(
       [makeTab({ id: 't-none' })],

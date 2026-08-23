@@ -64,7 +64,10 @@ enum RemoteCommand: Codable, Sendable {
     tabId: String, text: String, origin: String? = "remote", clientMsgId: String? = nil,
     attachments: [CommandAttachment]? = nil, implementationPhase: Bool? = nil,
     instanceId: String? = nil)
-  case cancel(tabId: String)
+  case cancel(tabId: String, scope: String? = nil)
+  case abortDispatch(tabId: String, dispatchId: String)
+  /// Stop one exact background Bash task through the paired desktop.
+  case stopBackgroundTask(tabId: String, taskId: String, requestId: String)
   case respondPermission(tabId: String, questionId: String, optionId: String)
   /// Answer a live extension elicitation (ctx.elicit). `cancelled` true means
   /// the user declined; `response` carries the approval payload (empty object
@@ -346,6 +349,8 @@ enum RemoteCommand: Codable, Sendable {
     case resetEngineSession = "desktop_reset_engine_session"
     case prompt = "desktop_prompt"
     case cancel = "desktop_cancel"
+    case abortDispatch = "desktop_abort_dispatch"
+    case stopBackgroundTask = "desktop_stop_background_task"
     case respondPermission = "desktop_respond_permission"
     case respondElicitation = "desktop_respond_elicitation"
     case setPermissionMode = "desktop_set_permission_mode"
@@ -457,6 +462,7 @@ enum RemoteCommand: Codable, Sendable {
   }
 
   enum CodingKeys: String, CodingKey {
+    case scope, dispatchId, taskId
     case type
     case workingDirectory, tabId, text, questionId, optionId, mode, before, origin
     case instanceId, data, cols, rows, customTitle, label, messageId, clientMsgId

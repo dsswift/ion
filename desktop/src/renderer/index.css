@@ -108,10 +108,6 @@ input::placeholder {
 }
 
 /* ─── Prose overrides for markdown ─── */
-.ion-data-view {
-  --ion-conv-font-size: var(--ion-data-font-size, 13px);
-}
-
 .prose-cloud {
   color: var(--ion-text-primary);
   line-height: 1.6;

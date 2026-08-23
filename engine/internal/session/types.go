@@ -41,6 +41,7 @@ type rootDispatchCompletion struct {
 	DispatchID string
 	Name       string
 	ExitCode   int
+	ElapsedMs  int64
 }
 
 // engineSession holds the state for a single session managed by the Manager.
@@ -120,6 +121,26 @@ type engineSession struct {
 	// run through its normal teardown path. Guarded by Manager.mu.
 	launchingRunID string
 	launchAck      chan struct{}
+
+	// orchestratorAbortRunID names the run that an orchestrator-scoped abort
+	// (SendAbortScoped with AbortScopeOrchestrator) cancelled, so that run's
+	// exit does NOT reap the session's background dispatches.
+	//
+	// Why it exists. handleRunExit reaps descendants for any cancelled exit,
+	// because a cancel can arrive straight from the runloop (a turn or tool
+	// hook cancelling the run) without ever flowing through SendAbort — the
+	// reap there is what guarantees children never outlive a cancelled parent
+	// regardless of the cancel's origin. An orchestrator-scoped abort is the
+	// one cancel that deliberately spares the children, and it is
+	// indistinguishable at run exit from every other cancel. This marker is
+	// what distinguishes it.
+	//
+	// Run-scoped (a string, not a bool) for the same reason as
+	// dispatchingRunID above: handleRunExit compares it against the exiting
+	// runID and only honors a match, so a marker left by an earlier run can
+	// never suppress a later run's reap. One-shot — handleRunExit clears it
+	// as it consumes it. Guarded by m.mu.
+	orchestratorAbortRunID string
 
 	// rootCtx is the per-session cancellation root. Every cancellable
 	// operation spawned on behalf of this session derives its own
@@ -379,7 +400,7 @@ type engineSession struct {
 	cliLastToolID string
 
 	// dispatchRegistry tracks active background dispatches for this session.
-	// Used by RecallAgent to cancel running background agents, and by the
+	// Used by RecallDispatch to cancel running background agents, and by the
 	// dispatch completion callback to deregister finished dispatches.
 	// Initialized in StartSession, nil-safe (code that creates ext contexts
 	// passes it through variadic).

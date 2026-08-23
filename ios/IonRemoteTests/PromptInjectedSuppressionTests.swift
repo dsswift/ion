@@ -79,7 +79,7 @@ final class PromptInjectedSuppressionTests: XCTestCase {
         pending.steerPending = true
         vm.setConversationMessages(tabId: "t", [pending])
 
-        vm.handleEvent(.engineSteerDegraded(tabId: "t", instanceId: nil, messageLength: 42))
+        vm.handleEvent(.engineSteerDegraded(tabId: "t", instanceId: nil, messageLength: 42, kind: nil, machineAuthored: nil))
 
         let msgs = vm.conversationMessages("t")
         XCTAssertEqual(msgs.count, 2, "the degraded delivery adds exactly one divider")

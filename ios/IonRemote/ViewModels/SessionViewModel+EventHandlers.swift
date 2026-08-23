@@ -1,13 +1,7 @@
 import Foundation
 import UIKit
 
-// MARK: - Event dispatch
-//
-// `startListening()` (the transport→batcher collector + flush loop) lives in
-// SessionViewModel+Listening.swift to keep this file under the 600-line cap.
-
 extension SessionViewModel {
-
     @MainActor
     func handleEvent(_ event: RemoteEvent) {
         DiagnosticLog.logEvent(event)
@@ -203,12 +197,27 @@ extension SessionViewModel {
         case .engineToolStart(let tabId, let instanceId, let toolName, let toolId):
             handleEngineToolStart(tabId: tabId, instanceId: instanceId, toolName: toolName, toolId: toolId)
 
-        case .engineToolEnd(let tabId, let instanceId, let toolId, let result, let isError):
-            handleEngineToolEnd(tabId: tabId, instanceId: instanceId, toolId: toolId, result: result, isError: isError)
+        case .engineToolEnd(let tabId, let instanceId, let toolId, let result, let isError, let backgroundTaskId):
+            handleEngineToolEnd(tabId: tabId, instanceId: instanceId, toolId: toolId, result: result, isError: isError, backgroundTaskId: backgroundTaskId)
 
         case .engineToolStalled(let tabId, let instanceId, let toolId, _, _):
             _ = instanceId // unused post-#256, bare tabId is the key
             activeTools[tabId]?[toolId]?.isStalled = true
+
+        case .engineBackgroundTaskStarted(let tabId, let instanceId, let taskId, let command, let startedAt, let notifyOnComplete):
+            handleBackgroundTaskStarted(
+                tabId: tabId,
+                instanceId: instanceId,
+                task: BackgroundTaskState(taskId: taskId, command: command, startedAt: startedAt, notifyOnComplete: notifyOnComplete)
+            )
+
+        case .engineBackgroundTaskTerminal(let tabId, let instanceId, let taskId, let status, _, _, _, _, _):
+            handleBackgroundTaskTerminal(tabId: tabId, instanceId: instanceId, taskId: taskId, status: status)
+
+        case .engineSessionWorkStopped(let tabId, let instanceId, _, _, _, let stoppedTaskIds, _):
+            for taskId in stoppedTaskIds {
+                handleBackgroundTaskTerminal(tabId: tabId, instanceId: instanceId, taskId: taskId, status: "stopped")
+            }
 
         case .engineImageContent(let tabId, let instanceId, let path, let mediaType, let contentHash, let source, let toolId):
             handleEngineImageContent(tabId: tabId, instanceId: instanceId, path: path, mediaType: mediaType, contentHash: contentHash, source: source, toolId: toolId)
@@ -219,11 +228,27 @@ extension SessionViewModel {
         case .engineRunRecovery(let tabId, let instanceId, let recoveryId, let phase, let attempt, let maxAttempts, let reason):
             handleEngineRunRecovery(tabId: tabId, instanceId: instanceId, recoveryId: recoveryId, phase: phase, attempt: attempt, maxAttempts: maxAttempts, reason: reason)
 
-        case .engineSteerInjected(let tabId, let instanceId, let messageLength, let clientMessageId, let entryId):
-            handleEngineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength, clientMessageId: clientMessageId, entryId: entryId)
+        case .engineSteerInjected(let tabId, let instanceId, let messageLength, let clientMessageId, let entryId, _, let machineAuthored):
+            if machineAuthored != true {
+                handleEngineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength, clientMessageId: clientMessageId, entryId: entryId)
+            }
 
-        case .engineSteerDegraded(let tabId, let instanceId, let messageLength):
-            handleEngineSteerDegraded(tabId: tabId, instanceId: instanceId, messageLength: messageLength)
+        case .engineSteerDegraded(let tabId, let instanceId, let messageLength, _, let machineAuthored):
+            if machineAuthored != true {
+                handleEngineSteerDegraded(tabId: tabId, instanceId: instanceId, messageLength: messageLength)
+            }
+
+        case .engineRewindResult(_, _, let error):
+            // Transactional rejection-only notice: the desktop sends this
+            // ONLY on refusal (unknown entry, foreign-branch target,
+            // non-user-turn target). Before this event existed, a refused
+            // rewind produced ZERO feedback on iOS — no toast, no log,
+            // nothing visibly happened when the user tapped Rewind.
+            showToast(ToastMessage(
+                style: .error,
+                title: "Rewind not applied",
+                detail: error ?? "The engine rejected this rewind."
+            ))
 
         case .enginePromptInjected(let tabId, let instanceId, let prompt, _, let kind, let machineAuthored):
             // A degraded self-steer needs no case here: the engine emits
@@ -445,84 +470,46 @@ extension SessionViewModel {
         case .worktreeOpResult(let result):
             handleWorktreeOpResult(result)
 
-        case .worktreePipeline(let pipeline):
-            handleWorktreePipeline(pipeline)
-
         // Git events
         case .gitChangesResponse(let directory, let response):
-            gitChanges[directory] = response
+            handleGitChangesResponse(directory: directory, response: response)
 
         case .gitGraphResponse(let directory, let response):
-            gitGraph[directory] = response
+            handleGitGraphResponse(directory: directory, response: response)
 
         case .gitDiffResponse(let response):
-            gitDiffResult = response
-            gitDiffLoading = false
+            handleGitDiffResponse(response)
 
         case .gitCommitResult(let result):
-            if result.ok {
-                Haptic.success()
-                gitToast = GitToast(message: "Committed successfully", isError: false)
-            } else {
-                Haptic.error()
-                gitToast = GitToast(message: result.error ?? "Commit failed", isError: true)
-            }
+            handleGitCommitResult(result)
 
         case .gitStageResult(let result):
-            if result.ok {
-                Haptic.success()
-            } else {
-                Haptic.error()
-                gitToast = GitToast(message: result.error ?? "Stage failed", isError: true)
-            }
+            handleGitStageResult(result)
 
         case .gitUnstageResult(let result):
-            if result.ok {
-                Haptic.success()
-            } else {
-                Haptic.error()
-                gitToast = GitToast(message: result.error ?? "Unstage failed", isError: true)
-            }
+            handleGitUnstageResult(result)
 
         case .gitCommitFilesResponse(let response):
-            gitCommitFiles[response.hash] = response
+            handleGitCommitFilesResponse(response)
 
         case .gitCommitFileDiffResponse(let response):
-            let key = "\(response.hash):\(response.path)"
-            gitCommitFileDiff[key] = response
+            handleGitCommitFileDiffResponse(response)
 
         // File explorer events
         case .fsDirListing(let directory, let response):
-            fileListings[directory] = response
-            fileListingLoading.remove(directory)
+            handleFsDirListing(directory: directory, response: response)
 
         case .fsFileContent(let filePath, let response):
-            fileContent[filePath] = response
-            fileContentLoading.remove(filePath)
+            handleFsFileContent(filePath: filePath, response: response)
 
         case .fsImageContent(let filePath, let dataUrl, _):
-            RemoteImageFetcher.shared.deliver(path: filePath, dataUrl: dataUrl)
+            handleFsImageContent(filePath: filePath, dataUrl: dataUrl)
 
         case .fsWriteResult(_, let response):
-            fileWriteResult = response
+            handleFsWriteResult(response)
 
         case .fsRenameResult(_, let newPath, let response):
-            // Lightweight pattern mirroring `.fsWriteResult`:
-            //   - publish the response so the view can surface errors,
-            //   - on success, re-issue `fsListDir` on the parent dir of
-            //     newPath so the listing reflects the rename. We don't
-            //     also refresh oldPath's parent because the desktop
-            //     handler only ever changes basename, so the parents
-            //     match. If a future variant ever moves across
-            //     directories, this is the spot to add the second
-            //     refresh.
-            fileRenameResult = response
-            if response.ok {
-                let parent = (newPath as NSString).deletingLastPathComponent
-                if !parent.isEmpty {
-                    requestFsListDir(directory: parent)
-                }
-            }
+            handleFsRenameResult(newPath: newPath, response: response)
 
         case .uploadAttachmentResult(let id, let name, let path, let correlationId, let contentHash, let error):
             handleUploadAttachmentResult(id: id, name: name, path: path, correlationId: correlationId, contentHash: contentHash, error: error)
@@ -581,16 +568,19 @@ extension SessionViewModel {
             handleEngineIntercept(tabId: tabId, instanceId: instanceId, level: level, title: title, message: message)
 
         case .desktopContextBreakdown(let tabId, let instanceId, let payload):
-            // handleContextBreakdown lives in SessionViewModel+EngineEvents.swift
-            // to keep this file under the 600-line cap.
             handleContextBreakdown(tabId: tabId, instanceId: instanceId, payload: payload)
 
         case .promptResult(let tabId, let clientMsgId, let status, let error):
             handlePromptResult(tabId: tabId, clientMsgId: clientMsgId, status: status, error: error)
 
-        case .engineRewindResult(let tabId, let instanceId, let error):
-            handleEngineRewindResult(tabId: tabId, instanceId: instanceId, error: error)
+        case .backgroundWorkDelivered(let tabId, let instanceId, let message):
+            handleBackgroundWorkDelivered(tabId: tabId, instanceId: instanceId, message: message)
+
+        case .backgroundTaskStopResult(let requestId, let taskId, let status, let error):
+            handleBackgroundTaskStopResult(requestId: requestId, taskId: taskId, status: status, error: error)
+
+        default:
+            handleLateLifecycleEvent(event)
         }
     }
-
 }

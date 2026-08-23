@@ -278,48 +278,7 @@ func TestAgentStateHierarchyRoundTrip(t *testing.T) {
 	}
 }
 
-// ─── Protocol: abort_agent / steer_agent ───
-
-func TestProtocolAbortAgent(t *testing.T) {
-	sockPath := agentSockPath(t, "abort")
-	mb := helpers.NewMockBackend()
-	srv := server.NewServer(sockPath, mb)
-
-	if err := srv.Start(); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	t.Cleanup(func() { srv.Stop() })
-
-	// Start session + register mock agent handle
-	conn := dialSock(t, sockPath)
-	defer conn.Close()
-
-	agentSendCmd(t, conn, map[string]interface{}{
-		"cmd": "start_session",
-		"key": "s1",
-		"config": map[string]interface{}{
-			"profileId":        "test",
-			"extensionDir":     "",
-			"workingDirectory": t.TempDir(),
-		},
-	})
-	drainEvents(conn, 500*time.Millisecond)
-
-	// Send abort_agent command
-	agentSendCmd(t, conn, map[string]interface{}{
-		"cmd":       "abort_agent",
-		"key":       "s1",
-		"agentName": "test-agent",
-	})
-
-	// abort_agent is fire-and-forget, no response expected.
-	// Just verify no crash occurred by sending another command.
-	agentSendCmd(t, conn, map[string]interface{}{
-		"cmd": "stop_session",
-		"key": "s1",
-	})
-	drainEvents(conn, 500*time.Millisecond)
-}
+// ─── Protocol: steer_agent ───
 
 func TestProtocolSteerAgent(t *testing.T) {
 	sockPath := agentSockPath(t, "steer")

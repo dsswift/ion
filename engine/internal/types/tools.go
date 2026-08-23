@@ -36,4 +36,6 @@ type ToolResult struct {
 	// SkillInvocation is populated by the built-in Skill tool only. It is
 	// engine-internal transfer metadata, never extension RPC or wire output.
 	SkillInvocation *SkillInvocation `json:"-"`
+	// BackgroundTaskID correlates a tool result with the asynchronous task.
+	BackgroundTaskID string `json:"backgroundTaskId,omitempty"`
 }

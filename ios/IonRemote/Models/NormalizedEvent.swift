@@ -90,9 +90,9 @@ enum RemoteEvent: Sendable {
     /// desktop's retransmit buffer (too old). iOS clears its pending-resend
     /// range and falls back to the snapshot reconcile to heal that gap.
     case resendUnavailable(fromSeq: UInt64)
-    /// Desktop is prefilling input text after a rewind or fork. `instanceId`
-    /// is set for the unified transactional rewind path; nil is the fork reply
-    /// shape for the newly-created tab.
+    /// Desktop is prefilling input text (after rewind or fork).
+    /// `instanceId` is set when the prefill targets a specific engine
+    /// instance's draft (engine_rewind); nil for CLI-tab rewinds.
     case inputPrefill(tabId: String, text: String, switchTo: Bool, instanceId: String?)
     // Terminal events
     case terminalOutput(tabId: String, instanceId: String, data: String)
@@ -117,7 +117,7 @@ enum RemoteEvent: Sendable {
     case engineSessionStatus(tabId: String, instanceId: String?, sessionStatus: SessionStatus, metadata: [String: AnyCodable]?)
     case engineWorkingMessage(tabId: String, instanceId: String?, message: String, metadata: [String: AnyCodable]?)
     case engineToolStart(tabId: String, instanceId: String?, toolName: String, toolId: String)
-    case engineToolEnd(tabId: String, instanceId: String?, toolId: String, result: String?, isError: Bool)
+    case engineToolEnd(tabId: String, instanceId: String?, toolId: String, result: String?, isError: Bool, backgroundTaskId: String? = nil)
     case engineToolUpdate(tabId: String, instanceId: String?, toolId: String, partialInput: String)
     case engineToolComplete(tabId: String, instanceId: String?)
     case engineToolStalled(tabId: String, instanceId: String?, toolId: String, toolName: String, elapsed: Double)
@@ -142,22 +142,32 @@ enum RemoteEvent: Sendable {
     /// message is already part of the conversation. See the Go-side
     /// SteerInjectedEvent and the TS engine_steer_injected variant.
     ///
-    /// `clientMessageId` echoes the sender's `steer_agent` correlation id
-    /// (nil for a machine-originated steer, or a client that omitted one).
-    /// `entryId` is the durable conversation-tree entry id the steer text
-    /// was persisted under — present for every genuine client-originated
-    /// steer regardless of whether a correlation id was sent, since it is
-    /// the exact target a later `engine_rewind` needs. Both ride the wire
-    /// under the engine's own field names (`steerClientMessageId` /
-    /// `steerEntryId`): the desktop's generic engine-event forwarder
-    /// spreads the raw engine payload rather than the renderer-internal
-    /// NormalizedEvent shape, so iOS decodes the engine's names directly.
-    case engineSteerInjected(tabId: String, instanceId: String?, messageLength: Int, clientMessageId: String?, entryId: String?)
+    /// `kind`/`machineAuthored` gate whether this confirms a genuine
+    /// client-originated steer (machineAuthored != true) vs. a
+    /// machine-to-machine injection the user never typed — see
+    /// `handleEngineSteerInjected`'s caller. `clientMessageId` lets that
+    /// handler resolve EXACTLY which outstanding optimistic steer bubble
+    /// this confirms (the desktop's submit() echoes the bubble's own id as
+    /// the correlation id), falling back to "oldest pending" only when
+    /// absent. `entryId` is the durable conversation-tree entry id the
+    /// engine persisted the steer under; the handler adopts it onto the
+    /// resolved bubble so a LATER rewind can target this exact turn by id
+    /// instead of an ordinal position.
+    case engineSteerInjected(tabId: String, instanceId: String?, messageLength: Int, clientMessageId: String?, entryId: String?, kind: String?, machineAuthored: Bool?)
     /// ctx.steerSelf found no owning run to steer and delivered its message as
     /// a fresh prompt instead. The delivery is distinct from engineSteerInjected:
     /// no run-loop checkpoint drained it. Clients may render the same
     /// confirmation without mutating any live-steer pending-bubble state.
-    case engineSteerDegraded(tabId: String, instanceId: String?, messageLength: Int)
+    case engineSteerDegraded(tabId: String, instanceId: String?, messageLength: Int, kind: String?, machineAuthored: Bool?)
+    /// The desktop's rewind is transactional and sends this event ONLY on
+    /// refusal (unknown entry, foreign-branch target, non-user-turn target)
+    /// — a successful rewind needs no notice because the transcript truncation
+    /// itself is the confirmation. `error` carries the desktop's human-readable
+    /// refusal reason; absent only for a hypothetical future desktop that omits
+    /// it (the current desktop always sends one). iOS surfaces this as an error
+    /// toast — before this event existed, a refused rewind produced ZERO
+    /// feedback: the user tapped Rewind and nothing visibly happened.
+    case engineRewindResult(tabId: String, instanceId: String, error: String?)
     /// An extension injected a prompt via ctx.sendPrompt (dispatch-completion
     /// delivery, check-ins, revives): the engine started a run on a user turn
     /// no client submitted, so no client did an optimistic insert. Clients
@@ -482,8 +492,11 @@ enum RemoteEvent: Sendable {
     /// Outcome of a worktree/bench verb, so a toast can attribute the result
     /// and distinguish a fixable refusal from a hard failure.
     case worktreeOpResult(result: RemoteWorktreeOpResult)
-    /// Live sync-pipeline projection (banner + AI-confirm gate). `phase == nil`
-    /// clears the banner (pipeline dismissed).
+    /// Live projection of the worktree sync pipeline (mechanical pass →
+    /// AI-confirm gate → sequential agents → bench update-all), pushed on
+    /// every phase/progress change. `pipeline.phase == nil` means the
+    /// pipeline was dismissed (clear the banner). Mirrors the desktop's
+    /// WorktreePipelinePanel so iOS renders the identical banner/gate.
     case worktreePipeline(pipeline: RemoteWorktreePipeline)
     case gitChangesResponse(directory: String, response: GitChangesResponse)
     case gitGraphResponse(directory: String, response: GitGraphResponse)
@@ -546,15 +559,26 @@ enum RemoteEvent: Sendable {
     /// to update the optimistic user bubble's delivery state.
     case promptResult(tabId: String, clientMsgId: String, status: String, error: String?)
 
-    /// Engine-tab rewind refusal notice (desktop_engine_rewind_result). A
-    /// rewind is transactional: the desktop calls the engine first and only
-    /// truncates state on success. This event is sent ONLY when the engine
-    /// REJECTS the rewind (unknown/foreign-branch/non-user target) — a
-    /// successful rewind stays silent, observable through the existing
-    /// desktop_conversation_history / desktop_input_prefill pair. Without
-    /// this event a refused rewind left the user staring at an unchanged
-    /// transcript with no feedback that the tap did anything.
-    case engineRewindResult(tabId: String, instanceId: String, error: String?)
+    /// Background work delivered into the conversation. The desktop emits this
+    /// when a background agent's completed work is surfaced in the transcript.
+    /// Modeled as a single Message with `backgroundWork` metadata (same pattern
+    /// as compaction: one message per delivery). Matched items fold onto the
+    /// originating async tool row; unmatched deliveries are logged, not rendered.
+    case backgroundWorkDelivered(tabId: String, instanceId: String?, message: Message)
+    /// Targeted result for an iOS per-task Stop request.
+    case backgroundTaskStopResult(requestId: String, taskId: String, status: String, error: String?)
+    /// Incremental lifecycle for every session-owned background Bash task.
+    case engineBackgroundTaskStarted(tabId: String, instanceId: String?, taskId: String, command: String, startedAt: Int64, notifyOnComplete: Bool)
+    case engineBackgroundTaskTerminal(tabId: String, instanceId: String?, taskId: String, status: String, exitCode: Int?, elapsedMs: Int?, command: String?, outputPath: String?, tail: String?)
+    case engineSessionWorkStopped(
+        tabId: String,
+        instanceId: String?,
+        scope: String,
+        cancelledRunId: String?,
+        recalledDispatchIds: [String]?,
+        stoppedBackgroundTaskIds: [String],
+        killedAgentProcessCount: Int?
+    )
 
     // MARK: - Codable keys
 
@@ -599,10 +623,14 @@ enum RemoteEvent: Sendable {
         case engineToolUpdate = "desktop_tool_update"
         case engineToolComplete = "desktop_tool_complete"
         case engineToolStalled = "desktop_tool_stalled"
+        case engineBackgroundTaskStarted = "desktop_background_task_started"
+        case engineBackgroundTaskTerminal = "desktop_background_task_terminal"
+        case engineSessionWorkStopped = "desktop_session_work_stopped"
         case engineRunStalled = "desktop_run_stalled"
         case engineRunRecovery = "desktop_run_recovery"
         case engineSteerInjected = "desktop_steer_injected"
         case engineSteerDegraded = "desktop_steer_degraded"
+        case engineRewindResult = "desktop_engine_rewind_result"
         case enginePromptInjected = "desktop_prompt_injected"
         // Extended-thinking events (issue #158). The desktop forwards the
         // engine's thinking_block_start / thinking_delta / thinking_block_end
@@ -682,7 +710,8 @@ enum RemoteEvent: Sendable {
         /// (plan modest-leaping-waffle.md §9).
         case desktopContextBreakdown = "desktop_context_breakdown"
         case promptResult = "desktop_prompt_result"
-        case engineRewindResult = "desktop_engine_rewind_result"
+        case backgroundWorkDelivered = "desktop_background_work_delivered"
+        case backgroundTaskStopResult = "desktop_background_task_stop_result"
     }
 
     // CodingKeys and the init(from:)/encode(to:) requirements must live in
@@ -700,10 +729,16 @@ enum RemoteEvent: Sendable {
         // `summary` carries sync_all's pre-worded per-worktree counts; `retired`
         // carries retire_all's count of worktrees actually retired.
         case states, operation, refusedDirty, hasConflicts, warning, summary, retired, recoveryRef, prunedBenchPaths
-        // desktop_worktree_pipeline payload keys (repoPath/sourceBranch/summary
-        // are shared above or elsewhere; these four are pipeline-specific).
-        case phase, queue, current, needsManual, resolvedByAi
-        case repoPath, sourceBranch
+        // desktop_worktree_pipeline payload keys. `repoPath`/`sourceBranch`
+        // identify the pipeline; `phase` nil means dismissed; `queue` /
+        // `current` / `needsManual` / `resolvedByAi` mirror
+        // WorktreePipelineState 1:1 (see RemoteWorktreePipeline in
+        // WorktreeTypes.swift). `summary` above is shared with
+        // desktop_worktree_op_result.
+        case repoPath, sourceBranch, phase, queue, current, needsManual, resolvedByAi
+        // desktop_git_diff_response / desktop_git_commit_file_diff_response:
+        // true when the diff is a binary-file placeholder rather than text.
+        case isBinary
         // desktop_tab_created echo of the iOS create command's correlation id,
         // consumed by the confirm-or-resend delivery loop (create-tab reliability).
         case clientCmdId
@@ -715,7 +750,9 @@ enum RemoteEvent: Sendable {
         // desktop's poll tick when they change so the full snapshot need not
         // re-ship per streamed delta. Names mirror RemoteTabState.
         case convFingerprint, lastActivityAt, lastMessage, messageCount
-        case content, isError, result, costUsd, durationMs, reason
+        case content, isError, result, costUsd, durationMs, reason, backgroundTaskId
+        case task, taskId, requestId, notifyOnComplete, startedAt, elapsedMs, outputPath, tail
+        case stoppedBackgroundTaskIds, scope, cancelledRunId, recalledDispatchIds, killedAgentProcessCount
         case sinceSeq  // desktop_request_diagnostic_logs incremental seq cursor
         case questionId, toolInput, options, message
         case messages, hasMore, cursor, messageId, prompts, relayUrl, relayApiKey
@@ -747,7 +784,7 @@ enum RemoteEvent: Sendable {
         case userTurnEntryId, userTurnSlashModelAlias, userTurnSlashModelEffective
         case tabGroupMode, tabGroups, preferredModel, engineDefaultModel, availableModels
         case directory, files, branch, isGitRepo, ahead, behind, stagedCount, unstagedCount
-        case commits, totalCount, diff, fileName, graphLayout, hash, stats, isBinary
+        case commits, totalCount, diff, fileName, graphLayout, hash, stats
         case entries, filePath, ok, error
         // fs_rename_result payload — the command carries `oldPath`/`newPath`
         // and the result echoes them so the iOS handler can refresh the
@@ -760,8 +797,13 @@ enum RemoteEvent: Sendable {
         // engine_image_content — a run-produced image. `path`, `source`,
         // `toolId` are shared above; `mediaType` is the image MIME type
         // (e.g. "image/png") mirroring the Go ImageContentEvent json tag.
+        // `contentHash` is the SHA-256 of the decoded image bytes, mirroring
+        // Go's ImageContentHash — iOS parity counterpart to the desktop's
+        // suppressUserImageEchoes: without it, an assistant-echoed image the
+        // user already attached could never be identified as a duplicate.
         case mediaType
-        case correlationId, contentHash
+        case contentHash
+        case correlationId
         case dataUrl
         case attachments
         case sourceTabId, targetTabId
@@ -774,11 +816,16 @@ enum RemoteEvent: Sendable {
         // engine_steer_injected — mid-turn steer drain confirmation.
         // Mirrors EngineEvent.SteerMessageLength's JSON tag.
         case steerMessageLength
-        // engine_steer_injected — additive correlation fields. Mirror the
-        // engine's own JSON tags (EngineEvent.SteerClientMessageID /
-        // SteerEntryID) verbatim: the desktop forwards the raw engine
-        // event, not a renamed renderer-internal shape.
-        case steerClientMessageId, steerEntryId
+        // Correlation fields for the exact-rewind-entry fix: the client's own
+        // correlation id on its steer send, and the durable conversation-tree
+        // entry id the engine persisted the steer under. Both raw engine
+        // field names (see the decoder comment on .engineSteerInjected).
+        case steerClientMessageId
+        case steerEntryId
+        // Steer authorship fields: who authored the steer, so consumers do
+        // not mislabel classified background delivery as user input.
+        case steerKind
+        case steerMachineAuthored
         // engine_steer_degraded — ctx.steerSelf accepted a fresh prompt
         // because no owning run was live. Mirrors EngineEvent's dedicated
         // SteerDegradedMessageLength JSON tag.

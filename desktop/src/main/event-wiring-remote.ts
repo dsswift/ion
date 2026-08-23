@@ -246,6 +246,21 @@ export function wireRemoteSessionPlaneForwarding(): void {
         }
         break
       }
+      case 'background_work_delivered': {
+        flushTabDeltas(tabId)
+        state.remoteTransport.send({
+          type: 'desktop_background_work_delivered',
+          tabId,
+          message: {
+            id: event.entryId,
+            role: 'system',
+            content: event.content,
+            backgroundWork: event.work,
+            timestamp: Date.now(),
+          },
+        })
+        break
+      }
     }
     })().catch((err) => warn('remote: session-plane event forwarding failed', { tab_id: tabId, error: String(err) }))
   })

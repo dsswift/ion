@@ -112,7 +112,8 @@ type activeRun struct {
 	// conv but not yet durably saved. A failed save retries this exact batch
 	// without appending duplicates; acknowledgement clears the source registry
 	// only after persistence succeeds.
-	pendingChildCompletionMessages []types.LlmMessage
+	pendingChildCompletionMessages []types.BackgroundWorkDelivery
+	pendingChildCompletionEntryIDs []string
 	pendingChildCompletionAck      func()
 
 	// lastNonEmptyResultText holds the most recent non-empty assistant text

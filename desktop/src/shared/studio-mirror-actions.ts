@@ -268,6 +268,12 @@ export const MIRROR_LOCAL_ACTIONS: Record<string, string> = {
   respondElicitation: "pass-through: elicitation answer to engine",
   respondEngineDialog: "pass-through: dialog answer to engine",
   interrupt: "pass-through: abort to engine; status events update all windows",
+  abortDispatch:
+    "pass-through: dispatch recall to engine; agent-state snapshot updates all windows",
+  abortDispatches:
+    "pass-through: exact dispatch recalls to engine; agent-state snapshot updates all windows",
+  stopBackgroundTask:
+    "pass-through: exact background-task stop; lifecycle and status events update all windows",
   markResourceRead:
     "pass-through: mark_read delta via engine broker + local read-state",
   markAllResourcesRead:

@@ -34,10 +34,11 @@ func (b *ApiBackend) emitToolResult(
 		resultImages = b.saveToolResultImages(run, toolID, result.Images)
 	}
 	b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
-		ToolID:  toolID,
-		Content: result.Content,
-		IsError: result.IsError,
-		Images:  resultImages,
+		ToolID:           toolID,
+		Content:          result.Content,
+		IsError:          result.IsError,
+		Images:           resultImages,
+		BackgroundTaskID: result.BackgroundTaskID,
 	}})
 	for _, img := range resultImages {
 		b.emit(run, types.NormalizedEvent{Data: &types.ImageContentEvent{
@@ -55,7 +56,8 @@ func (b *ApiBackend) emitToolResult(
 // reading the tool-use id or any persistence field, and narrowing the input is
 // what keeps the two from drifting into a second source of truth.
 type toolResultPayload struct {
-	Content string
-	IsError bool
-	Images  []*types.ImageSource
+	Content          string
+	IsError          bool
+	Images           []*types.ImageSource
+	BackgroundTaskID string
 }

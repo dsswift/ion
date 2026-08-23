@@ -31,6 +31,8 @@ vi.mock('../../../theme', () => ({
   useColors: () => new Proxy({}, { get: () => '#000' }),
 }))
 vi.mock('../../../rendererLogger', () => ({
+  rTrace: vi.fn(),
+  rDebug: vi.fn(),
   rInfo: vi.fn(),
   rWarn: vi.fn(),
   rError: vi.fn(),

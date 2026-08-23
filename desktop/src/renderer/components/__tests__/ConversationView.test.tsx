@@ -62,10 +62,14 @@ function setConversation(
 ): void {
   const tabId = 'tab-1'
   state.tabs = [{ id: tabId, status, queuedPrompts: [], lastResult: null }]
+  const statusFields = runningChildren < 0 ? {
+    activeBackgroundTasks: [{ taskId: 'task-1', command: 'sleep 30', startedAt: 1 }],
+  } : undefined
+  const childCount = Math.max(0, runningChildren)
   state.conversationPanes = new Map([[tabId, {
     activeInstanceId: 'instance-1',
-    instances: [{ id: 'instance-1', messages, agentStates: Array.from(
-      { length: runningChildren }, (_, index) => ({ name: `agent-${index}`, status: 'running' }),
+    instances: [{ id: 'instance-1', messages, statusFields, agentStates: Array.from(
+      { length: childCount }, (_, index) => ({ name: `agent-${index}`, status: 'running' }),
     ), dispatchTelemetry: [] }],
   }]])
 }
@@ -79,7 +83,11 @@ function renderConversation(): { container: HTMLDivElement; root: ReturnType<typ
 }
 
 describe('ConversationView composer activity row', () => {
-  beforeEach(() => { vi.clearAllMocks(); setConversation('idle', 0) })
+  beforeEach(() => {
+    vi.clearAllMocks()
+    state.engineWorkingMessages = new Map()
+    setConversation('idle', 0)
+  })
   afterEach(() => { document.body.replaceChildren() })
 
   it('uses a gradient blur overlay, not a divider panel', () => {
@@ -125,6 +133,23 @@ describe('ConversationView composer activity row', () => {
 
     expect(container.querySelector('[data-testid="conversation-activity-indicator"]')?.textContent)
       .toContain('Compacting…')
+    act(() => { root.unmount() })
+  })
+
+  it('shows active background shells beside running activity', () => {
+    setConversation('running', -1)
+    const { container, root } = renderConversation()
+
+    expect(container.querySelector('[data-testid="conversation-activity-indicator"]')?.textContent)
+      .toContain('Running… · 1 background shell')
+    act(() => { root.unmount() })
+  })
+
+  it('keeps Stop visible while only a background shell runs', () => {
+    setConversation('waiting', -1)
+    const { container, root } = renderConversation()
+    expect(container.querySelector('[data-testid="conversation-activity-row"]')).toBeTruthy()
+    expect(container.querySelector('[data-testid="conversation-interrupt-row"]')).toBeTruthy()
     act(() => { root.unmount() })
   })
 

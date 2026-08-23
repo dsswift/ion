@@ -57,7 +57,8 @@ extension RemoteEvent {
             let toolId = try container.decode(String.self, forKey: .toolId)
             let result = try container.decodeIfPresent(String.self, forKey: .result)
             let isError = try container.decodeIfPresent(Bool.self, forKey: .isError) ?? false
-            return .engineToolEnd(tabId: tabId, instanceId: instanceId, toolId: toolId, result: result, isError: isError)
+            let bgTaskId = try container.decodeIfPresent(String.self, forKey: .backgroundTaskId)
+            return .engineToolEnd(tabId: tabId, instanceId: instanceId, toolId: toolId, result: result, isError: isError, backgroundTaskId: bgTaskId)
 
         case .engineToolStalled:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -66,6 +67,41 @@ extension RemoteEvent {
             let toolName = try container.decode(String.self, forKey: .toolName)
             let elapsed = try container.decode(Double.self, forKey: .elapsed)
             return .engineToolStalled(tabId: tabId, instanceId: instanceId, toolId: toolId, toolName: toolName, elapsed: elapsed)
+
+        case .engineBackgroundTaskStarted:
+            let payload = try container.decode(BackgroundTaskState.self, forKey: .task)
+            return .engineBackgroundTaskStarted(
+                tabId: try container.decode(String.self, forKey: .tabId),
+                instanceId: try container.decodeIfPresent(String.self, forKey: .instanceId),
+                taskId: payload.taskId,
+                command: payload.command,
+                startedAt: payload.startedAt,
+                notifyOnComplete: payload.notifyOnComplete
+            )
+
+        case .engineBackgroundTaskTerminal:
+            return .engineBackgroundTaskTerminal(
+                tabId: try container.decode(String.self, forKey: .tabId),
+                instanceId: try container.decodeIfPresent(String.self, forKey: .instanceId),
+                taskId: try container.decode(String.self, forKey: .taskId),
+                status: try container.decode(String.self, forKey: .status),
+                exitCode: try container.decodeIfPresent(Int.self, forKey: .exitCode),
+                elapsedMs: try container.decodeIfPresent(Int.self, forKey: .elapsedMs),
+                command: try container.decodeIfPresent(String.self, forKey: .command),
+                outputPath: try container.decodeIfPresent(String.self, forKey: .outputPath),
+                tail: try container.decodeIfPresent(String.self, forKey: .tail)
+            )
+
+        case .engineSessionWorkStopped:
+            return .engineSessionWorkStopped(
+                tabId: try container.decode(String.self, forKey: .tabId),
+                instanceId: try container.decodeIfPresent(String.self, forKey: .instanceId),
+                scope: try container.decode(String.self, forKey: .scope),
+                cancelledRunId: try container.decodeIfPresent(String.self, forKey: .cancelledRunId),
+                recalledDispatchIds: try container.decodeIfPresent([String].self, forKey: .recalledDispatchIds),
+                stoppedBackgroundTaskIds: try container.decodeIfPresent([String].self, forKey: .stoppedBackgroundTaskIds) ?? [],
+                killedAgentProcessCount: try container.decodeIfPresent(Int.self, forKey: .killedAgentProcessCount)
+            )
 
         case .engineRunStalled:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -88,15 +124,35 @@ extension RemoteEvent {
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
             let messageLength = try container.decode(Int.self, forKey: .steerMessageLength)
+            // steerClientMessageId/steerEntryId are the RAW engine field
+            // names, forwarded verbatim by the desktop's generic engine-event
+            // spread projector (event-wiring-wire-projection.ts) rather than
+            // a renamed desktop-internal shape — decoding under any other key
+            // silently drops these bytes even though they are present on the
+            // wire.
             let clientMessageId = try container.decodeIfPresent(String.self, forKey: .steerClientMessageId)
             let entryId = try container.decodeIfPresent(String.self, forKey: .steerEntryId)
-            return .engineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength, clientMessageId: clientMessageId, entryId: entryId)
+            let kind = try container.decodeIfPresent(String.self, forKey: .steerKind)
+            let machineAuthored = try container.decodeIfPresent(Bool.self, forKey: .steerMachineAuthored)
+            return .engineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength, clientMessageId: clientMessageId, entryId: entryId, kind: kind, machineAuthored: machineAuthored)
 
         case .engineSteerDegraded:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
             let messageLength = try container.decode(Int.self, forKey: .steerDegradedMessageLength)
-            return .engineSteerDegraded(tabId: tabId, instanceId: instanceId, messageLength: messageLength)
+            let kind = try container.decodeIfPresent(String.self, forKey: .steerKind)
+            let machineAuthored = try container.decodeIfPresent(Bool.self, forKey: .steerMachineAuthored)
+            return .engineSteerDegraded(tabId: tabId, instanceId: instanceId, messageLength: messageLength, kind: kind, machineAuthored: machineAuthored)
+
+        case .engineRewindResult:
+            // Transactional rejection-only notice. `status` is always
+            // "rejected" on the wire (no success frame is ever sent), so it
+            // is not surfaced as a Swift field — decoding `error` is the only
+            // information a refusal carries.
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decode(String.self, forKey: .instanceId)
+            let error = try container.decodeIfPresent(String.self, forKey: .error)
+            return .engineRewindResult(tabId: tabId, instanceId: instanceId, error: error)
 
         case .enginePromptInjected:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -517,7 +573,10 @@ extension RemoteEvent {
             // fetches bytes lazily via RemoteImageFetcher. tabId/instanceId
             // follow the standard engine event shape; path/mediaType/source/
             // toolId mirror the Go ImageContentEvent json tags. source is
-            // "tool" (with toolId) or "provider" (no toolId).
+            // "tool" (with toolId) or "provider" (no toolId). contentHash is
+            // the SHA-256 of the decoded bytes — absent on legacy attachments
+            // without a hash; handleEngineImageContent treats absence as "not
+            // identifiable as a duplicate" rather than guessing.
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
             let path = try container.decode(String.self, forKey: .path)

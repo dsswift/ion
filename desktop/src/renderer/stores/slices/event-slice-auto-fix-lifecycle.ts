@@ -32,40 +32,40 @@
  * Owner evaluates close eligibility after its own committed state. Mirror never
  * evaluates or closes; forwarded reports make duplicate delivery idempotent.
  */
-import type { State } from '../session-store-types'
-import { isMirrorWindow } from '../../lib/window-role'
-import { rDebug, rInfo, rWarn } from '../../rendererLogger'
-import { hasRunningAgents } from './event-slice-done-move'
+import type { State } from "../session-store-types";
+import { isMirrorWindow } from "../../lib/window-role";
+import { rDebug, rInfo, rWarn } from "../../rendererLogger";
+import { hasRunningAgents } from "./event-slice-done-move";
 
 /** Evidence captured inside the task_complete reducer before it clears state. */
 export interface AutoFixCompletionEvidence {
   /** Typed completion reason from the engine; absent on older emitters. */
-  reason?: string
+  reason?: string;
   /** The run carried permission denials (captured pre-clear). */
-  hadDenials: boolean
+  hadDenials: boolean;
   /** A permission request or elicitation was pending (captured pre-clear). */
-  hadPendingAsk: boolean
+  hadPendingAsk: boolean;
   /** The activeRequestId of the run this completion belongs to (pre-clear). */
-  runRequestId: string | null
+  runRequestId: string | null;
 }
 
 /** Delay before the close commits, so the operator sees the completed state
  *  flash rather than the tab vanishing mid-render. Also the retry window for
  *  the running-children case. */
-const CLOSE_DELAY_MS = 1200
+const CLOSE_DELAY_MS = 1200;
 
-const pendingCloses = new Map<string, ReturnType<typeof setTimeout>>()
+const pendingCloses = new Map<string, ReturnType<typeof setTimeout>>();
 /** A close that passed every final guard. Duplicate reports must not start a
  * second reconciliation, close, or refresh while this close is in progress. */
-const closingTabs = new Set<string>()
+const closingTabs = new Set<string>();
 
 export function cancelAutoFixClose(tabId: string): void {
-  const t = pendingCloses.get(tabId)
+  const t = pendingCloses.get(tabId);
   if (t) {
-    clearTimeout(t)
-    pendingCloses.delete(tabId)
+    clearTimeout(t);
+    pendingCloses.delete(tabId);
   }
-  closingTabs.delete(tabId)
+  closingTabs.delete(tabId);
 }
 
 /** Post-commit owner entry point from the task_complete report. */
@@ -75,12 +75,12 @@ export function reportAutoFixCompletion(
   get: () => State,
 ): void {
   if (isMirrorWindow()) {
-    rWarn('auto-fix.lifecycle', 'ignored local completion report in mirror', {
+    rWarn("auto-fix.lifecycle", "ignored local completion report in mirror", {
       tab_id: tabId.slice(0, 8),
-    })
-    return
+    });
+    return;
   }
-  maybeCloseAutoFixTab(tabId, evidence, get)
+  maybeCloseAutoFixTab(tabId, evidence, get);
 }
 
 /**
@@ -88,52 +88,60 @@ export function reportAutoFixCompletion(
  * owner reducer commit and by terminal-child retry. Duplicate reports replace
  * one pending timer, so only one close evaluation can execute for a tab.
  */
-function maybeCloseAutoFixTab(
+export function maybeCloseAutoFixTab(
   tabId: string,
   evidence: AutoFixCompletionEvidence,
   get: () => State,
 ): void {
-  const tab = get().tabs.find((t) => t.id === tabId)
-  if (!tab || tab.tabRole !== 'conflict-auto-fix') return
+  const tab = get().tabs.find((t) => t.id === tabId);
+  if (!tab || tab.tabRole !== "conflict-auto-fix") return;
 
-  if (evidence.reason !== 'normal') {
-    cancelAutoFixClose(tabId)
-    blockedOnChildren.delete(tabId)
+  if (evidence.reason !== "normal") {
+    cancelAutoFixClose(tabId);
+    blockedOnChildren.delete(tabId);
     // Absent reason is indistinguishable from an abnormal end; retain. This is
     // exactly why the completion reason is a typed engine field rather than a
     // result-text heuristic: `task_complete` presence alone does not prove the
     // work finished (max-turn exhaustion also emits one).
-    rInfo('auto-fix.lifecycle', 'retained: completion not typed normal', {
-      tab_id: tabId.slice(0, 8), reason: evidence.reason ?? 'absent',
-    })
-    return
+    rInfo("auto-fix.lifecycle", "retained: completion not typed normal", {
+      tab_id: tabId.slice(0, 8),
+      reason: evidence.reason ?? "absent",
+    });
+    return;
   }
   if (evidence.hadDenials || evidence.hadPendingAsk) {
-    cancelAutoFixClose(tabId)
-    blockedOnChildren.delete(tabId)
-    rInfo('auto-fix.lifecycle', 'retained: run ended asking for input', {
-      tab_id: tabId.slice(0, 8), had_denials: evidence.hadDenials, had_pending_ask: evidence.hadPendingAsk,
-    })
-    return
+    cancelAutoFixClose(tabId);
+    blockedOnChildren.delete(tabId);
+    rInfo("auto-fix.lifecycle", "retained: run ended asking for input", {
+      tab_id: tabId.slice(0, 8),
+      had_denials: evidence.hadDenials,
+      had_pending_ask: evidence.hadPendingAsk,
+    });
+    return;
   }
   if (hasRunningAgents(get().conversationPanes, tabId)) {
     // Children still working: do not close now. The agent_state post-commit
     // hook calls retryAutoFixCloseOnTerminalChildren when the last child
     // reaches a terminal state, which re-runs this decision.
-    rInfo('auto-fix.lifecycle', 'deferred: running children', { tab_id: tabId.slice(0, 8) })
-    rememberBlockedClose(tabId, evidence)
-    return
+    rInfo("auto-fix.lifecycle", "deferred: running children", {
+      tab_id: tabId.slice(0, 8),
+    });
+    rememberBlockedClose(tabId, evidence);
+    return;
   }
 
-  scheduleClose(tabId, evidence, get)
+  scheduleClose(tabId, evidence, get);
 }
 
 /** Completions that passed every gate except running children, keyed by tab.
  *  Consulted when a terminal agent_state snapshot arrives. */
-const blockedOnChildren = new Map<string, AutoFixCompletionEvidence>()
+const blockedOnChildren = new Map<string, AutoFixCompletionEvidence>();
 
-function rememberBlockedClose(tabId: string, evidence: AutoFixCompletionEvidence): void {
-  blockedOnChildren.set(tabId, evidence)
+function rememberBlockedClose(
+  tabId: string,
+  evidence: AutoFixCompletionEvidence,
+): void {
+  blockedOnChildren.set(tabId, evidence);
 }
 
 /**
@@ -141,22 +149,31 @@ function rememberBlockedClose(tabId: string, evidence: AutoFixCompletionEvidence
  * had a clean completion blocked by running children sees all children reach a
  * terminal state, retry the close decision.
  */
-export function retryAutoFixCloseOnTerminalChildren(tabId: string, get: () => State): void {
-  if (isMirrorWindow()) return
-  const evidence = blockedOnChildren.get(tabId)
-  if (!evidence) return
-  if (hasRunningAgents(get().conversationPanes, tabId)) return
-  blockedOnChildren.delete(tabId)
-  rInfo('auto-fix.lifecycle', 'retrying close: children now terminal', { tab_id: tabId.slice(0, 8) })
-  maybeCloseAutoFixTab(tabId, evidence, get)
+export function retryAutoFixCloseOnTerminalChildren(
+  tabId: string,
+  get: () => State,
+): void {
+  if (isMirrorWindow()) return;
+  const evidence = blockedOnChildren.get(tabId);
+  if (!evidence) return;
+  if (hasRunningAgents(get().conversationPanes, tabId)) return;
+  blockedOnChildren.delete(tabId);
+  rInfo("auto-fix.lifecycle", "retrying close: children now terminal", {
+    tab_id: tabId.slice(0, 8),
+  });
+  maybeCloseAutoFixTab(tabId, evidence, get);
 }
 
-function scheduleClose(tabId: string, evidence: AutoFixCompletionEvidence, get: () => State): void {
-  cancelAutoFixClose(tabId)
+function scheduleClose(
+  tabId: string,
+  evidence: AutoFixCompletionEvidence,
+  get: () => State,
+): void {
+  cancelAutoFixClose(tabId);
   const timer = setTimeout(() => {
-    void closeAutoFixTab(tabId, evidence, get)
-  }, CLOSE_DELAY_MS)
-  pendingCloses.set(tabId, timer)
+    void closeAutoFixTab(tabId, evidence, get);
+  }, CLOSE_DELAY_MS);
+  pendingCloses.set(tabId, timer);
 }
 
 async function closeAutoFixTab(
@@ -164,31 +181,43 @@ async function closeAutoFixTab(
   evidence: AutoFixCompletionEvidence,
   get: () => State,
 ): Promise<void> {
-  pendingCloses.delete(tabId)
+  pendingCloses.delete(tabId);
   // Re-read the committed store: reject stale work. The tab may be gone,
   // re-roled, or running a NEW request since the completion that scheduled
   // this close.
-  const now = get().tabs.find((t) => t.id === tabId)
-  if (!now || now.tabRole !== 'conflict-auto-fix') {
-    rDebug('auto-fix.lifecycle', 'close aborted: tab gone or re-roled', { tab_id: tabId.slice(0, 8) })
-    return
+  const now = get().tabs.find((t) => t.id === tabId);
+  if (!now || now.tabRole !== "conflict-auto-fix") {
+    rDebug("auto-fix.lifecycle", "close aborted: tab gone or re-roled", {
+      tab_id: tabId.slice(0, 8),
+    });
+    return;
   }
-  if (now.status === 'running' || (now.activeRequestId && now.activeRequestId !== evidence.runRequestId)) {
-    rWarn('auto-fix.lifecycle', 'close aborted: newer run in flight', {
-      tab_id: tabId.slice(0, 8), status: now.status,
-    })
-    return
+  if (
+    now.status === "running" ||
+    (now.activeRequestId && now.activeRequestId !== evidence.runRequestId)
+  ) {
+    rWarn("auto-fix.lifecycle", "close aborted: newer run in flight", {
+      tab_id: tabId.slice(0, 8),
+      status: now.status,
+    });
+    return;
   }
   if (hasRunningAgents(get().conversationPanes, tabId)) {
-    rDebug('auto-fix.lifecycle', 'close aborted: children resumed', { tab_id: tabId.slice(0, 8) })
-    return
+    rDebug("auto-fix.lifecycle", "close aborted: children resumed", {
+      tab_id: tabId.slice(0, 8),
+    });
+    return;
   }
   if (closingTabs.has(tabId)) {
-    rDebug('auto-fix.lifecycle', 'close ignored: close already in progress', { tab_id: tabId.slice(0, 8) })
-    return
+    rDebug("auto-fix.lifecycle", "close ignored: close already in progress", {
+      tab_id: tabId.slice(0, 8),
+    });
+    return;
   }
-  rInfo('auto-fix.lifecycle', 'closing auto-fix tab after clean completion', { tab_id: tabId.slice(0, 8) })
-  closingTabs.add(tabId)
+  rInfo("auto-fix.lifecycle", "closing auto-fix tab after clean completion", {
+    tab_id: tabId.slice(0, 8),
+  });
+  closingTabs.add(tabId);
 
   // Resolve the repo whose worktree surfaces this fix changed, BEFORE closing:
   // `closeTab` removes the tab from `tabs`, so reading it afterwards yields
@@ -198,15 +227,19 @@ async function closeAutoFixTab(
   // carries no `tab.worktree` — so the bench record supplies the repo. A
   // worktree auto-fix has the metadata directly. Both end at the repo whose
   // inventory and bench the row is joined from.
-  const repoPath = resolveRepoForRefresh(now, get)
-  const isBenchAutoFix = [...get().benchWorkspaces.values()]
-    .some((workspaces) => workspaces.some((workspace) => workspace.benchPath === now.workingDirectory))
+  const repoPath = resolveRepoForRefresh(now, get);
+  const isBenchAutoFix = [...get().benchWorkspaces.values()].some(
+    (workspaces) =>
+      workspaces.some(
+        (workspace) => workspace.benchPath === now.workingDirectory,
+      ),
+  );
   if (isBenchAutoFix) {
-    await reconcileCompletedBenchConflict(tabId, now.workingDirectory)
+    await reconcileCompletedBenchConflict(tabId, now.workingDirectory);
   }
 
-  get().closeTab(tabId)
-  closingTabs.delete(tabId)
+  get().closeTab(tabId);
+  closingTabs.delete(tabId);
 
   // The resolution just changed what the worktree row says: the conflict is
   // gone, the operation state cleared, and the bench member's merge verdict
@@ -216,33 +249,53 @@ async function closeAutoFixTab(
   //
   // Refresh only; never reassemble. The operator decides when to rebuild.
   if (repoPath) {
-    void get().refreshWorkspaceViews(repoPath)
-      .then(() => rInfo('auto-fix.lifecycle', 'refreshed worktree surfaces after resolution', {
-        tab_id: tabId.slice(0, 8), repo_path: repoPath,
-      }))
-      .catch((err) => rWarn('auto-fix.lifecycle', 'post-close workspace refresh failed', {
-        tab_id: tabId.slice(0, 8), repo_path: repoPath, error: String(err),
-      }))
+    void get()
+      .refreshWorkspaceViews(repoPath)
+      .then(() =>
+        rInfo(
+          "auto-fix.lifecycle",
+          "refreshed worktree surfaces after resolution",
+          {
+            tab_id: tabId.slice(0, 8),
+            repo_path: repoPath,
+          },
+        ),
+      )
+      .catch((err) =>
+        rWarn("auto-fix.lifecycle", "post-close workspace refresh failed", {
+          tab_id: tabId.slice(0, 8),
+          repo_path: repoPath,
+          error: String(err),
+        }),
+      );
   } else {
-    rDebug('auto-fix.lifecycle', 'no repo resolved for post-close refresh', {
-      tab_id: tabId.slice(0, 8), directory: now.workingDirectory,
-    })
+    rDebug("auto-fix.lifecycle", "no repo resolved for post-close refresh", {
+      tab_id: tabId.slice(0, 8),
+      directory: now.workingDirectory,
+    });
   }
 }
 
 /** Reconcile only a known bench auto-fix. A plain worktree resolution must not
  * probe or mutate unrelated bench records. Reconciliation verifies completed
  * Git state before clearing a row verdict and never assembles the bench. */
-async function reconcileCompletedBenchConflict(tabId: string, directory: string): Promise<void> {
+async function reconcileCompletedBenchConflict(
+  tabId: string,
+  directory: string,
+): Promise<void> {
   try {
-    const result = await window.ion.benchReconcileResolution(directory)
-    rInfo('auto-fix.lifecycle', 'bench resolution reconciliation completed', {
-      tab_id: tabId.slice(0, 8), directory, reconciled: result.reconciled,
-    })
+    const result = await window.ion.benchReconcileResolution(directory);
+    rInfo("auto-fix.lifecycle", "bench resolution reconciliation completed", {
+      tab_id: tabId.slice(0, 8),
+      directory,
+      reconciled: result.reconciled,
+    });
   } catch (err) {
-    rWarn('auto-fix.lifecycle', 'bench resolution reconciliation failed', {
-      tab_id: tabId.slice(0, 8), directory, error: String(err),
-    })
+    rWarn("auto-fix.lifecycle", "bench resolution reconciliation failed", {
+      tab_id: tabId.slice(0, 8),
+      directory,
+      error: String(err),
+    });
   }
 }
 
@@ -264,9 +317,10 @@ function resolveRepoForRefresh(
   tab: { workingDirectory: string; worktree?: { repoPath: string } | null },
   get: () => State,
 ): string | null {
-  if (tab.worktree?.repoPath) return tab.worktree.repoPath
+  if (tab.worktree?.repoPath) return tab.worktree.repoPath;
   for (const [repoPath, workspaces] of get().benchWorkspaces) {
-    if (workspaces.some((w) => w.benchPath === tab.workingDirectory)) return repoPath
+    if (workspaces.some((w) => w.benchPath === tab.workingDirectory))
+      return repoPath;
   }
-  return null
+  return null;
 }

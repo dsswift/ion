@@ -51,6 +51,17 @@ struct Message: Codable, Identifiable, Sendable {
     /// history-replay wire alongside `dedupKey`. NOT persisted beyond the
     /// in-memory message store.
     var dedupMode: String? = nil
+    /// Background work delivery metadata. Present on messages that represent
+    /// a completed background agent's work being delivered into the conversation.
+    /// Decoded from the `desktop_background_work_delivered` event and from
+    /// history replay. Mirrors the compaction pattern: one message per delivery.
+    var backgroundWork: BackgroundWorkMetadata?
+    /// Background task identifier. When present on a tool-end event, the tool
+    /// stays in `.asyncPending` state until the matching
+    /// `background_work_delivered` event arrives and folds the delivery onto
+    /// this tool row. Forward-compatible: the engine/desktop wire field does
+    /// not exist yet; iOS prepares the type surface.
+    var backgroundTaskId: String?
     /// Local UI state only -- NOT a wire protocol field, NOT persisted.
     /// Set to true by engine_message_end so the next engine_text_delta
     /// opens a fresh assistant message instead of appending to this one.
@@ -119,6 +130,9 @@ struct Message: Codable, Identifiable, Sendable {
     /// Character count carried by persisted `markerKind: "steer"` rows. The
     /// engine uses it to replay a confirmation without exposing the steer body.
     var markerMessageLength: Int? = nil
+    /// Lets historical clients suppress a transport marker when its adjacent
+    /// delivery was engine-authored background work.
+    var markerMachineAuthored: Bool? = nil
 
     /// Classifies engine-side injected user turns on historical reload.
     /// "agent_completion" marks a machine-to-machine dispatch callback (a child
@@ -173,6 +187,7 @@ struct Message: Codable, Identifiable, Sendable {
     var isHarness: Bool { role == .harness }
     var isThinking: Bool { role == .thinking }
 
+
     /// Image attachments to render inline in a message bubble. Provider-generated
     /// images (assistant turns) and tool-returned images (tool turns) arrive as
     /// structured `attachments` of type `.image` — never as content markers and
@@ -189,7 +204,7 @@ struct Message: Codable, Identifiable, Sendable {
         case attachments, timestamp, source
         case isInternal = "internal"
         case slashCommand, slashArgs, slashSource, slashModelAlias, slashModelEffective
-        case planFilePath, markerKind, markerMessageLength
+        case planFilePath, markerKind, markerMessageLength, markerMachineAuthored
         case injectionKind, machineAuthored
         // clientMsgId: desktop-local reconciliation key on history user rows (RC-9).
         case clientMsgId
@@ -197,6 +212,8 @@ struct Message: Codable, Identifiable, Sendable {
         // (desktop_conversation_history) so relocate semantics survive reconnect.
         // Client-only render state — NOT persisted beyond the in-memory store.
         case dedupKey, dedupMode
+        case backgroundWork
+        case backgroundTaskId
         // interceptLevel and the thinking* summary fields are deliberately
         // excluded — they are transient client-only render hints that are
         // never serialized to or from the wire.
@@ -215,6 +232,8 @@ enum MessageRole: String, Codable, Sendable {
 
 enum ToolStatus: String, Codable, Sendable {
     case running, completed, error
+    /// Tool finished but its background work has not yet been delivered.
+    case asyncPending
 }
 
 enum MessageSource: String, Codable, Sendable {
@@ -235,13 +254,16 @@ extension Message {
     init(engineJSON decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: EngineCodingKeys.self)
 
-        // id: accept String or Int (coerce to String)
-        if let s = try? container.decode(String.self, forKey: .id) {
-            id = s
-        } else if let n = try? container.decode(Int.self, forKey: .id) {
-            id = String(n)
-        } else {
-            id = UUID().uuidString
+        // A malformed or missing id is recoverable; preserve decoder fallback behavior.
+        do {
+            id = try container.decode(String.self, forKey: .id)
+        } catch {
+            do {
+                id = String(try container.decode(Int.self, forKey: .id))
+            } catch {
+                DiagnosticLog.log("message id decode failed; generated replacement", tag: "model.message", level: .warn)
+                id = UUID().uuidString
+            }
         }
 
         // role: raw string -> enum
@@ -285,6 +307,7 @@ extension Message {
         // the divider still carries a path for the tappable slug link.
         markerKind = try container.decodeIfPresent(String.self, forKey: .markerKind)
         markerMessageLength = try container.decodeIfPresent(Int.self, forKey: .markerMessageLength)
+        markerMachineAuthored = try container.decodeIfPresent(Bool.self, forKey: .markerMachineAuthored)
         if planFilePath == nil {
             planFilePath = try container.decodeIfPresent(String.self, forKey: .markerPlanFilePath)
         }
@@ -296,6 +319,11 @@ extension Message {
         // rather than rendering a dispatch completion as a user bubble.
         injectionKind = try container.decodeIfPresent(String.self, forKey: .injectionKind)
         machineAuthored = try container.decodeIfPresent(Bool.self, forKey: .machineAuthored)
+
+        // backgroundWork carries structured metadata for an engine-owned
+        // completion input. Decoded from the engine wire on history replay.
+        backgroundWork = try container.decodeIfPresent(BackgroundWorkMetadata.self, forKey: .backgroundWork)
+        backgroundTaskId = try container.decodeIfPresent(String.self, forKey: .backgroundTaskId)
 
         // Engine SessionMessage carries image references on historical reload
         // in `attachments` (engine flattenEntries replays a persisted tool-result
@@ -316,7 +344,9 @@ extension Message {
         case isInternal = "internal"
         case slashCommand, slashArgs, slashSource, slashModelAlias, slashModelEffective
         case planFilePath
-        case markerKind, markerMessageLength, markerPlanFilePath, injectionKind, machineAuthored
+        case markerKind, markerMessageLength, markerMachineAuthored, markerPlanFilePath
+        case injectionKind, machineAuthored
+        case backgroundWork, backgroundTaskId
         case attachments
     }
 

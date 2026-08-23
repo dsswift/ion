@@ -7,71 +7,39 @@ import (
 
 // SendAbort cancels the active run for the given session and reaps any
 // dispatched child agents so they do not continue running standalone.
+//
+// This is the full-teardown scope. It is kept as its own exported method
+// (rather than folded into SendAbortScoped) because it is the signature every
+// external Go-SDK consumer and in-repo caller already builds against; the
+// scoped variant is additive. See abort_scope.go for the scope semantics.
 func (m *Manager) SendAbort(key string) {
-	utils.LogWithFields(utils.LevelInfo, "session", "sendabort", map[string]any{"key": key})
-	m.mu.Lock()
-	s, ok := m.sessions[key]
-	if !ok {
-		m.mu.Unlock()
-		utils.LogWithFields(utils.LevelWarn, "session", "sendabort: session not found for", map[string]any{"key": key})
-		return
-	}
-	rid := s.requestID
-	recoveryID := s.recoveryID
-	conversationID := s.conversationID
-	// Discard any prompts queued behind the in-flight run. Pressing Stop
-	// means "abandon the pending work", so prompts the user queued *before*
-	// the abort must not be resurrected when the cancelled run unwinds and
-	// handleRunExit drains the queue. This mirrors StopSession, which also
-	// nils promptQueue. A prompt the user types *after* this abort re-queues
-	// onto the now-empty queue and is dispatched once by handleRunExit's
-	// existing drain — that is the intended hold-and-dispatch behavior.
-	//
-	// We deliberately do NOT clear s.requestID here: the run goroutine and
-	// its cancel watchdog own the requestID lifecycle and clear it via
-	// handleRunExit on real exit. Clearing it out from under them would
-	// desync the backend's per-run watchdog / terminal-status contract and
-	// risk a double dispatch.
-	if dropped := len(s.promptQueue); dropped > 0 {
-		utils.LogWithFields(utils.LevelInfo, "session", "sendabort: dropping queued prompt(s) for", map[string]any{"dropped": dropped, "key": key})
-		s.promptQueue = nil
-	}
-	m.mu.Unlock()
-
-	// Explicit abort is an operator decision, never a restart-recovery signal.
-	m.clearRunRecovery(conversationID, key, recoveryID, "explicit_abort")
-	m.mu.Lock()
-	if current, exists := m.sessions[key]; exists && current == s {
-		clearRecoveryLifecycle(current)
-	}
-	m.mu.Unlock()
-
-	// Cancel the session's cancellation root first. This cascades through
-	// the Go context tree to every descendant that derived from it — the
-	// backend run (via RunOptions.ParentCtx), dispatched child agents'
-	// in-process contexts, and any in-flight ctx.llmCall(). The explicit
-	// backend.Cancel(rid) and abortAllDescendants calls below remain as
-	// belt-and-suspenders: backend.Cancel drives the per-run watchdog /
-	// terminal-status emission contract, and abortAllDescendants performs
-	// the OS-process kill that a context cancel alone cannot do for child
-	// agents running as separate processes.
-	s.cancelSessionRoot("user abort")
-
-	if rid != "" {
-		utils.LogWithFields(utils.LevelInfo, "session", "sendabort: cancelling for", map[string]any{"run_id": rid, "key": key})
-		m.backend.Cancel(rid)
-	} else {
-		utils.LogWithFields(utils.LevelWarn, "session", "sendabort: no active requestid for (reaping descendants only)", map[string]any{"key": key})
-	}
-	// Always reap descendants — they may outlive the parent run
-	m.abortAllDescendants(key, "user abort")
+	m.SendAbortScoped(key, AbortScopeAll)
 }
 
-// abortAllDescendants kills every agent registered for this session and
-// transitions their engine-managed states to "cancelled" so the next
-// emitted snapshot reflects reality. Called when the parent run dies
+// abortAllDescendants stops every descendant of this session — background
+// dispatches held in the DispatchRegistry and agent processes registered as
+// handles — and transitions their engine-managed states to "cancelled" so the
+// next emitted snapshot reflects reality. Called when the parent run dies
 // (error/non-zero exit) or the user interrupts so dispatched agents do
 // not continue running standalone and burning model budget.
+//
+// The two registries are genuinely separate populations, and this is the only
+// place that covers both:
+//
+//   - DispatchRegistry holds engine-native dispatches (ctx.DispatchAgent and
+//     the orchestrator's Agent tool). They are cancelled by recall, which
+//     drives their normal terminal path (cancelled status, snapshot,
+//     deregister, dispatch-count re-emit).
+//   - agents.Registry holds OS-process handles registered via
+//     ctx.RegisterAgent. Those need a PID kill; a context cancel cannot reach
+//     another process.
+//
+// The recall runs FIRST, before the handle sweep's zero-handle early return.
+// Ordering is load-bearing: engine-native dispatches register no handle, so a
+// session whose only descendants are dispatches has zero PIDs, and a recall
+// placed after that return would never execute. That was the defect this
+// ordering fixes — the desktop's "reap the subtree" call was a no-op for every
+// engine-native dispatch, and only the session-root cascade stopped them.
 //
 // Engine contract: `engine_agent_state` events are complete snapshots.
 // Every code path that ends an agent's run must transition the registry
@@ -87,6 +55,15 @@ func (m *Manager) abortAllDescendants(key, reason string) {
 	}
 	hasExt := s.extGroup != nil && !s.extGroup.IsEmpty()
 	m.mu.RUnlock()
+
+	// Recall live background dispatches. Each recall cancels the dispatch's
+	// context and cascades to its descendants; the dispatch's own exit path
+	// emits its terminal state and deregisters it.
+	if s.dispatchRegistry != nil {
+		if recalled := s.dispatchRegistry.RecallAll(reason); recalled > 0 {
+			utils.LogWithFields(utils.LevelInfo, "session", "abortalldescendants: recalled background dispatch(es)", map[string]any{"key": key, "reason": reason, "count": recalled})
+		}
+	}
 
 	pids, names := s.agents.ClearHandles()
 	if len(pids) == 0 {

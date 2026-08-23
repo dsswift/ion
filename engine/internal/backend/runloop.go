@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/providers"
@@ -61,20 +60,6 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	provider, model := b.resolveProviderForRun(run, &opts)
 	if provider == nil {
 		return
-	}
-	if opts.ResolvedSlashModelAlias != "" && opts.ResolvedSlashModelEffective != model {
-		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "slash command model fell back before persistence", map[string]any{
-			"model_alias":    opts.ResolvedSlashModelAlias,
-			"resolved_model": opts.ResolvedSlashModelEffective,
-			"serving_model":  model,
-			"run_id":         run.requestID,
-		})
-		// A selector badge means the command ran on that selector's resolved
-		// model. Once provider fallback selects a different model, retain only
-		// the actual serving model on the user turn; ModelFallbackEvent carries
-		// the requested selector and fallback relationship separately.
-		opts.ResolvedSlashModelAlias = ""
-		opts.ResolvedSlashModelEffective = model
 	}
 
 	// Image-generation models (ModelKind == "image") use a completely
@@ -158,47 +143,9 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		"count":  len(seeded),
 	})
 
-	// Append the inbound user turn. See appendInboundUserMessage for the
-	// attachment / slash-command-split handling (extracted to keep this file
-	// under the size cap).
-	//
-	// The engine does NOT echo the appended user turn back to clients. A user
-	// turn is either (1) the local client's own input — which the client already
-	// rendered optimistically and does not need echoed back to remember — or
-	// (2) a turn originated on another client, whose live cross-device echo is
-	// owned by the desktop↔client wire (the desktop pipeline's
-	// desktop_message_added), not by the engine. The persisted turn is the
-	// snapshot authority: it lives in the conversation transcript and reaches
-	// every consumer via history load. Re-broadcasting it as a live event would
-	// duplicate the client's own input and force a dedup contract on every
-	// consumer; it also surfaced extension-injected turns (ctx.sendMessage) as
-	// phantom user bubbles. See the removal of engine_user_turn.
-	var userEntry *conversation.SessionEntry
-	if opts.PrePersistedUserEntryID == "" {
-		userEntry = AppendInboundUserMessage(conv, &opts)
-		// Skill discovery augments the inbound user carrier so providers retain legal
-		// role alternation. Its structural fields persist with that turn for resume.
-		injectSkillListingDelta(conv, opts, hooks)
-		// Persist immediately: if the engine dies mid-stream, the user prompt
-		// must survive so the user does not lose what they just typed.
-		if err := conversation.Save(conv, ""); err != nil {
-			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation after AddUserMessage", map[string]any{
-				"error": utils.ErrStr(err),
-			})
-		}
-	} else {
-		userEntry = &conversation.SessionEntry{ID: opts.PrePersistedUserEntryID}
-		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "reusing session-persisted user turn", map[string]any{
-			"run_id": run.requestID, "entry_id": opts.PrePersistedUserEntryID,
-		})
-	}
-	// The run-opening user turn's canonical entry id rides every
-	// message_end of this run (UsageEvent.UserEntryID) so consumers can
-	// re-key their optimistic user row to the persisted identity.
-	runUserEntryID := ""
-	if userEntry != nil {
-		runUserEntryID = userEntry.ID
-	}
+	// Persist queued completion entries and the run-opening prompt before the
+	// first provider call. Delivery events follow only after a successful save.
+	runUserEntryID := b.persistInitialDeliveryEntries(run, conv, &opts)
 
 	// Announce the persisted user turn's canonical entry id NOW — before any
 	// streaming — so consumers can re-key their optimistic user row
@@ -383,7 +330,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		// compaction summary). A non-zero opts.CompactThreshold preserves
 		// the legacy percent-of-window override so callers that already
 		// tuned this value keep their behavior.
-		compactLimit := conversation.ResolveModelContextCapacity(contextWindow, opts.MaxTokens, providers.GetModelInfo(model)).EffectiveLimit
+		compactLimit := conversation.AutoCompactTokenLimit(contextWindow, opts.MaxTokens)
 		if opts.CompactThreshold > 0 {
 			compactLimit = int(float64(contextWindow) * opts.CompactThreshold / 100.0)
 			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "source=legacy-override %", map[string]any{
@@ -772,29 +719,5 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	}
 
 	// Exceeded max turns
-	if err := conversation.Save(conv, ""); err != nil {
-		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation", map[string]any{
-			"error": utils.ErrStr(err),
-		})
-	}
-
-	elapsed := time.Since(run.startTime).Milliseconds()
-	b.emit(run, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
-		Reason:            types.TaskCompletionReasonMaxTurns,
-		Result:            fmt.Sprintf("Reached max turns (%d)", maxTurns),
-		LastText:          run.lastNonEmptyResultText,
-		CostUsd:           run.totalCost,
-		DurationMs:        elapsed,
-		NumTurns:          turn,
-		ConversationTurns: conversation.CountUserPrompts(conv),
-		SessionID:         conv.ID,
-		Usage:             cumulativeUsage(run),
-	}})
-	utils.LogWithFields(utils.LevelWarn, "backend.runloop", "max turns exceeded: / cost=$", map[string]any{
-		"run_id":     run.requestID,
-		"turns":      turn,
-		"max_turns":  maxTurns,
-		"total_cost": run.totalCost,
-	})
-	b.emitExit(run.requestID, intPtr(0), nil, conv.ID)
+	b.emitMaxTurns(run, conv, maxTurns, turn)
 }

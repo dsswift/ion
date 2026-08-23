@@ -98,6 +98,11 @@ export type RemoteEvent =
   // has more history and therefore cannot distinguish the two.
   | { type: 'desktop_conversation_history'; tabId: string; messages: RemoteMessage[]; hasMore: boolean; cursor?: string; before?: string | null }
   | { type: 'desktop_message_added'; tabId: string; message: RemoteMessage }
+  | { type: 'desktop_background_work_delivered'; tabId: string; instanceId?: string | null; message: RemoteMessage }
+  | { type: 'desktop_background_task_started'; tabId: string; instanceId?: string | null; task: import('../../shared/types-engine').BackgroundTaskState }
+  | { type: 'desktop_background_task_terminal'; tabId: string; instanceId?: string | null; taskId: string; status: string; exitCode?: number; elapsedMs?: number; command?: string; outputPath?: string; tail?: string }
+  | { type: 'desktop_session_work_stopped'; tabId: string; instanceId?: string | null; scope: string; cancelledRunId?: string; recalledDispatchIds?: string[]; stoppedBackgroundTaskIds?: string[]; killedAgentProcessCount?: number }
+  | { type: 'desktop_background_task_stop_result'; requestId: string; taskId: string; status: string; error?: string }
   | { type: 'desktop_message_updated'; tabId: string; messageId: string; content?: string; toolStatus?: 'running' | 'completed' | 'error'; toolInput?: string }
   | { type: 'desktop_queue_update'; tabId: string; prompts: string[] }
   | { type: 'desktop_terminal_output'; tabId: string; instanceId: string; data: string }
@@ -141,9 +146,16 @@ export type RemoteEvent =
   | { type: 'desktop_tool_end'; tabId: string; instanceId?: string | null; toolId: string; result?: string; isError?: boolean }
   | { type: 'desktop_tool_stalled'; tabId: string; instanceId?: string | null; toolId: string; toolName: string; elapsed: number }
   // A live run-loop checkpoint drained this steer before its next LLM call.
-  | { type: 'desktop_steer_injected'; tabId: string; instanceId?: string | null; steerMessageLength: number }
+  // Forwarded verbatim from engine_steer_injected by the generic engine-event
+  // forwarder (event-wiring.ts / event-wiring-wire-projection.ts), so it
+  // carries every steer* field the raw engine event declares — steerKind and
+  // steerMachineAuthored gate whether a client renders it as a genuine
+  // client-originated steer; steerClientMessageId/steerEntryId let a client
+  // resolve EXACTLY which outstanding optimistic steer bubble this confirms
+  // and learn the durable conversation-tree entry id for a later rewind by id.
+  | { type: 'desktop_steer_injected'; tabId: string; instanceId?: string | null; steerMessageLength: number; steerClientMessageId?: string; steerEntryId?: string; steerKind?: string; steerMachineAuthored?: boolean }
   // No owning run was live, so ctx.steerSelf delivered a fresh prompt instead.
-  | { type: 'desktop_steer_degraded'; tabId: string; instanceId?: string | null; steerDegradedMessageLength: number }
+  | { type: 'desktop_steer_degraded'; tabId: string; instanceId?: string | null; steerDegradedMessageLength: number; steerKind?: string; steerMachineAuthored?: boolean }
   // desktop_prompt_injected: forwarded verbatim from engine_prompt_injected
   // by the generic engine-event forwarder in event-wiring.ts (engineToWireType
   // strips the engine_ prefix). An extension injected a prompt via

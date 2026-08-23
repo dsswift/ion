@@ -24,16 +24,52 @@ extension ConversationView {
     var canAbort: Bool {
         ConversationView.computeCanAbort(
             status: viewModel.tab(for: tabId)?.status,
-            hasRunningChildren: viewModel.tab(for: tabId)?.hasRunningChildren
+            hasRunningChildren: viewModel.tab(for: tabId)?.hasRunningChildren,
+            hasActiveBackgroundTasks: !activeBackgroundTasks.isEmpty
         )
+    }
+
+    /// Whether the orchestrator itself has an active run. Distinct from
+    /// `canAbort`, which is also true when only background dispatches remain:
+    /// in that state "stop the orchestrator" has nothing to stop.
+    var orchestratorRunning: Bool {
+        let status = viewModel.tab(for: tabId)?.status
+        return status == .running || status == .connecting
+    }
+
+    /// Whether dispatched background agents are alive, for the menu wording.
+    var hasRunningChildren: Bool {
+        viewModel.tab(for: tabId)?.hasRunningChildren == true
+    }
+
+    func stopOrchestrator() {
+        DiagnosticLog.log("inputbar stop orchestrator tapped", tag: "view.inputbar", fields: [
+            "tab_id": tabId,
+            "status": viewModel.tab(for: tabId)?.status.rawValue ?? "nil",
+            "reason": String(hasRunningChildren)
+        ])
+        viewModel.cancel(tabId: tabId, scope: "orchestrator")
+    }
+
+    func stopAll() {
+        DiagnosticLog.log("inputbar stop all tapped", tag: "view.inputbar", fields: [
+            "tab_id": tabId,
+            "status": viewModel.tab(for: tabId)?.status.rawValue ?? "nil",
+            "reason": String(hasRunningChildren)
+        ])
+        viewModel.cancel(tabId: tabId, scope: "all_work")
     }
 
     /// Pure, view-independent gate for the abort affordance. Extracted so
     /// the visibility logic is unit-testable without instantiating the view.
     /// Migrated from the dead InputBar.swift (see Fix 3 retirement commit).
-    static func computeCanAbort(status: TabStatus?, hasRunningChildren: Bool?) -> Bool {
+    static func computeCanAbort(
+        status: TabStatus?,
+        hasRunningChildren: Bool?,
+        hasActiveBackgroundTasks: Bool = false
+    ) -> Bool {
         let running = status == .running || status == .connecting || status == .waiting
-        return running || (hasRunningChildren == true)
+        return running || (hasRunningChildren == true) || hasActiveBackgroundTasks
     }
 
     /// Whether the active conversation instance has an image-generation model
@@ -279,19 +315,37 @@ extension ConversationView {
                 // "response terminated after three characters" incident).
                 // Abort reappears as soon as recording ends.
                 if canAbort && !isRecordingVoice {
-                    Button {
-                        DiagnosticLog.log("inputbar abort tapped", tag: "view.inputbar", fields: [
-                            "tab_id": tabId,
-                            "status": viewModel.tab(for: tabId)?.status.rawValue ?? "nil",
-                            "reason": String(viewModel.tab(for: tabId)?.hasRunningChildren == true)
-                        ])
-                        viewModel.cancel(tabId: tabId)
+                    // A Menu rather than a plain Button: stopping the
+                    // orchestrator and stopping the whole tree are different
+                    // decisions, and the destructive one must not be the
+                    // default target of a tap aimed at "stop". Mirrors the
+                    // desktop's split Stop control.
+                    Menu {
+                        Button {
+                            stopOrchestrator()
+                        } label: {
+                            Label(hasRunningChildren
+                                  ? "Stop orchestrator (keep agents)"
+                                  : "Stop orchestrator",
+                                  systemImage: "stop.circle")
+                        }
+                        .disabled(!orchestratorRunning)
+
+                        Button(role: .destructive) {
+                            stopAll()
+                        } label: {
+                            Label("Stop all", systemImage: "stop.fill")
+                        }
                     } label: {
                         Image(systemName: "stop.fill")
                             .font(IonType.metadata)
                             .foregroundStyle(theme.statusError)
                             .frame(width: IonSpace.screenInset, height: IonSpace.screenInset)
                             .overlay(Circle().stroke(theme.statusError, lineWidth: 1))
+                    } primaryAction: {
+                        // A plain tap takes the recoverable action; the menu is
+                        // a long-press away for Stop all.
+                        if orchestratorRunning { stopOrchestrator() } else { stopAll() }
                     }
                     .accessibilityLabel("Stop")
                 }

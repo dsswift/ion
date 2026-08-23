@@ -34,6 +34,7 @@ func sdkClaimedMethods() map[string]string {
 		"ext/deregister_agent_spec":         "Context.DeregisterAgentSpec",
 		"ext/dispatch_agent":                "Context.DispatchAgent",
 		"ext/recall_agent":                  "Context.RecallAgent",
+		"ext/recall_dispatch":               "Context.RecallDispatch",
 		"ext/steer_dispatch":                "Context.SteerDispatch",
 		"ext/steer_dispatch_by_name":        "Context.SteerDispatchByName",
 		"ext/steer_self":                    "Context.SteerSelf",

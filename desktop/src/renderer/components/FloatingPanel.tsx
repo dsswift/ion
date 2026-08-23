@@ -279,9 +279,10 @@ export function FloatingPanel({
         </span>
       </div>
 
-      {/* Content area — apply preview font-size variable here only (not on
-          header/chrome). Pop-up content bodies read var(--ion-conv-font-size)
-          so they scale with dataViewFontSize while buttons/headers stay fixed. */}
+      {/* Content area — marks the data-view boundary (not header/chrome).
+          Pop-up content bodies read var(--ion-data-font-size), set globally
+          by TypographySync, so they scale with dataViewFontSize while
+          buttons/headers stay fixed. */}
       <div className="ion-data-view" style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {children}
       </div>

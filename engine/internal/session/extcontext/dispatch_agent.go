@@ -11,7 +11,6 @@ import (
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/extension"
-	"github.com/dsswift/ion/engine/internal/modelconfig"
 	"github.com/dsswift/ion/engine/internal/session/agents"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -87,29 +86,13 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 
 		utils.LogWithFields(utils.LevelInfo, "server", "starting dispatch", map[string]any{"agent_name": opts.Name, "task_preview": truncate(opts.Task, 80), "model": opts.Model, "system_prompt_len": len(opts.SystemPrompt), "background": !opts.WaitForCompletion, "plan_mode": opts.PlanMode, "session_key": sa.SessionKey()})
 
-		// Resolve model selection before a child backend exists. Extension calls
-		// are trusted provider selections; Agent-tool callers set agent origin and
-		// are locked to the current provider.
+		// Determine model and project path.
 		model := opts.Model
 		if model == "" {
-			model = sa.CurrentModel()
+			if cfg := sa.EngineConfig(); cfg != nil {
+				model = cfg.DefaultModel
+			}
 		}
-		origin := opts.ModelOrigin
-		if origin == "" {
-			origin = types.ModelOriginExtension
-		}
-		resolvedModel, fallbackChain, modelErr := modelconfig.ResolveModelForOrigin(model, sa.CurrentModel(), origin)
-		if modelErr != nil {
-			utils.LogWithFields(utils.LevelWarn, "server", "dispatch refused by provider lock", map[string]any{"requested_model": model, "session_model": sa.CurrentModel(), "model_origin": origin, "error": modelErr.Error(), "session_key": sa.SessionKey()})
-			return nil, modelErr
-		}
-		if resolvedModel != "" {
-			model = resolvedModel
-		}
-		if len(fallbackChain) > 0 && len(opts.FallbackChain) == 0 {
-			opts.FallbackChain = fallbackChain
-		}
-		utils.LogWithFields(utils.LevelInfo, "server", "dispatch model resolved", map[string]any{"requested_model": opts.Model, "session_model": sa.CurrentModel(), "model": model, "model_origin": origin, "session_key": sa.SessionKey()})
 		projectPath := opts.ProjectPath
 		projectPathSource := "opts" // logged below; both branches observable
 		if projectPath == "" {
@@ -347,22 +330,12 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		utils.LogWithFields(utils.LevelInfo, "session", "child run config: source=dispatch", map[string]any{"dispatch_default_model": dispatchDefaultModel, "session_key": sa.SessionKey(), "model": model})
 
 		// Attribute background Bash tasks started by the dispatched child to
-		// the parent session so StopSession kills them with the session. When
-		// the accessor exposes task tracking, thread both live callbacks into
-		// this child run so TaskSuspendEvent carries its exact task wait set.
+		// the parent session so StopSession kills them with the session.
 		childCfg.BackgroundTaskOwner = sa.SessionKey()
-		if tasks, ok := sa.(interface {
-			RegisterOutstandingBackgroundTask(taskID, command string)
-			OutstandingBackgroundTaskIDs() []string
-		}); ok {
-			childCfg.RegisterOutstandingBackgroundTask = tasks.RegisterOutstandingBackgroundTask
-			childCfg.OutstandingBackgroundTasks = tasks.OutstandingBackgroundTaskIDs
-		}
 
 		// Wire AgentSpawner so the child can dispatch grandchildren via the
 		// engine Agent tool (see dispatch_child_spawner.go for rationale).
 		childCfg.AgentSpawner = BuildChildAgentSpawner(sa, registry, childDepth, agentID, childCfg.WorkspaceChecker)
-		childCfg.AgentStatus = AgentStatusGetter(registry)
 
 		// Park-on-children: report this child's own live (non-detached)
 		// dispatches at ITS turn boundary, so a lead that fire-and-forgets a
@@ -378,9 +351,9 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			childCfg.OutstandingChildDispatches = func() []string {
 				return capturedRegistry.ChildIDsOf(capturedAgentID)
 			}
-			childCfg.PeekCompletedChildDispatches = func() ([]types.LlmMessage, func()) {
+			childCfg.PeekCompletedChildDispatches = func() ([]types.BackgroundWorkDelivery, func()) {
 				results, acknowledge := capturedRegistry.PeekChildResults(capturedAgentID)
-				return completedChildResultMessages(results), acknowledge
+				return completedChildResultDeliveries(results), acknowledge
 			}
 		}
 
@@ -822,34 +795,19 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				// pending children; sendPrompt signals reviveCh when all
 				// conditions are met.
 				if suspendSig != nil && !recalled {
-					awaitingChildren := len(suspendSig.AwaitingDispatchIDs)
-					awaitingTasks := len(suspendSig.AwaitingTaskIDs)
-					waitingOn := ""
-					lastWork := "suspended — awaiting revive"
-					switch {
-					case awaitingChildren > 0:
-						waitingOn = "children"
-						lastWork = "suspended — waiting for children"
-					case awaitingTasks > 0:
-						waitingOn = "shell"
-						lastWork = "suspended — waiting for background shells"
-					}
 					utils.LogWithFields(utils.LevelInfo, "server", "dispatch suspended, parking until revive", map[string]any{
-						"model": opts.Name, "awaiting_children": awaitingChildren, "awaiting_tasks": awaitingTasks, "waiting_on": waitingOn,
+						"model":    opts.Name,
+						"awaiting": len(suspendSig.AwaitingDispatchIDs),
 					})
 
-					// Keep grouped state and exact dispatch member aligned. The member
-					// owns durable reason metadata; grouped state keeps legacy consumers
-					// aware that work has not completed.
+					// Update agent state to "suspended" so the UI reflects idle.
 					sa.UpdateAgentStateByID(agentID, func(state *types.AgentStateUpdate) {
 						state.Status = "suspended"
 						if state.Metadata == nil {
 							state.Metadata = map[string]interface{}{}
 						}
-						state.Metadata["lastWork"] = lastWork
-						agents.UpdateDispatchEntry(state.Metadata, agentID, "suspended", time.Since(start).Seconds(), childSessionID, waitingOn)
+						state.Metadata["lastWork"] = "suspended — waiting for children"
 					})
-
 					sa.EmitAgentSnapshot("dispatch_suspend")
 
 					// Arm the revive channel in the registry. A false return
@@ -861,19 +819,20 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 					// instead of parking forever on a satisfied wait.
 					reviveCh := make(chan struct{}, 1)
 					if registry != nil {
-						if !registry.SetSuspendedStateWithWaitingOn(agentID, reviveCh, suspendSig.AwaitingDispatchIDs, suspendSig.AwaitingTaskIDs) {
+						if !registry.SetSuspendedState(agentID, reviveCh, suspendSig.AwaitingDispatchIDs) {
 							reviveCh <- struct{}{}
 						}
 					}
 
-					// Block until revived, recalled, or the park ceiling
-					// elapses. The ceiling is the backstop for a wake that
-					// never arrives: without it this select had exactly two
-					// exits, and a dispatch whose awaited work notified
-					// somewhere else stayed blocked forever, holding every
-					// ancestor parked on it.
-					parkTimeout := dispatchParkTimeout(sa)
-					parkTimer := time.NewTimer(parkTimeout)
+					// Bound the park. The revive signal is what normally
+					// releases it; this ceiling is the backstop for a lost or
+					// misrouted wake, which otherwise blocks on reviveCh
+					// forever and strands every ancestor parked on this
+					// dispatch — an eternal park no log line ever reported as
+					// a failure. See dispatchParkTimeout.
+					parkTimer := time.NewTimer(dispatchParkTimeout(sa))
+
+					// Block until revived (or recalled, or the ceiling elapses).
 					select {
 					case <-reviveCh:
 						parkTimer.Stop()
@@ -900,19 +859,20 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 							runOpts.ConversationID = childSessionID
 						}
 						var drained []ChildResultRecord
-						var drainedTasks []TaskResultRecord
 						if registry != nil {
 							drained = registry.DrainChildResults(agentID)
-							drainedTasks = registry.DrainTaskResults(agentID)
 						}
-						runOpts.Prompt = buildReviveResumePromptWith(drained, drainedTasks)
-						runOpts.InjectionKind = reviveKindWithTasks(drained, drainedTasks)
-						utils.LogWithFields(utils.LevelInfo, "server", "dispatch revived, resuming LLM run with awaited results", map[string]any{
+						runOpts.Prompt = buildReviveResumePrompt(drained)
+						runOpts.InjectionKind = reviveInjectionKind(drained)
+						runOpts.BackgroundWork = nil
+						if deliveries := completedChildResultDeliveries(drained); len(deliveries) > 0 {
+							runOpts.BackgroundWork = &deliveries[0].Work
+						}
+						utils.LogWithFields(utils.LevelInfo, "server", "dispatch revived, resuming LLM run with child results", map[string]any{
 							"model":           opts.Name,
 							"session_id":      key,
 							"conversation_id": runOpts.ConversationID,
 							"count":           len(drained),
-							"awaiting_tasks":  len(drainedTasks),
 						})
 						if registry != nil {
 							registry.ClearSuspendedState(agentID)
@@ -928,33 +888,38 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 							state.Status = "running"
 							if state.Metadata != nil {
 								state.Metadata["lastWork"] = "revived"
-								agents.UpdateDispatchEntry(state.Metadata, agentID, "running", time.Since(start).Seconds(), childSessionID)
 							}
 						})
 						sa.EmitAgentSnapshot("dispatch_revive")
 						continue
-					case <-parkTimer.C:
-						// The awaited work never signalled. Go terminal with an
-						// error instead of holding the goroutine: the terminal
-						// path records the result and fires NotifyChildComplete,
-						// which releases every ancestor parked on this dispatch.
-						// An error dispatch is recoverable; an eternal park is
-						// not.
-						childErr = fmt.Errorf("dispatch park timed out after %s waiting on %d child dispatch(es) %v and %d background command(s) %v; the awaited completion never reached this dispatch",
-							parkTimeout, awaitingChildren, suspendSig.AwaitingDispatchIDs, awaitingTasks, suspendSig.AwaitingTaskIDs)
-						utils.LogWithFields(utils.LevelError, "server", "dispatch park timeout: no revive signal arrived", map[string]any{
-							"model": opts.Name, "session_id": key, "dispatch_id": agentID,
-							"awaiting_children": awaitingChildren, "awaiting_tasks": awaitingTasks,
-							"timeout_ms": parkTimeout.Milliseconds(),
-						})
+					case <-ctx.Done():
+						parkTimer.Stop()
+						// Recalled while suspended.
+						utils.LogWithFields(utils.LevelInfo, "server", "dispatch recalled while suspended", map[string]any{"model": opts.Name, "recall_reason": recallReason})
+						recalled = true
 						if registry != nil {
 							registry.ClearSuspendedState(agentID)
 						}
-					case <-ctx.Done():
-						// Recalled while suspended.
-						parkTimer.Stop()
-						utils.LogWithFields(utils.LevelInfo, "server", "dispatch recalled while suspended", map[string]any{"model": opts.Name, "recall_reason": recallReason})
-						recalled = true
+					case <-parkTimer.C:
+						// The awaited work never signalled. Go terminal with an
+						// error rather than parking forever: the terminal path
+						// records the result and fires the completion
+						// callbacks, which is what releases every ancestor
+						// parked on this dispatch.
+						//
+						// Both awaited sets are named. A park can wait on child
+						// dispatches, on background bash tasks, or on both, and
+						// the operator's first question about a timed-out park
+						// is which specific work never came back.
+						awaited := append(append([]string{}, suspendSig.AwaitingDispatchIDs...), suspendSig.AwaitingTaskIDs...)
+						childErr = fmt.Errorf("park timed out after %s waiting on %v: the awaited work never signalled revival", dispatchParkTimeout(sa), awaited)
+						utils.LogWithFields(utils.LevelError, "server", "dispatch park timed out; going terminal", map[string]any{
+							"model":       opts.Name,
+							"session_id":  key,
+							"dispatch_id": agentID,
+							"awaiting":    awaited,
+							"timeout":     dispatchParkTimeout(sa).String(),
+						})
 						if registry != nil {
 							registry.ClearSuspendedState(agentID)
 						}
@@ -1137,10 +1102,22 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			})
 			sa.EmitAgentSnapshot("dispatch_end")
 
-			// Durability, immediately after the slot goes terminal and BEFORE
-			// deregistration. The run-exit sweep alone was not enough: a parked
-			// parent may not exit another run before the engine dies, and the
-			// stale `running` record then reads as a loss on the next start.
+			// Supersede the `running` durability record with this dispatch's
+			// real outcome, at its OWN terminal transition.
+			//
+			// The run-exit sweep (persistTerminalDispatches) only runs when the
+			// parent exits a run. A dispatch that completes while its parent is
+			// parked therefore had no durable outcome until the parent's NEXT
+			// run exit — and if the engine died in that window, the next start
+			// read the stale `running` record and reported a cleanly-completed
+			// dispatch as lost. Writing here closes that window.
+			//
+			// Placed after the terminal agent-state transition and before
+			// Deregister, for the same ordering reason documented above: the
+			// slot must be terminal before it leaves ActiveIDs. Best-effort by
+			// contract — persistTerminalDispatch logs its own failures and never
+			// propagates, because a dispatch must not fail over a durability
+			// record.
 			sa.PersistDispatchTerminal(agentID)
 
 			// Record a non-detached asynchronous child's terminal result BEFORE
@@ -1158,13 +1135,6 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 					if root, ok := sa.(RootDispatchResultDelivery); ok {
 						root.DeliverRootDispatchResult(*result)
 					}
-				}
-			} else if !opts.WaitForCompletion && !opts.Detached && currentDispatchId == "" {
-				// Root-owned completion enters its durable outbox before deregistration
-				// drops the last ActiveIDs entry. This prevents a zero-work window
-				// between the child terminal state and the root wake.
-				if root, ok := sa.(RootDispatchResultDelivery); ok {
-					root.DeliverRootDispatchResult(*result)
 				}
 			}
 
@@ -1302,7 +1272,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				// terminal record or wakes immediately regardless of observer behavior.
 				if registry != nil && currentDispatchId != "" {
 					registry.NotifyChildComplete(currentDispatchId, agentID)
-				} else if !opts.Detached && (registry == nil || currentDispatchId != "") {
+				} else if !opts.Detached {
 					if root, ok := sa.(RootDispatchResultDelivery); ok {
 						root.DeliverRootDispatchResult(*result)
 					} else {

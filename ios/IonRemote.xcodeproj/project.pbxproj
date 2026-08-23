@@ -102,6 +102,12 @@
 		INJPOLTEST0000000000001 /* InjectionPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = INJPOLTEST0000000000002 /* InjectionPolicyTests.swift */; };
 		CONVHISTINJ000000000001 /* ConversationHistoryInjectionFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CONVHISTINJ000000000002 /* ConversationHistoryInjectionFilterTests.swift */; };
 		A1B2C3D4E5F60001000090AA /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000091AA /* Message.swift */; };
+		BGWORKMETA0000000000001 /* BackgroundWorkMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = BGWORKMETA0000000000002 /* BackgroundWorkMetadata.swift */; };
+		BGTASKSTATE000000000001 /* BackgroundTaskState.swift in Sources */ = {isa = PBXBuildFile; fileRef = BGTASKSTATE000000000002 /* BackgroundTaskState.swift */; };
+		BGTASKLIFE0000000000001 /* SessionViewModel+BackgroundTaskLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = BGTASKLIFE0000000000002 /* SessionViewModel+BackgroundTaskLifecycle.swift */; };
+		ACTIVEBGSUMM000000000001 /* ActiveBackgroundSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACTIVEBGSUMM000000000002 /* ActiveBackgroundSummary.swift */; };
+
+		BGWORKTEST0000000000001 /* BackgroundWorkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BGWORKTEST0000000000002 /* BackgroundWorkTests.swift */; };
 		PENDINGCARD0000000000001 /* PendingCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = PENDINGCARD0000000000002 /* PendingCard.swift */; };
 		PLANCARDGATE000000000001 /* PlanCardGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLANCARDGATE000000000002 /* PlanCardGate.swift */; };
 		A1B2C3D4E5F60001000092AA /* MessageAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000093AA /* MessageAttachment.swift */; };
@@ -119,6 +125,7 @@
 		A1B2C3D4E5F600010000E0AA /* AgentBarRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000E1AA /* AgentBarRow.swift */; };
 		AGSDS00000000000000001 /* AgentStatusDotStack.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGSDS00000000000000002 /* AgentStatusDotStack.swift */; };
 		AGSDT00000000000000001 /* AgentStatusDot.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGSDT00000000000000002 /* AgentStatusDot.swift */; };
+		A1B2C3D4E5F6ACDC0001AC01 /* AgentDispatchStopResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6ACDC0001AC02 /* AgentDispatchStopResolver.swift */; };
 		A1B2C3D4E5F600010000E2AA /* AgentExpandedContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000E3AA /* AgentExpandedContent.swift */; };
 		APDR00000000000000001 /* AgentPanelDefaultResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = APDR00000000000000002 /* AgentPanelDefaultResolver.swift */; };
 		STATUSDWR0000000000001 /* StatusDrawerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = STATUSDWR0000000000002 /* StatusDrawerView.swift */; };
@@ -164,7 +171,9 @@
 		A1B2C3D4E5F600010002049A /* SessionViewModel+GitCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */; };
 		A1B2C3D4E5F600010002069A /* SessionViewModel+FsCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010002079A /* SessionViewModel+FsCommands.swift */; };
 		A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */; };
+		0BC6CB37D79A89C6F0C212DB /* SessionViewModel+GitFsEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CC833E1A1B9898DA38FDF04 /* SessionViewModel+GitFsEvents.swift */; };
 		A1B2C3D4E5F60001000208AA /* SessionViewModel+EngineEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */; };
+		BGWORKEVENTS000000002 /* SessionViewModel+BackgroundWorkEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = BGWORKEVENTS000000001 /* SessionViewModel+BackgroundWorkEvents.swift */; };
 		A1B2C3D4E5F600010AH10001 /* SessionViewModel+AgentHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010AH20001 /* SessionViewModel+AgentHistory.swift */; };
 		THINK00000000000000000001 /* NormalizedEvent+Thinking.swift in Sources */ = {isa = PBXBuildFile; fileRef = THINK00000000000000000002 /* NormalizedEvent+Thinking.swift */; };
 		MSGIDMAP0000000000000002 /* SessionViewModel+MessageIdMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = MSGIDMAP0000000000000001 /* SessionViewModel+MessageIdMapping.swift */; };
@@ -340,6 +349,7 @@
 		CONVLIFE000000000000007 /* ConversationView+Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = CONVLIFE000000000000008 /* ConversationView+Lifecycle.swift */; };
 		CVINPUT00000000000000007 /* ConversationView+InputBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = CVINPUT00000000000000008 /* ConversationView+InputBar.swift */; };
 		A1B2C3D4E5F6000100400FAA /* ConversationStatusBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100400EAA /* ConversationStatusBar.swift */; };
+		48D63805DE42FD094029D924 /* ConversationStatusBar+Context.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B92E855C57295F873E580AB /* ConversationStatusBar+Context.swift */; };
 		A1B2C3D4E5F60001F00014AB /* ThinkingControlState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F00015AB /* ThinkingControlState.swift */; };
 		A1B2C3D4E5F6000100400FDD /* ContextUsageRing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100400EDD /* ContextUsageRing.swift */; };
 		A1B2C3D4E5F600010040AF01 /* ModelPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010040AE01 /* ModelPickerSheet.swift */; };
@@ -409,6 +419,8 @@
 		A1B2C3D4E5F60001F00012AA /* RemoteCommandPillTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F00013AA /* RemoteCommandPillTests.swift */; };
 		A1B2C3D4E5F60001F00012AB /* ThinkingEffortCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F00013AB /* ThinkingEffortCodecTests.swift */; };
 		A1B2C3D4E5F60001F00016AB /* ThinkingControlStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F00017AB /* ThinkingControlStateTests.swift */; };
+		A1B2C3D4E5F6ABCD0001AB01 /* AbortScopeCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6ABCD0001AB02 /* AbortScopeCodecTests.swift */; };
+		A1B2C3D4E5F6ACDC0001AC03 /* AgentDispatchStopResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6ACDC0001AC04 /* AgentDispatchStopResolverTests.swift */; };
 		E11C17CA0001F00012AB0001 /* ElicitationCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E11C17CA0001F00013AB0001 /* ElicitationCodecTests.swift */; };
 		B1B2C3D4E5F60001CC000001 /* ConversationStatusBarContextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B2C3D4E5F60001CC000002 /* ConversationStatusBarContextTests.swift */; };
 		B1B2C3D4E5F60001CC0000E1 /* ContextUsageRingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B2C3D4E5F60001CC0000E2 /* ContextUsageRingTests.swift */; };
@@ -629,6 +641,12 @@
 		A1B2C3D4E5F60001000032AA /* IonRemote.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = IonRemote.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1B2C3D4E5F60001000033AA /* IonRemoteTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = IonRemoteTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1B2C3D4E5F60001000091AA /* Message.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Message.swift; sourceTree = "<group>"; };
+		BGWORKMETA0000000000002 /* BackgroundWorkMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundWorkMetadata.swift; sourceTree = "<group>"; };
+		BGTASKSTATE000000000002 /* BackgroundTaskState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundTaskState.swift; sourceTree = "<group>"; };
+		BGTASKLIFE0000000000002 /* SessionViewModel+BackgroundTaskLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+BackgroundTaskLifecycle.swift"; sourceTree = "<group>"; };
+		ACTIVEBGSUMM000000000002 /* ActiveBackgroundSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveBackgroundSummary.swift; sourceTree = "<group>"; };
+
+		BGWORKTEST0000000000002 /* BackgroundWorkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundWorkTests.swift; sourceTree = "<group>"; };
 		PENDINGCARD0000000000002 /* PendingCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingCard.swift; sourceTree = "<group>"; };
 		PLANCARDGATE000000000002 /* PlanCardGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanCardGate.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000093AA /* MessageAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageAttachment.swift; sourceTree = "<group>"; };
@@ -645,6 +663,7 @@
 		A1B2C3D4E5F600010000E1AA /* AgentBarRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentBarRow.swift; sourceTree = "<group>"; };
 		AGSDS00000000000000002 /* AgentStatusDotStack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentStatusDotStack.swift; sourceTree = "<group>"; };
 		AGSDT00000000000000002 /* AgentStatusDot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentStatusDot.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6ACDC0001AC02 /* AgentDispatchStopResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDispatchStopResolver.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000E3AA /* AgentExpandedContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentExpandedContent.swift; sourceTree = "<group>"; };
 		APDR00000000000000002 /* AgentPanelDefaultResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentPanelDefaultResolver.swift; sourceTree = "<group>"; };
 		STATUSDWR0000000000002 /* StatusDrawerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusDrawerView.swift; sourceTree = "<group>"; };
@@ -690,7 +709,9 @@
 		A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+GitCommands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010002079A /* SessionViewModel+FsCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+FsCommands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EventHandlers.swift"; sourceTree = "<group>"; };
+		8CC833E1A1B9898DA38FDF04 /* SessionViewModel+GitFsEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+GitFsEvents.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineEvents.swift"; sourceTree = "<group>"; };
+		BGWORKEVENTS000000001 /* SessionViewModel+BackgroundWorkEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+BackgroundWorkEvents.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010AH20001 /* SessionViewModel+AgentHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+AgentHistory.swift"; sourceTree = "<group>"; };
 		THINK00000000000000000002 /* NormalizedEvent+Thinking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Thinking.swift"; sourceTree = "<group>"; };
 		MSGIDMAP0000000000000001 /* SessionViewModel+MessageIdMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+MessageIdMapping.swift"; sourceTree = "<group>"; };
@@ -857,6 +878,7 @@
 		CONVLIFE000000000000008 /* ConversationView+Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConversationView+Lifecycle.swift"; sourceTree = "<group>"; };
 		CVINPUT00000000000000008 /* ConversationView+InputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConversationView+InputBar.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100400EAA /* ConversationStatusBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationStatusBar.swift; sourceTree = "<group>"; };
+		5B92E855C57295F873E580AB /* ConversationStatusBar+Context.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConversationStatusBar+Context.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001F00015AB /* ThinkingControlState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingControlState.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100400EDD /* ContextUsageRing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextUsageRing.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010040AE01 /* ModelPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelPickerSheet.swift; sourceTree = "<group>"; };
@@ -926,6 +948,8 @@
 		A1B2C3D4E5F60001F00013AA /* RemoteCommandPillTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteCommandPillTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001F00013AB /* ThinkingEffortCodecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingEffortCodecTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001F00017AB /* ThinkingControlStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingControlStateTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6ABCD0001AB02 /* AbortScopeCodecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AbortScopeCodecTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6ACDC0001AC04 /* AgentDispatchStopResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDispatchStopResolverTests.swift; sourceTree = "<group>"; };
 		E11C17CA0001F00013AB0001 /* ElicitationCodecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElicitationCodecTests.swift; sourceTree = "<group>"; };
 		B1B2C3D4E5F60001CC000002 /* ConversationStatusBarContextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationStatusBarContextTests.swift; sourceTree = "<group>"; };
 		B1B2C3D4E5F60001CC0000E2 /* ContextUsageRingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextUsageRingTests.swift; sourceTree = "<group>"; };
@@ -1143,6 +1167,8 @@
 				DACCESSMODEL0000000001 /* DesktopAccessRecord.swift */,
 				THEMESYNCPAY0000000001 /* SyncedThemePayload.swift */,
 				A1B2C3D4E5F60001000091AA /* Message.swift */,
+				BGWORKMETA0000000000002 /* BackgroundWorkMetadata.swift */,
+				BGTASKSTATE000000000002 /* BackgroundTaskState.swift */,
 				PENDINGCARD0000000000002 /* PendingCard.swift */,
 				PLANCARDGATE000000000002 /* PlanCardGate.swift */,
 				A1B2C3D4E5F60001000093AA /* MessageAttachment.swift */,
@@ -1268,17 +1294,20 @@
 				A1B2C3D4E5F600010000E1AA /* AgentBarRow.swift */,
 				AGSDS00000000000000002 /* AgentStatusDotStack.swift */,
 				AGSDT00000000000000002 /* AgentStatusDot.swift */,
+				A1B2C3D4E5F6ACDC0001AC02 /* AgentDispatchStopResolver.swift */,
 				A1B2C3D4E5F600010000E3AA /* AgentExpandedContent.swift */,
 				APDR00000000000000002 /* AgentPanelDefaultResolver.swift */,
 				DBSTATE00000000000000A2 /* DispatchBodyState.swift */,
 				TRNSCRPT000000000000A2 /* Transcript.swift */,
 				RUNDURROW00000000000002 /* RunDurationRow.swift */,
 				CHATANCH000000000000A2 /* ChatScrollAnchoring.swift */,
+				ACTIVEBGSUMM000000000002 /* ActiveBackgroundSummary.swift */,
 				A1B2C3D4E5F600010000E5AA /* AgentDetailFullScreenView.swift */,
 				STATUSDWR0000000000002 /* StatusDrawerView.swift */,
 				STATUSDWRBRK000000002 /* StatusDrawerBreakdown.swift */,
 				ACTLROW00000000000002 /* ActiveToolRow.swift */,
 				A1B2C3D4E5F6000100400EAA /* ConversationStatusBar.swift */,
+				5B92E855C57295F873E580AB /* ConversationStatusBar+Context.swift */,
 				A1B2C3D4E5F60001F00015AB /* ThinkingControlState.swift */,
 				A1B2C3D4E5F6000100400EDD /* ContextUsageRing.swift */,
 				A1B2C3D4E5F600010040AE01 /* ModelPickerSheet.swift */,
@@ -1361,6 +1390,7 @@
 				B2C3D4E5F600BB991009BA0AA /* SessionViewModel+EngineRunStalled.swift */,
 				B2C3D4E5F600BB991009BB0AA /* SessionViewModel+EngineRunRecovery.swift */,
 				A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */,
+				8CC833E1A1B9898DA38FDF04 /* SessionViewModel+GitFsEvents.swift */,
 				A1B2C3D4E5F60001FF0022AA /* SessionViewModel+ConversationHelpers.swift */,
 				A1B2C3D4E5F60001CE0007AA /* SessionViewModel+ConnectionEvents.swift */,
 				A1B2C3D4E5F60001RA0007AA /* SessionViewModel+RelayAuth.swift */,
@@ -1369,6 +1399,8 @@
 				A1B2C3D4E5F60001008101AA /* SessionViewModel+EngineKeys.swift */,
 				A1B2C3D4E5F60001008201AA /* SessionViewModel+Conversation.swift */,
 				A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */,
+				BGWORKEVENTS000000001 /* SessionViewModel+BackgroundWorkEvents.swift */,
+				BGTASKLIFE0000000000002 /* SessionViewModel+BackgroundTaskLifecycle.swift */,
 				A1B2C3D4E5F600010AH20001 /* SessionViewModel+AgentHistory.swift */,
 				SSVMDT000000000000002 /* SessionViewModel+DispatchTranscript.swift */,
 				MSGIDMAP0000000000000001 /* SessionViewModel+MessageIdMapping.swift */,
@@ -1465,6 +1497,7 @@
 				CHATANCHT00000000000002 /* ChatScrollAnchoringTests.swift */,
 				GRPITEMHSH0000000000002 /* GroupedItemContentHashTests.swift */,
 				GRPPARITY000000000000002 /* GroupingParityTests.swift */,
+				BGWORKTEST0000000000002 /* BackgroundWorkTests.swift */,
 				MSGIDMAP0000000000000003 /* DispatchSnapshotIdMappingTests.swift */,
 				DISPACT0000000000000008 /* DispatchActivityFoldTests.swift */,
 				DISPINVALT00000000000008 /* DispatchCacheInvalidationTests.swift */,
@@ -1487,6 +1520,8 @@
 				A1B2C3D4E5F60001F00013AA /* RemoteCommandPillTests.swift */,
 				A1B2C3D4E5F60001F00013AB /* ThinkingEffortCodecTests.swift */,
 				A1B2C3D4E5F60001F00017AB /* ThinkingControlStateTests.swift */,
+				A1B2C3D4E5F6ABCD0001AB02 /* AbortScopeCodecTests.swift */,
+				A1B2C3D4E5F6ACDC0001AC04 /* AgentDispatchStopResolverTests.swift */,
 				E11C17CA0001F00013AB0001 /* ElicitationCodecTests.swift */,
 				RTSDECODE000000000002 /* RemoteTabStateDecodeTests.swift */,
 				C0DE0000000000000000000A /* InboxNavigatorTests.swift */,
@@ -1841,7 +1876,10 @@
 				THEMESYNCSTORE00000002 /* SyncedThemeStore.swift in Sources */,
 				THEMESYNCTHEME00000002 /* SyncedTheme.swift in Sources */,
 				A1B2C3D4E5F60001000090AA /* Message.swift in Sources */,
+				BGWORKMETA0000000000001 /* BackgroundWorkMetadata.swift in Sources */,
+				BGTASKSTATE000000000001 /* BackgroundTaskState.swift in Sources */,
 				PENDINGCARD0000000000001 /* PendingCard.swift in Sources */,
+
 				PLANCARDGATE000000000001 /* PlanCardGate.swift in Sources */,
 				A1B2C3D4E5F60001000092AA /* MessageAttachment.swift in Sources */,
 				A1B2C3D4E5F6000100000BAA /* RelayClient.swift in Sources */,
@@ -1934,6 +1972,7 @@
 				B2C3D4E5F600BB991009BA1AA /* SessionViewModel+EngineRunStalled.swift in Sources */,
 				B2C3D4E5F600BB991009BB1AA /* SessionViewModel+EngineRunRecovery.swift in Sources */,
 				A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */,
+				0BC6CB37D79A89C6F0C212DB /* SessionViewModel+GitFsEvents.swift in Sources */,
 				A1B2C3D4E5F60001FF0023AA /* SessionViewModel+ConversationHelpers.swift in Sources */,
 				A1B2C3D4E5F60001CE0006AA /* SessionViewModel+ConnectionEvents.swift in Sources */,
 				A1B2C3D4E5F60001RA0006AA /* SessionViewModel+RelayAuth.swift in Sources */,
@@ -1942,6 +1981,8 @@
 				A1B2C3D4E5F60001008100AA /* SessionViewModel+EngineKeys.swift in Sources */,
 				A1B2C3D4E5F60001008200AA /* SessionViewModel+Conversation.swift in Sources */,
 				A1B2C3D4E5F60001000208AA /* SessionViewModel+EngineEvents.swift in Sources */,
+				BGWORKEVENTS000000002 /* SessionViewModel+BackgroundWorkEvents.swift in Sources */,
+				BGTASKLIFE0000000000001 /* SessionViewModel+BackgroundTaskLifecycle.swift in Sources */,
 				A1B2C3D4E5F600010AH10001 /* SessionViewModel+AgentHistory.swift in Sources */,
 				SSVMDT000000000000001 /* SessionViewModel+DispatchTranscript.swift in Sources */,
 				THINK00000000000000000001 /* NormalizedEvent+Thinking.swift in Sources */,
@@ -2023,12 +2064,14 @@
 				A1B2C3D4E5F600010000E0AA /* AgentBarRow.swift in Sources */,
 				AGSDS00000000000000001 /* AgentStatusDotStack.swift in Sources */,
 				AGSDT00000000000000001 /* AgentStatusDot.swift in Sources */,
+				A1B2C3D4E5F6ACDC0001AC01 /* AgentDispatchStopResolver.swift in Sources */,
 				A1B2C3D4E5F600010000E2AA /* AgentExpandedContent.swift in Sources */,
 				APDR00000000000000001 /* AgentPanelDefaultResolver.swift in Sources */,
 				DBSTATE00000000000000A1 /* DispatchBodyState.swift in Sources */,
 				TRNSCRPT000000000000A1 /* Transcript.swift in Sources */,
 				RUNDURROW00000000000001 /* RunDurationRow.swift in Sources */,
 				CHATANCH000000000000A1 /* ChatScrollAnchoring.swift in Sources */,
+				ACTIVEBGSUMM000000000001 /* ActiveBackgroundSummary.swift in Sources */,
 				DTELACC000000000000A1 /* SessionViewModel+DispatchTelemetryAccessors.swift in Sources */,
 				DTELENTRY0000000000A1 /* DispatchTelemetryEntry.swift in Sources */,
 				A1B2C3D4E5F600010000E4AA /* AgentDetailFullScreenView.swift in Sources */,
@@ -2037,6 +2080,7 @@
 				ACTLROW00000000000001 /* ActiveToolRow.swift in Sources */,
 				CTXBDPAY0000000000001 /* ContextBreakdownPayload.swift in Sources */,
 				A1B2C3D4E5F6000100400FAA /* ConversationStatusBar.swift in Sources */,
+				48D63805DE42FD094029D924 /* ConversationStatusBar+Context.swift in Sources */,
 				A1B2C3D4E5F60001F00014AB /* ThinkingControlState.swift in Sources */,
 				A1B2C3D4E5F6000100400FDD /* ContextUsageRing.swift in Sources */,
 				A1B2C3D4E5F600010040AF01 /* ModelPickerSheet.swift in Sources */,
@@ -2216,6 +2260,7 @@
 				CHATANCHT00000000000001 /* ChatScrollAnchoringTests.swift in Sources */,
 				GRPITEMHSH0000000000001 /* GroupedItemContentHashTests.swift in Sources */,
 				GRPPARITY000000000000001 /* GroupingParityTests.swift in Sources */,
+				BGWORKTEST0000000000001 /* BackgroundWorkTests.swift in Sources */,
 				MSGIDMAP0000000000000004 /* DispatchSnapshotIdMappingTests.swift in Sources */,
 				DISPACT0000000000000007 /* DispatchActivityFoldTests.swift in Sources */,
 				DISPINVALT00000000000007 /* DispatchCacheInvalidationTests.swift in Sources */,
@@ -2244,6 +2289,8 @@
 				A1B2C3D4E5F60001F00012AA /* RemoteCommandPillTests.swift in Sources */,
 				A1B2C3D4E5F60001F00012AB /* ThinkingEffortCodecTests.swift in Sources */,
 				A1B2C3D4E5F60001F00016AB /* ThinkingControlStateTests.swift in Sources */,
+				A1B2C3D4E5F6ABCD0001AB01 /* AbortScopeCodecTests.swift in Sources */,
+				A1B2C3D4E5F6ACDC0001AC03 /* AgentDispatchStopResolverTests.swift in Sources */,
 				E11C17CA0001F00012AB0001 /* ElicitationCodecTests.swift in Sources */,
 				RTSDECODE000000000001 /* RemoteTabStateDecodeTests.swift in Sources */,
 				C0DE00000000000000000009 /* InboxNavigatorTests.swift in Sources */,

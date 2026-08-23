@@ -7,6 +7,7 @@ package tools
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -84,6 +85,31 @@ func startNotifyingTask(t *testing.T, command string) string {
 		t.Fatalf("executeBash reported tool error: %s", res.Content)
 	}
 	return extractTaskID(t, res.Content)
+}
+
+func TestBackgroundNotifier_ResultDirectsIdleWaitToPark(t *testing.T) {
+	clearBashTasks(t)
+	rec := installRecorder(t)
+
+	ctx := WithBackgroundTaskOwner(context.Background(), "sess-result-guidance")
+	ctx = WithOutstandingRegistrar(ctx, func(_, _ string) {})
+	res, err := executeBash(ctx, map[string]any{
+		"command":            "echo guided",
+		"run_in_background":  true,
+		"notify_on_complete": true,
+	}, t.TempDir())
+	if err != nil {
+		t.Fatalf("executeBash returned error: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("executeBash reported tool error: %s", res.Content)
+	}
+	for _, want := range []string{"only remaining work", "end your turn", "parks the session", "resumes it"} {
+		if !strings.Contains(res.Content, want) {
+			t.Errorf("background result missing %q; got %q", want, res.Content)
+		}
+	}
+	rec.waitFor(t, 1, 5*time.Second)
 }
 
 // A clean exit notifies with status "completed" and exit code 0.

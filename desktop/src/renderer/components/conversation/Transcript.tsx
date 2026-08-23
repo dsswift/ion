@@ -1,41 +1,48 @@
-import React, { useMemo } from 'react'
+import React, { useMemo } from "react";
 
-import { useColors } from '../../theme'
-import { groupMessages, suppressUserImageEchoes } from './tool-helpers'
-import { TranscriptRows } from './TranscriptRows'
-import { useScrollFollow } from './useScrollFollow'
-import { ScrollToBottomButton } from './ScrollToBottomButton'
-import { AgentPanel } from '../AgentPanel'
-import type { Message } from '../../../shared/types-session'
-import type { AgentStateUpdate } from '../../../shared/types-engine'
-import type { DispatchTelemetryEntry } from '../../../shared/types-engine'
+import { useColors } from "../../theme";
+import { groupMessages } from "./tool-helpers";
+import { TranscriptRows } from "./TranscriptRows";
+import { useScrollFollow } from "./useScrollFollow";
+import { ScrollToBottomButton } from "./ScrollToBottomButton";
+import { AgentPanel } from "../AgentPanel";
+import { useSessionStore } from "../../stores/sessionStore";
+import type { Message } from "../../../shared/types-session";
+import type { AgentStateUpdate, BackgroundTaskState } from "../../../shared/types-engine";
+import type { DispatchTelemetryEntry } from "../../../shared/types-engine";
 
 // Stable empty refs to avoid new references each render (same pattern
 // as ConversationView.tsx).
-const EMPTY_AGENTS: AgentStateUpdate[] = []
-const EMPTY_TELEMETRY: DispatchTelemetryEntry[] = []
+const EMPTY_AGENTS: AgentStateUpdate[] = [];
+const EMPTY_TELEMETRY: DispatchTelemetryEntry[] = [];
+const EMPTY_BACKGROUND_TASKS: BackgroundTaskState[] = [];
 
 export interface TranscriptProps {
-  messages: Message[]
-  unifiedTurnView: boolean
-  pinnedPrompt?: string
-  isRunning: boolean
+  messages: Message[];
+  unifiedTurnView: boolean;
+  pinnedPrompt?: string;
+  isRunning: boolean;
   /** Per-message action renderer (rewind/fork menu on user bubbles). */
-  actions?: (msg: Message) => React.ReactNode
+  actions?: (msg: Message) => React.ReactNode;
   /** Live agent state updates for the embedded AgentPanel. */
-  agents?: AgentStateUpdate[]
-  /** Full dispatch tree, retained when this transcript renders a child tier. */
-  allAgents?: AgentStateUpdate[]
+  agents?: AgentStateUpdate[];
+  allAgents?: AgentStateUpdate[];
   /** Flat dispatch telemetry for agent nesting depth. */
-  dispatchTelemetry?: DispatchTelemetryEntry[]
+  dispatchTelemetry?: DispatchTelemetryEntry[];
   /** Called when the user opens a dispatch detail popup from the agent panel. */
-  onOpenDispatch?: (dispatch: import('../../../shared/types-engine').DispatchInfo, agent: AgentStateUpdate) => void
+  onOpenDispatch?: (
+    dispatch: import("../../../shared/types-engine").DispatchInfo,
+    agent: AgentStateUpdate,
+  ) => void;
   /**
    * True when this transcript renders a sub-dispatch tier (inside the
    * dispatch-preview popup). Forwarded to the embedded AgentPanel so it bypasses
    * the top-level-only visibility filter and always shows the dispatched agents.
    */
-  subDispatch?: boolean
+  subDispatch?: boolean;
+  /** Owning tab, forwarded so nested AgentRows can stop their dispatches. */
+  tabId?: string;
+  activeBackgroundTasks?: BackgroundTaskState[];
 }
 
 /**
@@ -52,59 +59,72 @@ export function Transcript({
   isRunning,
   actions,
   agents,
-  allAgents,
+  allAgents: _allAgents,
   dispatchTelemetry,
   onOpenDispatch,
   subDispatch,
+  tabId,
+  activeBackgroundTasks,
 }: TranscriptProps) {
-  const colors = useColors()
-  const visibleMessages = useMemo(() => suppressUserImageEchoes(messages), [messages])
+  const colors = useColors();
+  const storeTasks = useSessionStore((state) => {
+    if (!tabId) return EMPTY_BACKGROUND_TASKS;
+    const pane = state.conversationPanes.get(tabId);
+    const instance = pane?.instances.find((candidate) => candidate.id === pane.activeInstanceId);
+    return instance?.statusFields?.activeBackgroundTasks ?? EMPTY_BACKGROUND_TASKS;
+  });
+  const tasks = activeBackgroundTasks ?? storeTasks;
   const grouped = useMemo(
-    () => groupMessages(visibleMessages, { includeUser: true, unifiedTurnView }),
-    [visibleMessages, unifiedTurnView],
-  )
+    () => groupMessages(messages, { includeUser: true, unifiedTurnView }),
+    [messages, unifiedTurnView],
+  );
 
-  const agentList = agents ?? EMPTY_AGENTS
-  const telemetry = dispatchTelemetry ?? EMPTY_TELEMETRY
+  const agentList = agents ?? EMPTY_AGENTS;
+  const telemetry = dispatchTelemetry ?? EMPTY_TELEMETRY;
 
-  const { scrollRef, contentRef, showScrollBtn, handleScroll, scrollToBottom } = useScrollFollow([
-    messages.length,
-    agentList.length,
-    isRunning,
-  ])
+  const { scrollRef, showScrollBtn, handleScroll, scrollToBottom } =
+    useScrollFollow([messages.length, agentList.length, isRunning]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        position: "relative",
+      }}
+    >
       {/* Pinned prompt bar */}
       {pinnedPrompt && (
         <div
           style={{
-            padding: '8px 12px',
+            padding: "8px 12px",
             borderBottom: `1px solid ${colors.containerBorder}`,
             fontSize: 13,
             color: colors.textSecondary,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
           }}
         >
-          <span style={{ color: colors.accent, fontWeight: 600 }}>{' > '}</span>
+          <span style={{ color: colors.accent, fontWeight: 600 }}>{" > "}</span>
           {pinnedPrompt}
         </div>
       )}
 
       {/* Scrollable body */}
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+      <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
         <div
           ref={scrollRef}
           onScroll={handleScroll}
-          style={{ height: '100%', overflowY: 'auto', padding: '8px 12px' }}
+          style={{ height: "100%", overflowY: "auto", padding: "8px 12px" }}
         >
-          <div ref={contentRef}>
-            <TranscriptRows grouped={grouped} actions={actions} />
-          </div>
+          <TranscriptRows grouped={grouped} actions={actions} tabId={tabId} activeBackgroundTasks={tasks} />
         </div>
-        <ScrollToBottomButton visible={showScrollBtn} onClick={scrollToBottom} />
+        <ScrollToBottomButton
+          visible={showScrollBtn}
+          onClick={scrollToBottom}
+        />
       </div>
 
       {/* Embedded agent panel. Always rendered inside the dispatch preview so
@@ -112,12 +132,12 @@ export function Transcript({
           (shows "Agents (0)"), then populates as children spawn. */}
       <AgentPanel
         agents={agentList}
-        allAgents={allAgents ?? agentList}
         dispatchTelemetry={telemetry}
         onOpenDispatch={onOpenDispatch}
         subDispatch={subDispatch}
+        tabId={tabId}
         alwaysRender
       />
     </div>
-  )
+  );
 }

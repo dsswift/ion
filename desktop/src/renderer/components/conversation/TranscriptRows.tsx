@@ -1,26 +1,37 @@
-import React, { memo, type RefObject } from 'react'
-import { useVirtualizer } from '@tanstack/react-virtual'
-import { rDebug } from '../../rendererLogger'
+import React, { memo, type RefObject } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { rDebug } from "../../rendererLogger";
 import {
-  MessageBubble, AssistantMessage, ToolGroup, AgentTurnGroup,
-  ThinkingBlock, HarnessMessage, InterceptBanner, SystemMessage,
+  MessageBubble,
+  AssistantMessage,
+  ToolGroup,
+  AgentTurnGroup,
+  ThinkingBlock,
+  HarnessMessage,
+  InterceptBanner,
+  SystemMessage,
   CompactionRow,
-} from './index'
-import type { GroupedItem } from './tool-helpers'
-import type { Message } from '../../../shared/types-session'
+  BackgroundWorkGroup,
+} from "./index";
+import type { BackgroundTaskState } from "../../../shared/types-engine";
+import type { GroupedItem } from "./tool-helpers";
+import type { Message } from "../../../shared/types-session";
 
-type ActionsRenderer = (msg: Message) => React.ReactNode
+type ActionsRenderer = (msg: Message) => React.ReactNode;
 
 interface TranscriptRowsProps {
-  grouped: GroupedItem[]
-  actions?: ActionsRenderer
-  scrollRef?: RefObject<HTMLDivElement | null>
+  grouped: GroupedItem[];
+  actions?: ActionsRenderer;
+  scrollRef?: RefObject<HTMLDivElement | null>;
   /** Search scans the DOM, so it temporarily opts into the complete row set. */
-  forceFullRender?: boolean
+  forceFullRender?: boolean;
+  tabId?: string;
+  activeBackgroundTasks?: BackgroundTaskState[];
 }
 
-const VIRTUAL_THRESHOLD = 100
-const ESTIMATED_ROW_HEIGHT = 72
+const VIRTUAL_THRESHOLD = 100;
+const ESTIMATED_ROW_HEIGHT = 72;
+const EMPTY_BACKGROUND_TASKS: BackgroundTaskState[] = [];
 
 /**
  * Element-wise reference equality. groupMessages rebuilds its wrapper arrays
@@ -29,12 +40,12 @@ const ESTIMATED_ROW_HEIGHT = 72
  * updates messages immutably: an untouched Message keeps its reference).
  */
 function messagesEqual(a: Message[], b: Message[]): boolean {
-  if (a === b) return true
-  if (a.length !== b.length) return false
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i += 1) {
-    if (a[i] !== b[i]) return false
+    if (a[i] !== b[i]) return false;
   }
-  return true
+  return true;
 }
 
 /**
@@ -42,9 +53,12 @@ function messagesEqual(a: Message[], b: Message[]): boolean {
  * on every grouping pass (object spread), so reference equality always fails
  * for multi-block turns. Compare the fields ThinkingBlock actually renders.
  */
-function thinkingEqual(a: Message | undefined, b: Message | undefined): boolean {
-  if (a === b) return true
-  if (!a || !b) return false
+function thinkingEqual(
+  a: Message | undefined,
+  b: Message | undefined,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
   return (
     a.id === b.id &&
     a.content === b.content &&
@@ -52,7 +66,7 @@ function thinkingEqual(a: Message | undefined, b: Message | undefined): boolean 
     a.thinkingElapsedSeconds === b.thinkingElapsedSeconds &&
     a.thinkingTotalTokens === b.thinkingTotalTokens &&
     a.thinkingRedacted === b.thinkingRedacted
-  )
+  );
 }
 
 /**
@@ -62,35 +76,42 @@ function thinkingEqual(a: Message | undefined, b: Message | undefined): boolean 
  * grouped array.
  */
 export function groupedItemsEqual(a: GroupedItem, b: GroupedItem): boolean {
-  if (a === b) return true
-  if (a.kind !== b.kind) return false
+  if (a === b) return true;
+  if (a.kind !== b.kind) return false;
   switch (a.kind) {
-    case 'tool-group':
-      return messagesEqual(a.messages, (b as typeof a).messages)
-    case 'agent-turn': {
-      const bt = b as typeof a
+    case "tool-group":
+      return messagesEqual(a.messages, (b as typeof a).messages);
+    case "agent-turn": {
+      const bt = b as typeof a;
       return (
         a.isActive === bt.isActive &&
         thinkingEqual(a.thinking, bt.thinking) &&
         messagesEqual(a.tools, bt.tools) &&
         messagesEqual(a.assistantMessages, bt.assistantMessages)
-      )
+      );
     }
-    case 'thinking':
+    case "thinking":
       // Standalone merged-thinking rows (no-tools turns in unified view) are
       // synthesized fresh each grouping pass, exactly like the agent-turn
       // thinking field — reference equality would fail every chunk.
-      return thinkingEqual(a.message, (b as typeof a).message)
+      return thinkingEqual(a.message, (b as typeof a).message);
     default:
-      return a.message === (b as Extract<GroupedItem, { message: Message }>).message
+      return (
+        a.message === (b as Extract<GroupedItem, { message: Message }>).message
+      );
   }
 }
 
 function rowPropsEqual(
-  prev: { item: GroupedItem; actions?: ActionsRenderer },
-  next: { item: GroupedItem; actions?: ActionsRenderer },
+  prev: { item: GroupedItem; actions?: ActionsRenderer; tabId?: string; activeBackgroundTasks: BackgroundTaskState[] },
+  next: { item: GroupedItem; actions?: ActionsRenderer; tabId?: string; activeBackgroundTasks: BackgroundTaskState[] },
 ): boolean {
-  return prev.actions === next.actions && groupedItemsEqual(prev.item, next.item)
+  return (
+    prev.actions === next.actions &&
+    prev.tabId === next.tabId &&
+    prev.activeBackgroundTasks === next.activeBackgroundTasks &&
+    groupedItemsEqual(prev.item, next.item)
+  );
 }
 
 /**
@@ -102,18 +123,28 @@ function rowPropsEqual(
 const TranscriptRow = memo(function TranscriptRow({
   item,
   actions,
+  tabId,
+  activeBackgroundTasks,
 }: {
-  item: GroupedItem
-  actions?: ActionsRenderer
+  item: GroupedItem;
+  actions?: ActionsRenderer;
+  tabId?: string;
+  activeBackgroundTasks: BackgroundTaskState[];
 }) {
   switch (item.kind) {
-    case 'user':
-      return <MessageBubble message={item.message} skipMotion actions={actions?.(item.message)} />
-    case 'assistant':
-      return <AssistantMessage message={item.message} skipMotion />
-    case 'tool-group':
-      return <ToolGroup tools={item.messages} skipMotion />
-    case 'agent-turn':
+    case "user":
+      return (
+        <MessageBubble
+          message={item.message}
+          skipMotion
+          actions={actions?.(item.message)}
+        />
+      );
+    case "assistant":
+      return <AssistantMessage message={item.message} skipMotion />;
+    case "tool-group":
+      return <><ToolGroup tools={item.messages} skipMotion /><BackgroundWorkGroup tabId={tabId} tools={item.messages} activeTasks={activeBackgroundTasks} /></>;
+    case "agent-turn":
       return (
         <AgentTurnGroup
           tools={item.tools}
@@ -121,22 +152,24 @@ const TranscriptRow = memo(function TranscriptRow({
           isActive={item.isActive}
           thinking={item.thinking}
           skipMotion
+          tabId={tabId}
+          activeBackgroundTasks={activeBackgroundTasks}
         />
-      )
-    case 'thinking':
-      return <ThinkingBlock message={item.message} skipMotion />
-    case 'harness':
-      return <HarnessMessage message={item.message} skipMotion />
-    case 'intercept':
-      return <InterceptBanner message={item.message} skipMotion />
-    case 'system':
-      return <SystemMessage message={item.message} skipMotion />
-    case 'compaction':
-      return <CompactionRow message={item.message} skipMotion />
+      );
+    case "thinking":
+      return <ThinkingBlock message={item.message} skipMotion />;
+    case "harness":
+      return <HarnessMessage message={item.message} skipMotion />;
+    case "intercept":
+      return <InterceptBanner message={item.message} skipMotion />;
+    case "system":
+      return <SystemMessage message={item.message} skipMotion />;
+    case "compaction":
+      return <CompactionRow message={item.message} skipMotion />;
     default:
-      return null
+      return null;
   }
-}, rowPropsEqual)
+}, rowPropsEqual);
 
 /**
  * Stable identity for a row across grouping passes. Message-backed rows key
@@ -145,19 +178,21 @@ const TranscriptRow = memo(function TranscriptRow({
  */
 function rowKey(item: GroupedItem, idx: number): string {
   switch (item.kind) {
-    case 'tool-group':
-      return item.messages[0]?.id ?? `tg-${idx}`
-    case 'agent-turn':
-      return item.tools[0]?.id ?? `at-${idx}`
+    case "tool-group":
+      return item.messages[0]?.id ?? `tg-${idx}`;
+    case "agent-turn":
+      return item.tools[0]?.id ?? `at-${idx}`;
     default:
-      return item.message.id
+      return item.message.id;
   }
 }
 
 interface VirtualTranscriptRowsProps {
-  grouped: GroupedItem[]
-  actions?: ActionsRenderer
-  scrollRef: RefObject<HTMLDivElement | null>
+  grouped: GroupedItem[];
+  actions?: ActionsRenderer;
+  scrollRef: RefObject<HTMLDivElement | null>;
+  tabId?: string;
+  activeBackgroundTasks: BackgroundTaskState[];
 }
 
 /**
@@ -165,66 +200,104 @@ interface VirtualTranscriptRowsProps {
  * renders an empty skeleton and hydrates it later; keeping one virtualizer
  * alive across that transition caches the skeleton's zero initial offset.
  */
-function VirtualTranscriptRows({ grouped, actions, scrollRef }: VirtualTranscriptRowsProps) {
+function VirtualTranscriptRows({
+  grouped,
+  actions,
+  scrollRef,
+  tabId,
+  activeBackgroundTasks,
+}: VirtualTranscriptRowsProps) {
   const virtualizer = useVirtualizer({
     count: grouped.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => ESTIMATED_ROW_HEIGHT,
     initialRect: scrollRef.current
-      ? { width: scrollRef.current.clientWidth, height: scrollRef.current.clientHeight }
+      ? {
+          width: scrollRef.current.clientWidth,
+          height: scrollRef.current.clientHeight,
+        }
       : undefined,
     initialOffset: () => {
-      const viewportHeight = scrollRef.current?.clientHeight ?? 0
-      const initialOffset = Math.max(grouped.length * ESTIMATED_ROW_HEIGHT - viewportHeight, 0)
-      rDebug('conversation.scroll', 'virtual transcript initialized at tail', {
+      const viewportHeight = scrollRef.current?.clientHeight ?? 0;
+      const initialOffset = Math.max(
+        grouped.length * ESTIMATED_ROW_HEIGHT - viewportHeight,
+        0,
+      );
+      rDebug("conversation.scroll", "virtual transcript initialized at tail", {
         row_count: grouped.length,
         viewport_height: viewportHeight,
         initial_offset: initialOffset,
-      })
-      return initialOffset
+      });
+      return initialOffset;
     },
-    anchorTo: 'end',
+    anchorTo: "end",
     overscan: 12,
     getItemKey: (index) => rowKey(grouped[index]!, index),
-  })
+  });
 
   return (
     <div
       data-testid="virtual-transcript-rows"
-      style={{ height: virtualizer.getTotalSize(), position: 'relative', paddingTop: 4 }}
+      style={{
+        height: virtualizer.getTotalSize(),
+        position: "relative",
+        paddingTop: 4,
+      }}
     >
       {virtualizer.getVirtualItems().map((virtualRow) => {
-        const item = grouped[virtualRow.index]!
+        const item = grouped[virtualRow.index]!;
         return (
           <div
             key={virtualRow.key}
             data-index={virtualRow.index}
             ref={virtualizer.measureElement}
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, transform: `translateY(${virtualRow.start}px)` }}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              transform: `translateY(${virtualRow.start}px)`,
+            }}
           >
-            <TranscriptRow item={item} actions={actions} />
+            <TranscriptRow item={item} actions={actions} tabId={tabId} activeBackgroundTasks={activeBackgroundTasks} />
           </div>
-        )
+        );
       })}
     </div>
-  )
+  );
 }
 
 /**
  * Pure render switch for every grouped-item kind, one memoized row per item.
  * Extracted from Transcript.tsx to keep both files under the 600-line cap.
  */
-export function TranscriptRows({ grouped, actions, scrollRef, forceFullRender = false }: TranscriptRowsProps) {
-  const virtual = grouped.length >= VIRTUAL_THRESHOLD && !forceFullRender && scrollRef != null
-  if (grouped.length === 0) return null
+export function TranscriptRows({
+  grouped,
+  actions,
+  scrollRef,
+  forceFullRender = false,
+  tabId,
+  activeBackgroundTasks = EMPTY_BACKGROUND_TASKS,
+}: TranscriptRowsProps) {
+  const virtual =
+    grouped.length >= VIRTUAL_THRESHOLD && !forceFullRender && scrollRef != null;
+  if (grouped.length === 0) return null;
   if (!virtual) {
     return (
       <div style={{ paddingTop: 4 }}>
         {grouped.map((item, idx) => (
-          <TranscriptRow key={rowKey(item, idx)} item={item} actions={actions} />
+          <TranscriptRow key={rowKey(item, idx)} item={item} actions={actions} tabId={tabId} activeBackgroundTasks={activeBackgroundTasks} />
         ))}
       </div>
-    )
+    );
   }
-  return <VirtualTranscriptRows grouped={grouped} actions={actions} scrollRef={scrollRef} />
+  return (
+    <VirtualTranscriptRows
+      grouped={grouped}
+      actions={actions}
+      scrollRef={scrollRef!}
+      tabId={tabId}
+      activeBackgroundTasks={activeBackgroundTasks}
+    />
+  );
 }

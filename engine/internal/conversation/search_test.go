@@ -166,10 +166,10 @@ func TestSearchMessages_DefaultMaxResults(t *testing.T) {
 
 func TestSnippetAround(t *testing.T) {
 	tests := []struct {
-		name     string
-		text     string
-		idx      int
-		matchLen int
+		name         string
+		text         string
+		idx          int
+		matchLen     int
 		wantContains string
 	}{
 		{

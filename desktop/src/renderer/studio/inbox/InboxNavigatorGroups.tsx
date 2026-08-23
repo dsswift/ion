@@ -29,6 +29,7 @@ interface Props {
 export function InboxNavigatorGroups({ projects, collapsed, onToggle, variant, selectedBench, onSelectBench, row }: Props): React.JSX.Element[] {
   const colors = useColors()
   const tabs = useSessionStore((state) => state.tabs)
+  const activeTabId = useSessionStore((state) => state.activeTabId)
   const inventory = useSessionStore((state) => state.worktreeInventory)
   // Read here (rather than inside the loop below) so the component re-renders
   // on ledger changes while still calling every hook unconditionally -- this
@@ -96,7 +97,7 @@ export function InboxNavigatorGroups({ projects, collapsed, onToggle, variant, s
       <button onClick={(event) => { event.stopPropagation(); onToggle(projectKey) }} aria-label={`Toggle ${project.name}`} style={caretStyle(colors)}>{projectCollapsed ? <CaretRight size={12} /> : <CaretDown size={12} />}</button><Folder size={14} color={colors.accent} /><span>{project.name}</span><span style={{ color: colors.textTertiary, fontSize: 10 }}>{projectTabs.length}</span><span style={{ height: 1, flex: 1, background: colors.containerBorder }} />
     </div>)
     if (projectCollapsed) {
-      for (const tab of collapsedInboxRows(projectTabs)) parts.push(row(tab, variant, project.name))
+      for (const tab of collapsedInboxRows(projectTabs, activeTabId)) parts.push(row(tab, variant, project.name))
       continue
     }
 
@@ -138,7 +139,7 @@ export function InboxNavigatorGroups({ projects, collapsed, onToggle, variant, s
         continue
       }
       const openGroup = (): void => {
-        if (isCollapsed && group.kind === 'worktree') {
+        if (isCollapsed) {
           onToggle(groupKey)
           rInfo('inbox.navigator', 'expanded group before cycling conversations', {
             group_key: group.key,
@@ -163,12 +164,12 @@ export function InboxNavigatorGroups({ projects, collapsed, onToggle, variant, s
           onUpdatePin={(path, sourceBranch) => runPinUpdate(project.key, path, sourceBranch)}
           onToggleMembership={(path, sourceBranch, enrolled) => runToggleMembership(project.key, path, sourceBranch, enrolled, branchName)}
         />)
-        const visibleTabs = worktreeChildRows(group.tabs, isCollapsed)
+        const visibleTabs = worktreeChildRows(group.tabs, isCollapsed, activeTabId)
         for (const tab of visibleTabs) parts.push(row(tab, variant, project.name))
         continue
       }
       parts.push(<div key={groupKey} onClick={openGroup} style={groupStyle(colors)}><button onClick={(event) => { event.stopPropagation(); onToggle(groupKey) }} aria-label={`Toggle ${group.label}`} style={caretStyle(colors)}>{isCollapsed ? <CaretRight size={12} /> : <CaretDown size={12} />}</button><Folder size={14} color={colors.textSecondary} /><span style={{ flex: 1 }}>{group.label}</span><span style={{ color: colors.textTertiary, fontSize: 10 }}>{group.tabs.length}</span></div>)
-      if (isCollapsed) { for (const tab of collapsedInboxRows(group.tabs)) parts.push(row(tab, variant, project.name)); continue }
+      if (isCollapsed) { for (const tab of collapsedInboxRows(group.tabs, activeTabId)) parts.push(row(tab, variant, project.name)); continue }
       for (const tab of group.tabs) parts.push(row(tab, variant, project.name))
     }
     if (projectNode.flatTabs.length > 0) for (const tab of projectNode.flatTabs) parts.push(row(tab, variant, project.name))

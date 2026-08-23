@@ -268,7 +268,7 @@ func TestDispatchTelemetry_BackgroundDispatchRegistersAndDispatchId(t *testing.T
 	}
 
 	// Drain any running goroutine to avoid leaking.
-	registry.Recall("bg-tel-agent", "test-cleanup")
+	registry.RecallByID(startDispatchId, "test-cleanup")
 
 	// Give the goroutine a moment to drain (no provider means fast exit).
 	_ = acc.NewChildBackend()

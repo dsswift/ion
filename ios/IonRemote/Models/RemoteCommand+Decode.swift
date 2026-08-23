@@ -58,7 +58,21 @@ extension RemoteCommand {
 
         case .cancel:
             let tabId = try container.decode(String.self, forKey: .tabId)
-            self = .cancel(tabId: tabId)
+            // Absent scope decodes as nil, which the desktop reads as "all".
+            let scope = try container.decodeIfPresent(String.self, forKey: .scope)
+            self = .cancel(tabId: tabId, scope: scope)
+
+        case .abortDispatch:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let dispatchId = try container.decode(String.self, forKey: .dispatchId)
+            self = .abortDispatch(tabId: tabId, dispatchId: dispatchId)
+
+        case .stopBackgroundTask:
+            self = .stopBackgroundTask(
+                tabId: try container.decode(String.self, forKey: .tabId),
+                taskId: try container.decode(String.self, forKey: .taskId),
+                requestId: try container.decode(String.self, forKey: .requestId)
+            )
 
         case .respondPermission:
             let tabId = try container.decode(String.self, forKey: .tabId)

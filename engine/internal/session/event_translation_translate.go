@@ -34,7 +34,7 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 		return types.EngineEvent{Type: "engine_tool_complete", ToolIndex: &idx}
 
 	case *types.ToolResultEvent:
-		return types.EngineEvent{Type: "engine_tool_end", ToolName: "", ToolID: e.ToolID, ToolResult: e.Content, ToolIsError: e.IsError, ToolResultImages: e.Images}
+		return types.EngineEvent{Type: "engine_tool_end", ToolName: "", ToolID: e.ToolID, ToolResult: e.Content, ToolIsError: e.IsError, ToolResultImages: e.Images, ToolBackgroundTaskID: e.BackgroundTaskID}
 
 	case *types.ImageContentEvent:
 		// A single image produced during the run — tool-returned or
@@ -106,6 +106,25 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 				Tail:             e.Tail,
 				Command:          e.Command,
 				RemainingTaskIDs: e.RemainingTaskIDs,
+			},
+		}
+
+	case *types.BackgroundTaskStartedEvent:
+		return types.EngineEvent{Type: "engine_background_task_started", BackgroundTaskStarted: &types.BackgroundTaskState{TaskID: e.TaskID, Command: e.Command, StartedAt: e.StartedAt, NotifyOnComplete: e.NotifyOnComplete}}
+
+	case *types.BackgroundTaskTerminalEvent:
+		return types.EngineEvent{Type: "engine_background_task_terminal", BackgroundTaskTerminal: &types.BackgroundTaskTerminalPayload{TaskID: e.TaskID, Status: e.Status, ExitCode: e.ExitCode, ElapsedMs: e.ElapsedMs, Command: e.Command, OutputPath: e.OutputPath, Tail: e.Tail}}
+
+	case *types.SessionWorkStoppedEvent:
+		return types.EngineEvent{Type: "engine_session_work_stopped", SessionWorkStopped: e}
+
+	case *types.BackgroundWorkDeliveredEvent:
+		return types.EngineEvent{
+			Type: "engine_background_work_delivered",
+			BackgroundWorkDelivered: &types.BackgroundWorkDeliveredPayload{
+				EntryID: e.EntryID,
+				Content: e.Content,
+				Work:    e.Work,
 			},
 		}
 

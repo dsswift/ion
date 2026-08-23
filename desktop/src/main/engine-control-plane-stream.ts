@@ -5,13 +5,20 @@
 // `engine_steer_injected` / `engine_steer_degraded` arms of the EngineEvent→NormalizedEvent translation
 // switch, lifted out verbatim. No logic change. The main file delegates to
 // handleStreamSignalEvent from its switch.
-import type { EngineEvent, NormalizedEvent } from '../shared/types'
-import { log as _log, debug as _debug } from './logger'
-import type { EventEmitterContext, TabEntry } from './engine-control-plane-events-types'
+import type { EngineEvent, NormalizedEvent } from "../shared/types";
+import { log as _log, debug as _debug } from "./logger";
+import type {
+  EventEmitterContext,
+  TabEntry,
+} from "./engine-control-plane-events-types";
 
-const TAG = 'SessionPlane'
-function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
-function debug(msg: string, fields?: Record<string, unknown>): void { _debug(TAG, msg, fields) }
+const TAG = "SessionPlane";
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log(TAG, msg, fields);
+}
+function debug(msg: string, fields?: Record<string, unknown>): void {
+  _debug(TAG, msg, fields);
+}
 
 /**
  * Handle the mid-run stream-signal event arms. Returns true when the event
@@ -25,21 +32,27 @@ export function handleStreamSignalEvent(
   event: EngineEvent,
 ): boolean {
   switch (event.type) {
-    case 'engine_stream_reset':
-      log('stream_reset: retry in progress', { tab_id: tabId })
-      ctx.emit('event', tabId, { type: 'stream_reset' } as NormalizedEvent)
-      return true
+    case "engine_stream_reset":
+      log("stream_reset: retry in progress", { tab_id: tabId });
+      ctx.emit("event", tabId, { type: "stream_reset" } as NormalizedEvent);
+      return true;
 
-    case 'engine_compacting':
-      log('compacting', { tab_id: tabId, active: event.active, micro_only: event.microOnly ?? false, msgs_before: event.messagesBefore ?? 0, msgs_after: event.messagesAfter ?? 0 })
+    case "engine_compacting":
+      log("compacting", {
+        tab_id: tabId,
+        active: event.active,
+        micro_only: event.microOnly ?? false,
+        msgs_before: event.messagesBefore ?? 0,
+        msgs_after: event.messagesAfter ?? 0,
+      });
       // Forward the full detail field set, not just `active`. The renderer
       // marker (event-slice.ts) and the iOS-bound marker (event-wiring-remote.ts)
       // both read messagesBefore/messagesAfter/clearedBlocks/summary/strategy/
       // microOnly to build the "[Compaction]" checkpoint line. Dropping them
       // here (the prior behavior) left both markers as dead code — the fields
       // never arrived, so the marker was never inserted.
-      ctx.emit('event', tabId, {
-        type: 'compacting',
+      ctx.emit("event", tabId, {
+        type: "compacting",
         active: event.active,
         summary: event.summary,
         messagesBefore: event.messagesBefore,
@@ -47,49 +60,57 @@ export function handleStreamSignalEvent(
         clearedBlocks: event.clearedBlocks,
         strategy: event.strategy,
         microOnly: event.microOnly,
-      } as NormalizedEvent)
-      return true
+      } as NormalizedEvent);
+      return true;
 
-    case 'engine_tool_stalled':
-      debug('tool_stalled', { tab_id: tabId, tool: event.toolName, elapsed_s: event.toolElapsed })
-      ctx.emit('event', tabId, {
-        type: 'tool_stalled',
+    case "engine_tool_stalled":
+      debug("tool_stalled", {
+        tab_id: tabId,
+        tool: event.toolName,
+        elapsed_s: event.toolElapsed,
+      });
+      ctx.emit("event", tabId, {
+        type: "tool_stalled",
         toolId: event.toolId,
         toolName: event.toolName,
         elapsed: event.toolElapsed,
-      } as NormalizedEvent)
-      return true
+      } as NormalizedEvent);
+      return true;
 
-    case 'engine_run_stalled':
+    case "engine_run_stalled":
       // Advisory watchdog signal. The legacy path only logged this; emit as
       // normalized run_stalled so the renderer can surface a distinct indicator.
-      debug('run_stalled', { tab_id: tabId, duration: event.runStalledDuration, last_activity: event.runStalledLastActivity ?? 'unknown' })
-      ctx.emit('event', tabId, {
-        type: 'run_stalled',
+      debug("run_stalled", {
+        tab_id: tabId,
+        duration: event.runStalledDuration,
+        last_activity: event.runStalledLastActivity ?? "unknown",
+      });
+      ctx.emit("event", tabId, {
+        type: "run_stalled",
         stalledDuration: event.runStalledDuration,
         lastActivity: event.runStalledLastActivity,
-      } as NormalizedEvent)
-      return true
+      } as NormalizedEvent);
+      return true;
 
-    case 'engine_run_recovery':
-      log('run_recovery', {
+    case "engine_run_recovery":
+      log("run_recovery", {
         tab_id: tabId,
         recovery_id: event.runRecoveryId,
         phase: event.runRecoveryPhase,
         attempt: event.runRecoveryAttempt ?? 0,
         max_attempts: event.runRecoveryMaxAttempts ?? 0,
-      })
-      ctx.emit('event', tabId, {
-        type: 'run_recovery',
+      });
+      ctx.emit("event", tabId, {
+        type: "run_recovery",
         recoveryId: event.runRecoveryId,
         phase: event.runRecoveryPhase,
         attempt: event.runRecoveryAttempt,
         maxAttempts: event.runRecoveryMaxAttempts,
         reason: event.runRecoveryReason,
-      } as NormalizedEvent)
-      return true
+      } as NormalizedEvent);
+      return true;
 
-    case 'engine_task_suspended':
+    case "engine_task_suspended":
       // A run ended without completing. Either a dispatched agent called
       // ctx.suspend()/suspendUntilAll() and is parked waiting for child
       // completions or a revive message, or the engine parked a session at a
@@ -103,50 +124,117 @@ export function handleStreamSignalEvent(
       // than omitting them. Both counts are logged instead, which is what
       // makes a parked session distinguishable from a dispatch-suspended one
       // in the log alone.
-      debug('task_suspended', {
+      debug("task_suspended", {
         tab_id: tabId,
         awaiting_count: event.taskSuspendAwaitingCount ?? 0,
         awaiting_task_count: event.taskSuspendAwaitingTaskCount ?? 0,
-      })
-      ctx.emit('event', tabId, { type: 'task_suspend' } as NormalizedEvent)
-      return true
+      });
+      ctx.emit("event", tabId, { type: "task_suspend" } as NormalizedEvent);
+      return true;
 
-    case 'engine_steer_injected':
+    case "engine_steer_injected":
       // Mid-turn steer-drain confirmation. The runloop captures a steer
       // message between turns, inside the end_turn checkpoint, or after
       // tool execution; this event tells consumers the steer landed in
       // the conversation as a user turn before the next LLM call.
-      // steerClientMessageId/steerEntryId are additive: present only for a
-      // genuine client-originated steer whose sender supplied a correlation
-      // id (steerClientMessageId) — the engine always supplies steerEntryId
-      // for a genuine client-originated steer regardless of whether the
-      // client sent an id, so a client that omitted correlation still learns
-      // the durable rewind target.
-      log('steer_injected', {
+      // steerClientMessageId/steerEntryId let a client resolve EXACTLY which
+      // outstanding optimistic steer bubble this confirms (by client-issued
+      // correlation id) and adopt the durable conversation-tree entry id the
+      // engine persisted it under — the exact target for a later rewind by
+      // id instead of falling back to ordinal position.
+      log("steer_injected", {
         tab_id: tabId,
         message_length: event.steerMessageLength,
-        client_message_id: event.steerClientMessageId ?? '',
-        entry_id: event.steerEntryId ?? '',
-      })
-      ctx.emit('event', tabId, {
-        type: 'steer_injected',
+        kind: event.steerKind ?? "",
+        machine_authored: event.steerMachineAuthored ?? false,
+      });
+      ctx.emit("event", tabId, {
+        type: "steer_injected",
         messageLength: event.steerMessageLength,
-        ...(event.steerClientMessageId ? { clientMessageId: event.steerClientMessageId } : {}),
-        ...(event.steerEntryId ? { entryId: event.steerEntryId } : {}),
-      } as NormalizedEvent)
-      return true
+        clientMessageId: event.steerClientMessageId,
+        entryId: event.steerEntryId,
+        kind: event.steerKind,
+        machineAuthored: event.steerMachineAuthored,
+      } as NormalizedEvent);
+      return true;
 
-    case 'engine_steer_degraded':
+    case "engine_steer_degraded":
       // No owning run was live. Preserve the distinct engine semantic so the
       // renderer can append a divider without reconciling live pending steers.
-      log('steer_degraded', { tab_id: tabId, message_length: event.steerDegradedMessageLength })
-      ctx.emit('event', tabId, {
-        type: 'steer_degraded',
+      log("steer_degraded", {
+        tab_id: tabId,
+        message_length: event.steerDegradedMessageLength,
+        kind: event.steerKind ?? "",
+        machine_authored: event.steerMachineAuthored ?? false,
+      });
+      ctx.emit("event", tabId, {
+        type: "steer_degraded",
         messageLength: event.steerDegradedMessageLength,
-      } as NormalizedEvent)
-      return true
+        kind: event.steerKind,
+        machineAuthored: event.steerMachineAuthored,
+      } as NormalizedEvent);
+      return true;
 
-    case 'engine_prompt_injected':
+    case "engine_background_task_started": {
+      const task = event.backgroundTaskStarted;
+      if (!task) return true;
+      log("background_task_started", { tab_id: tabId, task_id: task.taskId });
+      ctx.emit("event", tabId, {
+        type: "background_task_started",
+        taskId: task.taskId,
+        command: task.command,
+        startedAt: task.startedAt,
+        notifyOnComplete: task.notifyOnComplete,
+      } as NormalizedEvent);
+      return true;
+    }
+
+    case "engine_background_task_terminal": {
+      const task = event.backgroundTaskTerminal;
+      if (!task) return true;
+      log("background_task_terminal", { tab_id: tabId, task_id: task.taskId, status: task.status });
+      ctx.emit("event", tabId, { type: "background_task_terminal", ...task } as NormalizedEvent);
+      return true;
+    }
+
+    case "engine_session_work_stopped": {
+      const summary = event.sessionWorkStopped;
+      if (!summary) return true;
+      log("session_work_stopped", {
+        tab_id: tabId,
+        scope: summary.scope,
+        background_task_count: summary.stoppedBackgroundTaskIds?.length ?? 0,
+      });
+      ctx.emit("event", tabId, {
+        type: "session_work_stopped",
+        scope: summary.scope,
+        cancelledRunId: summary.cancelledRunId,
+        recalledDispatchIds: summary.recalledDispatchIds,
+        stoppedBackgroundTaskIds: summary.stoppedBackgroundTaskIds,
+        killedAgentProcessCount: summary.killedAgentProcessCount,
+      } as NormalizedEvent);
+      return true;
+    }
+
+    case "engine_background_work_delivered": {
+      const delivered = event.backgroundWorkDelivered;
+      if (!delivered) return true;
+      log("background_work_delivered", {
+        tab_id: tabId,
+        entry_id: delivered.entryId,
+        count: delivered.work.items.length,
+        delivery_mode: delivered.work.deliveryMode,
+      });
+      ctx.emit("event", tabId, {
+        type: "background_work_delivered",
+        entryId: delivered.entryId,
+        content: delivered.content,
+        work: delivered.work,
+      } as NormalizedEvent);
+      return true;
+    }
+
+    case "engine_prompt_injected":
       // Extension-injected prompt (ctx.sendPrompt): the engine started a run
       // on a user turn no client submitted. Forward the full text so live
       // transcripts can render the turn — without this, clients watch the
@@ -158,15 +246,21 @@ export function handleStreamSignalEvent(
       // renderer decides via suppressesInjection (shared/injection-policy.ts).
       // Forwarding only the kind would force the renderer back to matching
       // strings, which is the pattern that kept drifting.
-      log('prompt_injected', { tab_id: tabId, prompt_len: event.injectedPrompt?.length ?? 0, origin: event.injectedPromptOrigin ?? '', kind: event.injectedPromptKind ?? '', machine_authored: event.injectedPromptMachineAuthored ?? false })
-      ctx.emit('event', tabId, {
-        type: 'prompt_injected',
+      log("prompt_injected", {
+        tab_id: tabId,
+        prompt_len: event.injectedPrompt?.length ?? 0,
+        origin: event.injectedPromptOrigin ?? "",
+        kind: event.injectedPromptKind ?? "",
+        machine_authored: event.injectedPromptMachineAuthored ?? false,
+      });
+      ctx.emit("event", tabId, {
+        type: "prompt_injected",
         prompt: event.injectedPrompt,
         origin: event.injectedPromptOrigin,
         kind: event.injectedPromptKind,
         machineAuthored: event.injectedPromptMachineAuthored,
-      } as NormalizedEvent)
-      return true
+      } as NormalizedEvent);
+      return true;
   }
-  return false
+  return false;
 }

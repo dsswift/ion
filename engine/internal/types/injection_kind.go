@@ -79,6 +79,16 @@ const (
 	// state before retrying potentially completed external work.
 	InjectionKindRunRecovery InjectionKind = "run_recovery"
 
+	// InjectionKindSystemSteer is an engine- or harness-authored steering
+	// message injected into the turn stream to keep the model on its
+	// constraints: a plan-mode reminder, a turn-limit warning, a
+	// max-token continuation. The engine injects these transiently today
+	// (see backend.injectSystemMessage), so the kind exists mainly to
+	// classify the rows earlier versions persisted — and to give any
+	// consumer that injects its own steering a correct classification
+	// instead of an unclassified user turn.
+	InjectionKindSystemSteer InjectionKind = "system_steer"
+
 	// InjectionKindSteer is a steer message injected mid-turn onto a live run.
 	//
 	// NOT machine-authored by default: the overwhelmingly common steer is a
@@ -108,7 +118,8 @@ func (k InjectionKind) IsMachineToMachine() bool {
 		InjectionKindBackgroundTaskCompletion,
 		InjectionKindCheckIn,
 		InjectionKindRevive,
-		InjectionKindRunRecovery:
+		InjectionKindRunRecovery,
+		InjectionKindSystemSteer:
 		return true
 	case InjectionKindNone, InjectionKindSteer:
 		return false
@@ -135,5 +146,6 @@ var AllInjectionKinds = []InjectionKind{
 	InjectionKindCheckIn,
 	InjectionKindRevive,
 	InjectionKindRunRecovery,
+	InjectionKindSystemSteer,
 	InjectionKindSteer,
 }

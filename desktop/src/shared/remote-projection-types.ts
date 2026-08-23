@@ -67,6 +67,7 @@ export interface ProjectedConversationInstance {
    *  run_in_background + notify_on_complete). The shell counterpart to
    *  runningAgentCount; drives the iOS pink shell dot. */
   backgroundShellCount?: number
+  activeBackgroundTasks?: import('./types-engine').BackgroundTaskState[]
   modelFallback?: { requestedModel: string; fallbackModel: string }
   conversationIds?: string[]
   thinkingEffort?: 'adaptive' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'

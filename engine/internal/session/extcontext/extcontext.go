@@ -518,17 +518,8 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 	// Wire engine-native agent dispatch.
 	ctx.DispatchAgent = BuildDispatchAgentFunc(sa, registry, depth, dispatchId, workspaceCheckerFor(sa))
 
-	// Wire recall support for background dispatches.
-	if registry != nil {
-		ctx.RecallAgent = func(name string, opts extension.RecallAgentOpts) (bool, error) {
-			reason := opts.Reason
-			if reason == "" {
-				reason = "recall_agent"
-			}
-			found := registry.Recall(name, reason)
-			return found, nil
-		}
-	}
+	// Wire compatibility name recall and exact-ID recall.
+	wireRecallControls(ctx, registry, depth, dispatchId)
 
 	// Wire steer support for background dispatches.
 	if registry != nil {
@@ -552,7 +543,7 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 		// engine_agent_state events. Always available when a registry is wired;
 		// returns an empty slice (not nil) when no dispatches are active.
 		ctx.ListDispatchState = func() ([]extension.DispatchStateEntry, error) {
-			snap := registry.Snapshot()
+			snap := registry.OwnedSnapshot(dispatchId)
 			entries := make([]extension.DispatchStateEntry, len(snap))
 			for i, s := range snap {
 				entries[i] = extension.DispatchStateEntry{

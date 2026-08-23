@@ -412,6 +412,18 @@ func (h *HybridBackend) SteerWithClientID(requestID, message, injectionKind, cli
 	return api.SteerWithClientID(requestID, message, injectionKind, clientMessageID)
 }
 
+func (h *HybridBackend) SteerWithBackgroundWork(requestID, message, injectionKind string, work types.BackgroundWorkInfo) SteerResult {
+	inner, backendKind := h.lookup(requestID)
+	api, ok := inner.(*ApiBackend)
+	if !ok {
+		utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "SteerWithBackgroundWork: not API-routed", map[string]any{
+			"request_id": requestID, "kind": backendKind, "injection_kind": injectionKind,
+		})
+		return SteerResultNoRun
+	}
+	return api.SteerWithBackgroundWork(requestID, message, injectionKind, work)
+}
+
 // SignalSuspend satisfies the `suspendableBackend` interface the extcontext
 // package asserts on a dispatched child's backend. It parks an in-flight run
 // without cancelling it, so a child's ctx.suspend() reaches the ApiBackend

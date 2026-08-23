@@ -3,4 +3,5 @@
 // `'../sdk/ion-sdk'` because esbuild resolves the directory to this file.
 
 export * from './types'
+export * from './types-dispatch-control'
 export { createIon, log } from './runtime'

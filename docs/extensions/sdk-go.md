@@ -344,7 +344,7 @@ Every RPC-backed method takes a `context.Context` first. This is not decoration:
 | Identity (fields)   | `SessionKey`, `ConversationID`, `RunID`, `TraceID`, `Depth`, `DispatchID`, `Cwd`, `Model`, `Config`                                         |
 | Events and messages | `Emit`, `SendMessage`, `SendPrompt`                                                                                                    |
 | Tools               | `CallTool`, `SuppressTool`                                                                                                             |
-| Dispatch            | `DispatchAgent`, `RecallAgent`, `SteerDispatch`, `SteerDispatchByName`, `SteerSelf`, `ListDispatchState`, `AnswerDispatchQuestion`, `AckDispatchLost` |
+| Dispatch            | `DispatchAgent`, `RecallAgent`, `RecallDispatch`, `SteerDispatch`, `SteerDispatchByName`, `SteerSelf`, `ListDispatchState`, `AnswerDispatchQuestion`, `AckDispatchLost` |
 | Agents              | `DiscoverAgents`, `RegisterAgentSpec`, `DeregisterAgentSpec`, `SetDispatchContextDefaults`                                             |
 | Session             | `Elicit`, `GetContextUsage`, `SearchHistory`, `GetSessionMemory`, `SetSessionMemory`, `SetRunRecovery`, `WalkContextFiles`, `Suspend`, `SuspendUntilAll` |
 | Plan mode           | `EnterPlanMode`, `ExitPlanMode`, `GetPlanMode`                                                                                         |

@@ -12,6 +12,7 @@ permissions:
 jobs:
   highlights:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
@@ -55,116 +56,28 @@ jobs:
 
       - name: Build highlights context document
         if: steps.check-activity.outputs.has_commits == 'true'
+        env:
+          REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
           set -euo pipefail
           CTX=/tmp/ion-context.md
-          : > "$CTX"
-
           SINCE="24 hours ago"
-          TODAY=$(date -u +"%B %-d, %Y")
 
           {
-            echo "## Daily Highlights Context — ${TODAY}"
+            echo "## Commits from the last 24 hours"
+            git log --since="$SINCE" --format='- %h %s' origin/main
             echo
-          } >> "$CTX"
+            echo "## Releases from the last 24 hours"
+          } > "$CTX"
 
-          # --- Full commit list ---
-          {
-            echo "## All commits (last 24h)"
-            echo
-            git log --since="$SINCE" --format="- %h %s" origin/main || true
-            echo
-          } >> "$CTX"
-
-          # --- Per-component breakdown ---
-          OLDEST_SHA=$(git log --since="$SINCE" --format="%H" origin/main | tail -1)
-          NEWEST_SHA=$(git log --since="$SINCE" --format="%H" origin/main -1)
-
-          for component in engine desktop relay ios; do
-            case "$component" in
-              ios) dir="ios/" ;;
-              *)   dir="${component}/" ;;
-            esac
-
-            COMPONENT_COMMITS=$(git log --since="$SINCE" --format="- %h %s" origin/main -- "$dir")
-            if [ -z "$COMPONENT_COMMITS" ]; then
-              continue
-            fi
-
-            {
-              echo "## ${component}"
-              echo
-              echo "### Commits"
-              echo
-              echo "$COMPONENT_COMMITS"
-              echo
-              echo "### Diff stat"
-              echo
-              echo '```'
-              if [ -n "$OLDEST_SHA" ] && [ -n "$NEWEST_SHA" ]; then
-                git diff --stat "${OLDEST_SHA}^..${NEWEST_SHA}" -- "$dir" \
-                  ':(exclude)**/CHANGELOG.md' \
-                  ':(exclude)**/VERSION' \
-                  ':(exclude)**/package-lock.json' \
-                  ':(exclude)**/go.sum' \
-                  ':(exclude)**/Package.resolved' \
-                  || true
-              fi
-              echo '```'
-              echo
-            } >> "$CTX"
-          done
-
-          # --- CHANGELOG entries from any tags created in the last 24h ---
-          CUTOFF_EPOCH=$(date -d "24 hours ago" +%s 2>/dev/null || true)
-          RECENT_TAGS=""
-          mapfile -t ALL_TAGS < <(git tag --sort=-creatordate)
-          for tag in "${ALL_TAGS[@]}"; do
+          CUTOFF_EPOCH=$(date -d "24 hours ago" +%s)
+          while read -r tag; do
             [ -z "$tag" ] && continue
-            TAG_DATE=$(git log -1 --format="%ai" "$tag" 2>/dev/null || true)
-            if [ -n "$TAG_DATE" ] && [ -n "$CUTOFF_EPOCH" ]; then
-              TAG_EPOCH=$(date -d "$TAG_DATE" +%s 2>/dev/null || true)
-              if [ -n "$TAG_EPOCH" ] && [ "$TAG_EPOCH" -ge "$CUTOFF_EPOCH" ]; then
-                RECENT_TAGS="${RECENT_TAGS:+${RECENT_TAGS}$'\n'}${tag}"
-              fi
+            TAG_EPOCH=$(git log -1 --format=%ct "$tag")
+            if [ "$TAG_EPOCH" -ge "$CUTOFF_EPOCH" ]; then
+              printf -- '- %s: %s/releases/tag/%s\n' "$tag" "$REPOSITORY_URL" "$tag"
             fi
-          done
-
-          if [ -n "$RECENT_TAGS" ]; then
-            {
-              echo "## Recent releases (tags created in last 24h)"
-              echo
-            } >> "$CTX"
-
-            while read -r tag; do
-              [ -z "$tag" ] && continue
-              # Extract component and version from tag like "engine-v1.2.3"
-              component="${tag%%-v[0-9]*}"
-              version="${tag##*-v}"
-              if [ -f "${component}/CHANGELOG.md" ]; then
-                {
-                  echo "### ${tag} CHANGELOG"
-                  echo
-                  awk -v ver="${version}" '
-                    $0 ~ "^##[[:space:]]*\\[?"ver"\\]?" { p=1; print; next }
-                    p && /^##[[:space:]]/ { exit }
-                    p { print }
-                  ' "${component}/CHANGELOG.md"
-                  echo
-                } >> "$CTX"
-              fi
-            done <<< "$RECENT_TAGS"
-          fi
-
-          # --- Project architecture context ---
-          {
-            echo "## Project layered architecture (root AGENTS.md)"
-            echo
-            echo '```'
-            cat AGENTS.md
-            echo '```'
-            echo
-          } >> "$CTX"
+          done < <(git tag --sort=-creatordate) >> "$CTX"
 
           echo "Context document size: $(wc -c < "$CTX") bytes"
 
@@ -186,14 +99,8 @@ jobs:
         if: steps.check-activity.outputs.has_commits == 'true'
         run: |
           set -euo pipefail
-          # Prompt on stdin rather than argv: a single argument is capped at
-          # MAX_ARG_STRLEN (128 KiB) regardless of total ARG_MAX, and this
-          # context document grows with the repo and the day's commit volume.
-          # The argv form is what failed in release-summary.yml with "Argument
-          # list too long"; this workflow builds its context the same way and
-          # would cross the same ceiling on a busy day. `-i` is required for
-          # the container to receive stdin.
-          docker run --rm -i \
+          # Keep the prompt on stdin and bound the full container lifetime.
+          timeout 4m docker run --rm -i \
             -v /tmp/ion-data:/data \
             ghcr.io/${{ github.repository }}/engine:latest \
             prompt - \

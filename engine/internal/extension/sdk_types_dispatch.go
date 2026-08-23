@@ -195,7 +195,7 @@ type DispatchAgentOpts struct {
 	// (non-zero exit code or child error). Observational only.
 	OnError func(err DispatchError) `json:"-"`
 
-	// OnRecall fires when an asynchronous dispatch is cancelled via RecallAgent.
+	// OnRecall fires when an asynchronous dispatch is cancelled via RecallDispatch.
 	// Observational only.
 	OnRecall func(info RecallInfo) `json:"-"`
 
@@ -328,8 +328,13 @@ type RecallInfo struct {
 	ToolCount  int     `json:"toolCount"`
 }
 
-// RecallAgentOpts configures a recall operation.
+// RecallAgentOpts configures the published name-addressed recall operation.
 type RecallAgentOpts struct {
+	Reason string `json:"reason,omitempty"`
+}
+
+// RecallDispatchOpts configures an exact-ID recall operation.
+type RecallDispatchOpts struct {
 	Reason string `json:"reason,omitempty"`
 }
 

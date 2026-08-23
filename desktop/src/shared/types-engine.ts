@@ -4,6 +4,25 @@ import type { Message } from './types-session'
 import type { ToolGateConfig } from './types-tool-gate'
 import type { ContextBreakdownPayload } from './types-context-breakdown'
 
+// ─── Abort scope ───
+
+/**
+ * How much of a session's work a stop tears down. Rides the engine `abort`
+ * command's `abortScope` field. `all` cancels the active run and recalls
+ * background dispatches; `orchestrator` cancels only the active run.
+ * Omitting the field preserves historical `all` behavior.
+ */
+export type AbortScope = 'all' | 'orchestrator' | 'all_work'
+
+/** One running session-owned background Bash process. */
+export interface BackgroundTaskState {
+  taskId: string
+  toolId?: string
+  command: string
+  startedAt: number
+  notifyOnComplete?: boolean
+}
+
 // ─── Dispatch info ───
 
 /** Structured dispatch info extracted from agent metadata. */
@@ -398,6 +417,8 @@ export interface StatusFields {
    *  the commands finish. Commands started WITHOUT notify_on_complete are not
    *  counted — nothing is waiting on them. */
   backgroundShells?: number
+  /** Complete snapshot of every live session-owned background Bash process. */
+  activeBackgroundTasks?: BackgroundTaskState[]
   /** True when the engine has accepted work that still prevents a terminal
    * completion. This includes dispatches, notifying shells, queued prompts,
    * durable completion deliveries, and parked runs. */
@@ -449,6 +470,8 @@ export interface SessionStatus {
    *  event can tell a parked session (idle orchestrator, commands in flight)
    *  from a plain idle one. */
   backgroundShellCount?: number
+  /** Complete snapshot of every live session-owned background Bash process. */
+  activeBackgroundTasks?: BackgroundTaskState[]
   /** Exact engine verdict that accepted work remains pending even when the
    * foreground orchestrator has reached idle. */
   hasPendingWork?: boolean

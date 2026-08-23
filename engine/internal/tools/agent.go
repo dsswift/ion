@@ -35,6 +35,21 @@ func SetAgentSpawner(fn AgentSpawner) {
 
 type agentSpawnerKey struct{}
 type agentWaitForCompletionKey struct{}
+type dispatchIDKey struct{}
+
+// WithDispatchIDHolder returns a context carrying a *string that the spawner
+// populates with the raw dispatch ID for async calls. This lets executeAgent
+// read the precise ID without parsing the spawner's display-oriented prose.
+func WithDispatchIDHolder(ctx context.Context, holder *string) context.Context {
+	return context.WithValue(ctx, dispatchIDKey{}, holder)
+}
+
+// SetDispatchID writes a dispatch ID into the holder carried by ctx, if any.
+func SetDispatchID(ctx context.Context, id string) {
+	if holder, ok := ctx.Value(dispatchIDKey{}).(*string); ok && holder != nil {
+		*holder = id
+	}
+}
 
 // WithAgentWaitForCompletion carries Agent's explicit foreground opt-in to the
 // session-scoped spawner without widening the public spawner callback shape.
@@ -104,10 +119,19 @@ func executeAgent(ctx context.Context, input map[string]any, cwd string) (*types
 		}, nil
 	}
 
+	// Plant a dispatch-ID holder so the spawner can pass the raw ID back
+	// without encoding it into the display prose.
+	var dispatchID string
+	ctx = WithDispatchIDHolder(ctx, &dispatchID)
+
 	result, err := spawner(ctx, name, prompt, description, cwd, model)
 	if err != nil {
 		return &types.ToolResult{Content: fmt.Sprintf("Agent error: %s", err), IsError: true}, nil
 	}
 
-	return &types.ToolResult{Content: result}, nil
+	tr := &types.ToolResult{Content: result}
+	if !waitForCompletion && dispatchID != "" {
+		tr.BackgroundTaskID = dispatchID
+	}
+	return tr, nil
 }

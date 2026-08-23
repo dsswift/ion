@@ -267,4 +267,3 @@ func TestSteerMarker_ReplayedOnLoad(t *testing.T) {
 		t.Fatal("steer marker row and user message row must be distinct")
 	}
 }
-

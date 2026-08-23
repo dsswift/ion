@@ -168,6 +168,120 @@ func TestStatusFields_BackgroundShells(t *testing.T) {
 	})
 }
 
+// BackgroundWorkDeliveredEvent round-trips through the NormalizedEvent decode
+// switch with every field intact, including nested BackgroundWorkInfo.
+func TestBackgroundWorkDeliveredEvent_RoundTrip(t *testing.T) {
+	original := NormalizedEvent{Data: &BackgroundWorkDeliveredEvent{
+		EntryID: "entry-abc",
+		Content: "Background command bash-1 (completed).\nCommand: make test\nExit code: 0\nElapsed: 500ms",
+		Work: BackgroundWorkInfo{
+			Kind:         string(InjectionKindBackgroundTaskCompletion),
+			DeliveryMode: "wake",
+			Items: []BackgroundWorkItem{{
+				ID:         "bash-1",
+				Source:     BackgroundWorkSourceBash,
+				Label:      "make test",
+				Status:     "completed",
+				ExitCode:   0,
+				ElapsedMs:  500,
+				OutputPath: "/tmp/bash-1.out",
+			}},
+			RemainingTaskIDs: []string{"bash-2"},
+		},
+	}}
+
+	raw, err := json.Marshal(original)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	var decoded NormalizedEvent
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	got, ok := decoded.Data.(*BackgroundWorkDeliveredEvent)
+	if !ok {
+		t.Fatalf("decoded to %T, want *BackgroundWorkDeliveredEvent", decoded.Data)
+	}
+	if got.EntryID != "entry-abc" {
+		t.Errorf("EntryID = %q, want entry-abc", got.EntryID)
+	}
+	if got.Content == "" {
+		t.Error("Content is empty after round-trip")
+	}
+	if got.Work.Kind != string(InjectionKindBackgroundTaskCompletion) {
+		t.Errorf("Work.Kind = %q", got.Work.Kind)
+	}
+	if got.Work.DeliveryMode != "wake" {
+		t.Errorf("Work.DeliveryMode = %q", got.Work.DeliveryMode)
+	}
+	if len(got.Work.Items) != 1 {
+		t.Fatalf("Work.Items len = %d, want 1", len(got.Work.Items))
+	}
+	item := got.Work.Items[0]
+	if item.ID != "bash-1" || item.Source != BackgroundWorkSourceBash {
+		t.Errorf("item = %+v", item)
+	}
+	if len(got.Work.RemainingTaskIDs) != 1 || got.Work.RemainingTaskIDs[0] != "bash-2" {
+		t.Errorf("RemainingTaskIDs = %v", got.Work.RemainingTaskIDs)
+	}
+}
+
+func TestBackgroundWorkDeliveredEvent_WireFieldNames(t *testing.T) {
+	raw, err := json.Marshal(&BackgroundWorkDeliveredEvent{
+		EntryID: "e1",
+		Content: "payload text",
+		Work: BackgroundWorkInfo{
+			Kind:         "background_task_completion",
+			DeliveryMode: "steer",
+			Items:        []BackgroundWorkItem{{ID: "t1", Source: "bash", Status: "completed"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	for _, want := range []string{"entryId", "content", "work"} {
+		if _, ok := m[want]; !ok {
+			t.Errorf("missing required field %q; got %v", want, m)
+		}
+	}
+	work, ok := m["work"].(map[string]any)
+	if !ok {
+		t.Fatal("work is not an object")
+	}
+	for _, want := range []string{"kind", "deliveryMode", "items"} {
+		if _, ok := work[want]; !ok {
+			t.Errorf("work missing field %q; got %v", want, work)
+		}
+	}
+	if _, ok := work["remainingTaskIds"]; ok {
+		t.Error("remainingTaskIds should be omitted when empty")
+	}
+}
+
+func TestBackgroundWorkInfo_RemainingTaskIDsOmittedWhenEmpty(t *testing.T) {
+	raw, err := json.Marshal(&BackgroundWorkInfo{
+		Kind:         "test",
+		DeliveryMode: "wake",
+		Items:        []BackgroundWorkItem{{ID: "t1", Source: "bash", Status: "done"}},
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if _, ok := m["remainingTaskIds"]; ok {
+		t.Error("remainingTaskIds should be omitted when empty")
+	}
+}
+
 // The config block resolves unset fields to compiled defaults, including on a
 // nil receiver (engine.json omitting the block entirely).
 func TestBackgroundTasksConfig_Resolved(t *testing.T) {

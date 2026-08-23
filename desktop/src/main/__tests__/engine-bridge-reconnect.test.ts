@@ -231,7 +231,11 @@ describe('interrupt issued while the socket is down', () => {
 
     const sent = (lastCreatedConn!.write.mock.calls as Array<[string]>).map(([line]) => JSON.parse(line))
     expect(sent.some((m) => m.cmd === 'abort' && m.key === 'tab-1')).toBe(true)
-    expect(sent.some((m) => m.cmd === 'abort_agent' && m.key === 'tab-1' && m.subtree === true)).toBe(true)
+    // The engine's all-scope abort owns complete teardown (recalls every
+    // registry dispatch and kills every extension-registered process handle),
+    // so the deferred-flush path sends exactly one scoped abort and no
+    // redundant abort_agent — abort_agent no longer exists on the wire.
+    expect(sent.some((m) => m.cmd === 'abort_agent')).toBe(false)
     expect(bridge.pendingAborts.size).toBe(0)
     expect(bridge.activeSessions.has('tab-1')).toBe(false)
     expect(delivered).toEqual(['tab-1'])

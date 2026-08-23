@@ -19,8 +19,8 @@ extension DiagnosticLog {
         case .resendUnavailable(let fromSeq):
             log("EVENT: resendUnavailable fromSeq=\(fromSeq)", tag: "session", level: .info)
 
-        case .snapshot(let tabs, let dirs, let groupMode, _, _, _, _, _, _, _, _, let worktreeStates, let settledTabs):
-            log("EVENT: snapshot tabs=\(tabs.count) dirs=\(dirs.count) worktrees=\(worktreeStates?.count ?? 0) settled=\(settledTabs?.count ?? 0) groupMode=\(groupMode ?? "nil")", tag: "session", level: .info)
+        case .snapshot(let tabs, let dirs, let groupMode, _, _, _, _, _, _, _, _, _, _):
+            log("EVENT: snapshot tabs=\(tabs.count) dirs=\(dirs.count) groupMode=\(groupMode ?? "nil")", tag: "session", level: .info)
 
         case .tabCreated(let tab, _):
             log("EVENT: tabCreated id=\(tab.id.prefix(8)) title=\(tab.title.prefix(30))", tag: "session", level: .info)
@@ -123,19 +123,29 @@ extension DiagnosticLog {
         case .engineToolStart(let tabId, let instId, let toolName, let toolId):
             log("EVENT: engineToolStart tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") tool=\(toolName) toolId=\(toolId.prefix(8))", tag: "session", level: .info)
 
-        case .engineToolEnd(let tabId, let instId, let toolId, _, let isError):
+        case .engineToolEnd(let tabId, let instId, let toolId, _, let isError, _):
             log("EVENT: engineToolEnd tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") toolId=\(toolId.prefix(8)) err=\(isError)", tag: "session", level: .info)
 
         case .engineToolStalled(let tabId, let instId, let toolId, let toolName, _):
             log("EVENT: engineToolStalled tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") tool=\(toolName) toolId=\(toolId.prefix(8))", tag: "session", level: .info)
+        case .engineBackgroundTaskStarted(let tabId, _, let taskId, _, _, let notify):
+            log("background task started event", tag: "session", fields: ["tab_id": tabId, "task_id": taskId, "status": notify ? "notify" : "detached"])
+        case .engineBackgroundTaskTerminal(let tabId, _, let taskId, let status, _, _, _, _, _):
+            log("background task terminal event", tag: "session", fields: ["tab_id": tabId, "task_id": taskId, "status": status])
+        case .engineSessionWorkStopped(let tabId, _, let scope, _, _, let taskIds, _):
+            log("session work stopped event", tag: "session", fields: ["tab_id": tabId, "scope": scope, "count": String(taskIds.count)])
         case .engineRunStalled(let tabId, let instId, let stalledDuration, let lastActivity):
             log("EVENT: engineRunStalled tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") stalledFor=\(Int(stalledDuration))s lastActivity=\(lastActivity ?? "nil")", tag: "session", level: .info)
         case .engineRunRecovery(let tabId, let instId, let recoveryId, let phase, let attempt, let maxAttempts, _):
             log("EVENT: engineRunRecovery tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") recoveryId=\(recoveryId.prefix(8)) phase=\(phase) attempt=\(attempt ?? 0)/\(maxAttempts ?? 0)", tag: "session", level: .info)
-        case .engineSteerInjected(let tabId, let instId, let messageLength, let clientMessageId, let entryId):
-            log("EVENT: engineSteerInjected tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") messageLength=\(messageLength) clientMsgId=\(clientMessageId?.prefix(8) ?? "nil") entryId=\(entryId?.prefix(8) ?? "nil")", tag: "session", level: .info)
-        case .engineSteerDegraded(let tabId, let instId, let messageLength):
-            log("EVENT: engineSteerDegraded tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") messageLength=\(messageLength)", tag: "session", level: .info)
+        case .engineSteerInjected(let tabId, let instId, let messageLength, let clientMessageId, let entryId, let kind, let machineAuthored):
+            log("EVENT: engineSteerInjected tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") messageLength=\(messageLength) clientMsgId=\(clientMessageId?.prefix(8) ?? "nil") entryId=\(entryId?.prefix(8) ?? "nil") kind=\(kind ?? "") machineAuthored=\(machineAuthored ?? false)", tag: "session", level: .info)
+        case .engineSteerDegraded(let tabId, let instId, let messageLength, let kind, let machineAuthored):
+            log("EVENT: engineSteerDegraded tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") messageLength=\(messageLength) kind=\(kind ?? "") machineAuthored=\(machineAuthored ?? false)", tag: "session", level: .info)
+
+        case .engineRewindResult(let tabId, let instId, let error):
+            log("EVENT: engineRewindResult tabId=\(tabId.prefix(8)) inst=\(instId.prefix(8)) error=\(error ?? "nil")", tag: "session", level: .info)
+
 
         case .enginePromptInjected(let tabId, let instId, let prompt, let origin, let kind, let machineAuthored):
             log("EVENT: enginePromptInjected tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") len=\(prompt.count) origin=\(origin ?? "") kind=\(kind ?? "") machineAuthored=\(machineAuthored ?? false)", tag: "session", level: .info)
@@ -167,6 +177,16 @@ extension DiagnosticLog {
             log("EVENT: engineDispatchEnd tab=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") agent=\(agent) depth=\(depth) parentId=\(parentId.prefix(16)) exit=\(exitCode) elapsed=\(String(format: "%.2f", elapsed))s id=\(dispatchId.prefix(16))", tag: "session", level: .info)
         case .engineDispatchActivity(let tabId, _, let agentId, let convId, let kind, let seq, _, let toolId, _, _, _):
             log("EVENT: engineDispatchActivity tab=\(tabId.prefix(8)) agent=\(agentId.prefix(16)) conv=\(convId.prefix(8)) kind=\(kind) seq=\(seq) toolId=\(toolId ?? "")", tag: "session", level: .info)
+
+        case .backgroundWorkDelivered(let tabId, let instanceId, let message):
+            log("EVENT: backgroundWorkDelivered tabId=\(tabId.prefix(8)) inst=\(instanceId?.prefix(8) ?? "nil") entry=\(message.id.prefix(16)) items=\(message.backgroundWork?.items.count ?? 0)", tag: "session", level: .info)
+        case .backgroundTaskStopResult(let requestId, let taskId, let status, let error):
+            log("background task stop result", tag: "session", level: error == nil ? .info : .error, fields: [
+                "request_id": requestId,
+                "task_id": taskId,
+                "status": status,
+                "error": error ?? "",
+            ])
 
         case .engineError(let tabId, let instId, let msg, _):
             log("ERR: engine tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") msg=\(msg.prefix(80))", tag: "session", level: .warn)
@@ -316,7 +336,7 @@ extension DiagnosticLog {
         case .worktreeOpResult(let result):
             log("EVT: worktreeOpResult op=\(result.operation.rawValue) ok=\(result.ok)", tag: "ipc", level: .info)
         case .worktreePipeline(let pipeline):
-            log("EVT: worktreePipeline repo=\(pipeline.repoPath) phase=\(pipeline.phase?.rawValue ?? "dismissed") queue=\(pipeline.queue.count)", tag: "ipc", level: .info)
+            log("EVT: worktreePipeline repo=\(pipeline.repoPath.suffix(30)) phase=\(pipeline.phase?.rawValue ?? "dismissed") queue=\(pipeline.queue.count) resolved=\(pipeline.resolvedByAi)", tag: "ipc", level: .info)
 
         case .gitChangesResponse(let dir, _):
             log("EVENT: gitChangesResponse dir=\(dir.suffix(30))", tag: "session", level: .info)
@@ -405,9 +425,6 @@ extension DiagnosticLog {
 
         case .promptResult(let tabId, let clientMsgId, let status, let error):
             log("EVENT: promptResult tab=\(tabId.prefix(8)) msgId=\(clientMsgId.prefix(8)) status=\(status) err=\(error ?? "nil")", tag: "session", level: .info)
-
-        case .engineRewindResult(let tabId, let instanceId, let error):
-            log("EVENT: engineRewindResult tab=\(tabId.prefix(8)) inst=\(instanceId.prefix(8)) err=\(error ?? "nil")", tag: "session", level: .warn)
         }
     }
 }

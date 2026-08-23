@@ -661,16 +661,26 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 		)
 		s.dispatchRegistry.SetDispatchLossRecallObserver(m.persistRecallIntents)
 
-		// Persistent recall for ext/recall_agent when the parent run is idle.
-		// The dispatch registry outlives runs; wiring it here lets a watchdog
-		// timeout (fired by the extension after dispatch-and-go-idle) still
-		// cancel the background agent even when no run is active on this session.
+		// Persistent name-addressed recall for ext/recall_agent when the
+		// parent run is idle. This retains the published extension API; callers
+		// with a dispatch ID use the exact path below.
 		host.SetPersistentRecall(func(name, reason string) (bool, error) {
 			reg := s.dispatchRegistry
 			if reg == nil {
 				return false, fmt.Errorf("dispatch registry not available")
 			}
-			found := reg.Recall(name, reason)
+			return reg.Recall(name, reason), nil
+		})
+
+		// Persistent ID-addressed recall for ext/recall_dispatch when the
+		// parent run is idle. Same rationale as the name-based recall above;
+		// this arm is what a consumer holding a dispatchId reaches.
+		host.SetPersistentRecallByID(func(dispatchID, reason string) (bool, error) {
+			reg := s.dispatchRegistry
+			if reg == nil {
+				return false, fmt.Errorf("dispatch registry not available")
+			}
+			found := reg.RecallByID(dispatchID, reason)
 			return found, nil
 		})
 

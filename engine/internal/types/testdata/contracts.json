@@ -22,6 +22,26 @@
       "tail",
       "taskId"
     ],
+    "background_task_started": [
+      "command",
+      "notifyOnComplete",
+      "startedAt",
+      "taskId"
+    ],
+    "background_task_terminal": [
+      "command",
+      "elapsedMs",
+      "exitCode",
+      "outputPath",
+      "status",
+      "tail",
+      "taskId"
+    ],
+    "background_work_delivered": [
+      "content",
+      "entryId",
+      "work"
+    ],
     "capability_unsupported": [
       "backend",
       "capability",
@@ -186,12 +206,21 @@
       "tools",
       "version"
     ],
+    "session_work_stopped": [
+      "cancelledRunId",
+      "killedAgentProcessCount",
+      "recalledDispatchIds",
+      "scope",
+      "stoppedBackgroundTaskIds"
+    ],
     "steer_degraded": [
       "messageLength"
     ],
     "steer_injected": [
       "clientMessageId",
       "entryId",
+      "kind",
+      "machineAuthored",
       "messageLength"
     ],
     "stream_reset": null,
@@ -239,6 +268,7 @@
       "toolId"
     ],
     "tool_result": [
+      "backgroundTaskId",
       "content",
       "images",
       "isError",
@@ -280,6 +310,10 @@
     "asyncStatus",
     "attemptNumber",
     "backgroundTaskComplete",
+    "backgroundTaskId",
+    "backgroundTaskStarted",
+    "backgroundTaskTerminal",
+    "backgroundWorkDelivered",
     "cancelled",
     "capability",
     "capabilityBackend",
@@ -453,12 +487,15 @@
     "runStalledLastActivity",
     "schema",
     "sessionStatus",
+    "sessionWorkStopped",
     "signal",
     "source",
     "stderrTail",
     "steerClientMessageId",
     "steerDegradedMessageLength",
     "steerEntryId",
+    "steerKind",
+    "steerMachineAuthored",
     "steerMessageLength",
     "strategy",
     "summary",
@@ -487,6 +524,13 @@
       "metadata",
       "name",
       "status"
+    ],
+    "BackgroundTaskState": [
+      "command",
+      "notifyOnComplete",
+      "startedAt",
+      "taskId",
+      "toolId"
     ],
     "ClientWorkspaceContext": [
       "bench",
@@ -542,6 +586,7 @@
       "sha256"
     ],
     "LlmContentBlock": [
+      "background_task_id",
       "clearedBlocks",
       "content",
       "contextPaths",
@@ -667,6 +712,8 @@
     ],
     "SessionMessage": [
       "attachments",
+      "backgroundTaskId",
+      "backgroundWork",
       "content",
       "id",
       "injectionKind",
@@ -675,6 +722,7 @@
       "machineAuthored",
       "markerClearedBlocks",
       "markerKind",
+      "markerMachineAuthored",
       "markerMessageLength",
       "markerMessagesAfter",
       "markerMessagesBefore",
@@ -704,6 +752,7 @@
       "type"
     ],
     "SessionStatus": [
+      "activeBackgroundTasks",
       "backgroundAgentCount",
       "backgroundShellCount",
       "contextEffectiveLimit",
@@ -724,6 +773,7 @@
       "stateSince"
     ],
     "StatusFields": [
+      "activeBackgroundTasks",
       "backgroundAgents",
       "backgroundShells",
       "completionReason",

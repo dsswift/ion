@@ -264,6 +264,12 @@ func buildUserContentBlocks(prompt string, attachments []types.ImageAttachment) 
 // Slash expansion and image attachments are mutually exclusive: a resolved slash
 // command carries no client image attachments.
 //
+// The injection KIND is not one of these shapes and does not compete with them.
+// It is stamped onto whichever shape ran (see appendInboundUserEntry), because
+// a machine-authored turn can legitimately carry any of them — run recovery
+// replays the interrupted run's attachments alongside its engine-authored
+// continuation prompt.
+//
 // Returns the *SessionEntry that the underlying AppendEntry produced (the
 // display/tree entry for this user turn). Returns nil when no tree entry was
 // written (conv.Entries == nil). The caller currently appends-and-persists
@@ -304,6 +310,14 @@ func AppendInboundUserMessage(conv *conversation.Conversation, opts *types.RunOp
 // from the prompt's provenance. Split from appendInboundUserMessage so the
 // degraded-steer marker applies to every shape rather than only the
 // kind-bearing one.
+//
+// The switch selects CONTENT SHAPE only. An injection kind is orthogonal to
+// shape and is stamped afterwards by ClassifyEntry, so it reaches the persisted
+// entry regardless of which arm ran. It used to be a competing arm sitting
+// last, which meant a classified injection that also carried attachments or a
+// slash expansion took the earlier arm and lost its classification entirely.
+// Clients suppress machine-authored turns on exactly that classification, so
+// the loss put engine steering messages into the user's transcript on reload.
 func appendInboundUserEntry(conv *conversation.Conversation, opts *types.RunOptions) *conversation.SessionEntry {
 	var entry *conversation.SessionEntry
 	switch {
@@ -317,14 +331,23 @@ func appendInboundUserEntry(conv *conversation.Conversation, opts *types.RunOpti
 		})
 	case len(opts.Attachments) > 0:
 		entry = conversation.AddUserMessage(conv, buildUserContentBlocks(opts.Prompt, opts.Attachments))
+	case opts.BackgroundWork != nil:
+		entry = conversation.AddUserMessageWithBackgroundWork(conv, opts.Prompt, *opts.BackgroundWork)
 	case opts.InjectionKind != "":
 		// Engine-injected prompt with a semantic classification (e.g.
-		// "agent_completion" for a dispatch callback). Stamp the kind on the
-		// persisted entry so consumers can classify the turn on historical reload.
+		// "agent_completion" for a dispatch callback) and no other shape
+		// modifier. ClassifyEntry below would stamp the kind anyway; this arm
+		// remains so the plain classified injection keeps its single-call
+		// construction path.
 		entry = conversation.AddUserMessageWithKind(conv, opts.Prompt, opts.InjectionKind)
 	default:
 		entry = conversation.AddUserMessage(conv, opts.Prompt)
 	}
+
+	// Stamp the classification onto whichever shape ran. A no-op for the two
+	// arms that already carry a kind (the kind arm above, and background work,
+	// whose payload kind is authoritative for its own delivery).
+	conversation.ClassifyEntry(entry, opts.InjectionKind)
 
 	if opts.DeliveryID != "" && entry != nil {
 		if md, ok := entry.Data.(conversation.MessageData); ok {

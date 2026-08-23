@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import { IPC } from '../../shared/types'
 import { buildClearDividerRemoteEvent } from '../../shared/clear-divider'
+import type { AbortScope } from '../../shared/types-engine'
 import { log as _log, warn as _warn } from '../logger'
 import { isValidProjectPath } from '../ipc-validation'
 import { engineBridge, sessionPlane, state } from '../state'
@@ -50,10 +51,49 @@ export function registerEngineIpc(): void {
     return engineBridge.startSession(key, config)
   })
 
-  ipcMain.handle(IPC.ENGINE_ABORT, (_event, { key }: { key: string }) => {
-    log('engine_abort', { key })
-    engineBridge.sendAbort(key)
+  ipcMain.handle(IPC.ENGINE_ABORT, (_event, { key, scope }: { key: string; scope?: AbortScope }) => {
+    // An unrecognized scope is normalized here rather than forwarded: the
+    // engine would default it to 'all' anyway, and normalizing at the boundary
+    // keeps the log honest about what was actually sent.
+    const resolved: AbortScope = scope === 'orchestrator' || scope === 'all_work' ? scope : 'all'
+    if (scope !== undefined && scope !== resolved) {
+      warn('engine_abort: unknown scope, defaulting to all', { key, requested: String(scope) })
+    }
+    log('engine_abort', { key, abort_scope: resolved })
+    engineBridge.sendAbort(key, resolved)
   })
+
+  ipcMain.handle(
+    IPC.ENGINE_ABORT_DISPATCH,
+    (_event, { key, dispatchId }: { key: string; dispatchId: string }) => {
+      // A blank id addresses nothing and the engine rejects it; drop it here so
+      // the reason is visible on the desktop side too.
+      if (typeof dispatchId !== 'string' || dispatchId.trim() === '') {
+        warn('engine_abort_dispatch: rejecting empty dispatchId', { key })
+        return
+      }
+      log('engine_abort_dispatch', { key, dispatch_id: dispatchId })
+      engineBridge.sendAbortDispatch(key, dispatchId)
+    },
+  )
+
+  ipcMain.handle(
+    IPC.ENGINE_STOP_BACKGROUND_TASK,
+    async (_event, { key, taskId }: { key: string; taskId: string }) => {
+      if (typeof taskId !== 'string' || taskId.trim() === '') {
+        warn('engine_stop_background_task: rejecting empty taskId', { key })
+        return { ok: false, error: 'taskId is required' }
+      }
+      log('engine_stop_background_task', { key, task_id: taskId })
+      const result = await engineBridge.stopBackgroundTask(key, taskId)
+      if (!result.ok) {
+        warn('engine_stop_background_task: engine rejected request', { key, task_id: taskId, error: result.error ?? 'unknown error' })
+      } else {
+        log('engine_stop_background_task: completed', { key, task_id: taskId, status: result.status ?? 'unknown' })
+      }
+      return result
+    },
+  )
 
   // Plan-mode Bash allowlist: read from / write to engine.json. This is
   // engine policy edited through the desktop's Settings UI. On write we also
@@ -75,13 +115,6 @@ export function registerEngineIpc(): void {
     broadcastDesktopSettingsSnapshot('set_plan_bash_allowlist')
   })
 
-  ipcMain.handle(
-    IPC.ENGINE_ABORT_AGENT,
-    (_event, { key, agentName, subtree }: { key: string; agentName: string; subtree?: boolean }) => {
-      log('engine_abort_agent', { key, agent: agentName, subtree: subtree ?? false })
-      engineBridge.sendAbortAgent(key, agentName, subtree ?? false)
-    },
-  )
 
   ipcMain.handle(IPC.ENGINE_DIALOG_RESPONSE, (_event, { key, dialogId, value }: { key: string; dialogId: string; value: any }) => {
     log('engine_dialog_response', { key, dialog_id: dialogId })

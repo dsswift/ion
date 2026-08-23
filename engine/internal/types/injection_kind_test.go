@@ -30,6 +30,7 @@ func TestIsMachineToMachineIsExhaustive(t *testing.T) {
 		InjectionKindCheckIn:                  true,
 		InjectionKindRevive:                   true,
 		InjectionKindRunRecovery:              true,
+		InjectionKindSystemSteer:              true,
 		InjectionKindSteer:                    false,
 	}
 

@@ -4,7 +4,7 @@
  * Pins the three data-conditioned behaviors that replaced the old
  * EngineView.handleAbort / ConversationView inline-interrupt fork:
  *   - bash executing  → cancelBash, no run abort
- *   - running children → engineAbort + engineAbortAgent(subtree)
+ *   - running children → engineAbort(all)
  *   - plain run        → engineAbort only (no subtree reap)
  * These would fail on the old code where no single `interrupt` action existed.
  */
@@ -23,18 +23,15 @@ vi.mock('../session-store-helpers', () => ({
 import { createSendSlice } from '../slices/send-slice'
 
 const mockEngineAbort = vi.fn().mockResolvedValue(undefined)
-const mockEngineAbortAgent = vi.fn().mockResolvedValue(undefined)
 const mockCancelBash = vi.fn()
 
 beforeEach(() => {
   mockEngineAbort.mockClear()
-  mockEngineAbortAgent.mockClear()
   mockCancelBash.mockClear()
   ;(globalThis as any).window = {
     ...(globalThis as any).window,
     ion: {
       engineAbort: mockEngineAbort,
-      engineAbortAgent: mockEngineAbortAgent,
       cancelBash: mockCancelBash,
     },
   }
@@ -74,21 +71,53 @@ describe('interrupt — unified, data-conditioned abort', () => {
     state.interrupt('tab1')
     expect(mockCancelBash).toHaveBeenCalledWith('exec-9')
     expect(mockEngineAbort).not.toHaveBeenCalled()
-    expect(mockEngineAbortAgent).not.toHaveBeenCalled()
   })
 
   it('reaps the agent subtree when there are running children', () => {
     const state = harness({ id: 'tab1', status: 'running', bashExecId: null }, [{ status: 'running' }])
     state.interrupt('tab1')
-    expect(mockEngineAbort).toHaveBeenCalledWith('tab1')
-    expect(mockEngineAbortAgent).toHaveBeenCalledWith('tab1', '', true)
+    expect(mockEngineAbort).toHaveBeenCalledWith('tab1', 'all')
   })
 
   it('aborts only (no subtree reap) when there are no running children', () => {
     const state = harness({ id: 'tab1', status: 'running', bashExecId: null }, [{ status: 'done' }])
     state.interrupt('tab1')
-    expect(mockEngineAbort).toHaveBeenCalledWith('tab1')
-    expect(mockEngineAbortAgent).not.toHaveBeenCalled()
+    expect(mockEngineAbort).toHaveBeenCalledWith('tab1', 'all')
+  })
+
+  // ── Scope ────────────────────────────────────────────────────────────────
+
+  it('defaults to the all scope when no scope is given', () => {
+    const state = harness({ id: 'tab1', status: 'running', bashExecId: null })
+    state.interrupt('tab1')
+    expect(mockEngineAbort).toHaveBeenCalledWith('tab1', 'all')
+  })
+
+  // THE distinguishing assertion for the orchestrator scope: running children
+  // are present, so the 'all' path above would reap them. This path must not.
+  it('does NOT reap the subtree under the orchestrator scope', () => {
+    const state = harness({ id: 'tab1', status: 'running', bashExecId: null }, [{ status: 'running' }])
+    state.interrupt('tab1', 'orchestrator')
+    expect(mockEngineAbort).toHaveBeenCalledWith('tab1', 'orchestrator')
+  })
+
+  it('still reaps under an explicit all scope with running children', () => {
+    const state = harness({ id: 'tab1', status: 'running', bashExecId: null }, [{ status: 'running' }])
+    state.interrupt('tab1', 'all')
+    expect(mockEngineAbort).toHaveBeenCalledWith('tab1', 'all')
+  })
+
+  it('propagates all_work when Stop all includes background shells', () => {
+    const state = harness({ id: 'tab1', status: 'waiting', bashExecId: null })
+    state.interrupt('tab1', 'all_work')
+    expect(mockEngineAbort).toHaveBeenCalledWith('tab1', 'all_work')
+  })
+
+  it('bash cancellation still preempts the run abort under either scope', () => {
+    const state = harness({ id: 'tab1', status: 'running', bashExecId: 'exec-3' })
+    state.interrupt('tab1', 'orchestrator')
+    expect(mockCancelBash).toHaveBeenCalledWith('exec-3')
+    expect(mockEngineAbort).not.toHaveBeenCalled()
   })
 
   it('is a no-op for an unknown tab', () => {

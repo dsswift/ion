@@ -675,6 +675,7 @@
     "ext/notify",
     "ext/publish_resource",
     "ext/recall_agent",
+    "ext/recall_dispatch",
     "ext/register_agent_spec",
     "ext/register_process",
     "ext/register_schedule",

@@ -142,6 +142,7 @@ enum SessionStatusSynthesis {
             extensionName: status.extensionName,
             backgroundAgents: status.backgroundAgentCount,
             backgroundShells: status.backgroundShellCount,
+            activeBackgroundTasks: status.activeBackgroundTasks,
             hasPendingWork: status.hasPendingWork,
             numTurns: priorNumTurns,
             conversationTurns: priorConversationTurns

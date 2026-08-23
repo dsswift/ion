@@ -22,7 +22,7 @@ func BashTool() *types.ToolDef {
 				"command":            map[string]any{"type": "string", "description": "The bash command to execute"},
 				"timeout":            map[string]any{"type": "number", "description": "Timeout in milliseconds (default: 120000). Values above the engine's configured maximum are clamped. Ignored when run_in_background is true."},
 				"run_in_background":  map[string]any{"type": "boolean", "description": "Run the command in the background and return immediately with a task ID and an output file path. Poll with TaskGet (or Read the output file); terminate with TaskStop. Use for long-lived processes (watchers, dev servers) that would otherwise hit the foreground timeout."},
-				"notify_on_complete": map[string]any{"type": "boolean", "description": "Only meaningful with run_in_background. Deliver this command's result back to the session when it finishes, instead of requiring polling. You may start further work, start more background commands, or end your turn; the engine holds the session until the command completes and then delivers its exit code and output tail along with any other background commands still outstanding."},
+				"notify_on_complete": map[string]any{"type": "boolean", "description": "Only meaningful with run_in_background. Deliver this command's result back to the session when it finishes, instead of requiring polling. You may start further work or start more background commands. When this task is the only remaining work, end your turn; the engine parks the session and resumes it when the command completes."},
 			},
 			"required": []string{"command"},
 		},
@@ -192,11 +192,11 @@ func executeBashBackground(ctx context.Context, command, cwd string, notify bool
 
 	content := fmt.Sprintf("Background task started: %s\nOutput file: %s", info.ID, info.OutputPath)
 	if notify {
-		content += "\nCompletion will be delivered to this session when the command finishes — do not poll for it. You may continue working, start more background commands, or end your turn."
+		content += "\nCompletion will be delivered to this session when the command finishes — do not poll for it. You may continue with other useful work or start more background commands. If this task is the only remaining work, end your turn; the engine parks the session and resumes it on completion."
 	} else if GetTool("TaskGet") != nil {
 		content += "\nUse TaskGet to poll status and recent output, TaskStop to terminate."
 	} else {
 		content += "\nRead the output file to inspect progress."
 	}
-	return &types.ToolResult{Content: content}, nil
+	return &types.ToolResult{Content: content, BackgroundTaskID: info.ID}, nil
 }

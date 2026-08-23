@@ -3,9 +3,7 @@ import XCTest
 
 /// Lifecycle / session events: snapshot, tab create/close/status, display
 /// title, the generic command set (sync, create_tab, close_tab, cancel,
-/// rename_tab), plan-mode state events, and decoding edge cases.
-/// engine_steer_injected / engine_steer_degraded live in
-/// NormalizedEventSteerTests.swift (file-size cap split).
+/// rename_tab), and decoding edge cases.
 final class NormalizedEventLifecycleTests: XCTestCase {
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
@@ -368,8 +366,11 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         let original = RemoteCommand.cancel(tabId: "c1")
         let data = try encoder.encode(original)
         let decoded = try decoder.decode(RemoteCommand.self, from: data)
-        if case .cancel(let tabId) = decoded {
+        if case .cancel(let tabId, let scope) = decoded {
             XCTAssertEqual(tabId, "c1")
+            // Unscoped cancel stays unscoped through the round trip; the
+            // desktop reads a nil scope as full teardown.
+            XCTAssertNil(scope)
         } else {
             XCTFail("Round-trip cancel failed")
         }

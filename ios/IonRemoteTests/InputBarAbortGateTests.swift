@@ -45,6 +45,14 @@ final class InputBarAbortGateTests: XCTestCase {
         XCTAssertFalse(ConversationView.computeCanAbort(status: .dead, hasRunningChildren: nil))
     }
 
+    func testIdleWithActiveBackgroundTaskCanAbort() {
+        XCTAssertTrue(ConversationView.computeCanAbort(
+            status: .idle,
+            hasRunningChildren: false,
+            hasActiveBackgroundTasks: true
+        ))
+    }
+
     func testNilStatusWithoutChildrenCannotAbort() {
         XCTAssertFalse(ConversationView.computeCanAbort(status: nil, hasRunningChildren: nil))
     }

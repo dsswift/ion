@@ -1,6 +1,9 @@
 package session
 
-import "github.com/dsswift/ion/engine/internal/types"
+import (
+	"github.com/dsswift/ion/engine/internal/tools"
+	"github.com/dsswift/ion/engine/internal/types"
+)
 
 // buildStatusFields reads the exact session-owned work inventory under one
 // manager lock. It exposes no client estimate: idle plus HasPendingWork means
@@ -17,11 +20,17 @@ func (m *Manager) buildStatusFields(key string) (*types.StatusFields, bool) {
 	if s.dispatchRegistry != nil {
 		agents = len(s.dispatchRegistry.ActiveIDs())
 	}
+	activeTasks := tools.BackgroundTasksForOwner(key)
+	states := make([]types.BackgroundTaskState, len(activeTasks))
+	for i, task := range activeTasks {
+		states[i] = types.BackgroundTaskState{TaskID: task.TaskID, ToolID: task.ToolID, Command: task.Command, StartedAt: task.StartedAt.UnixMilli(), NotifyOnComplete: task.NotifyOnComplete}
+	}
 	fields := &types.StatusFields{
 		Label:                 key,
 		State:                 m.currentSessionStatus(s),
 		BackgroundAgents:      agents,
 		BackgroundShells:      len(s.outstandingBackgroundTasks),
+		ActiveBackgroundTasks: states,
 		HasPendingWork:        agents > 0 || len(s.outstandingBackgroundTasks) > 0 || len(s.promptQueue) > 0 || len(s.rootDispatchCompletions) > 0 || len(s.pendingBackgroundCompletions) > 0 || s.parked != nil,
 		SessionID:             s.conversationID,
 		ContextPercent:        s.lastContextPct,

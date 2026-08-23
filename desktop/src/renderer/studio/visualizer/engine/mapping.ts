@@ -34,28 +34,38 @@
  *   dispatch_activity (tool_*)       → per-agent activity (tooltip text +
  *                                      typing/reading flavor)
  */
-import type { NormalizedEvent } from '../../../../shared/types'
-import type { AgentStateUpdate } from '../../../../shared/types'
-import { getDispatches, meta } from '../../../lib/agent-helpers'
+import type { NormalizedEvent } from "../../../../shared/types";
+import type { AgentStateUpdate } from "../../../../shared/types";
+import { getDispatches, meta } from "../../../lib/agent-helpers";
 
 export type Intent =
-  | { kind: 'agent-working'; agent: string }
-  | { kind: 'agent-done'; agent: string }
-  | { kind: 'agent-error'; agent: string }
-  | { kind: 'agent-idle'; agent: string }
-  | { kind: 'agent-activity'; agent: string; toolName: string | null }
-  | { kind: 'deliver'; from: 'manager' | string; toAgent: string }
-  | { kind: 'manager-working' }
-  | { kind: 'manager-idle' }
-  | { kind: 'permission-wait'; bubble: 'permission' | 'plan' | 'question' }
-  | { kind: 'permission-clear' }
+  | { kind: "agent-working"; agent: string }
+  | { kind: "agent-done"; agent: string }
+  | { kind: "agent-error"; agent: string }
+  | { kind: "agent-idle"; agent: string }
+  | { kind: "agent-activity"; agent: string; toolName: string | null }
+  | { kind: "deliver"; from: "manager" | string; toAgent: string }
+  | { kind: "manager-working" }
+  | { kind: "manager-idle" }
+  | { kind: "permission-wait"; bubble: "permission" | "plan" | "question" }
+  | { kind: "permission-clear" }
+  | {
+      kind: "bg-task-complete";
+      taskId: string;
+      success: boolean;
+      command?: string;
+    };
 
 /**
  * Find which agent owns a dispatch id (the lead that hand-delivers a nested
  * dispatch). Undefined when the owner is not in the snapshot.
  */
-export function ownerOfDispatch(agents: AgentStateUpdate[], dispatchId: string): string | undefined {
-  return agents.find((a) => getDispatches(a).some((d) => d.id === dispatchId))?.name
+export function ownerOfDispatch(
+  agents: AgentStateUpdate[],
+  dispatchId: string,
+): string | undefined {
+  return agents.find((a) => getDispatches(a).some((d) => d.id === dispatchId))
+    ?.name;
 }
 
 /**
@@ -74,102 +84,137 @@ export function diffSnapshots(
   next: AgentStateUpdate[],
   options: { initial?: boolean } = {},
 ): Intent[] {
-  const prevByName = new Map(prev.map((a) => [a.name, a]))
-  const intents: Intent[] = []
+  const prevByName = new Map(prev.map((a) => [a.name, a]));
+  const intents: Intent[] = [];
   for (const agent of next) {
-    const before = prevByName.get(agent.name)
-    if (before && before.status === agent.status) continue
+    const before = prevByName.get(agent.name);
+    if (before && before.status === agent.status) continue;
     switch (agent.status) {
-      case 'running': {
+      case "running": {
         // The transition INTO running is the dispatch moment: courier walks.
         if (!options.initial) {
-          const parentId = meta<string>(agent, 'dispatchParentId', '')
-          const owner = parentId ? ownerOfDispatch(next, parentId) : undefined
-          intents.push({ kind: 'deliver', from: owner ?? 'manager', toAgent: agent.name })
+          const parentId = meta<string>(agent, "dispatchParentId", "");
+          const owner = parentId ? ownerOfDispatch(next, parentId) : undefined;
+          intents.push({
+            kind: "deliver",
+            from: owner ?? "manager",
+            toAgent: agent.name,
+          });
         }
-        intents.push({ kind: 'agent-working', agent: agent.name })
-        break
+        intents.push({ kind: "agent-working", agent: agent.name });
+        break;
       }
-      case 'done':
-        intents.push({ kind: 'agent-done', agent: agent.name })
-        break
-      case 'error':
-        intents.push({ kind: 'agent-error', agent: agent.name })
-        break
-      case 'idle':
-        intents.push({ kind: 'agent-idle', agent: agent.name })
-        break
+      case "done":
+        intents.push({ kind: "agent-done", agent: agent.name });
+        break;
+      case "error":
+        intents.push({ kind: "agent-error", agent: agent.name });
+        break;
+      case "idle":
+        intents.push({ kind: "agent-idle", agent: agent.name });
+        break;
       default:
-        break
+        break;
     }
   }
-  return intents
+  return intents;
 }
 
 /**
  * Resolve a dispatch_activity event's dispatchAgentId to the agent name: the
  * dispatched agent's own pill carries that id in its dispatches[] metadata.
  */
-export function agentOfActivity(agents: AgentStateUpdate[], dispatchAgentId: string): string | undefined {
-  return ownerOfDispatch(agents, dispatchAgentId)
+export function agentOfActivity(
+  agents: AgentStateUpdate[],
+  dispatchAgentId: string,
+): string | undefined {
+  return ownerOfDispatch(agents, dispatchAgentId);
 }
 
 /** Map cross-cutting events (permission, status, tool activity) to intents. */
-export function eventIntents(events: NormalizedEvent[], agents: AgentStateUpdate[]): Intent[] {
-  const intents: Intent[] = []
+export function eventIntents(
+  events: NormalizedEvent[],
+  agents: AgentStateUpdate[],
+): Intent[] {
+  const intents: Intent[] = [];
   for (const event of events) {
     switch (event.type) {
-      case 'dispatch_start': {
+      case "dispatch_start": {
         // Primary delivery trigger: the engine emits this for every depth on
         // the conversation stream. Root dispatches come from the manager;
         // nested ones from the owning lead (resolved via the snapshot).
-        const owner = event.dispatchParentId ? ownerOfDispatch(agents, event.dispatchParentId) : undefined
+        const owner = event.dispatchParentId
+          ? ownerOfDispatch(agents, event.dispatchParentId)
+          : undefined;
         intents.push({
-          kind: 'deliver',
-          from: event.dispatchParentId === '' ? 'manager' : (owner ?? 'manager'),
+          kind: "deliver",
+          from:
+            event.dispatchParentId === "" ? "manager" : (owner ?? "manager"),
           toAgent: event.dispatchAgent,
-        })
-        intents.push({ kind: 'agent-working', agent: event.dispatchAgent })
-        break
+        });
+        intents.push({ kind: "agent-working", agent: event.dispatchAgent });
+        break;
       }
-      case 'permission_request': {
+      case "permission_request": {
         // The waiting artwork tells the operator WHAT needs them: a ready
         // plan (ExitPlanMode), a question (AskUserQuestion), or a plain
         // permission gate.
         const bubble =
-          event.toolName === 'ExitPlanMode' ? 'plan' : event.toolName === 'AskUserQuestion' ? 'question' : 'permission'
-        intents.push({ kind: 'permission-wait', bubble })
-        break
+          event.toolName === "ExitPlanMode"
+            ? "plan"
+            : event.toolName === "AskUserQuestion"
+              ? "question"
+              : "permission";
+        intents.push({ kind: "permission-wait", bubble });
+        break;
       }
-      case 'status':
+      case "status":
         // The orchestrator's own state: the manager mirrors it at his desk.
-        if (event.fields?.state === 'running') {
-          intents.push({ kind: 'permission-clear' })
-          intents.push({ kind: 'manager-working' })
-        } else if (event.fields?.state === 'idle' || event.fields?.state === 'completed') {
-          intents.push({ kind: 'manager-idle' })
+        if (event.fields?.state === "running") {
+          intents.push({ kind: "permission-clear" });
+          intents.push({ kind: "manager-working" });
+        } else if (
+          event.fields?.state === "idle" ||
+          event.fields?.state === "completed"
+        ) {
+          intents.push({ kind: "manager-idle" });
         }
-        break
-      case 'dispatch_activity': {
-        if (event.dispatchActivityKind !== 'tool_start' && event.dispatchActivityKind !== 'tool_end') break
-        const agent = agentOfActivity(agents, event.dispatchAgentId)
+        break;
+      case "dispatch_activity": {
+        if (
+          event.dispatchActivityKind !== "tool_start" &&
+          event.dispatchActivityKind !== "tool_end"
+        )
+          break;
+        const agent = agentOfActivity(agents, event.dispatchAgentId);
         if (agent) {
           intents.push({
-            kind: 'agent-activity',
+            kind: "agent-activity",
             agent,
-            toolName: event.dispatchActivityKind === 'tool_start' ? (event.toolName ?? null) : null,
-          })
+            toolName:
+              event.dispatchActivityKind === "tool_start"
+                ? (event.toolName ?? null)
+                : null,
+          });
         }
-        break
+        break;
       }
+      case "background_task_complete":
+        intents.push({
+          kind: "bg-task-complete",
+          taskId: event.taskId,
+          success: event.exitCode === 0 && event.status !== "error",
+          command: event.command,
+        });
+        break;
       default:
-        break
+        break;
     }
   }
-  return intents
+  return intents;
 }
 
 /** Display name helper for toolbar/tooltip surfaces. */
 export function displayNameOf(agent: AgentStateUpdate): string {
-  return meta<string>(agent, 'displayName', agent.name)
+  return meta<string>(agent, "displayName", agent.name);
 }

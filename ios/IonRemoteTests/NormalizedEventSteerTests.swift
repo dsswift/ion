@@ -27,14 +27,16 @@ final class NormalizedEventSteerTests: XCTestCase {
         }
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineSteerInjected(let tabId, let instanceId, let messageLength, let clientMessageId, let entryId) = event {
+        if case .engineSteerInjected(let tabId, let instanceId, let messageLength, let clientMessageId, let entryId, let kind, let machineAuthored) = event {
             XCTAssertEqual(tabId, "t1")
             XCTAssertEqual(instanceId, "i1")
             XCTAssertEqual(messageLength, 42)
-            // Both correlation fields are additive (Go omitempty); absent on
+            // All four optional fields are additive (Go omitempty); absent on
             // the wire decodes to nil.
             XCTAssertNil(clientMessageId)
             XCTAssertNil(entryId)
+            XCTAssertNil(kind)
+            XCTAssertNil(machineAuthored)
         } else {
             XCTFail("Expected engineSteerInjected, got \(event)")
         }
@@ -58,12 +60,39 @@ final class NormalizedEventSteerTests: XCTestCase {
         }
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineSteerInjected(let tabId, let instanceId, let messageLength, let clientMessageId, let entryId) = event {
+        if case .engineSteerInjected(let tabId, let instanceId, let messageLength, let clientMessageId, let entryId, _, _) = event {
             XCTAssertEqual(tabId, "t1")
             XCTAssertEqual(instanceId, "i1")
             XCTAssertEqual(messageLength, 42)
             XCTAssertEqual(clientMessageId, "msg-abc123")
             XCTAssertEqual(entryId, "9f2a1b7c")
+        } else {
+            XCTFail("Expected engineSteerInjected, got \(event)")
+        }
+    }
+
+    /// `steerKind`/`steerMachineAuthored` gate whether SessionViewModel's
+    /// caller treats this as a genuine client-originated steer vs. a
+    /// machine-to-machine injection the user never typed (machineAuthored
+    /// == true is suppressed before handleEngineSteerInjected runs).
+    func testDecodeEngineSteerInjectedWithKindAndMachineAuthored() throws {
+        let json = """
+        {
+            "type": "desktop_steer_injected",
+            "tabId": "t1",
+            "instanceId": "i1",
+            "steerMessageLength": 42,
+            "steerKind": "dispatch_completion",
+            "steerMachineAuthored": true
+        }
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineSteerInjected(let tabId, let instanceId, let messageLength, _, _, let kind, let machineAuthored) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+            XCTAssertEqual(messageLength, 42)
+            XCTAssertEqual(kind, "dispatch_completion")
+            XCTAssertEqual(machineAuthored, true)
         } else {
             XCTFail("Expected engineSteerInjected, got \(event)")
         }
@@ -75,16 +104,20 @@ final class NormalizedEventSteerTests: XCTestCase {
             instanceId: "i1",
             messageLength: 27,
             clientMessageId: nil,
-            entryId: nil
+            entryId: nil,
+            kind: nil,
+            machineAuthored: nil
         )
         let data = try encoder.encode(original)
         let decoded = try decoder.decode(RemoteEvent.self, from: data)
-        if case .engineSteerInjected(let tabId, let instanceId, let messageLength, let clientMessageId, let entryId) = decoded {
+        if case .engineSteerInjected(let tabId, let instanceId, let messageLength, let clientMessageId, let entryId, let kind, let machineAuthored) = decoded {
             XCTAssertEqual(tabId, "t1")
             XCTAssertEqual(instanceId, "i1")
             XCTAssertEqual(messageLength, 27)
             XCTAssertNil(clientMessageId)
             XCTAssertNil(entryId)
+            XCTAssertNil(kind)
+            XCTAssertNil(machineAuthored)
         } else {
             XCTFail("Round-trip engineSteerInjected failed")
         }
@@ -100,16 +133,19 @@ final class NormalizedEventSteerTests: XCTestCase {
             instanceId: "i1",
             messageLength: 27,
             clientMessageId: "msg-xyz789",
-            entryId: "ab12cd34"
+            entryId: "ab12cd34",
+            kind: nil,
+            machineAuthored: false
         )
         let data = try encoder.encode(original)
         let decoded = try decoder.decode(RemoteEvent.self, from: data)
-        if case .engineSteerInjected(let tabId, let instanceId, let messageLength, let clientMessageId, let entryId) = decoded {
+        if case .engineSteerInjected(let tabId, let instanceId, let messageLength, let clientMessageId, let entryId, _, let machineAuthored) = decoded {
             XCTAssertEqual(tabId, "t1")
             XCTAssertEqual(instanceId, "i1")
             XCTAssertEqual(messageLength, 27)
             XCTAssertEqual(clientMessageId, "msg-xyz789")
             XCTAssertEqual(entryId, "ab12cd34")
+            XCTAssertEqual(machineAuthored, false)
         } else {
             XCTFail("Round-trip engineSteerInjected with correlation ids failed")
         }
@@ -127,7 +163,7 @@ final class NormalizedEventSteerTests: XCTestCase {
         }
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineSteerInjected(let tabId, let instanceId, let messageLength, let clientMessageId, let entryId) = event {
+        if case .engineSteerInjected(let tabId, let instanceId, let messageLength, let clientMessageId, let entryId, _, _) = event {
             XCTAssertEqual(tabId, "t1")
             XCTAssertNil(instanceId)
             XCTAssertEqual(messageLength, 5)
@@ -141,10 +177,10 @@ final class NormalizedEventSteerTests: XCTestCase {
     // MARK: - engine_steer_degraded (idle/no-owning-run fallback)
 
     func testRoundTripEngineSteerDegraded() throws {
-        let original = RemoteEvent.engineSteerDegraded(tabId: "t1", instanceId: "i1", messageLength: 27)
+        let original = RemoteEvent.engineSteerDegraded(tabId: "t1", instanceId: "i1", messageLength: 27, kind: nil, machineAuthored: nil)
         let data = try encoder.encode(original)
         let decoded = try decoder.decode(RemoteEvent.self, from: data)
-        if case .engineSteerDegraded(let tabId, let instanceId, let messageLength) = decoded {
+        if case .engineSteerDegraded(let tabId, let instanceId, let messageLength, _, _) = decoded {
             XCTAssertEqual(tabId, "t1")
             XCTAssertEqual(instanceId, "i1")
             XCTAssertEqual(messageLength, 27)
@@ -158,7 +194,7 @@ final class NormalizedEventSteerTests: XCTestCase {
         {"type":"desktop_steer_degraded","tabId":"t1","steerDegradedMessageLength":5}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        guard case .engineSteerDegraded(let tabId, let instanceId, let messageLength) = event else {
+        guard case .engineSteerDegraded(let tabId, let instanceId, let messageLength, _, _) = event else {
             return XCTFail("Expected engineSteerDegraded, got \(event)")
         }
         XCTAssertEqual(tabId, "t1")

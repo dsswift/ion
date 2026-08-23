@@ -49,6 +49,8 @@ vi.mock('../ToolGroup', () => ({
   ToolGroup: () => React.createElement('div', { 'data-testid': 'tool-group' }, 'tools'),
 }))
 
+vi.mock('../BackgroundWorkGroup', () => ({ BackgroundWorkGroup: () => null }))
+
 vi.mock('../ToolImagesStrip', () => ({
   ToolImagesStrip: () => null,
 }))

@@ -247,7 +247,6 @@ func TestProtocolAllCommandsRoundTrip(t *testing.T) {
 		json  string
 		valid bool
 	}{
-		{"abort_agent", `{"cmd":"abort_agent","key":"k","agentName":"a1"}`, true},
 		{"steer_agent", `{"cmd":"steer_agent","key":"k","agentName":"a1","message":"focus on X"}`, true},
 		{"dialog_response", `{"cmd":"dialog_response","key":"k","dialogId":"d1","value":"allow"}`, true},
 		{"command", `{"cmd":"command","key":"k","command":"/help"}`, true},

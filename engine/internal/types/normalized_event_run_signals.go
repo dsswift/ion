@@ -86,6 +86,10 @@ type SteerInjectedEvent struct {
 	// position in that list with no corresponding tree entry yet. Additive
 	// optional field — non-breaking.
 	EntryID string `json:"entryId,omitempty"`
+
+	// Kind and MachineAuthored preserve source classification for machine steers.
+	Kind            string `json:"kind,omitempty"`
+	MachineAuthored bool   `json:"machineAuthored,omitempty"`
 }
 
 func (SteerInjectedEvent) eventType() string { return EventSteerInjected }
@@ -253,6 +257,41 @@ type BackgroundTaskCompleteEvent struct {
 }
 
 func (BackgroundTaskCompleteEvent) eventType() string { return EventBackgroundTaskComplete }
+
+// BackgroundTaskStartedEvent announces a live session-owned Bash task.
+type BackgroundTaskStartedEvent struct {
+	TaskID           string `json:"taskId"`
+	Command          string `json:"command"`
+	StartedAt        int64  `json:"startedAt"`
+	NotifyOnComplete bool   `json:"notifyOnComplete,omitempty"`
+}
+
+func (BackgroundTaskStartedEvent) eventType() string { return EventBackgroundTaskStarted }
+
+// BackgroundTaskTerminalEvent announces a terminal session-owned Bash task.
+type BackgroundTaskTerminalEvent struct {
+	TaskID     string `json:"taskId"`
+	Status     string `json:"status"`
+	ExitCode   int    `json:"exitCode"`
+	ElapsedMs  int64  `json:"elapsedMs"`
+	Command    string `json:"command,omitempty"`
+	OutputPath string `json:"outputPath,omitempty"`
+	Tail       string `json:"tail,omitempty"`
+}
+
+func (BackgroundTaskTerminalEvent) eventType() string { return EventBackgroundTaskTerminal }
+
+// SessionWorkStoppedEvent confirms one all_work teardown after every targeted
+// process family has received its stop signal.
+type SessionWorkStoppedEvent struct {
+	Scope                    string   `json:"scope"`
+	CancelledRunID           string   `json:"cancelledRunId,omitempty"`
+	RecalledDispatchIDs      []string `json:"recalledDispatchIds,omitempty"`
+	StoppedBackgroundTaskIDs []string `json:"stoppedBackgroundTaskIds,omitempty"`
+	KilledAgentProcessCount  int      `json:"killedAgentProcessCount,omitempty"`
+}
+
+func (SessionWorkStoppedEvent) eventType() string { return EventSessionWorkStopped }
 
 // DispatchLostEvent fires once per dispatch that was recorded as running (or
 // suspended) in the conversation file but is provably dead: the engine

@@ -53,41 +53,11 @@ When given a conversation ID, glob for its files:
 - Read `{id}.memory.md` for the background session memory summary (if present).
 - If only `{id}.jsonl` or `{id}.json` exists, the conversation is in legacy format (pre-split).
 
-## Skill content in conversation history
+## Asynchronous task correlation
 
-Skill invocations and skill listings are persisted as typed content blocks
-inside the standard `.tree.jsonl` / `.llm.jsonl` message streams. No separate
-file or entry type is needed.
+Tool-role `SessionMessage` entries and `LlmContentBlock` tool-result blocks carry an optional `backgroundTaskId` field (additive, `omitempty`) that correlates a tool invocation with the asynchronous task it started -- a Bash background task ID or an Agent dispatch ID. The field is absent for synchronous tool results. When the task later completes and its result is delivered via `engine_background_work_delivered`, each delivered item's `id` matches this persisted `backgroundTaskId`, letting clients reconstruct the origination relationship from history.
 
-### Block types
-
-| Block type | Where it appears | Purpose |
-|---|---|---|
-| `skill_listing` | Run-opening user message | One-time or delta announcement of available skill names. Carries `skillNames` (string array) as structural dedup key so engine adds full set once and only new names on later runs. |
-| `skill_content` | Same user message as matching tool results, after every `tool_result` block | Full rendered SKILL.md body for one Skill invocation. Carries `skillName`, `skillSource`, `skillInvokedAt` as structured metadata; matching tool result retains compact acknowledgment. |
-
-Both block types are internal structure: provider serializers flatten them to
-plain `text` blocks on the wire. They never reach the model as typed
-discriminators; the metadata is for engine-side dedup, collection, and
-restoration.
-
-### Compaction restoration
-
-When a hard compaction boundary replaces earlier messages with a summary, the
-`compact_boundary` block carries a `restoredSkills` field -- an array of
-`SkillInvocation` objects (name, source, content, invokedAt). These are the
-invoked skill instructions that lived in the compacted region, collected by
-`CollectInvokedSkills`, deduplicated by name (newest wins), and bounded by
-`BoundRestoredSkills` (5k tokens per skill, 25k aggregate, newest-first).
-Provider serializers emit them as text so the model recovers the instructions
-without re-invoking the Skill tool.
-
-### Existing conversation compatibility
-
-Conversations created before the skill lifecycle mechanism carry no
-`skill_listing` or `skill_content` blocks. On the next run the engine sees an
-empty `AnnouncedSkillNames` set and injects a full initial listing. Skill
-invocations from that point forward participate in the lifecycle normally.
+On `SessionMessage` the JSON key is `backgroundTaskId` (camelCase, matching the engine wire convention). On `LlmContentBlock` the JSON key is `background_task_id` (snake_case, matching the Anthropic API content-block convention).
 
 ## Key source files
 
@@ -97,6 +67,3 @@ invocations from that point forward participate in the lifecycle normally.
 | Save/load logic | `engine/internal/conversation/persistence.go` (`Save`, `Load`, `saveSplit`) |
 | Data structures | `engine/internal/conversation/conversation.go` (`Conversation`, `SessionEntry`) |
 | LLM message type | `engine/internal/types/llm.go` (`LlmMessage`) |
-| Skill content lifecycle | `engine/internal/conversation/skill_content.go` (`AppendSkillListingToLastUser`, `AnnouncedSkillNames`, `CollectInvokedSkills`, `BoundRestoredSkills`) |
-| Skill listing delta | `engine/internal/backend/runloop_skill_listing.go` (`injectSkillListingDelta`) |
-| Skill invocation metadata | `engine/internal/types/tools.go` (`SkillInvocation`) |

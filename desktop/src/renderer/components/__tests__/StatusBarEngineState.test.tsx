@@ -1,18 +1,9 @@
 // @vitest-environment jsdom
 /**
- * Regression: the engine-state status-bar slot ("[running]" /
- * "[waiting for N agent(s)]") must render from the signals that are
- * actually populated in the renderer — `tab.status` for the orchestrator's own
- * run-state and `useActiveEngineAgentRunningCount()` for the dispatched
- * agent count — NOT from `inst.statusFields`, which the renderer
- * never populates.
- *
- * Pre-fix, `StatusBarEngineState` did `const status = useActiveEngineStatusFields()`
- * then `if (!status) return null`. Because `inst.statusFields` is always null in
- * the renderer, the slot rendered nothing on EVERY tab — the yellow
- * "waiting for N agent(s)" text never appeared. The idle+running-agent
- * case below is the regression assertion: it is red on the pre-fix code (slot
- * returns null) and green after the fix.
+ * Regression coverage for the status-bar activity slot. It combines
+ * `tab.status` for the orchestrator, the active instance's agent-state fold,
+ * and `statusFields.backgroundShells` for notifying background Bash commands.
+ * The tests pin both idle waiting labels and the combined active-run label.
  *
  * The store is stubbed so the component's narrow `useSessionStore(useShallow(...))`
  * selector folds a fixed snapshot, and `useActiveEngineAgentRunningCount` (which
@@ -73,7 +64,7 @@ function setActiveTab(tab: { id: string; engineProfileId: string | null; status:
   state.activeTabId = tab.id
 }
 
-function setPaneAgents(tabId: string, statuses: string[], backgroundShells = 0) {
+function setPaneAgents(tabId: string, statuses: string[], backgroundShells = 0, hasPendingWork?: boolean) {
   state.conversationPanes.set(tabId, {
     instances: [
       {
@@ -82,8 +73,11 @@ function setPaneAgents(tabId: string, statuses: string[], backgroundShells = 0) 
         // backgroundShells is the ONE statusFields value the renderer does
         // populate (the engine stamps it on every status snapshot), so the
         // shell branch reads a real field where the agent branch reads
-        // agentStates. null when no shells, matching a fresh instance.
-        statusFields: backgroundShells > 0 ? { backgroundShells } : null,
+        // agentStates. null when no shells and hasPendingWork is unset,
+        // matching a fresh instance.
+        statusFields: backgroundShells > 0 || hasPendingWork !== undefined
+          ? { backgroundShells, hasPendingWork }
+          : null,
         agentStates: statuses.map((status, i) => ({ name: `agent-${i}`, status })),
       },
     ],
@@ -177,12 +171,10 @@ describe('StatusBarEngineState — background-shell branch', () => {
     expect(html).not.toContain('background shell')
   })
 
-  it('a running orchestrator outranks shells', () => {
+  it('a running orchestrator includes the active shell count', () => {
     setActiveTab({ id: 'tab1', engineProfileId: null, status: 'running' })
     setPaneAgents('tab1', [], 2)
-    const html = renderHTML()
-    expect(html).toContain('[running]')
-    expect(html).not.toContain('background shell')
+    expect(renderHTML()).toContain('[running · 2 background shells]')
   })
 
   it('renders nothing when idle with no agents and no shells', () => {
@@ -198,5 +190,53 @@ describe('StatusBarEngineState — background-shell branch', () => {
     const html = renderHTML()
     expect(html).toContain('rgb(255, 45, 149)')      // statusBash
     expect(html).not.toContain('rgb(245, 158, 11)')  // statusWaitingChildren
+  })
+
+  // REGRESSION (PLAIN tab — the actual path a real background Bash task
+  // takes): the main process derives `tab.status === 'waiting'` whenever the
+  // engine reports hasPendingWork/backgroundAgents/backgroundShells on an
+  // idle engine_status (engine-control-plane-status-event.ts `setStatus(tabId,
+  // 'waiting')`). The pre-fix component OR'd `status === 'waiting'` straight
+  // into `isWaitingChildren`, so a plain tab with one outstanding shell and
+  // zero running agents rendered the vague "waiting for queued work" instead
+  // of the specific shell count — even though `shellRunningCount` (the
+  // richer, correct signal) was available the whole time. This is the exact
+  // state a live `Bash({ run_in_background: true, notify_on_complete: true })`
+  // call produces.
+  it('PLAIN tab, status "waiting", 1 background shell, 0 agents → shell-specific label, not "waiting for queued work" (REGRESSION)', () => {
+    setActiveTab({ id: 'tab1', engineProfileId: null, status: 'waiting' })
+    setPaneAgents('tab1', [], 1)
+    const html = renderHTML()
+    expect(html).toContain('[waiting for 1 background shell]')
+    expect(html).not.toContain('waiting for queued work')
+  })
+
+  // A plain tab's status is 'waiting' with NO shells and NO agents when the
+  // engine's hasPendingWork fired for some other reason (a queued prompt, a
+  // dispatch completion, a parked run) — the one case with no more specific
+  // signal available. The generic fallback is correct here and must still
+  // fire so the slot doesn't go silent.
+  it('PLAIN tab, status "waiting", 0 shells, 0 agents → falls back to "waiting for queued work"', () => {
+    setActiveTab({ id: 'tab1', engineProfileId: null, status: 'waiting' })
+    setPaneAgents('tab1', [], 0)
+    expect(renderHTML()).toContain('[waiting for queued work]')
+  })
+
+  // EXTENSION-tab parity: the same conflation existed on the statusFields
+  // path (`useActiveEngineStatusFields()`, populated only for extension
+  // tabs — see tabHasExtensions gating). A background shell there must win
+  // over the generic hasPendingWork flag exactly like the plain-tab path.
+  it('EXTENSION tab, statusFields.hasPendingWork true, 1 background shell, 0 agents → shell-specific label (parity)', () => {
+    setActiveTab({ id: 'tab1', engineProfileId: 'test-profile', status: 'idle' })
+    setPaneAgents('tab1', [], 1, true)
+    const html = renderHTML()
+    expect(html).toContain('[waiting for 1 background shell]')
+    expect(html).not.toContain('waiting for queued work')
+  })
+
+  it('EXTENSION tab, statusFields.hasPendingWork true, 0 shells, 0 agents → falls back to "waiting for queued work"', () => {
+    setActiveTab({ id: 'tab1', engineProfileId: 'test-profile', status: 'idle' })
+    setPaneAgents('tab1', [], 0, true)
+    expect(renderHTML()).toContain('[waiting for queued work]')
   })
 })

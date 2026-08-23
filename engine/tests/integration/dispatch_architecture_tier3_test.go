@@ -169,7 +169,7 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 		}
 		_, err := rootCtx.DispatchAgent(extension.DispatchAgentOpts{
 			Name: "tier2-a", Task: "Task-T2A", Model: "mock-model",
-			MaxTurns: 1, Background: true,
+			MaxTurns: 1, Detached: true,
 			OnComplete: onComplete("tier2-a"),
 			OnError:    onError("tier2-a"),
 		})
@@ -213,7 +213,7 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 		mp.SetResponse(helpers.TextResponse("tier3-output-Y"))
 		_, err = tier2Ctx.DispatchAgent(extension.DispatchAgentOpts{
 			Name: "tier3-x", Task: "Task-T3X", Model: "mock-model",
-			MaxTurns: 1, Background: true,
+			MaxTurns: 1, Detached: true,
 			OnComplete: onComplete("tier3-x"),
 			OnError:    onError("tier3-x"),
 		})
@@ -289,7 +289,7 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 		})
 		_, err := tier2Ctx.DispatchAgent(extension.DispatchAgentOpts{
 			Name: "tier3-follow", Task: "Task-T3-Init", Model: "mock-model",
-			MaxTurns: 1, Background: true,
+			MaxTurns: 1, Detached: true,
 			OnComplete: onComplete("tier3-follow-init"),
 			OnError:    onError("tier3-follow-init"),
 		})
@@ -307,7 +307,7 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 		// Follow-up: continue the same session.
 		_, err = tier2Ctx.DispatchAgent(extension.DispatchAgentOpts{
 			Name: "tier3-follow", Task: "Task-T3-Followup", Model: "mock-model",
-			SessionID: initSID, MaxTurns: 1, Background: true,
+			SessionID: initSID, MaxTurns: 1, Detached: true,
 			OnComplete: onComplete("tier3-follow-cont"),
 			OnError:    onError("tier3-follow-cont"),
 		})
@@ -361,16 +361,14 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 		recallMP.SetBlockUntilCancel(true)
 		recallMP.SetResponse(helpers.TextResponse("will-not-reach"))
 
-		tier2Ctx := mgr.TestNewExtContextWithOpts("tier3", extcontext.ExtContextOpts{
-			Depth:      1,
-			DispatchId: "fake-tier2-for-recall",
-		})
+		// The root context owns this independent dispatch, so exact-ID recall is authorized.
+		tier2Ctx := mgr.TestNewExtContext("tier3")
 
 		recallDone := make(chan struct{})
 		var recallInfo extension.RecallInfo
-		_, err := tier2Ctx.DispatchAgent(extension.DispatchAgentOpts{
+		stub, err := tier2Ctx.DispatchAgent(extension.DispatchAgentOpts{
 			Name: "tier3-doom", Task: "Task-Doom", Model: "mock-model",
-			MaxTurns: 1, Background: true,
+			MaxTurns: 1, Detached: true,
 			OnComplete: onComplete("tier3-doom"),
 			OnError:    onError("tier3-doom"),
 			OnRecall: func(ri extension.RecallInfo) {
@@ -393,10 +391,13 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 			}
 		}
 
-		// Recall the 3rd-tier agent.
-		found, _ := tier2Ctx.RecallAgent("tier3-doom", extension.RecallAgentOpts{Reason: "test-recall"})
+		// Recall the 3rd-tier agent by its exact dispatch ID.
+		found, err := tier2Ctx.RecallDispatch(stub.DispatchID, extension.RecallDispatchOpts{Reason: "test-recall"})
+		if err != nil {
+			t.Fatalf("RecallDispatch(tier3-doom): %v", err)
+		}
 		if !found {
-			t.Error("RecallAgent(tier3-doom) returned false")
+			t.Error("RecallDispatch(tier3-doom) returned false")
 		}
 
 		select {
@@ -407,7 +408,7 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 
 		// The dispatch Cancel callback hardcodes "recall_agent" as the reason
 		// (set at registration time in dispatch_agent.go). The reason from
-		// RecallAgentOpts is logged by the registry but not forwarded through
+		// RecallDispatchOpts is logged by the registry but not forwarded through
 		// the cancel closure. This is by design: Cancel is a simple func().
 		if recallInfo.Reason != "recall_agent" {
 			t.Errorf("recall reason=%q want recall_agent", recallInfo.Reason)
@@ -418,7 +419,7 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 		recallMP.SetResponse(helpers.TextResponse("tier3-recreated"))
 		_, err = tier2Ctx.DispatchAgent(extension.DispatchAgentOpts{
 			Name: "tier3-recreated", Task: "Task-Recreated", Model: "mock-model",
-			MaxTurns: 1, Background: true,
+			MaxTurns: 1, Detached: true,
 			OnComplete: onComplete("tier3-recreated"),
 			OnError:    onError("tier3-recreated"),
 		})
@@ -454,15 +455,13 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 		steerMP.SetBlockUntilCancel(true)
 		steerMP.SetResponse(helpers.TextResponse("will-block"))
 
-		tier2Ctx := mgr.TestNewExtContextWithOpts("tier3", extcontext.ExtContextOpts{
-			Depth:      1,
-			DispatchId: "fake-tier2-for-steer",
-		})
+		// The root context owns this independent dispatch, so exact-ID controls are authorized.
+		tier2Ctx := mgr.TestNewExtContext("tier3")
 
 		steerDone := make(chan struct{})
 		stub, err := tier2Ctx.DispatchAgent(extension.DispatchAgentOpts{
 			Name: "tier3-steered", Task: "Task-Steer", Model: "mock-model",
-			MaxTurns: 5, Background: true,
+			MaxTurns: 5, Detached: true,
 			OnComplete: func(r extension.DispatchAgentResult) {
 				omu.Lock()
 				outcomes["tier3-steered"] = &outcome{result: &r}
@@ -510,7 +509,7 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 		}
 
 		// Clean up: recall to release the blocked provider.
-		tier2Ctx.RecallAgent("tier3-steered", extension.RecallAgentOpts{Reason: "done"})
+		tier2Ctx.RecallDispatch(stub.DispatchID, extension.RecallDispatchOpts{Reason: "done"})
 		select {
 		case <-steerDone:
 		case <-time.After(10 * time.Second):
@@ -538,7 +537,7 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 		steerDone := make(chan struct{})
 		stub, err := rootCtx.DispatchAgent(extension.DispatchAgentOpts{
 			Name: "tier2-steer", Task: "Task-T2-Steer", Model: "mock-model",
-			MaxTurns: 5, Background: true,
+			MaxTurns: 5, Detached: true,
 			OnComplete: func(r extension.DispatchAgentResult) {
 				omu.Lock()
 				outcomes["tier2-steer"] = &outcome{result: &r}
@@ -582,7 +581,7 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 		}
 
 		// Clean up.
-		rootCtx.RecallAgent("tier2-steer", extension.RecallAgentOpts{Reason: "done"})
+		rootCtx.RecallDispatch(stub.DispatchID, extension.RecallDispatchOpts{Reason: "done"})
 		select {
 		case <-steerDone:
 		case <-time.After(10 * time.Second):
@@ -598,7 +597,7 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 		t2followDone := make(chan struct{}, 2)
 		_, err = rootCtx.DispatchAgent(extension.DispatchAgentOpts{
 			Name: "tier2-fu", Task: "Task-T2-Initial", Model: "mock-model",
-			MaxTurns: 1, Background: true,
+			MaxTurns: 1, Detached: true,
 			OnComplete: func(r extension.DispatchAgentResult) {
 				omu.Lock()
 				outcomes["tier2-fu-init"] = &outcome{result: &r}
@@ -628,7 +627,7 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 		// Follow-up.
 		_, err = rootCtx.DispatchAgent(extension.DispatchAgentOpts{
 			Name: "tier2-fu", Task: "Task-T2-Followup", Model: "mock-model",
-			SessionID: oInit.result.SessionID, MaxTurns: 1, Background: true,
+			SessionID: oInit.result.SessionID, MaxTurns: 1, Detached: true,
 			OnComplete: func(r extension.DispatchAgentResult) {
 				omu.Lock()
 				outcomes["tier2-fu-cont"] = &outcome{result: &r}
@@ -685,7 +684,7 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 		// remaining depth budget without handling an exceptional transport path.
 		result, err := tier3Ctx.DispatchAgent(extension.DispatchAgentOpts{
 			Name: "tier4-blocked", Task: "Task-T4", Model: "mock-model",
-			MaxTurns: 1, Background: true,
+			MaxTurns: 1, Detached: true,
 			OnComplete: func(_ extension.DispatchAgentResult) {
 				t.Error("4th-tier dispatch should have been blocked")
 			},
@@ -738,7 +737,7 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 			n := name
 			_, err := tier2Ctx.DispatchAgent(extension.DispatchAgentOpts{
 				Name: n, Task: fmt.Sprintf("Task-%s", n), Model: "mock-model",
-				MaxTurns: 1, Background: true,
+				MaxTurns: 1, Detached: true,
 				OnComplete: func(r extension.DispatchAgentResult) {
 					omu.Lock()
 					outcomes[n] = &outcome{result: &r}
@@ -818,15 +817,13 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 		})
 		mp8.SetResponse(helpers.TextResponse("finished-output"))
 
-		tier2Ctx := mgr.TestNewExtContextWithOpts("tier3", extcontext.ExtContextOpts{
-			Depth:      1,
-			DispatchId: "fake-tier2-for-steer-finished",
-		})
+		// The root context owns this independent dispatch, so it can steer after completion.
+		tier2Ctx := mgr.TestNewExtContext("tier3")
 
 		finDone := make(chan struct{})
 		stub, err := tier2Ctx.DispatchAgent(extension.DispatchAgentOpts{
 			Name: "tier3-fin", Task: "Task-Fin", Model: "mock-model",
-			MaxTurns: 1, Background: true,
+			MaxTurns: 1, Detached: true,
 			OnComplete: func(r extension.DispatchAgentResult) {
 				omu.Lock()
 				outcomes["tier3-fin"] = &outcome{result: &r}

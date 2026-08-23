@@ -154,6 +154,9 @@ func (m *Manager) clearOutstandingBackgroundTasks(key string) {
 	}
 	count := len(s.outstandingBackgroundTasks)
 	wasParked := s.parked != nil
+	if s.parked != nil && s.parked.TimeoutTimer != nil {
+		s.parked.TimeoutTimer.Stop()
+	}
 	s.outstandingBackgroundTasks = nil
 	s.parked = nil
 	s.pendingBackgroundCompletions = nil

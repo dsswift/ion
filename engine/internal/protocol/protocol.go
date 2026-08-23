@@ -11,41 +11,55 @@ import (
 // ClientCommand represents any command sent from a client to the engine server.
 // The Cmd field discriminates which fields are relevant.
 type ClientCommand struct {
-	Cmd                string              `json:"cmd"`
-	Key                string              `json:"key,omitempty"`
-	Config             *types.EngineConfig `json:"config,omitempty"`
-	RequestID          string              `json:"requestId,omitempty"`
-	Text               string              `json:"text,omitempty"`
-	Model              string              `json:"model,omitempty"`
-	MaxTurns           int                 `json:"maxTurns,omitempty"`
-	MaxBudgetUsd       float64             `json:"maxBudgetUsd,omitempty"`
-	AgentName          string              `json:"agentName,omitempty"`
-	Subtree            *bool               `json:"subtree,omitempty"`
-	Message            string              `json:"message,omitempty"`
-	DialogID           string              `json:"dialogId,omitempty"`
-	Value              any                 `json:"value,omitempty"`
-	Command            string              `json:"command,omitempty"`
-	Args               string              `json:"args,omitempty"`
-	Prefix             string              `json:"prefix,omitempty"`
-	MessageIndex       *int                `json:"messageIndex,omitempty"`
-	UserTurnIndex      *int                `json:"userTurnIndex,omitempty"`
-	Enabled            *bool               `json:"enabled,omitempty"`
-	AllowedTools       []string            `json:"allowedTools,omitempty"`
-	EntryID            string              `json:"entryId,omitempty"`
-	TargetID           string              `json:"targetId,omitempty"`
-	ExtensionDir       string              `json:"extensionDir,omitempty"`
-	Extensions         []string            `json:"extensions,omitempty"`
-	NoExtensions       bool                `json:"noExtensions,omitempty"`
-	QuestionID         string              `json:"questionId,omitempty"`
-	OptionID           string              `json:"optionId,omitempty"`
-	SessionIDs         []string            `json:"sessionIds,omitempty"`
-	Label              string              `json:"label,omitempty"`
-	Limit              int                 `json:"limit,omitempty"`
-	Offset             int                 `json:"offset,omitempty"`
-	AppendSystemPrompt string              `json:"appendSystemPrompt,omitempty"`
-	Source             string              `json:"source,omitempty"`
-	Provider           string              `json:"provider,omitempty"`
-	Credential         string              `json:"credential,omitempty"`
+	Cmd          string              `json:"cmd"`
+	Key          string              `json:"key,omitempty"`
+	Config       *types.EngineConfig `json:"config,omitempty"`
+	RequestID    string              `json:"requestId,omitempty"`
+	Text         string              `json:"text,omitempty"`
+	Model        string              `json:"model,omitempty"`
+	MaxTurns     int                 `json:"maxTurns,omitempty"`
+	MaxBudgetUsd float64             `json:"maxBudgetUsd,omitempty"`
+	AgentName    string              `json:"agentName,omitempty"`
+	// abort_agent: retain the published name-and-subtree addressing surface.
+	Subtree *bool `json:"subtree,omitempty"`
+
+	// abort: how much of the session tree the abort tears down. Empty means
+	// "all" — the historical behavior — so a client that predates this field
+	// is unaffected. "orchestrator" cancels only the active run and leaves
+	// background dispatches alive. See session.AbortScope for the semantics.
+	AbortScope string `json:"abortScope,omitempty"`
+
+	// abort_dispatch: the collision-safe dispatch ID (the agentID minted at
+	// dispatch time and surfaced as `dispatchId` on engine_agent_state
+	// dispatch members) identifying the single background dispatch to cancel.
+	DispatchID string `json:"dispatchId,omitempty"`
+	// stop_background_task: exact session-owned Bash task to stop.
+	TaskID             string   `json:"taskId,omitempty"`
+	Message            string   `json:"message,omitempty"`
+	DialogID           string   `json:"dialogId,omitempty"`
+	Value              any      `json:"value,omitempty"`
+	Command            string   `json:"command,omitempty"`
+	Args               string   `json:"args,omitempty"`
+	Prefix             string   `json:"prefix,omitempty"`
+	MessageIndex       *int     `json:"messageIndex,omitempty"`
+	UserTurnIndex      *int     `json:"userTurnIndex,omitempty"`
+	Enabled            *bool    `json:"enabled,omitempty"`
+	AllowedTools       []string `json:"allowedTools,omitempty"`
+	EntryID            string   `json:"entryId,omitempty"`
+	TargetID           string   `json:"targetId,omitempty"`
+	ExtensionDir       string   `json:"extensionDir,omitempty"`
+	Extensions         []string `json:"extensions,omitempty"`
+	NoExtensions       bool     `json:"noExtensions,omitempty"`
+	QuestionID         string   `json:"questionId,omitempty"`
+	OptionID           string   `json:"optionId,omitempty"`
+	SessionIDs         []string `json:"sessionIds,omitempty"`
+	Label              string   `json:"label,omitempty"`
+	Limit              int      `json:"limit,omitempty"`
+	Offset             int      `json:"offset,omitempty"`
+	AppendSystemPrompt string   `json:"appendSystemPrompt,omitempty"`
+	Source             string   `json:"source,omitempty"`
+	Provider           string   `json:"provider,omitempty"`
+	Credential         string   `json:"credential,omitempty"`
 	// set_model_tier: ordered fallback model identifiers. Empty explicitly
 	// replaces a prior fallback chain with none.
 	Fallbacks []string `json:"fallbacks,omitempty"`
@@ -340,14 +354,16 @@ type ClientCommand struct {
 }
 
 var validCommands = map[string]bool{
-	"start_session":                true,
-	"send_prompt":                  true,
-	"abort":                        true,
-	"abort_agent":                  true,
-	"steer_agent":                  true,
-	"dialog_response":              true,
-	"command":                      true,
-	"stop_session":                 true,
+	"start_session":        true,
+	"send_prompt":          true,
+	"abort":                true,
+	"abort_agent":          true,
+	"abort_dispatch":       true,
+	"stop_background_task": true,
+	"steer_agent":          true,
+	"dialog_response":      true,
+	"command":              true,
+	"stop_session":         true,
 	// settle_session: pause a session's async subsystems (schedules,
 	// webhooks) and cancel any active run WITHOUT destroying the session.
 	// The session stays in the map; StartSession for the same key is
@@ -576,71 +592,4 @@ func ExtractRequestID(line string) string {
 		return ""
 	}
 	return s
-}
-
-// ─── Server -> Client ───
-
-// ServerEvent carries a session event broadcast to all clients.
-type ServerEvent struct {
-	Key   string               `json:"key"`
-	Event types.RawEngineEvent `json:"event"`
-}
-
-// ServerResult carries a response to a request-id bearing command.
-type ServerResult struct {
-	Cmd       string `json:"cmd"`
-	RequestID string `json:"requestId"`
-	OK        bool   `json:"ok"`
-	Error     string `json:"error,omitempty"`
-	Data      any    `json:"data,omitempty"`
-	// NewKey is set only for fork_session responses (top-level, not wrapped in data).
-	NewKey string `json:"newKey,omitempty"`
-}
-
-// SessionInfo is one entry in the session list response.
-type SessionInfo struct {
-	Key            string `json:"key"`
-	HasActiveRun   bool   `json:"hasActiveRun"`
-	ToolCount      int    `json:"toolCount"`
-	ConversationID string `json:"conversationId,omitempty"`
-}
-
-// ServerSessionList carries the list_sessions response.
-type ServerSessionList struct {
-	Cmd      string        `json:"cmd"`
-	Sessions []SessionInfo `json:"sessions"`
-}
-
-// ResolveExtensions merges the legacy ExtensionDir field with the new Extensions
-// list. If Extensions is set, it takes precedence. If only ExtensionDir is set,
-// it is wrapped into a single-element slice. Returns nil if neither is set.
-func (c *ClientCommand) ResolveExtensions() []string {
-	if len(c.Extensions) > 0 {
-		return c.Extensions
-	}
-	if c.ExtensionDir != "" {
-		return []string{c.ExtensionDir}
-	}
-	return nil
-}
-
-// SerializeServerEvent serializes a session event as NDJSON.
-func SerializeServerEvent(key string, event types.RawEngineEvent) string {
-	msg := ServerEvent{Key: key, Event: event}
-	b, _ := json.Marshal(msg) //nolint:errcheck // marshal of a local struct
-	return string(b) + "\n"
-}
-
-// SerializeServerResult serializes a result message as NDJSON.
-func SerializeServerResult(msg ServerResult) string {
-	msg.Cmd = "result"
-	b, _ := json.Marshal(msg) //nolint:errcheck // marshal of a local struct
-	return string(b) + "\n"
-}
-
-// SerializeServerSessionList serializes a session list message as NDJSON.
-func SerializeServerSessionList(sessions []SessionInfo) string {
-	msg := ServerSessionList{Cmd: "session_list", Sessions: sessions}
-	b, _ := json.Marshal(msg) //nolint:errcheck // marshal of a local struct
-	return string(b) + "\n"
 }

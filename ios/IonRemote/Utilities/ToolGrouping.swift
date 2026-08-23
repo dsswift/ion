@@ -172,11 +172,13 @@ private func groupConversationItemsClassic(_ messages: [Message]) -> [Conversati
             case .assistant: result.append(.assistant(msg))
             case .thinking:  result.append(.thinking(msg))
             case .system, .harness:
+                if msg.backgroundWork != nil {
+                    continue
+                }
                 if msg.content.hasPrefix("[Compaction]") {
                     result.append(.compaction(msg))
                 } else {
                     result.append(.system(msg))
-                    // The divider lands first, then the steer it announces.
                     if let steer = takeHeldSteer(&heldSteers, dividerId: msg.id) {
                         result.append(.user(steer))
                     }
@@ -240,13 +242,17 @@ private func groupConversationItemsUnified(_ messages: [Message]) -> [Conversati
 
     for msg in messages {
         // System messages and compaction markers flush the turn and emit standalone.
+        // Background completion records are machine context: matching work folds
+        // onto its source tool row before grouping; unmatched legacy records drop.
         if msg.role == .system || msg.role == .harness || msg.content.hasPrefix("[Compaction]") {
+            if msg.backgroundWork != nil {
+                continue
+            }
             flushTurn()
             if msg.content.hasPrefix("[Compaction]") {
                 result.append(.compaction(msg))
             } else {
                 result.append(.system(msg))
-                // The divider lands first, then the steer it announces.
                 if let steer = takeHeldSteer(&heldSteers, dividerId: msg.id) {
                     result.append(.user(steer))
                 }
@@ -358,9 +364,17 @@ func toolDescription(name: String, input: String?) -> String {
     guard let input, !input.isEmpty else { return name }
 
     // Try full JSON parse first.
-    if let data = input.data(using: .utf8),
-       let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-        return toolDescriptionFromDict(name: name, dict: dict)
+    if let data = input.data(using: .utf8) {
+        do {
+            if let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                return toolDescriptionFromDict(name: name, dict: dict)
+            }
+            DiagnosticLog.log("tool input JSON has unexpected shape", tag: "model.tool", level: .debug,
+                              fields: ["tool": name])
+        } catch {
+            DiagnosticLog.log("tool input JSON decode failed; using regex fallback", tag: "model.tool", level: .debug,
+                              fields: ["tool": name, "error": error.localizedDescription])
+        }
     }
 
     // Fallback: regex extraction for partial/streaming JSON.
@@ -457,8 +471,15 @@ private func toolDescriptionFromDict(name: String, dict: [String: Any]) -> Strin
 private func toolDescriptionFromRegex(name: String, raw: String) -> String {
     let str = { (key: String) -> String in
         let pattern = "\"\(key)\"\\s*:\\s*\"([^\"]*)\""
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: raw, range: NSRange(raw.startIndex..., in: raw)),
+        let regex: NSRegularExpression
+        do {
+            regex = try NSRegularExpression(pattern: pattern)
+        } catch {
+            DiagnosticLog.log("tool description regex construction failed", tag: "model.tool", level: .warn,
+                              fields: ["tool": name, "key": key, "error": error.localizedDescription])
+            return ""
+        }
+        guard let match = regex.firstMatch(in: raw, range: NSRange(raw.startIndex..., in: raw)),
               let range = Range(match.range(at: 1), in: raw)
         else { return "" }
         return String(raw[range])

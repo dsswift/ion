@@ -1,39 +1,39 @@
 package backend
 
 import (
-	"fmt"
-
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// drainCompletedChildDispatches injects terminal child results at a stable
-// run-loop checkpoint. A failed save retains both source records and the staged
-// in-memory batch, so retrying persistence cannot lose or duplicate a child
-// completion.
+// drainCompletedChildDispatches persists and emits each batch only after its
+// conversation save succeeds. Child results share one model-facing payload but
+// retain item identity for client rendering.
 func (b *ApiBackend) drainCompletedChildDispatches(run *activeRun, conv *conversation.Conversation) bool {
 	if run.cfg == nil || run.cfg.PeekCompletedChildDispatches == nil {
 		return false
 	}
 	if len(run.pendingChildCompletionMessages) == 0 {
-		messages, acknowledge := run.cfg.PeekCompletedChildDispatches()
-		if len(messages) == 0 {
+		deliveries, acknowledge := run.cfg.PeekCompletedChildDispatches()
+		if len(deliveries) == 0 {
 			return false
 		}
-		for _, message := range messages {
-			conversation.AddUserMessageWithKind(conv, message.Content, string(types.InjectionKindAgentCompletion))
+		entryIDs := make([]string, 0, len(deliveries))
+		for _, delivery := range deliveries {
+			entry := conversation.AddUserMessageWithBackgroundWork(conv, delivery.Content, delivery.Work)
+			if entry != nil {
+				entryIDs = append(entryIDs, entry.ID)
+			}
 		}
-		run.pendingChildCompletionMessages = messages
+		run.pendingChildCompletionMessages = deliveries
+		run.pendingChildCompletionEntryIDs = entryIDs
 		run.pendingChildCompletionAck = acknowledge
 	}
 
-	messages := run.pendingChildCompletionMessages
+	deliveries := run.pendingChildCompletionMessages
 	if err := conversation.Save(conv, ""); err != nil {
 		utils.LogWithFields(utils.LevelWarn, "backend.runloop", "failed to save completed child dispatch results", map[string]any{
-			"run_id": run.requestID,
-			"count":  len(messages),
-			"error":  utils.ErrStr(err),
+			"run_id": run.requestID, "count": len(deliveries), "error": utils.ErrStr(err),
 		})
 		return false
 	}
@@ -41,16 +41,21 @@ func (b *ApiBackend) drainCompletedChildDispatches(run *activeRun, conv *convers
 		run.pendingChildCompletionAck()
 	}
 	run.pendingChildCompletionAck = nil
+	entryIDs := run.pendingChildCompletionEntryIDs
 	run.pendingChildCompletionMessages = nil
+	run.pendingChildCompletionEntryIDs = nil
 
-	messageLength := 0
-	for _, message := range messages {
-		messageLength += len(fmt.Sprint(message.Content))
+	for index, delivery := range deliveries {
+		entryID := ""
+		if index < len(entryIDs) {
+			entryID = entryIDs[index]
+		}
+		b.emit(run, types.NormalizedEvent{Data: &types.BackgroundWorkDeliveredEvent{
+			EntryID: entryID, Content: delivery.Content, Work: delivery.Work,
+		}})
 	}
-	b.emit(run, types.NormalizedEvent{Data: &types.SteerInjectedEvent{MessageLength: messageLength}})
 	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "completed child dispatch results injected", map[string]any{
-		"run_id": run.requestID,
-		"count":  len(messages),
+		"run_id": run.requestID, "count": len(deliveries),
 	})
 	return true
 }

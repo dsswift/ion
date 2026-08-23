@@ -5,7 +5,7 @@ package extcontext
 // no API change.
 
 // ExitCodeRecalled is the exit code used when a dispatch is cancelled via
-// RecallAgent. Distinct from 0 (success) and 1 (depth-cap rejection) so
+// RecallDispatch. Distinct from 0 (success) and 1 (depth-cap rejection) so
 // consumers can distinguish recall from a rejected dispatch.
 const ExitCodeRecalled = 2
 

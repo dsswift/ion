@@ -298,6 +298,11 @@ type StatusFields struct {
 	// outstanding. Commands started WITHOUT notify_on_complete are not counted
 	// — nothing is waiting on them.
 	BackgroundShells int `json:"backgroundShells,omitempty"`
+	// ActiveBackgroundTasks is the complete snapshot of every live background
+	// Bash process owned by this session. Unlike BackgroundShells, it includes
+	// tasks that do not notify on completion, so clients can render and stop
+	// every active process and reconcile after reconnect.
+	ActiveBackgroundTasks []BackgroundTaskState `json:"activeBackgroundTasks,omitempty"`
 	// HasPendingWork is true when the engine has accepted work that prevents a
 	// session from being terminal, even if the foreground orchestrator is idle.
 	// It includes live dispatches, notifying shells, queued prompts, durable
@@ -314,6 +319,15 @@ type StatusFields struct {
 	// have no associated run. Consumers render this as the drawer "Turns"
 	// (lifetime), whereas NumTurns is the per-run round-trip count.
 	ConversationTurns int `json:"conversationTurns,omitempty"`
+}
+
+// BackgroundTaskState is one active session-owned background Bash process.
+type BackgroundTaskState struct {
+	TaskID           string `json:"taskId"`
+	ToolID           string `json:"toolId,omitempty"`
+	Command          string `json:"command"`
+	StartedAt        int64  `json:"startedAt"`
+	NotifyOnComplete bool   `json:"notifyOnComplete,omitempty"`
 }
 
 // SessionStatus is the Phase 3 typed status payload that consolidates
@@ -382,6 +396,9 @@ type SessionStatus struct {
 	// parked session (idle orchestrator, commands in flight) from a plain
 	// idle one without re-deriving it.
 	BackgroundShellCount int `json:"backgroundShellCount,omitempty"`
+	// ActiveBackgroundTasks mirrors StatusFields.ActiveBackgroundTasks and
+	// includes non-notifying session-owned Bash tasks as well.
+	ActiveBackgroundTasks []BackgroundTaskState `json:"activeBackgroundTasks,omitempty"`
 	// HasPendingWork mirrors StatusFields.HasPendingWork so consumers that read
 	// only engine_session_status can distinguish a terminal idle from waiting.
 	HasPendingWork bool `json:"hasPendingWork,omitempty"`
@@ -516,6 +533,10 @@ type SessionMessage struct {
 	// so reloaded history keeps failed tool state instead of coercing every
 	// result to success. Additive (omitempty).
 	IsError bool `json:"isError,omitempty"`
+	// BackgroundTaskID correlates a tool-role row with the asynchronous task
+	// that produced it (Bash background task ID or Agent dispatch ID).
+	// Additive (omitempty): absent for synchronous tool results.
+	BackgroundTaskID string `json:"backgroundTaskId,omitempty"`
 	// SlashCommand / SlashArgs / SlashSource carry the raw slash-command
 	// invocation when this user turn originated from a slash command the engine
 	// resolved and expanded. Content holds the raw invocation for display; the
@@ -549,6 +570,13 @@ type SessionMessage struct {
 
 	// Steer marker fields (MarkerKind=="steer"): mirror SteerMarkerData.
 	MarkerMessageLength int `json:"markerMessageLength,omitempty"`
+	// MarkerMachineAuthored lets historical clients suppress a transport marker
+	// when its adjacent delivery was engine-authored background work.
+	MarkerMachineAuthored bool `json:"markerMachineAuthored,omitempty"`
+
+	// BackgroundWork carries structured metadata for an engine-owned completion
+	// input. Its Content is the exact model-facing payload on this same row.
+	BackgroundWork *BackgroundWorkInfo `json:"backgroundWork,omitempty"`
 
 	// InjectionKind classifies an engine-side injected user turn on historical
 	// reload. See InjectionKind (injection_kind.go) for the enumerated set.

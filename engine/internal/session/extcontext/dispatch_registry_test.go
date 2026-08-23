@@ -67,36 +67,24 @@ func TestDispatchRegistry_Get(t *testing.T) {
 	}
 }
 
-// TestDispatchRegistry_Recall verifies that Recall invokes the cancel
-// function, removes the entry, and returns true. Recalling a nonexistent
-// name returns false without panicking.
-func TestDispatchRegistry_Recall(t *testing.T) {
+// TestDispatchRegistry_RecallByID verifies that exact-ID recall invokes the
+// cancel function and removes only that address. Names are intentionally not a
+// destructive API because they are not unique dispatch identities.
+func TestDispatchRegistry_RecallByID(t *testing.T) {
 	r := NewDispatchRegistry()
-
 	var cancelled atomic.Int32
-	r.Register("agent-c", func() { cancelled.Add(1) }, nil, "sess-3")
-
-	ok := r.Recall("agent-c", "test_reason")
-	if !ok {
-		t.Fatal("Recall returned false, want true")
+	r.RegisterWithID("dispatch-agent-c", "agent-c", func() { cancelled.Add(1) }, nil, "sess-3", "", 1)
+	if !r.RecallByID("dispatch-agent-c", "test_reason") {
+		t.Fatal("RecallByID returned false")
 	}
 	if cancelled.Load() != 1 {
 		t.Errorf("cancel called %d times, want 1", cancelled.Load())
 	}
 	if r.Count() != 0 {
-		t.Errorf("Count after Recall = %d, want 0", r.Count())
+		t.Errorf("Count after RecallByID = %d, want 0", r.Count())
 	}
-
-	// Recalling the same name again returns false (already removed).
-	ok2 := r.Recall("agent-c", "duplicate")
-	if ok2 {
-		t.Error("second Recall returned true, want false")
-	}
-
-	// Recalling a name that was never registered returns false.
-	ok3 := r.Recall("nonexistent", "test")
-	if ok3 {
-		t.Error("Recall(nonexistent) returned true, want false")
+	if r.RecallByID("dispatch-agent-c", "duplicate") {
+		t.Error("duplicate recall returned true")
 	}
 }
 
@@ -163,7 +151,7 @@ func TestDispatchRegistry_OverwriteWarning(t *testing.T) {
 	}
 
 	// Recall should invoke the second cancel function, not the first.
-	r.Recall("dup", "overwrite-test")
+	r.RecallByID("dup", "overwrite-test")
 	if secondCancelled.Load() != 1 {
 		t.Errorf("second cancel called %d times, want 1", secondCancelled.Load())
 	}
@@ -363,31 +351,6 @@ func TestDispatchRegistry_RecallByID_TargetsSpecificInstance(t *testing.T) {
 	}
 }
 
-// TestDispatchRegistry_RecallByName_CancelsOneOfMany verifies that
-// Recall(name) cancels one dispatch matching the name when multiple
-// same-name dispatches exist.
-func TestDispatchRegistry_RecallByName_CancelsOneOfMany(t *testing.T) {
-	r := NewDispatchRegistry()
-
-	var cancelled atomic.Int32
-	r.RegisterWithID("id-1", "agent", func() { cancelled.Add(1) }, nil, "sess-1", "", 0)
-	r.RegisterWithID("id-2", "agent", func() { cancelled.Add(1) }, nil, "sess-1", "", 0)
-
-	ok := r.Recall("agent", "test_name_recall")
-	if !ok {
-		t.Fatal("Recall(name) returned false, want true")
-	}
-
-	if cancelled.Load() != 1 {
-		t.Errorf("cancel called %d times, want 1 (only one of two same-name)", cancelled.Load())
-	}
-	if got := r.Count(); got != 1 {
-		t.Fatalf("Count after name-based recall = %d, want 1", got)
-	}
-}
-
-// TestDispatchRegistry_DeregisterByID verifies Deregister uses the ID key,
-// not the agent name.
 func TestDispatchRegistry_DeregisterByID(t *testing.T) {
 	r := NewDispatchRegistry()
 
@@ -641,5 +604,23 @@ func TestDispatchRegistry_SetChildRunID(t *testing.T) {
 	d2, _ := r.Get("dispatch-set")
 	if d2.ChildRunID != "the-run-id" {
 		t.Errorf("ChildRunID after SetChildRunID = %q, want %q", d2.ChildRunID, "the-run-id")
+	}
+}
+
+func TestRecallByNameCompatibilityCancelsOneMatchingDispatch(t *testing.T) {
+	r := NewDispatchRegistry()
+	firstCancelled := false
+	secondCancelled := false
+	r.RegisterWithID("first", "reviewer", func() { firstCancelled = true }, nil, "session", "", 1)
+	r.RegisterWithID("second", "reviewer", func() { secondCancelled = true }, nil, "session", "", 1)
+
+	if !r.Recall("reviewer", "compatibility") {
+		t.Fatal("Recall returned false for a live named dispatch")
+	}
+	if firstCancelled == secondCancelled {
+		t.Fatalf("name recall must cancel exactly one match, got first=%t second=%t", firstCancelled, secondCancelled)
+	}
+	if len(r.ActiveIDs()) != 1 {
+		t.Fatalf("active dispatches = %d, want one remaining name collision", len(r.ActiveIDs()))
 	}
 }

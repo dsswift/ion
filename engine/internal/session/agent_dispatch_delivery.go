@@ -19,6 +19,7 @@ func (m *Manager) deliverRootDispatchResult(key string, result extension.Dispatc
 		DispatchID: result.DispatchID,
 		Name:       result.Name,
 		ExitCode:   result.ExitCode,
+		ElapsedMs:  int64(result.Elapsed * 1000),
 	}
 	m.mu.Lock()
 	if s, ok := m.sessions[key]; ok {
@@ -69,6 +70,13 @@ func (m *Manager) retryRootDispatchCompletions(key string) {
 	}
 
 	overrides := buildPromptOverrides("", nil, string(types.InjectionKindAgentCompletion))
+	overrides.BackgroundWork = types.BackgroundWorkInfo{
+		Kind: string(types.InjectionKindAgentCompletion), DeliveryMode: "wake",
+		Items: []types.BackgroundWorkItem{{
+			ID: record.DispatchID, Source: types.BackgroundWorkSourceAgent, Label: record.Name,
+			Status: rootDispatchStatus(record.ExitCode), ExitCode: record.ExitCode, ElapsedMs: record.ElapsedMs,
+		}},
+	}
 	if err := m.SendPrompt(key, record.Text, overrides); err != nil {
 		utils.LogWithFields(utils.LevelWarn, "session.dispatch_delivery", "root dispatch completion remains queued", map[string]any{
 			"session_id": key, "delivery_id": record.DeliveryID, "dispatch_id": record.DispatchID,
@@ -99,15 +107,19 @@ func (m *Manager) retryRootDispatchCompletions(key string) {
 	m.retryRootDispatchCompletions(key)
 }
 
-func formatRootDispatchResult(result extension.DispatchAgentResult) string {
-	status := "completed"
-	switch result.ExitCode {
+func rootDispatchStatus(exitCode int) string {
+	switch exitCode {
 	case 0:
+		return "completed"
 	case extcontextExitCodeRecalled:
-		status = "recalled"
+		return "recalled"
 	default:
-		status = "failed"
+		return "failed"
 	}
+}
+
+func formatRootDispatchResult(result extension.DispatchAgentResult) string {
+	status := rootDispatchStatus(result.ExitCode)
 	return fmt.Sprintf("[Agent %s %s]\nDispatch ID: %s\nElapsed: %.1fs\n\n%s",
 		result.Name, status, result.DispatchID, result.Elapsed, result.Output)
 }

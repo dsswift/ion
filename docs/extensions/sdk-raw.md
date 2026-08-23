@@ -238,6 +238,12 @@ Read the response from stdin:
 {"jsonrpc":"2.0","id":100002,"method":"ext/recall_agent","params":{"name":"researcher","reason":"no longer needed"}}
 ```
 
+`ext/recall_agent` is retained for name-addressed compatibility. Prefer exact-ID `ext/recall_dispatch` when the dispatch ID is available:
+
+```json
+{"jsonrpc":"2.0","id":100003,"method":"ext/recall_dispatch","params":{"dispatchId":"dispatch-researcher-123","reason":"superseded"}}
+```
+
 Response:
 
 ```json

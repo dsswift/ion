@@ -31,6 +31,10 @@ struct Transcript: View {
     /// leave this nil.
     var allAgents: [AgentStateUpdate]?
     let onOpenDispatch: ((DispatchInfo, AgentStateUpdate) -> Void)?
+    /// Owning tab, forwarded to every nested AgentBarRow for exact-ID stop.
+    var tabId: String?
+    /// Authoritative active background Bash inventory for this transcript.
+    var activeBackgroundTasks: [BackgroundTaskState] = []
     @Binding var isNearBottom: Bool
     var forceScrollCounter: Int
     /// Optional plan-tap handler. When non-nil, plan-lifecycle divider
@@ -195,13 +199,24 @@ struct Transcript: View {
                                     }
                                 }
                             case .toolGroup(let tools):
-                                EngineToolGroupRow(tools: tools)
+                                EngineToolGroupRow(
+                                    tools: tools,
+                                    activeBackgroundTasks: activeBackgroundTasks,
+                                    tabId: tabId
+                                )
                             case .compaction(let msg):
                                 CompactionRowView(message: msg)
                             case .thinking(let msg):
                                 ThinkingRowView(message: msg)
                             case .agentTurn(let tools, let assistants, let isActive, let thinking):
-                                AgentTurnRow(tools: tools, assistantMessages: assistants, isActive: isActive, thinking: thinking)
+                                AgentTurnRow(
+                                    tools: tools,
+                                    assistantMessages: assistants,
+                                    isActive: isActive,
+                                    thinking: thinking,
+                                    activeBackgroundTasks: activeBackgroundTasks,
+                                    tabId: tabId
+                                )
                             }
                         case .runDuration(let durationMs, let reason):
                             RunDurationRow(durationMs: durationMs, reason: reason)
@@ -236,6 +251,7 @@ struct Transcript: View {
                     allAgents: allAgents ?? visibleAgents,
                     onOpenDispatch: onOpenDispatch,
                     title: alwaysShowAgentPanel ? "Child agents" : "Agents",
+                    tabId: tabId,
                     isExpanded: agentPanelExpanded ?? .constant(true),
                     isFullscreen: agentPanelFullscreen ?? .constant(false)
                 )
@@ -264,6 +280,7 @@ struct TranscriptAgentSection: View {
     let allAgents: [AgentStateUpdate]
     let onOpenDispatch: ((DispatchInfo, AgentStateUpdate) -> Void)?
     let title: String
+    let tabId: String?
     @Binding var isExpanded: Bool
     @Binding var isFullscreen: Bool
     @Environment(\.appTheme) private var theme
@@ -340,6 +357,7 @@ struct TranscriptAgentSection: View {
                             AgentBarRow(
                                 agent: agent,
                                 allAgents: allAgents,
+                                tabId: tabId,
                                 onTap: onOpenDispatch != nil ? {
                                     guard let recentDispatch = AgentDotResolver.mostRecentDispatch(agent.dispatches) else { return }
                                     onOpenDispatch?(recentDispatch, agent)

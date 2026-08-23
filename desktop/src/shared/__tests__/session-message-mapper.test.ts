@@ -12,184 +12,191 @@
  *   - no-op compaction  → dropped (null), matching the live compacting handler
  */
 
-import { describe, it, expect } from 'vitest'
-import type { SessionLoadMessage } from '../types'
-import { mapSessionMessage, mapSessionHistory } from '../session-message-mapper'
-import { COMPACTION_MARKER_PREFIX } from '../compaction-marker'
-import { isClearDivider, isSteerAppliedDivider } from '../clear-divider'
+import { describe, it, expect } from "vitest";
+import type { SessionLoadMessage } from "../types";
+import {
+  mapSessionMessage,
+  mapSessionHistory,
+} from "../session-message-mapper";
+import { COMPACTION_MARKER_PREFIX } from "../compaction-marker";
+import { isClearDivider, isSteerAppliedDivider } from "../clear-divider";
 
-let counter = 0
-const makeId = () => `id-${++counter}`
+let counter = 0;
+const makeId = () => `id-${++counter}`;
 
-describe('mapSessionMessage — marker rows', () => {
-  it('maps a compaction marker to a system Message with compaction content', () => {
+describe("mapSessionMessage — marker rows", () => {
+  it("maps a compaction marker to a system Message with compaction content", () => {
     const row: SessionLoadMessage = {
-      role: 'system',
-      content: '[Compaction]',
+      role: "system",
+      content: "[Compaction]",
       timestamp: 1000,
-      markerKind: 'compaction',
+      markerKind: "compaction",
       markerMessagesBefore: 40,
       markerMessagesAfter: 12,
       markerClearedBlocks: 3,
-      markerStrategy: 'summarize',
-      markerSummary: 'kept the key facts',
-    }
-    const msg = mapSessionMessage(row, makeId)
-    expect(msg).not.toBeNull()
-    expect(msg!.role).toBe('system')
+      markerStrategy: "summarize",
+      markerSummary: "kept the key facts",
+    };
+    const msg = mapSessionMessage(row, makeId);
+    expect(msg).not.toBeNull();
+    expect(msg!.role).toBe("system");
     // Formatted by buildCompactionMarkerContent — carries the sentinel prefix,
     // the strategy, the N → M messages figure, and the summary body.
-    expect(msg!.content.startsWith(COMPACTION_MARKER_PREFIX)).toBe(true)
-    expect(msg!.content).toContain('40 → 12 messages')
-    expect(msg!.content).toContain('3 blocks cleared')
-    expect(msg!.content).toContain('kept the key facts')
-    expect(msg!.timestamp).toBe(1000)
-  })
+    expect(msg!.content.startsWith(COMPACTION_MARKER_PREFIX)).toBe(true);
+    expect(msg!.content).toContain("40 → 12 messages");
+    expect(msg!.content).toContain("3 blocks cleared");
+    expect(msg!.content).toContain("kept the key facts");
+    expect(msg!.timestamp).toBe(1000);
+  });
 
-  it('drops a no-op compaction marker (null), matching the live handler', () => {
+  it("drops a no-op compaction marker (null), matching the live handler", () => {
     const row: SessionLoadMessage = {
-      role: 'system',
-      content: '[Compaction]',
+      role: "system",
+      content: "[Compaction]",
       timestamp: 2000,
-      markerKind: 'compaction',
+      markerKind: "compaction",
       // No dropped messages, no cleared blocks, no summary → buildCompaction
       // MarkerContent returns null, so the mapper drops the row entirely.
       markerMessagesBefore: 10,
       markerMessagesAfter: 10,
       markerClearedBlocks: 0,
-    }
-    expect(mapSessionMessage(row, makeId)).toBeNull()
-  })
+    };
+    expect(mapSessionMessage(row, makeId)).toBeNull();
+  });
 
   it('maps a micro-only compaction marker without an "N → N messages" figure', () => {
     const row: SessionLoadMessage = {
-      role: 'system',
-      content: '[Compaction]',
+      role: "system",
+      content: "[Compaction]",
       timestamp: 2500,
-      markerKind: 'compaction',
+      markerKind: "compaction",
       markerMessagesBefore: 20,
       markerMessagesAfter: 20,
       markerClearedBlocks: 5,
-      markerStrategy: 'micro',
+      markerStrategy: "micro",
       markerMicroOnly: true,
-    }
-    const msg = mapSessionMessage(row, makeId)
-    expect(msg).not.toBeNull()
-    expect(msg!.content).not.toContain('→')
-    expect(msg!.content).toContain('5 blocks cleared')
-  })
+    };
+    const msg = mapSessionMessage(row, makeId);
+    expect(msg).not.toBeNull();
+    expect(msg!.content).not.toContain("→");
+    expect(msg!.content).toContain("5 blocks cleared");
+  });
 
-  it('maps a created plan marker to a system Message carrying planFilePath', () => {
+  it("maps a created plan marker to a system Message carrying planFilePath", () => {
     const row: SessionLoadMessage = {
-      role: 'system',
-      content: '──',
+      role: "system",
+      content: "──",
       timestamp: 3000,
-      markerKind: 'plan',
-      markerPlanOperation: 'created',
-      markerPlanFilePath: '/test/plan.md',
-      markerPlanSlug: 'plan',
-    }
-    const msg = mapSessionMessage(row, makeId)
-    expect(msg).not.toBeNull()
-    expect(msg!.role).toBe('system')
-    expect(msg!.planFilePath).toBe('/test/plan.md')
-    expect(msg!.content).toContain('Plan created')
-    expect(msg!.content).toContain('plan')
-  })
+      markerKind: "plan",
+      markerPlanOperation: "created",
+      markerPlanFilePath: "/test/plan.md",
+      markerPlanSlug: "plan",
+    };
+    const msg = mapSessionMessage(row, makeId);
+    expect(msg).not.toBeNull();
+    expect(msg!.role).toBe("system");
+    expect(msg!.planFilePath).toBe("/test/plan.md");
+    expect(msg!.content).toContain("Plan created");
+    expect(msg!.content).toContain("plan");
+  });
 
   it('maps an updated plan marker to the "Plan updated" divider', () => {
     const row: SessionLoadMessage = {
-      role: 'system',
-      content: '──',
+      role: "system",
+      content: "──",
       timestamp: 3500,
-      markerKind: 'plan',
-      markerPlanOperation: 'updated',
-      markerPlanFilePath: '/test/other.md',
-      markerPlanSlug: 'other',
-    }
-    const msg = mapSessionMessage(row, makeId)
-    expect(msg).not.toBeNull()
-    expect(msg!.content).toContain('Plan updated')
-    expect(msg!.planFilePath).toBe('/test/other.md')
-  })
+      markerKind: "plan",
+      markerPlanOperation: "updated",
+      markerPlanFilePath: "/test/other.md",
+      markerPlanSlug: "other",
+    };
+    const msg = mapSessionMessage(row, makeId);
+    expect(msg).not.toBeNull();
+    expect(msg!.content).toContain("Plan updated");
+    expect(msg!.planFilePath).toBe("/test/other.md");
+  });
 
-  it('maps a steer marker to a system Message with steer content', () => {
+  it("maps a steer marker to a system Message with steer content", () => {
     const row: SessionLoadMessage = {
-      role: 'system',
-      content: '──',
+      role: "system",
+      content: "──",
       timestamp: 4000,
-      markerKind: 'steer',
+      markerKind: "steer",
       markerMessageLength: 42,
-    }
-    const msg = mapSessionMessage(row, makeId)
-    expect(msg).not.toBeNull()
-    expect(msg!.role).toBe('system')
-    expect(msg!.content).toContain('Steer applied')
-    expect(msg!.content).toContain('42 chars')
-  })
+    };
+    const msg = mapSessionMessage(row, makeId);
+    expect(msg).not.toBeNull();
+    expect(msg!.role).toBe("system");
+    expect(msg!.content).toContain("Steer applied");
+    expect(msg!.content).toContain("42 chars");
+  });
 
-  it('maps a clear marker to a system Message with isClearDivider content', () => {
+  it("maps a clear marker to a system Message with isClearDivider content", () => {
     const row: SessionLoadMessage = {
-      role: 'system',
-      content: '──',
+      role: "system",
+      content: "──",
       timestamp: 4500,
-      markerKind: 'clear',
-    }
-    const msg = mapSessionMessage(row, makeId)
-    expect(msg).not.toBeNull()
-    expect(msg!.role).toBe('system')
+      markerKind: "clear",
+    };
+    const msg = mapSessionMessage(row, makeId);
+    expect(msg).not.toBeNull();
+    expect(msg!.role).toBe("system");
     // The formatted content must satisfy isClearDivider so every consumer that
     // gates on the sentinel (pending-card.ts, SystemMessage.tsx, etc.) fires.
-    expect(isClearDivider(msg!.content)).toBe(true)
-    expect(msg!.timestamp).toBe(4500)
-  })
-})
+    expect(isClearDivider(msg!.content)).toBe(true);
+    expect(msg!.timestamp).toBe(4500);
+  });
+});
 
-describe('mapSessionMessage — ordinary rows', () => {
-  it('maps a plain assistant message with content and timestamp', () => {
-    const row: SessionLoadMessage = { role: 'assistant', content: 'hello', timestamp: 5000 }
-    const msg = mapSessionMessage(row, makeId)
-    expect(msg).not.toBeNull()
-    expect(msg!.role).toBe('assistant')
-    expect(msg!.content).toBe('hello')
-    expect(msg!.planFilePath).toBeUndefined()
-  })
-
-  it('carries tool + slash provenance and marks completed tool rows', () => {
+describe("mapSessionMessage — ordinary rows", () => {
+  it("maps a plain assistant message with content and timestamp", () => {
     const row: SessionLoadMessage = {
-      role: 'tool',
-      content: 'result',
+      role: "assistant",
+      content: "hello",
+      timestamp: 5000,
+    };
+    const msg = mapSessionMessage(row, makeId);
+    expect(msg).not.toBeNull();
+    expect(msg!.role).toBe("assistant");
+    expect(msg!.content).toBe("hello");
+    expect(msg!.planFilePath).toBeUndefined();
+  });
+
+  it("carries tool + slash provenance and marks completed tool rows", () => {
+    const row: SessionLoadMessage = {
+      role: "tool",
+      content: "result",
       timestamp: 6000,
-      toolName: 'Read',
-      toolId: 'tool-1',
+      toolName: "Read",
+      toolId: "tool-1",
       toolInput: '{"file_path":"/a"}',
-      slashCommand: 'read',
-      slashArgs: '/a',
-      slashSource: 'ion',
-    }
-    const msg = mapSessionMessage(row, makeId)!
-    expect(msg.toolName).toBe('Read')
-    expect(msg.toolStatus).toBe('completed')
-    expect(msg.slashCommand).toBe('read')
-    expect(msg.slashSource).toBe('ion')
-  })
+      slashCommand: "read",
+      slashArgs: "/a",
+      slashSource: "ion",
+    };
+    const msg = mapSessionMessage(row, makeId)!;
+    expect(msg.toolName).toBe("Read");
+    expect(msg.toolStatus).toBe("completed");
+    expect(msg.slashCommand).toBe("read");
+    expect(msg.slashSource).toBe("ion");
+  });
 
-  it('carries slash model provenance through history mapping', () => {
+  it("carries slash model provenance through history mapping", () => {
     const row: SessionLoadMessage = {
-      role: 'user',
-      content: '/align',
+      role: "user",
+      content: "/align",
       timestamp: 6001,
-      slashCommand: '/align',
-      slashModelAlias: 'standard',
-      slashModelEffective: 'dci-marketing/gpt-5.6-terra',
-    }
+      slashCommand: "/align",
+      slashModelAlias: "standard",
+      slashModelEffective: "dci-marketing/gpt-5.6-terra",
+    };
 
-    const msg = mapSessionMessage(row, makeId)!
-    expect(msg.slashModelAlias).toBe('standard')
-    expect(msg.slashModelEffective).toBe('dci-marketing/gpt-5.6-terra')
-  })
+    const msg = mapSessionMessage(row, makeId)!;
+    expect(msg.slashModelAlias).toBe("standard");
+    expect(msg.slashModelEffective).toBe("dci-marketing/gpt-5.6-terra");
+  });
 
-  it('carries engine-replayed image attachments on a reloaded tool row', () => {
+  it("carries engine-replayed image attachments on a reloaded tool row", () => {
     // The engine's flattenEntries replays a persisted tool-result image as a
     // SessionMessage.Attachments entry on the owning tool row (image support,
     // historical reload path). The mapper must forward attachments verbatim so
@@ -197,129 +204,340 @@ describe('mapSessionMessage — ordinary rows', () => {
     // as the live image_content event path does. Without the forward, reloaded
     // engine-generated tool images are lost.
     const row: SessionLoadMessage = {
-      role: 'tool',
-      content: '[Image: screenshot]',
+      role: "tool",
+      content: "[Image: screenshot]",
       timestamp: 7000,
-      toolName: 'Screenshot',
-      toolId: 'tool-shot',
+      toolName: "Screenshot",
+      toolId: "tool-shot",
       attachments: [
         {
-          id: 'img:/home/u/.ion/conversations/c/images/abc.png',
-          type: 'image',
-          name: 'abc.png',
-          path: '/home/u/.ion/conversations/c/images/abc.png',
-          mimeType: 'image/png',
+          id: "img:/home/u/.ion/conversations/c/images/abc.png",
+          type: "image",
+          name: "abc.png",
+          path: "/home/u/.ion/conversations/c/images/abc.png",
+          mimeType: "image/png",
         },
       ],
-    }
-    const msg = mapSessionMessage(row, makeId)!
-    expect(msg.attachments).toHaveLength(1)
-    expect(msg.attachments![0].type).toBe('image')
-    expect(msg.attachments![0].path).toBe('/home/u/.ion/conversations/c/images/abc.png')
-  })
-})
+    };
+    const msg = mapSessionMessage(row, makeId)!;
+    expect(msg.attachments).toHaveLength(1);
+    expect(msg.attachments![0].type).toBe("image");
+    expect(msg.attachments![0].path).toBe(
+      "/home/u/.ion/conversations/c/images/abc.png",
+    );
+  });
+});
 
-describe('mapSessionHistory', () => {
-  it('filters internal rows and dropped no-op compactions, preserving order', () => {
+describe("mapSessionHistory", () => {
+  it("filters internal rows and dropped no-op compactions, preserving order", () => {
     const history: SessionLoadMessage[] = [
-      { role: 'user', content: 'q', timestamp: 1 },
-      { role: 'assistant', content: 'a', timestamp: 2, internal: true },
+      { role: "user", content: "q", timestamp: 1 },
+      { role: "assistant", content: "a", timestamp: 2, internal: true },
       // no-op compaction → dropped
-      { role: 'system', content: '[Compaction]', timestamp: 3, markerKind: 'compaction' },
       {
-        role: 'system', content: '──', timestamp: 4, markerKind: 'plan',
-        markerPlanOperation: 'created', markerPlanFilePath: '/p.md', markerPlanSlug: 'p',
+        role: "system",
+        content: "[Compaction]",
+        timestamp: 3,
+        markerKind: "compaction",
       },
-      { role: 'assistant', content: 'done', timestamp: 5 },
-    ]
-    const out = mapSessionHistory(history, makeId)
-    expect(out.map((m) => m.role)).toEqual(['user', 'system', 'assistant'])
-    expect(out[1].planFilePath).toBe('/p.md')
-  })
+      {
+        role: "system",
+        content: "──",
+        timestamp: 4,
+        markerKind: "plan",
+        markerPlanOperation: "created",
+        markerPlanFilePath: "/p.md",
+        markerPlanSlug: "p",
+      },
+      { role: "assistant", content: "done", timestamp: 5 },
+    ];
+    const out = mapSessionHistory(history, makeId);
+    expect(out.map((m) => m.role)).toEqual(["user", "system", "assistant"]);
+    expect(out[1].planFilePath).toBe("/p.md");
+  });
 
-  it('drops agent_completion injection rows — desktop rendering opinion', () => {
+  it("drops agent_completion injection rows — desktop rendering opinion", () => {
     // The engine persists dispatch completion deliveries with injectionKind:
     // "agent_completion". The desktop treats these as machine-to-machine signals
     // that the user should not see in conversation scrollback.
     const history: SessionLoadMessage[] = [
-      { role: 'user', content: 'start task', timestamp: 1 },
+      { role: "user", content: "start task", timestamp: 1 },
       {
-        role: 'user',
-        content: '[Agent Dev Lead completed in 12s]\n\nHere is the output.',
+        role: "user",
+        content: "[Agent Dev Lead completed in 12s]\n\nHere is the output.",
         timestamp: 2,
-        injectionKind: 'agent_completion',
+        injectionKind: "agent_completion",
       },
-      { role: 'assistant', content: 'Great, here is my response.', timestamp: 3 },
-    ]
-    const out = mapSessionHistory(history, makeId)
+      {
+        role: "assistant",
+        content: "Great, here is my response.",
+        timestamp: 3,
+      },
+    ];
+    const out = mapSessionHistory(history, makeId);
     // The agent_completion row must be absent; ordinary rows survive.
-    expect(out).toHaveLength(2)
-    expect(out[0].role).toBe('user')
-    expect(out[0].content).toBe('start task')
-    expect(out[1].role).toBe('assistant')
-  })
+    expect(out).toHaveLength(2);
+    expect(out[0].role).toBe("user");
+    expect(out[0].content).toBe("start task");
+    expect(out[1].role).toBe("assistant");
+  });
 
-  it('drops background_task_completion injection rows — must match the live filter', () => {
+  it("drops background_task_completion injection rows — must match the live filter", () => {
     // The wake payload PERSISTS to the conversation file with its kind, so a
     // filter that suppressed it live but not on reload would make the raw
     // command output reappear in the transcript on every rehydrate — and the
     // transcript would change shape between the live session and a reload.
     const history: SessionLoadMessage[] = [
-      { role: 'user', content: 'run the build in the background', timestamp: 1 },
       {
-        role: 'user',
-        content: 'Background command bash-1 (failed).\nExit code: 7\nRecent output:\nboom',
-        timestamp: 2,
-        injectionKind: 'background_task_completion',
+        role: "user",
+        content: "run the build in the background",
+        timestamp: 1,
       },
-      { role: 'assistant', content: 'The build failed with exit 7.', timestamp: 3 },
-    ]
-    const out = mapSessionHistory(history, makeId)
-    expect(out).toHaveLength(2)
-    expect(out[0].content).toBe('run the build in the background')
-    expect(out[1].role).toBe('assistant')
-  })
+      {
+        role: "user",
+        content:
+          "Background command bash-1 (failed).\nExit code: 7\nRecent output:\nboom",
+        timestamp: 2,
+        injectionKind: "background_task_completion",
+      },
+      {
+        role: "assistant",
+        content: "The build failed with exit 7.",
+        timestamp: 3,
+      },
+    ];
+    const out = mapSessionHistory(history, makeId);
+    expect(out).toHaveLength(2);
+    expect(out[0].content).toBe("run the build in the background");
+    expect(out[1].role).toBe("assistant");
+  });
 
-  it('passes through injection rows with empty or absent injectionKind', () => {
+  it("passes through injection rows with empty or absent injectionKind", () => {
     // An ordinary extension-initiated prompt (not a dispatch callback) has
     // injectionKind="" or omitted — those must render normally.
     const history: SessionLoadMessage[] = [
-      { role: 'user', content: 'check in from extension', timestamp: 1, injectionKind: '' },
-      { role: 'user', content: 'ordinary turn', timestamp: 2 },
-    ]
-    const out = mapSessionHistory(history, makeId)
-    expect(out).toHaveLength(2)
-  })
-})
+      {
+        role: "user",
+        content: "check in from extension",
+        timestamp: 1,
+        injectionKind: "",
+      },
+      { role: "user", content: "ordinary turn", timestamp: 2 },
+    ];
+    const out = mapSessionHistory(history, makeId);
+    expect(out).toHaveLength(2);
+  });
+});
 
-describe('mapSessionHistory — degraded-steer and slash-command reload parity', () => {
-  const makeId = () => 'gen-id'
+describe("mapSessionHistory — background work fold", () => {
+  it("folds background work items onto matching tool rows by backgroundTaskId", () => {
+    const history: SessionLoadMessage[] = [
+      { role: "user", content: "run tests", timestamp: 1 },
+      {
+        role: "tool",
+        content: "task started",
+        timestamp: 2,
+        toolName: "Bash",
+        toolId: "tool-1",
+        backgroundTaskId: "bg-task-1",
+      },
+      { role: "assistant", content: "running in background", timestamp: 3 },
+      {
+        role: "system",
+        content: "Background work delivered",
+        timestamp: 4,
+        backgroundWork: {
+          kind: "background_bash",
+          deliveryMode: "immediate",
+          items: [
+            {
+              id: "bg-task-1",
+              source: "bash",
+              status: "completed",
+              exitCode: 0,
+            },
+          ],
+        },
+      },
+    ];
+    const out = mapSessionHistory(history, makeId);
+    expect(out).toHaveLength(3);
+    expect(out.map((m) => m.role)).toEqual(["user", "tool", "assistant"]);
+    const toolRow = out[1];
+    expect(toolRow.toolStatus).toBe("completed");
+    expect(toolRow.backgroundWork).toBeDefined();
+    expect(toolRow.backgroundWork!.items).toHaveLength(1);
+    expect(toolRow.backgroundWork!.items[0].id).toBe("bg-task-1");
+  });
+
+  it("drops unmatched background completions — no standalone transcript row", () => {
+    const history: SessionLoadMessage[] = [
+      { role: "user", content: "hello", timestamp: 1 },
+      {
+        role: "system",
+        content: "Orphan delivery",
+        timestamp: 2,
+        backgroundWork: {
+          kind: "background_bash",
+          deliveryMode: "immediate",
+          items: [
+            {
+              id: "bg-orphan",
+              source: "bash",
+              status: "completed",
+              exitCode: 0,
+            },
+          ],
+        },
+      },
+    ];
+    const out = mapSessionHistory(history, makeId);
+    expect(out).toHaveLength(1);
+    expect(out[0].role).toBe("user");
+  });
+
+  it("marks tool row as error when delivered item has error status", () => {
+    const history: SessionLoadMessage[] = [
+      {
+        role: "tool",
+        content: "task started",
+        timestamp: 1,
+        toolName: "Bash",
+        toolId: "tool-err",
+        backgroundTaskId: "bg-err",
+      },
+      {
+        role: "system",
+        content: "delivered",
+        timestamp: 2,
+        backgroundWork: {
+          kind: "background_bash",
+          deliveryMode: "immediate",
+          items: [
+            { id: "bg-err", source: "bash", status: "error", exitCode: 1 },
+          ],
+        },
+      },
+    ];
+    const out = mapSessionHistory(history, makeId);
+    expect(out).toHaveLength(1);
+    expect(out[0].toolStatus).toBe("error");
+  });
+
+  it("maps non-completed statuses (failed/stopped/recalled) to error", () => {
+    for (const status of ["failed", "stopped", "recalled"]) {
+      const history: SessionLoadMessage[] = [
+        {
+          role: "tool",
+          content: "task started",
+          timestamp: 1,
+          toolName: "Bash",
+          toolId: `tool-${status}`,
+          backgroundTaskId: `bg-${status}`,
+        },
+        {
+          role: "system",
+          content: "delivered",
+          timestamp: 2,
+          backgroundWork: {
+            kind: "background_bash",
+            deliveryMode: "immediate",
+            items: [
+              { id: `bg-${status}`, source: "bash", status, exitCode: 1 },
+            ],
+          },
+        },
+      ];
+      const out = mapSessionHistory(history, makeId);
+      expect(out).toHaveLength(1);
+      expect(out[0].toolStatus).toBe("error");
+    }
+  });
+
+  it("does not fragment tool groups when fold matches", () => {
+    const history: SessionLoadMessage[] = [
+      {
+        role: "tool",
+        content: "a",
+        timestamp: 1,
+        toolName: "Read",
+        toolId: "t1",
+      },
+      {
+        role: "tool",
+        content: "b",
+        timestamp: 2,
+        toolName: "Bash",
+        toolId: "t2",
+        backgroundTaskId: "bg-1",
+      },
+      {
+        role: "tool",
+        content: "c",
+        timestamp: 3,
+        toolName: "Write",
+        toolId: "t3",
+      },
+      {
+        role: "system",
+        content: "delivered",
+        timestamp: 4,
+        backgroundWork: {
+          kind: "background_bash",
+          deliveryMode: "immediate",
+          items: [
+            { id: "bg-1", source: "bash", status: "completed", exitCode: 0 },
+          ],
+        },
+      },
+    ];
+    const out = mapSessionHistory(history, makeId);
+    expect(out).toHaveLength(3);
+    expect(out.map((m) => m.role)).toEqual(["tool", "tool", "tool"]);
+    expect(out[1].backgroundWork).toBeDefined();
+    expect(out[0].backgroundWork).toBeUndefined();
+    expect(out[2].backgroundWork).toBeUndefined();
+  });
+});
+
+describe("mapSessionHistory — degraded-steer and slash-command reload parity", () => {
+  const makeId = () => "gen-id";
 
   // A degraded ctx.steerSelf delivery persists TWO rows: the classified turn
   // and a steer marker beside it. The turn is suppressed by its kind like any
   // machine turn; the marker becomes the divider. Net result matches the live
   // path exactly — one divider, zero user bubbles — which is what stops the
   // transcript changing shape when history rehydrates.
-  it('renders a degraded self-steer as a divider only, matching the live filter', () => {
+  it("renders a degraded self-steer as a divider only, matching the live filter", () => {
     const history: SessionLoadMessage[] = [
-      { role: 'user', content: 'kick off the work', timestamp: 1 },
+      { role: "user", content: "kick off the work", timestamp: 1 },
       {
-        role: 'user',
-        content: '[SYSTEM] Dispatch check-in\n\nYou have been idle.',
+        role: "user",
+        content: "[SYSTEM] Dispatch check-in\n\nYou have been idle.",
         timestamp: 2,
-        injectionKind: 'checkin',
+        injectionKind: "checkin",
         machineAuthored: true,
       },
-      { role: 'system', content: '──', timestamp: 3, markerKind: 'steer', markerMessageLength: 42 },
-      { role: 'assistant', content: 'checking dispatches', timestamp: 4 },
-    ]
+      {
+        role: "system",
+        content: "──",
+        timestamp: 3,
+        markerKind: "steer",
+        markerMessageLength: 42,
+      },
+      { role: "assistant", content: "checking dispatches", timestamp: 4 },
+    ];
 
-    const out = mapSessionHistory(history, makeId)
+    const out = mapSessionHistory(history, makeId);
 
-    expect(out.filter((m) => m.role === 'user' && m.content.includes('Dispatch check-in'))).toHaveLength(0)
-    expect(out.map((m) => m.role)).toEqual(['user', 'system', 'assistant'])
-    expect(isSteerAppliedDivider(out[1].content)).toBe(true)
-  })
+    expect(
+      out.filter(
+        (m) => m.role === "user" && m.content.includes("Dispatch check-in"),
+      ),
+    ).toHaveLength(0);
+    expect(out.map((m) => m.role)).toEqual(["user", "system", "assistant"]);
+    expect(isSteerAppliedDivider(out[1].content)).toBe(true);
+  });
 
   // Guard against a filter that looks obviously right and is actively wrong.
   // The engine never persists a slash command's EXPANDED body: it writes the
@@ -327,24 +545,24 @@ describe('mapSessionHistory — degraded-steer and slash-command reload parity',
   // the expansion only to the .llm.jsonl. So the reloaded row IS the pill, and
   // suppressing it here would delete the user's command from the transcript on
   // every rehydrate.
-  it('keeps the slash-command pill on reload (the expansion body is never persisted)', () => {
+  it("keeps the slash-command pill on reload (the expansion body is never persisted)", () => {
     const history: SessionLoadMessage[] = [
       {
-        role: 'user',
-        content: '/align now',
+        role: "user",
+        content: "/align now",
         timestamp: 1,
-        slashCommand: '/align',
-        slashArgs: 'now',
-        slashSource: 'extension',
+        slashCommand: "/align",
+        slashArgs: "now",
+        slashSource: "extension",
       },
-      { role: 'assistant', content: 'aligning', timestamp: 2 },
-    ]
+      { role: "assistant", content: "aligning", timestamp: 2 },
+    ];
 
-    const out = mapSessionHistory(history, makeId)
+    const out = mapSessionHistory(history, makeId);
 
-    expect(out).toHaveLength(2)
-    expect(out[0].role).toBe('user')
-    expect(out[0].content).toBe('/align now')
-    expect(out[0].slashCommand).toBe('/align')
-  })
-})
+    expect(out).toHaveLength(2);
+    expect(out[0].role).toBe("user");
+    expect(out[0].content).toBe("/align now");
+    expect(out[0].slashCommand).toBe("/align");
+  });
+});

@@ -38,6 +38,11 @@ struct EngineInstanceBar: View {
         return nil
     }
 
+    static func backgroundShellLabel(for instance: ConversationInstanceInfo) -> String? {
+        guard let shells = instance.backgroundShellCount, shells > 0 else { return nil }
+        return "\(shells) shell\(shells == 1 ? "" : "s")"
+    }
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 2) {
@@ -118,15 +123,14 @@ struct EngineInstanceBar: View {
                 .font(.caption)
                 .lineLimit(1)
 
-            // Background-shell count. Shown only when the instance is not
-            // otherwise busy, so the bar reports the ONE thing the session is
-            // actually waiting on rather than stacking indicators.
-            if Self.statusIndicator(for: instance) == .shells,
-               let shells = instance.backgroundShellCount, shells > 0 {
-                Text("\(shells) shell\(shells == 1 ? "" : "s")")
+            // Background-shell count stays visible during a foreground run.
+            // The orange running dot remains the primary state, while this text
+            // makes the concurrent detached work explicit.
+            if let shellLabel = Self.backgroundShellLabel(for: instance) {
+                Text(shellLabel)
                     .font(.caption2)
                     .foregroundStyle(theme.statusBash)
-                    .accessibilityLabel("Waiting on \(shells) background shell\(shells == 1 ? "" : "s")")
+                    .accessibilityLabel("\(shellLabel) running in background")
             }
 
             // Model-fallback indicator.

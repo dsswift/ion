@@ -291,6 +291,7 @@ func buildSessionStatusMirror(key string, f *types.StatusFields, s *engineSessio
 			HasInflightRun:           hasInflight,
 			BackgroundAgentCount:     f.BackgroundAgents,
 			BackgroundShellCount:     f.BackgroundShells,
+			ActiveBackgroundTasks:    f.ActiveBackgroundTasks,
 			HasPendingWork:           f.HasPendingWork,
 			Model:                    f.Model,
 			ContextPercent:           f.ContextPercent,

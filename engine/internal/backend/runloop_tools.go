@@ -511,6 +511,7 @@ func (b *ApiBackend) executeTools(
 			failureEmitted := false
 
 			if tools.GetTool(block.Name) != nil {
+				toolCtx = tools.WithBackgroundToolID(toolCtx, block.ID)
 				toolResult, err = tools.ExecuteTool(toolCtx, block.Name, block.Input, cwd)
 			} else if mcpRouter != nil {
 				// mcpRouter does not yet take ctx; race its return against
@@ -754,9 +755,10 @@ func (b *ApiBackend) executeTools(
 
 			// Publish the finished result (see runloop_tool_result.go).
 			b.emitToolResult(run, block.ID, &toolResultPayload{
-				Content: results[i].Content,
-				IsError: results[i].IsError,
-				Images:  results[i].Images,
+				Content:          results[i].Content,
+				IsError:          results[i].IsError,
+				Images:           results[i].Images,
+				BackgroundTaskID: results[i].BackgroundTaskID,
 			})
 
 			return nil

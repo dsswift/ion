@@ -354,48 +354,40 @@ func (b *ApiBackend) SteerWithReason(requestID, message string) SteerResult {
 // Every branch logs (engine-grounding §7): the no-run rejection, the
 // channel-full rejection, and the successful buffer.
 func (b *ApiBackend) SteerWithKind(requestID, message, kind string) SteerResult {
-	return b.SteerWithClientID(requestID, message, kind, "")
+	return b.steer(requestID, steerMessage{text: message, kind: kind})
 }
 
-// SteerWithClientID is the correlation-id-carrying variant of SteerWithKind.
-//
-// clientMessageID is the caller-supplied identifier from a steer_agent
-// command's optional ClientMessageID field (protocol.ClientCommand). It rides
-// on the buffered steerMessage and is echoed back on the confirming
-// SteerInjectedEvent only when kind is empty (a genuine client-originated
-// steer) — a machine-to-machine injection never carries a client id to echo,
-// since ctx.steerSelf and dispatch-completion callers do not originate from a
-// steer_agent command. Empty clientMessageID (a client that omitted the
-// field, or any machine-originated call) preserves the pre-existing
-// length-only confirmation.
+// SteerWithBackgroundWork carries completion metadata with an internal steer.
+// It remains off RunBackend to avoid expanding that public interface.
+// SteerWithClientID preserves correlation ids for client-originated steers.
 func (b *ApiBackend) SteerWithClientID(requestID, message, kind, clientMessageID string) SteerResult {
+	return b.steer(requestID, steerMessage{text: message, kind: kind, clientMessageID: clientMessageID})
+}
+
+func (b *ApiBackend) SteerWithBackgroundWork(requestID, message, kind string, work types.BackgroundWorkInfo) SteerResult {
+	return b.steer(requestID, steerMessage{text: message, kind: kind, backgroundWork: &work})
+}
+
+func (b *ApiBackend) steer(requestID string, msg steerMessage) SteerResult {
+	kind := msg.kind
 	b.mu.Lock()
 	run, ok := b.activeRuns[requestID]
 	b.mu.Unlock()
 	if !ok {
 		utils.LogWithFields(utils.LevelWarn, "backend.runloop", "Steer rejected, no active run", map[string]any{
-			"run_id":            requestID,
-			"msg_len":           len(message),
-			"kind":              kind,
-			"client_message_id": clientMessageID,
+			"run_id": requestID, "msg_len": len(msg.text), "kind": kind,
 		})
 		return SteerResultNoRun
 	}
 	select {
-	case run.steerCh <- steerMessage{text: message, kind: kind, clientMessageID: clientMessageID}:
+	case run.steerCh <- msg:
 		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "Steer buffered on steer channel", map[string]any{
-			"run_id":            requestID,
-			"msg_len":           len(message),
-			"kind":              kind,
-			"client_message_id": clientMessageID,
+			"run_id": requestID, "msg_len": len(msg.text), "kind": kind,
 		})
 		return SteerResultDelivered
 	default:
 		utils.LogWithFields(utils.LevelWarn, "backend.runloop", "Steer rejected, channel full", map[string]any{
-			"run_id":            requestID,
-			"msg_len":           len(message),
-			"kind":              kind,
-			"client_message_id": clientMessageID,
+			"run_id": requestID, "msg_len": len(msg.text), "kind": kind,
 		})
 		return SteerResultChannelFull
 	}

@@ -70,12 +70,13 @@ type MessageData struct {
 	// "extension" | "ion" | "claude" | "skill" | "project". Display provenance
 	// only; lets a consumer label the pill by origin. Empty for ordinary prompts.
 	SlashSource string `json:"slashSource,omitempty"`
-	// SlashModelAlias is the command-owned model selector from slash frontmatter
-	// (`model:` key). Empty when no model selector was declared.
+	// SlashModelAlias is the model string from the slash command's frontmatter
+	// (`model:` key). Provenance only. Empty when no model hint was declared.
 	SlashModelAlias string `json:"slashModelAlias,omitempty"`
-	// SlashModelEffective is the concrete model selected to start this slash run
-	// after tier and provider resolution. It never reflects conversation picker
-	// state when SlashModelAlias is set.
+	// SlashModelEffective is the model the engine resolved for this run after
+	// applying tier resolution and documented precedence. It is provenance only;
+	// an explicit per-prompt model override wins over slash frontmatter. Empty
+	// when no model was resolved.
 	SlashModelEffective string `json:"slashModelEffective,omitempty"`
 
 	// DisplayOnly marks an entry that belongs in the tree/scrollback (so the
@@ -108,7 +109,12 @@ type MessageData struct {
 	// the same classification the live event carried, without needing to know
 	// the engine's kind taxonomy. Additive (omitempty): absent on legacy rows,
 	// where the kind remains available as the fallback.
-	MachineAuthored bool `json:"machineAuthored,omitempty"`
+	MachineAuthored  bool   `json:"machineAuthored,omitempty"`
+	BackgroundTaskID string `json:"backgroundTaskId,omitempty"`
+	// BackgroundWork describes a delivered completion represented by this
+	// machine-authored turn. Content remains the only copy of the exact model
+	// input; this metadata gives clients a stable, structured presentation.
+	BackgroundWork *types.BackgroundWorkInfo `json:"backgroundWork,omitempty"`
 }
 
 // CompactionData holds metadata about a compaction event. The enriched fields
@@ -293,4 +299,11 @@ type ContextUsageInfo struct {
 	Tokens    int  `json:"tokens"`
 	Limit     int  `json:"limit"`
 	Estimated bool `json:"estimated"`
+}
+
+// UpdateCost adds to the running cost total.
+func UpdateCost(conv *Conversation, costUsd float64) {
+	conv.lock()
+	defer conv.unlock()
+	conv.TotalCost += costUsd
 }

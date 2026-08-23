@@ -1,142 +1,154 @@
 package extcontext
 
-import "github.com/dsswift/ion/engine/internal/utils"
+import (
+	"fmt"
 
-// Recall cancels an active background dispatch by name and removes it
-// from the registry. When multiple dispatches share the same name, this
-// cancels the FIRST one found (non-deterministic). For targeted recall,
-// use RecallByID. Cascades: all descendant dispatches (children,
-// grandchildren, etc.) are also cancelled and deregistered. Returns true
-// if the named dispatch was found and cancelled.
-func (r *DispatchRegistry) Recall(name string, reason string) bool {
+	"github.com/dsswift/ion/engine/internal/utils"
+)
+
+// Recall retains the original name-addressed compatibility surface. When
+// several live dispatches share a name, it selects one registry entry as the
+// published API always did. New callers should use RecallByID for exact
+// instance control. Both paths share the same atomic teardown machinery.
+func (r *DispatchRegistry) Recall(name, reason string) bool {
 	r.mu.Lock()
-	var found *activeDispatch
-	var foundID string
-	for id, d := range r.dispatches {
-		if d.Name == name {
-			found = d
-			foundID = id
+	var id string
+	for candidateID, dispatch := range r.dispatches {
+		if dispatch.Name == name {
+			id = candidateID
 			break
 		}
 	}
-	if found == nil {
+	if id == "" {
 		r.mu.Unlock()
-		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recall: not found", map[string]any{"model": name, "reason": reason})
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recall: not found", map[string]any{"agent_name": name, "reason": reason})
 		return false
 	}
-
-	// Collect descendants before deleting anything.
-	var descIDs []string
-	var descDispatches []*activeDispatch
-	queue := []string{foundID}
-	for len(queue) > 0 {
-		cur := queue[0]
-		queue = queue[1:]
-		for id, d := range r.dispatches {
-			if d.ParentID == cur {
-				descIDs = append(descIDs, id)
-				descDispatches = append(descDispatches, d)
-				queue = append(queue, id)
-			}
-		}
-	}
-
-	delete(r.dispatches, foundID)
-	for _, id := range descIDs {
-		delete(r.dispatches, id)
-	}
-	observer := r.recallObserver
+	recall := r.takeRecallLocked(id)
 	r.mu.Unlock()
-
-	if observer != nil {
-		recalled := make([]RecalledDispatch, 0, len(descDispatches)+1)
-		recalled = append(recalled, RecalledDispatch{DispatchID: foundID, SessionID: found.SessionID, Name: found.Name})
-		for i, descendant := range descDispatches {
-			recalled = append(recalled, RecalledDispatch{DispatchID: descIDs[i], SessionID: descendant.SessionID, Name: descendant.Name})
-		}
-		observer(recalled)
+	if recall == nil {
+		return false
 	}
-
-	// Cancel descendants first (leaves before parent) for orderly teardown.
-	for i := len(descDispatches) - 1; i >= 0; i-- {
-		dd := descDispatches[i]
-		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recall: cascade cancelling descendant", map[string]any{"dispatch_id": descIDs[i], "model": dd.Name, "reason": reason})
-		if dd.Cancel != nil {
-			dd.Cancel()
-		}
-	}
-
-	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recall: cancelling", map[string]any{"dispatch_id": foundID, "agent_name": name, "session_id": found.SessionID, "reason": reason, "descendant_count": len(descDispatches), "registry_count": r.Count()})
-
-	if found.Cancel != nil {
-		found.Cancel()
-	} else {
-		utils.LogWithFields(utils.LevelError, "session.extcontext.dispatch_registry", "recall: has nil cancel func, dispatch leaked", map[string]any{"dispatch_id": foundID, "model": name})
-	}
-
+	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recall: selected name match", map[string]any{"agent_name": name, "dispatch_id": id, "reason": reason})
+	r.executeRecall(recall, reason)
 	return true
 }
 
-// RecallByID cancels a specific dispatch by its unique ID and removes it
-// from the registry. Cascades: all descendant dispatches are also
-// cancelled. Returns true if the dispatch was found and cancelled.
-func (r *DispatchRegistry) RecallByID(id string, reason string) bool {
+// RecallByID cancels one active dispatch by its collision-safe dispatch ID.
+// It also cancels every descendant leaves-first. This is the only destructive
+// dispatch address: agent names are not identities and cannot safely select a
+// concurrent dispatch instance.
+func (r *DispatchRegistry) RecallByID(id, reason string) bool {
 	r.mu.Lock()
-	d, exists := r.dispatches[id]
-	if !exists {
-		r.mu.Unlock()
+	recall := r.takeRecallLocked(id)
+	r.mu.Unlock()
+	if recall == nil {
 		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallbyid: not found", map[string]any{"dispatch_id": id, "reason": reason})
 		return false
 	}
+	r.executeRecall(recall, reason)
+	return true
+}
 
-	// Collect descendants before deleting anything.
-	var descIDs []string
-	var descDispatches []*activeDispatch
+// takeRecallLocked atomically removes target plus descendants and returns their
+// live handles for teardown. Caller holds r.mu. A nil return means target was
+// already terminal/deregistered.
+func (r *DispatchRegistry) takeRecallLocked(id string) *recallSet {
+	target, exists := r.dispatches[id]
+	if !exists {
+		return nil
+	}
+
+	var descendantIDs []string
+	var descendants []*activeDispatch
 	queue := []string{id}
 	for len(queue) > 0 {
-		cur := queue[0]
+		current := queue[0]
 		queue = queue[1:]
-		for did, dd := range r.dispatches {
-			if dd.ParentID == cur {
-				descIDs = append(descIDs, did)
-				descDispatches = append(descDispatches, dd)
-				queue = append(queue, did)
+		for childID, child := range r.dispatches {
+			if child.ParentID == current {
+				descendantIDs = append(descendantIDs, childID)
+				descendants = append(descendants, child)
+				queue = append(queue, childID)
 			}
 		}
 	}
 
 	delete(r.dispatches, id)
-	for _, did := range descIDs {
-		delete(r.dispatches, did)
+	for _, childID := range descendantIDs {
+		delete(r.dispatches, childID)
 	}
-	observer := r.recallObserver
-	r.mu.Unlock()
+	return &recallSet{
+		targetID: id, target: target,
+		descendantIDs: descendantIDs, descendants: descendants,
+		observer:  r.recallObserver,
+		remaining: len(r.dispatches),
+	}
+}
 
-	if observer != nil {
-		recalled := make([]RecalledDispatch, 0, len(descDispatches)+1)
-		recalled = append(recalled, RecalledDispatch{DispatchID: id, SessionID: d.SessionID, Name: d.Name})
-		for i, descendant := range descDispatches {
-			recalled = append(recalled, RecalledDispatch{DispatchID: descIDs[i], SessionID: descendant.SessionID, Name: descendant.Name})
+type recallSet struct {
+	targetID      string
+	target        *activeDispatch
+	descendantIDs []string
+	descendants   []*activeDispatch
+	observer      func([]RecalledDispatch)
+	remaining     int
+}
+
+// executeRecall invokes durable observer then cancellation outside the registry
+// lock. Cancellation is immediate: each dispatch context is cancelled during
+// this call, not queued behind a steer/tool checkpoint.
+func (r *DispatchRegistry) executeRecall(recall *recallSet, reason string) {
+	if recall.observer != nil {
+		recalled := make([]RecalledDispatch, 0, len(recall.descendants)+1)
+		recalled = append(recalled, RecalledDispatch{DispatchID: recall.targetID, SessionID: recall.target.SessionID, Name: recall.target.Name})
+		for index, descendant := range recall.descendants {
+			recalled = append(recalled, RecalledDispatch{DispatchID: recall.descendantIDs[index], SessionID: descendant.SessionID, Name: descendant.Name})
 		}
-		observer(recalled)
+		recall.observer(recalled)
 	}
 
-	// Cancel descendants first (leaves before parent).
-	for i := len(descDispatches) - 1; i >= 0; i-- {
-		dd := descDispatches[i]
-		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallbyid: cascade cancelling descendant", map[string]any{"dispatch_id": descIDs[i], "model": dd.Name, "reason": reason})
-		if dd.Cancel != nil {
-			dd.Cancel()
+	for index := len(recall.descendants) - 1; index >= 0; index-- {
+		descendant := recall.descendants[index]
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallbyid: cascade cancelling descendant", map[string]any{"dispatch_id": recall.descendantIDs[index], "model": descendant.Name, "reason": reason})
+		if descendant.Cancel != nil {
+			descendant.Cancel()
+		} else {
+			utils.LogWithFields(utils.LevelError, "session.extcontext.dispatch_registry", "recallbyid: descendant has nil cancel func", map[string]any{"dispatch_id": recall.descendantIDs[index], "model": descendant.Name})
 		}
 	}
 
-	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallbyid: cancelling", map[string]any{"dispatch_id": id, "agent_name": d.Name, "session_id": d.SessionID, "reason": reason, "descendant_count": len(descDispatches), "registry_count": r.Count()})
-
-	if d.Cancel != nil {
-		d.Cancel()
+	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallbyid: cancelling", map[string]any{"dispatch_id": recall.targetID, "agent_name": recall.target.Name, "session_id": recall.target.SessionID, "reason": reason, "descendant_count": len(recall.descendants), "registry_count": recall.remaining})
+	if recall.target.Cancel != nil {
+		recall.target.Cancel()
 	} else {
-		utils.LogWithFields(utils.LevelError, "session.extcontext.dispatch_registry", "recallbyid: has nil cancel func, dispatch leaked", map[string]any{"dispatch_id": id, "model": d.Name})
+		utils.LogWithFields(utils.LevelError, "session.extcontext.dispatch_registry", "recallbyid: has nil cancel func, dispatch leaked", map[string]any{"dispatch_id": recall.targetID, "model": recall.target.Name})
 	}
+}
 
-	return true
+// RecallOwnedByID recalls a strict descendant of ownerID. Empty ownerID is the
+// root context and owns every dispatch in its session. A child does not own
+// itself, ancestors, siblings, or another branch.
+func (r *DispatchRegistry) RecallOwnedByID(ownerID, targetID, reason string) (bool, error) {
+	r.mu.Lock()
+	owned, found := r.ownsDispatchLocked(ownerID, targetID)
+	if !found {
+		r.mu.Unlock()
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallownedbyid: target not found", map[string]any{"owner_dispatch_id": ownerID, "dispatch_id": targetID, "reason": reason})
+		return false, nil
+	}
+	if !owned {
+		r.mu.Unlock()
+		err := fmt.Errorf("dispatch %q is not a descendant owned by dispatch %q", targetID, ownerID)
+		utils.LogWithFields(utils.LevelWarn, "session.extcontext.dispatch_registry", "recallownedbyid: ownership denied", map[string]any{"owner_dispatch_id": ownerID, "dispatch_id": targetID, "reason": reason})
+		return false, err
+	}
+	recall := r.takeRecallLocked(targetID)
+	r.mu.Unlock()
+	if recall == nil {
+		return false, nil
+	}
+	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallownedbyid: ownership authorized", map[string]any{"owner_dispatch_id": ownerID, "dispatch_id": targetID, "reason": reason})
+	r.executeRecall(recall, reason)
+	return true, nil
 }

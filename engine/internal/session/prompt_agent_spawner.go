@@ -225,6 +225,7 @@ func (m *Manager) buildRootAgentSpawner(s *engineSession, key string, parentMode
 			return "", nil
 		}
 		if !waitForCompletion {
+			tools.SetDispatchID(ctx, result.DispatchID)
 			return fmt.Sprintf("Agent dispatched asynchronously. Dispatch ID: %s. Continue working or end your turn; the engine will deliver this agent's terminal result automatically.", result.DispatchID), nil
 		}
 		utils.LogWithFields(utils.LevelDebug, "session", "agent spawner returning", map[string]any{"model": agentName, "exit_code": result.ExitCode, "count": len(result.Output), "input_tokens": result.InputTokens, "output_tokens": result.OutputTokens})

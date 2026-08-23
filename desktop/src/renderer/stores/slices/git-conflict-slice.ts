@@ -23,7 +23,7 @@
  * truth stays visible until the conflict is actually resolved.
  *
  * ── AI Assisted ─────────────────────────────────────────────────────────────
- * `openConflictAssist` is ONE store action (Studio multi-step rule): create a
+ * `openConflictAssist` is ONE store action (ATV multi-step rule): create a
  * FRESH conversation in the conflicted directory, then submit the fixed
  * prompt. Always a new tab — commandeering an existing conversation would
  * interrupt it and let its context sway the fix. A component handler chaining
@@ -125,12 +125,6 @@ function conflictTemplateValues(
 /** Back-compat name for the default (rebase) prompt. */
 export const CONFLICT_ASSIST_PROMPT = conflictAssistPrompt(null);
 
-function refreshConflictWorkspace(directory: string, get: StoreGet): Promise<void> {
-  const repoPath = [...get().worktreeInventory.entries()]
-    .find(([, worktrees]) => worktrees.some((worktree) => worktree.worktreePath === directory))?.[0]
-  return repoPath ? get().refreshWorkspaceViews(repoPath) : Promise.resolve()
-}
-
 export function createGitConflictSlice(
   set: StoreSet,
   get: StoreGet,
@@ -196,30 +190,6 @@ export function createGitConflictSlice(
       });
     },
 
-    continueConflictOperation: async (directory) => {
-      const result = await window.ion.gitRebaseContinue(directory)
-      if (!result.ok) {
-        rWarn('git.conflicts', 'continue failed', { directory, error: result.error ?? '' })
-        return { ok: false, error: result.error }
-      }
-      get().clearConflictAlert(directory)
-      await refreshConflictWorkspace(directory, get)
-      rInfo('git.conflicts', 'continue completed', { directory })
-      return { ok: true }
-    },
-
-    abortConflictOperation: async (directory) => {
-      const result = await window.ion.gitRebaseAbort(directory)
-      if (!result.ok) {
-        rWarn('git.conflicts', 'abort failed', { directory, error: result.error ?? '' })
-        return { ok: false, error: result.error }
-      }
-      get().clearConflictAlert(directory)
-      await refreshConflictWorkspace(directory, get)
-      rInfo('git.conflicts', 'abort completed', { directory })
-      return { ok: true }
-    },
-
     /**
      * AI Assisted resolution: a FRESH conversation in the conflicted
      * directory with the fixed prompt.
@@ -233,9 +203,6 @@ export function createGitConflictSlice(
      * development conversation stays untouched.
      */
     openConflictAssist: async (directory) => {
-      // Dedup guarantee 1: an existing conflict-auto-fix tab for this
-      // directory is surfaced, never duplicated (a second fix conversation
-      // would race the first over the same checkout).
       const existing = findActiveAutoFix(get().tabs, directory);
       if (existing) {
         rInfo("git.conflicts", "assist: reusing existing auto-fix tab", {
@@ -245,137 +212,155 @@ export function createGitConflictSlice(
         get().selectTab(existing);
         return existing;
       }
-      // Dedup guarantee 2: concurrent calls for the same directory share one
-      // promise — the tab exists before its `conflict-auto-fix` tag lands,
-      // so guarantee 1 alone cannot cover the in-flight window.
-      const inflight = getInflight(directory);
-      if (inflight) {
-        rDebug("git.conflicts", "assist: joining in-flight open", { directory });
-        return inflight;
-      }
-      const run = (async (): Promise<string> => {
-      const tier = await resolveWorkbenchTier({
-        workflow: "conflict-resolution",
-        directory,
-      });
-      if (!tier.ok) throw new Error(tier.error);
 
-      rInfo(
-        "git.conflicts",
-        "assist: opening fresh conversation in conflicted directory",
-        {
-          directory,
-          tier: tier.tier,
-          model: tier.model,
-        },
-      );
-
-      // Name the operation actually in progress — a bench resolve-once leaves
-      // a MERGE, a conflicted sync leaves a rebase — so the model is not told
-      // to fix an operation that does not exist. Probe failure falls back to
-      // the rebase wording rather than blocking the assist.
-      let operation: "rebasing" | "merging" | "cherry-picking" | null = null;
-      try {
-        const op = await window.ion.gitOpState(directory);
-        if (op.ok) operation = op.state ?? null;
-      } catch (err) {
-        rWarn(
+      const pending = getInflight(directory);
+      if (pending) {
+        rDebug(
           "git.conflicts",
-          "assist could not probe operation state, defaulting to rebase wording",
+          "assist: awaiting in-flight creation for directory",
           {
             directory,
-            error: String(err),
           },
         );
+        return pending;
       }
 
-      const inBench = [...get().benchWorkspaces.values()].some((list) =>
-        list.some((workspace) => workspace.benchPath === directory),
-      );
-      const workflowId = conflictWorkflowId(operation);
-      const { template, overridden } = effectiveAiAssistTemplate(
-        workflowId,
-        usePreferencesStore.getState().aiAssistPromptOverrides,
-      );
-      const rendered = renderAiAssistTemplate(
-        workflowId,
-        template,
-        conflictTemplateValues(directory, inBench),
-      );
-      if (!rendered.ok) {
-        rWarn("git.conflicts", "assist prompt validation failed", {
-          directory,
-          workflow: workflowId,
-          overridden,
-          error: rendered.error,
-        });
-        throw new Error(
-          `AI-assisted workflow prompt is invalid: ${rendered.error}`,
-        );
-      }
-      rInfo("git.conflicts", "assist prompt rendered", {
-        directory,
-        workflow: workflowId,
-        overridden,
-      });
-
-      // useWorktree=false: the directory IS the checkout to fix; a nested
-      // worktree would point the conversation somewhere else entirely.
-      // skipDuplicateCheck=true: a blank tab reuse is fine, but an existing
-      // NON-blank conversation must never be commandeered — and the duplicate
-      // check's blank-reuse path is only safe because a blank tab has no
-      // context to sway the fix. Skipping keeps the guarantee unconditional.
-      const tabId = await get().createTabInDirectory(directory, false, true);
-
-      // Select the workflow tier on the fresh conversation. Automatic model
-      // selection yields to slash-command frontmatter on any later command.
-      get().setTabAutomaticModel(tabId, tier.model);
-
-      // Force auto mode regardless of the operator's default. The assist's
-      // whole job is to EXECUTE the fix; a plan-mode default would park it
-      // writing a plan for work that was already requested verbatim.
-      applyPermissionModeForTab(set, get, tabId, "auto", "conflict_assist");
-
-      // Tag role + lock BEFORE the machine prompt goes in: the auto-fix
-      // lifecycle (event-slice-auto-fix-lifecycle.ts) keys its close/retain
-      // decision on `tabRole === 'conflict-auto-fix'`, and a fast completion
-      // could otherwise race ahead of the tagging and be missed. The lock is
-      // part of the same atomic set: this tab's entire instruction set is the
-      // one prompt below. A follow-up message would graft an open-ended
-      // conversation onto a checkout that exists to be fixed — often an
-      // integration bench, where development conversations do not belong (the
-      // work belongs in the member worktree that owns the file). The
-      // conversation stays readable and abortable; submit() and the InputBar
-      // both honor the flag, and role + lock persist across restarts.
-      set((s) => ({
-        tabs: s.tabs.map((t) =>
-          t.id === tabId
-            ? { ...t, tabRole: "conflict-auto-fix" as const, inputLocked: true }
-            : t,
-        ),
-      }));
-
-      const prompt = rendered.prompt;
-      // 'machine' source: the one submission allowed through the lock this
-      // flow just installed (see send-slice submit guard).
-      get().submit(tabId, prompt, { source: "machine" });
-
-      rInfo("git.conflicts", "assist prompt submitted", {
-        directory,
-        tab_id: tabId.slice(0, 8),
-        model: tier.model,
-        operation: operation ?? "unknown",
-        in_bench: inBench,
-        input_locked: true,
-      });
-      return tabId;
+      const creation = (async () => {
+        try {
+          return await openConflictAssistInner(directory, set, get);
+        } finally {
+          clearInflight(directory);
+        }
       })();
-      setInflight(directory, run);
-      try {
-        return await run;
-      } finally {
-        clearInflight(directory);
-      }
+      setInflight(directory, creation);
+      return creation;
     },
   };
+}
+
+async function openConflictAssistInner(
+  directory: string,
+  set: StoreSet,
+  get: StoreGet,
+): Promise<string> {
+  const tier = await resolveWorkbenchTier({
+    workflow: "conflict-resolution",
+    directory,
+  });
+  if (!tier.ok) throw new Error(tier.error);
+
+  rInfo(
+    "git.conflicts",
+    "assist: opening fresh conversation in conflicted directory",
+    {
+      directory,
+      tier: tier.tier,
+      model: tier.model,
+    },
+  );
+
+  // Name the operation actually in progress — a bench resolve-once leaves
+  // a MERGE, a conflicted sync leaves a rebase — so the model is not told
+  // to fix an operation that does not exist. Probe failure falls back to
+  // the rebase wording rather than blocking the assist.
+  let operation: "rebasing" | "merging" | "cherry-picking" | null = null;
+  try {
+    const op = await window.ion.gitOpState(directory);
+    if (op.ok) operation = op.state ?? null;
+  } catch (err) {
+    rWarn(
+      "git.conflicts",
+      "assist could not probe operation state, defaulting to rebase wording",
+      {
+        directory,
+        error: String(err),
+      },
+    );
+  }
+
+  const inBench = [...get().benchWorkspaces.values()].some((list) =>
+    list.some((workspace) => workspace.benchPath === directory),
+  );
+  const workflowId = conflictWorkflowId(operation);
+  const { template, overridden } = effectiveAiAssistTemplate(
+    workflowId,
+    usePreferencesStore.getState().aiAssistPromptOverrides,
+  );
+  const rendered = renderAiAssistTemplate(
+    workflowId,
+    template,
+    conflictTemplateValues(directory, inBench),
+  );
+  if (!rendered.ok) {
+    rWarn("git.conflicts", "assist prompt validation failed", {
+      directory,
+      workflow: workflowId,
+      overridden,
+      error: rendered.error,
+    });
+    throw new Error(
+      `AI-assisted workflow prompt is invalid: ${rendered.error}`,
+    );
+  }
+  rInfo("git.conflicts", "assist prompt rendered", {
+    directory,
+    workflow: workflowId,
+    overridden,
+  });
+
+  // useWorktree=false: the directory IS the checkout to fix; a nested
+  // worktree would point the conversation somewhere else entirely.
+  // skipDuplicateCheck=true: a blank tab reuse is fine, but an existing
+  // NON-blank conversation must never be commandeered — and the duplicate
+  // check's blank-reuse path is only safe because a blank tab has no
+  // context to sway the fix. Skipping keeps the guarantee unconditional.
+  const tabId = await get().createTabInDirectory(directory, false, true);
+
+  // Select the workflow tier on the fresh conversation. Automatic model
+  // selection yields to slash-command frontmatter on any later command.
+  get().setTabAutomaticModel(tabId, tier.model);
+
+  // Force auto mode regardless of the operator's default. The assist's
+  // whole job is to EXECUTE the fix; a plan-mode default would park it
+  // writing a plan for work that was already requested verbatim.
+  applyPermissionModeForTab(set, get, tabId, "auto", "conflict_assist");
+
+  // Tag role + lock BEFORE the machine prompt goes in: the auto-fix
+  // lifecycle (event-slice-auto-fix-lifecycle.ts) keys its close/retain
+  // decision on `tabRole === 'conflict-auto-fix'`, and a fast completion
+  // could otherwise race ahead of the tagging and be missed. The lock is
+  // part of the same atomic set: this tab's entire instruction set is the
+  // one prompt below. A follow-up message would graft an open-ended
+  // conversation onto a checkout that exists to be fixed — often an
+  // integration bench, where development conversations do not belong (the
+  // work belongs in the member worktree that owns the file). The
+  // conversation stays readable and abortable; submit() and the InputBar
+  // both honor the flag, and role + lock persist across restarts.
+  set((s) => ({
+    tabs: s.tabs.map((t) =>
+      t.id === tabId
+        ? {
+            ...t,
+            tabRole: "conflict-auto-fix" as const,
+            inputLocked: true,
+            inputLockReason: "automated-workflow" as const,
+          }
+        : t,
+    ),
+  }));
+
+  const prompt = rendered.prompt;
+  // 'machine' source: the one submission allowed through the lock this
+  // flow just installed (see send-slice submit guard).
+  get().submit(tabId, prompt, { source: "machine" });
+
+  rInfo("git.conflicts", "assist prompt submitted", {
+    directory,
+    tab_id: tabId.slice(0, 8),
+    model: tier.model,
+    operation: operation ?? "unknown",
+    in_bench: inBench,
+    input_locked: true,
+  });
+  return tabId;
 }

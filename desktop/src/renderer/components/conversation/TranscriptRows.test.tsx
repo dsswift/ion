@@ -29,6 +29,7 @@ vi.mock('./index', () => ({
     countRender(tools[0].id)
     return React.createElement('div', { 'data-testid': `tools-${tools[0].id}` })
   },
+  BackgroundWorkGroup: () => null,
   AgentTurnGroup: ({ tools }: { tools: Message[] }) => {
     countRender(tools[0]?.id ?? 'turn')
     return React.createElement('div', { 'data-testid': 'agent-turn' })

@@ -23,8 +23,8 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'fs'
-import { resolve } from 'path'
+import { existsSync, readFileSync } from 'fs'
+import { dirname, resolve } from 'path'
 import ts from 'typescript'
 
 // ─── Load the goldens ───
@@ -73,11 +73,48 @@ const goSurface: GoSurface = JSON.parse(readFileSync(goSurfacePath, 'utf-8'))
 // ─── Extract the TypeScript surface ───
 
 /**
- * Parse types.ts and pull out the members of the named interfaces. The
- * compiler API is used in its parse-only mode: no type checker, no program, no
- * module resolution — just an AST walk over one file, which is all that is
- * needed for member names and is fast enough to run on every test invocation.
+ * Parse types.ts and pull out the members of the named interfaces, including
+ * members inherited through `extends`. The compiler API is used in its
+ * parse-only mode: no type checker, no program, no module resolution — just an
+ * AST walk over one file, which is all that is needed for member names and is
+ * fast enough to run on every test invocation.
  */
+function findInterfaceDeclaration(
+  name: string,
+  filePath: string,
+  visited = new Set<string>(),
+): { declaration: ts.InterfaceDeclaration; source: ts.SourceFile } | undefined {
+  const normalizedPath = resolve(filePath)
+  if (visited.has(normalizedPath) || !existsSync(normalizedPath)) return undefined
+  visited.add(normalizedPath)
+
+  const source = ts.createSourceFile(
+    normalizedPath,
+    readFileSync(normalizedPath, 'utf-8'),
+    ts.ScriptTarget.Latest,
+    /* setParentNodes */ true,
+  )
+
+  for (const statement of source.statements) {
+    if (ts.isInterfaceDeclaration(statement) && statement.name.text === name) {
+      return { declaration: statement, source }
+    }
+  }
+
+  for (const statement of source.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue
+    const importedNames = statement.importClause?.namedBindings
+    if (!importedNames || !ts.isNamedImports(importedNames)) continue
+    if (!importedNames.elements.some((element) => element.name.text === name)) continue
+
+    const target = resolve(dirname(normalizedPath), `${statement.moduleSpecifier.text}.ts`)
+    const found = findInterfaceDeclaration(name, target, visited)
+    if (found) return found
+  }
+
+  return undefined
+}
+
 function extractInterfaces(
   filePath: string,
   wanted: Set<string>,
@@ -88,24 +125,57 @@ function extractInterfaces(
     ts.ScriptTarget.Latest,
     /* setParentNodes */ true,
   )
-
-  const out: Record<string, string[]> = {}
-
+  const declarations = new Map<string, ts.InterfaceDeclaration>()
+  const declarationSources = new Map<string, ts.SourceFile>()
   const visit = (node: ts.Node): void => {
-    if (ts.isInterfaceDeclaration(node) && wanted.has(node.name.text)) {
-      const members: string[] = []
-      for (const member of node.members) {
-        const name = member.name
-        if (!name) continue
-        if (ts.isIdentifier(name) || ts.isStringLiteral(name)) {
-          members.push(name.text)
-        }
-      }
-      out[node.name.text] = members.sort()
+    if (ts.isInterfaceDeclaration(node)) {
+      declarations.set(node.name.text, node)
+      declarationSources.set(node.name.text, source)
     }
     ts.forEachChild(node, visit)
   }
   visit(source)
+
+  const membersFor = (
+    declaration: ts.InterfaceDeclaration,
+    declarationSource: ts.SourceFile,
+    seen = new Set<string>(),
+  ): string[] => {
+    if (seen.has(declaration.name.text)) return []
+    seen.add(declaration.name.text)
+
+    const members = declaration.members.flatMap((member) => {
+      const name = member.name
+      if (!name) return []
+      return ts.isIdentifier(name) || ts.isStringLiteral(name) ? [name.text] : []
+    })
+
+    for (const clause of declaration.heritageClauses ?? []) {
+      if (clause.token !== ts.SyntaxKind.ExtendsKeyword) continue
+      for (const type of clause.types) {
+        const parentName = type.expression.getText(declarationSource)
+        const localParent = declarations.get(parentName)
+        const importedParent = localParent
+          ? undefined
+          : findInterfaceDeclaration(parentName, filePath)
+        const parent = localParent ?? importedParent?.declaration
+        const parentSource = localParent
+          ? declarationSources.get(parentName)!
+          : importedParent?.source
+        if (parent && parentSource) {
+          members.push(...membersFor(parent, parentSource, seen))
+        }
+      }
+    }
+
+    return [...new Set(members)].sort()
+  }
+
+  const out: Record<string, string[]> = {}
+  for (const name of wanted) {
+    const declaration = declarations.get(name)
+    if (declaration) out[name] = membersFor(declaration, source)
+  }
 
   return out
 }

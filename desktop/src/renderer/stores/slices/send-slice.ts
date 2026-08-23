@@ -88,12 +88,13 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
      * engine never confirms idle. Folds together the abort logic that used to
      * live separately in EngineView.handleAbort and ConversationView's interrupt.
      */
-    interrupt: (tabId) => {
+    interrupt: (tabId, scope = 'all') => {
       const tab = get().tabs.find((t) => t.id === tabId)
       if (!tab) return
       const inst = activeInstance(get().conversationPanes, tabId)
       const hasRunningChildren = (inst?.agentStates ?? []).some((a) => a.status === 'running')
-      rInfo('interrupt', 'interrupt requested', { tab_id: tabId.slice(0, 8), status: tab.status, has_running_children: hasRunningChildren, bash_exec_id: tab.bashExecId ?? '' })
+      const backgroundTaskCount = inst?.statusFields?.activeBackgroundTasks?.length ?? 0
+      rInfo('interrupt', 'interrupt requested', { tab_id: tabId.slice(0, 8), status: tab.status, abort_scope: scope, has_running_children: hasRunningChildren, background_task_count: backgroundTaskCount, bash_exec_id: tab.bashExecId ?? '' })
 
       // 1. In-flight user bash takes precedence — cancel it and stop. (A bash
       //    command and an agent run are mutually exclusive on a tab.)
@@ -106,24 +107,19 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // 2. Always abort the run. sendAbort is safe when no run is active (it
       //    warns and returns), covering the case where the desktop's status is
       //    stale while the engine still has a live run.
-      rDebug('interrupt', 'aborting run', { tab_id: tabId })
-      window.ion.engineAbort(tabId).catch((err) => {
+      rDebug('interrupt', 'aborting run', { tab_id: tabId, abort_scope: scope })
+      window.ion.engineAbort(tabId, scope).catch((err) => {
         // A failed abort means the interrupt button silently did nothing.
-        rWarn('interrupt', 'engineAbort IPC failed', { tab_id: tabId, error: String(err) })
+        rWarn('interrupt', 'engineAbort IPC failed', { tab_id: tabId, abort_scope: scope, error: String(err) })
       })
 
-      // 3. Reap descendant agents (external processes) that might outlive the
-      //    parent run's cancellation cascade — only when there are running
-      //    children to reap.
-      if (hasRunningChildren) {
-        rDebug('interrupt', 'reaping agent subtree', { tab_id: tabId })
-        window.ion.engineAbortAgent(tabId, '', true).catch((err) => {
-          rWarn('interrupt', 'engineAbortAgent IPC failed', { tab_id: tabId, error: String(err) })
-        })
-      }
 
-      // 4. 5s fallback: if the engine never confirms idle, force-recover the tab
+      // 3. 5s fallback: if the engine never confirms idle, force-recover the tab
       //    so the interrupt button always produces a usable UI within 5 seconds.
+      //    Applies to both scopes: an orchestrator-scoped stop still ends the
+      //    ORCHESTRATOR's run, so the tab must reach a usable state either way.
+      //    Surviving dispatches report themselves through engine_agent_state,
+      //    which is independent of tab status.
       setTimeout(() => {
         const cur = get().tabs.find((t) => t.id === tabId)
         if (cur && (cur.status === 'running' || cur.status === 'connecting')) {

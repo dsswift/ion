@@ -20,18 +20,21 @@ func TestCompletedChildDispatch_EndTurnForcesContinuation(t *testing.T) {
 	pending := true
 	acked := 0
 	cfg := &RunConfig{
-		PeekCompletedChildDispatches: func() ([]types.LlmMessage, func()) {
+		PeekCompletedChildDispatches: func() ([]types.BackgroundWorkDelivery, func()) {
 			mu.Lock()
 			defer mu.Unlock()
 			if !pending {
 				return nil, func() {}
 			}
-			return []types.LlmMessage{{Role: "user", Content: "[Agent reviewer completed]\nresult"}}, func() {
-				mu.Lock()
-				defer mu.Unlock()
-				pending = false
-				acked++
-			}
+			return []types.BackgroundWorkDelivery{{
+					Content: "[Agent reviewer completed]\nresult",
+					Work:    types.BackgroundWorkInfo{Kind: string(types.InjectionKindAgentCompletion), DeliveryMode: "steer", Items: []types.BackgroundWorkItem{{ID: "dispatch-reviewer", Source: types.BackgroundWorkSourceAgent, Label: "reviewer", Status: "completed", ExitCode: 0}}},
+				}}, func() {
+					mu.Lock()
+					defer mu.Unlock()
+					pending = false
+					acked++
+				}
 		},
 	}
 
@@ -51,13 +54,14 @@ func TestCompletedChildDispatch_EndTurnForcesContinuation(t *testing.T) {
 
 	collector.mu.Lock()
 	defer collector.mu.Unlock()
-	steers := 0
+	deliveries := 0
 	for _, event := range collector.normalized {
-		if _, ok := event.Data.(*types.SteerInjectedEvent); ok {
-			steers++
+		if _, ok := event.Data.(*types.BackgroundWorkDeliveredEvent); ok {
+			deliveries++
 		}
 	}
-	if steers != 1 {
-		t.Fatalf("completion injections = %d, want 1", steers)
+	if deliveries != 1 {
+		t.Fatalf("completion deliveries = %d, want 1", deliveries)
 	}
+
 }
