@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/filelock"
@@ -189,11 +188,6 @@ func parseTempPID(name string) (int, bool) {
 		return 0, false
 	}
 	return pid, true
-}
-
-// pidAlive returns true if a process with the given PID exists.
-func pidAlive(pid int) bool {
-	return syscall.Kill(pid, 0) == nil
 }
 
 // txMu is a process-wide map of canonical path -> *sync.Mutex.
