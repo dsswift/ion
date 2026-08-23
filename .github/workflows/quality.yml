@@ -67,6 +67,8 @@ jobs:
       - uses: actions/checkout@v7
       - name: Run actionlint
         uses: raven-actions/actionlint@v2
+      - name: Test release summary context
+        run: bash .github/scripts/build-release-summary-context.test.sh
 
   go-toolchains:
     runs-on: ubuntu-latest

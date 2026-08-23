@@ -36,5 +36,7 @@ dashboards:
   - 'docs/observability/queries.md'
 workflows:
   - '.github/workflows/**'
+  - '.github/scripts/build-release-summary-context.sh'
+  - '.github/scripts/build-release-summary-context.test.sh'
   - '.github/quality-paths.yml'
   - 'scripts/test-quality-path-scopes.sh'
