@@ -10,6 +10,12 @@ clients to Ion Engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.7.3](https://github.com/dsswift/ion/compare/relay-v1.7.2...relay-v1.7.3) (2026-08-23)
+
+### Bug Fixes
+
+* **relay:** harden persistent store writes ([4e7c831](https://github.com/dsswift/ion/commit/4e7c831093959b85339b8f96d08b0d98d0214c7d))
+
 ## [1.7.2](https://github.com/dsswift/ion/compare/relay-v1.7.1...relay-v1.7.2) (2026-08-18)
 
 ### Bug Fixes

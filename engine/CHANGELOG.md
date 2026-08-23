@@ -13,6 +13,17 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.74.0](https://github.com/dsswift/ion/compare/engine-v1.73.0...engine-v1.74.0) (2026-08-23)
+
+### Features
+
+* **engine:** improve conversation workflow state ([13370b2](https://github.com/dsswift/ion/commit/13370b232666b6fa83eefa07a3a8e0212a897c9f))
+
+### Bug Fixes
+
+* **engine:** harden durable file persistence ([d9f32ff](https://github.com/dsswift/ion/commit/d9f32ff1e272fcea0b1d76738ab95423d2d96753))
+* **engine:** support Windows durable temp cleanup ([a5df90b](https://github.com/dsswift/ion/commit/a5df90b43e512eaf301c3e79522b2e493d7c4c11))
+
 ## [1.73.0](https://github.com/dsswift/ion/compare/engine-v1.72.0...engine-v1.73.0) (2026-08-23)
 
 ### Features

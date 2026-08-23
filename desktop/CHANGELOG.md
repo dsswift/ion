@@ -10,6 +10,17 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.86.0](https://github.com/dsswift/ion/compare/desktop-v1.85.0...desktop-v1.86.0) (2026-08-23)
+
+### Features
+
+* **desktop:** improve Studio workflows ([07556c5](https://github.com/dsswift/ion/commit/07556c5e15443e8f36ef16271206942a4e3bbb95))
+
+### Bug Fixes
+
+* **desktop:** harden temp files and persisted state ([c09d84a](https://github.com/dsswift/ion/commit/c09d84a29ea2c13de0fb78ba259a7c40da1adbb4))
+* **desktop:** repair Linux parity tests ([3e2e357](https://github.com/dsswift/ion/commit/3e2e357b02d3bae8dfa866142270f48fed194155))
+
 ## [1.85.0](https://github.com/dsswift/ion/compare/desktop-v1.84.0...desktop-v1.85.0) (2026-08-23)
 
 ### Features
