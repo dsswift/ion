@@ -151,8 +151,8 @@ export function useEngineEvents() {
     // `attachments` is the raw iOS attachment metadata (type/name/path) the pipeline
     // forwards so the optimistic user message renders inline image previews — the
     // rewritten prompt only carries the pathless "(content attached)" marker form.
-    const remoteUserMsgHandler = (_e: any, data: { tabId: string; requestId: string; prompt: string; timestamp: number; imageAttachments?: ImageAttachmentPayload[]; attachments?: Array<{ type: string; name: string; path: string; contentHash?: string }>; resolveSlash?: boolean }) => {
-      useSessionStore.getState().submitRemotePrompt(data.tabId, data.prompt, data.imageAttachments, data.resolveSlash, data.attachments, data.requestId)
+    const remoteUserMsgHandler = (_e: any, data: { tabId: string; requestId: string; prompt: string; timestamp: number; imageAttachments?: ImageAttachmentPayload[]; attachments?: Array<{ type: string; name: string; path: string; contentHash?: string }>; resolveSlash?: boolean; implementationPhase?: boolean }) => {
+      useSessionStore.getState().submitRemotePrompt(data.tabId, data.prompt, data.imageAttachments, data.resolveSlash, data.attachments, data.requestId, data.implementationPhase)
     }
     window.ion.on(IPC.REMOTE_USER_MESSAGE, remoteUserMsgHandler)
 
@@ -246,8 +246,8 @@ export function useEngineEvents() {
     // IPC.PROMPT handler skips its redundant desktop_message_added echo — the
     // canonical echo was already sent by tabs-prompt.ts; a second echo with a
     // renderer-generated id would cause a duplicate user bubble on iOS.
-    const remoteEnginePromptHandler = (_e: any, data: { tabId: string; text: string; reqId?: string; appendSystemPrompt?: string; imageAttachments?: ImageAttachmentPayload[]; attachments?: Array<{ type: string; name: string; path: string; contentHash?: string }>; resolveSlash?: boolean }) => {
-      useSessionStore.getState().submit(data.tabId, data.text, { appendSystemPrompt: data.appendSystemPrompt, imageAttachments: data.imageAttachments, remoteAttachments: data.attachments, source: 'remote', resolveSlash: data.resolveSlash, requestId: data.reqId })
+    const remoteEnginePromptHandler = (_e: any, data: { tabId: string; text: string; reqId?: string; appendSystemPrompt?: string; imageAttachments?: ImageAttachmentPayload[]; attachments?: Array<{ type: string; name: string; path: string; contentHash?: string }>; resolveSlash?: boolean; implementationPhase?: boolean }) => {
+      useSessionStore.getState().submit(data.tabId, data.text, { appendSystemPrompt: data.appendSystemPrompt, imageAttachments: data.imageAttachments, remoteAttachments: data.attachments, source: 'remote', resolveSlash: data.resolveSlash, requestId: data.reqId, implementationPhase: data.implementationPhase })
     }
     window.ion.on(IPC.REMOTE_ENGINE_PROMPT, remoteEnginePromptHandler)
 

@@ -41,6 +41,7 @@ const mocks = vi.hoisted(() => ({
   remoteSend: vi.fn(),
   hasTab: vi.fn().mockReturnValue(true),
   ensureTab: vi.fn(),
+  studioEcho: vi.fn(),
 }));
 
 vi.mock("../state", () => ({
@@ -63,6 +64,10 @@ vi.mock("../state", () => ({
   engineBridge: { stopByPrefix: vi.fn() },
   activeAssistantMessages: { delete: vi.fn() },
   DEBUG_MODE: false,
+}));
+
+vi.mock("../studio-window-manager", () => ({
+  notifyStudioUserMessageEcho: (...args: any[]) => mocks.studioEcho(...args),
 }));
 
 vi.mock("../terminal-manager-instance", () => ({
@@ -99,6 +104,7 @@ beforeEach(() => {
   mocks.remoteSend.mockReset();
   mocks.hasTab.mockReset().mockReturnValue(true);
   mocks.ensureTab.mockReset();
+  mocks.studioEcho.mockReset();
   registerSessionIpc();
 });
 
@@ -149,6 +155,22 @@ describe("IPC.PROMPT handler", () => {
       options: { prompt: "from ios", source: "remote" },
     });
     expect(mocks.remoteSend).not.toHaveBeenCalled();
+  });
+
+  it("marks implementation prompts on the Studio and iOS echoes", async () => {
+    const handler = handlers.get("ion:prompt");
+    await handler!(null, {
+      tabId: "tab-implementation",
+      requestId: "req-implementation",
+      options: { prompt: "Implement the plan.", implementationPhase: true },
+    });
+
+    expect(mocks.studioEcho).toHaveBeenCalledWith("tab-implementation", expect.objectContaining({
+      implementationPhase: true,
+    }));
+    expect(mocks.remoteSend).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.objectContaining({ implementationPhase: true }),
+    }));
   });
 
   it("echoes message_added to iOS when options.source is undefined (desktop-typed)", async () => {

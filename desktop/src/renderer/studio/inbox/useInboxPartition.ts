@@ -4,6 +4,7 @@ import { usePreferencesStore } from '../../preferences'
 import { activeInstance } from '../../stores/conversation-instance'
 import { waitingStateOfPane } from '../../components/TabStripShared'
 import { classifyInbox, inboxUnread, wokeAt, type InboxTabView } from '../../../shared/inbox-classify'
+import { liveBackgroundShellCount } from '../../../shared/background-shell-counts'
 import { sortPinnedByOrder } from '../../../shared/inbox-pin-order'
 import type { TabState } from '../../../shared/types'
 
@@ -78,7 +79,7 @@ export function useInboxPartition(): InboxPartition {
       const waiting = waitingStateOfPane(panes.get(tab.id)) !== null
       const agentCount = instance?.agentStates.filter((agent) => agent.status === 'running').length ?? 0
       const backgroundAgents = instance?.statusFields?.backgroundAgents ?? 0
-      const shells = instance?.statusFields?.backgroundShells ?? 0
+      const shells = liveBackgroundShellCount(instance?.statusFields)
       const hasPendingPlan = instance?.planFilePath != null
       const view = viewFor(tab, pendingAskCount, waiting, Math.max(agentCount, backgroundAgents) > 0 || shells > 0 || instance?.statusFields?.hasPendingWork === true, hasPendingPlan)
       meta.set(tab.id, {

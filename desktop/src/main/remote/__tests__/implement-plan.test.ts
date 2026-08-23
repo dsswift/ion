@@ -148,6 +148,21 @@ describe('handleImplementPlan', () => {
     expect(call.implementationPhase).toBe(true)
   })
 
+  it('continues dispatch after a renderer script rejection', async () => {
+    const executeJavaScript = vi.fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ ok: false, reason: 'conversation pane unavailable' })
+      .mockResolvedValueOnce(null)
+    ;(state as any).mainWindow = { webContents: { executeJavaScript } }
+
+    await handleImplementPlan({
+      type: 'desktop_implement_plan', tabId: 'tab-script-rejection', questionId: 'q-script-rejection',
+    })
+
+    expect(mockProcessIncomingPrompt).toHaveBeenCalledTimes(1)
+    ;(state as any).mainWindow = null
+  })
+
   it('implement pipeline runs ONCE — no duplicate dispatch', async () => {
     await handleImplementPlan({
       type: 'desktop_implement_plan',

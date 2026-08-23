@@ -29,6 +29,7 @@ import type {
   FileEditorDirState,
 } from "./session-store-aux-types";
 import type { WorktreeBenchActions } from "./session-store-worktree-types";
+import type { EngineSubmitActions } from "./session-store-engine-submit-actions";
 
 import type {
   TabState,
@@ -62,7 +63,7 @@ export interface DispatchSplitSubject {
   tabId: string;
 }
 
-export interface State extends WorktreeBenchActions {
+export interface State extends WorktreeBenchActions, EngineSubmitActions {
   tabs: TabState[];
   /** Recoverable closed conversations. They are cold settled records. */
   settledHistory: TabState[];
@@ -281,6 +282,7 @@ export interface State extends WorktreeBenchActions {
     useWorktree?: boolean,
     skipDuplicateCheck?: boolean,
     pinToGroupId?: string,
+    sourceBranch?: string,
   ) => Promise<string>;
   selectTab: (tabId: string) => void;
   /** `remote` means main already closed; `delete` means history is deleted; `remote-delete` means both. */
@@ -364,8 +366,9 @@ export interface State extends WorktreeBenchActions {
   unsnoozeTab: (tabId: string) => void;
   /** Inbox: force the unread dot until the next visit. */
   markTabUnread: (tabId: string) => void;
-  /** Promote a conversation above active rows and clear parked lifecycle state. */
-  pinTab: (tabId: string) => void;
+  markTabRead: (tabId: string) => void;
+  /** Promote a tab above active rows. Refuses ephemeral bench conversations. */
+  pinTab: (tabId: string) => boolean;
   unpinTab: (tabId: string) => void;
   /** Apply fractional order keys produced by the shared pin planner. */
   reorderPinnedTabs: (
@@ -519,6 +522,7 @@ export interface State extends WorktreeBenchActions {
     resolveSlash?: boolean,
     remoteAttachments?: Array<{ type: string; name: string; path: string }>,
     requestId?: string,
+    implementationPhase?: boolean,
   ) => void;
   /**
    * Move a tab to its planning/in-progress group on send, based on the tab's
@@ -541,7 +545,10 @@ export interface State extends WorktreeBenchActions {
   interrupt: (tabId: string, scope?: AbortScope) => void;
   abortDispatch: (tabId: string, dispatchId: string) => void;
   abortDispatches: (tabId: string, dispatchIds: string[]) => void;
-  stopBackgroundTask: (tabId: string, taskId: string) => Promise<{ ok: boolean; status?: string; error?: string }>;
+  stopBackgroundTask: (
+    tabId: string,
+    taskId: string,
+  ) => Promise<{ ok: boolean; status?: string; error?: string }>;
   submitRemoteBash: (tabId: string, command: string) => void;
   respondPermission: (
     tabId: string,
@@ -640,38 +647,6 @@ export interface State extends WorktreeBenchActions {
     messageId: string,
     userTurnIndex?: number,
   ) => Promise<RewindResult>;
-  addEngineSystemMessage: (
-    tabId: string,
-    content: string,
-    planFilePath?: string,
-  ) => void;
-  /** Insert a user-role message into the active conversation instance for a
-   *  remote-originated prompt that bypassed the renderer's submit() path. Used
-   *  by the pipeline when an extension command succeeds synchronously (the
-   *  extension's ctx.sendPrompt starts the run, but no renderer submit was
-   *  ever called for the iOS prompt). Without this the desktop store has the
-   *  assistant response but no user bubble, and iOS history reads (which pull
-   *  from the renderer store) also miss it. */
-  insertRemoteUserMessage: (
-    tabId: string,
-    content: string,
-    slashCommand?: string,
-    slashArgs?: string,
-  ) => void;
-  setEngineDraftInput: (tabId: string, text: string) => void;
-  /**
-   * Compute the conversation tail fingerprint for a tab using the canonical
-   * TS implementation in `shared/conversation-fingerprint.ts`. Exposed on the
-   * store so snapshot.ts's `executeJavaScript` can call it via
-   * `store.getState().computeConvFingerprint(tabId)` instead of inlining the
-   * algorithm as a string-interpolated IIFE. Eliminates the inline-JS copy in
-   * snapshot.ts; the canonical function in shared/ remains the single TS
-   * source of truth. Returns '' when the tab has no messages.
-   */
-  computeConvFingerprint: (tabId: string) => string;
-  markResourceRead: (resourceId: string) => void;
-  markAllResourcesRead: (items: ResourceItem[]) => void;
-  deleteResource: (kind: string, resourceId: string) => void;
 }
 
 export type StoreSet = (

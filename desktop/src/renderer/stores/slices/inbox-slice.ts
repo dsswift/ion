@@ -5,9 +5,11 @@ import { pickNextActiveTab } from './tab-slice-next-active'
 import { usePreferencesStore } from '../../preferences'
 import { rDebug, rInfo, rWarn } from '../../rendererLogger'
 import { settledRecordCanRestore } from '../settled-worktree'
-import { isBenchDirectory } from '../../../shared/worktree-conversations'
+import { benchTerminalTitle, isBenchDirectory, pickDirTerminal } from '../../../shared/worktree-conversations'
 import { autoSettleBlocked, effectiveSettled, type InboxTabView } from '../../../shared/inbox-classify'
+import { liveBackgroundShellCount } from '../../../shared/background-shell-counts'
 import { isPersistedSettled } from '../../../shared/tab-predicates'
+import { evaluateSessionBusyGuard, formatSessionBusyRefusal } from './session-busy-guard'
 
 function canSnooze(input: { pendingAskCount: number; waiting: boolean; inBench: boolean }): boolean {
   return input.pendingAskCount === 0 && !input.waiting && !input.inBench
@@ -39,7 +41,7 @@ function automaticSettlementView(state: State, tabId: string): InboxTabView | nu
   const pendingAskCount = (instance?.permissionQueue.length ?? 0) + (instance?.elicitationQueue.length ?? 0)
   const agentCount = instance?.agentStates.filter((agent) => agent.status === 'running').length ?? 0
   const backgroundAgents = instance?.statusFields?.backgroundAgents ?? 0
-  const shells = instance?.statusFields?.backgroundShells ?? 0
+  const shells = liveBackgroundShellCount(instance?.statusFields)
   return {
     status: tab.status,
     settledOverride: tab.settledOverride,
@@ -231,14 +233,43 @@ export function createInboxSlice(set: StoreSet, get: StoreGet): Partial<State> {
     markTabUnread: (tabId) => set((state) => ({
       tabs: state.tabs.map((tab) => tab.id === tabId ? { ...tab, manualUnread: true } : tab),
     })),
-    pinTab: (tabId) => {
-      const now = Date.now()
+    markTabRead: (tabId) => {
+      const visitedAt = Date.now()
       set((state) => ({
         tabs: state.tabs.map((tab) => tab.id === tabId
-          ? { ...tab, pinnedAt: tab.pinnedAt ?? now, settledOverride: 'active' as const, settledAt: null, snoozedUntil: null, snoozedAt: null }
+          ? { ...tab, lastVisitedAt: visitedAt, manualUnread: false }
           : tab),
       }))
-      rDebug('inbox', 'pinned tab', { tab_id: tabId.slice(0, 8) })
+      rDebug('inbox', 'tab marked reviewed', { tab_id: tabId.slice(0, 8), visited_at: visitedAt })
+    },
+    pinTab: (tabId) => {
+      const state = get()
+      const tab = state.tabs.find((candidate) => candidate.id === tabId)
+      if (!tab) {
+        rWarn('inbox', 'pin rejected because tab is absent', { tab_id: tabId.slice(0, 8) })
+        return false
+      }
+      const workspace = [...state.benchWorkspaces.values()].flatMap((list) => list)
+        .find((candidate) => isBenchDirectory(tab.workingDirectory, [candidate.benchPath]))
+      if (workspace) {
+        const terminal = pickDirTerminal(state.tabs, workspace.benchPath, benchTerminalTitle(workspace.sourceBranch))
+        if (!tab.isTerminalOnly || terminal?.id !== tab.id) {
+          rWarn('inbox', 'pin refused because the tab is not the bench terminal', {
+            tab_id: tabId.slice(0, 8),
+            working_directory: tab.workingDirectory,
+            tab_role: tab.tabRole ?? 'none',
+          })
+          return false
+        }
+      }
+      const now = Date.now()
+      set((current) => ({
+        tabs: current.tabs.map((candidate) => candidate.id === tabId
+          ? { ...candidate, pinnedAt: candidate.pinnedAt ?? now, settledOverride: 'active' as const, settledAt: null, snoozedUntil: null, snoozedAt: null }
+          : candidate),
+      }))
+      rDebug('inbox', 'pinned tab', { tab_id: tabId.slice(0, 8), tab_kind: tab.isTerminalOnly ? 'terminal' : 'conversation' })
+      return true
     },
     unpinTab: (tabId) => set((state) => ({
       tabs: state.tabs.map((tab) => tab.id === tabId ? { ...tab, pinnedAt: null, pinOrderKey: null } : tab),
@@ -251,8 +282,21 @@ export function createInboxSlice(set: StoreSet, get: StoreGet): Partial<State> {
       rDebug('inbox', 'reordered pinned tabs', { assignment_count: assignments.length })
     },
     deleteConversationTab: async (tabId) => {
-      const tab = get().tabs.find((candidate) => candidate.id === tabId)
-      if (!tab) return
+      const liveTab = get().tabs.find((candidate) => candidate.id === tabId)
+      const tab = liveTab ?? get().settledHistory.find((candidate) => candidate.id === tabId)
+      if (!tab) {
+        rWarn('inbox', 'conversation deletion rejected because record is absent', { tab_id: tabId.slice(0, 8) })
+        return
+      }
+      const guard = evaluateSessionBusyGuard(liveTab ? get().conversationPanes.get(tabId) : null)
+      if (guard.blocked) {
+        rWarn('inbox', 'conversation deletion blocked by active work', {
+          tab_id: tabId.slice(0, 8),
+          reason: formatSessionBusyRefusal(tabId, guard, 'delete the conversation'),
+        })
+        return
+      }
+      rInfo('inbox', 'conversation permanent deletion started', { tab_id: tabId.slice(0, 8) })
       const sessionIds = [tab.conversationId, tab.lastKnownSessionId, ...tab.historicalSessionIds].filter((id): id is string => !!id)
       if (sessionIds.length > 0) {
         try {
@@ -262,8 +306,12 @@ export function createInboxSlice(set: StoreSet, get: StoreGet): Partial<State> {
           return
         }
       }
-      get().closeTab(tabId, 'delete')
-      rDebug('inbox', 'conversation deleted', { tab_id: tabId.slice(0, 8), session_count: sessionIds.length })
+      const stillLive = get().tabs.some((candidate) => candidate.id === tabId)
+      if (stillLive) get().closeTab(tabId, 'delete')
+      set((state) => ({ settledHistory: state.settledHistory.filter((candidate) => candidate.id !== tabId) }))
+      rInfo('inbox', 'conversation permanent deletion completed', {
+        tab_id: tabId.slice(0, 8), session_count: sessionIds.length, source: stillLive ? 'active' : 'settled',
+      })
     },
     regenerateTabTitle: async (tabId) => {
       if (!get().tabs.some((candidate) => candidate.id === tabId)) {

@@ -2,7 +2,7 @@ import React from 'react'
 import { useShallow } from 'zustand/shallow'
 import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
-import { useActiveEngineAgentRunningCount, useActiveEngineBackgroundShellCount, useActiveEngineStatusFields } from './StatusBarEngineHelpers'
+import { useActiveEngineAgentRunningCount, useActiveEngineBackgroundShellCount, useActiveEngineHeldShellCount, useActiveEngineStatusFields } from './StatusBarEngineHelpers'
 
 /**
  * Engine state slot — renders the orchestrator run-activity dot + label in
@@ -10,14 +10,16 @@ import { useActiveEngineAgentRunningCount, useActiveEngineBackgroundShellCount, 
  *
  * Visual states, in priority order:
  *   - orchestrator running (`tab.status === 'running' | 'connecting'`) →
- *       orange `statusRunning` pulse + `[running]`, with active background shell
+ *       orange `statusRunning` pulse + `[running]`, with live background shell
  *       count appended when present
  *   - orchestrator NOT running AND agentRunningCount > 0 →
  *       yellow `statusWaitingChildren` pulse +
  *       `[waiting for N agent(s)]`
  *   - orchestrator NOT running AND agentRunningCount === 0 AND
  *     shellRunningCount > 0 →
- *       pink `statusBash` pulse + `[waiting for N background shell(s)]`
+ *       pink `statusBash` pulse + `[waiting for N background shell(s)]` when
+ *       the engine is holding for them, or `[N background shell(s) running]`
+ *       when every live command is detached
  *   - orchestrator NOT running AND no agents/shells but the engine's generic
  *     `hasPendingWork` flag is set (queued prompts, dispatch completions, a
  *     parked run) →
@@ -27,9 +29,19 @@ import { useActiveEngineAgentRunningCount, useActiveEngineBackgroundShellCount, 
  *
  * SOURCE OF TRUTH: this slot reads `tab.status` for the orchestrator's own
  * run-state, the per-instance agent-state fold for dispatched work, and
- * `statusFields.backgroundShells` for notifying background Bash commands.
- * `hasPendingWork` is the generic fallback when no specific count explains the
- * wait. All signals come from the active conversation instance.
+ * `liveBackgroundShellCount` (shared/background-shell-counts.ts) for background
+ * Bash processes. `hasPendingWork` is the generic fallback when no specific
+ * count explains the wait. All signals come from the active conversation
+ * instance.
+ *
+ * WHY THE LIVE COUNT, NOT `backgroundShells`: the engine's `backgroundShells`
+ * scalar counts only commands started with `notify_on_complete`, because those
+ * are the ones it parks the session on. A detached `run_in_background` command
+ * is still a live process doing real work. Reading the held count here made
+ * this slot go blank while a 96-second detached command ran — the operator saw
+ * the pink Bash operation group spinning and no composer badge at all. The
+ * live count fixes the presence of the badge; the held count still decides the
+ * WORDING, because "waiting for" is a false claim about a detached command.
  *
  * TAB-TYPE-AGNOSTIC: the `Agent` tool dispatches sub-agents
  * regardless of whether a harness is loaded, so a plain conversation can have
@@ -45,7 +57,7 @@ import { useActiveEngineAgentRunningCount, useActiveEngineBackgroundShellCount, 
  *
  * PRIORITY: agents outrank shells, and shells outrank the generic pending
  * flag. `hasPendingWork` (engine/internal/session/status_work_snapshot.go)
- * is a catch-all that is also true whenever a background shell is
+ * is a catch-all that is also true whenever a NOTIFYING background shell is
  * outstanding, so it must be the LAST resort, not folded into the agent
  * check — otherwise a session with only a running shell (no agents) renders
  * the vague "waiting for queued work" instead of the specific shell count,
@@ -67,6 +79,7 @@ export function StatusBarEngineState() {
   )
   const agentRunningCount = useActiveEngineAgentRunningCount()
   const shellRunningCount = useActiveEngineBackgroundShellCount()
+  const heldShellCount = useActiveEngineHeldShellCount()
   const statusFields = useActiveEngineStatusFields()
 
   const isRun = status === 'running' || status === 'connecting'
@@ -98,9 +111,16 @@ export function StatusBarEngineState() {
       ? `waiting for ${agentRunningCount} agent${agentRunningCount === 1 ? '' : 's'}`
       : isWaitingShells
         // "background shell" IS accurate here, unlike the agent label above: these
-        // are shell processes running detached from any turn, and the session is
-        // held open for them. Do not "align" this wording with the agent label.
-        ? `waiting for ${shellRunningCount} background shell${shellRunningCount === 1 ? '' : 's'}`
+        // are shell processes running detached from any turn. Do not "align" this
+        // wording with the agent label.
+        //
+        // "waiting for" is only true when the engine actually parked the session
+        // on the command (notify_on_complete). When every live command is
+        // detached the engine is NOT waiting — it went idle and left the process
+        // running — so the label states the fact instead of inventing a wait.
+        ? heldShellCount > 0
+          ? `waiting for ${shellRunningCount} background shell${shellRunningCount === 1 ? '' : 's'}`
+          : `${shellRunningCount} background shell${shellRunningCount === 1 ? '' : 's'} running`
         : 'waiting for queued work'
 
   return (

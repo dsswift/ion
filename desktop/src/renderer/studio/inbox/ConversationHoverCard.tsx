@@ -1,5 +1,6 @@
-import React from 'react'
+import React, { type RefObject } from 'react'
 import { HoverCard } from '../../components/git/HoverCard'
+import { latestConversationActivityAt } from '../../../shared/inbox-classify'
 import type { TabState } from '../../../shared/types'
 import { inboxProjectFor, inboxWorktreeFor } from './inbox-grouping'
 import type { IntegrationWorkspace, WorktreeInventoryEntry } from '../../../shared/types'
@@ -13,11 +14,13 @@ export function ConversationHoverCard({
   tab,
   benches,
   inventory,
+  rightBoundaryRef,
   children,
 }: {
   tab: TabState
   benches: ReadonlyMap<string, readonly IntegrationWorkspace[]>
   inventory: ReadonlyMap<string, readonly WorktreeInventoryEntry[]>
+  rightBoundaryRef?: RefObject<HTMLElement | null>
   children: React.ReactNode
 }): React.JSX.Element {
   const project = inboxProjectFor(tab, benches)
@@ -30,20 +33,22 @@ export function ConversationHoverCard({
     ...(tab.settledOverride === 'auto' ? [['Settlement', 'Auto']] : []),
     ['Host', tab.executionHost || 'Local desktop'],
     ...(tab.executionMachineId ? [['Machine', tab.executionMachineId]] : []),
-    ['Last activity', stamp(tab.lastMessageAt ?? tab.lastActivityAt)],
+    ['Last activity', stamp(latestConversationActivityAt(tab))],
+    ...(tab.lastCompletionAt ? [['Completed', stamp(tab.lastCompletionAt)]] : []),
     ...(tab.settledAt ? [['Settled', stamp(tab.settledAt)]] : []),
     ...(result ? [['Prompts', String(result.conversationTurns ?? result.numTurns)], ['Duration', `${Math.round(result.durationMs / 1_000)}s`], ['Cost', `$${result.totalCostUsd.toFixed(4)}`]] : []),
   ]
   return (
     <HoverCard
       position="right"
+      rightBoundaryRef={rightBoundaryRef}
       delayMs={0}
       maxWidth={320}
       fallbackTitle={`${project.name} · ${location.label}`}
       content={<div style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: '3px 8px' }}>
         {rows.map(([label, value]) => <React.Fragment key={label}><span style={{ opacity: 0.65 }}>{label}</span><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span></React.Fragment>)}
       </div>}
-      style={{ display: 'flex', minWidth: 0, flex: 1 }}
+      style={{ display: 'flex', minWidth: 0, width: '100%' }}
     >
       {children}
     </HoverCard>

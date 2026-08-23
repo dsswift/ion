@@ -88,13 +88,14 @@ export function buildInboxNavigator(
   benches: ReadonlyMap<string, readonly IntegrationWorkspace[]>,
   inventory: ReadonlyMap<string, readonly WorktreeInventoryEntry[]>,
   selectedBenchByRepo: ReadonlyMap<string, string> = new Map(),
-  projectScope: string | null = null,
+  projectScope: ReadonlySet<string> = new Set(),
 ): InboxNavigatorProject[] {
+  const projectIncluded = (projectKey: string): boolean => projectScope.size === 0 || projectScope.has(projectKey)
   const projects = new Map<string, { project: InboxProject; tabs: TabState[] }>()
   for (const tab of tabs) {
     if (tab.isTerminalOnly) continue
     const project = inboxNavigatorProjectFor(tab, benches, inventory)
-    if (projectScope && project.key !== projectScope) continue
+    if (!projectIncluded(project.key)) continue
     const current = projects.get(project.key)
     if (current) current.tabs.push(tab)
     else projects.set(project.key, { project, tabs: [tab] })
@@ -102,7 +103,7 @@ export function buildInboxNavigator(
   // Inventory is the source of truth for workspace presence. Include every
   // repo with a non-landed worktree before grouping conversation tabs.
   for (const [repoPath, entries] of inventory) {
-    if (projectScope && repoPath !== projectScope) continue
+    if (!projectIncluded(repoPath)) continue
     if (entries.some((entry) => entry.landedAt == null) && !projects.has(repoPath)) {
       projects.set(repoPath, { project: { key: repoPath, name: repoPath.split('/').filter(Boolean).at(-1) ?? repoPath }, tabs: [] })
     }
@@ -112,7 +113,7 @@ export function buildInboxNavigator(
   // is still a structural bucket that must be visible.
   for (const [repoPath, workspaces] of benches) {
     if (workspaces.length === 0) continue
-    if (projectScope && repoPath !== projectScope) continue
+    if (!projectIncluded(repoPath)) continue
     if (!projects.has(repoPath)) {
       projects.set(repoPath, { project: { key: repoPath, name: repoPath.split('/').filter(Boolean).at(-1) ?? repoPath }, tabs: [] })
     }
@@ -207,7 +208,19 @@ export function buildInboxNavigator(
         membership: item?.membership,
       })
     }
-    const groups = [...benchGroups.values(), ...worktreeGroups.values(), ...(sourceGroup ? [sourceGroup] : [])]
+    // Bench membership is the primary worktree order. Members stay together at
+    // the top in the exact sequence assembly uses. The stable sort preserves the
+    // selected Inbox order for every worktree that is not in the active bench.
+    const memberOrder = new Map(activeWorkspace?.members.map((member, index) => [member.worktreePath, index]) ?? [])
+    const orderedWorktreeGroups = [...worktreeGroups.values()].sort((left, right) => {
+      const leftOrder = memberOrder.get(left.key)
+      const rightOrder = memberOrder.get(right.key)
+      if (leftOrder !== undefined && rightOrder !== undefined) return leftOrder - rightOrder
+      if (leftOrder !== undefined) return -1
+      if (rightOrder !== undefined) return 1
+      return 0
+    })
+    const groups = [...benchGroups.values(), ...orderedWorktreeGroups, ...(sourceGroup ? [sourceGroup] : [])]
     return { project, groups, flatTabs }
   }).sort((left, right) => left.project.name.localeCompare(right.project.name))
 }

@@ -16,6 +16,8 @@ export interface ContentRouter {
   openStatus?(): void
   openExplorer?(): void
   openGitPanel?(): void
+  /** Open or replace the active conversation's single dispatch preview tab. */
+  openDispatch?(agentName: string, dispatchId: string, title: string): void
   openPanel?(title: string, body: React.ReactNode, close: () => void): string
   /** Publish a later render from a routed legacy panel without changing tab focus. */
   updatePanel?(id: string, title: string, body: React.ReactNode): void

@@ -20,6 +20,7 @@ import { clipRemaining, type ClipState } from "./export/clip";
 import { useStudioControlsBus } from "../state/controls-bus";
 import { useExports } from "./useExports";
 import { VisualizerCanvas } from "./VisualizerCanvas";
+import { canvasPointFromClient } from "./canvas-coordinates";
 import { humanDuration, type Tooltip, type Phase } from "./visualizer-types";
 
 /** Imperative surface-tab handle: pause/resume the render+sim loop (D10). */
@@ -290,7 +291,11 @@ export function VisualizerRoot({
   // Canvas interactions: drag to pan (manual zoom), hover for agent info.
   const onCanvasMouseDown = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      dragRef.current = { x: e.clientX, y: e.clientY };
+      dragRef.current = canvasPointFromClient(
+        e.currentTarget,
+        e.clientX,
+        e.clientY,
+      );
     },
     [],
   );
@@ -299,10 +304,15 @@ export function VisualizerRoot({
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       const engine = engineRef.current;
       if (!engine) return;
+      const point = canvasPointFromClient(
+        e.currentTarget,
+        e.clientX,
+        e.clientY,
+      );
       if (dragRef.current && e.buttons === 1) {
-        const dx = e.clientX - dragRef.current.x;
-        const dy = e.clientY - dragRef.current.y;
-        dragRef.current = { x: e.clientX, y: e.clientY };
+        const dx = point.x - dragRef.current.x;
+        const dy = point.y - dragRef.current.y;
+        dragRef.current = point;
         engine.panBy(dx, dy);
         // Panning leaves fit mode; reflect the engine's view in the toolbar.
         const view = engine.getView();
@@ -310,21 +320,15 @@ export function VisualizerRoot({
         setTooltip(null);
         return;
       }
-      const entity = engine.getEntityAt(
-        e.nativeEvent.offsetX,
-        e.nativeEvent.offsetY,
-      );
+      const entity = engine.getEntityAt(point.x, point.y);
       if (!entity) {
         // No character under the cursor: label the room or desk instead so the
         // office itself is legible (whose department, whose workstation).
-        const spot = engine.getSpotAt(
-          e.nativeEvent.offsetX,
-          e.nativeEvent.offsetY,
-        );
+        const spot = engine.getSpotAt(point.x, point.y);
         if (spot) {
           setTooltip({
-            x: e.nativeEvent.offsetX,
-            y: e.nativeEvent.offsetY,
+            x: point.x,
+            y: point.y,
             title: spot.title,
             lines: spot.lines,
           });
@@ -401,8 +405,8 @@ export function VisualizerRoot({
           lines.push("click to open dispatch");
       }
       setTooltip({
-        x: e.nativeEvent.offsetX,
-        y: e.nativeEvent.offsetY,
+        x: point.x,
+        y: point.y,
         title: entity.name === "__manager__" ? "Manager" : entity.displayName,
         lines,
       });
@@ -416,10 +420,12 @@ export function VisualizerRoot({
       const engine = engineRef.current;
       const active = activeRef.current;
       if (!engine || !active) return;
-      const entity = engine.getEntityAt(
-        e.nativeEvent.offsetX,
-        e.nativeEvent.offsetY,
+      const point = canvasPointFromClient(
+        e.currentTarget,
+        e.clientX,
+        e.clientY,
       );
+      const entity = engine.getEntityAt(point.x, point.y);
       if (!entity || entity.role === "pet") return;
       // The manager = the orchestrator = the main conversation: clicking him
       // shows the desktop on that conversation (no dispatch panel).

@@ -56,6 +56,9 @@ export function PrTitleDialog({ defaultTitle, onSubmit, onSkipForever, onCancel 
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        padding: 16,
+        boxSizing: 'border-box',
+        overflowY: 'auto',
       }}
     >
       <motion.div
@@ -68,10 +71,15 @@ export function PrTitleDialog({ defaultTitle, onSubmit, onSkipForever, onCancel 
         className="glass-surface"
         style={{
           width: 320,
+          maxWidth: '100%',
+          maxHeight: '100%',
+          minWidth: 0,
+          boxSizing: 'border-box',
           borderRadius: 16,
           display: 'flex',
           flexDirection: 'column',
-          overflow: 'hidden',
+          overflowX: 'hidden',
+          overflowY: 'auto',
         }}
       >
         {/* Header */}

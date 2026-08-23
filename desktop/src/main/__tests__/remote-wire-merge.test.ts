@@ -249,14 +249,33 @@ describe('handleCreateTab', () => {
     expect(String(engineCall![0])).toContain('/default/dir')
   })
 
+
   it('uses defaultBaseDirectory when workingDirectory absent (plain path)', async () => {
     mocks.readSettingsMock.mockReturnValue({ defaultBaseDirectory: '/default/dir' })
     await handleCreateTab({ type: 'desktop_create_tab' })
 
     const calls = mocks.executeJsMock.mock.calls
-    const createCall = calls.find((c) => String(c[0]).includes('createTabInDirectory'))
+    const createCall = calls.find((call) => String(call[0]).includes('createTabInDirectory'))
     expect(createCall).toBeDefined()
     expect(String(createCall![0])).toContain('/default/dir')
+  })
+
+  it('forwards a selected source branch to plain worktree creation', async () => {
+    await handleCreateTab({
+      type: 'desktop_create_tab', workingDirectory: '/home/test', useWorktree: true, sourceBranch: 'release',
+    })
+
+    const createCall = mocks.executeJsMock.mock.calls.find((call) => String(call[0]).includes('createTabInDirectory'))
+    expect(String(createCall![0])).toContain("createTabInDirectory('/home/test', true, true, undefined, 'release')")
+  })
+
+  it('forwards a selected source branch to profile worktree creation', async () => {
+    await handleCreateTab({
+      type: 'desktop_create_tab', workingDirectory: '/home/test', profileId: 'prof-abc', useWorktree: true, sourceBranch: 'release',
+    })
+
+    const createCall = mocks.executeJsMock.mock.calls.find((call) => String(call[0]).includes('createConversationTab'))
+    expect(String(createCall![0])).toContain("useWorktree: true, sourceBranch: 'release'")
   })
 })
 
@@ -508,6 +527,17 @@ describe('protocol contract: removed command strings', () => {
     const calls = mocks.executeJsMock.mock.calls
     const engineCall = calls.find((c) => String(c[0]).includes('createConversationTab'))
     expect(engineCall).toBeDefined()
+  })
+
+  it('desktop_report_focus marks the viewed conversation reviewed in the owner store', async () => {
+    mocks.executeJsMock.mockResolvedValue(true)
+
+    await handleRemoteCommand(
+      { type: 'desktop_report_focus', tabId: 'tab-reviewed', interceptEnabled: true },
+      'dev-review',
+    )
+
+    expect(mocks.executeJsMock).toHaveBeenCalledWith(expect.stringContaining("markTabRead('tab-reviewed')"))
   })
 
   it('desktop_prompt with instanceId routes to engine pipeline via command-handler', async () => {

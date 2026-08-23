@@ -36,7 +36,7 @@ beforeEach(() => {
     studioGetSettings: vi.fn().mockResolvedValue({}),
     terminalDestroy: vi.fn().mockResolvedValue(undefined),
   }
-  useSurfaceStore.setState({ tabs: [], activeTabId: null, hydrated: true, diffReveal: null })
+  useSurfaceStore.setState({ tabs: [], activeTabId: null, pinnedTabs: ['plan'], notification: null, conversations: {}, currentConversationId: 'tab-1', visible: false, hydrated: true, diffReveal: null })
 })
 afterEach(() => {
   // Router is module-global; clear between tests via a fresh no-op register.
@@ -136,6 +136,21 @@ describe('file-open-router', () => {
 
     expect(useSurfaceStore.getState().activeTabId).toBe('file:/plans/earlier.md')
     expect(openFileInEditorMock).toHaveBeenCalledWith('/repo', 'tab-1', '/plans/earlier.md')
+  })
+
+  it('studio router: dispatch clicks reuse one conversation preview tab', () => {
+    registerStudioFileRouter()
+    const router = surfaceRouter()!
+    router.openDispatch!('dev-lead', 'dispatch-1', 'Dev Lead')
+    router.openDispatch!('test-lead', 'dispatch-2', 'Test Lead')
+
+    expect(useSurfaceStore.getState().tabs.filter((tab) => tab.kind === 'dispatch')).toEqual([{
+      kind: 'dispatch',
+      id: 'dispatch-preview',
+      agentName: 'test-lead',
+      dispatchId: 'dispatch-2',
+      title: 'Test Lead',
+    }])
   })
 
   it('updates panel content and title without stealing active focus', () => {

@@ -134,8 +134,8 @@ describe('deriveTimelineMinimapItems', () => {
       msg({ id: 'a3', role: 'assistant', content: 'second answer' }),
     ])
     expect(items).toEqual([
-      { id: 'u1', userText: 'first question', assistantText: 'final answer', isSlashCommand: false },
-      { id: 'u2', userText: 'second question', assistantText: 'second answer', isSlashCommand: false },
+      { id: 'u1', userText: 'first question', assistantText: 'final answer', tickKind: 'message' },
+      { id: 'u2', userText: 'second question', assistantText: 'second answer', tickKind: 'message' },
     ])
   })
 
@@ -145,8 +145,8 @@ describe('deriveTimelineMinimapItems', () => {
       msg({ id: 'u2', role: 'user', content: 'q2' }),
       msg({ id: 'a1', role: 'assistant', content: 'answer to q2' }),
     ])
-    expect(items[0]).toEqual({ id: 'u1', userText: 'q1', assistantText: null, isSlashCommand: false })
-    expect(items[1]).toEqual({ id: 'u2', userText: 'q2', assistantText: 'answer to q2', isSlashCommand: false })
+    expect(items[0]).toEqual({ id: 'u1', userText: 'q1', assistantText: null, tickKind: 'message' })
+    expect(items[1]).toEqual({ id: 'u2', userText: 'q2', assistantText: 'answer to q2', tickKind: 'message' })
   })
 
   it('skips user messages whose compact text is empty', () => {
@@ -171,14 +171,14 @@ describe('deriveTimelineMinimapItems', () => {
       msg({ id: 'u2', role: 'user', content: '/review current changes' }),
       msg({ id: 'u3', role: 'user', content: 'ordinary message' }),
     ])
-    expect(items.map((item) => item.isSlashCommand)).toEqual([true, true, false])
+    expect(items.map((item) => item.tickKind)).toEqual(['slash-command', 'slash-command', 'message'])
   })
 
   it('uses engine metadata even when displayed content is not parseable', () => {
     const items = deriveTimelineMinimapItems([
       msg({ id: 'u1', role: 'user', content: 'resolved command body', slashCommand: '/custom' }),
     ])
-    expect(items[0].isSlashCommand).toBe(true)
+    expect(items[0].tickKind).toBe('slash-command')
   })
 
   it('does not classify filesystem paths or embedded slash text as commands', () => {
@@ -186,7 +186,39 @@ describe('deriveTimelineMinimapItems', () => {
       msg({ id: 'u1', role: 'user', content: '/usr/bin/env' }),
       msg({ id: 'u2', role: 'user', content: 'please run /align' }),
     ])
-    expect(items.map((item) => item.isSlashCommand)).toEqual([false, false])
+    expect(items.map((item) => item.tickKind)).toEqual(['message', 'message'])
+  })
+
+
+  it('classifies a legacy implementation only from the ExitPlanMode boundary and generated prompt', () => {
+    const items = deriveTimelineMinimapItems([
+      msg({ id: 'exit', role: 'tool', content: '', toolName: 'ExitPlanMode' }),
+      msg({ id: 'proposal', role: 'assistant', content: 'Plan ready.' }),
+      msg({ id: 'u1', role: 'user', content: `Implement the following plan:\n\n# Durable plan` }),
+      msg({ id: 'u2', role: 'user', content: `Implement the following plan:\n\n# User-authored text` }),
+      msg({ id: 'read', role: 'tool', content: '', toolName: 'Read' }),
+      msg({ id: 'u3', role: 'user', content: 'Implement the plan.' }),
+    ])
+
+    expect(items.map((item) => item.tickKind)).toEqual([
+      'plan-implementation',
+      'message',
+      'message',
+    ])
+  })
+
+  it('classifies an implementation turn ahead of slash-command provenance', () => {
+    const items = deriveTimelineMinimapItems([
+      msg({ id: 'u1', role: 'user', content: '/implement', slashCommand: '/implement', implementationPhase: true }),
+      msg({ id: 'u2', role: 'user', content: '/align', slashCommand: '/align' }),
+      msg({ id: 'u3', role: 'user', content: 'ordinary message' }),
+    ])
+
+    expect(items.map((item) => item.tickKind)).toEqual([
+      'plan-implementation',
+      'slash-command',
+      'message',
+    ])
   })
 
   it('ignores assistant messages with only whitespace content', () => {

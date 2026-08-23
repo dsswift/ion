@@ -99,6 +99,8 @@ export function DeepLinkConfirmDialog(): React.JSX.Element | null {
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 10000,
+        padding: 16,
+        boxSizing: 'border-box',
       }}
       onClick={() => answer(current.id, false)}
     >
@@ -108,8 +110,10 @@ export function DeepLinkConfirmDialog(): React.JSX.Element | null {
         onClick={(e) => e.stopPropagation()}
         style={{
           width: 520,
-          maxWidth: '90vw',
-          maxHeight: '80vh',
+          maxWidth: '100%',
+          maxHeight: '100%',
+          minWidth: 0,
+          boxSizing: 'border-box',
           overflow: 'auto',
           background: colors.surfacePrimary,
           border: `1px solid ${colors.borderSubtle}`,
@@ -161,7 +165,7 @@ export function DeepLinkConfirmDialog(): React.JSX.Element | null {
           </Field>
         ) : null}
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: 4 }}>
           <button
             data-ion-ui
             onClick={() => answer(current.id, false)}
@@ -217,7 +221,7 @@ function Field({
   mono?: boolean
 }): React.JSX.Element {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
       <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, color: colors.textSecondary }}>
         {label}
       </div>

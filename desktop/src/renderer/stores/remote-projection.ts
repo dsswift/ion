@@ -34,6 +34,7 @@ import { tabHasExtensions } from '../../shared/tab-predicates'
 import { settlingIsPermanent } from '../../shared/worktree-conversations'
 import { effectiveRunningChildrenCount, waitingStateOfPane } from '../components/TabStripShared'
 import { classifyInbox, inboxUnread, wokeAt } from '../../shared/inbox-classify'
+import { liveBackgroundShellCount } from '../../shared/background-shell-counts'
 import { usePreferencesStore } from '../preferences'
 import { rDebug } from '../rendererLogger'
 
@@ -128,7 +129,7 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
     failed: t.status === 'failed',
     hasPendingWork: activeInst?.statusFields?.hasPendingWork === true
       || (activeInst?.statusFields?.backgroundAgents ?? 0) > 0
-      || (activeInst?.statusFields?.backgroundShells ?? 0) > 0
+      || liveBackgroundShellCount(activeInst?.statusFields) > 0
       || activeInst?.agentStates.some((agent) => agent.status === 'running') === true,
   }
   const autoSettleDaysPref = usePreferencesStore.getState().inboxAutoSettleDays
@@ -264,10 +265,13 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
       // surfaces": when the desktop renders a per-instance signal, iOS must
       // see the same data through the snapshot.
       const instRunningAgents = effectiveRunningChildrenCount(inst)
-      // Outstanding background bash commands for this instance. iOS renders a
-      // pink shell dot and an "N background shells" label from it; the tab
-      // aggregate below drives the parent pill's dot.
-      const instBackgroundShells = inst.statusFields?.backgroundShells ?? 0
+      // Live background bash processes for this instance, notifying or
+      // detached. iOS renders a pink shell dot and an "N background shells"
+      // label from it; the tab aggregate below drives the parent pill's dot.
+      // Reads liveBackgroundShellCount rather than the engine's notify-only
+      // `backgroundShells` scalar so a detached command does not project as a
+      // finished conversation — see shared/background-shell-counts.ts.
+      const instBackgroundShells = liveBackgroundShellCount(inst.statusFields)
       // Per-instance model-fallback indicator. Projects the renderer's
       // engineModelFallbacks map onto each instance so iOS can render a
       // matching ⚠ glyph on its EngineInstanceBar. We forward only the
@@ -397,9 +401,10 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
     hasPendingWork: hasPendingWork || undefined,
     conversationId: t.conversationId || null,
     lastMessageContent: lastMsg,
-    // Honest activity ⊕ row scan: the max keeps a tool-working tail fresh
-    // while a restored idle tab keeps its true (persisted/backfilled) age.
-    lastActivityTs: Math.max(lastActivityTs, t.lastMessageAt ?? 0),
+    // The remote activity clock must include run completion. A tool-only tail
+    // can finish after the last user/assistant message, and both iOS and the
+    // cold snapshot must show that true stop time.
+    lastActivityTs: Math.max(lastActivityTs, t.lastActivityAt ?? 0, t.lastMessageAt ?? 0, t.lastCompletionAt ?? 0),
     idleSince: t.idleSince ?? null,
     createdAt: t.createdAt,
     // Explicit worktree identity so clients group without path guessing.

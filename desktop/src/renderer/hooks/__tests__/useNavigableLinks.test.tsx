@@ -18,20 +18,49 @@
 import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { describe, it, expect, beforeAll } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, it, expect, vi } from 'vitest'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { segmentText, NavigableLink, NavigableCode, LinkSegment, remarkNavigableLinks } from '../useNavigableLinks'
+import { segmentText, NavigableLink, NavigableCode, LinkSegment, remarkNavigableLinks, useNavigableText } from '../useNavigableLinks'
+import { registerSurfaceFileRouter } from '../../lib/file-open-router'
+import { useSessionStore } from '../../stores/sessionStore'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 // A real markdown link routes through window.ion.openExternal. Stub it so the
 // external-open branch is exercisable and its target is observable.
 const externalOpens: string[] = []
+const fsExists = vi.fn<(path: string) => Promise<{ exists: boolean }>>()
+const fsOpenNative = vi.fn<(path: string) => Promise<{ ok: boolean; error?: string }>>()
+const logWrite = vi.fn()
+const legacyOpenFile = vi.fn()
+let unregisterRouter: (() => void) | null = null
+
 beforeAll(() => {
   ;(globalThis as any).window.ion = {
     openExternal: (url: string) => { externalOpens.push(url); return Promise.resolve() },
+    fsExists,
+    fsOpenNative,
+    logWrite,
   }
+})
+
+beforeEach(() => {
+  fsExists.mockReset().mockResolvedValue({ exists: true })
+  fsOpenNative.mockReset().mockResolvedValue({ ok: true })
+  logWrite.mockClear()
+  legacyOpenFile.mockClear()
+  useSessionStore.setState({
+    activeTabId: 'tab-1',
+    tabs: [{ id: 'tab-1', workingDirectory: '/active/repository' }] as never,
+    staticInfo: { homePath: '/home/operator' } as never,
+    openFileInEditor: legacyOpenFile,
+  })
+})
+
+afterEach(() => {
+  unregisterRouter?.()
+  unregisterRouter = null
 })
 
 const noop = () => {}
@@ -42,6 +71,101 @@ function mount() {
   const root = createRoot(container)
   return { container, root }
 }
+
+async function commandClickFilePath(path: string): Promise<void> {
+  const { container, root } = mount()
+
+  function FilePathHarness() {
+    const { onOpenFile, onOpenUrl } = useNavigableText()
+    return <LinkSegment segment={{ type: 'file', value: path }} onOpenFile={onOpenFile} onOpenUrl={onOpenUrl} asChip />
+  }
+
+  act(() => root.render(<FilePathHarness />))
+  const chip = container.querySelector('[role="link"]')
+  expect(chip).not.toBeNull()
+  await act(async () => {
+    chip!.dispatchEvent(new MouseEvent('click', { bubbles: true, metaKey: true }))
+    await Promise.resolve()
+  })
+  act(() => root.unmount())
+  container.remove()
+}
+
+describe('useNavigableText file routing', () => {
+  it('routes an existing absolute Markdown path outside the workspace to the Studio surface', async () => {
+    const openTextFile = vi.fn()
+    unregisterRouter = registerSurfaceFileRouter({
+      openTextFile,
+      openImage: vi.fn(),
+      openHtml: vi.fn(),
+      openGitDiff: vi.fn(() => false),
+    })
+    const absolutePath = '/outside/knowledge/standard.md'
+
+    await commandClickFilePath(absolutePath)
+
+    expect(fsExists).toHaveBeenCalledWith(absolutePath)
+    expect(openTextFile).toHaveBeenCalledWith('/active/repository', 'tab-1', absolutePath)
+    expect(legacyOpenFile).not.toHaveBeenCalled()
+  })
+
+  it('keeps the overlay editor fallback when no Studio router is registered', async () => {
+    const absolutePath = '/outside/knowledge/standard.md'
+
+    await commandClickFilePath(absolutePath)
+
+    expect(legacyOpenFile).toHaveBeenCalledWith('/active/repository', 'tab-1', absolutePath)
+  })
+
+  it('logs a Studio router failure without falling through to the overlay editor', async () => {
+    const openTextFile = vi.fn(() => { throw new Error('surface unavailable') })
+    unregisterRouter = registerSurfaceFileRouter({
+      openTextFile,
+      openImage: vi.fn(),
+      openHtml: vi.fn(),
+      openGitDiff: vi.fn(() => false),
+    })
+
+    await commandClickFilePath('/outside/knowledge/standard.md')
+
+    expect(legacyOpenFile).not.toHaveBeenCalled()
+    expect(logWrite).toHaveBeenCalledWith(
+      'WARN',
+      'navigable-links',
+      'Studio surface file open failed',
+      expect.objectContaining({ error: 'Error: surface unavailable' }),
+    )
+  })
+
+  it('logs an existence-check failure without trying either file route', async () => {
+    fsExists.mockRejectedValueOnce(new Error('filesystem unavailable'))
+
+    await commandClickFilePath('/outside/knowledge/standard.md')
+
+    expect(legacyOpenFile).not.toHaveBeenCalled()
+    expect(fsOpenNative).not.toHaveBeenCalled()
+    expect(logWrite).toHaveBeenCalledWith(
+      'WARN',
+      'navigable-links',
+      'file existence check failed',
+      expect.objectContaining({ error: 'Error: filesystem unavailable' }),
+    )
+  })
+
+  it('logs a native-open refusal returned by the filesystem bridge', async () => {
+    fsOpenNative.mockResolvedValueOnce({ ok: false, error: 'no application' })
+
+    await commandClickFilePath('/outside/document.pdf')
+
+    expect(fsOpenNative).toHaveBeenCalledWith('/outside/document.pdf')
+    expect(logWrite).toHaveBeenCalledWith(
+      'WARN',
+      'navigable-links',
+      'native file open rejected',
+      expect.objectContaining({ error: 'no application' }),
+    )
+  })
+})
 
 describe('segmentText', () => {
   it('splits plain text, file paths, and URLs', () => {

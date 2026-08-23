@@ -103,6 +103,28 @@ describe('handleStatusEvent — conversationId guard (issue #230 B1)', () => {
     }
   })
 
+  it('records the terminal engine status as the latest activity boundary', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(3_000))
+    const tab = makeTab({ conversationId: 'existing-conv-id', status: 'running', lastActivityAt: 1_000 })
+
+    handleEngineEvent(ctx, 'tab-001', tab, makeIdleEvent('existing-conv-id'))
+
+    expect(tab.lastActivityAt).toBe(3_000)
+    vi.useRealTimers()
+  })
+
+  it('does not let a repeated idle heartbeat move the activity clock', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(3_000))
+    const tab = makeTab({ conversationId: 'existing-conv-id', status: 'idle', lastActivityAt: 1_000, startedAt: 1_000 })
+
+    handleEngineEvent(ctx, 'tab-001', tab, makeIdleEvent('existing-conv-id'))
+
+    expect(tab.lastActivityAt).toBe(1_000)
+    vi.useRealTimers()
+  })
+
   it('adopts engine sessionId when tab has no conversationId (first bind)', () => {
     const tab = makeTab({ conversationId: null, status: 'running' })
     const event = makeIdleEvent('new-conv-id')

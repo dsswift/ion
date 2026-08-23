@@ -35,7 +35,11 @@
  * Background bash commands are protected for the same reason: tearing the
  * session down runs the engine's StopBackgroundTasksForOwner, which kills the
  * session's running shell processes. A long build or test run dying because a
- * tab was closed or converted is the same footgun as a killed sub-agent.
+ * tab was closed or converted is the same footgun as a killed sub-agent. The
+ * shell term counts EVERY live process (`liveBackgroundShellCount`), not only
+ * the ones the engine parks on: StopBackgroundTasksForOwner kills detached
+ * commands too, so reading the notify-only `backgroundShells` scalar here let a
+ * close silently kill a live command.
  *
  * Internal cleanup paths (tab close after the single engine instance is torn
  * down) abort the orchestrator above the call site, which propagates to children
@@ -55,10 +59,18 @@
  * and let Cmd+W silently kill their running sub-agents — fixed.)
  */
 
+import { liveBackgroundShellCount } from '../../../shared/background-shell-counts'
+
 /** Minimal instance shape the guard reads. */
 interface GuardInstance {
   id: string
-  statusFields?: { state?: string; backgroundAgents?: number; backgroundShells?: number; hasPendingWork?: boolean } | null
+  statusFields?: {
+    state?: string
+    backgroundAgents?: number
+    backgroundShells?: number
+    activeBackgroundTasks?: ReadonlyArray<unknown>
+    hasPendingWork?: boolean
+  } | null
   agentStates?: Array<{ status?: string } | null> | null
 }
 
@@ -104,7 +116,7 @@ export function evaluateSessionBusyGuard(pane: GuardPane | null | undefined): Se
     const rosterRunning = agents.filter((a) => a?.status === 'running').length
     const running = Math.max(rosterRunning, inst.statusFields?.backgroundAgents ?? 0)
     childCounts.push({ id: inst.id, count: running })
-    shellCount += inst.statusFields?.backgroundShells ?? 0
+    shellCount += liveBackgroundShellCount(inst.statusFields)
     if (inst.statusFields?.hasPendingWork) {
       childCounts.push({ id: `${inst.id}:pending`, count: 1 })
     }

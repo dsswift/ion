@@ -218,7 +218,7 @@ export function QuickToolsCategory() {
           Scope this tool to specific directories. Leave empty to show in all tabs.
         </span>
         {edit.directories.map((dir, i) => (
-          <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+          <div key={i} style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4, minWidth: 0 }}>
             <input
               type="text"
               value={dir}
@@ -268,7 +268,7 @@ export function QuickToolsCategory() {
         </button>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end', marginTop: 8, minWidth: 0 }}>
         <button
           onClick={cancel}
           style={{

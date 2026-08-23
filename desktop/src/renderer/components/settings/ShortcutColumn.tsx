@@ -24,8 +24,8 @@ export function ShortcutColumn({ view, label, groups, entries, bindings, overrid
   const hasCustomizations = Object.keys(overrides).length > 0
 
   return (
-    <section style={{ flex: 1, minWidth: 360 }}>
-      <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0' }}>
+    <section style={{ width: '100%', minWidth: 0 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', width: '100%', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 0' }}>
         <strong style={{ fontSize: 14 }}>{label}</strong>
         {hasCustomizations && <button onClick={() => onResetAll(view)} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: `1px solid ${colors.inputBorder}`, background: 'transparent', color: colors.textSecondary, cursor: 'pointer' }}>Restore {label} defaults</button>}
       </div>

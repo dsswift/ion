@@ -188,6 +188,7 @@ export function toRemoteMessage(m: Message): RemoteMessage {
     slashSource: m.slashSource,
     slashModelAlias: m.slashModelAlias,
     slashModelEffective: m.slashModelEffective,
+    implementationPhase: m.implementationPhase,
     planFilePath: m.planFilePath,
     backgroundTaskId: m.backgroundTaskId,
     backgroundWork: m.backgroundWork,

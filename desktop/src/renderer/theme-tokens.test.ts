@@ -57,6 +57,23 @@ describe('custom theme registry', () => {
     expect(overridden.colors.timelineSlashCommandActive).toBe('#BB88EE')
   })
 
+  it('inherits and allows overrides for plan-implementation timeline tokens', () => {
+    const inherited = resolveCustomThemeDefinition(acmePayload())
+    expect(inherited.colors.timelinePlanImplementation).toBe(darkColors.timelinePlanImplementation)
+    expect(inherited.colors.timelinePlanImplementationActive).toBe(darkColors.timelinePlanImplementationActive)
+
+    const overridden = resolveCustomThemeDefinition(
+      acmePayload({
+        tokens: {
+          timelinePlanImplementation: '#227744',
+          timelinePlanImplementationActive: '#66CC99',
+        },
+      }),
+    )
+    expect(overridden.colors.timelinePlanImplementation).toBe('#227744')
+    expect(overridden.colors.timelinePlanImplementationActive).toBe('#66CC99')
+  })
+
   it('ignores unknown token keys in the payload', () => {
     const def = resolveCustomThemeDefinition(
       acmePayload({ tokens: { accent: '#FF6600', notAKey: '#000' } }),

@@ -5,6 +5,7 @@ import { usePreferencesStore } from '../../preferences'
 import type { ResourceItem } from '../../../shared/types-engine'
 import {
   browserTabId,
+  DISPATCH_SURFACE_ID,
   fileTabId,
   previewTabId,
   terminalTabId,
@@ -60,6 +61,7 @@ export interface SurfaceState {
   openFileTab(dir: string, tabId: string, filePath: string): void
   openPreviewTab(filePath: string, dataUrl?: string): void
   openResourceTab(item: ResourceItem): void
+  openDispatchTab(agentName: string, dispatchId: string, title: string): void
   openRuntimePanel(id: string, title: string): void
   updateRuntimePanelTitle(id: string, title: string): void
   removeRuntimePanel(id: string): void
@@ -247,21 +249,13 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
     const state = get()
     const saved = currentConversationId ? state.conversations[currentConversationId]?.visible ?? false : false
     const visible = shouldRememberVisibility() ? saved : state.visible
-    // Pinned tabs (Diff, Plan, Visualizer) are global — they represent a
-    // mode the user is in, not a per-conversation memory. If the tab active
-    // just before this switch was pinned, carry that same pinned tab forward
-    // as the new conversation's active tab instead of falling back to
-    // whatever that conversation last remembered (or the first pinned tab
-    // in strip order). A non-pinned active tab (a file, a terminal) is
-    // conversation-local and keeps the existing per-conversation memory.
-    const carriedPinnedTab = state.activeTabId && state.pinnedTabs.includes(state.activeTabId as PinnableSingletonId)
-      ? (state.activeTabId as PinnableSingletonId)
-      : null
-    const conversations = carriedPinnedTab && currentConversationId
-      ? { ...state.conversations, [currentConversationId]: { ...(state.conversations[currentConversationId] ?? emptyConversation()), activeTabId: carriedPinnedTab } }
-      : state.conversations
-    set({ ...project({ ...state, conversations, currentConversationId, visible }), currentConversationId })
-    rDebug('studio.surface', 'conversation selected', { tab_id: currentConversationId ?? '', visible, mode: shouldRememberVisibility() ? 'per-conversation' : 'keep', carried_pinned_tab: carriedPinnedTab ?? '' })
+    set({ ...project({ ...state, currentConversationId, visible }), currentConversationId })
+    rDebug('studio.surface', 'conversation selected', {
+      tab_id: currentConversationId ?? '',
+      active_surface_tab: currentConversationId ? (state.conversations[currentConversationId]?.activeTabId ?? '') : '',
+      visible,
+      mode: shouldRememberVisibility() ? 'per-conversation' : 'keep',
+    })
   },
 
   setVisible: (visible) => {
@@ -341,6 +335,14 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
       tab_id: currentConversationId,
     })
   },
+
+  openDispatchTab: (agentName, dispatchId, title) => updateCurrent(set, get, (current) => ({
+    ...current,
+    tabs: current.tabs.some((tab) => tab.id === DISPATCH_SURFACE_ID)
+      ? current.tabs.map((tab) => tab.id === DISPATCH_SURFACE_ID ? { kind: 'dispatch', id: DISPATCH_SURFACE_ID, agentName, dispatchId, title } : tab)
+      : [...current.tabs, { kind: 'dispatch', id: DISPATCH_SURFACE_ID, agentName, dispatchId, title }],
+    activeTabId: DISPATCH_SURFACE_ID,
+  })),
 
   openRuntimePanel: (id, title) => updateCurrent(set, get, (current) => ({ ...current, tabs: current.tabs.some((tab) => tab.id === id) ? current.tabs.map((tab) => tab.id === id ? { kind: 'runtime-panel', id, title } : tab) : [...current.tabs, { kind: 'runtime-panel', id, title }], activeTabId: id })),
 

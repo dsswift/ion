@@ -11,13 +11,13 @@ import { StudioLauncherButton } from './StudioLauncherButton'
 import { BranchPickerDialog } from './BranchPickerDialog'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
-import { NewConversationPicker, resolveNewConversationAction, executeNewConversationAction } from './NewConversationPicker'
-import { createNewConversationTab } from './new-conversation-tab'
+import { NewConversationPicker } from './NewConversationPicker'
+import type { NewConversationPickerTarget } from './new-conversation-picker-target'
 import { useTabGroups } from '../hooks/useTabGroups'
 import type { TabState } from '../../shared/types'
 import { useManualReorder } from '../hooks/useManualReorder'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
-import { checkWorktreeUncommitted, shouldUseWorktree } from './TabStripShared'
+import { checkWorktreeUncommitted } from './TabStripShared'
 import { zoomRect } from '../viewport-zoom'
 import { PillColorPicker } from './TabStripPillColorPicker'
 import { DirContextMenu } from './TabStripDirContextMenu'
@@ -42,13 +42,11 @@ export function TabStrip() {
   const renameTab = useSessionStore((s) => s.renameTab)
   const setTabPillColor = useSessionStore((s) => s.setTabPillColor)
   const setTabPillIcon = useSessionStore((s) => s.setTabPillIcon)
-  const createTabInDirectory = useSessionStore((s) => s.createTabInDirectory)
   const toggleTerminal = useSessionStore((s) => s.toggleTerminal)
   const createTerminalTab = useSessionStore((s) => s.createTerminalTab)
   const terminalOpenTabIds = useSessionStore((s) => s.terminalOpenTabIds)
   const colors = useColors()
   const tabsReady = useSessionStore((s) => s.tabsReady)
-  const enterpriseNewConversationDefaults = usePreferencesStore((s) => s.enterpriseNewConversationDefaults)
   const worktreeUncommittedMap = useSessionStore((s) => s.worktreeUncommittedMap)
   const { mode: groupMode, groups, ungrouped } = useTabGroups()
 
@@ -57,8 +55,8 @@ export function TabStrip() {
   const [colorPickerAnchor, setColorPickerAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [dirMenuTabId, setDirMenuTabId] = useState<string | null>(null)
   const [dirMenuAnchor, setDirMenuAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
-  const [dirPickerState, setDirPickerState] = useState<{ anchor: { x: number; y: number; bottom: number }; mode: 'conversation' | 'terminal' } | null>(null)
-  const [convPickerState, setConvPickerState] = useState<{ anchor: { x: number; y: number; bottom: number }; dir: string } | null>(null)
+  const [dirPickerState, setDirPickerState] = useState<{ anchor: { x: number; y: number; bottom: number }; mode: 'terminal' } | null>(null)
+  const [convPicker, setConvPicker] = useState<{ key: number; target: NewConversationPickerTarget | null } | null>(null)
   const [tabMenuId, setTabMenuId] = useState<string | null>(null)
   const renameWithWorktree = useRenameTabWorktree()
   const [tabMenuAnchor, setTabMenuAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
@@ -110,30 +108,21 @@ export function TabStrip() {
     if (id) checkWorktreeUncommitted(tabs.find((t) => t.id === id))
   }, [dirMenuTabId, tabMenuId, tabs])
 
-  // Keyboard shortcut bridge: Cmd+T / Cmd+Shift+T fire this event when the
-  // resolved action is 'show-picker' so the picker opens anchored to the +
-  // button, matching the click-driven path.
+  // Global commands use the project-first flow by default. A scoped command can
+  // supply a known workspace and start at the final conversation-type step.
   useEffect(() => {
-    const handler = (e: Event) => {
-      const dir = (e as CustomEvent<{ dir: string }>).detail?.dir ?? ''
-      const btn = plusButtonRef.current
-      const raw = btn ? btn.getBoundingClientRect() : new DOMRect(0, 40, 0, 0)
-      const rect = zoomRect(raw)
-      setConvPickerState({ anchor: { x: rect.left, y: rect.top, bottom: rect.bottom }, dir })
+    const handler = (event: Event) => {
+      const target = (event as CustomEvent<NewConversationPickerTarget>).detail
+      setConvPicker({ key: Date.now(), target: target ?? null })
     }
     window.addEventListener('ion:open-new-conversation-picker', handler)
     return () => window.removeEventListener('ion:open-new-conversation-picker', handler)
   }, [])
 
-  // Keyboard shortcut bridge: Cmd+R fires this event so the recent-directories
-  // picker opens anchored to the + button, matching the click-driven path.
+  // The former recent-directory command now opens that same flow. Directory
+  // search is built into it, so a separate conversation popover is unnecessary.
   useEffect(() => {
-    const handler = () => {
-      const btn = plusButtonRef.current
-      const raw = btn ? btn.getBoundingClientRect() : new DOMRect(0, 40, 0, 0)
-      const rect = zoomRect(raw)
-      setDirPickerState({ anchor: { x: rect.left, y: rect.top, bottom: rect.bottom }, mode: 'conversation' })
-    }
+    const handler = () => setConvPicker({ key: Date.now(), target: null })
     window.addEventListener('ion:open-recent-dirs', handler)
     return () => window.removeEventListener('ion:open-recent-dirs', handler)
   }, [])
@@ -229,9 +218,7 @@ export function TabStrip() {
       onOpenColorPicker={(tabId, anchor) => { setColorPickerTabId(tabId); setColorPickerAnchor(anchor) }}
       onCloseColorPicker={() => setColorPickerTabId(null)}
       onOpenDirMenu={(tabId, anchor) => { setDirMenuTabId(tabId); setDirMenuAnchor(anchor) }}
-      onCreateTabInDir={(dir) => {
-        createNewConversationTab(dir)
-      }}
+      onCreateTabInDir={() => setConvPicker({ key: Date.now(), target: null })}
       dirMenuTabId={dirMenuTabId}
       onOpenTabMenu={(tabId, anchor) => { setTabMenuId(tabId); setTabMenuAnchor(anchor) }}
       tabRefs={tabRefs}
@@ -348,9 +335,7 @@ export function TabStrip() {
               dirName={dirName}
               tabId={menuTab.id}
               tabGroupId={menuTab.groupId || undefined}
-              onCreateTab={() => {
-                createNewConversationTab(menuTab.workingDirectory)
-              }}
+              onCreateTab={() => setConvPicker({ key: Date.now(), target: null })}
               onForkTab={menuTab.conversationId ? () => { void useSessionStore.getState().forkTab(menuTab.id).catch((err) => rError('tabs', 'fork tab failed', { error: String(err) })) } : undefined}
               onFinishWork={menuTab.worktree ? () => { void useSessionStore.getState().finishWorktreeTab(menuTab.id).catch((err) => rError('tabs', 'finish worktree failed', { error: String(err) })) } : undefined}
               finishWorkDisabled={menuTab.worktree ? (worktreeUncommittedMap.has(menuTab.id) ? worktreeUncommittedMap.get(menuTab.id)! : 'checking') : undefined}
@@ -367,16 +352,7 @@ export function TabStrip() {
             anchor={dirPickerState.anchor}
             onSelectDir={(dir) => {
               usePreferencesStore.getState().addRecentBaseDirectory(dir)
-              switch (dirPickerState.mode) {
-                case 'conversation': {
-                  const result = createNewConversationTab(dir)
-                  if (result === 'show-picker') {
-                    setConvPickerState({ anchor: dirPickerState!.anchor, dir })
-                  }
-                  break
-                }
-                case 'terminal': void createTerminalTab(dir).catch((err) => rError('tabs', 'create terminal failed', { error: String(err) })); break
-              }
+              void createTerminalTab(dir).catch((err) => rError('tabs', 'create terminal failed', { error: String(err) }))
             }}
             onClose={() => setDirPickerState(null)}
           />
@@ -384,23 +360,11 @@ export function TabStrip() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {convPickerState && (
+        {convPicker && (
           <NewConversationPicker
-            key="new-conversation-picker"
-            anchor={convPickerState.anchor}
-            onPlain={() => {
-              void createTabInDirectory(convPickerState.dir, shouldUseWorktree(false)).catch((err) => rError('tabs', 'create tab failed', { error: String(err) }))
-              setConvPickerState(null)
-            }}
-            onProfile={(profileId) => {
-              void useSessionStore.getState().createConversationTab(convPickerState.dir, { profileId }).catch((err) => rError('tabs', 'create conversation failed', { error: String(err) }))
-              setConvPickerState(null)
-            }}
-            onOpenSettings={() => {
-              useSessionStore.getState().openSettings()
-              setConvPickerState(null)
-            }}
-            onClose={() => setConvPickerState(null)}
+            key={`new-conversation-picker-${convPicker.key}`}
+            {...(convPicker.target ?? {})}
+            onClose={() => setConvPicker(null)}
           />
         )}
       </AnimatePresence>
@@ -417,11 +381,7 @@ export function TabStrip() {
               onRename={() => { setTabMenuId(null); setEditingTabId(menuTab.id) }}
               onRenameWithWorktree={() => { setTabMenuId(null); renameWithWorktree.requestRename(menuTab) }}
               onForkTab={menuTab.conversationId ? () => { void useSessionStore.getState().forkTab(menuTab.id).catch((err) => rError('tabs', 'fork tab failed', { error: String(err) })) } : undefined}
-              onNewTabInDir={() => {
-                if (menuTab.workingDirectory) {
-                  createNewConversationTab(menuTab.workingDirectory)
-                }
-              }}
+              onNewTabInDir={() => setConvPicker({ key: Date.now(), target: null })}
               onFinishWork={() => {
                 void useSessionStore.getState().finishWorktreeTab(menuTab.id).catch((err) => rError('tabs', 'finish worktree failed', { error: String(err) }))
               }}
@@ -454,27 +414,9 @@ export function TabStrip() {
       <div className="flex items-center gap-0.5 flex-shrink-0 ml-1 pr-2">
         <button
           ref={plusButtonRef}
-          onClick={(e) => {
+          onClick={() => {
             window.dispatchEvent(new CustomEvent('ion:close-group-pickers'))
-            // Check for enterprise lock before opening the directory picker.
-            const { engineProfiles, defaultEngineProfileId } = usePreferencesStore.getState()
-            const action = resolveNewConversationAction(engineProfiles, defaultEngineProfileId, enterpriseNewConversationDefaults)
-            if (action.kind === 'locked') {
-              // Locked: bypass both pickers entirely. Open with the mandated dir
-              // + profile via the shared executor so the open-logic isn't
-              // duplicated here.
-              const dir = action.baseDirectory || usePreferencesStore.getState().defaultBaseDirectory
-              executeNewConversationAction(
-                dir,
-                action,
-                (d, wt) => { void createTabInDirectory(d, wt).catch((err) => rError('tabs', 'create tab failed', { error: String(err) })) },
-                (d, opts) => { void useSessionStore.getState().createConversationTab(d, opts).catch((err) => rError('tabs', 'create conversation failed', { error: String(err) })) },
-                shouldUseWorktree(false),
-              )
-              return
-            }
-            const rect = zoomRect((e.currentTarget as HTMLElement).getBoundingClientRect())
-            setDirPickerState({ anchor: { x: rect.left, y: rect.top, bottom: rect.bottom }, mode: 'conversation' })
+            setConvPicker({ key: Date.now(), target: null })
           }}
           className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full ion-focusable"
           style={{

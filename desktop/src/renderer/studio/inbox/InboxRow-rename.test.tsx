@@ -143,6 +143,18 @@ describe('InboxRow context-menu Snooze in an integration bench', () => {
     state.benchWorkspaces = new Map()
   })
 
+  it('omits Pin for an unpinned bench conversation', async () => {
+    expect(await menuLabels(tab(BENCH))).not.toContain('Pin conversation')
+  })
+
+  it('keeps Unpin for a legacy pinned bench conversation', async () => {
+    expect(await menuLabels({ ...tab(BENCH), pinnedAt: 1 })).toContain('Unpin conversation')
+  })
+
+  it('still offers Pin outside the bench', async () => {
+    expect(await menuLabels(tab('/Users/dev/src/ion'))).toContain('Pin conversation')
+  })
+
   it('omits Snooze for a conversation in the bench', async () => {
     expect((await menuLabels(tab(BENCH))).some((label) => label.startsWith('Snooze'))).toBe(false)
   })

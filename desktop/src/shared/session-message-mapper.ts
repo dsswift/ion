@@ -129,6 +129,7 @@ export function mapSessionMessage(
     slashSource: m.slashSource,
     slashModelAlias: m.slashModelAlias,
     slashModelEffective: m.slashModelEffective,
+    implementationPhase: m.implementationPhase,
     attachments: m.attachments,
     backgroundTaskId: m.backgroundTaskId,
     timestamp: m.timestamp,

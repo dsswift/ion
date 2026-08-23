@@ -14,7 +14,7 @@ export const STATUS_CASCADE = [
   { name: 'plan-ready', iosReachable: true },
   { name: 'question', iosReachable: true },
   { name: 'bash', iosReachable: false },
-  { name: 'unread', iosReachable: false },
+  { name: 'unread', iosReachable: true },
   { name: 'idle', iosReachable: true },
 ] as const
 

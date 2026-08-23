@@ -110,8 +110,8 @@ export function ProviderRow({ provider, colors, onCredentialSaved }: {
     && provider.authSource === 'filestore' && provider.backend !== 'codex' && providerModelCount === 0
 
   return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+    <div style={{ marginBottom: 14, minWidth: 0 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 3, minWidth: 0 }}>
         <span style={{ color: colors.textSecondary, fontSize: 13, fontWeight: 500 }}>
           {getProviderDisplayName(provider.id, [provider])}
         </span>
@@ -161,7 +161,7 @@ export function ProviderRow({ provider, colors, onCredentialSaved }: {
       {deviceCode && <DeviceCodeDisplay deviceCode={deviceCode} colors={colors} />}
 
       {showApiKeyInput && (
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 4, minWidth: 0 }}>
           <input type="password" placeholder={editing ? 'New API key' : `${getProviderDisplayName(provider.id, [provider])} API key`} value={apiKey} onChange={(e) => setApiKey(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void handleSave().catch((err) => rError('settings', 'save key failed', { error: String(err) })) }} style={inputSt(colors)} />
           <button onClick={() => { void handleSave().catch((err) => rError('settings', 'save key failed', { error: String(err) })) }} disabled={saving || !apiKey.trim()} style={saveBtn(colors, saving || !apiKey.trim())}>{saving ? '…' : saved ? '✓' : 'Save'}</button>
           {editing && <button onClick={() => { setEditing(false); setApiKey('') }} style={linkBtn(colors)}>Cancel</button>}

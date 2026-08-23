@@ -26,13 +26,13 @@ export function KeyboardShortcutsCategory() {
   const hasCustomizations = Object.values(keyboardShortcuts).some((overrides) => Object.keys(overrides).length > 0)
 
   return <>
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
       <p style={{ margin: 0, fontSize: 12 }}>
         Shortcut customizations persist separately for Overlay and Studio in <code>~/.ion/settings.json</code>.
       </p>
       {hasCustomizations && <button onClick={resetAllKeyboardShortcuts}>Restore all defaults</button>}
     </div>
-    <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', overflowX: 'auto' }}>
+    <div data-testid="shortcut-columns" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 360px), 1fr))', gap: 24, alignItems: 'start', minWidth: 0 }}>
       {columns.map(({ view, label, entries, bindings, conflicts }) => <ShortcutColumn key={view} view={view} label={label} groups={getGroupsForView(view)} entries={entries} bindings={bindings} overrides={keyboardShortcuts[view]} conflicts={conflicts} onSet={setKeyboardShortcut} onReset={resetKeyboardShortcut} onResetAll={() => usePreferencesStore.getState().resetKeyboardShortcuts(view)} />)}
     </div>
   </>

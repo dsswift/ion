@@ -19,7 +19,7 @@ export function OverlapIcicle({ analysis, pair, onSelectPath }: {
   const total = [...weights.values()].reduce((sum, value) => sum + value, 0) || 1
   const display = [...weights].sort(([, left], [, right]) => right - left).slice(0, 18)
   const hiddenCount = weights.size - display.length
-  return <div style={{ display: 'flex', minHeight: 54, overflow: 'hidden', borderRadius: 7, border: `1px solid ${colors.containerBorder}` }}>
+  return <div style={{ display: 'flex', width: '100%', minWidth: 0, minHeight: 54, overflow: 'hidden', borderRadius: 7, border: `1px solid ${colors.containerBorder}` }}>
     {display.map(([path, weight]) => <button key={path} onClick={() => onSelectPath(path)} style={{ flex: weight, minWidth: 28, border: 'none', borderRight: `1px solid ${colors.containerBorder}`, background: pair?.conflictPaths.includes(path) ? colors.dangerFg : colors.accentLight, color: colors.textPrimary, cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', padding: 4, fontSize: 9 }} aria-label={`${path}, ${Math.round(weight / total * 100)} percent of changed lines`}>{path.split('/').pop()}</button>)}
     {hiddenCount > 0 && <span style={{ padding: 8, color: colors.textTertiary, fontSize: 10 }}>+{hiddenCount} more</span>}
     {weights.size === 0 && <span style={{ padding: 10, color: colors.textTertiary, fontSize: 11 }}>No changed paths match this selection.</span>}

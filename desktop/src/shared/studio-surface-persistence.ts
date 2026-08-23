@@ -25,6 +25,10 @@ function parseTab(raw: unknown): SurfaceTab | null {
     return { kind: 'file', id: `file:${v.filePath}`, filePath: v.filePath, dir: v.dir, ...(typeof v.tabId === 'string' && v.tabId ? { tabId: v.tabId } : {}) }
   }
   if (v.kind === 'preview') return typeof v.filePath === 'string' && v.filePath ? { kind: 'preview', id: `preview:${v.filePath}`, filePath: v.filePath } : null
+  if (v.kind === 'dispatch') {
+    if (typeof v.agentName !== 'string' || !v.agentName || typeof v.dispatchId !== 'string' || !v.dispatchId) return null
+    return { kind: 'dispatch', id: 'dispatch-preview', agentName: v.agentName, dispatchId: v.dispatchId, title: typeof v.title === 'string' && v.title ? v.title : v.agentName }
+  }
   if (v.kind === 'browser') {
     if (typeof v.instanceId !== 'string' || !v.instanceId || typeof v.url !== 'string') return null
     return { kind: 'browser', id: `browser:${v.instanceId}`, instanceId: v.instanceId, url: v.url, title: typeof v.title === 'string' ? v.title : '', mode: v.mode === 'preview' ? 'preview' : 'browse' }
@@ -43,12 +47,23 @@ function parseNotification(raw: unknown): NotificationTab | null {
   return { kind: 'notification', id: 'notification', resourceKind: v.resourceKind, resourceId: v.resourceId }
 }
 
-function parseConversation(raw: unknown): SurfaceConversationPersisted | null {
+function parseConversation(
+  raw: unknown,
+  pinnedTabs: readonly PinnableSingletonId[] = [],
+  notification: NotificationTab | null = null,
+): SurfaceConversationPersisted | null {
   if (!raw || typeof raw !== 'object') return null
   const v = raw as Record<string, unknown>
   if (!Array.isArray(v.tabs) || typeof v.visible !== 'boolean') return null
   const tabs = normalizeTabs(v.tabs.map(parseTab).filter((tab): tab is SurfaceTab => tab !== null))
-  const activeTabId = typeof v.activeTabId === 'string' && tabs.some((tab) => tab.id === v.activeTabId) ? v.activeTabId : (tabs[0]?.id ?? null)
+  const selectableIds = new Set([
+    ...pinnedTabs,
+    ...tabs.map((tab) => tab.id),
+    ...(notification ? [notification.id] : []),
+  ])
+  const activeTabId = typeof v.activeTabId === 'string' && selectableIds.has(v.activeTabId)
+    ? v.activeTabId
+    : (pinnedTabs[0] ?? tabs[0]?.id ?? notification?.id ?? null)
   return { tabs, activeTabId, visible: v.visible }
 }
 
@@ -67,7 +82,7 @@ export function parseSurfacePersisted(raw: unknown): ParsedSurface | null {
   const conversations: Record<string, SurfaceConversationPersisted> = {}
   for (const [tabId, row] of Object.entries(v.conversations as Record<string, unknown>)) {
     if (!tabId) continue
-    const parsed = parseConversation(row)
+    const parsed = parseConversation(row, pinnedTabs, notification)
     if (parsed) conversations[tabId] = parsed
   }
   return { version: 2, pinnedTabs: normalizePinnedTabs(pinnedTabs), notification, conversations }
@@ -97,7 +112,14 @@ export function serializeSurface(pinnedTabs: readonly PinnableSingletonId[], not
       if (tab.kind === 'preview') tabs.push({ kind: 'preview', id: tab.id, filePath: tab.filePath })
       else tabs.push(tab)
     }
-    const activeTabId = state.activeTabId && tabs.some((tab) => tab.id === state.activeTabId) ? state.activeTabId : (tabs[0]?.id ?? null)
+    const composedIds = new Set([
+      ...pinnedTabs,
+      ...tabs.map((tab) => tab.id),
+      ...(notification ? [notification.id] : []),
+    ])
+    const activeTabId = state.activeTabId && composedIds.has(state.activeTabId)
+      ? state.activeTabId
+      : (pinnedTabs[0] ?? tabs[0]?.id ?? notification?.id ?? null)
     serialized[tabId] = { tabs, activeTabId, visible: state.visible }
   }
   return { version: 2, pinnedTabs: normalizePinnedTabs(pinnedTabs), notification, conversations: serialized }

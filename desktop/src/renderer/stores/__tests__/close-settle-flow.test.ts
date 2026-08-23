@@ -131,6 +131,7 @@ function buildHarness(instance: Record<string, unknown> = {}) {
     unsettleTab: () => (state.unsettleTab as (id: string, reason: 'user') => Promise<boolean>)('close-me', 'user'),
     selectTab: (tabId: string) => (state.selectTab as (id: string) => void)(tabId),
     closeTab: () => (state.closeTab as (id: string) => void)('close-me'),
+    deleteConversationTab: () => (state.deleteConversationTab as (id: string) => Promise<void>)('close-me'),
   }
 }
 
@@ -162,6 +163,42 @@ beforeEach(() => {
 })
 
 describe('close and manual settle', () => {
+  it('permanently deletes stored history after explicit deletion', async () => {
+    const harness = buildHarness({
+      messages: [{ id: 'm1', role: 'user', content: 'Keep this safe', timestamp: 1 }],
+      messageCount: 1,
+      historyHydrated: true,
+    })
+
+    await harness.deleteConversationTab()
+
+    expect(deleteStoredConversations).toHaveBeenCalledWith(['conversation-close-me'])
+    expect(closeTabRpc).toHaveBeenCalledWith('close-me')
+    expect(harness.state.tabs.map((tab) => tab.id)).not.toContain('close-me')
+    expect(harness.state.settledHistory).toEqual([])
+  })
+
+  it('permanently deletes a cold settled-history record', async () => {
+    const harness = buildHarness()
+    await harness.settleTab()
+    expect(harness.state.settledHistory.map((tab) => tab.id)).toContain('close-me')
+
+    await harness.deleteConversationTab()
+
+    expect(deleteStoredConversations).toHaveBeenCalledWith(['conversation-close-me'])
+    expect(harness.state.settledHistory.map((tab) => tab.id)).not.toContain('close-me')
+  })
+
+  it('refuses permanent deletion while conversation work is active', async () => {
+    const harness = buildHarness({ statusFields: { state: 'running' } })
+
+    await harness.deleteConversationTab()
+
+    expect(deleteStoredConversations).not.toHaveBeenCalled()
+    expect(closeTabRpc).not.toHaveBeenCalled()
+    expect(harness.state.tabs.map((tab) => tab.id)).toContain('close-me')
+  })
+
   it('automatically settles an idle conversation with the same hard lock', async () => {
     const harness = buildHarness({
       messages: [{ id: 'm1', role: 'user', content: 'Park this later', timestamp: 1 }],

@@ -51,6 +51,9 @@ export function UpdateDialog(): React.ReactElement | null {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          padding: 16,
+          boxSizing: 'border-box',
+          overflowY: 'auto',
         }}
       >
         <motion.div
@@ -63,6 +66,11 @@ export function UpdateDialog(): React.ReactElement | null {
           className="glass-surface"
           style={{
             width: 320,
+            maxWidth: '100%',
+            maxHeight: '100%',
+            minWidth: 0,
+            boxSizing: 'border-box',
+            overflowY: 'auto',
             borderRadius: 16,
             padding: 24,
             display: 'flex',
@@ -83,7 +91,7 @@ export function UpdateDialog(): React.ReactElement | null {
             A new version has been downloaded. Restart to apply the update.
           </div>
 
-          <div style={{ display: 'flex', gap: 8, marginTop: 8, width: '100%' }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8, width: '100%' }}>
             <button
               onClick={() => useUpdateStore.getState().hideDialog()}
               {...laterIx.handlers}

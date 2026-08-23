@@ -5,7 +5,7 @@ import { resolveSlashPill } from './slash-pill'
 /**
  * Pure geometry + derivation helpers for the conversation timeline minimap.
  * Ported from T3 code's MessagesTimeline.logic.ts (pingdotgg/t3code) and
- * adapted to Ion's plain-DOM transcript (no virtual list).
+ * adapted to Ion's transcript and virtual-row index bridge.
  */
 
 /** Vertical space between two adjacent ticks on the rail, in px. */
@@ -35,11 +35,13 @@ export const TIMELINE_MINIMAP_EXPANDED_STRIP_WIDTH = '22rem'
 /** Scroll offset applied above the target message when jumping, px. */
 export const TIMELINE_MINIMAP_JUMP_OFFSET = 24
 
+export type TimelineMinimapTickKind = 'message' | 'slash-command' | 'plan-implementation'
+
 export interface TimelineMinimapItem {
   readonly id: string
   readonly userText: string
   readonly assistantText: string | null
-  readonly isSlashCommand: boolean
+  readonly tickKind: TimelineMinimapTickKind
 }
 
 /**
@@ -92,6 +94,36 @@ export function resolveTooltipTranslate(index: number, itemCount: number): strin
   return '-50%'
 }
 
+
+const LEGACY_IMPLEMENT_PROMPT_PREFIX = 'Implement the following plan:\n\n'
+const LEGACY_IMPLEMENT_PROMPT_FALLBACK = 'Implement the plan.'
+
+/**
+ * Older persisted turns predate Message.implementationPhase. The old desktop
+ * still produced two exact durable facts: an ExitPlanMode tool row in the same
+ * turn boundary before the generated implementation prompt, and one of the two
+ * fixed prompt shapes emitted by implementPlan. Require BOTH facts. Prompt text
+ * alone is not provenance, and ExitPlanMode alone only means a plan was proposed.
+ */
+function isLegacyPlanImplementationTurn(
+  messages: ReadonlyArray<Message>,
+  userIndex: number,
+): boolean {
+  const content = messages[userIndex]?.content ?? ''
+  if (
+    content !== LEGACY_IMPLEMENT_PROMPT_FALLBACK &&
+    !content.startsWith(LEGACY_IMPLEMENT_PROMPT_PREFIX)
+  ) {
+    return false
+  }
+  for (let index = userIndex - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message.role === 'user') return false
+    if (message.role === 'tool' && message.toolName === 'ExitPlanMode') return true
+  }
+  return false
+}
+
 /** Whitespace-collapsed single-line preview; null when nothing remains. */
 export function compactMinimapPreview(text: string | null | undefined): string | null {
   const compact = text?.replace(/\s+/g, ' ').trim() ?? ''
@@ -121,7 +153,11 @@ export function deriveTimelineMinimapItems(
       id: message.id,
       userText,
       assistantText: compactMinimapPreview(resolveFinalAssistantTextForTurn(messages, index)),
-      isSlashCommand: resolveSlashPill(message, message.content || '') !== null,
+      tickKind: message.implementationPhase || isLegacyPlanImplementationTurn(messages, index)
+        ? 'plan-implementation'
+        : resolveSlashPill(message, message.content || '') !== null
+          ? 'slash-command'
+          : 'message',
     })
   }
   return items

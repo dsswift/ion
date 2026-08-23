@@ -113,6 +113,8 @@ export function RemoteDirectoryPicker() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          padding: 16,
+          boxSizing: 'border-box',
         }}
       >
         <motion.div
@@ -125,7 +127,10 @@ export function RemoteDirectoryPicker() {
           onClick={(e) => e.stopPropagation()}
           style={{
             width: 560,
-            maxHeight: '70vh',
+            maxWidth: '100%',
+            maxHeight: '100%',
+            minWidth: 0,
+            boxSizing: 'border-box',
             display: 'flex',
             flexDirection: 'column',
             background: colors.popoverBg,
@@ -191,6 +196,7 @@ export function RemoteDirectoryPicker() {
             style={{
               display: 'flex',
               gap: 4,
+              flexWrap: 'wrap',
               padding: '6px 8px',
               borderBottom: `1px solid ${colors.popoverBorder}`,
             }}
@@ -212,7 +218,7 @@ export function RemoteDirectoryPicker() {
           </div>
 
           {/* Listing */}
-          <div style={{ flex: 1, overflowY: 'auto', minHeight: 200 }}>
+          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, minWidth: 0 }}>
             {loading && (
               <div style={{ padding: 12, fontSize: 11, color: colors.textTertiary }}>Loading…</div>
             )}
@@ -240,6 +246,7 @@ export function RemoteDirectoryPicker() {
               padding: '8px 12px',
               borderTop: `1px solid ${colors.popoverBorder}`,
               justifyContent: 'flex-end',
+              flexWrap: 'wrap',
             }}
           >
             <button

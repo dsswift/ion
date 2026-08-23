@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const state = {
+interface TestTab {
+  id: string
+  engineProfileId: string | null
+  lastVisitedAt: number | null
+  manualUnread: boolean
+}
+
+const state: { activeTabId: string | null; tabs: TestTab[] } = {
   activeTabId: 'a' as string | null,
   tabs: [
     { id: 'a', engineProfileId: null, lastVisitedAt: null, manualUnread: true },
@@ -9,8 +16,15 @@ const state = {
 }
 let listener: ((next: typeof state) => void) | null = null
 
+const markTabRead = vi.fn((tabId: string) => {
+  const visitedAt = Date.now()
+  state.tabs = state.tabs.map((tab) => tab.id === tabId
+    ? { ...tab, lastVisitedAt: visitedAt, manualUnread: false }
+    : tab)
+})
+
 const store = {
-  getState: () => state,
+  getState: () => ({ ...state, markTabRead }),
   setState: (update: ((current: typeof state) => Partial<typeof state>) | Partial<typeof state>) => {
     Object.assign(state, typeof update === 'function' ? update(state) : update)
     listener?.(state)
@@ -35,6 +49,7 @@ describe('initActiveTabNotifier', () => {
     ]
     listener = null
     notifyTabFocus.mockClear()
+    markTabRead.mockClear()
     vi.resetModules()
     vi.useFakeTimers()
     vi.setSystemTime(new Date(10_000))
@@ -45,6 +60,7 @@ describe('initActiveTabNotifier', () => {
     const stop = initActiveTabNotifier()
 
     expect(state.tabs[0]).toMatchObject({ lastVisitedAt: 10_000, manualUnread: false })
+    expect(markTabRead).toHaveBeenCalledWith('a')
     expect(notifyTabFocus).toHaveBeenCalledTimes(1)
     expect(notifyTabFocus).toHaveBeenCalledWith('a', null)
     stop()

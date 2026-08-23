@@ -127,6 +127,7 @@ async function press(label: string): Promise<void> {
 beforeEach(() => {
   closed = 0
   tabs = []
+  mocks.newWorktreeConversation.mockClear()
   mocks.setWorktreeStage.mockClear()
   mocks.appraise.mockResolvedValue({
     hasUncommittedChanges: false,
@@ -170,6 +171,32 @@ describe('WorktreeRowMenu organization', () => {
       'Re-provision',
           ])
     expect(document.querySelectorAll('[data-testid="worktree-menu-separator"]')).toHaveLength(4)
+  })
+
+  it('opens the conversation-type picker for the selected worktree', async () => {
+    let pickerTarget: unknown
+    const pickerListener = vi.fn((event: Event) => {
+      pickerTarget = (event as CustomEvent).detail
+    })
+    window.addEventListener('ion:open-new-conversation-picker', pickerListener)
+    render()
+
+    await press('New conversation')
+
+    expect(mocks.newWorktreeConversation).not.toHaveBeenCalled()
+    expect(pickerListener).toHaveBeenCalledOnce()
+    expect(pickerTarget).toEqual({
+      initialDirectory: WT,
+      initialWorktree: {
+        repoPath: REPO,
+        worktreePath: WT,
+        branchName: 'wt/ion-menu',
+        sourceBranch: 'main',
+        landedAt: undefined,
+      },
+    })
+    expect(closed).toBe(1)
+    window.removeEventListener('ion:open-new-conversation-picker', pickerListener)
   })
 
   it('shows the active stage on the trigger and in canonical submenu order', async () => {

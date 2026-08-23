@@ -18,7 +18,7 @@
  * would make it flicker as the cursor crosses the boundary. Anything needing
  * clickable content wants a popover (see WorktreeRowMenu), not this.
  */
-import React, { useRef, useState, useCallback } from 'react'
+import React, { useRef, useState, useCallback, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { usePopoverLayer } from '../PopoverLayer'
 import { useColors } from '../../theme'
@@ -36,6 +36,11 @@ interface Props {
   fallbackTitle?: string
   children: React.ReactNode
   position?: 'above' | 'below' | 'right'
+  /**
+   * Optional edge that a right-side card must clear. Use this when the trigger
+   * sits inside a scrollable panel and the full panel must remain visible.
+   */
+  rightBoundaryRef?: RefObject<HTMLElement | null>
   /** Delay before hover or keyboard focus reveals the card. */
   delayMs?: number
   /**
@@ -60,12 +65,14 @@ interface Props {
 
 /** Delay before a hover counts as intent. Shared by pointer and keyboard. */
 const HOVER_DELAY_MS = 400
+const CARD_GAP = 4
 
 export function HoverCard({
   content,
   fallbackTitle,
   children,
   position = 'above',
+  rightBoundaryRef,
   delayMs = HOVER_DELAY_MS,
   maxWidth = null,
   style,
@@ -80,7 +87,11 @@ export function HoverCard({
   // property from `transform`, so the centring survives the correction — a
   // card on a word near the window edge stays fully readable.
   const cardRef = useRef<HTMLDivElement>(null)
-  useViewportClamp(cardRef, rect !== null)
+  // Keep a caller-supplied panel edge protected when clamping. The card can
+  // overflow the far viewport edge if space is unusually tight, but it never
+  // moves back across the source panel and hides its controls or scroll bar.
+  const protectedLeft = position === 'right' && rightBoundaryRef && rect ? rect.right + CARD_GAP : null
+  useViewportClamp(cardRef, rect !== null, protectedLeft)
 
   // Shared show/hide used for both pointer hover and keyboard focus of the
   // wrapped child (focus/blur bubble from a focusable child to this span in
@@ -89,9 +100,22 @@ export function HoverCard({
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => {
       const r = spanRef.current?.getBoundingClientRect()
-      if (r) setRect(zoomRect(r))
+      if (r) {
+        const triggerRect = zoomRect(r)
+        if (position === 'right' && rightBoundaryRef?.current) {
+          const boundaryRect = zoomRect(rightBoundaryRef.current.getBoundingClientRect())
+          setRect(new DOMRect(
+            triggerRect.x,
+            triggerRect.y,
+            Math.max(0, boundaryRect.right - triggerRect.left),
+            triggerRect.height,
+          ))
+        } else {
+          setRect(triggerRect)
+        }
+      }
     }, delayMs)
-  }, [delayMs])
+  }, [delayMs, position, rightBoundaryRef])
 
   const hide = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current)
@@ -101,10 +125,10 @@ export function HoverCard({
   const viewport = zoomViewport()
   const posStyle: React.CSSProperties = rect
     ? position === 'right'
-      ? { top: rect.top + rect.height / 2, left: rect.right + 4, transform: 'translateY(-50%)' }
+      ? { top: rect.top + rect.height / 2, left: rect.right + CARD_GAP, transform: 'translateY(-50%)' }
       : position === 'below'
-        ? { top: rect.bottom + 4, left: rect.left + rect.width / 2, transform: 'translateX(-50%)' }
-        : { bottom: viewport.height - rect.top + 4, left: rect.left + rect.width / 2, transform: 'translateX(-50%)' }
+        ? { top: rect.bottom + CARD_GAP, left: rect.left + rect.width / 2, transform: 'translateX(-50%)' }
+        : { bottom: viewport.height - rect.top + CARD_GAP, left: rect.left + rect.width / 2, transform: 'translateX(-50%)' }
     : {}
 
   return (

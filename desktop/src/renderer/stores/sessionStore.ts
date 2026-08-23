@@ -23,6 +23,7 @@ import { createBenchSlice } from './slices/bench-slice'
 import { createBenchAssemblySlice } from './slices/bench-slice-assembly'
 import { createBenchVerificationSlice } from './slices/bench-verification-slice'
 import { createGitConflictSlice } from './slices/git-conflict-slice'
+import { createConflictOperationSlice } from './slices/conflict-operation-slice'
 import { trackWorkspaceActions } from './session-store-workspace-operation-ledger'
 import { setupStudioWorktreeSync } from './session-store-worktree-sync'
 import { createAttachmentsSlice } from './slices/attachments-slice'
@@ -134,6 +135,7 @@ export const useSessionStore = create<State>((set, get) => {
       ...createBenchAssemblySlice(_set, _get),
       ...createBenchVerificationSlice(_set, _get),
       ...createGitConflictSlice(_set, _get),
+      ...createConflictOperationSlice(_set, _get),
     }),
     ...createAttachmentsSlice(_set, _get),
     ...createPermissionsSlice(_set, _get),

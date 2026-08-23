@@ -48,6 +48,7 @@ export function mapPersistedMessages(
     slashSource: m.slashSource,
     slashModelAlias: m.slashModelAlias,
     slashModelEffective: m.slashModelEffective,
+    implementationPhase: m.implementationPhase,
     // Engine-produced image attachments (on-disk references) survive restart.
     attachments: m.attachments,
     // Seal restored assistant messages so incoming engine_text_delta events

@@ -2,6 +2,7 @@ import { basename } from 'path'
 import { log as _log, debug as _debug } from '../../logger'
 import { state } from '../../state'
 import { runGit } from '../../git-runner'
+import { isValidProjectPath } from '../../ipc-validation'
 import { loadCommitFileDiff, loadGitDiff } from '../../git/diff-content'
 import { partitionStatus } from '../../git/diffs'
 import { computeGraphLayout } from '../../../shared/gitGraphLayout'
@@ -15,6 +16,38 @@ function log(msg: string, fields?: Record<string, unknown>): void {
 
 function debug(msg: string, fields?: Record<string, unknown>): void {
   _debug('main', msg, fields)
+}
+
+export async function handleGitBranches(
+  cmd: Extract<RemoteCommand, { type: 'desktop_git_branches' }>,
+  deviceId: string,
+): Promise<void> {
+  const { directory } = cmd
+  if (!isValidProjectPath(directory)) {
+    log('git_branches refused: invalid project path', { directory, device_id: deviceId })
+    state.remoteTransport?.sendToDevice(deviceId, {
+      type: 'desktop_git_branches_response', directory, branches: [], current: '', error: 'Invalid path.',
+    })
+    return
+  }
+  try {
+    const [branchesOutput, currentBranch] = await Promise.all([
+      runGit(directory, ['for-each-ref', '--format=%(refname:short)', 'refs/heads']),
+      runGit(directory, ['branch', '--show-current']),
+    ])
+    const branches = branchesOutput.split('\n').map((branch) => branch.trim()).filter(Boolean)
+    const current = currentBranch.trim()
+    log('git_branches resolved', { directory, device_id: deviceId, branch_count: branches.length, current_branch: current })
+    state.remoteTransport?.sendToDevice(deviceId, {
+      type: 'desktop_git_branches_response', directory, branches, current,
+    })
+  } catch (err) {
+    const error = String(err)
+    log('git_branches failed', { directory, device_id: deviceId, error })
+    state.remoteTransport?.sendToDevice(deviceId, {
+      type: 'desktop_git_branches_response', directory, branches: [], current: '', error,
+    })
+  }
 }
 
 export async function handleGitChanges(cmd: Extract<RemoteCommand, { type: 'desktop_git_changes' }>, deviceId: string): Promise<void> {

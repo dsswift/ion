@@ -1,4 +1,4 @@
-import React, { memo, type RefObject } from "react";
+import React, { memo, useEffect, type MutableRefObject, type RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { rDebug } from "../../rendererLogger";
 import {
@@ -27,6 +27,8 @@ interface TranscriptRowsProps {
   forceFullRender?: boolean;
   tabId?: string;
   activeBackgroundTasks?: BackgroundTaskState[];
+  /** Virtual rows do not exist in the DOM until scrolled into view. */
+  virtualMessageJumpRef?: MutableRefObject<((messageId: string) => boolean) | null>;
 }
 
 const VIRTUAL_THRESHOLD = 100;
@@ -193,6 +195,7 @@ interface VirtualTranscriptRowsProps {
   scrollRef: RefObject<HTMLDivElement | null>;
   tabId?: string;
   activeBackgroundTasks: BackgroundTaskState[];
+  virtualMessageJumpRef?: MutableRefObject<((messageId: string) => boolean) | null>;
 }
 
 /**
@@ -206,6 +209,7 @@ function VirtualTranscriptRows({
   scrollRef,
   tabId,
   activeBackgroundTasks,
+  virtualMessageJumpRef,
 }: VirtualTranscriptRowsProps) {
   const virtualizer = useVirtualizer({
     count: grouped.length,
@@ -234,6 +238,25 @@ function VirtualTranscriptRows({
     overscan: 12,
     getItemKey: (index) => rowKey(grouped[index]!, index),
   });
+
+  useEffect(() => {
+    if (!virtualMessageJumpRef) return
+    virtualMessageJumpRef.current = (messageId) => {
+      const rowIndex = grouped.findIndex(
+        (item) => item.kind === "user" && item.message.id === messageId,
+      )
+      if (rowIndex < 0) return false
+      virtualizer.scrollToIndex(rowIndex, { align: "start" })
+      rDebug("conversation.scroll", "virtual transcript jumped to message", {
+        message_id: messageId.slice(0, 8),
+        row_index: rowIndex,
+      })
+      return true
+    }
+    return () => {
+      virtualMessageJumpRef.current = null
+    }
+  }, [grouped, virtualizer, virtualMessageJumpRef])
 
   return (
     <div
@@ -278,6 +301,7 @@ export function TranscriptRows({
   forceFullRender = false,
   tabId,
   activeBackgroundTasks = EMPTY_BACKGROUND_TASKS,
+  virtualMessageJumpRef,
 }: TranscriptRowsProps) {
   const virtual =
     grouped.length >= VIRTUAL_THRESHOLD && !forceFullRender && scrollRef != null;
@@ -298,6 +322,7 @@ export function TranscriptRows({
       scrollRef={scrollRef!}
       tabId={tabId}
       activeBackgroundTasks={activeBackgroundTasks}
+      virtualMessageJumpRef={virtualMessageJumpRef}
     />
   );
 }

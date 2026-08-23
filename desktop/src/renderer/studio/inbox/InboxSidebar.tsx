@@ -5,7 +5,6 @@ import { useInboxPartition } from './useInboxPartition'
 import { InboxRow, type InboxRowVariant } from './InboxRow'
 import { fuzzyMatchCommand } from '../../../shared/fuzzy-match'
 import { NewConversationPicker } from '../../components/NewConversationPicker'
-import { shouldUseWorktree } from '../../components/TabStripShared'
 import { InboxControlButton, InboxProjectScopePicker, InboxSortPicker, type InboxSortOrder } from './InboxControls'
 import { inboxProjectFor } from './inbox-grouping'
 import { partitionSettled } from './settled-history'
@@ -13,7 +12,8 @@ import { SettledHistoryView } from './SettledHistoryView'
 import { InboxNavigatorGroups } from './InboxNavigatorGroups'
 import { buildInboxNavigator, inboxNavigatorProjectFor } from './inbox-navigator'
 import { orderInboxTabs } from './inbox-collapse'
-import { rError, rInfo } from '../../rendererLogger'
+import { loadProjectSelection, saveProjectSelection, type InboxProjectSelection } from './project-selection'
+import { rInfo } from '../../rendererLogger'
 import { settledRecordRestorableFromInventory } from '../../stores/settled-worktree'
 import { useColors } from '../../theme'
 import type { TabState } from '../../../shared/types'
@@ -37,7 +37,7 @@ function savedSet(key: string): Set<string> {
     return new Set(Array.isArray(stored) ? stored.filter((value): value is string => typeof value === 'string') : [])
   } catch { return new Set() }
 }
-function savedProjectFilter(): string | null { return localStorage.getItem(PROJECT_FILTER_KEY) || null }
+function savedProjectFilter(): InboxProjectSelection { return loadProjectSelection(localStorage.getItem(PROJECT_FILTER_KEY)) }
 function savedSortOrder(): InboxSortOrder {
   const value = localStorage.getItem(SORT_ORDER_KEY)
   return value === 'created' || value === 'title' || value === 'activity' ? value : 'activity'
@@ -53,11 +53,11 @@ export function InboxSidebar(): React.JSX.Element {
   const inventory = useSessionStore((state) => state.worktreeInventory)
   const settledHistory = useSessionStore((state) => state.settledHistory)
   const [query, setQuery] = useState('')
-  const [projectFilter, setProjectFilter] = useState<string | null>(savedProjectFilter)
+  const [projectFilter, setProjectFilter] = useState<InboxProjectSelection>(savedProjectFilter)
   const [sortOrder, setSortOrder] = useState<InboxSortOrder>(savedSortOrder)
   const [projectAnchor, setProjectAnchor] = useState<{ x: number; y: number } | null>(null)
   const [sortAnchor, setSortAnchor] = useState<{ x: number; y: number } | null>(null)
-  const [composeAnchor, setComposeAnchor] = useState<{ x: number; y: number; bottom: number } | null>(null)
+  const [composeOpen, setComposeOpen] = useState(false)
   const [snoozedOpen, setSnoozedOpen] = useState(() => savedBoolean(SNOOZED_EXPANDED_KEY, false))
   const [settledOpen, setSettledOpen] = useState(() => savedBoolean(SETTLED_EXPANDED_KEY, true))
   const [settledShown, setSettledShown] = useState(SETTLED_INITIAL)
@@ -69,6 +69,7 @@ export function InboxSidebar(): React.JSX.Element {
   const projectButton = useRef<HTMLButtonElement>(null)
   const sortButton = useRef<HTMLButtonElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const sidebarRef = useRef<HTMLDivElement>(null)
 
   // Memoized because these arrays are the memo inputs for every navigator below
   // AND the input to the workspace-refresh effect. Rebuilding them inline gave
@@ -77,7 +78,7 @@ export function InboxSidebar(): React.JSX.Element {
   // component subscribes to, that was a self-sustaining render loop.
   const visible = useCallback((tabs: readonly TabState[]): TabState[] => tabs.filter((tab) => {
     const project = inboxNavigatorProjectFor(tab, benches, inventory)
-    if (projectFilter && project.key !== projectFilter) return false
+    if (projectFilter.size > 0 && !projectFilter.has(project.key)) return false
     if (!query.trim()) return true
     return fuzzyMatchCommand(query, tab.customTitle || tab.title) !== null || fuzzyMatchCommand(query, project.name) !== null
   }), [projectFilter, query, benches, inventory])
@@ -98,9 +99,12 @@ export function InboxSidebar(): React.JSX.Element {
   useEffect(() => { localStorage.setItem(SETTLED_EXPANDED_KEY, String(settledOpen)) }, [settledOpen])
   useEffect(() => { localStorage.setItem(SORT_ORDER_KEY, sortOrder) }, [sortOrder])
   useEffect(() => {
-    if (projectFilter) localStorage.setItem(PROJECT_FILTER_KEY, projectFilter)
+    const stored = saveProjectSelection(projectFilter)
+    if (stored) localStorage.setItem(PROJECT_FILTER_KEY, stored)
     else localStorage.removeItem(PROJECT_FILTER_KEY)
-    rInfo('inbox', 'project scope applied', { project_scope: projectFilter ?? 'all' })
+    rInfo('inbox', 'project scope applied', {
+      project_scope: projectFilter.size === 0 ? 'all' : [...projectFilter],
+    })
   }, [projectFilter])
   // Keyed on the project-key TOKEN, never on `allProjects` identity. Memoizing
   // the navigator inputs above is what makes the memo hit, but a dep on an
@@ -127,7 +131,7 @@ export function InboxSidebar(): React.JSX.Element {
     setSnoozedCollapsed(new Set(keys.filter((key) => key.includes(':slim:') || key.startsWith('project:'))))
   }
   const expandAll = (): void => { setActiveCollapsed(new Set()); setSnoozedCollapsed(new Set()) }
-  const row = (tab: TabState, variant: InboxRowVariant, projectName: string): React.JSX.Element => <InboxRow key={`${tab.id}:${variant}`} tab={tab} variant={variant} projectName={projectName} benches={benches} inventory={inventory} unread={partition.meta.get(tab.id)?.unread ?? false} woke={partition.meta.get(tab.id)?.wokeAt != null} backgroundLiveness={partition.meta.get(tab.id)?.backgroundLiveness ?? null} />
+  const row = (tab: TabState, variant: InboxRowVariant, projectName: string): React.JSX.Element => <InboxRow key={`${tab.id}:${variant}`} tab={tab} variant={variant} projectName={projectName} benches={benches} inventory={inventory} rightBoundaryRef={sidebarRef} unread={partition.meta.get(tab.id)?.unread ?? false} woke={partition.meta.get(tab.id)?.wokeAt != null} backgroundLiveness={partition.meta.get(tab.id)?.backgroundLiveness ?? null} />
   const openSettledReview = (tab: TabState): void => {
     const state = useSessionStore.getState()
     if (state.settledHistory.some((record) => record.id === tab.id)) void state.restoreSettledHistoryTab(tab.id)
@@ -135,7 +139,7 @@ export function InboxSidebar(): React.JSX.Element {
   }
   const settledRow = (tab: TabState): React.JSX.Element => {
     const canRestore = settledRecordRestorableFromInventory(tab, inventory)
-    return <InboxRow key={`${tab.id}:settled`} tab={tab} variant="slim" projectName={inboxProjectFor(tab, benches).name} benches={benches} inventory={inventory} unread={partition.meta.get(tab.id)?.unread ?? false} woke={partition.meta.get(tab.id)?.wokeAt != null} backgroundLiveness={partition.meta.get(tab.id)?.backgroundLiveness ?? null} canRestore={canRestore} onOpen={canRestore ? openSettledReview : undefined} />
+    return <InboxRow key={`${tab.id}:settled`} tab={tab} variant="slim" projectName={inboxProjectFor(tab, benches).name} benches={benches} inventory={inventory} rightBoundaryRef={sidebarRef} unread={partition.meta.get(tab.id)?.unread ?? false} woke={partition.meta.get(tab.id)?.wokeAt != null} backgroundLiveness={partition.meta.get(tab.id)?.backgroundLiveness ?? null} canRestore={canRestore} onOpen={canRestore ? openSettledReview : undefined} />
   }
   const shelf = (label: string, count: number, expanded: boolean, toggleShelf: () => void, accent?: string): React.JSX.Element => (
     <button onClick={toggleShelf} style={{ display: 'flex', alignItems: 'center', gap: 5, width: '100%', marginTop: 9, padding: '4px 8px', border: 'none', background: 'transparent', color: accent ?? colors.textTertiary, cursor: 'pointer', fontSize: 10, fontWeight: 600, letterSpacing: '0.04em' }}>
@@ -144,23 +148,44 @@ export function InboxSidebar(): React.JSX.Element {
       <span style={{ height: 1, flex: 1, background: accent ? `${accent}33` : colors.containerBorder }} />
     </button>
   )
-  const scopeName = projectOptions.find((project) => project.key === projectFilter)?.name ?? 'All projects'
+  const selectedProjectNames = projectOptions
+    .filter((project) => projectFilter.has(project.key))
+    .map((project) => project.name)
+  const scopeName = selectedProjectNames.length === 0
+    ? 'All projects'
+    : selectedProjectNames.length === 1
+      ? selectedProjectNames[0]!
+      : `${selectedProjectNames.length} projects`
   const sortName = sortOrder === 'activity' ? 'Recent activity' : sortOrder === 'created' ? 'Newest created' : 'Title'
 
   if (showHistory) return <SettledHistoryView history={historySettled} onBack={() => setShowHistory(false)} />
-  return <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+  return <div ref={sidebarRef} data-testid="inbox-sidebar" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
     <div style={{ padding: '6px 10px', borderBottom: `1px solid ${colors.containerBorder}` }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><MagnifyingGlass size={12} color={colors.textTertiary} /><input ref={searchRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search conversations" spellCheck={false} style={{ flex: 1, minWidth: 0, fontSize: 11, border: 'none', outline: 'none', background: 'transparent', color: colors.textPrimary }} /><button ref={composeButton} onClick={() => { const rect = composeButton.current?.getBoundingClientRect(); setComposeAnchor({ x: rect?.left ?? 0, y: rect?.top ?? 0, bottom: rect?.bottom ?? 0 }) }} aria-label="New conversation" style={iconButton(colors)}><NotePencil size={14} /></button></div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><MagnifyingGlass size={12} color={colors.textTertiary} /><input ref={searchRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search conversations" spellCheck={false} style={{ flex: 1, minWidth: 0, fontSize: 11, border: 'none', outline: 'none', background: 'transparent', color: colors.textPrimary }} /><button ref={composeButton} onClick={() => setComposeOpen(true)} aria-label="New conversation" style={iconButton(colors)}><NotePencil size={14} /></button></div>
       <div style={{ display: 'flex', gap: 6, marginTop: 7 }}>
-        <InboxControlButton buttonRef={projectButton} active={projectFilter !== null} onClick={() => { const rect = projectButton.current?.getBoundingClientRect(); setProjectAnchor({ x: rect?.left ?? 0, y: rect?.bottom ?? 0 }) }}><Folder size={12} /><span>{scopeName}</span></InboxControlButton>
-        <InboxControlButton buttonRef={sortButton} active={sortOrder !== 'created'} onClick={() => { const rect = sortButton.current?.getBoundingClientRect(); setSortAnchor({ x: rect?.left ?? 0, y: rect?.bottom ?? 0 }) }}><SortAscending size={12} /><span>{sortName}</span></InboxControlButton>
+        <InboxControlButton buttonRef={projectButton} active={projectFilter.size > 0} onClick={() => {
+          setSortAnchor(null)
+          setProjectAnchor((current) => {
+            if (current) return null
+            const rect = projectButton.current?.getBoundingClientRect()
+            return { x: rect?.left ?? 0, y: rect?.bottom ?? 0 }
+          })
+        }}><Folder size={12} /><span>{scopeName}</span></InboxControlButton>
+        <InboxControlButton buttonRef={sortButton} active={sortOrder !== 'created'} onClick={() => {
+          setProjectAnchor(null)
+          setSortAnchor((current) => {
+            if (current) return null
+            const rect = sortButton.current?.getBoundingClientRect()
+            return { x: rect?.left ?? 0, y: rect?.bottom ?? 0 }
+          })
+        }}><SortAscending size={12} /><span>{sortName}</span></InboxControlButton>
         <span style={{ flex: 1 }} />
         <button onClick={collapseAll} aria-label="Collapse all" style={iconControlButton(colors)}><ArrowsInLineVertical size={14} /></button>
         <button onClick={expandAll} aria-label="Expand all" style={iconControlButton(colors)}><ArrowsOutLineVertical size={14} /></button>
       </div>
-      {composeAnchor && <NewConversationPicker anchor={composeAnchor} onPlain={() => { void useSessionStore.getState().createTabInDirectory('', shouldUseWorktree(false)).catch((error) => rError('inbox', 'plain conversation create failed', { error: String(error) })) }} onProfile={(profileId) => { void useSessionStore.getState().createConversationTab('', { profileId }).catch((error) => rError('inbox', 'profile conversation create failed', { profile_id: profileId, error: String(error) })) }} onOpenSettings={() => useSessionStore.getState().openSettings()} onClose={() => setComposeAnchor(null)} />}
-      {projectAnchor && <InboxProjectScopePicker anchor={projectAnchor} projects={projectOptions} selected={projectFilter} onSelect={setProjectFilter} onClose={() => setProjectAnchor(null)} />}
-      {sortAnchor && <InboxSortPicker anchor={sortAnchor} selected={sortOrder} onSelect={setSortOrder} onClose={() => setSortAnchor(null)} />}
+      {composeOpen && <NewConversationPicker onClose={() => setComposeOpen(false)} />}
+      {projectAnchor && <InboxProjectScopePicker anchor={projectAnchor} projects={projectOptions} selected={projectFilter} onSelect={setProjectFilter} triggerRef={projectButton} onClose={() => setProjectAnchor(null)} />}
+      {sortAnchor && <InboxSortPicker anchor={sortAnchor} selected={sortOrder} onSelect={setSortOrder} triggerRef={sortButton} onClose={() => setSortAnchor(null)} />}
     </div>
     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px' }}>
       {searching ? (searchRows.length ? searchRows.map((tab) => tab.settledAt != null ? settledRow(tab) : row(tab, 'card', inboxProjectFor(tab, benches).name)) : <div style={emptyText(colors)}>No conversations found.</div>) : <>

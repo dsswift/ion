@@ -5,7 +5,7 @@ import { useColors } from '../theme'
 
 export function OverlapSolverPanel({ solver, onAdopt, onAutoOrder, onApply }: { solver: WorktreeOverlapSolverResult; onAdopt(paths: string[]): void; onAutoOrder(): void; onApply(): void }): React.JSX.Element {
   const colors = useColors()
-  return <section style={{ border: `1px solid ${colors.containerBorder}`, borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+  return <section style={{ minWidth: 0, border: `1px solid ${colors.containerBorder}`, borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
     <div style={{ fontSize: 12, color: colors.textPrimary }}><Sparkle size={13} /> Solver</div>
     <Cohort title="Best with what you keep" cohort={solver.constrained} icon={<PushPin size={12} />} color={solver.constrained.prediction === 'clean' ? colors.accent : colors.dangerFg} onAdopt={onAdopt} />
     <Cohort title="Hypothetical best" cohort={solver.hypothetical} icon={<CheckCircle size={12} />} color={colors.accent} onAdopt={onAdopt} />
@@ -20,7 +20,7 @@ export function OverlapSolverPanel({ solver, onAdopt, onAutoOrder, onApply }: { 
 function Cohort({ title, cohort, icon, color, onAdopt }: { title: string; cohort: WorktreeOverlapCohort; icon: React.ReactNode; color: string; onAdopt(paths: string[]): void }): React.JSX.Element {
   return <div style={{ padding: 6, borderRadius: 6, background: 'rgba(0,0,0,0.06)' }}>
     <div style={{ display: 'flex', gap: 4, alignItems: 'center', color, fontSize: 11 }}><span>{icon}</span><strong>{title}</strong></div>
-    <div style={{ marginTop: 3, fontSize: 10, color }}>{cohort.prediction === 'clean' ? `${cohort.orderedPaths.length} worktrees merge cleanly` : `${cohort.firstFailingBranch ?? 'selection'} conflicts${cohort.conflictPaths.length ? `: ${cohort.conflictPaths.join(', ')}` : ''}`}</div>
+    <div style={{ marginTop: 3, fontSize: 10, color, overflowWrap: 'anywhere' }}>{cohort.prediction === 'clean' ? `${cohort.orderedPaths.length} worktrees merge cleanly` : `${cohort.firstFailingBranch ?? 'selection'} conflicts${cohort.conflictPaths.length ? `: ${cohort.conflictPaths.join(', ')}` : ''}`}</div>
     {cohort.note && <div style={{ marginTop: 3, fontSize: 10, color }}><WarningCircle size={11} /> {cohort.note}</div>}
     <button onClick={() => onAdopt(cohort.orderedPaths)} style={{ marginTop: 5, fontSize: 10 }}>Use this selection</button>
   </div>

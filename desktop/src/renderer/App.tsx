@@ -2,7 +2,7 @@ import React, { useEffect, useCallback, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Paperclip, Camera, Lightning } from '@phosphor-icons/react'
 import { GitPanel } from './components/GitPanel'
-import { FILE_EXPLORER_WIDTH, GIT_PANEL_WIDTH, INBOX_PANEL_WIDTH, PANEL_GAP } from './components/panelGeometry'
+import { FILE_EXPLORER_WIDTH, GIT_PANEL_WIDTH, INBOX_PANEL_WIDTH, PANEL_GAP, STATUS_DRAWER_WIDTH } from './components/panelGeometry'
 import { OVERLAY_COMPOSER_LAYER, OVERLAY_CONVERSATION_LAYER } from './components/composerLayout'
 import { StatusDrawer } from './components/StatusDrawer'
 import { TabStrip } from './components/TabStrip'
@@ -31,7 +31,8 @@ import { useClickThrough } from './hooks/useClickThrough'
 import { useWorktreeRendererListeners } from './hooks/useWorktreeRendererListeners'
 import { useWorktreeRemoteCommandListeners } from './hooks/useWorktreeRemoteCommandListeners'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
-import { useWindowHeight, useInputRowHeight } from './hooks/useWindowGeometry'
+import { useWindowHeight, useWindowWidth, useInputRowHeight } from './hooks/useWindowGeometry'
+import { resolveOverlayPanelPlacement, resolveViewportContentWidth } from './responsive-layout'
 import { useSessionStore, editorDirForTab } from './stores/sessionStore'
 import { useColors, spacing } from './theme'
 import { usePreferencesStore } from './preferences'
@@ -216,6 +217,13 @@ export default function App() {
   const cardCollapsedMargin = 15
 
   const winHeight = useWindowHeight()
+  const winWidth = useWindowWidth()
+  const responsiveContentWidth = resolveViewportContentWidth(contentWidth, winWidth)
+  const responsiveCardWidth = resolveViewportContentWidth(cardExpandedWidth, winWidth)
+  const inboxPlacement = resolveOverlayPanelPlacement(winWidth, responsiveContentWidth, INBOX_PANEL_WIDTH, PANEL_GAP)
+  const explorerPlacement = resolveOverlayPanelPlacement(winWidth, responsiveContentWidth, FILE_EXPLORER_WIDTH, PANEL_GAP)
+  const gitPlacement = resolveOverlayPanelPlacement(winWidth, responsiveContentWidth, GIT_PANEL_WIDTH, PANEL_GAP)
+  const statusPlacement = resolveOverlayPanelPlacement(winWidth, responsiveContentWidth, STATUS_DRAWER_WIDTH, PANEL_GAP)
   const inputRowRef = useRef<HTMLDivElement>(null)
   const inputRowHeight = useInputRowHeight(inputRowRef)
 
@@ -264,7 +272,7 @@ export default function App() {
       <div className="flex flex-col h-full overflow-hidden" style={{ background: 'transparent' }}>
 
         {/* ─── 460px content column, centered. Circles overflow left. ─── */}
-        <div onMouseDown={handleMainUIMouseDown} style={{ width: contentWidth, position: 'relative', margin: 'auto auto 0', transition: 'width 0.26s cubic-bezier(0.4, 0, 0.1, 1)' }}>
+        <div onMouseDown={handleMainUIMouseDown} style={{ width: responsiveContentWidth, maxWidth: '100%', position: 'relative', margin: 'auto auto 0', transition: 'width 0.26s cubic-bezier(0.4, 0, 0.1, 1)' }}>
 
           <AnimatePresence initial={false}>
             {settingsOpen && (
@@ -298,7 +306,8 @@ export default function App() {
                   data-ion-ui
                   className="glass-surface ion-theme-backdrop overflow-hidden"
                   style={{
-                    width: cardExpandedWidth,
+                    width: responsiveCardWidth,
+                    maxWidth: '100%',
                     borderRadius: 20,
                     background: colors.containerBg,
                     border: `1px solid ${colors.containerBorder}`,
@@ -319,7 +328,7 @@ export default function App() {
             data-ion-ui
             className="ion-theme-backdrop overflow-hidden flex flex-col"
             animate={{
-              width: isExpanded || isTerminalOnly || isTerminalTall || isConversation ? cardExpandedWidth : cardCollapsedWidth,
+              width: isExpanded || isTerminalOnly || isTerminalTall || isConversation ? responsiveCardWidth : Math.min(cardCollapsedWidth, responsiveCardWidth),
               marginBottom: isExpanded || isTerminalOnly || isTerminalTall || isConversation ? 10 : -14,
               marginLeft: isExpanded || isTerminalOnly || isTerminalTall || isConversation ? 0 : cardCollapsedMargin,
               marginRight: isExpanded || isTerminalOnly || isTerminalTall || isConversation ? 0 : cardCollapsedMargin,
@@ -443,7 +452,7 @@ export default function App() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
                 transition={TRANSITION}
-                style={{ position: 'absolute', right: '100%', bottom: 60, marginRight: 8, width: INBOX_PANEL_WIDTH, zIndex: 25 }}
+                style={{ position: 'absolute', right: inboxPlacement.external ? '100%' : 'auto', left: inboxPlacement.external ? 'auto' : 0, bottom: 60, marginRight: inboxPlacement.external ? 8 : 0, width: inboxPlacement.width, maxWidth: '100%', zIndex: 25 }}
               >
                 <InboxPanel onClose={() => useSessionStore.getState().closeInboxPanel()} />
               </motion.div>
@@ -460,10 +469,12 @@ export default function App() {
                 transition={TRANSITION}
                 style={{
                   position: 'absolute',
-                  right: '100%',
+                  right: explorerPlacement.external ? '100%' : 'auto',
+                  left: explorerPlacement.external ? 'auto' : 0,
                   bottom: 60,
-                  marginRight: 8,
-                  width: FILE_EXPLORER_WIDTH,
+                  marginRight: explorerPlacement.external ? 8 : 0,
+                  width: explorerPlacement.width,
+                  maxWidth: '100%',
                   zIndex: 25,
                 }}
               >
@@ -482,12 +493,11 @@ export default function App() {
                 transition={TRANSITION}
                 style={{
                   position: 'absolute',
-                  left: '100%',
+                  left: gitPlacement.external ? '100%' : 0,
                   bottom: 60,
-                  marginLeft: PANEL_GAP,
-                  // The wrapper matches the panel it holds. It used to say 280
-                  // while the panel said 320, so the panel overflowed it by 40px.
-                  width: GIT_PANEL_WIDTH,
+                  marginLeft: gitPlacement.external ? PANEL_GAP : 0,
+                  width: gitPlacement.width,
+                  maxWidth: '100%',
                   zIndex: 25,
                 }}
               >
@@ -506,11 +516,11 @@ export default function App() {
                 transition={TRANSITION}
                 style={{
                   position: 'absolute',
-                  left: '100%',
+                  left: statusPlacement.external ? '100%' : 0,
                   bottom: 60,
-                  // Always just the gap: the store keeps at most one right-side
-                  // panel open, so there is never a git panel here to clear.
-                  marginLeft: PANEL_GAP,
+                  marginLeft: statusPlacement.external ? PANEL_GAP : 0,
+                  width: statusPlacement.width,
+                  maxWidth: '100%',
                   zIndex: 26,
                 }}
               >

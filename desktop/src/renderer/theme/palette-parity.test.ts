@@ -46,6 +46,17 @@ describe("palette parity", () => {
     expect(hudColors.timelineSlashCommandActive).toBe("#e9d5ff");
   });
 
+  it("plan-implementation timeline ticks use green rest and active tokens per theme", () => {
+    expect(darkColors.timelinePlanImplementation).toBe("#34D399");
+    expect(darkColors.timelinePlanImplementationActive).toBe("#6EE7B7");
+    expect(lightColors.timelinePlanImplementation).toBe("#059669");
+    expect(lightColors.timelinePlanImplementationActive).toBe("#047857");
+    expect(classicColors.timelinePlanImplementation).toBe("#7AAC8C");
+    expect(classicColors.timelinePlanImplementationActive).toBe("#9BC7A8");
+    expect(hudColors.timelinePlanImplementation).toBe("#7fd98c");
+    expect(hudColors.timelinePlanImplementationActive).toBe("#b7f5c0");
+  });
+
   // Running / question status dots must stay legibly distinct from each other
   // and from the accent blue. Ion Dark/Light previously set the running dot to
   // the accent hex and the question dot to a near-identical lighter blue, which

@@ -161,6 +161,16 @@ describe('worktree resolution ordering', () => {
     expect(tab.workingDirectory).toBe(REPO)
   })
 
+  it('uses an explicitly selected branch instead of the saved default', async () => {
+    const { state, slice } = buildHarness()
+
+    const tabId = await slice.createTabInDirectory(REPO, true, true, undefined, 'release')
+    const tab = state.tabs.find((item: any) => item.id === tabId)
+
+    expect(mockIon.gitWorktreeAdd).toHaveBeenCalledWith(REPO, 'release')
+    expect(tab.worktree).toMatchObject({ sourceBranch: 'release' })
+  })
+
   it('does not create a worktree when none was requested', async () => {
     const { state, slice } = buildHarness()
 

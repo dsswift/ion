@@ -126,6 +126,8 @@ export function BranchPickerDialog({ repoPath, onSelect, onCancel }: BranchPicke
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        padding: 16,
+        boxSizing: 'border-box',
       }}
     >
       <motion.div
@@ -138,7 +140,10 @@ export function BranchPickerDialog({ repoPath, onSelect, onCancel }: BranchPicke
         className="glass-surface"
         style={{
           width: 340,
-          maxHeight: 400,
+          maxWidth: '100%',
+          maxHeight: '100%',
+          minWidth: 0,
+          boxSizing: 'border-box',
           borderRadius: 16,
           display: 'flex',
           flexDirection: 'column',
@@ -318,6 +323,8 @@ export function BranchPickerDialog({ repoPath, onSelect, onCancel }: BranchPicke
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 8,
             borderTop: `1px solid ${colors.containerBorder}`,
           }}
         >

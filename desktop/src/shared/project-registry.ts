@@ -31,7 +31,7 @@ export function sanitizeProjectRegistry(raw: unknown): ProjectRegistry {
   const out: ProjectRegistry = {}
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     const dir = normalizeProjectDir(key)
-    if (!dir.startsWith('/')) continue
+    if (!dir.startsWith('/') || isManagedWorkspacePath(dir)) continue
     if (value == null || typeof value !== 'object') continue
     const v = value as Record<string, unknown>
     out[dir] = {
@@ -50,12 +50,21 @@ export interface ProjectDisplayEntry {
   entry: ProjectEntry
 }
 
+/** Ion-managed worktrees and benches are workspaces inside a project, never projects. */
+export function isManagedWorkspacePath(path: string): boolean {
+  const dir = normalizeProjectDir(path)
+  return /\/.ion\/(?:worktrees|integration)(?:\/|$)/.test(dir)
+}
+
 /**
- * Ordered display list: lastUsedAt desc (most recent first). Duplicate
- * basenames disambiguate with their parent directory ("api (client-a)").
+ * Ordered project-root display list: lastUsedAt desc (most recent first).
+ * Legacy registry rows for Ion-managed worktrees/benches are excluded here so
+ * page one cannot leak workspace choices even before settings are rewritten.
  */
 export function orderedProjects(registry: ProjectRegistry): ProjectDisplayEntry[] {
-  const entries = Object.entries(registry).map(([dir, entry]) => ({ dir, entry }))
+  const entries = Object.entries(registry)
+    .filter(([dir]) => !isManagedWorkspacePath(dir))
+    .map(([dir, entry]) => ({ dir, entry }))
   entries.sort((a, b) => b.entry.lastUsedAt - a.entry.lastUsedAt)
 
   const baseCounts = new Map<string, number>()

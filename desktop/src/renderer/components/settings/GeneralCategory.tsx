@@ -52,10 +52,11 @@ export function GeneralCategory() {
         label="Default Directory"
         description="New tabs will open in this directory. When empty, defaults to your home directory."
       >
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', minWidth: 0 }}>
           <div
             style={{
-              flex: 1,
+              flex: '1 1 240px',
+              minWidth: 0,
               background: colors.surfacePrimary,
               border: `1px solid ${colors.containerBorder}`,
               borderRadius: 8,
@@ -118,6 +119,8 @@ export function GeneralCategory() {
         <div
           style={{
             display: 'flex',
+            flexWrap: 'wrap',
+            minWidth: 0,
             background: colors.surfacePrimary,
             border: `1px solid ${colors.containerBorder}`,
             borderRadius: 8,
@@ -185,6 +188,8 @@ export function GeneralCategory() {
         <div
           style={{
             display: 'flex',
+            flexWrap: 'wrap',
+            minWidth: 0,
             background: colors.surfacePrimary,
             border: `1px solid ${colors.containerBorder}`,
             borderRadius: 8,

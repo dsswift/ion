@@ -113,6 +113,8 @@ export const hudColors: ColorPalette = {
   timelineNodeActive: "#d97757",
   timelineSlashCommand: "#c084fc",
   timelineSlashCommandActive: "#e9d5ff",
+  timelinePlanImplementation: "#7fd98c",
+  timelinePlanImplementationActive: "#b7f5c0",
 
   // Scrollbar
   scrollThumb: "rgba(51, 195, 247, 0.20)",

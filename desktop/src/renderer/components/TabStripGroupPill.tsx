@@ -5,7 +5,7 @@ import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import type { TabGroupView } from '../hooks/useTabGroups'
-import { abbreviateProfileName, checkWorktreeUncommitted, getGroupDotModel, getWaitingState, shouldUseWorktree } from './TabStripShared'
+import { abbreviateProfileName, checkWorktreeUncommitted, getGroupDotModel, getWaitingState } from './TabStripShared'
 import { zoomRect } from '../viewport-zoom'
 import { GroupStatusDot, GroupStatusDotStack } from './TabStripStatusDot'
 import { InlineRenameInput } from './TabStripInlineRenameInput'
@@ -14,7 +14,6 @@ import { TabContextMenu } from './TabStripTabContextMenu'
 import { useRenameTabWorktree } from '../hooks/useRenameTabWorktree'
 import { InactiveGroupMenu } from './TabStripInactiveGroupMenu'
 import { GroupPickerDropdown } from './TabStripGroupPickerDropdown'
-import { newTabInDirectory } from './new-conversation-routing'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { rError } from '../rendererLogger'
 
@@ -366,16 +365,7 @@ export function GroupPill({
               onRenameWithWorktree={() => { setTabMenu(null); renameWithWorktree.requestRename(tab) }}
               onForkTab={tab.conversationId ? () => { void useSessionStore.getState().forkTab(tab.id).catch((err) => rError('tabs', 'fork tab failed', { error: String(err) })) } : undefined}
               onNewTabInDir={() => {
-                // Lock-safe single path: cannot bypass the enterprise lock.
-                const { engineProfiles, defaultEngineProfileId, enterpriseNewConversationDefaults: policy } = usePreferencesStore.getState()
-                newTabInDirectory(tab.workingDirectory, {
-                  profiles: engineProfiles,
-                  defaultProfileId: defaultEngineProfileId,
-                  enterprisePolicy: policy,
-                  createTabInDir: (d, wt) => { void useSessionStore.getState().createTabInDirectory(d, wt).catch((err) => rError('tabs', 'create tab failed', { error: String(err) })) },
-                  createConvTab: (d, opts) => { void useSessionStore.getState().createConversationTab(d, opts).catch((err) => rError('tabs', 'create conversation failed', { error: String(err) })) },
-                  shouldUseWorktree: shouldUseWorktree(false),
-                })
+                window.dispatchEvent(new CustomEvent('ion:open-new-conversation-picker'))
               }}
               onFinishWork={() => { if (tab.worktree) void useSessionStore.getState().finishWorktreeTab(tab.id).catch((err) => rError('tabs', 'finish worktree failed', { error: String(err) })) }}
               finishWorkDisabled={tab.worktree ? (worktreeUncommittedMap.has(tab.id) ? worktreeUncommittedMap.get(tab.id)! : 'checking') : undefined}

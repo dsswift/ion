@@ -1,7 +1,6 @@
 import { useSessionStore, editorDirForTab } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
 import { SETTINGS_DEFAULTS } from '../preferences-types'
-import { resolveNewConversationAction, executeNewConversationAction } from '../components/new-conversation-routing'
 import { rDebug, rError } from '../rendererLogger'
 import { toggleActivePermissionMode } from '../shortcuts/shared-command-handlers'
 import { useCommandShortcuts } from './useCommandShortcuts'
@@ -46,11 +45,8 @@ export function isPreviewZoomTarget(): boolean {
 /**
  * Handle a Cmd+T / Cmd+Shift+T keystroke.
  *
- * Resolves the new-conversation routing action from the current preference
- * state and either creates a tab directly ('plain', 'profile', 'locked') or
- * — when the action is 'show-picker' — dispatches
- * `ion:open-new-conversation-picker` with the target directory so TabStrip
- * can open the NewConversationPicker anchored to its + button.
+ * Every invocation opens the shared project-first NewConversationPicker. The
+ * picker then applies workspace and profile policy in one consistent flow.
  *
  * Extracted from the keydown handler to make it independently testable
  * without a DOM or React render environment.
@@ -66,30 +62,8 @@ export function handleNewConversationShortcut(
   dispatchFn: (e: Event) => void = (e) => window.dispatchEvent(e),
 ): void {
   const s = useSessionStore.getState()
-  const { engineProfiles, defaultEngineProfileId, enterpriseNewConversationDefaults: policy } = usePreferencesStore.getState()
-  const action = resolveNewConversationAction(engineProfiles, defaultEngineProfileId, policy)
-  rDebug('shortcuts', 'resolvedAction', { label, action_kind: action.kind, dir, active_tab_id: s.activeTabId ? s.activeTabId.slice(0, 8) : '' })
-  try {
-    const result = executeNewConversationAction(
-      dir,
-      action,
-      (d) => {
-        rDebug('shortcuts', 'createTabInDirectory', { label, dir: d })
-        void s.createTabInDirectory(d).catch((err) => rError('shortcuts', 'createTabInDirectory failed', { label, dir: d, error: String(err) }))
-      },
-      (d, opts) => {
-        rDebug('shortcuts', 'createConversationTab', { label, dir: d, profile_id: opts?.profileId ?? '' })
-        void s.createConversationTab(d, opts).catch((err) => rError('shortcuts', 'createConversationTab failed', { label, dir: d, error: String(err) }))
-      },
-    )
-    if (result === 'show-picker') {
-      rDebug('shortcuts', 'show-picker', { label, dir })
-      dispatchFn(new CustomEvent('ion:open-new-conversation-picker', { detail: { dir } }))
-    }
-  } catch (err) {
-    rError('shortcuts', 'executeNewConversationAction threw', { label, action_kind: action.kind, dir, error: err instanceof Error ? err.message : String(err) })
-    throw err
-  }
+  rDebug('shortcuts', 'opening unified new conversation picker', { label, suggested_dir: dir, active_tab_id: s.activeTabId ? s.activeTabId.slice(0, 8) : '' })
+  dispatchFn(new CustomEvent('ion:open-new-conversation-picker'))
 }
 
 /**

@@ -152,6 +152,7 @@ export async function insertRendererRemoteUserMessage(
   content: string,
   slashCommand?: string,
   slashArgs?: string,
+  implementationPhase?: boolean,
 ): Promise<void> {
   if (!state.mainWindow) return
   const escapedTab = escape(p.tabId)
@@ -165,7 +166,7 @@ export async function insertRendererRemoteUserMessage(
         if (!store) return;
         var fn = store.getState().insertRemoteUserMessage;
         if (typeof fn !== 'function') return;
-        fn('${escapedTab}', '${escapedContent}'${escapedSlash ? `, '${escapedSlash}', '${escapedArgs}'` : ''});
+        fn('${escapedTab}', '${escapedContent}'${escapedSlash ? `, '${escapedSlash}', '${escapedArgs}'` : ''}${implementationPhase ? `${escapedSlash ? ', true' : ', undefined, undefined, true'}` : ''});
       })()
     `)
   } catch (err) {
@@ -179,6 +180,7 @@ export async function insertRendererRemoteUserMessage(
     id: p.reqId,
     content,
     timestamp: Date.now(),
+    ...(implementationPhase ? { implementationPhase: true } : {}),
   })
 }
 

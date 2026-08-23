@@ -94,6 +94,8 @@ export interface StudioUserMessageEcho {
   id: string;
   content: string;
   timestamp: number;
+  /** True when this user turn begins an approved plan implementation. */
+  implementationPhase?: boolean;
 }
 
 /**

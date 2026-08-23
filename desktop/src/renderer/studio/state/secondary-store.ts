@@ -68,6 +68,7 @@ export function applyUserMessageEcho(tabId: string, echo: StudioUserMessageEcho)
           role: 'user',
           content: echo.content,
           timestamp: echo.timestamp,
+          ...(echo.implementationPhase ? { implementationPhase: true } : {}),
         }],
       }
     })

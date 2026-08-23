@@ -15,7 +15,7 @@ import {
 } from './handlers/tabs'
 import { handleSetTabModel, handleSetPreferredModel, handleSetEngineDefaultModel } from './handlers/tabs-models'
 import {
-  handleTabSettle, handleTabReviewSettled, handleTabUnsettle, handleTabSnooze, handleTabUnsnooze, handleTabMarkUnread,
+  handleTabSettle, handleTabDelete, handleTabReviewSettled, handleTabUnsettle, handleTabSnooze, handleTabUnsnooze, handleTabMarkUnread, handleTabMarkRead,
   handleTabPin, handleTabUnpin, handleTabReorderPin, handleTabRegenerateTitle,
 } from './handlers/inbox'
 import {
@@ -52,6 +52,7 @@ import {
 } from './handlers/history'
 import {
   handleGitChanges,
+  handleGitBranches,
   handleGitGraph,
   handleGitDiff,
   handleGitStage,
@@ -114,6 +115,7 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'desktop_set_permission_mode': await handleSetPermissionMode(cmd); break
     case 'desktop_set_thinking_effort': await handleSetThinkingEffort(cmd); break
     case 'desktop_tab_settle': await handleTabSettle(cmd); break
+    case 'desktop_tab_delete': await handleTabDelete(cmd); break
     case 'desktop_review_settled_tab': await handleTabReviewSettled(cmd); break
     case 'desktop_tab_unsettle': await handleTabUnsettle(cmd); break
     case 'desktop_tab_snooze': await handleTabSnooze(cmd); break
@@ -179,6 +181,7 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'desktop_toggle_tab_group_pin': await handleToggleTabGroupPin(cmd); break
     case 'desktop_reorder_tab_groups': await handleReorderTabGroups(cmd); break
     case 'desktop_git_changes': await handleGitChanges(cmd, deviceId); break
+    case 'desktop_git_branches': await handleGitBranches(cmd, deviceId); break
     case 'desktop_git_graph': await handleGitGraph(cmd, deviceId); break
     case 'desktop_git_diff': await handleGitDiff(cmd, deviceId); break
     case 'desktop_git_stage': await handleGitStage(cmd); break
@@ -215,7 +218,8 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'desktop_report_focus': {
       const { tabId, interceptEnabled } = cmd
       deviceFocusMap.set(deviceId, { tabId, interceptEnabled })
-      log('desktop_report_focus', { device_id: deviceId, tab_id: tabId, intercept_enabled: interceptEnabled })
+      if (tabId) await handleTabMarkRead(tabId)
+      log('desktop_report_focus', { device_id: deviceId, tab_id: tabId, intercept_enabled: interceptEnabled, marked_reviewed: tabId !== null })
       break
     }
     case 'desktop_report_mobile_auth': handleReportMobileAuth(cmd, deviceId); break

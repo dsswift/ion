@@ -22,6 +22,21 @@ describe('clampDelta', () => {
     expect(d.dy).toBe(8 - 100) // top wins after bottom correction
   })
 
+  it('keeps a card outside its protected left boundary', () => {
+    const d = clampDelta(rect(500, 100, 200, 150), 1000, 800, 1, 660)
+    expect(d.dx).toBe(160)
+    expect(d.dy).toBe(0)
+  })
+  it('does not cover the protected panel when the remaining area is narrow', () => {
+    const d = clampDelta(rect(664, 100, 400, 150), 800, 600, 1, 664)
+    expect(d.dx).toBe(0)
+    expect(d.dy).toBe(0)
+  })
+  it('converts the protected boundary correction for UI zoom', () => {
+    const d = clampDelta(rect(500, 100, 200, 150), 1000, 800, 2, 660)
+    expect(d.dx).toBe(80)
+  })
+
   // ── UI zoom ──
   //
   // The overflow math runs in viewport pixels; the delta is applied as a CSS

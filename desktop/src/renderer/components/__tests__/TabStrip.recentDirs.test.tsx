@@ -1,19 +1,8 @@
 // @vitest-environment jsdom
 //
-// Regression test for the Cmd+R "open recent directories" shortcut bridge in
-// TabStrip. The shortcut handler in useKeyboardShortcuts.ts fires:
-//
-//   window.dispatchEvent(new CustomEvent('ion:open-recent-dirs'))
-//
-// TabStrip must listen for this event and open the DirectoryPicker in
-// 'conversation' mode, anchored to the + button. This test verifies the
-// bridge: after the event fires, DirectoryPicker receives a non-null anchor
-// with mode='conversation'. Without the listener the picker never mounts
-// (dirPickerState stays null) — this test turns red on the unfixed code.
-//
-// Root cause history: the listener was silently dropped in commit 73c4d6af
-// ("fix tsc errors across renderer and main", 2026-04-30) and never restored
-// through the b1284c11 refactor or the 464da7fb conversation-unification.
+// Regression test for the Cmd+R bridge. Directory search now lives inside the
+// unified new-conversation picker, so the former recent-directory command must
+// open that picker instead of the legacy anchored DirectoryPicker.
 
 import React from 'react'
 import { act } from 'react'
@@ -67,17 +56,9 @@ vi.mock('../../theme', () => ({
   useColors: () => new Proxy({}, { get: () => '#000' }),
 }))
 
-// Track DirectoryPicker mounts so we can assert the picker was opened.
-// `anchor` is recorded so we can verify it has a numeric x/y/bottom shape,
-// confirming the bridge computed a position from plusButtonRef (or fallback).
-const directoryPickerCalls: Array<{ anchor: { x: number; y: number; bottom: number } }> = []
+const unifiedPickerCalls: unknown[] = []
 
-vi.mock('../TabStripDirectoryPicker', () => ({
-  DirectoryPicker: (props: { anchor: { x: number; y: number; bottom: number }; onSelectDir: () => void; onClose: () => void }) => {
-    directoryPickerCalls.push({ anchor: props.anchor })
-    return React.createElement('div', { 'data-testid': 'dir-picker' })
-  },
-}))
+vi.mock('../TabStripDirectoryPicker', () => ({ DirectoryPicker: () => null }))
 
 vi.mock('../TabStripTabPill', () => ({
   TabPill: () => null,
@@ -116,7 +97,10 @@ vi.mock('../BranchPickerDialog', () => ({
 }))
 
 vi.mock('../NewConversationPicker', () => ({
-  NewConversationPicker: () => null,
+  NewConversationPicker: (props: unknown) => {
+    unifiedPickerCalls.push(props)
+    return React.createElement('div', { 'data-testid': 'new-conversation-picker' })
+  },
   resolveNewConversationAction: () => ({ kind: 'plain' }),
   executeNewConversationAction: () => undefined,
   newTabInDirectory: () => undefined,
@@ -253,7 +237,7 @@ describe('TabStrip ion:open-recent-dirs bridge', () => {
   let root: ReturnType<typeof createRoot>
 
   beforeEach(() => {
-    directoryPickerCalls.length = 0
+    unifiedPickerCalls.length = 0
     container = document.createElement('div')
     document.body.appendChild(container)
     act(() => {
@@ -267,42 +251,39 @@ describe('TabStrip ion:open-recent-dirs bridge', () => {
     container.remove()
   })
 
-  it('does NOT render DirectoryPicker before the event fires', () => {
-    // Baseline: no picker on initial render.
-    expect(container.querySelector('[data-testid="dir-picker"]')).toBeNull()
-    expect(directoryPickerCalls).toHaveLength(0)
+  it('does NOT render the unified picker before the event fires', () => {
+    expect(container.querySelector('[data-testid="new-conversation-picker"]')).toBeNull()
+    expect(unifiedPickerCalls).toHaveLength(0)
   })
 
-  it('renders DirectoryPicker in conversation mode after ion:open-recent-dirs fires', () => {
-    act(() => {
-      window.dispatchEvent(new CustomEvent('ion:open-recent-dirs'))
-    })
-
-    // DirectoryPicker must mount — dirPickerState is non-null.
-    const picker = container.querySelector('[data-testid="dir-picker"]')
-    expect(picker).not.toBeNull()
-
-    // The mock was called and received a numeric anchor (not null/undefined),
-    // confirming the bridge computed a position rather than no-oping.
-    expect(directoryPickerCalls.length).toBeGreaterThan(0)
-    const { anchor } = directoryPickerCalls[0]
-    expect(typeof anchor.x).toBe('number')
-    expect(typeof anchor.y).toBe('number')
-    expect(typeof anchor.bottom).toBe('number')
+  it('opens the unified picker after ion:open-recent-dirs fires', () => {
+    act(() => { window.dispatchEvent(new CustomEvent('ion:open-recent-dirs')) })
+    expect(container.querySelector('[data-testid="new-conversation-picker"]')).not.toBeNull()
+    expect(unifiedPickerCalls.length).toBeGreaterThan(0)
   })
 
-  it('closes DirectoryPicker when a second event fires (toggle via re-open)', () => {
-    // First open
+  it('passes a known worktree target to the conversation-type picker', () => {
+    const worktree = {
+      repoPath: '/work/ion',
+      worktreePath: '/worktrees/feature',
+      branchName: 'wt/feature',
+      sourceBranch: 'main',
+    }
     act(() => {
-      window.dispatchEvent(new CustomEvent('ion:open-recent-dirs'))
+      window.dispatchEvent(new CustomEvent('ion:open-new-conversation-picker', {
+        detail: { initialDirectory: worktree.worktreePath, initialWorktree: worktree },
+      }))
     })
-    expect(container.querySelector('[data-testid="dir-picker"]')).not.toBeNull()
 
-    // Dispatching again re-opens (replaces) the picker — dirPickerState is set again.
-    act(() => {
-      window.dispatchEvent(new CustomEvent('ion:open-recent-dirs'))
-    })
-    // Should still be open (re-set, not toggled off).
-    expect(container.querySelector('[data-testid="dir-picker"]')).not.toBeNull()
+    expect(unifiedPickerCalls.at(-1)).toEqual(expect.objectContaining({
+      initialDirectory: worktree.worktreePath,
+      initialWorktree: worktree,
+    }))
+  })
+
+  it('keeps the unified picker open when the command fires again', () => {
+    act(() => { window.dispatchEvent(new CustomEvent('ion:open-recent-dirs')) })
+    act(() => { window.dispatchEvent(new CustomEvent('ion:open-recent-dirs')) })
+    expect(container.querySelector('[data-testid="new-conversation-picker"]')).not.toBeNull()
   })
 })

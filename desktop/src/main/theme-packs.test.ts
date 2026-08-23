@@ -97,6 +97,19 @@ describe('theme pack scanning', () => {
     })
   })
 
+  it('accepts plan-implementation timeline token overrides', () => {
+    const manifest = basicManifest('acme-corp')
+    ;(manifest.desktop as Record<string, unknown>).tokens = {
+      timelinePlanImplementation: '#227744',
+      timelinePlanImplementationActive: '#66CC99',
+    }
+    writePack(userRoot, 'acme-corp', manifest)
+    expect(getThemePacks()[0].manifest.desktop?.tokens).toEqual({
+      timelinePlanImplementation: '#227744',
+      timelinePlanImplementationActive: '#66CC99',
+    })
+  })
+
   it('skips invalid JSON and dirs without theme.json', () => {
     mkdirSync(join(userRoot, 'no-manifest'), { recursive: true })
     const dir = join(userRoot, 'broken-json')

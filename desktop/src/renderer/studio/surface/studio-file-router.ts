@@ -73,6 +73,15 @@ export function registerStudioFileRouter(revealSurface: () => void = () => {}): 
       revealSurface()
       useSurfaceStore.getState().openSingleton('gitpanel')
     },
+    openDispatch: (agentName, dispatchId, title) => {
+      revealSurface()
+      useSurfaceStore.getState().openDispatchTab(agentName, dispatchId, title)
+      rDebug('studio.surface', 'dispatch preview opened', {
+        agent: agentName,
+        dispatch_id: dispatchId,
+        tab_id: useSessionStore.getState().activeTabId,
+      })
+    },
     openPanel: (title, body, close) => {
       revealSurface()
       const id = registerRuntimePanel({ title, body, close })

@@ -38,6 +38,11 @@ vi.mock('../../preferences', () => ({
   usePreferencesStore: (selector: (s: typeof prefState) => unknown) => selector(prefState),
 }))
 const getConversation = vi.fn().mockResolvedValue({ messages: [] })
+const openDispatch = vi.fn()
+const contentRouterMock = vi.fn<() => { openDispatch: typeof openDispatch } | null>(() => null)
+vi.mock('../../lib/file-open-router', () => ({
+  contentRouter: () => contentRouterMock(),
+}))
 vi.mock('../../stores/sessionStore', () => ({
   useSessionStore: (selector: (s: Record<string, unknown>) => unknown) =>
     selector({
@@ -59,6 +64,8 @@ import { AgentPanel } from '../AgentPanel'
 
 beforeEach(() => {
   getConversation.mockClear()
+  openDispatch.mockClear()
+  contentRouterMock.mockReturnValue(null)
   ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = {
     getConversation,
     log: () => {},
@@ -171,6 +178,27 @@ describe('AgentPanel dispatch history counts', () => {
 })
 
 describe('AgentPanel detail subject parity', () => {
+  it('routes a dispatch to the Studio surface instead of opening a floating panel', async () => {
+    contentRouterMock.mockReturnValue({ openDispatch })
+    const lead = {
+      name: 'dev-lead',
+      status: 'done',
+      metadata: {
+        displayName: 'Dev Lead',
+        visibility: 'always',
+        dispatches: [{ id: 'dispatch-1', conversationId: 'conv-1', status: 'done', startTime: 100 }],
+      },
+    } as AgentStateUpdate
+    const { container, root } = mount([lead])
+
+    clickRow(container, 'Dev Lead')
+    await act(async () => { await Promise.resolve() })
+
+    expect(openDispatch).toHaveBeenCalledWith('dev-lead', 'dispatch-1', 'Dev Lead')
+    expect(container.querySelector('[data-testid="floating-panel"]')).toBeNull()
+    act(() => { root.unmount() })
+  })
+
   it('opens start-time-most-recent dispatch when array order is non-chronological', async () => {
     getConversation.mockResolvedValue({ messages: [] })
     const lead = {

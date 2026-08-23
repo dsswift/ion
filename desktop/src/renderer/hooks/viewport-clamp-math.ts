@@ -11,7 +11,9 @@
 export const MARGIN = 8
 
 /**
- * The correction needed to bring `rect` fully inside a `vw` x `vh` viewport.
+ * The correction needed to bring `rect` inside a `vw` x `vh` viewport. When
+ * `minLeft` is set, the left edge is protected even if the popover is wider
+ * than the remaining space and must overflow the viewport on the right.
  *
  * TWO COORDINATE SPACES ARE IN PLAY, and they are not the same one:
  *
@@ -34,11 +36,20 @@ export function clampDelta(
   vw: number,
   vh: number,
   zoom = 1,
+  minLeft: number | null = null,
 ): { dx: number; dy: number } {
   let dx = 0
   let dy = 0
   if (rect.right > vw - MARGIN) dx = vw - MARGIN - rect.right
-  if (rect.left + dx < MARGIN) dx = MARGIN - rect.left
+  if (minLeft !== null) {
+    // A protected panel is a stronger boundary than the viewport's right edge.
+    // Keep the popover wholly outside it even when the remaining content area is
+    // narrower than the popover; horizontal overflow is better than covering
+    // the source panel and hiding its rows or scroll bar.
+    if (rect.left + dx < minLeft) dx = minLeft - rect.left
+  } else if (rect.left + dx < MARGIN) {
+    dx = MARGIN - rect.left
+  }
   if (rect.bottom > vh - MARGIN) dy = vh - MARGIN - rect.bottom
   if (rect.top + dy < MARGIN) dy = MARGIN - rect.top
   // A zero or negative zoom would be a division blow-up; the store clamps

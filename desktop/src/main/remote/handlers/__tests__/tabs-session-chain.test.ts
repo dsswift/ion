@@ -18,7 +18,7 @@ vi.mock('../../../logger', () => ({ log: vi.fn() }))
 vi.mock('../../../state', () => ({ state: {} }))
 vi.mock('../../../settings-store', () => ({ TABS_FILE: '/tmp/ion-nonexistent/tabs.json' }))
 
-import { paginateHistory, planPathFromHistory, resolvePlanPath, MAX_PAGE_MESSAGES } from '../tabs-session-chain'
+import { paginateHistory, planPathFromHistory, resolvePlanPath, toRemoteMessage, MAX_PAGE_MESSAGES } from '../tabs-session-chain'
 import type { Message } from '../../../../shared/types'
 
 function msg(id: string, role: Message['role'], extra: Partial<Message> = {}): Message {
@@ -92,6 +92,21 @@ describe('paginateHistory', () => {
     const all = turns(5)
     const r = paginateHistory(all, 'no-such-id')
     expect(r.page[r.page.length - 1].id).toBe('a4')
+  })
+})
+
+
+describe('toRemoteMessage', () => {
+  it('preserves plan implementation provenance in iOS history rows', () => {
+    const remote = toRemoteMessage(msg('u-implementation', 'user', {
+      content: 'Implement the plan.',
+      implementationPhase: true,
+    }))
+
+    expect(remote).toMatchObject({
+      id: 'u-implementation',
+      implementationPhase: true,
+    })
   })
 })
 

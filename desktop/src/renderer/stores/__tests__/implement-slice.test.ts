@@ -356,6 +356,7 @@ describe('implementPlan — planFilePath cleared on instance after implement', (
     )
     const pane = state.conversationPanes.get('tab-1')!
     expect(pane.instances[0].planFilePath).toBeNull()
+    expect(pane.instances[0].messages.at(-1)).toMatchObject({ role: 'user', implementationPhase: true })
   })
 })
 

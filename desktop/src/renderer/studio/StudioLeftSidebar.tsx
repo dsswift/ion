@@ -25,6 +25,7 @@ import type {
 
 export interface StudioLeftSidebarProps {
   layout: StudioLayout;
+  width?: number;
   onSelectView: (view: StudioSidebarView) => void;
   onClose: () => void;
   onFocusCapture?: () => void;
@@ -54,7 +55,9 @@ export function StudioLeftSidebar(
       onFocusCapture={props.onFocusCapture}
       onMouseDownCapture={props.onMouseDownCapture}
       style={{
-        width: GIT_PANEL_WIDTH,
+        width: props.width ?? GIT_PANEL_WIDTH,
+        maxWidth: '100%',
+        minWidth: 0,
         flexShrink: 0,
         display: "flex",
         flexDirection: "column",

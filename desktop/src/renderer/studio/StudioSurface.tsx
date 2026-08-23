@@ -42,6 +42,8 @@ export function StudioSurface(props: StudioSurfaceProps): React.JSX.Element {
       onMouseDownCapture={props.onMouseDownCapture}
       style={{
         width: props.liveWidth,
+        maxWidth: '100%',
+        minWidth: 0,
         flexShrink: 0,
         display: "flex",
         flexDirection: "column",

@@ -161,6 +161,7 @@ export function serializePersistedMessages(
     slashSource?: string
     slashModelAlias?: string
     slashModelEffective?: string
+    implementationPhase?: boolean
     attachments?: import('../../shared/types-session').Attachment[]
   }>,
 ): NonNullable<PersistedConversationInstance['messages']> {
@@ -180,6 +181,7 @@ export function serializePersistedMessages(
     ...(m.slashCommand ? { slashCommand: m.slashCommand, slashArgs: m.slashArgs, slashSource: m.slashSource } : {}),
     ...(m.slashModelAlias ? { slashModelAlias: m.slashModelAlias } : {}),
     ...(m.slashModelEffective ? { slashModelEffective: m.slashModelEffective } : {}),
+    ...(m.implementationPhase ? { implementationPhase: true } : {}),
     // Persist engine-produced image attachments (tool-result / provider
     // images the engine replays on historical reload via flattenEntries).
     // Attachment paths are on-disk references (never base64), so this is

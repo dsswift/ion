@@ -232,6 +232,7 @@ export async function handlePrompt(
         content: fullText,
         timestamp: echoTs,
         source: "remote",
+        ...(cmd.implementationPhase ? { implementationPhase: true } : {}),
         // Carry structured attachments on the echo so iOS id-reconciliation
         // (handleMessageAdded) preserves them when it replaces the optimistic
         // message. Without this the structured attachments on the optimistic
@@ -356,6 +357,7 @@ export async function handlePrompt(
       content: cliEchoContent,
       timestamp: echoTs,
       source: "remote",
+      ...(cmd.implementationPhase ? { implementationPhase: true } : {}),
       ...(cliAttachments.length > 0
         ? {
             attachments: cliAttachments.map((a) => ({

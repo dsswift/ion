@@ -436,6 +436,8 @@ export function openStudioWindow(source = "unknown", reveal = true): void {
   const win = new BrowserWindow({
     width: saved.bounds.width ?? STUDIO_DEFAULT_WIDTH,
     height: saved.bounds.height ?? STUDIO_DEFAULT_HEIGHT,
+    minWidth: 520,
+    minHeight: 420,
     ...(saved.bounds.x != null && saved.bounds.y != null ? { x: saved.bounds.x, y: saved.bounds.y } : {}),
     ...(process.platform === "darwin"
       ? {

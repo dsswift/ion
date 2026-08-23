@@ -159,7 +159,7 @@ export function projectRendererTab(
     createdAt: t.createdAt || undefined,
     worktree: t.worktree || undefined,
     inboxState: t.inboxState || undefined,
-    unread: t.unread || undefined,
+    unread: t.unread,
     snoozedUntil: t.snoozedUntil || undefined,
     settledAt: t.settledAt || undefined,
     settledOverride: t.settledOverride || undefined,

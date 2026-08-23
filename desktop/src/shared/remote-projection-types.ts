@@ -63,9 +63,10 @@ export interface ProjectedConversationInstance {
   /** Engine session is attaching without a foreground run. */
   isStarting?: boolean
   runningAgentCount?: number
-  /** Background bash commands this instance is waiting on (Bash
-   *  run_in_background + notify_on_complete). The shell counterpart to
-   *  runningAgentCount; drives the iOS pink shell dot. */
+  /** LIVE background bash processes this instance owns, notifying or detached
+   *  — the fold of `statusFields.backgroundShells` and
+   *  `statusFields.activeBackgroundTasks` (see shared/background-shell-counts.ts).
+   *  The shell counterpart to runningAgentCount; drives the iOS pink shell dot. */
   backgroundShellCount?: number
   activeBackgroundTasks?: import('./types-engine').BackgroundTaskState[]
   modelFallback?: { requestedModel: string; fallbackModel: string }
@@ -129,8 +130,8 @@ export interface ProjectedRendererTab {
   conversationId: string | null
   lastMessageContent: string | null
   /**
-   * DERIVED inbox sort/age key: newest real user or assistant message only.
-   * Tool rows, status updates, schedules, and webhooks never advance it.
+   * DERIVED conversation activity key: newest transcript row, persisted
+   * activity, message, or run completion. Reconnect heartbeats never advance it.
    */
   lastActivityTs: number
   /** Last running→idle transition (renderer-observed, restored verbatim). */

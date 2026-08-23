@@ -42,6 +42,10 @@ async function callOwnerAction(action: string, tabId: string, extraArg?: string)
   }
 }
 
+export async function handleTabDelete(cmd: Extract<RemoteCommand, { type: 'desktop_tab_delete' }>): Promise<void> {
+  await callOwnerAction('deleteConversationTab', cmd.tabId)
+}
+
 export async function handleTabSettle(cmd: Extract<RemoteCommand, { type: 'desktop_tab_settle' }>): Promise<void> {
   await callOwnerAction('settleTab', cmd.tabId)
 }
@@ -69,6 +73,10 @@ export async function handleTabUnsnooze(cmd: Extract<RemoteCommand, { type: 'des
 
 export async function handleTabMarkUnread(cmd: Extract<RemoteCommand, { type: 'desktop_tab_mark_unread' }>): Promise<void> {
   await callOwnerAction('markTabUnread', cmd.tabId)
+}
+
+export async function handleTabMarkRead(tabId: string): Promise<void> {
+  await callOwnerAction('markTabRead', tabId)
 }
 
 export async function handleTabPin(cmd: Extract<RemoteCommand, { type: 'desktop_tab_pin' }>): Promise<void> {

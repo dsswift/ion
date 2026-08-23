@@ -373,6 +373,7 @@ export const TS_SHARED_TYPES: Record<string, string[]> = {
     "backgroundWork",
     "content",
     "id",
+    "implementationPhase",
     "injectionKind",
     "internal",
     "isError",

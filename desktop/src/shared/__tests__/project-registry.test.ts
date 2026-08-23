@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest'
 import {
   normalizeProjectDir,
   sanitizeProjectRegistry,
+  isManagedWorkspacePath,
   orderedProjects,
   registerProjectUse,
   type ProjectRegistry,
@@ -25,6 +26,7 @@ describe('sanitizeProjectRegistry', () => {
       'rel': { addedManually: true, lastUsedAt: 5 },
       '/b': 'nope',
       '/c': { lastUsedAt: 'NaN' },
+      '/Users/test/.ion/worktrees/ion-old': { addedManually: false, lastUsedAt: 99 },
     })
     expect(out).toEqual({
       '/a': { addedManually: true, lastUsedAt: 5, name: 'Alpha' },
@@ -45,6 +47,15 @@ describe('orderedProjects', () => {
     expect(out[0].displayName).toBe('api (client-b)')
     expect(out[2].displayName).toBe('api (client-a)')
     expect(out[1].displayName).toBe('web')
+  })
+
+  it('excludes Ion-managed worktrees and integration benches from project roots', () => {
+    const registry: ProjectRegistry = {
+      '/source/ion': { addedManually: false, lastUsedAt: 1 },
+      '/Users/test/.ion/worktrees/ion-feature': { addedManually: false, lastUsedAt: 3 },
+      '/Users/test/.ion/integration/ion-main': { addedManually: false, lastUsedAt: 2 },
+    }
+    expect(orderedProjects(registry).map((project) => project.dir)).toEqual(['/source/ion'])
   })
 
   it('name override wins over basename', () => {
@@ -73,6 +84,14 @@ describe('registerProjectUse', () => {
     const base: ProjectRegistry = {}
     expect(registerProjectUse(base, 'not-absolute', 1)).toBe(base)
     expect(registerProjectUse(base, '~', 1)).toBe(base)
+  })
+})
+
+describe('isManagedWorkspacePath', () => {
+  it('recognizes generated worktree and integration roots only', () => {
+    expect(isManagedWorkspacePath('/Users/test/.ion/worktrees/ion-a')).toBe(true)
+    expect(isManagedWorkspacePath('/Users/test/.ion/integration/ion-main')).toBe(true)
+    expect(isManagedWorkspacePath('/Users/test/projects/.ion-example')).toBe(false)
   })
 })
 

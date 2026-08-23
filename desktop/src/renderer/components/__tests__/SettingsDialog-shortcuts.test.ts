@@ -33,5 +33,7 @@ describe('SettingsDialog keyboard shortcuts', () => {
     const html = renderToStaticMarkup(createElement(KeyboardShortcutsCategory))
     expect(html).toContain('Overlay')
     expect(html).toContain('Studio')
+    expect(html).toContain('data-testid="shortcut-columns"')
+    expect(html).not.toContain('overflow-x:auto')
   })
 })

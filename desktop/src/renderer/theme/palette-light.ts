@@ -117,6 +117,8 @@ export const lightColors: ColorPalette = {
   timelineNodeActive: "#2B5FE8",
   timelineSlashCommand: "#7E22CE",
   timelineSlashCommandActive: "#9333EA",
+  timelinePlanImplementation: "#059669",
+  timelinePlanImplementationActive: "#047857",
 
   // Scrollbar
   scrollThumb: "rgba(0, 0, 0, 0.10)",

@@ -126,7 +126,7 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       return tabId
     },
 
-    createTabInDirectory: async (dir, useWorktree, skipDuplicateCheck, pinToGroupId) => {
+    createTabInDirectory: async (dir, useWorktree, skipDuplicateCheck, pinToGroupId, sourceBranch) => {
       if (!skipDuplicateCheck) {
         const existingBlank = get().tabs.find((t) => isReusableBlankConversationTab(t, dir, instanceMessageCount(activeInstance(get().conversationPanes, t.id))))
         if (existingBlank) {
@@ -142,22 +142,14 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
       usePreferencesStore.getState().addRecentBaseDirectory(dir)
 
-      // Worktree resolution runs BEFORE tab creation, and this ordering is the
-      // whole point. createConversationTab eagerly starts an engine session in
-      // the directory it is handed, and the engine pins a session's working
-      // directory at start_session — so creating the tab first and attaching the
-      // worktree afterward left the session in the base repo while the UI showed
-      // the worktree. That is how five worktree conversations came to share one
-      // checkout. Resolving first means the tab is BORN in its worktree and
-      // nothing ever has to be relocated.
-      const resolved = await resolveWorktreeForNewTab(dir, useWorktree)
-
-      // Base tab + pane creation via the unified path (Phase 2, #256).
-      // createConversationTab gets the real tab ID from the main process,
-      // seeds the main pane with a session-start divider, sets active tab,
-      // and calls window.ion.setPermissionMode. We then apply the extra
-      // options that are specific to this entry point (worktree, group pin).
-      const tabId = await createConversationTab(resolved.dir, { setActive: true })
+      // The unified creator resolves the requested worktree before it creates
+      // state or starts the session. Keeping this entry point thin prevents
+      // plain and profile-backed project shortcuts from drifting apart.
+      const tabId = await createConversationTab(dir, {
+        setActive: true,
+        useWorktree,
+        sourceBranch,
+      })
 
       // Apply group pin if explicitly requested (iOS per-group "+" button or
       // desktop "Move to group and pin"). Override the group placement that
@@ -174,26 +166,16 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
         }))
       }
 
-      // Attach the worktree metadata resolved above. This is a pure state patch
-      // with no relocation: `workingDirectory` is already the worktree path
-      // because the tab was created there. `pendingWorktreeSetup` marks the tab
-      // for TabStrip's branch picker when the repo had no recorded default.
-      if (resolved.worktree || resolved.pendingSetup) {
-        set((s) => ({
-          tabs: s.tabs.map((t) =>
-            t.id === tabId
-              ? { ...t, worktree: resolved.worktree, pendingWorktreeSetup: resolved.pendingSetup }
-              : t
-          ),
-        }))
-      }
-
       return tabId
     },
 
     selectTab: (tabId) => {
       const s = get()
       if (tabId === s.activeTabId) {
+        // A user can acknowledge a completed run by opening the row that is
+        // already selected. No activeTabId change occurs in that case, so the
+        // focus subscription cannot record this review for us.
+        get().markTabRead(tabId)
         if (!s.isExpanded) {
           set({
             isExpanded: true,

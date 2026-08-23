@@ -62,7 +62,8 @@ export function CommandPalette(props: CommandPaletteProps): React.JSX.Element | 
         inset: 0,
         display: 'flex',
         justifyContent: 'center',
-        paddingTop: '18vh',
+        padding: 'max(16px, 18vh) 16px 16px',
+        boxSizing: 'border-box',
         pointerEvents: 'auto',
         background: 'rgba(0,0,0,0.25)', // hardcoded-ok: pure-black modal scrim
       }}
@@ -72,7 +73,10 @@ export function CommandPalette(props: CommandPaletteProps): React.JSX.Element | 
         onClick={(e) => e.stopPropagation()}
         style={{
           width: 480,
-          maxHeight: 380,
+          maxWidth: '100%',
+          maxHeight: '100%',
+          minWidth: 0,
+          boxSizing: 'border-box',
           display: 'flex',
           flexDirection: 'column',
           background: colors.containerBg,
@@ -114,7 +118,7 @@ export function CommandPalette(props: CommandPaletteProps): React.JSX.Element | 
             borderBottom: `1px solid ${colors.containerBorder}`,
           }}
         />
-        <div style={{ overflowY: 'auto' }}>
+        <div style={{ overflowY: 'auto', minWidth: 0 }}>
           {ranked.length === 0 && (
             <div style={{ padding: 14, color: colors.textTertiary, fontSize: 12 }}>No matches.</div>
           )}
@@ -135,8 +139,8 @@ export function CommandPalette(props: CommandPaletteProps): React.JSX.Element | 
                 background: i === clamped ? colors.containerBgCollapsed : 'transparent',
               }}
             >
-              <span style={{ color: colors.textPrimary, fontSize: 13 }}>{entry.label}</span>
-              <span style={{ marginLeft: 'auto', color: colors.textTertiary, fontSize: 10 }}>{entry.section}</span>
+              <span style={{ color: colors.textPrimary, fontSize: 13, minWidth: 0, overflowWrap: 'anywhere' }}>{entry.label}</span>
+              <span style={{ marginLeft: 'auto', color: colors.textTertiary, fontSize: 10, flexShrink: 0 }}>{entry.section}</span>
             </div>
           ))}
         </div>

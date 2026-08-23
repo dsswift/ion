@@ -6,7 +6,7 @@
 // settings-store mock.
 import { describe, it, expect, vi } from 'vitest'
 import { existsSync, readFileSync, copyFileSync, mkdtempSync, rmSync, statSync } from 'fs'
-import { tmpdir, homedir } from 'os'
+import { tmpdir } from 'os'
 import { join } from 'path'
 
 const { settingsDirRef } = vi.hoisted(() => ({ settingsDirRef: { value: '' } }))
@@ -19,7 +19,7 @@ import { runTabSplitMigration } from '../tab-migration-split-runner'
 import { runTabExternalizeMigration } from '../tab-migration-externalize-runner'
 import { mergeExternalContent, loadInstanceContent, listContentTabIds } from '../tab-content-store'
 
-const REAL = join(homedir(), '.ion', 'tabs-api.json')
+const REAL = join(process.env.ION_REAL_HOME ?? '', '.ion', 'tabs-api.json')
 
 describe.skipIf(!existsSync(REAL))('REAL tabs-api.json v4 pipeline smoke (read-only)', () => {
   it('runs unify → split → externalize on a temp copy and round-trips', () => {

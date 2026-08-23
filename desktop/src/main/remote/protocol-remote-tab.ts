@@ -208,6 +208,7 @@ export interface RemoteTabState {
   /** Desktop-derived inbox classification. iOS renders, never re-derives. */
   inboxState?: 'active' | 'snoozed' | 'settled'
   /** Inbox unread (manual marker || completion newer than last visit). */
+  /** Desktop-derived review state. Always present in current snapshots. */
   unread?: boolean
   /** Snooze wake time (ms) while snoozed. */
   snoozedUntil?: number
@@ -253,6 +254,8 @@ export interface RemoteMessage {
   attachments?: RemoteAttachment[]
   timestamp: number
   source?: 'desktop' | 'remote'
+  /** True when this user turn begins an approved plan implementation. */
+  implementationPhase?: boolean
   /** Slash-command provenance: when the turn came from a slash command, the echo carries command/args so iOS renders a pill immediately. */
   slashCommand?: string
   slashArgs?: string

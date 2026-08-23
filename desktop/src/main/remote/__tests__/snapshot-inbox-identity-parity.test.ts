@@ -27,6 +27,11 @@ describe('inbox identity projection parity', () => {
     expect(out.createdAt).toBeUndefined()
   })
 
+  it('preserves an explicit false unread value on the wire', () => {
+    const out = projectRendererTab({ id: 't1', unread: false }, OPTS)
+    expect(out.unread).toBe(false)
+  })
+
   it('projects the full worktree identity onto the wire', () => {
     const worktree = {
       worktreePath: '/Users/u/.ion/worktrees/repo-abc123',

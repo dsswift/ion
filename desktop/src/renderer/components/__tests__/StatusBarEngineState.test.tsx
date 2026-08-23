@@ -70,15 +70,50 @@ function setPaneAgents(tabId: string, statuses: string[], backgroundShells = 0, 
       {
         id: 'main',
         label: 'main',
-        // backgroundShells is the ONE statusFields value the renderer does
-        // populate (the engine stamps it on every status snapshot), so the
-        // shell branch reads a real field where the agent branch reads
-        // agentStates. null when no shells and hasPendingWork is unset,
-        // matching a fresh instance.
+        // backgroundShells is the notify-only count the engine stamps on every
+        // status snapshot. The shell branch folds it with activeBackgroundTasks
+        // (see setPaneDetachedShells below for the detached case) where the
+        // agent branch reads agentStates. null when no shells and
+        // hasPendingWork is unset, matching a fresh instance.
+        //
+        // A notifying command is live AND held, so the live task list is
+        // populated to match — a snapshot with backgroundShells > 0 and an
+        // empty task list is not a state the engine emits.
         statusFields: backgroundShells > 0 || hasPendingWork !== undefined
-          ? { backgroundShells, hasPendingWork }
+          ? {
+              backgroundShells,
+              hasPendingWork,
+              activeBackgroundTasks: Array.from({ length: backgroundShells }, (_, i) => ({
+                taskId: `bash-${i}`, command: 'build', startedAt: i, notifyOnComplete: true,
+              })),
+            }
           : null,
         agentStates: statuses.map((status, i) => ({ name: `agent-${i}`, status })),
+      },
+    ],
+    activeInstanceId: 'main',
+  })
+}
+
+/**
+ * A pane holding DETACHED background commands: live processes the engine is
+ * NOT parked on, so `backgroundShells` and `hasPendingWork` are both zero/false
+ * and `activeBackgroundTasks` is the only signal.
+ */
+function setPaneDetachedShells(tabId: string, count: number) {
+  state.conversationPanes.set(tabId, {
+    instances: [
+      {
+        id: 'main',
+        label: 'main',
+        statusFields: {
+          backgroundShells: 0,
+          hasPendingWork: false,
+          activeBackgroundTasks: Array.from({ length: count }, (_, i) => ({
+            taskId: `bash-${i}`, command: 'sleep 96', startedAt: i, notifyOnComplete: false,
+          })),
+        },
+        agentStates: [],
       },
     ],
     activeInstanceId: 'main',
@@ -238,5 +273,58 @@ describe('StatusBarEngineState — background-shell branch', () => {
     setActiveTab({ id: 'tab1', engineProfileId: 'test-profile', status: 'idle' })
     setPaneAgents('tab1', [], 0, true)
     expect(renderHTML()).toContain('[waiting for queued work]')
+  })
+})
+
+// ─── Detached background commands ─────────────────────────────────────────────
+
+// REPORTED: a `Bash({ run_in_background: true })` command started WITHOUT
+// `notify_on_complete` ran for 96 seconds. `backgroundShells` and
+// `hasPendingWork` count only the commands the engine PARKS on, so both were
+// zero and this slot rendered NOTHING for the whole 96 seconds — while the
+// transcript's pink Bash operation group (which reads activeBackgroundTasks)
+// correctly showed the command running. The operator saw a spinning tool group
+// and an empty composer badge.
+describe('StatusBarEngineState — detached background commands', () => {
+  beforeEach(reset)
+
+  it('renders the badge for a detached live command (REGRESSION)', () => {
+    setActiveTab({ id: 'tab1', engineProfileId: null, status: 'idle' })
+    setPaneDetachedShells('tab1', 1)
+    const html = renderHTML()
+    expect(html).not.toBe('')
+    expect(html).toContain('1 background shell running')
+  })
+
+  // The badge must appear, but the WORDING must not lie: the engine is not
+  // waiting for a detached command — it went idle and left the process running.
+  it('says "running", not "waiting for", when nothing is parked on', () => {
+    setActiveTab({ id: 'tab1', engineProfileId: null, status: 'idle' })
+    setPaneDetachedShells('tab1', 1)
+    expect(renderHTML()).not.toContain('waiting for')
+  })
+
+  it('pluralizes the detached label at 2', () => {
+    setActiveTab({ id: 'tab1', engineProfileId: null, status: 'idle' })
+    setPaneDetachedShells('tab1', 2)
+    expect(renderHTML()).toContain('2 background shells running')
+  })
+
+  it('uses the statusBash token for the detached dot', () => {
+    setActiveTab({ id: 'tab1', engineProfileId: null, status: 'idle' })
+    setPaneDetachedShells('tab1', 1)
+    expect(renderHTML()).toContain('rgb(255, 45, 149)') // statusBash
+  })
+
+  it('a running orchestrator counts detached commands in its label too', () => {
+    setActiveTab({ id: 'tab1', engineProfileId: null, status: 'running' })
+    setPaneDetachedShells('tab1', 1)
+    expect(renderHTML()).toContain('[running · 1 background shell]')
+  })
+
+  it('keeps "waiting for" when the engine IS parked on the command', () => {
+    setActiveTab({ id: 'tab1', engineProfileId: null, status: 'idle' })
+    setPaneAgents('tab1', [], 1)
+    expect(renderHTML()).toContain('[waiting for 1 background shell]')
   })
 })
