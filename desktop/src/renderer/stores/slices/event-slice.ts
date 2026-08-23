@@ -47,6 +47,7 @@ import {
 import { handleErrorAction } from "./event-slice-error";
 import { rInfo, rTrace, rWarn } from "../../rendererLogger";
 import { setTabStatus } from "./tab-status-transition";
+import { isPendingUserCardDenial } from "../../../shared/pending-card";
 import {
   sameTab,
   sameInstance,
@@ -226,8 +227,19 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                 updated.status = "running";
                 updated.lastResult = null;
                 updated.currentActivity = "Thinking...";
-                instPatch.permissionDenied = null;
-                instTouched = true;
+                const existingDenied =
+                  "permissionDenied" in instPatch
+                    ? instPatch.permissionDenied
+                    : inst0?.permissionDenied;
+                if (isPendingUserCardDenial(existingDenied)) {
+                  rInfo("event.session", "preserving pending user card across session init", {
+                    tab_id: tabId,
+                    tools: (existingDenied?.tools ?? []).map((tool) => tool.toolName).join(","),
+                  });
+                } else {
+                  instPatch.permissionDenied = null;
+                  instTouched = true;
+                }
                 if (updated.queuedPrompts.length > 0) {
                   const [nextPrompt, ...rest] = updated.queuedPrompts;
                   updated.queuedPrompts = rest;
@@ -315,12 +327,28 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               // exactly ONE bubble. Clearing every pending bubble here would
               // collapse two queued steers onto the first divider.
               const dividerId = nextMsgId();
-              const pendingIdx = messages.findIndex((m) => m.steerPending);
+              // When the engine supplies the client message identity, it is the
+              // authoritative match. A missing match must not resolve a different
+              // pending steer. Older engine events lack that identity, so retain
+              // FIFO matching only for those events.
+              const pendingIdx = event.clientMessageId
+                ? messages.findIndex(
+                    (message) =>
+                      message.steerPending && message.id === event.clientMessageId,
+                  )
+                : messages.findIndex((message) => message.steerPending);
+              if (event.clientMessageId && pendingIdx === -1) {
+                rWarn("event.steer", "steer confirmation has no matching pending bubble", {
+                  tab_id: tabId,
+                  client_message_id: event.clientMessageId,
+                });
+              }
               if (pendingIdx !== -1) {
                 messages = messages.map((m, i) =>
                   i === pendingIdx
                     ? {
                         ...m,
+                        ...(event.entryId ? { id: event.entryId } : {}),
                         steerPending: undefined,
                         steerApplied: true,
                         steerAppliedDividerId: dividerId,
