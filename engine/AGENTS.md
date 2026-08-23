@@ -164,6 +164,15 @@ The engine owns its outbound wire contract. Every engine wire event carries the 
 
 The engine wire is a **scrutinized contract** (see root `AGENTS.md` § "Contract stability"). Breaking it requires explicit operator approval. Correcting a legacy name that violates the `engine_` convention may be committed as `fix` — not `feat!` — unless it is application-sweeping.
 
+### Vocabulary registry — prose names, never wire names
+
+`docs/vocabulary/terms.json` is the naming authority for Ion concepts, and its generated glossary is [`docs/vocabulary/index.md`](../docs/vocabulary/index.md). Engine entries carry a contract classification: `public-wire` for a published wire contract, `public-sdk` for a published SDK contract, `internal`, or `none`.
+
+Two rules, and the boundary between them is absolute:
+
+- **Prose follows the registry.** When you write an engine doc, comment, or plan about a concept (session, conversation, turn, hook, tool, resource, schedule, compaction), use that concept's canonical term. A new engine concept gets a registry entry in the same change, with an implementation citing the real Go symbol and file. Run `make generate-vocabulary`, then `make check-vocabulary`.
+- **The registry never renames a published contract.** A registry entry describes a concept; it has no power over a wire field, an event type string, a hook name, an SDK type, or a JSON key. Adding a canonical term is never a licence to rename any of those. The published name stays exactly as it is, and the entry records it in an implementation. Every contract restriction above still governs: no removal, no rename, no type change, no non-additive payload change without explicit operator approval.
+
 ## Contract manifest (cross-language sync)
 
 Go is the source of truth for shared types. `internal/types/contract_test.go` uses reflection to extract JSON field names from all shared structs into `internal/types/testdata/contracts.json`. TS and Swift tests validate against this file at CI time.

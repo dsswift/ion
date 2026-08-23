@@ -281,6 +281,7 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 					SlashSource:         md.SlashSource,
 					SlashModelAlias:     md.SlashModelAlias,
 					SlashModelEffective: md.SlashModelEffective,
+					ImplementationPhase: md.ImplementationPhase,
 					// InjectionKind classifies engine-injected turns. Propagate
 					// from the persisted MessageData entry so consumers can
 					// classify the turn on historical reload without inspecting

@@ -548,6 +548,12 @@ type SessionMessage struct {
 	SlashModelAlias     string `json:"slashModelAlias,omitempty"`
 	SlashModelEffective string `json:"slashModelEffective,omitempty"`
 
+	// ImplementationPhase records that this user turn began the implementation
+	// half of a plan-then-implement flow. It is copied from the durable
+	// MessageData provenance field during history flattening. Empty/false for
+	// ordinary prompts and rows persisted before this additive field existed.
+	ImplementationPhase bool `json:"implementationPhase,omitempty"`
+
 	// Marker payload fields (additive, omitempty). Set only when Role=="system"
 	// and this row represents a persisted marker entry (compaction, plan, steer)
 	// replayed by flattenEntries on historical reload. Clients format from these

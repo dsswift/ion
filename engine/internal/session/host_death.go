@@ -129,6 +129,10 @@ func (m *Manager) respawnDeadExtensions(key string) {
 				ContextTokens:  s.lastContextTokens,
 				Model:          s.lastModel,
 				RunCostUsd:     s.lastTotalCost,
+				// Complete-snapshot contract: an extension restart does not kill
+				// the session's background Bash processes, so they must survive
+				// this emission rather than be erased from every consumer.
+				ActiveBackgroundTasks: liveBackgroundTaskStates(key),
 			},
 		})
 
@@ -222,6 +226,10 @@ func (m *Manager) respawnDeadExtensions(key string) {
 			Label: key, State: "idle",
 			ContextPercent: idlePct, ContextWindow: idleCW, ContextTokens: idleTokens,
 			Model: idleModel, RunCostUsd: idleCost, ConversationCostUsd: idleConvCost,
+			// Complete-snapshot contract: idle is not proof the session's
+			// background Bash processes stopped. Omitting them here reported a
+			// terminal-looking idle while real processes ran.
+			ActiveBackgroundTasks: liveBackgroundTaskStates(key),
 		},
 	})
 }

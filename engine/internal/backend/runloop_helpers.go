@@ -348,6 +348,7 @@ func appendInboundUserEntry(conv *conversation.Conversation, opts *types.RunOpti
 	// arms that already carry a kind (the kind arm above, and background work,
 	// whose payload kind is authoritative for its own delivery).
 	conversation.ClassifyEntry(entry, opts.InjectionKind)
+	conversation.SetImplementationPhase(entry, opts.ImplementationPhase)
 
 	if opts.DeliveryID != "" && entry != nil {
 		if md, ok := entry.Data.(conversation.MessageData); ok {

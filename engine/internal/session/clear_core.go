@@ -278,6 +278,11 @@ func (m *Manager) emitClearSignal(key string) {
 			// denial. Stating nil documents the dismissal and guards against
 			// a future edit carrying a stale denial onto this snapshot.
 			PermissionDenials: nil,
+			// NOT nil, for the same full-snapshot reason: /clear resets the
+			// conversation, it does not kill the session's background Bash
+			// processes. Omitting them would erase live work from every
+			// consumer's view.
+			ActiveBackgroundTasks: liveBackgroundTaskStates(key),
 		},
 	})
 	m.emitCommandResult(key, "clear", nil)

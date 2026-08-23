@@ -79,6 +79,13 @@ type MessageData struct {
 	// when no model was resolved.
 	SlashModelEffective string `json:"slashModelEffective,omitempty"`
 
+	// ImplementationPhase records that this user turn began the implementation
+	// half of a plan-then-implement flow. It is durable provenance only: the
+	// engine uses the matching RunOptions field to configure the active run, and
+	// this field lets history consumers reconstruct that decision after reload.
+	// Additive (omitempty): absent on legacy rows and ordinary prompts.
+	ImplementationPhase bool `json:"implementationPhase,omitempty"`
+
 	// DisplayOnly marks an entry that belongs in the tree/scrollback (so the
 	// user sees it and it survives reload) but must NOT be reconstructed into
 	// the LLM context by BuildContextPath. The canonical use is the `context:

@@ -1,6 +1,8 @@
 package conversation
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -37,6 +39,39 @@ func TestSlashModelProvenanceRoundTrip(t *testing.T) {
 
 	if !found {
 		t.Fatal("no user message with SlashCommand=/deploy after flatten")
+	}
+}
+
+func TestImplementationPhaseProvenanceRoundTrip(t *testing.T) {
+	conv := CreateConversation("implementation-phase-test", "sys", "model")
+	entry := AddUserMessageWithInvocation(conv, "expanded implementation instructions", SlashInvocation{
+		Command: "/implement",
+		Source:  "ion",
+	})
+	SetImplementationPhase(entry, true)
+
+	stored := asMessageData(entry.Data)
+	if stored == nil || !stored.ImplementationPhase {
+		t.Fatalf("persisted implementation phase = %#v, want true", stored)
+	}
+	persisted, err := json.Marshal(stored)
+	if err != nil {
+		t.Fatalf("marshal MessageData: %v", err)
+	}
+	if !strings.Contains(string(persisted), `"implementationPhase":true`) {
+		t.Fatalf("persisted MessageData = %s, want implementationPhase", persisted)
+	}
+
+	msgs := flattenEntries(conv)
+	if len(msgs) != 1 || !msgs[0].ImplementationPhase {
+		t.Fatalf("flattened implementation phase = %#v, want true", msgs)
+	}
+	flattened, err := json.Marshal(msgs[0])
+	if err != nil {
+		t.Fatalf("marshal SessionMessage: %v", err)
+	}
+	if !strings.Contains(string(flattened), `"implementationPhase":true`) {
+		t.Fatalf("flattened SessionMessage = %s, want implementationPhase", flattened)
 	}
 }
 
