@@ -242,15 +242,26 @@ func (s *OAuthStore) load() {
 	s.tokens = tokens
 }
 
-// getOAuthStore returns the package-level singleton OAuthStore instance.
-// Multiple MCP connections share one store to avoid concurrent file I/O.
+// getOAuthStore returns the package-level OAuthStore for the current home.
+//
+// The engine normally runs with one stable HOME. Tests and embedded consumers
+// can change HOME, though, so the singleton must not keep serving credentials
+// loaded from an earlier home directory. The path check preserves the shared
+// store within one home while replacing it when the storage root changes.
 var (
-	globalOAuthStore     *OAuthStore
-	globalOAuthStoreOnce sync.Once
+	globalOAuthStore   *OAuthStore
+	globalOAuthStoreMu sync.Mutex
 )
 
 func getOAuthStore() *OAuthStore {
-	globalOAuthStoreOnce.Do(func() { globalOAuthStore = NewOAuthStore() })
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home matches NewOAuthStore fallback
+	path := filepath.Join(home, ".ion", "mcp-tokens.json")
+
+	globalOAuthStoreMu.Lock()
+	defer globalOAuthStoreMu.Unlock()
+	if globalOAuthStore == nil || globalOAuthStore.path != path {
+		globalOAuthStore = NewOAuthStore()
+	}
 	return globalOAuthStore
 }
 
