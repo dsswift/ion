@@ -493,7 +493,7 @@ Telemetry collection and export.
 
 ## compaction
 
-Context window compaction controls how the engine manages conversation length. The engine uses token-budget-based truncation with a four-tier summary fallback (session memory → LLM → extension hook → regex). See [Compaction](../sessions/compaction.md) for the full flow and rationale.
+Context window compaction controls how the engine manages conversation length. The proactive limit reserves the active model's declared output capacity and summary headroom. API-backed conversations that resume at or above that limit are admitted so the run loop can compact them before the next provider request. The engine uses token-budget-based truncation with a four-tier summary fallback (session memory → LLM → extension hook → regex). See [Compaction](../sessions/compaction.md) for the full flow and rationale.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|

@@ -101,6 +101,20 @@ func resolveContextWindow(model string) int {
 	return conversation.DefaultContext
 }
 
+// resolveRunContextCapacity resolves one model-aware capacity value for all
+// run-loop decisions. This keeps the proactive compaction threshold aligned
+// with prompt admission and context status reporting.
+func resolveRunContextCapacity(model string, maxTokens int) conversation.ContextCapacity {
+	contextWindow := resolveContextWindow(model)
+	capacity := conversation.ResolveModelContextCapacity(contextWindow, maxTokens, providers.GetModelInfo(model))
+	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "resolved run context capacity", map[string]any{
+		"model": model, "context_window": capacity.RawLimit,
+		"effective_limit": capacity.EffectiveLimit, "output_reserve": capacity.OutputReserve,
+		"summary_reserve": capacity.SummaryReserve,
+	})
+	return capacity
+}
+
 // handleUnknownStopReason resolves the run loop's `switch stopReason` default
 // branch. It distinguishes a provider-signalled "error" stop — which slipped
 // past the provider's own *ProviderError conversion (the openai provider now

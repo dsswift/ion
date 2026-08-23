@@ -80,8 +80,8 @@ type performCompactParams struct {
 // place. Diff against the original compactIfNeeded body for the
 // extraction's equivalence proof.
 
-// compactIfNeeded performs proactive compaction when context usage exceeds
-// the absolute token limit. Honours the session_before_compact hook (which
+// compactIfNeeded performs proactive compaction when context usage reaches the
+// absolute token limit. Honours the session_before_compact hook (which
 // can cancel the operation) and emits CompactingEvent edges so consumers
 // can mirror progress. The session_compact observer hook fires on completion.
 //
@@ -104,7 +104,7 @@ func (b *ApiBackend) compactIfNeeded(ctx context.Context, run *activeRun, conv *
 	}
 
 	usage := conversation.GetContextUsage(conv, contextWindow)
-	if usage.Tokens <= tokenLimit {
+	if usage.Tokens < tokenLimit {
 		utils.LogWithFields(utils.LevelDebug, "backend.runloop", "compactIfNeeded: no compaction needed %", map[string]any{
 			"tokens":    usage.Tokens,
 			"limit":     tokenLimit,

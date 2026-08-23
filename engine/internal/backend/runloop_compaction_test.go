@@ -114,6 +114,33 @@ func TestCompactIfNeeded_CircuitBreaker(t *testing.T) {
 	}
 }
 
+func TestCompactIfNeeded_AtLimitCompacts(t *testing.T) {
+	b := NewApiBackend()
+	events := captureEvents(b, "at-limit")
+
+	conv := conversation.CreateConversation("at-limit", "", "test-model")
+	for i := 0; i < 4; i++ {
+		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: "question"})
+		usage := &types.LlmUsage{}
+		if i == 3 {
+			usage.InputTokens = 100_000
+		}
+		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: "answer", Usage: usage})
+	}
+
+	run := &activeRun{requestID: "at-limit", conv: conv}
+	cp := testCompactParams()
+	cp.summaryEnabled = false
+	b.compactIfNeeded(context.Background(), run, conv, RunHooks{}, 200_000, 100_000, cp)
+
+	if run.compactionsWithoutProgress != 1 {
+		t.Fatalf("compactionsWithoutProgress = %d, want 1", run.compactionsWithoutProgress)
+	}
+	if done := lastCompactingDone(*events); done == nil {
+		t.Fatal("expected compaction at the exact token limit")
+	}
+}
+
 func TestCompactIfNeeded_BelowLimitIsNoOp(t *testing.T) {
 	b := NewApiBackend()
 	events := captureEvents(b, "below-limit")

@@ -2,12 +2,89 @@ package backend
 
 import (
 	"testing"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
 )
-// TestResolveContextWindow pins Defect 3: a registry entry with
+
+func TestRunLoopAutoCompactsAtModelAwareLimitBeforeProviderCall(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	const model = "ctxwin-auto-compact-model"
+	mock := setupTestProviderModel(model, [][]types.LlmStreamEvent{
+		textResponse("continued after compaction", 1_000, 20),
+	})
+	providers.RegisterModel(model, types.ModelInfo{
+		ProviderID:      testProviderID,
+		ContextWindow:   1_000_000,
+		MaxOutputTokens: 128_000,
+	})
+	t.Cleanup(func() { providers.UnregisterModel(model) })
+
+	convID := "ctxwin-auto-compact-conversation"
+	conv := conversation.CreateConversation(convID, "", model)
+	for i := 0; i < 4; i++ {
+		conversation.AddUserMessage(conv, "prior user turn")
+		usage := types.LlmUsage{}
+		if i == 3 {
+			usage.InputTokens = 911_135
+		}
+		conversation.AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "prior assistant turn"}}, usage)
+	}
+	if err := conversation.Save(conv, ""); err != nil {
+		t.Fatalf("save conversation: %v", err)
+	}
+
+	b := NewApiBackend()
+	events := collectEvents(b, "ctxwin-auto-compact-run")
+	b.StartRun("ctxwin-auto-compact-run", types.RunOptions{
+		Prompt:                "resume",
+		ProjectPath:           t.TempDir(),
+		Model:                 model,
+		ConversationID:        convID,
+		CompactSummaryEnabled: boolPtr(false),
+		EarlyStopEnabled:      testEarlyStopDisabled(),
+	})
+	if !waitForExit(events, 5*time.Second) {
+		t.Fatal("timed out waiting for run exit")
+	}
+
+	mock.mu.Lock()
+	requests := append([]types.LlmStreamOptions(nil), mock.requests...)
+	mock.mu.Unlock()
+	if len(requests) != 1 {
+		t.Fatalf("provider request count = %d, want 1", len(requests))
+	}
+	for _, msg := range requests[0].Messages {
+		if conversation.IsCompactBoundary(msg) {
+			return
+		}
+	}
+	t.Fatal("provider request did not contain the auto-compaction boundary")
+}
+
+func boolPtr(value bool) *bool { return &value }
+
+func TestRunLoopContextCapacityUsesModelOutputReserve(t *testing.T) {
+	const model = "ctxwin-large-output-model"
+	providers.RegisterModel(model, types.ModelInfo{
+		ProviderID:      "openai",
+		ContextWindow:   1_000_000,
+		MaxOutputTokens: 128_000,
+	})
+	t.Cleanup(func() { providers.UnregisterModel(model) })
+
+	capacity := resolveRunContextCapacity(model, 0)
+	if got, want := capacity.AutoCompactLimit(0), 859_000; got != want {
+		t.Fatalf("run-loop auto compact limit = %d, want %d", got, want)
+	}
+	if legacy := conversation.AutoCompactTokenLimit(capacity.RawLimit, 0); legacy == capacity.AutoCompactLimit(0) {
+		t.Fatalf("test setup invalid: compatibility limit %d must differ from model-aware limit %d", legacy, capacity.AutoCompactLimit(0))
+	}
+}
+
+// TestResolveContextWindow pins the zero-window guard. A registry entry with
 // ContextWindow == 0 must NOT overwrite the engine default with 0 (which would
 // collapse compaction to a 0-token budget every turn). The > 0 guard lives at
 // the resolution site so the clamped value flows into the compaction math, not

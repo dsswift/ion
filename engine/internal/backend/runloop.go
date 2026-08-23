@@ -177,10 +177,12 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	// activeRun.toolDefsBuiltForPlanMode.
 	run.toolDefsBuiltForPlanMode = run.planMode
 
-	// Resolve context window for compaction checks. resolveContextWindow
-	// guards against a registry entry with ContextWindow == 0 (which would
-	// otherwise collapse compaction to a 0-token budget every turn).
-	contextWindow := resolveContextWindow(model)
+	// Resolve context capacity once for the serving model. The proactive gate must
+	// reserve the same model output budget as prompt admission and status reporting;
+	// otherwise a model with a large output limit can pass the gate until its raw
+	// context window is almost exhausted.
+	contextCapacity := resolveRunContextCapacity(model, opts.MaxTokens)
+	contextWindow := contextCapacity.RawLimit
 
 	// Track consecutive prompt_too_long compaction failures to prevent infinite loops
 	promptTooLongRetries := 0
@@ -325,24 +327,24 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			break
 		}
 
-		// Proactive compaction: trigger at the effective context window
-		// (full window minus reserves for the next response and the
-		// compaction summary). A non-zero opts.CompactThreshold preserves
-		// the legacy percent-of-window override so callers that already
-		// tuned this value keep their behavior.
-		compactLimit := conversation.AutoCompactTokenLimit(contextWindow, opts.MaxTokens)
+		// Proactive compaction uses the same model-aware capacity contract as
+		// prompt admission and status reporting. A non-zero CompactThreshold keeps
+		// the legacy raw-window ratio or percentage override.
+		compactLimit := contextCapacity.AutoCompactLimit(opts.CompactThreshold)
 		if opts.CompactThreshold > 0 {
-			compactLimit = int(float64(contextWindow) * opts.CompactThreshold / 100.0)
-			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "source=legacy-override %", map[string]any{
+			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "auto-compaction limit resolved from legacy override", map[string]any{
 				"compact_limit": compactLimit,
 				"threshold":     opts.CompactThreshold,
 				"window":        contextWindow,
 			})
 		} else {
-			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "source=auto", map[string]any{
-				"compact_limit": compactLimit,
-				"max_tokens":    opts.MaxTokens,
-				"window":        contextWindow,
+			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "auto-compaction limit resolved from model capacity", map[string]any{
+				"compact_limit":   compactLimit,
+				"max_tokens":      opts.MaxTokens,
+				"window":          contextWindow,
+				"output_reserve":  contextCapacity.OutputReserve,
+				"summary_reserve": contextCapacity.SummaryReserve,
+				"model":           model,
 			})
 		}
 		cp := buildCompactParams(&opts, convDir)
