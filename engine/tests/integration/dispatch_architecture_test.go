@@ -125,7 +125,9 @@ func TestDispatchArchitecture_8Dispatch2Conversation(t *testing.T) {
 				}
 				result, err := ctx.DispatchAgent(extension.DispatchAgentOpts{
 					Name: name, Task: task, Model: "mock-model",
-					SessionID: sid, MaxTurns: 1, Background: true,
+					// This test observes each result through its callback. Detached keeps
+					// the root sessions independent of that observation path.
+					SessionID: sid, MaxTurns: 1, Detached: true,
 					OnComplete: func(r extension.DispatchAgentResult) {
 						sr.mu.Lock()
 						sr.completions = append(sr.completions, &r)
@@ -188,8 +190,10 @@ func TestDispatchArchitecture_8Dispatch2Conversation(t *testing.T) {
 			case <-sr.complete:
 			case <-dl:
 				sr.mu.Lock()
-				t.Fatalf("timeout waiting for dispatches (got %d completions, %d errors)", len(sr.completions), len(sr.errors))
+				completions := len(sr.completions)
+				errors := len(sr.errors)
 				sr.mu.Unlock()
+				t.Fatalf("timeout waiting for dispatches (got %d completions, %d errors)", completions, errors)
 			}
 		}
 	}
