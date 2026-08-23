@@ -12,10 +12,10 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// teardownSend fires a best-effort teardown command (abort/stop_session/
-// shutdown) at the engine during ephemeral-session cleanup. Failure is logged
-// at Warn: a dropped abort leaves a runaway session alive on the daemon, which
-// an operator wants to see rather than silently discard.
+// teardownSend fires a best-effort teardown command (stop_session/shutdown) at
+// the engine during ephemeral-session cleanup. Failure is logged at Warn: a
+// dropped command can leave a session or daemon alive, which an operator wants
+// to see rather than silently discard.
 func teardownSend(sock, cmd, key string) {
 	msg := map[string]interface{}{"cmd": cmd}
 	if key != "" {
@@ -27,6 +27,14 @@ func teardownSend(sock, cmd, key string) {
 			"key":   key,
 			"error": utils.ErrStr(err),
 		})
+	}
+}
+
+func cleanupEphemeralPrompt(sock, key string, serverStarted bool) {
+	// stop_session cancels an active run before removing the ephemeral session.
+	teardownSend(sock, "stop_session", key)
+	if serverStarted {
+		teardownSend(sock, "shutdown", "")
 	}
 }
 
@@ -175,14 +183,7 @@ func cmdPrompt(positional []string, flags map[string]string, listFlags map[strin
 			os.Exit(1)
 		}
 		timedOut := streamUntilIdle(sock, key, timeout)
-		if timedOut {
-			// Send abort so the engine doesn't keep running.
-			teardownSend(sock, "abort", key)
-		}
-		teardownSend(sock, "stop_session", key)
-		if serverStarted {
-			teardownSend(sock, "shutdown", "")
-		}
+		cleanupEphemeralPrompt(sock, key, serverStarted)
 		if timedOut {
 			os.Exit(124)
 		}
@@ -202,11 +203,7 @@ func cmdPrompt(positional []string, flags map[string]string, listFlags map[strin
 		timedOut := attachStream(sock, key, timeout)
 		if timedOut {
 			if ephemeral {
-				teardownSend(sock, "abort", key)
-				teardownSend(sock, "stop_session", key)
-				if serverStarted {
-					teardownSend(sock, "shutdown", "")
-				}
+				cleanupEphemeralPrompt(sock, key, serverStarted)
 			}
 			os.Exit(124)
 		}
