@@ -10,6 +10,16 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.65.0](https://github.com/dsswift/ion/compare/ios-v1.64.0...ios-v1.65.0) (2026-08-23)
+
+### Features
+
+* **ios:** add background task controls ([bfb3648](https://github.com/dsswift/ion/commit/bfb36487c2f92816e5d6b6066c62b09697b8140a))
+
+### Bug Fixes
+
+* **ios:** show concurrent background shells ([1297a3f](https://github.com/dsswift/ion/commit/1297a3f0fb19658c93a2c3f1b061d540e5a65c0d))
+
 ## [1.64.0](https://github.com/dsswift/ion/compare/ios-v1.63.0...ios-v1.64.0) (2026-08-22)
 
 ### Features

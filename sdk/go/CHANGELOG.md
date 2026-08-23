@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.6](https://github.com/dsswift/ion/compare/sdk/go-v0.1.5...sdk/go-v0.1.6) (2026-08-23)
+
+### Features
+
+* **sdk:** add dispatch recall controls ([c8c6b8a](https://github.com/dsswift/ion/commit/c8c6b8a2c05df97f5b6d5e739d96b030a55ded43))
+
 ## [0.1.5](https://github.com/dsswift/ion/compare/sdk/go-v0.1.4...sdk/go-v0.1.5) (2026-08-22)
 
 ### Features

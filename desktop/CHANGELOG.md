@@ -10,6 +10,20 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.85.0](https://github.com/dsswift/ion/compare/desktop-v1.84.0...desktop-v1.85.0) (2026-08-23)
+
+### Features
+
+* **desktop:** add background task controls ([8586392](https://github.com/dsswift/ion/commit/85863921ac47ac634fd456854e7bd77b25b426ef))
+
+### Bug Fixes
+
+* **desktop:** show concurrent background shells ([96e7bf5](https://github.com/dsswift/ion/commit/96e7bf5d3bc3887953ba50be3bf4f6e7c84b6aff))
+* **desktop:** resolve inherited SDK context methods ([e48d93e](https://github.com/dsswift/ion/commit/e48d93e0750dd721c6b5e1c3c76cb55940ab2719))
+* **desktop:** preserve renderer event identity ([a382238](https://github.com/dsswift/ion/commit/a38223828fc09107b5615c9fc9a5b13a62bfafaa))
+* **desktop:** update stale desktop test expectations ([3083710](https://github.com/dsswift/ion/commit/308371066108c64301d1aa1ab458492006c2b82d))
+* **desktop:** read flat package version ([4dee131](https://github.com/dsswift/ion/commit/4dee13114f838230af0c6b095d53987e90eed3c6))
+
 ## [1.84.0](https://github.com/dsswift/ion/compare/desktop-v1.83.0...desktop-v1.84.0) (2026-08-22)
 
 ### Features

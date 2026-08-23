@@ -13,6 +13,19 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.73.0](https://github.com/dsswift/ion/compare/engine-v1.72.0...engine-v1.73.0) (2026-08-23)
+
+### Features
+
+* **engine:** add background task controls ([9521055](https://github.com/dsswift/ion/commit/952105507f79b21ae2f02c184bd9a109c4a18615))
+
+### Bug Fixes
+
+* **engine:** guide background waits to park ([92e68d4](https://github.com/dsswift/ion/commit/92e68d4dd201ab0c6fff62a7845671c0feb2cbc8))
+* **engine:** stop timed-out prompts without deadlock ([cb5e249](https://github.com/dsswift/ion/commit/cb5e249e830fc14f5ebb753f7ca674ee4742da9b))
+* **engine:** stabilize dispatch integration cleanup ([d33cb31](https://github.com/dsswift/ion/commit/d33cb319d23bb5aecdb4585712d34d86806299b0))
+* **engine:** align dispatch integration controls ([8065807](https://github.com/dsswift/ion/commit/80658079cb57f314fb99716afff496518b7c32cf))
+
 ## [1.72.0](https://github.com/dsswift/ion/compare/engine-v1.71.1...engine-v1.72.0) (2026-08-22)
 
 ### Features
