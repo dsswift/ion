@@ -525,7 +525,7 @@ func TestDispatchArchitecture_RecallOneSibling(t *testing.T) {
 			task, _ := p["task"].(string)
 			_, err := ctx.DispatchAgent(extension.DispatchAgentOpts{
 				Name: name, Task: task, Model: "mock-model",
-				MaxTurns: 1, Background: true,
+				MaxTurns: 1, Detached: true,
 				OnComplete: func(r extension.DispatchAgentResult) {
 					omu.Lock()
 					outcomes[name] = &outcome{result: &r}
@@ -601,9 +601,12 @@ func TestDispatchArchitecture_RecallOneSibling(t *testing.T) {
 	}
 
 	// Phase 3: Recall doomed. Its context cancels, unblocking the provider.
-	found, _ := ctx.RecallDispatch("doomed", extension.RecallDispatchOpts{Reason: "test"})
+	found, err := ctx.RecallAgent("doomed", extension.RecallAgentOpts{Reason: "test"})
+	if err != nil {
+		t.Fatalf("RecallAgent(doomed): %v", err)
+	}
 	if !found {
-		t.Error("RecallDispatch(doomed) returned false")
+		t.Error("RecallAgent(doomed) returned false")
 	}
 
 	// Wait for doomed's outcome.
