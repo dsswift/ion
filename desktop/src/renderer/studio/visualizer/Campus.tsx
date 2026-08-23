@@ -8,6 +8,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useColors } from '../../theme'
 import { layoutCampus, campusSize, buildingGlow, buildingAt, type Building, type CampusEntry } from './engine/campus'
 import { rInfo } from '../../rendererLogger'
+import { canvasPointFromClient } from './canvas-coordinates'
 
 const TILE = 16
 const REFRESH_MS = 2000
@@ -123,8 +124,9 @@ export function Campus(props: CampusProps): React.JSX.Element {
         style={{ width: '100%', height: '100%', display: 'block', cursor: 'pointer' }}
         onClick={(e) => {
           const { zoom, ox, oy } = cameraRef.current
-          const tx = (e.nativeEvent.offsetX - ox) / (zoom * TILE)
-          const ty = (e.nativeEvent.offsetY - oy) / (zoom * TILE)
+          const point = canvasPointFromClient(e.currentTarget, e.clientX, e.clientY)
+          const tx = (point.x - ox) / (zoom * TILE)
+          const ty = (point.y - oy) / (zoom * TILE)
           const hit = buildingAt(buildingsRef.current, Math.floor(tx), Math.floor(ty))
           if (hit) {
             rInfo('studio', 'campus building selected', { tab_id: hit.tabId })

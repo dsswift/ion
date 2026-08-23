@@ -61,6 +61,7 @@ export interface WorktreeResolution {
 export async function resolveWorktreeForNewTab(
   dir: string,
   useWorktree: boolean | undefined,
+  sourceBranch?: string,
 ): Promise<WorktreeResolution> {
   const unchanged: WorktreeResolution = { dir, worktree: null, pendingSetup: false }
 
@@ -85,9 +86,9 @@ export async function resolveWorktreeForNewTab(
     return unchanged
   }
 
-  const defaultBranch = usePreferencesStore.getState().worktreeBranchDefaults[dir]
+  const defaultBranch = sourceBranch || usePreferencesStore.getState().worktreeBranchDefaults[dir]
   if (!defaultBranch) {
-    rInfo('worktree.resolve', 'no branch default recorded; deferring to the branch picker', { dir })
+    rInfo('worktree.resolve', 'no branch selected or default recorded; deferring to the branch picker', { dir })
     return { dir, worktree: null, pendingSetup: true }
   }
 

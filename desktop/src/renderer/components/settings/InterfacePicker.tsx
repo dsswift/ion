@@ -59,7 +59,7 @@ export function InterfacePicker(): React.JSX.Element | null {
           : 'Which conversation interface Ion presents. Switching applies immediately — conversations keep running.'
       }
     >
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, minWidth: 0 }}>
         {(
           [
             { id: 'overlay' as const, label: 'Overlay' },

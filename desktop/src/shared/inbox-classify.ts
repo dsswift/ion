@@ -22,6 +22,7 @@ export interface InboxTabView {
   snoozedUntil: number | null
   snoozedAt: number | null
   lastVisitedAt: number | null
+  /** Wall-clock ms of the last completed run. */
   lastCompletionAt: number | null
   /** Last real user/assistant message. This is the only inbox age clock. */
   lastMessageAt?: number | null
@@ -85,16 +86,28 @@ export function effectiveSettled(tab: InboxTabView, now: number, autoSettleDays:
   return now - tab.lastMessageAt > autoSettleDays * 24 * 60 * 60 * 1000
 }
 
+/** Most recent user-visible conversation activity, including run completion. */
+export function latestConversationActivityAt(tab: {
+  lastMessageAt?: number | null
+  lastActivityAt?: number | null
+  lastCompletionAt?: number | null
+}): number | null {
+  const latest = Math.max(tab.lastMessageAt ?? 0, tab.lastActivityAt ?? 0, tab.lastCompletionAt ?? 0)
+  return latest > 0 ? latest : null
+}
+
 /**
- * Inbox unread: manual marker, or a real message newer than the last visit.
- * Never-visited counts as READ (upgrade-day rule, R9/D9: pre-existing tabs
- * with lastVisitedAt null must not all light up unread after the upgrade).
+ * Inbox unread: manual marker, or a completed run or real message newer than
+ * the last visit. Never-visited counts as READ (upgrade-day rule, R9/D9:
+ * pre-existing tabs with lastVisitedAt null must not all light up unread after
+ * the upgrade).
  */
 export function inboxUnread(tab: InboxTabView): boolean {
   if (tab.manualUnread) return true
-  if (tab.lastMessageAt == null) return false
+  const newestReviewableAt = Math.max(tab.lastMessageAt ?? 0, tab.lastCompletionAt ?? 0)
+  if (newestReviewableAt === 0) return false
   if (tab.lastVisitedAt == null) return false
-  return tab.lastMessageAt > tab.lastVisitedAt
+  return newestReviewableAt > tab.lastVisitedAt
 }
 
 /** Wake moment for the "Woke" pill: a snooze that expired after the last visit. */
@@ -124,10 +137,12 @@ export function classifyInbox(tab: InboxTabView, now: number, autoSettleDays: nu
 export function tabUnread(tab: {
   manualUnread: boolean
   lastMessageAt?: number | null
+  lastCompletionAt?: number | null
   lastVisitedAt: number | null
 }): boolean {
   if (tab.manualUnread) return true
-  if (tab.lastMessageAt == null) return false
+  const newestReviewableAt = Math.max(tab.lastMessageAt ?? 0, tab.lastCompletionAt ?? 0)
+  if (newestReviewableAt === 0) return false
   if (tab.lastVisitedAt == null) return false // never-visited = read (upgrade day)
-  return tab.lastMessageAt > tab.lastVisitedAt
+  return newestReviewableAt > tab.lastVisitedAt
 }

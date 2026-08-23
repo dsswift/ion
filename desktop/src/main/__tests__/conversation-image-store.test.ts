@@ -41,14 +41,12 @@ describe('saveImageToConversation', () => {
     expect(readFileSync(path!)).toEqual(PNG_BYTES)
   })
 
-  it('is idempotent: the same bytes resolve to the same file and skip re-write', () => {
+  it('repairs a partial content-addressed object before returning its path', () => {
     const p1 = saveImageToConversation('conv-1', 'image/png', PNG_B64, testDir)
-    // Corrupt the file, then save again — content-addressing means the path is
-    // the same and the existing (corrupt) file is NOT overwritten (skip-on-present).
     writeFileSync(p1!, Buffer.from('tampered'))
     const p2 = saveImageToConversation('conv-1', 'image/png', PNG_B64, testDir)
     expect(p2).toBe(p1)
-    expect(readFileSync(p2!).toString()).toBe('tampered')
+    expect(readFileSync(p2!)).toEqual(PNG_BYTES)
   })
 
   it('maps media types to extensions and falls back to .bin for unknown types', () => {

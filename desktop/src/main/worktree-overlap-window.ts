@@ -28,7 +28,7 @@ export function openWorktreeOverlapWindow(next: WorktreeOverlapContext): void {
   const win = new BrowserWindow({
     width: 1180,
     height: 760,
-    minWidth: 760,
+    minWidth: 560,
     minHeight: 520,
     title: "Ion · Worktree Overlap",
     show: false,

@@ -236,12 +236,15 @@ export async function handleCreateTab(cmd: Extract<RemoteCommand, { type: 'deskt
       // createConversationTab is async; await it INSIDE the IIFE so the
       // activeTabId restore runs AFTER the real tab id is minted, not before
       // the promise resolves. executeJavaScript resolves the returned promise.
+      const worktreeArgs = cmd.useWorktree
+        ? `, useWorktree: true${cmd.sourceBranch ? `, sourceBranch: '${cmd.sourceBranch.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'` : ''}`
+        : ''
       const tabId = await state.mainWindow?.webContents.executeJavaScript(`
         (async function() {
           var store = window.__Ion_SESSION_STORE__;
           if (!store) return null;
           var prev = store.getState().activeTabId;
-          var id = await store.getState().createConversationTab('${escaped}', { profileId: ${profileArg} });
+          var id = await store.getState().createConversationTab('${escaped}', { profileId: ${profileArg}${worktreeArgs} });
           store.setState({ activeTabId: prev });
           return id;
         })()
@@ -264,10 +267,17 @@ export async function handleCreateTab(cmd: Extract<RemoteCommand, { type: 'deskt
   // from the start so the first sendMessage's auto-movement skips this tab.
   // We single-quote the group id (matching how `dir` is escaped above) so
   // the value flows safely through executeJavaScript.
-  const defaultArgs: string[] = ['false', 'true']
+  const defaultArgs: string[] = [cmd.useWorktree ? 'true' : 'false', 'true']
+  if (cmd.pinToGroupId || cmd.sourceBranch) {
+    const pinArg = cmd.pinToGroupId
+      ? `'${cmd.pinToGroupId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
+      : 'undefined'
+    defaultArgs.push(pinArg)
+  }
+  if (cmd.sourceBranch) {
+    defaultArgs.push(`'${cmd.sourceBranch.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`)
+  }
   if (cmd.pinToGroupId) {
-    const escaped = cmd.pinToGroupId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    defaultArgs.push("'" + escaped + "'")
     log('handle_create_tab: pinToGroupId, forwarding as explicit-pin', { pin_to_group: cmd.pinToGroupId })
   } else {
     log('handleCreateTab: no pinToGroupId (default-group placement)')

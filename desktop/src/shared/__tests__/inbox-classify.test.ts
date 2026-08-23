@@ -4,7 +4,7 @@
  * snooze-beats-auto-settle.
  */
 import { describe, it, expect } from 'vitest'
-import { autoSettleBlocked, classifyInbox, effectiveSettled, effectiveSnoozed, inboxUnread, raisedHand, wokeAt, type InboxTabView } from '../inbox-classify'
+import { autoSettleBlocked, classifyInbox, effectiveSettled, effectiveSnoozed, inboxUnread, latestConversationActivityAt, raisedHand, wokeAt, type InboxTabView } from '../inbox-classify'
 
 const NOW = 1_700_000_000_000
 const DAY = 24 * 60 * 60 * 1000
@@ -101,15 +101,23 @@ describe('effectiveSettled (D8 rows)', () => {
   })
 })
 
+describe('latestConversationActivityAt', () => {
+  it('uses the true latest message, activity, or completion timestamp', () => {
+    expect(latestConversationActivityAt(view({ lastMessageAt: NOW - DAY, lastActivityAt: NOW - 2, lastCompletionAt: NOW }))).toBe(NOW)
+    expect(latestConversationActivityAt(view({ lastMessageAt: NOW, lastActivityAt: NOW - 2, lastCompletionAt: NOW - DAY }))).toBe(NOW)
+    expect(latestConversationActivityAt({ lastMessageAt: null, lastActivityAt: null, lastCompletionAt: null })).toBeNull()
+  })
+})
+
 describe('inboxUnread (R9/D9 upgrade-day row)', () => {
   it('manual marker wins', () => {
     expect(inboxUnread(view({ manualUnread: true }))).toBe(true)
   })
-  it('message after last visit = unread', () => {
+  it('message or completion after last visit = unread', () => {
     expect(inboxUnread(view({ lastMessageAt: NOW, lastVisitedAt: NOW - DAY }))).toBe(true)
     expect(inboxUnread(view({ lastMessageAt: NOW - 2 * DAY, lastVisitedAt: NOW - DAY }))).toBe(false)
-    // Completion alone is not a message and therefore cannot set unread.
-    expect(inboxUnread(view({ lastMessageAt: NOW - 2 * DAY, lastCompletionAt: NOW, lastVisitedAt: NOW - DAY }))).toBe(false)
+    expect(inboxUnread(view({ lastMessageAt: NOW - 2 * DAY, lastCompletionAt: NOW, lastVisitedAt: NOW - DAY }))).toBe(true)
+    expect(inboxUnread(view({ lastMessageAt: NOW, lastCompletionAt: NOW - 2 * DAY, lastVisitedAt: NOW - DAY }))).toBe(true)
   })
   it('UPGRADE DAY: never-visited (lastVisitedAt null) counts as READ — pre-existing tabs must not all light up', () => {
     expect(inboxUnread(view({ lastMessageAt: NOW, lastVisitedAt: null }))).toBe(false)

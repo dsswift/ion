@@ -31,7 +31,32 @@ function tab(id: string): TabState {
 }
 
 describe('selectTab state cost', () => {
-  it('preserves the tabs array so the active-tab notifier is the only visit stamper', () => {
+  it('acknowledges review when the selected row is already active', () => {
+    const markTabRead = vi.fn()
+    const state = {
+      tabs: [tab('a')],
+      activeTabId: 'a',
+      isExpanded: true,
+      settingsOpen: false,
+      tallViewTabId: null,
+      terminalTallTabId: null,
+      settledHistory: [],
+      conversationPanes: new Map(),
+      markTabRead,
+    } as unknown as State
+    const set: StoreSet = (update) => {
+      const patch = typeof update === 'function' ? update(state) : update
+      Object.assign(state, patch)
+    }
+    const get: StoreGet = () => state
+    Object.assign(state, createTabSlice(set, get))
+
+    state.selectTab('a')
+
+    expect(markTabRead).toHaveBeenCalledWith('a')
+  })
+
+  it('preserves the tabs array until the active-tab notifier stamps the new visit', () => {
     const tabs = [tab('a'), tab('b')]
     const state = {
       tabs,

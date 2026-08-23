@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState, type MutableRefObject } from 'react'
 import { useColors } from '../../theme'
 import { rWarn } from '../../rendererLogger'
 import {
@@ -20,8 +20,9 @@ import {
  * pointer, a glass tooltip previews the chapter, click jumps the transcript
  * to that message. Ported from T3 code's TimelineMinimap (pingdotgg/t3code,
  * MessagesTimeline.tsx) and adapted to Ion's plain scrollable transcript:
- * jumps and in-view tracking are DOM operations against [data-message-id]
- * anchors instead of virtual-list index math, and the rail lives in reserved
+ * mounted-row jumps and in-view tracking use [data-message-id] anchors;
+ * off-screen virtual rows jump through TranscriptRows' exact index bridge.
+ * The rail lives in reserved
  * layout space (a flex sibling of the scroll container) rather than a
  * hover-revealed overlay — the transcript can never render under it.
  */
@@ -29,6 +30,7 @@ import {
 interface TimelineMinimapProps {
   items: ReadonlyArray<TimelineMinimapItem>
   scrollRef: React.RefObject<HTMLDivElement | null>
+  virtualMessageJumpRef?: MutableRefObject<((messageId: string) => boolean) | null>
 }
 
 /** Events originating inside the preview tooltip must not retarget or jump. */
@@ -59,7 +61,7 @@ function tickWidth(activeDistance: number | null): number {
   return 8
 }
 
-export function TimelineMinimap({ items, scrollRef }: TimelineMinimapProps) {
+export function TimelineMinimap({ items, scrollRef, virtualMessageJumpRef }: TimelineMinimapProps) {
   const colors = useColors()
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   // Ids of chapters currently visible in the scroll viewport. React state
@@ -111,12 +113,14 @@ export function TimelineMinimap({ items, scrollRef }: TimelineMinimapProps) {
     (item: TimelineMinimapItem) => {
       const container = scrollRef.current
       if (!container) return // silent-ok: scroll container unmounted (tab teardown race) — nothing to scroll
+      // A virtual row's DOM offsetTop is not its transcript position: the
+      // wrapper is absolutely positioned at top:0 and moved with a transform.
+      // Always let the virtualizer resolve its exact grouped-row index first,
+      // even when that row happens to be mounted right now.
+      if (virtualMessageJumpRef?.current?.(item.id)) return
       const anchor = findMessageAnchor(container, item.id)
       if (!anchor) {
-        // Invariant violation: items derive from the same messages whose
-        // bubbles stamp data-message-id, and the full history is mounted —
-        // a miss means the anchor contract broke.
-        rWarn('conversation', 'minimap jump anchor missing', { message_id: item.id.slice(0, 8) })
+        rWarn('conversation', 'minimap jump target missing', { message_id: item.id.slice(0, 8) })
         return
       }
       container.scrollTo({
@@ -124,7 +128,7 @@ export function TimelineMinimap({ items, scrollRef }: TimelineMinimapProps) {
         behavior: 'smooth',
       })
     },
-    [scrollRef],
+    [scrollRef, virtualMessageJumpRef],
   )
 
   // Stable key for the chapter id set. Streaming chunks rebuild `items`
@@ -275,25 +279,30 @@ export function TimelineMinimap({ items, scrollRef }: TimelineMinimapProps) {
             const activeDistance =
               resolvedActiveIndex === null ? null : Math.abs(index - resolvedActiveIndex)
             const inView = inViewIds.has(item.id)
-            // Every chapter always shows a tick. Slash commands retain purple
-            // identity at rest and brighten when active or visible; ordinary
-            // chapters keep the existing gray hierarchy.
+            // Every chapter always shows a tick. Plan implementation takes
+            // priority over slash-command identity: it is the durable workflow
+            // boundary the green marker communicates. Slash commands retain
+            // purple identity; ordinary chapters keep the gray hierarchy.
             const emphasized = activeDistance === 0 || inView
-            const backgroundColor = item.isSlashCommand
+            const backgroundColor = item.tickKind === 'plan-implementation'
               ? emphasized
-                ? colors.timelineSlashCommandActive
-                : colors.timelineSlashCommand
-              : activeDistance === 0
-                ? colors.textSecondary
-                : inView
-                  ? colors.textPrimary
-                  : colors.textTertiary
+                ? colors.timelinePlanImplementationActive
+                : colors.timelinePlanImplementation
+              : item.tickKind === 'slash-command'
+                ? emphasized
+                  ? colors.timelineSlashCommandActive
+                  : colors.timelineSlashCommand
+                : activeDistance === 0
+                  ? colors.textSecondary
+                  : inView
+                    ? colors.textPrimary
+                    : colors.textTertiary
             return (
               <span
                 aria-hidden="true"
                 data-minimap-strip
                 data-in-view={inView ? 'true' : 'false'}
-                data-tick-kind={item.isSlashCommand ? 'slash-command' : 'message'}
+                data-tick-kind={item.tickKind}
                 data-emphasized={emphasized ? 'true' : 'false'}
                 key={item.id}
                 style={{
@@ -306,7 +315,7 @@ export function TimelineMinimap({ items, scrollRef }: TimelineMinimapProps) {
                   borderRadius: 999,
                   pointerEvents: 'none',
                   backgroundColor,
-                  opacity: emphasized ? 1 : item.isSlashCommand ? 0.8 : 0.45,
+                  opacity: emphasized ? 1 : item.tickKind === 'message' ? 0.45 : 0.8,
                   transition: 'background-color 150ms, width 150ms, opacity 150ms',
                 }}
               />

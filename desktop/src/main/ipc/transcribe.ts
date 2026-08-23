@@ -1,10 +1,11 @@
 import { ipcMain } from 'electron'
-import { writeFileSync, existsSync, unlinkSync, readFileSync } from 'fs'
+import { writeFileSync, existsSync, readFileSync } from 'fs'
 import { execFile } from 'child_process'
-import { homedir, tmpdir } from 'os'
+import { homedir } from 'os'
 import { join, basename } from 'path'
 import { IPC } from '../../shared/types'
 import { log as _log } from '../logger'
+import { createOperationDir, cleanupDir } from '../utils/temp-dir'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -52,8 +53,9 @@ async function findWhisperBin(): Promise<string> {
 
 export function registerTranscribeIpc(): void {
   ipcMain.handle(IPC.TRANSCRIBE_AUDIO, async (_event, audioBase64: string) => {
-    const tmpWav = join(tmpdir(), `ion-voice-${Date.now()}.wav`)
+    const opDir = createOperationDir('transcribe')
     try {
+      const tmpWav = join(opDir, 'audio.wav')
       const buf = Buffer.from(audioBase64, 'base64')
       writeFileSync(tmpWav, buf)
 
@@ -76,21 +78,16 @@ export function registerTranscribeIpc(): void {
 
       let output: string
       if (isWhisperKit) {
-        const reportDir = tmpdir()
-        output = await runExecFile(whisperBin, ['transcribe', '--audio-path', tmpWav, '--model', 'tiny', '--without-timestamps', '--skip-special-tokens', '--report', '--report-path', reportDir], 60000)
+        output = await runExecFile(whisperBin, ['transcribe', '--audio-path', tmpWav, '--model', 'tiny', '--without-timestamps', '--skip-special-tokens', '--report', '--report-path', opDir], 60000)
         const wavBasename = basename(tmpWav, '.wav')
-        const reportPath = join(reportDir, `${wavBasename}.json`)
+        const reportPath = join(opDir, `${wavBasename}.json`)
         if (existsSync(reportPath)) {
           try {
             const report = JSON.parse(readFileSync(reportPath, 'utf-8'))
             const transcript = (report.text || '').trim()
-            try { unlinkSync(reportPath) } catch { /* silent-ok: best-effort WhisperKit report cleanup */ }
-            const srtPath = join(reportDir, `${wavBasename}.srt`)
-            try { unlinkSync(srtPath) } catch { /* silent-ok: best-effort WhisperKit srt cleanup */ }
             return { error: null, transcript }
           } catch (parseErr: any) {
             log('transcribe: WhisperKit JSON parse failed, falling back to stdout', { error: parseErr.message })
-            try { unlinkSync(reportPath) } catch { /* silent-ok: best-effort WhisperKit report cleanup on parse-failure path */ }
           }
         }
         if (!output || !output.trim()) {
@@ -123,11 +120,10 @@ export function registerTranscribeIpc(): void {
         const isEnglishOnly = modelPath.includes('.en.')
         output = await runExecFile(whisperBin, ['-m', modelPath, '-f', tmpWav, '--no-timestamps', '-l', isEnglishOnly ? 'en' : 'auto'], 30000)
       } else {
-        output = await runExecFile(whisperBin, [tmpWav, '--model', 'tiny', '--output_format', 'txt', '--output_dir', tmpdir()], 30000)
-        const txtPath = tmpWav.replace('.wav', '.txt')
+        output = await runExecFile(whisperBin, [tmpWav, '--model', 'tiny', '--output_format', 'txt', '--output_dir', opDir], 30000)
+        const txtPath = join(opDir, 'audio.txt')
         if (existsSync(txtPath)) {
           const transcript = readFileSync(txtPath, 'utf-8').trim()
-          try { unlinkSync(txtPath) } catch { /* silent-ok: best-effort whisper txt-output cleanup */ }
           return { error: null, transcript }
         }
         return {
@@ -152,7 +148,7 @@ export function registerTranscribeIpc(): void {
         transcript: null,
       }
     } finally {
-      try { unlinkSync(tmpWav) } catch { /* silent-ok: best-effort temp-wav cleanup */ }
+      cleanupDir(opDir)
     }
   })
 }

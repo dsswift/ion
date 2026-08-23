@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/dsswift/ion/engine/internal/durablefile"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -23,12 +24,13 @@ const McpServerName = "ion-extensions"
 // ToolServer exposes extension-registered tools as an MCP server
 // that backend processes can connect to.
 type ToolServer struct {
-	mu       sync.Mutex
-	listener net.Listener
-	tools    map[string]toolEntry
-	sockPath string
-	key      string
-	running  bool
+	mu         sync.Mutex
+	listener   net.Listener
+	tools      map[string]toolEntry
+	sockPath   string
+	key        string
+	running    bool
+	configPath string
 
 	server *mcp.Server
 	cancel context.CancelFunc
@@ -198,7 +200,7 @@ func (ts *ToolServer) Start() error {
 	return nil
 }
 
-// Stop shuts down the tool server and cleans up.
+// Stop shuts down the tool server and cleans up the socket and config files.
 func (ts *ToolServer) Stop() {
 	ts.mu.Lock()
 	if ts.cancel != nil {
@@ -208,10 +210,15 @@ func (ts *ToolServer) Stop() {
 	if ts.listener != nil {
 		ts.listener.Close() //nolint:errcheck // listener teardown
 	}
+	configPath := ts.configPath
+	ts.configPath = ""
 	ts.mu.Unlock()
 
 	ts.wg.Wait()
 	os.Remove(ts.sockPath) //nolint:errcheck // stale socket cleanup; absent is fine
+	if configPath != "" {
+		os.Remove(configPath) //nolint:errcheck // stale config cleanup; absent is fine
+	}
 }
 
 // SocketPath returns the path to the Unix socket.
@@ -252,9 +259,12 @@ func (ts *ToolServer) McpConfigPath(sessionID string) (string, error) {
 	}
 
 	configPath := filepath.Join(configDir, fmt.Sprintf("config-%s.json", socketToken(sessionID)))
-	if err := os.WriteFile(configPath, data, 0o600); err != nil {
+	if err := durablefile.Write(configPath, data, 0o600); err != nil {
 		return "", err
 	}
+	ts.mu.Lock()
+	ts.configPath = configPath
+	ts.mu.Unlock()
 	return configPath, nil
 }
 

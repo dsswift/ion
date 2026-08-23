@@ -24,6 +24,7 @@ import { TerminalSurface } from './tabs/TerminalSurface'
 import { BrowserSurface } from './tabs/BrowserSurface'
 import { ResourceSurface } from './tabs/ResourceSurface'
 import { StatusSurface } from './tabs/StatusSurface'
+import { DispatchSurface } from './tabs/DispatchSurface'
 import { RuntimePanelBody } from './runtime-panel-registry'
 import { FileExplorer } from '../../components/FileExplorer'
 import { GitPanel } from '../../components/GitPanel'
@@ -77,6 +78,9 @@ function bodyFor(tab: SurfaceTab, active: boolean, onAgentClick?: (tabId: string
     case 'notification':
       if (!active) return null
       return <ResourceSurface key={tab.id} resourceKind={tab.resourceKind} resourceId={tab.resourceId} />
+    case 'dispatch':
+      if (!active) return null
+      return <DispatchSurface key={tab.id} tab={tab} />
     case 'runtime-panel': {
       if (!active) return null
       return <div key={tab.id} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}><RuntimePanelBody id={tab.id} /></div>

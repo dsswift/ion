@@ -138,7 +138,6 @@ func (m *Manager) SetProcessTelemetry(c *telemetry.Collector) {
 	m.mu.Unlock()
 }
 
-// SetConfig stores the engine runtime config for applying defaults.
 func (m *Manager) SetConfig(cfg *types.EngineRuntimeConfig) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -447,8 +446,9 @@ func (m *Manager) StopSession(key string) error {
 		extGroup: s.extGroup, mcpConns: s.mcpConns, telemetry: s.telemetry,
 		recorder: s.recorder, toolServer: s.toolServer,
 		fsWatcherRelease: s.fsWatcherRelease, sessionMemory: s.sessionMemory,
-		conversationID: s.conversationID,
-		key:            key, session: s,
+		hookSettingsPath: s.hookSettingsPath,
+		conversationID:   s.conversationID,
+		key:              key, session: s,
 	}
 
 	delete(m.sessions, key)

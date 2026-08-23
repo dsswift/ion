@@ -8,6 +8,11 @@ interface ConfirmDialogProps {
   message: string
   confirmLabel?: string
   cancelLabel?: string
+  /** Optional safe alternative shown between Cancel and the confirm action. */
+  alternateLabel?: string
+  onAlternate?: () => void
+  /** Button that receives keyboard focus when the dialog opens. */
+  initialFocus?: 'confirm' | 'cancel' | 'alternate'
   danger?: boolean
   onConfirm: () => void
   onCancel: () => void
@@ -39,6 +44,9 @@ export function ConfirmDialog({
   message,
   confirmLabel,
   cancelLabel = 'Cancel',
+  alternateLabel,
+  onAlternate,
+  initialFocus = 'confirm',
   danger = false,
   onConfirm,
   onCancel,
@@ -48,12 +56,20 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const colors = useColors()
   const confirmRef = useRef<HTMLButtonElement>(null)
+  const cancelRef = useRef<HTMLButtonElement>(null)
+  const alternateRef = useRef<HTMLButtonElement>(null)
   const cancelIx = useInteractiveState()
+  const alternateIx = useInteractiveState()
   const confirmIx = useInteractiveState()
   const resolvedConfirmLabel = confirmLabel ?? (acknowledge ? 'OK' : 'Confirm')
 
   useEffect(() => {
-    confirmRef.current?.focus()
+    const focusTarget = initialFocus === 'cancel'
+      ? cancelRef.current
+      : initialFocus === 'alternate'
+        ? alternateRef.current
+        : confirmRef.current
+    focusTarget?.focus()
     const handler = (e: KeyboardEvent) => {
       // See `busy` on the props: the choice is already made and Escape cannot
       // unmake it. Suppressing it here also keeps the dialog from vanishing
@@ -63,7 +79,7 @@ export function ConfirmDialog({
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [onCancel, busy])
+  }, [onCancel, busy, initialFocus])
 
   const disabledStyle = {
     cursor: 'not-allowed',
@@ -78,6 +94,7 @@ export function ConfirmDialog({
          and the action silently never runs. `useOutsideDismiss` treats anything
          inside `[data-ion-confirm]` as inside the menu. */
       data-ion-confirm
+      data-testid="confirm-dialog-backdrop"
       style={{
         position: 'fixed',
         inset: 0,
@@ -87,6 +104,9 @@ export function ConfirmDialog({
         background: colors.scrim,
         zIndex: 10000,
         pointerEvents: 'auto',
+        padding: 16,
+        boxSizing: 'border-box',
+        overflowY: 'auto',
       }}
       onClick={busy ? undefined : onCancel}
     >
@@ -95,7 +115,12 @@ export function ConfirmDialog({
         onClick={(e) => e.stopPropagation()}
         className="rounded-xl"
         style={{
-          width: 280,
+          width: alternateLabel ? 400 : 280,
+          maxWidth: '100%',
+          maxHeight: '100%',
+          minWidth: 0,
+          boxSizing: 'border-box',
+          overflowY: 'auto',
           background: colors.popoverBg,
           backdropFilter: 'blur(20px)',
           WebkitBackdropFilter: 'blur(20px)',
@@ -107,7 +132,7 @@ export function ConfirmDialog({
         <div className="text-[12px] font-medium" style={{ color: colors.textPrimary }}>
           {title}
         </div>
-        <div className="text-[11px] mt-1.5" style={{ color: colors.textSecondary, lineHeight: '16px' }}>
+        <div className="text-[11px] mt-1.5" style={{ color: colors.textSecondary, lineHeight: '16px', overflowWrap: 'anywhere' }}>
           {message}
         </div>
         {busy && (
@@ -133,9 +158,10 @@ export function ConfirmDialog({
             <span>{busyLabel}</span>
           </div>
         )}
-        <div className="flex justify-end gap-2 mt-4">
+        <div className="flex justify-end gap-2 mt-4" style={{ flexWrap: alternateLabel ? 'nowrap' : 'wrap' }}>
           {!acknowledge && (
             <button
+              ref={cancelRef}
               onClick={onCancel}
               disabled={busy}
               {...cancelIx.handlers}
@@ -145,11 +171,32 @@ export function ConfirmDialog({
                 border: `1px solid ${colors.containerBorder}`,
                 background: interactiveBg(colors, busy ? {} : cancelIx),
                 cursor: 'pointer',
+                whiteSpace: 'nowrap',
                 transition: `background ${transitions.base}`,
                 ...(busy ? disabledStyle : {}),
               }}
             >
               {cancelLabel}
+            </button>
+          )}
+          {!acknowledge && alternateLabel && onAlternate && (
+            <button
+              ref={alternateRef}
+              onClick={onAlternate}
+              disabled={busy}
+              {...alternateIx.handlers}
+              className="ion-focusable text-[11px] px-3 py-1 rounded-md"
+              style={{
+                color: colors.textPrimary,
+                border: `1px solid ${colors.containerBorder}`,
+                background: interactiveBg(colors, busy ? {} : alternateIx),
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                transition: `background ${transitions.base}`,
+                ...(busy ? disabledStyle : {}),
+              }}
+            >
+              {alternateLabel}
             </button>
           )}
           <button
@@ -171,6 +218,7 @@ export function ConfirmDialog({
                   : confirmIx.pressed ? colors.accentPressed : confirmIx.hover ? colors.accentHover : colors.accent,
               border: 'none',
               cursor: 'pointer',
+              whiteSpace: 'nowrap',
               transition: `background ${transitions.base}`,
               ...(busy ? disabledStyle : {}),
             }}

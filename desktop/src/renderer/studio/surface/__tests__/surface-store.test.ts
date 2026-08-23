@@ -43,7 +43,7 @@ beforeEach(() => {
 afterEach(() => { vi.runOnlyPendingTimers(); vi.useRealTimers() })
 
 describe('surface-store', () => {
-  it('keeps surface tabs and active selection separate per conversation', () => {
+  it('keeps each conversation active tab when both have local selections', () => {
     const store = useSurfaceStore.getState()
     store.openSingleton('diff')
     store.openFileTab('/repo', 'tab-1', '/repo/a.ts')
@@ -53,6 +53,35 @@ describe('surface-store', () => {
     store.selectConversation('tab-1')
     expect(useSurfaceStore.getState().tabs.map((tab) => tab.id)).toEqual(['plan', 'diff', 'file:/repo/a.ts'])
     expect(useSurfaceStore.getState().activeTabId).toBe('file:/repo/a.ts')
+  })
+
+  it('restores each conversation active tab even when the other conversation uses a global pin', () => {
+    const store = useSurfaceStore.getState()
+    store.openDispatchTab('dev-lead', 'dispatch-1', 'Dev Lead')
+    expect(useSurfaceStore.getState().activeTabId).toBe('dispatch-preview')
+
+    store.selectConversation('tab-2')
+    expect(useSurfaceStore.getState().activeTabId).toBe('plan')
+    store.selectConversation('tab-1')
+
+    expect(useSurfaceStore.getState().activeTabId).toBe('dispatch-preview')
+    expect(useSurfaceStore.getState().tabs.filter((tab) => tab.kind === 'dispatch')).toHaveLength(1)
+  })
+
+  it('reuses the conversation dispatch preview tab for a later dispatch click', () => {
+    const store = useSurfaceStore.getState()
+    store.openDispatchTab('dev-lead', 'dispatch-1', 'Dev Lead')
+    store.openDispatchTab('test-lead', 'dispatch-2', 'Test Lead')
+
+    const dispatchTabs = useSurfaceStore.getState().tabs.filter((tab) => tab.kind === 'dispatch')
+    expect(dispatchTabs).toEqual([{
+      kind: 'dispatch',
+      id: 'dispatch-preview',
+      agentName: 'test-lead',
+      dispatchId: 'dispatch-2',
+      title: 'Test Lead',
+    }])
+    expect(useSurfaceStore.getState().activeTabId).toBe('dispatch-preview')
   })
 
   it('migrates v1 tabs into the active conversation and keeps the old panel visibility', async () => {
@@ -106,18 +135,19 @@ describe('surface-store', () => {
     expect(useSurfaceStore.getState().tabs.map((tab) => tab.id)).toEqual(['diff', 'plan'])
   })
 
-  it('carries the active pinned tab across a conversation switch instead of resetting to strip order', () => {
+  it('does not carry the active pinned tab into another conversation', () => {
     const store = useSurfaceStore.getState()
     store.openSingleton('diff')
     store.pinTab('diff')
-    // Diff sits before Plan in strip order (SINGLETON_ORDER), so a naive
-    // fallback to the first pinned tab would land on Diff here.
+    // Diff sits before Plan in strip order. The new conversation has no saved
+    // selection, so it starts at Diff without changing tab-1's saved Plan tab.
     expect(useSurfaceStore.getState().tabs.map((tab) => tab.id)).toEqual(['diff', 'plan'])
     store.activateTab('plan')
     expect(useSurfaceStore.getState().activeTabId).toBe('plan')
 
     store.selectConversation('tab-2')
-    expect(useSurfaceStore.getState().activeTabId).toBe('plan')
+    expect(useSurfaceStore.getState().activeTabId).toBe('diff')
+    store.activateTab('diff')
 
     store.selectConversation('tab-1')
     expect(useSurfaceStore.getState().activeTabId).toBe('plan')

@@ -220,6 +220,44 @@ describe('TranscriptRows memoization', () => {
     document.body.removeChild(viewport)
   })
 
+  it('exposes an exact virtual row jump for an unmounted middle user message', () => {
+    renderCounts.clear()
+    const grouped = Array.from({ length: 4_000 }, (_, index): GroupedItem => ({
+      kind: 'user', message: msg(`jump-${index}`, 'user', `message ${index}`),
+    }))
+    const viewport = document.createElement('div')
+    Object.defineProperty(viewport, 'clientHeight', { value: 600 })
+    Object.defineProperty(viewport, 'clientWidth', { value: 800 })
+    Object.defineProperty(viewport, 'scrollHeight', { value: 288_000, configurable: true })
+    Object.defineProperty(viewport, 'scrollTop', { value: 0, writable: true, configurable: true })
+    Object.defineProperty(viewport, 'scrollTo', {
+      value: ({ top }: ScrollToOptions) => { viewport.scrollTop = top ?? 0 },
+    })
+    document.body.appendChild(viewport)
+    const container = document.createElement('div')
+    viewport.appendChild(container)
+    const root = createRoot(container)
+    const virtualMessageJumpRef = { current: null as ((messageId: string) => boolean) | null }
+
+    act(() => {
+      root.render(React.createElement(TranscriptRows, {
+        grouped,
+        scrollRef: { current: viewport },
+        virtualMessageJumpRef,
+      }))
+    })
+    expect(renderCounts.has('jump-2000')).toBe(false)
+
+    let resolved = false
+    act(() => { resolved = virtualMessageJumpRef.current?.('jump-2000') ?? false })
+
+    expect(resolved).toBe(true)
+    expect(viewport.scrollTop).toBeGreaterThan(0)
+    act(() => { root.unmount() })
+    expect(virtualMessageJumpRef.current).toBeNull()
+    document.body.removeChild(viewport)
+  })
+
   it('opens hydrated virtual history at the last row after an empty skeleton mount', () => {
     renderCounts.clear()
     const grouped = Array.from({ length: 4_000 }, (_, index): GroupedItem => ({

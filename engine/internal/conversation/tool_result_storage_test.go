@@ -46,10 +46,10 @@ func TestPersistAndPreview_OverLimit(t *testing.T) {
 		t.Fatal("preview should start with the first previewChars of content")
 	}
 
-	// Should mention the file path
-	expectedPath := filepath.Join(tmpDir, "tool-results", "conv-3", "tool-3.txt")
-	if !strings.Contains(got, expectedPath) {
-		t.Fatalf("preview should contain file path %q, got %q", expectedPath, got)
+	// Should mention a generated file under this conversation's storage root.
+	expectedDir := filepath.Join(tmpDir, "tool-results", "conv-3")
+	if !strings.Contains(got, expectedDir) {
+		t.Fatalf("preview should contain storage directory %q, got %q", expectedDir, got)
 	}
 
 	// Should mention truncation metadata
@@ -60,8 +60,12 @@ func TestPersistAndPreview_OverLimit(t *testing.T) {
 		t.Fatal("preview should mention preview length")
 	}
 
-	// Verify file was written with full content
-	data, err := os.ReadFile(expectedPath)
+	// Verify a unique spill file was written with full content.
+	spillFiles, err := filepath.Glob(filepath.Join(expectedDir, "result-*.txt"))
+	if err != nil || len(spillFiles) != 1 {
+		t.Fatalf("spill files = %v, err=%v; want one generated result file", spillFiles, err)
+	}
+	data, err := os.ReadFile(spillFiles[0])
 	if err != nil {
 		t.Fatalf("failed to read persisted file: %v", err)
 	}
@@ -147,9 +151,12 @@ func TestAddToolResultsWithSizeCheck_MixedSizes(t *testing.T) {
 		t.Fatal("second block should be truncated")
 	}
 
-	// Verify file was written
-	expectedPath := filepath.Join(tmpDir, "tool-results", "test-conv", "big-1.txt")
-	if _, err := os.Stat(expectedPath); os.IsNotExist(err) {
-		t.Fatalf("expected persisted file at %s", expectedPath)
+	// Verify a generated spill file was written.
+	spillFiles, err := filepath.Glob(filepath.Join(tmpDir, "tool-results", "test-conv", "result-*.txt"))
+	if err != nil || len(spillFiles) != 1 {
+		t.Fatalf("spill files = %v, err=%v; want one generated result file", spillFiles, err)
+	}
+	if _, err := os.Stat(spillFiles[0]); os.IsNotExist(err) {
+		t.Fatalf("expected persisted file at %s", spillFiles[0])
 	}
 }

@@ -7,12 +7,18 @@ vi.mock('../../../state', () => ({
 }))
 vi.mock('../../../logger', () => ({ log: vi.fn(), warn: vi.fn() }))
 
-import { handleTabReviewSettled } from '../inbox'
+import { handleTabDelete, handleTabReviewSettled } from '../inbox'
 
 describe('handleTabReviewSettled', () => {
   beforeEach(() => {
     executeJavaScript.mockReset()
     executeJavaScript.mockResolvedValue(true)
+  })
+
+  it('routes permanent delete to the owner deletion action', async () => {
+    await handleTabDelete({ type: 'desktop_tab_delete', tabId: 'live-tab' })
+
+    expect(executeJavaScript).toHaveBeenCalledWith(expect.stringContaining("deleteConversationTab('live-tab')"))
   })
 
   it('routes settled review to the owner restore action', async () => {

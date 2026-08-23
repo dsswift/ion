@@ -10,7 +10,7 @@
     { "name": "plan-ready", "semantics": "Plan exit awaiting a response.", "iosReachable": true },
     { "name": "question", "semantics": "Question awaiting a response.", "iosReachable": true },
     { "name": "bash", "semantics": "User-typed shell command executing.", "iosReachable": false },
-    { "name": "unread", "semantics": "Unread conversation notification.", "iosReachable": false },
+    { "name": "unread", "semantics": "Unread conversation notification.", "iosReachable": true },
     { "name": "idle", "semantics": "No active status.", "iosReachable": true }
   ]
 }

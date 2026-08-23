@@ -15,14 +15,14 @@ export function ComposerControls(): React.JSX.Element {
       data-ion-ui
       data-testid="composer-controls"
       className="flex items-center gap-2"
-      style={{ minHeight: 28, padding: '4px 0 0', color: colors.textTertiary }}
+      style={{ minHeight: 28, minWidth: 0, padding: '4px 0 0', color: colors.textTertiary, flexWrap: 'wrap' }}
     >
       <ModelPicker />
       <ContextIndicator />
       <PermissionModePicker />
       <ThinkingPicker />
       <AttachmentsButton />
-      <span style={{ flex: 1 }} />
+      <span style={{ flex: '1 1 20px' }} />
       <span
         data-testid="composer-activity-status-inset"
         style={{

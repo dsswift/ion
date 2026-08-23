@@ -2,6 +2,7 @@ import { useShallow } from 'zustand/shallow'
 import { useSessionStore } from '../stores/sessionStore'
 import type { StatusFields } from '../../shared/types'
 import { tabHasExtensions } from '../../shared/tab-predicates'
+import { heldBackgroundShellCount, liveBackgroundShellCount } from '../../shared/background-shell-counts'
 import { effectiveRunningChildrenCount } from './TabStripShared'
 
 /**
@@ -64,18 +65,19 @@ export function useActiveEngineAgentRunningCount(): number {
 }
 
 /**
- * Number of background bash commands the ACTIVE tab's active instance is
- * waiting on (Bash run_in_background + notify_on_complete).
+ * Number of LIVE background bash processes the ACTIVE tab's active instance
+ * owns — notifying or fire-and-forget.
  *
  * The shell counterpart to `useActiveEngineAgentRunningCount`. Drives the
- * status-bar "waiting for N background shell(s)" slot when the orchestrator
- * itself is idle but shell work is still in flight.
+ * status-bar background-shell slot when the orchestrator itself is idle but
+ * shell work is still in flight.
  *
- * Counts only notifying commands — a fire-and-forget `run_in_background`
- * command is not something the session is holding for, so it does not appear
- * here.
+ * Counts every live process, not only the notifying ones the engine parks on:
+ * a detached `run_in_background` command is real work whose output the operator
+ * is waiting to see, and hiding it made the composer badge disappear while a
+ * 96-second command ran. See `shared/background-shell-counts.ts`.
  *
- * Returns 0 when there is no active instance or no outstanding commands.
+ * Returns 0 when there is no active instance or no live processes.
  */
 export function useActiveEngineBackgroundShellCount(): number {
   return useSessionStore((s) => {
@@ -84,6 +86,22 @@ export function useActiveEngineBackgroundShellCount(): number {
     if (!instanceId) return 0
     const inst = pane.instances.find((i: { id: string }) => i.id === instanceId)
     if (!inst) return 0
-    return inst.statusFields?.backgroundShells ?? 0
+    return liveBackgroundShellCount(inst.statusFields)
+  })
+}
+
+/**
+ * Of the live processes above, how many the engine is actually HOLDING the
+ * session open for. Only a "waiting for …" label may use this: the engine does
+ * not wait for a detached command, so claiming it does would be false.
+ */
+export function useActiveEngineHeldShellCount(): number {
+  return useSessionStore((s) => {
+    const pane = s.conversationPanes.get(s.activeTabId)
+    const instanceId = pane?.activeInstanceId
+    if (!instanceId) return 0
+    const inst = pane.instances.find((i: { id: string }) => i.id === instanceId)
+    if (!inst) return 0
+    return heldBackgroundShellCount(inst.statusFields)
   })
 }

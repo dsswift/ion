@@ -51,6 +51,7 @@ struct InboxBenchGroup<Row: View>: View {
     @Environment(SessionViewModel.self) private var viewModel
     let state: RemoteWorktreeState
     let tabsByBenchPath: [String: [RemoteTabState]]
+    let terminalTabsByID: [String: RemoteTabState]
     let activeTabId: String?
     @Binding var expanded: Set<String>
     /// True only in the side-by-side layout — see
@@ -67,6 +68,8 @@ struct InboxBenchGroup<Row: View>: View {
             let key = "bench:\(bench.benchPath)"
             let benchTabs = tabsByBenchPath[bench.benchPath] ?? []
             let conversationTabs = benchTabs.filter { $0.id != bench.benchTerminalTabId }
+            let terminalTab = bench.benchTerminalTabId.flatMap { terminalTabsByID[$0] }
+            let occupants = terminalTab.map { conversationTabs + [$0] } ?? conversationTabs
             let isExpanded = expanded.contains(key)
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
@@ -84,12 +87,13 @@ struct InboxBenchGroup<Row: View>: View {
                     .contextMenu {
                         benchActionMenu(bench)
                     }
-                    // Conversation count uses the role-INCLUSIVE list, exactly
-                    // like the desktop bench bar: auto-fix and analysis
-                    // conversations are shared bench work and count here.
-                    Text("\(bench.openConversations.count)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    // Conversation count uses the role-inclusive list. An empty
+                    // bench omits the indicator; positive counts remain visible.
+                    if !bench.openConversations.isEmpty {
+                        Text("\(bench.openConversations.count)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                     Spacer()
                     Button {
                         openBenchTerminal(bench)
@@ -160,33 +164,9 @@ struct InboxBenchGroup<Row: View>: View {
             }
 
             if isExpanded {
-
-                if let terminalTabId = bench.benchTerminalTabId {
-                    Button {
-                        viewModel.navigateToTab(terminalTabId)
-                    } label: {
-                        Label("Terminal", systemImage: "terminal")
-                            .font(.caption)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.leading, IonSpace.sectionGap)
-                    .accessibilityLabel("Go to bench terminal")
-                    // Closing is NOT the settle/un-settle flow the conversation
-                    // rows below use -- a terminal-only tab has no Settled
-                    // History entry, so there is nothing to recover. Swipe
-                    // (rather than the desktop's hover-revealed X) is this
-                    // app's existing close affordance for a tab row -- see
-                    // TabListView's onDelete/requestCloseTab. No busy check
-                    // here: the desktop's own analogous gate is a client-side
-                    // UI nicety with no wire signal for "is this terminal
-                    // running a foreground command" projected to iOS, and
-                    // ordinary tab rows on this same screen close via swipe
-                    // with no busy check either.
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button("Close", role: .destructive) {
-                            viewModel.closeTab(terminalTabId)
-                        }
-                    }
+                if let terminalTab {
+                    InboxBenchTerminalRow(tab: terminalTab)
+                        .padding(.leading, IonSpace.sectionGap)
                 }
 
                 ForEach(conversationTabs) { tab in
@@ -201,8 +181,13 @@ struct InboxBenchGroup<Row: View>: View {
                     .padding(.leading, IonSpace.sectionGap)
                 }
             } else {
-                ForEach(InboxNavigator.collapsedRows(conversationTabs, activeTabId: activeTabId)) { tab in
-                    benchConversationRow(tab, bench: bench)
+                ForEach(InboxNavigator.collapsedRows(occupants, activeTabId: activeTabId)) { tab in
+                    if tab.id == terminalTab?.id {
+                        InboxBenchTerminalRow(tab: tab)
+                            .padding(.leading, IonSpace.sectionGap)
+                    } else {
+                        benchConversationRow(tab, bench: bench)
+                    }
                 }
             }
         }

@@ -150,6 +150,27 @@ extension TabListView {
         .accessibilityAction(named: projectExpanded ? "Collapse project" : "Expand project") {
             toggle(projectKey, in: expansion)
         }
+        .contextMenu {
+            Button {
+                requestNewConversation(directory: project.id, pinToGroupId: nil)
+            } label: {
+                Label("New conversation", systemImage: "plus.bubble")
+            }
+            Button {
+                let effectiveDirectory: String
+                if let policy = viewModel.enterpriseNewConversationPolicy,
+                   policy.locked,
+                   !policy.baseDirectory.isEmpty {
+                    effectiveDirectory = policy.baseDirectory
+                } else {
+                    effectiveDirectory = project.id
+                }
+                viewModel.pendingBranchPickerRepo = effectiveDirectory
+                viewModel.requestGitBranches(directory: effectiveDirectory)
+            } label: {
+                Label("New worktree conversation", systemImage: "arrow.triangle.branch")
+            }
+        }
 
         if projectExpanded {
             // Every band is rendered unconditionally over its own (possibly
@@ -165,6 +186,7 @@ extension TabListView {
                 InboxBenchGroup(
                     state: state,
                     tabsByBenchPath: benchTabsByPath(project.benchTabs, state: state),
+                    terminalTabsByID: Dictionary(uniqueKeysWithValues: project.benchTerminals.map { ($0.id, $0) }),
                     activeTabId: currentTabId,
                     expanded: expansion,
                     cyclesOnHeaderTap: cyclesOnTap,
@@ -173,10 +195,9 @@ extension TabListView {
                     }
                 )
             }
-            // Worktree groups keep conversation-owned paths in encounter order,
-            // then append inventory-only non-landed worktrees. This matches the
-            // desktop's complete workspace navigator while preserving the order
-            // of rows that do contain conversations.
+            // Bench members render together first in merge order. Other
+            // conversation-owned worktrees keep encounter order, followed by
+            // inventory-only active worktrees.
             ForEach(InboxNavigator.orderedWorktrees(for: project), id: \.worktreePath) { worktree in
                 InboxWorktreeGroup(
                     repoPath: project.id,
@@ -210,8 +231,13 @@ extension TabListView {
             }
         } else {
             ForEach(InboxNavigator.collapsedRows(project.allTabs, activeTabId: currentTabId)) { tab in
-                inboxRow(tab, selectionStyle: selectionStyle, project: project.name, location: nil, branch: nil)
-                    .padding(.leading, IonSpace.sectionGap)
+                if tab.isTerminalOnly == true {
+                    InboxBenchTerminalRow(tab: tab)
+                        .padding(.leading, IonSpace.sectionGap)
+                } else {
+                    inboxRow(tab, selectionStyle: selectionStyle, project: project.name, location: nil, branch: nil)
+                        .padding(.leading, IonSpace.sectionGap)
+                }
             }
         }
     }
@@ -478,8 +504,10 @@ extension TabListView {
                     }
                 }
                 Button("Mark unread") { viewModel.markTabUnread(tabId: tab.id) }
-                Button(tab.pinnedAt == nil ? "Pin" : "Unpin") {
-                    if tab.pinnedAt == nil { viewModel.pinTab(tabId: tab.id) } else { viewModel.unpinTab(tabId: tab.id) }
+                if !viewModel.isBenchConversation(tab) || tab.pinnedAt != nil {
+                    Button(tab.pinnedAt == nil ? "Pin" : "Unpin") {
+                        if tab.pinnedAt == nil { viewModel.pinTab(tabId: tab.id) } else { viewModel.unpinTab(tabId: tab.id) }
+                    }
                 }
                 if tab.inboxState == "settled" {
                     if tab.canRestoreSettled != false {
@@ -510,9 +538,12 @@ extension TabListView {
                 if let conversationId = tab.conversationId, !conversationId.isEmpty {
                     Button("Copy conversation ID") { UIPasteboard.general.string = conversationId }
                 }
-                // Routed through the shared close gate so a worktree that
-                // still holds work warns here exactly as it does in Classic.
-                Button("Delete conversation", role: .destructive) { requestCloseTab(tab) }
+                Button(role: .destructive) {
+                    DiagnosticLog.log("conversation delete confirmation opened", tag: "inbox", level: .info, fields: ["tab_id": tab.id])
+                    pendingInboxDeleteTab = tab
+                } label: {
+                    Label("Delete conversation…", systemImage: "trash")
+                }
             }
         if tab.inboxState == "settled" && !viewModel.tabs.contains(where: { $0.id == tab.id }) {
             if tab.canRestoreSettled != false {
@@ -524,7 +555,10 @@ extension TabListView {
         } else {
             switch selectionStyle {
             case .navigation: NavigationLink(value: tab.id) { row }
-            case .selection: row.onTapGesture { selectedTabId = tab.id }
+            case .selection: row.onTapGesture {
+                selectedTabId = tab.id
+                viewModel.sendReportFocus(tabId: tab.id)
+            }
             }
         }
     }
@@ -543,30 +577,5 @@ extension TabListView {
             .foregroundStyle(theme.textSecondary)
         }
         .buttonStyle(.plain)
-    }
-}
-
-enum InboxSnoozePresets {
-    struct Preset { let label: String; let untilMs: Double }
-
-    /// The desktop's preset list (inbox-snooze-presets.ts), including the
-    /// 20-minute minimum lead: a preset waking sooner than that is noise.
-    static func available(now: Date = Date()) -> [Preset] {
-        var out: [Preset] = []
-        let calendar = Calendar.current
-        func add(_ label: String, _ date: Date) {
-            if date.timeIntervalSince(now) >= 20 * 60 {
-                out.append(Preset(label: label, untilMs: date.timeIntervalSince1970 * 1000))
-            }
-        }
-        add("In 1 hour", now.addingTimeInterval(3_600))
-        add("In 3 hours", now.addingTimeInterval(10_800))
-        if let evening = calendar.date(bySettingHour: 18, minute: 0, second: 0, of: now) { add("This evening (18:00)", evening) }
-        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now), let morning = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow) { add("Tomorrow (09:00)", morning) }
-        // Next Monday (09:00) — the desktop's fifth preset.
-        if let nextMonday = calendar.nextDate(after: now, matching: DateComponents(hour: 9, minute: 0, weekday: 2), matchingPolicy: .nextTime) {
-            add("Next Monday (09:00)", nextMonday)
-        }
-        return out
     }
 }

@@ -3,6 +3,7 @@ import { useColors } from "../../theme";
 import type { StudioEngine } from "./engine";
 import { ReplayBar } from "./ReplayBar";
 import { Campus } from "./Campus";
+import { canvasPointFromClient } from "./canvas-coordinates";
 import type { AgentCache, StudioActiveState } from "./state/agent-cache";
 import { type Tooltip, type Phase } from "./visualizer-types";
 
@@ -71,9 +72,14 @@ export function VisualizerCanvas({
         onWheel={(event) => {
           const engine = engineRef.current;
           if (!engine) return;
+          const point = canvasPointFromClient(
+            event.currentTarget,
+            event.clientX,
+            event.clientY,
+          );
           engine.wheelZoom(
-            event.nativeEvent.offsetX,
-            event.nativeEvent.offsetY,
+            point.x,
+            point.y,
             event.deltaY < 0 ? 1 : -1,
           );
           const view = engine.getView();

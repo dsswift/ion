@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // InstalledPlugin is one entry in the registry.
@@ -105,12 +107,9 @@ func readRegistry() (registry, error) {
 
 func writeRegistry(r registry) error {
 	path := RegistryPath()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("create plugin dir: %w", err)
-	}
 	data, err := json.MarshalIndent(r, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return utils.AtomicWriteFile(path, data, 0o644)
 }

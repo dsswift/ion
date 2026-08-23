@@ -11,7 +11,9 @@
  * Motion's `transform`).
  *
  * Attach to the popover's root element and pass `active` (open state).
- * Re-clamps on open, on resize, and on content growth (ResizeObserver).
+ * Re-clamps on open, on resize, and on content growth (ResizeObserver). Pass
+ * `minLeftCss` when a left-side panel must stay fully visible; that protected
+ * edge takes priority over the viewport's right edge.
  *
  * This is the primitive for EDGE-anchored popovers — the ones whose style
  * computes `bottom:` / `right:` from a trigger rect so they grow upward or
@@ -32,7 +34,7 @@ export { clampDelta, MARGIN } from './viewport-clamp-math'
 /** How long to keep re-clamping after open — covers entrance animations. */
 const SETTLE_MS = 400
 
-export function useViewportClamp(ref: RefObject<HTMLElement | null>, active: boolean): void {
+export function useViewportClamp(ref: RefObject<HTMLElement | null>, active: boolean, minLeftCss: number | null = null): void {
   useLayoutEffect(() => {
     const el = ref.current
     if (!active || !el) return
@@ -43,7 +45,7 @@ export function useViewportClamp(ref: RefObject<HTMLElement | null>, active: boo
       // Read the zoom at apply time, not at mount: the operator can change it
       // while a popover is open, and the resize listener below re-runs this.
       const zoom = usePreferencesStore.getState().uiZoom
-      const { dx, dy } = clampDelta(rect, window.innerWidth, window.innerHeight, zoom)
+      const { dx, dy } = clampDelta(rect, window.innerWidth, window.innerHeight, zoom, minLeftCss === null ? null : minLeftCss * zoom)
       if (dx !== 0 || dy !== 0) el.style.translate = `${dx}px ${dy}px`
     }
     apply()
@@ -67,5 +69,5 @@ export function useViewportClamp(ref: RefObject<HTMLElement | null>, active: boo
       observer.disconnect()
       window.removeEventListener('resize', apply)
     }
-  }, [ref, active])
+  }, [ref, active, minLeftCss])
 }

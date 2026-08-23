@@ -1,12 +1,14 @@
 /**
  * InboxRowMenu — context menu for an inbox row: Snooze ▸ presets, Mark
- * unread, Settle/Un-settle, Rename, Close (reusing existing tab actions).
+ * unread, Settle/Un-settle, Rename, and confirmed permanent deletion.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { Trash } from '@phosphor-icons/react'
 import { createPortal } from 'react-dom'
+import { ConfirmDialog } from '../../components/git/ConfirmDialog'
 import { usePopoverLayer } from '../../components/PopoverLayer'
 import { useColors } from '../../theme'
-import { rWarn, rError } from '../../rendererLogger'
+import { rInfo, rWarn, rError } from '../../rendererLogger'
 import { useAnchoredPopover } from '../../hooks/useAnchoredPopover'
 import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveState'
 import { transitions } from '../../theme-tokens'
@@ -19,7 +21,7 @@ import type { TabState } from '../../../shared/types'
 import { scrollableMenuStyle } from '../../menu-viewport'
 import { useConvertToWorktreeGate } from '../../components/useConvertToWorktreeGate'
 
-function MenuButton({ label, onSelect, disabled = false }: { label: string; onSelect: () => void; disabled?: boolean }): React.JSX.Element {
+function MenuButton({ label, onSelect, disabled = false, icon, danger = false }: { label: string; onSelect: () => void; disabled?: boolean; icon?: React.ReactNode; danger?: boolean }): React.JSX.Element {
   const colors = useColors()
   const { hover, pressed, handlers } = useInteractiveState()
   return (
@@ -35,7 +37,8 @@ function MenuButton({ label, onSelect, disabled = false }: { label: string; onSe
         padding: '5px 12px',
         border: 'none',
         background: disabled ? 'transparent' : interactiveBg(colors, { hover, pressed }),
-        color: disabled ? colors.textTertiary : colors.textPrimary,
+        gap: 7,
+        color: disabled ? colors.textTertiary : danger ? colors.dangerFg : colors.textPrimary,
         cursor: disabled ? 'default' : 'pointer',
         opacity: disabled ? 0.45 : 1,
         textAlign: 'left',
@@ -43,6 +46,7 @@ function MenuButton({ label, onSelect, disabled = false }: { label: string; onSe
         transition: `background ${transitions.base}`,
       }}
     >
+      {icon}
       {label}
     </button>
   )
@@ -53,14 +57,16 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onClose }
   const layer = usePopoverLayer()
   const menuRef = useRef<HTMLDivElement>(null)
   const [snoozeOpen, setSnoozeOpen] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const autoSettleDays = usePreferencesStore((s) => s.inboxAutoSettleDays)
 
   useEffect(() => {
     const handleClick = (e: MouseEvent): void => {
+      if ((e.target as Element | null)?.closest('[data-ion-confirm]')) return
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose()
     }
     const handleKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape' && !confirmDelete) onClose()
     }
     document.addEventListener('mousedown', handleClick, true)
     document.addEventListener('keydown', handleKey, true)
@@ -68,7 +74,7 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onClose }
       document.removeEventListener('mousedown', handleClick, true)
       document.removeEventListener('keydown', handleKey, true)
     }
-  }, [onClose])
+  }, [confirmDelete, onClose])
 
   const presets = useMemo(() => availableSnoozePresets(new Date()), [])
   // A bench conversation is ephemeral: the next assembly recreates the bench
@@ -106,16 +112,21 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onClose }
     failed: tab.status === 'failed',
   }
   const state = classifyInbox(view, Date.now(), autoSettleDays > 0 ? autoSettleDays : null)
+  const canSettleInstead = state !== 'settled' && !settlesPermanently
   const exec = (fn: () => void): void => {
     fn()
     onClose()
   }
   const store = useSessionStore
 
-  // Drives the anchored positioner's re-measure. A bench row drops the Snooze
-  // verb entirely, and the convert row is conditionally present, so the count
-  // must track both or the menu stays placed for the wrong body height.
-  const itemCount = 5 - (inBench && state !== 'snoozed' ? 1 : 0) + (snoozeOpen ? presets.length : 0) + (convert.show ? 1 : 0)
+  const showPinAction = !inBench || tab.pinnedAt != null
+  // Drives the anchored positioner's re-measure. A bench row drops Snooze and
+  // an unpinned bench conversation drops Pin; the convert row is conditional.
+  const itemCount = 5
+    - (inBench && state !== 'snoozed' ? 1 : 0)
+    - (showPinAction ? 0 : 1)
+    + (snoozeOpen ? presets.length : 0)
+    + (convert.show ? 1 : 0)
   const pos = useAnchoredPopover({ x, y }, { deps: [itemCount, convert.label] })
 
   const menu = (
@@ -164,7 +175,10 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onClose }
           </div>
         ))}
       <MenuButton label="Mark unread" onSelect={() => exec(() => store.getState().markTabUnread(tab.id))} />
-      <MenuButton label={tab.pinnedAt != null ? 'Unpin conversation' : 'Pin conversation'} onSelect={() => exec(() => tab.pinnedAt != null ? store.getState().unpinTab(tab.id) : store.getState().pinTab(tab.id))} />
+      {showPinAction && <MenuButton label={tab.pinnedAt != null ? 'Unpin conversation' : 'Pin conversation'} onSelect={() => exec(() => {
+        if (tab.pinnedAt != null) store.getState().unpinTab(tab.id)
+        else if (!store.getState().pinTab(tab.id)) rWarn('inbox', 'pin request refused', { tab_id: tab.id.slice(0, 8) })
+      })} />}
       {state === 'settled' ? (
         canRestore ? <MenuButton label="Un-settle" onSelect={() => exec(() => { void store.getState().unsettleTab(tab.id, 'user') })} /> : null
       ) : (
@@ -185,8 +199,44 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onClose }
       <MenuButton label="Copy path" onSelect={() => exec(() => { void navigator.clipboard.writeText(tab.workingDirectory).catch((error) => rWarn('inbox', 'copy path failed', { error: String(error) })) })} />
       {tab.worktree?.branchName && <MenuButton label="Copy branch" onSelect={() => exec(() => { void navigator.clipboard.writeText(tab.worktree!.branchName).catch((error) => rWarn('inbox', 'copy branch failed', { error: String(error) })) })} />}
       <MenuButton label="Copy conversation ID" onSelect={() => exec(() => { void navigator.clipboard.writeText(tab.conversationId ?? tab.id).catch((error) => rWarn('inbox', 'copy conversation ID failed', { error: String(error) })) })} />
-      <MenuButton label="Delete conversation…" onSelect={() => exec(() => { void store.getState().deleteConversationTab(tab.id) })} />
+      <MenuButton
+        label="Delete conversation…"
+        icon={<Trash size={14} weight="bold" />}
+        danger
+        onSelect={() => {
+          rInfo('inbox', 'conversation delete confirmation opened', { tab_id: tab.id.slice(0, 8) })
+          setConfirmDelete(true)
+        }}
+      />
     </div>
   )
-  return layer ? createPortal(menu, layer) : menu
+  const dialog = confirmDelete ? (
+    <ConfirmDialog
+      title="Delete conversation?"
+      message="This permanently deletes the stored conversation. Settle keeps it in history so you can return to it later."
+      cancelLabel="Cancel"
+      alternateLabel={canSettleInstead ? 'Settle Conversation' : undefined}
+      onAlternate={canSettleInstead ? () => {
+        rInfo('inbox', 'conversation delete replaced with settlement', { tab_id: tab.id.slice(0, 8) })
+        setConfirmDelete(false)
+        void store.getState().settleTab(tab.id)
+        onClose()
+      } : undefined}
+      confirmLabel="Delete Conversation"
+      initialFocus="cancel"
+      danger
+      onConfirm={() => {
+        rInfo('inbox', 'conversation permanent deletion confirmed', { tab_id: tab.id.slice(0, 8) })
+        setConfirmDelete(false)
+        void store.getState().deleteConversationTab(tab.id)
+        onClose()
+      }}
+      onCancel={() => {
+        rInfo('inbox', 'conversation permanent deletion cancelled', { tab_id: tab.id.slice(0, 8) })
+        setConfirmDelete(false)
+      }}
+    />
+  ) : null
+  const content = confirmDelete && dialog ? dialog : menu
+  return layer ? createPortal(content, layer) : content
 }

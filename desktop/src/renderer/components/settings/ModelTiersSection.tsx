@@ -80,51 +80,55 @@ export function ModelTiersSection() {
       .catch((err) => rWarn('model-tiers', 'new model tier save failed', { tier: name, error: String(err) }))
   }, [newTier, save, tiers])
 
-  const gridStyle: React.CSSProperties = {
+  const cardStyle: React.CSSProperties = {
     display: 'grid',
-    gridTemplateColumns: 'minmax(90px, 0.55fr) minmax(240px, 1.5fr) minmax(240px, 1.5fr) 28px',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))',
+    gap: 8,
+    alignItems: 'end',
+    padding: 10,
     border: `1px solid ${colors.containerBorder}`,
     borderRadius: 8,
-    overflow: 'hidden',
+    background: colors.surfacePrimary,
+    minWidth: 0,
   }
-  const cellStyle: React.CSSProperties = { padding: '5px 7px', borderBottom: `1px solid ${colors.containerBorder}`, minWidth: 0 }
-  const selectStyle: React.CSSProperties = { width: '100%', padding: '4px 6px', background: colors.surfacePrimary, color: colors.textPrimary, border: `1px solid ${colors.containerBorder}`, borderRadius: 5, fontSize: 12 }
-  const iconStyle: React.CSSProperties = { border: 'none', background: 'transparent', color: colors.textSecondary, cursor: 'pointer', padding: 2, display: 'flex', alignSelf: 'center', justifySelf: 'center' }
+  const fieldStyle: React.CSSProperties = { display: 'grid', gap: 4, minWidth: 0 }
+  const labelStyle: React.CSSProperties = { color: colors.textTertiary, fontSize: 10, fontWeight: 600, textTransform: 'uppercase' }
+  const selectStyle: React.CSSProperties = { width: '100%', minWidth: 0, padding: '4px 6px', background: colors.surfacePrimary, color: colors.textPrimary, border: `1px solid ${colors.containerBorder}`, borderRadius: 5, fontSize: 12 }
+  const iconStyle: React.CSSProperties = { border: 'none', background: 'transparent', color: colors.textSecondary, cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }
   const optionValues = (tier: ModelTier) => modelChoices(models, tier.model, tier.fallbacks[0])
 
   return (
     <SettingSection label="Model Tiers" description="Choose each tier’s primary model and one managed fallback. Existing additional fallbacks remain active in the engine.">
       {loading ? <span style={{ color: colors.textTertiary, fontSize: 12 }}>Loading model tiers…</span> : (
-        <div style={gridStyle}>
-          <HeaderCell colors={colors}>Tier</HeaderCell>
-          <HeaderCell colors={colors}>Primary model</HeaderCell>
-          <HeaderCell colors={colors}>Fallback model</HeaderCell>
-          <HeaderCell colors={colors} />
+        <div data-testid="model-tier-cards" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 440px), 1fr))', gap: 8, minWidth: 0 }}>
           {displayTiers.map((tier) => {
             const builtIn = STANDARD_TIERS.includes(tier.name as typeof STANDARD_TIERS[number])
             const choices = optionValues(tier)
-            return <React.Fragment key={tier.name}>
-              <div style={{ ...cellStyle, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <strong style={{ color: colors.textPrimary, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis' }}>{tier.name}</strong>
-                {builtIn && <Tooltip text="Built-in tier. It stays available and needs an explicit primary model."><span style={{ display: 'inline-flex', color: colors.accent, flexShrink: 0 }}><ShieldCheck size={13} /></span></Tooltip>}
+            return (
+              <div key={tier.name} style={cardStyle}>
+                <div style={{ ...fieldStyle, alignSelf: 'center' }}>
+                  <span style={labelStyle}>Tier</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+                    <strong style={{ color: colors.textPrimary, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis' }}>{tier.name}</strong>
+                    {builtIn && <Tooltip text="Built-in tier. It stays available and needs an explicit primary model."><span style={{ display: 'inline-flex', color: colors.accent, flexShrink: 0 }}><ShieldCheck size={13} /></span></Tooltip>}
+                  </div>
+                </div>
+                <label style={fieldStyle}><span style={labelStyle}>Primary model</span><ModelSelect ariaLabel={`${tier.name} primary model`} value={tier.model} emptyLabel={tier.name === WORKBENCH_SYNC_TIER ? 'Default (uses standard tier)' : builtIn ? 'Configure a primary model' : 'Select primary model'} choices={choices} onChange={(model) => updatePrimary(tier, model)} style={selectStyle} /></label>
+                <label style={fieldStyle}><span style={labelStyle}>Fallback model</span><ModelSelect ariaLabel={`${tier.name} fallback model`} value={tier.fallbacks[0] ?? ''} emptyLabel="None" choices={choices} onChange={(model) => updateFallback(tier, model)} style={selectStyle} /></label>
+                {!builtIn && <button aria-label={`Remove ${tier.name} tier`} onClick={() => remove(tier.name)} style={iconStyle}><Trash size={16} /></button>}
               </div>
-              <div style={cellStyle}><ModelSelect ariaLabel={`${tier.name} primary model`} value={tier.model} emptyLabel={tier.name === WORKBENCH_SYNC_TIER ? 'Default (uses standard tier)' : builtIn ? 'Configure a primary model' : 'Select primary model'} choices={choices} onChange={(model) => updatePrimary(tier, model)} style={selectStyle} /></div>
-              <div style={cellStyle}><ModelSelect ariaLabel={`${tier.name} fallback model`} value={tier.fallbacks[0] ?? ''} emptyLabel="None" choices={choices} onChange={(model) => updateFallback(tier, model)} style={selectStyle} /></div>
-              <div style={cellStyle}>{!builtIn && <button aria-label={`Remove ${tier.name} tier`} onClick={() => remove(tier.name)} style={iconStyle}><Trash size={16} /></button>}</div>
-            </React.Fragment>
+            )
           })}
-          <div style={{ ...cellStyle, borderBottom: 'none' }}><input aria-label="Tier name" placeholder="New tier" value={newTier.name} onChange={(event) => setNewTier({ ...newTier, name: event.target.value })} style={selectStyle} /></div>
-          <div style={{ ...cellStyle, borderBottom: 'none' }}><ModelSelect ariaLabel="New tier primary model" value={newTier.model} emptyLabel="Select primary model" choices={modelChoices(models, newTier.model, newTier.fallbacks[0])} onChange={(model) => setNewTier({ ...newTier, model })} style={selectStyle} /></div>
-          <div style={{ ...cellStyle, borderBottom: 'none' }}><ModelSelect ariaLabel="New tier fallback model" value={newTier.fallbacks[0] ?? ''} emptyLabel="None" choices={modelChoices(models, newTier.model, newTier.fallbacks[0])} onChange={(fallback) => setNewTier({ ...newTier, fallbacks: fallback ? [fallback] : [] })} style={selectStyle} /></div>
-          <div style={{ ...cellStyle, borderBottom: 'none' }}><button aria-label="Add custom tier" onClick={addTier} disabled={!newTier.name.trim() || !newTier.model} style={iconStyle}><Plus size={18} /></button></div>
+          <div style={cardStyle}>
+            <label style={fieldStyle}><span style={labelStyle}>Tier</span><input aria-label="Tier name" placeholder="New tier" value={newTier.name} onChange={(event) => setNewTier({ ...newTier, name: event.target.value })} style={selectStyle} /></label>
+            <label style={fieldStyle}><span style={labelStyle}>Primary model</span><ModelSelect ariaLabel="New tier primary model" value={newTier.model} emptyLabel="Select primary model" choices={modelChoices(models, newTier.model, newTier.fallbacks[0])} onChange={(model) => setNewTier({ ...newTier, model })} style={selectStyle} /></label>
+            <label style={fieldStyle}><span style={labelStyle}>Fallback model</span><ModelSelect ariaLabel="New tier fallback model" value={newTier.fallbacks[0] ?? ''} emptyLabel="None" choices={modelChoices(models, newTier.model, newTier.fallbacks[0])} onChange={(fallback) => setNewTier({ ...newTier, fallbacks: fallback ? [fallback] : [] })} style={selectStyle} /></label>
+            <button aria-label="Add custom tier" onClick={addTier} disabled={!newTier.name.trim() || !newTier.model} style={iconStyle}><Plus size={18} /></button>
+          </div>
         </div>
       )}
     </SettingSection>
   )
-}
-
-function HeaderCell({ children, colors }: { children?: React.ReactNode; colors: ReturnType<typeof useColors> }) {
-  return <div style={{ padding: '6px 8px', color: colors.textTertiary, background: colors.surfaceSecondary, fontSize: 10, fontWeight: 600, textTransform: 'uppercase' }}>{children}</div>
 }
 
 function ModelSelect({ ariaLabel, value, emptyLabel, choices, onChange, style }: { ariaLabel: string; value: string; emptyLabel: string; choices: Map<string, Array<{ value: string; unavailable: boolean }>>; onChange: (value: string) => void; style: React.CSSProperties }) {

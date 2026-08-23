@@ -396,14 +396,21 @@ function coldStartSnapshot(): RemoteTabSnapshot {
         lastRunDurationMs: typeof t.lastResult?.durationMs === 'number' ? t.lastResult.durationMs : undefined,
         lastRunReason: t.lastResult?.reason,
         modelOverride: coldMain?.modelOverride ?? null,
-        lastActivityAt: h?.lastActivityAt || undefined,
+        // Prefer persisted completion-aware activity. Health covers live engine
+        // events, while the persisted clocks survive a desktop restart.
+        lastActivityAt: Math.max(
+          h?.lastActivityAt ?? 0,
+          typeof t.lastActivityAt === 'number' ? t.lastActivityAt : 0,
+          typeof t.lastMessageAt === 'number' ? t.lastMessageAt : 0,
+          typeof t.lastCompletionAt === 'number' ? t.lastCompletionAt : 0,
+        ) || undefined,
         createdAt: typeof t.createdAt === 'number' ? t.createdAt : undefined,
         // Inbox classification, computed from the persisted record via the
         // SHARED classifier. Never omitted: a row with no inboxState files as
         // Active on iOS, so omission here reshuffles the user's Inbox whenever a
         // cold snapshot lands between store-backed ones.
         inboxState: inbox.inboxState,
-        unread: inbox.unread || undefined,
+        unread: inbox.unread,
         snoozedUntil: inbox.snoozedUntil ?? undefined,
         settledAt: inbox.settledAt ?? undefined,
         settledOverride: inbox.settledOverride ?? undefined,

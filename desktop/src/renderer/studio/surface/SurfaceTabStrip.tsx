@@ -36,6 +36,7 @@ function tabIcon(tab: SurfaceTab): React.JSX.Element {
     case 'notification':
       return <Bell size={size} />
     case 'runtime-panel':
+    case 'dispatch':
       return <Rectangle size={size} />
     case 'browser':
       return <Globe size={size} />
@@ -59,6 +60,7 @@ function tabLabel(tab: SurfaceTab): string {
     case 'notification':
       return 'Notification'
     case 'runtime-panel':
+    case 'dispatch':
       return tab.title
     case 'browser':
       return tab.title || tab.url || 'Browser'

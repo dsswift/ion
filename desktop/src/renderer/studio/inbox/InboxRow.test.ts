@@ -21,6 +21,23 @@ describe('InboxRow status restraint', () => {
     expect(source).toContain('fontWeight: unread || isActive || selected ? 600 : 400')
   })
 
+  it('shows the latest activity including run completion', () => {
+    expect(source).toContain('latestConversationActivityAt(tab)')
+    expect(source).toContain('formatRelativeShort(latestActivityAt)')
+  })
+
+  it('uses the entire row as the conversation hover target', () => {
+    const cardOpen = source.indexOf('<ConversationHoverCard')
+    const rowOpen = source.indexOf('<div\n      {...handlers}', cardOpen)
+    const cardClose = source.indexOf('</ConversationHoverCard>', rowOpen)
+
+    expect(cardOpen).toBeGreaterThan(-1)
+    expect(rowOpen).toBeGreaterThan(cardOpen)
+    expect(cardClose).toBeGreaterThan(rowOpen)
+    expect(source.indexOf('aria-label="Settle conversation"', rowOpen)).toBeLessThan(cardClose)
+    expect(source).toContain("width: '100%', boxSizing: 'border-box'")
+  })
+
   it('keeps the distinct expired-snooze indicator', () => {
     expect(source).toContain('<WarningCircle size={11} />Woke')
   })

@@ -122,14 +122,15 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     /// yellow until they're upgraded. See CLAUDE.md § "Common parity
     /// surfaces" parity table for the desktop/iOS parity rule.
     var hasRunningChildren: Bool?
-    /// Total background bash commands this tab is waiting on (Bash
-    /// run_in_background + notify_on_complete), summed across sub-instances
-    /// by the desktop's `getRemoteTabStates` snapshot. Drives the pink
-    /// "waiting on background shells" pulse on the parent tab pill in
-    /// `TabRowView`, and the count in `EngineInstanceBar`. Nil/absent means
-    /// zero — older desktops that don't emit this field continue to work,
-    /// with the pill simply not showing the shell state until upgraded. See
-    /// AGENTS.md § "Common parity surfaces".
+    /// Total LIVE background bash processes this tab owns, summed across
+    /// sub-instances by the desktop's `getRemoteTabStates` snapshot. Includes
+    /// commands started WITHOUT `notify_on_complete`: a detached command is a
+    /// real process the engine kills when the session stops, so a tab holding
+    /// one is not finished. Drives the pink "background shells" pulse on the
+    /// parent tab pill in `TabRowView`, and the count in `EngineInstanceBar`.
+    /// Nil/absent means zero — older desktops that don't emit this field
+    /// continue to work, with the pill simply not showing the shell state until
+    /// upgraded. See AGENTS.md § "Common parity surfaces".
     var backgroundShellCount: Int?
     /// Exact desktop projection of engine pending work. Waiting work can exist
     /// before a child or shell has a visible row.
@@ -289,10 +290,12 @@ struct ConversationInstanceInfo: Codable, Identifiable, Sendable {
     /// Nil/zero means no background agents are running. See
     /// CLAUDE.md § "Common parity surfaces" parity table.
     var runningAgentCount: Int? = nil
-    /// Background bash commands this instance is waiting on (Bash
-    /// run_in_background + notify_on_complete). The shell counterpart to
-    /// `runningAgentCount`; drives the per-instance "waiting on N background
-    /// shell(s)" indicator in EngineInstanceBar. Nil/absent means zero.
+    /// LIVE background bash processes this instance owns, notifying or
+    /// detached. The shell counterpart to `runningAgentCount`; drives the
+    /// per-instance background-shell indicator in EngineInstanceBar. The
+    /// desktop folds the engine's notify-only `backgroundShells` scalar with
+    /// its `activeBackgroundTasks` inventory before projecting this, so a
+    /// detached command still lights the dot. Nil/absent means zero.
     var backgroundShellCount: Int? = nil
     /// Complete active background Bash inventory projected by the desktop.
     /// Snapshot values replace this list so reconnect removes stale tasks.

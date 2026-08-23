@@ -1,5 +1,6 @@
 import type { StoreApi } from 'zustand'
 import { effectiveSettled, type InboxTabView } from '../../shared/inbox-classify'
+import { liveBackgroundShellCount } from '../../shared/background-shell-counts'
 import { usePreferencesStore } from '../preferences'
 import { activeInstance } from './conversation-instance'
 import type { State } from './session-store-types'
@@ -13,7 +14,7 @@ function inboxView(state: State, tab: State['tabs'][number]): InboxTabView {
   const pendingAskCount = (instance?.permissionQueue.length ?? 0) + (instance?.elicitationQueue.length ?? 0)
   const agentCount = instance?.agentStates.filter((agent) => agent.status === 'running').length ?? 0
   const backgroundAgents = instance?.statusFields?.backgroundAgents ?? 0
-  const shells = instance?.statusFields?.backgroundShells ?? 0
+  const shells = liveBackgroundShellCount(instance?.statusFields)
   return {
     status: tab.status,
     settledOverride: tab.settledOverride,

@@ -13,6 +13,8 @@ vi.mock('../../theme', () => ({
     textTertiary: '#333333',
     timelineSlashCommand: '#664488',
     timelineSlashCommandActive: '#aa66ee',
+    timelinePlanImplementation: '#228855',
+    timelinePlanImplementationActive: '#66ddaa',
     popoverBg: '#444444',
     popoverBorder: '#555555',
     popoverShadow: 'none',
@@ -68,12 +70,12 @@ beforeAll(() => {
 })
 
 const ITEMS: TimelineMinimapItem[] = [
-  { id: 'u1', userText: 'first question', assistantText: 'first answer', isSlashCommand: false },
-  { id: 'u2', userText: '/align', assistantText: null, isSlashCommand: true },
-  { id: 'u3', userText: 'third question', assistantText: 'third answer', isSlashCommand: false },
+  { id: 'u1', userText: 'first question', assistantText: 'first answer', tickKind: 'message' },
+  { id: 'u2', userText: '/align', assistantText: null, tickKind: 'slash-command' },
+  { id: 'u3', userText: 'third question', assistantText: 'third answer', tickKind: 'message' },
 ]
 
-function renderMinimap(items: TimelineMinimapItem[], opts?: { omitAnchorIds?: string[] }) {
+function renderMinimap(items: TimelineMinimapItem[], opts?: { omitAnchorIds?: string[]; virtualJump?: (id: string) => boolean }) {
   const container = document.createElement('div')
   document.body.appendChild(container)
 
@@ -95,7 +97,10 @@ function renderMinimap(items: TimelineMinimapItem[], opts?: { omitAnchorIds?: st
 
   const root = createRoot(container)
   act(() => {
-    root.render(React.createElement(TimelineMinimap, { items, scrollRef }))
+    root.render(React.createElement(TimelineMinimap, {
+      items, scrollRef,
+      virtualMessageJumpRef: opts?.virtualJump ? { current: opts.virtualJump } : undefined,
+    }))
   })
 
   const button = container.querySelector('button')
@@ -186,6 +191,52 @@ describe('TimelineMinimap', () => {
     unmount()
   })
 
+
+  it('renders plan-implementation ticks green at rest and brightens them while active', () => {
+    const planItems: TimelineMinimapItem[] = [
+      { id: 'u1', userText: 'first question', assistantText: null, tickKind: 'message' },
+      { id: 'u2', userText: 'Implement the plan.', assistantText: null, tickKind: 'plan-implementation' },
+      { id: 'u3', userText: 'third question', assistantText: null, tickKind: 'message' },
+    ]
+    const { container, button, unmount } = renderMinimap(planItems)
+    const planTick = strips(container)[1]
+    expect(planTick.dataset.tickKind).toBe('plan-implementation')
+    expect(planTick.style.backgroundColor).toBe('rgb(34, 136, 85)')
+    expect(planTick.style.opacity).toBe('0.8')
+
+    act(() => { button!.dispatchEvent(mouseEvent('mousemove', 350)) })
+    expect(planTick.dataset.emphasized).toBe('true')
+    expect(planTick.style.backgroundColor).toBe('rgb(102, 221, 170)')
+    unmount()
+  })
+
+  it('uses the virtual transcript bridge before a mounted transformed-row anchor', () => {
+    const virtualJump = vi.fn(() => true)
+    const { button, scrollTo, unmount } = renderMinimap(ITEMS, { virtualJump })
+
+    act(() => { button!.dispatchEvent(mouseEvent('click', 350)) })
+
+    expect(virtualJump).toHaveBeenCalledWith('u2')
+    expect(scrollTo).not.toHaveBeenCalled()
+    unmount()
+  })
+
+  it('delegates an unmounted message to the virtual transcript index bridge', () => {
+    const virtualJump = vi.fn(() => true)
+    rWarn.mockClear()
+    const { button, scrollTo, unmount } = renderMinimap(ITEMS, {
+      omitAnchorIds: ['u2'],
+      virtualJump,
+    })
+
+    act(() => { button!.dispatchEvent(mouseEvent('click', 350)) })
+
+    expect(virtualJump).toHaveBeenCalledWith('u2')
+    expect(scrollTo).not.toHaveBeenCalled()
+    expect(rWarn).not.toHaveBeenCalled()
+    unmount()
+  })
+
   it('logs a warning and does not scroll when the jump anchor is missing', () => {
     rWarn.mockClear()
     const { button, scrollTo, unmount } = renderMinimap(ITEMS, { omitAnchorIds: ['u2'] })
@@ -195,7 +246,7 @@ describe('TimelineMinimap', () => {
     expect(rWarn).toHaveBeenCalledTimes(1)
     expect(rWarn).toHaveBeenCalledWith(
       'conversation',
-      'minimap jump anchor missing',
+      'minimap jump target missing',
       { message_id: 'u2' },
     )
     unmount()

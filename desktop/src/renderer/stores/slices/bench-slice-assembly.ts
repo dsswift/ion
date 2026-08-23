@@ -12,6 +12,7 @@
 import type { StoreSet, StoreGet, State } from "../session-store-types";
 import type { BenchAssembleResult } from "../../../shared/types";
 import { rInfo, rWarn, rDebug } from "../../rendererLogger";
+import { applyBenchWorkspace, invalidateBenchRefresh } from "./bench-slice";
 
 export function createBenchAssemblySlice(
   set: StoreSet,
@@ -235,13 +236,31 @@ export function createBenchAssemblySlice(
         worktree_path: worktreePath,
         to_index: toIndex,
       });
-      await window.ion.benchSetOrder({
+      const { workspace } = await window.ion.benchSetOrder({
         repoPath,
         sourceBranch,
         worktreePath,
         toIndex,
       });
-      await get().refreshBench(repoPath);
+      if (!workspace) {
+        rWarn("bench", "member order update returned no workspace", {
+          repo_path: repoPath,
+          source_branch: sourceBranch,
+          worktree_path: worktreePath,
+        });
+        await get().refreshBench(repoPath);
+        return;
+      }
+      // The mutation response is authoritative and already contains the new
+      // array order. Apply it immediately, and invalidate any refresh that began
+      // before this write so that stale poll cannot put the old order back.
+      invalidateBenchRefresh(repoPath);
+      applyBenchWorkspace(set, repoPath, workspace);
+      rDebug("bench", "member order applied", {
+        repo_path: repoPath,
+        source_branch: sourceBranch,
+        members: workspace.members.map((member) => member.branchName).join(","),
+      });
     },
 
     clearBenchRetired: (repoPath, sourceBranch) => {

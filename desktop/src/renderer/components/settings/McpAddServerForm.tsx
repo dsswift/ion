@@ -35,6 +35,8 @@ export function McpAddServerForm({ busy, onAdd }: McpAddServerFormProps) {
     color: colors.textPrimary,
     outline: 'none',
     width: '100%',
+    minWidth: 0,
+    boxSizing: 'border-box',
   }
 
   const submit = (): void => {
@@ -98,7 +100,7 @@ export function McpAddServerForm({ busy, onAdd }: McpAddServerFormProps) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ display: 'flex', gap: 6 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
         {kindButton('remote', 'Remote (URL)')}
         {kindButton('local', 'Local (command)')}
       </div>

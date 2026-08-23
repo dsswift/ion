@@ -241,11 +241,15 @@ func TestBashRunInBackground_OwnerCleanup(t *testing.T) {
 	StopBackgroundTasksForOwner("sess-A")
 
 	tasksMu.RLock()
-	statusA := tasks[idA].Status
-	statusB := tasks[idB].Status
+	_, ownedTaskExists := tasks[idA]
+	otherTask := tasks[idB]
+	statusB := ""
+	if otherTask != nil {
+		statusB = otherTask.Status
+	}
 	tasksMu.RUnlock()
-	if statusA != "stopped" {
-		t.Errorf("owned task status = %q, want stopped", statusA)
+	if ownedTaskExists {
+		t.Error("owned task should be purged from the registry")
 	}
 	if statusB != "running" {
 		t.Errorf("other-owner task status = %q, want running", statusB)

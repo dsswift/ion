@@ -3,6 +3,7 @@ import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
 import { getFileIcon } from '../components/FileExplorerIcons'
 import { rDebug, rWarn } from '../rendererLogger'
+import { surfaceRouter } from '../lib/file-open-router'
 import { segmentText, EDITABLE_EXTS, type TextSegment } from './link-segments'
 import { readNavigableKind } from './remarkNavigableLinks'
 
@@ -157,17 +158,47 @@ export function useNavigableText() {
     const homeDir = useSessionStore.getState().staticInfo?.homePath || '/Users/' + (process.env.USER || 'user')
     const expanded = path.startsWith('~/') ? homeDir + path.slice(1) : path
     const resolved = expanded.startsWith('/') ? expanded : workingDir + '/' + expanded
-    const { exists } = await window.ion.fsExists(resolved)
+    rDebug('navigable-links', 'checking file target', { raw_path: path, resolved })
+    let exists = false
+    try {
+      const result = await window.ion.fsExists(resolved)
+      exists = result.exists
+    } catch (err) {
+      rWarn('navigable-links', 'file existence check failed', { raw_path: path, resolved, error: String(err) })
+      return
+    }
     if (!exists) {
       rDebug('navigable-links', 'file does not exist, ignoring cmd-click', { raw_path: path, resolved })
       return
     }
-    rDebug('navigable-links', 'opening file', { resolved })
+    rDebug('navigable-links', 'file target exists', { raw_path: path, resolved })
     const ext = resolved.includes('.') ? '.' + resolved.split('.').pop()!.toLowerCase() : ''
     if (EDITABLE_EXTS.has(ext) && activeTabId) {
+      const router = surfaceRouter()
+      if (router) {
+        rDebug('navigable-links', 'opening text file in Studio surface', { tab_id: activeTabId, working_directory: workingDir, resolved })
+        try {
+          router.openTextFile(workingDir, activeTabId, resolved)
+        } catch (err) {
+          rWarn('navigable-links', 'Studio surface file open failed', { tab_id: activeTabId, working_directory: workingDir, resolved, error: String(err) })
+        }
+        return
+      }
+      rDebug('navigable-links', 'opening text file in overlay editor', { tab_id: activeTabId, working_directory: workingDir, resolved })
       useSessionStore.getState().openFileInEditor(workingDir, activeTabId, resolved)
-    } else {
-      window.ion.fsOpenNative(resolved).catch((err) => rWarn('navigable-links', 'fsOpenNative failed', { resolved, error: String(err) }))
+      return
+    }
+
+    rDebug('navigable-links', 'opening file in native application', { resolved })
+    try {
+      const result = await window.ion.fsOpenNative(resolved)
+      if (!result.ok) {
+        rWarn('navigable-links', 'native file open rejected', { resolved, error: result.error ?? 'unknown error' })
+        return
+      }
+      rDebug('navigable-links', 'native file open succeeded', { resolved })
+    } catch (err) {
+      rWarn('navigable-links', 'native file open failed', { resolved, error: String(err) })
     }
   }, [activeTabId, workingDir])
 

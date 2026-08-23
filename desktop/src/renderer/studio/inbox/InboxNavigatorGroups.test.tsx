@@ -2,6 +2,7 @@
 import React, { act, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ConversationPane } from '../../../shared/types-engine'
 import type { TabState, WorktreeInventoryEntry, IntegrationWorkspace } from '../../../shared/types'
 import type { InboxNavigatorProject } from './inbox-navigator'
 
@@ -21,6 +22,7 @@ const startWorktreePipeline = vi.fn(async () => undefined)
 const state = {
   activeTabId: 'outside',
   tabs: [] as TabState[],
+  conversationPanes: new Map<string, ConversationPane>(),
   worktreeInventory: new Map<string, WorktreeInventoryEntry[]>(),
   benchWorkspaces: new Map(),
   terminalActiveTabIds: new Set<string>(),
@@ -107,12 +109,12 @@ vi.mock('./InboxWorktreeRow', () => ({
 
 import { InboxNavigatorGroups } from './InboxNavigatorGroups'
 
-function tab(id: string, lastActivityAt: number): TabState {
+function tab(id: string, lastActivityAt: number, status: TabState['status'] = 'idle'): TabState {
   return {
     id,
     title: id,
     customTitle: null,
-    status: 'idle',
+    status,
     workingDirectory: '/repo/worktree',
     lastActivityAt,
   } as TabState
@@ -160,6 +162,7 @@ describe('InboxNavigatorGroups worktree cycling', () => {
     vi.clearAllMocks()
     state.activeTabId = 'outside'
     state.tabs = [tab('older', 10), tab('newer', 20)]
+    state.conversationPanes = new Map()
     state.worktreeInventory = new Map([['/repo', [worktree]]])
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -294,6 +297,7 @@ describe('InboxNavigatorGroups worktree mutations', () => {
     vi.clearAllMocks()
     state.activeTabId = 'outside'
     state.tabs = []
+    state.conversationPanes = new Map()
     state.worktreeInventory = new Map([['/repo', [worktree]]])
     container = document.createElement('div')
     document.body.appendChild(container)

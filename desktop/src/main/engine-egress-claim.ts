@@ -18,7 +18,7 @@
 
 import { existsSync } from 'fs'
 import { log as _log } from './logger'
-import { ENGINE_CONFIG_FILE, readEngineConfig, writeEngineConfig } from './settings-store'
+import { ENGINE_CONFIG_FILE, updateEngineConfig } from './settings-store'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -41,26 +41,21 @@ function log(msg: string, fields?: Record<string, unknown>): void {
 export function claimEngineEgressForDesktop(): boolean {
   if (!existsSync(ENGINE_CONFIG_FILE)) return false
   try {
-    const cfg = readEngineConfig()
-    const logging = cfg.logging as Record<string, unknown> | undefined
-    if (!logging) return false
-    const targets = logging.egressTargets as string[] | undefined
-    if (!Array.isArray(targets) || targets.length === 0) return false
-    // An explicit shipping-responsibility matrix governs who ships what;
-    // the legacy claim boolean must not fight it. The operator/enterprise
-    // decided — the desktop honors egressClientShipSources and the engine
-    // honors egressShipSources.
-    if (logging.egressShipSources !== undefined || logging.egressClientShipSources !== undefined) {
-      log('engine_egress_claim: explicit shipping matrix present; legacy claim skipped')
-      return false
-    }
-    if (logging.egressManagedByClient === true) return false // already claimed — no churn
+    return updateEngineConfig((cfg) => {
+      const logging = cfg.logging as Record<string, unknown> | undefined
+      if (!logging) return false
+      const targets = logging.egressTargets as string[] | undefined
+      if (!Array.isArray(targets) || targets.length === 0) return false
+      if (logging.egressShipSources !== undefined || logging.egressClientShipSources !== undefined) {
+        log('engine_egress_claim: explicit shipping matrix present; legacy claim skipped')
+        return false
+      }
+      if (logging.egressManagedByClient === true) return false
 
-    logging.egressManagedByClient = true
-    cfg.logging = logging
-    writeEngineConfig(cfg)
-    log('engine_egress_claim: claimed engine egress for desktop (egressManagedByClient=true)', { targets })
-    return true
+      logging.egressManagedByClient = true
+      cfg.logging = logging
+      log('engine_egress_claim: claimed engine egress for desktop (egressManagedByClient=true)', { targets })
+    })
   } catch (err) {
     log('engine_egress_claim: claim failed (non-fatal)', {
       error: err instanceof Error ? err.message : String(err),

@@ -50,34 +50,38 @@ export async function handleImplementPlan(
   let planFilePath: string | null = null
   try {
     const escapedTab = tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    planFilePath = await state.mainWindow?.webContents.executeJavaScript(`
+    const lookup = await state.mainWindow?.webContents.executeJavaScript(`
       (function() {
         try {
           var store = window.__Ion_SESSION_STORE__;
-          if (!store) return null;
+          if (!store) return { path: null, error: 'store unavailable' };
           var s = store.getState();
           var panes = s.conversationPanes;
-          if (!panes) return null;
+          if (!panes) return { path: null, error: 'conversation panes unavailable' };
           var pane = panes instanceof Map ? panes.get('${escapedTab}') : (panes['${escapedTab}'] || null);
-          if (!pane) return null;
+          if (!pane) return { path: null, error: 'conversation pane unavailable' };
           var inst = pane.instances.find(function(i) { return i.id === pane.activeInstanceId; })
             || pane.instances[0];
-          if (!inst) return null;
-          if (inst.planFilePath) return inst.planFilePath;
+          if (!inst) return { path: null, error: 'conversation instance unavailable' };
+          if (inst.planFilePath) return { path: inst.planFilePath };
           var denied = inst.permissionDenied && inst.permissionDenied.tools;
           if (denied) {
             for (var d = 0; d < denied.length; d++) {
               if (denied[d].toolName === 'ExitPlanMode'
                   && denied[d].toolInput
                   && denied[d].toolInput.planFilePath) {
-                return denied[d].toolInput.planFilePath;
+                return { path: denied[d].toolInput.planFilePath };
               }
             }
           }
-          return null;
-        } catch(e) { return null; }
+          return { path: null };
+        } catch(e) { return { path: null, error: String(e) }; }
       })()
-    `) || null
+    `) as { path?: string | null; error?: string } | undefined
+    planFilePath = lookup?.path || null
+    if (lookup?.error) {
+      log('handle_implement_plan: plan file lookup rejected', { error: lookup.error })
+    }
   } catch (err) {
     log('handle_implement_plan: plan file lookup failed', { error: (err as Error).message })
   }
@@ -100,12 +104,12 @@ export async function handleImplementPlan(
   // These are prefs-driven so we read them from the renderer stores.
   try {
     const escapedTab = tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    await state.mainWindow?.webContents.executeJavaScript(`
+    const modelGroupResult = await state.mainWindow?.webContents.executeJavaScript(`
       (function() {
         try {
           var store = window.__Ion_SESSION_STORE__;
           var prefs = window.__Ion_PREFS_STORE__;
-          if (!store || !prefs) return;
+          if (!store || !prefs) return { ok: false, reason: 'store unavailable' };
           var s = store.getState();
           var p = prefs.getState();
           if (p.planModelSplitEnabled && p.implementModeModel) {
@@ -120,9 +124,13 @@ export async function handleImplementPlan(
               && !tab.groupPinned) {
             s.moveTabToGroup('${escapedTab}', p.inProgressGroupId);
           }
-        } catch(e) {}
+          return { ok: true };
+        } catch(e) { return { ok: false, reason: String(e) }; }
       })()
-    `)
+    `) as { ok?: boolean; reason?: string } | undefined
+    if (modelGroupResult && !modelGroupResult.ok) {
+      log('handle_implement_plan: renderer model/group rejected', { reason: modelGroupResult.reason ?? 'unknown' })
+    }
   } catch (err) {
     log('handle_implement_plan: renderer model/group step failed', { error: (err as Error).message })
   }
@@ -157,20 +165,20 @@ export async function handleImplementPlan(
     const planPathJs = planFilePath
       ? `'${planFilePath.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
       : 'null'
-    await state.mainWindow?.webContents.executeJavaScript(`
+    const mutationResult = await state.mainWindow?.webContents.executeJavaScript(`
       (function() {
         try {
           var store = window.__Ion_SESSION_STORE__;
-          if (!store) return;
+          if (!store) return { ok: false, reason: 'store unavailable' };
           var s = store.getState();
           var clearCtx = ${clearCtxJs};
           var panes = s.conversationPanes;
-          if (!panes) return;
+          if (!panes) return { ok: false, reason: 'conversation panes unavailable' };
           var pane = panes instanceof Map ? panes.get('${escapedTab}') : (panes['${escapedTab}'] || null);
-          if (!pane) return;
+          if (!pane) return { ok: false, reason: 'conversation pane unavailable' };
           var inst = pane.instances.find(function(i) { return i.id === pane.activeInstanceId; })
             || pane.instances[0];
-          if (!inst) return;
+          if (!inst) return { ok: false, reason: 'conversation instance unavailable' };
           var planPath = ${planPathJs};
           var divider = '\\u2500\\u2500 Implementing plan at '
             + new Date().toLocaleTimeString() + '${slugSuffix}' + ' \\u2500\\u2500';
@@ -224,9 +232,13 @@ export async function handleImplementPlan(
               }),
             });
           }
-        } catch(e) {}
+          return { ok: true };
+        } catch(e) { return { ok: false, reason: String(e) }; }
       })()
-    `)
+    `) as { ok?: boolean; reason?: string } | undefined
+    if (mutationResult && !mutationResult.ok) {
+      log('handle_implement_plan: renderer state mutation rejected', { reason: mutationResult.reason ?? 'unknown' })
+    }
   } catch (err) {
     log('handle_implement_plan: renderer state mutation failed', { error: (err as Error).message })
   }
@@ -274,7 +286,7 @@ export async function handleImplementPlan(
   state.remoteTransport?.send({
     type: 'desktop_message_added',
     tabId,
-    message: { id: reqId, role: 'user', content: implementPrompt, timestamp: Date.now(), source: 'remote' },
+    message: { id: reqId, role: 'user', content: implementPrompt, timestamp: Date.now(), source: 'remote', implementationPhase: true },
   })
 
   // Send through the unified pipeline — same path as handlePrompt → processIncomingPrompt.

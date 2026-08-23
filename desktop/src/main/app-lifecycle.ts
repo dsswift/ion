@@ -29,6 +29,7 @@ import {
   readSettings,
 } from './settings-store'
 import { ensureEngineDaemon, restartEngineDaemon } from './engine-bootstrap'
+import { pruneOperationDirs } from './utils/temp-dir'
 import { claimEngineEgressForDesktop } from './engine-egress-claim'
 import { configureEgress, setEgressUser, type EgressConfig, type AuthHeaderProvider } from './log-egress'
 import { startEgressTailers } from './log-egress-tailer'
@@ -222,6 +223,11 @@ export function setupAppLifecycle(): void {
     app.quit()
     return
   }
+
+  // No second desktop can still be using Ion-owned operation directories once
+  // Electron grants this process singleton ownership. Remove every abandoned
+  // directory now rather than guessing freshness from wall-clock time.
+  pruneOperationDirs()
 
   // Register the ion:// scheme and its arrival paths before whenReady resolves,
   // so a cold-launch URL is not dropped while the app is still booting.

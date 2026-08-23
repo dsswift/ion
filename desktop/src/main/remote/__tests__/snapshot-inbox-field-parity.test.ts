@@ -213,6 +213,23 @@ describe('inbox field parity — the cold-start path classifies rather than omit
     expect(tabs[0].unread).toBe(true)
   })
 
+  it('keeps a completed run unread and uses its stop time after a cold start', async () => {
+    const completion = Date.now() - 60_000
+    tmpDir = writePersistedTab({
+      id: 'tab-completed',
+      title: 'Finished work',
+      workingDirectory: '/proj',
+      lastVisitedAt: completion - 60_000,
+      lastMessageAt: completion - 5 * 60_000,
+      lastActivityAt: completion - 5 * 60_000,
+      lastCompletionAt: completion,
+    })
+
+    const { tabs } = await getRemoteTabStates()
+    expect(tabs[0].unread).toBe(true)
+    expect(tabs[0].lastActivityAt).toBe(completion)
+  })
+
   it('does not mark a never-visited conversation unread (upgrade-day rule)', async () => {
     // inboxUnread treats lastVisitedAt == null as READ, so a fresh install does
     // not light up every historical row. Pinned here because the cold path is

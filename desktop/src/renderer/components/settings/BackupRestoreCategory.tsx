@@ -143,7 +143,7 @@ export function BackupRestoreCategory() {
       </div>
 
       {!exportOpen && !restoreOpen && (
-        <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6, minWidth: 0 }}>
           <button onClick={() => { void openExportModal().catch((err) => rError('settings', 'open export failed', { error: String(err) })) }} style={primaryButtonStyle(colors)}>
             <Archive size={16} />
             Export conversations…

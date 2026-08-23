@@ -3,8 +3,8 @@ import SwiftUI
 // MARK: - InboxRowView
 
 /// One conversation row in the Inbox view: title + project chip/branch,
-/// and a trailing status pill (Approval / Input / Working / Failed) or quiet
-/// relative age. Read+idle rows recede (inbox-zero).
+/// and a trailing status pill (Approval / Input / Working / Done / Failed) or
+/// quiet relative age. Read+idle rows recede (inbox-zero).
 ///
 /// PARITY: renders the desktop-derived fields only (`inboxState`, `unread`,
 /// `wokeAt` arrive in the snapshot) — no Swift classifier. Status pill
@@ -17,7 +17,7 @@ struct InboxRowView: View {
     let tab: RemoteTabState
 
     private enum Pill {
-        case approval, input, connecting, working, failed
+        case approval, input, connecting, working, done, failed
     }
 
     /// Pill from the SAME rollup the classic status dot uses (cascade
@@ -29,6 +29,7 @@ struct InboxRowView: View {
         case .running, .children, .bash: return .working
         case .starting: return .connecting
         case .error: return .failed
+        case .unread: return .done
         case .idle: return nil
         }
     }
@@ -113,6 +114,7 @@ struct InboxRowView: View {
             case .input: return ("Input", theme.accent)
             case .connecting: return ("Connecting", theme.statusIdle)
             case .working: return ("Working", theme.statusRunning)
+            case .done: return ("Done", theme.statusDone)
             case .failed: return ("Failed", theme.statusError)
             }
         }()

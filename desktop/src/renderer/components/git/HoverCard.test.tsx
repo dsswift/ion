@@ -57,6 +57,30 @@ describe('HoverCard zoom placement', () => {
     expect(card.style.left).toBe('250px')
   })
 
+  it('can clear a containing panel before opening a right-side card', () => {
+    const boundary = document.createElement('aside')
+    vi.spyOn(boundary, 'getBoundingClientRect').mockReturnValue({
+      x: 0, y: 0, top: 0, left: 0, right: 660, bottom: 600, width: 660, height: 600, toJSON: () => ({}),
+    } as DOMRect)
+    const boundaryRef = { current: boundary }
+    act(() => {
+      root.render(<HoverCard content="Details" position="right" rightBoundaryRef={boundaryRef} delayMs={0}><span>Target</span></HoverCard>)
+    })
+    const trigger = host.querySelector('span') as HTMLSpanElement
+    vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({
+      x: 30, y: 60, top: 60, left: 30, right: 90, bottom: 80, width: 60, height: 20, toJSON: () => ({}),
+    } as DOMRect)
+
+    act(() => {
+      trigger.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+      vi.advanceTimersByTime(0)
+    })
+
+    const card = document.querySelector('[data-testid="hover-card"]') as HTMLElement
+    expect(card.style.left).toBe('444px')
+    expect(card.style.top).toBe(`${70 / 1.5}px`)
+  })
+
   it('supports immediate right-side cards for dense rows', () => {
     act(() => {
       root.render(<HoverCard content="Details" position="right" delayMs={0}><span>Target</span></HoverCard>)

@@ -63,6 +63,7 @@ func (m *Manager) wirePermissionHookServer(s *engineSession, key string, opts *t
 		return
 	}
 	opts.HookSettingsPath = tmpFile
+	s.hookSettingsPath = tmpFile
 	utils.LogWithFields(utils.LevelInfo, "session", "hook settings written to", map[string]any{"tmp_file": tmpFile})
 }
 

@@ -1,7 +1,8 @@
 import { join } from 'path'
 import { createHash } from 'crypto'
 import { homedir } from 'os'
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync } from 'fs'
+import { atomicWriteFileSync } from '../../utils/atomicWrite'
 import { log as _log } from '../../logger'
 import { state } from '../../state'
 import { isValidProjectPath } from '../../ipc-validation'
@@ -107,7 +108,7 @@ export async function handleFsWriteFile(cmd: Extract<RemoteCommand, { type: 'des
       state.remoteTransport?.send({ type: 'desktop_fs_write_result', filePath, ok: false, error: 'Invalid path' })
       return
     }
-    writeFileSync(filePath, content, 'utf-8')
+    atomicWriteFileSync(filePath, content, 0o644)
     state.remoteTransport?.send({ type: 'desktop_fs_write_result', filePath, ok: true })
   } catch (err) {
     log('fs_write_file error', { error: (err as Error).message })
@@ -150,6 +151,30 @@ export async function handleFsRename(cmd: Extract<RemoteCommand, { type: 'deskto
   }
 }
 
+/**
+ * Save a remote-uploaded attachment to durable, content-addressed storage
+ * under `~/.ion/remote-uploads/`. Files here survive OS temp purges and
+ * are deduplicated by content hash.
+ */
+function saveRemoteUpload(buf: Buffer, ext: string): { filePath: string; hash: string } | null {
+  try {
+    const dir = join(homedir(), '.ion', 'remote-uploads')
+    mkdirSync(dir, { recursive: true })
+    const hash = createHash('sha256').update(buf).digest('hex')
+    const filePath = join(dir, `${hash}${ext}`)
+    if (!existsSync(filePath)) {
+      atomicWriteFileSync(filePath, buf)
+      log('upload_attachment: saved to content-addressed store', { path: filePath, bytes: buf.length, content_hash: hash })
+    } else {
+      log('upload_attachment: already present (content-addressed)', { path: filePath, content_hash: hash })
+    }
+    return { filePath, hash }
+  } catch (err) {
+    log('upload_attachment: save failed', { error: (err as Error).message })
+    return null
+  }
+}
+
 export async function handleUploadAttachment(cmd: Extract<RemoteCommand, { type: 'desktop_upload_attachment' }>, deviceId: string): Promise<void> {
   try {
     const match = cmd.dataUrl.match(/^data:([^;]+);base64,(.+)$/)
@@ -159,18 +184,17 @@ export async function handleUploadAttachment(cmd: Extract<RemoteCommand, { type:
     }
     const [, mimeType, base64Data] = match
     const buf = Buffer.from(base64Data, 'base64')
-    const hash = createHash('sha256').update(buf).digest('hex')
     const mimeExt = mimeType === 'image/jpeg' ? 'jpg' : mimeType.split('/')[1]
     const nameExt = mimeExt && /^[a-z0-9]+$/i.test(mimeExt)
       ? `.${mimeExt}`
       : (cmd.name.includes('.') ? cmd.name.substring(cmd.name.lastIndexOf('.')) : '.bin')
-    const dir = join(homedir(), '.ion', 'remote-uploads')
-    mkdirSync(dir, { recursive: true })
-    const filePath = join(dir, `${hash}${nameExt}`)
-    if (!existsSync(filePath)) writeFileSync(filePath, buf)
-    const id = `upload:${hash}`
-    log('upload_attachment: saved', { bytes: buf.length, path: filePath, content_hash: hash })
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_upload_attachment_result', id, name: cmd.name, path: filePath, contentHash: hash, correlationId: cmd.correlationId })
+    const upload = saveRemoteUpload(buf, nameExt)
+    if (!upload) {
+      state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_upload_attachment_result', id: '', name: cmd.name, path: '', correlationId: cmd.correlationId, error: 'Failed to save uploaded file' })
+      return
+    }
+    const id = `upload:${upload.hash}`
+    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_upload_attachment_result', id, name: cmd.name, path: upload.filePath, contentHash: upload.hash, correlationId: cmd.correlationId })
   } catch (err) {
     log('upload_attachment error', { error: (err as Error).message })
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_upload_attachment_result', id: '', name: cmd.name, path: '', correlationId: cmd.correlationId, error: (err as Error).message })

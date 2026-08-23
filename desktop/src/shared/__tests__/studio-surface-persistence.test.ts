@@ -21,6 +21,15 @@ describe('surface persistence', () => {
     expect(validateSurfacePersisted(persisted)).toBe(true)
   })
 
+  it('keeps a pinned tab as a conversation active selection', () => {
+    const persisted = serializeSurface(['plan'], null, {
+      alpha: { tabs: [], activeTabId: 'plan', visible: false },
+    })
+
+    expect(persisted.conversations.alpha?.activeTabId).toBe('plan')
+    expect(parseSurfacePersisted(JSON.parse(JSON.stringify(persisted)))).toEqual(persisted)
+  })
+
   it('drops malformed conversation records and invalid pins', () => {
     const parsed = parseSurfacePersisted({ version: 2, pinnedTabs: ['plan', 'files', 'plan'], conversations: { valid: conversation, broken: { tabs: [] } } })
     expect(parsed).toMatchObject({ version: 2, pinnedTabs: ['plan'] })
@@ -32,6 +41,15 @@ describe('surface persistence', () => {
     const legacy = parseSurfacePersisted({ version: 1, tabs, activeTabId: 'diff' })
     expect(legacy).toMatchObject({ version: 1, activeTabId: 'diff' })
     expect(validateSurfacePersisted({ version: 1, tabs, activeTabId: 'diff' })).toBe(false)
+  })
+
+  it('round-trips a conversation dispatch preview', () => {
+    const dispatch = { kind: 'dispatch' as const, id: 'dispatch-preview' as const, agentName: 'dev-lead', dispatchId: 'dispatch-1', title: 'Dev Lead' }
+    const persisted = serializeSurface(['plan'], null, {
+      alpha: { tabs: [dispatch], activeTabId: dispatch.id, visible: true },
+    })
+
+    expect(parseSurfacePersisted(JSON.parse(JSON.stringify(persisted)))).toEqual(persisted)
   })
 
   it('preserves the global notification and excludes it from local records', () => {

@@ -10,12 +10,13 @@ import { InboxRowMenu } from './InboxRowMenu'
 import { availableSnoozePresets } from './inbox-snooze-presets'
 import { ConversationHoverCard } from './ConversationHoverCard'
 import { inboxWorktreeFor } from './inbox-grouping'
+import { latestConversationActivityAt } from '../../../shared/inbox-classify'
 import type { IntegrationWorkspace, TabState, WorktreeInventoryEntry } from '../../../shared/types'
 
 export type InboxRowVariant = 'card' | 'slim'
 
 export function InboxRow({
-  tab, unread, woke, projectName, variant, backgroundLiveness, selected, onToggleSelected, onOpen, canRestore = true, benches = new Map(), inventory = new Map(),
+  tab, unread, woke, projectName, variant, backgroundLiveness, selected, onToggleSelected, onOpen, canRestore = true, benches = new Map(), inventory = new Map(), rightBoundaryRef,
 }: {
   tab: TabState
   unread: boolean
@@ -31,6 +32,8 @@ export function InboxRow({
   canRestore?: boolean
   benches?: ReadonlyMap<string, readonly IntegrationWorkspace[]>
   inventory?: ReadonlyMap<string, readonly WorktreeInventoryEntry[]>
+  /** Right edge of the Inbox panel; hover details open beyond it. */
+  rightBoundaryRef?: React.RefObject<HTMLElement | null>
 }): React.JSX.Element {
   const colors = useColors()
   const { hover, pressed, handlers } = useInteractiveState()
@@ -65,9 +68,10 @@ export function InboxRow({
   const title = tab.customTitle || tab.title || 'Untitled'
   const worktreeTitle = tab.worktree ? inboxWorktreeFor(tab, benches, inventory).label : null
   const compact = variant === 'slim'
+  const latestActivityAt = latestConversationActivityAt(tab)
   const rightLabel = compact && tab.snoozedUntil != null && tab.snoozedUntil > Date.now()
     ? availableSnoozePresets(new Date()).find((preset) => preset.until === tab.snoozedUntil)?.label ?? formatRelativeShort(tab.snoozedUntil)
-    : tab.lastMessageAt != null ? formatRelativeShort(tab.lastMessageAt) : ''
+    : latestActivityAt != null ? formatRelativeShort(latestActivityAt) : ''
 
   const commitRename = (): void => {
     const next = name.trim()
@@ -76,6 +80,7 @@ export function InboxRow({
   }
 
   return (
+    <ConversationHoverCard tab={tab} benches={benches} inventory={inventory} rightBoundaryRef={rightBoundaryRef}>
     <div
       {...handlers}
       data-inbox-tab-id={tab.id}
@@ -95,10 +100,9 @@ export function InboxRow({
         padding: compact ? '5px 9px' : '8px 10px', cursor: 'pointer', borderRadius: 6,
         background: interactiveBg(colors, { hover, pressed }, isActive || selected ? colors.accentLight : 'transparent'),
         opacity: quiet ? (hover ? 1 : 0.62) : 1, transition: `background ${transitions.base}, opacity ${transitions.base}`,
-        fontFamily: 'system-ui, sans-serif', minWidth: 0,
+        fontFamily: 'system-ui, sans-serif', minWidth: 0, width: '100%', boxSizing: 'border-box',
       }}
     >
-      <ConversationHoverCard tab={tab} benches={benches} inventory={inventory}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
           {tab.pinnedAt != null && <PushPin size={12} color={colors.textTertiary} weight="fill" />}
@@ -116,7 +120,6 @@ export function InboxRow({
           </div>
         )}
       </div>
-      </ConversationHoverCard>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, paddingTop: compact ? 0 : 1 }}>
         {tab.settledOverride === 'auto' && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 9, color: colors.textTertiary }}><ClockCounterClockwise size={10} />Auto</span>}
         {woke && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 9, color: colors.statusPermission }}><WarningCircle size={11} />Woke</span>}
@@ -134,5 +137,6 @@ export function InboxRow({
       </div>
       {menu && <InboxRowMenu x={menu.x} y={menu.y} tab={tab} canRestore={canRestore} onRename={() => setRenaming(true)} onClose={() => setMenu(null)} />}
     </div>
+    </ConversationHoverCard>
   )
 }

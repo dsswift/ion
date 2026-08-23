@@ -5,7 +5,7 @@
  * native, while this renderer-owned surface provides matching themed chrome.
  * Drag only empty title-bar space. Every actionable child opts out.
  */
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo } from "react";
 import {
   CaretRight,
   FolderSimple,
@@ -17,9 +17,7 @@ import { useSessionStore } from "../stores/sessionStore";
 import { usePreferencesStore } from "../preferences";
 import { orderedProjects } from "../../shared/project-registry";
 import { STUDIO_TITLE_BAR_HEIGHT } from "../../shared/studio-chrome";
-import { ProjectPicker } from "./inbox/ProjectPicker";
 import { useColors } from "../theme";
-import { rError } from "../rendererLogger";
 import { Tooltip } from "../components/git/Tooltip";
 import { ShortcutHint } from "../shortcuts/ShortcutHint";
 import { useRevealedShortcuts } from "../shortcuts/useShortcutHints";
@@ -58,10 +56,6 @@ export function StudioTitleBar({
     (state) => state.tabs.find((item) => item.id === state.activeTabId) ?? null,
   );
   const registry = usePreferencesStore((state) => state.projects);
-  const [pickerAnchor, setPickerAnchor] = useState<{ x: number; y: number } | null>(
-    null,
-  );
-  const dirButtonRef = useRef<HTMLButtonElement>(null);
   // Held-modifier reveal for the pane toggles. Each entry is present only
   // while its own chord's modifiers are held, so ⌘ reveals the sidebar and
   // canvas toggles while ⌃ reveals the terminal toggle.
@@ -107,8 +101,10 @@ export function StudioTitleBar({
           display: "flex",
           alignItems: "center",
           gap: 4,
-          flexShrink: 0,
-          width: leftPanelHeaderWidth,
+          flexShrink: 1,
+          minWidth: 32,
+          maxWidth: leftPanelHeaderWidth,
+          overflow: "hidden",
         }}
       >
         <PaneToggle
@@ -123,6 +119,8 @@ export function StudioTitleBar({
             color: colors.textPrimary,
             fontWeight: 600,
             padding: "0 6px 0 2px",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
             whiteSpace: "nowrap",
           }}
         >
@@ -143,12 +141,8 @@ export function StudioTitleBar({
           <>
             <Tooltip text={`${tab.workingDirectory} — start a new conversation`}>
               <button
-                ref={dirButtonRef}
-                onClick={() => {
-                  const rect = dirButtonRef.current?.getBoundingClientRect();
-                  setPickerAnchor({ x: rect?.left ?? 0, y: rect?.bottom ?? 0 });
-                }}
-                aria-label="Start a new conversation in this directory"
+                onClick={() => window.dispatchEvent(new CustomEvent('ion:open-new-conversation-picker'))}
+                aria-label="Start a new conversation"
                 data-drag-region="no-drag"
                 style={breadcrumbButtonStyle(colors)}
               >
@@ -182,24 +176,6 @@ export function StudioTitleBar({
           icon={<SquareSplitHorizontal size={13} />}
         />
       </div>
-      {pickerAnchor && (
-        <ProjectPicker
-          x={pickerAnchor.x}
-          y={pickerAnchor.y}
-          onPick={(directory) => {
-            void useSessionStore
-              .getState()
-              .createTabInDirectory(directory)
-              .catch((error) =>
-                rError("studio.titlebar", "create in directory failed", {
-                  directory,
-                  error: String(error),
-                }),
-              );
-          }}
-          onClose={() => setPickerAnchor(null)}
-        />
-      )}
     </div>
   );
 }

@@ -30,6 +30,7 @@ struct TabListNewTabSheet: View {
     /// and creates the tab (plain or profiled) or shows the profile picker.
     let onNewConversation: (_ dir: String, _ pinToGroupId: String?) -> Void
     let onCreateWorktree: (_ repoPath: String, _ sourceBranch: String) -> Void
+    let onCreateWorktreeConversation: (_ repoPath: String, _ sourceBranch: String) -> Void
     let onCreateTerminalTab: (_ dir: String) -> Void
 
     var body: some View {

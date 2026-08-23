@@ -3,14 +3,13 @@
 // ConfirmDialog — the pending state and the single-action shape.
 //
 // ── Why the primitive is tested rather than the call site ────────────────────
-// `busy` and `acknowledge` are properties of the dialog, not of Retire. Six call
-// sites raise this component; pinning the behaviour here is what stops the next
+// `busy` and `acknowledge` are properties of the dialog, not of Retire. Its call
+// sites share this component; pinning the behaviour here is what stops the next
 // one from hand-rolling a local version, which is exactly the drift that
 // `useOutsideDismiss` was extracted to kill.
 //
 // What is pinned:
-//   - busy disables BOTH buttons (a live "Keep it" during a retire is as wrong
-//     as a live "Retire" — neither can stop the git operation)
+//   - busy disables EVERY button
 //   - a busy backdrop click does not call onCancel
 //   - a busy Escape does not call onCancel
 //   - busyLabel renders, so a running operation is visible and not inferred
@@ -76,11 +75,25 @@ afterEach(() => {
 })
 
 describe('ConfirmDialog — busy', () => {
-  it('disables both buttons while busy', () => {
-    render({ confirmLabel: 'Retire', cancelLabel: 'Keep it', busy: true })
+  it('keeps the dialog inside the viewport with scrollable content', () => {
+    render({ message: 'A long result '.repeat(100) })
+
+    const backdrop = document.querySelector('[data-testid="confirm-dialog-backdrop"]') as HTMLElement
+    const dialog = document.querySelector('[data-ion-ui]') as HTMLElement
+    expect(backdrop.style.padding).toBe('16px')
+    expect(backdrop.style.boxSizing).toBe('border-box')
+    expect(dialog.style.maxWidth).toBe('100%')
+    expect(dialog.style.maxHeight).toBe('100%')
+    expect(dialog.style.minWidth).toBe('0px')
+    expect(dialog.style.overflowY).toBe('auto')
+  })
+
+  it('disables every button while busy', () => {
+    render({ confirmLabel: 'Retire', cancelLabel: 'Keep it', alternateLabel: 'Settle', onAlternate: vi.fn(), busy: true })
 
     expect(button('Retire').disabled).toBe(true)
     expect(button('Keep it').disabled).toBe(true)
+    expect(button('Settle').disabled).toBe(true)
   })
 
   it('leaves both buttons live when not busy', () => {
@@ -159,6 +172,33 @@ describe('ConfirmDialog — acknowledge', () => {
 
     expect(buttons()).toHaveLength(1)
     expect(buttons()[0].textContent?.trim()).toBe('Got it')
+  })
+
+  it('can put initial keyboard focus on the safe cancel action', () => {
+    render({ confirmLabel: 'Delete', danger: true, initialFocus: 'cancel' })
+
+    expect(document.activeElement).toBe(button('Cancel'))
+  })
+
+  it('renders three distinct choices when an alternate action is supplied', () => {
+    const onAlternate = vi.fn()
+    render({
+      confirmLabel: 'Delete Conversation',
+      alternateLabel: 'Settle Conversation',
+      onAlternate,
+    })
+
+    expect(buttons().map((item) => item.textContent?.trim())).toEqual([
+      'Cancel', 'Settle Conversation', 'Delete Conversation',
+    ])
+    const dialog = document.querySelector('[data-ion-ui]') as HTMLElement
+    const actionRow = button('Cancel').parentElement as HTMLElement
+    expect(dialog.style.width).toBe('400px')
+    expect(actionRow.style.flexWrap).toBe('nowrap')
+    expect(buttons().every((item) => item.style.whiteSpace === 'nowrap')).toBe(true)
+    act(() => { button('Settle Conversation').click() })
+    expect(onAlternate).toHaveBeenCalledTimes(1)
+    expect(onConfirm).not.toHaveBeenCalled()
   })
 
   it('renders two buttons without acknowledge', () => {

@@ -433,6 +433,15 @@ describe('projectRemoteTabStates — message tail projections', () => {
     expect(projectRemoteTabStates(s).tabs[0].lastActivityTs).toBe(999)
   })
 
+  it('lastActivityTs includes a later run completion after the final transcript row', () => {
+    const msgs = [
+      { id: 'm1', role: 'assistant', content: 'done?', timestamp: 100 },
+      { id: 'm2', role: 'tool', content: 'still going', timestamp: 999 },
+    ]
+    const s = makeState([makeTab({ id: 't-complete', lastCompletionAt: 1_500, lastActivityAt: 1_500 })], [['t-complete', { instances: [makeInstance({ messages: msgs })], activeInstanceId: 'main' }]])
+    expect(projectRemoteTabStates(s).tabs[0].lastActivityTs).toBe(1_500)
+  })
+
   it('messageCount prefers live messages length, falls back to persisted messageCount', () => {
     const live = makeState([makeTab({ id: 't-mc' })], [['t-mc', { instances: [makeInstance({ messages: [{ id: 'm', role: 'user', content: 'x', timestamp: 1 }], messageCount: 40 })], activeInstanceId: 'main' }]])
     expect(projectRemoteTabStates(live).tabs[0].messageCount).toBe(1)

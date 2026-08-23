@@ -266,7 +266,7 @@ func (t *EgressTailer) saveCursors() {
 	if err != nil {
 		return
 	}
-	if err := os.WriteFile(t.cursorPath, data, 0o600); err != nil {
+	if err := AtomicWriteFile(t.cursorPath, data, 0o600); err != nil {
 		Error("log_egress_tailer", "cursor persist failed: "+err.Error())
 	}
 }

@@ -239,6 +239,7 @@ export function registerSessionIpc(): void {
         id: requestId,
         content: options.prompt,
         timestamp: Date.now(),
+        ...(options.implementationPhase ? { implementationPhase: true } : {}),
       });
       if (DEBUG_MODE) {
         log("prompt", {
@@ -272,6 +273,7 @@ export function registerSessionIpc(): void {
             content: options.prompt,
             timestamp: Date.now(),
             source: "desktop",
+            ...(options.implementationPhase ? { implementationPhase: true } : {}),
           },
         });
       }

@@ -38,11 +38,13 @@ Work on the engine, providers, tools, or protocol.
 - [Architecture](architecture/)
 - [Contributing](contributing/)
 - [Protocol reference](protocol/)
+- [Ion Vocabulary](vocabulary/index.md)
 
 ## Quick links
 
 | Topic | Link |
 |-------|------|
+| Glossary | [vocabulary/index.md](vocabulary/index.md) |
 | Install | [getting-started/install.md](getting-started/install.md) |
 | Quickstart | [getting-started/quickstart.md](getting-started/quickstart.md) |
 | CLI reference | [cli/reference.md](cli/reference.md) |

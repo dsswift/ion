@@ -122,6 +122,34 @@ describe('task_complete with permissionDenials — pipeline convergence (WI-001)
     expect(state.tabs[0].permissionDenied).toBeNull()
   })
 
+  it('task_complete records the stop time as completion and activity without marking it reviewed', () => {
+    const { state, slice } = buildHarness()
+    state.tabs[0].lastActivityAt = 1_000
+    state.tabs[0].lastCompletionAt = null
+    state.tabs[0].lastVisitedAt = 2_000
+    state.isExpanded = true
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(3_000))
+
+    slice.handleNormalizedEvent('tab1', {
+      type: 'task_complete',
+      sessionId: 'sess-1',
+      costUsd: 0,
+      durationMs: 0,
+      numTurns: 1,
+      permissionDenials: [],
+    } as any)
+
+    expect(state.tabs[0]).toMatchObject({
+      status: 'completed',
+      lastActivityAt: 3_000,
+      lastCompletionAt: 3_000,
+      idleSince: 3_000,
+      lastVisitedAt: 2_000,
+    })
+    vi.useRealTimers()
+  })
+
   it('non-special denials (generic tool Write) ALSO set permissionDenied in the normalized path', () => {
     // WI-001 change: the normalized task_complete path does NOT filter by tool name.
     // Any denial in permissionDenials sets instance.permissionDenied. The old

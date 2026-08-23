@@ -114,6 +114,13 @@ interface SettingsDialogProps {
 
 const DIALOG_WIDTH = 910
 const DIALOG_HEIGHT = 780
+const COMPACT_LAYOUT_WIDTH = 640
+
+export type SettingsDialogLayout = 'wide' | 'compact'
+
+export function resolveSettingsDialogLayout(width: number): SettingsDialogLayout {
+  return width < COMPACT_LAYOUT_WIDTH ? 'compact' : 'wide'
+}
 
 export interface SettingsDialogGeometry {
   x: number
@@ -156,14 +163,19 @@ export function SettingsDialog({ onClose, initialTab }: SettingsDialogProps) {
   }, [isSearching, visibleCategories, matchedCategories, activeCategory])
 
   const [geometry, setGeometry] = useState(resolveSettingsDialogGeometry)
+  const layout = resolveSettingsDialogLayout(geometry.width)
+  const compact = layout === 'compact'
   const dragRef = useRef<{
     startX: number; startY: number; originX: number; originY: number
   } | null>(null)
 
   useEffect(() => {
-    // UI scale changes alter fixed-coordinate space. Settings has no persisted
-    // geometry, so it must re-center rather than keep an old scale's position.
-    setGeometry(resolveSettingsDialogGeometry())
+    // UI scale and window size alter fixed-coordinate space. Settings has no
+    // persisted geometry, so it re-centers in the current viewport.
+    const updateGeometry = () => setGeometry(resolveSettingsDialogGeometry())
+    updateGeometry()
+    window.addEventListener('resize', updateGeometry)
+    return () => window.removeEventListener('resize', updateGeometry)
   }, [uiZoom])
 
   const handleDragStart = useCallback((e: React.MouseEvent) => {
@@ -274,27 +286,22 @@ export function SettingsDialog({ onClose, initialTab }: SettingsDialogProps) {
         </button>
       </div>
 
-      {/* Two-column layout */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Sidebar */}
+      {/* Wide sidebar or compact category selector, followed by content. */}
+      <div style={{ display: 'flex', flexDirection: compact ? 'column' : 'row', flex: 1, minHeight: 0, overflow: 'hidden' }}>
         <div
           style={{
-            width: 160,
-            borderRight: `1px solid ${colors.containerBorder}`,
+            width: compact ? '100%' : 160,
+            borderRight: compact ? 'none' : `1px solid ${colors.containerBorder}`,
+            borderBottom: compact ? `1px solid ${colors.containerBorder}` : 'none',
             padding: 8,
             display: 'flex',
             flexDirection: 'column',
             gap: 2,
             flexShrink: 0,
+            boxSizing: 'border-box',
           }}
         >
-          {/* Search */}
-          <div
-            style={{
-              position: 'relative',
-              marginBottom: 6,
-            }}
-          >
+          <div style={{ position: 'relative', marginBottom: 6 }}>
             <MagnifyingGlass
               size={13}
               style={{
@@ -315,7 +322,7 @@ export function SettingsDialog({ onClose, initialTab }: SettingsDialogProps) {
               onMouseDown={(e) => e.stopPropagation()}
               style={{
                 width: '100%',
-                padding: '5px 8px 5px 26px',
+                padding: '5px 24px 5px 26px',
                 fontSize: 12,
                 background: colors.surfacePrimary,
                 border: `1px solid ${colors.containerBorder}`,
@@ -329,6 +336,7 @@ export function SettingsDialog({ onClose, initialTab }: SettingsDialogProps) {
             />
             {searchQuery && (
               <button
+                aria-label="Clear settings search"
                 onClick={() => setSearchQuery('')}
                 onMouseDown={(e) => e.stopPropagation()}
                 style={{
@@ -350,27 +358,56 @@ export function SettingsDialog({ onClose, initialTab }: SettingsDialogProps) {
             )}
           </div>
 
-          {isSearching && visibleCategories.length === 0 && (
-            <div style={{ padding: '8px 10px', fontSize: 11, color: colors.textTertiary }}>
-              No results
-            </div>
+          {compact ? (
+            visibleCategories.length === 0 ? (
+              <div style={{ padding: '8px 10px', fontSize: 11, color: colors.textTertiary }}>No results</div>
+            ) : (
+              <select
+                aria-label="Settings category"
+                value={activeCategory}
+                onChange={(event) => {
+                  setActiveCategory(event.target.value)
+                  setSearchQuery('')
+                }}
+                style={{
+                  width: '100%',
+                  minWidth: 0,
+                  padding: '7px 10px',
+                  borderRadius: 8,
+                  border: `1px solid ${colors.containerBorder}`,
+                  background: colors.surfacePrimary,
+                  color: colors.textPrimary,
+                  fontSize: 13,
+                }}
+              >
+                {visibleCategories.map((category) => (
+                  <option key={category.id} value={category.id}>{category.label}</option>
+                ))}
+              </select>
+            )
+          ) : (
+            <>
+              {isSearching && visibleCategories.length === 0 && (
+                <div style={{ padding: '8px 10px', fontSize: 11, color: colors.textTertiary }}>
+                  No results
+                </div>
+              )}
+              {visibleCategories.map((cat) => (
+                <CategoryButton
+                  key={cat.id}
+                  category={cat}
+                  isActive={cat.id === activeCategory}
+                  onPick={() => {
+                    setActiveCategory(cat.id)
+                    setSearchQuery('')
+                  }}
+                />
+              ))}
+            </>
           )}
-
-          {visibleCategories.map((cat) => (
-            <CategoryButton
-              key={cat.id}
-              category={cat}
-              isActive={cat.id === activeCategory}
-              onPick={() => {
-                setActiveCategory(cat.id)
-                setSearchQuery('')
-              }}
-            />
-          ))}
         </div>
 
-        {/* Content */}
-        <div style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
+        <div style={{ flex: 1, minWidth: 0, minHeight: 0, padding: compact ? 12 : 16, overflowY: 'auto', overflowX: 'hidden' }}>
           <ActiveContent />
         </div>
       </div>

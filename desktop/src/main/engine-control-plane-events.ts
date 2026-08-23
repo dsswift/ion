@@ -46,7 +46,10 @@ export function handleEngineEvent(
   // event forwarded through the main process. If the main thread wedges while
   // spinning here, the watchdog worker sees this code with a climbing counter.
   mark(Activity.EngineEvent)
-  tab.lastActivityAt = Date.now()
+  const repeatedStatusHeartbeat = event.type === 'engine_status'
+    && event.fields?.state === tab.status
+    && !(event.fields.permissionDenials?.length)
+  if (!repeatedStatusHeartbeat) tab.lastActivityAt = Date.now()
   debug('event', { tab_id: tabId, type: event.type })
 
   switch (event.type) {

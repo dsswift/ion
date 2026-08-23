@@ -5,14 +5,16 @@ import { usePopoverLayer } from '../../components/PopoverLayer'
 import { useAnchoredPopover } from '../../hooks/useAnchoredPopover'
 import { useColors } from '../../theme'
 import { scrollableMenuStyle } from '../../menu-viewport'
+import { toggleProjectSelection, type InboxProjectSelection } from './project-selection'
 
 export type InboxSortOrder = 'created' | 'activity' | 'title'
 
 interface ProjectScopePickerProps {
   anchor: { x: number; y: number }
   projects: Array<{ key: string; name: string; count: number }>
-  selected: string | null
-  onSelect: (project: string | null) => void
+  selected: InboxProjectSelection
+  onSelect: (projects: InboxProjectSelection) => void
+  triggerRef: React.RefObject<HTMLButtonElement | null>
   onClose: () => void
 }
 
@@ -20,13 +22,19 @@ interface InboxSortPickerProps {
   anchor: { x: number; y: number }
   selected: InboxSortOrder
   onSelect: (order: InboxSortOrder) => void
+  triggerRef: React.RefObject<HTMLButtonElement | null>
   onClose: () => void
 }
 
-function useDismiss(ref: React.RefObject<HTMLDivElement | null>, onClose: () => void): void {
+function useDismiss(
+  ref: React.RefObject<HTMLDivElement | null>,
+  triggerRef: React.RefObject<HTMLButtonElement | null>,
+  onClose: () => void,
+): void {
   useEffect(() => {
     const onPointerDown = (event: MouseEvent): void => {
-      if (ref.current && !ref.current.contains(event.target as Node)) onClose()
+      const target = event.target as Node
+      if (ref.current && !ref.current.contains(target) && !triggerRef.current?.contains(target)) onClose()
     }
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') onClose()
@@ -37,19 +45,21 @@ function useDismiss(ref: React.RefObject<HTMLDivElement | null>, onClose: () => 
       document.removeEventListener('mousedown', onPointerDown, true)
       document.removeEventListener('keydown', onKeyDown, true)
     }
-  }, [onClose, ref])
+  }, [onClose, ref, triggerRef])
 }
 
 function PickerRoot({
   anchor,
   children,
   onClose,
+  triggerRef,
   width = 260,
   deps = [],
 }: {
   anchor: { x: number; y: number }
   children: React.ReactNode
   onClose: () => void
+  triggerRef: React.RefObject<HTMLButtonElement | null>
   width?: number
   deps?: ReadonlyArray<unknown>
 }): React.JSX.Element | null {
@@ -57,7 +67,7 @@ function PickerRoot({
   const layer = usePopoverLayer()
   const rootRef = useRef<HTMLDivElement>(null)
   const pos = useAnchoredPopover(anchor, { deps })
-  useDismiss(rootRef, onClose)
+  useDismiss(rootRef, triggerRef, onClose)
   const menu = (
     <div
       ref={(node) => {
@@ -102,6 +112,7 @@ function PickerOption({
   return (
     <button
       className="ion-focusable"
+      aria-pressed={active}
       onClick={onClick}
       style={{
         display: 'flex',
@@ -132,21 +143,22 @@ export function InboxProjectScopePicker({
   projects,
   selected,
   onSelect,
+  triggerRef,
   onClose,
 }: ProjectScopePickerProps): React.JSX.Element | null {
   return (
-    <PickerRoot anchor={anchor} onClose={onClose} deps={[projects.length, selected]}>
+    <PickerRoot anchor={anchor} triggerRef={triggerRef} onClose={onClose} deps={[projects.length, selected]}>
       <div style={{ padding: '3px 10px 5px', color: 'inherit', fontSize: 10, fontWeight: 600, letterSpacing: '0.05em', opacity: 0.65 }}>
         PROJECT SCOPE
       </div>
-      <PickerOption active={selected === null} onClick={() => { onSelect(null); onClose() }}>
+      <PickerOption active={selected.size === 0} onClick={() => onSelect(new Set())}>
         <Folder size={15} />
         <span style={{ flex: 1 }}>All projects</span>
         <span style={{ opacity: 0.6 }}>{projects.reduce((sum, project) => sum + project.count, 0)}</span>
       </PickerOption>
       <div style={{ height: 1, margin: '4px 10px', background: 'currentColor', opacity: 0.12 }} />
       {projects.map((project) => (
-        <PickerOption key={project.key} active={selected === project.key} onClick={() => { onSelect(project.key); onClose() }}>
+        <PickerOption key={project.key} active={selected.has(project.key)} onClick={() => onSelect(toggleProjectSelection(selected, project.key))}>
           <Folder size={15} />
           <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project.name}</span>
           <span style={{ opacity: 0.6 }}>{project.count}</span>
@@ -157,14 +169,14 @@ export function InboxProjectScopePicker({
 }
 
 /** Rich active-list sort picker. Snoozed and settled retain lifecycle ordering. */
-export function InboxSortPicker({ anchor, selected, onSelect, onClose }: InboxSortPickerProps): React.JSX.Element | null {
+export function InboxSortPicker({ anchor, selected, onSelect, triggerRef, onClose }: InboxSortPickerProps): React.JSX.Element | null {
   const options: Array<{ id: InboxSortOrder; label: string; detail: string }> = [
     { id: 'created', label: 'Newest created', detail: 'Stable inbox order' },
     { id: 'activity', label: 'Recent activity', detail: 'Latest work first' },
     { id: 'title', label: 'Title', detail: 'A to Z' },
   ]
   return (
-    <PickerRoot anchor={anchor} onClose={onClose} width={240} deps={[selected]}>
+    <PickerRoot anchor={anchor} triggerRef={triggerRef} onClose={onClose} width={240} deps={[selected]}>
       <div style={{ padding: '3px 10px 5px', color: 'inherit', fontSize: 10, fontWeight: 600, letterSpacing: '0.05em', opacity: 0.65 }}>
         SORT ACTIVE CONVERSATIONS
       </div>

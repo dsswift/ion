@@ -116,9 +116,10 @@ describe('statusDrawerOffset is retired, not merely unused', () => {
     expect('statusDrawerOffset' in mod).toBe(false)
   })
 
-  it('the drawer wrapper sits at the plain gap', () => {
+  it('the drawer wrapper uses the responsive placement result', () => {
     const appSrc = readFileSync(join(__dirname, '../../App.tsx'), 'utf-8')
     expect(appSrc).not.toContain('statusDrawerOffset')
-    expect(appSrc).toContain('marginLeft: PANEL_GAP')
+    expect(appSrc).toContain('marginLeft: statusPlacement.external ? PANEL_GAP : 0')
+    expect(appSrc).toContain('width: statusPlacement.width')
   })
 })

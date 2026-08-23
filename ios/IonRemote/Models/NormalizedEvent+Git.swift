@@ -10,6 +10,14 @@ extension RemoteEvent {
         container: KeyedDecodingContainer<CodingKeys>
     ) throws -> RemoteEvent? {
         switch type {
+        case .gitBranchesResponse:
+            let directory = try container.decode(String.self, forKey: .directory)
+            let response = GitBranchesResponse(
+                branches: try container.decode([String].self, forKey: .branches),
+                current: try container.decode(String.self, forKey: .current)
+            )
+            return .gitBranchesResponse(directory: directory, response: response)
+
         case .gitChangesResponse:
             let directory = try container.decode(String.self, forKey: .directory)
             let files = try container.decode([GitChangedFile].self, forKey: .files)
@@ -94,6 +102,13 @@ extension RemoteEvent {
     /// Encode git events. Returns `true` if the receiver was a git event.
     func encodeGit(into container: inout KeyedEncodingContainer<CodingKeys>) throws -> Bool {
         switch self {
+        case .gitBranchesResponse(let directory, let response):
+            try container.encode(TypeKey.gitBranchesResponse, forKey: .type)
+            try container.encode(directory, forKey: .directory)
+            try container.encode(response.branches, forKey: .branches)
+            try container.encode(response.current, forKey: .current)
+            return true
+
         case .gitChangesResponse(let directory, let response):
             try container.encode(TypeKey.gitChangesResponse, forKey: .type)
             try container.encode(directory, forKey: .directory)

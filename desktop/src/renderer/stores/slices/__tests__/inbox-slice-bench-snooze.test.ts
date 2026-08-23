@@ -52,7 +52,11 @@ function harness(tabs: TabState[], benchPaths: string[]) {
   }
   const get = (): State => state
   const slice = createInboxSlice(set as never, get as never)
-  return { slice, snoozedUntil: (id: string): number | null | undefined => get().tabs.find((t) => t.id === id)?.snoozedUntil }
+  return {
+    slice,
+    snoozedUntil: (id: string): number | null | undefined => get().tabs.find((t) => t.id === id)?.snoozedUntil,
+    pinnedAt: (id: string): number | null | undefined => get().tabs.find((t) => t.id === id)?.pinnedAt,
+  }
 }
 
 const WAKE = Date.now() + 3_600_000
@@ -81,6 +85,52 @@ describe('snoozeTab bench refusal', () => {
     const { slice, snoozedUntil } = harness([tab('source-talk', '/Users/dev/src/ion')], [BENCH])
     slice.snoozeTab?.('source-talk', WAKE)
     expect(snoozedUntil('source-talk')).toBe(WAKE)
+  })
+})
+
+describe('pinTab bench refusal', () => {
+  it('refuses a conversation whose directory is the bench', () => {
+    const conversation = { ...tab('bench-talk', BENCH), pinnedAt: null, isTerminalOnly: false }
+    const { slice, pinnedAt } = harness([conversation], [BENCH])
+    expect(slice.pinTab?.('bench-talk')).toBe(false)
+    expect(pinnedAt('bench-talk')).toBeNull()
+  })
+
+  it('refuses a conversation nested inside the bench', () => {
+    const conversation = { ...tab('nested', `${BENCH}/desktop`), pinnedAt: null, isTerminalOnly: false }
+    const { slice, pinnedAt } = harness([conversation], [BENCH])
+    expect(slice.pinTab?.('nested')).toBe(false)
+    expect(pinnedAt('nested')).toBeNull()
+  })
+
+  it('pins the dedicated bench terminal', () => {
+    const terminal = {
+      ...tab('bench-terminal', BENCH),
+      title: 'Terminal',
+      customTitle: 'Bench · main',
+      pinnedAt: null,
+      isTerminalOnly: true,
+    } as TabState
+    const workspaceWithIdentity = { ...workspace(BENCH), sourceBranch: 'main' }
+    let state = {
+      tabs: [terminal],
+      conversationPanes: new Map(),
+      benchWorkspaces: new Map([['/Users/dev/src/ion', [workspaceWithIdentity]]]),
+    } as unknown as State
+    const set = (updater: (current: State) => Partial<State>): void => {
+      state = { ...state, ...updater(state) } as State
+    }
+    const slice = createInboxSlice(set as never, (() => state) as never)
+
+    expect(slice.pinTab?.('bench-terminal')).toBe(true)
+    expect(state.tabs[0]?.pinnedAt).toEqual(expect.any(Number))
+  })
+
+  it('pins an ordinary conversation outside the bench', () => {
+    const ordinary = { ...tab('source-talk', '/Users/dev/src/ion'), pinnedAt: null, isTerminalOnly: false }
+    const { slice, pinnedAt } = harness([ordinary], [BENCH])
+    expect(slice.pinTab?.('source-talk')).toBe(true)
+    expect(pinnedAt('source-talk')).toEqual(expect.any(Number))
   })
 })
 

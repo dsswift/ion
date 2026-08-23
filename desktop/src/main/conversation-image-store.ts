@@ -18,9 +18,10 @@
  */
 
 import { createHash } from 'crypto'
-import { existsSync, mkdirSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
+import { atomicWriteFileSync } from './utils/atomicWrite'
 import { log as _log } from './logger'
 
 function log(msg: string, fields?: Record<string, unknown>): void { _log('main', msg, fields) }
@@ -80,13 +81,19 @@ export function saveImageToConversation(
     const sum = createHash('sha256').update(data).digest('hex')
     const path = join(imagesDir, `${sum}.${ext}`)
 
-    // Content-addressed: same bytes → same name. Skip the write when present.
+    // Content-addressed objects are trustworthy only when bytes still hash to
+    // their name. A crash can leave a partial file at the final path.
     if (existsSync(path)) {
-      log('conversation_image_store: image already present (content-addressed); skipping write', { conversation_id: convId, path })
-      return path
+      const existing = readFileSync(path)
+      const existingHash = createHash('sha256').update(existing).digest('hex')
+      if (existingHash === sum) {
+        log('conversation_image_store: image already present (content-addressed); skipping write', { conversation_id: convId, path })
+        return path
+      }
+      log('conversation_image_store: repairing mismatched content-addressed image', { conversation_id: convId, path, existing_bytes: existing.length, expected_bytes: data.length })
     }
 
-    writeFileSync(path, data)
+    atomicWriteFileSync(path, data)
     log('conversation_image_store: image saved', { conversation_id: convId, media_type: mediaType, path, bytes: data.length })
     return path
   } catch (err) {

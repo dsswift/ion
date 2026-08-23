@@ -186,6 +186,19 @@ describe('submit() forwards source to window.ion.prompt', () => {
     )
   })
 
+  it('preserves remote implementation provenance and sends it to the engine', () => {
+    const tab = makeTab({ hasChosenDirectory: true })
+    const { state } = buildHarness(tab)
+
+    state.submitRemotePrompt('tab-1', 'Implement the plan.', undefined, undefined, undefined, 'impl-remote', true)
+
+    const message = state.conversationPanes.get('tab-1')!.instances[0].messages.at(-1)
+    expect(message).toMatchObject({ role: 'user', implementationPhase: true })
+    expect(mockPrompt).toHaveBeenCalledWith('tab-1', 'impl-remote', expect.objectContaining({
+      implementationPhase: true,
+    }))
+  })
+
   it('does NOT pass source when opts.source is omitted (desktop-typed)', () => {
     const tab = makeTab({ hasChosenDirectory: true })
     const { state } = buildHarness(tab)

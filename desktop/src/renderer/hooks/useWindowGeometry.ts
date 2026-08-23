@@ -1,8 +1,19 @@
 import { useEffect, useLayoutEffect, useState, type RefObject } from 'react'
 import { usePreferencesStore } from '../preferences'
 
-/**
- * Track window inner height. Used by tall-view layout math so the body grows
+export function useWindowWidth(): number {
+  const uiZoom = usePreferencesStore((s) => s.uiZoom)
+  const [winWidth, setWinWidth] = useState(() => window.innerWidth / uiZoom)
+  useEffect(() => {
+    const onResize = () => setWinWidth(window.innerWidth / uiZoom)
+    onResize()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [uiZoom])
+  return winWidth
+}
+
+/** Track window inner height. Used by tall-view layout math so the body grows
  * to fill remaining vertical space when the OS window is resized.
  */
 export function useWindowHeight(): number {

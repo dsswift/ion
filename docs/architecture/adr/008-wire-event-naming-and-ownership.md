@@ -7,7 +7,7 @@
 
 The Ion engine emits events over two distinct wire layers:
 
-1. **Engine wire** - the NDJSON socket consumed by every client (desktop, iOS, relay, and any external integrator building against the engine protocol).
+1. **Engine wire** - the NDJSON socket consumed by every client (desktop, iOS, and any external integrator building against the engine protocol) and by Relay, the transport infrastructure.
 2. **Desktop↔iOS wire** - a separate WebSocket multiplexing desktop-managed events (tab state, settings, permissions, terminal, git, filesystem, etc.) to the iOS client.
 
 Before this ADR, the desktop↔iOS wire mixed naming conventions: some members carried an `engine_` prefix (borrowed from the engine wire), others were unprefixed. This made ownership ambiguous at a glance - a reader could not determine whether an `engine_status` on the desktop transport was the engine's own event forwarded verbatim or a desktop-managed event wearing a borrowed name.

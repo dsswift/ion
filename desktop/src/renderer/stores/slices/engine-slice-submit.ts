@@ -61,7 +61,7 @@ export function createEngineSubmitActions(set: StoreSet, get: StoreGet): Partial
       })
     },
 
-    insertRemoteUserMessage: (tabId, content, slashCommand, slashArgs) => {
+    insertRemoteUserMessage: (tabId, content, slashCommand, slashArgs, implementationPhase) => {
       // Insert a user message for a remote-originated prompt that bypassed the
       // renderer's submit() path. This happens when an extension command
       // succeeds synchronously: the extension's ctx.sendPrompt starts the run,
@@ -77,6 +77,7 @@ export function createEngineSubmitActions(set: StoreSet, get: StoreGet): Partial
           timestamp: Date.now(),
           source: 'remote' as const,
           ...(slashCommand ? { slashCommand, slashArgs: slashArgs || '' } : {}),
+          ...(implementationPhase ? { implementationPhase: true } : {}),
         }
         const conversationPanes = commitInstance(state.conversationPanes, tabId, (inst) => ({
           ...inst,

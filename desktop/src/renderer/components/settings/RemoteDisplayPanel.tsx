@@ -141,6 +141,8 @@ export function RemoteDisplayPanel() {
           disabled={saving}
           style={{
             width: '100%',
+            minWidth: 0,
+            boxSizing: 'border-box',
             background: colors.surfacePrimary,
             border: `1px solid ${colors.containerBorder}`,
             borderRadius: 8,
@@ -223,7 +225,7 @@ export function RemoteDisplayPanel() {
       </div>
 
       {/* Save + Reset */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', minWidth: 0 }}>
         <button
           type="button"
           onClick={() => { void handleSave().catch((err) => rError('settings', 'save display failed', { error: String(err) })) }}

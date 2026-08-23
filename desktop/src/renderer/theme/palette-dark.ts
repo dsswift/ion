@@ -128,6 +128,8 @@ export const darkColors = {
   timelineNodeActive: "#366FFB",
   timelineSlashCommand: "#A855F7",
   timelineSlashCommandActive: "#C084FC",
+  timelinePlanImplementation: "#34D399",
+  timelinePlanImplementationActive: "#6EE7B7",
 
   // Scrollbar
   scrollThumb: "rgba(255, 255, 255, 0.10)",

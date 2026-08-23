@@ -93,6 +93,18 @@ describe('insertRendererRemoteUserMessage — Studio echo', () => {
     })
   })
 
+  it('includes implementation provenance in the Studio echo', async () => {
+    const p = makePrompt()
+    await insertRendererRemoteUserMessage(p, 'Implement the plan.', undefined, undefined, true)
+
+    expect(mocks.notifyStudioMock).toHaveBeenCalledWith(p.tabId, {
+      id: p.reqId,
+      content: 'Implement the plan.',
+      timestamp: 1_700_000_000_000,
+      implementationPhase: true,
+    })
+  })
+
   it('passes the raw content string — not a slash-stripped or partially-escaped variant', async () => {
     const p = makePrompt()
     const content = "/complex args with 'quotes'"

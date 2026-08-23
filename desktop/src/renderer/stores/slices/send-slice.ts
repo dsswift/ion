@@ -279,6 +279,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
               : undefined,
           timestamp: Date.now(),
           ...(isSteer ? { steerPending: true } : {}),
+          ...(implementationPhase ? { implementationPhase: true } : {}),
         }
         steerClientMessageId = isSteer ? userMessage.id : undefined
         const conversationPanes = commitInstance(s.conversationPanes, tabId, (inst) => ({
@@ -484,7 +485,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       })
     },
 
-    submitRemotePrompt: (tabId, prompt, imageAttachments, resolveSlash, remoteAttachments, reqId) => {
+    submitRemotePrompt: (tabId, prompt, imageAttachments, resolveSlash, remoteAttachments, reqId, implementationPhase) => {
       const { tabs, staticInfo } = get()
       const preferredModel = usePreferencesStore.getState().preferredModel
       const tab = tabs.find((t) => t.id === tabId)
@@ -520,6 +521,10 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
       const requestId = reqId || crypto.randomUUID()
       const isBusy = tab.status === 'running'
+
+      // An implementation approval begins a new run even if the prior plan
+      // card left the tab running while its renderer handoff completed.
+      const isImplementation = implementationPhase === true
 
       // Gate on customTitle too — see submit() above. Prevents a mid-conversation
       // remote prompt from re-titling a tab that already has a real title.
@@ -561,9 +566,10 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
             : undefined,
           timestamp: Date.now(),
           source: 'remote' as const,
-          ...(isBusy ? { steerPending: true } : {}),
+          ...(isBusy && !isImplementation ? { steerPending: true } : {}),
+          ...(isImplementation ? { implementationPhase: true } : {}),
         }
-        steerClientMessageId = isBusy ? userMessage.id : undefined
+        steerClientMessageId = isBusy && !isImplementation ? userMessage.id : undefined
         const conversationPanes = commitInstance(s.conversationPanes, tabId, (inst) => ({
           ...inst,
           messages: [...inst.messages, userMessage],
@@ -572,7 +578,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         }))
         const tabs = s.tabs.map((t) => {
           if (t.id !== tabId) return t
-          if (isBusy) {
+          if (isBusy && !isImplementation) {
             return { ...t, title }
           }
           // Same optimistic write as submit(), reached from an iOS prompt.
@@ -604,11 +610,11 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
       // Same send-time title logic as submit() — fire in parallel, first send
       // only, and the one generated string names the worktree too. See submit().
-      if (needsTitle && !isBusy) {
+      if (needsTitle && (!isBusy || isImplementation)) {
         maybeSendTimeTitle(tabId, prompt, get().renameTab, resolvedPath)
       }
 
-      if (isBusy) {
+      if (isBusy && !isImplementation) {
         window.ion.steer(tabId, prompt, steerClientMessageId)
         return
       }
@@ -662,6 +668,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         // resolve + expand the raw `/command args` text rather than sending
         // it to the model verbatim. Absent/false for ordinary remote prompts.
         resolveSlash: resolveSlash || undefined,
+        implementationPhase: isImplementation || undefined,
       }).catch((err: Error) => {
         get().handleError(tabId, {
           message: err.message,

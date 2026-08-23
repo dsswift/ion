@@ -21,8 +21,10 @@ function clampToViewport(
   minHeight: number,
 ): { x: number; y: number; w: number; h: number } {
   const viewport = zoomViewport()
-  const w = Math.max(minWidth, Math.min(geo.w, viewport.width))
-  const h = Math.max(minHeight, Math.min(geo.h, viewport.height))
+  const effectiveMinWidth = Math.min(minWidth, viewport.width)
+  const effectiveMinHeight = Math.min(minHeight, viewport.height)
+  const w = Math.max(effectiveMinWidth, Math.min(geo.w, viewport.width))
+  const h = Math.max(effectiveMinHeight, Math.min(geo.h, viewport.height))
   const x = Math.max(0, Math.min(geo.x, viewport.width - w))
   const y = Math.max(0, Math.min(geo.y, viewport.height - h))
   return { x, y, w, h }
@@ -82,14 +84,18 @@ export function FloatingPanel({
   posRef.current = pos
   sizeRef.current = size
 
-  // Clamp the initial geometry to the viewport once on mount so a panel
-  // restored from a larger display renders on-screen and correctly sized.
+  // Clamp restored geometry on mount and re-clamp whenever the viewport changes.
+  // A resize can make both the saved size and the configured minimum too large.
   useEffect(() => {
-    const clamped = clampToViewport({ ...posRef.current, ...sizeRef.current }, minWidth, minHeight)
-    setPos({ x: clamped.x, y: clamped.y })
-    setSize({ w: clamped.w, h: clamped.h })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    const clamp = () => {
+      const clamped = clampToViewport({ ...posRef.current, ...sizeRef.current }, minWidth, minHeight)
+      setPos({ x: clamped.x, y: clamped.y })
+      setSize({ w: clamped.w, h: clamped.h })
+    }
+    clamp()
+    window.addEventListener('resize', clamp)
+    return () => window.removeEventListener('resize', clamp)
+  }, [minWidth, minHeight])
 
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     // Only drag from header (left button)
@@ -98,11 +104,14 @@ export function FloatingPanel({
     dragRef.current = { startX: e.clientX, startY: e.clientY, originX: pos.x, originY: pos.y }
   }, [pos])
 
-  // 8-direction edge/corner resize. onResize applies geometry live; onResizeEnd
-  // persists via the existing onGeometryChange callback.
+  // 8-direction edge/corner resize. The effective minimum cannot exceed the
+  // current viewport, or the resize hook can force a small-window overflow.
+  const viewport = zoomViewport()
+  const effectiveMinWidth = Math.min(minWidth, viewport.width)
+  const effectiveMinHeight = Math.min(minHeight, viewport.height)
   const { renderZones } = useEdgeResize({
-    minWidth,
-    minHeight,
+    minWidth: effectiveMinWidth,
+    minHeight: effectiveMinHeight,
     getGeometry: () => ({ ...posRef.current, ...sizeRef.current }),
     onResize: (geo) => {
       setSize({ w: geo.w, h: geo.h })
@@ -220,7 +229,7 @@ export function FloatingPanel({
   const panel = (
     <motion.div
       data-ion-ui
-      initial={{ opacity: 0, scale: 0.96 }}
+      data-testid="floating-panel"
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.96 }}
       transition={{ duration: 0.15 }}

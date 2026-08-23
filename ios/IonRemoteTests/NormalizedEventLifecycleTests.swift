@@ -325,7 +325,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         let original = RemoteCommand.createTab(workingDirectory: "/var/log")
         let data = try encoder.encode(original)
         let decoded = try decoder.decode(RemoteCommand.self, from: data)
-        if case .createTab(let wd, let pinToGroupId, _, _, _) = decoded {
+        if case .createTab(let wd, let pinToGroupId, _, _, _, _, _) = decoded {
             XCTAssertEqual(wd, "/var/log")
             // pinToGroupId defaults to nil when omitted from the constructor;
             // the round-trip must preserve that.
@@ -343,7 +343,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         let original = RemoteCommand.createTab(workingDirectory: "/Users/me/code", pinToGroupId: "group-abc")
         let data = try encoder.encode(original)
         let decoded = try decoder.decode(RemoteCommand.self, from: data)
-        if case .createTab(let wd, let pinToGroupId, _, _, _) = decoded {
+        if case .createTab(let wd, let pinToGroupId, _, _, _, _, _) = decoded {
             XCTAssertEqual(wd, "/Users/me/code")
             XCTAssertEqual(pinToGroupId, "group-abc")
         } else {

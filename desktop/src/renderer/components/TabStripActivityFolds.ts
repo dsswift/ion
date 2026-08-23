@@ -22,6 +22,7 @@
  */
 
 import { useSessionStore } from '../stores/sessionStore'
+import { liveBackgroundShellCount } from '../../shared/background-shell-counts'
 import type { StatusFields } from '../../shared/types-engine'
 
 export function isAnyEngineInstanceRunning(tabId: string): boolean {
@@ -66,7 +67,7 @@ export function isAnyEngineInstanceStarting(tabId: string): boolean {
  */
 export function effectiveRunningChildrenCount(inst: {
   agentStates: ReadonlyArray<{ status: string }>
-  statusFields?: Pick<StatusFields, 'backgroundAgents' | 'backgroundShells' | 'hasPendingWork'> | null
+  statusFields?: Pick<StatusFields, 'backgroundAgents' | 'backgroundShells' | 'activeBackgroundTasks' | 'hasPendingWork'> | null
 }): number {
   let fromAgentStates = 0
   for (const a of inst.agentStates) {
@@ -111,17 +112,22 @@ export function isAnyTerminalCommandRunning(tabId: string): boolean {
 }
 
 /**
- * Total background shell commands a tab is waiting on, summed across its
- * engine instances.
- * helper there is only ONE data source (`statusFields.backgroundShells`), so
- * this sums across instances rather than taking a max: two instances running
- * background commands are waiting on genuinely different processes, whereas
- * the two agent sources observe the same agents.
+ * Total LIVE background bash processes a tab owns, summed across its engine
+ * instances.
  *
- * Counts only commands started with `notify_on_complete` — those are the ones
- * the engine holds the session open for. A fire-and-forget
- * `run_in_background` command is not something the tab is waiting on, so it
- * does not light the status dot.
+ * Unlike `effectiveRunningChildrenCount`, which takes a max because its two
+ * data sources observe the same agents, this SUMS across instances: two
+ * instances running background commands are waiting on genuinely different
+ * processes. Within one instance the two engine fields are folded by
+ * `liveBackgroundShellCount`, which does take a max for the same
+ * same-processes-two-vantage-points reason.
+ *
+ * Counts every live process, including commands started WITHOUT
+ * `notify_on_complete`. A detached command is a real process that the engine
+ * kills when the session stops, so a tab holding one is not done — the dot
+ * must light and the close guard must refuse. See
+ * `shared/background-shell-counts.ts` for why the engine's `backgroundShells`
+ * scalar is the wrong field for this question.
  *
  * NOTE: Reads from `useSessionStore.getState()` — not reactive on its own.
  * Callers in React components must subscribe to `conversationPanes` so the
@@ -133,7 +139,7 @@ export function engineInstanceBackgroundShellCount(tabId: string): number {
   if (!pane || pane.instances.length === 0) return 0
   let total = 0
   for (const inst of pane.instances) {
-    total += inst.statusFields?.backgroundShells ?? 0
+    total += liveBackgroundShellCount(inst.statusFields)
   }
   return total
 }

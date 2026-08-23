@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/dsswift/ion/relay/internal/atomicwrite"
 )
 
 // tokenStore persists APNs device tokens per channel to a directory so tokens
@@ -47,15 +49,8 @@ func (s *tokenStore) Set(channelID, token string) {
 		logger.Warn("tokenStore: marshal failed", "tag", "relay.push_token_store", "err", err)
 		return
 	}
-	// Write to a temp file then rename for atomic replacement.
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	if err := atomicwrite.File(path, data, 0o600); err != nil {
 		logger.Warn("tokenStore: write failed", "tag", "relay.push_token_store", "err", err)
-		return
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		logger.Warn("tokenStore: rename failed", "tag", "relay.push_token_store", "err", err)
-		os.Remove(tmp) //nolint:errcheck // temp cleanup after failed rename
 	}
 }
 

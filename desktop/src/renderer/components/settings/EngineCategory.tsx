@@ -116,7 +116,7 @@ export function EngineCategory() {
       <div style={fieldRow}>
         <label style={labelStyle}>Extensions *</label>
         {edit.extensions.map((ext, i) => (
-          <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+          <div key={i} style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4, minWidth: 0 }}>
             <input
               type="text"
               value={ext}
@@ -190,7 +190,7 @@ export function EngineCategory() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end', marginTop: 8, minWidth: 0 }}>
         <button
           onClick={cancel}
           style={{

@@ -111,6 +111,14 @@ describe('serializePersistedMessages — slash provenance', () => {
     })
     expect(persisted.slashCommand).toBeUndefined()
   })
+
+  it('preserves implementation provenance in renderer-owned content', () => {
+    const [persisted] = serializePersistedMessages([{
+      role: 'user', content: 'Implement the plan.', timestamp: 1, implementationPhase: true,
+    }])
+
+    expect(persisted.implementationPhase).toBe(true)
+  })
 })
 
 // ─── 3 & 4. Round-trip: persist → restore ────────────────────────────────────

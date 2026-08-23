@@ -5,12 +5,12 @@
 // to a temp dir first.
 import { describe, it, expect } from 'vitest'
 import { existsSync, readFileSync, copyFileSync, mkdtempSync, rmSync } from 'fs'
-import { tmpdir, homedir } from 'os'
+import { tmpdir } from 'os'
 import { join } from 'path'
 import { runTabUnifyMigration, verifyUnifyMigration } from '../tab-migration-unify-runner'
 import { UNIFIED_SCHEMA_VERSION } from '../tab-migration-unify'
 
-const REAL = join(homedir(), '.ion', 'tabs-api.json')
+const REAL = join(process.env.ION_REAL_HOME ?? '', '.ion', 'tabs-api.json')
 
 describe.skipIf(!existsSync(REAL))('REAL tabs-api.json migration smoke (read-only)', () => {
   it('migrates and verifies the real file in a temp copy', () => {

@@ -479,7 +479,7 @@ export function InputBar() {
       <ContextCapacityNotice
         state={contextCapacityStatus}
         colors={colors}
-        onNewConversation={() => { void useSessionStore.getState().createTab() }}
+        onNewConversation={() => window.dispatchEvent(new CustomEvent('ion:open-new-conversation-picker'))}
       />
 
       {/* Preview cards stay above conversation-scoped controls in both hosts. */}

@@ -97,6 +97,39 @@ describe('buildInboxNavigator', () => {
     expect(projects[0]!.groups[1]!.tabs.map((item) => item.id)).toEqual(['one-new', 'one-old'])
   })
 
+  it('sorts bench worktrees first in integration order', () => {
+    const repo = '/repo'
+    const first = entry('/worktrees/first', 'First')
+    const second = entry('/worktrees/second', 'Second')
+    const outside = entry('/worktrees/outside', 'Outside')
+    const membership = (worktree: WorktreeInventoryEntry): IntegrationMember => ({
+      worktreePath: worktree.worktreePath,
+      branchName: worktree.branchName,
+      pin: 'current',
+      merge: 'unbuilt',
+      pinnedSha: '',
+      pinnedTreeHash: '',
+      pinnedBaseSha: '',
+      currentTreeHash: '',
+    })
+    const bench = workspace(repo, '/bench/main', [membership(first), membership(second)])
+    const conversation = (worktree: WorktreeInventoryEntry): TabState => tab(worktree.label, worktree.worktreePath, {
+      worktree: { repoPath: repo, worktreePath: worktree.worktreePath, branchName: worktree.branchName, sourceBranch: 'main' },
+    })
+
+    const projects = buildInboxNavigator(
+      [conversation(outside), conversation(second), conversation(first)],
+      new Map([[repo, [bench]]]),
+      new Map([[repo, [outside, second, first]]]),
+    )
+
+    expect(projects[0]!.groups.filter((group) => group.kind === 'worktree').map((group) => group.label)).toEqual([
+      'First',
+      'Second',
+      'Outside',
+    ])
+  })
+
   it('selects the Bench that contains an enrolled worktree and carries its marker', () => {
     const repo = '/repo'
     const member = entry('/worktrees/one', 'One')
@@ -154,22 +187,27 @@ describe('buildInboxNavigator', () => {
     expect(projects[0]!.groups[0]!.tabs).toEqual([])
   })
 
-  it('limits project groups to the active project scope', () => {
+  it('limits project groups to every selected project scope', () => {
     const selectedRepo = '/repos/ion'
+    const secondSelectedRepo = '/repos/second'
     const otherRepo = '/repos/other'
     const projects = buildInboxNavigator(
       [
         tab('ion-conversation', selectedRepo),
+        tab('second-conversation', secondSelectedRepo),
         tab('other-conversation', otherRepo),
       ],
       new Map(),
       new Map(),
       new Map(),
-      selectedRepo,
+      new Set([selectedRepo, secondSelectedRepo]),
     )
 
-    expect(projects.map((project) => project.project.key)).toEqual([selectedRepo])
-    expect(projects[0]!.flatTabs.map((item) => item.id)).toEqual(['ion-conversation'])
+    expect(projects.map((project) => project.project.key)).toEqual([selectedRepo, secondSelectedRepo])
+    expect(projects.flatMap((project) => project.flatTabs.map((item) => item.id))).toEqual([
+      'ion-conversation',
+      'second-conversation',
+    ])
   })
 
   it('applies project scope after inventory resolves nested worktree ownership', () => {
@@ -184,7 +222,7 @@ describe('buildInboxNavigator', () => {
       new Map(),
       new Map([[selectedRepo, [selectedWorktree]]]),
       new Map(),
-      selectedRepo,
+      new Set([selectedRepo]),
     )
 
     expect(projects.map((project) => project.project.key)).toEqual([selectedRepo])

@@ -342,6 +342,7 @@ export type RemoteEvent =
     }
   | { type: 'desktop_remote_display'; customName: string | null; customIcon: string | null; updatedAt: number }
   | { type: 'desktop_git_changes_response'; directory: string; files: Array<{ path: string; status: string; staged: boolean; oldPath?: string }>; branch: string; isGitRepo: boolean; ahead: number; behind: number; stagedCount?: number; unstagedCount?: number }
+  | { type: 'desktop_git_branches_response'; directory: string; branches: string[]; current: string; error?: string }
   | { type: 'desktop_git_graph_response'; directory: string; commits: Array<{ hash: string; fullHash: string; parents: string[]; authorName: string; authorDate: string; subject: string; refs: Array<{ name: string; type: string; isCurrent: boolean }> }>; isGitRepo: boolean; totalCount: number; graphLayout?: Array<{ lane: number; color: string; hasIncoming: boolean; connections: Array<{ fromLane: number; toLane: number; type: 'straight' | 'merge' | 'fork'; color: string }>; passThroughLanes: Array<{ lane: number; color: string }> }> }
   | { type: 'desktop_git_diff_response'; diff: string; fileName: string; isBinary: boolean }
   | { type: 'desktop_git_commit_result'; directory: string; ok: boolean; error?: string }

@@ -860,12 +860,13 @@ final class ContractSyncTests: XCTestCase {
       // transport marker when its adjacent delivery was engine-authored
       // background work.
       "markerMachineAuthored",
-      // Decoded: classifies engine-injected user turns, and the engine's
-      // derived verdict on whether an engine-side actor authored the turn.
-      // InjectionPolicy reads both to filter machine-to-machine rows out
-      // of handleConversationHistory, so a dispatch completion or a
+      // Decoded: classifies engine-injected user turns, tracks their persisted
+      // implementation phase, and carries the engine's derived verdict on
+      // whether an engine-side actor authored the turn.
+      // InjectionPolicy reads the actor fields to filter machine-to-machine
+      // rows out of handleConversationHistory, so a dispatch completion or a
       // scheduled check-in never renders as a user bubble on reload.
-      "injectionKind", "machineAuthored",
+      "injectionKind", "implementationPhase", "machineAuthored",
       // Decoded: structured metadata for an engine-owned completion input.
       "backgroundWork",
       // Decoded: correlation identifier matching a delivered background

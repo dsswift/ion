@@ -17,9 +17,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/dsswift/ion/engine/internal/durablefile"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -144,46 +145,37 @@ func AddMcpServer(name string, cfg types.McpServerConfig) error {
 	}
 
 	path := globalConfigPath()
-	raw, err := readRawConfig(path)
-	if err != nil {
-		return err
-	}
-
-	// Marshal through the typed struct so omitempty applies: an entry written
-	// from a partially-filled struct must not carry a dozen empty keys the
-	// operator did not ask for.
-	encoded, err := json.Marshal(cfg)
-	if err != nil {
-		return fmt.Errorf("encode MCP server %q: %w", name, err)
-	}
-	var entry map[string]any
-	if err := json.Unmarshal(encoded, &entry); err != nil {
-		return fmt.Errorf("re-decode MCP server %q: %w", name, err)
-	}
-
-	servers, _ := raw["mcpServers"].(map[string]any) //nolint:errcheck // a non-map value is replaced below
-	if servers == nil {
-		if existing, present := raw["mcpServers"]; present {
-			// A non-object mcpServers (an array, a string, null) cannot be
-			// merged into. Replacing it silently would discard operator data,
-			// so refuse and name the file to fix.
-			return fmt.Errorf("mcpServers in %s is %T, not an object; fix it before adding a server", path, existing)
+	return durablefile.Transaction(path, 5*time.Second, func(_ string) error {
+		raw, err := readRawConfig(path)
+		if err != nil {
+			return err
 		}
-		servers = make(map[string]any)
-	}
-	_, replaced := servers[name]
-	servers[name] = entry
-	raw["mcpServers"] = servers
 
-	if err := writeRawConfig(path, raw); err != nil {
-		return err
-	}
+		encoded, err := json.Marshal(cfg)
+		if err != nil {
+			return fmt.Errorf("encode MCP server %q: %w", name, err)
+		}
+		var entry map[string]any
+		if err := json.Unmarshal(encoded, &entry); err != nil {
+			return fmt.Errorf("re-decode MCP server %q: %w", name, err)
+		}
 
-	utils.LogWithFields(utils.LevelInfo, "config", "mcp server written to engine.json", map[string]any{
-		"server": name, "path": path, "transport": cfg.Type, "url": cfg.URL,
-		"command": cfg.Command, "replaced": replaced, "total": len(servers),
+		servers, _ := raw["mcpServers"].(map[string]any) //nolint:errcheck // non-map handled below
+		if servers == nil {
+			if existing, present := raw["mcpServers"]; present {
+				return fmt.Errorf("mcpServers in %s is %T, not an object; fix it before adding a server", path, existing)
+			}
+			servers = make(map[string]any)
+		}
+		_, replaced := servers[name]
+		servers[name] = entry
+		raw["mcpServers"] = servers
+		if err := writeRawConfig(path, raw); err != nil {
+			return err
+		}
+		utils.LogWithFields(utils.LevelInfo, "config", "mcp server written to engine.json", map[string]any{"server": name, "path": path, "transport": cfg.Type, "url": cfg.URL, "command": cfg.Command, "replaced": replaced, "total": len(servers)})
+		return nil
 	})
-	return nil
 }
 
 // RemoveMcpServer deletes a server entry from ~/.ion/engine.json. Removing a
@@ -192,29 +184,26 @@ func AddMcpServer(name string, cfg types.McpServerConfig) error {
 // removal worked.
 func RemoveMcpServer(name string) error {
 	path := globalConfigPath()
-	raw, err := readRawConfig(path)
-	if err != nil {
-		return err
-	}
-
-	servers, _ := raw["mcpServers"].(map[string]any) //nolint:errcheck // missing/!map handled as "not configured"
-	if servers == nil {
-		return fmt.Errorf("no MCP servers are configured in %s", path)
-	}
-	if _, ok := servers[name]; !ok {
-		return fmt.Errorf("MCP server %q is not configured in %s", name, path)
-	}
-	delete(servers, name)
-	raw["mcpServers"] = servers
-
-	if err := writeRawConfig(path, raw); err != nil {
-		return err
-	}
-
-	utils.LogWithFields(utils.LevelInfo, "config", "mcp server removed from engine.json", map[string]any{
-		"server": name, "path": path, "remaining": len(servers),
+	return durablefile.Transaction(path, 5*time.Second, func(_ string) error {
+		raw, err := readRawConfig(path)
+		if err != nil {
+			return err
+		}
+		servers, _ := raw["mcpServers"].(map[string]any) //nolint:errcheck // missing/non-map handled below
+		if servers == nil {
+			return fmt.Errorf("no MCP servers are configured in %s", path)
+		}
+		if _, ok := servers[name]; !ok {
+			return fmt.Errorf("MCP server %q is not configured in %s", name, path)
+		}
+		delete(servers, name)
+		raw["mcpServers"] = servers
+		if err := writeRawConfig(path, raw); err != nil {
+			return err
+		}
+		utils.LogWithFields(utils.LevelInfo, "config", "mcp server removed from engine.json", map[string]any{"server": name, "path": path, "remaining": len(servers)})
+		return nil
 	})
-	return nil
 }
 
 // readRawConfig decodes engine.json into a raw map, preserving every key.
@@ -247,48 +236,12 @@ func readRawConfig(path string) (map[string]any, error) {
 //
 // Atomicity matters: engine.json holds provider credentials and enterprise
 // state, and a partial write from an interrupted process would leave the
-// daemon unable to start. Temp + fsync + rename + parent-dir fsync is the same
-// sequence conversation persistence uses for the same reason.
+// daemon unable to start.
 func writeRawConfig(path string, raw map[string]any) error {
 	data, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode %s: %w", path, err)
 	}
 	data = append(data, '\n')
-
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("create %s: %w", dir, err)
-	}
-
-	tmp := path + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-	if err != nil {
-		return fmt.Errorf("open %s: %w", tmp, err)
-	}
-	if _, err := f.Write(data); err != nil {
-		f.Close()      //nolint:errcheck // close after write error; the write error is returned
-		os.Remove(tmp) //nolint:errcheck // temp cleanup
-		return fmt.Errorf("write %s: %w", tmp, err)
-	}
-	if err := f.Sync(); err != nil {
-		f.Close()      //nolint:errcheck // close after sync error; the sync error is returned
-		os.Remove(tmp) //nolint:errcheck // temp cleanup
-		return fmt.Errorf("sync %s: %w", tmp, err)
-	}
-	if err := f.Close(); err != nil {
-		os.Remove(tmp) //nolint:errcheck // temp cleanup
-		return fmt.Errorf("close %s: %w", tmp, err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp) //nolint:errcheck // temp cleanup
-		return fmt.Errorf("rename %s to %s: %w", tmp, path, err)
-	}
-	if dirHandle, err := os.Open(dir); err == nil {
-		dirHandle.Sync()  //nolint:errcheck // best-effort directory fsync
-		dirHandle.Close() //nolint:errcheck // directory handle close
-	} else {
-		utils.LogWithFields(utils.LevelInfo, "config", "parent directory fsync skipped", map[string]any{"dir": dir, "error": err.Error()})
-	}
-	return nil
+	return utils.AtomicWriteFile(path, data, 0o600)
 }

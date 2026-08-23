@@ -1215,6 +1215,7 @@ The `load_session_history` response includes these fields on user-role `SessionM
 | `slashSource`   | string | Where the command was resolved: `"ion"` (`.ion/commands`), `"claude"` (`.claude/commands`), `"skill"`, or `"extension"` (registered via `RegisterCommand`). |
 | `slashModelAlias` | string | The model alias requested by the command's frontmatter `model:` field (e.g. `"standard"`, `"reasoning"`, `"fast"`). Present only when the command specifies a per-run model. |
 | `slashModelEffective` | string | The resolved model ID used for this invocation (for example, `"dci-marketing/gpt-5.6-terra"` or an unqualified direct model ID). Present only when `slashModelAlias` is set. |
+| `implementationPhase` | boolean | `true` when this user turn began the implementation half of a plan-then-implement flow. Absent for ordinary and legacy turns. |
 
 ### `desktop_message_added` / `desktop_conversation_history` — RemoteMessage
 
@@ -1227,6 +1228,7 @@ The same fields appear on `RemoteMessage` objects sent to paired iOS clients via
 | `slashSource`    | string | Resolution origin: `"ion"`, `"claude"`, `"skill"`, or `"extension"`. |
 | `slashModelAlias` | string | Optional model alias from command frontmatter (e.g. `"standard"`). |
 | `slashModelEffective` | string | Optional resolved model ID, qualified or direct, used for this invocation. |
+| `implementationPhase` | boolean | Optional durable plan-implementation provenance for the user turn. |
 
 The engine also carries these model fields on [`engine_user_turn_persisted`](#engine_user_turn_persisted) as `userTurnSlashModelAlias` and `userTurnSlashModelEffective`, letting clients stamp an optimistic slash bubble before history reload. The fields describe only that invocation's run and never change the conversation-level model shown by a status bar.
 

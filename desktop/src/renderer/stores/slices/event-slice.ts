@@ -45,9 +45,9 @@ import {
   retryAutoFixCloseOnTerminalChildren,
 } from "./event-slice-auto-fix-lifecycle";
 import { handleErrorAction } from "./event-slice-error";
+import { isPendingUserCardDenial } from "../../../shared/pending-card";
 import { rInfo, rTrace, rWarn } from "../../rendererLogger";
 import { setTabStatus } from "./tab-status-transition";
-import { isPendingUserCardDenial } from "../../../shared/pending-card";
 import {
   sameTab,
   sameInstance,
@@ -76,7 +76,6 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
         | undefined;
 
       set((s) => {
-        const { activeTabId } = s;
         // Resolve the active conversation instance for this tab ONCE (1B).
         // All message writes mutate this local `messages` array across every
         // event case; the instance + tab are committed together in a single
@@ -227,15 +226,29 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                 updated.status = "running";
                 updated.lastResult = null;
                 updated.currentActivity = "Thinking...";
+                // Clear run-scoped denial residue, but never a question the
+                // user still owes an answer to. `permissionDenied` is the field
+                // used by every waiting-state surface, so clearing a pending
+                // user card here would remove the only way to answer it.
+                //
+                // Check the pending patch first because an earlier reducer arm
+                // may have reconciled the engine's retained denial in this same
+                // event. Run-scoped denials still clear when new work starts.
                 const existingDenied =
                   "permissionDenied" in instPatch
                     ? instPatch.permissionDenied
                     : inst0?.permissionDenied;
                 if (isPendingUserCardDenial(existingDenied)) {
-                  rInfo("event.session", "preserving pending user card across session init", {
-                    tab_id: tabId,
-                    tools: (existingDenied?.tools ?? []).map((tool) => tool.toolName).join(","),
-                  });
+                  rInfo(
+                    "event.session",
+                    "preserving pending user card across session init",
+                    {
+                      tab_id: tabId,
+                      tools: (existingDenied?.tools ?? [])
+                        .map((tool) => tool.toolName)
+                        .join(","),
+                    },
+                  );
                 } else {
                   instPatch.permissionDenied = null;
                   instTouched = true;
@@ -321,27 +334,51 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               // that pairing the steer text is stranded rows above the divider
               // that announces it.
               //
-              // Resolution is FIFO against the oldest still-pending bubble:
-              // the engine's steer channel drains in order and emits one
-              // steer_injected per message, so a single event must resolve
-              // exactly ONE bubble. Clearing every pending bubble here would
+              // Resolution matches the bubble by IDENTITY when the engine
+              // names one. `steerClientMessageId` is the client-issued
+              // correlation id the engine echoes back
+              // (engine/internal/types/engine_event.go), forwarded as
+              // `clientMessageId` by engine-control-plane-stream.ts. Two steers
+              // can be outstanding at once, and their confirmations are not
+              // guaranteed to arrive in send order — a position-based match
+              // then collapses a later confirmation onto the wrong, earlier
+              // bubble. Falling back to FIFO against the oldest still-pending
+              // bubble is correct only when the event carries no identity
+              // (an older engine): the steer channel drains in order and emits
+              // one steer_injected per message, so a single event resolves
+              // exactly ONE bubble. Clearing every pending bubble would
               // collapse two queued steers onto the first divider.
+              //
+              // `entryId` is the durable conversation-tree id the engine
+              // persisted the steer under. Adopting it as the bubble's id makes
+              // a later rewind addressable by id instead of by ordinal
+              // position.
               const dividerId = nextMsgId();
               // When the engine supplies the client message identity, it is the
-              // authoritative match. A missing match must not resolve a different
-              // pending steer. Older engine events lack that identity, so retain
-              // FIFO matching only for those events.
+              // authoritative match. Older engine events lack that identity, so
+              // retain FIFO matching only for those events.
               const pendingIdx = event.clientMessageId
                 ? messages.findIndex(
                     (message) =>
-                      message.steerPending && message.id === event.clientMessageId,
+                      message.steerPending &&
+                      message.id === event.clientMessageId,
                   )
                 : messages.findIndex((message) => message.steerPending);
               if (event.clientMessageId && pendingIdx === -1) {
-                rWarn("event.steer", "steer confirmation has no matching pending bubble", {
-                  tab_id: tabId,
-                  client_message_id: event.clientMessageId,
-                });
+                // A named bubble that is not present must not fall back to a
+                // positional match, or the confirmation can resolve the wrong
+                // pending steer.
+                rWarn(
+                  "event.steer",
+                  "steer confirmation has no matching pending bubble",
+                  {
+                    tab_id: tabId,
+                    client_message_id: event.clientMessageId,
+                    pending_count: messages.filter(
+                      (message) => message.steerPending,
+                    ).length,
+                  },
+                );
               }
               if (pendingIdx !== -1) {
                 messages = messages.map((m, i) =>
@@ -355,6 +392,15 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                       }
                     : m,
                 );
+              } else if (event.clientMessageId) {
+                // The engine named a bubble this client does not hold. Never
+                // silently fall back to a positional match — that is the exact
+                // mis-pairing this arm exists to prevent.
+                rWarn("event.steer", "steer_injected named an unknown bubble", {
+                  tab_id: tabId,
+                  client_message_id: event.clientMessageId,
+                  pending_count: messages.filter((m) => m.steerPending).length,
+                });
               }
               messages = [
                 ...messages,
@@ -395,7 +441,9 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
             case "background_task_started": {
               if (!inst0) break;
               const current = inst0.statusFields?.activeBackgroundTasks ?? [];
-              const tasks = current.filter((task) => task.taskId !== event.taskId);
+              const tasks = current.filter(
+                (task) => task.taskId !== event.taskId,
+              );
               tasks.push({
                 taskId: event.taskId,
                 command: event.command,
@@ -416,26 +464,34 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               const current = inst0.statusFields?.activeBackgroundTasks ?? [];
               instPatch.statusFields = {
                 ...(inst0.statusFields ?? baseStatusFields()),
-                activeBackgroundTasks: current.filter((task) => task.taskId !== event.taskId),
+                activeBackgroundTasks: current.filter(
+                  (task) => task.taskId !== event.taskId,
+                ),
               };
               messages = messages.map((message) =>
-                message.role === "tool" && message.backgroundTaskId === event.taskId
+                message.role === "tool" &&
+                message.backgroundTaskId === event.taskId
                   ? {
                       ...message,
-                      toolStatus: event.status === "completed" ? "completed" as const : "error" as const,
+                      toolStatus:
+                        event.status === "completed"
+                          ? ("completed" as const)
+                          : ("error" as const),
                       backgroundWork: {
                         kind: "bash",
                         deliveryMode: "lifecycle",
-                        items: [{
-                          id: event.taskId,
-                          taskId: event.taskId,
-                          command: event.command,
-                          status: event.status,
-                          exitCode: event.exitCode,
-                          elapsedMs: event.elapsedMs,
-                          outputPath: event.outputPath,
-                          tail: event.tail,
-                        }],
+                        items: [
+                          {
+                            id: event.taskId,
+                            taskId: event.taskId,
+                            command: event.command,
+                            status: event.status,
+                            exitCode: event.exitCode,
+                            elapsedMs: event.elapsedMs,
+                            outputPath: event.outputPath,
+                            tail: event.tail,
+                          },
+                        ],
                       },
                     }
                   : message,
@@ -661,7 +717,6 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                 s,
                 get,
                 tabId,
-                activeTabId,
                 tab,
                 inst0,
                 messages,

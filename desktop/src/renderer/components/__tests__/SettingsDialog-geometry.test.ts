@@ -27,7 +27,7 @@ vi.mock('../../viewport-zoom', () => ({
   zoomViewport: () => ({ width: 1200, height: 900 }),
 }))
 
-import { resolveSettingsDialogGeometry } from '../SettingsDialog'
+import { resolveSettingsDialogGeometry, resolveSettingsDialogLayout } from '../SettingsDialog'
 
 describe('SettingsDialog geometry', () => {
   it('centers in CSS viewport coordinates', () => {
@@ -37,6 +37,12 @@ describe('SettingsDialog geometry', () => {
       width: 910,
       height: 780,
     })
+  })
+
+  it('selects the compact layout only for narrow dialogs', () => {
+    expect(resolveSettingsDialogLayout(639)).toBe('compact')
+    expect(resolveSettingsDialogLayout(640)).toBe('wide')
+    expect(resolveSettingsDialogLayout(910)).toBe('wide')
   })
 
   it('fits and centers in a reduced zoom viewport', () => {

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useMemo } from 'react'
+import React, { useCallback, useEffect, useState, useMemo, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useShallow } from 'zustand/shallow'
 import { useSessionStore } from '../stores/sessionStore'
@@ -125,6 +125,7 @@ export function ConversationView({ tabId }: ConversationViewProps) {
   const { scrollRef, contentRef, isNearBottomRef: _isNearBottomRef, showScrollBtn, handleScroll, scrollToBottom } = useScrollFollow([
     messages.length, agentStates.length, isRunning,
   ])
+  const virtualMessageJumpRef = useRef<((messageId: string) => boolean) | null>(null)
 
   // Conversation search, scoped to scrollRef.
   const searchTrigger = `${messages.length}:${messages[messages.length - 1]?.content?.length ?? 0}`
@@ -265,7 +266,7 @@ export function ConversationView({ tabId }: ConversationViewProps) {
         />
         {/* Dedicated timeline gutter — reserved layout space, so the
             transcript can never render underneath the history rail. */}
-        <TimelineMinimap items={minimapItems} scrollRef={scrollRef} />
+        <TimelineMinimap items={minimapItems} scrollRef={scrollRef} virtualMessageJumpRef={virtualMessageJumpRef} />
         <div
           ref={scrollRef}
           data-testid="conversation-transcript"
@@ -279,7 +280,7 @@ export function ConversationView({ tabId }: ConversationViewProps) {
             {messages.length === 0 && !isRunning && <EmptyState />}
 
             {/* Grouped conversation messages via shared TranscriptRows */}
-            <TranscriptRows grouped={grouped} actions={renderActions} scrollRef={scrollRef} forceFullRender={searchState.active} tabId={tabId} activeBackgroundTasks={activeBackgroundTasks} />
+            <TranscriptRows grouped={grouped} actions={renderActions} scrollRef={scrollRef} forceFullRender={searchState.active} tabId={tabId} activeBackgroundTasks={activeBackgroundTasks} virtualMessageJumpRef={virtualMessageJumpRef} />
 
             {!isRunning && messages.length > 0 && lastResult && (
               <RunDurationFooter durationMs={lastResult.durationMs} reason={lastResult.reason} />

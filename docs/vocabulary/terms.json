@@ -1,0 +1,2364 @@
+{
+  "version": 1,
+  "terms": [
+    {
+      "id": "agent",
+      "term": "Agent",
+      "definition": "One named actor that runs a prompt loop with its own model, tools, and system prompt. The root agent is the conversation itself. A sub-agent is an agent that the root agent or another agent starts.",
+      "domain": "engine",
+      "kind": "product-concept",
+      "status": "canonical",
+      "qualifiers": [
+        "root",
+        "sub",
+        "dispatched"
+      ],
+      "aliases": [
+        "sub-agent"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type AgentInfo struct",
+          "path": "engine/internal/extension/sdk_hook_types.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "type AgentStateUpdate struct",
+          "path": "engine/internal/types/types.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface AgentSpec",
+          "path": "engine/extensions/sdk/ion-sdk/types.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "AgentStatusDotStack",
+          "path": "ios/IonRemote/Views/AgentStatusDotStack.swift"
+        }
+      ],
+      "notes": "The engine emits a complete agent roster snapshot. Consumers replace local state with the payload."
+    },
+    {
+      "id": "apns-pusher",
+      "term": "APNs pusher",
+      "definition": "The relay component that sends an Apple Push Notification Service request. It wakes a mobile peer that is not connected.",
+      "domain": "relay",
+      "kind": "internal-type",
+      "status": "canonical",
+      "aliases": [
+        "push sender"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "relay",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type APNsPusher struct",
+          "path": "relay/push.go"
+        },
+        {
+          "platform": "relay",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (p *APNsPusher) SendWithNotify",
+          "path": "relay/push.go"
+        }
+      ]
+    },
+    {
+      "id": "async-delivery",
+      "term": "Async delivery",
+      "definition": "The path that carries a schedule firing or an inbound webhook into an extension handler. The engine owns the timing and the routing. The extension owns the action.",
+      "domain": "harness-sdk",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "async trigger delivery"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export async function dispatchFireAsync",
+          "path": "engine/extensions/sdk/ion-sdk/runtime-async.ts"
+        },
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "DeliveryId",
+          "path": "engine/internal/protocol/protocol.go"
+        }
+      ]
+    },
+    {
+      "id": "attachment",
+      "term": "Attachment",
+      "definition": "A file or image that a user adds to a conversation, or that a tool result carries. Clients show attachments in a per-conversation list.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "conversation attachment"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "Attachments []types.ImageAttachment",
+          "path": "engine/internal/protocol/protocol.go"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "export function AttachmentChips",
+          "path": "desktop/src/renderer/components/AttachmentChips.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct AttachmentChipsView",
+          "path": "ios/IonRemote/Views/AttachmentChipsView.swift"
+        }
+      ]
+    },
+    {
+      "id": "backend",
+      "term": "Backend",
+      "definition": "The pluggable implementation that runs one agent loop. The API backend calls a provider directly. Other backends drive an external agent process.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "qualifiers": [
+        "api",
+        "cli"
+      ],
+      "aliases": [
+        "run backend"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type RunBackend interface",
+          "path": "engine/internal/backend/backend.go"
+        }
+      ]
+    },
+    {
+      "id": "branch",
+      "term": "Branch",
+      "definition": "A new path in the conversation tree that starts at an earlier entry. A branch keeps the original path intact.",
+      "domain": "engine",
+      "kind": "action",
+      "status": "canonical",
+      "aliases": [
+        "conversation branch"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type TreeNode struct",
+          "path": "engine/internal/conversation/conversation.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "branch_before",
+          "path": "engine/internal/protocol/protocol.go"
+        }
+      ]
+    },
+    {
+      "id": "channel",
+      "term": "Channel",
+      "definition": "The relay pairing unit. One channel holds at most two peers and is named by an opaque channel identifier.",
+      "domain": "relay",
+      "kind": "public-contract",
+      "status": "canonical",
+      "aliases": [
+        "relay channel"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "relay",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type Channel struct",
+          "path": "relay/relay.go"
+        },
+        {
+          "platform": "relay",
+          "presentation": "doc",
+          "language": "markdown",
+          "symbol": "role=ion",
+          "path": "docs/architecture/relay.md"
+        }
+      ]
+    },
+    {
+      "id": "client-command",
+      "term": "Client command",
+      "definition": "One inbound NDJSON message from a consumer to the engine. The command field selects which other fields apply.",
+      "domain": "engine",
+      "kind": "public-contract",
+      "status": "canonical",
+      "aliases": [
+        "command envelope"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "type ClientCommand struct",
+          "path": "engine/internal/protocol/protocol.go"
+        }
+      ],
+      "notes": "Published wire contract. Field and command names are additive only."
+    },
+    {
+      "id": "compaction",
+      "term": "Compaction",
+      "definition": "The mechanic that shrinks a conversation so it fits the model context. The engine extracts facts and writes a boundary marker.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "qualifiers": [
+        "micro",
+        "full"
+      ],
+      "aliases": [
+        "context compaction"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func ExtractFacts",
+          "path": "engine/internal/compaction/compaction.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type CompactionInfo struct",
+          "path": "engine/internal/extension/sdk_hook_types.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface CompactionInfo",
+          "path": "engine/extensions/sdk/ion-sdk/types.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "CompactionRowView",
+          "path": "ios/IonRemote/Views/CompactionRowView.swift"
+        }
+      ]
+    },
+    {
+      "id": "configuration",
+      "term": "Configuration",
+      "definition": "The merged settings that control one engine session. Layers merge from enterprise policy down to the per-prompt override.",
+      "domain": "engine",
+      "kind": "public-contract",
+      "status": "canonical",
+      "qualifiers": [
+        "enterprise",
+        "user",
+        "project",
+        "session"
+      ],
+      "aliases": [
+        "engine configuration"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "type EngineConfig struct",
+          "path": "engine/internal/types/types.go"
+        }
+      ]
+    },
+    {
+      "id": "connection",
+      "term": "Connection",
+      "definition": "One live WebSocket link between a peer and the relay. A new connection for the same role replaces the old one.",
+      "domain": "relay",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "peer connection"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "relay",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (h *Hub) HandleWebSocket",
+          "path": "relay/relay.go"
+        },
+        {
+          "platform": "relay",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (a *AuthMiddleware) Validate",
+          "path": "relay/auth.go"
+        }
+      ]
+    },
+    {
+      "id": "context",
+      "term": "Context",
+      "definition": "Everything the engine assembles for one model request: the system prompt, the tool definitions, the discovered context files, and the conversation messages.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "qualifiers": [
+        "assembled",
+        "discovered",
+        "injected"
+      ],
+      "aliases": [
+        "assembled context"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func WalkContextFiles",
+          "path": "engine/internal/context/context.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface ContextUsage",
+          "path": "engine/extensions/sdk/ion-sdk/types.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "export function ContextIndicator",
+          "path": "desktop/src/renderer/components/StatusBarContextIndicator.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "ContextUsageRing",
+          "path": "ios/IonRemote/Views/ContextUsageRing.swift"
+        }
+      ]
+    },
+    {
+      "id": "conversation",
+      "term": "Conversation",
+      "definition": "One continuous thread of user prompts and agent responses, held in a tree that supports branching. There is one conversation type. The extension list is the only variable.",
+      "domain": "engine",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "thread"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type Conversation struct",
+          "path": "engine/internal/conversation/conversation.go"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "wire",
+          "language": "typescript",
+          "symbol": "export interface RemoteTabState",
+          "path": "desktop/src/main/remote/protocol-remote-tab.ts"
+        }
+      ]
+    },
+    {
+      "id": "conversation-instance",
+      "term": "Conversation instance",
+      "definition": "One engine session that a conversation holds. A conversation can carry more than one instance. Clients show a bar to select the active instance.",
+      "domain": "clients",
+      "kind": "state",
+      "status": "canonical",
+      "aliases": [
+        "instance"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface ProjectedConversationInstance",
+          "path": "desktop/src/shared/remote-projection-types.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct EngineInstanceBar",
+          "path": "ios/IonRemote/Views/EngineInstanceBar.swift"
+        }
+      ]
+    },
+    {
+      "id": "conversation-persistence",
+      "term": "Conversation persistence",
+      "definition": "The on-disk record of a conversation. The engine writes an NDJSON file pair: the durable entry tree and the model-visible message list.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "conversation storage"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type SessionEntry struct",
+          "path": "engine/internal/conversation/conversation.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "doc",
+          "language": "markdown",
+          "symbol": ".tree.jsonl",
+          "path": "docs/architecture/conversation-storage.md"
+        }
+      ]
+    },
+    {
+      "id": "conversation-status",
+      "term": "Conversation status",
+      "definition": "The current run state of a conversation, with its model, permission mode, context use, and pending work. The engine computes it. Clients render it and never derive it.",
+      "domain": "clients",
+      "kind": "state",
+      "status": "canonical",
+      "aliases": [
+        "status"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "type StatusFields struct",
+          "path": "engine/internal/types/types.go"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "StatusDot",
+          "path": "desktop/src/renderer/components/TabStripStatusDot.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "code",
+          "language": "swift",
+          "symbol": "TabStatusRollup",
+          "path": "ios/IonRemote/Views/TabStatusRollup.swift"
+        }
+      ]
+    },
+    {
+      "id": "conversation-status-bar",
+      "term": "Conversation Status Bar",
+      "definition": "The strip that shows conversation status and its inline controls: the model picker, the permission mode, and the context indicator.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "review-needed",
+      "aliases": [
+        "status bar"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct ConversationStatusBar",
+          "path": "ios/IonRemote/Views/ConversationStatusBar.swift"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "export function ComposerControls",
+          "path": "desktop/src/renderer/components/ComposerControls.tsx"
+        }
+      ],
+      "notes": "Honest mismatch: iOS has a named ConversationStatusBar view. The Desktop client has no component of that name and places the same controls inside the Input Bar, split across the StatusBar* control files. The name is canonical for the concept, not yet for a shared Desktop symbol."
+    },
+    {
+      "id": "conversation-timeline-minimap",
+      "term": "Conversation Timeline Minimap",
+      "definition": "The narrow scrubber beside a transcript. It maps the conversation history to a compact strip so a user can jump to an earlier point.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "conversation history timeline",
+        "timeline minimap"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "TimelineMinimap",
+          "path": "desktop/src/renderer/components/conversation/TimelineMinimap.tsx"
+        }
+      ],
+      "notes": "Desktop only today. No iOS counterpart exists."
+    },
+    {
+      "id": "conversation-view",
+      "term": "Conversation View",
+      "definition": "The scrolling region that renders one conversation: its messages, tool groups, agent turns, and inline cards.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "transcript view"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "export function ConversationView",
+          "path": "desktop/src/renderer/components/ConversationView.tsx"
+        },
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "ConversationView",
+          "path": "desktop/src/renderer/studio/StudioCenter.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct ConversationView",
+          "path": "ios/IonRemote/Views/ConversationView.swift"
+        }
+      ],
+      "notes": "One Desktop component, mounted in both the Overlay and the Studio presentation."
+    },
+    {
+      "id": "cost",
+      "term": "Cost",
+      "definition": "The money value of model use, computed from token counts and image counts for one turn or one whole conversation.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "spend"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func TurnCost",
+          "path": "engine/internal/cost/cost.go"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "StatusDrawerBreakdown",
+          "path": "ios/IonRemote/Views/StatusDrawerBreakdown.swift"
+        }
+      ]
+    },
+    {
+      "id": "desktop-client",
+      "term": "Desktop",
+      "definition": "One client application built on Electron. It owns the session store, persists conversations, answers snapshot polls, and hosts both client presentations.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "Ion Desktop",
+        "desktop client"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export type WindowRole",
+          "path": "desktop/src/renderer/lib/window-role.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface TabState",
+          "path": "desktop/src/shared/types-session.ts"
+        }
+      ],
+      "notes": "Desktop is ONE client with two presentations: the Overlay and the Studio. Never call the presentations separate clients."
+    },
+    {
+      "id": "dialog",
+      "term": "Dialog",
+      "definition": "A modal region that blocks the surface behind it until the user answers or dismisses it.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "modal"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "SettingsDialog",
+          "path": "desktop/src/renderer/components/SettingsDialog.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct EngineDialogSheet",
+          "path": "ios/IonRemote/Views/EngineDialogSheet.swift"
+        }
+      ]
+    },
+    {
+      "id": "dispatch",
+      "term": "Dispatch",
+      "definition": "One started sub-agent run, tracked by a dispatch identifier. The engine reports its lifecycle, its waiting state, and its children.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "agent dispatch"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type DispatchStateEntry struct",
+          "path": "engine/internal/extension/sdk_types.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface DispatchEntry",
+          "path": "engine/extensions/sdk/ion-sdk/types.ts"
+        }
+      ]
+    },
+    {
+      "id": "dispatch-split-pane",
+      "term": "Dispatch Split Pane",
+      "definition": "The Studio region that splits the center pane so a dispatched agent's own transcript shows beside the parent conversation.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "dispatch split"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "DispatchSplitPane",
+          "path": "desktop/src/renderer/studio/DispatchSplitPane.tsx"
+        }
+      ],
+      "notes": "Studio-only region. Canvas-coupled and not shared with the Overlay."
+    },
+    {
+      "id": "drawer",
+      "term": "Drawer",
+      "definition": "A region that slides in from an edge and holds detail for the current conversation. It does not block the surface behind it.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "side drawer"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "StatusDrawer",
+          "path": "desktop/src/renderer/components/StatusDrawer.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "ModalSheetBoundary",
+          "path": "ios/IonRemote/Views/ModalSheetBoundary.swift"
+        }
+      ]
+    },
+    {
+      "id": "engine-event",
+      "term": "Engine event",
+      "definition": "One outbound event that the engine writes to its socket. Every member of the outbound set carries the engine_ prefix.",
+      "domain": "engine",
+      "kind": "public-contract",
+      "status": "canonical",
+      "aliases": [
+        "outbound engine event"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "type EngineEvent struct",
+          "path": "engine/internal/types/engine_event.go"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "wire",
+          "language": "typescript",
+          "symbol": "EngineEvent",
+          "path": "desktop/src/shared/types-engine-event.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "wire",
+          "language": "swift",
+          "symbol": "engine_status",
+          "path": "ios/IonRemote/Models/EngineEventSupport.swift"
+        }
+      ],
+      "notes": "Published wire contract. See ADR-008 for prefix ownership."
+    },
+    {
+      "id": "engine-profile",
+      "term": "Engine profile",
+      "definition": "A named set of extensions and defaults that a conversation loads at start. An empty profile means a conversation with no extensions.",
+      "domain": "engine",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "profile"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "type EngineProfile struct",
+          "path": "engine/internal/types/types.go"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "engineProfileId",
+          "path": "desktop/src/shared/remote-projection-types.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "code",
+          "language": "swift",
+          "symbol": "EngineProfile",
+          "path": "ios/IonRemote/Models/EngineProfile.swift"
+        }
+      ]
+    },
+    {
+      "id": "engine-server",
+      "term": "Engine server",
+      "definition": "The headless process that accepts consumer connections, owns session lifecycle, and broadcasts events. It speaks NDJSON over a socket.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "daemon",
+        "ion serve"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type Server struct",
+          "path": "engine/internal/server/server.go"
+        }
+      ]
+    },
+    {
+      "id": "extension",
+      "term": "Extension",
+      "definition": "A subprocess that registers hooks, tools, commands, resources, schedules, and webhooks against the engine. It decides behavior that the engine executes.",
+      "domain": "harness-sdk",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "extension subprocess"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type Host struct",
+          "path": "engine/internal/extension/host.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type ExtensionConfig struct",
+          "path": "engine/internal/extension/sdk_types.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface ExtensionConfig",
+          "path": "engine/extensions/sdk/ion-sdk/types.ts"
+        }
+      ]
+    },
+    {
+      "id": "extension-context",
+      "term": "Extension context",
+      "definition": "The object that the SDK gives a hook or tool handler. It carries session identity and every engine capability the extension can call.",
+      "domain": "harness-sdk",
+      "kind": "public-contract",
+      "status": "canonical",
+      "aliases": [
+        "ion context"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface IonContext",
+          "path": "engine/extensions/sdk/ion-sdk/types.ts"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type Context struct",
+          "path": "engine/internal/extension/sdk_types.go"
+        }
+      ]
+    },
+    {
+      "id": "extension-sdk",
+      "term": "Extension SDK",
+      "definition": "The published library that an extension imports to reach the engine. It exposes the context, the hook registration, and the tool and command definitions.",
+      "domain": "harness-sdk",
+      "kind": "public-contract",
+      "status": "canonical",
+      "aliases": [
+        "SDK",
+        "Ion SDK"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function createIon",
+          "path": "engine/extensions/sdk/ion-sdk/runtime.ts"
+        }
+      ],
+      "notes": "Source of truth is engine/extensions/sdk/ion-sdk/. The installed copy is overwritten at build time."
+    },
+    {
+      "id": "forwarding",
+      "term": "Message forwarding",
+      "definition": "The relay action that passes one frame from a peer to the other peer on the same channel. The relay treats the frame as opaque bytes.",
+      "domain": "relay",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "forwarding"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "relay",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (ch *Channel) getPeerLocked",
+          "path": "relay/relay.go"
+        },
+        {
+          "platform": "relay",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type forwardAck struct",
+          "path": "relay/relay.go"
+        }
+      ]
+    },
+    {
+      "id": "harness",
+      "term": "Harness",
+      "definition": "The extension layer that decides behavior on top of engine mechanics. The engine executes; the harness decides.",
+      "domain": "harness-sdk",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "harness layer"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "doc",
+          "language": "markdown",
+          "symbol": "Harness",
+          "path": "docs/getting-started/concepts.md"
+        }
+      ]
+    },
+    {
+      "id": "hook",
+      "term": "Hook",
+      "definition": "A named point in the engine lifecycle where an extension can observe, change, or block behavior. Each hook has a fixed payload shape and result shape.",
+      "domain": "engine",
+      "kind": "public-contract",
+      "status": "canonical",
+      "aliases": [
+        "lifecycle hook"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type HookHandler",
+          "path": "engine/internal/extension/sdk_types.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "on(hook: string",
+          "path": "engine/extensions/sdk/ion-sdk/runtime.ts"
+        },
+        {
+          "platform": "engine",
+          "presentation": "doc",
+          "language": "markdown",
+          "symbol": "before_prompt",
+          "path": "docs/hooks/reference.md"
+        }
+      ],
+      "notes": "The engine owns the mechanism. The by-name reference is the authority; never pin a hook count in prose."
+    },
+    {
+      "id": "inbox",
+      "term": "Inbox",
+      "definition": "The client view that groups conversations by attention state: active, snoozed, or settled. The Desktop computes the classification and clients render it.",
+      "domain": "clients",
+      "kind": "state",
+      "status": "canonical",
+      "aliases": [
+        "conversation inbox"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function classifyInbox",
+          "path": "desktop/src/shared/inbox-classify.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "export function InboxPanel",
+          "path": "desktop/src/renderer/components/InboxPanel.tsx"
+        },
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "InboxSidebar",
+          "path": "desktop/src/renderer/studio/inbox/InboxSidebar.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "InboxRowView",
+          "path": "ios/IonRemote/Views/InboxRowView.swift"
+        }
+      ]
+    },
+    {
+      "id": "input-bar",
+      "term": "Input Bar",
+      "definition": "The region where a user writes a prompt, attaches files, picks a model, and sends or interrupts a run.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "composer"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "export function InputBar",
+          "path": "desktop/src/renderer/components/InputBar.tsx"
+        },
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "InputBar",
+          "path": "desktop/src/renderer/studio/StudioCenter.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "InputBar",
+          "path": "ios/IonRemote/Views/ConversationView+InputBar.swift"
+        }
+      ]
+    },
+    {
+      "id": "integration-bench",
+      "term": "Integration bench",
+      "definition": "A rebuildable checkout that assembles the feature branch plus each member worktree's pinned commit. It refuses edits and history writes.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "bench"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "wire",
+          "language": "typescript",
+          "symbol": "export interface RemoteBench",
+          "path": "desktop/src/main/remote/protocol-worktree.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "BenchBar",
+          "path": "desktop/src/renderer/components/BenchBar.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "InboxBenchGroup",
+          "path": "ios/IonRemote/Views/InboxBenchGroup.swift"
+        }
+      ]
+    },
+    {
+      "id": "ios-client",
+      "term": "iOS",
+      "definition": "One client application built with SwiftUI. It is a thin client that renders the Desktop snapshot and the engine event stream.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "Ion Remote",
+        "iOS client"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct TabListView",
+          "path": "ios/IonRemote/Views/TabListView.swift"
+        },
+        {
+          "platform": "ios",
+          "presentation": "wire",
+          "language": "swift",
+          "symbol": "NormalizedEvent",
+          "path": "ios/IonRemote/Models/NormalizedEvent.swift"
+        }
+      ]
+    },
+    {
+      "id": "keepalive",
+      "term": "Keepalive",
+      "definition": "The relay ping and pong cycle that detects a dead connection. A missing pong inside the timeout closes the connection.",
+      "domain": "relay",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "ping frame"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "relay",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func ping(conn *websocket.Conn",
+          "path": "relay/relay.go"
+        }
+      ]
+    },
+    {
+      "id": "menu",
+      "term": "Menu",
+      "definition": "A short list of actions that opens from a control or from a long press. It closes when the user picks an action.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "context menu"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "export function TabContextMenu",
+          "path": "desktop/src/renderer/components/TabStripTabContextMenu.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct TabRowContextMenu",
+          "path": "ios/IonRemote/Views/TabRowContextMenu.swift"
+        }
+      ]
+    },
+    {
+      "id": "message",
+      "term": "Message",
+      "definition": "One entry in a conversation: a user prompt, an assistant reply, a tool call, or a tool result.",
+      "domain": "engine",
+      "kind": "product-concept",
+      "status": "canonical",
+      "qualifiers": [
+        "user",
+        "assistant",
+        "tool",
+        "harness"
+      ],
+      "aliases": [
+        "conversation message"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type MessageData struct",
+          "path": "engine/internal/conversation/conversation.go"
+        },
+        {
+          "platform": "ios",
+          "presentation": "code",
+          "language": "swift",
+          "symbol": "struct Message",
+          "path": "ios/IonRemote/Models/Message.swift"
+        }
+      ]
+    },
+    {
+      "id": "mirror-store",
+      "term": "Mirror store",
+      "definition": "The Studio presentation's copy of the session store. It reads the same event stream, forwards owner-only mutations, and never persists.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "mirror mode"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "isMirrorWindow",
+          "path": "desktop/src/renderer/lib/window-role.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "MIRROR_LOCAL_ACTIONS",
+          "path": "desktop/src/shared/studio-mirror-actions.ts"
+        },
+        {
+          "platform": "studio",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "waitForTabsSync",
+          "path": "desktop/src/renderer/studio/state/secondary-store.ts"
+        }
+      ],
+      "notes": "See ADR-021. The Overlay renderer is the single owner; the Studio presentation is the mirror."
+    },
+    {
+      "id": "new-conversation-picker",
+      "term": "New Conversation Picker",
+      "definition": "The single entry point that starts a conversation. It selects the project, the directory or branch, the workspace, and the engine profile.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "new conversation flow"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "NewConversationPicker",
+          "path": "desktop/src/renderer/components/NewConversationPicker.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct TabListNewTabSheet",
+          "path": "ios/IonRemote/Views/TabListNewTabSheet.swift"
+        }
+      ]
+    },
+    {
+      "id": "normalized-event",
+      "term": "Normalized event",
+      "definition": "The engine's typed inner event union. Each variant carries one shape. The engine translates a variant to its engine_ wire name before it writes the socket.",
+      "domain": "engine",
+      "kind": "public-contract",
+      "status": "canonical",
+      "aliases": [
+        "canonical event"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "type NormalizedEvent struct",
+          "path": "engine/internal/types/normalized_event.go"
+        },
+        {
+          "platform": "ios",
+          "presentation": "wire",
+          "language": "swift",
+          "symbol": "NormalizedEvent",
+          "path": "ios/IonRemote/Models/NormalizedEvent.swift"
+        }
+      ],
+      "notes": "Bare internal names never reach a consumer. Semantics such as snapshot versus incremental are part of the contract."
+    },
+    {
+      "id": "notification",
+      "term": "Notification",
+      "definition": "A signal that something needs attention. The push body is a doorbell string, not content. The resource carries the content.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "push notification"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "export function NotificationsPanel",
+          "path": "desktop/src/renderer/components/NotificationsPanel.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct NotificationsView",
+          "path": "ios/IonRemote/Views/NotificationsView.swift"
+        }
+      ]
+    },
+    {
+      "id": "overlay",
+      "term": "Overlay",
+      "definition": "One of the Desktop client's two presentations. It is the transparent always-on-top glass window, and its renderer is the session-store owner.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "overlay glass",
+        "glass"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "overlay",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "overlay",
+          "path": "desktop/src/renderer/lib/window-role.ts"
+        }
+      ],
+      "notes": "A presentation of the Desktop client, never a separate client."
+    },
+    {
+      "id": "panel",
+      "term": "Panel",
+      "definition": "A dockable or floating region that holds one feature area, such as git, terminals, notifications, or agents.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "floating panel"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "FloatingPanel",
+          "path": "desktop/src/renderer/components/FloatingPanel.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct GitPaneView",
+          "path": "ios/IonRemote/Views/GitPaneView.swift"
+        }
+      ]
+    },
+    {
+      "id": "peer",
+      "term": "Peer",
+      "definition": "One end of a relay channel. A channel holds at most two peers, and each peer holds one role.",
+      "domain": "relay",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "relay peer"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "relay",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (h *Hub) HandleWebSocket",
+          "path": "relay/relay.go"
+        }
+      ]
+    },
+    {
+      "id": "peer-role",
+      "term": "Peer role",
+      "definition": "The published role name that a peer claims on connect. The engine side claims ion and the mobile side claims mobile.",
+      "domain": "relay",
+      "kind": "public-contract",
+      "status": "canonical",
+      "aliases": [
+        "role"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "relay",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "role != \"ion\" && role != \"mobile\"",
+          "path": "relay/main.go"
+        },
+        {
+          "platform": "relay",
+          "presentation": "doc",
+          "language": "markdown",
+          "symbol": "role=ion",
+          "path": "docs/architecture/relay.md"
+        }
+      ]
+    },
+    {
+      "id": "permission",
+      "term": "Permission",
+      "definition": "The decision about whether a tool call may run. The engine classifies the call and asks the consumer when a rule requires it.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "permission request"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type Engine struct",
+          "path": "engine/internal/permissions/engine.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "type PermissionRequestEvent struct",
+          "path": "engine/internal/types/normalized_event.go"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "PermissionCard",
+          "path": "desktop/src/renderer/components/PermissionCard.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct PermissionCardView",
+          "path": "ios/IonRemote/Views/PermissionCardView.swift"
+        }
+      ]
+    },
+    {
+      "id": "picker",
+      "term": "Picker",
+      "definition": "A small chooser that opens from a control and returns one value, such as a model, a branch, or a directory.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "popover picker"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "ModelPickerPopover",
+          "path": "desktop/src/renderer/components/ModelPickerPopover.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct ModelPickerSheet",
+          "path": "ios/IonRemote/Views/ModelPickerSheet.swift"
+        }
+      ]
+    },
+    {
+      "id": "provider",
+      "term": "Provider",
+      "definition": "The LLM vendor integration that streams a model response. The engine calls each provider over raw HTTP.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "LLM provider"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type LlmProvider interface",
+          "path": "engine/internal/providers/provider.go"
+        }
+      ],
+      "notes": "Name providers by name. Never pin a provider count in prose."
+    },
+    {
+      "id": "relay",
+      "term": "Relay",
+      "definition": "Transport infrastructure. A stateless WebSocket server that pairs two peers on a channel and forwards opaque frames. It is not a client and renders nothing.",
+      "domain": "relay",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "Ion Relay"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "relay",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func main",
+          "path": "relay/main.go"
+        },
+        {
+          "platform": "relay",
+          "presentation": "doc",
+          "language": "markdown",
+          "symbol": "The Ion Relay is a stateless Go WebSocket server",
+          "path": "docs/architecture/relay.md"
+        }
+      ]
+    },
+    {
+      "id": "relay-hub",
+      "term": "Relay hub",
+      "definition": "The in-memory map from channel identifier to its connected peers. It holds no persistence and cleans a channel up when both peers leave.",
+      "domain": "relay",
+      "kind": "internal-type",
+      "status": "canonical",
+      "aliases": [
+        "hub"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "relay",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func NewHub",
+          "path": "relay/relay.go"
+        }
+      ]
+    },
+    {
+      "id": "resource",
+      "term": "Resource",
+      "definition": "A durable structured item that an extension publishes. A session-scoped resource belongs to a conversation. A workspace-scoped resource belongs to none.",
+      "domain": "engine",
+      "kind": "product-concept",
+      "status": "canonical",
+      "qualifiers": [
+        "session-scoped",
+        "workspace-scoped"
+      ],
+      "aliases": [
+        "resource item"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type Broker struct",
+          "path": "engine/internal/resource/broker.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function buildResourcesAPI",
+          "path": "engine/extensions/sdk/ion-sdk/runtime-resources.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "ResourceViewer",
+          "path": "desktop/src/renderer/components/ResourceViewer.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "wire",
+          "language": "swift",
+          "symbol": "Resource",
+          "path": "ios/IonRemote/Models/NormalizedEvent+Resource.swift"
+        }
+      ],
+      "notes": "The engine stores nothing. The producing extension persists its own items."
+    },
+    {
+      "id": "schedule",
+      "term": "Schedule",
+      "definition": "A timed trigger that the engine persists and fires. The engine owns the timing. The extension owns what happens when it fires.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "scheduled job"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type Scheduler struct",
+          "path": "engine/internal/scheduling/scheduler.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export const scheduleApi",
+          "path": "engine/extensions/sdk/ion-sdk/runtime-async.ts"
+        }
+      ]
+    },
+    {
+      "id": "server-message",
+      "term": "Server message",
+      "definition": "One outbound NDJSON message from the engine to a consumer. It is either a broadcast event envelope or a result for a request that carried an identifier.",
+      "domain": "engine",
+      "kind": "public-contract",
+      "status": "canonical",
+      "aliases": [
+        "server event envelope"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "type ServerEvent struct",
+          "path": "engine/internal/protocol/protocol_server.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "type ServerResult struct",
+          "path": "engine/internal/protocol/protocol_server.go"
+        }
+      ]
+    },
+    {
+      "id": "session",
+      "term": "Session",
+      "definition": "The engine's live run container for one conversation. It holds the session key, the working directory, the loaded extensions, and the active run.",
+      "domain": "engine",
+      "kind": "product-concept",
+      "status": "canonical",
+      "qualifiers": [
+        "live",
+        "stored",
+        "settled"
+      ],
+      "aliases": [
+        "engine session"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type Manager struct",
+          "path": "engine/internal/session/manager.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "type SessionInfo struct",
+          "path": "engine/internal/protocol/protocol_server.go"
+        }
+      ],
+      "notes": "A session is the engine-side run container. A conversation is what a client renders. They are not interchangeable words."
+    },
+    {
+      "id": "slash-command",
+      "term": "Slash command",
+      "definition": "A named template that a user starts with a forward slash. The engine owns discovery, frontmatter parsing, precedence, and argument expansion. An extension may change the resolution.",
+      "domain": "harness-sdk",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "command"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type CommandDefinition struct",
+          "path": "engine/internal/extension/sdk_types.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface CommandDef",
+          "path": "engine/extensions/sdk/ion-sdk/types.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "SlashCommandMenu",
+          "path": "desktop/src/renderer/components/SlashCommandMenu.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct SlashCommandMenu",
+          "path": "ios/IonRemote/Views/SlashCommandMenu.swift"
+        }
+      ]
+    },
+    {
+      "id": "status-drawer",
+      "term": "Status Drawer",
+      "definition": "The region that opens beside a conversation to show its full status detail: the context breakdown, the run cost, and the active work.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "StatusDrawer",
+          "path": "desktop/src/renderer/components/StatusDrawer.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct StatusDrawerView",
+          "path": "ios/IonRemote/Views/StatusDrawerView.swift"
+        }
+      ]
+    },
+    {
+      "id": "studio-center",
+      "term": "Studio Center",
+      "definition": "The Studio region that holds the Conversation View, the Input Bar, the dispatch split, and the bottom terminal tray.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "center pane"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "StudioCenter",
+          "path": "desktop/src/renderer/studio/StudioCenter.tsx"
+        }
+      ]
+    },
+    {
+      "id": "studio-left-dock",
+      "term": "Studio Left Dock",
+      "definition": "The Studio region that holds the inbox, the file explorer, and the git views.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "left dock",
+        "left sidebar"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "StudioLeftSidebar",
+          "path": "desktop/src/renderer/studio/StudioLeftSidebar.tsx"
+        }
+      ]
+    },
+    {
+      "id": "studio-shell",
+      "term": "Studio",
+      "definition": "One of the Desktop client's two presentations. It is a standalone window with a conversation-centric workspace and the visualizer canvas as one surface.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "Ion Studio",
+        "Studio shell"
+      ],
+      "legacyNames": [
+        "Agent Team Visualizer",
+        "ATV"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "StudioShell",
+          "path": "desktop/src/renderer/studio/StudioShell.tsx"
+        }
+      ],
+      "notes": "A presentation of the Desktop client, never a separate client. Exactly one presentation is active at a time."
+    },
+    {
+      "id": "studio-surface",
+      "term": "Studio Surface",
+      "definition": "The Studio region on the right that holds conversation-scoped tabs plus the global pinned diff, plan, visualizer, and notification slots.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "right surface",
+        "surface pane"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "StudioSurface",
+          "path": "desktop/src/renderer/studio/StudioSurface.tsx"
+        }
+      ]
+    },
+    {
+      "id": "studio-title-bar",
+      "term": "Studio Title Bar",
+      "definition": "The Studio window bar that holds the breadcrumb, the compose action, and the pane controls.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "window title bar"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "StudioTitleBar",
+          "path": "desktop/src/renderer/studio/StudioTitleBar.tsx"
+        }
+      ]
+    },
+    {
+      "id": "surface",
+      "term": "Surface",
+      "definition": "One selectable content region that belongs to a conversation, such as a diff, a plan, a file, or the visualizer.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "review-needed",
+      "aliases": [
+        "surface tab"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "studio",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface SurfaceState",
+          "path": "desktop/src/renderer/studio/surface/surface-store.ts"
+        }
+      ],
+      "notes": "Honest mismatch: the code uses surface for the Studio right-pane tab model, while prose also uses surface as a loose word for any UI region. The narrow Studio meaning is the one the code pins. The loose use needs a decision before the term is canonical."
+    },
+    {
+      "id": "tab",
+      "term": "Tab",
+      "definition": "The client-side row that holds one conversation and its instances, terminals, group, and lifecycle role.",
+      "domain": "clients",
+      "kind": "state",
+      "status": "canonical",
+      "aliases": [
+        "conversation tab"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface TabState",
+          "path": "desktop/src/shared/types-session.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct TabRowView",
+          "path": "ios/IonRemote/Views/TabRowView.swift"
+        }
+      ]
+    },
+    {
+      "id": "tab-strip",
+      "term": "Tab Strip",
+      "definition": "The region that shows every open conversation, its status dot, and its group pill, and that switches the active conversation.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "tab list"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "export function TabStrip",
+          "path": "desktop/src/renderer/components/TabStrip.tsx"
+        },
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "TabStrip",
+          "path": "desktop/src/renderer/studio/StudioShell.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct TabListView",
+          "path": "ios/IonRemote/Views/TabListView.swift"
+        }
+      ]
+    },
+    {
+      "id": "telemetry",
+      "term": "Telemetry",
+      "definition": "The structured trace and span record of engine work. It carries the identifiers that correlate one operation across surfaces.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "span"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type SpanHandle struct",
+          "path": "engine/internal/telemetry/telemetry.go"
+        }
+      ]
+    },
+    {
+      "id": "terminal",
+      "term": "Terminal",
+      "definition": "A shell region attached to a pty that the Desktop main process owns. Scrollback survives a window close and an app restart.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "qualifiers": [
+        "conversation",
+        "surface"
+      ],
+      "aliases": [
+        "shell pane"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "export function TerminalPanel",
+          "path": "desktop/src/renderer/components/TerminalPanel.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "ConversationTerminalView",
+          "path": "ios/IonRemote/Views/ConversationTerminalView.swift"
+        }
+      ]
+    },
+    {
+      "id": "tool",
+      "term": "Tool",
+      "definition": "A named callable that an agent can invoke. The engine ships a built-in core set and an extension can register more or replace one.",
+      "domain": "engine",
+      "kind": "public-contract",
+      "status": "canonical",
+      "qualifiers": [
+        "built-in",
+        "extension",
+        "MCP"
+      ],
+      "aliases": [
+        "engine tool"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type ToolDef struct",
+          "path": "engine/internal/types/tools.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func RegisterTool",
+          "path": "engine/internal/tools/registry.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface ToolDef",
+          "path": "engine/extensions/sdk/ion-sdk/types.ts"
+        }
+      ],
+      "notes": "Name tools by name. Never pin a tool count in prose."
+    },
+    {
+      "id": "transcript",
+      "term": "Transcript",
+      "definition": "The ordered list of rendered conversation rows: messages, tool groups, agent turns, and markers.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "message list"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct Transcript",
+          "path": "ios/IonRemote/Views/Transcript.swift"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "MessageBubble",
+          "path": "desktop/src/renderer/components/conversation/MessageBubble.tsx"
+        }
+      ]
+    },
+    {
+      "id": "transport",
+      "term": "Transport",
+      "definition": "The engine's listener abstraction. It accepts a connection over a Unix socket or a TCP port and hands it to the server.",
+      "domain": "engine",
+      "kind": "internal-type",
+      "status": "canonical",
+      "aliases": [
+        "socket transport"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type Transport interface",
+          "path": "engine/internal/transport/transport.go"
+        }
+      ]
+    },
+    {
+      "id": "turn",
+      "term": "Turn",
+      "definition": "One user prompt and the agent work that answers it, up to the next user prompt.",
+      "domain": "engine",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "user turn"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type TurnInfo struct",
+          "path": "engine/internal/extension/sdk_hook_types.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface TurnInfo",
+          "path": "engine/extensions/sdk/ion-sdk/types.ts"
+        }
+      ]
+    },
+    {
+      "id": "visualizer-canvas",
+      "term": "Visualizer Canvas",
+      "definition": "The Studio surface that draws the agent teams as a pixel-art office. Its scene generation is seeded and repeatable.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "office canvas",
+        "visualizer"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "VisualizerRoot",
+          "path": "desktop/src/renderer/studio/visualizer/VisualizerRoot.tsx"
+        }
+      ],
+      "notes": "Exists only as a Studio surface. There is no standalone visualizer window."
+    },
+    {
+      "id": "vocabulary-registry",
+      "term": "Vocabulary registry",
+      "definition": "The machine-validated registry of canonical Ion terms. It is the naming authority for every shared concept, and the generated index is built from it.",
+      "domain": "harness-sdk",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "term registry"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "validateRegistry",
+          "path": "scripts/vocabulary.mjs"
+        }
+      ]
+    },
+    {
+      "id": "wake-notification",
+      "term": "Wake notification",
+      "definition": "The push that the relay sends when the destination peer is not connected. It wakes the peer so it can reconnect and pull the content itself.",
+      "domain": "relay",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "wake push"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "relay",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (p *APNsPusher) Send",
+          "path": "relay/push.go"
+        },
+        {
+          "platform": "relay",
+          "presentation": "doc",
+          "language": "markdown",
+          "symbol": "APNs push",
+          "path": "docs/architecture/relay.md"
+        }
+      ]
+    },
+    {
+      "id": "webhook",
+      "term": "Webhook",
+      "definition": "An inbound HTTP route that the engine hosts. The engine owns the listening and the routing. The extension owns the action.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "inbound webhook"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type Server struct",
+          "path": "engine/internal/webhooks/server.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export const webhooksApi",
+          "path": "engine/extensions/sdk/ion-sdk/runtime-async.ts"
+        }
+      ]
+    },
+    {
+      "id": "workspace",
+      "term": "Workspace",
+      "definition": "The filesystem root that scopes tool execution and file access for a conversation. The engine enforces containment against it.",
+      "domain": "engine",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "workspace root"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type Registry struct",
+          "path": "engine/internal/workspaces/registry.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "ClientWorkspaceContext",
+          "path": "engine/internal/protocol/protocol.go"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "WorkspaceStatusIndicator",
+          "path": "desktop/src/renderer/components/WorkspaceStatusIndicator.tsx"
+        }
+      ]
+    },
+    {
+      "id": "worktree",
+      "term": "Worktree",
+      "definition": "A registered git checkout that holds one branch of work. It refuses writes outside itself, and a landed worktree is sealed for review.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "qualifiers": [
+        "registered",
+        "landed",
+        "retired"
+      ],
+      "aliases": [
+        "git worktree"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "wire",
+          "language": "typescript",
+          "symbol": "export interface RemoteWorktree",
+          "path": "desktop/src/main/remote/protocol-worktree.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "WorktreeRow",
+          "path": "desktop/src/renderer/components/WorktreeRow.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct WorktreeRowView",
+          "path": "ios/IonRemote/Views/WorktreeRowView.swift"
+        }
+      ]
+    }
+  ]
+}

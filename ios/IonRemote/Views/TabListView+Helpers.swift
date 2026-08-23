@@ -48,7 +48,7 @@ extension TabListView {
     /// Enterprise-locked state (State 0): `enterpriseNewConversationPolicy` is now
     /// populated from `desktop_settings_snapshot.newConversationPolicy` (#256).
     /// When the desktop projects a locked policy, iOS enforces it here.
-    func requestNewConversation(directory: String?, pinToGroupId: String?) {
+    func requestNewConversation(directory: String?, pinToGroupId: String?, useWorktree: Bool? = nil, sourceBranch: String? = nil) {
         // Convert RemoteNewConversationPolicy -> NewConversationDefaultsPolicy for the pure router.
         let policy: NewConversationDefaultsPolicy? = viewModel.enterpriseNewConversationPolicy.map {
             NewConversationDefaultsPolicy(locked: $0.locked, baseDirectory: $0.baseDirectory, profileId: $0.engineProfileId)
@@ -65,19 +65,21 @@ extension TabListView {
         ])
         switch action {
         case .plain:
-            viewModel.createTab(workingDirectory: directory, pinToGroupId: pinToGroupId)
+            viewModel.createTab(workingDirectory: directory, pinToGroupId: pinToGroupId, useWorktree: useWorktree, sourceBranch: sourceBranch)
         case .profile(let profileId):
-            viewModel.createTab(workingDirectory: directory, pinToGroupId: pinToGroupId, profileId: profileId)
+            viewModel.createTab(workingDirectory: directory, pinToGroupId: pinToGroupId, profileId: profileId, useWorktree: useWorktree, sourceBranch: sourceBranch)
         case .showPicker:
             conversationPickerDirectory = directory
             conversationPickerPinToGroupId = pinToGroupId
+            conversationPickerUseWorktree = useWorktree
+            conversationPickerSourceBranch = sourceBranch
         case .locked(let mandatedDir, let profileId):
             // Enterprise-locked: use mandated dir, ignore caller's directory.
             let dir = mandatedDir.isEmpty ? directory : mandatedDir
             if profileId.isEmpty {
-                viewModel.createTab(workingDirectory: dir)
+                viewModel.createTab(workingDirectory: dir, useWorktree: useWorktree, sourceBranch: sourceBranch)
             } else {
-                viewModel.createTab(workingDirectory: dir, profileId: profileId)
+                viewModel.createTab(workingDirectory: dir, profileId: profileId, useWorktree: useWorktree, sourceBranch: sourceBranch)
             }
         }
     }

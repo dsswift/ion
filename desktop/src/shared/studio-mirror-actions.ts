@@ -40,6 +40,7 @@ export const FORWARDED_ACTIONS: Record<string, ForwardedActionSpec> = {
   snoozeTab: { minArgs: 2, maxArgs: 2, tabIdAt: 0 },
   unsnoozeTab: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
   markTabUnread: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
+  markTabRead: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
   pinTab: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
   unpinTab: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
   reorderPinnedTabs: { minArgs: 1, maxArgs: 1 },

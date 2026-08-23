@@ -32,7 +32,10 @@ export type RemoteCommand =
       profileId?: string;
       extensions?: string[];
       clientCmdId?: string;
+      useWorktree?: boolean;
+      sourceBranch?: string;
     }
+  | { type: "desktop_git_branches"; directory: string }
   | {
       type: "desktop_create_terminal_tab";
       workingDirectory?: string;
@@ -58,9 +61,18 @@ export type RemoteCommand =
       implementationPhase?: boolean;
       instanceId?: string;
     }
-  | { type: "desktop_cancel"; tabId: string; scope?: "all" | "orchestrator" | "all_work" }
+  | {
+      type: "desktop_cancel";
+      tabId: string;
+      scope?: "all" | "orchestrator" | "all_work";
+    }
   | { type: "desktop_abort_dispatch"; tabId: string; dispatchId: string }
-  | { type: "desktop_stop_background_task"; tabId: string; taskId: string; requestId: string }
+  | {
+      type: "desktop_stop_background_task";
+      tabId: string;
+      taskId: string;
+      requestId: string;
+    }
   | {
       type: "desktop_respond_permission";
       tabId: string;
@@ -94,6 +106,8 @@ export type RemoteCommand =
   // change on every client. Lockstep wire — RemoteCommand.swift in the same
   // change (ADR-008).
   | { type: "desktop_tab_settle"; tabId: string }
+  /** Permanently delete a conversation and its stored transcript. */
+  | { type: "desktop_tab_delete"; tabId: string }
   /** Open a settled record as read-only history without resuming its session. */
   | { type: "desktop_review_settled_tab"; tabId: string }
   | { type: "desktop_tab_unsettle"; tabId: string }

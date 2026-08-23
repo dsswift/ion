@@ -88,7 +88,7 @@ function harness(opts: { pane?: unknown; hydrateTo?: ReturnType<typeof userMessa
   }
   const get = (): State => state as never
   const slice = createInboxSlice(set as never, get as never)
-  return { slice, loadSkeletonMessages, renameTab, drop: () => { state.tabs = [] } }
+  return { slice, loadSkeletonMessages, renameTab, state: () => state, drop: () => { state.tabs = [] } }
 }
 
 const generateTitle = vi.fn(async () => 'A regenerated title')
@@ -97,6 +97,21 @@ beforeEach(() => {
   generateTitle.mockClear()
   generateTitle.mockResolvedValue('A regenerated title')
   ;(globalThis as unknown as { window: unknown }).window = { ion: { generateTitle } }
+})
+
+describe('markTabRead', () => {
+  it('records the visit and clears a manual unread marker', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(4_000))
+    const h = harness()
+    h.state().tabs[0].lastVisitedAt = 2_000
+    h.state().tabs[0].manualUnread = true
+
+    h.slice.markTabRead?.(TAB)
+
+    expect(h.state().tabs[0]).toMatchObject({ lastVisitedAt: 4_000, manualUnread: false })
+    vi.useRealTimers()
+  })
 })
 
 describe('regenerateTabTitle', () => {

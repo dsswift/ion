@@ -47,6 +47,8 @@ struct TabListView: View {
     // lives in another file).
     @State var conversationPickerDirectory: String? = nil
     @State var conversationPickerPinToGroupId: String? = nil
+    @State var conversationPickerUseWorktree: Bool? = nil
+    @State var conversationPickerSourceBranch: String? = nil
     @State private var renamingTabId: String?
     @State private var renameText: String = ""
     /// A close held for confirmation because the tab's worktree still holds work.
@@ -70,6 +72,8 @@ struct TabListView: View {
     @State var inboxProjectFilter = UserDefaults.standard.string(forKey: "inboxProjectFilter") ?? "all"
     @State var inboxSort = InboxNavigator.Sort(rawValue: UserDefaults.standard.string(forKey: "inboxSort") ?? "recent") ?? .recent
     @State var showSettledHistory = false
+    /// Inbox conversation awaiting the settle/delete/cancel safety choice.
+    @State var pendingInboxDeleteTab: RemoteTabState?
     /// Tab awaiting a snooze-preset choice (confirmationDialog).
     @State var snoozeSheetTabId: String? = nil
     @State var inboxRenameTabId: String? = nil
@@ -107,6 +111,39 @@ struct TabListView: View {
         }
         .sheet(isPresented: $showNotifications) {
             NotificationsView(resourceStore: viewModel.resourceStore, viewModel: viewModel)
+        }
+        .confirmationDialog(
+            "Delete conversation?",
+            isPresented: Binding(
+                get: { pendingInboxDeleteTab != nil },
+                set: { if !$0 { pendingInboxDeleteTab = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let tab = pendingInboxDeleteTab,
+               tab.inboxState != "settled",
+               !viewModel.settlingIsPermanent(tab) {
+                Button("Settle Conversation") {
+                    DiagnosticLog.log("conversation delete replaced with settlement", tag: "inbox", level: .info, fields: ["tab_id": tab.id])
+                    viewModel.settleTab(tabId: tab.id)
+                    pendingInboxDeleteTab = nil
+                }
+            }
+            if let tab = pendingInboxDeleteTab {
+                Button("Delete Conversation", role: .destructive) {
+                    DiagnosticLog.log("conversation permanent deletion confirmed", tag: "inbox", level: .info, fields: ["tab_id": tab.id])
+                    viewModel.deleteTab(tabId: tab.id)
+                    pendingInboxDeleteTab = nil
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                if let tab = pendingInboxDeleteTab {
+                    DiagnosticLog.log("conversation permanent deletion cancelled", tag: "inbox", level: .info, fields: ["tab_id": tab.id])
+                }
+                pendingInboxDeleteTab = nil
+            }
+        } message: {
+            Text("This permanently deletes the stored conversation. Settle keeps it in history so you can return to it later.")
         }
         // Snooze preset picker (inbox swipe action). confirmationDialog over
         // a sheet: four options, no custom chrome needed.
@@ -197,19 +234,42 @@ struct TabListView: View {
                 onCreateWorktree: { repoPath, sourceBranch in
                     viewModel.createWorktree(repoPath: repoPath, sourceBranch: sourceBranch)
                 },
+                onCreateWorktreeConversation: { repoPath, sourceBranch in
+                    viewModel.createTab(workingDirectory: repoPath, useWorktree: true, sourceBranch: sourceBranch)
+                },
                 onCreateTerminalTab: { dir in
                     viewModel.createTerminalTab(workingDirectory: dir)
                 }
             )
         }
-        // New-conversation profile picker. Shown when `resolveNewConversationAction`
+        .confirmationDialog(
+            "Choose source branch",
+            isPresented: Binding(get: { viewModel.pendingBranchPickerRepo != nil }, set: { if !$0 { viewModel.pendingBranchPickerRepo = nil } }),
+            titleVisibility: .visible
+        ) {
+            if let repo = viewModel.pendingBranchPickerRepo,
+               let branches = viewModel.gitBranches[repo]?.branches {
+                ForEach(branches, id: \.self) { branch in
+                    Button(branch) {
+                        viewModel.pendingBranchPickerRepo = nil
+                        viewModel.createTab(workingDirectory: repo, useWorktree: true, sourceBranch: branch)
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) { viewModel.pendingBranchPickerRepo = nil }
+        }
         // returns `.showPicker` — i.e. multiple profiles exist and no default is set.
         // Includes "Plain conversation" at top (matches desktop picker behaviour).
         .confirmationDialog(
             "New Conversation",
             isPresented: Binding(
                 get: { conversationPickerDirectory != nil },
-                set: { if !$0 { conversationPickerDirectory = nil; conversationPickerPinToGroupId = nil } }
+                set: { if !$0 {
+                    conversationPickerDirectory = nil
+                    conversationPickerPinToGroupId = nil
+                    conversationPickerUseWorktree = nil
+                    conversationPickerSourceBranch = nil
+                } }
             ),
             titleVisibility: .visible
         ) {
@@ -217,30 +277,40 @@ struct TabListView: View {
             Button("Plain conversation") {
                 let dir = conversationPickerDirectory
                 let pin = conversationPickerPinToGroupId
+                let useWorktree = conversationPickerUseWorktree
+                let sourceBranch = conversationPickerSourceBranch
                 conversationPickerDirectory = nil
                 conversationPickerPinToGroupId = nil
+                conversationPickerUseWorktree = nil
+                conversationPickerSourceBranch = nil
                 DiagnosticLog.log("new conv picker selected plain", tag: "view.tablist", fields: [
                     "path": dir?.prefix(40).description ?? "nil"
                 ])
-                viewModel.createTab(workingDirectory: dir, pinToGroupId: pin)
+                viewModel.createTab(workingDirectory: dir, pinToGroupId: pin, useWorktree: useWorktree, sourceBranch: sourceBranch)
             }
             // Engine profiles.
             ForEach(viewModel.engineProfiles) { profile in
                 Button(profile.name) {
                     let dir = conversationPickerDirectory
                     let pin = conversationPickerPinToGroupId
+                    let useWorktree = conversationPickerUseWorktree
+                    let sourceBranch = conversationPickerSourceBranch
                     conversationPickerDirectory = nil
                     conversationPickerPinToGroupId = nil
+                    conversationPickerUseWorktree = nil
+                    conversationPickerSourceBranch = nil
                     DiagnosticLog.log("new conv picker selected profile", tag: "view.tablist", fields: [
                         "reason": String(profile.id.prefix(8)),
                         "path": dir?.prefix(40).description ?? "nil"
                     ])
-                    viewModel.createTab(workingDirectory: dir, pinToGroupId: pin, profileId: profile.id)
+                    viewModel.createTab(workingDirectory: dir, pinToGroupId: pin, profileId: profile.id, useWorktree: useWorktree, sourceBranch: sourceBranch)
                 }
             }
             Button("Cancel", role: .cancel) {
                 conversationPickerDirectory = nil
                 conversationPickerPinToGroupId = nil
+                conversationPickerUseWorktree = nil
+                conversationPickerSourceBranch = nil
             }
         }
         .alert("Rename Tab", isPresented: .init(

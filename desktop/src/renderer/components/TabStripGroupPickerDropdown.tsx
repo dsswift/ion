@@ -3,17 +3,15 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence, Reorder } from 'framer-motion'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
-import { usePreferencesStore } from '../preferences'
 import { usePopoverLayer } from './PopoverLayer'
 import type { TabGroupView } from '../hooks/useTabGroups'
-import { checkWorktreeUncommitted, shouldUseWorktree } from './TabStripShared'
+import { checkWorktreeUncommitted } from './TabStripShared'
 import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
 import { zoomViewport } from '../viewport-zoom'
 import { PillColorPicker } from './TabStripPillColorPicker'
 import { TabContextMenu } from './TabStripTabContextMenu'
 import { useRenameTabWorktree } from '../hooks/useRenameTabWorktree'
 import { DropdownTabRow } from './TabStripDropdownTabRow'
-import { newTabInDirectory } from './new-conversation-routing'
 import { rError } from '../rendererLogger'
 
 interface GroupPickerDropdownProps {
@@ -210,16 +208,7 @@ export function GroupPickerDropdown({
               } : undefined}
               onNewTabInDir={() => {
                 window.dispatchEvent(new CustomEvent('ion:close-group-pickers'))
-                // Lock-safe single path: cannot bypass the enterprise lock.
-                const { engineProfiles, defaultEngineProfileId, enterpriseNewConversationDefaults: policy } = usePreferencesStore.getState()
-                newTabInDirectory(menuTab.workingDirectory, {
-                  profiles: engineProfiles,
-                  defaultProfileId: defaultEngineProfileId,
-                  enterprisePolicy: policy,
-                  createTabInDir: (d, wt) => { void useSessionStore.getState().createTabInDirectory(d, wt).catch((err) => rError('tabs', 'create tab failed', { error: String(err) })) },
-                  createConvTab: (d, opts) => { void useSessionStore.getState().createConversationTab(d, opts).catch((err) => rError('tabs', 'create conversation failed', { error: String(err) })) },
-                  shouldUseWorktree: shouldUseWorktree(false),
-                })
+                window.dispatchEvent(new CustomEvent('ion:open-new-conversation-picker'))
               }}
               onFinishWork={() => {
                 void useSessionStore.getState().finishWorktreeTab(menuTab.id).catch((err) => rError('tabs', 'finish worktree failed', { error: String(err) }))

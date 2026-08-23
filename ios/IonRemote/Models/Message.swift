@@ -141,6 +141,10 @@ struct Message: Codable, Identifiable, Sendable {
     /// on legacy history rows. See `InjectionPolicy` for how it is interpreted.
     var injectionKind: String? = nil
 
+    /// Engine-derived phase for persisted implementation work. Optional for
+    /// history entries written before the field existed.
+    var implementationPhase: Bool? = nil
+
     /// Engine-derived: an engine-side actor authored this turn, not a user.
     ///
     /// Read by `InjectionPolicy.suppresses` so the history filter and the
@@ -205,7 +209,7 @@ struct Message: Codable, Identifiable, Sendable {
         case isInternal = "internal"
         case slashCommand, slashArgs, slashSource, slashModelAlias, slashModelEffective
         case planFilePath, markerKind, markerMessageLength, markerMachineAuthored
-        case injectionKind, machineAuthored
+        case injectionKind, implementationPhase, machineAuthored
         // clientMsgId: desktop-local reconciliation key on history user rows (RC-9).
         case clientMsgId
         // dedupKey / dedupMode: decoded from the desktop history-replay wire
@@ -318,6 +322,7 @@ extension Message {
         // InjectionPolicy can filter these rows in handleConversationHistory
         // rather than rendering a dispatch completion as a user bubble.
         injectionKind = try container.decodeIfPresent(String.self, forKey: .injectionKind)
+        implementationPhase = try container.decodeIfPresent(Bool.self, forKey: .implementationPhase)
         machineAuthored = try container.decodeIfPresent(Bool.self, forKey: .machineAuthored)
 
         // backgroundWork carries structured metadata for an engine-owned
@@ -345,7 +350,7 @@ extension Message {
         case slashCommand, slashArgs, slashSource, slashModelAlias, slashModelEffective
         case planFilePath
         case markerKind, markerMessageLength, markerMachineAuthored, markerPlanFilePath
-        case injectionKind, machineAuthored
+        case injectionKind, implementationPhase, machineAuthored
         case backgroundWork, backgroundTaskId
         case attachments
     }

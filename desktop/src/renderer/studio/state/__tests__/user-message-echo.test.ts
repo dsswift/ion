@@ -50,6 +50,21 @@ describe('Studio user-message echo causality', () => {
     ])
   })
 
+  it('preserves plan implementation provenance from the owner echo', () => {
+    const tab = { ...makeLocalTab(), id: 'tab-1' }
+    useSessionStore.setState({
+      tabs: [tab],
+      conversationPanes: new Map([['tab-1', makeMainPane()]]),
+    })
+
+    consumeUserMessageEcho('tab-1', {
+      id: 'implementation-1', content: 'Implement the plan.', timestamp: 123, implementationPhase: true,
+    })
+
+    expect(useSessionStore.getState().conversationPanes.get('tab-1')!.instances[0].messages[0])
+      .toMatchObject({ implementationPhase: true })
+  })
+
   it('uses echo identity to prevent duplicate insertion', () => {
     const tab = { ...makeLocalTab(), id: 'tab-1' }
     useSessionStore.setState({

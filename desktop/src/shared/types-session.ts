@@ -195,7 +195,8 @@ export interface TabState {
   /** When the snooze was set (raised-hand comparisons). */
   snoozedAt: number | null;
   /** Last time the user visited (selected) this tab. Inbox unread =
-   *  manualUnread || lastCompletionAt > lastVisitedAt; never-visited = read. */
+   *  manualUnread || max(lastCompletionAt, lastMessageAt) > lastVisitedAt;
+   *  never-visited = read. */
   lastVisitedAt: number | null;
   /** User-forced unread marker (cleared on visit). */
   manualUnread: boolean;
@@ -398,6 +399,8 @@ export interface Message {
   slashModelAlias?: string;
   /** Concrete model the engine selected for this slash invocation after tier and provider resolution. */
   slashModelEffective?: string;
+  /** True when this user turn starts an approved plan implementation. */
+  implementationPhase?: boolean;
   /**
    * Intercept level carried from `engine_intercept.interceptLevel`.
    * Populated only on `role: 'harness'` messages pushed by the
@@ -755,6 +758,8 @@ export interface SessionLoadMessage {
   slashSource?: string;
   slashModelAlias?: string;
   slashModelEffective?: string;
+  /** True when this persisted user turn starts an approved plan implementation. */
+  implementationPhase?: boolean;
   /**
    * Marker payload fields (additive, omitempty on the wire). Set only when
    * `role === 'system'` and this row is a persisted marker entry (compaction,

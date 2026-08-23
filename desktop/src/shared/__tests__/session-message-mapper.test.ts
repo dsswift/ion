@@ -196,6 +196,17 @@ describe("mapSessionMessage — ordinary rows", () => {
     expect(msg.slashModelEffective).toBe("dci-marketing/gpt-5.6-terra");
   });
 
+  it("carries implementation provenance through history mapping", () => {
+    const row: SessionLoadMessage = {
+      role: "user",
+      content: "Implement the plan.",
+      timestamp: 6002,
+      implementationPhase: true,
+    };
+
+    expect(mapSessionMessage(row, makeId)!.implementationPhase).toBe(true);
+  });
+
   it("carries engine-replayed image attachments on a reloaded tool row", () => {
     // The engine's flattenEntries replays a persisted tool-result image as a
     // SessionMessage.Attachments entry on the owning tool row (image support,

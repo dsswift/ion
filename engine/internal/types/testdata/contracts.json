@@ -716,6 +716,7 @@
       "backgroundWork",
       "content",
       "id",
+      "implementationPhase",
       "injectionKind",
       "internal",
       "isError",

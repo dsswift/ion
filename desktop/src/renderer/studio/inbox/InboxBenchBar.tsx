@@ -63,7 +63,7 @@ export function InboxBenchBar({
         </button>
       </Tooltip>
       <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Bench · {workspace.sourceBranch}</span>
-      <span style={{ color: colors.textTertiary, fontSize: 10 }}>{conversations.length}</span>
+      {conversations.length > 0 && <span data-testid="inbox-bench-conversation-count" style={{ color: colors.textTertiary, fontSize: 10 }}>{conversations.length}</span>}
       <button
         aria-label={terminalTabId ? 'Go to bench terminal' : 'Open bench terminal'}
         onClick={(event) => { event.stopPropagation(); onOpenTerminal() }}

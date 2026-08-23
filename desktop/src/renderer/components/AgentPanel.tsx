@@ -11,7 +11,6 @@ import {
   selectAgentDepths,
   dispatchKey,
   isAgentActive,
-  mostRecentDispatch,
 } from "./agent-panel-helpers";
 import { reconcileActivity } from "./agent-dispatch-activity";
 import { mapConversationMessages } from "./agent-conversation-mapper";
@@ -25,6 +24,7 @@ import type {
   DispatchTelemetryEntry,
 } from "../../shared/types-engine";
 import { rDebug, rError } from "../rendererLogger";
+import { mostRecentDispatchIndex, routeAgentDetailToSurface } from "./agent-detail-routing";
 
 interface Props {
   agents: AgentStateUpdate[];
@@ -123,12 +123,7 @@ export function AgentPanel({
   // Detail defaults must identify the same dispatch as AgentRow's foreground
   // dot and duration. Dispatch arrays retain slot-insertion order, not
   // chronology, so array-last is only a fallback when start times are absent.
-  const defaultDispatchIndex = useCallback((dispatches: DispatchInfo[]) => {
-    const recent = mostRecentDispatch(dispatches);
-    return recent
-      ? dispatches.findIndex((dispatch) => dispatch.id === recent.id)
-      : -1;
-  }, []);
+  const defaultDispatchIndex = useCallback(mostRecentDispatchIndex, []);
 
   // Visibility + root scoping. Memoized so `visible` is a stable reference:
   // `filter` and `sortAgents` always produce new arrays, and effects that
@@ -494,12 +489,18 @@ export function AgentPanel({
       return;
     }
 
-    // Opening a row always means opening the floating detail panel. There is
-    // no inline-expand mode: the detail panel is the single way to inspect a
-    // dispatch, so the collapsed row stays a pure status summary.
+    // Opening a row shows dispatch detail in the active client host. Studio
+    // routes it to the surface. Overlay uses the floating detail panel.
     if (hasContent) {
       // Default to the most recent dispatch if not already selected
       const dispatches = getDispatches(agent);
+      const selectedIndex =
+        selectedDispatch.get(key) ?? defaultDispatchIndex(dispatches);
+      const selected = dispatches[selectedIndex];
+      if (routeAgentDetailToSurface(agent, selected)) {
+        loadAgentDispatch(agent, selected.id);
+        return;
+      }
       if (dispatches.length > 0 && !selectedDispatch.has(key)) {
         setSelectedDispatch((prev) => {
           const next = new Map(prev);
@@ -511,13 +512,11 @@ export function AgentPanel({
       // on. A running agent whose first dispatch has not registered yet is
       // keyed by name; keying it any other way opened a panel that resolved to
       // no agent and so never rendered.
-      const selectedIndex =
-        selectedDispatch.get(key) ?? defaultDispatchIndex(dispatches);
       setPopupSubject({
         agentName: agent.name,
-        dispatchId: dispatches[selectedIndex]?.id ?? "",
+        dispatchId: selected?.id ?? "",
       });
-      loadAgentDispatch(agent, dispatches[selectedIndex]?.id);
+      loadAgentDispatch(agent, selected?.id);
     }
     // A data-less click (roster pill, completed ephemeral with no transcript)
     // is a no-op — there is nothing to open.

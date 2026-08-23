@@ -1,7 +1,35 @@
-// Test setup: backfill browser globals that renderer modules touch at import
-// time. Runs in every test file (node and jsdom environments alike).
+// Test setup: isolate every Vitest worker from the operator's real home, then
+// backfill browser globals that renderer modules touch at import time. Runs in
+// every test file (node and jsdom environments alike).
 //
-// `localStorage` is the only global that needs backfilling: jsdom does not
+// Main-process modules resolve durable state through os.homedir(). A test that
+// imports one of those modules without its own os mock must still be unable to
+// write ~/.ion. Keep one temporary home per worker process so setup files and
+// test modules agree on every lazy state path. Read-only real-data smoke tests
+// use ION_REAL_HOME explicitly.
+import { mkdirSync, mkdtempSync, rmSync } from 'fs'
+import { homedir, tmpdir } from 'os'
+import { join } from 'path'
+
+function installTestHome(): void {
+  const existing = process.env.ION_VITEST_HOME
+  if (existing) {
+    process.env.HOME = existing
+    process.env.USERPROFILE = existing
+    return
+  }
+
+  const realHome = homedir()
+  const testHome = mkdtempSync(join(tmpdir(), 'ion-vitest-home-'))
+  mkdirSync(join(testHome, '.ion'), { recursive: true })
+  process.env.ION_REAL_HOME = realHome
+  process.env.ION_VITEST_HOME = testHome
+  process.env.HOME = testHome
+  process.env.USERPROFILE = testHome
+  process.once('exit', () => rmSync(testHome, { recursive: true, force: true }))
+}
+
+// `localStorage` is the only browser global that needs backfilling: jsdom does not
 // expose a working `localStorage` in this runner configuration, and the
 // preferences store reads it synchronously at module load. A minimal in-memory
 // implementation keeps those imports side-effect-safe without pulling in a full
@@ -62,6 +90,7 @@ function installResizeObserverStub(): void {
   }
 }
 
+installTestHome()
 installLocalStorageShim()
 installScrollIntoViewStub()
 installResizeObserverStub()

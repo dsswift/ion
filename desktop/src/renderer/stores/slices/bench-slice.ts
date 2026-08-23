@@ -29,6 +29,41 @@ import {
 import { deepEqual } from "../../../shared/deep-equal";
 
 /**
+ * Monotonic read generation per repo. A bench mutation invalidates every read
+ * that started before it, so an older poll cannot restore stale member order.
+ */
+const benchRefreshGeneration = new Map<string, number>();
+
+function nextBenchRefreshGeneration(repoPath: string): number {
+  const generation = (benchRefreshGeneration.get(repoPath) ?? 0) + 1;
+  benchRefreshGeneration.set(repoPath, generation);
+  return generation;
+}
+
+export function invalidateBenchRefresh(repoPath: string): void {
+  nextBenchRefreshGeneration(repoPath);
+}
+
+export function applyBenchWorkspace(
+  set: StoreSet,
+  repoPath: string,
+  workspace: IntegrationWorkspace,
+): void {
+  set((state) => {
+    const workspaces = state.benchWorkspaces.get(repoPath) ?? [];
+    const index = workspaces.findIndex(
+      (candidate) => candidate.sourceBranch === workspace.sourceBranch,
+    );
+    const next = [...workspaces];
+    if (index >= 0) next[index] = workspace;
+    else next.push(workspace);
+    return {
+      benchWorkspaces: new Map(state.benchWorkspaces).set(repoPath, next),
+    };
+  });
+}
+
+/**
  * In-flight singleton creation, keyed by bench path. Concurrent opens (overlay
  * click + Studio click + iOS command landing in the same owner window) must not
  * race past the "no singleton exists" check into two creations; the second
@@ -42,6 +77,7 @@ export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
     refreshBench: async (repoPath) => {
       if (!repoPath || repoPath === "~") return;
+      const generation = nextBenchRefreshGeneration(repoPath);
       try {
         const { workspaces, tips } = await window.ion.benchList(repoPath);
         // Refresh staleness for each workspace so the view is correct the
@@ -53,6 +89,13 @@ export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
             ws.sourceBranch,
           );
           refreshed.push(workspace ?? ws);
+        }
+        if (benchRefreshGeneration.get(repoPath) !== generation) {
+          rDebug("bench", "stale refresh result discarded", {
+            repo_path: repoPath,
+            generation,
+          });
+          return;
         }
         // Write only on change, for the same reason `refreshWorktreeInventory`
         // does: an unconditional `new Map(...)` notifies every subscriber on

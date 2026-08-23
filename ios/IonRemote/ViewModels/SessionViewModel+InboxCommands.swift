@@ -11,6 +11,11 @@ import Foundation
 extension SessionViewModel {
 
     @MainActor
+    func deleteTab(tabId: String) {
+        send(.tabDelete(tabId: tabId), intent: .userInitiated)
+    }
+
+    @MainActor
     func settleTab(tabId: String) {
         send(.tabSettle(tabId: tabId), intent: .userInitiated)
     }

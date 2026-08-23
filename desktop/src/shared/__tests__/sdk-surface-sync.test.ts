@@ -22,315 +22,291 @@
  * two other clients validate against.
  */
 
-import { describe, it, expect } from 'vitest'
-import { existsSync, readFileSync } from 'fs'
-import { dirname, resolve } from 'path'
-import ts from 'typescript'
+import { describe, it, expect } from "vitest";
+import { readFileSync } from "fs";
+import { resolve } from "path";
+import ts from "typescript";
 
 // ─── Load the goldens ───
 
 interface EngineHookContract {
-  payloadKind: string
-  payloadFields?: string[]
-  result: string
-  resultFields?: string[]
+  payloadKind: string;
+  payloadFields?: string[];
+  result: string;
+  resultFields?: string[];
 }
 
 interface EngineContract {
-  hooks: Record<string, EngineHookContract>
-  extRequests: string[]
-  extNotifications: string[]
-  initResult: string[]
-  wireConstants: Record<string, unknown>
+  hooks: Record<string, EngineHookContract>;
+  extRequests: string[];
+  extNotifications: string[];
+  initResult: string[];
+  wireConstants: Record<string, unknown>;
 }
 
 interface GoSurface {
-  context: string[]
-  contextFields: string[]
-  sdk: string[]
-  namespaces: Record<string, string[]>
-  hooks: string[]
+  context: string[];
+  contextFields: string[];
+  sdk: string[];
+  namespaces: Record<string, string[]>;
+  hooks: string[];
 }
 
 const engineContractPath = resolve(
   __dirname,
-  '../../../../engine/internal/extension/testdata/sdk_contract.json',
-)
+  "../../../../engine/internal/extension/testdata/sdk_contract.json",
+);
 const goSurfacePath = resolve(
   __dirname,
-  '../../../../sdk/go/testdata/sdk_surface.json',
-)
+  "../../../../sdk/go/testdata/sdk_surface.json",
+);
 const tsTypesPath = resolve(
   __dirname,
-  '../../../../engine/extensions/sdk/ion-sdk/types.ts',
-)
+  "../../../../engine/extensions/sdk/ion-sdk/types.ts",
+);
+const tsDispatchControlPath = resolve(
+  __dirname,
+  "../../../../engine/extensions/sdk/ion-sdk/types-dispatch-control.ts",
+);
 
 const engineContract: EngineContract = JSON.parse(
-  readFileSync(engineContractPath, 'utf-8'),
-)
-const goSurface: GoSurface = JSON.parse(readFileSync(goSurfacePath, 'utf-8'))
+  readFileSync(engineContractPath, "utf-8"),
+);
+const goSurface: GoSurface = JSON.parse(readFileSync(goSurfacePath, "utf-8"));
 
 // ─── Extract the TypeScript surface ───
 
 /**
- * Parse types.ts and pull out the members of the named interfaces, including
- * members inherited through `extends`. The compiler API is used in its
- * parse-only mode: no type checker, no program, no module resolution — just an
- * AST walk over one file, which is all that is needed for member names and is
- * fast enough to run on every test invocation.
+ * Parse types.ts and pull out the members of the named interfaces. The
+ * compiler API is used in its parse-only mode: no type checker, no program, no
+ * module resolution — just an AST walk over one file, which is all that is
+ * needed for member names and is fast enough to run on every test invocation.
+ *
+ * Inherited members count. `IonContext extends DispatchControlContext`, whose
+ * declaration lives in a sibling SDK file, so an `extends`-blind walk reported
+ * `recallAgent`/`recallDispatch` as missing from the SDK when both were
+ * present and implemented — the extractor was wrong, not the surface. Heritage
+ * clauses are followed into `searchPaths`, which is the set of SDK files the
+ * public interfaces are split across.
  */
-function findInterfaceDeclaration(
-  name: string,
-  filePath: string,
-  visited = new Set<string>(),
-): { declaration: ts.InterfaceDeclaration; source: ts.SourceFile } | undefined {
-  const normalizedPath = resolve(filePath)
-  if (visited.has(normalizedPath) || !existsSync(normalizedPath)) return undefined
-  visited.add(normalizedPath)
-
-  const source = ts.createSourceFile(
-    normalizedPath,
-    readFileSync(normalizedPath, 'utf-8'),
-    ts.ScriptTarget.Latest,
-    /* setParentNodes */ true,
-  )
-
-  for (const statement of source.statements) {
-    if (ts.isInterfaceDeclaration(statement) && statement.name.text === name) {
-      return { declaration: statement, source }
-    }
-  }
-
-  for (const statement of source.statements) {
-    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue
-    const importedNames = statement.importClause?.namedBindings
-    if (!importedNames || !ts.isNamedImports(importedNames)) continue
-    if (!importedNames.elements.some((element) => element.name.text === name)) continue
-
-    const target = resolve(dirname(normalizedPath), `${statement.moduleSpecifier.text}.ts`)
-    const found = findInterfaceDeclaration(name, target, visited)
-    if (found) return found
-  }
-
-  return undefined
-}
-
 function extractInterfaces(
   filePath: string,
   wanted: Set<string>,
+  searchPaths: string[] = [],
 ): Record<string, string[]> {
-  const source = ts.createSourceFile(
-    filePath,
-    readFileSync(filePath, 'utf-8'),
-    ts.ScriptTarget.Latest,
-    /* setParentNodes */ true,
-  )
-  const declarations = new Map<string, ts.InterfaceDeclaration>()
-  const declarationSources = new Map<string, ts.SourceFile>()
-  const visit = (node: ts.Node): void => {
-    if (ts.isInterfaceDeclaration(node)) {
-      declarations.set(node.name.text, node)
-      declarationSources.set(node.name.text, source)
-    }
-    ts.forEachChild(node, visit)
+  const files = [filePath, ...searchPaths];
+  /** Every interface declared across the SDK files, by name. */
+  const declarations = new Map<string, ts.InterfaceDeclaration>();
+
+  for (const file of files) {
+    const source = ts.createSourceFile(
+      file,
+      readFileSync(file, "utf-8"),
+      ts.ScriptTarget.Latest,
+      /* setParentNodes */ true,
+    );
+    const collect = (node: ts.Node): void => {
+      if (ts.isInterfaceDeclaration(node))
+        declarations.set(node.name.text, node);
+      ts.forEachChild(node, collect);
+    };
+    collect(source);
   }
-  visit(source)
 
-  const membersFor = (
-    declaration: ts.InterfaceDeclaration,
-    declarationSource: ts.SourceFile,
-    seen = new Set<string>(),
-  ): string[] => {
-    if (seen.has(declaration.name.text)) return []
-    seen.add(declaration.name.text)
+  /** Own members plus every member reachable through `extends`. */
+  const membersOf = (name: string, seen: Set<string>): string[] => {
+    if (seen.has(name)) return []; // cycle guard: a malformed SDK must not hang the suite
+    seen.add(name);
+    const declaration = declarations.get(name);
+    if (!declaration) return [];
 
-    const members = declaration.members.flatMap((member) => {
-      const name = member.name
-      if (!name) return []
-      return ts.isIdentifier(name) || ts.isStringLiteral(name) ? [name.text] : []
-    })
-
+    const members: string[] = [];
+    for (const member of declaration.members) {
+      const memberName = member.name;
+      if (!memberName) continue;
+      if (ts.isIdentifier(memberName) || ts.isStringLiteral(memberName)) {
+        members.push(memberName.text);
+      }
+    }
     for (const clause of declaration.heritageClauses ?? []) {
-      if (clause.token !== ts.SyntaxKind.ExtendsKeyword) continue
-      for (const type of clause.types) {
-        const parentName = type.expression.getText(declarationSource)
-        const localParent = declarations.get(parentName)
-        const importedParent = localParent
-          ? undefined
-          : findInterfaceDeclaration(parentName, filePath)
-        const parent = localParent ?? importedParent?.declaration
-        const parentSource = localParent
-          ? declarationSources.get(parentName)!
-          : importedParent?.source
-        if (parent && parentSource) {
-          members.push(...membersFor(parent, parentSource, seen))
+      for (const parent of clause.types) {
+        if (ts.isIdentifier(parent.expression)) {
+          members.push(...membersOf(parent.expression.text, seen));
         }
       }
     }
+    return members;
+  };
 
-    return [...new Set(members)].sort()
-  }
-
-  const out: Record<string, string[]> = {}
+  const out: Record<string, string[]> = {};
   for (const name of wanted) {
-    const declaration = declarations.get(name)
-    if (declaration) out[name] = membersFor(declaration, source)
+    if (!declarations.has(name)) continue;
+    out[name] = [...new Set(membersOf(name, new Set()))].sort();
   }
-
-  return out
+  return out;
 }
 
 // Extract the field names behind HookPayloadMap's type references. Hook names
 // alone cannot catch an engine payload gaining a field while TypeScript keeps a
 // stale interface, which leaves handlers compiling against an incomplete view.
-function extractHookPayloadFields(filePath: string): Record<string, string[] | null> {
+function extractHookPayloadFields(
+  filePath: string,
+): Record<string, string[] | null> {
   const source = ts.createSourceFile(
     filePath,
-    readFileSync(filePath, 'utf-8'),
+    readFileSync(filePath, "utf-8"),
     ts.ScriptTarget.Latest,
     /* setParentNodes */ true,
-  )
-  const declarations = new Map<string, ts.InterfaceDeclaration>()
-  let hookMap: ts.InterfaceDeclaration | undefined
+  );
+  const declarations = new Map<string, ts.InterfaceDeclaration>();
+  let hookMap: ts.InterfaceDeclaration | undefined;
 
   const visit = (node: ts.Node): void => {
     if (ts.isInterfaceDeclaration(node)) {
-      declarations.set(node.name.text, node)
-      if (node.name.text === 'HookPayloadMap') hookMap = node
+      declarations.set(node.name.text, node);
+      if (node.name.text === "HookPayloadMap") hookMap = node;
     }
-    ts.forEachChild(node, visit)
-  }
-  visit(source)
-  if (!hookMap) return {}
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  if (!hookMap) return {};
 
   const memberNames = (members: ts.NodeArray<ts.TypeElement>): string[] =>
-    members.flatMap((member) => {
-      if (!ts.isPropertySignature(member) || !member.name) return []
-      return ts.isIdentifier(member.name) || ts.isStringLiteral(member.name)
-        ? [member.name.text]
-        : []
-    }).sort()
+    members
+      .flatMap((member) => {
+        if (!ts.isPropertySignature(member) || !member.name) return [];
+        return ts.isIdentifier(member.name) || ts.isStringLiteral(member.name)
+          ? [member.name.text]
+          : [];
+      })
+      .sort();
 
   const fieldsFor = (type: ts.TypeNode | undefined): string[] | null => {
-    if (!type) return null
-    if (ts.isTypeLiteralNode(type)) return memberNames(type.members)
-    if (!ts.isTypeReferenceNode(type)) return null
-    const name = type.typeName.getText(source)
+    if (!type) return null;
+    if (ts.isTypeLiteralNode(type)) return memberNames(type.members);
+    if (!ts.isTypeReferenceNode(type)) return null;
+    const name = type.typeName.getText(source);
     // Open records deliberately model engine-owned variable shapes, not a
     // fixed payload object whose fields a static parity test can enumerate.
-    if (name === 'Record' || name === 'Array') return null
-    const declaration = declarations.get(name)
-    return declaration ? memberNames(declaration.members) : null
-  }
+    if (name === "Record" || name === "Array") return null;
+    const declaration = declarations.get(name);
+    return declaration ? memberNames(declaration.members) : null;
+  };
 
-  const out: Record<string, string[] | null> = {}
+  const out: Record<string, string[] | null> = {};
   for (const member of hookMap.members) {
-    if (!ts.isPropertySignature(member) || !member.name) continue
+    if (!ts.isPropertySignature(member) || !member.name) continue;
     if (ts.isIdentifier(member.name) || ts.isStringLiteral(member.name)) {
-      out[member.name.text] = fieldsFor(member.type)
+      out[member.name.text] = fieldsFor(member.type);
     }
   }
-  return out
+  return out;
 }
 
 const extracted = extractInterfaces(
   tsTypesPath,
-  new Set(['HookPayloadMap', 'IonContext', 'IonSDK']),
-)
-const hookPayloadFields = extractHookPayloadFields(tsTypesPath)
+  new Set(["HookPayloadMap", "IonContext", "IonSDK"]),
+  // Files carrying interfaces the public ones extend. types.ts is the entry
+  // point; the SDK splits some surfaces out to stay under the file-size cap,
+  // and those members are still part of the public shape.
+  [tsDispatchControlPath],
+);
+const hookPayloadFields = extractHookPayloadFields(tsTypesPath);
 
 // The extraction is the foundation for every assertion below, so a silent
 // failure of it would turn this whole file into a no-op that always passes.
-describe('TypeScript surface extraction', () => {
-  it('finds the interfaces it needs in types.ts', () => {
-    for (const name of ['HookPayloadMap', 'IonContext', 'IonSDK']) {
+describe("TypeScript surface extraction", () => {
+  it("finds the interfaces it needs in types.ts", () => {
+    for (const name of ["HookPayloadMap", "IonContext", "IonSDK"]) {
       expect(
         extracted[name],
         `${name} was not found in ${tsTypesPath}. The extraction is broken, ` +
-          'not the surface — every other assertion in this file depends on it.',
-      ).toBeDefined()
-      expect(extracted[name]!.length).toBeGreaterThan(0)
+          "not the surface — every other assertion in this file depends on it.",
+      ).toBeDefined();
+      expect(extracted[name]!.length).toBeGreaterThan(0);
     }
-  })
-})
+  });
+});
 
 // ─── Hook parity: TypeScript against the engine ───
 
-describe('HookPayloadMap covers the engine hook surface', () => {
-  const tsHooks = new Set(extracted.HookPayloadMap ?? [])
-  const engineHooks = Object.keys(engineContract.hooks)
+describe("HookPayloadMap covers the engine hook surface", () => {
+  const tsHooks = new Set(extracted.HookPayloadMap ?? []);
+  const engineHooks = Object.keys(engineContract.hooks);
 
-  it('has a typed entry for every hook the engine fires', () => {
-    const missing = engineHooks.filter((h) => !tsHooks.has(h)).sort()
+  it("has a typed entry for every hook the engine fires", () => {
+    const missing = engineHooks.filter((h) => !tsHooks.has(h)).sort();
     expect(
       missing,
-      'Engine hooks with no HookPayloadMap entry. A handler for these is ' +
-        'reachable only through the untyped on(string) overload, so it gets ' +
-        'no payload typing. Add the entry (and its payload interface) to ' +
-        'engine/extensions/sdk/ion-sdk/types.ts.',
-    ).toEqual([])
-  })
+      "Engine hooks with no HookPayloadMap entry. A handler for these is " +
+        "reachable only through the untyped on(string) overload, so it gets " +
+        "no payload typing. Add the entry (and its payload interface) to " +
+        "engine/extensions/sdk/ion-sdk/types.ts.",
+    ).toEqual([]);
+  });
 
-  it('does not declare hooks the engine never fires', () => {
-    const extra = [...tsHooks].filter((h) => !(h in engineContract.hooks)).sort()
+  it("does not declare hooks the engine never fires", () => {
+    const extra = [...tsHooks]
+      .filter((h) => !(h in engineContract.hooks))
+      .sort();
     expect(
       extra,
-      'HookPayloadMap entries with no matching engine hook. Either the hook ' +
-        'was removed from the engine, or the key is misspelled — a handler ' +
-        'registered for it would never run.',
-    ).toEqual([])
-  })
-  it('matches every fixed object payload field set', () => {
-    const mismatches: string[] = []
+      "HookPayloadMap entries with no matching engine hook. Either the hook " +
+        "was removed from the engine, or the key is misspelled — a handler " +
+        "registered for it would never run.",
+    ).toEqual([]);
+  });
+  it("matches every fixed object payload field set", () => {
+    const mismatches: string[] = [];
     for (const [hook, contract] of Object.entries(engineContract.hooks)) {
-      if (contract.payloadKind !== 'object') continue
-      const got = hookPayloadFields[hook]
+      if (contract.payloadKind !== "object") continue;
+      const got = hookPayloadFields[hook];
       if (got === undefined) {
-        mismatches.push(`${hook}: missing HookPayloadMap entry`)
-        continue
+        mismatches.push(`${hook}: missing HookPayloadMap entry`);
+        continue;
       }
       // Raw Record payloads represent open tool inputs. The engine contract
       // likewise cannot enumerate their field values beyond payloadKind.
-      if (got === null) continue
-      const want = [...(contract.payloadFields ?? [])].sort()
-      const missing = want.filter((field) => !got.includes(field))
-      const extra = got.filter((field) => !want.includes(field))
+      if (got === null) continue;
+      const want = [...(contract.payloadFields ?? [])].sort();
+      const missing = want.filter((field) => !got.includes(field));
+      const extra = got.filter((field) => !want.includes(field));
       if (missing.length > 0 || extra.length > 0) {
-        mismatches.push(`${hook}: missing [${missing}] extra [${extra}]`)
+        mismatches.push(`${hook}: missing [${missing}] extra [${extra}]`);
       }
     }
     expect(
       mismatches,
-      'Hook payload fields differ from the engine manifest. Update the TypeScript payload interface ' +
-        'in engine/extensions/sdk/ion-sdk/types.ts or make the engine contract explicit.',
-    ).toEqual([])
-  })
-})
+      "Hook payload fields differ from the engine manifest. Update the TypeScript payload interface " +
+        "in engine/extensions/sdk/ion-sdk/types.ts or make the engine contract explicit.",
+    ).toEqual([]);
+  });
+});
 
 // ─── Hook parity: TypeScript against the Go SDK ───
 
-describe('the two SDKs model the same hooks', () => {
-  const tsHooks = new Set(extracted.HookPayloadMap ?? [])
+describe("the two SDKs model the same hooks", () => {
+  const tsHooks = new Set(extracted.HookPayloadMap ?? []);
 
-  it('every hook the Go SDK models is typed in TypeScript', () => {
-    const missing = goSurface.hooks.filter((h) => !tsHooks.has(h)).sort()
+  it("every hook the Go SDK models is typed in TypeScript", () => {
+    const missing = goSurface.hooks.filter((h) => !tsHooks.has(h)).sort();
     expect(
       missing,
-      'Hooks the Go SDK models but TypeScript does not type. The two SDKs ' +
-        'have diverged.',
-    ).toEqual([])
-  })
+      "Hooks the Go SDK models but TypeScript does not type. The two SDKs " +
+        "have diverged.",
+    ).toEqual([]);
+  });
 
-  it('every hook TypeScript types is modelled by the Go SDK', () => {
-    const goHooks = new Set(goSurface.hooks)
-    const missing = [...tsHooks].filter((h) => !goHooks.has(h)).sort()
+  it("every hook TypeScript types is modelled by the Go SDK", () => {
+    const goHooks = new Set(goSurface.hooks);
+    const missing = [...tsHooks].filter((h) => !goHooks.has(h)).sort();
     expect(
       missing,
-      'Hooks TypeScript types but the Go SDK does not model. Add a ' +
-        'descriptor to sdk/go/hook_descriptors.go.',
-    ).toEqual([])
-  })
-})
+      "Hooks TypeScript types but the Go SDK does not model. Add a " +
+        "descriptor to sdk/go/hook_descriptors.go.",
+    ).toEqual([]);
+  });
+});
 
 // ─── Context surface parity ───
 
@@ -342,16 +318,19 @@ describe('the two SDKs model the same hooks', () => {
  * trailing initialism.
  */
 const GO_TO_TS_NAME: Record<string, string> = {
-  HTTP: 'http',
-  LLMCall: 'llmCall',
-}
+  HTTP: "http",
+  LLMCall: "llmCall",
+};
 
 function goNameToTs(name: string): string {
-  if (name in GO_TO_TS_NAME) return GO_TO_TS_NAME[name]!
+  if (name in GO_TO_TS_NAME) return GO_TO_TS_NAME[name]!;
   // Trailing initialism: ConversationID -> conversationId, ToolUseID -> toolUseId.
-  let out = name.replace(/([A-Z]{2,})$/, (run) => run.charAt(0) + run.slice(1).toLowerCase())
-  out = out.charAt(0).toLowerCase() + out.slice(1)
-  return out
+  let out = name.replace(
+    /([A-Z]{2,})$/,
+    (run) => run.charAt(0) + run.slice(1).toLowerCase(),
+  );
+  out = out.charAt(0).toLowerCase() + out.slice(1);
+  return out;
 }
 
 /**
@@ -364,44 +343,44 @@ function goNameToTs(name: string): string {
 const CONTEXT_DIVERGENCES: Record<string, string> = {
   // Go returns errors rather than throwing, so it needs an accessor for the
   // logger where TypeScript re-exports a module-level `log` binding.
-  log: 'TypeScript exposes logging as a module export (`import { log }`), not a ctx member.',
+  log: "TypeScript exposes logging as a module export (`import { log }`), not a ctx member.",
   // Go cannot attach a method to a struct field, so identity is read through
   // fields on both sides — but Go's reflection reports them separately from
   // methods, and they are compared as contextFields below.
-}
+};
 
-describe('IonContext and the Go Context expose the same capabilities', () => {
-  const tsMembers = new Set(extracted.IonContext ?? [])
+describe("IonContext and the Go Context expose the same capabilities", () => {
+  const tsMembers = new Set(extracted.IonContext ?? []);
 
-  it('every Go Context method has a TypeScript counterpart', () => {
+  it("every Go Context method has a TypeScript counterpart", () => {
     const missing = goSurface.context
       .map(goNameToTs)
       .filter((name) => !tsMembers.has(name) && !(name in CONTEXT_DIVERGENCES))
-      .sort()
+      .sort();
 
     expect(
       missing,
-      'Go Context methods with no IonContext member. Either add the member ' +
-        'to engine/extensions/sdk/ion-sdk/types.ts (and implement it in ' +
-        'runtime.ts), or record the divergence with its reason in ' +
-        'CONTEXT_DIVERGENCES.',
-    ).toEqual([])
-  })
+      "Go Context methods with no IonContext member. Either add the member " +
+        "to engine/extensions/sdk/ion-sdk/types.ts (and implement it in " +
+        "runtime.ts), or record the divergence with its reason in " +
+        "CONTEXT_DIVERGENCES.",
+    ).toEqual([]);
+  });
 
-  it('every Go Context identity field has a TypeScript counterpart', () => {
+  it("every Go Context identity field has a TypeScript counterpart", () => {
     const missing = goSurface.contextFields
       .map(goNameToTs)
       .filter((name) => !tsMembers.has(name) && !(name in CONTEXT_DIVERGENCES))
-      .sort()
+      .sort();
 
     expect(
       missing,
-      'Go Context fields with no IonContext member. These carry the session ' +
-        'identity a handler reads directly, so a missing one means the ' +
-        'TypeScript handler cannot see something the Go handler can.',
-    ).toEqual([])
-  })
-})
+      "Go Context fields with no IonContext member. These carry the session " +
+        "identity a handler reads directly, so a missing one means the " +
+        "TypeScript handler cannot see something the Go handler can.",
+    ).toEqual([]);
+  });
+});
 
 // ─── SDK surface parity ───
 
@@ -409,65 +388,68 @@ describe('IonContext and the Go Context expose the same capabilities', () => {
  * Members of the Go SDK type that have no TypeScript counterpart by design.
  */
 const SDK_DIVERGENCES: Record<string, string> = {
-  run: 'Go needs an explicit blocking serve loop; the TypeScript runtime starts listening on the next tick inside createIon().',
-  shutdown: 'The counterpart of run(); TypeScript has no equivalent because it never took over the loop.',
-  hooks: 'Reflection accessor used by the Go parity test. TypeScript reflects over HookPayloadMap instead.',
-  config: 'Go exposes the init config through an accessor; TypeScript hands it to handlers on ctx.config only.',
-  log: 'TypeScript exposes logging as a module export (`import { log }`), not an SDK member.',
-}
+  run: "Go needs an explicit blocking serve loop; the TypeScript runtime starts listening on the next tick inside createIon().",
+  shutdown:
+    "The counterpart of run(); TypeScript has no equivalent because it never took over the loop.",
+  hooks:
+    "Reflection accessor used by the Go parity test. TypeScript reflects over HookPayloadMap instead.",
+  config:
+    "Go exposes the init config through an accessor; TypeScript hands it to handlers on ctx.config only.",
+  log: "TypeScript exposes logging as a module export (`import { log }`), not an SDK member.",
+};
 
-describe('IonSDK and the Go SDK expose the same registration surface', () => {
-  const tsMembers = new Set(extracted.IonSDK ?? [])
+describe("IonSDK and the Go SDK expose the same registration surface", () => {
+  const tsMembers = new Set(extracted.IonSDK ?? []);
 
-  it('every Go SDK method has a TypeScript counterpart', () => {
+  it("every Go SDK method has a TypeScript counterpart", () => {
     const missing = goSurface.sdk
       .map(goNameToTs)
       .filter((name) => !tsMembers.has(name) && !(name in SDK_DIVERGENCES))
-      .sort()
+      .sort();
 
     expect(
       missing,
-      'Go SDK methods with no IonSDK member. Either add the member to ' +
-        'engine/extensions/sdk/ion-sdk/types.ts, or record the divergence ' +
-        'with its reason in SDK_DIVERGENCES.',
-    ).toEqual([])
-  })
+      "Go SDK methods with no IonSDK member. Either add the member to " +
+        "engine/extensions/sdk/ion-sdk/types.ts, or record the divergence " +
+        "with its reason in SDK_DIVERGENCES.",
+    ).toEqual([]);
+  });
 
-  it('the divergence lists stay small', () => {
+  it("the divergence lists stay small", () => {
     // A growing divergence list means parity is being documented away rather
     // than maintained. This is a deliberate tripwire: raising the bound should
     // be a conscious decision, not a side effect.
     const total =
       Object.keys(CONTEXT_DIVERGENCES).length +
-      Object.keys(SDK_DIVERGENCES).length
+      Object.keys(SDK_DIVERGENCES).length;
     expect(
       total,
-      'The cross-SDK divergence lists have grown. Each entry is a documented ' +
-        'reason the two SDKs differ; a long list means the SDKs are drifting ' +
-        'and the exceptions are absorbing it.',
-    ).toBeLessThanOrEqual(8)
-  })
-})
+      "The cross-SDK divergence lists have grown. Each entry is a documented " +
+        "reason the two SDKs differ; a long list means the SDKs are drifting " +
+        "and the exceptions are absorbing it.",
+    ).toBeLessThanOrEqual(8);
+  });
+});
 
 // ─── Init-handshake parity ───
 
-describe('init handshake surface', () => {
-  it('publishes subprocess hook declarations', () => {
-    expect(engineContract.initResult).toContain('hooks')
-  })
-})
+describe("init handshake surface", () => {
+  it("publishes subprocess hook declarations", () => {
+    expect(engineContract.initResult).toContain("hooks");
+  });
+});
 
 // ─── Wire constants ───
 
-describe('wire constants', () => {
-  it('the engine publishes the three framing values every SDK hard-codes', () => {
+describe("wire constants", () => {
+  it("the engine publishes the three framing values every SDK hard-codes", () => {
     // The TypeScript runtime hard-codes these (runtime.ts: nextRequestId
     // starts at 100000, and the hook dispatcher reads _ctx / _payload). They
     // cannot be imported from here without pulling in the node-only runtime,
     // so this asserts the manifest still declares them — the Go SDK's parity
     // test asserts its own constants match the same values.
-    expect(engineContract.wireConstants.extRequestIdBase).toBe(100000)
-    expect(engineContract.wireConstants.payloadWrapperKey).toBe('_payload')
-    expect(engineContract.wireConstants.ctxKey).toBe('_ctx')
-  })
-})
+    expect(engineContract.wireConstants.extRequestIdBase).toBe(100000);
+    expect(engineContract.wireConstants.payloadWrapperKey).toBe("_payload");
+    expect(engineContract.wireConstants.ctxKey).toBe("_ctx");
+  });
+});

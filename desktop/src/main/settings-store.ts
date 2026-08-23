@@ -289,6 +289,29 @@ export function writeEngineConfig(config: Record<string, any>): void {
 }
 
 /**
+ * Serialized read-mutate-atomic-write for engine.json. The mutator receives
+ * the current config object and mutates it in place. All callers that need to
+ * update engine.json should use this instead of separate readEngineConfig /
+ * writeEngineConfig calls — it eliminates the TOCTOU gap between read and
+ * write within the single desktop process.
+ *
+ * The mutator may return `false` to signal "no change needed," in which case
+ * the write is skipped (avoids config churn that would force an unnecessary
+ * daemon restart). Any other return (void, undefined, true) writes.
+ *
+ * Returns true when engine.json was written, false when skipped.
+ */
+export function updateEngineConfig(
+  mutator: (config: Record<string, any>) => boolean | void,
+): boolean {
+  const cfg = readEngineConfig()
+  const result = mutator(cfg)
+  if (result === false) return false
+  writeEngineConfig(cfg)
+  return true
+}
+
+/**
  * Ensure engine.json selects the hybrid backend. The desktop's opinion is
  * credential-based per-provider routing (api-key-wins → authed CLI → api),
  * which the engine only applies under `backend: "hybrid"` — the engine's own
@@ -298,13 +321,12 @@ export function writeEngineConfig(config: Record<string, any>): void {
  * running engine re-reads the config).
  */
 export function ensureHybridBackendConfig(): boolean {
-  const cfg = readEngineConfig();
-  if (cfg.backend === "hybrid") return false;
-  const previous = cfg.backend ?? "(unset)";
-  cfg.backend = "hybrid";
-  writeEngineConfig(cfg);
-  log("settings_store: engine backend set to hybrid", { previous });
-  return true;
+  return updateEngineConfig((cfg) => {
+    if (cfg.backend === 'hybrid') return false
+    const previous = cfg.backend ?? '(unset)'
+    cfg.backend = 'hybrid'
+    log('settings_store: engine backend set to hybrid', { previous })
+  })
 }
 
 /**

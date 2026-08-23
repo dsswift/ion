@@ -230,6 +230,8 @@ export function RemoteCategoryRelay({
 
   const inputStyle: React.CSSProperties = {
     width: '100%',
+    minWidth: 0,
+    boxSizing: 'border-box',
     background: colors.surfacePrimary,
     border: `1px solid ${colors.containerBorder}`,
     borderRadius: 8,
@@ -267,7 +269,7 @@ export function RemoteCategoryRelay({
           <label style={{ color: colors.textSecondary, fontSize: 12, display: 'block', marginBottom: 4 }}>
             Relay URL
           </label>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             <input
               type="text"
               value={editUrl}
@@ -397,7 +399,7 @@ export function RemoteCategoryRelay({
         )}
 
         {/* Action buttons */}
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, minWidth: 0 }}>
           {isOidc && !isProbing ? (
             <button
               onClick={() => { void handleOidcConnect().catch((err) => rError('settings', 'oidc connect failed', { error: String(err) })) }}

@@ -28,7 +28,6 @@ vi.mock("../../theme", () => ({
 }));
 vi.mock("../../components/git/Tooltip", () => ({ Tooltip: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock("../../rendererLogger", () => ({ rError: vi.fn(), rWarn: vi.fn() }));
-vi.mock("../inbox/ProjectPicker", () => ({ ProjectPicker: () => null }));
 
 Object.defineProperty(window, "ion", {
   value: {

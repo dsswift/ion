@@ -9,29 +9,23 @@
  * Subscribing to the store closes that gap for every current and future
  * mutation of activeTabId.
  *
- * Deduped by last-sent id; fires once at init with the current value so the
- * main process knows the active tab before the first switch.
+ * Visiting a tab routes review acknowledgement through the owner store action.
+ * The focus publication stays deduplicated by active tab, while an explicit
+ * click on the already-active row is handled by selectTab itself.
  */
 import { useSessionStore } from '../stores/sessionStore'
 
 let lastSent: string | null = null
 let unsubscribe: (() => void) | null = null
 
-function send(state: { activeTabId: string | null; tabs: Array<{ id: string; engineProfileId?: string | null; lastVisitedAt?: number | null }> }): void {
+function send(state: { activeTabId: string | null; tabs: Array<{ id: string; engineProfileId?: string | null }> }): void {
   const tabId = state.activeTabId
   if (!tabId || tabId === lastSent) return
 
-  // Set dedupe state BEFORE writing. setState synchronously wakes this
-  // subscription, and a later assignment would recursively restamp forever.
   lastSent = tabId
-  const visitedAt = Date.now()
-  useSessionStore.setState((current) => ({
-    tabs: current.tabs.map((tab) =>
-      tab.id === tabId && (tab.lastVisitedAt !== visitedAt || tab.manualUnread)
-        ? { ...tab, lastVisitedAt: visitedAt, manualUnread: false }
-        : tab
-    ),
-  }))
+  // Visiting after a completion is the explicit review boundary. Route it
+  // through the owner action so Studio's mirror never writes durable tab state.
+  useSessionStore.getState().markTabRead(tabId)
 
   // engineProfileId rides along so the Ion Studio can scope its
   // office seed per extension (per the tab-extension seed contract).

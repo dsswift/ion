@@ -47,6 +47,36 @@ final class InboxSnapshotWireTests: XCTestCase {
         XCTAssertTrue(source.contains("accessibilityLabel(\"Automatically settled\")"))
     }
 
+    func testDeleteConversationCommandUsesDesktopWireType() throws {
+        let data = try JSONEncoder().encode(RemoteCommand.tabDelete(tabId: "conversation-1"))
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        XCTAssertEqual(object?["type"] as? String, "desktop_tab_delete")
+        XCTAssertEqual(object?["tabId"] as? String, "conversation-1")
+
+        let decoded = try JSONDecoder().decode(RemoteCommand.self, from: data)
+        guard case .tabDelete(let tabId) = decoded else {
+            return XCTFail("Expected tabDelete command")
+        }
+        XCTAssertEqual(tabId, "conversation-1")
+    }
+
+    func testInboxDeleteMenuOffersSettleDeleteAndCancel() throws {
+        let path = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("IonRemote/Views/TabListView.swift")
+        let menuPath = path.deletingLastPathComponent().appendingPathComponent("TabListView+Inbox.swift")
+        let dialog = try String(contentsOf: path)
+        let menu = try String(contentsOf: menuPath)
+
+        XCTAssertTrue(menu.contains("Label(\"Delete conversation…\", systemImage: \"trash\")"))
+        XCTAssertTrue(menu.contains("pendingInboxDeleteTab = tab"))
+        XCTAssertTrue(dialog.contains("Button(\"Settle Conversation\")"))
+        XCTAssertTrue(dialog.contains("Button(\"Delete Conversation\", role: .destructive)"))
+        XCTAssertTrue(dialog.contains("Button(\"Cancel\", role: .cancel)"))
+        XCTAssertTrue(dialog.contains("viewModel.deleteTab(tabId: tab.id)"))
+    }
+
     func testReviewSettledCommandUsesDesktopWireType() throws {
         let data = try JSONEncoder().encode(RemoteCommand.reviewSettledTab(tabId: "settled-1"))
         let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]

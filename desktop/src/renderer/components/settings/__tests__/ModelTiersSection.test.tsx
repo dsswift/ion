@@ -75,6 +75,7 @@ describe('ModelTiersSection', () => {
     expect(container.querySelector('[aria-label="Remove fast tier"]')).toBeNull()
     expect(container.querySelector('[aria-label="Remove workbench-sync tier"]')).toBeNull()
     expect(select('workbench-sync primary model').textContent).toContain('Default (uses standard tier)')
+    expect(container.querySelector('[data-testid="model-tier-cards"]')).not.toBeNull()
     expect(container.querySelector('[aria-label="Remove custom tier"]')).not.toBeNull()
   })
 

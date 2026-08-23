@@ -68,10 +68,22 @@ vi.mock('../../lib/file-open-router', () => ({
 
 import { FloatingPanel } from '../FloatingPanel'
 
-function Panel(props: { children: React.ReactNode; title?: string; onClose?: () => void }) {
+function Panel(props: {
+  children: React.ReactNode
+  title?: string
+  onClose?: () => void
+  minWidth?: number
+  minHeight?: number
+  initialPos?: { x: number; y: number }
+  initialSize?: { w: number; h: number }
+}) {
   return React.createElement(FloatingPanel, {
     title: props.title ?? 'Test',
     onClose: props.onClose ?? (() => {}),
+    minWidth: props.minWidth,
+    minHeight: props.minHeight,
+    initialPos: props.initialPos,
+    initialSize: props.initialSize,
     children: props.children,
   })
 }
@@ -97,6 +109,7 @@ describe('FloatingPanel — data-view boundary', () => {
   afterEach(() => {
     act(() => { root.unmount() })
     document.body.removeChild(container)
+    vi.unstubAllGlobals()
   })
 
   it('content wrapper is marked as a data-view boundary', async () => {
@@ -146,6 +159,53 @@ describe('FloatingPanel — data-view boundary', () => {
     expect(openFloatingPanelCount).toBe(0)
     // Re-create for afterEach cleanup.
     root = createRoot(container)
+  })
+
+  it('fits configured minimums inside a smaller viewport', async () => {
+    vi.stubGlobal('innerWidth', 240)
+    vi.stubGlobal('innerHeight', 140)
+    await act(async () => {
+      root.render(
+        <Panel
+          minWidth={280}
+          minHeight={180}
+          initialPos={{ x: 60, y: 80 }}
+          initialSize={{ w: 680, h: 420 }}
+        >
+          <div>content</div>
+        </Panel>,
+      )
+    })
+
+    const panel = document.querySelector('[data-testid="floating-panel"]') as HTMLElement
+    expect(panel.style.width).toBe('240px')
+    expect(panel.style.height).toBe('140px')
+    expect(panel.style.left).toBe('0px')
+    expect(panel.style.top).toBe('0px')
+  })
+
+  it('re-clamps geometry when the viewport shrinks', async () => {
+    vi.stubGlobal('innerWidth', 900)
+    vi.stubGlobal('innerHeight', 700)
+    await act(async () => {
+      root.render(
+        <Panel initialPos={{ x: 300, y: 250 }} initialSize={{ w: 500, h: 350 }}>
+          <div>content</div>
+        </Panel>,
+      )
+    })
+
+    vi.stubGlobal('innerWidth', 360)
+    vi.stubGlobal('innerHeight', 240)
+    await act(async () => {
+      window.dispatchEvent(new Event('resize'))
+    })
+
+    const panel = document.querySelector('[data-testid="floating-panel"]') as HTMLElement
+    expect(panel.style.width).toBe('360px')
+    expect(panel.style.height).toBe('240px')
+    expect(panel.style.left).toBe('0px')
+    expect(panel.style.top).toBe('0px')
   })
 
   it('routes one stable panel and publishes later async children to Studio', async () => {

@@ -26,6 +26,8 @@ import { TabStrip } from "../components/TabStrip";
 import { useColors } from "../theme";
 import { usePreferencesStore } from "../preferences";
 import { rDebug, rInfo } from "../rendererLogger";
+import { contentRouter } from "../lib/file-open-router";
+import { getDispatches, meta, mostRecentDispatch } from "../components/agent-panel-helpers";
 import { toggleActivePermissionMode } from "../shortcuts/shared-command-handlers";
 import { handleNewConversationShortcut, isEditorZoomTarget, isPreviewZoomTarget } from "../hooks/useKeyboardShortcuts"
 import { SETTINGS_DEFAULTS } from "../preferences-types";
@@ -55,6 +57,8 @@ import { initSurfaceConversationSync } from "./surface/surface-conversation-sync
 import { ControlsPopover } from "./visualizer/ControlsPopover";
 import { useStudioControlsBus } from "./state/controls-bus";
 import { GIT_PANEL_WIDTH } from "../components/panelGeometry";
+import { useWindowWidth } from '../hooks/useWindowGeometry'
+import { resolveStudioResponsiveLayout } from '../responsive-layout'
 import { useResourceBootstrap } from "../hooks/useResourceBootstrap";
 import { CommandPalette } from "../components/CommandPalette";
 import { DeepLinkConfirmDialog } from "../components/DeepLinkConfirmDialog";
@@ -112,6 +116,7 @@ export function StudioShell(): React.JSX.Element {
   // the user can still switch to Explorer/Git afterwards (Explorer/Git are
   // also available as surface tabs so the inbox can stay pinned — R8).
   const conversationNav = usePreferencesStore((s) => s.conversationNav);
+  const windowWidth = useWindowWidth();
   const prevNavRef = useRef(conversationNav);
   useEffect(() => {
     if (prevNavRef.current !== conversationNav) {
@@ -130,7 +135,23 @@ export function StudioShell(): React.JSX.Element {
   const [lastFocusedColumn, setLastFocusedColumn] = useState<
     "conversation" | "surface"
   >("conversation");
+  const [narrowPane, setNarrowPane] = useState<"left" | "center" | "surface">("center");
   const [paletteOpen, setPaletteOpen] = useState(false);
+
+  const requestedLeftVisible = layout.leftSidebarVisible || conversationNav === "inbox";
+  const responsive = resolveStudioResponsiveLayout({
+    width: windowWidth,
+    leftRequested: requestedLeftVisible,
+    surfaceRequested: surfaceVisible,
+    preferredLeftWidth: GIT_PANEL_WIDTH,
+    preferredSurfaceWidth: liveSurfaceWidth ?? layout.surfaceWidth,
+  });
+  const narrowPrimary = requestedLeftVisible && narrowPane === "left"
+    ? "left"
+    : surfaceVisible && narrowPane === "surface" ? "surface" : "center";
+  const showLeft = requestedLeftVisible && (responsive.mode !== "narrow" || narrowPrimary === "left");
+  const showCenter = responsive.mode !== "narrow" || narrowPrimary === "center";
+  const showSurface = surfaceVisible && (responsive.mode !== "narrow" || narrowPrimary === "surface");
 
   // The owner's active tab is authoritative; mirror-store highlight follows
   // the same push the canvas retargets on.
@@ -156,18 +177,20 @@ export function StudioShell(): React.JSX.Element {
     view: "studio",
     phase: "capture",
     handlers: {
-      "studio.layout.sidebar": () =>
-        patchRef.current({
-          leftSidebarVisible: !layoutRef.current.leftSidebarVisible,
-        }),
+      "studio.layout.sidebar": () => {
+        if (responsive.mode === "narrow" && requestedLeftVisible) setNarrowPane("left");
+        else patchRef.current({ leftSidebarVisible: !layoutRef.current.leftSidebarVisible });
+      },
       "terminal.toggle": toggleActiveTerminal,
       // Cmd+4 toggles the canvas/surface pane without choosing content. The
       // current surface tab remains active; an empty surface stays empty.
       "panel.statusDrawer": () => {
         useSurfaceStore.getState().toggleVisible();
       },
-      "studio.layout.surface": () =>
-        useSurfaceStore.getState().toggleVisible(),
+      "studio.layout.surface": () => {
+        if (responsive.mode === "narrow" && surfaceVisible) setNarrowPane("surface");
+        else useSurfaceStore.getState().toggleVisible();
+      },
       // Every canvas tab's toggle, one rule, from the surface module that owns
       // the tab↔command map the tab pills also read.
       ...canvasTabHandlers(),
@@ -195,8 +218,7 @@ export function StudioShell(): React.JSX.Element {
       "app.commandPalette": () => setPaletteOpen((open) => !open),
       "tab.recentDirs": () => window.dispatchEvent(new CustomEvent("ion:open-recent-dirs")),
       "tab.new": () => {
-        const directory = usePreferencesStore.getState().defaultBaseDirectory || "";
-        handleNewConversationShortcut(directory, "Cmd+T");
+        handleNewConversationShortcut("", "Cmd+T");
       },
       "terminal.addShell": () => {
         const state = useSessionStore.getState();
@@ -291,6 +313,7 @@ export function StudioShell(): React.JSX.Element {
   function selectDockView(view: StudioSidebarView): void {
     const outcome = revealDockView(layoutRef.current, view);
     patchRef.current(outcome.patch);
+    setNarrowPane("left");
     rDebug("studio.layout", "dock view selected by shortcut", {
       view,
       revealed_sidebar: outcome.revealedSidebar,
@@ -385,16 +408,31 @@ export function StudioShell(): React.JSX.Element {
       useSurfaceStore.getState().setVisible(true);
   });
 
-  // Visualizer agent click: the conversation is already the center surface;
-  // route into the rich dispatch preview (AgentPanel's opener listens for
-  // this window-local event). The dispatch-split workstream rebinds this
-  // to the inline split pane.
+  // A dispatch preview is one conversation-local surface tab. Reopening it
+  // updates that tab's subject instead of creating another runtime panel.
   const onAgentClick = (_tabId: string, agentName: string): void => {
-    if (agentName !== "__manager__") {
-      window.dispatchEvent(
-        new CustomEvent("ion:open-agent-detail", { detail: { agentName } }),
-      );
+    if (agentName === "__manager__") return;
+    const state = useSessionStore.getState();
+    const pane = state.conversationPanes.get(state.activeTabId);
+    const instance = pane?.instances.find((item) => item.id === pane.activeInstanceId);
+    const agent = instance?.agentStates.find((item) => item.name === agentName);
+    if (!agent) {
+      rDebug("studio.surface", "dispatch preview agent was not found", {
+        agent: agentName,
+        tab_id: state.activeTabId,
+      });
+      return;
     }
+    const dispatch = mostRecentDispatch(getDispatches(agent));
+    if (!dispatch?.id) {
+      rDebug("studio.surface", "dispatch preview agent has no dispatch", {
+        agent: agentName,
+        tab_id: state.activeTabId,
+      });
+      return;
+    }
+    const title = meta(agent, "displayName", agent.name);
+    contentRouter()?.openDispatch?.(agent.name, dispatch.id, title);
   };
 
   // Render nothing until the persisted layout is read: flashing default
@@ -415,15 +453,19 @@ export function StudioShell(): React.JSX.Element {
       >
         <StudioTitleBar
           panes={{
-            leftSidebarVisible: layout.leftSidebarVisible || conversationNav === "inbox",
-            leftSidebarWidth: GIT_PANEL_WIDTH,
+            leftSidebarVisible: showLeft,
+            leftSidebarWidth: responsive.leftWidth || GIT_PANEL_WIDTH,
             terminalVisible,
             surfaceVisible,
-            onToggleSidebar: () =>
-              patch({ leftSidebarVisible: !layout.leftSidebarVisible }),
+            onToggleSidebar: () => {
+              if (responsive.mode === "narrow" && requestedLeftVisible) setNarrowPane("left");
+              else patch({ leftSidebarVisible: !layout.leftSidebarVisible });
+            },
             onToggleTerminal: toggleActiveTerminal,
-            onToggleSurface: () =>
-              useSurfaceStore.getState().toggleVisible(),
+            onToggleSurface: () => {
+              if (responsive.mode === "narrow" && surfaceVisible) setNarrowPane("surface");
+              else useSurfaceStore.getState().toggleVisible();
+            },
           }}
         />
         <div style={{ display: conversationNav === "tabs" ? "block" : "none", flexShrink: 0 }}>
@@ -432,23 +474,25 @@ export function StudioShell(): React.JSX.Element {
         <div
           style={{
             flex: 1,
-            minHeight: 0,
+            minWidth: 0,
+            overflow: "hidden",
             display: "flex",
             position: "relative",
           }}
         >
-          {(layout.leftSidebarVisible || conversationNav === "inbox") && (
+          {showLeft && (
             <StudioLeftSidebar
               layout={layout}
+              width={responsive.leftWidth}
               onSelectView={(view) => patch({ leftSidebarView: view })}
-              onFocusCapture={() => setLastFocusedColumn("conversation")}
-              onMouseDownCapture={() => setLastFocusedColumn("conversation")}
+              onFocusCapture={() => { setLastFocusedColumn("conversation"); setNarrowPane("left") }}
+              onMouseDownCapture={() => { setLastFocusedColumn("conversation"); setNarrowPane("left") }}
               onClose={() => patch({ leftSidebarVisible: false })}
             />
           )}
-          <StudioCenter
-            onFocusCapture={() => setLastFocusedColumn("conversation")}
-            onMouseDownCapture={() => setLastFocusedColumn("conversation")}
+          {showCenter && <StudioCenter
+            onFocusCapture={() => { setLastFocusedColumn("conversation"); setNarrowPane("center") }}
+            onMouseDownCapture={() => { setLastFocusedColumn("conversation"); setNarrowPane("center") }}
             layout={layout}
             liveTerminalHeight={liveTerminalHeight ?? layout.terminalHeight}
             onLiveTerminalResize={setLiveTerminalHeight}
@@ -456,12 +500,12 @@ export function StudioShell(): React.JSX.Element {
               setLiveTerminalHeight(null);
               patch({ terminalHeight: h });
             }}
-          />
-          {surfaceVisible && (
+          />}
+          {showSurface && (
             <StudioSurface
-              onFocusCapture={() => setLastFocusedColumn("surface")}
-              onMouseDownCapture={() => setLastFocusedColumn("surface")}
-              liveWidth={liveSurfaceWidth ?? layout.surfaceWidth}
+              onFocusCapture={() => { setLastFocusedColumn("surface"); setNarrowPane("surface") }}
+              onMouseDownCapture={() => { setLastFocusedColumn("surface"); setNarrowPane("surface") }}
+              liveWidth={responsive.surfaceWidth}
               onLiveResize={setLiveSurfaceWidth}
               onCommitWidth={(w) => {
                 setLiveSurfaceWidth(null);

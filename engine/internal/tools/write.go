@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/dsswift/ion/engine/internal/durablefile"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -24,6 +25,13 @@ func WriteTool() *types.ToolDef {
 		},
 		Execute: executeWrite,
 	}
+}
+
+func writeMode(filePath string) os.FileMode {
+	if info, err := os.Stat(filePath); err == nil {
+		return info.Mode().Perm()
+	}
+	return 0o644
 }
 
 func executeWrite(ctx context.Context, input map[string]any, cwd string) (*types.ToolResult, error) {
@@ -53,7 +61,7 @@ func executeWrite(ctx context.Context, input map[string]any, cwd string) (*types
 		return &types.ToolResult{Content: fmt.Sprintf("Error writing file: %s", err), IsError: true}, nil
 	}
 
-	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+	if err := durablefile.Write(filePath, []byte(content), writeMode(filePath)); err != nil {
 		return &types.ToolResult{Content: fmt.Sprintf("Error writing file: %s", err), IsError: true}, nil
 	}
 

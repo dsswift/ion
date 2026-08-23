@@ -6,7 +6,16 @@ sidebar_position: 3
 
 # Core Concepts
 
-Ion has a layered architecture. Understanding these layers up front will save you time when building on the engine or debugging agent behavior.
+Ion has four domains. Understanding them up front will save you time when building on the engine or debugging agent behavior.
+
+| Domain | What it is |
+|--------|------------|
+| **engine** | The Go runtime. Headless mechanics: sessions, hooks, events, tools, streaming. |
+| **harness-sdk** | Extension code on top of the engine, through the SDK. Decides policy. |
+| **clients** | Applications that render engine state. Desktop and iOS are the reference implementations. |
+| **relay** | Transport infrastructure. Pairs two peers and forwards opaque frames. Not a client. |
+
+Every shared concept below has one canonical name. The [Ion Vocabulary](../vocabulary/index.md) is the authority: it carries each term's definition, its domain, its contract classification, and the real code symbols that implement it.
 
 ## Engine vs. Harness
 
@@ -18,7 +27,12 @@ This is the most important distinction in Ion.
 
 This separation means the same engine binary can power completely different agent experiences depending on which harness is loaded.
 
-A third layer, the **client** (desktop app, CLI, mobile remote), connects to the engine over its socket and renders events into a UI. Clients have no access to engine internals. They send commands and receive events.
+A **client** (the desktop app, a CLI, the mobile remote) connects to the engine over its socket and renders events into a UI. Clients have no access to engine internals. They send commands and receive events.
+
+Two facts about clients that the words often blur:
+
+- **Desktop is one client with two presentations.** The Overlay is the transparent glass window. The Studio is the standalone workspace window. Exactly one is active at a time. They are presentations of one application, not two clients.
+- **The relay is not a client.** It is transport infrastructure between the engine and a mobile client. It renders nothing and stores nothing.
 
 ```
 Client (Desktop/CLI/Mobile)
@@ -191,6 +205,7 @@ See the [protocol reference](../protocol/) for the full command and event catalo
 
 ## Next steps
 
+- [Ion Vocabulary](../vocabulary/index.md) -- the canonical term for every concept on this page
 - [CLI reference](../cli/reference.md) -- all commands and flags
 - [Hooks reference](../hooks/) -- the hook catalog
 - [Extension SDK](../extensions/) -- build your first extension

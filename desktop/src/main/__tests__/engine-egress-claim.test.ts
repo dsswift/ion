@@ -22,14 +22,25 @@ vi.mock('../logger', () => ({
   log: vi.fn(),
 }))
 
-vi.mock('../settings-store', () => ({
-  ENGINE_CONFIG_FILE: '/fake/.ion/engine.json',
-  readEngineConfig: vi.fn(() => JSON.parse(JSON.stringify(fakeConfig))),
-  writeEngineConfig: vi.fn((cfg: Record<string, any>) => {
+vi.mock('../settings-store', async () => {
+  const readEngineConfig = vi.fn(() => JSON.parse(JSON.stringify(fakeConfig)))
+  const writeEngineConfig = vi.fn((cfg: Record<string, any>) => {
     written.push(JSON.parse(JSON.stringify(cfg)))
     fakeConfig = JSON.parse(JSON.stringify(cfg))
-  }),
-}))
+  })
+  return {
+    ENGINE_CONFIG_FILE: '/fake/.ion/engine.json',
+    readEngineConfig,
+    writeEngineConfig,
+    updateEngineConfig: vi.fn((mutator: (cfg: Record<string, any>) => boolean | void) => {
+      const cfg = readEngineConfig()
+      const result = mutator(cfg)
+      if (result === false) return false
+      writeEngineConfig(cfg)
+      return true
+    }),
+  }
+})
 
 import { claimEngineEgressForDesktop } from '../engine-egress-claim'
 

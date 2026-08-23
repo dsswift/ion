@@ -6,7 +6,18 @@ sidebar_position: 3
 
 # Desktop Architecture
 
-Ion Desktop is an Electron app that provides a graphical interface for the Ion Engine. It connects to the engine daemon over Unix socket, parses NDJSON events, and renders conversations in a transparent, always-on-top overlay window.
+Ion Desktop is **one** Electron client application. It connects to the engine daemon over a Unix socket, parses NDJSON events, and renders conversations.
+
+It has **two presentations**, built from two renderer entry points:
+
+| Presentation | Entry | What it is |
+|---|---|---|
+| **Overlay** | `index.html` | A transparent, always-on-top glass window with OS-level click-through. Its renderer is the session-store **owner**. |
+| **Studio** | `studio.html` | A standalone workspace window with docks, surfaces, and the visualizer canvas. Its renderer runs the session store in **mirror** mode. |
+
+Exactly one presentation is active at a time (`activeUi`). The Overlay renderer stays the owner in both modes: when the Studio is active, the Overlay renderer keeps running hidden and still persists tabs, answers snapshot polls, and executes the prompt pipeline.
+
+These are presentations of one client, not two clients. The engine sees one Desktop consumer either way. Full architecture: [ADR-021](adr/021-studio-shell-mirror-store.md). Canonical names for the shared surfaces: [Ion Vocabulary](../vocabulary/index.md).
 
 ## Process model
 
@@ -141,7 +152,7 @@ Dual color palette (dark + light) defined as JS objects. `useColors()` hook retu
 
 ## Click-through window
 
-The app uses `setIgnoreMouseEvents` with `{ forward: true }` for OS-level click-through on transparent regions. The renderer toggles this on `mousemove` by checking if the cursor is over a `[data-ion-ui]` element. All interactive UI must be descendants of a `data-ion-ui` container.
+The Overlay presentation uses `setIgnoreMouseEvents` with `{ forward: true }` for OS-level click-through on transparent regions. The renderer toggles this on `mousemove` by checking if the cursor is over a `[data-ion-ui]` element. All interactive UI must be descendants of a `data-ion-ui` container. The Studio presentation is a normal window and does not use click-through.
 
 ## Data flow: prompt to response
 
@@ -239,17 +250,17 @@ rejected alternatives are in
 The main process owns the workspace record
 (`~/.ion/integration-workspaces.json`, keyed by `(repoPath, sourceBranch)`) and
 computes every derived fact — staleness, base drift, discard safety, conflict
-attribution. Three clients render that one projection:
+attribution. One projection feeds both Desktop presentations and the iOS client:
 
 ```
 main-process workspace record
-  ├─ broadcast()                     → overlay renderer + Studio mirror
+  ├─ broadcast()                     → Overlay renderer + Studio mirror
   └─ desktop_worktree_state (wire)   → iOS
 ```
 
 Clients never derive these values locally. That is what keeps the pin and
 staleness vocabulary identical across surfaces, and it is why the Studio dock
-mounts the overlay's own components rather than bespoke widgets.
+mounts the Overlay's own components rather than bespoke widgets.
 
 ### Invariants worth knowing before changing this code
 

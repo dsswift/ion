@@ -538,6 +538,12 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 			ContextPercent:        lastPct,
 			ContextTokens:         lastTokens,
 			ContextEffectiveLimit: promptCapacity.EffectiveLimit,
+			// A status event is a COMPLETE snapshot: a consumer replaces its
+			// StatusFields with this payload. Background Bash processes started
+			// by an earlier run keep running across the turn boundary, so
+			// omitting them here told every consumer they had vanished the
+			// moment the next prompt dispatched.
+			ActiveBackgroundTasks: liveBackgroundTaskStates(key),
 		},
 	})
 

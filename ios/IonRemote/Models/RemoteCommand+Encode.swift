@@ -11,7 +11,7 @@ extension RemoteCommand {
         switch self {
         case .sync:
             try container.encode(TypeKey.sync, forKey: .type)
-        case .createTab(let workingDirectory, let pinToGroupId, let profileId, let extensions, let clientCmdId):
+        case .createTab(let workingDirectory, let pinToGroupId, let profileId, let extensions, let clientCmdId, let useWorktree, let sourceBranch):
             try container.encode(TypeKey.createTab, forKey: .type)
             try container.encodeIfPresent(workingDirectory, forKey: .workingDirectory)
             // Only emit optional fields when the caller actually supplied them,
@@ -21,6 +21,8 @@ extension RemoteCommand {
             try container.encodeIfPresent(profileId, forKey: .profileId)
             try container.encodeIfPresent(extensions, forKey: .extensions)
             try container.encodeIfPresent(clientCmdId, forKey: .clientCmdId)
+            try container.encodeIfPresent(useWorktree, forKey: .useWorktree)
+            try container.encodeIfPresent(sourceBranch, forKey: .sourceBranch)
         case .closeTab(let tabId):
             try container.encode(TypeKey.closeTab, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
@@ -246,6 +248,9 @@ extension RemoteCommand {
         case .tabSettle(let tabId):
             try container.encode(TypeKey.tabSettle, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
+        case .tabDelete(let tabId):
+            try container.encode(TypeKey.tabDelete, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
         case .tabUnsettle(let tabId):
             try container.encode(TypeKey.tabUnsettle, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
@@ -409,6 +414,10 @@ extension RemoteCommand {
 
         case .gitChanges(let directory):
             try container.encode(TypeKey.gitChanges, forKey: .type)
+            try container.encode(directory, forKey: .directory)
+
+        case .gitBranches(let directory):
+            try container.encode(TypeKey.gitBranches, forKey: .type)
             try container.encode(directory, forKey: .directory)
 
         case .gitGraph(let directory, let skip, let limit):

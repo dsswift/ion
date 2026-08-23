@@ -256,6 +256,21 @@ func ClassifyEntry(entry *SessionEntry, kind string) {
 	entry.Data = md
 }
 
+// SetImplementationPhase records the RunOptions decision on the persisted user
+// turn. This applies after content-shape selection because implementation phase
+// is provenance independent of slash expansion, attachments, and injections.
+func SetImplementationPhase(entry *SessionEntry, implementationPhase bool) {
+	if entry == nil || !implementationPhase {
+		return
+	}
+	md, ok := entry.Data.(MessageData)
+	if !ok {
+		return
+	}
+	md.ImplementationPhase = true
+	entry.Data = md
+}
+
 // SlashInvocation captures the raw slash-command invocation that produced a
 // user turn. The engine resolves and expands a slash command into the prompt
 // the model sees, but the user must see the invocation they typed — so the

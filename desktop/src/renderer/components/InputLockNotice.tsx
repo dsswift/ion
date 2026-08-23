@@ -4,7 +4,6 @@ import { useSessionStore } from '../stores/sessionStore'
 
 /** Recovery actions for conversations the operator can no longer extend. */
 export function InputLockNotice({ tab, accent }: { tab: TabState; accent: string }): React.JSX.Element {
-  const createTab = useSessionStore((s) => s.createTab)
 
   if (tab.inputLockReason === 'settled') {
     return (
@@ -20,7 +19,7 @@ export function InputLockNotice({ tab, accent }: { tab: TabState; accent: string
   return (
     <>
       Automated conversation. Input is disabled.
-      <button onClick={() => { void createTab() }} style={{ marginLeft: 8, border: 'none', background: 'transparent', color: accent, cursor: 'pointer', fontSize: 12 }}>New conversation</button>
+      <button onClick={() => window.dispatchEvent(new CustomEvent('ion:open-new-conversation-picker'))} style={{ marginLeft: 8, border: 'none', background: 'transparent', color: accent, cursor: 'pointer', fontSize: 12 }}>New conversation</button>
     </>
   )
 }

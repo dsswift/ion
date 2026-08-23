@@ -29,6 +29,7 @@ import { collectAllDirConversations } from "../../shared/worktree-conversations"
 import { rError, rWarn } from "../rendererLogger";
 import type { WorktreeInventoryEntry } from "../../shared/types";
 import { scrollableMenuStyle } from '../menu-viewport'
+import type { NewConversationPickerTarget } from './new-conversation-picker-target'
 
 export function WorktreeRowMenu({
   entry,
@@ -173,20 +174,24 @@ export function WorktreeRowMenu({
     hasOpenConversations: goToTabConversations.length > 0,
     actions: {
       onNewConversation: () => {
-        // The store action, NOT createTabInDirectory. Creating the tab is only
-        // half the job: it must also be given its worktree metadata, or the git
-        // panel cannot resolve which repo's worktrees to list and falls back to
-        // the worktree's own `git worktree list`. Calling the raw create here was
-        // exactly that bug -- a second conversation in a worktree showed a
-        // different, wrong worktree panel from the first.
-        void useSessionStore
-          .getState()
-          .newWorktreeConversation(entry.worktreePath)
-          .catch((err) =>
-            rError("worktree.menu", "new conversation failed", {
-              error: String(err),
-            }),
-          );
+        // This row already identifies the target workspace. Open only the final
+        // conversation-type step and preserve the worktree metadata selected here.
+        const target: NewConversationPickerTarget = {
+          initialDirectory: entry.worktreePath,
+          initialWorktree: {
+            repoPath,
+            worktreePath: entry.worktreePath,
+            branchName: entry.branchName,
+            sourceBranch: entry.sourceBranch ?? "",
+            landedAt: entry.landedAt,
+          },
+        };
+        window.dispatchEvent(
+          new CustomEvent<NewConversationPickerTarget>(
+            "ion:open-new-conversation-picker",
+            { detail: target },
+          ),
+        );
       },
       onBeginRename: () => {
         setDraftTitle(entry.title ?? "");

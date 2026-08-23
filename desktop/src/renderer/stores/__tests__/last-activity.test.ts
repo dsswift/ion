@@ -5,12 +5,14 @@
  *   - reconnect/heartbeat-style events stamp lastEventAt but NOT
  *     lastActivityAt
  *   - task_complete stamps lastActivityAt + lastCompletionAt + idleSince
+ *   - completion stays unread until a later visit
  *   - setTabStatus running→idle stamps idleSince; idle→idle and
  *     restore-time writes never do
  *   - restoration backfill resolves max(persisted, SessionMeta
  *     lastTimestamp), never Date.now()
  */
 import { describe, it, expect } from 'vitest'
+import { inboxUnread, tabUnread } from '../../../shared/inbox-classify'
 import { setTabStatus } from '../slices/tab-status-transition'
 import { resolveBackfilledActivity } from '../../hooks/useTabRestoration-activity'
 import type { TabState } from '../../../shared/types'
@@ -72,6 +74,18 @@ describe('restoration backfill resolution', () => {
   })
   it('both null stays null — NEVER Date.now()', () => {
     expect(resolveBackfilledActivity(null, null)).toBeNull()
+  })
+})
+
+describe('completion review state', () => {
+  it('stays unread until a visit occurs after the completion', () => {
+    const completed = tab({ lastMessageAt: 1_000, lastCompletionAt: 3_000, lastVisitedAt: 2_000 })
+    expect(inboxUnread({ ...completed, settledOverride: null, settledAt: null, snoozedUntil: null, snoozedAt: null, manualUnread: false, pendingAskCount: 0, waiting: false, failed: false })).toBe(true)
+    expect(tabUnread(completed)).toBe(true)
+
+    const reviewed = { ...completed, lastVisitedAt: 4_000 }
+    expect(inboxUnread({ ...reviewed, settledOverride: null, settledAt: null, snoozedUntil: null, snoozedAt: null, manualUnread: false, pendingAskCount: 0, waiting: false, failed: false })).toBe(false)
+    expect(tabUnread(reviewed)).toBe(false)
   })
 })
 

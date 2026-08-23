@@ -2,8 +2,9 @@
 // event-slice.ts (Fix 1: keep the reducer under the 600-line cap). These are
 // the `task_update`, `task_complete`, `error`, and `session_dead` arms of the
 // single normalized-event reducer, lifted out verbatim. They mutate the shared
-// reducer context through a passed-by-reference context object, exactly as the
-// inline switch arms did. No behavior change.
+// reducer context through a passed-by-reference context object. They keep the
+// original reducer semantics while making run completion a durable activity and
+// review boundary.
 import type { Message, TabState } from '../../../shared/types'
 import type { ConversationInstance } from '../../../shared/types-engine'
 import type { State, StoreGet } from '../session-store-types'
@@ -24,7 +25,6 @@ export interface TaskCtx {
   s: State
   get: StoreGet
   tabId: string
-  activeTabId: string | null
   /** The tab being updated (read-only here; mutations go through `updated`). */
   tab: TabState
   /** The active instance snapshot at reducer entry (read-only here). */
@@ -137,11 +137,14 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
       ctx.updated.status = 'completed'
       ctx.updated.activeRequestId = null
       ctx.updated.currentActivity = ''
-      // Completion sets an idle timestamp even when no assistant text was
-      // produced. This is status truth, deliberately separate from inbox time.
+      // A completion is real conversation activity even when the run produced
+      // no final assistant text. One timestamp keeps the activity clock, review
+      // marker, and idle clock on the exact run-exit boundary.
       const suppressInboxMessage = ctx.updated.inboxMessageSuppressed === true
-      ctx.updated.lastCompletionAt = Date.now()
-      ctx.updated.idleSince = Date.now()
+      const completedAt = Date.now()
+      ctx.updated.lastCompletionAt = completedAt
+      ctx.updated.lastActivityAt = completedAt
+      ctx.updated.idleSince = completedAt
       // A settled conversation is inert. A late completion is a shutdown race,
       // not new activity, so it must never clear the settlement lock.
       ctx.permissionQueue = []
@@ -178,13 +181,9 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
           if (!suppressInboxMessage) ctx.updated.lastMessageAt = timestamp
         }
       }
-      // Unread derivation (R9): lastCompletionAt vs lastVisitedAt replaces
-      // the old hasUnread flag. A completion the user is WATCHING (active
-      // tab, expanded) counts as visited-in-the-moment so the dot never
-      // lights under their eyes.
-      if (tabId === ctx.activeTabId && s.isExpanded) {
-        ctx.updated.lastVisitedAt = Date.now()
-      }
+      // Do not mark an active conversation reviewed here. A completed run is
+      // new information until the user enters the conversation after this
+      // timestamp; merely leaving it open while work runs is not a review.
       if (event.permissionDenials && event.permissionDenials.length > 0) {
         // The engine no longer emits PlanModeChangedEvent{Enabled:false}
         // on the ExitPlanMode tool call, so the previous race that

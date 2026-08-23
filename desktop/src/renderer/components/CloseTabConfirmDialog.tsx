@@ -59,6 +59,9 @@ export function CloseTabConfirmDialog({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        padding: 16,
+        boxSizing: 'border-box',
+        overflowY: 'auto',
       }}
     >
       <motion.div
@@ -71,6 +74,11 @@ export function CloseTabConfirmDialog({
         className="glass-surface"
         style={{
           width: 320,
+          maxWidth: '100%',
+          maxHeight: '100%',
+          minWidth: 0,
+          boxSizing: 'border-box',
+          overflowY: 'auto',
           borderRadius: 16,
           padding: 20,
           display: 'flex',
@@ -81,7 +89,7 @@ export function CloseTabConfirmDialog({
         <div style={{ fontSize: 13, fontWeight: 600, color: colors.textPrimary }}>
           Close tab?
         </div>
-        <div style={{ fontSize: 11, color: colors.textSecondary, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 11, color: colors.textSecondary, lineHeight: 1.5, minWidth: 0, overflowWrap: 'anywhere' }}>
           <div style={{ fontWeight: 500 }}>{title}</div>
           <div style={{ color: colors.textTertiary, marginTop: 2 }}>{directory}</div>
         </div>
@@ -109,7 +117,7 @@ export function CloseTabConfirmDialog({
             <span>{warning}</span>
           </div>
         )}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
           <button
             onClick={onCancel}
             {...cancelIx.handlers}

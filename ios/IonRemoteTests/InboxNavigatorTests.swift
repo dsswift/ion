@@ -68,12 +68,29 @@ final class InboxNavigatorTests: XCTestCase {
         XCTAssertEqual(projects.first?.worktreeTabs["/repo/.ion/worktrees/a"]?.map(\.id), ["conversation"])
     }
 
-    func testCollapsedRowsShowOnlyPins() throws {
-        let later = try tab(id: "later", directory: "/repo", state: "active", settledAt: nil, activity: 300, pinnedAt: 2, pinOrderKey: "z")
+    func testCollapsedRowsKeepPinsSelectionAndWorkingRowsWithoutDuplicates() throws {
+        let later = try tab(id: "later", directory: "/repo", state: "active", settledAt: nil, activity: 300, pinnedAt: 2, pinOrderKey: "z", status: "running")
         let first = try tab(id: "first", directory: "/repo", state: "active", settledAt: nil, activity: 100, pinnedAt: 1, pinOrderKey: "a")
-        let active = try tab(id: "active", directory: "/repo", state: "active", settledAt: nil, activity: 200)
-        XCTAssertEqual(InboxNavigator.collapsedRows([later, active, first], activeTabId: "active").map(\.id), ["first", "later"])
-        XCTAssertEqual(InboxNavigator.collapsedRows([later, first], activeTabId: "later").map(\.id), ["first", "later"])
+        let selected = try tab(id: "selected", directory: "/repo", state: "active", settledAt: nil, activity: 250)
+        let running = try tab(id: "running", directory: "/repo", state: "active", settledAt: nil, activity: 200, status: "running")
+        let starting = try tab(id: "starting", directory: "/repo", state: "active", settledAt: nil, activity: 190, status: "starting")
+        let children = try tab(id: "children", directory: "/repo", state: "active", settledAt: nil, activity: 185, status: "waiting")
+        let pending = try tab(id: "pending", directory: "/repo", state: "active", settledAt: nil, activity: 180, hasPendingWork: true)
+        let shell = try tab(id: "shell", directory: "/repo", state: "active", settledAt: nil, activity: 170, backgroundShellCount: 1)
+        let idle = try tab(id: "idle", directory: "/repo", state: "active", settledAt: nil, activity: 400)
+
+        let rows = InboxNavigator.collapsedRows(
+            [idle, shell, first, pending, children, selected, starting, later, running],
+            activeTabId: "selected"
+        )
+
+        XCTAssertEqual(rows.map(\.id), ["first", "later", "selected", "running", "starting", "children", "pending", "shell"])
+        XCTAssertEqual(Set(rows.map(\.id)).count, rows.count)
+    }
+
+    func testCollapsedRowsKeepSelectedPinnedRowOnce() throws {
+        let pinned = try tab(id: "pinned", directory: "/repo", state: "active", settledAt: nil, pinnedAt: 1)
+        XCTAssertEqual(InboxNavigator.collapsedRows([pinned], activeTabId: "pinned").map(\.id), ["pinned"])
     }
 
     func testWorktreeCycleExpandsBeforeSelectingTheNextConversation() throws {
@@ -303,6 +320,11 @@ final class InboxNavigatorTests: XCTestCase {
         XCTAssertEqual(rendered.first?.head, "abc")
     }
 
+    func testInboxSelectionReportsReviewEvenWhenTheRowIsAlreadySelected() throws {
+        let source = try self.source("IonRemote/Views/TabListView+Inbox.swift")
+        XCTAssertTrue(source.contains("viewModel.sendReportFocus(tabId: tab.id)"))
+    }
+
     func testInboxRowUsesTextInsteadOfAnUnreadDot() throws {
         let path = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -311,6 +333,8 @@ final class InboxNavigatorTests: XCTestCase {
         let source = try String(contentsOf: path)
         XCTAssertFalse(source.contains("Circle()"))
         XCTAssertTrue(source.contains(".weight(unread ? .semibold : .regular)"))
+        XCTAssertTrue(source.contains("case .unread: return .done"))
+        XCTAssertTrue(source.contains("case .done: return (\"Done\", theme.statusDone)"))
     }
 
     func testManagedProjectRendersSourceAfterWorktrees() throws {
@@ -401,7 +425,10 @@ final class InboxNavigatorTests: XCTestCase {
         snoozedUntil: Double? = nil,
         isTerminalOnly: Bool? = nil,
         tabRole: String? = nil,
-        worktree: (path: String, repo: String)? = nil
+        worktree: (path: String, repo: String)? = nil,
+        status: String = "idle",
+        hasPendingWork: Bool? = nil,
+        backgroundShellCount: Int? = nil
     ) throws -> RemoteTabState {
         let settled = settledAt.map { ", \"settledAt\": \($0)" } ?? ""
         let activityField = activity.map { ", \"lastActivityAt\": \($0)" } ?? ""
@@ -414,9 +441,11 @@ final class InboxNavigatorTests: XCTestCase {
         let worktreeField = worktree.map {
             ", \"worktree\": {\"worktreePath\": \"\($0.path)\", \"branchName\": \"wt/x\", \"sourceBranch\": \"main\", \"repoPath\": \"\($0.repo)\"}"
         } ?? ""
+        let pendingWorkField = hasPendingWork.map { ", \"hasPendingWork\": \($0)" } ?? ""
+        let backgroundShellField = backgroundShellCount.map { ", \"backgroundShellCount\": \($0)" } ?? ""
         let json = """
-        {"id":"\(id)","title":"\(title)","status":"idle","workingDirectory":"\(directory)",
-        "permissionMode":"auto","permissionQueue":[],"inboxState":"\(state)"\(settled)\(activityField)\(pinnedField)\(orderField)\(createdField)\(snoozedField)\(terminalField)\(roleField)\(worktreeField)}
+        {"id":"\(id)","title":"\(title)","status":"\(status)","workingDirectory":"\(directory)",
+        "permissionMode":"auto","permissionQueue":[],"inboxState":"\(state)"\(settled)\(activityField)\(pinnedField)\(orderField)\(createdField)\(snoozedField)\(terminalField)\(roleField)\(worktreeField)\(pendingWorkField)\(backgroundShellField)}
         """.data(using: .utf8)!
         return try decoder.decode(RemoteTabState.self, from: json)
     }

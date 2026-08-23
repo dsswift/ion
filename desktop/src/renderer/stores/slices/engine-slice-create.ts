@@ -6,6 +6,7 @@ import { makeMainPane } from '../conversation-instance'
 import { formatSessionStartDivider } from '../../../shared/clear-divider'
 import { rError } from '../../rendererLogger'
 import { setTabStatus } from './tab-status-transition'
+import { resolveWorktreeForNewTab } from './tab-slice-worktree-resolve'
 import { resolveRegisteredWorktree } from '../worktree-registration'
 
 /**
@@ -31,6 +32,10 @@ export interface CreateConversationTabOpts {
    * Brand-new tabs leave this unset and mint a fresh id via window.ion.createTab.
    */
   reuseTabId?: string
+  /** Request a new worktree before the tab and session are created. */
+  useWorktree?: boolean
+  /** Explicit branch for a requested worktree. Overrides the saved branch default. */
+  sourceBranch?: string
   /** Restore-only identity already resolved from persisted state/registry. */
   worktree?: import('../../../shared/types').WorktreeInfo | null
 }
@@ -64,11 +69,19 @@ export function createConversationTabAction(set: StoreSet, get: StoreGet) {
     const s = get()
     const homeDir = s.staticInfo?.homePath || '~'
     const prefs = usePreferencesStore.getState()
-    const workingDirectory = dir || prefs.defaultBaseDirectory || homeDir
-    // Resolve identity before creating state or starting engine session. GitPanel
-    // reads tab.worktree synchronously on first render to choose repo-scoped
-    // inventory and bench caches, so a later patch would expose false state.
-    const worktree = await resolveRegisteredWorktree(workingDirectory, opts.worktree)
+    const baseWorkingDirectory = dir || prefs.defaultBaseDirectory || homeDir
+    // A new worktree must be resolved before state creation or engine startup.
+    // Starting first would bind the session to the source checkout while the UI
+    // claimed it lived in the worktree.
+    const resolution = await resolveWorktreeForNewTab(
+      baseWorkingDirectory,
+      opts.useWorktree,
+      opts.sourceBranch,
+    )
+    const workingDirectory = resolution.dir
+    // Restoration supplies already-known metadata. New tabs resolve either the
+    // newly-created worktree or a registered identity for their final directory.
+    const worktree = opts.worktree ?? (resolution.worktree ?? await resolveRegisteredWorktree(workingDirectory))
     if (worktree?.landedAt && !opts.reuseTabId) {
       rError('engine.create', 'conversation creation refused: worktree has landed', {
         worktree_path: worktree.worktreePath,
@@ -147,6 +160,7 @@ export function createConversationTabAction(set: StoreSet, get: StoreGet) {
       hasChosenDirectory: true,
       groupId,
       worktree,
+      pendingWorktreeSetup: resolution.pendingSetup,
       inputLockReason: worktree?.landedAt ? 'landed-worktree' : null,
       inputLocked: !!worktree?.landedAt,
       // engineProfileId is the derivation source for tabHasExtensions(). Set it

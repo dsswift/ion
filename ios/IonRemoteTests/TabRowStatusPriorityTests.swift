@@ -2,8 +2,10 @@ import XCTest
 @testable import IonRemote
 
 final class TabRowStatusPriorityTests: XCTestCase {
-    private func tab(status: TabStatus = .idle, children: Bool? = nil, permissions: [PermissionRequest] = []) -> RemoteTabState {
-        RemoteTabState(id: "test", title: "Test", customTitle: nil, status: status, workingDirectory: "/tmp", permissionMode: .auto, thinkingEffort: nil, permissionQueue: permissions, hasRunningChildren: children)
+    private func tab(status: TabStatus = .idle, children: Bool? = nil, permissions: [PermissionRequest] = [], unread: Bool? = nil) -> RemoteTabState {
+        var tab = RemoteTabState(id: "test", title: "Test", customTitle: nil, status: status, workingDirectory: "/tmp", permissionMode: .auto, thinkingEffort: nil, permissionQueue: permissions, hasRunningChildren: children)
+        tab.unread = unread
+        return tab
     }
 
     private func permission(_ toolName: String) -> PermissionRequest {
@@ -35,6 +37,14 @@ final class TabRowStatusPriorityTests: XCTestCase {
 
         XCTAssertEqual(result.state, .starting)
         XCTAssertEqual(result.priority, TabStatusRollup.priorityStarting)
+    }
+
+    func testUnreadCompletionOutranksIdleAndUsesDoneState() {
+        let result = TabStatusRollup.classify(tab(status: .idle, unread: true))
+
+        XCTAssertEqual(result.state, .unread)
+        XCTAssertEqual(result.priority, TabStatusRollup.priorityUnread)
+        XCTAssertFalse(result.state.breathes)
     }
 
     func testGroupRollupPreservesStartingWhenNoHigherStatusExists() {
