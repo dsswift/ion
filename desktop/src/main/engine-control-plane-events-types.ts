@@ -114,6 +114,34 @@ export interface TabEntry {
    * reset/clear, so the next proposal after new work always re-surfaces.
    */
   lastSurfacedProposalSig: string | null
+  /**
+   * The engine's run epoch as of this tab's most recent dispatch, or null when
+   * the tab has never dispatched (or the engine does not send the field).
+   *
+   * Recorded from the last `engine_status` seen before submitPrompt asks for a
+   * session, and compared against every later idle snapshot to tell one built
+   * BEFORE the prompt from the one that ends the resulting run. See
+   * engine-control-plane-idle-ordering.ts for the full framing.
+   */
+  dispatchRunEpoch: number | null
+  /**
+   * The run epoch carried by the most recent `engine_status` for this tab, or
+   * null when no snapshot has carried one. Updated on EVERY status event
+   * regardless of state, so the value submitPrompt records is the freshest
+   * reading available at dispatch time.
+   */
+  lastObservedRunEpoch: number | null
+  /**
+   * True once the engine has acknowledged the prompt now in flight — the
+   * `send_prompt` RPC returned. Cleared at dispatch, set when the send
+   * resolves.
+   *
+   * The fallback ordering signal for an engine binary that predates
+   * `runEpoch`. The engine assigns run identity inside SendPrompt before it
+   * replies, so the acknowledgement is the exact boundary between "no run yet"
+   * and "run exists". See engine-control-plane-idle-ordering.ts.
+   */
+  dispatchAcknowledged: boolean
 }
 
 export interface EventEmitterContext {
