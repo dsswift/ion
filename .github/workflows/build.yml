@@ -135,7 +135,7 @@ jobs:
         run: |
           ASSET="ion-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
 
-          # notarytool requires a zip, dmg, or pkg
+          # notarytool requires a zip or pkg.
           ZIP="${ASSET}.zip"
           zip "$ZIP" "$ASSET"
 
@@ -365,7 +365,7 @@ jobs:
           security set-keychain-settings -lut 900 "$KEYCHAIN"
           security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN"
 
-          # Developer ID Application cert — signs the .app and .dmg (codesign).
+          # Developer ID Application cert — signs the .app.
           APP_CERT_FILE=$(mktemp /tmp/appcert.XXXXXX.p12)
           echo "$APPLE_CERT_BASE64" | base64 --decode > "$APP_CERT_FILE"
           security import "$APP_CERT_FILE" -k "$KEYCHAIN" -P "$APPLE_CERT_PASSWORD" \
@@ -463,7 +463,7 @@ jobs:
         working-directory: desktop
         run: |
           TAG="desktop-v${{ steps.version.outputs.version }}"
-          for f in release/*.dmg release/*.zip release/*.pkg release/latest-mac.yml; do
+          for f in release/*.zip release/*.pkg release/latest-mac.yml; do
             [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber -R "${{ github.repository }}"
           done
 

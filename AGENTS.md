@@ -152,7 +152,7 @@ Hooks are managed by husky and install themselves: root `package.json` has `"pre
 
 ## Forbidden commands
 
-**Never run `make desktop`.** It builds, packages, installs to `/Applications`, and relaunches the desktop app. On launch the desktop re-bootstraps the engine daemon and force-restarts it (`launchctl kickstart -k`) when the bundled binary or plist changed — so a `make desktop` that ships a new engine binary recycles the daemon, killing the engine process hosting your conversation and often losing conversation state. The user runs `make desktop` manually when they are ready. If a desktop rebuild is needed, tell the user to run it.
+**Never run `make desktop`.** It builds a local `.pkg`, asks the running desktop to drain active work, and opens macOS Installer. Installing and relaunching the new desktop can replace the bundled engine and restart the daemon, which ends the engine process hosting this conversation after its work drains. The user runs `make desktop` manually when ready. If a desktop rebuild is needed, tell the user to run it.
 
 ## Quality gates (run while developing)
 
