@@ -308,6 +308,44 @@ type StatusFields struct {
 	// It includes live dispatches, notifying shells, queued prompts, durable
 	// completion deliveries, queued background completions, and parked runs.
 	HasPendingWork bool `json:"hasPendingWork,omitempty"`
+	// RunEpoch counts the runs this session has accepted for dispatch, as of
+	// the instant this snapshot was built. It starts at zero for a session
+	// that has never dispatched, increments once per accepted prompt, and
+	// never decreases for the life of the session.
+	//
+	// It exists so a consumer can order a status snapshot against its own
+	// prompt. A status event is a complete snapshot that any of several
+	// asynchronous sites may build — the heartbeat, ReconcileState, the
+	// post-start_session handshake, QuerySessionStatus — so one can be built
+	// in the window after a client sent a prompt but before the engine
+	// assigned run identity to it. Such a snapshot honestly reports
+	// state=idle. Without an ordering signal a consumer cannot distinguish
+	// that pre-dispatch idle from the idle that ends a run, and reads a stale
+	// snapshot as a completion.
+	//
+	// The contract for a consumer: record the epoch you last observed, send
+	// the prompt, and treat any subsequent snapshot whose epoch has not
+	// advanced past that value as describing the state BEFORE your prompt.
+	// Such a snapshot is never a completion of it.
+	//
+	// Scope is one live session, not one conversation. A session recreated by
+	// StartSession — an engine restart, or a resume after StopSession —
+	// begins again at zero, so the value can DECREASE across a session
+	// boundary. A consumer that observes a decrease is looking at a new
+	// session and must rebase its recorded value rather than treat the
+	// snapshot as stale, or it would discard every status the new session
+	// emits. A decrease is never evidence of ordering within one session,
+	// because within one session the counter only rises.
+	//
+	// A counter rather than a run identifier, because the ordering question
+	// is what a consumer actually needs and an identifier cannot answer it:
+	// the engine mints its run ID internally and a client mints its own
+	// request ID independently, so the two are never comparable.
+	//
+	// Omitted when zero, so a session that has never dispatched is
+	// indistinguishable on the wire from an emitter that predates the field.
+	// A consumer treats absent as zero.
+	RunEpoch int64 `json:"runEpoch,omitempty"`
 	// NumTurns is the number of LLM turns completed in the most recent run.
 	// Stamped from TaskCompleteEvent.NumTurns in translateToEngineEvent; zero
 	// on idle and heartbeat status events that have no associated run.
@@ -402,6 +440,13 @@ type SessionStatus struct {
 	// HasPendingWork mirrors StatusFields.HasPendingWork so consumers that read
 	// only engine_session_status can distinguish a terminal idle from waiting.
 	HasPendingWork bool `json:"hasPendingWork,omitempty"`
+	// RunEpoch mirrors StatusFields.RunEpoch — see that field for the full
+	// ordering contract. Carried here because engine_session_status is the
+	// designated successor to engine_status: a consumer that reads only this
+	// event needs the same ability to tell a snapshot built before its prompt
+	// from the one that ends the resulting run. Omitting it would reintroduce
+	// the false-completion defect the moment the legacy event retires.
+	RunEpoch int64 `json:"runEpoch,omitempty"`
 	// PermissionDenialsPending mirrors StatusFields.PermissionDenials.
 	// Same retention contract — unresolved AskUserQuestion / ExitPlanMode
 	// entries surface here so a re-attaching consumer sees them.

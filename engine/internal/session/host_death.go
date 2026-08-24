@@ -124,6 +124,10 @@ func (m *Manager) respawnDeadExtensions(key string) {
 			Type: "engine_status",
 			Fields: &types.StatusFields{
 				Label: key, State: "extension_restarting",
+				// Hand-built snapshot: stamp the epoch explicitly, or this
+				// emission would publish an absent (zero) epoch and read to a
+				// consumer as older than a prompt already in flight.
+				RunEpoch:       s.runEpoch,
 				ContextPercent: s.lastContextPct,
 				ContextWindow:  s.lastContextWindow,
 				ContextTokens:  s.lastContextTokens,
@@ -211,6 +215,7 @@ func (m *Manager) respawnDeadExtensions(key string) {
 	var idlePct, idleCW, idleTokens int
 	var idleModel string
 	var idleCost, idleConvCost float64
+	var idleEpoch int64
 	if sess, ok2 := m.sessions[key]; ok2 {
 		idlePct = sess.lastContextPct
 		idleCW = sess.lastContextWindow
@@ -218,12 +223,17 @@ func (m *Manager) respawnDeadExtensions(key string) {
 		idleModel = sess.lastModel
 		idleCost = sess.lastTotalCost
 		idleConvCost = sess.lastConvCost
+		idleEpoch = sess.runEpoch
 	}
 	m.mu.RUnlock()
 	m.emit(key, types.EngineEvent{
 		Type: "engine_status",
 		Fields: &types.StatusFields{
 			Label: key, State: "idle",
+			// Hand-built snapshot: stamp the epoch explicitly. An idle that
+			// omits it reads as pre-dispatch to an ordering-aware consumer,
+			// which is exactly the false-completion shape RunEpoch prevents.
+			RunEpoch:       idleEpoch,
 			ContextPercent: idlePct, ContextWindow: idleCW, ContextTokens: idleTokens,
 			Model: idleModel, RunCostUsd: idleCost, ConversationCostUsd: idleConvCost,
 			// Complete-snapshot contract: idle is not proof the session's

@@ -251,11 +251,13 @@ func (m *Manager) emitClearSignal(key string) {
 	var model string
 	var cost float64
 	var state string
+	var epoch int64
 	if ok {
 		window = s.lastContextWindow
 		model = s.lastModel
 		cost = s.lastTotalCost
 		state = m.sessionState(s)
+		epoch = s.runEpoch
 	}
 	m.mu.RUnlock()
 	if !ok {
@@ -268,6 +270,9 @@ func (m *Manager) emitClearSignal(key string) {
 		Type: "engine_status",
 		Fields: &types.StatusFields{
 			State:          state,
+			// Hand-built snapshot: stamp the epoch explicitly so a /clear
+			// during a live run does not read as older than that run.
+			RunEpoch:       epoch,
 			ContextPercent: 0,
 			ContextTokens:  0,
 			ContextWindow:  window,

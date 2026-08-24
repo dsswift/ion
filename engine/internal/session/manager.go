@@ -292,6 +292,7 @@ func buildSessionStatusMirror(key string, f *types.StatusFields, s *engineSessio
 			BackgroundShellCount:     f.BackgroundShells,
 			ActiveBackgroundTasks:    f.ActiveBackgroundTasks,
 			HasPendingWork:           f.HasPendingWork,
+			RunEpoch:                 f.RunEpoch,
 			Model:                    f.Model,
 			ContextPercent:           f.ContextPercent,
 			ContextWindow:            f.ContextWindow,
