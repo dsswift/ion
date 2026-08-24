@@ -311,6 +311,37 @@ export const TS_SHARED_TYPES: Record<string, string[]> = {
   ExtensionAllowlistEntry: ["id", "sha256"],
   // Client-supplied workspace context. Mirrors Go's ClientWorkspaceContext.
   ClientWorkspaceContext: ["bench", "cwd", "data", "kind", "text"],
+  // Client tool gate declaration (EngineConfig.toolGate). Mirrors Go's
+  // ToolGateConfig in internal/types/tool_gate.go.
+  ToolGateConfig: [
+    "clientToolTimeoutMs",
+    "clientTools",
+    "enabled",
+    "timeoutDecision",
+    "timeoutMs",
+    "tools",
+  ],
+  // One client-executed tool declaration (ToolGateConfig.clientTools).
+  // humanWait routes the fulfillment to the engine's indefinite human-wait
+  // path instead of the finite client-tool timeout.
+  ClientToolDef: [
+    "description",
+    "humanWait",
+    "inputSchema",
+    "name",
+    "planModeSafe",
+  ],
+  // One pending client-tool call carried on engine_client_tool_state
+  // snapshots (complete replacement; [] is the authoritative clear).
+  ClientToolCallState: [
+    "cwd",
+    "humanWait",
+    "requestId",
+    "runId",
+    "startedAt",
+    "toolInput",
+    "toolName",
+  ],
   // Payload of engine_provider_login (EngineEvent.providerLogin). Mirrors Go's
   // ProviderLoginUpdate.
   ProviderLoginUpdate: [

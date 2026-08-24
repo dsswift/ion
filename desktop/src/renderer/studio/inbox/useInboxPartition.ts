@@ -7,6 +7,7 @@ import { classifyInbox, inboxUnread, wokeAt, type InboxTabView } from '../../../
 import { liveBackgroundShellCount } from '../../../shared/background-shell-counts'
 import { sortPinnedByOrder } from '../../../shared/inbox-pin-order'
 import type { TabState } from '../../../shared/types'
+import { useQuestionsStore, openWorkflowsForTab } from '../../stores/questions-store'
 
 export interface InboxMeta {
   unread: boolean
@@ -57,6 +58,7 @@ function viewFor(tab: TabState, pendingAskCount: number, waiting: boolean, hasPe
 export function useInboxPartition(): InboxPartition {
   const tabs = useSessionStore((s) => s.tabs)
   const panes = useSessionStore((s) => s.conversationPanes)
+  const questionWorkflows = useQuestionsStore((s) => s.workflows)
   const autoSettleDays = usePreferencesStore((s) => s.inboxAutoSettleDays)
   const [, setClock] = useState(0)
 
@@ -75,8 +77,10 @@ export function useInboxPartition(): InboxPartition {
     const meta = new Map<string, InboxMeta>()
     for (const tab of tabs) {
       const instance = activeInstance(panes, tab.id)
-      const pendingAskCount = (instance?.permissionQueue.length ?? 0) + (instance?.elicitationQueue.length ?? 0)
-      const waiting = waitingStateOfPane(panes.get(tab.id)) !== null
+      // Active guided-question workflows are pending asks: they raise the
+      // hand and block snooze/auto-settle. Subscribed reactively above.
+      const pendingAskCount = (instance?.permissionQueue.length ?? 0) + (instance?.elicitationQueue.length ?? 0) + openWorkflowsForTab(questionWorkflows, tab.id).length
+      const waiting = waitingStateOfPane(panes.get(tab.id), tab.id) !== null
       const agentCount = instance?.agentStates.filter((agent) => agent.status === 'running').length ?? 0
       const backgroundAgents = instance?.statusFields?.backgroundAgents ?? 0
       const shells = liveBackgroundShellCount(instance?.statusFields)
@@ -98,5 +102,5 @@ export function useInboxPartition(): InboxPartition {
     snoozed.sort((left, right) => (left.snoozedUntil ?? 0) - (right.snoozedUntil ?? 0) || left.id.localeCompare(right.id))
     settled.sort((left, right) => (right.settledAt ?? right.lastMessageAt ?? 0) - (left.settledAt ?? left.lastMessageAt ?? 0) || left.id.localeCompare(right.id))
     return { pinned, inbox, snoozed, settled, meta }
-  }, [tabs, panes, autoSettleDays])
+  }, [tabs, panes, questionWorkflows, autoSettleDays])
 }

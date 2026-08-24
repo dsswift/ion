@@ -7,6 +7,8 @@ import { OVERLAY_COMPOSER_LAYER, OVERLAY_CONVERSATION_LAYER } from './components
 import { StatusDrawer } from './components/StatusDrawer'
 import { TabStrip } from './components/TabStrip'
 import { ConversationView } from './components/ConversationView'
+import { QuestionsOverlayHost } from './components/questions/QuestionsOverlayHost'
+import { hydrateQuestions } from './stores/questions-store'
 import { InputBar, useBashModeStore } from './components/InputBar'
 import { SettingsDialog } from './components/SettingsDialog'
 import { TerminalPanel } from './components/TerminalPanel'
@@ -62,6 +64,13 @@ export default function App() {
   // Agent Team Visualizer targeting) on startup and on every change.
   useEffect(() => {
     return initActiveTabNotifier()
+  }, [])
+
+  // Guided Questions: hydrate the window-local cache from main and subscribe
+  // to authoritative broadcasts (view-readiness: the card must be correct on
+  // first paint after a window open mid-workflow).
+  useEffect(() => {
+    return hydrateQuestions()
   }, [])
 
   // Project-registry auto-populate (G1): every conversation tab's base dir
@@ -376,6 +385,13 @@ export default function App() {
             )}
             </>)}
           </motion.div>
+
+          {/* ─── Guided Questions card — pinned above the input row ─── */}
+          {/* Overlay-owned mount, deliberately OUTSIDE ConversationView so the
+              Studio shell (which mounts the same wizard via QuestionsSurface)
+              never double-renders it. Renders nothing without an open
+              workflow on the active conversation. */}
+          {!isTerminalOnly && <QuestionsOverlayHost />}
 
           {/* ─── Input row — circles float outside left ─── */}
           {/* Hidden when terminal-only tab (no conversation input needed) */}

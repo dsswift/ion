@@ -247,6 +247,10 @@ describe('CRITICAL_TYPES contract', () => {
     'desktop_snapshot',
     'desktop_conversation_history',
     'desktop_terminal_snapshot',
+    // Bounded at the source by QUESTIONS_LIMITS (page/question/option/text
+    // caps in shared/questions-schema.ts): a maximal snapshot stays well
+    // under the size threshold, so no degrader is needed.
+    'desktop_questions_state',
   ])
 
   it('every critical type either has a degrader or an explicit waiver', () => {

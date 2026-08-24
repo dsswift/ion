@@ -137,6 +137,11 @@ export function registerEngineIpc(): void {
 
   ipcMain.handle(IPC.ENGINE_STOP, (_event, { key }: { key: string }) => {
     log('engine_stop', { key })
+    // Guided-questions workflows deliberately survive a stop: the question
+    // is PARKED (the engine already terminated the run when AskUserQuestions
+    // was called), so there is nothing running to stop and the retained
+    // denial keeps re-publishing. Retiring here was the "Stop destroyed my
+    // answers" defect.
     engineBridge.stopSession(key).catch((err) => warn('engine_stop: stop session failed', { key, error: String(err) }))
   })
 

@@ -108,7 +108,10 @@ export function serializeSurface(pinnedTabs: readonly PinnableSingletonId[], not
   for (const [tabId, state] of Object.entries(conversations)) {
     const tabs: SurfaceTab[] = []
     for (const tab of normalizeTabs(state.tabs)) {
-      if (tab.kind === 'notification' || tab.kind === 'runtime-panel') continue
+      // questions is window-transient (derived from live coordinator state);
+      // notification is global (serialized separately); runtime panels exist
+      // only while their producer runs. None belongs in a conversation row.
+      if (tab.kind === 'notification' || tab.kind === 'runtime-panel' || tab.kind === 'questions') continue
       if (tab.kind === 'preview') tabs.push({ kind: 'preview', id: tab.id, filePath: tab.filePath })
       else tabs.push(tab)
     }

@@ -10,6 +10,7 @@ import {
   formatRelativeShort, abbreviateProfileName, resolveTabModelFallback, getTabStatusColor,
 } from './TabStripShared'
 import { activeInstanceOfPane } from '../stores/conversation-instance'
+import { useQuestionsStore } from '../stores/questions-store'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { StatusDot } from './TabStripStatusDot'
 import { InlineRenameInput } from './TabStripInlineRenameInput'
@@ -124,8 +125,16 @@ export function TabPill({
   // user must stop the tab first.
   const closeBlocked = isRunning || anyInstanceHasRunningChildren || anyInstanceHasRunningShells
 
-  // Derive waiting-for-user state from permission denials
-  const waitingState = waitingStateOfPane(pane)
+  // Derive waiting-for-user state from permission denials AND from an open
+  // Guided Questions round (which is deliberately absent from
+  // permissionDenied — see waitingStateOfPane).
+  //
+  // Subscribing to `workflows` is what makes the rim appear the moment a
+  // question round opens: waitingStateOfPane reads the questions store
+  // non-reactively, so without this the pill would only pick the change up on
+  // an unrelated re-render.
+  useQuestionsStore((s) => s.workflows)
+  const waitingState = waitingStateOfPane(pane, tab.id)
 
   // Waiting-state border color (thin rim, no boxShadow bleed)
   const waitingBorder = waitingState === 'plan-ready'

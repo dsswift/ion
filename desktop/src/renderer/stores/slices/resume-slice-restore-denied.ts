@@ -27,3 +27,8 @@ export function buildRestoredDenied(
   if (!found) return null
   return { tools: [{ toolName: found.toolName, toolUseId: found.toolId || 'restored', toolInput: parseToolInput(found.toolInput) }] }
 }
+
+// The questions-panel counterpart lives with the shared pending-card
+// helper so BOTH restore paths (this slice and resume-slice-hydration) call
+// one implementation.
+export { rehydrateQuestionsFromMessages } from '../restored-denied'

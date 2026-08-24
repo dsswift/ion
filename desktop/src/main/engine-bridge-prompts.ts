@@ -46,6 +46,15 @@ export interface SendPromptArgs {
   clientWorkspaceContext?: ClientWorkspaceContext
   /** Stable caller delivery identity for idempotent engine acceptance. */
   deliveryId?: string
+  /**
+   * How this turn was authored, as an engine InjectionKind wire value.
+   * 'structured_answer' marks a Guided Questions submission: the operator
+   * chose the values in the wizard, and this prompt is its engine-facing
+   * rendering, so the engine classifies it machine-authored and the
+   * transcript does not show it back as a user bubble. Absent for an
+   * ordinary typed turn.
+   */
+  injectionKind?: string
 }
 
 /**
@@ -115,6 +124,7 @@ export function buildSendPromptMessage(args: SendPromptArgs): Record<string, unk
   if (args.resolveSlash) msg.resolveSlash = true
   if (args.clientWorkspaceContext) msg.clientWorkspaceContext = args.clientWorkspaceContext
   if (args.deliveryId) msg.deliveryId = args.deliveryId
+  if (args.injectionKind) msg.injectionKind = args.injectionKind
   return msg
 }
 

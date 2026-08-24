@@ -134,6 +134,11 @@ vi.mock('../integration/bench-prompt-context', () => ({
 import { processIncomingPrompt } from '../prompt-pipeline'
 import { _resetAwaitersForTests } from '../command-await'
 import { TURN_GROUPING_GUIDANCE } from '../turn-grouping-guidance'
+import { ASK_USER_QUESTIONS_GUIDANCE } from '../questions/questions-tool-decl'
+
+// The full ordered addendum block the pipeline appends (see
+// SYSTEM_PROMPT_ADDENDA in prompt-pipeline.ts).
+const ALL_ADDENDA = `${TURN_GROUPING_GUIDANCE}\n\n${ASK_USER_QUESTIONS_GUIDANCE}`
 
 beforeEach(() => {
   mocks.sendCommandMock.mockReset()
@@ -165,7 +170,7 @@ describe('processIncomingPrompt — harness system-prompt addenda (turn-grouping
     })
     expect(mocks.submitPromptMock).toHaveBeenCalledTimes(1)
     const opts = mocks.submitPromptMock.mock.calls[0][2]
-    expect(opts.appendSystemPrompt).toBe(TURN_GROUPING_GUIDANCE)
+    expect(opts.appendSystemPrompt).toBe(ALL_ADDENDA)
   })
 
   it('appends the guidance after an existing upstream addendum with a \\n\\n separator', async () => {
@@ -183,7 +188,7 @@ describe('processIncomingPrompt — harness system-prompt addenda (turn-grouping
     })
     expect(mocks.submitPromptMock).toHaveBeenCalledTimes(1)
     const opts = mocks.submitPromptMock.mock.calls[0][2]
-    expect(opts.appendSystemPrompt).toBe(`voice mode\n\n${TURN_GROUPING_GUIDANCE}`)
+    expect(opts.appendSystemPrompt).toBe(`voice mode\n\n${ALL_ADDENDA}`)
   })
 
   it('is idempotent — does not double-append when re-invoked on already-guidance-tailed input', async () => {
@@ -191,7 +196,7 @@ describe('processIncomingPrompt — harness system-prompt addenda (turn-grouping
     // endsWith() guard, the guidance would appear twice. This simulates the
     // second invocation directly (guidance already present on RunOptions) and
     // asserts no duplication.
-    const alreadyTailed = `voice mode\n\n${TURN_GROUPING_GUIDANCE}`
+    const alreadyTailed = `voice mode\n\n${ALL_ADDENDA}`
     await processIncomingPrompt({
       tabId: 'tab-1',
       text: 'hello',
@@ -206,8 +211,28 @@ describe('processIncomingPrompt — harness system-prompt addenda (turn-grouping
     expect(sentAppendSystemPrompt).toBe(alreadyTailed)
     // Belt-and-suspenders: count occurrences of the guidance text in
     // the final string. Must be exactly one.
-    const occurrences = sentAppendSystemPrompt.split(TURN_GROUPING_GUIDANCE).length - 1
-    expect(occurrences).toBe(1)
+    const turnOccurrences = sentAppendSystemPrompt.split(TURN_GROUPING_GUIDANCE).length - 1
+    expect(turnOccurrences).toBe(1)
+    const questionsOccurrences = sentAppendSystemPrompt.split(ASK_USER_QUESTIONS_GUIDANCE).length - 1
+    expect(questionsOccurrences).toBe(1)
+  })
+
+  it('per-addendum idempotency: a partially-tailed input gains only the missing addendum', async () => {
+    // The old single .endsWith() guard could not protect anything but the
+    // LAST block; this pins the ordered-list refactor: input already carrying
+    // the turn-grouping guidance gains ONLY the questions guidance.
+    const partiallyTailed = `voice mode\n\n${TURN_GROUPING_GUIDANCE}`
+    await processIncomingPrompt({
+      tabId: 'tab-1',
+      text: 'hello',
+      reqId: 'req-addenda-partial',
+      source: 'desktop',
+      hasExtensions: true,
+      instanceId: 'inst-x',
+      runOptions: { prompt: 'hello', projectPath: '/tmp', extensions: ['ext-a'], appendSystemPrompt: partiallyTailed },
+    })
+    const sent = mocks.submitPromptMock.mock.calls[0][2].appendSystemPrompt
+    expect(sent).toBe(`${partiallyTailed}\n\n${ASK_USER_QUESTIONS_GUIDANCE}`)
   })
 
   it('appends the guidance to runOptions.appendSystemPrompt for desktop CLI prompts', async () => {
@@ -225,7 +250,7 @@ describe('processIncomingPrompt — harness system-prompt addenda (turn-grouping
       runOptions: opts,
     })
     expect(mocks.submitPromptMock).toHaveBeenCalledTimes(1)
-    expect(opts.appendSystemPrompt).toBe(TURN_GROUPING_GUIDANCE)
+    expect(opts.appendSystemPrompt).toBe(ALL_ADDENDA)
   })
 })
 

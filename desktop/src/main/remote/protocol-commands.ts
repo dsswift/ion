@@ -6,8 +6,10 @@
  */
 
 import type { RemoteWorktreeCommand } from "./protocol-worktree";
+import type { RemoteQuestionsCommand } from "./protocol-questions";
 
 export type RemoteCommand =
+  | RemoteQuestionsCommand
   | { type: "desktop_sync" }
   // `pinToGroupId` is an additive optional extension (non-breaking per
   // CLAUDE.md contract rules). When set, the desktop creates the new tab

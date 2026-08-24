@@ -33,6 +33,7 @@ import type { RemoteTabStatesPayload, ProjectedRendererTab, ResourceManifest } f
 import { projectRendererTab } from './snapshot-project'
 import { pollRendererTabStates } from './snapshot-renderer-poll'
 import { getMachineIdentity } from '../machine-identity'
+import { questionsCoordinator } from '../questions/questions-wiring'
 
 // Re-export so existing `import type { ResourceManifest } from './snapshot'`
 // consumers keep working; the type's home is shared/remote-projection-types.ts
@@ -178,6 +179,11 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
       }
     }
     const mapped = rendererTabs.map((t) => mapProjectedTab(t))
+
+    // Merge main-owned guided-questions state AFTER renderer projection:
+    // the QuestionsCoordinator is authoritative and its state never
+    // round-trips through the renderer store.
+    applyQuestionsState(mapped)
 
     mapped.sort((a, b) => {
       const aRunning = a.status === 'running' || a.status === 'connecting' ? 1 : 0
@@ -456,6 +462,11 @@ function coldStartSnapshot(): RemoteTabSnapshot {
     }
   }
 
+  // Cold-start path merges the main-owned Questions state too — the
+  // coordinator restored (and possibly confirmed) its records before any
+  // renderer exists, and iOS first paint must see live guided waits.
+  applyQuestionsState(results)
+
   results.sort((a, b) => {
     const aRunning = a.status === 'running' || a.status === 'connecting' ? 1 : 0
     const bRunning = b.status === 'running' || b.status === 'connecting' ? 1 : 0
@@ -464,4 +475,19 @@ function coldStartSnapshot(): RemoteTabSnapshot {
   })
 
   return { tabs: results, resourceManifest: {} }
+}
+
+/**
+ * Merge the QuestionsCoordinator's open workflows onto matching tabs (keyed
+ * by session key == tab id). Mutates the freshly-built tab array in place —
+ * the arrays here are per-call constructions, never the shared renderer
+ * cache. A tab with no open workflows gets no field (absent, not []).
+ */
+function applyQuestionsState(tabs: RemoteTabState[]): void {
+  const coord = questionsCoordinator()
+  if (!coord) return
+  for (const tab of tabs) {
+    const open = coord.openForSession(tab.id)
+    if (open.length > 0) tab.questions = open
+  }
 }

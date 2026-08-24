@@ -67,5 +67,30 @@ const LEGACY_MACHINE_KINDS: ReadonlySet<string> = new Set([
  */
 export function suppressesInjection(m: InjectionClassification): boolean {
   if (m.machineAuthored) return true
+  if (OUTBOUND_MACHINE_KINDS.has(m.injectionKind ?? '')) return true
   return LEGACY_MACHINE_KINDS.has(m.injectionKind ?? '')
 }
+
+/**
+ * Kinds the DESKTOP ITSELF authors on an outbound prompt AND hides.
+ *
+ * Distinct from LEGACY_MACHINE_KINDS above, and the distinction is the
+ * direction of travel. LEGACY covers INBOUND rows read back from disk that
+ * predate the engine's `machineAuthored` flag. This set covers OUTBOUND turns
+ * the desktop is about to send, where the flag cannot exist yet: the desktop
+ * is the author, the engine derives `machineAuthored` only once the prompt
+ * reaches it, and the renderer must decide whether to insert a bubble BEFORE
+ * that round-trip.
+ *
+ * Currently EMPTY, and that is a decision rather than an oversight.
+ * `structured_answer` lived here until it was reclassified: a Guided
+ * Questions submission is real operator input — a person read the questions,
+ * chose the options, typed the text, attached the images — so it renders in
+ * the transcript with a "Questions answered" label instead of being hidden.
+ * Hiding it dropped work the operator actually did.
+ *
+ * A kind belongs here only when the desktop sends it AND the engine
+ * classifies it machine-authored. If neither side hides it, it does not
+ * belong here.
+ */
+const OUTBOUND_MACHINE_KINDS: ReadonlySet<string> = new Set<string>()

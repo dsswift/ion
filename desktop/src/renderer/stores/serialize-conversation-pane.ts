@@ -162,6 +162,7 @@ export function serializePersistedMessages(
     slashModelAlias?: string
     slashModelEffective?: string
     implementationPhase?: boolean
+    injectionKind?: string
     attachments?: import('../../shared/types-session').Attachment[]
   }>,
 ): NonNullable<PersistedConversationInstance['messages']> {
@@ -182,6 +183,11 @@ export function serializePersistedMessages(
     ...(m.slashModelAlias ? { slashModelAlias: m.slashModelAlias } : {}),
     ...(m.slashModelEffective ? { slashModelEffective: m.slashModelEffective } : {}),
     ...(m.implementationPhase ? { implementationPhase: true } : {}),
+    // How the turn was authored. The content file is what a conversation is
+    // rebuilt from on restart, so dropping this here means the classification
+    // is gone from every later reopen even though the engine store still has
+    // it — the Guided Questions frame vanished on exactly that round trip.
+    ...(m.injectionKind ? { injectionKind: m.injectionKind } : {}),
     // Persist engine-produced image attachments (tool-result / provider
     // images the engine replays on historical reload via flattenEntries).
     // Attachment paths are on-disk references (never base64), so this is

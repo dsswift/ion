@@ -18,7 +18,10 @@ export function remoteTabStatusFromEngineFields(fields: {
   const hasInteresting = denials.some((denial) => {
     if (denial == null || typeof denial !== 'object') return false
     const toolName = (denial as { toolName?: unknown }).toolName
-    return toolName === 'ExitPlanMode' || toolName === 'AskUserQuestion'
+    // AskUserQuestions is the guided-questions PARK: the session is idle
+    // while the user answers, and the retained denial is the question. The
+    // tab gets the same "needs you" treatment as a plan proposal.
+    return toolName === 'ExitPlanMode' || toolName === 'AskUserQuestion' || toolName === 'AskUserQuestions'
   })
   return hasInteresting ? 'completed' : 'idle'
 }

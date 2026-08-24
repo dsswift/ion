@@ -130,6 +130,11 @@ export function mapSessionMessage(
     slashModelAlias: m.slashModelAlias,
     slashModelEffective: m.slashModelEffective,
     implementationPhase: m.implementationPhase,
+    // Carried so a reloaded transcript labels a structured submission the
+    // same way the live bubble did. Without this the label exists only until
+    // the next reload, and the turn then reads as free text the operator
+    // typed — the exact misrepresentation the label prevents.
+    injectionKind: m.injectionKind,
     attachments: m.attachments,
     backgroundTaskId: m.backgroundTaskId,
     timestamp: m.timestamp,

@@ -184,7 +184,15 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
       // Do not mark an active conversation reviewed here. A completed run is
       // new information until the user enters the conversation after this
       // timestamp; merely leaving it open while work runs is not a review.
-      if (event.permissionDenials && event.permissionDenials.length > 0) {
+      //
+      // AskUserQuestions denials are the guided-questions PARK signal: main's
+      // QuestionsCoordinator owns that surface (the wizard card), so they are
+      // filtered out of the generic denial card here — rendering both would
+      // put two competing answer surfaces on one question.
+      const cardDenials = (event.permissionDenials ?? []).filter(
+        (d: { toolName: string }) => d.toolName !== 'AskUserQuestions',
+      )
+      if (cardDenials.length > 0) {
         // The engine no longer emits PlanModeChangedEvent{Enabled:false}
         // on the ExitPlanMode tool call, so the previous race that
         // forced this branch to filter out "stale" ExitPlanMode
@@ -192,9 +200,9 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
         // active" user message) is gone. task_complete now arrives
         // while permissionMode is still 'plan', and the approval
         // card renders cleanly from the unfiltered denials.
-        ctx.instPatch.permissionDenied = { tools: event.permissionDenials }
+        ctx.instPatch.permissionDenied = { tools: cardDenials }
         ctx.instTouched = true
-        rInfo('event.task', 'permission denied set', { tab_id: tabId.slice(0, 8), tools: event.permissionDenials.map((t: any) => t.toolName), perm_mode: ctx.instPatch.permissionMode ?? ctx.inst0?.permissionMode ?? 'auto' })
+        rInfo('event.task', 'permission denied set', { tab_id: tabId.slice(0, 8), tools: cardDenials.map((t: { toolName: string }) => t.toolName), perm_mode: ctx.instPatch.permissionMode ?? ctx.inst0?.permissionMode ?? 'auto' })
       } else {
         // task_complete carries no denials. Normally that means "clear the
         // approval card." But a pending user-facing card is a workflow signal

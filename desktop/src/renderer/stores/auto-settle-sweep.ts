@@ -6,12 +6,14 @@ import { activeInstance } from './conversation-instance'
 import type { State } from './session-store-types'
 import { rDebug, rError } from '../rendererLogger'
 import { isPersistedSettled } from '../../shared/tab-predicates'
+import { activeQuestionsCount } from './questions-store'
 
 const AUTO_SETTLE_INTERVAL_MS = 60_000
 
 function inboxView(state: State, tab: State['tabs'][number]): InboxTabView {
   const instance = activeInstance(state.conversationPanes, tab.id)
-  const pendingAskCount = (instance?.permissionQueue.length ?? 0) + (instance?.elicitationQueue.length ?? 0)
+  // Active guided-question workflows block auto-settle like any pending ask.
+  const pendingAskCount = (instance?.permissionQueue.length ?? 0) + (instance?.elicitationQueue.length ?? 0) + activeQuestionsCount(tab.id)
   const agentCount = instance?.agentStates.filter((agent) => agent.status === 'running').length ?? 0
   const backgroundAgents = instance?.statusFields?.backgroundAgents ?? 0
   const shells = liveBackgroundShellCount(instance?.statusFields)

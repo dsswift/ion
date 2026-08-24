@@ -251,43 +251,28 @@ export class EngineBridge extends EventEmitter {
     return entry ? { ...entry.config } : undefined;
   }
 
+  /**
+   * Send a prompt for one session.
+   *
+   * Takes a NAMED options object rather than positional parameters. The
+   * previous signature had grown to fifteen positional arguments, all but two
+   * optional and several adjacent strings — a shape where inserting a
+   * parameter anywhere but the end silently shifts every later argument, and
+   * where `undefined` placeholders at call sites carry no indication of which
+   * field they stand for. `SendPromptArgs` already described exactly this
+   * payload one layer down, so the positional list was a redundant
+   * restatement whose only contribution was the ordering hazard.
+   */
   async sendPrompt(
     key: string,
     text: string,
-    model?: string,
-    appendSystemPrompt?: string,
-    imageAttachments?: import("../shared/types").ImageAttachmentPayload[],
-    implementationPhase?: boolean,
-    enterPlanModeDescription?: string,
-    planModeSparseReminder?: string,
-    planFilePath?: string,
-    bashAllowlistAdditionsForThisPrompt?: string[],
-    thinkingEffort?: string,
-    resolveSlash?: boolean,
-    clientWorkspaceContext?: import("../shared/types-engine").ClientWorkspaceContext,
-    deliveryId?: string,
+    opts: Omit<import("./engine-bridge-prompts").SendPromptArgs, "key" | "text"> = {},
   ): Promise<{
     ok: boolean;
     error?: string;
     data?: { accepted?: boolean; alreadyAccepted?: boolean };
   }> {
-    return core.sendPrompt(
-      this,
-      key,
-      text,
-      model,
-      appendSystemPrompt,
-      imageAttachments,
-      implementationPhase,
-      enterPlanModeDescription,
-      planModeSparseReminder,
-      planFilePath,
-      bashAllowlistAdditionsForThisPrompt,
-      thinkingEffort,
-      resolveSlash,
-      clientWorkspaceContext,
-      deliveryId,
-    );
+    return core.sendPrompt(this, key, text, opts);
   }
 
   /**

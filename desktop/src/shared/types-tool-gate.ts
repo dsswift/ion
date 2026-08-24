@@ -34,6 +34,35 @@ export interface ClientToolDef {
   inputSchema?: Record<string, unknown>
   /** Marks the tool callable in plan mode (read-only tools). */
   planModeSafe?: boolean
+  /**
+   * Marks this tool as an intentional HUMAN wait: the model's call blocks on
+   * a person, not on client software. The engine PARKS the run on invocation
+   * — the request is retained as a PermissionDenial (re-published on every
+   * idle status snapshot), the run terminates, and the session goes idle;
+   * the user's answer arrives as the next prompt. False/absent keeps
+   * machine-tool behavior (a blocking wire round-trip on a finite timeout).
+   */
+  humanWait?: boolean
+}
+
+/**
+ * One pending client-tool call on the engine_client_tool_state snapshot.
+ * Mirrors Go ClientToolCallState (engine/internal/types/tool_gate.go). The
+ * snapshot is a complete replacement: consumers replace local state with the
+ * payload, and an empty array is the authoritative clear signal.
+ */
+export interface ClientToolCallState {
+  /** tool_gate_response correlator — answer this exact id. */
+  requestId: string
+  /** Owning run lifecycle; lets a client reject a stale persisted entry. */
+  runId?: string
+  toolName: string
+  toolInput?: Record<string, unknown>
+  cwd?: string
+  /** Mirrors ClientToolDef.humanWait: render for a person vs answer programmatically. */
+  humanWait?: boolean
+  /** Unix-ms timestamp the engine registered the call. */
+  startedAt?: number
 }
 
 /** The two verdicts a tool_gate_response may carry. */

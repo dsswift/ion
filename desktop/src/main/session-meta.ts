@@ -368,10 +368,17 @@ export function loadEngineConversationMessages(sessionId: string): any[] {
 
     if (msg.role === 'user') {
       const content = msg.content
+      // How the turn was authored. This direct-file reader rebuilds each row
+      // field by field, so anything not copied here is LOST on the paths that
+      // fall back to it — which is how a Guided Questions submission reloaded
+      // as an ordinary user message with none of its chrome.
+      const injectionKind = typeof msg.injectionKind === 'string' && msg.injectionKind
+        ? msg.injectionKind
+        : undefined
       if (typeof content === 'string') {
         if (content.trim()) {
           const cleaned = cleanCliTags(content)
-          result.push({ role: 'user', content: cleaned, timestamp, internal: isInternalMessage(content) })
+          result.push({ role: 'user', content: cleaned, timestamp, injectionKind, internal: isInternalMessage(content) })
         }
       } else if (Array.isArray(content)) {
         const textParts: string[] = []
@@ -406,7 +413,7 @@ export function loadEngineConversationMessages(sessionId: string): any[] {
         }
         if (textParts.length > 0) {
           const joined = textParts.join('\n')
-          result.push({ role: 'user', content: joined, timestamp, internal: isInternalMessage(joined) })
+          result.push({ role: 'user', content: joined, timestamp, injectionKind, internal: isInternalMessage(joined) })
         }
       }
     } else if (msg.role === 'assistant') {

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'fs'
 import { log as _log, debug as _debug } from '../../logger'
 import { state, sessionPlane } from '../../state'
 import { processIncomingPrompt } from '../../prompt-pipeline'
+import { echoUserTurn } from '../../user-turn-echo'
 import { handleSetPermissionMode } from './tabs'
 import { planSlugFromPath } from '../../../shared/clear-divider'
 import type { RemoteCommand } from '../protocol'
@@ -282,11 +283,14 @@ export async function handleImplementPlan(
 
   const reqId = `remote-impl-${Date.now()}`
 
-  // Echo the user message to iOS so the conversation history shows the intent.
-  state.remoteTransport?.send({
-    type: 'desktop_message_added',
+  // Echo the user message so the conversation history shows the intent.
+  // Through the funnel: one classification rule for every user-turn echo.
+  echoUserTurn({
     tabId,
-    message: { id: reqId, role: 'user', content: implementPrompt, timestamp: Date.now(), source: 'remote', implementationPhase: true },
+    id: reqId,
+    content: implementPrompt,
+    source: 'remote',
+    implementationPhase: true,
   })
 
   // Send through the unified pipeline — same path as handlePrompt → processIncomingPrompt.

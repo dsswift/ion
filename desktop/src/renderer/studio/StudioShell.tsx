@@ -54,6 +54,8 @@ import { useCommandShortcuts } from "./keymap/useStudioKeymap";
 import { useSurfaceStore } from "./surface/surface-store";
 import { canvasTabHandlers } from "./surface/canvas-tab-handlers";
 import { initSurfaceConversationSync } from "./surface/surface-conversation-sync";
+import { initQuestionsSurfaceSync } from "./surface/questions-surface-sync";
+import { hydrateQuestions } from "../stores/questions-store";
 import { ControlsPopover } from "./visualizer/ControlsPopover";
 import { useStudioControlsBus } from "./state/controls-bus";
 import { GIT_PANEL_WIDTH } from "../components/panelGeometry";
@@ -103,6 +105,10 @@ export function StudioShell(): React.JSX.Element {
   useEngineEvents();
   useResourceBootstrap();
   useEffect(() => initSurfaceConversationSync(), []);
+  // Guided Questions: hydrate the window-local cache, then keep the transient
+  // questions Canvas tab aligned with open workflows.
+  useEffect(() => hydrateQuestions(), []);
+  useEffect(() => initQuestionsSurfaceSync(), []);
 
   const { layout, hydrated, patch } = useStudioLayout();
   const surfaceVisible = useSurfaceStore((s) => s.visible);

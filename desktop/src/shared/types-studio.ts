@@ -96,6 +96,16 @@ export interface StudioUserMessageEcho {
   timestamp: number;
   /** True when this user turn begins an approved plan implementation. */
   implementationPhase?: boolean;
+  /**
+   * How the turn was authored, as an engine InjectionKind wire value.
+   *
+   * The mirror builds its own Message from this echo, so any field missing
+   * here is missing from the Studio transcript. `structured_answer` is what
+   * tells the renderer to wrap a Guided Questions submission in its frame —
+   * without it the Studio window showed the submission as an ordinary user
+   * bubble while the Overlay framed it correctly.
+   */
+  injectionKind?: string;
 }
 
 /**
@@ -121,6 +131,10 @@ export interface StudioHistoryReplace {
     dedupKey?: string;
     dedupMode?: "relocate";
     planFilePath?: string;
+    /** How the turn was authored (engine InjectionKind wire value). The
+     *  mirror rebuilds each Message from this payload, so a submission loses
+     *  its frame on reload without it. */
+    injectionKind?: string;
     attachments?: Array<{
       id: string;
       type: string;

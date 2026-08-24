@@ -69,6 +69,11 @@ export function applyUserMessageEcho(tabId: string, echo: StudioUserMessageEcho)
           content: echo.content,
           timestamp: echo.timestamp,
           ...(echo.implementationPhase ? { implementationPhase: true } : {}),
+          // Carries the questions-submission classification so the mirror
+          // renders the same frame the Overlay does. The mirror constructs
+          // the Message itself, so an omission here is invisible until the
+          // two presentations are compared side by side.
+          ...(echo.injectionKind ? { injectionKind: echo.injectionKind } : {}),
         }],
       }
     })
@@ -296,6 +301,7 @@ export function applyHistoryReplace(payload: StudioHistoryReplace): boolean {
       timestamp: m.timestamp,
       dedupKey: m.dedupKey,
       planFilePath: m.planFilePath,
+      injectionKind: m.injectionKind,
       attachments: m.attachments as Message['attachments'],
     }))
     const instances = pane.instances.slice()

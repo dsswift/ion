@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Check, ClockCounterClockwise, PushPin, PushPinSlash, WarningCircle } from '@phosphor-icons/react'
 import { useSessionStore } from '../../stores/sessionStore'
+import { useQuestionsStore } from '../../stores/questions-store'
 import { activeInstance } from '../../stores/conversation-instance'
 import { getWaitingState, formatRelativeShort } from '../../components/TabStripShared'
 import { useColors } from '../../theme'
@@ -42,6 +43,10 @@ export function InboxRow({
     const instance = activeInstance(state.conversationPanes, tab.id)
     return (instance?.permissionQueue.length ?? 0) + (instance?.elicitationQueue.length ?? 0) > 0
   })
+  // A Guided Questions round is a waiting state that lives outside
+  // permissionDenied, so subscribe to the questions store too or the row
+  // renders idle while the operator owes an answer.
+  useQuestionsStore((s) => s.workflows)
   const waiting = useSessionStore((state) => getWaitingState(tab, state.conversationPanes))
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const [renaming, setRenaming] = useState(false)

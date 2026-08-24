@@ -448,6 +448,29 @@ export interface IonAPI extends StudioApi {
   resourceGet(kind: string, id: string, opts?: { sessionKey?: string; global?: boolean }): Promise<void>
   onEngineEvent(callback: (key: string, event: EngineEvent) => void): () => void
 
+  // ─── Guided Questions (AskUserQuestions wizard) ───
+  /** The main-owned QuestionsCoordinator's full synchronized state. */
+  questionsGetState(): Promise<import('../shared/questions-state').QuestionsStateSnapshot>
+  /** Apply a revisioned draft patch. Rejections carry the reason; the
+   *  authoritative state arrives on the broadcast channel for rollback. */
+  questionsPatch(patch: import('../shared/questions-state').QuestionsPatch): Promise<import('../shared/questions-state').QuestionsActionResult>
+  /** Apply a revisioned workflow action (enter_review / edit_question /
+   *  request_more / final_confirm / cancel). */
+  questionsAction(action: import('../shared/questions-state').QuestionsAction): Promise<import('../shared/questions-state').QuestionsActionResult>
+  /** Native image picker for per-question answer attachments. Returns the
+   *  selected files ([] on cancel); paths ride the resume prompt's
+   *  attachment pipeline at submit time. */
+  questionsPickAttachments(): Promise<Array<{ path: string; name: string }>>
+  /** Rebuild a parked question from a restored conversation transcript.
+   *  Resolves true when a workflow was opened. Idempotent: a live workflow
+   *  for the conversation always wins (it may hold a typed draft). */
+  questionsRehydrate(payload: {
+    tabId: string
+    rows: Array<{ role?: string; content?: string; toolName?: string; toolId?: string; toolInput?: string; injectionKind?: string; machineAuthored?: boolean }>
+  }): Promise<boolean>
+  /** Subscribe to authoritative Questions state broadcasts. */
+  onQuestionsState(callback: (snapshot: import('../shared/questions-state').QuestionsStateSnapshot) => void): () => void
+
   // ─── Plugin management ───
   /** Install a Claude Code-compatible plugin from a GitHub source ("owner/repo"). */
   pluginInstall(source: string): Promise<{ ok: boolean; error?: string; data?: { name: string; source: string; version: string } }>

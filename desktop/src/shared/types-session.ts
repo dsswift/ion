@@ -446,6 +446,20 @@ export interface Message {
    */
   steerApplied?: boolean;
   /**
+   * How this turn was authored, as an engine InjectionKind wire value.
+   *
+   * Present on a turn that reached the conversation through something other
+   * than the prompt box. `structured_answer` marks a Guided Questions
+   * submission: real operator input (they chose the options, typed the text,
+   * attached the images) that the renderer LABELS rather than hides, so the
+   * transcript never implies they typed the rendered form.
+   *
+   * Machine-authored kinds are filtered before they ever become a Message
+   * (shared/injection-policy.ts), so this field is for presentation, not
+   * suppression.
+   */
+  injectionKind?: string;
+  /**
    * Local UI state only -- NOT a wire protocol field, NOT persisted.
    * The `id` of the "── Steer applied" divider that `steer_injected` appended
    * for this bubble. The two rows share this key so the grouping pass
@@ -533,6 +547,15 @@ export interface RunOptions {
   source?: "desktop" | "remote";
   /** Stable client delivery identity. Reused on retries to make engine acceptance idempotent. */
   deliveryId?: string;
+  /**
+   * How this turn was authored, as an engine InjectionKind wire value.
+   * 'structured_answer' marks a Guided Questions submission — the operator
+   * chose the values in the wizard, so the engine classifies the turn
+   * user-authored but delivered through a structured surface, so the
+   * transcript renders it with a "Questions answered" label instead of as
+   * text the operator typed at the prompt. Absent for an ordinary typed turn.
+   */
+  injectionKind?: string;
   /** Max output tokens per LLM turn */
   maxTokens?: number;
   /** Extended thinking config (per-session default). See ThinkingConfig. */

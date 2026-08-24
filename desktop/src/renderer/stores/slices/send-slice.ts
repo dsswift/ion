@@ -15,6 +15,7 @@ import { promptRefusal } from '../../../shared/prompt-acceptance'
 import {
   PROMPT_ACCEPTED, promptRefused, promptRefusalMessage,
 } from '../../../shared/prompt-submit-result'
+import { suppressesInjection } from '../../../shared/injection-policy'
 import { createSendBashSlice } from './send-slice-bash'
 
 type PromptModelSelection = Pick<import('../../../shared/types-engine').ConversationInstance, 'modelOverride' | 'modelOverrideSource' | 'sessionModel'> | null | undefined
@@ -175,7 +176,14 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
      */
     submit: (tabId, text, opts = {}) => {
       const { tabs, staticInfo } = get()
-      const { projectPath, extraAttachments, appendSystemPrompt, implementationPhase, imageAttachments, remoteAttachments, source, resolveSlash, requestId: clientRequestId } = opts
+      const { projectPath, extraAttachments, appendSystemPrompt, implementationPhase, imageAttachments, remoteAttachments, source, resolveSlash, requestId: clientRequestId, injectionKind } = opts
+      // Machine-authored turns (agent callbacks, background-task results) are
+      // delivered to the model but never rendered. A Guided Questions
+      // submission is NOT one of those: the operator chose the options, typed
+      // the text and attached the images, so it renders with a label
+      // (MessageBubble reads message.injectionKind) rather than being hidden.
+      // Classified by the ONE shared policy (shared/injection-policy.ts).
+      const suppressBubble = suppressesInjection({ injectionKind })
       const tab = tabs.find((t) => t.id === tabId)
       if (!tab) {
         // A dropped operator prompt is never a debug detail: the text is gone
@@ -312,16 +320,22 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           timestamp: Date.now(),
           ...(isSteer ? { steerPending: true } : {}),
           ...(implementationPhase ? { implementationPhase: true } : {}),
+          // Lets the bubble label itself as a structured submission.
+          ...(injectionKind ? { injectionKind } : {}),
         }
         steerClientMessageId = isSteer ? userMessage.id : undefined
         const conversationPanes = commitInstance(s.conversationPanes, tabId, (inst) => ({
           ...inst,
-          messages: [...inst.messages, userMessage],
+          // The bubble is omitted for a machine-authored turn; everything
+          // else about the send (status, dispatch, attachments) is unchanged.
+          messages: suppressBubble ? inst.messages : [...inst.messages, userMessage],
           // On a fresh (non-busy) send, clear the pending denial card.
           ...(isBusy ? {} : { permissionDenied: null }),
         }))
         const enginePinnedPrompt = new Map(s.enginePinnedPrompt)
-        enginePinnedPrompt.set(tabId, text)
+        // The pinned prompt is the operator's own words shown above the
+        // conversation; a machine-authored rendering is not that.
+        if (!suppressBubble) enginePinnedPrompt.set(tabId, text)
         const tabs = s.tabs.map((t) => {
           if (t.id !== tabId) return t
           const withEffectiveBase = t.hasChosenDirectory
@@ -504,6 +518,12 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         // remote origin, so it forwards as a local prompt.
         source: source === 'remote' ? 'remote' : undefined,
         deliveryId: source === 'remote' ? requestId : undefined,
+        // Client-stated authorship, forwarded to the engine so the PERSISTED
+        // row and every other consumer (iOS, history reload) carry the same
+        // classification this renderer just applied. Without this the
+        // suppression would be desktop-session-local and the turn would
+        // reappear as a user bubble on reload.
+        injectionKind,
         // Forward the engine-resolve-slash flag from REMOTE_ENGINE_PROMPT so
         // the pipeline short-circuits to submitAsPrompt instead of
         // re-dispatching the extension command (which corrupts the
@@ -524,7 +544,11 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       return PROMPT_ACCEPTED
     },
 
-    submitRemotePrompt: (tabId, prompt, imageAttachments, resolveSlash, remoteAttachments, reqId, implementationPhase) => {
+    submitRemotePrompt: (tabId, prompt, imageAttachments, resolveSlash, remoteAttachments, reqId, implementationPhase, injectionKind) => {
+      // Same rule as submit(): a machine-authored turn reaches the model but
+      // is never echoed into the transcript as a user bubble. Classified by
+      // the one shared policy (shared/injection-policy.ts).
+      const suppressRemoteBubble = suppressesInjection({ injectionKind })
       const { tabs, staticInfo } = get()
       const preferredModel = usePreferencesStore.getState().preferredModel
       const tab = tabs.find((t) => t.id === tabId)
@@ -595,11 +619,12 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           source: 'remote' as const,
           ...(isBusy && !isImplementation ? { steerPending: true } : {}),
           ...(isImplementation ? { implementationPhase: true } : {}),
+          ...(injectionKind ? { injectionKind } : {}),
         }
         steerClientMessageId = isBusy && !isImplementation ? userMessage.id : undefined
         const conversationPanes = commitInstance(s.conversationPanes, tabId, (inst) => ({
           ...inst,
-          messages: [...inst.messages, userMessage],
+          messages: suppressRemoteBubble ? inst.messages : [...inst.messages, userMessage],
           // Clear the pending denial on a fresh (non-busy) remote send.
           ...(isBusy ? {} : { permissionDenied: null }),
         }))
@@ -696,6 +721,10 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         // it to the model verbatim. Absent/false for ordinary remote prompts.
         resolveSlash: resolveSlash || undefined,
         implementationPhase: isImplementation || undefined,
+        // Forwarded to the engine so the PERSISTED row carries the same
+        // classification, keeping the turn suppressed on history reload and
+        // on every other client rather than only in this session.
+        injectionKind,
       }).catch((err: Error) => {
         get().handleError(tabId, {
           message: err.message,

@@ -36,6 +36,7 @@ import type { EngineEvent } from '../shared/types'
 import type { ToolGateConfig } from '../shared/types-tool-gate'
 import { evaluateToolGate } from './integration/bench-tool-policy'
 import { BENCH_CLIENT_TOOLS } from './integration/bench-agent-tools'
+import { ASK_USER_QUESTIONS_TOOL } from './questions/questions-tool-decl'
 import { log as _log, warn as _warn, error as _error } from './logger'
 
 const TAG = 'tool-gate'
@@ -78,12 +79,21 @@ export function toolGateSessionConfig(): ToolGateConfig {
     // allow-on-timeout: matches the fail-open posture of the records the
     // policy reads. A desktop mid-restart must not paralyze the session.
     timeoutDecision: 'allow',
-    clientTools: BENCH_CLIENT_TOOLS.map((t) => ({
-      name: t.name,
-      description: t.description,
-      inputSchema: t.inputSchema,
-      planModeSafe: t.planModeSafe,
-    })),
+    clientTools: [
+      ...BENCH_CLIENT_TOOLS.map((t) => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema,
+        planModeSafe: t.planModeSafe,
+      })),
+      // The guided-questions wizard: a HUMAN-wait tool. The engine PARKS
+      // the run when the model calls it — the request is retained as a
+      // PermissionDenial (re-published on every idle status snapshot) and
+      // the session goes idle. No tool_gate_request ever arrives for it;
+      // main's QuestionsCoordinator picks the denial off engine_status and
+      // the user's answers resume the conversation as a normal prompt.
+      ASK_USER_QUESTIONS_TOOL,
+    ],
     clientToolTimeoutMs: 30000,
   }
 }
@@ -103,6 +113,8 @@ export interface GateBridge {
  * (allow + error log) and CLOSED for tools (error result the model reads):
  * a policy crash must not block the operator's own work, while a tool crash
  * must surface as the tool's failure, never as a silent empty success.
+ * (Human-wait tools never produce a gate request: the engine parks the run
+ * instead — see ASK_USER_QUESTIONS_TOOL above.)
  */
 export function wireToolGateResponder(bridge: GateBridge): void {
   bridge.on('event', (key: string, event: EngineEvent) => {
@@ -116,7 +128,7 @@ export function wireToolGateResponder(bridge: GateBridge): void {
     }
     respondPolicy(bridge, key, req, started)
   })
-  log('tool-gate responder wired', { gated_tools: GATED_TOOLS, client_tools: BENCH_CLIENT_TOOLS.map((t) => t.name) })
+  log('tool-gate responder wired', { gated_tools: GATED_TOOLS, client_tools: BENCH_CLIENT_TOOLS.map((t) => t.name).concat(ASK_USER_QUESTIONS_TOOL.name) })
 }
 
 function respondPolicy(

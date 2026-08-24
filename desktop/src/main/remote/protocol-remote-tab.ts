@@ -229,6 +229,14 @@ export interface RemoteTabState {
   pillColor?: string | null
   /** Custom pill icon key (e.g. "diamond", "star"). Null means use the default status dot. */
   pillIcon?: string | null
+  /**
+   * Main-owned guided-questions workflows open on this tab (the
+   * QuestionsCoordinator's per-session projection). Merged AFTER renderer
+   * projection and in the cold-start path — canonical wizard state never
+   * round-trips through the renderer. iOS first paint and seq-gap recovery
+   * read this; live updates ride desktop_questions_state.
+   */
+  questions?: import('../../shared/questions-state').QuestionsWorkflowState[]
 }
 
 // ─── Terminal instance metadata ───

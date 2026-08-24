@@ -1,13 +1,10 @@
-import type {
-  EngineEvent,
-  ImageAttachmentPayload,
-} from "../shared/types";
-import type { ClientWorkspaceContext } from "../shared/types-engine";
+import type { EngineEvent } from "../shared/types";
 import type { EngineBridge } from "./engine-bridge";
 import {
   buildSendPromptLogLine,
   buildSendPromptMessage,
 } from "./engine-bridge-prompts";
+import type { SendPromptArgs } from "./engine-bridge-prompts";
 import {
   debug as _debug,
   error as _error,
@@ -34,39 +31,13 @@ export async function sendPrompt(
   bridge: EngineBridge,
   key: string,
   text: string,
-  model?: string,
-  appendSystemPrompt?: string,
-  imageAttachments?: ImageAttachmentPayload[],
-  implementationPhase?: boolean,
-  enterPlanModeDescription?: string,
-  planModeSparseReminder?: string,
-  planFilePath?: string,
-  bashAllowlistAdditionsForThisPrompt?: string[],
-  thinkingEffort?: string,
-  resolveSlash?: boolean,
-  clientWorkspaceContext?: ClientWorkspaceContext,
-  deliveryId?: string,
+  opts: Omit<SendPromptArgs, "key" | "text">,
 ): Promise<{
   ok: boolean;
   error?: string;
   data?: { accepted?: boolean; alreadyAccepted?: boolean };
 }> {
-  const args = {
-    key,
-    text,
-    model,
-    appendSystemPrompt,
-    imageAttachments,
-    implementationPhase,
-    enterPlanModeDescription,
-    planModeSparseReminder,
-    planFilePath,
-    bashAllowlistAdditionsForThisPrompt,
-    thinkingEffort,
-    resolveSlash,
-    clientWorkspaceContext,
-    deliveryId,
-  };
+  const args: SendPromptArgs = { key, text, ...opts };
   log(buildSendPromptLogLine(args));
   await bridge.connect();
   return bridge._sendWithResult(buildSendPromptMessage(args));

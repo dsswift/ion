@@ -63,15 +63,22 @@ function gateEvent(overrides: Record<string, unknown> = {}): EngineEvent {
 }
 
 describe('toolGateSessionConfig', () => {
-  it('declares the gated tools, allow-on-timeout, and the bench client tools', () => {
+  it('declares the gated tools, allow-on-timeout, and the client tools', () => {
     const cfg = toolGateSessionConfig()
     expect(cfg.enabled).toBe(true)
     expect(cfg.tools).toEqual(GATED_TOOLS)
     expect(cfg.timeoutDecision).toBe('allow')
-    expect(cfg.clientTools?.map((t) => t.name)).toEqual(['BenchMemberFile'])
+    expect(cfg.clientTools?.map((t) => t.name)).toEqual(['BenchMemberFile', 'AskUserQuestions'])
     expect(cfg.clientTools?.[0].planModeSafe).toBe(true)
     // The declaration must not carry the execute function — it crosses the wire.
     expect((cfg.clientTools?.[0] as unknown as Record<string, unknown>).execute).toBeUndefined()
+    // The wizard tool is a plan-mode-safe HUMAN wait: the engine PARKS the
+    // run when the model calls it (retained denial + idle), instead of the
+    // finite blocking client-tool round-trip.
+    const wizard = cfg.clientTools?.find((t) => t.name === 'AskUserQuestions')
+    expect(wizard?.humanWait).toBe(true)
+    expect(wizard?.planModeSafe).toBe(true)
+    expect(wizard?.inputSchema).toBeDefined()
   })
 })
 

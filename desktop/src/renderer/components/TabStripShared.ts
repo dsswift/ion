@@ -2,6 +2,7 @@ import { useSessionStore } from "../stores/sessionStore";
 import { usePreferencesStore } from "../preferences";
 import type { useColors } from "../theme";
 import { tabUnread } from '../../shared/inbox-classify'
+import { activeQuestionsCount } from "../stores/questions-store";
 import type { TabState } from "../../shared/types";
 import type { ConversationPane } from "../../shared/types-engine";
 import { activeInstance } from "../stores/conversation-instance";
@@ -104,7 +105,7 @@ export function getWaitingState(
   conversationPanes: Map<string, ConversationPane> = useSessionStore.getState()
     .conversationPanes,
 ): WaitingState {
-  return waitingStateOfPane(conversationPanes.get(tab.id));
+  return waitingStateOfPane(conversationPanes.get(tab.id), tab.id);
 }
 
 /**
@@ -113,7 +114,22 @@ export function getWaitingState(
  */
 export function waitingStateOfPane(
   pane: ConversationPane | undefined,
+  tabId?: string,
 ): WaitingState {
+  // An open Guided Questions round is a waiting state, and it is NOT
+  // discoverable from permissionDenied: AskUserQuestions denials are
+  // deliberately filtered out of that field so the wizard owns the surface
+  // instead of a second, competing card (event-slice-task.ts). Every waiting
+  // indicator reads this one fold — the tab dot, the Inbox partition, the
+  // Studio row, the workspace indicator, the iOS projection — so without this
+  // check a conversation blocked on a question round rendered as idle
+  // everywhere at once, which is exactly how it reached the Inbox looking
+  // like there was nothing to do.
+  //
+  // Checked FIRST and short-circuits: a pending question outranks a plan
+  // proposal, matching waitingStateFromTools' own precedence.
+  if (tabId && activeQuestionsCount(tabId) > 0) return "question";
+
   // DATA-driven (not tab-type): fold the waiting state across ALL of the tab's
   // instances. A plain conversation has a single `main` instance, so the fold
   // collapses to reading that one instance's permissionDenied; an

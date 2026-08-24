@@ -31,9 +31,15 @@ import { registerFaviconIpc } from "./favicon";
 import { registerWorktreeOverlapIpc } from "./worktree-overlap";
 import { registerDeepLinkIpc } from "./deeplink";
 import { registerStartupIpc } from "./startup";
+import { wireQuestions } from "../questions/questions-wiring";
+import { engineBridge } from "../state";
 
 export function registerAllIpc(): void {
   registerStartupIpc();
+  // Guided Questions: constructs the main-owned QuestionsCoordinator,
+  // restores persisted workflows, registers the human-wait fulfiller on the
+  // tool-gate responder, and owns the ion:questions-* IPC handlers.
+  wireQuestions(engineBridge);
   registerWindowIpc();
   registerSessionIpc();
   registerEngineIpc();

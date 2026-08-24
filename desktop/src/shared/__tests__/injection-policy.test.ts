@@ -23,6 +23,9 @@ const KIND_EXPECTATIONS: ReadonlyArray<{ kind: string; machineAuthored: boolean;
   { kind: 'background_task_completion', machineAuthored: true, suppressed: true },
   { kind: 'checkin', machineAuthored: true, suppressed: true },
   { kind: 'revive', machineAuthored: true, suppressed: true },
+  { kind: 'run_recovery', machineAuthored: true, suppressed: true },
+  { kind: 'structured_answer', machineAuthored: false, suppressed: false },
+  { kind: 'system_steer', machineAuthored: true, suppressed: true },
   { kind: 'steer', machineAuthored: false, suppressed: false },
 ]
 
@@ -126,5 +129,20 @@ describe('mapSessionHistory', () => {
     const out = mapSessionHistory(history, (() => { let n = 0; return () => `id-${n++}` })())
     expect(out).toHaveLength(2)
     expect(out.map((m) => m.content)).toEqual(['run the tests', 'all green'])
+  })
+})
+
+describe('outbound client-authored kinds', () => {
+  it('RENDERS a structured answer — it is real operator input', () => {
+    // A person read the questions, chose the options, typed the text and
+    // attached the images. Hiding it dropped work they actually did; the
+    // transcript shows it with a "Questions answered" label instead.
+    expect(suppressesInjection({ injectionKind: 'structured_answer' })).toBe(false)
+  })
+
+  it('still renders an unknown kind with no flag', () => {
+    // The outbound set is an allowlist, not a licence for any kind string: a
+    // client cannot hide a turn by inventing one.
+    expect(suppressesInjection({ injectionKind: 'invented_kind' })).toBe(false)
   })
 })

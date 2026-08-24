@@ -33,6 +33,11 @@ export interface EngineHistoryMessage {
   dedupKey?: string
   dedupMode?: 'relocate'
   implementationPhase?: boolean
+  /** How the turn was authored (engine InjectionKind wire value).
+   *  'structured_answer' marks a Guided Questions submission, which both the
+   *  Studio mirror and iOS render with its own transcript chrome rather than
+   *  as an ordinary user bubble. */
+  injectionKind?: string
   /** Plan path on plan-lifecycle divider system messages, so the slug stays
    * clickable on iOS after a history reload. Omitted on non-divider messages. */
   planFilePath?: string
@@ -85,6 +90,11 @@ export async function readEngineHistoryFromStore(
         if (m.dedupKey) out.dedupKey = m.dedupKey;
         if (m.dedupMode) out.dedupMode = m.dedupMode;
         if (m.implementationPhase) out.implementationPhase = true;
+        // Carry the authorship classification so a Guided Questions
+        // submission keeps its transcript chrome after a reload — on the
+        // Studio mirror and on iOS, both of which rebuild each Message from
+        // this projection rather than reading the renderer store directly.
+        if (m.injectionKind) out.injectionKind = m.injectionKind;
         // Carry planFilePath through so plan-lifecycle divider system messages
         // (Plan created / Plan updated / Implementing plan) stay clickable on
         // iOS after a history reload — iOS reads it from the desktop store via

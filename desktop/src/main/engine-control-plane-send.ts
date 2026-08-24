@@ -34,32 +34,30 @@ export interface SendResult {
 }
 
 /**
- * Adapt `EngineBridge.sendPrompt`'s long positional signature to the
- * `SendDeps.sendPrompt` shape.
+ * Adapt `RunOptions` to `EngineBridge.sendPrompt`'s named-options shape.
  *
- * Kept here rather than inline at the call site so the positional argument
- * order — which is easy to get subtly wrong and hard to notice — is stated once,
- * next to the recovery logic that is its only consumer. `includeAttachments`
- * is the one behavioural knob: false on the recovery re-send.
+ * The mapping is explicit rather than a spread: `RunOptions` carries fields
+ * the wire has no business seeing (projectPath, sessionId, extensions), so
+ * naming the forwarded set keeps the prompt payload deliberate.
+ * `includeAttachments` is the one behavioural knob: false on the recovery
+ * re-send.
  */
 export function bridgeSendAdapter(bridge: EngineBridge) {
   return (tabId: string, opts: RunOptions, includeAttachments: boolean): Promise<SendResult> =>
-    bridge.sendPrompt(
-      tabId,
-      opts.prompt,
-      opts.model,
-      opts.appendSystemPrompt,
-      includeAttachments ? opts.imageAttachments : undefined,
-      opts.implementationPhase,
-      opts.enterPlanModeDescription,
-      opts.planModeSparseReminder,
-      opts.planFilePath,
-      undefined,
-      opts.thinkingEffort,
-      opts.resolveSlash,
-      opts.clientWorkspaceContext,
-      opts.deliveryId,
-    )
+    bridge.sendPrompt(tabId, opts.prompt, {
+      model: opts.model,
+      appendSystemPrompt: opts.appendSystemPrompt,
+      imageAttachments: includeAttachments ? opts.imageAttachments : undefined,
+      implementationPhase: opts.implementationPhase,
+      enterPlanModeDescription: opts.enterPlanModeDescription,
+      planModeSparseReminder: opts.planModeSparseReminder,
+      planFilePath: opts.planFilePath,
+      thinkingEffort: opts.thinkingEffort,
+      resolveSlash: opts.resolveSlash,
+      clientWorkspaceContext: opts.clientWorkspaceContext,
+      deliveryId: opts.deliveryId,
+      injectionKind: opts.injectionKind,
+    })
 }
 
 /**

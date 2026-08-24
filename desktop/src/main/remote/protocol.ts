@@ -28,6 +28,10 @@ export type {
 } from './protocol-worktree'
 import type { RemoteWorktreeEvent, RemoteWorktreeState } from './protocol-worktree'
 
+// ─── Guided Questions wire members (extracted for line cap) ───
+export type { RemoteQuestionsEvent, RemoteQuestionsCommand } from './protocol-questions'
+import type { RemoteQuestionsEvent } from './protocol-questions'
+
 // ─── iOS → Ion commands (extracted for line cap) ───
 // Re-exported so existing import paths remain valid.
 export type { RemoteCommand } from './protocol-commands'
@@ -36,6 +40,7 @@ export type { RemoteCommand } from './protocol-commands'
 
 export type RemoteEvent =
   | RemoteWorktreeEvent
+  | RemoteQuestionsEvent
   | { type: 'desktop_snapshot'; tabs: RemoteTabState[]; worktreeStates?: RemoteWorktreeState[]; settledTabs?: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string; availableModels?: Array<{ id: string; providerId: string; providerLabel: string; label: string; contextWindow: number; maxOutputTokens?: number; effectiveContextLimit?: number; hasAuth: boolean; thinkingMode?: string; thinkingEfforts?: string[]; modelKind?: string; isCustom?: boolean }>; customName?: string | null; customIcon?: string | null; remoteDisplayUpdatedAt?: number; resources?: Record<string, Array<{ id: string; kind: string; producer?: string; title?: string; createdAt: string; read?: boolean; conversationId?: string }>> }
   | { type: 'desktop_resource_content'; resourceId: string; kind: string; producer?: string; content: string }
   // `clientCmdId` echoes the id the iOS client attached to `desktop_create_tab`
