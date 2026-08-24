@@ -112,7 +112,7 @@ func TestWriteToClientUnblocksOnDone(t *testing.T) {
 
 	// Evicting the client closes done → the blocked write must return without
 	// queueing (the slot was never freed).
-	srv.evictClient(clientConn)
+	srv.evictClient(clientConn, "test_cleanup")
 
 	select {
 	case <-returned:

@@ -705,3 +705,61 @@ func TestIntegrationResultRoutedToCorrectClient(t *testing.T) {
 		t.Error("client B did not receive its own result 'hb'")
 	}
 }
+
+// TestHandleClientBlockedDispatchStillReadsIndependentCommand proves the issue
+// #336 socket contract: a blocked session handler cannot stop handleClient from
+// parsing and dispatching a later command received on the same connection.
+func TestHandleClientBlockedDispatchStillReadsIndependentCommand(t *testing.T) {
+	mb := newMockBackend()
+	srv := newShortPathTestServer(t, mb)
+	srv.lifecycle.stallFor = time.Hour
+	srv.lifecycle.limitFor = time.Hour
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	srv.lifecycle.handler = func(conn net.Conn, cmd *protocol.ClientCommand) {
+		if cmd.RequestID == "blocked" {
+			close(started)
+			<-release
+			srv.sendResult(conn, cmd, nil, nil)
+			return
+		}
+		srv.sendResult(conn, cmd, nil, nil)
+	}
+
+	conn := dialServer(t, srv)
+	defer conn.Close()
+	defer close(release)
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		srv.mu.RLock()
+		connected := len(srv.clients) == 1
+		srv.mu.RUnlock()
+		if connected {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("server did not register the socket client")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	sendJSON(t, conn, map[string]interface{}{
+		"cmd": "get_tree", "key": "blocked-session", "requestId": "blocked",
+	})
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("blocking command did not enter its handler")
+	}
+
+	// This command travels through the same socket scanner but a process lane.
+	// It must receive a result before the blocked session handler is released.
+	sendJSON(t, conn, map[string]interface{}{
+		"cmd": "list_models", "requestId": "independent",
+	})
+	if !scanForRequestID(t, conn, "independent", time.Second) {
+		t.Fatal("independent command received on the same connection was not answered")
+	}
+}

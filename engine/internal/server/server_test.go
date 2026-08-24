@@ -763,7 +763,7 @@ func registerPipeClient(t *testing.T, srv *Server) (serverConn, clientConn net.C
 	srv.mu.Unlock()
 	go srv.drainClient(cw)
 	t.Cleanup(func() {
-		srv.evictClient(serverConn)
+		srv.evictClient(serverConn, "test_cleanup")
 		clientConn.Close()
 	})
 	return serverConn, clientConn

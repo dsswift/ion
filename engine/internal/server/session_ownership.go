@@ -233,14 +233,18 @@ func (o *sessionOwnership) stopAll() {
 // times. Releasing ownership is what arms the grace-windowed reap for any
 // session whose last owning connection just disconnected — the mechanism that
 // closes the orphaned-session FD leak.
-func (s *Server) evictClient(conn net.Conn) {
+func (s *Server) evictClient(conn net.Conn, reason string) {
 	s.mu.Lock()
 	cw, ok := s.clients[conn]
 	if ok {
 		delete(s.clients, conn)
 	}
+	activeClients := len(s.clients)
 	s.mu.Unlock()
 	if ok {
+		utils.LogWithFields(utils.LevelInfo, "server", "client disconnected", map[string]any{
+			"connection_id": cw.id, "reason": reason, "active_clients": activeClients,
+		})
 		if s.ownership != nil {
 			s.ownership.releaseConn(conn)
 		}

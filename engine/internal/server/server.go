@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -114,7 +115,9 @@ type Server struct {
 	// queues (same key ordered, different keys concurrent), a process-
 	// level concurrent pool, and an independent health path. Initialised
 	// lazily in Start so construction order is safe.
-	lanes *commandLanes
+	lanes     *commandLanes
+	lifecycle *dispatchLifecycle
+	clientSeq atomic.Uint64
 
 	// ownership binds live session keys to the client connections that
 	// claimed them, reaping a session a grace window after its last owning
@@ -154,6 +157,13 @@ func (s *Server) SetConfig(cfg *types.EngineRuntimeConfig) {
 	s.manager.SetConfig(cfg)
 	if cfg != nil && cfg.Timeouts != nil {
 		broadcastWriteDeadline = cfg.Timeouts.BroadcastWrite()
+	}
+	if s.lifecycle != nil {
+		var timeouts *types.TimeoutsConfig
+		if cfg != nil {
+			timeouts = cfg.Timeouts
+		}
+		s.lifecycle.setTimeouts(timeouts)
 	}
 	// Install the process-level telemetry collector for server-owned events
 	// (client.backpressure) when telemetry is enabled in config. Nil-safe: a
@@ -244,7 +254,8 @@ func NewServer(socketPath string, b backend.RunBackend) *Server {
 	// Command lanes route incoming commands into bounded per-session
 	// serial queues. Initialised before events are wired so the lanes
 	// are ready when the first client connects.
-	s.lanes = newCommandLanes(s.dispatch, s.rejectStoppedSessionCommand)
+	s.lifecycle = newDispatchLifecycle(s)
+	s.lanes = newCommandLanes(s.lifecycle.dispatch, s.rejectStoppedSessionCommand)
 
 	// Wire manager events to broadcast
 	mgr.OnEvent(func(key string, event types.EngineEvent) {
@@ -367,7 +378,12 @@ func (s *Server) Stop() error {
 		s.contextBreakdownWorkers.Wait()
 
 		s.mu.Lock()
+		remainingClients := len(s.clients)
 		for conn, cw := range s.clients {
+			remainingClients--
+			utils.LogWithFields(utils.LevelInfo, "server", "client disconnected", map[string]any{
+				"connection_id": cw.id, "reason": "server_stop", "active_clients": remainingClients,
+			})
 			close(cw.done)
 			if err := conn.Close(); err != nil {
 				utils.LogWithFields(utils.LevelInfo, "server", "stop client conn close failed", map[string]any{"error": err.Error()})
@@ -446,6 +462,7 @@ func (s *Server) acceptLoop() {
 		tuneSocketBuffer(conn)
 
 		cw := &clientWriter{
+			id:          fmt.Sprintf("client-%d", s.clientSeq.Add(1)),
 			conn:        conn,
 			stateQueue:  make(chan []byte, stateQueueSize),
 			streamQueue: make(chan []byte, streamQueueSize),
@@ -453,7 +470,12 @@ func (s *Server) acceptLoop() {
 		}
 		s.mu.Lock()
 		s.clients[conn] = cw
+		activeClients := len(s.clients)
 		s.mu.Unlock()
+		utils.LogWithFields(utils.LevelInfo, "server", "client connected", map[string]any{
+			"connection_id": cw.id, "remote_address": conn.RemoteAddr().String(),
+			"local_address": conn.LocalAddr().String(), "active_clients": activeClients,
+		})
 
 		go s.drainClient(cw)
 		go s.handleClient(conn)
@@ -497,7 +519,8 @@ func tuneSocketBuffer(conn net.Conn) {
 // orphaned-session reap path), and closes the conn.
 
 func (s *Server) handleClient(conn net.Conn) {
-	defer s.evictClient(conn)
+	reason := "peer_closed"
+	defer func() { s.evictClient(conn, reason) }()
 	defer func() {
 		if r := recover(); r != nil {
 			errStr := r
@@ -543,6 +566,10 @@ func (s *Server) handleClient(conn net.Conn) {
 			s.writeToClient(conn, result)
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		reason = "read_error"
+		utils.LogWithFields(utils.LevelInfo, "server", "client read ended with error", map[string]any{"error": err.Error()})
+	}
 }
 
 // dispatch is defined in dispatch.go — the command-routing switch lives in its
@@ -562,6 +589,12 @@ func (s *Server) sendResult(conn net.Conn, cmd *protocol.ClientCommand, err erro
 	if cmd.RequestID == "" {
 		return // G18: suppress noisy empty-requestId responses
 	}
+	if s.lifecycle != nil && !s.lifecycle.claimResult(cmd) {
+		utils.LogWithFields(utils.LevelDebug, "server", "late command result suppressed", map[string]any{
+			"status": cmd.Cmd, "request_id": cmd.RequestID, "session_id": cmd.Key,
+		})
+		return
+	}
 	result := protocol.ServerResult{
 		RequestID: cmd.RequestID,
 		OK:        err == nil,
@@ -580,6 +613,12 @@ func (s *Server) sendResult(conn net.Conn, cmd *protocol.ClientCommand, err erro
 // of the result JSON (not nested inside data), matching the TS wire contract.
 func (s *Server) sendForkResult(conn net.Conn, cmd *protocol.ClientCommand, err error, newKey string) {
 	if cmd.RequestID == "" {
+		return
+	}
+	if s.lifecycle != nil && !s.lifecycle.claimResult(cmd) {
+		utils.LogWithFields(utils.LevelDebug, "server", "late command result suppressed", map[string]any{
+			"status": cmd.Cmd, "request_id": cmd.RequestID, "session_id": cmd.Key,
+		})
 		return
 	}
 	result := protocol.ServerResult{
