@@ -133,8 +133,8 @@ describe('markAllResourcesRead', () => {
     const items = [makeItem('a', 'briefing'), makeItem('b', 'alert')]
     useSessionStore.getState().markAllResourcesRead(items)
     expect(mockMarkResourceRead).toHaveBeenCalledTimes(2)
-    expect(mockMarkResourceRead).toHaveBeenCalledWith('briefing', 'a')
-    expect(mockMarkResourceRead).toHaveBeenCalledWith('alert', 'b')
+    expect(mockMarkResourceRead).toHaveBeenCalledWith('briefing', 'a', undefined)
+    expect(mockMarkResourceRead).toHaveBeenCalledWith('alert', 'b', undefined)
   })
 
   it('preserves already-read ids', () => {

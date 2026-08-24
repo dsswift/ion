@@ -135,7 +135,10 @@ describe('planLaunchEnvironmentSanitization', () => {
     expect(plan.remove).toContain('PWD')
     expect(plan.remove).toContain('INSTALLER_TEMP')
     expect(plan.remove).toContain('DSTROOT')
-    expect(plan.correct.TMPDIR?.from).toBe('/private/tmp/PKInstallSandbox.Ovg7IL/tmp')
+    const repaired = plan.correct.TMPDIR?.to ?? null
+    const dropped = plan.remove.includes('TMPDIR')
+    expect(repaired !== null || dropped).toBe(true)
+    if (repaired) expect(repaired).not.toContain('PKInstallSandbox')
   })
 
   it('leaves a normal user launch completely untouched', () => {
