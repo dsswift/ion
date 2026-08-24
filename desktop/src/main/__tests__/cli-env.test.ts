@@ -255,4 +255,37 @@ describe('getCliEnv', () => {
     expect(env.ION_DESKTOP_TAB_ID).toBe('tab-a')
     expect(env.PATH).toContain('/home/test-user/.tool/bin')
   })
+
+  it('never hands a spawned shell the marker that makes it skip user rc files', () => {
+    // APPLE_PKGKIT_ESCALATING_ROOT makes Apple's /bin/zsh run PRIVILEGED, which
+    // skips ~/.zshenv, ~/.zprofile, and ~/.zshrc entirely — no Starship, no
+    // Zoxide, no operator PATH entries — even with -i, -l, and a real PTY.
+    // Startup repair clears it from process.env; this is the guarantee at the
+    // point every spawn environment is actually built, so a future entry point
+    // that forgets the startup repair still cannot spawn a privileged shell.
+    mocks.execFileSync.mockReturnValue(REAL_PATH)
+    process.env.APPLE_PKGKIT_ESCALATING_ROOT = '1'
+
+    try {
+      const env = getCliEnv()
+
+      expect(env.APPLE_PKGKIT_ESCALATING_ROOT).toBeUndefined()
+      expect(
+        mocks.logLines.some((l) => l.msg.includes('privileged-shell marker')),
+      ).toBe(true)
+    } finally {
+      delete process.env.APPLE_PKGKIT_ESCALATING_ROOT
+    }
+  })
+
+  it('leaves the overlay untouched when there is no marker to strip', () => {
+    mocks.execFileSync.mockReturnValue(REAL_PATH)
+
+    const env = getCliEnv({ ION_DESKTOP_TAB_ID: 'tab-a' })
+
+    expect(env.APPLE_PKGKIT_ESCALATING_ROOT).toBeUndefined()
+    expect(
+      mocks.logLines.some((l) => l.msg.includes('privileged-shell marker')),
+    ).toBe(false)
+  })
 })

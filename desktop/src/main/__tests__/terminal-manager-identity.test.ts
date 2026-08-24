@@ -45,6 +45,15 @@ vi.mock('../deeplink/token', () => ({
 
 vi.mock('../state', () => ({ terminalScrollback: new Map<string, string>() }))
 
+const logLines = vi.hoisted(() => [] as Array<{ level: string; msg: string; fields?: Record<string, unknown> }>)
+
+vi.mock('../logger', () => ({
+  log: (_t: string, msg: string, fields?: Record<string, unknown>) => logLines.push({ level: 'INFO', msg, fields }),
+  warn: (_t: string, msg: string, fields?: Record<string, unknown>) => logLines.push({ level: 'WARN', msg, fields }),
+  debug: (_t: string, msg: string, fields?: Record<string, unknown>) => logLines.push({ level: 'DEBUG', msg, fields }),
+  error: (_t: string, msg: string, fields?: Record<string, unknown>) => logLines.push({ level: 'ERROR', msg, fields }),
+}))
+
 vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs')>()
   // Every cwd resolves, so the manager does not fall back to homedir().
@@ -73,6 +82,7 @@ function spawnedEnv(index = 0): Record<string, string> {
 describe('TerminalManager PTY identity', () => {
   beforeEach(() => {
     mocks.spawn.mockReset()
+    logLines.length = 0
   })
 
   it('injects the tab id, instance id, and deep-link token', () => {
@@ -127,6 +137,69 @@ describe('TerminalManager PTY identity', () => {
       if (inheritedShell === undefined) delete process.env.SHELL
       else process.env.SHELL = inheritedShell
     }
+  })
+
+  /**
+   * Startup evidence.
+   *
+   * A terminal missing its prompt, PATH, or tools is reported hours later from
+   * a packaged build with no DevTools. These lines are the only way to tell
+   * three identical-looking failures apart: the wrong shell was chosen, the
+   * startup files are not on disk, or the shell refused to read files that ARE
+   * on disk (a privileged shell). They are asserted at INFO because the default
+   * log level discards DEBUG, and a discarded line is not evidence.
+   */
+  it('records the shell, arguments, and shell-selecting environment at INFO', () => {
+    vi.mocked(os.userInfo).mockReturnValue({ shell: '/bin/zsh' } as os.UserInfo<string>)
+    new TerminalManager(() => {}, recordingSpawner()).create('tab-abc:inst-123', '/repo')
+
+    const line = logLines.find((l) => l.msg === 'starting terminal pty')
+    expect(line?.level).toBe('INFO')
+    expect(line?.fields).toMatchObject({
+      shell: '/bin/zsh',
+      shell_args: ['-il'],
+      resolved_cwd: '/repo',
+    })
+    // Each of these decides which startup files the shell reads: ZDOTDIR
+    // relocates them, HOME decides where they are found, USER/LOGNAME decide
+    // which account the shell believes it is.
+    for (const field of ['env_home', 'env_user', 'env_logname', 'env_shell', 'env_zdotdir', 'env_path']) {
+      expect(line?.fields).toHaveProperty(field)
+    }
+  })
+
+  it('records whether the shell was told to skip the user startup files', () => {
+    vi.mocked(os.userInfo).mockReturnValue({ shell: '/bin/zsh' } as os.UserInfo<string>)
+    new TerminalManager(() => {}, recordingSpawner()).create('tab-abc:inst-123', '/repo')
+
+    const line = logLines.find((l) => l.msg === 'starting terminal pty')
+    // The field that names the actual root cause of the missing-setup report.
+    expect(line?.fields?.privileged_shell_marker).toBe(false)
+    // And which startup files exist, so "no .zshrc on disk" is distinguishable
+    // from ".zshrc exists and the shell ignored it".
+    expect(Array.isArray(line?.fields?.startup_files_present)).toBe(true)
+  })
+
+  it('reports the result of the spawn, not only the attempt', () => {
+    vi.mocked(os.userInfo).mockReturnValue({ shell: '/bin/zsh' } as os.UserInfo<string>)
+    new TerminalManager(() => {}, recordingSpawner()).create('tab-abc:inst-123', '/repo')
+
+    const started = logLines.find((l) => l.msg === 'terminal pty started')
+    expect(started?.level).toBe('INFO')
+    expect(started?.fields).toMatchObject({ pid: 123, shell: '/bin/zsh' })
+  })
+
+  it('reports a spawn failure, which has no PTY to report through', () => {
+    vi.mocked(os.userInfo).mockReturnValue({ shell: '/bin/zsh' } as os.UserInfo<string>)
+    const mgr = new TerminalManager(() => {}, () => {
+      throw new Error('spawn refused')
+    })
+
+    expect(() => mgr.create('tab-abc:inst-123', '/repo')).toThrow('spawn refused')
+
+    const failed = logLines.find((l) => l.msg === 'terminal pty failed to start')
+    expect(failed?.level).toBe('WARN')
+    expect(String(failed?.fields?.error)).toContain('spawn refused')
   })
 
   it('keeps tab activity true until every PTY in that tab becomes idle', () => {

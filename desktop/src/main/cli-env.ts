@@ -1,5 +1,6 @@
 import { execFileSync } from 'child_process'
 import { log as _log, warn as _warn } from './logger'
+import { stripPrivilegeEscalation, PRIVILEGE_ESCALATION_VAR } from './launch-env'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('cli-env', msg, fields)
@@ -162,6 +163,18 @@ export function getCliEnv(extraEnv?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     PATH: getCliPath(),
   }
   delete env.CLAUDECODE
+  // Last line of defence for the spawn environment itself. Startup already
+  // clears this from process.env, so normally there is nothing to strip. It is
+  // repeated here because THIS function, not the startup path, is what every
+  // spawned shell's environment is built from: a future entry point that
+  // forgets the startup repair still cannot start a privileged shell that
+  // silently skips the operator's zsh startup files. See launch-env.ts.
+  if (stripPrivilegeEscalation(env)) {
+    warn('stripped a privileged-shell marker from a spawn environment', {
+      variable: PRIVILEGE_ESCALATION_VAR,
+      note: 'startup repair did not run or the marker was reintroduced',
+    })
+  }
   return env
 }
 
