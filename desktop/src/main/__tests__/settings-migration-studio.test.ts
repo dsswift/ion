@@ -71,7 +71,6 @@ describe("migrateStudioSettings", () => {
     const s = written();
     expect(s).toMatchObject({
       studioBounds: { x: 1, y: 2, width: 3, height: 4 },
-      studioWindowOpen: true,
       studioTheme: "ion-works",
       studioZoom: 3,
       studioSeed: "office",
@@ -83,6 +82,10 @@ describe("migrateStudioSettings", () => {
       studioShortcut: "Alt+Shift+V",
       unrelated: "stays",
     });
+    // Open-state persistence was removed with persistStudioOpenState(): the
+    // Studio window no longer reopens from disk, so neither the old key nor a
+    // renamed one may survive the migration.
+    expect(s).not.toHaveProperty("studioWindowOpen");
     for (const key of Object.keys(s)) expect(key.startsWith("atv")).toBe(false);
   });
 

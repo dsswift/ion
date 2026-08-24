@@ -33,7 +33,6 @@ import { normalizeStudioLayout } from "../shared/types-studio";
 /** Old key → new key. Copy-if-absent, then delete old. */
 const KEY_RENAMES: ReadonlyArray<readonly [string, string]> = [
   ["atvBounds", "studioBounds"],
-  ["atvWindowOpen", "studioWindowOpen"],
   ["atvTheme", "studioTheme"],
   ["atvZoom", "studioZoom"],
   ["atvSeed", "studioSeed"],
@@ -55,6 +54,12 @@ const KEY_RENAMES: ReadonlyArray<readonly [string, string]> = [
  */
 const DROPPED_KEYS: readonly string[] = [
   "atvAutoDrawer",
+  // Studio open-state persistence was removed with persistStudioOpenState():
+  // the Studio window is a normal desktop window and its open state is no
+  // longer restored across restarts. Both the old and the renamed key are
+  // dropped — keeping the rename would have written studioWindowOpen back to
+  // disk on every migration for a key nothing reads.
+  "atvWindowOpen",
   "studioWindowOpen",
   "studioBeta",
   "atvBeta",
