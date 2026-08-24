@@ -43,6 +43,7 @@
 		TMBONJRC000000000000001 /* TransportManager+BonjourReconnect.swift in Sources */ = {isa = PBXBuildFile; fileRef = TMBONJRC000000000000002 /* TransportManager+BonjourReconnect.swift */; };
 		LANBACKTST0000000000001 /* LANReconnectBackoffTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANBACKTST0000000000002 /* LANReconnectBackoffTests.swift */; };
 		BONJREJTST0000000000001 /* BonjourLANAuthRejectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BONJREJTST0000000000002 /* BonjourLANAuthRejectionTests.swift */; };
+		BONJOPOLTEST000000001 /* BonjourObservationPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BONJOPOLTEST000000002 /* BonjourObservationPolicyTests.swift */; };
 		LANSECRUNUS0000000000001 /* LANSecretUnusableTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANSECRUNUS0000000000002 /* LANSecretUnusableTests.swift */; };
 		NAVDESTVALTST000000001 /* NavigationDestinationValidatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NAVDESTVALTST000000002 /* NavigationDestinationValidatorTests.swift */; };
 		LANREJVMT00000000000001 /* SessionViewModelLanAuthRejectedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANREJVMT00000000000002 /* SessionViewModelLanAuthRejectedTests.swift */; };
@@ -587,6 +588,7 @@
 		TMBONJRC000000000000002 /* TransportManager+BonjourReconnect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TransportManager+BonjourReconnect.swift"; sourceTree = "<group>"; };
 		LANBACKTST0000000000002 /* LANReconnectBackoffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANReconnectBackoffTests.swift; sourceTree = "<group>"; };
 		BONJREJTST0000000000002 /* BonjourLANAuthRejectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BonjourLANAuthRejectionTests.swift; sourceTree = "<group>"; };
+		BONJOPOLTEST000000002 /* BonjourObservationPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BonjourObservationPolicyTests.swift; sourceTree = "<group>"; };
 		LANSECRUNUS0000000000002 /* LANSecretUnusableTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANSecretUnusableTests.swift; sourceTree = "<group>"; };
 		NAVDESTVALTST000000002 /* NavigationDestinationValidatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationDestinationValidatorTests.swift; sourceTree = "<group>"; };
 		LANREJVMT00000000000002 /* SessionViewModelLanAuthRejectedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionViewModelLanAuthRejectedTests.swift; sourceTree = "<group>"; };
@@ -1661,6 +1663,7 @@
 				LANAUTHTST0000000000002 /* LANAuthOutcomeTests.swift */,
 				LANBACKTST0000000000002 /* LANReconnectBackoffTests.swift */,
 				BONJREJTST0000000000002 /* BonjourLANAuthRejectionTests.swift */,
+				BONJOPOLTEST000000002 /* BonjourObservationPolicyTests.swift */,
 				LANSECRUNUS0000000000002 /* LANSecretUnusableTests.swift */,
 			);
 			path = Networking;
@@ -2247,6 +2250,7 @@
 				LANAUTHTST0000000000001 /* LANAuthOutcomeTests.swift in Sources */,
 				LANBACKTST0000000000001 /* LANReconnectBackoffTests.swift in Sources */,
 				BONJREJTST0000000000001 /* BonjourLANAuthRejectionTests.swift in Sources */,
+				BONJOPOLTEST000000001 /* BonjourObservationPolicyTests.swift in Sources */,
 				LANSECRUNUS0000000000001 /* LANSecretUnusableTests.swift in Sources */,
 				NAVDESTVALTST000000001 /* NavigationDestinationValidatorTests.swift in Sources */,
 				LANTRANSVM0000000000001 /* SessionViewModelLanAuthTransientTests.swift in Sources */,

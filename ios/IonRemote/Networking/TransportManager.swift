@@ -138,6 +138,12 @@ final class TransportManager {
     var relayStateTask: Task<Void, Never>?
     var lanStateTask: Task<Void, Never>?
     var pathMonitor: NWPathMonitor?
+    /// `nil` until the first NWPathMonitor update. `false` means that Bonjour
+    /// cannot work because no Wi-Fi or wired Ethernet interface is active.
+    var bonjourInterfaceAvailable: Bool?
+    /// The last reconnect state logged by the Bonjour observation task. Keeping
+    /// it here lets the task log state transitions instead of every poll tick.
+    var lastBonjourNeedsConnect: Bool?
     var currentLANHost: DiscoveredHost?
     var disconnectGraceTask: Task<Void, Never>?
     static let disconnectGracePeriod: Duration = .seconds(4)
@@ -355,12 +361,9 @@ final class TransportManager {
             }
         }
         startLANStateObservation()
+        // The network monitor is the only Bonjour start signal. It starts
+        // discovery after it confirms a usable local interface.
         startNetworkMonitor()
-        // Start Bonjour browsing so the observation loop can auto-reconnect
-        // if this connection drops. In LAN-only mode (no relay), the browser
-        // wouldn't be started otherwise since start() is never called.
-        await MainActor.run { self.bonjour.startBrowsing() }
-        startBonjourObservation()
         setState(.lanPreferred)
     }
 
@@ -463,10 +466,16 @@ final class TransportManager {
         let monitor = NWPathMonitor()
         self.pathMonitor = monitor
 
-        var isFirstUpdate = true
         monitor.pathUpdateHandler = { [weak self] path in
             guard let self, !self.isStopped else { return }
-            defer { isFirstUpdate = false }
+
+            self.handleBonjourInterfaceAvailability(
+                self.isBonjourInterfaceAvailable(
+                    status: path.status,
+                    usesWiFi: path.usesInterfaceType(.wifi),
+                    usesWiredEthernet: path.usesInterfaceType(.wiredEthernet)
+                )
+            )
 
             if path.status == .satisfied {
                 // Network restored. Reconnect relay if needed.
@@ -475,14 +484,6 @@ final class TransportManager {
                         guard let self, let relay, !self.isStopped else { return }
                         await relay.connect()
                     }
-                }
-                // Restart Bonjour only when recovering from a real outage:
-                // - Skip the first callback (fires immediately on monitor.start(),
-                //   resetting browsers we just started in start()).
-                // - Skip when LAN is already connected (path changes as TCP
-                //   establishes would clear discoveredHosts and fake a disconnect).
-                if !isFirstUpdate && self.state != .lanPreferred {
-                    self.bonjour.startBrowsing()
                 }
             } else {
                 self.updateState()

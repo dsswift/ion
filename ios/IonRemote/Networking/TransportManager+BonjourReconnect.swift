@@ -1,12 +1,12 @@
 import Foundation
+import Network
 
 // MARK: - Bonjour observation + LAN auto-reconnect policy
 
 // Extracted from TransportManager.swift (allowlisted "don't extend; extract")
 // when the auto-reconnect loop gained definitive-rejection handling and
-// escalating backoff. The loop itself is untestable (real Bonjour, real
-// sockets), so the policy transitions live in the `applyLANAuthOutcome` /
-// `shouldAttemptLANConnect` seam, which unit tests drive directly.
+// escalating backoff. Real discovery and sockets remain integration concerns,
+// while reconnect and interface policy transitions have direct unit-test seams.
 
 extension TransportManager {
 
@@ -86,7 +86,67 @@ extension TransportManager {
 
     // MARK: - Bonjour observation loop
 
+    /// Bonjour can discover the paired desktop only through a local link.
+    /// Cellular and an unsatisfied path can still support relay transport, but
+    /// must not keep the Bonjour observation task awake.
+    func isBonjourInterfaceAvailable(
+        status: NWPath.Status,
+        usesWiFi: Bool,
+        usesWiredEthernet: Bool
+    ) -> Bool {
+        status == .satisfied && (usesWiFi || usesWiredEthernet)
+    }
+
+    /// Apply one network-path update to the Bonjour lifecycle. Repeated path
+    /// updates with the same availability do no work, so a cellular-only device
+    /// cannot restart browsers or observation tasks in a loop.
+    func handleBonjourInterfaceAvailability(_ available: Bool) {
+        let previousAvailability = bonjourInterfaceAvailable
+        guard previousAvailability != available else { return }
+        bonjourInterfaceAvailable = available
+
+        guard available else {
+            bonjourObservationTask?.cancel()
+            bonjourObservationTask = nil
+            lastBonjourNeedsConnect = nil
+            bonjour.stopBrowsing()
+            DiagnosticLog.log("bonjour observation suspended without local interface", tag: "transport.bonjour", fields: [
+                "previous_available": previousAvailability.map(String.init) ?? "unknown"
+            ])
+            return
+        }
+
+        DiagnosticLog.log("bonjour local interface available", tag: "transport.bonjour", fields: [
+            "previous_available": previousAvailability.map(String.init) ?? "unknown"
+        ])
+        // The first satisfied-path callback and each unavailable -> available
+        // transition start discovery. This makes the monitor the only source
+        // that can start Bonjour work.
+        startBonjourBrowsingIfAvailable()
+        startBonjourObservation()
+    }
+
+    /// Start the browser only if network monitoring has not established that
+    /// this device lacks a Bonjour-capable local interface.
+    func startBonjourBrowsingIfAvailable() {
+        guard bonjourInterfaceAvailable != false else { return }
+        bonjour.startBrowsing()
+    }
+
+    /// Record and log only reconnect-state transitions. This preserves the
+    /// useful state diagnostic while removing the old per-500ms log flood.
+    @discardableResult
+    func recordBonjourNeedsConnectTransition(_ needsConnect: Bool) -> Bool {
+        guard lastBonjourNeedsConnect != needsConnect else { return false }
+        lastBonjourNeedsConnect = needsConnect
+        DiagnosticLog.log("bonjour reconnect state changed", tag: "transport.bonjour", fields: [
+            "needs_connect": String(needsConnect)
+        ])
+        return true
+    }
+
     func startBonjourObservation() {
+        guard bonjourInterfaceAvailable != false else { return }
         bonjourObservationTask?.cancel()
         bonjourObservationTask = Task { [weak self] in
             var lastKnownCount = 0
@@ -117,7 +177,7 @@ extension TransportManager {
                 let needsConnect = self.currentLANHost == nil
                     && !self.lan.isConnected
                     && !self.lanAuthRejectedDefinitively
-                if needsConnect { DiagnosticLog.log("BONJOUR: needsConnect=true") }
+                self.recordBonjourNeedsConnectTransition(needsConnect)
 
                 // When disconnected with no hosts visible, restart the Bonjour
                 // browser once to force NWBrowser to re-discover services.
