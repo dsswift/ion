@@ -77,7 +77,7 @@ export function parseSurfacePersisted(raw: unknown): ParsedSurface | null {
     return { version: 1, tabs, activeTabId }
   }
   if (v.version !== 2 || !Array.isArray(v.pinnedTabs) || !v.conversations || typeof v.conversations !== 'object' || Array.isArray(v.conversations)) return null
-  const pinnedTabs = [...new Set(v.pinnedTabs.filter((id): id is PinnableSingletonId => typeof id === 'string' && PINNABLES.has(id)))]
+  const pinnedTabs = normalizePinnedTabs([...new Set(v.pinnedTabs.filter((id): id is PinnableSingletonId => typeof id === 'string' && PINNABLES.has(id)))])
   const notification = parseNotification(v.notification)
   const conversations: Record<string, SurfaceConversationPersisted> = {}
   for (const [tabId, row] of Object.entries(v.conversations as Record<string, unknown>)) {
@@ -85,7 +85,7 @@ export function parseSurfacePersisted(raw: unknown): ParsedSurface | null {
     const parsed = parseConversation(row, pinnedTabs, notification)
     if (parsed) conversations[tabId] = parsed
   }
-  return { version: 2, pinnedTabs: normalizePinnedTabs(pinnedTabs), notification, conversations }
+  return { version: 2, pinnedTabs, notification, conversations }
 }
 
 export function normalizePinnedTabs(ids: readonly PinnableSingletonId[]): PinnableSingletonId[] {

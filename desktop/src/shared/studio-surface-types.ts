@@ -1,8 +1,8 @@
 /** Studio surface tab descriptors and persistence shapes. */
 
-export const SINGLETON_ORDER = ['diff', 'plan', 'visualizer', 'status', 'files', 'gitpanel'] as const
+export const SINGLETON_ORDER = ['plan', 'diff', 'visualizer', 'status', 'files', 'gitpanel'] as const
 export type SingletonId = (typeof SINGLETON_ORDER)[number]
-export const PINNABLE_SINGLETON_IDS = ['diff', 'plan', 'visualizer'] as const
+export const PINNABLE_SINGLETON_IDS = ['plan', 'diff', 'visualizer'] as const
 export type PinnableSingletonId = (typeof PINNABLE_SINGLETON_IDS)[number]
 export const DEFAULT_PINNED_SURFACE_TABS: PinnableSingletonId[] = ['plan']
 export const NOTIFICATION_SURFACE_ID = 'notification'

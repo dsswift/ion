@@ -21,6 +21,20 @@ describe('surface persistence', () => {
     expect(validateSurfacePersisted(persisted)).toBe(true)
   })
 
+  it('normalizes pinned priority before selecting a conversation fallback', () => {
+    const parsed = parseSurfacePersisted({
+      version: 2,
+      pinnedTabs: ['diff', 'plan'],
+      notification: null,
+      conversations: { alpha: { tabs: [], activeTabId: null, visible: false } },
+    })
+
+    expect(parsed).toMatchObject({
+      pinnedTabs: ['plan', 'diff'],
+      conversations: { alpha: { activeTabId: 'plan' } },
+    })
+  })
+
   it('keeps a pinned tab as a conversation active selection', () => {
     const persisted = serializeSurface(['plan'], null, {
       alpha: { tabs: [], activeTabId: 'plan', visible: false },

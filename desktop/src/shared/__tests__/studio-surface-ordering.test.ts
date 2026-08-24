@@ -11,7 +11,7 @@ const term: SurfaceTab = { kind: 'terminal', id: 'terminal:t1', instanceId: 't1'
 
 describe('surface ordering', () => {
   it('orders local singletons before dynamic tabs', () => {
-    expect(normalizeTabs([fileA, viz, term, diff, plan]).map((tab) => tab.id)).toEqual(['diff', 'plan', 'visualizer', 'file:/a.ts', 'terminal:t1'])
+    expect(normalizeTabs([fileA, viz, term, diff, plan]).map((tab) => tab.id)).toEqual(['plan', 'diff', 'visualizer', 'file:/a.ts', 'terminal:t1'])
   })
 
   it('composes global pins before conversation-local descriptors and deduplicates them', () => {
