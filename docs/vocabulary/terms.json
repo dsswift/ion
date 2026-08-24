@@ -970,6 +970,42 @@
       ]
     },
     {
+      "id": "guided-questions",
+      "term": "Guided Questions",
+      "definition": "A structured question round that the model opens with the AskUserQuestions client tool. Calling the tool parks the run: the engine retains the request as a permission denial and the session goes idle while the user answers at their own pace. The desktop owns the workflow: it collects answers in the Questions Wizard, supports repeated rounds under one workflow identity, and submits the answers as a resume prompt on the same conversation.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "questions workflow",
+        "question round"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export class QuestionsCoordinator",
+          "path": "desktop/src/main/questions/questions-coordinator.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "wire",
+          "language": "typescript",
+          "symbol": "export type RemoteQuestionsEvent",
+          "path": "desktop/src/main/remote/protocol-questions.ts"
+        },
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "type ClientToolCallState struct",
+          "path": "engine/internal/types/tool_gate.go"
+        }
+      ]
+    },
+    {
       "id": "harness",
       "term": "Harness",
       "definition": "The extension layer that decides behavior on top of engine mechanics. The engine executes; the harness decides.",
@@ -1065,6 +1101,49 @@
           "language": "swift",
           "symbol": "InboxRowView",
           "path": "ios/IonRemote/Views/InboxRowView.swift"
+        }
+      ]
+    },
+    {
+      "id": "injection-kind",
+      "term": "Injection Kind",
+      "definition": "The classification of how a turn was authored: typed at the prompt, synthesized by an engine-side actor (a dispatch callback, a background-task wake, a scheduler check-in), or submitted through a client's own structured surface such as a Guided Questions page. The engine records the kind on the persisted turn and publishes the derived machine-authored flag. Machine-authored and client-delivered are different facts: a form submission is user-authored because a person chose every value, so a consumer labels it rather than hiding it. What a consumer does with either fact is its own policy.",
+      "domain": "engine",
+      "kind": "public-contract",
+      "status": "canonical",
+      "aliases": [
+        "injected turn kind",
+        "turn authorship"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type InjectionKind string",
+          "path": "engine/internal/types/injection_kind.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "InjectionKind string",
+          "path": "engine/internal/protocol/protocol.go"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function suppressesInjection",
+          "path": "desktop/src/shared/injection-policy.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "code",
+          "language": "swift",
+          "symbol": "enum InjectionPolicy",
+          "path": "ios/IonRemote/Utilities/InjectionPolicy.swift"
         }
       ]
     },
@@ -1591,6 +1670,34 @@
         }
       ],
       "notes": "Name providers by name. Never pin a provider count in prose."
+    },
+    {
+      "id": "questions-wizard",
+      "term": "Questions Wizard",
+      "definition": "The shared client surface that renders a Guided Questions page: the answer form, review screen, and waiting states. One component serves both desktop presentations; the Overlay mounts it in a modal and the Studio shell mounts it in the transient Questions canvas tab.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "questions card"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "export function QuestionsWizard",
+          "path": "desktop/src/renderer/components/questions/QuestionsWizard.tsx"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "export function QuestionsSurface",
+          "path": "desktop/src/renderer/studio/surface/tabs/QuestionsSurface.tsx"
+        }
+      ]
     },
     {
       "id": "relay",
