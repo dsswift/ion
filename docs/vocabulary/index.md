@@ -80,6 +80,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Hook](#term-hook)
 - [Inbox](#term-inbox)
 - [Input Bar](#term-input-bar)
+- [Install worker](#term-install-worker)
 - [Integration bench](#term-integration-bench)
 - [Keepalive](#term-keepalive)
 - [Menu](#term-menu)
@@ -703,6 +704,21 @@ One client application built on Electron. It owns the session store, persists co
   - `desktop` / `code` / `typescript`: `export type WindowRole` in `desktop/src/renderer/lib/window-role.ts`
   - `desktop` / `code` / `typescript`: `export interface TabState` in `desktop/src/shared/types-session.ts`
 - **Notes:** Desktop is ONE client with two presentations: the Overlay and the Studio. Never call the presentations separate clients.
+
+#### Install worker {#term-install-worker}
+
+A detached Desktop process that waits for the explicit auto-update restart to stop Ion, replaces the application bundle, and relaunches Ion.
+
+- **ID:** `install-worker`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `update installer`
+- **Legacy names:** None
+- **Contract:** `none`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `install-worker` in `desktop/scripts/install-worker.sh`
+  - `desktop` / `code` / `typescript`: `dispatchUpdateInstall` in `desktop/src/main/install-dispatch.ts`
+- **Notes:** The worker owns the auto-update bundle swap so no running process overwrites its own executable code.
 
 #### Integration bench {#term-integration-bench}
 
@@ -1339,6 +1355,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Engine profile | `engineProfileId` | `engineProfileId` | `engineProfileId` | `EngineProfile` | None |
 | Inbox | `export function classifyInbox`, `export function InboxPanel` | `export function classifyInbox`, `export function InboxPanel`, `InboxSidebar` | `export function classifyInbox`, `export function InboxPanel` | `InboxRowView` | None |
 | Input Bar | `export function InputBar` | `export function InputBar`, `InputBar` | `export function InputBar` | `InputBar` | None |
+| Install worker | `install-worker`, `dispatchUpdateInstall` | `install-worker`, `dispatchUpdateInstall` | `install-worker`, `dispatchUpdateInstall` | None | iOS |
 | Integration bench | `export interface RemoteBench`, `BenchBar` | `export interface RemoteBench`, `BenchBar` | `export interface RemoteBench`, `BenchBar` | `InboxBenchGroup` | None |
 | iOS | None | None | None | `struct TabListView`, `NormalizedEvent` | Desktop, Studio, Overlay |
 | Menu | `export function TabContextMenu` | `export function TabContextMenu` | `export function TabContextMenu` | `struct TabRowContextMenu` | None |
@@ -1456,6 +1473,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `thread` → [Conversation](#term-conversation)
 - Alias: `timeline minimap` → [Conversation Timeline Minimap](#term-conversation-timeline-minimap)
 - Alias: `transcript view` → [Conversation View](#term-conversation-view)
+- Alias: `update installer` → [Install worker](#term-install-worker)
 - Alias: `user turn` → [Turn](#term-turn)
 - Alias: `visualizer` → [Visualizer Canvas](#term-visualizer-canvas)
 - Alias: `wake push` → [Wake notification](#term-wake-notification)

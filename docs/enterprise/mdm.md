@@ -247,7 +247,7 @@ On macOS, Managed Preferences are protected by the system and do not need manual
 
 ## Desktop app distribution (signed .pkg)
 
-The sections above deliver engine *configuration*. This section covers pushing the Ion **desktop application** binary itself to managed Macs. Self-service users install the DMG and update through the app's built-in auto-updater; managed fleets pin the version and push a signed, notarized installer package.
+The sections above deliver engine *configuration*. This section covers pushing the Ion **desktop application** binary itself to managed Macs. Self-service users install the signed, notarized package and update through the app's built-in auto-updater; managed fleets pin the version and push the same installer package.
 
 ### The artifact
 
@@ -262,7 +262,7 @@ spctl -a -vvv -t install Ion-<version>.pkg    # Gatekeeper accepts
 
 ### Push via Jamf / Intune
 
-Upload `Ion-<version>.pkg` as a managed package and scope it to the target devices. Because the package force-replaces `/Applications/Ion.app`, redeploying a newer package updates in place. macOS will not replace a running app bundle, so quit Ion before the package installs if a session is active; MDM run-time policies can force-quit or defer.
+Upload `Ion-<version>.pkg` as a managed package and scope it to the target devices. The package refuses before it replaces `/Applications/Ion.app` when Ion is still running. MDM run-time policies can defer the package until the user quits Ion.
 
 ### Disable the in-app auto-updater on managed machines
 
@@ -287,7 +287,7 @@ The release pipeline signs and notarizes the package when these repository secre
 
 | Secret | Purpose |
 |--------|---------|
-| `APPLE_CERT_BASE64` / `APPLE_CERT_PASSWORD` | Developer ID **Application** cert — signs `Ion.app` and the DMG |
+| `APPLE_CERT_BASE64` / `APPLE_CERT_PASSWORD` | Developer ID **Application** cert — signs `Ion.app` |
 | `APPLE_INSTALLER_CERT_BASE64` / `APPLE_INSTALLER_CERT_PASSWORD` | Developer ID **Installer** cert — `productsign` for the `.pkg` (a distinct cert type from the Application cert) |
 | `APPLE_API_KEY` / `APPLE_API_KEY_ID` / `APPLE_API_ISSUER` | App Store Connect API key (base64-encoded `.p8`) — notarization for both the app and the pkg |
 

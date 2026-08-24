@@ -1104,6 +1104,35 @@
       ]
     },
     {
+      "id": "install-worker",
+      "term": "Install worker",
+      "definition": "A detached Desktop process that waits for the explicit auto-update restart to stop Ion, replaces the application bundle, and relaunches Ion.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "update installer"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "install-worker",
+          "path": "desktop/scripts/install-worker.sh"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "dispatchUpdateInstall",
+          "path": "desktop/src/main/install-dispatch.ts"
+        }
+      ],
+      "notes": "The worker owns the auto-update bundle swap so no running process overwrites its own executable code."
+    },
+    {
       "id": "integration-bench",
       "term": "Integration bench",
       "definition": "A rebuildable checkout that assembles the feature branch plus each member worktree's pinned commit. It refuses edits and history writes.",
