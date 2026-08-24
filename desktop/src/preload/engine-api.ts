@@ -95,13 +95,13 @@ export const engineApi: EngineIpcApi = {
       tabId,
       engineProfileId: engineProfileId ?? null,
     }),
-  markResourceRead: (kind, resourceId) =>
-    ipcRenderer.send(IPC.MARK_RESOURCE_READ, { kind, resourceId }),
+  markResourceRead: (kind, resourceId, producer) =>
+    ipcRenderer.send(IPC.MARK_RESOURCE_READ, { kind, resourceId, producer }),
   getReadResourceIds: () => ipcRenderer.invoke(IPC.GET_READ_RESOURCE_IDS),
   getPersistedResources: () =>
     ipcRenderer.invoke(IPC.GET_PERSISTED_RESOURCES),
-  publishResourceDelete: (kind, resourceId) =>
-    ipcRenderer.send(IPC.DELETE_RESOURCE, { kind, resourceId }),
+  publishResourceDelete: (kind, resourceId, producer) =>
+    ipcRenderer.send(IPC.DELETE_RESOURCE, { kind, resourceId, producer }),
   resourceGet: (kind, id, opts) =>
     ipcRenderer.invoke(IPC.RESOURCE_GET, { kind, id, ...opts }),
   onEngineEvent: (callback) => {

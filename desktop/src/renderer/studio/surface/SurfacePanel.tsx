@@ -77,7 +77,7 @@ function bodyFor(tab: SurfaceTab, active: boolean, onAgentClick?: (tabId: string
       return <PreviewSurface key={tab.id} filePath={tab.filePath} dataUrl={tab.dataUrl} />
     case 'notification':
       if (!active) return null
-      return <ResourceSurface key={tab.id} resourceKind={tab.resourceKind} resourceId={tab.resourceId} />
+      return <ResourceSurface key={tab.id} resourceKind={tab.resourceKind} resourceId={tab.resourceId} resourceProducer={tab.resourceProducer} />
     case 'dispatch':
       if (!active) return null
       return <DispatchSurface key={tab.id} tab={tab} />

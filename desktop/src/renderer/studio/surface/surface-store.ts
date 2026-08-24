@@ -297,7 +297,7 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
   },
 
   openResourceTab: (item) => {
-    const notification: NotificationTab = { kind: 'notification', id: NOTIFICATION_SURFACE_ID, resourceKind: item.kind, resourceId: item.id }
+    const notification: NotificationTab = { kind: 'notification', id: NOTIFICATION_SURFACE_ID, resourceKind: item.kind, resourceId: item.id, resourceProducer: item.producer }
     const state = get()
     const currentConversationId = state.currentConversationId ?? useSessionStore.getState().activeTabId
     rDebug('studio.surface', 'opening workspace notification', {

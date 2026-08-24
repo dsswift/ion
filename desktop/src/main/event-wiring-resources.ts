@@ -12,6 +12,7 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { ipcMain } from 'electron'
 import { IPC } from '../shared/types'
+import { resourceIdentity } from '../shared/resource-identity'
 import { log as _log } from './logger'
 import { engineBridge, state } from './state'
 import { atomicWriteFileSync } from './utils/atomicWrite'
@@ -92,14 +93,14 @@ function persistReadState(): void {
 }
 
 /** Mark a resource as read and persist to disk. */
-export function markReadPersisted(resourceId: string): void {
-  persistedReadIds.add(resourceId)
+export function markReadPersisted(resourceId: string, producer?: string, kind?: string): void {
+  persistedReadIds.add(resourceIdentity({ id: resourceId, producer, kind }))
   persistReadState()
 }
 
-/** Check if a resource ID has been read. Used by the snapshot builder. */
-export function isResourceRead(resourceId: string): boolean {
-  return persistedReadIds.has(resourceId)
+/** Check whether a resource identity has been read. Used by the snapshot builder. */
+export function isResourceRead(resourceId: string, producer?: string, kind?: string): boolean {
+  return persistedReadIds.has(resourceIdentity({ id: resourceId, producer, kind }))
 }
 
 // ── Resource subscription ──────────────────────────────────────────────────
@@ -226,13 +227,14 @@ export function wireTabFocusHandler(): void {
 // mark_read delta back to the engine so all other subscribers (e.g. iOS)
 // see the item as read.
 
-export async function publishResourceMarkRead(kind: string, resourceId: string): Promise<void> {
-  log('resource_mark_read', { kind, resource_id: resourceId })
+export async function publishResourceMarkRead(kind: string, resourceId: string, producer?: string): Promise<void> {
+  log('resource_mark_read', { kind, resource_id: resourceId, producer: producer ?? '' })
   await engineBridge.request('resource_publish', {
     key: '',
     resourceKind: kind,
     resourceGlobal: true,
     resourceOp: 'mark_read',
+    resourceProducer: producer,
     resourceItem: { id: resourceId, kind, content: '', createdAt: '' },
   }).catch((err: unknown) => {
     log('resource_mark_read: failed', { kind, resource_id: resourceId, error: String(err) })
@@ -240,10 +242,10 @@ export async function publishResourceMarkRead(kind: string, resourceId: string):
 }
 
 export function wireMarkResourceReadHandler(): void {
-  ipcMain.on(IPC.MARK_RESOURCE_READ, (_event: Electron.IpcMainEvent, { kind, resourceId }: { kind: string; resourceId: string }) => {
-    markReadPersisted(resourceId)
-    publishResourceMarkRead(kind, resourceId).catch((err) => {
-      log('resource_mark_read: publish failed', { kind, resource_id: resourceId, error: String(err) })
+  ipcMain.on(IPC.MARK_RESOURCE_READ, (_event: Electron.IpcMainEvent, { kind, resourceId, producer }: { kind: string; resourceId: string; producer?: string }) => {
+    markReadPersisted(resourceId, producer, kind)
+    publishResourceMarkRead(kind, resourceId, producer).catch((err) => {
+      log('resource_mark_read: publish failed', { kind, resource_id: resourceId, producer: producer ?? '', error: String(err) })
     })
   })
   ipcMain.handle(IPC.GET_READ_RESOURCE_IDS, () => {
@@ -254,7 +256,7 @@ export function wireMarkResourceReadHandler(): void {
     // so the renderer has data immediately, even if engine subscriptions
     // fail or return empty.
     const resourcesRoot = join(homedir(), '.ion', 'resources')
-    type PersistedItem = { id: string; kind: string; title?: string; content: string; createdAt: string; conversationId?: string; metadata?: Record<string, unknown>; read?: boolean }
+    type PersistedItem = { id: string; kind: string; producer?: string; title?: string; content: string; createdAt: string; conversationId?: string; metadata?: Record<string, unknown>; read?: boolean }
     const items: PersistedItem[] = []
     try {
       if (!existsSync(resourcesRoot)) {
@@ -274,12 +276,13 @@ export function wireMarkResourceReadHandler(): void {
                 items.push({
                   id: data.id,
                   kind: data.kind,
+                  producer: data.producer,
                   title: data.title,
                   content: data.content ?? '',
                   createdAt: data.createdAt ?? '',
                   conversationId: data.conversationId,
                   metadata: data.metadata,
-                  read: isResourceRead(data.id),
+                  read: isResourceRead(data.id, data.producer, data.kind),
                 })
               }
             } catch { /* skip corrupt files */ }
@@ -301,13 +304,14 @@ export function wireMarkResourceReadHandler(): void {
 // delete op back to the engine so all other subscribers (e.g. iOS) remove
 // the item.
 
-export async function publishResourceDelete(kind: string, resourceId: string): Promise<void> {
-  log('resource_delete', { kind, resource_id: resourceId })
+export async function publishResourceDelete(kind: string, resourceId: string, producer?: string): Promise<void> {
+  log('resource_delete', { kind, resource_id: resourceId, producer: producer ?? '' })
   await engineBridge.request('resource_publish', {
     key: '',
     resourceKind: kind,
     resourceGlobal: true,
     resourceOp: 'delete',
+    resourceProducer: producer,
     resourceItem: { id: resourceId, kind, content: '', createdAt: '' },
   }).catch((err: unknown) => {
     log('resource_delete: failed', { kind, resource_id: resourceId, error: String(err) })
@@ -315,9 +319,9 @@ export async function publishResourceDelete(kind: string, resourceId: string): P
 }
 
 export function wireDeleteResourceHandler(): void {
-  ipcMain.on(IPC.DELETE_RESOURCE, (_event: Electron.IpcMainEvent, { kind, resourceId }: { kind: string; resourceId: string }) => {
-    publishResourceDelete(kind, resourceId).catch((err) => {
-      log('resource_delete: publish failed', { kind, resource_id: resourceId, error: String(err) })
+  ipcMain.on(IPC.DELETE_RESOURCE, (_event: Electron.IpcMainEvent, { kind, resourceId, producer }: { kind: string; resourceId: string; producer?: string }) => {
+    publishResourceDelete(kind, resourceId, producer).catch((err) => {
+      log('resource_delete: publish failed', { kind, resource_id: resourceId, producer: producer ?? '', error: String(err) })
     })
   })
 }
@@ -336,7 +340,7 @@ export function wireDeleteResourceHandler(): void {
 export async function resourceGet(
   kind: string,
   id: string,
-  opts: { sessionKey?: string; global?: boolean } = {},
+  opts: { sessionKey?: string; global?: boolean; producer?: string } = {},
 ): Promise<void> {
   const key = opts.sessionKey ?? ''
   const resourceGlobal = opts.global ?? true
@@ -345,6 +349,7 @@ export async function resourceGet(
     key,
     resourceKind: kind,
     resourceId: id,
+    resourceProducer: opts.producer,
     resourceGlobal,
   }).catch((err: unknown) => {
     log('resource_get: failed', { kind, id: id.slice(-8), error: String(err) })
@@ -354,13 +359,14 @@ export async function resourceGet(
 export function wireResourceGetHandler(): void {
   ipcMain.handle(
     IPC.RESOURCE_GET,
-    async (_event: Electron.IpcMainInvokeEvent, { kind, id, sessionKey, global: isGlobal }: {
+    async (_event: Electron.IpcMainInvokeEvent, { kind, id, producer, sessionKey, global: isGlobal }: {
       kind: string
       id: string
+      producer?: string
       sessionKey?: string
       global?: boolean
     }) => {
-      await resourceGet(kind, id, { sessionKey, global: isGlobal })
+      await resourceGet(kind, id, { sessionKey, global: isGlobal, producer })
     },
   )
 }

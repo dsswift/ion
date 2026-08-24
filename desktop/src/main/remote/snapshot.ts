@@ -137,12 +137,12 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
       if (existsSync(globalDir)) {
         const files = readdirSync(globalDir).filter(f => f.endsWith('.json'))
         if (files.length > 0) {
-          const items: Array<{ id: string; kind: string; title?: string; createdAt: string; read?: boolean }> = []
+          const items: Array<{ id: string; kind: string; producer?: string; title?: string; createdAt: string; read?: boolean }> = []
           for (const f of files) {
             try {
               const data = JSON.parse(readFileSync(join(globalDir, f), 'utf-8'))
               if (data.id && data.kind) {
-                items.push({ id: data.id, kind: data.kind, title: data.title, createdAt: data.createdAt || '', read: isResourceRead(data.id) })
+                items.push({ id: data.id, kind: data.kind, producer: data.producer, title: data.title, createdAt: data.createdAt || '', read: isResourceRead(data.id, data.producer, data.kind) })
               }
             } catch (err) { debug('desktop_snapshot', 'skipping corrupt resource file', { file: f, error: String(err) }) }
           }
@@ -201,7 +201,7 @@ function applyPersistedReadState(manifest: ResourceManifest): ResourceManifest {
   const out: ResourceManifest = {}
   for (const kind of Object.keys(manifest)) {
     out[kind] = manifest[kind].map((item) =>
-      !item.read && isResourceRead(item.id) ? { ...item, read: true } : item,
+      !item.read && isResourceRead(item.id, item.producer, item.kind) ? { ...item, read: true } : item,
     )
   }
   return out

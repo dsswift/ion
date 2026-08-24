@@ -3,6 +3,7 @@ import type { TerminalPaneState, ConversationPane } from '../../shared/types'
 import { serializeTerminalBuffer } from '../components/TerminalInstance'
 import type { State, StoreSet, StoreGet } from './session-store-types'
 import type { ResourceItem } from '../../shared/types-engine'
+import { resourceIdentity, resourceMatchesIdentity } from '../../shared/resource-identity'
 import { markResourcesRead } from './slices/resource-slice'
 import { makeLocalTab, initialModelOverride, initialThinkingEffort } from './session-store-helpers'
 import { makeMainPane } from './conversation-instance'
@@ -155,20 +156,20 @@ export const useSessionStore = create<State>((set, get) => {
     },
     markAllResourcesRead: (items: ResourceItem[]) => {
       // Batch the local read-state update into a single transition.
-      set((state) => markResourcesRead(state, items.map((i) => i.id)))
+      set((state) => markResourcesRead(state, items.map(resourceIdentity)))
       // Fan the read state out per item through the engine's resource broker
       // (mark_read delta) so other subscribers — notably iOS — converge. This
       // reuses the exact per-item mechanism the panel already uses on open,
       // which also persists the read state on the desktop main process.
       for (const item of items) {
-        window.ion?.markResourceRead?.(item.kind, item.id)
+        window.ion?.markResourceRead?.(item.kind, item.id, item.producer)
       }
     },
-    deleteResource: (kind: string, resourceId: string) => {
+    deleteResource: (kind: string, resourceId: string, producer?: string) => {
       set((state) => {
         const current = state.resources[kind] ?? []
         return {
-          resources: { ...state.resources, [kind]: current.filter(r => r.id !== resourceId) },
+          resources: { ...state.resources, [kind]: current.filter((item) => !resourceMatchesIdentity(item, resourceId, producer)) },
         }
       })
     },

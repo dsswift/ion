@@ -1,4 +1,5 @@
 import type { ResourceItem, ResourceDelta } from '../../../shared/types-engine'
+import { resourceIdentity } from '../../../shared/resource-identity'
 
 /**
  * Per-tab resource collections. Keyed by resource kind, each value is
@@ -83,18 +84,20 @@ export function applyResourceSnapshot(
     merged = items
   } else {
     // Partial snapshot: take the union so no disk-seeded items are lost.
-    const incomingById = new Map(items.map((item) => [item.id, item]))
-    const survivingExisting = existing.filter((item) => !incomingById.has(item.id))
+    const incomingByIdentity = new Map(items.map((item) => [resourceIdentity(item), item]))
+    const survivingExisting = existing.filter((item) => !incomingByIdentity.has(resourceIdentity(item)))
     merged = [...survivingExisting, ...items]
   }
 
-  // Normalize: deduplicate by ID so duplicate-ID items from a buggy producer
-  // or a race between snapshot and delta never stack. Last occurrence wins.
+  // Normalize: deduplicate by producer + ID so same-kind producers can use
+  // the same item ID without overwriting one another. Producerless items retain
+  // their historic raw-ID identity for compatibility.
   const seen = new Set<string>()
   const normalized: ResourceItem[] = []
   for (let i = merged.length - 1; i >= 0; i--) {
-    if (!seen.has(merged[i].id)) {
-      seen.add(merged[i].id)
+    const identity = resourceIdentity(merged[i])
+    if (!seen.has(identity)) {
+      seen.add(identity)
       normalized.push(merged[i])
     }
   }
@@ -105,9 +108,17 @@ export function applyResourceSnapshot(
   // Remove prior flags before applying final normalized values, otherwise an
   // earlier duplicate marked read survives a final unread occurrence.
   const readResourceIds = new Set(state.readResourceIds)
-  for (const item of merged) readResourceIds.delete(item.id)
+  const legacyReadIds = new Set(
+    merged
+      .filter((item) => resourceIdentity(item) !== item.id && state.readResourceIds.has(item.id))
+      .map((item) => item.id),
+  )
   for (const item of merged) {
-    if (item.read) readResourceIds.add(item.id)
+    readResourceIds.delete(resourceIdentity(item))
+    if (legacyReadIds.has(item.id)) readResourceIds.delete(item.id)
+  }
+  for (const item of merged) {
+    if (item.read || legacyReadIds.has(item.id)) readResourceIds.add(resourceIdentity(item))
   }
 
   return {
@@ -129,21 +140,21 @@ export function applyResourceDelta(
 
   switch (delta.op) {
     case 'create': {
-      const existingIdx = current.findIndex((item) => item.id === delta.item.id)
+      const existingIdx = current.findIndex((item) => resourceIdentity(item) === resourceIdentity(delta.item))
       updated = existingIdx >= 0
         ? current.map((item, i) => (i === existingIdx ? delta.item : item))
         : [...current, delta.item]
       break
     }
     case 'update':
-      updated = current.map((item) => (item.id === delta.item.id ? delta.item : item))
+      updated = current.map((item) => (resourceIdentity(item) === resourceIdentity(delta.item) ? delta.item : item))
       break
     case 'delete':
-      updated = current.filter((item) => item.id !== delta.item.id)
+      updated = current.filter((item) => resourceIdentity(item) !== resourceIdentity(delta.item))
       break
     case 'mark_read':
       updated = current.map((item) =>
-        item.id === delta.item.id ? { ...item, read: true } : item,
+        resourceIdentity(item) === resourceIdentity(delta.item) ? { ...item, read: true } : item,
       )
       break
     default:
@@ -152,7 +163,7 @@ export function applyResourceDelta(
 
   const readResourceIds =
     delta.op === 'mark_read'
-      ? new Set([...state.readResourceIds, delta.item.id])
+      ? new Set([...state.readResourceIds, resourceIdentity(delta.item)])
       : state.readResourceIds
 
   return {

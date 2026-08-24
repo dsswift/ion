@@ -28,8 +28,8 @@ import type {
   ResourceManifest,
   RemoteTabStatesPayload,
 } from '../../shared/remote-projection-types'
-import type { TabState, TerminalPaneState } from '../../shared/types'
-import type { ConversationPane, ResourceItem } from '../../shared/types-engine'
+import type { TabState, TerminalPaneState, ConversationPane, ResourceItem } from '../../shared/types'
+import { resourceIdentity } from '../../shared/resource-identity'
 import { tabHasExtensions } from '../../shared/tab-predicates'
 import { settlingIsPermanent } from '../../shared/worktree-conversations'
 import { effectiveRunningChildrenCount, waitingStateOfPane } from '../components/TabStripShared'
@@ -68,9 +68,10 @@ export function projectResourceManifest(s: Pick<ProjectionStoreState, 'resources
     manifest[kind] = (resources[kind] || []).map((r) => ({
       id: r.id,
       kind: r.kind,
+      producer: r.producer,
       title: r.title || '',
       createdAt: r.createdAt,
-      read: readIds.has(r.id),
+      read: readIds.has(resourceIdentity(r)),
       conversationId: r.conversationId || undefined,
     }))
   }

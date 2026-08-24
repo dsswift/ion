@@ -18,6 +18,8 @@
 export interface ResourceItem {
   id: string
   kind: string
+  /** Extension identity assigned by the engine. Absent for legacy resources. */
+  producer?: string
   title?: string
   content: string
   createdAt: string
@@ -34,6 +36,7 @@ export interface ResourceDelta {
 
 export interface ResourceFilter {
   kind: string
+  producer?: string
   conversationId?: string
   since?: string
   limit?: number

@@ -29,6 +29,8 @@ export interface NotificationTab {
   id: typeof NOTIFICATION_SURFACE_ID
   resourceKind: string
   resourceId: string
+  /** Producer namespace for collision-safe resource lookup. */
+  resourceProducer?: string
 }
 export interface RuntimePanelTab { kind: 'runtime-panel'; id: string; title: string }
 export interface DispatchTab {

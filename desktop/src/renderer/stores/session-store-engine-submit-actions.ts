@@ -37,5 +37,5 @@ export interface EngineSubmitActions {
   computeConvFingerprint: (tabId: string) => string;
   markResourceRead: (resourceId: string) => void;
   markAllResourcesRead: (items: ResourceItem[]) => void;
-  deleteResource: (kind: string, resourceId: string) => void;
+  deleteResource: (kind: string, resourceId: string, producer?: string) => void;
 }

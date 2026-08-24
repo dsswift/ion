@@ -431,14 +431,14 @@ export interface IonAPI extends StudioApi {
   notifyTabFocus(tabId: string, engineProfileId?: string | null): void
   /** Publish a mark_read delta for a resource. Propagates the read state to
    *  all subscribers (including iOS) via the engine's resource broker. */
-  markResourceRead(kind: string, resourceId: string): void
+  markResourceRead(kind: string, resourceId: string, producer?: string): void
   /** Get persisted read resource IDs from the main process. */
   getReadResourceIds(): Promise<string[]>
   /** Get persisted resources from disk (cold-load fallback). */
-  getPersistedResources(): Promise<Array<{ id: string; kind: string; title?: string; content: string; createdAt: string; conversationId?: string; metadata?: Record<string, unknown>; read?: boolean }>>
+  getPersistedResources(): Promise<Array<{ id: string; kind: string; producer?: string; title?: string; content: string; createdAt: string; conversationId?: string; metadata?: Record<string, unknown>; read?: boolean }>>
   /** Publish a delete op for a resource. Removes the item from all
    *  subscribers (including iOS) via the engine's resource broker. */
-  publishResourceDelete(kind: string, resourceId: string): void
+  publishResourceDelete(kind: string, resourceId: string, producer?: string): void
   /** Fetch a single resource item's full content on demand by kind + id.
    *  The engine calls the registered producer's query handler and emits
    *  engine_resource_item, which the event-wiring layer broadcasts to the

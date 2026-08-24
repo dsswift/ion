@@ -108,7 +108,7 @@ export async function handleLoadAttachments(
             Object.keys(byKind).forEach(function(kind) {
               (byKind[kind] || []).forEach(function(item) {
                 if (item.conversationId === convId) {
-                  resources.push({ id: item.id, kind: item.kind, title: item.title, conversationId: item.conversationId });
+                  resources.push({ id: item.id, kind: item.kind, producer: item.producer, title: item.title, conversationId: item.conversationId });
                 }
               });
             });

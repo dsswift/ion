@@ -95,6 +95,20 @@ describe('scanMessagesForAttachments', () => {
     ])
   })
 
+  it('keeps same-ID resources from different producers distinct', () => {
+    const out = scanMessagesForAttachments({
+      messages: [],
+      resources: [
+        { id: 'same', kind: 'briefing', producer: 'extension-a' },
+        { id: 'same', kind: 'briefing', producer: 'extension-b' },
+      ],
+    })
+    expect(out.map((entry) => entry.path)).toEqual([
+      'resource:8:briefing:11:extension-a:same',
+      'resource:8:briefing:11:extension-b:same',
+    ])
+  })
+
   it('encodes conversation-scoped resources via the shared entry shape', () => {
     const out = scanMessagesForAttachments({
       messages: [],

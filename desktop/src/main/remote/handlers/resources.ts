@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'fs'
+import { existsSync, readFileSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import { log as _log, debug as _debug } from '../../logger'
@@ -27,8 +27,8 @@ export async function handleRequestResourceContent(
   cmd: Extract<RemoteCommand, { type: 'desktop_request_resource_content' }>,
   deviceId: string,
 ): Promise<void> {
-  const { kind, resourceId } = cmd
-  log('request_resource_content', { kind, resource_id: resourceId.slice(0, 12) })
+  const { kind, resourceId, producer } = cmd
+  log('request_resource_content', { kind, resource_id: resourceId.slice(0, 12), producer: producer ?? '' })
 
   let content = ''
   try {
@@ -36,6 +36,7 @@ export async function handleRequestResourceContent(
     // inside the renderer process (untrusted boundary).
     const safeKind = JSON.stringify(kind)
     const safeId = JSON.stringify(resourceId)
+    const safeProducer = JSON.stringify(producer)
     const result = await state.mainWindow?.webContents.executeJavaScript(`
       (function() {
         try {
@@ -43,7 +44,7 @@ export async function handleRequestResourceContent(
           if (!store) return '';
           var s = store.getState();
           var items = (s.resources && s.resources[${safeKind}]) || [];
-          var item = items.find(function(r) { return r.id === ${safeId}; });
+          var item = items.find(function(r) { return r.id === ${safeId} && r.producer === ${safeProducer}; });
           return item ? (item.content || '') : '';
         } catch(e) { return ''; }
       })()
@@ -65,13 +66,29 @@ export async function handleRequestResourceContent(
     // ~/.ion/resources/global/{resourceId}.json with a `content` field.
     log('request_resource_content: renderer miss, falling back to disk', { kind, resource_id: resourceId.slice(0, 12) })
     try {
-      const filePath = join(homedir(), '.ion', 'resources', 'global', `${resourceId}.json`)
-      if (existsSync(filePath)) {
-        const data = JSON.parse(readFileSync(filePath, 'utf-8'))
-        content = typeof data.content === 'string' ? data.content : ''
-        log('request_resource_content: disk fallback hit', { kind, resource_id: resourceId.slice(0, 12), content_len: content.length })
+      const globalDir = join(homedir(), '.ion', 'resources', 'global')
+      if (existsSync(globalDir)) {
+        const resourceFile = readdirSync(globalDir)
+          .filter((file) => file.endsWith('.json'))
+          .map((file) => join(globalDir, file))
+          .find((filePath) => {
+            try {
+              const item = JSON.parse(readFileSync(filePath, 'utf-8')) as { id?: unknown; producer?: unknown }
+              return item.id === resourceId && item.producer === producer
+            } catch (err) {
+              debug('request_resource_content: skipped unreadable disk item', { file: filePath, error: String(err) })
+              return false
+            }
+          })
+        if (resourceFile) {
+          const data = JSON.parse(readFileSync(resourceFile, 'utf-8'))
+          content = typeof data.content === 'string' ? data.content : ''
+          log('request_resource_content: disk fallback hit', { kind, resource_id: resourceId.slice(0, 12), producer: producer ?? '', content_len: content.length })
+        } else {
+          log('request_resource_content: disk miss, file not found', { kind, resource_id: resourceId.slice(0, 12), producer: producer ?? '' })
+        }
       } else {
-        log('request_resource_content: disk miss, file not found', { kind, resource_id: resourceId.slice(0, 12) })
+        log('request_resource_content: disk miss, resource directory not found', { kind, resource_id: resourceId.slice(0, 12), producer: producer ?? '' })
       }
     } catch {
       log('request_resource_content: disk fallback failed', { kind, resource_id: resourceId.slice(0, 12) })
@@ -81,6 +98,7 @@ export async function handleRequestResourceContent(
     type: 'desktop_resource_content',
     resourceId,
     kind,
+    producer,
     content,
   })
 }
@@ -96,16 +114,18 @@ export async function handleRequestResourceContent(
 export async function handleMarkResourceRead(
   cmd: Extract<RemoteCommand, { type: 'desktop_mark_resource_read' }>,
 ): Promise<void> {
-  const { kind, resourceId } = cmd
-  log('mark_resource_read', { kind, resource_id: resourceId.slice(0, 12) })
-  markReadPersisted(resourceId)
-  await publishResourceMarkRead(kind, resourceId)
+  const { kind, resourceId, producer } = cmd
+  log('mark_resource_read', { kind, resource_id: resourceId.slice(0, 12), producer: producer ?? '' })
+  markReadPersisted(resourceId, producer, kind)
+  await publishResourceMarkRead(kind, resourceId, producer)
 
   // Also update the renderer's in-memory readResourceIds so the next
   // snapshot poll includes the read state without waiting for an engine
   // round-trip.
   try {
     const safeId = JSON.stringify(resourceId)
+    const safeKind = JSON.stringify(kind)
+    const safeProducer = JSON.stringify(producer)
     await state.mainWindow?.webContents.executeJavaScript(`
       (function() {
         try {
@@ -113,7 +133,7 @@ export async function handleMarkResourceRead(
           if (!store) return;
           store.setState(function(prev) {
             var updated = new Set(prev.readResourceIds);
-            updated.add(${safeId});
+            updated.add(${safeProducer} ? ${safeKind}.length + ':' + ${safeKind} + ':' + ${safeProducer}.length + ':' + ${safeProducer} + ':' + ${safeId} : ${safeId});
             return { readResourceIds: updated };
           });
         } catch(e) {}
@@ -142,22 +162,23 @@ export async function handleMarkResourceRead(
 export async function handleDeleteResource(
   cmd: Extract<RemoteCommand, { type: 'desktop_delete_resource' }>,
 ): Promise<void> {
-  const { kind, resourceId } = cmd
-  log('delete_resource', { kind, resource_id: resourceId.slice(0, 12) })
-  await publishResourceDelete(kind, resourceId)
+  const { kind, resourceId, producer } = cmd
+  log('delete_resource', { kind, resource_id: resourceId.slice(0, 12), producer: producer ?? '' })
+  await publishResourceDelete(kind, resourceId, producer)
 
   // Remove from the renderer's in-memory store directly so the desktop
   // notification tray updates without waiting for the engine delta round-trip.
   try {
     const safeKind = JSON.stringify(kind)
     const safeId = JSON.stringify(resourceId)
+    const safeProducer = JSON.stringify(producer)
     await state.mainWindow?.webContents.executeJavaScript(`
       (function() {
         try {
           var store = window.__Ion_SESSION_STORE__;
           if (!store) return;
           var s = store.getState();
-          if (s.deleteResource) { s.deleteResource(${safeKind}, ${safeId}); }
+          if (s.deleteResource) { s.deleteResource(${safeKind}, ${safeId}, ${safeProducer}); }
         } catch(e) {}
       })()
     `)

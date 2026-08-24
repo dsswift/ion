@@ -173,6 +173,8 @@ export const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
 // ─── TS SharedTypes field map ───
 
 export const TS_SHARED_TYPES: Record<string, string[]> = {
+  ResourceItem: ["content", "conversationId", "createdAt", "id", "kind", "metadata", "producer", "read", "title", "updatedAt"],
+  ResourceFilter: ["conversationId", "id", "kind", "limit", "producer", "since"],
   StatusFields: [
     "activeBackgroundTasks",
     "backgroundAgents",

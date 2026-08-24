@@ -340,12 +340,13 @@ export type RemoteCommand =
       type: "desktop_request_resource_content";
       kind: string;
       resourceId: string;
+      producer?: string;
     }
-  | { type: "desktop_mark_resource_read"; kind: string; resourceId: string }
+  | { type: "desktop_mark_resource_read"; kind: string; resourceId: string; producer?: string }
   // Permanently remove a notification from the global resource broker.
   // The desktop publishes a delete delta through the engine so all
   // subscribers (desktop + iOS) remove the item from their collections.
-  | { type: "desktop_delete_resource"; kind: string; resourceId: string }
+  | { type: "desktop_delete_resource"; kind: string; resourceId: string; producer?: string }
   // ─── Plan-mode remote implement (plan gentle-perching-lemon) ─────────
   // iOS sends desktop_implement_plan instead of building a prompt string. The
   // desktop runs its own onImplement pipeline (permission mode → auto,

@@ -66,6 +66,19 @@ describe('applyResourceSnapshot — ID normalization', () => {
     expect(result.readResourceIds.has('a')).toBe(false)
   })
 
+  it('migrates a legacy raw-ID read key to every producer sharing that ID', () => {
+    const result = applyResourceSnapshot(
+      { ...initialResourceState, readResourceIds: new Set(['same']) },
+      'briefing',
+      'sub-1',
+      [
+        { ...makeItem('same'), producer: 'alpha' },
+        { ...makeItem('same'), producer: 'beta' },
+      ],
+    )
+    expect(result.readResourceIds).toEqual(new Set(['8:briefing:5:alpha:same', '8:briefing:4:beta:same']))
+  })
+
   it('deduplicates during partial-snapshot merge', () => {
     const existing = stateWithItems('briefing', [
       makeItem('a', 'disk-a'),
@@ -81,6 +94,30 @@ describe('applyResourceSnapshot — ID normalization', () => {
     expect(aItems[0].content).toBe('fresh-a')
   })
 })
+
+describe('applyResourceSnapshot — producer identity', () => {
+  it('keeps same-ID items from different producers', () => {
+    const result = applyResourceSnapshot(initialResourceState, 'briefing', 'sub-1', [
+      { ...makeItem('shared', 'from-a'), producer: 'extension-a' },
+      { ...makeItem('shared', 'from-b'), producer: 'extension-b' },
+    ])
+    expect(result.resources.briefing).toHaveLength(2)
+    expect(result.resources.briefing.map((item) => item.content)).toEqual(['from-a', 'from-b'])
+  })
+
+  it('updates only the matching producer identity', () => {
+    const state = stateWithItems('briefing', [
+      { ...makeItem('shared', 'from-a'), producer: 'extension-a' },
+      { ...makeItem('shared', 'from-b'), producer: 'extension-b' },
+    ])
+    const result = applyResourceDelta(state, 'briefing', {
+      op: 'update',
+      item: { ...makeItem('shared', 'updated-a'), producer: 'extension-a' },
+    })
+    expect(result.resources.briefing.map((item) => item.content)).toEqual(['updated-a', 'from-b'])
+  })
+})
+
 
 describe('applyResourceDelta create — upsert semantics', () => {
   it('appends when no item with the same ID exists', () => {

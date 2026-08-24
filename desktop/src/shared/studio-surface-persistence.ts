@@ -44,7 +44,7 @@ function parseNotification(raw: unknown): NotificationTab | null {
   if (!raw || typeof raw !== 'object') return null
   const v = raw as Record<string, unknown>
   if (v.kind !== 'notification' || typeof v.resourceKind !== 'string' || !v.resourceKind || typeof v.resourceId !== 'string' || !v.resourceId) return null
-  return { kind: 'notification', id: 'notification', resourceKind: v.resourceKind, resourceId: v.resourceId }
+  return { kind: 'notification', id: 'notification', resourceKind: v.resourceKind, resourceId: v.resourceId, ...(typeof v.resourceProducer === 'string' && v.resourceProducer ? { resourceProducer: v.resourceProducer } : {}) }
 }
 
 function parseConversation(
