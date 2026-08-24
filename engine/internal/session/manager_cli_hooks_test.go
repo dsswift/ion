@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"testing"
@@ -605,7 +606,7 @@ func TestWireAgentToolServer_RegistersToolForCliBackend(t *testing.T) {
 		t.Error("expected CLI ToolServer to expose ion_agent and ion_agent_status")
 	}
 	statusHandler := buildAgentStatusToolHandler(s.dispatchRegistry)
-	status, err := statusHandler(map[string]interface{}{})
+	status, err := statusHandler(context.Background(), map[string]interface{}{})
 	if err != nil {
 		t.Fatalf("ion_agent_status: %v", err)
 	}
@@ -705,7 +706,7 @@ func TestBuildAgentToolHandler_RoutesThroughDispatch(t *testing.T) {
 	})
 
 	handler := mgr.buildAgentToolHandler(s, "cli-ion-agent", "claude-opus-4-8")
-	res, err := handler(map[string]interface{}{"prompt": "do the thing", "name": "worker", "wait_for_completion": true})
+	res, err := handler(context.Background(), map[string]interface{}{"prompt": "do the thing", "name": "worker", "wait_for_completion": true})
 	if err != nil {
 		t.Fatalf("handler: %v", err)
 	}
@@ -748,7 +749,7 @@ func TestWireAgentToolServer_SpecResolution(t *testing.T) {
 	// child backend without a prompt is fast-rejected.
 
 	// Test with missing prompt
-	result, err := handler(map[string]interface{}{
+	result, err := handler(context.Background(), map[string]interface{}{
 		"name": "researcher",
 	})
 	if err != nil {

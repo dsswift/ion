@@ -303,8 +303,14 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	s.cliRunFailedTerminal = false
 	if caps.ContextModel == backend.ContextModelNativeSession {
 		s.pendingCliUserTurn = text
+		// Structured turn recording for the delegated root run: tool
+		// exchanges (client-tool question rounds included) land in Ion's
+		// transcript verbatim, not just the final text. See
+		// cli_transcript_recorder.go.
+		s.cliTranscript = newCliTranscriptRecorder()
 	} else {
 		s.pendingCliUserTurn = ""
+		s.cliTranscript = nil
 	}
 
 	// G07: Enterprise model enforcement (fast check, under initial lock).
@@ -474,6 +480,24 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		opts.SuppressTools = append(opts.SuppressTools, s.suppressedTools...)
 	}
 	m.mu.RUnlock()
+
+	// Client-tool runtime: built once here — after plan-mode state and the
+	// allowed/suppressed tool lists are final — and then adapted per
+	// transport so every backend kind serves the SAME filtered tool set.
+	// API consumes it via RunConfig (wireClientTools); the MCP-capable CLI
+	// backends via the per-session ToolServer (wireClientToolServer); codex
+	// reads opts.ClientTools as thread/start dynamicTools.
+	m.buildClientToolRuntime(s, key, &opts)
+	if runCfg != nil {
+		m.wireClientTools(key, &opts, runCfg)
+	}
+	m.wireClientToolServer(s, key, &opts)
+	// Record the run's client-tool signature beside runCaps so handleRunExit
+	// stamps it onto the captured native-session cursor (codex resume
+	// validity — see NativeSessionCursor.ClientToolSignature).
+	m.mu.Lock()
+	s.runClientToolSignature = opts.ClientToolSignature
+	m.mu.Unlock()
 
 	utils.LogWithFields(utils.LevelInfo, "session", "dispatching prompt", map[string]any{"key": key, "run_id": requestID, "model": opts.Model})
 	promptCtxWindow := conversation.DefaultContext

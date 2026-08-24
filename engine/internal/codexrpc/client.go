@@ -21,6 +21,12 @@ type Handlers struct {
 	OnCommandApproval func(p CommandApprovalParams) string
 	// OnFileChangeApproval answers an item/fileChange/requestApproval.
 	OnFileChangeApproval func(p FileChangeApprovalParams) string
+	// OnDynamicToolCall answers an item/tool/call server request by executing
+	// the named dynamic tool (declared at thread/start). It may block for the
+	// tool's full fulfillment — including an indefinite human wait — because
+	// server requests are served on their own goroutine, like approvals. A
+	// nil handler answers with a not-supported tool error (Success false).
+	OnDynamicToolCall func(p DynamicToolCallParams) DynamicToolCallResponse
 	// OnClosed fires when the underlying transport ends.
 	OnClosed func(err error)
 }
@@ -94,6 +100,18 @@ func (c *Client) onRequest(method string, params json.RawMessage) (any, *rpcstdi
 		}
 		utils.LogWithFields(utils.LevelInfo, "codex", "file change approval answered", map[string]any{"item_id": p.ItemID, "decision": decision})
 		return ApprovalResponse{Decision: decision}, nil
+	case ReqDynamicToolCall:
+		var p DynamicToolCallParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &rpcstdio.RPCError{Code: -32602, Message: "invalid dynamic tool call params: " + err.Error()}
+		}
+		if c.handlers.OnDynamicToolCall == nil {
+			utils.LogWithFields(utils.LevelWarn, "codex", "dynamic tool call with no handler", map[string]any{"tool": p.Tool, "thread_id": p.ThreadID})
+			return NewDynamicToolCallResponse("dynamic tool "+p.Tool+" is not supported by this client", false), nil
+		}
+		resp := c.handlers.OnDynamicToolCall(p)
+		utils.LogWithFields(utils.LevelInfo, "codex", "dynamic tool call answered", map[string]any{"tool": p.Tool, "thread_id": p.ThreadID, "success": resp.Success})
+		return resp, nil
 	default:
 		utils.LogWithFields(utils.LevelWarn, "codex", "unhandled server request", map[string]any{"method": method})
 		return nil, &rpcstdio.RPCError{Code: -32601, Message: "unhandled codex server request: " + method}

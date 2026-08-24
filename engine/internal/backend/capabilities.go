@@ -89,7 +89,35 @@ type BackendCapabilities struct {
 	// this backend reports on run exit ("claude_session_uuid",
 	// "codex_thread_id", "acp_session_id"). Empty when Resume is false.
 	ResumeHandleKind string
+
+	// ClientToolTransport names how this backend serves client-declared
+	// tools (RunOptions.ClientTools). Engine-internal routing metadata,
+	// never a wire field. The session layer uses it to decide which adapter
+	// wires the runtime and whether the resume cursor must record the
+	// client-tool signature (only ClientToolTransportCodexDynamic fixes the
+	// tool set at native-session creation).
+	ClientToolTransport ClientToolTransport
 }
+
+// ClientToolTransport enumerates the client-tool provisioning transports.
+type ClientToolTransport string
+
+const (
+	// ClientToolTransportNone: the backend cannot serve client tools.
+	ClientToolTransportNone ClientToolTransport = "none"
+	// ClientToolTransportInProcess: tools join RunConfig.ExternalTools and
+	// route through the in-process McpToolRouter (ApiBackend).
+	ClientToolTransportInProcess ClientToolTransport = "in_process"
+	// ClientToolTransportMcp: tools register on the per-session ToolServer
+	// and reach the subprocess over the MCP bridge (claude-code, ACP).
+	// Attach happens per start/load, so the tool set is NOT fixed at
+	// native-session creation.
+	ClientToolTransportMcp ClientToolTransport = "mcp"
+	// ClientToolTransportCodexDynamic: tools are declared as thread/start
+	// dynamicTools and fulfilled via item/tool/call. The set is fixed for
+	// the thread's lifetime, so resume cursors carry a tool signature.
+	ClientToolTransportCodexDynamic ClientToolTransport = "codex_dynamic"
+)
 
 // Capabilities implementations for each backend. Each descriptor is a static
 // value — cheap to call, safe from any goroutine, no locking required.
@@ -100,11 +128,12 @@ type BackendCapabilities struct {
 // IS the session, so there is nothing to resume.
 func (b *ApiBackend) Capabilities() BackendCapabilities {
 	return BackendCapabilities{
-		Kind:         "api",
-		ContextModel: ContextModelEngineOwned,
-		PlanMode:     true,
-		Steering:     true,
-		Resume:       false,
+		Kind:                "api",
+		ContextModel:        ContextModelEngineOwned,
+		PlanMode:            true,
+		Steering:            true,
+		Resume:              false,
+		ClientToolTransport: ClientToolTransportInProcess,
 	}
 }
 
@@ -123,6 +152,7 @@ func (b *ClaudeCodeBackend) Capabilities() BackendCapabilities {
 		Steering:              true,
 		Resume:                true,
 		ResumeHandleKind:      ResumeHandleClaudeSessionUUID,
+		ClientToolTransport:   ClientToolTransportMcp,
 	}
 }
 
@@ -130,12 +160,13 @@ func (b *ClaudeCodeBackend) Capabilities() BackendCapabilities {
 // ThreadResume, plan mode, and mid-turn steering via turn/steer.
 func (b *CodexBackend) Capabilities() BackendCapabilities {
 	return BackendCapabilities{
-		Kind:             "codex",
-		ContextModel:     ContextModelNativeSession,
-		PlanMode:         true,
-		Steering:         true,
-		Resume:           true,
-		ResumeHandleKind: ResumeHandleCodexThreadID,
+		Kind:                "codex",
+		ContextModel:        ContextModelNativeSession,
+		PlanMode:            true,
+		Steering:            true,
+		Resume:              true,
+		ResumeHandleKind:    ResumeHandleCodexThreadID,
+		ClientToolTransport: ClientToolTransportCodexDynamic,
 	}
 }
 
@@ -145,12 +176,13 @@ func (b *CodexBackend) Capabilities() BackendCapabilities {
 // plan/architect session mode; grok does not).
 func (b *AcpBackend) Capabilities() BackendCapabilities {
 	return BackendCapabilities{
-		Kind:             b.spec.kind,
-		ContextModel:     ContextModelNativeSession,
-		PlanMode:         b.spec.planCapable,
-		Steering:         false,
-		Resume:           true,
-		ResumeHandleKind: ResumeHandleAcpSessionID,
+		Kind:                b.spec.kind,
+		ContextModel:        ContextModelNativeSession,
+		PlanMode:            b.spec.planCapable,
+		Steering:            false,
+		Resume:              true,
+		ResumeHandleKind:    ResumeHandleAcpSessionID,
+		ClientToolTransport: ClientToolTransportMcp,
 	}
 }
 

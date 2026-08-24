@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"os"
 	"sync"
 	"testing"
 
@@ -115,6 +116,18 @@ func TestSendPrompt_ContextCapacityRecoversEndToEnd(t *testing.T) {
 		return 0
 	}, 1) {
 		t.Fatal("resumed run did not finish")
+	}
+	// requestID clears under the lock BEFORE handleRunExit's post-lock
+	// persistence (flushPendingBinding writes ~/.ion/session-bindings.json).
+	// Wait for that final write too, or t.TempDir cleanup races the late
+	// file creation and fails with "directory not empty".
+	if !waitForCount(func() int {
+		if _, err := os.Stat(bindingsPath()); err == nil {
+			return 1
+		}
+		return 0
+	}, 1) {
+		t.Fatal("run exit did not flush the session binding")
 	}
 }
 

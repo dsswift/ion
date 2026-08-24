@@ -408,9 +408,11 @@ type SessionStatus struct {
 	// Manager.currentSessionStatus. Mirrors StatusFields.State values
 	// exactly so this field is a drop-in for any consumer that reads
 	// StatusFields.State today. Values: "idle", "running",
-	// "starting", "waiting_user", "compacting", "dead", "failed".
-	// Only "idle" and "running" are emitted today; the other values
-	// are reserved for future phases.
+	// "starting", "compacting", "dead", "failed". "idle" and
+	// "running" are emitted today; the other values are reserved for
+	// future phases. (A parked human-wait question reports "idle" —
+	// nothing is running while the user decides; the retained
+	// PermissionDenials on the same snapshot carry the question.)
 	State string `json:"state"`
 	// StateSince is the unix-ms timestamp at which the session entered
 	// the current State. Zero means "unknown / not tracked yet".

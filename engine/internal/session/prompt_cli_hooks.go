@@ -136,7 +136,10 @@ func (m *Manager) wireToolServer(s *engineSession, key string, opts *types.RunOp
 	ts := backend.NewToolServer(key)
 	for _, tool := range extTools {
 		capturedTool := tool
-		handler := func(input map[string]interface{}) (*types.ToolResult, error) {
+		// Extension tool Execute has no ctx parameter; the MCP request ctx is
+		// accepted and ignored here (extension cancellation rides the host's
+		// own RPC lifecycle).
+		handler := func(_ context.Context, input map[string]interface{}) (*types.ToolResult, error) {
 			ctx := m.newExtContext(s, key)
 			return capturedTool.Execute(input, ctx)
 		}
@@ -233,10 +236,98 @@ func (m *Manager) wireAgentToolServer(s *engineSession, key string, opts *types.
 
 func buildAgentStatusToolHandler(registry *extcontext.DispatchRegistry) backend.ToolHandler {
 	getter := extcontext.AgentStatusGetter(registry)
-	return func(input map[string]interface{}) (*types.ToolResult, error) {
-		ctx := tools.WithAgentStatusGetter(context.Background(), getter)
-		return tools.ExecuteTool(ctx, tools.AgentStatusToolName, input, "")
+	return func(ctx context.Context, input map[string]interface{}) (*types.ToolResult, error) {
+		return tools.ExecuteTool(tools.WithAgentStatusGetter(ctx, getter), tools.AgentStatusToolName, input, "")
 	}
+}
+
+// wireClientToolServer registers the run's client-tool runtime
+// (opts.ClientTools / opts.ClientToolRouter, built by buildClientToolRuntime)
+// on the per-session ToolServer for MCP-capable delegated-CLI backends, so a
+// claude-code or ACP run serves the same client tools an API run gets through
+// its RunConfig. codex is excluded here — it consumes opts.ClientTools as
+// thread/start dynamicTools inside the codex backend itself.
+//
+// Runs AFTER wireToolServer / wireAgentToolServer so the extension tools and
+// ion_agent hold registration priority: a client tool whose name collides
+// with an already-registered tool is skipped (never shadows), matching the
+// API adapter's collision rule in wireClientTools.
+func (m *Manager) wireClientToolServer(s *engineSession, key string, opts *types.RunOptions) {
+	if len(opts.ClientTools) == 0 || opts.ClientToolRouter == nil {
+		return
+	}
+	kind, ok := mcpCapableCli(m.resolvedBackend(opts.Model))
+	if !ok {
+		return
+	}
+
+	m.mu.Lock()
+	ts := s.toolServer
+	m.mu.Unlock()
+
+	needsStart := false
+	if ts == nil {
+		ts = backend.NewToolServer(key)
+		needsStart = true
+	}
+
+	router := opts.ClientToolRouter
+	registered := make([]string, 0, len(opts.ClientTools))
+	for _, ct := range opts.ClientTools {
+		// Human-wait tools are excluded on delegated-CLI backends: parking
+		// (PermissionDenial + run termination, the wait that survives stop
+		// and restart) requires the engine-owned loop, and a blocking MCP
+		// round-trip would resurrect every lifecycle defect parking removes.
+		// The model on these backends uses the AskUserQuestion sentinel,
+		// which the CLI loops already support.
+		if ct.HumanWait {
+			utils.LogWithFields(utils.LevelInfo, "session.toolgate", "human-wait client tool skipped on delegated-CLI backend", map[string]any{
+				"key": key, "tool": ct.Name, "kind": kind,
+			})
+			continue
+		}
+		if ts.HasTool(ct.Name) {
+			utils.LogWithFields(utils.LevelWarn, "session.toolgate", "client tool shadows a ToolServer tool; skipped", map[string]any{
+				"key": key, "tool": ct.Name, "kind": kind,
+			})
+			continue
+		}
+		name := ct.Name
+		ts.RegisterTool(name, func(ctx context.Context, input map[string]interface{}) (*types.ToolResult, error) {
+			// The router never returns nil and encodes failures as tool
+			// errors; the MCP ctx makes teardown cancel a blocked human wait.
+			return router(ctx, name, input), nil
+		}, ct.Description, ct.InputSchema)
+		registered = append(registered, name)
+	}
+	if len(registered) == 0 {
+		if needsStart {
+			return // nothing registered on a fresh server: nothing to start
+		}
+		return
+	}
+
+	if needsStart {
+		if err := ts.Start(); err != nil {
+			utils.LogWithFields(utils.LevelError, "session.toolgate", "toolserver start failed (client tools)", map[string]any{"key": key, "error": err.Error()})
+			return
+		}
+		if err := m.attachToolServerMcp(opts, ts, key, kind); err != nil {
+			utils.LogWithFields(utils.LevelError, "session.toolgate", "toolserver mcp attach failed (client tools)", map[string]any{"key": key, "error": err.Error(), "kind": kind})
+			ts.Stop()
+			return
+		}
+		m.mu.Lock()
+		s.toolServer = ts
+		m.mu.Unlock()
+	}
+
+	directive := buildToolAliasDirective(registered, backend.McpServerName)
+	appendDirective(opts, directive, registered)
+
+	utils.LogWithFields(utils.LevelInfo, "session.toolgate", "client tools registered on ToolServer for CLI backend", map[string]any{
+		"key": key, "kind": kind, "count": len(registered),
+	})
 }
 
 // buildAgentToolHandler returns the ToolHandler for the delegated-CLI
@@ -256,7 +347,7 @@ func buildAgentStatusToolHandler(registry *extcontext.DispatchRegistry) backend.
 // synchronous result contract.
 func (m *Manager) buildAgentToolHandler(s *engineSession, key, parentModel string) backend.ToolHandler {
 	spawner := m.buildRootAgentSpawner(s, key, parentModel, s.extGroup, nil, nil)
-	return func(input map[string]interface{}) (*types.ToolResult, error) {
+	return func(ctx context.Context, input map[string]interface{}) (*types.ToolResult, error) {
 		prompt, _ := input["prompt"].(string)           //nolint:errcheck // best-effort; failure not actionable here
 		name, _ := input["name"].(string)               //nolint:errcheck // best-effort; failure not actionable here
 		description, _ := input["description"].(string) //nolint:errcheck // best-effort; failure not actionable here
@@ -275,11 +366,11 @@ func (m *Manager) buildAgentToolHandler(s *engineSession, key, parentModel strin
 			return &types.ToolResult{Content: "error: prompt is required", IsError: true}, nil
 		}
 
-		// The ToolHandler signature carries no context; the dispatch is
-		// cancellable via the DispatchRegistry (session abort / recall), so a
-		// background context here is correct.
+		// ctx is the MCP request context (session/server teardown cancels
+		// it); the dispatch additionally remains cancellable via the
+		// DispatchRegistry (session abort / recall).
 		waitForCompletion, _ := input["wait_for_completion"].(bool) //nolint:errcheck // omitted means async
-		callCtx := tools.WithAgentWaitForCompletion(context.Background(), waitForCompletion)
+		callCtx := tools.WithAgentWaitForCompletion(ctx, waitForCompletion)
 		out, err := spawner(callCtx, name, prompt, description, s.config.WorkingDirectory, model)
 		if err != nil {
 			utils.LogWithFields(utils.LevelWarn, "session.cli_dispatch", "ion_agent dispatch failed", map[string]any{

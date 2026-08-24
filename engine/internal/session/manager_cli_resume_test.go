@@ -265,7 +265,7 @@ func TestNativeSessionCursor_CrossProviderFlow(t *testing.T) {
 		t.Fatalf("turn 1 must bridge (no cursor), got resume %q", opts1.CliResumeSessionID)
 	}
 	const uuid1 = "aaaaaaaa-0000-0000-0000-000000000001"
-	mgr.captureNativeSessionCursor("xp-key", convID, "claude-code", uuid1)
+	mgr.captureNativeSessionCursor("xp-key", convID, "claude-code", uuid1, "")
 
 	// Turn 2 on claude-code: cursor valid → native resume, no bridge.
 	opts2 := types.RunOptions{Model: "claude-opus-4-8", Prompt: "turn two"}
@@ -291,7 +291,7 @@ func TestNativeSessionCursor_CrossProviderFlow(t *testing.T) {
 		t.Fatalf("turn 3 bridge must carry the api-side turn: %q", opts3.Prompt)
 	}
 	const uuid2 = "bbbbbbbb-0000-0000-0000-000000000002"
-	mgr.captureNativeSessionCursor("xp-key", convID, "claude-code", uuid2)
+	mgr.captureNativeSessionCursor("xp-key", convID, "claude-code", uuid2, "")
 
 	// Turn 4 on claude-code: fresh cursor at the new head → resume again.
 	opts4 := types.RunOptions{Model: "claude-opus-4-8", Prompt: "turn four"}
@@ -321,7 +321,7 @@ func TestCaptureNativeSessionCursor_PersistsAndRehydrates(t *testing.T) {
 	mgr.mu.Unlock()
 
 	const uuid = "cccccccc-1111-2222-3333-444444444444"
-	mgr.captureNativeSessionCursor("persist-key", "persist-conv-1", "claude-code", uuid)
+	mgr.captureNativeSessionCursor("persist-key", "persist-conv-1", "claude-code", uuid, "")
 
 	// In-memory mirror updated, tagged with the live leaf.
 	mgr.mu.RLock()

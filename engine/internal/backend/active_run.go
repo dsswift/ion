@@ -48,6 +48,13 @@ type activeRun struct {
 	// the RPC handler never blocks.
 	suspendCh         chan suspendSignal
 	exitPlanMode      bool                     // set when ExitPlanMode tool is called during plan mode
+	// parkedHumanWait is set when a human-wait client tool (AskUserQuestions
+	// and kin) parked the run. It terminates the run exactly like
+	// exitPlanMode does, but under its OWN identity: the run is waiting on a
+	// person, not exiting plan mode, so the TaskComplete result text and the
+	// log line must not claim plan mode. Reusing exitPlanMode leaked "Plan
+	// mode exited." into the transcript of every parked question.
+	parkedHumanWait   bool
 	permissionDenials []types.PermissionDenial // tools intercepted/denied (e.g. ExitPlanMode sentinel)
 	planMode          bool                     // true when this run is in plan mode
 	planFilePath      string                   // only writable file during plan mode

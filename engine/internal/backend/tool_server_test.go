@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"context"
 	"encoding/json"
 	"net"
 	"os"
@@ -26,7 +27,7 @@ func TestNewToolServer_CreatesWithSessionID(t *testing.T) {
 
 func TestRegisterTool_AddsTool(t *testing.T) {
 	ts := NewToolServer("reg-test")
-	ts.RegisterTool("my_tool", func(input map[string]interface{}) (*types.ToolResult, error) {
+	ts.RegisterTool("my_tool", func(_ context.Context, input map[string]interface{}) (*types.ToolResult, error) {
 		return &types.ToolResult{Content: "ok"}, nil
 	}, "My test tool", nil)
 
@@ -171,7 +172,7 @@ func initializeSession(t *testing.T, conn net.Conn) {
 
 func TestToolServer_MCPInitializeHandshake(t *testing.T) {
 	ts := NewToolServer("init-test")
-	ts.RegisterTool("echo", func(input map[string]interface{}) (*types.ToolResult, error) {
+	ts.RegisterTool("echo", func(_ context.Context, input map[string]interface{}) (*types.ToolResult, error) {
 		return &types.ToolResult{Content: "echoed"}, nil
 	}, "Echo tool", nil)
 	defer ts.Stop()
@@ -274,7 +275,7 @@ func TestToolServer_ToolMetadataInList(t *testing.T) {
 		},
 		"required": []interface{}{"query"},
 	}
-	ts.RegisterTool("search", func(input map[string]interface{}) (*types.ToolResult, error) {
+	ts.RegisterTool("search", func(_ context.Context, input map[string]interface{}) (*types.ToolResult, error) {
 		return &types.ToolResult{Content: "found"}, nil
 	}, "Search for items", schema)
 	defer ts.Stop()
@@ -325,7 +326,7 @@ func TestToolServer_ToolMetadataInList(t *testing.T) {
 
 func TestToolServer_JSONRPCToolsList(t *testing.T) {
 	ts := NewToolServer("jsonrpc-test")
-	ts.RegisterTool("echo", func(input map[string]interface{}) (*types.ToolResult, error) {
+	ts.RegisterTool("echo", func(_ context.Context, input map[string]interface{}) (*types.ToolResult, error) {
 		return &types.ToolResult{Content: "echoed"}, nil
 	}, "Echo tool", nil)
 	defer ts.Stop()
@@ -370,7 +371,7 @@ func TestToolServer_JSONRPCToolsList(t *testing.T) {
 
 func TestToolServer_ToolsCall(t *testing.T) {
 	ts := NewToolServer("call-test")
-	ts.RegisterTool("greet", func(input map[string]interface{}) (*types.ToolResult, error) {
+	ts.RegisterTool("greet", func(_ context.Context, input map[string]interface{}) (*types.ToolResult, error) {
 		name, _ := input["name"].(string) //nolint:errcheck // test
 		return &types.ToolResult{Content: "Hello, " + name}, nil
 	}, "Greet a user", map[string]interface{}{
@@ -416,7 +417,7 @@ func TestToolServer_ToolsCall(t *testing.T) {
 
 func TestToolServer_ToolsCall_ErrorResult(t *testing.T) {
 	ts := NewToolServer("call-err-test")
-	ts.RegisterTool("fail", func(input map[string]interface{}) (*types.ToolResult, error) {
+	ts.RegisterTool("fail", func(_ context.Context, input map[string]interface{}) (*types.ToolResult, error) {
 		return &types.ToolResult{Content: "something went wrong", IsError: true}, nil
 	}, "Always fails", nil)
 	defer ts.Stop()
@@ -450,7 +451,7 @@ func TestToolServer_ToolsCall_ErrorResult(t *testing.T) {
 
 func TestToolServer_HasTool(t *testing.T) {
 	ts := NewToolServer("hastool-test")
-	ts.RegisterTool("present", func(input map[string]interface{}) (*types.ToolResult, error) {
+	ts.RegisterTool("present", func(_ context.Context, input map[string]interface{}) (*types.ToolResult, error) {
 		return &types.ToolResult{Content: "ok"}, nil
 	}, "Present tool", nil)
 
@@ -464,7 +465,7 @@ func TestToolServer_HasTool(t *testing.T) {
 
 func TestToolServer_MultipleConnections(t *testing.T) {
 	ts := NewToolServer("multi-conn-test")
-	ts.RegisterTool("echo", func(input map[string]interface{}) (*types.ToolResult, error) {
+	ts.RegisterTool("echo", func(_ context.Context, input map[string]interface{}) (*types.ToolResult, error) {
 		return &types.ToolResult{Content: "echoed"}, nil
 	}, "Echo tool", nil)
 	defer ts.Stop()

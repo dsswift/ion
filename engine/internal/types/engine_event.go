@@ -1,8 +1,8 @@
+// @file-size-exception: single tagged-union struct — a Go struct declaration cannot be split across files
 // Package types — EngineEvent is the tagged-union outbound event surface
-// of the engine. Lives in its own file because the struct grew to ~290
-// lines as more fields were added to support new event variants; the
-// shared types.go (sessions, agents, providers, plan-mode) keeps a
-// smaller surface this way.
+// of the engine. Lives in its own file because the struct keeps growing as
+// event variants are added; the shared types.go (sessions, agents,
+// providers, plan-mode) keeps a smaller surface this way.
 package types
 
 import "encoding/json"
@@ -288,6 +288,20 @@ type EngineEvent struct {
 	// share a turn with the edits that resolved it — needs this fact and
 	// cannot derive it from single-call requests.
 	GateSiblingTools []string `json:"gateSiblingTools,omitempty"`
+
+	// engine_client_tool_state — a COMPLETE REPLACEMENT snapshot of every
+	// client-tool call the engine is currently blocked on for this session.
+	// Same snapshot semantics as engine_agent_state: consumers replace their
+	// local view with the payload; an empty array is the authoritative
+	// "nothing pending" clear signal. No omitempty for the same reason the
+	// agents snapshot field above has none — omitempty drops a zero-length
+	// slice, which would erase the clear signal on the wire. Emitted on
+	// every membership change (register, response, timeout, cancellation,
+	// run teardown) and re-emitted by ReconcileState so a re-attaching
+	// consumer can replace stale local state. engine_tool_gate_request
+	// remains the low-latency invocation signal; this snapshot is the
+	// replay/reconciliation surface.
+	ClientToolCalls []ClientToolCallState `json:"clientToolCalls"`
 
 	// engine_plan_mode_changed
 	PlanModeEnabled  bool   `json:"planModeEnabled,omitempty"`

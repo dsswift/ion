@@ -369,7 +369,22 @@ type RunConfig struct {
 	// change is an internal refactor.
 	McpConnections []*mcp.Connection
 	McpToolRouter  func(ctx context.Context, name string, input map[string]interface{}) (*types.ToolResult, error)
-	AgentSpawner   tools.AgentSpawner
+	// HumanWaitClientTools names the client-declared tools (ClientToolDef.
+	// HumanWait) whose invocation PARKS the run instead of blocking a tool
+	// call: the loop records a PermissionDenial carrying the tool's full
+	// input, injects a placeholder tool result, and terminates the run —
+	// exactly the AskUserQuestion sentinel treatment. The session goes idle,
+	// the question is retained (and re-published on reconcile/heartbeat),
+	// and the user's answer arrives as the next prompt whenever they submit
+	// it. This is what lets a structured question round survive stop,
+	// navigation, and restart: nothing is running while it waits.
+	//
+	// Engine-owned (API) runs only. Delegated-CLI backends own their own
+	// loops, so a human-wait client tool there keeps the blocking
+	// wire-round-trip fulfillment (the engine cannot terminate-and-resume a
+	// subprocess's native turn).
+	HumanWaitClientTools map[string]bool
+	AgentSpawner         tools.AgentSpawner
 	// AgentStatus returns the session's complete active-dispatch snapshot for
 	// the read-only AgentStatus tool. Nil means the run has no dispatch registry.
 	AgentStatus tools.AgentStatusGetter

@@ -300,19 +300,32 @@ func (b *ApiBackend) dispatchStopReason(
 			return true
 		}
 
-		// If ExitPlanMode was triggered, wrap up the run now.
+		// If ExitPlanMode was triggered, or a human-wait client tool parked
+		// the run, wrap up now. Both terminate the run, but they are
+		// DIFFERENT events and must not borrow each other's prose: a parked
+		// question is not a plan-mode exit, and claiming so wrote "Plan mode
+		// exited." into the transcript of every guided-questions round.
 		run.mu.Lock()
 		exiting := run.exitPlanMode
+		parked := run.parkedHumanWait
 		denials := run.permissionDenials
 		run.mu.Unlock()
-		if exiting {
+		if exiting || parked {
 			if err := conversation.Save(conv, ""); err != nil {
 				utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation", map[string]any{
 					"error": utils.ErrStr(err),
 				})
 			}
 			elapsed := time.Since(run.startTime).Milliseconds()
-			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "plan mode exited: cost=$ ms", map[string]any{
+			// Park wins the label when both are set: the park is what ended
+			// this run, and plan mode remains whatever it was.
+			logMsg := "plan mode exited: cost=$ ms"
+			result := "Plan mode exited."
+			if parked {
+				logMsg = "run parked awaiting user input: cost=$ ms"
+				result = "Waiting for the user's answers."
+			}
+			utils.LogWithFields(utils.LevelInfo, "backend.runloop", logMsg, map[string]any{
 				"run_id":      run.requestID,
 				"turns":       turn,
 				"total_cost":  run.totalCost,
@@ -321,7 +334,7 @@ func (b *ApiBackend) dispatchStopReason(
 			})
 			b.emit(run, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
 				Reason:            types.TaskCompletionReasonNormal,
-				Result:            "Plan mode exited.",
+				Result:            result,
 				LastText:          run.lastNonEmptyResultText,
 				CostUsd:           run.totalCost,
 				DurationMs:        elapsed,

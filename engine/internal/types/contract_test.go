@@ -173,6 +173,14 @@ func buildManifest() contractManifest {
 		// per-prompt ClientCommand. Tracked so cross-language mirrors stay
 		// in sync with the engine's hook-dispatch payload shape.
 		"ClientWorkspaceContext": reflect.TypeOf(ClientWorkspaceContext{}),
+		// Client tool gate: the opt-in declaration (EngineConfig.ToolGate),
+		// its per-tool entries, and the pending-call rows carried on
+		// engine_client_tool_state snapshots. Tracked so the desktop
+		// declaration mirror and the iOS snapshot decoder stay in sync —
+		// most recently the humanWait execution-policy flag.
+		"ToolGateConfig":      reflect.TypeOf(ToolGateConfig{}),
+		"ClientToolDef":       reflect.TypeOf(ClientToolDef{}),
+		"ClientToolCallState": reflect.TypeOf(ClientToolCallState{}),
 		// Resource envelopes and query filters cross the public engine wire.
 		"ResourceItem":   reflect.TypeOf(ResourceItem{}),
 		"ResourceFilter": reflect.TypeOf(ResourceFilter{}),

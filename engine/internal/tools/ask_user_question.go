@@ -18,7 +18,7 @@ const AskUserQuestionName = "AskUserQuestion"
 func AskUserQuestionTool() *types.ToolDef {
 	return &types.ToolDef{
 		Name: AskUserQuestionName,
-		Description: `Ask the user a question to gather information, clarify ambiguity, or get a decision. The run pauses until the user responds. Use this instead of guessing when requirements are unclear.
+		Description: `Ask the user ONE question to gather information, clarify ambiguity, or get a decision. The run ends until the user responds with their next prompt — this tool carries a single question and does not batch. Use this instead of guessing when requirements are unclear. If a richer structured-questions tool is available in this session, prefer it for multi-question rounds and reserve this one for a single isolated decision.
 
 When the question has a finite set of reasonable answers, ALWAYS provide options — this is faster for the user than typing. The user can always type a custom answer even when options are provided. Only omit options for genuinely open-ended questions (e.g. "What should the project be called?").
 

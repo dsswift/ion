@@ -79,6 +79,27 @@ const (
 	// state before retrying potentially completed external work.
 	InjectionKindRunRecovery InjectionKind = "run_recovery"
 
+	// InjectionKindStructuredAnswer is a structured answer set submitted
+	// through a client's own answer surface — a Guided Questions page, a
+	// form, a wizard — and delivered as the turn that resumes a parked run.
+	//
+	// USER-authored, deliberately. A person read the questions, chose the
+	// options, typed the free text, and attached the images; the only thing
+	// the client contributed is the layout. That makes it categorically
+	// different from AgentCompletion or BackgroundTaskCompletion, which no
+	// human ever saw. An earlier revision classified it machine-authored to
+	// stop clients rendering it twice, but that bought de-duplication with a
+	// lie: consumers that hide machine turns dropped real operator input from
+	// the transcript, and a model reading its own context could not see that
+	// the human had answered at all.
+	//
+	// The kind still carries information a consumer wants — this turn came
+	// from a structured surface rather than the prompt box, so a client may
+	// LABEL it ("Questions answered") instead of rendering it as free text.
+	// That is a presentation choice the kind enables and the engine does not
+	// make: classification here, policy there (ADR-017).
+	InjectionKindStructuredAnswer InjectionKind = "structured_answer"
+
 	// InjectionKindSystemSteer is an engine- or harness-authored steering
 	// message injected into the turn stream to keep the model on its
 	// constraints: a plan-mode reminder, a turn-limit warning, a
@@ -121,7 +142,7 @@ func (k InjectionKind) IsMachineToMachine() bool {
 		InjectionKindRunRecovery,
 		InjectionKindSystemSteer:
 		return true
-	case InjectionKindNone, InjectionKindSteer:
+	case InjectionKindNone, InjectionKindSteer, InjectionKindStructuredAnswer:
 		return false
 	default:
 		// A consumer-defined kind the engine does not know. Treated as
@@ -135,6 +156,25 @@ func (k InjectionKind) IsMachineToMachine() bool {
 // String renders the kind for logs and for the wire.
 func (k InjectionKind) String() string { return string(k) }
 
+// IsKnown reports whether this kind is one the engine defines.
+//
+// The validation seam for CLIENT-supplied kinds (ClientCommand.InjectionKind).
+// A client may legitimately state how a turn it delivers was authored, but the
+// engine must not accept an arbitrary string: IsMachineToMachine deliberately
+// treats an unknown kind as user-authored, so an invented value would be
+// recorded on the turn while changing nothing — a silently misleading row.
+// Callers drop an unknown kind (and log it) instead of persisting it.
+//
+// Reads AllInjectionKinds, so a kind added above is accepted here with no edit.
+func (k InjectionKind) IsKnown() bool {
+	for _, known := range AllInjectionKinds {
+		if k == known {
+			return true
+		}
+	}
+	return false
+}
+
 // AllInjectionKinds is every kind the engine defines, including the empty
 // zero value. Exported so the exhaustiveness test and any consumer-facing
 // enumeration read from one list rather than restating it.
@@ -146,6 +186,7 @@ var AllInjectionKinds = []InjectionKind{
 	InjectionKindCheckIn,
 	InjectionKindRevive,
 	InjectionKindRunRecovery,
+	InjectionKindStructuredAnswer,
 	InjectionKindSystemSteer,
 	InjectionKindSteer,
 }

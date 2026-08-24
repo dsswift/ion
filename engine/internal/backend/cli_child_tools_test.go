@@ -39,7 +39,7 @@ func callToolServerEntry(t *testing.T, ts *ToolServer, name string, input map[st
 	if !ok {
 		t.Fatalf("tool server missing %q", name)
 	}
-	result, err := entry.handler(input)
+	result, err := entry.handler(context.Background(), input)
 	if err != nil {
 		t.Fatalf("%s handler: %v", name, err)
 	}

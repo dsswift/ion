@@ -81,6 +81,55 @@ type ClientToolDef struct {
 	InputSchema map[string]any `json:"inputSchema,omitempty"`
 	// PlanModeSafe marks the tool callable in plan mode (read-only tools).
 	PlanModeSafe bool `json:"planModeSafe,omitempty"`
+	// HumanWait marks this tool's invocation as an intentional human wait:
+	// the model's call blocks on a PERSON, not on client software. On the
+	// engine-owned (API) backend, calling a human-wait tool PARKS the run —
+	// the loop records a PermissionDenial carrying the tool's full input,
+	// injects a placeholder result, and terminates the run (the
+	// AskUserQuestion sentinel treatment). The session goes idle, the engine
+	// retains the question across heartbeats/reconciles/restarts, and the
+	// user's answer arrives as the next prompt whenever they submit it.
+	// Delegated-CLI backends exclude human-wait tools from their transports
+	// (the model uses the AskUserQuestion sentinel there instead). False or
+	// absent keeps machine-tool behavior: a blocking wire round-trip bounded
+	// by the finite ClientToolTimeoutMs.
+	HumanWait bool `json:"humanWait,omitempty"`
+}
+
+// LlmToolDef converts the declaration to the provider-facing tool definition.
+// Explicit field mapping, not a direct type conversion: HumanWait is an
+// execution-policy flag the engine consumes, and it must never leak into the
+// provider tool schema (providers reject unknown fields at worst and mislead
+// the model at best).
+func (ct ClientToolDef) LlmToolDef() LlmToolDef {
+	return LlmToolDef{
+		Name:         ct.Name,
+		Description:  ct.Description,
+		InputSchema:  ct.InputSchema,
+		PlanModeSafe: ct.PlanModeSafe,
+	}
+}
+
+// ClientToolCallState is one pending MACHINE client-tool call as carried on
+// the engine_client_tool_state snapshot (human-wait tools park the run
+// instead of pending — their retained question rides PermissionDenials).
+// RequestId is the tool_gate_response correlator; RunId names the owning run
+// lifecycle so a client can reject a stale entry after session-key reuse (a
+// new run on the same key mints a new requestID, so a persisted client
+// record keyed to the old pair never matches).
+type ClientToolCallState struct {
+	RequestID string         `json:"requestId"`
+	RunID     string         `json:"runId,omitempty"`
+	ToolName  string         `json:"toolName"`
+	ToolInput map[string]any `json:"toolInput,omitempty"`
+	Cwd       string         `json:"cwd,omitempty"`
+	// HumanWait mirrors the declaration flag. Always false on entries the
+	// engine emits today (human-wait calls park rather than pend); retained
+	// on the wire so a consumer that persisted an entry from an earlier
+	// engine still decodes it.
+	HumanWait bool `json:"humanWait,omitempty"`
+	// StartedAt is the unix-ms timestamp the engine registered the call.
+	StartedAt int64 `json:"startedAt,omitempty"`
 }
 
 // ToolGateTimeoutMsDefault is the wait bound applied when a gating client

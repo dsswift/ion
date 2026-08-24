@@ -102,13 +102,20 @@ type PromptOverrides struct {
 	// session-level EngineConfig value. See types.ClientWorkspaceContext.
 	ClientWorkspaceContext *types.ClientWorkspaceContext
 
-	// InjectionKind classifies an engine-side injected prompt so the
-	// persisted conversation entry carries the semantic type. "agent_completion"
-	// marks a machine-to-machine dispatch callback (a child agent's result
-	// routed to its parent) rather than a user-authored turn. Empty for
-	// ordinary client-submitted prompts. Propagates to
-	// MessageData.InjectionKind via appendInboundUserMessage so consumers
-	// can classify the turn on historical reload.
+	// InjectionKind classifies an injected prompt so the persisted
+	// conversation entry carries the semantic type. "agent_completion" marks a
+	// machine-to-machine dispatch callback (a child agent's result routed to
+	// its parent) rather than a user-authored turn. Empty for ordinary
+	// client-submitted prompts. Propagates to MessageData.InjectionKind via
+	// appendInboundUserMessage so consumers can classify the turn on
+	// historical reload.
+	//
+	// Set by engine-side injectors AND by a client that owns its own answer
+	// surface (ClientCommand.InjectionKind, e.g. "structured_answer" from a
+	// questions wizard). A client-supplied value is validated against the
+	// known set before it reaches here — an unrecognized string is dropped
+	// rather than trusted, so a client cannot hide a turn by inventing a
+	// kind.
 	InjectionKind string
 
 	// SteerDegraded marks a prompt that began as a ctx.steerSelf delivery and
