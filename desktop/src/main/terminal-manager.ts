@@ -8,6 +8,8 @@ import { terminalScrollback } from './state'
 import { debug as _debug } from './logger'
 import type { IPty } from 'node-pty'
 
+const INTERACTIVE_LOGIN_ARGS = ['-il']
+
 function debug(msg: string, fields?: Record<string, unknown>): void {
   _debug('terminal', msg, fields)
 }
@@ -140,7 +142,7 @@ export class TerminalManager {
       resolved_cwd: resolvedCwd,
       cwd_fell_back: cwdFellBack,
       login_shell: loginShell,
-      login_args: ['-l'],
+      login_args: INTERACTIVE_LOGIN_ARGS,
     })
 
     // Conversation identity, injected into the PTY environment.
@@ -165,7 +167,11 @@ export class TerminalManager {
       ION_DESKTOP_DEEPLINK_TOKEN: getDeepLinkToken(),
     }) as Record<string, string>
 
-    const term = spawn(loginShell, ['-l'], {
+    // Studio terminals are interactive login shells. The PTY often makes Zsh
+    // infer interactivity, but that inference changed with the packaged-app
+    // launch path. Pass both modes explicitly so the shell always reads its
+    // login files and interactive rc file (for example, .zprofile + .zshrc).
+    const term = spawn(loginShell, INTERACTIVE_LOGIN_ARGS, {
       name: 'xterm-256color',
       cols: 80,
       rows: 24,
@@ -176,7 +182,7 @@ export class TerminalManager {
     debug('spawned terminal pty', {
       key,
       shell: loginShell,
-      login_args: ['-l'],
+      login_args: INTERACTIVE_LOGIN_ARGS,
       cwd: resolvedCwd,
       cwd_fell_back: cwdFellBack,
       cols: 80,

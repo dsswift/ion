@@ -111,7 +111,7 @@ describe('TerminalManager PTY identity', () => {
     expect(spawnedEnv(1).ION_DESKTOP_TAB_ID).toBe('tab-abc')
   })
 
-  it('uses the account login shell and exports SHELL even when inherited SHELL is /bin/sh', () => {
+  it('uses the account interactive login shell even when inherited SHELL is /bin/sh', () => {
     vi.mocked(os.userInfo).mockReturnValue({ shell: '/bin/zsh' } as os.UserInfo<string>)
     const inheritedShell = process.env.SHELL
     process.env.SHELL = '/bin/sh'
@@ -121,7 +121,7 @@ describe('TerminalManager PTY identity', () => {
 
       const call = mocks.spawn.mock.calls[0]
       expect(call[0]).toBe('/bin/zsh')
-      expect(call[1]).toEqual(['-l'])
+      expect(call[1]).toEqual(['-il'])
       expect(spawnedEnv().SHELL).toBe('/bin/zsh')
     } finally {
       if (inheritedShell === undefined) delete process.env.SHELL
