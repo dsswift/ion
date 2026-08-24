@@ -46,7 +46,13 @@ vi.mock('../ConversationSearch', () => ({ ConversationSearch: () => null }))
 vi.mock('../hooks/useConversationSearch', () => ({ useConversationSearch: () => [{}, {}] }))
 vi.mock('../hooks/useClearPermissionDenied', () => ({ useClearPermissionDenied: () => vi.fn() }))
 vi.mock('../conversation/useScrollFollow', () => ({
-  useScrollFollow: () => ({ scrollRef: { current: null }, contentRef: { current: null }, isNearBottomRef: { current: true }, showScrollBtn: false, handleScroll: vi.fn(), scrollToBottom: vi.fn() }),
+  useScrollFollow: () => ({
+    scrollRef: { current: null }, contentRef: { current: null },
+    isNearBottomRef: { current: true }, showScrollBtn: false,
+    handleScroll: vi.fn(), handleWheel: vi.fn(), handleTouchStart: vi.fn(), handleTouchMove: vi.fn(),
+    handlePointerMove: vi.fn(), handleKeyDown: vi.fn(), pauseFollowing: vi.fn(),
+    scrollToBottom: vi.fn(),
+  }),
 }))
 vi.mock('../conversation/TimelineMinimap', () => ({ TimelineMinimap: () => null }))
 vi.mock('../conversation/TimelineMinimap.logic', () => ({ deriveTimelineMinimapItems: () => [] }))

@@ -122,7 +122,20 @@ export function ConversationView({ tabId }: ConversationViewProps) {
   const [agentPanelHeights, setAgentPanelHeights] = useState<Map<string, number>>(new Map())
 
   // Scroll-follow via shared hook.
-  const { scrollRef, contentRef, isNearBottomRef: _isNearBottomRef, showScrollBtn, handleScroll, scrollToBottom } = useScrollFollow([
+  const {
+    scrollRef,
+    contentRef,
+    isNearBottomRef: _isNearBottomRef,
+    showScrollBtn,
+    handleScroll,
+    handleWheel,
+    handleTouchStart,
+    handleTouchMove,
+    handlePointerMove,
+    handleKeyDown,
+    pauseFollowing,
+    scrollToBottom,
+  } = useScrollFollow([
     messages.length, agentStates.length, isRunning,
   ])
   const virtualMessageJumpRef = useRef<((messageId: string) => boolean) | null>(null)
@@ -266,11 +279,22 @@ export function ConversationView({ tabId }: ConversationViewProps) {
         />
         {/* Dedicated timeline gutter — reserved layout space, so the
             transcript can never render underneath the history rail. */}
-        <TimelineMinimap items={minimapItems} scrollRef={scrollRef} virtualMessageJumpRef={virtualMessageJumpRef} />
+        <TimelineMinimap
+          items={minimapItems}
+          scrollRef={scrollRef}
+          virtualMessageJumpRef={virtualMessageJumpRef}
+          onNavigate={pauseFollowing}
+        />
         <div
           ref={scrollRef}
           data-testid="conversation-transcript"
+          onWheel={handleWheel}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onPointerMove={handlePointerMove}
+          onKeyDown={handleKeyDown}
           onScroll={handleScroll}
+          tabIndex={0}
           style={{
             flex: 1, minWidth: 0, height: '100%', overflowY: 'auto',
             padding: `8px 12px ${activityOverlayVisible ? CONVERSATION_ACTIVITY_OVERLAY_HEIGHT + 8 : 8}px 4px`,

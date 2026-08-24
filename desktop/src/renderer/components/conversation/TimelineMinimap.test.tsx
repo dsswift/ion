@@ -75,7 +75,11 @@ const ITEMS: TimelineMinimapItem[] = [
   { id: 'u3', userText: 'third question', assistantText: 'third answer', tickKind: 'message' },
 ]
 
-function renderMinimap(items: TimelineMinimapItem[], opts?: { omitAnchorIds?: string[]; virtualJump?: (id: string) => boolean }) {
+function renderMinimap(items: TimelineMinimapItem[], opts?: {
+  omitAnchorIds?: string[]
+  virtualJump?: (id: string) => boolean
+  onNavigate?: () => void
+}) {
   const container = document.createElement('div')
   document.body.appendChild(container)
 
@@ -100,6 +104,7 @@ function renderMinimap(items: TimelineMinimapItem[], opts?: { omitAnchorIds?: st
     root.render(React.createElement(TimelineMinimap, {
       items, scrollRef,
       virtualMessageJumpRef: opts?.virtualJump ? { current: opts.virtualJump } : undefined,
+      onNavigate: opts?.onNavigate,
     }))
   })
 
@@ -207,6 +212,17 @@ describe('TimelineMinimap', () => {
     act(() => { button!.dispatchEvent(mouseEvent('mousemove', 350)) })
     expect(planTick.dataset.emphasized).toBe('true')
     expect(planTick.style.backgroundColor).toBe('rgb(102, 221, 170)')
+    unmount()
+  })
+
+  it('breaks tailing before a minimap jump', () => {
+    const onNavigate = vi.fn()
+    const { button, scrollTo, unmount } = renderMinimap(ITEMS, { onNavigate })
+
+    act(() => { button!.dispatchEvent(mouseEvent('click', 350)) })
+
+    expect(onNavigate).toHaveBeenCalledTimes(1)
+    expect(scrollTo).toHaveBeenCalled()
     unmount()
   })
 

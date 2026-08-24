@@ -4,7 +4,7 @@ import { useScrollFollow } from '../useScrollFollow'
 
 // Minimal hook runner without @testing-library/react. Works by rendering a
 // tiny function component that captures the hook result into a mutable ref.
-import React, { useState } from 'react'
+import React, { useState, type WheelEvent } from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 
@@ -74,7 +74,10 @@ describe('useScrollFollow', () => {
     expect(scroll.scrollTop).toBe(700)
 
     scroll.scrollTop = 0
-    act(() => { result!.handleScroll() })
+    act(() => {
+      result!.pauseFollowing()
+      result!.handleScroll()
+    })
     scrollHeight = 900
     act(() => { notifyResize?.([], {} as ResizeObserver) })
     expect(scroll.scrollTop).toBe(0)
@@ -83,6 +86,70 @@ describe('useScrollFollow', () => {
     expect(disconnect).toHaveBeenCalled()
     document.body.removeChild(container)
     globalThis.ResizeObserver = OriginalResizeObserver
+  })
+
+  it('keeps tailing when virtual layout moves an opening conversation away from the bottom', () => {
+    const hook = renderScrollHook([0])
+    const div = document.createElement('div')
+    Object.defineProperty(div, 'scrollHeight', { value: 10_000, configurable: true })
+    Object.defineProperty(div, 'scrollTop', { value: 4_000, writable: true, configurable: true })
+    Object.defineProperty(div, 'clientHeight', { value: 600, configurable: true })
+    ;(hook.current.scrollRef as React.MutableRefObject<HTMLDivElement | null>).current = div
+
+    act(() => { hook.current.handleScroll() })
+
+    expect(div.scrollTop).toBe(10_000)
+    expect(hook.current.isNearBottomRef.current).toBe(true)
+    expect(hook.current.showScrollBtn).toBe(false)
+    hook.unmount()
+  })
+
+  it('stops tailing after user scroll intent and resumes when the user reaches the bottom', () => {
+    const hook = renderScrollHook([0])
+    const div = document.createElement('div')
+    let scrollHeight = 1_000
+    Object.defineProperty(div, 'scrollHeight', { get: () => scrollHeight, configurable: true })
+    Object.defineProperty(div, 'scrollTop', { value: 0, writable: true, configurable: true })
+    Object.defineProperty(div, 'clientHeight', { value: 400, configurable: true })
+    ;(hook.current.scrollRef as React.MutableRefObject<HTMLDivElement | null>).current = div
+
+    act(() => {
+      hook.current.handleWheel({ deltaY: -1 } as WheelEvent<HTMLDivElement>)
+      hook.current.handleScroll()
+    })
+    expect(hook.current.isNearBottomRef.current).toBe(false)
+    expect(hook.current.showScrollBtn).toBe(true)
+
+    scrollHeight = 1_200
+    hook.update([1])
+    expect(div.scrollTop).toBe(0)
+
+    div.scrollTop = 800
+    act(() => { hook.current.handleScroll() })
+    expect(hook.current.isNearBottomRef.current).toBe(true)
+    expect(hook.current.showScrollBtn).toBe(false)
+
+    scrollHeight = 1_400
+    hook.update([2])
+    expect(div.scrollTop).toBe(1_400)
+    hook.unmount()
+  })
+
+  it('treats search navigation as an explicit break from tailing', () => {
+    const hook = renderScrollHook([0])
+    const div = document.createElement('div')
+    Object.defineProperty(div, 'scrollHeight', { value: 1_000, configurable: true })
+    Object.defineProperty(div, 'scrollTop', { value: 0, writable: true, configurable: true })
+    Object.defineProperty(div, 'clientHeight', { value: 400, configurable: true })
+    ;(hook.current.scrollRef as React.MutableRefObject<HTMLDivElement | null>).current = div
+
+    act(() => { window.dispatchEvent(new CustomEvent('ion:search-scrolled')) })
+    hook.update([1])
+
+    expect(div.scrollTop).toBe(0)
+    expect(hook.current.isNearBottomRef.current).toBe(false)
+    expect(hook.current.showScrollBtn).toBe(true)
+    hook.unmount()
   })
 
   it('starts with showScrollBtn=false', () => {
@@ -99,11 +166,13 @@ describe('useScrollFollow', () => {
     Object.defineProperty(div, 'scrollTop', { value: 0, writable: true, configurable: true })
     Object.defineProperty(div, 'clientHeight', { value: 400, configurable: true })
 
-    ;(hook.current.scrollRef as any).current = div
+    ;(hook.current.scrollRef as React.MutableRefObject<HTMLDivElement | null>).current = div
 
-    act(() => { hook.current.handleScroll() })
-
-    // 1000 - 0 - 400 = 600 > 80 threshold
+    // Record real scroll input before the browser emits its scroll event.
+    act(() => {
+      hook.current.pauseFollowing()
+      hook.current.handleScroll()
+    })
     expect(hook.current.showScrollBtn).toBe(true)
     hook.unmount()
   })
@@ -116,7 +185,7 @@ describe('useScrollFollow', () => {
     Object.defineProperty(div, 'scrollTop', { value: 550, writable: true, configurable: true })
     Object.defineProperty(div, 'clientHeight', { value: 400, configurable: true })
 
-    ;(hook.current.scrollRef as any).current = div
+    ;(hook.current.scrollRef as React.MutableRefObject<HTMLDivElement | null>).current = div
 
     act(() => { hook.current.handleScroll() })
 
@@ -133,10 +202,13 @@ describe('useScrollFollow', () => {
     Object.defineProperty(div, 'scrollTop', { value: 0, writable: true, configurable: true })
     Object.defineProperty(div, 'clientHeight', { value: 400, configurable: true })
 
-    ;(hook.current.scrollRef as any).current = div
+    ;(hook.current.scrollRef as React.MutableRefObject<HTMLDivElement | null>).current = div
 
     // Scroll away first
-    act(() => { hook.current.handleScroll() })
+    act(() => {
+      hook.current.pauseFollowing()
+      hook.current.handleScroll()
+    })
     expect(hook.current.showScrollBtn).toBe(true)
 
     // Then scrollToBottom
@@ -155,7 +227,7 @@ describe('useScrollFollow', () => {
     Object.defineProperty(div, 'scrollTop', { value: 0, writable: true, configurable: true })
     Object.defineProperty(div, 'clientHeight', { value: 400, configurable: true })
 
-    ;(hook.current.scrollRef as any).current = div
+    ;(hook.current.scrollRef as React.MutableRefObject<HTMLDivElement | null>).current = div
 
     // isNearBottomRef defaults to true, so auto-tail fires on dep change
     hook.update([1])

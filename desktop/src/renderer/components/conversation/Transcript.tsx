@@ -99,8 +99,18 @@ export function Transcript({
   const agentList = agents ?? EMPTY_AGENTS;
   const telemetry = dispatchTelemetry ?? EMPTY_TELEMETRY;
 
-  const { scrollRef, showScrollBtn, handleScroll, scrollToBottom } =
-    useScrollFollow([messages.length, agentList.length, isRunning]);
+  const {
+    scrollRef,
+    contentRef,
+    showScrollBtn,
+    handleScroll,
+    handleWheel,
+    handleTouchStart,
+    handleTouchMove,
+    handlePointerMove,
+    handleKeyDown,
+    scrollToBottom,
+  } = useScrollFollow([messages.length, agentList.length, isRunning]);
 
   // activityDispatchId is only ever supplied by the caller when that exact
   // dispatch is confirmed running (AgentDetailBody gates it against its own
@@ -143,14 +153,22 @@ export function Transcript({
       <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
         <div
           ref={scrollRef}
+          onWheel={handleWheel}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onPointerMove={handlePointerMove}
+          onKeyDown={handleKeyDown}
           onScroll={handleScroll}
+          tabIndex={0}
           style={{
             height: "100%",
             overflowY: "auto",
             padding: `8px 12px ${activityOverlayVisible ? ACTIVITY_OVERLAY_HEIGHT + 8 : 8}px`,
           }}
         >
-          <TranscriptRows grouped={grouped} actions={actions} />
+          <div ref={contentRef}>
+            <TranscriptRows grouped={grouped} actions={actions} />
+          </div>
         </div>
         <ScrollToBottomButton
           visible={showScrollBtn}
