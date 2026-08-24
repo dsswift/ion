@@ -5,6 +5,7 @@ import { IPC, type ImageAttachmentPayload } from '../../shared/types'
 import {
   type QueuedItem, enqueueEvent, enqueueStatus, enqueueError, dropQueuedTextFor, countMergedChunks,
 } from './engine-event-frame-queue'
+import { createFlushScheduler, type FlushScheduler } from './engine-event-flush-scheduler'
 import { FORWARDED_ACTIONS } from '../../shared/studio-mirror-actions'
 import { isMirrorWindow } from '../lib/window-role'
 import { rTrace, rWarn, rDebug } from '../rendererLogger'
@@ -20,7 +21,10 @@ import { rTrace, rWarn, rDebug } from '../rendererLogger'
  * variants before broadcasting; the renderer never touches raw engine events.
  *
  * text_chunk events are batched per animation frame to avoid flooding React
- * with one state update per chunk during streaming.
+ * with one state update per chunk during streaming. The batch drains on the
+ * first of a frame or a short timer, because a hidden window (the Overlay
+ * owner in Studio mode) receives no frames — see
+ * engine-event-flush-scheduler.ts.
  */
 export function useEngineEvents() {
   useEffect(() => {
@@ -62,7 +66,7 @@ export function useEngineEvents() {
 
   // One frame's worth of inbound stream work, replayed in arrival order.
   const queueRef = useRef<QueuedItem[]>([])
-  const rafIdRef = useRef<number>(0)
+  const schedulerRef = useRef<FlushScheduler | null>(null)
 
   useEffect(() => {
     // Counters for one frame, reported at flush so the stream's real inbound
@@ -71,7 +75,6 @@ export function useEngineEvents() {
     let received = 0
 
     const flush = () => {
-      rafIdRef.current = 0
       const items = queueRef.current
       if (items.length === 0) {
         received = 0
@@ -100,11 +103,9 @@ export function useEngineEvents() {
       }
     }
 
-    const schedule = () => {
-      if (!rafIdRef.current) {
-        rafIdRef.current = requestAnimationFrame(flush)
-      }
-    }
+    const scheduler = createFlushScheduler(flush)
+    schedulerRef.current = scheduler
+    const schedule = () => scheduler.schedule()
 
     rDebug('event.stream', 'registering onEvent handler')
     const unsubEvent = window.ion.onEvent((tabId, event) => {
@@ -329,7 +330,8 @@ export function useEngineEvents() {
       window.ion.off(IPC.REMOTE_SET_PILL_COLOR, remoteSetPillColorHandler)
       window.ion.off(IPC.REMOTE_SET_PILL_ICON, remoteSetPillIconHandler)
       unsubExecAction()
-      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current)
+      scheduler.cancel()
+      schedulerRef.current = null
       queueRef.current = []
     }
   }, [handleNormalizedEvent, handleStatusChange, handleError])
