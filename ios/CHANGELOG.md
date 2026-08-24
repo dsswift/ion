@@ -10,6 +10,17 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.67.0](https://github.com/dsswift/ion/compare/ios-v1.66.0...ios-v1.67.0) (2026-08-24)
+
+### Features
+
+* **ios:** mirror the engine run epoch on status snapshots ([e565429](https://github.com/dsswift/ion/commit/e5654299e818439c5eec2cd75c048864e89c2041))
+
+### Bug Fixes
+
+* **ios:** restore the iOS build by splitting TabListView.body ([f48f550](https://github.com/dsswift/ion/commit/f48f550eb692d71477fc74e1ce429a921293e81f))
+* **repo:** stabilize iOS full-suite runner ([2b5988d](https://github.com/dsswift/ion/commit/2b5988d993504282b5a5dc3809112a272029b560))
+
 ## [1.66.0](https://github.com/dsswift/ion/compare/ios-v1.65.0...ios-v1.66.0) (2026-08-23)
 
 ### Features

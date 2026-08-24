@@ -13,6 +13,12 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.75.0](https://github.com/dsswift/ion/compare/engine-v1.74.0...engine-v1.75.0) (2026-08-24)
+
+### Features
+
+* **engine:** publish a run epoch on every status snapshot ([a9b387e](https://github.com/dsswift/ion/commit/a9b387ee11c5208aac8fe0a1f7a5719c70d25f5f))
+
 ## [1.74.0](https://github.com/dsswift/ion/compare/engine-v1.73.0...engine-v1.74.0) (2026-08-23)
 
 ### Features

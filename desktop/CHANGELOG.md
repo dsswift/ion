@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.86.2](https://github.com/dsswift/ion/compare/desktop-v1.86.1...desktop-v1.86.2) (2026-08-24)
+
+### Bug Fixes
+
+* **desktop:** stop marking a conversation done before its run starts ([5fd2a86](https://github.com/dsswift/ion/commit/5fd2a86a1b7e94d6eabd714b3aee6bd6607106ff))
+
 ## [1.86.1](https://github.com/dsswift/ion/compare/desktop-v1.86.0...desktop-v1.86.1) (2026-08-24)
 
 ### Bug Fixes
