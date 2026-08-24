@@ -88,6 +88,9 @@ type DispatchAgentOpts struct {
 	// dispatch.
 	// Deprecated: use WaitForCompletion.
 	Background bool `json:"background,omitempty"`
+	// Detached excludes an asynchronous child from the parent run's parked-child
+	// set. Use it for genuine fire-and-forget work.
+	Detached bool `json:"detached,omitempty"`
 
 	// --- Callbacks. Local only; never serialised. ---
 
