@@ -14,10 +14,33 @@ import { parseSlash } from '../../../main/slash-parse'
 import { rDebug, rInfo, rWarn } from '../../rendererLogger'
 import { logTabStatusPatch } from './tab-status-transition'
 import { promptRefusal } from '../../../shared/prompt-acceptance'
+import {
+  PROMPT_ACCEPTED, promptRefused, promptRefusalMessage,
+} from '../../../shared/prompt-submit-result'
 import { selectedModelContextLimit } from '../../../shared/context-capacity'
 import { createSendBashSlice } from './send-slice-bash'
 
 type PromptModelSelection = Pick<import('../../../shared/types-engine').ConversationInstance, 'modelOverride' | 'modelOverrideSource' | 'sessionModel'> | null | undefined
+
+/**
+ * Append an operator-facing system line to a conversation.
+ *
+ * Used by the refusal path: a prompt the guard rejects must say so IN the
+ * conversation, because the operator's only other evidence is that their text
+ * did not appear. Kept as a helper on the slice so the mirror inherits it
+ * through the same store shape.
+ */
+function appendNotice(set: StoreSet, tabId: string, content: string): void {
+  set((s) => ({
+    conversationPanes: commitInstance(s.conversationPanes, tabId, (inst) => ({
+      ...inst,
+      messages: [
+        ...inst.messages,
+        { id: nextMsgId(), role: 'system' as const, content, timestamp: Date.now() },
+      ],
+    })),
+  }))
+}
 
 /**
  * Resolve a per-conversation thinking preference only when this renderer knows
@@ -71,6 +94,15 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       }
 
       applyActiveGroupMove(tabId, tab, get().conversationPanes, get, 'send')
+    },
+
+    /**
+     * Append an operator-facing system line to a conversation. Refusals use it
+     * so a prompt that was not sent says so where the operator is looking,
+     * rather than only in desktop.jsonl.
+     */
+    appendSystemNotice: (tabId, content) => {
+      appendNotice(set, tabId, content)
     },
 
     /**
@@ -153,7 +185,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         // from the input by the time any caller reaches here, so an unlogged
         // return is a silent data loss.
         rWarn('submit', 'refused: no such tab', { tab_id: tabId.slice(0, 8), count: text.length })
-        return
+        return promptRefused('no-tab')
       }
       const resolvedPath = projectPath || (tab.hasChosenDirectory ? tab.workingDirectory : (staticInfo?.homePath || tab.workingDirectory || '~'))
 
@@ -197,7 +229,20 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           reason: refusal.reason,
           detail: refusal.detail,
         })
-        return
+        // Tell the operator, in the conversation, that nothing was sent.
+        //
+        // A log line is not feedback. `dispatchSend` enforces "decide, then
+        // clear, then submit" — but only within ONE window. `submit` is a
+        // FORWARDED action, so when the Studio presentation is active the gate
+        // runs against MIRROR state and this authoritative guard runs against
+        // OWNER state. The mirror can therefore clear the operator's text for a
+        // prompt the owner then refuses, which is exactly how a `/roadmap
+        // --sync` was destroyed against a tab the owner still believed was
+        // 'connecting'. The returned result crosses the mirror boundary (the
+        // forwarding wrapper round-trips and returns reply.value); a swallowed
+        // refusal cannot.
+        get().appendSystemNotice(tab.id, promptRefusalMessage(refusal.reason))
+        return promptRefused(refusal.reason)
       }
 
       // Auto group movement (+ pending done-move cancel) — every tab moves
@@ -359,7 +404,10 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
       if (isBusy && !implementationPhase) {
         window.ion.steer(tabId, fullPrompt, steerClientMessageId)
-        return
+        // A mid-turn steer consumed the operator's text (the optimistic steer
+        // bubble is already in the conversation), so this is an acceptance —
+        // returning a refusal here would restore text the user can see was sent.
+        return PROMPT_ACCEPTED
       }
 
       const preferredModel = usePreferencesStore.getState().preferredModel
@@ -483,6 +531,10 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           toolCallCount: 0,
         })
       })
+      // The prompt was admitted and dispatched. A later transport failure
+      // reports itself through handleError above; acceptance is about whether
+      // the operator's text was consumed, which it now has been.
+      return PROMPT_ACCEPTED
     },
 
     submitRemotePrompt: (tabId, prompt, imageAttachments, resolveSlash, remoteAttachments, reqId, implementationPhase) => {
