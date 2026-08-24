@@ -35,6 +35,9 @@ export function makeEmptyTab(tabId: string): TabEntry {
     toolCallCount: 0,
     sawPermissionRequest: false,
     lastSurfacedProposalSig: null,
+    dispatchRunEpoch: null,
+    lastObservedRunEpoch: null,
+    dispatchAcknowledged: false,
   }
 }
 
@@ -106,6 +109,11 @@ export function resetTabEntry(
   // A full reset discards any pending proposal: clear the surfaced-proposal
   // dedup so a proposal produced by the next session re-surfaces.
   tab.lastSurfacedProposalSig = null
+  // A full reset discards any in-flight dispatch, so the ordering markers it
+  // established are meaningless. Leaving them would let a stale epoch judge a
+  // snapshot from the next session.
+  tab.dispatchRunEpoch = null
+  tab.dispatchAcknowledged = false
 }
 
 /**
@@ -138,7 +146,64 @@ export function restartTabEntry(
   tab.activeRequestId = null
   tab.status = 'idle'         // Prevent stale events from the dying session
   tab.startedAt = 0           // from triggering task_complete synthesis
+  // The restart cancels any in-flight dispatch, so its ordering markers no
+  // longer describe anything live.
+  tab.dispatchRunEpoch = null
+  tab.dispatchAcknowledged = false
   // Deliberately NOT cleared: conversationId, resumedSavedConversation,
   // promptCount, promptCountSinceCheckpoint, clearedSinceLastPrompt. The
   // conversation continues — only the transport is recycled.
 }
+
+/**
+ * Drop a tab from the plane and stop its engine session.
+ *
+ * Lives here with the other TabEntry lifecycle functions (make / adopt / reset
+ * / restart) rather than in the class: closing is the terminal member of that
+ * same family, and keeping it apart from them was only an accident of where
+ * the method happened to sit.
+ */
+export function closeTabEntry(
+  tabs: Map<string, TabEntry>,
+  tabId: string,
+  stopSession: (tabId: string) => void,
+): void {
+  if (!tabs.has(tabId)) return
+  log('close_tab', { tab_id: tabId })
+  stopSession(tabId)
+  tabs.delete(tabId)
+}
+
+/**
+ * Mark the tab's conversation as cleared (the engine's `/clear` command has
+ * succeeded, or the desktop short-circuited a `/clear` locally for a
+ * never-started session).
+ *
+ * Unlike resetTabEntry, this does NOT stop the engine session, drop
+ * `conversationId`, or zero `promptCount`. `/clear` is a checkpoint, not a
+ * session restart — the engine keeps the same conversationID and the on-disk
+ * file (now empty) is reused. The only thing that changes from the desktop's
+ * perspective is the freshness checkpoint the slash-command plan->auto guard
+ * consults: the next slash command should behave as if it is the first prompt
+ * of a blank conversation.
+ *
+ * Intentionally a narrow sibling of resetTabEntry — it only resets
+ * `promptCountSinceCheckpoint`. See the TabEntry doc comment in
+ * engine-control-plane-events-types.ts for the full semantic distinction.
+ */
+export function markConversationCleared(tabs: Map<string, TabEntry>, tabId: string): void {
+  const tab = tabs.get(tabId)
+  if (!tab) {
+    log('notify_conversation_cleared: no such tab', { tab_id: tabId })
+    return
+  }
+  log('notify_conversation_cleared', {
+    tab_id: tabId,
+    prompt_count: tab.promptCount,
+    prompt_count_since_checkpoint: tab.promptCountSinceCheckpoint,
+    conversation_id: tab.conversationId ?? '',
+  })
+  tab.promptCountSinceCheckpoint = 0
+  tab.clearedSinceLastPrompt = true
+}
+

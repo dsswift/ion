@@ -21,8 +21,12 @@ func (m *Manager) buildStatusFields(key string) (*types.StatusFields, bool) {
 		agents = len(s.dispatchRegistry.ActiveIDs())
 	}
 	fields := &types.StatusFields{
-		Label:                 key,
-		State:                 m.currentSessionStatus(s),
+		Label: key,
+		State: m.currentSessionStatus(s),
+		// Read under the same lock hold as State, so the pair can never
+		// disagree: a snapshot that reports idle carries the epoch that was
+		// current when that idle was true.
+		RunEpoch:              s.runEpoch,
 		BackgroundAgents:      agents,
 		BackgroundShells:      len(s.outstandingBackgroundTasks),
 		ActiveBackgroundTasks: liveBackgroundTaskStates(key),

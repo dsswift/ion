@@ -29,14 +29,18 @@ struct TabListView: View {
     // the global toolbar `+`, in which case we want the legacy behavior.
     // Reset to nil on every sheet close so the global toolbar `+` is
     // never accidentally treated as a per-group request.
-    @State private var pendingPinToGroupId: String? = nil
+    // Internal (not private): the new-conversation presentation group in
+    // TabListView+Presentation.swift reads it, and private is file-scoped.
+    @State var pendingPinToGroupId: String? = nil
     // Pending new-conversation request from TabListNewTabSheet. Stored here
     // so `requestNewConversation` fires in `onDismiss` — after the sheet
     // animation completes — rather than mid-animation. SwiftUI silently drops
     // a confirmationDialog that is presented while a sheet is still animating
     // out, which caused the "Plain conversation" tap to appear to do nothing.
-    @State private var pendingNewConversationDir: String? = nil
-    @State private var pendingNewConversationPin: String? = nil
+    // Internal for the same reason as pendingPinToGroupId above: the sheet
+    // and its onDismiss drain live in TabListView+Presentation.swift.
+    @State var pendingNewConversationDir: String? = nil
+    @State var pendingNewConversationPin: String? = nil
     // Internal (not private): the DesktopPickerMenu in TabListView+Layouts'
     // toolbars binds to it.
     @State var showPairingSheet = false
@@ -49,8 +53,10 @@ struct TabListView: View {
     @State var conversationPickerPinToGroupId: String? = nil
     @State var conversationPickerUseWorktree: Bool? = nil
     @State var conversationPickerSourceBranch: String? = nil
-    @State private var renamingTabId: String?
-    @State private var renameText: String = ""
+    // Internal: the Rename Tab alert lives in the conversation-creation
+    // presentation group (TabListView+Presentation.swift).
+    @State var renamingTabId: String?
+    @State var renameText: String = ""
     /// A close held for confirmation because the tab's worktree still holds work.
     /// Nil for every uneventful close, which proceeds without a prompt.
     /// Internal so the +Inbox extension's requestCloseTab path shares the gate.
@@ -98,262 +104,28 @@ struct TabListView: View {
     @State var navigationPath: [String] = []
     @State var flickerOpacity: Double = 1.0
 
+    // The presentation modifiers live in TabListView+Presentation.swift, applied
+    // here in three groups. Splitting them is not cosmetic: as one chain they
+    // exceeded what the Swift type checker would solve and the build failed at
+    // this declaration. Each group returns `some View`, which erases the
+    // accumulated generic type and lets the next group start fresh. Order is
+    // preserved from the original chain, so presentation behavior is unchanged.
     var body: some View {
-        Group {
-            if sizeClass == .regular {
-                iPadLayout
-            } else {
-                iPhoneLayout
-            }
-        }
-        .sheet(isPresented: $showSettings) {
-            SettingsView()
-        }
-        .sheet(isPresented: $showNotifications) {
-            NotificationsView(resourceStore: viewModel.resourceStore, viewModel: viewModel)
-        }
-        .confirmationDialog(
-            "Delete conversation?",
-            isPresented: Binding(
-                get: { pendingInboxDeleteTab != nil },
-                set: { if !$0 { pendingInboxDeleteTab = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            if let tab = pendingInboxDeleteTab,
-               tab.inboxState != "settled",
-               !viewModel.settlingIsPermanent(tab) {
-                Button("Settle Conversation") {
-                    DiagnosticLog.log("conversation delete replaced with settlement", tag: "inbox", level: .info, fields: ["tab_id": tab.id])
-                    viewModel.settleTab(tabId: tab.id)
-                    pendingInboxDeleteTab = nil
-                }
-            }
-            if let tab = pendingInboxDeleteTab {
-                Button("Delete Conversation", role: .destructive) {
-                    DiagnosticLog.log("conversation permanent deletion confirmed", tag: "inbox", level: .info, fields: ["tab_id": tab.id])
-                    viewModel.deleteTab(tabId: tab.id)
-                    pendingInboxDeleteTab = nil
-                }
-            }
-            Button("Cancel", role: .cancel) {
-                if let tab = pendingInboxDeleteTab {
-                    DiagnosticLog.log("conversation permanent deletion cancelled", tag: "inbox", level: .info, fields: ["tab_id": tab.id])
-                }
-                pendingInboxDeleteTab = nil
-            }
-        } message: {
-            Text("This permanently deletes the stored conversation. Settle keeps it in history so you can return to it later.")
-        }
-        // Snooze preset picker (inbox swipe action). confirmationDialog over
-        // a sheet: four options, no custom chrome needed.
-        .confirmationDialog(
-            "Snooze until…",
-            isPresented: Binding(get: { snoozeSheetTabId != nil }, set: { if !$0 { snoozeSheetTabId = nil } }),
-            titleVisibility: .visible,
-        ) {
-            ForEach(InboxSnoozePresets.available(), id: \.label) { preset in
-                Button(preset.label) {
-                    if let tabId = snoozeSheetTabId {
-                        viewModel.snoozeTab(tabId: tabId, untilMs: preset.untilMs)
-                    }
-                    snoozeSheetTabId = nil
-                }
-            }
-            Button("Cancel", role: .cancel) { snoozeSheetTabId = nil }
-        }
-        .alert("Rename conversation", isPresented: Binding(get: { inboxRenameTabId != nil }, set: { if !$0 { inboxRenameTabId = nil } })) {
-            TextField("Conversation name", text: $inboxRenameTitle)
-            Button("Save") {
-                if let tabId = inboxRenameTabId { viewModel.renameTab(tabId: tabId, customTitle: inboxRenameTitle) }
-                inboxRenameTabId = nil
-            }
-            Button("Cancel", role: .cancel) { inboxRenameTabId = nil }
-        }
-        .sheet(isPresented: $showSettledHistory) {
-            InboxSettledHistorySheet(tabs: InboxNavigator.settledStack(liveTabs: viewModel.tabs, coldTabs: viewModel.settledTabs)) { tab in
-                guard tab.canRestoreSettled != false else { return }
-                viewModel.reviewSettledTab(tabId: tab.id)
-                showSettledHistory = false
-            }
-        }
-        .onChange(of: activeInboxExpansion) { _, value in
-            UserDefaults.standard.set(Array(value), forKey: "inboxActiveExpansion")
-        }
-        .onChange(of: snoozedInboxExpansion) { _, value in
-            UserDefaults.standard.set(Array(value), forKey: "inboxSnoozedExpansion")
-        }
-        .onChange(of: settledShelfCollapsed) { _, value in
-            UserDefaults.standard.set(value, forKey: "inboxSettledShelfCollapsed")
-        }
-        .onAppear {
-            // Always refresh git info for every tab dir on appear — covers
-            // the silent-staleness case where the desktop watcher stopped
-            // delivering events. Cheap (one git status per dir) and only
-            // fires when the list becomes visible.
-            if viewModel.showGitInfoInTabList { viewModel.requestAllGitChanges() }
-        }
-        .onChange(of: viewModel.showGitInfoInTabList) { _, enabled in
-            if enabled { viewModel.requestAllGitChanges() }
-        }
-        .sheet(isPresented: $showPairingSheet) {
-            PairingView()
-        }
-        .sheet(isPresented: $showNewTab, onDismiss: {
-            // Always clear the per-group pin target on dismiss so a
-            // subsequent toolbar `+` doesn't inherit it. Required because
-            // the sheet has multiple dismissal paths (Cancel button, tap
-            // on a row's `+`, swipe-down).
-            pendingPinToGroupId = nil
-            // Drain any pending new-conversation request that the sheet
-            // stored (instead of calling requestNewConversation immediately).
-            // Calling requestNewConversation from inside the sheet button's
-            // action (while isPresented=false is mid-animation) causes
-            // SwiftUI to silently drop the confirmationDialog presented by
-            // the .showPicker routing outcome. onDismiss fires after the
-            // animation completes, so the dialog presents cleanly.
-            if let dir = pendingNewConversationDir {
-                let pin = pendingNewConversationPin
-                pendingNewConversationDir = nil
-                pendingNewConversationPin = nil
-                requestNewConversation(directory: dir, pinToGroupId: pin)
-            }
-        }) {
-            TabListNewTabSheet(
-                directories: allDirectories,
-                pendingPinToGroupId: pendingPinToGroupId,
-                isPresented: $showNewTab,
-                onNewConversation: { dir, pin in
-                    // Store the request; onDismiss drains it once the sheet
-                    // animation completes. This prevents the confirmationDialog
-                    // from being presented while the sheet is still animating out
-                    // (SwiftUI silently drops overlapping sheet/dialog presentations).
-                    pendingNewConversationDir = dir
-                    pendingNewConversationPin = pin
-                },
-                onCreateWorktree: { repoPath, sourceBranch in
-                    viewModel.createWorktree(repoPath: repoPath, sourceBranch: sourceBranch)
-                },
-                onCreateWorktreeConversation: { repoPath, sourceBranch in
-                    viewModel.createTab(workingDirectory: repoPath, useWorktree: true, sourceBranch: sourceBranch)
-                },
-                onCreateTerminalTab: { dir in
-                    viewModel.createTerminalTab(workingDirectory: dir)
-                }
+        conversationAlerts(
+            conversationCreation(
+                listLifecycle(
+                    inboxSurfaces(
+                        Group {
+                            if sizeClass == .regular {
+                                iPadLayout
+                            } else {
+                                iPhoneLayout
+                            }
+                        }
+                    )
+                )
             )
-        }
-        .confirmationDialog(
-            "Choose source branch",
-            isPresented: Binding(get: { viewModel.pendingBranchPickerRepo != nil }, set: { if !$0 { viewModel.pendingBranchPickerRepo = nil } }),
-            titleVisibility: .visible
-        ) {
-            if let repo = viewModel.pendingBranchPickerRepo,
-               let branches = viewModel.gitBranches[repo]?.branches {
-                ForEach(branches, id: \.self) { branch in
-                    Button(branch) {
-                        viewModel.pendingBranchPickerRepo = nil
-                        viewModel.createTab(workingDirectory: repo, useWorktree: true, sourceBranch: branch)
-                    }
-                }
-            }
-            Button("Cancel", role: .cancel) { viewModel.pendingBranchPickerRepo = nil }
-        }
-        // returns `.showPicker` — i.e. multiple profiles exist and no default is set.
-        // Includes "Plain conversation" at top (matches desktop picker behaviour).
-        .confirmationDialog(
-            "New Conversation",
-            isPresented: Binding(
-                get: { conversationPickerDirectory != nil },
-                set: { if !$0 {
-                    conversationPickerDirectory = nil
-                    conversationPickerPinToGroupId = nil
-                    conversationPickerUseWorktree = nil
-                    conversationPickerSourceBranch = nil
-                } }
-            ),
-            titleVisibility: .visible
-        ) {
-            // Plain conversation option — always first (mirrors desktop picker).
-            Button("Plain conversation") {
-                let dir = conversationPickerDirectory
-                let pin = conversationPickerPinToGroupId
-                let useWorktree = conversationPickerUseWorktree
-                let sourceBranch = conversationPickerSourceBranch
-                conversationPickerDirectory = nil
-                conversationPickerPinToGroupId = nil
-                conversationPickerUseWorktree = nil
-                conversationPickerSourceBranch = nil
-                DiagnosticLog.log("new conv picker selected plain", tag: "view.tablist", fields: [
-                    "path": dir?.prefix(40).description ?? "nil"
-                ])
-                viewModel.createTab(workingDirectory: dir, pinToGroupId: pin, useWorktree: useWorktree, sourceBranch: sourceBranch)
-            }
-            // Engine profiles.
-            ForEach(viewModel.engineProfiles) { profile in
-                Button(profile.name) {
-                    let dir = conversationPickerDirectory
-                    let pin = conversationPickerPinToGroupId
-                    let useWorktree = conversationPickerUseWorktree
-                    let sourceBranch = conversationPickerSourceBranch
-                    conversationPickerDirectory = nil
-                    conversationPickerPinToGroupId = nil
-                    conversationPickerUseWorktree = nil
-                    conversationPickerSourceBranch = nil
-                    DiagnosticLog.log("new conv picker selected profile", tag: "view.tablist", fields: [
-                        "reason": String(profile.id.prefix(8)),
-                        "path": dir?.prefix(40).description ?? "nil"
-                    ])
-                    viewModel.createTab(workingDirectory: dir, pinToGroupId: pin, profileId: profile.id, useWorktree: useWorktree, sourceBranch: sourceBranch)
-                }
-            }
-            Button("Cancel", role: .cancel) {
-                conversationPickerDirectory = nil
-                conversationPickerPinToGroupId = nil
-                conversationPickerUseWorktree = nil
-                conversationPickerSourceBranch = nil
-            }
-        }
-        .alert("Rename Tab", isPresented: .init(
-            get: { renamingTabId != nil },
-            set: { if !$0 { renamingTabId = nil } }
-        )) {
-            TextField("Name", text: $renameText)
-            Button("Rename") {
-                if let id = renamingTabId {
-                    let title = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
-                    viewModel.renameTab(tabId: id, customTitle: title.isEmpty ? nil : title)
-                }
-                renamingTabId = nil
-            }
-            Button("Cancel", role: .cancel) {
-                renamingTabId = nil
-            }
-        } message: {
-            Text("Enter a new name for this tab.")
-        }
-        // Close confirmation for a worktree conversation that still holds work.
-        //
-        // Only raised when there is something to say (see WorktreeCloseWarning):
-        // a plain conversation, and a worktree that is clean and fully landed,
-        // still close straight from the swipe with no extra tap. Closing is never
-        // destructive — the worktree outlives its conversations — so this informs
-        // rather than guards, which is why the confirm is not `.destructive`.
-        .alert("Close conversation?", isPresented: .init(
-            get: { pendingCloseWarning != nil },
-            set: { if !$0 { pendingCloseWarning = nil } }
-        )) {
-            Button("Close") {
-                if let pending = pendingCloseWarning {
-                    viewModel.closeTab(pending.tabId)
-                }
-                pendingCloseWarning = nil
-            }
-            Button("Cancel", role: .cancel) {
-                pendingCloseWarning = nil
-            }
-        } message: {
-            Text(pendingCloseWarning?.summary ?? "")
-        }
+        )
     }
 
     // MARK: - Sidebar Content

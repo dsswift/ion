@@ -23,7 +23,7 @@ type contractManifest struct {
 // jsonFieldNames returns the sorted JSON field names for a struct type,
 // skipping fields tagged with `json:"-"`.
 func jsonFieldNames(t reflect.Type) []string {
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	var names []string

@@ -86,6 +86,19 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// the ID it was dispatched with.
 	runTraceID := utils.NewTraceID()
 	s.setRunIdentity(requestID, runTraceID)
+	// Advance the run epoch under the same lock hold that assigns run
+	// identity, so no status snapshot can ever observe one without the other.
+	// This is the instant the engine accepts the prompt; every snapshot built
+	// from here on carries an epoch strictly greater than the one a client
+	// observed before it sent. See engineSession.runEpoch for why the
+	// ordering signal is a counter rather than a run identifier.
+	s.runEpoch++
+	// Captured into a local for the same reason as runTraceID above: the
+	// struct field is guarded by m.mu and a concurrent run-exit may advance
+	// past it before this frame reaches the hand-built status emit below, but
+	// that snapshot must carry the epoch THIS dispatch established.
+	runEpoch := s.runEpoch
+	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt: run epoch advanced", map[string]any{"key": key, "run_id": requestID, "run_epoch": runEpoch})
 	utils.LogWithFields(utils.LevelDebug, "session", "sendprompt: minted run trace id", map[string]any{"key": key, "run_id": requestID, "trace_id": runTraceID})
 	// A run is starting, so the session is no longer parked on outstanding
 	// background commands. Clear any park record here — under the same lock
@@ -534,6 +547,11 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		Type: "engine_status",
 		Fields: &types.StatusFields{
 			Label: key, State: "running", Model: opts.Model,
+			// This snapshot is hand-built rather than read through
+			// buildStatusFields, so it must stamp the epoch itself or it would
+			// publish state=running with an absent (zero) epoch and read to a
+			// consumer as older than the prompt it announces.
+			RunEpoch:              runEpoch,
 			ContextWindow:         promptCtxWindow,
 			ContextPercent:        lastPct,
 			ContextTokens:         lastTokens,

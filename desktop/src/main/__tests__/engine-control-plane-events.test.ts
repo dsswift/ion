@@ -66,6 +66,9 @@ function makeTab(overrides: Partial<TabEntry> = {}): TabEntry {
     toolCallCount: 0,
     sawPermissionRequest: false,
     lastSurfacedProposalSig: null,
+    dispatchRunEpoch: null,
+    lastObservedRunEpoch: null,
+    dispatchAcknowledged: false,
     ...overrides,
   }
 }
@@ -513,7 +516,15 @@ describe('handleStatusEvent — session-ready idle clears connecting', () => {
     // A tab that actually ran (status 'running', startedAt set) must still get
     // its task_complete on the engine's idle — the fix must not swallow real
     // completions.
-    const tab = makeTab({ status: 'running', activeRequestId: 'req-1', startedAt: Date.now() - 1000 })
+    // dispatchAcknowledged mirrors what submitPrompt leaves behind for a tab
+    // whose prompt the engine already accepted: it is set when the send RPC
+    // returns, and this fixture describes a run well past that point.
+    const tab = makeTab({
+      status: 'running',
+      activeRequestId: 'req-1',
+      startedAt: Date.now() - 1000,
+      dispatchAcknowledged: true,
+    })
     handleEngineEvent(ctx, 'tab-001', tab, makeIdleEvent('conv-run'))
 
     expect(

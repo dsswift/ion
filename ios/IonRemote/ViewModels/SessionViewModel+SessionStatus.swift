@@ -144,6 +144,10 @@ enum SessionStatusSynthesis {
             backgroundShells: status.backgroundShellCount,
             activeBackgroundTasks: status.activeBackgroundTasks,
             hasPendingWork: status.hasPendingWork,
+            // Carry the ordering signal across the synthesis, or a consumer
+            // reading the synthesized StatusFields loses the ability to tell a
+            // pre-dispatch snapshot from a run-ending one.
+            runEpoch: status.runEpoch,
             numTurns: priorNumTurns,
             conversationTurns: priorConversationTurns
         )

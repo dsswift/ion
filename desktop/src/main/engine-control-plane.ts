@@ -3,18 +3,25 @@ import { EngineBridge } from './engine-bridge'
 import { resolveRemoteWorkingDirectory } from './engine-control-plane-remote-dir'
 import { log as _log, warn as _warn, error as _error } from './logger'
 import { handleEngineEvent, type TabEntry } from './engine-control-plane-events'
-import { makeEmptyTab, registerNewTab, registerAdoptedTab, resetTabEntry, restartTabEntry } from './engine-control-plane-tab'
+import {
+  makeEmptyTab, registerNewTab, registerAdoptedTab, resetTabEntry, restartTabEntry,
+  closeTabEntry, markConversationCleared,
+} from './engine-control-plane-tab'
 import { relocateTabSession, type RelocateResult } from './engine-control-plane-relocate'
 import { reconcileSessionWorkingDirectory } from './engine-control-plane-cwd'
 import { sendPromptWithRecovery, bridgeSendAdapter } from './engine-control-plane-send'
 import { buildHealthReport, anyTabRunning, resyncStatus, applyStatus, type StatusEmit } from './engine-control-plane-status'
 import { cancelRequest, cancelTabRun, abortTabDispatch } from './engine-control-plane-cancel'
 import * as historyReads from './engine-control-plane-history'
+import { dispatchOrderingBaseline } from './engine-control-plane-idle-ordering'
 import { resolveSessionThinkingConfig } from './settings-store'
 import { resolveClaudeCompat, resolveRunRecoveryConfig } from './engine-control-plane-config'
 import { toolGateSessionConfig } from './tool-gate-responder'
 import { benchClientWorkspaceContext } from './integration/bench-prompt-context'
-import { resolveStudioPermission } from './studio-state-cache'
+import {
+  respondToPermission as respondToPermissionImpl,
+  respondToElicitation as respondToElicitationImpl,
+} from './engine-control-plane-dialog-response'
 import { installRecoveredAgentStateListener, makeEventContext } from './engine-control-plane-recovered-agent-state'
 import { installAbortDeliveredListener, installReconnectResetListener } from './engine-control-plane-reconnect'
 import { makeDrainLatch, drain as drainImpl, checkDrain, shutdown as shutdownImpl } from './engine-control-plane-drain'
@@ -125,39 +132,14 @@ export class EngineControlPlane extends EventEmitter {
   }
 
   closeTab(tabId: string): void {
-    const tab = this.tabs.get(tabId)
-    if (!tab) return
-    log('close_tab', { tab_id: tabId })
-    this.bridge.stopSession(tabId).catch((err) => warn('close_tab: stop session failed', { tab_id: tabId, error: String(err) }))
-    this.tabs.delete(tabId)
+    closeTabEntry(this.tabs, tabId, (id) => {
+      this.bridge.stopSession(id).catch((err) => warn('close_tab: stop session failed', { tab_id: id, error: String(err) }))
+    })
   }
 
-  /**
-   * Mark the tab's conversation as cleared (the engine's `/clear` command
-   * has succeeded, or the desktop short-circuited a `/clear` locally for a
-   * never-started session).
-   *
-   * Unlike `resetTabSession`, this does NOT stop the engine session, drop
-   * `conversationId`, or zero `promptCount`. `/clear` is a checkpoint, not a
-   * session restart — the engine keeps the same `conversationID` and the
-   * on-disk file (now empty) is reused. The only thing that changes from the
-   * desktop's perspective is the freshness checkpoint that the slash-command
-   * plan→auto guard consults: the next slash command should behave as if
-   * it's the first prompt of a blank conversation.
-   *
-   * This is intentionally a narrow sibling of `resetTabSession` — it only
-   * resets `promptCountSinceCheckpoint`. See the TabEntry doc comment in
-   * engine-control-plane-events.ts for the full semantic distinction.
-   */
+  /** See markConversationCleared in engine-control-plane-tab.ts. */
   notifyConversationCleared(tabId: string): void {
-    const tab = this.tabs.get(tabId)
-    if (!tab) {
-      log('notify_conversation_cleared: no such tab', { tab_id: tabId })
-      return
-    }
-    log('notify_conversation_cleared', { tab_id: tabId, prompt_count: tab.promptCount, prompt_count_since_checkpoint: tab.promptCountSinceCheckpoint, conversation_id: tab.conversationId ?? '' })
-    tab.promptCountSinceCheckpoint = 0
-    tab.clearedSinceLastPrompt = true
+    markConversationCleared(this.tabs, tabId)
   }
 
   /**
@@ -355,6 +337,11 @@ export class EngineControlPlane extends EventEmitter {
 
     log('submit_prompt', { tab_id: tabId, request_id: requestId, model: options.model ?? 'default', session_id: options.sessionId ?? 'new', prompt_count: tab.promptCount + 1 })
     tab.activeRequestId = requestId
+    // Ordering baseline for the false-completion guard: where the engine's run
+    // counter stood BEFORE this prompt, and a cleared acknowledgement. See
+    // engine-control-plane-idle-ordering.ts.
+    Object.assign(tab, dispatchOrderingBaseline(tab.lastObservedRunEpoch))
+    log('submit_prompt: ordering baseline', { tab_id: tabId, request_id: requestId, dispatch_run_epoch: tab.dispatchRunEpoch ?? -1 })
     tab.lastActivityAt = Date.now()
     tab.startedAt = Date.now()
     tab.toolCallCount = 0
@@ -465,6 +452,14 @@ export class EngineControlPlane extends EventEmitter {
       options,
     )
 
+    // The engine acknowledged the prompt. It assigns run identity inside
+    // SendPrompt before replying, so from this point a session-idle snapshot
+    // describes a session that HAS this run — the fallback ordering signal for
+    // an engine that does not send runEpoch. Set before the failure branch so a
+    // send that failed after the engine accepted it does not leave the tab
+    // refusing its own completions.
+    tab.dispatchAcknowledged = true
+
     if (!result.ok) {
       error('send_prompt: failed', { tab_id: tabId, error: result.error })
       this._setStatus(tabId, 'failed')
@@ -497,21 +492,15 @@ export class EngineControlPlane extends EventEmitter {
   }
 
   respondToPermission(tabId: string, questionId: string, optionId: string): boolean {
-    if (!this.tabs.has(tabId)) { log('respond_to_permission: dropped, unknown tab', { tab_id: tabId, question_id: questionId }); return false }
-    this.bridge.sendPermissionResponse(tabId, questionId, optionId)
-    // Cross-surface reconcile (mirror-store architecture): this is the ONE
-    // spot every surface's answer funnels through — overlay card, iOS
-    // remote, Studio approval. Resolving the Studio window pending queue and pushing the
-    // resolution here means an answer from ANY surface clears the others
-    // instantly, instead of waiting for the next status transition.
-    resolveStudioPermission(tabId, questionId)
-    // Emitted (not called directly): importing studio-window-manager here forms
-    // the module cycle engine-control-plane → studio-window-manager → state →
-    // engine-control-plane, which only loads by import-order luck. The
-    // listener lives in event-wiring.ts (wireSessionPlaneEvents), the same
-    // seam as every other control-plane push.
-    this.emit('permission-resolved', tabId, questionId)
-    return true
+    // The reconcile + emit seam lives in engine-control-plane-dialog-response.ts.
+    // The emit is a callback rather than a direct import there because
+    // engine-control-plane -> studio-window-manager -> state ->
+    // engine-control-plane is a module cycle; the listener lives in
+    // event-wiring.ts (wireSessionPlaneEvents) like every other plane push.
+    return respondToPermissionImpl(
+      this.tabs, this.bridge, tabId, questionId, optionId,
+      (tid, qid) => { this.emit('permission-resolved', tid, qid) },
+    )
   }
 
   respondToElicitation(
@@ -521,9 +510,7 @@ export class EngineControlPlane extends EventEmitter {
     cancelled: boolean,
     declined = false,
   ): boolean {
-    if (!this.tabs.has(tabId)) { log('respond_to_elicitation: dropped, unknown tab', { tab_id: tabId, request_id: requestId, cancelled }); return false }
-    this.bridge.sendElicitationResponse(tabId, requestId, response, cancelled, declined)
-    return true
+    return respondToElicitationImpl(this.tabs, this.bridge, tabId, requestId, response, cancelled, declined)
   }
 
   getHealth(): HealthReport {

@@ -243,7 +243,7 @@ final class ContractSyncTests: XCTestCase {
     // Verify we know about all Go fields (document any intentional gaps)
     let swiftHandled: Set<String> = [
       "backgroundAgents", "backgroundShells", "activeBackgroundTasks", "label", "state", "sessionId", "team", "model",
-      "contextPercent", "contextWindow", "contextTokens", "contextEffectiveLimit", "hasPendingWork", "runCostUsd", "completionReason",
+      "contextPercent", "contextWindow", "contextTokens", "contextEffectiveLimit", "hasPendingWork", "runEpoch", "runCostUsd", "completionReason",
       "conversationCostUsd",
       "permissionDenials", "extensionName", "numTurns", "conversationTurns",
     ]
@@ -306,7 +306,7 @@ final class ContractSyncTests: XCTestCase {
     let swiftHandled: Set<String> = [
       "backgroundAgentCount", "backgroundShellCount", "activeBackgroundTasks", "contextPercent",
       "contextWindow", "contextTokens", "contextEffectiveLimit",
-      "conversationCostUsd", "extensionName", "hasInflightRun", "hasPendingWork", "key",
+      "conversationCostUsd", "extensionName", "hasInflightRun", "hasPendingWork", "runEpoch", "key",
       "lastEmittedAt", "model", "permissionDenialsPending", "runCostUsd",
       "sessionId", "state", "stateSince",
     ]

@@ -81,6 +81,36 @@ type engineSession struct {
 	// writers hold m.mu before this lock, preserving one lock order.
 	runIdentityMu sync.RWMutex
 
+	// runEpoch counts the runs this session has accepted for dispatch. It is
+	// incremented inside SendPrompt under m.mu, at the same instant
+	// s.requestID is assigned, and never decreases for the life of the
+	// session. Every engine_status snapshot carries the value current at the
+	// moment it was built (StatusFields.RunEpoch).
+	//
+	// Why a counter and not the run ID. A consumer needs to answer one
+	// question about a status snapshot: "was this built before or after the
+	// engine accepted my prompt?" A run ID cannot answer it. The engine mints
+	// its run ID here as "<key>-<unixmillis>" while a client mints its own
+	// request ID before it ever calls the engine, so the two identifiers are
+	// independent and never comparable — a client has nothing to match a run
+	// ID against. The ordering question is answered exactly by a monotonic
+	// counter: a client records the epoch it last observed, sends its prompt,
+	// and can then classify every subsequent snapshot as pre-dispatch (epoch
+	// unchanged) or post-dispatch (epoch advanced) by arithmetic rather than
+	// by inference from local timing.
+	//
+	// What it fixes. start_session issues a reconcile handshake, and the
+	// heartbeat, ReconcileState, and QuerySessionStatus all emit snapshots on
+	// their own schedule. Any of them can be built in the window after a
+	// client dispatched a prompt but before SendPrompt assigned run identity,
+	// and such a snapshot honestly reports state=idle. Without an ordering
+	// signal a consumer cannot tell that idle apart from the idle that ends a
+	// run, so it reads a stale pre-dispatch snapshot as a completion and
+	// marks a conversation done seconds before its run begins.
+	//
+	// Guarded by m.mu, like every other field a status build reads.
+	runEpoch int64
+
 	// dispatchingRunID marks the dispatch-in-flight window for a run. It is
 	// set to the run's requestID inside SendPrompt, under m.mu, at the same
 	// instant s.requestID is assigned, and cleared (run-scoped: only when it

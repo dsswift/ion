@@ -364,6 +364,20 @@ struct StatusFields: Codable, Sendable {
     /// Exact engine verdict that the session has accepted work remaining even
     /// while the foreground orchestrator is idle.
     let hasPendingWork: Bool?
+    /// Runs this session has accepted for dispatch as of this snapshot. Rises
+    /// by one per accepted prompt and never falls within one live session.
+    ///
+    /// It orders a snapshot against a prompt. Several engine sites build
+    /// status snapshots asynchronously, so one can be built after a client
+    /// sent a prompt but before the engine assigned run identity — that
+    /// snapshot honestly reports `idle` and is otherwise indistinguishable
+    /// from the idle that ENDS the run. A consumer records the epoch, sends,
+    /// and treats any snapshot whose epoch has not advanced as describing the
+    /// state before the prompt. nil/absent means zero.
+    ///
+    /// Scope is one live session: a restarted session begins again at zero, so
+    /// a DECREASE means "new session, rebase" — never "stale snapshot".
+    var runEpoch: Int? = nil
     /// Number of LLM turns completed in the most recent run. Stamped from
     /// TaskCompleteEvent.NumTurns; nil/absent on idle and heartbeat status
     /// events that have no associated run.
@@ -430,6 +444,10 @@ struct SessionStatus: Codable, Sendable {
     /// Exact engine verdict that the session has accepted work remaining even
     /// while the foreground orchestrator is idle.
     let hasPendingWork: Bool?
+    /// Runs accepted for dispatch as of this snapshot. Mirrors
+    /// StatusFields.runEpoch — see that field for the ordering contract that
+    /// separates a pre-dispatch idle from a run-ending idle.
+    var runEpoch: Int? = nil
     let permissionDenialsPending: [PermissionDenialEntry]?
     let model: String?
     /// UNBOUNDED — see StatusFields.contextPercent.

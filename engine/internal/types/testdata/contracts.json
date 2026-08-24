@@ -769,6 +769,7 @@
       "model",
       "permissionDenialsPending",
       "runCostUsd",
+      "runEpoch",
       "sessionId",
       "state",
       "stateSince"
@@ -791,6 +792,7 @@
       "numTurns",
       "permissionDenials",
       "runCostUsd",
+      "runEpoch",
       "sessionId",
       "state",
       "team"

@@ -141,7 +141,7 @@ func contextEnvelopeSchema() sdkJSONSchema {
 // sdkJSONFieldNames returns the sorted JSON field names for a struct type,
 // skipping untagged fields and `json:"-"`.
 func sdkJSONFieldNames(t reflect.Type) []string {
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.Struct {

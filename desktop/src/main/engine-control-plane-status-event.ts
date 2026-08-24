@@ -8,6 +8,7 @@ import { log as _log, debug as _debug, trace as _trace, warn as _warn } from './
 import { conversationExists } from './session-meta'
 import { toolGateSessionConfig } from './tool-gate-responder'
 import { requiresUserResponse } from './engine-control-plane-user-response'
+import { idleOrdering } from './engine-control-plane-idle-ordering'
 import type { EventEmitterContext, TabEntry } from './engine-control-plane-events-types'
 
 const TAG = 'SessionPlane'
@@ -38,6 +39,14 @@ function handleStatusEvent(
   // those fields). The emit is additive; the existing binding logic is unchanged.
   debug('engine_status: forwarding to renderer', { tab_id: tabId, state: event.fields.state, model: event.fields.model ?? 'none' })
   ctx.emit('event', tabId, { type: 'status', fields: event.fields } as NormalizedEvent)
+  // Track the engine's run counter on EVERY status, whatever the state, so the
+  // value submitPrompt records as its ordering baseline is the freshest reading
+  // available. Absent (older engine) leaves the previous reading untouched
+  // rather than nulling it — a single fieldless emission must not erase a
+  // baseline a live dispatch is relying on.
+  if (typeof event.fields.runEpoch === 'number') {
+    tab.lastObservedRunEpoch = event.fields.runEpoch
+  }
   if (event.fields.state === 'idle') {
     if (event.fields.sessionId) {
       if (!tab.conversationId) {
@@ -189,6 +198,54 @@ function handleStatusEvent(
     if (tab.status === 'connecting') {
       trace('engine_status: skipping idle, new run in flight', { tab_id: tabId })
       return
+    }
+
+    // ORDERING GUARD — the companion to the 'connecting' skip above.
+    //
+    // That skip catches a stale idle only while the tab still reads
+    // 'connecting'. It does not fire on the ordinary send path, because
+    // submitPrompt moves the tab to 'running' the moment ensureSession
+    // succeeds — and the reconcile handshake that start_session fired arrives
+    // AFTER that, while the engine still has no run. The engine honestly
+    // reports idle, this handler read it as a completion, and the conversation
+    // was marked done seconds before its run began.
+    //
+    // Decide on ordering instead of on local status: an idle snapshot built at
+    // or before the epoch this tab recorded when it dispatched describes the
+    // state BEFORE the prompt, and is never its completion.
+    const ordering = idleOrdering(tab, event.fields.runEpoch)
+    if (ordering.stale) {
+      log('engine_status: skipping idle, snapshot predates the in-flight prompt', {
+        tab_id: tabId,
+        status: tab.status,
+        reason: ordering.reason,
+        snapshot_run_epoch: event.fields.runEpoch ?? -1,
+        dispatch_run_epoch: tab.dispatchRunEpoch ?? -1,
+        request_id: tab.activeRequestId ?? '',
+      })
+      return
+    }
+    if (tab.activeRequestId != null) {
+      // Log the accept side too, so a completion that DID pass the guard is as
+      // reconstructable from the log as one that was refused.
+      debug('engine_status: idle accepted as run boundary', {
+        tab_id: tabId,
+        reason: ordering.reason,
+        snapshot_run_epoch: event.fields.runEpoch ?? -1,
+        dispatch_run_epoch: tab.dispatchRunEpoch ?? -1,
+      })
+    }
+    // A session recreated by the engine restarts its counter at zero. Rebase
+    // the baseline onto the new session's numbering so the next comparison is
+    // made in the same sequence, rather than against a value from a session
+    // that no longer exists.
+    if (ordering.reason === 'session_rebased') {
+      log('engine_status: run epoch decreased, rebasing onto the new session', {
+        tab_id: tabId,
+        snapshot_run_epoch: event.fields.runEpoch ?? -1,
+        prior_dispatch_run_epoch: tab.dispatchRunEpoch ?? -1,
+      })
+      tab.dispatchRunEpoch = event.fields.runEpoch ?? null
     }
 
     if (

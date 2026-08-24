@@ -74,6 +74,9 @@ function makeTab(overrides: Partial<TabEntry> = {}): TabEntry {
     toolCallCount: 0,
     sawPermissionRequest: false,
     lastSurfacedProposalSig: null,
+    dispatchRunEpoch: null,
+    lastObservedRunEpoch: null,
+    dispatchAcknowledged: false,
     ...overrides,
   }
 }
