@@ -308,17 +308,17 @@ enum RemoteCommand: Codable, Sendable {
   /// to expand it. The snapshot carries only metadata (id, kind, title,
   /// createdAt, read) to keep the payload small; content arrives via
   /// the `resource_content` event in response to this command.
-  case requestResourceContent(kind: String, resourceId: String)
+  case requestResourceContent(kind: String, producer: String? = nil, resourceId: String)
 
   /// Notify the desktop that the user read a resource on iOS. The desktop
   /// persists the read state and publishes a mark_read delta through the
   /// engine so all subscribers converge.
-  case markResourceRead(kind: String, resourceId: String)
+  case markResourceRead(kind: String, producer: String? = nil, resourceId: String)
 
   /// Permanently remove a notification from the global resource broker.
   /// The desktop publishes a delete delta through the engine so all
   /// subscribers (desktop + iOS) remove the item from their collections.
-  case deleteResource(kind: String, resourceId: String)
+  case deleteResource(kind: String, producer: String? = nil, resourceId: String)
 
   // MARK: - Plan implement intent (plan gentle-perching-lemon)
 
@@ -524,6 +524,7 @@ enum RemoteCommand: Codable, Sendable {
     // These share no wire key with any existing command field.
     case resourceId
     case kind
+    case producer
     // engine_rewind payload. `tabId`/`instanceId`/`messageId` are shared
     // with other commands above; `userTurnIndex` is unique to this command
     // — the 0-based ordinal among user messages the desktop uses to resolve

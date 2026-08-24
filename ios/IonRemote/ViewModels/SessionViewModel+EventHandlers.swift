@@ -549,12 +549,17 @@ extension SessionViewModel {
             // without requiring the full body in every snapshot.
             if let id = rawItem["id"]?.value as? String,
                let content = rawItem["content"]?.value as? String {
-                resourceStore.updateContent(kind: kind, resourceId: id, content: content)
+                resourceStore.updateContent(
+                    kind: kind,
+                    producer: rawItem["producer"]?.value as? String ?? "",
+                    resourceId: id,
+                    content: content
+                )
             }
         case .engineNotification:
             break
-        case .resourceContent(let resourceId, let kind, let content):
-            resourceStore.updateContent(kind: kind, resourceId: resourceId, content: content)
+        case .resourceContent(let resourceId, let kind, let producer, let content):
+            resourceStore.updateContent(kind: kind, producer: producer, resourceId: resourceId, content: content)
 
         case .planContent(let questionId, let planFilePath, let offset, let content, let totalBytes, let hasMore):
             // Assemble paged plan_content into the full body via planContentStore.

@@ -409,8 +409,8 @@ extension DiagnosticLog {
         case .engineIntercept(let tabId, let instId, let level, let title, _, _, _):
             log("EVENT: engineIntercept tab=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") level=\(level) title=\(title.prefix(60))", tag: "session", level: .info)
 
-        case .resourceContent(let resourceId, let kind, let content):
-            log("EVENT: resourceContent resourceId=\(resourceId.prefix(12)) kind=\(kind) contentLen=\(content.count)", tag: "session", level: .info)
+        case .resourceContent(let resourceId, let kind, let producer, let content):
+            log("EVENT: resourceContent resourceId=\(resourceId.prefix(12)) kind=\(kind) producer=\(producer) contentLen=\(content.count)", tag: "session", level: .info)
 
         case .planContent(let questionId, let planFilePath, let offset, let content, let totalBytes, let hasMore):
             log("EVENT: planContent qId=\(questionId.prefix(12)) path=\(planFilePath.suffix(30)) offset=\(offset) contentLen=\(content.count) totalBytes=\(totalBytes) hasMore=\(hasMore)", tag: "session", level: .info)

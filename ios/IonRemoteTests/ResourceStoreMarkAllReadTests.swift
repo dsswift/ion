@@ -47,10 +47,11 @@ final class ResourceStoreMarkAllReadTests: XCTestCase {
         ResourceStore(storage: storage)
     }
 
-    private func makeRawItem(id: String, kind: String = "briefing") -> [String: AnyCodable] {
+    private func makeRawItem(id: String, producer: String = "producer-a", kind: String = "briefing") -> [String: AnyCodable] {
         [
             "id": AnyCodable(id),
             "kind": AnyCodable(kind),
+            "producer": AnyCodable(producer),
             "content": AnyCodable("body"),
             "createdAt": AnyCodable("2026-01-01T00:00:00.000Z"),
         ]
@@ -59,20 +60,24 @@ final class ResourceStoreMarkAllReadTests: XCTestCase {
     func testMarkAllReadUnionsEveryId() {
         let store = makeStore()
         store.wipe()
-        store.markAllRead(["a", "b", "c"])
-        XCTAssertTrue(store.readIds.contains("a"))
-        XCTAssertTrue(store.readIds.contains("b"))
-        XCTAssertTrue(store.readIds.contains("c"))
+        store.applySnapshot(kind: "briefing", rawItems: [makeRawItem(id: "a"), makeRawItem(id: "b"), makeRawItem(id: "c")])
+        let items = store.items["briefing"] ?? []
+        store.markAllRead(items)
+        XCTAssertTrue(store.readIds.contains(items[0].compositeId))
+        XCTAssertTrue(store.readIds.contains(items[1].compositeId))
+        XCTAssertTrue(store.readIds.contains(items[2].compositeId))
     }
 
     func testMarkAllReadPreservesExistingReadIds() {
         let store = makeStore()
         store.wipe()
-        store.markRead("existing")
-        store.markAllRead(["new-1", "new-2"])
-        XCTAssertTrue(store.readIds.contains("existing"))
-        XCTAssertTrue(store.readIds.contains("new-1"))
-        XCTAssertTrue(store.readIds.contains("new-2"))
+        store.applySnapshot(kind: "briefing", rawItems: [makeRawItem(id: "existing"), makeRawItem(id: "new-1"), makeRawItem(id: "new-2")])
+        let items = store.items["briefing"] ?? []
+        store.markRead(items[0])
+        store.markAllRead(Array(items.dropFirst()))
+        XCTAssertTrue(store.readIds.contains(items[0].compositeId))
+        XCTAssertTrue(store.readIds.contains(items[1].compositeId))
+        XCTAssertTrue(store.readIds.contains(items[2].compositeId))
     }
 
     func testMarkAllReadDropsUnreadCountToZero() {
@@ -84,14 +89,15 @@ final class ResourceStoreMarkAllReadTests: XCTestCase {
         ])
         XCTAssertEqual(store.unreadCount, 2)
 
-        store.markAllRead(["g-1", "g-2"])
+        store.markAllRead(store.items["briefing"] ?? [])
         XCTAssertEqual(store.unreadCount, 0)
     }
 
     func testMarkAllReadEmptyListIsNoOp() {
         let store = makeStore()
         store.wipe()
-        store.markRead("x")
+        store.applySnapshot(kind: "briefing", rawItems: [makeRawItem(id: "x")])
+        store.markRead(store.items["briefing"]![0])
         let before = store.readIds
         store.markAllRead([])
         XCTAssertEqual(store.readIds, before)

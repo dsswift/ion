@@ -443,22 +443,25 @@ extension RemoteCommand {
             // iOS only sends this command (never decodes it from the wire),
             // but the Codable conformance requires the path.
             let kind = try container.decode(String.self, forKey: .kind)
+            let producer = try container.decodeIfPresent(String.self, forKey: .producer)
             let resourceId = try container.decode(String.self, forKey: .resourceId)
-            self = .requestResourceContent(kind: kind, resourceId: resourceId)
+            self = .requestResourceContent(kind: kind, producer: producer, resourceId: resourceId)
 
         case .markResourceRead:
             // iOS only sends this command (never decodes it from the wire),
             // but the Codable conformance requires the path.
             let kind = try container.decode(String.self, forKey: .kind)
+            let producer = try container.decodeIfPresent(String.self, forKey: .producer)
             let resourceId = try container.decode(String.self, forKey: .resourceId)
-            self = .markResourceRead(kind: kind, resourceId: resourceId)
+            self = .markResourceRead(kind: kind, producer: producer, resourceId: resourceId)
 
         case .deleteResource:
             // iOS only sends this command (never decodes it from the wire),
             // but the Codable conformance requires the path.
             let kind = try container.decode(String.self, forKey: .kind)
+            let producer = try container.decodeIfPresent(String.self, forKey: .producer)
             let resourceId = try container.decode(String.self, forKey: .resourceId)
-            self = .deleteResource(kind: kind, resourceId: resourceId)
+            self = .deleteResource(kind: kind, producer: producer, resourceId: resourceId)
 
         case .implementPlan:
             // iOS only sends this command (never decodes it from the wire),

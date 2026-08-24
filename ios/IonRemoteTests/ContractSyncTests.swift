@@ -769,6 +769,25 @@ final class ContractSyncTests: XCTestCase {
     XCTAssertEqual(agents[0].status, "running")
   }
 
+  // MARK: - Resource item contract
+
+  func testResourceItemFieldsInManifest() throws {
+    let manifest = try loadManifest()
+    guard let goFields = manifest.sharedTypes["ResourceItem"] else {
+      XCTFail("ResourceItem not found in Go manifest")
+      return
+    }
+    let swiftHandled: Set<String> = [
+      "id", "kind", "producer", "title", "content", "createdAt",
+      "conversationId", "metadata", "updatedAt", "read",
+    ]
+    XCTAssertEqual(Set(goFields), swiftHandled)
+
+    // ResourceFilter is engine/SDK-only. iOS receives Resource items through
+    // the Desktop snapshot and never issues engine resource_subscribe requests.
+    XCTAssertNotNil(manifest.sharedTypes["ResourceFilter"])
+  }
+
   /// Pin that the engineResourceItem wire event decodes correctly. This is a
   /// regression test for the desktop_resource_item TypeKey and CodingKey
   /// alignment added in #211: if the TypeKey raw value, CodingKey names, or
@@ -776,7 +795,7 @@ final class ContractSyncTests: XCTestCase {
   /// desktop wire contract, this test will fail before CI runs the full build.
   func testEngineResourceItemDecode() throws {
     let json = """
-      {"type":"desktop_resource_item","tabId":"t1","resourceKind":"briefing","resourceItem":{"id":"r-1","kind":"briefing","title":"Daily brief","content":"Full body here","createdAt":"2024-01-01T00:00:00Z"}}
+      {"type":"desktop_resource_item","tabId":"t1","resourceKind":"briefing","resourceItem":{"id":"r-1","kind":"briefing","producer":"producer-a","title":"Daily brief","content":"Full body here","createdAt":"2024-01-01T00:00:00Z"}}
       """.data(using: .utf8)!
     let event = try decoder.decode(RemoteEvent.self, from: json)
     guard case .engineResourceItem(let tabId, let instanceId, let kind, let rawItem) = event else {
@@ -787,6 +806,7 @@ final class ContractSyncTests: XCTestCase {
     XCTAssertNil(instanceId)
     XCTAssertEqual(kind, "briefing")
     XCTAssertEqual(rawItem["id"]?.value as? String, "r-1", "resourceItem.id mismatch")
+    XCTAssertEqual(rawItem["producer"]?.value as? String, "producer-a", "resourceItem.producer mismatch")
     XCTAssertEqual(
       rawItem["content"]?.value as? String, "Full body here", "resourceItem.content mismatch")
   }

@@ -531,7 +531,7 @@ enum RemoteEvent: Sendable {
     /// Sent by the desktop in response to a `request_resource_content`
     /// command when the user taps a resource card to expand it. iOS
     /// calls `ResourceStore.updateContent` to populate the item's body.
-    case resourceContent(resourceId: String, kind: String, content: String)
+    case resourceContent(resourceId: String, kind: String, producer: String, content: String)
 
     /// Paged byte-range window of a plan file, in response to a
     /// `requestPlanContent` command. iOS assembles successive windows
@@ -950,6 +950,7 @@ enum RemoteEvent: Sendable {
         // Do NOT conflate them — resource_content uses "kind", not "resourceKind".
         case resourceId
         case kind
+        case producer
         // resources — workspace-scoped resource manifest in snapshot.
         // Carries metadata-only items (id, kind, title, createdAt, read).
         // Full content is fetched on demand via request_resource_content.
