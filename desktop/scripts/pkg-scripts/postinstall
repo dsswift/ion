@@ -1,0 +1,31 @@
+#!/bin/bash
+# postinstall — launch Ion after Installer has written the complete bundle.
+#
+# Package scripts run as root. Resolve the active console user and launch in
+# that user's GUI session; an MDM install with no console user remains a
+# successful install and leaves the app closed.
+set -euo pipefail
+
+APP_PATH="/Applications/Ion.app"
+LOG_FILE="/var/log/install.log"
+CONSOLE_USER="$(stat -f '%Su' /dev/console)"
+CONSOLE_UID="$(stat -f '%u' /dev/console)"
+
+log() { printf '[Ion postinstall] %s\n' "$1" | tee -a "$LOG_FILE"; }
+
+if [ ! -d "$APP_PATH" ]; then
+  log "installed application bundle is missing: $APP_PATH"
+  exit 1
+fi
+
+if [ "$CONSOLE_USER" = "root" ] || [ "$CONSOLE_USER" = "loginwindow" ]; then
+  log "no graphical user is active; leaving Ion closed"
+  exit 0
+fi
+
+if ! launchctl asuser "$CONSOLE_UID" /usr/bin/open "$APP_PATH"; then
+  log "could not launch Ion for console user: $CONSOLE_USER"
+  exit 0
+fi
+
+log "launched Ion for console user: $CONSOLE_USER"

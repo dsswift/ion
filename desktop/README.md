@@ -28,9 +28,16 @@ make desktop
 bash commands/install-bg.command
 ```
 
-The installer runs as a detached background process. It handles graceful shutdown (waits for active agents to finish), builds, copies to `/Applications`, and relaunches. Output logs to `/tmp/ion-install.log`.
+`make desktop` builds a development-stamped `.pkg`, asks the running Ion to
+finish active work and quit, then opens macOS Installer. The package is the
+only component that writes `/Applications/Ion.app`, and it launches Ion after
+a successful install for the active macOS user. Output logs to
+`/tmp/ion-package-coordinator.log`.
 
-Never kill Ion processes directly or copy the app bundle manually. Always use the installer so active agents drain before the binary is replaced.
+If you open a package manually while Ion is running, Installer refuses before
+it changes the application bundle. Quit Ion, then retry the package.
+
+Never kill Ion processes directly or copy the app bundle manually.
 
 ## Architecture
 
