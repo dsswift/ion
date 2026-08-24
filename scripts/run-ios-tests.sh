@@ -11,8 +11,10 @@
 #   IOS_TEST_ONLY='IonRemoteTests/ContractSyncTests IonRemoteTests/ThemeParityTests'
 # in the environment.
 #
-# Exits non-zero on test failure or if no usable simulator is found. A simulator
-# process launch denial gets one reset-and-retry because XCTest has not started.
+# Exits non-zero on test failure or if no usable simulator is found. Tests run on
+# one simulator so the suite has one app process and one isolated data directory.
+# A simulator process launch denial gets one reset-and-retry because XCTest has
+# not started.
 
 set -euo pipefail
 
@@ -52,8 +54,8 @@ if [[ -z "${IOS_TEST_DESTINATION:-}" ]]; then
     echo "   $DEVICE_LINE" >&2
     exit 1
   fi
-  IOS_TEST_DESTINATION="platform=iOS Simulator,name=${DEVICE_NAME},OS=${DEVICE_RUNTIME}"
-  echo "→ ios-test using: ${IOS_TEST_DESTINATION}"
+  IOS_TEST_DESTINATION="platform=iOS Simulator,id=${SIMULATOR_UDID}"
+  echo "→ ios-test using: ${DEVICE_NAME} (iOS ${DEVICE_RUNTIME}, ${IOS_TEST_DESTINATION})"
 fi
 
 # Build xcodebuild arguments with positional parameters, rather than expanding an
@@ -64,7 +66,8 @@ set -- \
   xcodebuild \
   -project IonRemote.xcodeproj \
   -scheme IonRemote \
-  -destination "$IOS_TEST_DESTINATION"
+  -destination "$IOS_TEST_DESTINATION" \
+  -parallel-testing-enabled NO
 
 if [[ -n "${IOS_TEST_BUILD_SETTINGS:-}" ]]; then
   # shellcheck disable=SC2206

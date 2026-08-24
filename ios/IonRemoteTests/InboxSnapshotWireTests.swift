@@ -66,7 +66,8 @@ final class InboxSnapshotWireTests: XCTestCase {
             .deletingLastPathComponent()
             .appendingPathComponent("IonRemote/Views/TabListView.swift")
         let menuPath = path.deletingLastPathComponent().appendingPathComponent("TabListView+Inbox.swift")
-        let dialog = try String(contentsOf: path)
+        let presentationPath = path.deletingLastPathComponent().appendingPathComponent("TabListView+Presentation.swift")
+        let dialog = try String(contentsOf: presentationPath)
         let menu = try String(contentsOf: menuPath)
 
         XCTAssertTrue(menu.contains("Label(\"Delete conversation…\", systemImage: \"trash\")"))
