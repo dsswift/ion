@@ -349,6 +349,14 @@ export function InputBar() {
       },
       clearDraft: (tabId) => setDraftInput(tabId, ''),
       submit,
+      // Put the text back when the authoritative guard refused it. The
+      // pre-check above reads THIS window's store; in the Studio presentation
+      // the owner decides, and only its answer is final.
+      restoreInput: (text) => {
+        setInput((prev) => (prev ? prev : text))
+        const target = useSessionStore.getState().activeTabId
+        if (target) setDraftInput(target, text)
+      },
       warn: (msg, fields) => rWarn('input-bar', msg, fields),
     })
     if (!outcome.accepted) return

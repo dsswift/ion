@@ -200,6 +200,12 @@ export const FORWARDED_ACTIONS: Record<string, ForwardedActionSpec> = {
   // ── Conversation / prompt pipeline (owner does the optimistic insert,
   //    slash resolution, iOS echo — the mirror must never fork it) ──
   submit: { minArgs: 2, maxArgs: 3, tabIdAt: 0 },
+  // appendSystemNotice writes a message into the conversation, which is
+  // owner-durable state the owner persists and echoes. It is forwarded for the
+  // same reason submit is — and specifically so a refusal raised by the
+  // OWNER's guard lands in the owner's copy of the conversation, rather than
+  // only in whichever window happened to host the click.
+  appendSystemNotice: { minArgs: 2, maxArgs: 2, tabIdAt: 0 },
   submitRemoteBash: { minArgs: 2, maxArgs: 2, tabIdAt: 0 },
   // editQueuedMessage is (tabId) — a single argument. A stale {minArgs:2}
   // rejected every real invocation from the mirror. See attachments-slice.ts's

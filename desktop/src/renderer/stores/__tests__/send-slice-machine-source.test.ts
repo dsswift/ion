@@ -198,18 +198,26 @@ describe("submit() with source: 'machine' on a locked auto-fix conversation", ()
 
   it('still refuses an operator prompt on the same locked tab', () => {
     // The baseline the passage must not widen: only 'machine' passes. A typed
-    // follow-up on the same tab is dropped, with no optimistic insert.
+    // follow-up on the same tab is dropped, with no optimistic insert — the
+    // prompt must never look like it was sent.
     const { state } = buildHarness(makeTab({
       inputLocked: true,
       tabRole: 'conflict-auto-fix',
     }))
 
-    state.submit('tab-1', 'actually, do it differently')
+    const result = state.submit('tab-1', 'actually, do it differently')
 
     expect(mockPrompt).not.toHaveBeenCalled()
+    expect(result).toEqual(expect.objectContaining({ accepted: false, reason: 'input-locked' }))
     const pane = state.conversationPanes.get('tab-1')
     const main = pane?.instances.find((i: { id: string }) => i.id === 'main')
-    expect(main?.messages ?? []).toHaveLength(0)
+    // No USER message: nothing was submitted. The one message present is the
+    // refusal notice that tells the operator their text was kept — a silent
+    // drop is what this guard used to do, and that cost a real instruction.
+    expect((main?.messages ?? []).filter((m: { role: string }) => m.role === 'user')).toHaveLength(0)
+    expect(main?.messages ?? []).toEqual([
+      expect.objectContaining({ role: 'system', content: expect.stringContaining('Not sent') }),
+    ])
   })
 
   it('does not forward the marker as a remote origin', () => {

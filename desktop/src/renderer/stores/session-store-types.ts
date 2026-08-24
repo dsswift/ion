@@ -45,6 +45,7 @@ import type {
   IntegrationMember,
 } from "../../shared/types";
 import type { AbortScope, ResourceItem } from "../../shared/types-engine";
+import type { PromptSubmitResult } from "../../shared/prompt-submit-result";
 
 export interface RewindResult {
   ok: boolean;
@@ -514,7 +515,13 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
       resolveSlash?: boolean;
       requestId?: string;
     },
-  ) => void;
+  ) => PromptSubmitResult;
+  /**
+   * Append an operator-facing system line to a conversation. The refusal path
+   * uses it so a prompt that was not sent says so where the operator is
+   * looking, not only in desktop.jsonl.
+   */
+  appendSystemNotice: (tabId: string, content: string) => void;
   submitRemotePrompt: (
     tabId: string,
     prompt: string,

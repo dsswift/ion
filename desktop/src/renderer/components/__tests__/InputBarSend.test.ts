@@ -9,17 +9,26 @@
  * BEFORE submit() decided whether to accept the prompt. Every assertion below
  * that names an order (`clear` after `accept`, no clear on refusal) goes red if
  * the clears move back above the decision.
+ *
+ * The pre-check alone cannot cover the mirror boundary: it reads THIS window's
+ * store, while `submit` forwards to the OWNER, whose guard is authoritative and
+ * can disagree. The final block pins the restore path that answers that case.
  */
 import { describe, it, expect, vi } from 'vitest'
 import { dispatchSend, type SendGateDeps, type SendSnapshot } from '../InputBarSend'
+import { PROMPT_ACCEPTED, promptRefused } from '../../../shared/prompt-submit-result'
 
-function deps(snap: SendSnapshot) {
+function deps(snap: SendSnapshot, submitResult: unknown = undefined) {
   const calls: string[] = []
   const d: SendGateDeps = {
     getSnapshot: () => snap,
     clearInput: vi.fn(() => { calls.push('clearInput') }),
     clearDraft: vi.fn((id: string) => { calls.push(`clearDraft:${id}`) }),
-    submit: vi.fn((id: string, text: string) => { calls.push(`submit:${id}:${text}`) }),
+    submit: vi.fn((id: string, text: string) => {
+      calls.push(`submit:${id}:${text}`)
+      return submitResult as never
+    }),
+    restoreInput: vi.fn((text: string) => { calls.push(`restoreInput:${text}`) }),
     warn: vi.fn((msg: string) => { calls.push(`warn:${msg}`) }),
   }
   return { d, calls }
@@ -169,5 +178,82 @@ describe('dispatchSend', () => {
     const { d } = deps({ ...idle, tabs: [{ id: 'tab-aaaaaaaa', status: 'running' }] })
     expect(dispatchSend('steer', 0, d).accepted).toBe(true)
     expect(d.submit).toHaveBeenCalledWith('tab-aaaaaaaa', 'steer')
+  })
+
+  // ── The authoritative refusal: only the owner's guard can see it ───────────
+  //
+  // These pin the cross-window case. The pre-check passes (this window's tab
+  // looks idle), the text is cleared, and then the OWNER refuses. Without the
+  // restore the operator's instruction is destroyed — which is exactly what
+  // happened to a real `/roadmap --sync` against a tab the owner still
+  // believed was 'connecting'.
+
+  it('restores the operator text when the owner refuses synchronously', () => {
+    const { d, calls } = deps(idle, promptRefused('connecting'))
+
+    const out = dispatchSend('/roadmap --sync', 0, d)
+
+    // The gate still reports accepted: it did admit and dispatch.
+    expect(out).toEqual({ accepted: true, tabId: 'tab-aaaaaaaa' })
+    // But the text came back rather than being lost.
+    expect(d.restoreInput).toHaveBeenCalledWith('/roadmap --sync')
+    expect(calls).toEqual([
+      'clearInput',
+      'clearDraft:tab-aaaaaaaa',
+      'submit:tab-aaaaaaaa:/roadmap --sync',
+      'warn:send refused by the authoritative guard, restoring operator text',
+      'restoreInput:/roadmap --sync',
+    ])
+  })
+
+  it('restores the operator text when the owner refuses over the mirror round trip', async () => {
+    const { d } = deps(idle, Promise.resolve(promptRefused('connecting')))
+
+    dispatchSend('/roadmap --sync', 0, d)
+    // The mirror's forwarded call resolves a tick later.
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(d.restoreInput).toHaveBeenCalledWith('/roadmap --sync')
+  })
+
+  it('restores the operator text when the forwarded submit never completes', async () => {
+    const { d } = deps(idle, Promise.reject(new Error('owner window wedged')))
+
+    dispatchSend('keep me', 0, d)
+    await Promise.resolve()
+    await Promise.resolve()
+
+    // An unanswered submit must not cost the operator their text either.
+    expect(d.restoreInput).toHaveBeenCalledWith('keep me')
+  })
+
+  it('leaves the input clear when the owner accepts', () => {
+    const { d } = deps(idle, PROMPT_ACCEPTED)
+
+    dispatchSend('hello', 0, d)
+
+    expect(d.restoreInput).not.toHaveBeenCalled()
+  })
+
+  it('leaves the input clear when submit reports nothing', () => {
+    // A caller that returns no outcome (older shape) must not trigger a
+    // spurious restore that would duplicate text the operator already sent.
+    const { d } = deps(idle, undefined)
+
+    dispatchSend('hello', 0, d)
+
+    expect(d.restoreInput).not.toHaveBeenCalled()
+  })
+
+  it('restores the substituted attachment prompt, not the empty raw text', () => {
+    const { d } = deps(idle, promptRefused('connecting'))
+
+    dispatchSend('', 2, d)
+
+    // submit() received the substitute; the operator typed nothing, so there is
+    // nothing to put back in the box.
+    expect(d.submit).toHaveBeenCalledWith('tab-aaaaaaaa', 'See attached files')
+    expect(d.restoreInput).toHaveBeenCalledWith('')
   })
 })

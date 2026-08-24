@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useSessionStore } from '../stores/sessionStore'
 import { commitInstance } from '../stores/conversation-instance'
 import { logTabStatusWrite, logTabStatusPatch } from '../stores/slices/tab-status-transition'
+import { rDebug } from '../rendererLogger'
 import type { TabStatus } from '../../shared/types'
 
 const HEALTH_POLL_INTERVAL_MS = 1500
@@ -19,6 +20,15 @@ export function useHealthReconciliation() {
 
     return () => clearInterval(timer)
   }, [])
+}
+
+/**
+ * One reconciliation pass. Exported for tests: this is the safety net for a
+ * tab stranded in an active-looking status, and a net whose repair branches
+ * are unverified is how an unreachable condition survived here undetected.
+ */
+export async function reconcileOnce(): Promise<void> {
+  return reconcile()
 }
 
 async function reconcile(): Promise<void> {
@@ -76,8 +86,19 @@ async function reconcile(): Promise<void> {
       }
 
       // Backend says idle but UI thinks it's running → unstick
-      // Preserve permissionDenied: if a plan-ready card was set by task_complete, keep it
-      if (healthEntry.status === 'idle' && !healthEntry.alive) {
+      //
+      // Decided on the plane's STATUS, never on `alive`. `alive` is derived as
+      // `status !== 'dead' && status !== 'failed'`
+      // (main/engine-control-plane-status.ts), so a healthy idle tab is always
+      // alive: true. An `!alive` condition here was unreachable for the exact
+      // stall it existed to repair, and control fell through to
+      // 'already-at-target' on every poll forever. Observed live: a tab held
+      // 'connecting' after its run finished, composer locked, logging
+      // already-at-target every 1.5s while the engine reported idle.
+      //
+      // Preserve permissionDenied ('queue' only): a plan-ready card set by
+      // task_complete, or synthesized on restore, must survive this repair.
+      if (healthEntry.status === 'idle') {
         changed = true
         instanceClears.set(t.id, 'queue')
         unstick('completed', 'idle')
@@ -137,7 +158,13 @@ async function reconcile(): Promise<void> {
         return { tabs: newTabs, conversationPanes }
       })
     }
-  } catch {
-    // Ignore transient health check errors
+  } catch (err) {
+    // A health poll that throws leaves every stuck tab stuck for another
+    // interval. Transient failures are expected (the poll races engine
+    // restarts), so this is not an error — but it is never silent: a
+    // reconciler that has stopped reconciling must be visible in
+    // desktop.jsonl, because the tabs it would have repaired show no
+    // symptom of their own beyond staying wrong.
+    rDebug('tab.status', 'health reconcile poll failed', { error: String(err) })
   }
 }

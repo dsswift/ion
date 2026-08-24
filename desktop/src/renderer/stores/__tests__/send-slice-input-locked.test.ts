@@ -150,16 +150,52 @@ beforeEach(() => {
 })
 
 describe('submit() on an input-locked conversation', () => {
-  it('drops the prompt: nothing reaches the wire, no message is inserted', () => {
+  it('drops the prompt: nothing reaches the wire', () => {
     const { state } = buildHarness(makeTab({ inputLocked: true }))
 
     state.submit('tab-1', 'a follow-up the operator typed')
 
     expect(mockPrompt).not.toHaveBeenCalled()
-    // No optimistic insert either: the pane's message list is untouched.
+  })
+
+  it('tells the operator, in the conversation, that nothing was sent', () => {
+    // A refusal used to be a WARN line and nothing else: the text vanished
+    // from a composer that looked merely busy, with no explanation anywhere
+    // the operator was looking. The notice is the feedback.
+    const { state } = buildHarness(makeTab({ inputLocked: true }))
+
+    state.submit('tab-1', 'a follow-up the operator typed')
+
     const pane = state.conversationPanes.get('tab-1')
     const main = pane?.instances.find((i: { id: string }) => i.id === 'main')
-    expect(main?.messages ?? []).toHaveLength(0)
+    expect(main?.messages ?? []).toHaveLength(1)
+    expect(main?.messages[0].role).toBe('system')
+    expect(main?.messages[0].content).toContain('Not sent')
+    // The operator must not be left wondering whether to retype.
+    expect(main?.messages[0].content).toContain('kept')
+  })
+
+  it('returns the refusal so a mirror caller can restore the text', () => {
+    // submit() is a FORWARDED action. When the Studio presentation is active
+    // the InputBar's pre-check reads MIRROR state while this guard reads OWNER
+    // state, so the refusal has to travel back for the text to be restored.
+    const { state } = buildHarness(makeTab({ inputLocked: true }))
+
+    const result = state.submit('tab-1', 'a follow-up the operator typed')
+
+    expect(result).toEqual({
+      accepted: false,
+      reason: 'input-locked',
+      message: expect.stringContaining('Not sent'),
+    })
+  })
+
+  it('reports acceptance when the prompt is admitted', () => {
+    const { state } = buildHarness(makeTab({ inputLocked: false }))
+
+    const result = state.submit('tab-1', 'a normal prompt')
+
+    expect(result).toEqual({ accepted: true })
   })
 
   it('an unlocked tab still submits (the guard reads the flag, not the flow)', () => {
@@ -170,6 +206,19 @@ describe('submit() on an input-locked conversation', () => {
     state.submit('tab-1', 'a normal prompt')
 
     expect(mockPrompt).toHaveBeenCalledTimes(1)
+  })
+
+  it('adds no notice when the prompt is accepted', () => {
+    const { state } = buildHarness(makeTab({ inputLocked: false }))
+
+    state.submit('tab-1', 'a normal prompt')
+
+    const pane = state.conversationPanes.get('tab-1')
+    const main = pane?.instances.find((i: { id: string }) => i.id === 'main')
+    const notices = (main?.messages ?? []).filter(
+      (m: { role: string; content: string }) => m.role === 'system' && m.content.includes('Not sent'),
+    )
+    expect(notices).toHaveLength(0)
   })
 
   it('submitRemotePrompt is guarded too: an iOS prompt cannot route around the lock', () => {
