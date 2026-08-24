@@ -23,7 +23,10 @@ if [ "$CONSOLE_USER" = "root" ] || [ "$CONSOLE_USER" = "loginwindow" ]; then
   exit 0
 fi
 
-if ! launchctl asuser "$CONSOLE_UID" /usr/bin/open "$APP_PATH"; then
+# Installer gives package scripts a TMPDIR inside PKInstallSandbox. That
+# directory disappears when installation finishes. Do not let the launched app
+# retain the dead path for every later subprocess.
+if ! launchctl asuser "$CONSOLE_UID" /usr/bin/env -u TMPDIR /usr/bin/open "$APP_PATH"; then
   log "could not launch Ion for console user: $CONSOLE_USER"
   exit 0
 fi
