@@ -1,7 +1,7 @@
 import { IPC } from '../shared/types'
 import { getCliEnv } from './cli-env'
 import { getDeepLinkToken } from './deeplink/token'
-import { homedir } from 'os'
+import { homedir, userInfo } from 'os'
 import { basename } from 'path'
 import { existsSync } from 'fs'
 import { terminalScrollback } from './state'
@@ -132,7 +132,16 @@ export class TerminalManager {
     const requested = cwd === '~' ? homedir() : cwd
     const cwdFellBack = !existsSync(requested)
     const resolvedCwd = cwdFellBack ? homedir() : requested
-    const shell = process.env.SHELL || '/bin/zsh'
+    const loginShell = this.resolveLoginShell()
+
+    debug('resolved terminal spawn inputs', {
+      key,
+      requested_cwd: requested,
+      resolved_cwd: resolvedCwd,
+      cwd_fell_back: cwdFellBack,
+      login_shell: loginShell,
+      login_args: ['-l'],
+    })
 
     // Conversation identity, injected into the PTY environment.
     //
@@ -156,12 +165,22 @@ export class TerminalManager {
       ION_DESKTOP_DEEPLINK_TOKEN: getDeepLinkToken(),
     }) as Record<string, string>
 
-    const term = spawn(shell, [], {
+    const term = spawn(loginShell, ['-l'], {
       name: 'xterm-256color',
       cols: 80,
       rows: 24,
       cwd: resolvedCwd,
-      env,
+      env: { ...env, SHELL: loginShell },
+    })
+
+    debug('spawned terminal pty', {
+      key,
+      shell: loginShell,
+      login_args: ['-l'],
+      cwd: resolvedCwd,
+      cwd_fell_back: cwdFellBack,
+      cols: 80,
+      rows: 24,
     })
 
     term.onData((data: string) => {
@@ -180,11 +199,30 @@ export class TerminalManager {
     })
 
     this.sessions.set(key, term)
-    this.startActivityWatch(key, term, shell)
+    this.startActivityWatch(key, term, loginShell)
     this.lifecycle.set(key, { running: true, exitCode: null, cwd: resolvedCwd, cwdFellBack })
     // A fresh run's transcript starts clean (a respawn after exit would
     // otherwise repeat the dead run's history ahead of the new shell).
     terminalScrollback.delete(key)
+  }
+
+
+  private resolveLoginShell(): string {
+    try {
+      const accountShell = userInfo().shell?.trim()
+      if (accountShell) {
+        debug('resolved account login shell', { account_shell: accountShell })
+        return accountShell
+      }
+      debug('account shell missing, falling back to default shell', { fallback_shell: '/bin/zsh' })
+      return '/bin/zsh'
+    } catch (err: unknown) {
+      debug('failed to resolve account shell, falling back to default shell', {
+        fallback_shell: '/bin/zsh',
+        error: String(err),
+      })
+      return '/bin/zsh'
+    }
   }
 
   write(key: string, data: string): void {

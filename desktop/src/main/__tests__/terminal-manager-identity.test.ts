@@ -19,10 +19,19 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import * as os from 'os'
 
 const mocks = vi.hoisted(() => ({
   spawn: vi.fn(),
 }))
+
+vi.mock('os', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('os')>()
+  return {
+    ...actual,
+    userInfo: vi.fn(),
+  }
+})
 
 // A real PATH probe shells out to zsh; the identity overlay is what is under
 // test, so the base env is stubbed to a fixed value.
@@ -100,6 +109,24 @@ describe('TerminalManager PTY identity', () => {
     expect(spawnedEnv(1).ION_DESKTOP_TERMINAL_INSTANCE_ID).toBe('inst-2')
     // Same conversation for both.
     expect(spawnedEnv(1).ION_DESKTOP_TAB_ID).toBe('tab-abc')
+  })
+
+  it('uses the account login shell and exports SHELL even when inherited SHELL is /bin/sh', () => {
+    vi.mocked(os.userInfo).mockReturnValue({ shell: '/bin/zsh' } as os.UserInfo<string>)
+    const inheritedShell = process.env.SHELL
+    process.env.SHELL = '/bin/sh'
+
+    try {
+      new TerminalManager(() => {}, recordingSpawner()).create('tab-abc:inst-123', '/repo')
+
+      const call = mocks.spawn.mock.calls[0]
+      expect(call[0]).toBe('/bin/zsh')
+      expect(call[1]).toEqual(['-l'])
+      expect(spawnedEnv().SHELL).toBe('/bin/zsh')
+    } finally {
+      if (inheritedShell === undefined) delete process.env.SHELL
+      else process.env.SHELL = inheritedShell
+    }
   })
 
   it('keeps tab activity true until every PTY in that tab becomes idle', () => {
