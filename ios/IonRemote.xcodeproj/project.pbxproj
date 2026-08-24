@@ -234,6 +234,9 @@
 		A1B2C3D4E5F60001000222AA /* TransportManager+Receive.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000223AA /* TransportManager+Receive.swift */; };
 		SERIALQ0000000000000001 /* SerialAsyncQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = SERIALQ0000000000000002 /* SerialAsyncQueue.swift */; };
 		SENDDLN0000000000000001 /* SendDeadline.swift in Sources */ = {isa = PBXBuildFile; fileRef = SENDDLN0000000000000002 /* SendDeadline.swift */; };
+		RLWSTASK000000000000001 /* RelayWebSocketTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = RLWSTASK000000000000002 /* RelayWebSocketTask.swift */; };
+		RLWSFACT000000000000001 /* RelayWebSocketTaskFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = RLWSFACT000000000000002 /* RelayWebSocketTaskFactory.swift */; };
+		RLCONNT0000000000000001 /* RelayClientConnectTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RLCONNT0000000000000002 /* RelayClientConnectTests.swift */; };
 		TMSYNC00000000000000001 /* TransportManager+Sync.swift in Sources */ = {isa = PBXBuildFile; fileRef = TMSYNC00000000000000002 /* TransportManager+Sync.swift */; };
 		TMLIFE0000000000000001 /* TransportManager+Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = TMLIFE0000000000000002 /* TransportManager+Lifecycle.swift */; };
 		TMWDOG00000000000000001 /* TransportManager+Watchdog.swift in Sources */ = {isa = PBXBuildFile; fileRef = TMWDOG00000000000000002 /* TransportManager+Watchdog.swift */; };
@@ -778,6 +781,9 @@
 		A1B2C3D4E5F60001000223AA /* TransportManager+Receive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TransportManager+Receive.swift"; sourceTree = "<group>"; };
 		SERIALQ0000000000000002 /* SerialAsyncQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SerialAsyncQueue.swift; sourceTree = "<group>"; };
 		SENDDLN0000000000000002 /* SendDeadline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendDeadline.swift; sourceTree = "<group>"; };
+		RLWSTASK000000000000002 /* RelayWebSocketTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayWebSocketTask.swift; sourceTree = "<group>"; };
+		RLWSFACT000000000000002 /* RelayWebSocketTaskFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayWebSocketTaskFactory.swift; sourceTree = "<group>"; };
+		RLCONNT0000000000000002 /* RelayClientConnectTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayClientConnectTests.swift; sourceTree = "<group>"; };
 		TMSYNC00000000000000002 /* TransportManager+Sync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TransportManager+Sync.swift"; sourceTree = "<group>"; };
 		TMLIFE0000000000000002 /* TransportManager+Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TransportManager+Lifecycle.swift"; sourceTree = "<group>"; };
 		TMWDOG00000000000000002 /* TransportManager+Watchdog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TransportManager+Watchdog.swift"; sourceTree = "<group>"; };
@@ -1201,6 +1207,8 @@
 			isa = PBXGroup;
 			children = (
 				A1B2C3D4E5F6000100000CAA /* RelayClient.swift */,
+				RLWSTASK000000000000002 /* RelayWebSocketTask.swift */,
+				RLWSFACT000000000000002 /* RelayWebSocketTaskFactory.swift */,
 				A2B3C4D5E6F700000000001A /* OIDCTokenManager.swift */,
 				MTOIDCIDN0000000000001 /* OIDCAccountIdentity.swift */,
 				MTTRANSTATE00000000001 /* TransportState.swift */,
@@ -1503,6 +1511,7 @@
 				TRESEND00000000000000008 /* TransportResendTests.swift */,
 				SERIALQT000000000000002 /* SerialAsyncQueueTests.swift */,
 				SENDDLNT000000000000002 /* SendDeadlineTests.swift */,
+				RLCONNT0000000000000002 /* RelayClientConnectTests.swift */,
 				TRLANPRF000000000000002 /* TransportRelayLanPreferredTests.swift */,
 				LANWDOGT000000000000002 /* LANHeartbeatWatchdogTests.swift */,
 				SYNCRTRY000000000000002 /* SyncRetryTests.swift */,
@@ -2029,6 +2038,8 @@
 				A1B2C3D4E5F60001000222AA /* TransportManager+Receive.swift in Sources */,
 				SERIALQ0000000000000001 /* SerialAsyncQueue.swift in Sources */,
 				SENDDLN0000000000000001 /* SendDeadline.swift in Sources */,
+				RLWSTASK000000000000001 /* RelayWebSocketTask.swift in Sources */,
+				RLWSFACT000000000000001 /* RelayWebSocketTaskFactory.swift in Sources */,
 				TMSYNC00000000000000001 /* TransportManager+Sync.swift in Sources */,
 				TMLIFE0000000000000001 /* TransportManager+Lifecycle.swift in Sources */,
 				TMWDOG00000000000000001 /* TransportManager+Watchdog.swift in Sources */,
@@ -2273,6 +2284,7 @@
 				TRESEND00000000000000007 /* TransportResendTests.swift in Sources */,
 				SERIALQT000000000000001 /* SerialAsyncQueueTests.swift in Sources */,
 				SENDDLNT000000000000001 /* SendDeadlineTests.swift in Sources */,
+				RLCONNT0000000000000001 /* RelayClientConnectTests.swift in Sources */,
 				TRLANPRF000000000000001 /* TransportRelayLanPreferredTests.swift in Sources */,
 				LANWDOGT000000000000001 /* LANHeartbeatWatchdogTests.swift in Sources */,
 				SYNCRTRY000000000000001 /* SyncRetryTests.swift in Sources */,

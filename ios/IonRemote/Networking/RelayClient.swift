@@ -30,8 +30,12 @@ final class RelayClient {
 
     // MARK: - Internals
 
-    private var task: URLSessionWebSocketTask?
-    private var session: URLSession?
+    private var task: RelayWebSocketTasking?
+    private var taskFactory: RelayWebSocketTaskFactory?
+    private let makeTaskFactory: () -> RelayWebSocketTaskFactory
+    private let connectDeadlineSeconds: Double
+    private var connectDeadlineWork: DispatchWorkItem?
+    private var connectionAttempt: UInt64 = 0
     private var reconnectAttempt = 0
     private var reconnectWork: DispatchWorkItem?
     private var intentionallyClosed = false
@@ -60,7 +64,11 @@ final class RelayClient {
     init(relayURL: URL, apiKey: String, channelId: String, apnsToken: String? = nil,
          getCredential: (() async throws -> String)? = nil,
          onTokenRejected: (() -> Void)? = nil,
-         onIdentityMismatch: (() -> Void)? = nil) {
+         onIdentityMismatch: (() -> Void)? = nil,
+         connectDeadlineSeconds: Double = transportConnectDeadlineSeconds,
+         makeTaskFactory: @escaping () -> RelayWebSocketTaskFactory = {
+             URLSessionRelayWebSocketTaskFactory()
+         }) {
         self.relayURL = relayURL
         self.apiKey = apiKey
         self.channelId = channelId
@@ -68,6 +76,8 @@ final class RelayClient {
         self.getCredential = getCredential
         self.onTokenRejected = onTokenRejected
         self.onIdentityMismatch = onIdentityMismatch
+        self.connectDeadlineSeconds = connectDeadlineSeconds
+        self.makeTaskFactory = makeTaskFactory
 
         var continuation: AsyncStream<Data>.Continuation!
         self.messages = AsyncStream { continuation = $0 }
@@ -78,9 +88,10 @@ final class RelayClient {
         messageContinuation.finish()
         intentionallyClosed = true
         reconnectWork?.cancel()
+        connectDeadlineWork?.cancel()
         pingTask?.cancel()
         task?.cancel(with: .goingAway, reason: nil)
-        session?.invalidateAndCancel()
+        taskFactory?.invalidateAndCancel()
     }
 
     // MARK: - Public API
@@ -92,15 +103,18 @@ final class RelayClient {
 
     func disconnect() {
         intentionallyClosed = true
+        connectionAttempt &+= 1
         reconnectWork?.cancel()
         reconnectWork = nil
         reconnectAttempt = 0
         isConnecting = false
+        connectDeadlineWork?.cancel()
+        connectDeadlineWork = nil
         stopPing()
         task?.cancel(with: .normalClosure, reason: nil)
         task = nil
-        session?.invalidateAndCancel()
-        session = nil
+        taskFactory?.invalidateAndCancel()
+        taskFactory = nil
         isConnected = false
     }
 
@@ -132,6 +146,8 @@ final class RelayClient {
     private func doConnect() async {
         guard !intentionallyClosed else { return }
 
+        connectionAttempt &+= 1
+        let attempt = connectionAttempt
         isConnecting = true
 
         // Cancel any pending reconnect timer so we don't get a stale
@@ -139,10 +155,12 @@ final class RelayClient {
         reconnectWork?.cancel()
         reconnectWork = nil
 
+        connectDeadlineWork?.cancel()
+        connectDeadlineWork = nil
         task?.cancel(with: .goingAway, reason: nil)
         task = nil
-        session?.invalidateAndCancel()
-        session = nil
+        taskFactory?.invalidateAndCancel()
+        taskFactory = nil
 
         // Build the WebSocket URL: {relayURL}/v1/channel/{channelId}?role=mobile
         var components = URLComponents()
@@ -174,8 +192,12 @@ final class RelayClient {
             return
         }
 
+        // Do not log the full URL. Its query can contain the APNs token.
         DiagnosticLog.log("relay websocket connecting", tag: "relay.client", fields: [
-            "url": url.absoluteString
+            "scheme": url.scheme ?? "unknown",
+            "host": url.host(percentEncoded: false) ?? "unknown",
+            "port": url.port.map(String.init) ?? "default",
+            "apns_token_attached": String(apnsToken?.isEmpty == false)
         ])
 
         var request = URLRequest(url: url)
@@ -184,6 +206,13 @@ final class RelayClient {
             do {
                 bearer = try await getCredential()
             } catch {
+                guard !intentionallyClosed, attempt == connectionAttempt else {
+                    DiagnosticLog.log("relay credential fetch failure ignored for inactive connect", tag: "relay.client", fields: [
+                        "reason": intentionallyClosed ? "closed" : "superseded",
+                        "error": error.localizedDescription
+                    ])
+                    return
+                }
                 DiagnosticLog.log("relay credential fetch failed, scheduling reconnect", tag: "relay.client", level: .warn, fields: [
                     "error": error.localizedDescription
                 ])
@@ -196,16 +225,20 @@ final class RelayClient {
         // disconnect() may run while autonomous OIDC acquisition is suspended.
         // Do not let the completed credential resurrect a client that teardown
         // intentionally closed in the meantime.
-        guard !intentionallyClosed else {
-            DiagnosticLog.log("relay connect abandoned after credential fetch", tag: "relay.client", fields: [:])
-            isConnecting = false
+        guard !intentionallyClosed, attempt == connectionAttempt else {
+            DiagnosticLog.log("relay connect abandoned after credential fetch", tag: "relay.client", fields: [
+                "reason": intentionallyClosed ? "closed" : "superseded"
+            ])
+            if attempt == connectionAttempt {
+                isConnecting = false
+            }
             return
         }
         request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
 
-        let urlSession = URLSession(configuration: .default)
-        self.session = urlSession
-        let wsTask = urlSession.webSocketTask(with: request)
+        let factory = makeTaskFactory()
+        self.taskFactory = factory
+        let wsTask = factory.makeTask(request: request)
         // Default maximumMessageSize is 1 MiB. Encrypted snapshots can
         // exceed that, causing EMSGSIZE ("Message too long").
         wsTask.maximumMessageSize = 16 * 1024 * 1024
@@ -215,10 +248,31 @@ final class RelayClient {
 
         // Don't set isConnected or reset backoff here — the first
         // successful receive in receiveLoop confirms the handshake.
+        startConnectDeadline(for: wsTask, attempt: attempt)
         receiveLoop(wsTask)
     }
 
-    private func receiveLoop(_ wsTask: URLSessionWebSocketTask) {
+    private func startConnectDeadline(for wsTask: RelayWebSocketTasking, attempt: UInt64) {
+        connectDeadlineWork?.cancel()
+        let work = DispatchWorkItem { [weak self, weak wsTask] in
+            guard let self, let wsTask else { return }
+            guard attempt == self.connectionAttempt,
+                  wsTask === self.task,
+                  self.isConnecting,
+                  !self.isConnected else { return }
+            DiagnosticLog.log("relay connect timed out, tearing down", tag: "relay.client", level: .warn, fields: [
+                "timeout_s": String(self.connectDeadlineSeconds)
+            ])
+            self.handleDisconnect()
+        }
+        connectDeadlineWork = work
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + connectDeadlineSeconds,
+            execute: work
+        )
+    }
+
+    private func receiveLoop(_ wsTask: RelayWebSocketTasking) {
         wsTask.receive { [weak self] result in
             guard let self else { return }
 
@@ -230,6 +284,8 @@ final class RelayClient {
             case .success(let message):
                 // First successful receive confirms the WebSocket is open.
                 if !self.isConnected {
+                    self.connectDeadlineWork?.cancel()
+                    self.connectDeadlineWork = nil
                     self.isConnected = true
                     self.isConnecting = false
                     self.reconnectAttempt = 0
@@ -321,12 +377,15 @@ final class RelayClient {
     }
 
     private func handleDisconnect() {
+        connectDeadlineWork?.cancel()
+        connectDeadlineWork = nil
         isConnected = false
         isConnecting = false
         stopPing()
+        task?.cancel(with: .goingAway, reason: nil)
         task = nil
-        session?.invalidateAndCancel()
-        session = nil
+        taskFactory?.invalidateAndCancel()
+        taskFactory = nil
 
         if !intentionallyClosed {
             scheduleReconnect()
@@ -334,6 +393,18 @@ final class RelayClient {
     }
 
     // MARK: - Reconnection
+
+    /// True while the automatic reconnect ladder has a pending timer. Test seam
+    /// for the timeout contract; callers should use connection state instead.
+    var hasPendingReconnect: Bool {
+        reconnectWork != nil && !(reconnectWork?.isCancelled ?? true)
+    }
+
+    /// Current backoff step. Test seam for proving that only a genuine first
+    /// receive resets the retry ladder.
+    var reconnectAttemptCount: Int {
+        reconnectAttempt
+    }
 
     private func scheduleReconnect() {
         let delay = min(
@@ -379,7 +450,12 @@ final class RelayClient {
         let owner = task
         pingTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(Self.pingInterval))
+                do {
+                    try await Task.sleep(for: .seconds(Self.pingInterval))
+                } catch {
+                    // Cancellation is the normal stop path for this loop.
+                    return
+                }
                 guard !Task.isCancelled, let self else { return }
                 guard let current = self.task, current === owner else { return }
                 current.sendPing { [weak self] error in
