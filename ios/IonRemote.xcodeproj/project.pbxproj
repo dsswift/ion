@@ -58,6 +58,7 @@
 		STALECONVPH000000000001 /* StaleConversationPlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = STALECONVPH000000000002 /* StaleConversationPlaceholderView.swift */; };
 		FE01AA02BC03DD04EE05FF04 /* TabListView+DetailViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE01AA02BC03DD04EE05FF03 /* TabListView+DetailViews.swift */; };
 		FE01AA02BC03DD04EE05FF06 /* TabListView+Layouts.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE01AA02BC03DD04EE05FF05 /* TabListView+Layouts.swift */; };
+		FE01AA02BC03DD04EE05FF08 /* TabListView+Presentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE01AA02BC03DD04EE05FF07 /* TabListView+Presentation.swift */; };
 		FE11AA22BC33DD44EE55FF02 /* TabListView+Inbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE11AA22BC33DD44EE55FF01 /* TabListView+Inbox.swift */; };
 		FE11AA22BC33DD44EE55FF04 /* InboxRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE11AA22BC33DD44EE55FF03 /* InboxRowView.swift */; };
 		C0DE0000000000000000000D /* InboxSettledHistorySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE0000000000000000000E /* InboxSettledHistorySheet.swift */; };
@@ -598,6 +599,7 @@
 		STALECONVPH000000000002 /* StaleConversationPlaceholderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaleConversationPlaceholderView.swift; sourceTree = "<group>"; };
 		FE01AA02BC03DD04EE05FF03 /* TabListView+DetailViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TabListView+DetailViews.swift"; sourceTree = "<group>"; };
 		FE01AA02BC03DD04EE05FF05 /* TabListView+Layouts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TabListView+Layouts.swift"; sourceTree = "<group>"; };
+		FE01AA02BC03DD04EE05FF07 /* TabListView+Presentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TabListView+Presentation.swift"; sourceTree = "<group>"; };
 		FE11AA22BC33DD44EE55FF01 /* TabListView+Inbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TabListView+Inbox.swift"; sourceTree = "<group>"; };
 		FE11AA22BC33DD44EE55FF03 /* InboxRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxRowView.swift; sourceTree = "<group>"; };
 		C0DE00000000000000000002 /* InboxNavigator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxNavigator.swift; sourceTree = "<group>"; };
@@ -1249,6 +1251,7 @@
 				STALECONVPH000000000002 /* StaleConversationPlaceholderView.swift */,
 				FE01AA02BC03DD04EE05FF03 /* TabListView+DetailViews.swift */,
 				FE01AA02BC03DD04EE05FF05 /* TabListView+Layouts.swift */,
+				FE01AA02BC03DD04EE05FF07 /* TabListView+Presentation.swift */,
 				FE11AA22BC33DD44EE55FF01 /* TabListView+Inbox.swift */,
 				FE11AA22BC33DD44EE55FF03 /* InboxRowView.swift */,
 				C0DE00000000000000000002 /* InboxNavigator.swift */,
@@ -1927,6 +1930,7 @@
 				STALECONVPH000000000001 /* StaleConversationPlaceholderView.swift in Sources */,
 				FE01AA02BC03DD04EE05FF04 /* TabListView+DetailViews.swift in Sources */,
 				FE01AA02BC03DD04EE05FF06 /* TabListView+Layouts.swift in Sources */,
+				FE01AA02BC03DD04EE05FF08 /* TabListView+Presentation.swift in Sources */,
 				FE11AA22BC33DD44EE55FF02 /* TabListView+Inbox.swift in Sources */,
 				FE11AA22BC33DD44EE55FF04 /* InboxRowView.swift in Sources */,
 				C0DE00000000000000000001 /* InboxNavigator.swift in Sources */,
