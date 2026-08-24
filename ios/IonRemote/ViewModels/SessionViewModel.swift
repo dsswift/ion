@@ -87,6 +87,11 @@ final class SessionViewModel {
     /// by plan_content events in response to requestPlanContent commands.
     let planContentStore = PlanContentStore()
 
+    /// Guided-questions replica (desktop_questions_state + snapshot merge).
+    /// Stored property here — Swift extensions cannot add stored properties;
+    /// command/reconciliation behavior is in SessionViewModel+Questions.swift.
+    let questionsStore = QuestionsStore()
+
     var tabs: [RemoteTabState] = []
     var tabIds: Set<String> = []
     /// True once a desktop tab snapshot has been applied in this app run.

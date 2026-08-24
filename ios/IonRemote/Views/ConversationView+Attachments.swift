@@ -69,16 +69,12 @@ extension ConversationView {
         }
     }
 
+    /// Thin forwarder to the shared compressor. Kept so the existing call
+    /// sites read unchanged; the implementation lives in
+    /// `Utilities/ImageCompression` because the Guided Questions picker
+    /// uploads through the same path.
     func compressImage(data: Data, maxBytes: Int) -> Data {
-        guard let uiImage = UIImage(data: data) else { return data }
-        var quality: CGFloat = 0.8
-        while quality > 0.1 {
-            if let jpeg = uiImage.jpegData(compressionQuality: quality), jpeg.count <= maxBytes {
-                return jpeg
-            }
-            quality -= 0.1
-        }
-        return uiImage.jpegData(compressionQuality: 0.1) ?? data
+        ImageCompression.jpeg(data: data, maxBytes: maxBytes)
     }
 
     func consumeUploadResults(_ results: [UploadAttachmentResult]) {

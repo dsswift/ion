@@ -194,6 +194,9 @@ extension SessionViewModel {
         }
         tabs = merged
         tabIds = Set(merged.map(\.id))
+        // Guided Questions: the snapshot's per-tab questions field is
+        // authoritative for first paint and seq-gap recovery (absent clears).
+        mergeQuestionsFromSnapshot(merged)
         // From here on, a tab id absent from `tabIds` is authoritative: the
         // desktop has told us its full tab list at least once. Views use this
         // to distinguish "conversation was closed" from "not synced yet"

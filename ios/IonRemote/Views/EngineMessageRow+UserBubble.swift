@@ -20,6 +20,19 @@ extension EngineMessageRow {
                     promptDeliveryLabel(deliveryState)
                 }
             }
+            // A Guided Questions submission IS the operator's own input — they
+            // read the questions, chose the options, typed the text and
+            // attached the images — so it renders in full. But they did not
+            // compose the rendered prose at the prompt, and an unmarked bubble
+            // misrepresents it as something they typed: scrolling back weeks
+            // later the honest reaction is "I never wrote that".
+            //
+            // A caption label alone was not enough (the first attempt): at a
+            // glance the bubble still read as an ordinary message. So the turn
+            // gets explicit chrome — labelled rules above and below, and a
+            // tinted panel grouping the answers with their attachments.
+            // Desktop parity: StructuredAnswerFrame.tsx.
+            .structuredAnswerFrame(active: message.injectionKind == "structured_answer")
         }
     }
 

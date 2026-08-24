@@ -113,6 +113,11 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     var pillColor: String?
     /// Custom pill icon key (e.g. "diamond", "star"). Nil means use the default status dot.
     var pillIcon: String?
+    /// Main-owned guided-questions workflows open on this tab, merged by the
+    /// desktop snapshot after renderer projection (and in the cold-start
+    /// path). First paint and seq-gap recovery read this; live updates ride
+    /// desktop_questions_state. Nil/absent means no open workflows.
+    var questions: [QuestionsWorkflowState]?
     /// Aggregated "any sub-instance has running dispatched background
     /// agents" flag, projected by the desktop's
     /// `getRemoteTabStates` snapshot. Drives the yellow "awaiting

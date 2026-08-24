@@ -335,6 +335,8 @@ extension DiagnosticLog {
             log("EVT: worktreeState projects=\(states.count)", tag: "ipc", level: .debug)
         case .worktreeOpResult(let result):
             log("EVT: worktreeOpResult op=\(result.operation.rawValue) ok=\(result.ok)", tag: "ipc", level: .info)
+        case .questionsState(let tabId, let state):
+            log("EVT: questionsState tabId=\(tabId.prefix(8)) workflows=\(state.workflows.count)", tag: "questions", level: .info)
         case .worktreePipeline(let pipeline):
             log("EVT: worktreePipeline repo=\(pipeline.repoPath.suffix(30)) phase=\(pipeline.phase?.rawValue ?? "dismissed") queue=\(pipeline.queue.count) resolved=\(pipeline.resolvedByAi)", tag: "ipc", level: .info)
 

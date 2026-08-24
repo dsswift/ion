@@ -37,6 +37,24 @@ enum InjectionPolicy {
         "background_task_completion",
     ]
 
+    /// Kinds a CLIENT authors on an outbound prompt AND hides.
+    ///
+    /// Distinct from `legacyMachineKinds` above, and the distinction is the
+    /// direction of travel. Legacy covers INBOUND rows read back from disk
+    /// that predate the engine's `machineAuthored` flag. This set covers
+    /// OUTBOUND turns a client authors, where the flag cannot exist yet.
+    ///
+    /// Currently EMPTY, and deliberately so. `structured_answer` lived here
+    /// until it was reclassified: a Guided Questions submission is real
+    /// operator input — a person read the questions, chose the options, typed
+    /// the text, attached the images — so it RENDERS with a "Questions
+    /// answered" label rather than being hidden. Hiding it dropped work the
+    /// operator actually did.
+    ///
+    /// A kind belongs here only when a client sends it AND the engine
+    /// classifies it machine-authored.
+    static let outboundMachineKinds: Set<String> = []
+
     /// Whether an injected turn is hidden from the transcript.
     ///
     /// True for a machine-to-machine turn: a dispatch callback, a background
@@ -50,7 +68,9 @@ enum InjectionPolicy {
     /// only for rows that predate it.
     static func suppresses(machineAuthored: Bool?, injectionKind: String?) -> Bool {
         if machineAuthored == true { return true }
-        return legacyMachineKinds.contains(injectionKind ?? "")
+        let kind = injectionKind ?? ""
+        if outboundMachineKinds.contains(kind) { return true }
+        return legacyMachineKinds.contains(kind)
     }
 
     /// Convenience overload for a decoded history row.

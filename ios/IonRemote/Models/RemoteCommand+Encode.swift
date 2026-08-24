@@ -650,6 +650,20 @@ extension RemoteCommand {
             try container.encode(planFilePath, forKey: .planFilePath)
             try container.encode(offset, forKey: .offset)
             try container.encode(length, forKey: .length)
+
+        case .questionsPatch(let tabId, let patch):
+            try container.encode(TypeKey.questionsPatch, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(patch, forKey: .patch)
+
+        case .questionsAction(let tabId, let action):
+            try container.encode(TypeKey.questionsAction, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(action, forKey: .action)
+
+        case .questionsRefresh(let tabId):
+            try container.encode(TypeKey.questionsRefresh, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
         }
     }
 }

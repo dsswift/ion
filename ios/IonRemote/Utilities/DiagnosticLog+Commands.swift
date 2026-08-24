@@ -338,6 +338,14 @@ extension DiagnosticLog {
 
         case .requestPlanContent(let tabId, let questionId, let planFilePath, let offset, let length):
             log("CMD: requestPlanContent tabId=\(tabId.prefix(8)) qId=\(questionId.prefix(12)) path=\(planFilePath.suffix(30)) offset=\(offset) len=\(length)", tag: "ipc", level: .info)
+
+        // ── Guided Questions ──
+        case .questionsPatch(let tabId, let patch):
+            log("CMD: questionsPatch tabId=\(tabId.prefix(8)) wf=\(patch.workflowId.prefix(12)) rev=\(patch.expectedRevision)", tag: "questions", level: .debug)
+        case .questionsAction(let tabId, let action):
+            log("CMD: questionsAction tabId=\(tabId.prefix(8)) wf=\(action.workflowId.prefix(12)) kind=\(action.kind)", tag: "questions", level: .info)
+        case .questionsRefresh(let tabId):
+            log("CMD: questionsRefresh tabId=\(tabId.prefix(8))", tag: "questions", level: .info)
         }
     }
 }

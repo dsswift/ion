@@ -342,6 +342,19 @@ enum RemoteCommand: Codable, Sendable {
   case requestPlanContent(
     tabId: String, questionId: String, planFilePath: String, offset: Int, length: Int)
 
+  // ── Guided Questions (see Models/QuestionsModels.swift) ──
+  /// Revisioned draft patch for a guided-questions workflow. The desktop
+  /// main coordinator compare-and-sets by expectedRevision; a stale patch is
+  /// rejected and the authoritative state comes back on
+  /// desktop_questions_state for rollback.
+  case questionsPatch(tabId: String, patch: QuestionsPatch)
+  /// Revisioned workflow action (enter_review / edit_question /
+  /// request_more / final_confirm / cancel).
+  case questionsAction(tabId: String, action: QuestionsAction)
+  /// Targeted re-send of the authoritative Questions state (reconnect,
+  /// sequence loss).
+  case questionsRefresh(tabId: String)
+
   // MARK: - Codable
 
   enum TypeKey: String, Codable {
@@ -465,6 +478,9 @@ enum RemoteCommand: Codable, Sendable {
     case deleteResource = "desktop_delete_resource"
     case implementPlan = "desktop_implement_plan"
     case requestPlanContent = "desktop_request_plan_content"
+    case questionsPatch = "desktop_questions_patch"
+    case questionsAction = "desktop_questions_action"
+    case questionsRefresh = "desktop_questions_refresh"
   }
 
   enum CodingKeys: String, CodingKey {
@@ -554,6 +570,9 @@ enum RemoteCommand: Codable, Sendable {
     case requestId, response, cancelled, declined
     // requestResend payload — the inclusive wire-frame seq range to replay.
     case fromSeq, toSeq
+    // Guided Questions payloads: a nested revisioned patch or action object
+    // (see QuestionsModels.swift). `tabId` is shared above.
+    case patch, action
     case title, branchNames
   }
 

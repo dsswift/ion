@@ -80,6 +80,7 @@
 		A1B2C3D4E5F600010004AB01 /* WorktreeWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010003AB01 /* WorktreeWireTests.swift */; };
 		A1B2C3D4E5F600010004AB02 /* WorktreeWireCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010003AB02 /* WorktreeWireCommandTests.swift */; };
 		F3B1C2D3E4F5061728394A01 /* BenchNavigationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3B1C2D3E4F5061728394A02 /* BenchNavigationTests.swift */; };
+		QUESTNS990000000000BF01 /* QuestionsWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QUESTNS990000000000FR01 /* QuestionsWireTests.swift */; };
 		F3B1C2D3E4F5061728394F71 /* BenchEphemeralLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3B1C2D3E4F5061728394F72 /* BenchEphemeralLifecycleTests.swift */; };
 		F3B1C2D3E4F5061728394B01 /* WorktreeRowSelectConversationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3B1C2D3E4F5061728394B02 /* WorktreeRowSelectConversationTests.swift */; };
 		A1B2C3D4E5F600010004AB77 /* WorktreeOpResultWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010003AB77 /* WorktreeOpResultWireTests.swift */; };
@@ -173,6 +174,8 @@
 		A1B2C3D4E5F60001000204FE /* SessionViewModel+ConversationLoadGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000205FE /* SessionViewModel+ConversationLoadGate.swift */; };
 		A1B2C3D4E5F6000100049A03 /* SessionViewModel+WorktreeCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A03 /* SessionViewModel+WorktreeCommands.swift */; };
 		A1B2C3D4E5F6000100049A04 /* SessionViewModel+WorktreeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A04 /* SessionViewModel+WorktreeState.swift */; };
+		QUESTNS040000000000BF01 /* SessionViewModel+Questions.swift in Sources */ = {isa = PBXBuildFile; fileRef = QUESTNS040000000000FR01 /* SessionViewModel+Questions.swift */; };
+		QUESTNS030000000000BF01 /* QuestionsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = QUESTNS030000000000FR01 /* QuestionsStore.swift */; };
 		A1B2C3D4E5F600010002049A /* SessionViewModel+GitCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */; };
 		A1B2C3D4E5F600010002069A /* SessionViewModel+FsCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010002079A /* SessionViewModel+FsCommands.swift */; };
 		A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */; };
@@ -263,8 +266,10 @@
 		TYPEKEY00000000000000003A /* NormalizedEventTypeKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TYPEKEY00000000000000004A /* NormalizedEventTypeKeyTests.swift */; };
 		A1B2C3D4E5F60001000301AA /* GitTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000300AA /* GitTypes.swift */; };
 		A1B2C3D4E5F6000100049A01 /* WorktreeTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A01 /* WorktreeTypes.swift */; };
+		QUESTNS010000000000BF01 /* QuestionsModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = QUESTNS010000000000FR01 /* QuestionsModels.swift */; };
 		C0DE57A6E00000000000A001 /* WorkStage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE57A6E00000000000F001 /* WorkStage.swift */; };
 		A1B2C3D4E5F6000100049A02 /* NormalizedEvent+Worktree.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A02 /* NormalizedEvent+Worktree.swift */; };
+		QUESTNS020000000000BF01 /* NormalizedEvent+Questions.swift in Sources */ = {isa = PBXBuildFile; fileRef = QUESTNS020000000000FR01 /* NormalizedEvent+Questions.swift */; };
 		A1B2C3D4E5F60001000303AA /* NormalizedEvent+Git.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000302AA /* NormalizedEvent+Git.swift */; };
 		A1B2C3D4E5F6000100049A06 /* WorktreeRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A06 /* WorktreeRowView.swift */; };
 		A1B2C3D4E5F6000100049C01 /* WorktreeCloseWarning.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039C01 /* WorktreeCloseWarning.swift */; };
@@ -313,6 +318,7 @@
 		A1B2C3D4E5F60001001002AA /* PeerStatusPoller.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001003AA /* PeerStatusPoller.swift */; };
 		A1B2C3D4E5F60001001004AA /* DesktopPickerMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001005AA /* DesktopPickerMenu.swift */; };
 		A1B2C3D4E5F60001001006AA /* DiagnosticLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001007AA /* DiagnosticLog.swift */; };
+		IMGCOMP0000000000000BF01 /* ImageCompression.swift in Sources */ = {isa = PBXBuildFile; fileRef = IMGCOMP0000000000000FR01 /* ImageCompression.swift */; };
 		A1B2C3D4E5F60001001008AA /* DiagnosticLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001009AA /* DiagnosticLogView.swift */; };
 		A1B2C3D4E5F60001001010AA /* DiagnosticLog+Events.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001011AA /* DiagnosticLog+Events.swift */; };
 		NAVDESTVAL0000000000001 /* NavigationDestinationValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = NAVDESTVAL0000000000002 /* NavigationDestinationValidator.swift */; };
@@ -406,6 +412,11 @@
 		A1B2C3D4E5F60001009B01AA /* TabListNewTabSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009B00AA /* TabListNewTabSheet.swift */; };
 		A1B2C3D4E5F60001009C01AA /* TabListGroupHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009C00AA /* TabListGroupHeader.swift */; };
 		TABSTATUSROLLUP0000001 /* TabStatusRollup.swift in Sources */ = {isa = PBXBuildFile; fileRef = TABSTATUSROLLUP0000002 /* TabStatusRollup.swift */; };
+		QUESTNS070000000000BF01 /* QuestionsWizardQuestionRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = QUESTNS070000000000FR01 /* QuestionsWizardQuestionRow.swift */; };
+		QUESTNS080000000000BF01 /* QuestionAttachmentRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = QUESTNS080000000000FR01 /* QuestionAttachmentRow.swift */; };
+		STRUCTANS00000000000BF01 /* StructuredAnswerFrame.swift in Sources */ = {isa = PBXBuildFile; fileRef = STRUCTANS00000000000FR01 /* StructuredAnswerFrame.swift */; };
+		QUESTNS060000000000BF01 /* QuestionsWizardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = QUESTNS060000000000FR01 /* QuestionsWizardView.swift */; };
+		QUESTNS050000000000BF01 /* QuestionsCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = QUESTNS050000000000FR01 /* QuestionsCardView.swift */; };
 		A1B2C3D4E5F60001009D01AA /* SafeDecodable.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009D00AA /* SafeDecodable.swift */; };
 		A1B2C3D4E5F60001009E01AA /* TabRowContextMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009E00AA /* TabRowContextMenu.swift */; };
 		A1B2C3D4E5F60001009F01AA /* NormalizedEvent+Resource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009F00AA /* NormalizedEvent+Resource.swift */; };
@@ -626,6 +637,7 @@
 		A1B2C3D4E5F600010003AB01 /* WorktreeWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeWireTests.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010003AB02 /* WorktreeWireCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeWireCommandTests.swift"; sourceTree = "<group>"; };
 		F3B1C2D3E4F5061728394A02 /* BenchNavigationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchNavigationTests.swift; sourceTree = "<group>"; };
+		QUESTNS990000000000FR01 /* QuestionsWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionsWireTests.swift; sourceTree = "<group>"; };
 		F3B1C2D3E4F5061728394F72 /* BenchEphemeralLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchEphemeralLifecycleTests.swift; sourceTree = "<group>"; };
 		F3B1C2D3E4F5061728394B02 /* WorktreeRowSelectConversationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeRowSelectConversationTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010003AB77 /* WorktreeOpResultWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeOpResultWireTests.swift"; sourceTree = "<group>"; };
@@ -722,6 +734,8 @@
 		A1B2C3D4E5F60001000205FE /* SessionViewModel+ConversationLoadGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ConversationLoadGate.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100039A03 /* SessionViewModel+WorktreeCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+WorktreeCommands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100039A04 /* SessionViewModel+WorktreeState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+WorktreeState.swift"; sourceTree = "<group>"; };
+		QUESTNS040000000000FR01 /* SessionViewModel+Questions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Questions.swift"; sourceTree = "<group>"; };
+		QUESTNS030000000000FR01 /* QuestionsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "QuestionsStore.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+GitCommands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010002079A /* SessionViewModel+FsCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+FsCommands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EventHandlers.swift"; sourceTree = "<group>"; };
@@ -812,8 +826,10 @@
 		TYPEKEY00000000000000004A /* NormalizedEventTypeKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventTypeKeyTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000300AA /* GitTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitTypes.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100039A01 /* WorktreeTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeTypes.swift"; sourceTree = "<group>"; };
+		QUESTNS010000000000FR01 /* QuestionsModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "QuestionsModels.swift"; sourceTree = "<group>"; };
 		C0DE57A6E00000000000F001 /* WorkStage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorkStage.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100039A02 /* NormalizedEvent+Worktree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Worktree.swift"; sourceTree = "<group>"; };
+		QUESTNS020000000000FR01 /* NormalizedEvent+Questions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Questions.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000302AA /* NormalizedEvent+Git.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Git.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100039A05 /* WorktreeListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeListView.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100039A06 /* WorktreeRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeRowView.swift"; sourceTree = "<group>"; };
@@ -853,6 +869,7 @@
 		A1B2C3D4E5F60001001003AA /* PeerStatusPoller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeerStatusPoller.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001005AA /* DesktopPickerMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPickerMenu.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001007AA /* DiagnosticLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLog.swift; sourceTree = "<group>"; };
+		IMGCOMP0000000000000FR01 /* ImageCompression.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCompression.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001009AA /* DiagnosticLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLogView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001011AA /* DiagnosticLog+Events.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DiagnosticLog+Events.swift"; sourceTree = "<group>"; };
 		NAVDESTVAL0000000000002 /* NavigationDestinationValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationDestinationValidator.swift; sourceTree = "<group>"; };
@@ -946,6 +963,11 @@
 		A1B2C3D4E5F60001009B00AA /* TabListNewTabSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabListNewTabSheet.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001009C00AA /* TabListGroupHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabListGroupHeader.swift; sourceTree = "<group>"; };
 		TABSTATUSROLLUP0000002 /* TabStatusRollup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabStatusRollup.swift; sourceTree = "<group>"; };
+		QUESTNS070000000000FR01 /* QuestionsWizardQuestionRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "QuestionsWizardQuestionRow.swift"; sourceTree = "<group>"; };
+		QUESTNS080000000000FR01 /* QuestionAttachmentRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "QuestionAttachmentRow.swift"; sourceTree = "<group>"; };
+		STRUCTANS00000000000FR01 /* StructuredAnswerFrame.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "StructuredAnswerFrame.swift"; sourceTree = "<group>"; };
+		QUESTNS060000000000FR01 /* QuestionsWizardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "QuestionsWizardView.swift"; sourceTree = "<group>"; };
+		QUESTNS050000000000FR01 /* QuestionsCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "QuestionsCardView.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001009D00AA /* SafeDecodable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafeDecodable.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001009E00AA /* TabRowContextMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabRowContextMenu.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001009F00AA /* NormalizedEvent+Resource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Resource.swift"; sourceTree = "<group>"; };
@@ -1168,9 +1190,11 @@
 				CTXBDPAY0000000000002 /* ContextBreakdownPayload.swift */,
 				A1B2C3D4E5F60001D70007AA /* DesktopSettingsModel.swift */,
 				A1B2C3D4E5F6000100039A01 /* WorktreeTypes.swift */,
+				QUESTNS010000000000FR01 /* QuestionsModels.swift */,
 				WTPROJIDENT000000000002 /* WorktreeProjectIdentity.swift */,
 				C0DE57A6E00000000000F001 /* WorkStage.swift */,
 				A1B2C3D4E5F6000100039A02 /* NormalizedEvent+Worktree.swift */,
+				QUESTNS020000000000FR01 /* NormalizedEvent+Questions.swift */,
 				A1B2C3D4E5F60001000302AA /* NormalizedEvent+Git.swift */,
 				A1B2C3D4E5F60001000402AA /* NormalizedEvent+Files.swift */,
 				A1B2C3D4E5F60001009F00AA /* NormalizedEvent+Resource.swift */,
@@ -1276,6 +1300,11 @@
 				A1B2C3D4E5F60001009B00AA /* TabListNewTabSheet.swift */,
 				A1B2C3D4E5F60001009C00AA /* TabListGroupHeader.swift */,
 				TABSTATUSROLLUP0000002 /* TabStatusRollup.swift */,
+				QUESTNS070000000000FR01 /* QuestionsWizardQuestionRow.swift */,
+				QUESTNS080000000000FR01 /* QuestionAttachmentRow.swift */,
+				STRUCTANS00000000000FR01 /* StructuredAnswerFrame.swift */,
+				QUESTNS060000000000FR01 /* QuestionsWizardView.swift */,
+				QUESTNS050000000000FR01 /* QuestionsCardView.swift */,
 				A1B2C3D4E5F60001009E00AA /* TabRowContextMenu.swift */,
 				A1B2C3D4E5F600010000FDAA /* TabRowView.swift */,
 				A1B2C3D4E5F60001004010AA /* ConversationTerminalView.swift */,
@@ -1408,6 +1437,8 @@
 				A1B2C3D4E5F60001000205FE /* SessionViewModel+ConversationLoadGate.swift */,
 				A1B2C3D4E5F6000100039A03 /* SessionViewModel+WorktreeCommands.swift */,
 				A1B2C3D4E5F6000100039A04 /* SessionViewModel+WorktreeState.swift */,
+				QUESTNS040000000000FR01 /* SessionViewModel+Questions.swift */,
+				QUESTNS030000000000FR01 /* QuestionsStore.swift */,
 				A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */,
 				A1B2C3D4E5F600010002079A /* SessionViewModel+FsCommands.swift */,
 				B2C3D4E5F600BB991010E000AA /* SessionViewModel+EngineCommands.swift */,
@@ -1583,6 +1614,7 @@
 				A1B2C3D4E5F600010003AB01 /* WorktreeWireTests.swift */,
 				A1B2C3D4E5F600010003AB02 /* WorktreeWireCommandTests.swift */,
 				F3B1C2D3E4F5061728394A02 /* BenchNavigationTests.swift */,
+				QUESTNS990000000000FR01 /* QuestionsWireTests.swift */,
 				F3B1C2D3E4F5061728394F72 /* BenchEphemeralLifecycleTests.swift */,
 				F3B1C2D3E4F5061728394B02 /* WorktreeRowSelectConversationTests.swift */,
 				A1B2C3D4E5F600010003AB77 /* WorktreeOpResultWireTests.swift */,
@@ -1726,6 +1758,7 @@
 				INJPOLICY00000000000002 /* InjectionPolicy.swift */,
 				A1B2C3D4E5F60001001001AA /* LayoutCache.swift */,
 				A1B2C3D4E5F60001001007AA /* DiagnosticLog.swift */,
+				IMGCOMP0000000000000FR01 /* ImageCompression.swift */,
 				A1B2C3D4E5F60001007002AA /* CrashReporter.swift */,
 				MTRKIT00000000000000002 /* MetricKitCrashObserver.swift */,
 				A1B2C3D4E5F60001001011AA /* DiagnosticLog+Events.swift */,
@@ -1959,6 +1992,11 @@
 				A1B2C3D4E5F60001009B01AA /* TabListNewTabSheet.swift in Sources */,
 				A1B2C3D4E5F60001009C01AA /* TabListGroupHeader.swift in Sources */,
 				TABSTATUSROLLUP0000001 /* TabStatusRollup.swift in Sources */,
+				QUESTNS070000000000BF01 /* QuestionsWizardQuestionRow.swift in Sources */,
+				QUESTNS080000000000BF01 /* QuestionAttachmentRow.swift in Sources */,
+				STRUCTANS00000000000BF01 /* StructuredAnswerFrame.swift in Sources */,
+				QUESTNS060000000000BF01 /* QuestionsWizardView.swift in Sources */,
+				QUESTNS050000000000BF01 /* QuestionsCardView.swift in Sources */,
 				A1B2C3D4E5F60001009E01AA /* TabRowContextMenu.swift in Sources */,
 				A1B2C3D4E5F600010000FCAA /* TabRowView.swift in Sources */,
 				A1B2C3D4E5F60001004011AA /* ConversationTerminalView.swift in Sources */,
@@ -1999,6 +2037,8 @@
 				A1B2C3D4E5F60001000204FE /* SessionViewModel+ConversationLoadGate.swift in Sources */,
 				A1B2C3D4E5F6000100049A03 /* SessionViewModel+WorktreeCommands.swift in Sources */,
 				A1B2C3D4E5F6000100049A04 /* SessionViewModel+WorktreeState.swift in Sources */,
+				QUESTNS040000000000BF01 /* SessionViewModel+Questions.swift in Sources */,
+				QUESTNS030000000000BF01 /* QuestionsStore.swift in Sources */,
 				A1B2C3D4E5F600010002049A /* SessionViewModel+GitCommands.swift in Sources */,
 				A1B2C3D4E5F600010002069A /* SessionViewModel+FsCommands.swift in Sources */,
 				B2C3D4E5F600BB991010E001AA /* SessionViewModel+EngineCommands.swift in Sources */,
@@ -2069,8 +2109,10 @@
 				A1B2C3D4E5F60001DA0006AA /* DesktopSettingsListRecordEditor.swift in Sources */,
 				A1B2C3D4E5F60001DB0006AA /* DesktopSettingsPrimitiveListEditor.swift in Sources */,
 				A1B2C3D4E5F6000100049A01 /* WorktreeTypes.swift in Sources */,
+				QUESTNS010000000000BF01 /* QuestionsModels.swift in Sources */,
 				C0DE57A6E00000000000A001 /* WorkStage.swift in Sources */,
 				A1B2C3D4E5F6000100049A02 /* NormalizedEvent+Worktree.swift in Sources */,
+				QUESTNS020000000000BF01 /* NormalizedEvent+Questions.swift in Sources */,
 				A1B2C3D4E5F60001000303AA /* NormalizedEvent+Git.swift in Sources */,
 				A1B2C3D4E5F60001000301AA /* GitTypes.swift in Sources */,
 				GITBRANCHRESP00000002 /* GitBranchesResponse.swift in Sources */,
@@ -2159,6 +2201,7 @@
 				A1B2C3D4E5F60001009103AA /* DeviceCustomizationSheet.swift in Sources */,
 				A1B2C3D4E5F60001001004AA /* DesktopPickerMenu.swift in Sources */,
 				A1B2C3D4E5F60001001006AA /* DiagnosticLog.swift in Sources */,
+				IMGCOMP0000000000000BF01 /* ImageCompression.swift in Sources */,
 				A1B2C3D4E5F60001007001AA /* CrashReporter.swift in Sources */,
 				MTRKIT00000000000000001 /* MetricKitCrashObserver.swift in Sources */,
 				A1B2C3D4E5F60001001010AA /* DiagnosticLog+Events.swift in Sources */,
@@ -2365,6 +2408,7 @@
 				A1B2C3D4E5F600010004AB01 /* WorktreeWireTests.swift in Sources */,
 				A1B2C3D4E5F600010004AB02 /* WorktreeWireCommandTests.swift in Sources */,
 				F3B1C2D3E4F5061728394A01 /* BenchNavigationTests.swift in Sources */,
+				QUESTNS990000000000BF01 /* QuestionsWireTests.swift in Sources */,
 				F3B1C2D3E4F5061728394F71 /* BenchEphemeralLifecycleTests.swift in Sources */,
 				F3B1C2D3E4F5061728394B01 /* WorktreeRowSelectConversationTests.swift in Sources */,
 				A1B2C3D4E5F600010004AB77 /* WorktreeOpResultWireTests.swift in Sources */,

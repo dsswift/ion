@@ -489,6 +489,10 @@ enum RemoteEvent: Sendable {
     /// Per-repo worktree + bench state. The desktop computes every derived
     /// fact (staleness, drift, safety) so iOS renders main-process truth.
     case worktreeState(states: [RemoteWorktreeState])
+    /// Authoritative guided-questions state (complete replacement) for one
+    /// conversation tab. iOS replaces its QuestionsStore entry wholesale;
+    /// first paint / seq-gap recovery reads RemoteTabState.questions instead.
+    case questionsState(tabId: String, state: QuestionsStateSnapshot)
     /// Outcome of a worktree/bench verb, so a toast can attribute the result
     /// and distinguish a fixable refusal from a hard failure.
     case worktreeOpResult(result: RemoteWorktreeOpResult)
@@ -681,6 +685,7 @@ enum RemoteEvent: Sendable {
         case desktopThemeManifest = "desktop_theme_manifest"
         case desktopThemeAssetContent = "desktop_theme_asset_content"
         case worktreeState = "desktop_worktree_state"
+        case questionsState = "desktop_questions_state"
         case worktreeOpResult = "desktop_worktree_op_result"
         case worktreePipeline = "desktop_worktree_pipeline"
         case gitChangesResponse = "desktop_git_changes_response"
@@ -731,6 +736,8 @@ enum RemoteEvent: Sendable {
         // `summary` carries sync_all's pre-worded per-worktree counts; `retired`
         // carries retire_all's count of worktrees actually retired.
         case states, operation, refusedDirty, hasConflicts, warning, summary, retired, recoveryRef, prunedBenchPaths
+        // desktop_questions_state payload: the full synchronized snapshot.
+        case state
         // desktop_worktree_pipeline payload keys. `repoPath`/`sourceBranch`
         // identify the pipeline; `phase` nil means dismissed; `queue` /
         // `current` / `needsManual` / `resolvedByAi` mirror

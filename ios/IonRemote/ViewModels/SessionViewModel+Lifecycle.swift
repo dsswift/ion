@@ -516,6 +516,9 @@ extension SessionViewModel {
         // bleed into the new pairing. Persistence files are deleted so the
         // next launch also starts clean for this device.
         resourceStore.wipe()
+        // Guided Questions are pairing-scoped: a different desktop owns a
+        // different coordinator, so its workflows must not survive here.
+        questionsStore.clearAll()
     }
 
     // MARK: - Layout Cache

@@ -470,6 +470,10 @@ extension SessionViewModel {
         case .worktreeOpResult(let result):
             handleWorktreeOpResult(result)
 
+        // Guided Questions — handler in SessionViewModel+Questions.swift.
+        case .questionsState(let tabId, let state):
+            handleQuestionsState(tabId: tabId, state: state)
+
         // Git events
         case .gitChangesResponse(let directory, let response):
             handleGitChangesResponse(directory: directory, response: response)
