@@ -827,7 +827,7 @@ Snapshot-replace semantics. Sent when a client first subscribes to a resource ki
 | `type`          | `"engine_resource_snapshot"` | Event type                             |
 | `resourceKind`  | string            | The subscribed resource kind                        |
 | `resourceSubId` | string            | Subscription ID (from `resource_subscribe` response)|
-| `resourceItems` | ResourceItem[]    | Complete current collection for this kind           |
+| `resourceItems` | ResourceItem[]    | Complete current collection for this kind. Each item carries its engine-assigned `producer`; its identity is `(resourceKind, producer, id)`. |
 
 #### engine_resource_delta
 
@@ -845,7 +845,7 @@ Incremental resource update. Sent after the initial snapshot whenever an item is
 | Field  | Type         | Description                                              |
 |--------|--------------|----------------------------------------------------------|
 | `op`   | string       | One of `"create"`, `"update"`, `"delete"`, `"mark_read"` |
-| `item` | ResourceItem | The affected item                                        |
+| `item` | ResourceItem | The affected item, including engine-assigned `producer` attribution |
 
 #### engine_notification
 

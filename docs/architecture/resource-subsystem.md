@@ -4,11 +4,13 @@ The engine provides a generic resource subsystem for durable structured content.
 
 ## Core Concepts
 
+**Producer identity.** A Resource kind describes type, not ownership. Multiple extensions can produce the same kind. The engine assigns each extension's resolved identity to `item.producer`; extensions cannot set or spoof it. A Resource item identity is `(kind, producer, id)`. Producerless client-published items retain the legacy `(kind, id)` identity.
+
 **Producer-owned persistence.** The engine stores nothing. Extensions that declare resource kinds are responsible for persisting their data. When a client subscribes (or resubscribes after disconnect), the engine routes a query to the producing extension, which answers from its own store.
 
 **Scoping.** Resources are either conversation-scoped (belong to a specific session) or workspace-scoped (global, belong to no conversation). The `conversationId` field determines the scope. Scheduled jobs and webhooks produce global resources. Interactive tool calls produce conversation-scoped resources.
 
-**Delta fan-out.** The broker broadcasts incremental deltas (create, update, delete, mark_read) to all matching subscribers. Subscribers filter by kind and optionally by conversationId.
+**Delta fan-out.** The broker broadcasts incremental deltas (create, update, delete, mark_read) to all matching subscribers. Subscribers filter by kind and optionally by producer or conversationId. Session brokers own producer query handlers. The Manager global broker is producer-free and receives already-attributed live deltas through `PublishDirect`. A workspace-scoped `resource_get` resolves its producer through the active session brokers because the global fan-out broker stores no query handlers.
 
 **Wildcard subscription.** A client may subscribe with the sentinel kind `"*"` to receive every kind on a broker — every kind with a producer now, plus every kind registered or published later — without enumerating kinds. Each snapshot and delta still carries the real item kind (never `"*"`), so the consumer buckets by the true kind. This is the primitive that lets consumers drop hardcoded kind lists, which are exactly the baked-in opinion this subsystem is designed to avoid. Per-session wildcard aggregates one snapshot per producing kind then streams all future deltas; global wildcard (`resourceGlobal: true`) streams deltas without an initial producer query. See [`resource_subscribe`](../protocol/client-commands.md#wildcard-subscription) for the wire contract.
 

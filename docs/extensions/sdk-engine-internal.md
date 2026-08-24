@@ -574,8 +574,8 @@ The Go SDK context exposes methods for the resource subsystem, push notification
 
 **Resource subsystem:**
 
-- **`ctx.Resources.Declare(kind string)`** -- declare a resource collection. Returns a handle with a `Publish(op, item)` method that routes to the session or global broker depending on `item.ConversationID`.
-- **`ctx.Resources.OnQuery(kind string, handler func() ([]ResourceItem, error))`** -- register a query handler called when a client subscribes to provide the initial snapshot.
+- **`ctx.Resources.Declare(kind string)`** -- declare a resource collection. Multiple extension hosts can declare one kind. The engine stamps each delivered item with the host identity as `Producer`; an item identity is `(kind, producer, id)`.
+- **`ctx.Resources.OnQuery(kind string, handler func(filter ResourceFilter) ([]ResourceItem, error))`** -- register a query handler called when a client subscribes. The filter can select one producer or item.
 
 **Notifications:**
 

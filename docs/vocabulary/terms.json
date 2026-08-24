@@ -1717,6 +1717,34 @@
       ]
     },
     {
+      "id": "schedule-catch-up-group",
+      "term": "Schedule catch-up group",
+      "definition": "A named set of daily or weekly Schedules whose latest catch-up policy selects only the newest eligible missed slot.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "grouped catch-up"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type ScheduleJob",
+          "path": "engine/internal/extension/sdk_schedules.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type ScheduleOpts",
+          "path": "sdk/go/schedule.go"
+        }
+      ]
+    },
+    {
       "id": "server-message",
       "term": "Server message",
       "definition": "One outbound NDJSON message from the engine to a consumer. It is either a broadcast event envelope or a result for a request that carried an identifier.",

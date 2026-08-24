@@ -697,7 +697,7 @@ Subscribe to resource updates for a specific kind. The engine streams a snapshot
 | `cmd`            | `"resource_subscribe"`  | yes      | Command discriminator                                                        |
 | `key`            | string                  | yes      | Session key                                                                  |
 | `resourceKind`   | string                  | yes      | Resource kind to subscribe to (e.g. `"tasks"`, `"notifications"`). The sentinel `"*"` subscribes to every kind on the target broker — see [Wildcard subscription](#wildcard-subscription) below. |
-| `resourceFilter` | ResourceFilter object   | no       | Optional filter applied to the subscription                                  |
+| `resourceFilter` | ResourceFilter object   | no       | Optional filter applied to the subscription. `producer`, when set, selects one extension producer; omitted receives every producer of the kind. |
 | `resourceGlobal` | boolean                 | no       | When `true`, subscribes to the Manager-level global broker instead of the per-session broker. Default `false`. |
 | `requestId`      | string                  | no       | Correlates with ServerResult                                                 |
 
@@ -751,7 +751,8 @@ Publish a resource operation from the client. Routes to the global broker when `
 | `key`          | string                  | yes      | Session key                                                                      |
 | `resourceKind` | string                  | no       | Resource kind (informational; the kind is carried on `resourceItem`)             |
 | `resourceOp`   | string                  | yes      | Operation: one of `"create"`, `"update"`, `"delete"`, `"mark_read"`              |
-| `resourceItem` | ResourceItem object     | no       | The resource item to publish                                                     |
+| `resourceItem` | ResourceItem object     | no       | The resource item to publish. Its nested `producer` value is ignored. |
+| `resourceProducer` | string              | no       | Trusted producer selector for a client action on an existing producer-owned item. |
 | `requestId`    | string                  | no       | Correlates with ServerResult                                                     |
 
 ```json
@@ -774,7 +775,8 @@ This is the lazy-fetch counterpart to `resource_subscribe`. It allows clients to
 | `key`            | string                  | no       | Session key for per-session broker; omit or use `""` with `resourceGlobal` |
 | `resourceKind`   | string                  | yes      | Kind of the item to fetch                                                   |
 | `resourceId`     | string                  | yes      | ID of the item to fetch                                                     |
-| `resourceGlobal` | boolean                 | no       | `true` to query the global (workspace-level) broker instead of per-session  |
+| `resourceProducer` | string                | no       | Producer selector. Required when more than one producer has the same kind and ID. |
+| `resourceGlobal` | boolean                 | no       | `true` to query workspace scope through the active session brokers that own producer query handlers; otherwise query `key`'s session broker |
 | `requestId`      | string                  | no       | Correlates with ServerResult                                                |
 
 ```json

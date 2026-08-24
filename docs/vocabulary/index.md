@@ -101,6 +101,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Relay hub](#term-relay-hub)
 - [Resource](#term-resource)
 - [Schedule](#term-schedule)
+- [Schedule catch-up group](#term-schedule-catch-up-group)
 - [Server message](#term-server-message)
 - [Session](#term-session)
 - [Slash command](#term-slash-command)
@@ -413,6 +414,20 @@ A timed trigger that the engine persists and fires. The engine owns the timing. 
 - **Implementations:**
   - `engine` / `code` / `go`: `type Scheduler struct` in `engine/internal/scheduling/scheduler.go`
   - `sdk` / `code` / `typescript`: `export const scheduleApi` in `engine/extensions/sdk/ion-sdk/runtime-async.ts`
+
+#### Schedule catch-up group {#term-schedule-catch-up-group}
+
+A named set of daily or weekly Schedules whose latest catch-up policy selects only the newest eligible missed slot.
+
+- **ID:** `schedule-catch-up-group`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `grouped catch-up`
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type ScheduleJob` in `engine/internal/extension/sdk_schedules.go`
+  - `sdk` / `code` / `go`: `type ScheduleOpts` in `sdk/go/schedule.go`
 
 #### Telemetry {#term-telemetry}
 
@@ -1426,6 +1441,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `forwarding` → [Message forwarding](#term-forwarding)
 - Alias: `git worktree` → [Worktree](#term-worktree)
 - Alias: `glass` → [Overlay](#term-overlay)
+- Alias: `grouped catch-up` → [Schedule catch-up group](#term-schedule-catch-up-group)
 - Alias: `harness layer` → [Harness](#term-harness)
 - Alias: `hub` → [Relay hub](#term-relay-hub)
 - Alias: `iOS client` → [iOS](#term-ios-client)
