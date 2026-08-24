@@ -3,28 +3,21 @@
 #
 # build-pkg.sh — wrap the built Ion.app into a macOS installer .pkg for MDM
 # (Intune) deployment. This is the last Orion Phase 1 deployment artifact
-# (D-003): the dmg/zip targets electron-builder produces are user-download
-# installers; MDM push channels require a flat .pkg with a component payload.
+# (D-003): electron-builder produces the release zip for auto-update and this
+# package for every human or managed install.
 #
 # What it does:
-#   1. Locates the built Ion.app (electron-builder writes it under release/mac*
-#      for the --dir / dmg targets).
+#   1. Locates the built Ion.app under electron-builder's release/mac* output.
 #   2. Reads the version from package.json (single source of truth).
 #   3. Runs pkgbuild to produce release/Ion-<version>.pkg that installs the app
 #      to /Applications. pkgbuild's component-install semantics REPLACE any
 #      existing /Applications/Ion.app, which satisfies feature 0009 Scenario 1
 #      (force-overwrite on reinstall) for free.
-#   4. Embeds pkg-scripts/ so the package carries a preinstall that quits a
-#      running Ion before overwriting its bundle. Replacing a live app bundle
-#      corrupts the running process and fails the install; the preinstall sends
-#      SIGUSR1 (the app's graceful-drain signal), waits, then force-quits. It
-#      always exits 0, so a not-running app never blocks the install.
-#
-# Note: the .dmg target cannot do this. A DMG is a drag-to-Applications disk
-# image with no install-time hook (electron-builder's dmg options expose no
-# script key), so Finder performs the copy and no project code runs. Users
-# updating in place should use the in-app updater, which quits before swapping
-# the bundle (src/main/updater.ts).
+#   4. Embeds pkg-scripts/ so the package refuses to overwrite a running
+#      Ion. The macOS Installer shows its standard result; the script's log
+#      tells the operator to quit Ion and retry. `make desktop` uses a detached
+#      coordinator that waits for the normal Ion drain, then opens this package.
+#      The package is the only mechanism that writes /Applications/Ion.app.
 #
 # Prerequisites: a built Ion.app. Produce one with:
 #     cd desktop && npm run dist            # builds release/mac*/Ion.app
@@ -88,9 +81,7 @@ OUT_PKG="${RELEASE_DIR}/Ion-${VERSION}.pkg"
 # --component packages the app as a single component payload.
 # --install-location /Applications makes the installer place (and replace)
 # Ion.app there. --identifier + --version tag the package for MDM tracking.
-# --scripts embeds pkg-scripts/, whose preinstall quits a running Ion before the
-# payload is written (installing over a live bundle crashes or fails). The
-# script exits 0 when Ion is not running, so it never blocks an install.
+# --scripts embeds the safe live-Ion preflight.
 pkgbuild \
   --component "${APP_PATH}" \
   --install-location "/Applications" \

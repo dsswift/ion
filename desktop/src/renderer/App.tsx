@@ -36,7 +36,7 @@ import { resolveOverlayPanelPlacement, resolveViewportContentWidth } from './res
 import { useSessionStore, editorDirForTab } from './stores/sessionStore'
 import { useColors, spacing } from './theme'
 import { usePreferencesStore } from './preferences'
-import { useUpdateStore } from './stores/update-store'
+import { useUpdateEvents } from './hooks/useUpdateEvents'
 import { setupModelSync } from './stores/model-store'
 import { initActiveTabNotifier } from './lib/active-tab-notifier'
 import { initProjectRegistryNotifier } from './lib/project-registry-notifier'
@@ -105,12 +105,7 @@ export default function App() {
     })
   }, [])
 
-  // Listen for auto-update download notifications from the main process
-  useEffect(() => {
-    return window.ion.onUpdateDownloaded((info) => {
-      useUpdateStore.getState().setAvailable(info.version)
-    })
-  }, [])
+  useUpdateEvents()
 
   // Set up background model sync (initial fetch, periodic refresh, IPC listener)
   useEffect(() => {

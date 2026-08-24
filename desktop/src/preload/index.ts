@@ -400,6 +400,7 @@ const api: IonAPI = {
 
   // ─── Auto-update ───
   installUpdate: () => ipcRenderer.send(IPC.INSTALL_UPDATE),
+  restartForUpdate: () => ipcRenderer.send(IPC.RESTART_FOR_UPDATE),
   onUpdateDownloaded: (callback) => {
     const handler = (
       _e: Electron.IpcRendererEvent,
@@ -407,6 +408,21 @@ const api: IonAPI = {
     ) => callback(info);
     ipcRenderer.on(IPC.UPDATE_DOWNLOADED, handler);
     return () => ipcRenderer.removeListener(IPC.UPDATE_DOWNLOADED, handler);
+  },
+  onUpdateProgress: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, info: { percent: number; status: string }) => callback(info);
+    ipcRenderer.on(IPC.UPDATE_PROGRESS, handler);
+    return () => ipcRenderer.removeListener(IPC.UPDATE_PROGRESS, handler);
+  },
+  onUpdateStaged: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, info: { workerPid: number }) => callback(info);
+    ipcRenderer.on(IPC.UPDATE_STAGED, handler);
+    return () => ipcRenderer.removeListener(IPC.UPDATE_STAGED, handler);
+  },
+  onUpdateError: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, info: { message: string }) => callback(info);
+    ipcRenderer.on(IPC.UPDATE_ERROR, handler);
+    return () => ipcRenderer.removeListener(IPC.UPDATE_ERROR, handler);
   },
 
   // ─── Renderer logging bridge ───

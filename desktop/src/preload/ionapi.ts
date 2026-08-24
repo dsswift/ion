@@ -530,7 +530,11 @@ export interface IonAPI extends StudioApi {
 
   // ─── Auto-update ───
   installUpdate(): void
+  restartForUpdate(): void
   onUpdateDownloaded(callback: (info: { version: string }) => void): () => void
+  onUpdateProgress(callback: (info: { percent: number; status: string }) => void): () => void
+  onUpdateStaged(callback: (info: { workerPid: number }) => void): () => void
+  onUpdateError(callback: (info: { message: string }) => void): () => void
 
   // ─── Renderer logging bridge ───
   /** Write a structured log line from renderer context. The main process

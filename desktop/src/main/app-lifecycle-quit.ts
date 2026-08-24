@@ -6,7 +6,7 @@
  * wrong is what made "Quit Desktop closes the window but keeps engine sessions
  * running" untrue for every open conversation.
  */
-import { app, globalShortcut } from 'electron'
+import { app, BrowserWindow, globalShortcut } from 'electron'
 import { rmSync } from 'fs'
 import { join } from 'path'
 import { log as _log, warn as _warn, error as _error, flushLogs } from './logger'
@@ -43,9 +43,34 @@ function removePidFile(): void {
  * Reversed, every `stop_session` lands on a dead socket and the daemon is killed
  * with sessions mid-teardown.
  */
+async function flushAllRendererTabs(): Promise<void> {
+  for (const win of BrowserWindow.getAllWindows()) {
+    try {
+      await win.webContents.executeJavaScript(
+        'window.__ionForceFlushTabs && window.__ionForceFlushTabs()',
+      )
+    } catch (err) {
+      warn('app_lifecycle: update tab flush skipped', { error: String(err) })
+    }
+  }
+}
+
+/**
+ * Quit immediately after an update worker has staged the replacement bundle.
+ *
+ * Restart is an explicit instruction. It stops sessions and the engine before
+ * exiting, and state.forceQuit bypasses the normal Quit Desktop/Quit All modal.
+ */
+export async function quitForUpdate(): Promise<void> {
+  log('update restart requested; stopping desktop and engine immediately')
+  await fullQuitTeardown(flushAllRendererTabs)
+}
+
 async function fullQuitTeardown(flushRendererTabs: () => Promise<void>): Promise<void> {
-  await flushRendererTabs()
+  // Set this first: no normal quit confirmation may interpose on an explicit
+  // update restart, even if a renderer flush needs time.
   state.forceQuit = true
+  await flushRendererTabs()
   terminalManager.destroyAll()
   sessionPlane.shutdown({ stopSessions: true })
   // Bootout the daemon so launchd does not restart it after we exit.
@@ -95,15 +120,7 @@ export function installQuitHandlers(flushRendererTabs: () => Promise<void>): voi
 
   process.on('SIGUSR1', () => {
     log('SIGUSR1 received, draining active work before quit')
-    const timeout = setTimeout(() => {
-      void (async () => {
-        log('Drain timeout (5min), force quitting')
-        await fullQuitTeardown(flushRendererTabs)
-      })()
-    }, 5 * 60 * 1000)
-
     sessionPlane.drain(() => bashProcesses.size > 0).then(async () => {
-      clearTimeout(timeout)
       log('All agents finished, quitting')
       await fullQuitTeardown(flushRendererTabs)
     }).catch((err) => error('app_lifecycle: drain-quit sequence failed', { error: String(err) }))

@@ -55,6 +55,7 @@ const KEY_RENAMES: ReadonlyArray<readonly [string, string]> = [
  */
 const DROPPED_KEYS: readonly string[] = [
   "atvAutoDrawer",
+  "studioWindowOpen",
   "studioBeta",
   "atvBeta",
   // Pin retired with the always-on-top machinery: the Studio window is a

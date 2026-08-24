@@ -41,7 +41,7 @@ export function broadcast(channel: string, ...args: unknown[]): void {
       maybeBeacon(event)
     }
   } else if (
-    (channel === 'ion:tab-status-change' || channel === 'ion:enriched-error' || channel === 'ion:settings-changed' || channel === 'ion:themes-changed' || channel === 'ion:engine-reconnected' || channel === IPC.DEEPLINK_CONFIRM_REQUEST || channel === IPC.DEEPLINK_CONFIRM_SETTLED) &&
+    (channel === 'ion:tab-status-change' || channel === 'ion:enriched-error' || channel === 'ion:settings-changed' || channel === 'ion:themes-changed' || channel === 'ion:engine-reconnected' || channel === IPC.DEEPLINK_CONFIRM_REQUEST || channel === IPC.DEEPLINK_CONFIRM_SETTLED || channel === IPC.UPDATE_DOWNLOADED || channel === IPC.UPDATE_PROGRESS || channel === IPC.UPDATE_STAGED || channel === IPC.UPDATE_ERROR) &&
     state.studioWindow &&
     !state.studioWindow.isDestroyed()
   ) {

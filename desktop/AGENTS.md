@@ -26,7 +26,7 @@ npm run doctor      # bash scripts/doctor.sh
 
 Don't kill the user's running dev server. If a restart is needed, tell the user.
 
-**Never run `make desktop`.** It replaces the running Ion.app binary and relaunches the desktop. The engine is a persistent launchd daemon (not a desktop subprocess), but on launch the desktop re-bootstraps it and force-restarts the daemon (`launchctl kickstart -k`) when the bundled engine binary or plist changed — so a `make desktop` that ships a new engine binary recycles the daemon and kills any active Ion session, including the one you are running in. Conversation state is often lost. The user runs `make desktop` manually. If the packaged app needs rebuilding, tell the user.
+**Never run `make desktop`.** It builds a local `.pkg`, asks the running desktop to drain active work, and opens macOS Installer. Installing and relaunching the new desktop can replace the bundled engine and restart the daemon, which ends the engine process hosting this conversation after its work drains. The user runs `make desktop` manually when ready. If a packaged build is needed, tell the user to run it.
 
 ## Layout
 

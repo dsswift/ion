@@ -353,6 +353,13 @@ export function ensureWindow(): void {
 }
 
 export function showWindow(source = 'unknown'): void {
+  // The Overlay renderer stays alive as the session-store owner in Studio
+  // mode, but its glass must never become visible there.
+  const plan = resolveSurfacePlan(readSettings(), enterprisePolicyCache.policy)
+  if (plan.activeUi !== 'overlay') {
+    log('showWindow refused — overlay is not the active UI', { source, active_ui: plan.activeUi })
+    return
+  }
   // An operator explicitly summoning the overlay re-arms crash recovery,
   // even after the automatic budget was exhausted by a crash loop.
   resetRendererCrashGuard('overlay')

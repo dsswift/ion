@@ -22,6 +22,7 @@ import { Tooltip } from "../components/git/Tooltip";
 import { ShortcutHint } from "../shortcuts/ShortcutHint";
 import { useRevealedShortcuts } from "../shortcuts/useShortcutHints";
 import { useStudioWindowChrome } from "./chrome/useStudioWindowChrome";
+import { UpdateButton } from "../components/UpdateButton";
 
 const STUDIO_BRAND = "Ion Studio";
 
@@ -161,6 +162,7 @@ export function StudioTitleBar({
         </span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+        <UpdateButton />
         <PaneToggle
           label="Toggle terminal"
           chord={revealed.get(TERMINAL_COMMAND)}

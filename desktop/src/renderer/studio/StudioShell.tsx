@@ -64,6 +64,8 @@ import { CommandPalette } from "../components/CommandPalette";
 import { DeepLinkConfirmDialog } from "../components/DeepLinkConfirmDialog";
 import { CloseTabConfirmDialog } from "../components/CloseTabConfirmDialog";
 import { SettingsDialog } from "../components/SettingsDialog";
+import { UpdateDialog } from "../components/UpdateDialog";
+import { useUpdateEvents } from "../hooks/useUpdateEvents";
 import type { PaletteEntry } from "../components/command-palette-rank";
 
 /** One-time mirror boot, before the first render reads the store. */
@@ -92,6 +94,7 @@ function stepConversation(delta: number): void {
 }
 
 export function StudioShell(): React.JSX.Element {
+  useUpdateEvents()
   bootMirror();
   const colors = useColors();
   // useEngineEvents is window-agnostic by construction: it registers the
@@ -552,6 +555,7 @@ export function StudioShell(): React.JSX.Element {
           onOpenChange={setPaletteOpen}
         />
         <DeepLinkConfirmDialog />
+        <UpdateDialog />
       </div>
     </PopoverLayerProvider>
   );

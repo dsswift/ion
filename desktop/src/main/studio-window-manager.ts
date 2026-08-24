@@ -135,24 +135,6 @@ function flushStudioBounds(win: BrowserWindow, reason: string): void {
 }
 
 /**
- * Persist whether the Studio window is open (one global flag, like studioBounds).
- * surface-launch reads it at startup so a Studio window left open at quit reopens —
- * unless the surface policy disabled the Studio window between restarts.
- */
-function persistStudioOpenState(open: boolean): void {
-  try {
-    const settings = readSettings();
-    settings.studioWindowOpen = open;
-    writeSettings(settings);
-    log("studio_window: open state persisted", { open });
-  } catch (err) {
-    _error("studio", "studio_window: open state persist failed", {
-      error: String(err),
-    });
-  }
-}
-
-/**
  * The Studio window is a NORMAL desktop window (single-UI exclusivity).
  *
  * The pin/always-on-top/level machinery that lived here was a relic of the
@@ -362,7 +344,6 @@ export function revealStudioWindow(source: string): void {
   win.focus();
   rearmOverlayClickThrough("studio revealed");
   notifyStudioWindowState(true);
-  persistStudioOpenState(true);
   log("studio_window: revealed", { source });
 }
 
@@ -521,7 +502,6 @@ export function openStudioWindow(source = "unknown", reveal = true): void {
       win.focus();
       rearmOverlayClickThrough("studio shown");
       notifyStudioWindowState(true);
-      persistStudioOpenState(true);
       log("studio_window: shown");
     }
   });
@@ -551,9 +531,6 @@ export function openStudioWindow(source = "unknown", reveal = true): void {
     applyStudioActivationPolicy(false);
     rearmOverlayClickThrough("studio closed");
     notifyStudioWindowState(false);
-    // User close clears the persisted open state; the quit path (forceQuit)
-    // keeps it, so a Studio window open at quit reopens on the next launch.
-    if (!state.forceQuit) persistStudioOpenState(false);
     log("studio_window: closed");
   });
 

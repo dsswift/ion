@@ -100,6 +100,8 @@ vi.mock('../terminal-manager-instance', () => ({
 // Resolves rather than returns: restartEngineDaemon shells out to launchctl
 // asynchronously so the tray click never blocks the main thread.
 const mockRestartEngineDaemon = vi.fn().mockResolvedValue(true)
+const mockSurfacePlan = vi.fn(() => ({ activeUi: 'overlay', overlayEnabled: true, studioEnabled: false }))
+vi.mock('../surface-launch', () => ({ resolveSurfacePlan: mockSurfacePlan }))
 vi.mock('../engine-bootstrap', () => ({
   restartEngineDaemon: mockRestartEngineDaemon,
 }))
@@ -115,6 +117,7 @@ vi.mock('../studio-window-manager', () => ({
 describe('window-manager createWindow()', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockSurfacePlan.mockReturnValue({ activeUi: 'overlay', overlayEnabled: true, studioEnabled: false })
   })
 
   it('calls setAlwaysOnTop with modal-panel, not screen-saver', async () => {
@@ -144,6 +147,13 @@ describe('window-manager createWindow()', () => {
     expect(enabledArg).toBe(true)
   })
 
+  it('refuses to show Overlay glass while Studio is the active UI', async () => {
+    mockSurfacePlan.mockReturnValueOnce({ activeUi: 'studio', overlayEnabled: false, studioEnabled: true })
+    const { showWindow } = await import('../window-manager')
+    showWindow('studio regression test')
+    expect(mockWindowInstance.show).not.toHaveBeenCalled()
+  })
+
   it('re-asserts the activation policy after setVisibleOnAllWorkspaces (accessory side-effect regression)', async () => {
     // visibleOnFullScreen flips the app to 'accessory' as a macOS/Electron
     // side effect. With the Studio window open ('regular' policy) that removed Ion
@@ -170,6 +180,7 @@ describe('window-manager createWindow()', () => {
 describe('window-manager createTray()', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockSurfacePlan.mockReturnValue({ activeUi: 'overlay', overlayEnabled: true, studioEnabled: false })
   })
 
   it('exposes a "Restart Engine" item that recycles the daemon (kickstart -k) without quitting', async () => {

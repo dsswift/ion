@@ -416,7 +416,11 @@ export const IPC = {
 
   // Auto-update
   INSTALL_UPDATE: "ion:install-update",
+  RESTART_FOR_UPDATE: "ion:restart-for-update",
   UPDATE_DOWNLOADED: "ion:update-downloaded",
+  UPDATE_PROGRESS: "ion:update-progress",
+  UPDATE_STAGED: "ion:update-staged",
+  UPDATE_ERROR: "ion:update-error",
 
   // Legacy (kept for backward compat during migration)
   STREAM_EVENT: "ion:stream-event",
