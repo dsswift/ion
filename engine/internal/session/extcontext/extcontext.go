@@ -612,7 +612,7 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 			return fmt.Errorf("resource broker not available")
 		}
 		host := &resource.FuncProducerHost{}
-		return broker.RegisterProducer(decl.Kind, host, decl)
+		return broker.RegisterProducerFor(decl.Kind, decl.Producer, host, decl)
 	}
 
 	ctx.PublishResource = func(kind string, delta types.ResourceDelta) error {
@@ -626,7 +626,7 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 		if broker == nil {
 			return fmt.Errorf("resource broker not available")
 		}
-		if err := broker.Publish(kind, delta); err != nil {
+		if err := broker.PublishFrom(kind, delta.Item.Producer, delta); err != nil {
 			return err
 		}
 		// Also fan out to the global broker so global subscribers receive the
@@ -639,12 +639,12 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 		return nil
 	}
 
-	ctx.HandleResourceQuery = func(kind string, handler func(types.ResourceFilter) ([]types.ResourceItem, error)) {
+	ctx.HandleResourceQuery = func(kind, producer string, handler func(types.ResourceFilter) ([]types.ResourceItem, error)) {
 		broker := sa.ResourceBroker()
 		if broker == nil {
 			return
 		}
-		broker.SetQueryHandler(kind, handler)
+		broker.SetQueryHandlerFor(kind, producer, handler)
 	}
 
 	ctx.Notify = func(opts types.NotifyOpts) error {

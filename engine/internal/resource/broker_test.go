@@ -516,3 +516,67 @@ func (c *captureFilterProducer) HandleQuery(filter types.ResourceFilter) ([]type
 	return c.items, nil
 }
 
+func TestBroker_MultipleProducersSameKindMergeAndFilter(t *testing.T) {
+	b := NewBroker()
+	first := &mockProducer{items: []types.ResourceItem{{ID: "same", Kind: "note", Content: "first"}}}
+	second := &mockProducer{items: []types.ResourceItem{{ID: "same", Kind: "note", Content: "second"}}}
+	if err := b.RegisterProducerFor("note", "alpha", first, types.ResourceDeclaration{Kind: "note"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.RegisterProducerFor("note", "beta", second, types.ResourceDeclaration{Kind: "note"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.RegisterProducerFor("note", "alpha", first, types.ResourceDeclaration{Kind: "note"}); err == nil {
+		t.Fatal("duplicate pair must fail")
+	}
+
+	var messages []ResourceMessage
+	if _, err := b.Subscribe("note", types.ResourceFilter{Kind: "note"}, collectDeliver(&messages)); err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 || len(messages[0].Items) != 2 {
+		t.Fatalf("merged snapshot = %+v", messages)
+	}
+	if messages[0].Items[0].Producer != "alpha" || messages[0].Items[1].Producer != "beta" {
+		t.Fatalf("producers = %+v", messages[0].Items)
+	}
+
+	messages = nil
+	if _, err := b.Subscribe("note", types.ResourceFilter{Kind: "note", Producer: "beta"}, collectDeliver(&messages)); err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 || len(messages[0].Items) != 1 || messages[0].Items[0].Producer != "beta" {
+		t.Fatalf("filtered snapshot = %+v", messages)
+	}
+
+	var deltas []ResourceMessage
+	if _, err := b.Subscribe("note", types.ResourceFilter{Kind: "note", Producer: "beta"}, collectDeliver(&deltas)); err != nil {
+		t.Fatal(err)
+	}
+	deltas = nil
+	if err := b.PublishFrom("note", "alpha", types.ResourceDelta{Op: "create", Item: types.ResourceItem{ID: "a", Kind: "note"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.PublishFrom("note", "beta", types.ResourceDelta{Op: "create", Item: types.ResourceItem{ID: "b", Kind: "note"}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(deltas) != 1 || deltas[0].Delta.Item.Producer != "beta" {
+		t.Fatalf("filtered deltas = %+v", deltas)
+	}
+}
+
+func TestBroker_GetItemFromRejectsAmbiguousLegacyLookup(t *testing.T) {
+	b := NewBroker()
+	for _, producer := range []string{"alpha", "beta"} {
+		if err := b.RegisterProducerFor("note", producer, &mockProducer{items: []types.ResourceItem{{ID: "same", Kind: "note"}}}, types.ResourceDeclaration{Kind: "note"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := b.GetItem("note", "same"); err == nil {
+		t.Fatal("unqualified same-ID lookup must fail")
+	}
+	item, err := b.GetItemFrom("note", "beta", "same")
+	if err != nil || item == nil || item.Producer != "beta" {
+		t.Fatalf("qualified item = %+v, %v", item, err)
+	}
+}

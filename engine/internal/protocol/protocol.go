@@ -313,6 +313,9 @@ type ClientCommand struct {
 	// resource_publish: operation and item for client-side resource publishing.
 	ResourceOp   string              `json:"resourceOp,omitempty"`
 	ResourceItem *types.ResourceItem `json:"resourceItem,omitempty"`
+	// ResourceProducer selects the trusted producer for a client operation.
+	// Empty preserves producerless and legacy single-producer behavior.
+	ResourceProducer string `json:"resourceProducer,omitempty"`
 	// resource_get: fetch a single item's full content from the producer.
 	// ResourceKind and ResourceID identify the item. ResourceGlobal selects
 	// the global broker (workspace-scoped) vs. the per-session broker.

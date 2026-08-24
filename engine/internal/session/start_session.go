@@ -635,7 +635,7 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 		// fail because the producer only exists on one session's broker).
 		host.SetPersistentPublishResource(func(kind string, delta types.ResourceDelta) error {
 			if s.resourceBroker != nil {
-				if err := s.resourceBroker.Publish(kind, delta); err != nil {
+				if err := s.resourceBroker.PublishFrom(kind, delta.Item.Producer, delta); err != nil {
 					return err
 				}
 			} else {
@@ -650,6 +650,8 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 		host.SetPersistentAckDispatchLost(func(dispatchID string) {
 			m.persistLostNoticeState(s.conversationID, dispatchID, "sent")
 		})
+
+		wirePersistentNotification(host, m, s, capturedKey)
 
 		// Deferred schedule_missed handlers batch slots after their hook RPC
 		// returns. Keep schedule control tied to this host's bound session.
@@ -670,18 +672,6 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 				return false, fmt.Errorf("dispatch registry not available")
 			}
 			return reg.Recall(name, reason), nil
-		})
-
-		// Persistent ID-addressed recall for ext/recall_dispatch when the
-		// parent run is idle. Same rationale as the name-based recall above;
-		// this arm is what a consumer holding a dispatchId reaches.
-		host.SetPersistentRecallByID(func(dispatchID, reason string) (bool, error) {
-			reg := s.dispatchRegistry
-			if reg == nil {
-				return false, fmt.Errorf("dispatch registry not available")
-			}
-			found := reg.RecallByID(dispatchID, reason)
-			return found, nil
 		})
 
 		// Persistent ID-addressed recall for ext/recall_dispatch when the

@@ -56,7 +56,7 @@ func TestDispatchResourceGet_ReturnsItem(t *testing.T) {
 			CreatedAt: "2024-01-01T00:00:00Z",
 		},
 	}}
-	if err := broker.RegisterProducer("briefing", producer, types.ResourceDeclaration{Kind: "briefing"}); err != nil {
+	if err := broker.RegisterProducerFor("briefing", "test-producer", producer, types.ResourceDeclaration{Kind: "briefing"}); err != nil {
 		t.Fatalf("RegisterProducer: %v", err)
 	}
 
@@ -110,6 +110,9 @@ func TestDispatchResourceGet_ReturnsItem(t *testing.T) {
 	if ev.ResourceItem.ID != "r-1" {
 		t.Errorf("resourceItem.id = %q, want r-1", ev.ResourceItem.ID)
 	}
+	if ev.ResourceItem.Producer != "test-producer" {
+		t.Errorf("resourceItem.producer = %q, want test-producer", ev.ResourceItem.Producer)
+	}
 	if ev.ResourceItem.Content != "Full body here" {
 		t.Errorf("resourceItem.content = %q, want 'Full body here'", ev.ResourceItem.Content)
 	}
@@ -121,6 +124,66 @@ func TestDispatchResourceGet_ReturnsItem(t *testing.T) {
 	}
 	if !r.OK {
 		t.Errorf("result.ok = false, error = %q", r.Error)
+	}
+}
+
+// TestDispatchResourceGet_GlobalRoutesToProducerSession verifies that the
+// producer-free global broker does not make workspace content unreachable.
+// The Manager resolves the producer through its session broker and returns only
+// a workspace-scoped item.
+func TestDispatchResourceGet_GlobalRoutesToProducerSession(t *testing.T) {
+	mb := newMockBackend()
+	srv := newShortPathTestServer(t, mb)
+
+	conn := dialServer(t, srv)
+	defer conn.Close()
+	startSession(t, conn, "rg-global", "req-rg-global-start")
+
+	broker := srv.manager.ResourceBroker("rg-global")
+	if broker == nil {
+		t.Fatal("ResourceBroker returned nil after startSession")
+	}
+	producer := &fixedProducer{items: []types.ResourceItem{
+		{ID: "shared", Kind: "briefing", ConversationID: "conversation-1", Content: "conversation body", CreatedAt: "2024-01-01T00:00:00Z"},
+		{ID: "shared", Kind: "briefing", Content: "workspace body", CreatedAt: "2024-01-02T00:00:00Z"},
+	}}
+	if err := broker.RegisterProducerFor("briefing", "test-producer", producer, types.ResourceDeclaration{Kind: "briefing"}); err != nil {
+		t.Fatalf("RegisterProducerFor: %v", err)
+	}
+
+	sendJSON(t, conn, map[string]interface{}{
+		"cmd": "resource_get", "key": "", "resourceKind": "briefing", "resourceProducer": "test-producer",
+		"resourceId": "shared", "resourceGlobal": true, "requestId": "req-rg-global",
+	})
+	lines := readLines(t, conn, 12, 3*time.Second)
+
+	var itemLine string
+	for _, line := range lines {
+		if strings.Contains(line, "engine_resource_item") {
+			itemLine = line
+			break
+		}
+	}
+	if itemLine == "" {
+		t.Fatalf("no engine_resource_item event received; lines=%v", lines)
+	}
+	var env struct {
+		Event json.RawMessage `json:"event"`
+	}
+	if err := json.Unmarshal([]byte(itemLine), &env); err != nil {
+		t.Fatalf("unmarshal envelope: %v", err)
+	}
+	var ev struct {
+		ResourceItem *types.ResourceItem `json:"resourceItem"`
+	}
+	if err := json.Unmarshal(env.Event, &ev); err != nil {
+		t.Fatalf("unmarshal event: %v", err)
+	}
+	if ev.ResourceItem == nil || ev.ResourceItem.Content != "workspace body" || ev.ResourceItem.Producer != "test-producer" {
+		t.Fatalf("global resource item = %+v", ev.ResourceItem)
+	}
+	if result := findResult(t, lines); result == nil || !result.OK {
+		t.Fatalf("global resource_get result = %+v", result)
 	}
 }
 
@@ -141,7 +204,7 @@ func TestDispatchResourceGet_NotFoundReturnsError(t *testing.T) {
 		t.Fatal("ResourceBroker returned nil after startSession")
 	}
 	// Producer returns an empty slice — item not found.
-	if err := broker.RegisterProducer("note", &emptyProducer{}, types.ResourceDeclaration{Kind: "note"}); err != nil {
+	if err := broker.RegisterProducerFor("note", "test-producer", &emptyProducer{}, types.ResourceDeclaration{Kind: "note"}); err != nil {
 		t.Fatalf("RegisterProducer: %v", err)
 	}
 

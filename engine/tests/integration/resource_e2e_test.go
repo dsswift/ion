@@ -107,6 +107,9 @@ func TestResource_E2E_DeclareAndQuery(t *testing.T) {
 	if snap.Items[0].Title != "Morning Brief" {
 		t.Errorf("snapshot item title: want Morning Brief, got %q", snap.Items[0].Title)
 	}
+	if snap.Items[0].Producer != host.Name() {
+		t.Errorf("snapshot item producer: want %q, got %q", host.Name(), snap.Items[0].Producer)
+	}
 }
 
 // TestResource_E2E_WildcardSubscription verifies that a wildcard ("*")
@@ -149,7 +152,7 @@ func TestResource_E2E_WildcardSubscription(t *testing.T) {
 	// A subsequent publish on the briefing kind must also reach the wildcard
 	// subscriber as a delta carrying the real kind.
 	msgs = nil
-	if err := broker.Publish("briefing", types.ResourceDelta{
+	if err := broker.PublishFrom("briefing", host.Name(), types.ResourceDelta{
 		Op:   "create",
 		Item: types.ResourceItem{ID: "briefing-9", Kind: "briefing", Content: "late"},
 	}); err != nil {
@@ -191,7 +194,7 @@ func TestResource_E2E_FullCycle(t *testing.T) {
 		SessionKey: "resource-e2e",
 		Cwd:        t.TempDir(),
 		PublishResource: func(kind string, delta types.ResourceDelta) error {
-			return broker.Publish(kind, delta)
+			return broker.PublishFrom(kind, host.Name(), delta)
 		},
 	}
 
@@ -278,7 +281,7 @@ func TestResource_E2E_FullCycle(t *testing.T) {
 
 	// Step 4: unsubscribe. Subsequent publishes must not arrive.
 	broker.Unsubscribe(sub.ID)
-	_ = broker.Publish("briefing", types.ResourceDelta{
+	_ = broker.PublishFrom("briefing", host.Name(), types.ResourceDelta{
 		Op:   "create",
 		Item: types.ResourceItem{ID: "briefing-3", Kind: "briefing", Content: "should not arrive"},
 	})

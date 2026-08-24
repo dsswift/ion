@@ -706,6 +706,26 @@
       "userCode",
       "verificationUrl"
     ],
+    "ResourceFilter": [
+      "conversationId",
+      "id",
+      "kind",
+      "limit",
+      "producer",
+      "since"
+    ],
+    "ResourceItem": [
+      "content",
+      "conversationId",
+      "createdAt",
+      "id",
+      "kind",
+      "metadata",
+      "producer",
+      "read",
+      "title",
+      "updatedAt"
+    ],
     "ResourceLimits": [
       "maxAgentsPerSession",
       "maxSessions"

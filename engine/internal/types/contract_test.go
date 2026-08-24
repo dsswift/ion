@@ -173,6 +173,9 @@ func buildManifest() contractManifest {
 		// per-prompt ClientCommand. Tracked so cross-language mirrors stay
 		// in sync with the engine's hook-dispatch payload shape.
 		"ClientWorkspaceContext": reflect.TypeOf(ClientWorkspaceContext{}),
+		// Resource envelopes and query filters cross the public engine wire.
+		"ResourceItem":   reflect.TypeOf(ResourceItem{}),
+		"ResourceFilter": reflect.TypeOf(ResourceFilter{}),
 	}
 	for name, typ := range shared {
 		m.SharedTypes[name] = jsonFieldNames(typ)

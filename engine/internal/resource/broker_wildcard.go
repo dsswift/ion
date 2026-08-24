@@ -2,110 +2,65 @@ package resource
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// WildcardKind is the sentinel kind that subscribes to every resource kind
-// on a broker — every kind that has a registered producer now, plus every
-// kind registered or published in the future. It is pure data routing: a
-// wildcard subscriber receives the same snapshot/delta envelopes an
-// exact-kind subscriber would, with ResourceMessage.Kind always carrying the
-// real item kind (never "*"), so consumers bucket by the true kind.
-//
-// This exists because "subscribe to everything" cannot be expressed by a
-// consumer without a primitive, and a hardcoded kind list in the consumer is
-// exactly the baked-in opinion the resource subsystem is designed to avoid.
-// The broker already routes by kind; the wildcard is a routing addition with
-// no render/UI policy.
+// WildcardKind is the sentinel kind that subscribes to every resource kind.
 const WildcardKind = "*"
 
 // IsWildcard reports whether kind is the wildcard sentinel.
 func IsWildcard(kind string) bool { return kind == WildcardKind }
 
-// SubscribeWildcard registers a subscription that receives events for every
-// kind on the broker. It aggregates an initial snapshot by querying every
-// registered producer with the subscription's filter, delivers one snapshot
-// per producing kind (each carrying that kind), then stores the subscription
-// under the wildcard key so the publish paths fan subsequent deltas to it.
-//
-// Unlike Subscribe, this never errors on "no producer" — a broker with zero
-// producers yields zero snapshot messages, and the subscriber still receives
-// every future kind's deltas once producers register and publish.
+// SubscribeWildcard registers a subscription for all kinds. It emits one
+// merged replacement snapshot per kind, even when several producers own it.
 func (b *Broker) SubscribeWildcard(filter types.ResourceFilter, deliver func(ResourceMessage)) *Subscription {
 	subID := fmt.Sprintf("sub-%d", b.nextSubID.Add(1))
-	sub := &Subscription{
-		ID:      subID,
-		Kind:    WildcardKind,
-		Filter:  filter,
-		deliver: deliver,
-	}
+	sub := &Subscription{ID: subID, Kind: WildcardKind, Filter: filter, deliver: deliver}
 
-	// Snapshot the producer set under the lock, register the subscription,
-	// then query producers outside the lock (HandleQuery may block on
-	// extension I/O).
 	b.mu.Lock()
 	b.subscribers[WildcardKind] = append(b.subscribers[WildcardKind], sub)
 	b.subsByID[subID] = sub
-	producers := make([]*producerEntry, 0, len(b.producers))
-	for _, entry := range b.producers {
-		producers = append(producers, entry)
+	kinds := make([]string, 0, len(b.producers))
+	for kind := range b.producers {
+		kinds = append(kinds, kind)
 	}
 	b.mu.Unlock()
+	sort.Strings(kinds)
 
-	utils.LogWithFields(utils.LevelInfo, "resource", "subscribe wildcard", map[string]any{"subscription_id": subID, "count": len(producers)})
-
-	// Deliver one snapshot per registered kind, each carrying the real kind.
-	for _, entry := range producers {
-		kindFilter := filter
-		kindFilter.Kind = entry.kind
-		items, err := entry.host.HandleQuery(kindFilter)
-		if err != nil {
-			utils.LogWithFields(utils.LevelInfo, "resource", "subscribe wildcard handle query failed", map[string]any{"reason": entry.kind, "subscription_id": subID, "error": err.Error()})
-			items = nil
+	for _, kind := range kinds {
+		items := b.snapshotForSubscription(kind, filter, subID, "subscribe_wildcard")
+		// A producer filter that matches no producer has no kind snapshot.
+		b.mu.RLock()
+		hasProducer := len(b.entriesForKindLocked(kind, filter.Producer)) > 0
+		b.mu.RUnlock()
+		if !hasProducer {
+			continue
 		}
-		deliver(ResourceMessage{
-			Type:  "snapshot",
-			Kind:  entry.kind,
-			SubID: subID,
-			Items: items,
-		})
-		utils.LogWithFields(utils.LevelDebug, "resource", "subscribe wildcard snapshot", map[string]any{"reason": entry.kind, "subscription_id": subID, "count": len(items)})
+		deliver(ResourceMessage{Type: "snapshot", Kind: kind, SubID: subID, Items: items})
+		utils.LogWithFields(utils.LevelDebug, "resource", "subscribe wildcard snapshot", map[string]any{"kind": kind, "producer": filter.Producer, "subscription_id": subID, "count": len(items)})
 	}
+	utils.LogWithFields(utils.LevelInfo, "resource", "subscribe wildcard", map[string]any{"subscription_id": subID, "producer": filter.Producer, "kind_count": len(kinds)})
 	return sub
 }
 
-// SubscribeDirectWildcard registers a wildcard subscription WITHOUT querying
-// producers for an initial snapshot. Used by the global broker, where kinds
-// may have no producer (client-published workspace resources) and the
-// subscriber is interested purely in the live delta stream across all kinds.
+// SubscribeDirectWildcard registers a producerless global wildcard. It has no
+// snapshot because global broker delivery does not own producer query handlers.
 func (b *Broker) SubscribeDirectWildcard(filter types.ResourceFilter, deliver func(ResourceMessage)) *Subscription {
 	subID := fmt.Sprintf("sub-%d", b.nextSubID.Add(1))
-	sub := &Subscription{
-		ID:      subID,
-		Kind:    WildcardKind,
-		Filter:  filter,
-		deliver: deliver,
-	}
+	sub := &Subscription{ID: subID, Kind: WildcardKind, Filter: filter, deliver: deliver}
 	b.mu.Lock()
 	b.subscribers[WildcardKind] = append(b.subscribers[WildcardKind], sub)
 	b.subsByID[subID] = sub
 	b.mu.Unlock()
-	utils.LogWithFields(utils.LevelInfo, "resource", "subscribe direct wildcard", map[string]any{"subscription_id": subID})
+	utils.LogWithFields(utils.LevelInfo, "resource", "subscribe direct wildcard", map[string]any{"subscription_id": subID, "producer": filter.Producer})
 	return sub
 }
 
-// wildcardSubscribersLocked returns a copy of the wildcard subscriber slice.
-// Caller must hold at least a read lock on b.mu. Returns nil when there are
-// no wildcard subscribers (the common case), so the publish hot path does no
-// allocation in that case.
+// wildcardSubscribersLocked returns a copy of wildcard subscriptions. Caller
+// must hold at least a read lock.
 func (b *Broker) wildcardSubscribersLocked() []*Subscription {
-	ws := b.subscribers[WildcardKind]
-	if len(ws) == 0 {
-		return nil
-	}
-	out := make([]*Subscription, len(ws))
-	copy(out, ws)
-	return out
+	return copySubscriptions(b.subscribers[WildcardKind])
 }

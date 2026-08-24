@@ -118,6 +118,9 @@ type Host struct {
 	// from background dispatches fire after the run exits). Set by the
 	// session manager alongside persistentEmit.
 	persistentPublishResource func(kind string, delta types.ResourceDelta) error
+	// persistentNotify is the matching fallback for ext/notify from deferred
+	// callbacks after the originating hook, tool, or schedule context exits.
+	persistentNotify func(opts types.NotifyOpts) error
 
 	// persistentScheduleFire and persistentScheduleStatus preserve schedule
 	// control after a hook returns and its ctxStack frame is popped. A deferred
@@ -335,6 +338,14 @@ func (h *Host) SetPersistentPublishResource(fn func(string, types.ResourceDelta)
 	h.notifMu.Lock()
 	defer h.notifMu.Unlock()
 	h.persistentPublishResource = fn
+}
+
+// SetPersistentNotify sets the session-scoped fallback for ext/notify when a
+// deferred callback runs after its originating context frame was popped.
+func (h *Host) SetPersistentNotify(fn func(types.NotifyOpts) error) {
+	h.notifMu.Lock()
+	defer h.notifMu.Unlock()
+	h.persistentNotify = fn
 }
 
 // SetPersistentScheduleControl wires session-scoped schedule control for

@@ -19,6 +19,7 @@ import (
 type scheduleMissedDecision struct {
 	Slot      time.Time
 	HadMarker bool
+	Latest    bool
 }
 
 // now returns the current time. Honors the test-injectable clock when
@@ -106,17 +107,7 @@ func nextRunFor(job extension.ScheduleJob, from time.Time, loc *time.Location) t
 	case extension.ScheduleInterval:
 		return from.Add(time.Duration(job.IntervalMs) * time.Millisecond)
 	case extension.ScheduleDaily:
-		hour, minute, ok := parseHHMM(job.Time)
-		if !ok {
-			// Validate() should have caught this; defensive fallback.
-			return from.Add(24 * time.Hour)
-		}
-		fromLocal := from.In(loc)
-		candidate := time.Date(fromLocal.Year(), fromLocal.Month(), fromLocal.Day(), hour, minute, 0, 0, loc)
-		if !candidate.After(fromLocal) {
-			candidate = candidate.Add(24 * time.Hour)
-		}
-		return candidate.UTC()
+		return nextDailyRunFor(job, from, loc)
 	case extension.ScheduleWeekly:
 		hour, minute, ok := parseHHMM(job.Time)
 		if !ok {
@@ -229,6 +220,10 @@ func (s *Scheduler) bootstrapNextRun(h *extension.Host, job extension.ScheduleJo
 	utils.LogWithFields(utils.LevelDebug, "scheduling", "bootstrap next run", map[string]any{"model": name, "schedule_job_id": job.JobID, "reason": next.String()})
 
 	if decision != nil {
+		if decision.Latest {
+			s.queueLatestCatchUp(h, job, decision.Slot, decision.HadMarker)
+			return
+		}
 		// Persist exact slot before invoking extension policy. ctx.fireSchedule
 		// later consumes this value and forwards it as ScheduleFireMeta.
 		s.recordMissedSlot(h, job, decision.Slot, decision.HadMarker)
@@ -302,11 +297,22 @@ func (s *Scheduler) computeBootstrapNextRun(name string, job extension.ScheduleJ
 			utils.LogWithFields(utils.LevelWarn, "scheduling", "bootstrap marker LastRunUtc unparseable", map[string]any{"model": name, "schedule_job_id": job.JobID, "last_run_utc": marker.LastRunUtc, "error": err.Error()})
 		}
 	}
-	if anchor.IsZero() && marker.FirstSeenUtc != "" {
+	if marker.FirstSeenUtc != "" {
 		if t, err := time.Parse(time.RFC3339, marker.FirstSeenUtc); err == nil {
-			anchor = t
+			if anchor.IsZero() || t.After(anchor) {
+				anchor = t
+			}
 		} else {
 			utils.LogWithFields(utils.LevelWarn, "scheduling", "bootstrap marker FirstSeenUtc unparseable", map[string]any{"model": name, "schedule_job_id": job.JobID, "first_seen_utc": marker.FirstSeenUtc, "error": err.Error()})
+		}
+	}
+	if marker.LastReconciledSlotUtc != "" {
+		if t, err := time.Parse(time.RFC3339, marker.LastReconciledSlotUtc); err == nil {
+			if anchor.IsZero() || t.After(anchor) {
+				anchor = t
+			}
+		} else {
+			utils.LogWithFields(utils.LevelWarn, "scheduling", "bootstrap marker LastReconciledSlotUtc unparseable", map[string]any{"model": name, "schedule_job_id": job.JobID, "last_reconciled_slot_utc": marker.LastReconciledSlotUtc, "error": err.Error()})
 		}
 	}
 	if anchor.IsZero() {
@@ -325,6 +331,9 @@ func (s *Scheduler) computeBootstrapNextRun(name string, job extension.ScheduleJ
 			// Extension decides: schedule normal next, emit decision.
 			utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap missed slot deferred to hook", map[string]any{"model": name, "schedule_job_id": job.JobID, "reason": lastSlot.String()})
 			return next, &scheduleMissedDecision{Slot: lastSlot, HadMarker: hadMarker}
+		}
+		if policy == "latest" {
+			return next, &scheduleMissedDecision{Slot: lastSlot, HadMarker: hadMarker, Latest: true}
 		}
 		// No hook: auto-catch-up (same opinion as before).
 		next = now.Add(CatchUpStagger)
@@ -361,19 +370,15 @@ func (s *Scheduler) advanceNextRun(key hostJobKey, job extension.ScheduleJob, no
 // strictly before `before` for daily/weekly jobs. Used by the
 // catch-up logic to compare against the persisted last-run marker.
 func lastScheduledSlotBefore(job extension.ScheduleJob, before time.Time, loc *time.Location) time.Time {
+	if job.Kind == extension.ScheduleDaily {
+		return lastDailySlotBefore(job, before, loc)
+	}
 	hour, minute, ok := parseHHMM(job.Time)
 	if !ok {
 		return time.Time{}
 	}
 	beforeLocal := before.In(loc)
 	switch job.Kind {
-	case extension.ScheduleDaily:
-		// Today's slot if it's already passed; otherwise yesterday's.
-		todaySlot := time.Date(beforeLocal.Year(), beforeLocal.Month(), beforeLocal.Day(), hour, minute, 0, 0, loc)
-		if todaySlot.Before(beforeLocal) {
-			return todaySlot.UTC()
-		}
-		return todaySlot.Add(-24 * time.Hour).UTC()
 	case extension.ScheduleWeekly:
 		target := weekdayFromName(job.DayOfWeek)
 		// Walk backwards from today until the weekday matches and the

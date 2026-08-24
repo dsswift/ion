@@ -2965,8 +2965,14 @@ export interface ScheduleDaily {
   timeoutMs?: number
   /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
   concurrency?: 'single' | 'all'
-  /** Missed-slot policy. `manual` fires schedule_missed for extension batching. */
-  catchUp?: 'auto' | 'manual' | 'none'
+  /** Missed-slot policy. `latest` selects the newest missed job in catchUpGroup. */
+  catchUp?: 'auto' | 'manual' | 'none' | 'latest'
+  /** Group used by `catchUp: 'latest'`. Empty makes this job its own group. */
+  catchUpGroup?: string
+  /** Limit `latest` recovery to the current local date. */
+  catchUpScope?: 'same_day'
+  /** Optional lowercased weekday filter. Empty retains the every-day cadence. */
+  daysOfWeek?: Array<'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday'>
   enabled?: () => boolean | Promise<boolean>
   handler: ScheduleHandler
 }
@@ -2980,8 +2986,12 @@ export interface ScheduleWeekly {
   timeoutMs?: number
   /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
   concurrency?: 'single' | 'all'
-  /** Missed-slot policy. `manual` fires schedule_missed for extension batching. */
-  catchUp?: 'auto' | 'manual' | 'none'
+  /** Missed-slot policy. `latest` selects the newest missed job in catchUpGroup. */
+  catchUp?: 'auto' | 'manual' | 'none' | 'latest'
+  /** Group used by `catchUp: 'latest'`. Empty makes this job its own group. */
+  catchUpGroup?: string
+  /** Limit `latest` recovery to the current local date. */
+  catchUpScope?: 'same_day'
   enabled?: () => boolean | Promise<boolean>
   handler: ScheduleHandler
 }
@@ -3105,6 +3115,8 @@ export interface ScheduleJob {
   kind: 'daily' | 'weekly' | 'interval' | 'once'
   time?: string
   dayOfWeek?: string
+  /** Optional weekday filter for daily schedules. */
+  daysOfWeek?: string[]
   intervalMs?: number
   /** Milliseconds-to-first-fire for once jobs. Ignored for other kinds. */
   delayMs?: number
@@ -3114,7 +3126,11 @@ export interface ScheduleJob {
   /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
   concurrency?: 'single' | 'all'
   /** Missed daily/weekly slot policy. Omit for historic engine default behavior. */
-  catchUp?: 'auto' | 'manual' | 'none'
+  catchUp?: 'auto' | 'manual' | 'none' | 'latest'
+  /** Group used by `catchUp: 'latest'`. */
+  catchUpGroup?: string
+  /** Limit `latest` recovery to the current local date. */
+  catchUpScope?: 'same_day'
 }
 
 /** Handle returned by ion.schedule.daily/weekly/interval/once. */
@@ -3137,6 +3153,8 @@ export interface ScheduleHandle {
 export interface ResourceItem {
   id: string
   kind: string
+  /** Engine-assigned extension identity. Extension publishes cannot set it. */
+  readonly producer?: string
   title?: string
   content: string
   createdAt: string
@@ -3155,12 +3173,16 @@ export interface ResourceDelta {
 /** Scopes a subscription or query. */
 export interface ResourceFilter {
   kind: string
+  /** Restrict a query or subscription to one extension producer. */
+  producer?: string
   conversationId?: string
   since?: string
   limit?: number
+  /** Restrict a producer query to one item. */
+  id?: string
 }
 
-/** Passed to ion.resources.declare(). One producer per kind per session. */
+/** Passed to ion.resources.declare(). Multiple extensions can produce one kind. */
 export interface ResourceDeclaration {
   kind: string
 }
