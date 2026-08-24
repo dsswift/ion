@@ -10,6 +10,14 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.86.1](https://github.com/dsswift/ion/compare/desktop-v1.86.0...desktop-v1.86.1) (2026-08-24)
+
+### Bug Fixes
+
+* **desktop:** drain engine events in a hidden owner window ([0439b25](https://github.com/dsswift/ion/commit/0439b254d1f389636884fe1387893fe2a11148fc))
+* **desktop:** reconcile a connecting tab against an idle plane ([d9476f4](https://github.com/dsswift/ion/commit/d9476f4da50b016934d06a5bc2c0acf8650fc2c6))
+* **desktop:** surface a refused prompt instead of dropping it ([8981c38](https://github.com/dsswift/ion/commit/8981c38feef7652189ea641e23aa8c4539220a85))
+
 ## [1.86.0](https://github.com/dsswift/ion/compare/desktop-v1.85.0...desktop-v1.86.0) (2026-08-23)
 
 ### Features
