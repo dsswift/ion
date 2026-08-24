@@ -59,20 +59,28 @@ npm run dist        # package into release/mac-arm64/Ion.app
 ### Install
 
 ```bash
-# Full cycle: build, package, install to /Applications, relaunch
+# Full cycle: build a development-stamped .pkg, wait for active Ion work,
+# then open macOS Installer after Ion exits
 make desktop
 
-# Or manually copy
-cp -r desktop/release/mac-arm64/Ion.app /Applications/
+# Build the package without opening Installer
+cd desktop && npm run dist && npm run pkg
 ```
 
-`make desktop` handles the full lifecycle: build, package, copy to `/Applications`, and relaunch the app. It waits for any active agent sessions to finish before replacing the binary.
+`make desktop` builds a development-stamped package, asks Ion to finish active
+agent work and quit, then opens macOS Installer. The package is the only
+component that replaces `/Applications/Ion.app` and launches Ion for the
+active macOS user after a successful install.
+
+**Do not copy a new `Ion.app` into `/Applications`.** Install the `.pkg`.
+If Ion is running, the package stops before changing the bundle. Quit Ion, then
+retry the package.
 
 ## Updating
 
-**Self-service: let the app update itself.** Release builds ship a built-in auto-updater that checks GitHub Releases on launch and every four hours, downloads a newer signed build in the background, and prompts you to relaunch (`quitAndInstall`). This is the supported update path.
+**Self-service: let the app update itself.** Release builds ship a built-in auto-updater that checks GitHub Releases on launch and every four hours, downloads a newer signed build in the background, stages a detached installer, and prompts you to restart. This is the supported update path.
 
-**Do not hand-drag a new `Ion.app` into `/Applications` while Ion is running.** macOS refuses to replace a running app bundle (the "Ion is already running" install error), and even a manual replace only takes effect on the next launch. The auto-updater exists precisely so you never have to do this.
+**Do not hand-drag a new `Ion.app` into `/Applications` while Ion is running.** Use the release `.pkg` for manual installation instead.
 
 **The engine daemon is swapped by content hash, not version string.** On every launch, the desktop compares the bundled engine binary against the installed daemon binary (`~/.ion/bin/ion`) by sha256 hash. If they differ it installs the new binary and force-restarts the daemon (`launchctl kickstart -k`), so a new engine reliably becomes the running daemon. Earlier builds compared `ion version` output; because no build stamped a version, every binary reported `ion-engine dev` and an update over a prior install was silently skipped — the old daemon kept running and API-key auth appeared to break (routing fell back to the Claude CLI login). If you are recovering a machine stuck on an old daemon, install a current build and relaunch; the hash check swaps it. Manual unblock:
 
