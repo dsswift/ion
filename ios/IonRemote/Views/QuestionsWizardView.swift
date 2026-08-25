@@ -122,8 +122,8 @@ struct QuestionsWizardView: View {
                             .font(.subheadline)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
-                    .background(theme.surfaceSecondary, in: RoundedRectangle(cornerRadius: 10))
+                    .padding(IonSpace.contentGap)
+                    .background(theme.surfaceSecondary, in: RoundedRectangle(cornerRadius: IonRadius.container))
                 }
                 actionRow(workflow, inReview: true)
             }
@@ -150,8 +150,8 @@ struct QuestionsWizardView: View {
                 .foregroundStyle(skipped ? theme.textSecondary : theme.textPrimary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(theme.surfaceSecondary, in: RoundedRectangle(cornerRadius: 10))
+        .padding(IonSpace.contentGap)
+        .background(theme.surfaceSecondary, in: RoundedRectangle(cornerRadius: IonRadius.container))
     }
 
     private func actionRow(_ workflow: QuestionsWorkflowState, inReview: Bool) -> some View {

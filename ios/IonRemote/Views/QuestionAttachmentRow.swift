@@ -57,8 +57,8 @@ struct QuestionAttachmentRow: View {
                             .buttonStyle(.plain)
                             .accessibilityLabel("Remove \(att.name)")
                         }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, IonSpace.compactGap)
+                        .padding(.vertical, IonSpace.hairlineGap)
                         .background(theme.surfaceSecondary, in: Capsule())
                     }
                 }

@@ -48,18 +48,18 @@ struct QuestionsCardView: View {
                 if queuedCount > 0 {
                     Text("+\(queuedCount)")
                         .font(.caption2.weight(.bold))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
+                        .padding(.horizontal, IonSpace.compactInset)
+                        .padding(.vertical, 2) // design-geometry: tight count-badge inset below the 4pt rhythm floor
                         .background(theme.accent.opacity(0.2), in: Capsule())
                 }
                 Image(systemName: "chevron.up")
                     .font(.caption)
                     .foregroundStyle(theme.textSecondary)
             }
-            .padding(12)
-            .background(theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+            .padding(IonSpace.contentGap)
+            .background(theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: IonRadius.container))
             .overlay(
-                RoundedRectangle(cornerRadius: 14)
+                RoundedRectangle(cornerRadius: IonRadius.container)
                     .strokeBorder(theme.accent.opacity(0.35), lineWidth: 1)
             )
         }

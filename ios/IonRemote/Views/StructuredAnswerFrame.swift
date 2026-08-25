@@ -35,7 +35,7 @@ private struct StructuredAnswerFrameModifier: ViewModifier {
                 // has to own the content itself. `fixedSize(vertical:)` keeps
                 // it from expanding horizontally while long answers still wrap.
                 content
-                    .padding(10)
+                    .padding(IonSpace.contentGap)
                     .background(theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: IonRadius.container))
                     .overlay(
                         RoundedRectangle(cornerRadius: IonRadius.container)

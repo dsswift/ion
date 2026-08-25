@@ -82,7 +82,7 @@ struct QuestionsWizardQuestionRow: View {
                         HStack(alignment: .top, spacing: 8) {
                             Image(systemName: iconName(selected: selected))
                                 .foregroundStyle(selected ? theme.accent : theme.textSecondary)
-                                .padding(.top, 1)
+                                .padding(.top, 1) // design-geometry: aligns the selection icon to the first text baseline
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(option.label)
                                     .font(.subheadline)
@@ -95,10 +95,10 @@ struct QuestionsWizardQuestionRow: View {
                             }
                             Spacer(minLength: 0)
                         }
-                        .padding(8)
+                        .padding(IonSpace.compactGap)
                         .background(
                             selected ? theme.accent.opacity(0.1) : theme.surfaceSecondary,
-                            in: RoundedRectangle(cornerRadius: 10)
+                            in: RoundedRectangle(cornerRadius: IonRadius.container)
                         )
                     }
                     .buttonStyle(.plain)
