@@ -286,6 +286,7 @@
     ],
     "user_turn_persisted": [
       "entryId",
+      "slashFrontmatter",
       "slashModelAlias",
       "slashModelEffective"
     ],
@@ -516,6 +517,7 @@
     "url",
     "usage",
     "userTurnEntryId",
+    "userTurnSlashFrontmatter",
     "userTurnSlashModelAlias",
     "userTurnSlashModelEffective"
   ],
@@ -773,6 +775,7 @@
       "role",
       "slashArgs",
       "slashCommand",
+      "slashFrontmatter",
       "slashModelAlias",
       "slashModelEffective",
       "slashSource",

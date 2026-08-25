@@ -291,6 +291,9 @@ type SlashInvocation struct {
 	// ModelEffective is the model the engine resolved for this run after
 	// applying the frontmatter hint. Empty when no model was resolved.
 	ModelEffective string
+	// Frontmatter is the complete parsed command frontmatter at invocation time.
+	// It includes extension-defined keys the engine does not interpret.
+	Frontmatter map[string]any
 }
 
 // AddUserMessageWithInvocation appends a user turn whose LLM-visible content
@@ -338,6 +341,7 @@ func AddUserMessageWithInvocation(conv *Conversation, expandedContent any, inv S
 			SlashSource:         inv.Source,
 			SlashModelAlias:     inv.ModelAlias,
 			SlashModelEffective: inv.ModelEffective,
+			SlashFrontmatter:    cloneSlashFrontmatter(inv.Frontmatter),
 		}, "")
 		conv.Messages[len(conv.Messages)-1].EntryID = entry.ID
 		return entry

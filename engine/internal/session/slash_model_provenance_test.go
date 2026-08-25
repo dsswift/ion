@@ -20,6 +20,7 @@ func TestTranslateUserTurnPersisted_SlashModelProvenance(t *testing.T) {
 			EntryID:             "entry-1",
 			SlashModelAlias:     "claude-sonnet",
 			SlashModelEffective: "claude-sonnet-4-20250514",
+			SlashFrontmatter:    map[string]any{"extension-key": "durable"},
 		}}
 		eng := translateToEngineEvent(ev, 200000)
 
@@ -31,6 +32,21 @@ func TestTranslateUserTurnPersisted_SlashModelProvenance(t *testing.T) {
 		}
 		if eng.UserTurnSlashModelEffective != "claude-sonnet-4-20250514" {
 			t.Errorf("UserTurnSlashModelEffective = %q, want %q", eng.UserTurnSlashModelEffective, "claude-sonnet-4-20250514")
+		}
+		if got := eng.UserTurnSlashFrontmatter["extension-key"]; got != "durable" {
+			t.Errorf("UserTurnSlashFrontmatter extension key = %v, want durable", got)
+		}
+		raw, err := json.Marshal(eng)
+		if err != nil {
+			t.Fatalf("Marshal EngineEvent: %v", err)
+		}
+		var wire map[string]any
+		if err := json.Unmarshal(raw, &wire); err != nil {
+			t.Fatalf("Unmarshal EngineEvent: %v", err)
+		}
+		frontmatter, ok := wire["userTurnSlashFrontmatter"].(map[string]any)
+		if !ok || frontmatter["extension-key"] != "durable" {
+			t.Errorf("wire userTurnSlashFrontmatter = %#v, want extension key", wire["userTurnSlashFrontmatter"])
 		}
 	})
 

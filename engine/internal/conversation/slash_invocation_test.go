@@ -18,6 +18,11 @@ func TestAddUserMessageWithInvocation(t *testing.T) {
 		Command: "/diagram",
 		Args:    "make a flowchart",
 		Source:  "ion",
+		Frontmatter: map[string]any{
+			"description":      "diagram a system",
+			"allowed-tools":    []string{"Read", "Grep"},
+			"extension-policy": "reviewed",
+		},
 	})
 
 	// LLM sees the expanded body.
@@ -44,6 +49,9 @@ func TestAddUserMessageWithInvocation(t *testing.T) {
 	if md.SlashCommand != "/diagram" || md.SlashArgs != "make a flowchart" || md.SlashSource != "ion" {
 		t.Errorf("provenance = (%q,%q,%q)", md.SlashCommand, md.SlashArgs, md.SlashSource)
 	}
+	if got := md.SlashFrontmatter["extension-policy"]; got != "reviewed" {
+		t.Errorf("persisted extension frontmatter = %v, want reviewed", got)
+	}
 	dispBlocks := contentToBlocks(md.Content)
 	if len(dispBlocks) != 1 || dispBlocks[0].Text != "/diagram make a flowchart" {
 		t.Errorf("display content = %#v, want raw invocation", md.Content)
@@ -60,6 +68,43 @@ func TestAddUserMessageWithInvocation(t *testing.T) {
 	}
 	if sm.SlashCommand != "/diagram" || sm.SlashArgs != "make a flowchart" || sm.SlashSource != "ion" {
 		t.Errorf("flattened provenance = (%q,%q,%q)", sm.SlashCommand, sm.SlashArgs, sm.SlashSource)
+	}
+	if got := sm.SlashFrontmatter["extension-policy"]; got != "reviewed" {
+		t.Errorf("flattened extension frontmatter = %v, want reviewed", got)
+	}
+}
+
+// TestSlashFrontmatterDurableRoundTrip pins slash frontmatter in the tree
+// sidecar and the reload surface, including keys engine itself does not use.
+func TestSlashFrontmatterDurableRoundTrip(t *testing.T) {
+	conv := CreateConversation("slash-frontmatter-roundtrip", "", "test-model")
+	AddUserMessageWithInvocation(conv, "expanded", SlashInvocation{
+		Command: "/review",
+		Source:  "ion",
+		Frontmatter: map[string]any{
+			"custom-key": "durable",
+			"tools":      []string{"Read", "Grep"},
+		},
+	})
+
+	dir := t.TempDir()
+	if err := Save(conv, dir); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	reloaded, err := Load(conv.ID, dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	msgs := flattenEntries(reloaded)
+	if len(msgs) != 1 {
+		t.Fatalf("flattened messages = %d, want 1", len(msgs))
+	}
+	if got := msgs[0].SlashFrontmatter["custom-key"]; got != "durable" {
+		t.Errorf("reloaded custom frontmatter = %v, want durable", got)
+	}
+	tools, ok := msgs[0].SlashFrontmatter["tools"].([]interface{})
+	if !ok || len(tools) != 2 || tools[0] != "Read" || tools[1] != "Grep" {
+		t.Errorf("reloaded tools = %#v, want [Read Grep]", msgs[0].SlashFrontmatter["tools"])
 	}
 }
 

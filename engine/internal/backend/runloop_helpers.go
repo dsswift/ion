@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"fmt"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -342,6 +343,7 @@ func appendInboundUserEntry(conv *conversation.Conversation, opts *types.RunOpti
 			Source:         opts.ResolvedSlashSource,
 			ModelAlias:     opts.ResolvedSlashModelAlias,
 			ModelEffective: opts.ResolvedSlashModelEffective,
+			Frontmatter:    opts.ResolvedSlashFrontmatter,
 		})
 	case len(opts.Attachments) > 0:
 		entry = conversation.AddUserMessage(conv, buildUserContentBlocks(opts.Prompt, opts.Attachments))
@@ -416,4 +418,33 @@ func inboundDuplicatesLeaf(conv *conversation.Conversation, opts *types.RunOptio
 		}
 	}
 	return display != "" && display == conversation.LeafUserText(conv)
+}
+
+// finishMaxTurns records completion when the run reaches its turn limit.
+func (b *ApiBackend) finishMaxTurns(run *activeRun, conv *conversation.Conversation, maxTurns, turn int) {
+	if err := conversation.Save(conv, ""); err != nil {
+		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation", map[string]any{
+			"error": utils.ErrStr(err),
+		})
+	}
+
+	elapsed := time.Since(run.startTime).Milliseconds()
+	b.emit(run, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
+		Reason:            types.TaskCompletionReasonMaxTurns,
+		Result:            fmt.Sprintf("Reached max turns (%d)", maxTurns),
+		LastText:          run.lastNonEmptyResultText,
+		CostUsd:           run.totalCost,
+		DurationMs:        elapsed,
+		NumTurns:          turn,
+		ConversationTurns: conversation.CountUserPrompts(conv),
+		SessionID:         conv.ID,
+		Usage:             cumulativeUsage(run),
+	}})
+	utils.LogWithFields(utils.LevelWarn, "backend.runloop", "max turns exceeded: / cost=$", map[string]any{
+		"run_id":     run.requestID,
+		"turns":      turn,
+		"max_turns":  maxTurns,
+		"total_cost": run.totalCost,
+	})
+	b.emitExit(run.requestID, intPtr(0), nil, conv.ID)
 }

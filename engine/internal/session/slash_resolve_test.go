@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/dsswift/ion/engine/internal/types"
 )
 
 // slash_resolve_test.go pins the engine-side slash resolution + expansion
@@ -95,6 +97,25 @@ func TestResolveSlashCommand_OpenFrontmatterPassthrough(t *testing.T) {
 	}
 	if res.Model != "sonnet" {
 		t.Errorf("model = %q want sonnet", res.Model)
+	}
+}
+
+func TestResolveSlashIntoOptsCarriesFrontmatterForPersistence(t *testing.T) {
+	work := t.TempDir()
+	writeTemplate(t, work, ".ion/commands/x.md", "---\nmy-extension-key: durable-value\nallowed-tools: [Read, Grep]\n---\nBody")
+	mgr := NewManager(newMockBackend())
+	s := &engineSession{config: types.EngineConfig{WorkingDirectory: work}}
+	opts := &types.RunOptions{Prompt: "/x", ResolveSlash: true}
+
+	resolved, failed := mgr.resolveSlashIntoOpts(s, "slash-frontmatter", opts)
+	if !resolved || failed != "" {
+		t.Fatalf("resolveSlashIntoOpts = (%t, %q), want (true, empty)", resolved, failed)
+	}
+	if got := opts.ResolvedSlashFrontmatter["my-extension-key"]; got != "durable-value" {
+		t.Errorf("ResolvedSlashFrontmatter custom key = %v, want durable-value", got)
+	}
+	if tools, ok := opts.ResolvedSlashFrontmatter["allowed-tools"].([]string); !ok || len(tools) != 2 {
+		t.Errorf("ResolvedSlashFrontmatter allowed-tools = %#v, want parsed list", opts.ResolvedSlashFrontmatter["allowed-tools"])
 	}
 }
 

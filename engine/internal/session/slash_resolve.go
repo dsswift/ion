@@ -221,6 +221,7 @@ func (m *Manager) resolveSlashIntoOpts(s *engineSession, key string, opts *types
 	opts.ResolvedSlashArgs = res.Args
 	opts.ResolvedSlashSource = res.Source
 	opts.ResolvedSlashContext = res.Context
+	opts.ResolvedSlashFrontmatter = cloneResolvedSlashFrontmatter(res.Frontmatter)
 
 	// A command-declared model is authoritative for this invocation. A client
 	// model controls ordinary conversation prompts, but cannot change command
@@ -236,6 +237,19 @@ func (m *Manager) resolveSlashIntoOpts(s *engineSession, key string, opts *types
 
 	utils.LogWithFields(utils.LevelInfo, "session.slash", "resolved into opts", map[string]any{"session_id": key, "reason": res.Command, "status": res.Source, "count": len(res.ExpandedBody)})
 	return true, ""
+}
+
+// cloneResolvedSlashFrontmatter detaches run options from hook-visible map
+// before the asynchronous backend persists command provenance.
+func cloneResolvedSlashFrontmatter(frontmatter map[string]any) map[string]any {
+	if len(frontmatter) == 0 {
+		return nil
+	}
+	clone := make(map[string]any, len(frontmatter))
+	for key, value := range frontmatter {
+		clone[key] = value
+	}
+	return clone
 }
 
 func applySlashModelHint(opts *types.RunOptions, frontmatterModel string) {

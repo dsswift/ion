@@ -364,6 +364,10 @@ type RunOptions struct {
 	// run after tier and provider resolution. Empty when no model was resolved.
 	// In-process run field.
 	ResolvedSlashModelEffective string `json:"-"`
+	// ResolvedSlashFrontmatter is complete parsed command frontmatter captured
+	// at resolution time. It is in-process only; persistence and typed events
+	// carry the durable provenance for history and live consumers.
+	ResolvedSlashFrontmatter map[string]any `json:"-"`
 
 	// PrePersistedUserEntryID identifies a user turn the session layer wrote with
 	// its active-run journal before backend dispatch. The API runloop reuses that

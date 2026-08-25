@@ -192,6 +192,7 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 			UserTurnEntryID:             e.EntryID,
 			UserTurnSlashModelAlias:     e.SlashModelAlias,
 			UserTurnSlashModelEffective: e.SlashModelEffective,
+			UserTurnSlashFrontmatter:    e.SlashFrontmatter,
 		}
 
 	case *types.SessionDeadEvent:
