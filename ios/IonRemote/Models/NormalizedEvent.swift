@@ -107,6 +107,9 @@ enum RemoteEvent: Sendable {
     case terminalInstanceAdded(tabId: String, instance: TerminalInstanceInfo)
     case terminalInstanceRemoved(tabId: String, instanceId: String)
     case terminalSnapshot(tabId: String, instances: [TerminalInstanceInfo], activeInstanceId: String?, buffers: [String: String]?)
+    /// Live terminal process-tree state. The ViewModel updates the matching
+    /// instance and recomputes the parent tab rollup from all instances.
+    case terminalActivity(tabId: String, instanceId: String, active: Bool, processLabel: String?, applications: [TerminalWebApplication])
     // Engine events (structured)
     /// `metadataOmitted` marks a roster the desktop DEGRADED to fit a size cap:
     /// identity and the protected metadata subset survive, detail fields were
@@ -626,6 +629,7 @@ enum RemoteEvent: Sendable {
         case terminalInstanceAdded = "desktop_terminal_instance_added"
         case terminalInstanceRemoved = "desktop_terminal_instance_removed"
         case terminalSnapshot = "desktop_terminal_snapshot"
+        case terminalActivity = "desktop_terminal_activity"
         case engineAgentState = "desktop_agent_state"
         case engineStatus = "desktop_status"
         case engineSessionStatus = "desktop_session_status"
@@ -792,6 +796,9 @@ enum RemoteEvent: Sendable {
         case partialInput
         case switchTo
         case instanceId, data, exitCode, instance, instances, activeInstanceId, buffers
+        // desktop_terminal_activity payload. `applications` uses the same
+        // TerminalWebApplication shape as the snapshot projection.
+        case active, processLabel, applications
         case level, dialogId, method, title, defaultValue
         case agents, fields, inputTokens, outputTokens, contextPercent
         case metadataOmitted

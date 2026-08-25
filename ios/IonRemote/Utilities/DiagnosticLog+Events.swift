@@ -108,6 +108,15 @@ extension DiagnosticLog {
         case .terminalSnapshot(let tabId, let insts, _, _):
             log("EVENT: terminalSnapshot tabId=\(tabId.prefix(8)) instances=\(insts.count)", tag: "session", level: .info)
 
+        case .terminalActivity(let tabId, let instId, let active, let processLabel, let applications):
+            log("terminal activity event", tag: "session", level: .info, fields: [
+                "tab_id": tabId,
+                "instance_id": instId,
+                "status": active ? "active" : "idle",
+                "process": processLabel ?? "",
+                "application_count": String(applications.count),
+            ])
+
         case .engineAgentState(let tabId, let instId, let agents, let metadataOmitted):
             log("EVENT: engineAgentState tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") agents=\(agents.count) degraded=\(metadataOmitted)", tag: "session", level: .info)
 

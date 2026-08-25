@@ -323,6 +323,11 @@ extension RemoteCommand {
             try container.encode(TypeKey.requestTerminalSnapshot, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
 
+        case .openTerminalApplication(let tabId, let url):
+            try container.encode(TypeKey.openTerminalApplication, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(url, forKey: .url)
+
         case .requestAgentState(let tabId, let instanceId):
             try container.encode(TypeKey.requestAgentState, forKey: .type)
             try container.encode(tabId, forKey: .tabId)

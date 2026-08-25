@@ -39,6 +39,15 @@ extension RemoteEvent {
             let buffers = try container.decodeIfPresent([String: String].self, forKey: .buffers)
             return .terminalSnapshot(tabId: tabId, instances: instances, activeInstanceId: activeInstanceId, buffers: buffers)
 
+        case .terminalActivity:
+            return .terminalActivity(
+                tabId: try container.decode(String.self, forKey: .tabId),
+                instanceId: try container.decode(String.self, forKey: .instanceId),
+                active: try container.decode(Bool.self, forKey: .active),
+                processLabel: try container.decodeIfPresent(String.self, forKey: .processLabel),
+                applications: try container.decodeIfPresent([TerminalWebApplication].self, forKey: .applications) ?? []
+            )
+
         default:
             return nil
         }
@@ -79,6 +88,15 @@ extension RemoteEvent {
             try container.encode(instances, forKey: .instances)
             try container.encodeIfPresent(activeInstanceId, forKey: .activeInstanceId)
             try container.encodeIfPresent(buffers, forKey: .buffers)
+            return true
+
+        case .terminalActivity(let tabId, let instanceId, let active, let processLabel, let applications):
+            try container.encode(TypeKey.terminalActivity, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(instanceId, forKey: .instanceId)
+            try container.encode(active, forKey: .active)
+            try container.encodeIfPresent(processLabel, forKey: .processLabel)
+            try container.encode(applications, forKey: .applications)
             return true
 
         default:

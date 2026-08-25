@@ -39,6 +39,24 @@ final class TabRowStatusPriorityTests: XCTestCase {
         XCTAssertEqual(result.priority, TabStatusRollup.priorityStarting)
     }
 
+    func testRunningTerminalUsesBreathingShellState() {
+        var runningTerminal = tab()
+        runningTerminal.hasRunningTerminal = true
+
+        let result = TabStatusRollup.classify(runningTerminal)
+
+        XCTAssertEqual(result.state, .bash)
+        XCTAssertEqual(result.priority, TabStatusRollup.priorityBashBackground)
+        XCTAssertTrue(result.state.breathes)
+    }
+
+    func testRunningConversationOutranksRunningTerminal() {
+        var runningTerminal = tab(status: .running)
+        runningTerminal.hasRunningTerminal = true
+
+        XCTAssertEqual(TabStatusRollup.classify(runningTerminal).state, .running)
+    }
+
     func testUnreadCompletionOutranksIdleAndUsesDoneState() {
         let result = TabStatusRollup.classify(tab(status: .idle, unread: true))
 

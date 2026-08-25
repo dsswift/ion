@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Horizontal scrollable bar showing shell instance tabs within a terminal tab.
 struct TerminalInstanceBar: View {
+    @Environment(\.appTheme) private var theme
     let tabId: String
     let instances: [TerminalInstanceInfo]
     let activeInstanceId: String
@@ -56,6 +57,16 @@ struct TerminalInstanceBar: View {
                 Text(displayLabel)
                     .font(.caption)
                     .lineLimit(1)
+                if instance.isRunning == true {
+                    Circle()
+                        .fill(theme.statusBash)
+                        .frame(width: 6, height: 6)
+                    if let processLabel = instance.processLabel {
+                        Text(processLabel)
+                            .font(.caption2)
+                            .lineLimit(1)
+                    }
+                }
 
                 if instances.count > 1 && !instance.readOnly {
                     Button {

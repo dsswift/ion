@@ -57,6 +57,15 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     /// Older desktops omit it, which preserves the established automated-fix copy.
     var inputLockReason: String?
     var hasEngineExtension: Bool?
+    /// True when any terminal instance owned by this conversation has a live
+    /// foreground process. Snapshot data supplies the first-paint value; live
+    /// `desktop_terminal_activity` events keep it current between snapshots.
+    var hasRunningTerminal: Bool?
+    /// Parent-level Web Application projection, including Surface Terminals.
+    var terminalApplications: [TerminalWebApplication]?
+    var resolvedTerminalApplications: [TerminalWebApplication] {
+        terminalApplications ?? (terminalInstances ?? []).flatMap { $0.applications ?? [] }
+    }
     var terminalInstances: [TerminalInstanceInfo]?
     var activeTerminalInstanceId: String?
     var conversationInstances: [ConversationInstanceInfo]?
@@ -196,12 +205,25 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
 
 // MARK: - TerminalInstanceInfo
 
+struct TerminalWebApplication: Codable, Identifiable, Sendable {
+    let id: String
+    let kind: String
+    let url: String
+    let port: Int
+    let pid: Int?
+    let processName: String?
+    let source: String
+}
+
 struct TerminalInstanceInfo: Codable, Identifiable, Sendable {
     let id: String
     var label: String
     var kind: String
     var readOnly: Bool
     var cwd: String
+    var isRunning: Bool?
+    var processLabel: String?
+    var applications: [TerminalWebApplication]?
 }
 
 // MARK: - RemoteTabWorktreeRef

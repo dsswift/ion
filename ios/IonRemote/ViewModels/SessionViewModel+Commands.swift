@@ -338,6 +338,10 @@ extension SessionViewModel {
         send(.requestTerminalSnapshot(tabId: tabId), intent: .automaticEssential)
     }
 
+    func openTerminalApplication(tabId: String, url: String) {
+        send(.openTerminalApplication(tabId: tabId, url: url), intent: .userInitiated)
+    }
+
     /// Request an on-demand context breakdown from the desktop for a tab.
     /// The desktop forwards get_context_breakdown to the engine; the result
     /// arrives as desktop_context_breakdown and populates inst.contextBreakdown.

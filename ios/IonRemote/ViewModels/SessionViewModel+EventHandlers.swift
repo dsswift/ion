@@ -170,6 +170,23 @@ extension SessionViewModel {
                 }
             }
 
+        case .terminalActivity(let tabId, let instanceId, let active, let processLabel, let applications):
+            if let instanceIndex = terminalInstances[tabId]?.firstIndex(where: { $0.id == instanceId }) {
+                terminalInstances[tabId]?[instanceIndex].isRunning = active
+                terminalInstances[tabId]?[instanceIndex].processLabel = processLabel
+                terminalInstances[tabId]?[instanceIndex].applications = applications
+            }
+            if let tabIndex = tabs.firstIndex(where: { $0.id == tabId }) {
+                if let projectedIndex = tabs[tabIndex].terminalInstances?.firstIndex(where: { $0.id == instanceId }) {
+                    tabs[tabIndex].terminalInstances?[projectedIndex].isRunning = active
+                    tabs[tabIndex].terminalInstances?[projectedIndex].processLabel = processLabel
+                    tabs[tabIndex].terminalInstances?[projectedIndex].applications = applications
+                }
+                let instances = terminalInstances[tabId] ?? tabs[tabIndex].terminalInstances ?? []
+                let otherInstances = instances.filter { $0.id != instanceId }
+                tabs[tabIndex].hasRunningTerminal = active || otherInstances.contains { $0.isRunning == true }
+            }
+
         // Engine events (structured)
         case .engineAgentState(let tabId, let instanceId, let agents, let metadataOmitted):
             // See SessionViewModel+AgentStateEvent.swift.

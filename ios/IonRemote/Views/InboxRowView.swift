@@ -14,6 +14,7 @@ import SwiftUI
 /// what a conversation is doing.
 struct InboxRowView: View {
     @Environment(\.appTheme) private var theme
+    @Environment(SessionViewModel.self) private var viewModel
     let tab: RemoteTabState
 
     private enum Pill {
@@ -82,6 +83,27 @@ struct InboxRowView: View {
                 }
             }
             Spacer(minLength: 4)
+            if tab.hasRunningTerminal == true {
+                HStack(spacing: 2) {
+                    Image(systemName: "terminal")
+                        .font(.caption2)
+                    Text("Terminal")
+                        .font(.caption2.weight(.semibold))
+                }
+                .foregroundStyle(theme.statusBash)
+                .accessibilityLabel("Terminal running")
+            }
+            if let application = tab.resolvedTerminalApplications.first {
+                Button {
+                    viewModel.openTerminalApplication(tabId: tab.id, url: application.url)
+                } label: {
+                    Image(systemName: "globe")
+                        .font(.caption)
+                        .foregroundStyle(theme.statusBash)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open \(application.url)")
+            }
             if woke {
                 Text("Woke")
                     .font(.caption2.weight(.semibold))
