@@ -21,7 +21,13 @@ cd "$(dirname "$0")/.."
 #   ipc/remote-control.ts    — overlay-only remote-control UX
 #   remote/handlers/display.ts — overlay display control from iOS
 #   git/subscriptions.ts     — per-sender git subscription replies
-ALLOWLIST='broadcast\.ts|studio-window-manager\.ts|window-manager\.ts|ipc/studio\.ts|ipc/conversation-backup\.ts|ipc/models\.ts|ipc/remote-control\.ts|remote/handlers/display\.ts|git/subscriptions\.ts'
+#   updater.ts               — update UX is overlay chrome
+#   automation/renderer-command.ts — owner-only automation exec: the command
+#                              mutates owner-durable store state (create tab,
+#                              set pill, submit), so it must land in
+#                              state.mainWindow specifically, never the Studio
+#                              mirror, which cannot run the mutation itself.
+ALLOWLIST='broadcast\.ts|studio-window-manager\.ts|window-manager\.ts|updater\.ts|ipc/studio\.ts|ipc/conversation-backup\.ts|ipc/models\.ts|ipc/remote-control\.ts|remote/handlers/display\.ts|git/subscriptions\.ts|automation/renderer-command\.ts'
 
 violations=$(grep -rn "webContents\.send(" desktop/src/main --include='*.ts' \
   | grep -v '__tests__' \
