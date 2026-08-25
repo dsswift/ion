@@ -16,7 +16,7 @@ import {
 } from "../state";
 import { terminalManager } from "../terminal-manager-instance";
 import { evictStudioTab } from "../studio-state-cache";
-import { notifyStudioUserMessageEcho } from "../studio-window-manager";
+import { echoUserTurn } from "../user-turn-echo";
 import { getRemoteTabStates } from "../remote/snapshot";
 import { processIncomingPrompt } from "../prompt-pipeline";
 import { isValidProjectPath } from "../ipc-validation";
@@ -231,16 +231,27 @@ export function registerSessionIpc(): void {
         options,
       }: { tabId: string; requestId: string; options: RunOptions },
     ) => {
-      // Mirror echo: the OWNER renderer does the optimistic transcript insert
-      // in its own store; user turns never ride normalized events, so the Studio window
-      // mirror needs this push to show the message (whether it was typed in
-      // the overlay, the Studio window, or iOS — every prompt funnels through here).
-      notifyStudioUserMessageEcho(tabId, {
-        id: requestId,
-        content: options.prompt,
-        timestamp: Date.now(),
-        ...(options.implementationPhase ? { implementationPhase: true } : {}),
-      });
+      // Publish the user turn to the surfaces that did NOT insert it: the
+      // Studio mirror (the owner store's optimistic insert lives only in the
+      // owner renderer) and iOS. Both go through the ONE funnel so the
+      // machine-authored rule is applied identically — see
+      // main/user-turn-echo.ts for why this is not two inline sends.
+      echoUserTurn(
+        {
+          tabId,
+          id: requestId,
+          content: options.prompt,
+          source: options.source === "remote" ? "remote" : "desktop",
+          implementationPhase: options.implementationPhase,
+          injectionKind: options.injectionKind,
+        },
+        // A remote-source prompt already has its canonical iOS echo from
+        // tabs-prompt.ts (with the id the phone reconciles against); a second
+        // frame from here would duplicate the bubble. The Studio mirror still
+        // needs the push either way.
+        { ios: options.source !== "remote" },
+      );
+
       if (DEBUG_MODE) {
         log("prompt", {
           tab_id: tabId,
@@ -251,31 +262,9 @@ export function registerSessionIpc(): void {
         log("prompt", { tab_id: tabId, request_id: requestId });
       }
 
-      if (!tabId) throw new Error("No tabId provided — prompt rejected");
-      if (!requestId)
-        throw new Error("No requestId provided — prompt rejected");
-
       if (!sessionPlane.hasTab(tabId)) {
         log("prompt: tab not found, auto-registering", { tab_id: tabId });
         sessionPlane.ensureTab(tabId);
-      }
-
-      // Echo the user's typed text to iOS so a desktop-initiated prompt is
-      // visible there too. Skip for remote-source because iOS already inserted
-      // the optimistic entry locally and the pipeline will echo back to it.
-      if (state.remoteTransport && options.source !== "remote") {
-        state.remoteTransport.send({
-          type: "desktop_message_added",
-          tabId,
-          message: {
-            id: requestId,
-            role: "user",
-            content: options.prompt,
-            timestamp: Date.now(),
-            source: "desktop",
-            ...(options.implementationPhase ? { implementationPhase: true } : {}),
-          },
-        });
       }
 
       const remoteDelivery = takeRemotePromptDelivery(requestId);
@@ -393,11 +382,11 @@ export function registerSessionIpc(): void {
       // mirror's echo-inserted row refer to the identical bubble instead of two
       // independently-minted ids racing each other.
       const echoId = clientMessageId || crypto.randomUUID();
-      notifyStudioUserMessageEcho(tabId, {
-        id: echoId,
-        content: message,
-        timestamp: Date.now(),
-      });
+      // Studio only: a steer's iOS echo is owned by the steer event path, so
+      // this publishes to the mirror alone. Routed through the funnel anyway
+      // so the machine-authored rule is applied in exactly one place — a
+      // harness-authored steer must not appear as an operator message.
+      echoUserTurn({ tabId, id: echoId, content: message }, { ios: false });
       engineBridge.sendSteer(tabId, message, clientMessageId);
     },
   );

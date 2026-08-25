@@ -85,12 +85,12 @@ func TestResourceQueryReachesHandler(t *testing.T) {
 
 	fe.request(100, methodResourceQuery, map[string]any{
 		"kind":   "briefing",
-		"filter": map[string]any{"kind": "briefing", "limit": 10},
+		"filter": map[string]any{"kind": "briefing", "producer": "diagnostics", "id": "b1", "limit": 10},
 	})
 	resp := fe.awaitResponse(100)
 
 	filter := <-gotFilter
-	if filter.Kind != "briefing" || filter.Limit != 10 {
+	if filter.Kind != "briefing" || filter.Producer != "diagnostics" || filter.ID != "b1" || filter.Limit != 10 {
 		t.Errorf("filter = %+v, want kind briefing limit 10", filter)
 	}
 

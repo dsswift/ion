@@ -31,6 +31,7 @@ interface TimelineMinimapProps {
   items: ReadonlyArray<TimelineMinimapItem>
   scrollRef: React.RefObject<HTMLDivElement | null>
   virtualMessageJumpRef?: MutableRefObject<((messageId: string) => boolean) | null>
+  onNavigate?: () => void
 }
 
 /** Events originating inside the preview tooltip must not retarget or jump. */
@@ -61,7 +62,7 @@ function tickWidth(activeDistance: number | null): number {
   return 8
 }
 
-export function TimelineMinimap({ items, scrollRef, virtualMessageJumpRef }: TimelineMinimapProps) {
+export function TimelineMinimap({ items, scrollRef, virtualMessageJumpRef, onNavigate }: TimelineMinimapProps) {
   const colors = useColors()
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   // Ids of chapters currently visible in the scroll viewport. React state
@@ -113,6 +114,7 @@ export function TimelineMinimap({ items, scrollRef, virtualMessageJumpRef }: Tim
     (item: TimelineMinimapItem) => {
       const container = scrollRef.current
       if (!container) return // silent-ok: scroll container unmounted (tab teardown race) — nothing to scroll
+      onNavigate?.()
       // A virtual row's DOM offsetTop is not its transcript position: the
       // wrapper is absolutely positioned at top:0 and moved with a transform.
       // Always let the virtualizer resolve its exact grouped-row index first,
@@ -128,7 +130,7 @@ export function TimelineMinimap({ items, scrollRef, virtualMessageJumpRef }: Tim
         behavior: 'smooth',
       })
     },
-    [scrollRef, virtualMessageJumpRef],
+    [scrollRef, virtualMessageJumpRef, onNavigate],
   )
 
   // Stable key for the chapter id set. Streaming chunks rebuild `items`

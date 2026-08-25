@@ -246,6 +246,19 @@ extension ConversationView {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
+            // Guided Questions: collapsed card is the wizard's entry point.
+            // Never in permissionQueue — its own synchronized store drives it.
+            if let questionsWorkflow = viewModel.questionsStore.currentWorkflow(tabId: tabId) {
+                QuestionsCardView(
+                    tabId: tabId,
+                    workflow: questionsWorkflow,
+                    queuedCount: viewModel.questionsStore.openWorkflows(tabId: tabId).count - 1
+                )
+                .padding(.horizontal, IonSpace.rowInset)
+                .padding(.vertical, IonSpace.compactGap)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
             footerSection
         }
     }

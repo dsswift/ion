@@ -295,6 +295,27 @@ type ClientCommand struct {
 	// Additive optional field -- non-breaking.
 	DeliveryId string `json:"deliveryId,omitempty"`
 
+	// send_prompt: how this turn was authored, as a types.InjectionKind wire
+	// value ("structured_answer", "agent_completion", "revive", ...).
+	//
+	// The engine already classifies turns IT injects (dispatch callbacks,
+	// background-task wakes, scheduler check-ins) and publishes the derived
+	// machineAuthored flag so consumers can tell an engine-authored turn from
+	// something a human typed. Until now a CLIENT had no way to state the same
+	// fact about a turn IT delivers, so a client that owns its own answer
+	// surface — a questions wizard, a form, any structured input UI — had to
+	// send the engine-facing rendering of that submission as an ordinary user
+	// turn, and every consumer then rendered it as if the operator had typed
+	// it at the prompt.
+	//
+	// The engine still only classifies and publishes; suppression remains the
+	// consumer's policy (ADR-017). An unrecognized value is treated as
+	// user-authored rather than trusted, so a client cannot hide content by
+	// inventing a kind. Empty (the default) means an ordinary user turn —
+	// byte-for-byte the engine's prior behavior. Additive optional field --
+	// non-breaking.
+	InjectionKind string `json:"injectionKind,omitempty"`
+
 	// resource_subscribe / resource_unsubscribe
 	//
 	// ResourceKind names the resource kind to subscribe to. The sentinel
@@ -313,6 +334,9 @@ type ClientCommand struct {
 	// resource_publish: operation and item for client-side resource publishing.
 	ResourceOp   string              `json:"resourceOp,omitempty"`
 	ResourceItem *types.ResourceItem `json:"resourceItem,omitempty"`
+	// ResourceProducer selects the trusted producer for a client operation.
+	// Empty preserves producerless and legacy single-producer behavior.
+	ResourceProducer string `json:"resourceProducer,omitempty"`
 	// resource_get: fetch a single item's full content from the producer.
 	// ResourceKind and ResourceID identify the item. ResourceGlobal selects
 	// the global broker (workspace-scoped) vs. the per-session broker.

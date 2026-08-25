@@ -10,6 +10,7 @@ import { autoSettleBlocked, effectiveSettled, type InboxTabView } from '../../..
 import { liveBackgroundShellCount } from '../../../shared/background-shell-counts'
 import { isPersistedSettled } from '../../../shared/tab-predicates'
 import { evaluateSessionBusyGuard, formatSessionBusyRefusal } from './session-busy-guard'
+import { activeQuestionsCount } from '../questions-store'
 
 function canSnooze(input: { pendingAskCount: number; waiting: boolean; inBench: boolean }): boolean {
   return input.pendingAskCount === 0 && !input.waiting && !input.inBench
@@ -21,7 +22,9 @@ function actionInput(state: State, tabId: string) {
   const tab = state.tabs.find((candidate) => candidate.id === tabId)
   if (!tab) return null
   const instance = activeInstance(state.conversationPanes, tabId)
-  const pendingAskCount = (instance?.permissionQueue.length ?? 0) + (instance?.elicitationQueue.length ?? 0)
+  // Active guided-question workflows count as pending asks: an open wizard is
+  // an operator decision in flight, so snooze/settle must refuse under it.
+  const pendingAskCount = (instance?.permissionQueue.length ?? 0) + (instance?.elicitationQueue.length ?? 0) + activeQuestionsCount(tabId)
   const waiting = instance?.permissionDenied != null
   return {
     tab,
@@ -38,7 +41,7 @@ function automaticSettlementView(state: State, tabId: string): InboxTabView | nu
   const tab = state.tabs.find((candidate) => candidate.id === tabId)
   if (!tab) return null
   const instance = activeInstance(state.conversationPanes, tabId)
-  const pendingAskCount = (instance?.permissionQueue.length ?? 0) + (instance?.elicitationQueue.length ?? 0)
+  const pendingAskCount = (instance?.permissionQueue.length ?? 0) + (instance?.elicitationQueue.length ?? 0) + activeQuestionsCount(tabId)
   const agentCount = instance?.agentStates.filter((agent) => agent.status === 'running').length ?? 0
   const backgroundAgents = instance?.statusFields?.backgroundAgents ?? 0
   const shells = liveBackgroundShellCount(instance?.statusFields)

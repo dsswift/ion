@@ -17,6 +17,7 @@
 export type ResourceManifest = Record<string, Array<{
   id: string
   kind: string
+  producer?: string
   title?: string
   createdAt: string
   read?: boolean

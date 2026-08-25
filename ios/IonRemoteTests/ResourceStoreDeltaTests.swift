@@ -41,22 +41,24 @@ final class ResourceStoreDeltaTests: XCTestCase {
         ResourceStore(storage: storage)
     }
 
-    private func makeRawItem(id: String, kind: String = "briefing", content: String = "body", read: Bool = false) -> [String: AnyCodable] {
+    private func makeRawItem(id: String, producer: String = "producer-a", kind: String = "briefing", content: String = "body", read: Bool = false) -> [String: AnyCodable] {
         [
             "id": AnyCodable(id),
             "kind": AnyCodable(kind),
+            "producer": AnyCodable(producer),
             "content": AnyCodable(content),
             "createdAt": AnyCodable("2026-01-01T00:00:00.000Z"),
             "read": AnyCodable(read),
         ]
     }
 
-    private func makeRawDelta(op: String, id: String, content: String = "body") -> [String: AnyCodable] {
+    private func makeRawDelta(op: String, id: String, producer: String = "producer-a", content: String = "body") -> [String: AnyCodable] {
         [
             "op": AnyCodable(op),
             "item": AnyCodable([
                 "id": AnyCodable(id),
                 "kind": AnyCodable("briefing"),
+                "producer": AnyCodable(producer),
                 "content": AnyCodable(content),
                 "createdAt": AnyCodable("2026-01-01T00:00:00.000Z"),
             ] as [String: AnyCodable]),
@@ -65,7 +67,7 @@ final class ResourceStoreDeltaTests: XCTestCase {
 
     // MARK: - Snapshot normalization
 
-    func testSnapshotDeduplicatesByIdLastWins() {
+    func testSnapshotDeduplicatesByCompositeIdentityLastWins() {
         let store = makeStore()
         store.wipe()
         store.applySnapshot(kind: "briefing", rawItems: [
@@ -77,6 +79,18 @@ final class ResourceStoreDeltaTests: XCTestCase {
         XCTAssertEqual(briefings.count, 2)
         let aItem = briefings.first { $0.id == "a" }
         XCTAssertEqual(aItem?.content, "new-a")
+    }
+
+    func testSnapshotMigratesLegacyReadIdToEveryMatchingProducer() {
+        let store = makeStore()
+        store.readIds.insert("same")
+        store.applySnapshot(kind: "briefing", rawItems: [
+            makeRawItem(id: "same", producer: "producer-a"),
+            makeRawItem(id: "same", producer: "producer-b"),
+        ])
+        XCTAssertTrue(store.readIds.contains(ResourceItem.compositeId(kind: "briefing", producer: "producer-a", id: "same")))
+        XCTAssertTrue(store.readIds.contains(ResourceItem.compositeId(kind: "briefing", producer: "producer-b", id: "same")))
+        XCTAssertFalse(store.readIds.contains("same"))
     }
 
     func testSnapshotUsesFinalDuplicateReadState() {
@@ -123,7 +137,7 @@ final class ResourceStoreDeltaTests: XCTestCase {
         XCTAssertEqual(store.items["briefing"]?.last?.id, "b")
     }
 
-    func testCreateUpsertsWhenIdExists() {
+    func testCreateUpsertsWhenCompositeIdentityExists() {
         let store = makeStore()
         store.wipe()
         store.applySnapshot(kind: "briefing", rawItems: [
@@ -137,7 +151,7 @@ final class ResourceStoreDeltaTests: XCTestCase {
         XCTAssertEqual(bItem?.content, "new-b")
     }
 
-    func testCreateUpsertPreservesPosition() {
+    func testCreateUpsertPreservesPositionForSameProducer() {
         let store = makeStore()
         store.wipe()
         store.applySnapshot(kind: "briefing", rawItems: [
@@ -148,6 +162,31 @@ final class ResourceStoreDeltaTests: XCTestCase {
         store.applyDelta(kind: "briefing", rawDelta: makeRawDelta(op: "create", id: "b", content: "updated"))
         let ids = (store.items["briefing"] ?? []).map { $0.id }
         XCTAssertEqual(ids, ["a", "b", "c"])
+    }
+
+    func testSnapshotKeepsSameIdFromDifferentProducers() {
+        let store = makeStore()
+        store.applySnapshot(kind: "briefing", rawItems: [
+            makeRawItem(id: "shared", producer: "producer-a", content: "a"),
+            makeRawItem(id: "shared", producer: "producer-b", content: "b"),
+        ])
+        let briefings = store.items["briefing"] ?? []
+        XCTAssertEqual(briefings.count, 2)
+        XCTAssertEqual(Set(briefings.map(\.producer)), ["producer-a", "producer-b"])
+    }
+
+    func testDeltaMutatesOnlyMatchingProducer() {
+        let store = makeStore()
+        store.applySnapshot(kind: "briefing", rawItems: [
+            makeRawItem(id: "shared", producer: "producer-a", content: "a"),
+            makeRawItem(id: "shared", producer: "producer-b", content: "b"),
+        ])
+        store.applyDelta(kind: "briefing", rawDelta: makeRawDelta(
+            op: "update", id: "shared", producer: "producer-a", content: "updated-a"
+        ))
+        let briefings = store.items["briefing"] ?? []
+        XCTAssertEqual(briefings.first { $0.producer == "producer-a" }?.content, "updated-a")
+        XCTAssertEqual(briefings.first { $0.producer == "producer-b" }?.content, "b")
     }
 
     // MARK: - Existing ops unchanged
@@ -177,6 +216,7 @@ final class ResourceStoreDeltaTests: XCTestCase {
         store.wipe()
         store.applySnapshot(kind: "briefing", rawItems: [makeRawItem(id: "a")])
         store.applyDelta(kind: "briefing", rawDelta: makeRawDelta(op: "mark_read", id: "a"))
-        XCTAssertTrue(store.readIds.contains("a"))
+        let item = try! XCTUnwrap(store.items["briefing"]?.first)
+        XCTAssertTrue(store.readIds.contains(item.compositeId))
     }
 }

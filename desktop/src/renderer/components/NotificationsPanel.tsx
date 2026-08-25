@@ -11,6 +11,7 @@ import { ResourceViewer } from './ResourceViewer'
 import { contentRouter } from '../lib/file-open-router'
 import { selectTrayResources } from './notifications-tray-filter'
 import type { ResourceItem } from '../../shared/types-engine'
+import { resourceIdentity } from '../../shared/resource-identity'
 
 function formatTime(iso: string): string {
   try {
@@ -38,14 +39,14 @@ function ResourceCard({
 
   const handleClick = () => {
     onOpen(item, { title, content: item.content })
-    window.ion?.markResourceRead?.(item.kind, item.id)
+    window.ion?.markResourceRead?.(item.kind, item.id, item.producer)
   }
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation()
     if (!window.confirm('Delete this notification?')) return
     onDelete()
-    window.ion?.publishResourceDelete?.(item.kind, item.id)
+    window.ion?.publishResourceDelete?.(item.kind, item.id, item.producer)
   }
 
   return (
@@ -122,7 +123,7 @@ export function NotificationsPanel() {
   // newest first. Conversation-scoped items are excluded here (they live in
   // the per-conversation attachments panel) and are never blocklist-filtered.
   const sorted = selectTrayResources(allResources, excludedResourceKinds)
-  const unreadCount = sorted.filter((item) => !readResourceIds.has(item.id)).length
+  const unreadCount = sorted.filter((item) => !readResourceIds.has(resourceIdentity(item))).length
 
   const updatePos = useCallback(() => {
     if (!triggerRef.current) return
@@ -167,7 +168,7 @@ export function NotificationsPanel() {
   // It does NOT delete items — they remain in the tray with read state, and the
   // unread badge drops to 0. Distinct from the per-item delete (the X button).
   const handleClearAll = () => {
-    const unread = sorted.filter((item) => !readResourceIds.has(item.id))
+    const unread = sorted.filter((item) => !readResourceIds.has(resourceIdentity(item)))
     if (unread.length === 0) return
     if (!window.confirm('Mark all notifications as read?')) return
     markAllResourcesRead(unread)
@@ -249,20 +250,20 @@ export function NotificationsPanel() {
             )}
 
             {sorted.map((item, i) => (
-              <React.Fragment key={item.id}>
+              <React.Fragment key={resourceIdentity(item)}>
                 {i > 0 && <div style={{ height: 1, background: colors.popoverBorder }} />}
                 <ResourceCard
                   item={item}
-                  isRead={readResourceIds.has(item.id)}
+                  isRead={readResourceIds.has(resourceIdentity(item))}
                   colors={colors}
                   onOpen={(openedItem, data) => {
-                    markResourceRead(openedItem.id)
+                    markResourceRead(resourceIdentity(openedItem))
                     const router = contentRouter()
                     if (router?.openResource) router.openResource(openedItem)
                     else setViewerData(data)
                     setOpen(false)
                   }}
-                  onDelete={() => deleteResource(item.kind, item.id)}
+                  onDelete={() => deleteResource(item.kind, item.id, item.producer)}
                 />
               </React.Fragment>
             ))}

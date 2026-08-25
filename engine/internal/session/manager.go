@@ -755,6 +755,14 @@ func (m *Manager) ReconcileState(key string) {
 	// would leave it showing stale rows.
 	m.emitAgentSnapshot(key, agentSnapshotReasonReconcile, true, s.agents.MergedSnapshot())
 
+	// Re-emit the client-tool pending snapshot under the same rule: a
+	// complete replacement, emitted unconditionally, so a reconnecting
+	// client either re-renders the calls the engine is still blocked on
+	// (requestIds stay answerable across reconnects — the broker channels
+	// are engine-side) or receives the authoritative [] that clears a
+	// stale card from before the disconnect.
+	m.emitClientToolState(key)
+
 	// Re-emit status via the shared snapshot helper so the legacy
 	// engine_status and the Phase 3 engine_session_status both ship
 	// from one site. Phase 4 will collapse this when the legacy event

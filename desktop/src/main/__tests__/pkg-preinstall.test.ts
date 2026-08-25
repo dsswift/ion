@@ -1,10 +1,7 @@
-// Installing the .pkg over a running Ion corrupts the live bundle and fails the
-// install. The package must therefore carry a preinstall that quits the app
-// first, and build-pkg.sh must actually embed it — passing `--scripts` is the
-// only thing that puts the script into the package.
-//
-// These assertions are red on the unfixed build script, which passed no
-// `--scripts` argument and shipped a package with no preinstall at all.
+// Installing the .pkg over a running Ion corrupts the live bundle. The package
+// must therefore carry a preinstall that refuses before the payload changes.
+// `make desktop` coordinates the graceful quit outside Installer; manual and
+// MDM package installs remain safe when they start while Ion is live.
 import { describe, it, expect } from 'vitest'
 import { readFileSync, statSync, constants } from 'node:fs'
 import { accessSync } from 'node:fs'
@@ -13,6 +10,7 @@ import { join } from 'node:path'
 // __dirname is src/main/__tests__; the scripts dir is at the desktop root.
 const scriptsDir = join(__dirname, '..', '..', '..', 'scripts')
 const preinstallPath = join(scriptsDir, 'pkg-scripts', 'preinstall')
+const postinstallPath = join(scriptsDir, 'pkg-scripts', 'postinstall')
 const buildPkgPath = join(scriptsDir, 'build-pkg.sh')
 
 describe('pkg preinstall script', () => {
@@ -24,20 +22,16 @@ describe('pkg preinstall script', () => {
     expect(() => accessSync(preinstallPath, constants.X_OK)).not.toThrow()
   })
 
-  it('exits 0 on every path so a not-running app never aborts the install', () => {
+  it('allows the install only when Ion is not running', () => {
     const body = readFileSync(preinstallPath, 'utf8')
-    // The final statement must be a successful exit.
-    const statements = body.trim().split('\n').filter((l) => l.trim() && !l.trim().startsWith('#'))
-    expect(statements[statements.length - 1].trim()).toBe('exit 0')
-    // The early "not running" return must also be a success exit.
     expect(body).toMatch(/is not running[\s\S]*?exit 0/)
-    // No non-zero exit anywhere: that would abort the install.
-    expect(body).not.toMatch(/exit [1-9]/)
+    expect(body).toMatch(/refusing to replace the live application bundle[\s\S]*?exit 1/)
   })
 
-  it('signals the app with SIGUSR1, the handler the app actually implements', () => {
+  it('does not signal or force-kill a running Ion', () => {
     const body = readFileSync(preinstallPath, 'utf8')
-    expect(body).toContain('kill -USR1')
+    expect(body).not.toContain('kill -USR1')
+    expect(body).not.toContain('kill -9')
   })
 
   it('matches only the main app executable, not helper processes', () => {
@@ -47,13 +41,17 @@ describe('pkg preinstall script', () => {
     expect(body).toContain('.app/Contents/MacOS/${APP_NAME}\\$')
   })
 
-  it('bounds the drain wait under the pkgbuild 10-minute script ceiling', () => {
-    const body = readFileSync(preinstallPath, 'utf8')
-    const match = /DRAIN_TIMEOUT=(\d+)/.exec(body)
-    expect(match).not.toBeNull()
-    const timeout = Number(match![1])
-    expect(timeout).toBeGreaterThan(0)
-    expect(timeout).toBeLessThan(600)
+})
+
+describe('pkg postinstall script', () => {
+  it('exists, is executable, and launches Ion only for an active console user', () => {
+    expect(statSync(postinstallPath).isFile()).toBe(true)
+    expect(() => accessSync(postinstallPath, constants.X_OK)).not.toThrow()
+    const body = readFileSync(postinstallPath, 'utf8')
+    expect(body).toContain('launchctl asuser "$CONSOLE_UID" /usr/bin/env -u TMPDIR /usr/bin/open "$APP_PATH"')
+    expect(body).toContain('Do not let the launched app')
+    expect(body).toContain('no graphical user is active; leaving Ion closed')
+    expect(body).toContain('exit 0')
   })
 })
 

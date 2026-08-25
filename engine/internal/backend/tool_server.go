@@ -45,8 +45,12 @@ type toolEntry struct {
 	inputSchema map[string]interface{}
 }
 
-// ToolHandler executes a tool call and returns the result.
-type ToolHandler func(input map[string]interface{}) (*types.ToolResult, error)
+// ToolHandler executes a tool call and returns the result. ctx is the MCP
+// request context: it is cancelled when the calling MCP session tears down or
+// the ToolServer stops, so a handler that blocks (a client-tool human wait, a
+// long extension call) unwinds instead of leaking. Handlers that cannot be
+// cancelled may ignore it.
+type ToolHandler func(ctx context.Context, input map[string]interface{}) (*types.ToolResult, error)
 
 // socketToken derives a filesystem- and socat-safe token from a session
 // key. The engine treats session keys as opaque (per the engine
@@ -135,7 +139,7 @@ func (ts *ToolServer) RegisterTool(name string, handler ToolHandler, description
 			}
 
 			utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "tools/call: invoking", map[string]any{"name": name})
-			result, err := h(args)
+			result, err := h(ctx, args)
 			if err != nil {
 				utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "tool error", map[string]any{
 					"name":  name,

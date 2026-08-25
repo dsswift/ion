@@ -308,17 +308,17 @@ enum RemoteCommand: Codable, Sendable {
   /// to expand it. The snapshot carries only metadata (id, kind, title,
   /// createdAt, read) to keep the payload small; content arrives via
   /// the `resource_content` event in response to this command.
-  case requestResourceContent(kind: String, resourceId: String)
+  case requestResourceContent(kind: String, producer: String? = nil, resourceId: String)
 
   /// Notify the desktop that the user read a resource on iOS. The desktop
   /// persists the read state and publishes a mark_read delta through the
   /// engine so all subscribers converge.
-  case markResourceRead(kind: String, resourceId: String)
+  case markResourceRead(kind: String, producer: String? = nil, resourceId: String)
 
   /// Permanently remove a notification from the global resource broker.
   /// The desktop publishes a delete delta through the engine so all
   /// subscribers (desktop + iOS) remove the item from their collections.
-  case deleteResource(kind: String, resourceId: String)
+  case deleteResource(kind: String, producer: String? = nil, resourceId: String)
 
   // MARK: - Plan implement intent (plan gentle-perching-lemon)
 
@@ -341,6 +341,19 @@ enum RemoteCommand: Codable, Sendable {
   /// The desktop replies with a `plan_content` event carrying the window.
   case requestPlanContent(
     tabId: String, questionId: String, planFilePath: String, offset: Int, length: Int)
+
+  // ── Guided Questions (see Models/QuestionsModels.swift) ──
+  /// Revisioned draft patch for a guided-questions workflow. The desktop
+  /// main coordinator compare-and-sets by expectedRevision; a stale patch is
+  /// rejected and the authoritative state comes back on
+  /// desktop_questions_state for rollback.
+  case questionsPatch(tabId: String, patch: QuestionsPatch)
+  /// Revisioned workflow action (enter_review / edit_question /
+  /// request_more / final_confirm / cancel).
+  case questionsAction(tabId: String, action: QuestionsAction)
+  /// Targeted re-send of the authoritative Questions state (reconnect,
+  /// sequence loss).
+  case questionsRefresh(tabId: String)
 
   // MARK: - Codable
 
@@ -465,6 +478,9 @@ enum RemoteCommand: Codable, Sendable {
     case deleteResource = "desktop_delete_resource"
     case implementPlan = "desktop_implement_plan"
     case requestPlanContent = "desktop_request_plan_content"
+    case questionsPatch = "desktop_questions_patch"
+    case questionsAction = "desktop_questions_action"
+    case questionsRefresh = "desktop_questions_refresh"
   }
 
   enum CodingKeys: String, CodingKey {
@@ -524,6 +540,7 @@ enum RemoteCommand: Codable, Sendable {
     // These share no wire key with any existing command field.
     case resourceId
     case kind
+    case producer
     // engine_rewind payload. `tabId`/`instanceId`/`messageId` are shared
     // with other commands above; `userTurnIndex` is unique to this command
     // — the 0-based ordinal among user messages the desktop uses to resolve
@@ -553,6 +570,9 @@ enum RemoteCommand: Codable, Sendable {
     case requestId, response, cancelled, declined
     // requestResend payload — the inclusive wire-frame seq range to replay.
     case fromSeq, toSeq
+    // Guided Questions payloads: a nested revisioned patch or action object
+    // (see QuestionsModels.swift). `tabId` is shared above.
+    case patch, action
     case title, branchNames
   }
 

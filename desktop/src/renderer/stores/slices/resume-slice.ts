@@ -3,7 +3,7 @@ import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { makeLocalTab, nextMsgId } from '../session-store-helpers'
 import { makeMainPane } from '../conversation-instance'
-import { buildRestoredDenied } from './resume-slice-restore-denied'
+import { buildRestoredDenied, rehydrateQuestionsFromMessages } from './resume-slice-restore-denied'
 import { mapSessionHistory, mapSessionMessage } from '../../../shared/session-message-mapper'
 import { loadSkeletonMessagesImpl } from '../resume-slice-hydration'
 import { rInfo, rWarn } from '../../rendererLogger'
@@ -45,6 +45,10 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
         const messages: Message[] = mapSessionHistory(history, nextMsgId)
 
         const restoredDenied = buildRestoredDenied(messages)
+        // Same seam, same question: does this conversation still owe the
+        // operator an answer? The card reads it from `messages` above; the
+        // questions panel is rebuilt from the identical list in main.
+        rehydrateQuestionsFromMessages(tabId, messages)
 
         const { tabGroupMode, tabGroups } = usePreferencesStore.getState()
         const groupId = tabGroupMode === 'manual'
@@ -171,6 +175,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
         }
 
         const restoredDenied = buildRestoredDenied(allMessages)
+        rehydrateQuestionsFromMessages(tabId, allMessages)
 
         const { tabGroupMode, tabGroups } = usePreferencesStore.getState()
         const groupId = tabGroupMode === 'manual'

@@ -342,15 +342,15 @@ describe('EngineControlPlane', () => {
         expect.objectContaining({ workingDirectory: '/Users/test/project' }),
       )
       expect(mockBridge.sendPrompt).toHaveBeenCalledOnce()
-      // Assert the arguments this test is about, then assert that EVERY
-      // trailing optional is undefined for a plain prompt — without pinning
-      // how many there are. The previous spelling listed one `undefined` per
-      // parameter, so adding an optional parameter to sendPrompt broke this
-      // test for a reason unrelated to what it verifies.
-      const [calledTabId, calledText, ...calledRest] = mockBridge.sendPrompt.mock.calls[0]
+      // Assert the arguments this test is about, then assert that every
+      // optional field is absent for a plain prompt — without pinning which
+      // fields exist. sendPrompt takes a named options object, so a new
+      // optional field cannot break this test for a reason unrelated to what
+      // it verifies.
+      const [calledTabId, calledText, calledOpts] = mockBridge.sendPrompt.mock.calls[0]
       expect(calledTabId).toBe(tabId)
       expect(calledText).toBe('hi')
-      expect(calledRest.every((arg: unknown) => arg === undefined)).toBe(true)
+      expect(Object.values(calledOpts ?? {}).every((v: unknown) => v === undefined)).toBe(true)
     })
 
     it('passes sessionId through EngineConfig', async () => {
@@ -378,10 +378,10 @@ describe('EngineControlPlane', () => {
       expect(mockBridge.startSession).toHaveBeenCalledOnce()
       expect(mockBridge.sendPrompt).toHaveBeenCalledTimes(2)
       const lastCall = mockBridge.sendPrompt.mock.calls.at(-1)!
-      const [secondTabId, secondText, ...secondRest] = lastCall
+      const [secondTabId, secondText, secondOpts] = lastCall
       expect(secondTabId).toBe(tabId)
       expect(secondText).toBe('second')
-      expect(secondRest.every((arg: unknown) => arg === undefined)).toBe(true)
+      expect(Object.values(secondOpts ?? {}).every((v: unknown) => v === undefined)).toBe(true)
     })
 
     it('emits error when startSession fails', async () => {
@@ -410,15 +410,16 @@ describe('EngineControlPlane', () => {
         }),
       )
 
-      // Pin the two arguments under test (prompt text, appendSystemPrompt) by
-      // position, and require the remaining optionals to be undefined without
-      // counting them.
-      const [askTabId, askText, askModel, askAppend, ...askRest] = mockBridge.sendPrompt.mock.calls[0]
+      // Pin the fields under test by NAME, and require every other optional
+      // to be absent without enumerating them.
+      const [askTabId, askText, askOpts] = mockBridge.sendPrompt.mock.calls[0]
       expect(askTabId).toBe(tabId)
       expect(askText).toBe('/spec-issue expanded args')
-      expect(askModel).toBeUndefined()
-      expect(askAppend).toBe('Analyze the GitHub issue and create a spec.')
-      expect(askRest.every((arg: unknown) => arg === undefined)).toBe(true)
+      const opts = (askOpts ?? {}) as Record<string, unknown>
+      expect(opts.model).toBeUndefined()
+      expect(opts.appendSystemPrompt).toBe('Analyze the GitHub issue and create a spec.')
+      const others = Object.entries(opts).filter(([k]) => k !== 'appendSystemPrompt')
+      expect(others.every(([, v]) => v === undefined)).toBe(true)
     })
   })
 

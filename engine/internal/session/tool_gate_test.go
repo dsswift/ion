@@ -239,7 +239,7 @@ func TestWireClientTools_AddsToolsAndRoutesFulfillment(t *testing.T) {
 	})
 
 	var runCfg backend.RunConfig
-	mgr.wireClientTools(s, key, &runCfg)
+	wireClientToolsForTest(mgr, s, key, &runCfg)
 
 	if len(runCfg.ExternalTools) != 1 || runCfg.ExternalTools[0].Name != "BenchMemberFile" {
 		t.Fatalf("ExternalTools: want [BenchMemberFile], got %+v", runCfg.ExternalTools)
@@ -274,7 +274,7 @@ func TestWireClientTools_TimeoutIsToolError(t *testing.T) {
 	}
 
 	var runCfg backend.RunConfig
-	mgr.wireClientTools(s, key, &runCfg)
+	wireClientToolsForTest(mgr, s, key, &runCfg)
 
 	result, err := runCfg.McpToolRouter(context.Background(), "SlowTool", nil)
 	if err != nil {
@@ -302,7 +302,7 @@ func TestWireClientTools_FallsThroughToPriorRouter(t *testing.T) {
 		priorCalled = true
 		return &types.ToolResult{Content: "from prior router: " + name}, nil
 	}
-	mgr.wireClientTools(s, key, &runCfg)
+	wireClientToolsForTest(mgr, s, key, &runCfg)
 
 	result, err := runCfg.McpToolRouter(context.Background(), "mcp__srv__tool", nil)
 	if err != nil {
@@ -330,7 +330,7 @@ func TestWireClientTools_NeverShadowsExistingTool(t *testing.T) {
 	runCfg.McpToolRouter = func(_ context.Context, _ string, _ map[string]interface{}) (*types.ToolResult, error) {
 		return &types.ToolResult{Content: "extension answered"}, nil
 	}
-	mgr.wireClientTools(s, key, &runCfg)
+	wireClientToolsForTest(mgr, s, key, &runCfg)
 
 	if len(runCfg.ExternalTools) != 1 {
 		t.Fatalf("shadowed client tool must not duplicate the def: %+v", runCfg.ExternalTools)

@@ -1,20 +1,16 @@
 /**
  * The single prompt-admission predicate used by the input UI and send path.
  *
- * Context capacity is client policy. The engine reports occupancy as
- * `contextTokens`; the client measures it against the selected model's effective
- * input limit. `/compact` and `/clear` are recovery commands and stay available
- * when normal prompts are blocked.
+ * Input locks and connection readiness are client-known facts. Context capacity is
+ * engine policy: the engine can recover an over-limit API conversation through
+ * proactive compaction, so clients must submit and let the engine decide.
  */
-import { contextCapacityBlocksPrompt, resolveContextCapacity } from './context-capacity'
-
 /** Why a prompt cannot be accepted right now. */
 export type PromptRefusalReason =
   | 'no-tab'
   | 'tabs-not-ready'
   | 'connecting'
   | 'input-locked'
-  | 'context-full'
 
 export interface PromptRefusal {
   reason: PromptRefusalReason
@@ -27,14 +23,13 @@ export interface PromptAcceptanceTab {
   status?: string
   inputLocked?: boolean
   inputLockReason?: string | null
+  /** Capacity fields are display telemetry only. The engine owns admission. */
   contextTokens?: number | null
   contextLimit?: number | null
 }
 
 export interface PromptAcceptanceInput {
   tab?: PromptAcceptanceTab | null
-  /** Raw prompt text. Recovery commands can bypass the context-full refusal. */
-  text?: string
   /** Prompt origin. `'machine'` is the auto-fix flow's single sanctioned pass. */
   source?: string
   /** Omit when the caller does not require restored tab state. */
@@ -43,7 +38,7 @@ export interface PromptAcceptanceInput {
 
 /** Returns null when the prompt may proceed, or a refusal that blocks it. */
 export function promptRefusal(input: PromptAcceptanceInput): PromptRefusal | null {
-  const { tab, source, tabsReady, text = '' } = input
+  const { tab, source, tabsReady } = input
 
   if (!tab) return { reason: 'no-tab', detail: 'no active conversation resolved' }
   if (tabsReady === false) return { reason: 'tabs-not-ready', detail: 'tab state has not finished restoring' }
@@ -57,10 +52,6 @@ export function promptRefusal(input: PromptAcceptanceInput): PromptRefusal | nul
         detail: `conversation is input-locked (${tab.inputLockReason ?? 'unspecified'})`,
       }
     }
-  }
-
-  if (contextCapacityBlocksPrompt(resolveContextCapacity(tab.contextTokens, tab.contextLimit), text)) {
-    return { reason: 'context-full', detail: 'context occupancy has reached the selected model input limit' }
   }
 
   return null

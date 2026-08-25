@@ -65,7 +65,7 @@ Open `ios/IonRemote.xcodeproj` in Xcode and build from there.
 |--------|-------------|
 | `make install` | Builds and installs engine + desktop |
 | `make engine` | Builds engine binary, installs to `~/.ion/bin/ion` |
-| `make desktop` | Full desktop build + package + install to `/Applications` + relaunch |
+| `make desktop` | Builds a development-stamped `.pkg`, drains Ion, then opens macOS Installer |
 | `make relay` | Docker build for linux/amd64 |
 | `make relay-local` | `go run` the relay locally |
 | `make ios` | iOS install via script |

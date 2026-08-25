@@ -8,8 +8,7 @@ Ion uses Apple Developer ID code signing and notarization for its macOS binaries
 |----------|--------|-----------|-------|
 | Engine binary (macOS) | ✅ Developer ID | ✅ | CI release pipeline |
 | Desktop app (.app) | ✅ Developer ID | ✅ | CI release pipeline |
-| Desktop DMG | ✅ Developer ID Application (`dmg.sign`) | N/A | Wraps the signed + notarized .app |
-| Desktop .pkg (MDM) | ✅ Developer ID Installer (`productsign`) | ✅ | CI release pipeline; unsigned when `APPLE_INSTALLER_CERT_BASE64` is absent |
+| Desktop .pkg | ✅ Developer ID Installer (`productsign`) | ✅ | Installs the signed + notarized .app safely |
 | Engine binary (local build) | Ad-hoc (`codesign -`) | ❌ | Local `make engine` |
 | Desktop app (local build) | Self-signed | ❌ | Local `npm run dist` |
 | iOS app | Xcode Automatic Signing | N/A | Xcode Cloud / local Xcode |
@@ -43,7 +42,7 @@ These GitHub repository secrets power the CI signing pipeline:
 2. Certificate imported into keychain (same process as engine)
 3. electron-builder signs the .app with Developer ID
 4. `afterSign` hook (`scripts/notarize.js`) notarizes and staples
-5. DMG + zip uploaded to GitHub Release with `latest-mac.yml` for auto-update
+5. `.pkg` uploaded for manual installation; zip + `latest-mac.yml` uploaded for auto-update
 
 ### Local Builds
 
@@ -68,8 +67,9 @@ The desktop app uses electron-updater for auto-update:
 
 1. Checks GitHub Releases on launch and every 4 hours
 2. Downloads update in the background
-3. Shows a notification banner when ready
-4. User clicks "Restart" to quit and install
+3. Shows update progress and a ready-to-install dialog in both Desktop presentations
+4. Stages a detached install worker when the user chooses Install update
+5. User clicks Restart to stop desktop and engine, replace the bundle, and relaunch
 
 ## Installing over a running Ion
 
@@ -80,24 +80,20 @@ some of them can execute code at install time.
 
 | Install path | Quits a running Ion first | Mechanism |
 |---|---|---|
-| In-app updater | Yes | `autoInstallOnAppQuit` + `quitAndInstall()` (`desktop/src/main/updater.ts`) |
-| `.pkg` (MDM / manual) | Yes | `preinstall` script embedded via `pkgbuild --scripts` (`desktop/scripts/pkg-scripts/preinstall`) |
-| Source build (`install-app.command`) | Yes | Inline PID resolution + `SIGUSR1` drain |
-| `.dmg` | No — not possible | Drag-to-Applications image; Finder performs the copy and no project code runs |
+| In-app updater | Yes | Stages the zip and dispatches `install-worker.sh`; the explicit Restart stops the desktop and engine before the worker replaces the bundle |
+| `.pkg` (manual / MDM) | No, if Ion is running | `preinstall` refuses before the payload changes and tells the user to quit Ion, then retry; `postinstall` launches Ion for the active console user after a successful install |
+| Source build (`make desktop`) | Yes | A detached coordinator sends the normal `SIGUSR1` drain, waits for Ion to exit, then opens the same `.pkg` |
 
-The `.pkg` and the source-build installer both quit via `SIGUSR1`: the app drains
-active agents, flushes renderer tab state, boots out the engine daemon so launchd
-does not restart it, then exits (`desktop/src/main/app-lifecycle.ts`). The `.pkg`
-preinstall waits for that drain, force-quits if it exceeds its budget, then reaps
-stray helper processes before the payload is written. It always exits 0, so
-installing when Ion is not running is never blocked. The in-app updater does not
-need a signal — it quits the app itself before swapping the bundle.
-
-**The DMG cannot be fixed the same way.** A DMG is a disk image, not an
-installer: electron-builder's `dmg` options expose no script or hook key, so
-there is no install-time step to attach a quit to. Users updating in place should
-use the in-app updater (or the `.pkg`), and quit Ion manually before dragging a
-DMG build over an existing install.
+The source-build coordinator sends `SIGUSR1`: Ion drains active agents,
+flushes renderer tab state, boots out the engine daemon so launchd does not
+restart it, then exits (`desktop/src/main/app-lifecycle.ts`). The coordinator
+waits outside Installer without a timeout and opens the already-built `.pkg`
+only after Ion exits. A manually opened package never stops Ion: its preinstall
+script exits before the payload changes and tells the user to quit Ion, then
+retry. After a successful package install, postinstall opens Ion for the active
+console user. The in-app updater stages the signed zip, dispatches the detached install
+worker, and performs an explicit immediate Restart that closes desktop and
+engine together before the worker replaces the bundle.
 
 ## Bundle IDs
 

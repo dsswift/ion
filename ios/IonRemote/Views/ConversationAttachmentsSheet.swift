@@ -49,6 +49,8 @@ private struct ExtractedAttachment: Identifiable, Hashable {
     /// For `.resource` attachments, the real resource kind the producing
     /// extension declared (e.g. "briefing", "report"). Empty for other types.
     var resourceKind: String = ""
+    /// Engine-assigned producer identity for resource attachments.
+    var resourceProducer: String = ""
 
     enum AttachmentKind: String {
         case image, file, plan, resource
@@ -123,6 +125,7 @@ struct ConversationAttachmentsSheet: View {
             result.append(ExtractedAttachment(
                 id: a.path, type: kind, name: a.name, path: a.path,
                 resourceKind: a.kind ?? "",
+                resourceProducer: a.producer ?? "",
             ))
         }
 
@@ -317,14 +320,17 @@ struct ConversationAttachmentsSheet: View {
 
         // Search all kinds in the resource store for this ID.
         for items in viewModel.resourceStore.items.values {
-            if let item = items.first(where: { $0.id == resourceId }) {
+            if let item = items.first(where: {
+                $0.id == resourceId && $0.producer == attachment.resourceProducer
+            }) {
                 selectedResource = item
                 return
             }
         }
 
         DiagnosticLog.log("attachments resource not found", tag: "view.attachments", level: .warn, fields: [
-            "resource_id": String(resourceId.prefix(12))
+            "resource_id": String(resourceId.prefix(12)),
+            "producer": attachment.resourceProducer
         ])
     }
 

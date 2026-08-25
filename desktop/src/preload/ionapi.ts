@@ -431,14 +431,14 @@ export interface IonAPI extends StudioApi {
   notifyTabFocus(tabId: string, engineProfileId?: string | null): void
   /** Publish a mark_read delta for a resource. Propagates the read state to
    *  all subscribers (including iOS) via the engine's resource broker. */
-  markResourceRead(kind: string, resourceId: string): void
+  markResourceRead(kind: string, resourceId: string, producer?: string): void
   /** Get persisted read resource IDs from the main process. */
   getReadResourceIds(): Promise<string[]>
   /** Get persisted resources from disk (cold-load fallback). */
-  getPersistedResources(): Promise<Array<{ id: string; kind: string; title?: string; content: string; createdAt: string; conversationId?: string; metadata?: Record<string, unknown>; read?: boolean }>>
+  getPersistedResources(): Promise<Array<{ id: string; kind: string; producer?: string; title?: string; content: string; createdAt: string; conversationId?: string; metadata?: Record<string, unknown>; read?: boolean }>>
   /** Publish a delete op for a resource. Removes the item from all
    *  subscribers (including iOS) via the engine's resource broker. */
-  publishResourceDelete(kind: string, resourceId: string): void
+  publishResourceDelete(kind: string, resourceId: string, producer?: string): void
   /** Fetch a single resource item's full content on demand by kind + id.
    *  The engine calls the registered producer's query handler and emits
    *  engine_resource_item, which the event-wiring layer broadcasts to the
@@ -447,6 +447,29 @@ export interface IonAPI extends StudioApi {
    *  workspace-scoped items (briefings, global notifications). */
   resourceGet(kind: string, id: string, opts?: { sessionKey?: string; global?: boolean }): Promise<void>
   onEngineEvent(callback: (key: string, event: EngineEvent) => void): () => void
+
+  // ─── Guided Questions (AskUserQuestions wizard) ───
+  /** The main-owned QuestionsCoordinator's full synchronized state. */
+  questionsGetState(): Promise<import('../shared/questions-state').QuestionsStateSnapshot>
+  /** Apply a revisioned draft patch. Rejections carry the reason; the
+   *  authoritative state arrives on the broadcast channel for rollback. */
+  questionsPatch(patch: import('../shared/questions-state').QuestionsPatch): Promise<import('../shared/questions-state').QuestionsActionResult>
+  /** Apply a revisioned workflow action (enter_review / edit_question /
+   *  request_more / final_confirm / cancel). */
+  questionsAction(action: import('../shared/questions-state').QuestionsAction): Promise<import('../shared/questions-state').QuestionsActionResult>
+  /** Native image picker for per-question answer attachments. Returns the
+   *  selected files ([] on cancel); paths ride the resume prompt's
+   *  attachment pipeline at submit time. */
+  questionsPickAttachments(): Promise<Array<{ path: string; name: string }>>
+  /** Rebuild a parked question from a restored conversation transcript.
+   *  Resolves true when a workflow was opened. Idempotent: a live workflow
+   *  for the conversation always wins (it may hold a typed draft). */
+  questionsRehydrate(payload: {
+    tabId: string
+    rows: Array<{ role?: string; content?: string; toolName?: string; toolId?: string; toolInput?: string; injectionKind?: string; machineAuthored?: boolean }>
+  }): Promise<boolean>
+  /** Subscribe to authoritative Questions state broadcasts. */
+  onQuestionsState(callback: (snapshot: import('../shared/questions-state').QuestionsStateSnapshot) => void): () => void
 
   // ─── Plugin management ───
   /** Install a Claude Code-compatible plugin from a GitHub source ("owner/repo"). */
@@ -530,7 +553,11 @@ export interface IonAPI extends StudioApi {
 
   // ─── Auto-update ───
   installUpdate(): void
+  restartForUpdate(): void
   onUpdateDownloaded(callback: (info: { version: string }) => void): () => void
+  onUpdateProgress(callback: (info: { percent: number; status: string }) => void): () => void
+  onUpdateStaged(callback: (info: { workerPid: number }) => void): () => void
+  onUpdateError(callback: (info: { message: string }) => void): () => void
 
   // ─── Renderer logging bridge ───
   /** Write a structured log line from renderer context. The main process

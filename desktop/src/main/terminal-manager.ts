@@ -1,15 +1,48 @@
 import { IPC } from '../shared/types'
 import { getCliEnv } from './cli-env'
+import { PRIVILEGE_ESCALATION_VAR } from './launch-env'
 import { getDeepLinkToken } from './deeplink/token'
-import { homedir } from 'os'
-import { basename } from 'path'
+import { homedir, userInfo } from 'os'
+import { basename, join } from 'path'
 import { existsSync } from 'fs'
 import { terminalScrollback } from './state'
-import { debug as _debug } from './logger'
+import { debug as _debug, log as _log, warn as _warn } from './logger'
 import type { IPty } from 'node-pty'
+
+/**
+ * A Studio pane is a login AND interactive shell, so it reads both the login
+ * files and the interactive rc file (`.zprofile` then `.zshrc`).
+ *
+ * These arguments are correct but were never the cause of a pane that loaded
+ * none of the operator's setup. A shell obeys them only when it is not running
+ * PRIVILEGED; an inherited `APPLE_PKGKIT_ESCALATING_ROOT` makes it skip every
+ * user startup file with these exact arguments, a real PTY, and the right
+ * shell. That variable is cleared at startup — see launch-env.ts. Do not treat
+ * a "missing setup" report as a shell-argument question: check the
+ * `privileged_shell_marker` field on the `starting terminal pty` log line.
+ */
+const INTERACTIVE_LOGIN_ARGS = ['-il']
+
+/**
+ * The Zsh startup files a login+interactive shell reads, in the order it reads
+ * them. `~/.zshrc` is where an operator's prompt (Starship), directory jumper
+ * (Zoxide), and PATH additions almost always live, so its presence-vs-absence
+ * is the single most diagnostic fact about a terminal that "looks wrong".
+ *
+ * A privileged shell reads only the /etc entries and silently skips every
+ * user file, which is exactly the failure this record makes visible: the log
+ * then shows the user files existing on disk while the shell ignored them.
+ */
+const ZSH_STARTUP_FILES = ['.zshenv', '.zprofile', '.zshrc', '.zlogin'] as const
 
 function debug(msg: string, fields?: Record<string, unknown>): void {
   _debug('terminal', msg, fields)
+}
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('terminal', msg, fields)
+}
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn('terminal', msg, fields)
 }
 
 /**
@@ -74,6 +107,29 @@ export interface TerminalAttachInfo {
   cwdFellBack: boolean
 }
 
+/**
+ * Which Zsh startup files actually exist for a given rc directory.
+ *
+ * Reported so a log reader can tell "the operator has no .zshrc" (nothing to
+ * load, working as configured) apart from "the .zshrc exists and the shell
+ * ignored it" (a privileged shell, which is a defect). Without this the two
+ * produce an identical bare prompt and identical logs.
+ */
+function presentZshStartupFiles(rcDir: string): string[] {
+  if (!rcDir) return []
+  return ZSH_STARTUP_FILES.filter((name) => {
+    try {
+      return existsSync(join(rcDir, name))
+    } catch {
+      // An unreadable rc directory is reported as "file absent" rather than
+      // throwing: this probe is diagnostic and must never stop a terminal from
+      // starting. The rcDir itself is in the same log line, so a reader can
+      // still see which directory was consulted.
+      return false
+    }
+  })
+}
+
 export class TerminalManager {
   private sessions = new Map<string, IPty>()
   private activeKeys = new Set<string>()
@@ -132,7 +188,7 @@ export class TerminalManager {
     const requested = cwd === '~' ? homedir() : cwd
     const cwdFellBack = !existsSync(requested)
     const resolvedCwd = cwdFellBack ? homedir() : requested
-    const shell = process.env.SHELL || '/bin/zsh'
+    const loginShell = this.resolveLoginShell()
 
     // Conversation identity, injected into the PTY environment.
     //
@@ -156,12 +212,77 @@ export class TerminalManager {
       ION_DESKTOP_DEEPLINK_TOKEN: getDeepLinkToken(),
     }) as Record<string, string>
 
-    const term = spawn(shell, [], {
-      name: 'xterm-256color',
+    const ptyEnv: Record<string, string> = { ...env, SHELL: loginShell }
+
+    // Startup evidence, written BEFORE the spawn.
+    //
+    // This is at INFO on purpose. A terminal whose prompt, PATH, or tools are
+    // missing is reported by the operator hours later, from a packaged build
+    // with no DevTools, and a DEBUG line that the default level discards is
+    // not evidence — it is a blind spot. These fields are what distinguish the
+    // three failure modes that look identical on screen:
+    //
+    //   - wrong shell selected      -> shell / account_shell disagree
+    //   - startup files not on disk -> startup_files_present is short
+    //   - shell refused to read them-> privileged_shell_marker is true
+    //
+    // The environment values are recorded by name and value because each one
+    // changes which files the shell reads: ZDOTDIR relocates them entirely,
+    // HOME decides where they are looked up, and USER/LOGNAME decide which
+    // account the shell believes it is.
+    log('starting terminal pty', {
+      key,
+      shell: loginShell,
+      shell_args: INTERACTIVE_LOGIN_ARGS,
+      requested_cwd: requested,
+      resolved_cwd: resolvedCwd,
+      cwd_fell_back: cwdFellBack,
+      env_home: ptyEnv.HOME,
+      env_user: ptyEnv.USER,
+      env_logname: ptyEnv.LOGNAME,
+      env_shell: ptyEnv.SHELL,
+      env_zdotdir: ptyEnv.ZDOTDIR ?? null,
+      env_term: ptyEnv.TERM,
+      env_term_program: ptyEnv.TERM_PROGRAM ?? null,
+      env_lang: ptyEnv.LANG ?? null,
+      env_path_entries: ptyEnv.PATH ? ptyEnv.PATH.split(':').length : 0,
+      env_path: ptyEnv.PATH,
+      privileged_shell_marker: ptyEnv[PRIVILEGE_ESCALATION_VAR] !== undefined,
+      startup_files_present: presentZshStartupFiles(ptyEnv.ZDOTDIR || ptyEnv.HOME || homedir()),
+    })
+
+    let term: IPty
+    try {
+      // Studio terminals are interactive login shells, so the shell reads both
+      // its login files and its interactive rc file (.zprofile + .zshrc).
+      term = spawn(loginShell, INTERACTIVE_LOGIN_ARGS, {
+        name: 'xterm-256color',
+        cols: 80,
+        rows: 24,
+        cwd: resolvedCwd,
+        env: ptyEnv,
+      })
+    } catch (err: unknown) {
+      // A spawn failure leaves no PTY to report through, so this is the only
+      // place the operator's "the terminal did nothing" can be explained.
+      warn('terminal pty failed to start', {
+        key,
+        shell: loginShell,
+        shell_args: INTERACTIVE_LOGIN_ARGS,
+        cwd: resolvedCwd,
+        error: String(err),
+      })
+      throw err
+    }
+
+    log('terminal pty started', {
+      key,
+      shell: loginShell,
+      pid: term.pid,
+      cwd: resolvedCwd,
+      cwd_fell_back: cwdFellBack,
       cols: 80,
       rows: 24,
-      cwd: resolvedCwd,
-      env,
     })
 
     term.onData((data: string) => {
@@ -180,11 +301,45 @@ export class TerminalManager {
     })
 
     this.sessions.set(key, term)
-    this.startActivityWatch(key, term, shell)
+    this.startActivityWatch(key, term, loginShell)
     this.lifecycle.set(key, { running: true, exitCode: null, cwd: resolvedCwd, cwdFellBack })
     // A fresh run's transcript starts clean (a respawn after exit would
     // otherwise repeat the dead run's history ahead of the new shell).
     terminalScrollback.delete(key)
+  }
+
+
+  /**
+   * The shell to start a pane with: the account's login shell.
+   *
+   * Read from the account record rather than `$SHELL`, because `$SHELL` is
+   * inherited from whatever launched Ion and is wrong exactly when it matters
+   * — a package-installer launch supplies `SHELL=/bin/sh`. The account record
+   * is the operator's real configured shell in every launch path.
+   */
+  private resolveLoginShell(): string {
+    try {
+      const accountShell = userInfo().shell?.trim()
+      if (accountShell) {
+        debug('resolved account login shell', {
+          account_shell: accountShell,
+          inherited_shell: process.env.SHELL ?? null,
+        })
+        return accountShell
+      }
+      warn('account record has no shell; using the default shell', {
+        fallback_shell: '/bin/zsh',
+        inherited_shell: process.env.SHELL ?? null,
+      })
+      return '/bin/zsh'
+    } catch (err: unknown) {
+      warn('could not read the account record; using the default shell', {
+        fallback_shell: '/bin/zsh',
+        inherited_shell: process.env.SHELL ?? null,
+        error: String(err),
+      })
+      return '/bin/zsh'
+    }
   }
 
   write(key: string, data: string): void {

@@ -30,7 +30,11 @@ func (m *Manager) buildStatusFields(key string) (*types.StatusFields, bool) {
 		BackgroundAgents:      agents,
 		BackgroundShells:      len(s.outstandingBackgroundTasks),
 		ActiveBackgroundTasks: liveBackgroundTaskStates(key),
-		HasPendingWork:        agents > 0 || len(s.outstandingBackgroundTasks) > 0 || len(s.promptQueue) > 0 || len(s.rootDispatchCompletions) > 0 || len(s.pendingBackgroundCompletions) > 0 || s.parked != nil,
+		HasPendingWork: agents > 0 || len(s.outstandingBackgroundTasks) > 0 || len(s.promptQueue) > 0 || len(s.rootDispatchCompletions) > 0 || len(s.pendingBackgroundCompletions) > 0 || s.parked != nil ||
+			// A pending client-tool call is accepted work the engine is
+			// blocked on (a human answering, or client software fulfilling);
+			// the session must not read as terminal while one is open.
+			len(s.pendingClientToolCalls) > 0,
 		SessionID:             s.conversationID,
 		ContextPercent:        s.lastContextPct,
 		ContextWindow:         s.lastContextWindow,

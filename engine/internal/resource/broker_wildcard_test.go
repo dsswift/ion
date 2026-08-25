@@ -234,3 +234,17 @@ func TestIsWildcard(t *testing.T) {
 		t.Error(`IsWildcard("") should be false`)
 	}
 }
+
+func TestBroker_PublishDirectPreservesProducerAndFilters(t *testing.T) {
+	b := NewBroker()
+	var messages []ResourceMessage
+	b.SubscribeDirectWildcard(types.ResourceFilter{Producer: "extension-b"}, collectDeliver(&messages))
+	b.PublishDirect("note", types.ResourceDelta{Op: "create", Item: types.ResourceItem{ID: "same", Kind: "note", Producer: "extension-a"}})
+	b.PublishDirect("note", types.ResourceDelta{Op: "create", Item: types.ResourceItem{ID: "same", Kind: "note", Producer: "extension-b"}})
+	if len(messages) != 1 {
+		t.Fatalf("producer-filtered direct messages = %+v", messages)
+	}
+	if messages[0].Delta == nil || messages[0].Delta.Item.Producer != "extension-b" {
+		t.Fatalf("producer attribution lost in direct fan-out: %+v", messages[0])
+	}
+}

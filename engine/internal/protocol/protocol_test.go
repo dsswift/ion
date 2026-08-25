@@ -1183,3 +1183,14 @@ func TestParseClientCommand_ResourceUnsubscribeMissingSubId(t *testing.T) {
 		t.Errorf("expected nil for resource_unsubscribe missing resourceSubId, got %+v", cmd)
 	}
 }
+
+func TestResourceCommandProducerFields(t *testing.T) {
+	cmd := ParseClientCommand(`{"cmd":"resource_get","key":"s1","resourceKind":"note","resourceId":"same","resourceProducer":"beta"}`)
+	if cmd == nil || cmd.ResourceProducer != "beta" {
+		t.Fatalf("resource producer = %#v", cmd)
+	}
+	cmd = ParseClientCommand(`{"cmd":"resource_subscribe","key":"s1","resourceKind":"note","resourceFilter":{"kind":"note","producer":"beta"}}`)
+	if cmd == nil || cmd.ResourceFilter == nil || cmd.ResourceFilter.Producer != "beta" {
+		t.Fatalf("resource filter = %#v", cmd)
+	}
+}

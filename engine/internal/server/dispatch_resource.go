@@ -133,6 +133,9 @@ func (s *Server) dispatchResourcePublish(conn net.Conn, cmd *protocol.ClientComm
 		Op:   cmd.ResourceOp,
 		Item: *cmd.ResourceItem,
 	}
+	// Socket clients can target an existing producer, but cannot claim a
+	// producer inside the nested item envelope.
+	delta.Item.Producer = cmd.ResourceProducer
 
 	// Route: no conversationId → global broker, with conversationId → session broker.
 	if cmd.ResourceItem.ConversationID == "" {
@@ -190,8 +193,9 @@ func (s *Server) deliverResourceEvent(conn net.Conn, key string, msg resource.Re
 // full content from the registered producer, then emit engine_resource_item
 // on the requesting connection.
 //
-// ResourceKind and ResourceID are required. ResourceGlobal selects the global
-// broker (workspace-scoped) vs. the session broker identified by cmd.Key.
+// ResourceKind and ResourceID are required. ResourceGlobal selects workspace
+// scope: the Manager resolves the producer through the session brokers that own
+// query handlers. Otherwise the command queries the session broker named by Key.
 // Returns an error result when no producer is registered or the item is not
 // found; the engine_resource_item event is emitted only on success.
 func (s *Server) dispatchResourceGet(conn net.Conn, cmd *protocol.ClientCommand) {
@@ -204,22 +208,18 @@ func (s *Server) dispatchResourceGet(conn net.Conn, cmd *protocol.ClientCommand)
 		return
 	}
 
-	var broker *resource.Broker
+	var item *types.ResourceItem
+	var err error
 	if cmd.ResourceGlobal {
-		broker = s.manager.GlobalResourceBroker()
-		if broker == nil {
-			s.sendResult(conn, cmd, fmt.Errorf("resource_get: global broker not available"), nil)
-			return
-		}
+		item, err = s.manager.GetWorkspaceResourceItem(cmd.ResourceKind, cmd.ResourceProducer, cmd.ResourceID)
 	} else {
-		broker = s.manager.ResourceBroker(cmd.Key)
+		broker := s.manager.ResourceBroker(cmd.Key)
 		if broker == nil {
 			s.sendResult(conn, cmd, fmt.Errorf("resource_get: no broker for session %q", cmd.Key), nil)
 			return
 		}
+		item, err = broker.GetItemFrom(cmd.ResourceKind, cmd.ResourceProducer, cmd.ResourceID)
 	}
-
-	item, err := broker.GetItem(cmd.ResourceKind, cmd.ResourceID)
 	if err != nil {
 		utils.LogWithFields(utils.LevelInfo, "server", "resource_get: query error", map[string]any{
 			"kind": cmd.ResourceKind, "id": cmd.ResourceID, "error": err.Error(),

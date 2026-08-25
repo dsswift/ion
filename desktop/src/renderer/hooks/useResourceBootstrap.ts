@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useSessionStore } from '../stores/sessionStore'
 import type { ResourceItem } from '../../shared/types-engine'
+import { resourceIdentity } from '../../shared/resource-identity'
 
 let resourceBootstrap: Promise<void> | null = null
 
@@ -16,7 +17,7 @@ export function bootstrapResources(): Promise<void> {
     const itemReadIds: string[] = []
     for (const item of items) {
       ;(byKind[item.kind] ??= []).push(item)
-      if (item.read) itemReadIds.push(item.id)
+      if (item.read) itemReadIds.push(resourceIdentity(item))
     }
     useSessionStore.setState((state) => {
       const resources = { ...state.resources }

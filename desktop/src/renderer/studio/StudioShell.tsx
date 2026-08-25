@@ -54,6 +54,8 @@ import { useCommandShortcuts } from "./keymap/useStudioKeymap";
 import { useSurfaceStore } from "./surface/surface-store";
 import { canvasTabHandlers } from "./surface/canvas-tab-handlers";
 import { initSurfaceConversationSync } from "./surface/surface-conversation-sync";
+import { initQuestionsSurfaceSync } from "./surface/questions-surface-sync";
+import { hydrateQuestions } from "../stores/questions-store";
 import { ControlsPopover } from "./visualizer/ControlsPopover";
 import { useStudioControlsBus } from "./state/controls-bus";
 import { GIT_PANEL_WIDTH } from "../components/panelGeometry";
@@ -64,6 +66,8 @@ import { CommandPalette } from "../components/CommandPalette";
 import { DeepLinkConfirmDialog } from "../components/DeepLinkConfirmDialog";
 import { CloseTabConfirmDialog } from "../components/CloseTabConfirmDialog";
 import { SettingsDialog } from "../components/SettingsDialog";
+import { UpdateDialog } from "../components/UpdateDialog";
+import { useUpdateEvents } from "../hooks/useUpdateEvents";
 import type { PaletteEntry } from "../components/command-palette-rank";
 
 /** One-time mirror boot, before the first render reads the store. */
@@ -92,6 +96,7 @@ function stepConversation(delta: number): void {
 }
 
 export function StudioShell(): React.JSX.Element {
+  useUpdateEvents()
   bootMirror();
   const colors = useColors();
   // useEngineEvents is window-agnostic by construction: it registers the
@@ -100,6 +105,10 @@ export function StudioShell(): React.JSX.Element {
   useEngineEvents();
   useResourceBootstrap();
   useEffect(() => initSurfaceConversationSync(), []);
+  // Guided Questions: hydrate the window-local cache, then keep the transient
+  // questions Canvas tab aligned with open workflows.
+  useEffect(() => hydrateQuestions(), []);
+  useEffect(() => initQuestionsSurfaceSync(), []);
 
   const { layout, hydrated, patch } = useStudioLayout();
   const surfaceVisible = useSurfaceStore((s) => s.visible);
@@ -552,6 +561,7 @@ export function StudioShell(): React.JSX.Element {
           onOpenChange={setPaletteOpen}
         />
         <DeepLinkConfirmDialog />
+        <UpdateDialog />
       </div>
     </PopoverLayerProvider>
   );

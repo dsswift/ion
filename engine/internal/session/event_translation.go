@@ -41,6 +41,18 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 	// check below, but it is the signal for turn_end.
 	m.fireCliTurnHooks(s, key, sOk, event)
 
+	// Feed the delegated-run structured transcript recorder (nil-safe: only
+	// native-session runs create one at dispatch). Before the translate/drop
+	// gate for the same reason as the turn hooks — several of its inputs
+	// (ToolCallUpdateEvent, ToolCallCompleteEvent) have no EngineEvent
+	// translation.
+	if sOk {
+		m.mu.RLock()
+		rec := s.cliTranscript
+		m.mu.RUnlock()
+		rec.record(event)
+	}
+
 	// A terminal ErrorEvent on a delegated-CLI run (the normalizer's
 	// translation of the CLI's is_error result — e.g. "Autocompact is
 	// thrashing…" before the process exits non-zero) marks this run's native
@@ -462,6 +474,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	var ionConvID string
 	var exitSession *engineSession
 	var captureCursorKind string
+	var captureCursorToolSignature string
 	var invalidateCursorKind string
 	// skipDescendantReap is set when this exit was caused by an
 	// orchestrator-scoped abort, which deliberately leaves background
@@ -551,6 +564,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 				utils.LogWithFields(utils.LevelWarn, "session", "handlerunexit: terminal cli failure, invalidating native cursor instead of capturing", map[string]any{"key": key, "kind": invalidateCursorKind, "reported_session_id": sessionID})
 			} else {
 				captureCursorKind = s.runCaps.Kind
+				captureCursorToolSignature = s.runClientToolSignature
 				utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit: native session id reported, capturing cursor", map[string]any{"session_id": sessionID, "key": key, "kind": captureCursorKind, "conversation_id": s.conversationID})
 			}
 		} else {
@@ -605,7 +619,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	// re-bridge for nothing. Persists into the .tree.jsonl header (restart
 	// resilience) and mirrors onto s.nativeSessions (see native_session.go).
 	if captureCursorKind != "" {
-		m.captureNativeSessionCursor(key, ionConvID, captureCursorKind, sessionID)
+		m.captureNativeSessionCursor(key, ionConvID, captureCursorKind, sessionID, captureCursorToolSignature)
 	}
 	// Invalidate the native cursor after a terminal CLI failure — the inverse
 	// of capture, through the same persistence funnel, so the next prompt

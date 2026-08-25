@@ -54,6 +54,9 @@ type ScheduleJob struct {
 	// DayOfWeek is the lowercased English weekday for weekly jobs.
 	// Required for weekly; ignored for daily / interval.
 	DayOfWeek string `json:"dayOfWeek,omitempty"`
+	// DaysOfWeek optionally limits a daily job to the listed lowercased English
+	// weekdays. Empty retains the historic every-day cadence.
+	DaysOfWeek []string `json:"daysOfWeek,omitempty"`
 	// IntervalMs is the millisecond interval for interval jobs.
 	// Required for interval; ignored for daily / weekly / once. Must be
 	// at least 1000 ms (one second) — the scheduler ticks at 1s
@@ -83,10 +86,17 @@ type ScheduleJob struct {
 	Concurrency string `json:"concurrency,omitempty"`
 	// CatchUp controls how a missed daily or weekly slot is reconciled.
 	// "auto" fires it through the engine, "manual" emits schedule_missed
-	// so the extension decides, and "none" advances without backfill. Empty
-	// preserves the historic engine-config plus hook-presence behavior.
-	// Ignored for interval and once schedules.
+	// so the extension decides, "none" advances without backfill, and "latest"
+	// fires only the newest missed slot in its CatchUpGroup. Empty preserves the
+	// historic engine-config plus hook-presence behavior. Ignored for interval
+	// and once schedules.
 	CatchUp string `json:"catchUp,omitempty"`
+	// CatchUpGroup identifies jobs that reconcile together when CatchUp is
+	// "latest". Empty makes this job its own group.
+	CatchUpGroup string `json:"catchUpGroup,omitempty"`
+	// CatchUpScope limits "latest" recovery. "same_day" only accepts missed
+	// slots from the current local calendar day. Empty has no additional limit.
+	CatchUpScope string `json:"catchUpScope,omitempty"`
 }
 
 // ID satisfies the asyncreg.Declaration interface. Schedule jobs use
@@ -109,7 +119,13 @@ func (j ScheduleJob) Validate() error {
 		if err := validateHHMM(j.Time); err != nil {
 			return err
 		}
+		if err := validateDaysOfWeek(j.DaysOfWeek); err != nil {
+			return err
+		}
 	case ScheduleWeekly:
+		if len(j.DaysOfWeek) != 0 {
+			return fmt.Errorf("schedule daysOfWeek is only valid for daily jobs")
+		}
 		if j.Time == "" {
 			return fmt.Errorf("schedule kind=weekly requires time HH:MM")
 		}
@@ -123,10 +139,16 @@ func (j ScheduleJob) Validate() error {
 			return fmt.Errorf("schedule weekly: unknown dayOfWeek %q (use monday..sunday lowercased)", j.DayOfWeek)
 		}
 	case ScheduleInterval:
+		if len(j.DaysOfWeek) != 0 {
+			return fmt.Errorf("schedule daysOfWeek is only valid for daily jobs")
+		}
 		if j.IntervalMs < 1000 {
 			return fmt.Errorf("schedule kind=interval requires intervalMs >= 1000 (got %d)", j.IntervalMs)
 		}
 	case ScheduleOnce:
+		if len(j.DaysOfWeek) != 0 {
+			return fmt.Errorf("schedule daysOfWeek is only valid for daily jobs")
+		}
 		if j.DelayMs < 1000 {
 			return fmt.Errorf("schedule kind=once requires delayMs >= 1000 (got %d)", j.DelayMs)
 		}
@@ -144,13 +166,19 @@ func (j ScheduleJob) Validate() error {
 	}
 	if j.Kind == ScheduleDaily || j.Kind == ScheduleWeekly {
 		switch j.CatchUp {
-		case "", "auto", "manual", "none":
+		case "", "auto", "manual", "none", "latest":
 			// valid
 		default:
-			return fmt.Errorf("unknown schedule catchUp %q (use \"auto\", \"manual\", or \"none\")", j.CatchUp)
+			return fmt.Errorf("unknown schedule catchUp %q (use \"auto\", \"manual\", \"none\", or \"latest\")", j.CatchUp)
 		}
-	} else if j.CatchUp != "" {
-		return fmt.Errorf("schedule catchUp is only valid for daily or weekly jobs")
+		if j.CatchUp != "latest" && (j.CatchUpGroup != "" || j.CatchUpScope != "") {
+			return fmt.Errorf("schedule catchUpGroup and catchUpScope require catchUp=\"latest\"")
+		}
+		if j.CatchUpScope != "" && j.CatchUpScope != "same_day" {
+			return fmt.Errorf("unknown schedule catchUpScope %q (use \"same_day\")", j.CatchUpScope)
+		}
+	} else if j.CatchUp != "" || j.CatchUpGroup != "" || j.CatchUpScope != "" {
+		return fmt.Errorf("schedule catchUp fields are only valid for daily or weekly jobs")
 	}
 	return nil
 }
@@ -198,4 +226,19 @@ func validWeekday(s string) bool {
 		return true
 	}
 	return false
+}
+
+// validateDaysOfWeek validates an optional daily weekday filter.
+func validateDaysOfWeek(days []string) error {
+	seen := make(map[string]struct{}, len(days))
+	for _, day := range days {
+		if !validWeekday(day) {
+			return fmt.Errorf("schedule daily: unknown daysOfWeek value %q (use monday..sunday lowercased)", day)
+		}
+		if _, duplicate := seen[day]; duplicate {
+			return fmt.Errorf("schedule daily: duplicate daysOfWeek value %q", day)
+		}
+		seen[day] = struct{}{}
+	}
+	return nil
 }

@@ -252,7 +252,7 @@ final class ContextOccupancyTests: XCTestCase {
         XCTAssertEqual(capacity?.effectiveLimit, 180_000)
     }
 
-    func test_contextCapacityBlocksOnlyAtEffectiveLimitAndAllowsRecoveryCommands() {
+    func test_fullContextRemainsVisibleWithoutOwningPromptAdmission() {
         let models = [
             RemoteModelEntry(
                 id: "test-model",
@@ -270,9 +270,18 @@ final class ContextOccupancyTests: XCTestCase {
             engineContextWindow: nil,
         )
         XCTAssertEqual(ConversationStatusBar.contextCapacityState(capacity), .full)
-        XCTAssertTrue(ConversationStatusBar.contextCapacityBlocksPrompt(capacity, text: "ordinary prompt"))
-        XCTAssertFalse(ConversationStatusBar.contextCapacityBlocksPrompt(capacity, text: " /compact now"))
-        XCTAssertFalse(ConversationStatusBar.contextCapacityBlocksPrompt(capacity, text: "/clear"))
+        XCTAssertFalse(ConversationView.computeCannotSend(
+            promptText: "resume",
+            attachmentCount: 0,
+            hasUploading: false,
+            contextCapacityState: .full
+        ))
+        XCTAssertTrue(ConversationView.computeCannotSend(
+            promptText: "",
+            attachmentCount: 0,
+            hasUploading: false,
+            contextCapacityState: .full
+        ))
     }
 
     func test_contextCapacityUsesSelectedModelInsteadOfPriorEngineWindow() {

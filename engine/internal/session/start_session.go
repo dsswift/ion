@@ -36,7 +36,25 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 		convID := s.conversationID
 		needsExtensions := len(config.Extensions) > 0 && (s.extGroup == nil || s.extGroup.IsEmpty())
 		wantsRebind := config.SessionID != "" && config.SessionID != convID && s.requestID == ""
+		// An idempotent start_session carries the owning client's LATEST
+		// tool-gate declaration (client tools included). Adopt it wholesale:
+		// a reconnecting/upgraded desktop re-asserts its tool set this way.
+		// Runs capture their runtime at dispatch (buildClientToolRuntime),
+		// so an in-flight run's tools are untouched; the NEXT run sees the
+		// new declaration. A nil incoming ToolGate means the caller declares
+		// no gating and clears any prior declaration — same replace-not-merge
+		// semantics as the rest of the config on a fresh start.
+		toolGateChanged := (s.config.ToolGate != nil) != (config.ToolGate != nil)
+		if !toolGateChanged && config.ToolGate != nil {
+			toolGateChanged = len(s.config.ToolGate.ClientTools) != len(config.ToolGate.ClientTools)
+		}
+		s.config.ToolGate = config.ToolGate
 		m.mu.Unlock()
+		if toolGateChanged {
+			utils.LogWithFields(utils.LevelInfo, "session.toolgate", "startsession: tool-gate declaration replaced on existing session", map[string]any{
+				"key": key, "declared": config.ToolGate != nil,
+			})
+		}
 
 		// Re-register extensions when the session was restored without them
 		// (e.g. daemon restart where the extension subprocess was not persisted).
@@ -405,67 +423,6 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 	return &StartSessionResult{Existed: false, ConversationID: s.conversationID}, nil
 }
 
-// rebindSession changes an idle session's conversation identity to a different
-// (existing) conversation. Used when the desktop restarts and asserts the real
-// conversation ID on a session that was pre-minted before the client connected.
-// The caller must verify: (a) the target conversation file exists on disk,
-// (b) no run is in flight (s.requestID == ""). (#270)
-func (m *Manager) rebindSession(s *engineSession, key, newConvID string) {
-	m.mu.Lock()
-	oldConvID := s.conversationID
-	s.conversationID = newConvID
-	s.bindingPending = false
-	m.mu.Unlock()
-
-	saveBinding(bindingsPath(), key, newConvID)
-
-	// Re-seed model and context usage from the target conversation so the
-	// next status snapshot carries correct values. Same gate split as
-	// StartSession: an empty header model must not suppress the context
-	// seed, or every delegated-CLI conversation rebinds to 0%.
-	convModel, mErr := conversation.LoadLlmHeaderModel(newConvID, "")
-	if mErr != nil {
-		utils.LogWithFields(utils.LevelDebug, "session", "rebindsession: no header model on target conversation", map[string]any{"key": key, "conversation_id": newConvID, "error": mErr})
-	}
-	m.mu.RLock()
-	retainedModel := s.lastModel
-	m.mu.RUnlock()
-	windowModel := convModel
-	if windowModel == "" {
-		windowModel = retainedModel
-	}
-	if windowModel == "" && m.config != nil {
-		windowModel = m.config.DefaultModel
-	}
-	ctxWindow := conversation.DefaultContext
-	if info := providers.GetModelInfo(windowModel); info != nil && info.ContextWindow > 0 {
-		ctxWindow = info.ContextWindow
-	}
-	if conv, lerr := conversation.Load(newConvID, ""); lerr == nil {
-		usage := conversation.GetContextUsage(conv, ctxWindow)
-		m.mu.Lock()
-		if convModel != "" {
-			s.setCurrentModel(convModel)
-		}
-		s.lastContextWindow = ctxWindow
-		s.lastContextTokens = usage.Tokens
-		s.lastContextPct = usage.Percent
-		updateContextCapacityLocked(s, windowModel, ctxWindow, s.config.MaxTokens)
-		m.mu.Unlock()
-		utils.LogWithFields(utils.LevelInfo, "session", "rebindsession: seeded model and context from target conversation", map[string]any{
-			"key": key, "model": convModel, "window_model": windowModel, "context_window": ctxWindow,
-			"context_pct": usage.Percent, "context_tokens": usage.Tokens,
-			"conversation_id": newConvID, "was": oldConvID,
-		})
-	} else {
-		utils.LogWithFields(utils.LevelInfo, "session", "rebindsession: target conversation load failed, context not re-seeded", map[string]any{
-			"key": key, "conversation_id": newConvID, "error": lerr,
-		})
-	}
-
-	m.emitStatusSnapshot(key, "rebind")
-}
-
 // loadAndWireExtensions loads extension subprocesses, wires their hooks and
 // callbacks, and fires session_start. Safe to call on both new and existing
 // sessions — the caller must ensure the session does not already have a
@@ -635,7 +592,7 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 		// fail because the producer only exists on one session's broker).
 		host.SetPersistentPublishResource(func(kind string, delta types.ResourceDelta) error {
 			if s.resourceBroker != nil {
-				if err := s.resourceBroker.Publish(kind, delta); err != nil {
+				if err := s.resourceBroker.PublishFrom(kind, delta.Item.Producer, delta); err != nil {
 					return err
 				}
 			} else {
@@ -650,6 +607,8 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 		host.SetPersistentAckDispatchLost(func(dispatchID string) {
 			m.persistLostNoticeState(s.conversationID, dispatchID, "sent")
 		})
+
+		wirePersistentNotification(host, m, s, capturedKey)
 
 		// Deferred schedule_missed handlers batch slots after their hook RPC
 		// returns. Keep schedule control tied to this host's bound session.

@@ -233,6 +233,13 @@ type engineSession struct {
 	// under which kind) to capture the backend-reported session id as a
 	// native-session cursor. Guarded by m.mu; overwritten on every dispatch.
 	runCaps backend.BackendCapabilities
+	// runClientToolSignature is the digest of the active run's effective
+	// client-tool set (RunOptions.ClientToolSignature), recorded at dispatch
+	// beside runCaps. handleRunExit stamps it onto the captured
+	// native-session cursor so codex resume validity can compare tool sets
+	// (see NativeSessionCursor.ClientToolSignature). Empty when the run
+	// declared no client tools. Guarded by m.mu; overwritten every dispatch.
+	runClientToolSignature string
 	// pendingCliUserTurn holds the current run's original user prompt (the
 	// display text, before any transcript bridging mutated opts.Prompt) when
 	// the run is served by a native-session (delegated-CLI) backend. Together
@@ -430,6 +437,15 @@ type engineSession struct {
 	// so accumulation falls back to this field to key under the correct toolID.
 	cliLastToolID string
 
+	// cliTranscript records the active delegated-CLI root run's ordered
+	// structured content (assistant text, tool_use with exact input, exact
+	// tool results) so persistCliTurn can write real tool exchanges — most
+	// importantly client-tool question/answer rounds — into Ion's canonical
+	// transcript instead of text only. Created at dispatch for
+	// native-session backends, nil for engine-owned runs. Carries its own
+	// lock; the pointer itself is guarded by Manager.mu.
+	cliTranscript *cliTranscriptRecorder
+
 	// dispatchRegistry tracks active background dispatches for this session.
 	// Used by RecallDispatch to cancel running background agents, and by the
 	// dispatch completion callback to deregister finished dispatches.
@@ -493,4 +509,13 @@ type engineSession struct {
 	// "queue" delivery mode (or while a wake could not start a run). They ride
 	// along with the next run the session starts for any other reason.
 	pendingBackgroundCompletions []backgroundCompletionPayload
+
+	// pendingClientToolCalls tracks in-flight client-tool fulfillments keyed
+	// by gate requestID — the metadata behind the engine_client_tool_state
+	// snapshot (the pending.Broker owns the reply channels; this owns what a
+	// reconnecting client needs to re-render or re-answer the calls). Written
+	// by registerClientToolCall / deregisterClientToolCall
+	// (client_tool_state.go); read by the snapshot emitter. Guarded by
+	// Manager.mu.
+	pendingClientToolCalls map[string]types.ClientToolCallState
 }

@@ -5,8 +5,11 @@ package types
 // the payload. Kind discrimination is the only schema the engine
 // enforces on the envelope.
 type ResourceItem struct {
-	ID             string                 `json:"id"`
-	Kind           string                 `json:"kind"`
+	ID   string `json:"id"`
+	Kind string `json:"kind"`
+	// Producer is the engine-assigned extension identity. Resource IDs are unique
+	// within a kind and producer; producerless client resources retain legacy IDs.
+	Producer       string                 `json:"producer,omitempty"`
 	Title          string                 `json:"title,omitempty"`
 	Content        string                 `json:"content"`
 	CreatedAt      string                 `json:"createdAt"`
@@ -24,7 +27,9 @@ type ResourceDelta struct {
 
 // ResourceFilter scopes a subscription or query.
 type ResourceFilter struct {
-	Kind           string `json:"kind"`
+	Kind string `json:"kind"`
+	// Producer optionally selects one extension producer. Empty selects all.
+	Producer       string `json:"producer,omitempty"`
 	ConversationID string `json:"conversationId,omitempty"`
 	Since          string `json:"since,omitempty"`
 	Limit          int    `json:"limit,omitempty"`
@@ -38,6 +43,8 @@ type ResourceFilter struct {
 // ResourceDeclaration is what a producer registers with the broker.
 type ResourceDeclaration struct {
 	Kind string `json:"kind"`
+	// Producer is engine-internal identity stamped from the hosting extension.
+	Producer string `json:"-"`
 }
 
 // NotifyOpts configures a push notification sent through the engine's

@@ -23,7 +23,10 @@
  *   - configured shell first — shell startup files define developer PATH.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 const mocks = vi.hoisted(() => ({
   execFileSync: vi.fn(),
@@ -61,12 +64,21 @@ const REAL_PATH = [
   '/bin',
 ].join(':')
 
+const originalTmpdir = process.env.TMPDIR
+
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.logLines.length = 0
   resetCliPathCacheForTests()
   process.env.SHELL = '/bin/zsh'
   process.env.PATH = STRIPPED
+  if (originalTmpdir === undefined) delete process.env.TMPDIR
+  else process.env.TMPDIR = originalTmpdir
+})
+
+afterEach(() => {
+  if (originalTmpdir === undefined) delete process.env.TMPDIR
+  else process.env.TMPDIR = originalTmpdir
 })
 
 describe('getCliPath — probe invocation form', () => {
@@ -254,5 +266,75 @@ describe('getCliEnv', () => {
 
     expect(env.ION_DESKTOP_TAB_ID).toBe('tab-a')
     expect(env.PATH).toContain('/home/test-user/.tool/bin')
+  })
+
+  it('never hands a spawned shell the marker that makes it skip user rc files', () => {
+    // APPLE_PKGKIT_ESCALATING_ROOT makes Apple's /bin/zsh run PRIVILEGED, which
+    // skips ~/.zshenv, ~/.zprofile, and ~/.zshrc entirely — no Starship, no
+    // Zoxide, no operator PATH entries — even with -i, -l, and a real PTY.
+    // Startup repair clears it from process.env; this is the guarantee at the
+    // point every spawn environment is actually built, so a future entry point
+    // that forgets the startup repair still cannot spawn a privileged shell.
+    mocks.execFileSync.mockReturnValue(REAL_PATH)
+    process.env.APPLE_PKGKIT_ESCALATING_ROOT = '1'
+
+    try {
+      const env = getCliEnv()
+
+      expect(env.APPLE_PKGKIT_ESCALATING_ROOT).toBeUndefined()
+      expect(
+        mocks.logLines.some((l) => l.msg.includes('privileged-shell marker')),
+      ).toBe(true)
+    } finally {
+      delete process.env.APPLE_PKGKIT_ESCALATING_ROOT
+    }
+  })
+
+  it('leaves the overlay untouched when there is no marker to strip', () => {
+    mocks.execFileSync.mockReturnValue(REAL_PATH)
+
+    const env = getCliEnv({ ION_DESKTOP_TAB_ID: 'tab-a' })
+
+    expect(env.APPLE_PKGKIT_ESCALATING_ROOT).toBeUndefined()
+    expect(
+      mocks.logLines.some((l) => l.msg.includes('privileged-shell marker')),
+    ).toBe(false)
+  })
+
+  it('removes an inherited TMPDIR that no longer exists', () => {
+    mocks.execFileSync.mockReturnValue(REAL_PATH)
+    process.env.TMPDIR = join(tmpdir(), `missing-installer-sandbox-${Date.now()}`)
+
+    const env = getCliEnv()
+
+    expect(env.TMPDIR).toBeUndefined()
+    expect(mocks.logLines).toContainEqual(expect.objectContaining({
+      msg: 'discarding unusable TMPDIR from subprocess environment',
+    }))
+  })
+
+  it('keeps an inherited TMPDIR that is a writable directory', () => {
+    mocks.execFileSync.mockReturnValue(REAL_PATH)
+    const validTmpdir = mkdtempSync(join(tmpdir(), 'ion-cli-env-'))
+    process.env.TMPDIR = validTmpdir
+
+    try {
+      expect(getCliEnv().TMPDIR).toBe(validTmpdir)
+    } finally {
+      rmSync(validTmpdir, { recursive: true, force: true })
+    }
+  })
+
+  it('removes an inherited TMPDIR that points to a file', () => {
+    mocks.execFileSync.mockReturnValue(REAL_PATH)
+    const filePath = join(tmpdir(), `ion-cli-env-file-${Date.now()}`)
+    writeFileSync(filePath, 'not a directory')
+    process.env.TMPDIR = filePath
+
+    try {
+      expect(getCliEnv().TMPDIR).toBeUndefined()
+    } finally {
+      rmSync(filePath, { force: true })
+    }
   })
 })

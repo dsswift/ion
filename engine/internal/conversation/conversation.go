@@ -298,6 +298,15 @@ type Conversation struct {
 type NativeSessionCursor struct {
 	Cursor      string `json:"cursor"`
 	HeadEntryID string `json:"headEntryId"`
+	// ClientToolSignature is the digest of the client-tool set the native
+	// session was created with. Only meaningful for backends whose tool set
+	// is FIXED at native-session creation (codex thread/start dynamicTools):
+	// resolveCliContinuity refuses to resume when the live run's signature
+	// differs, because the resumed thread would silently lack newly declared
+	// tools (or offer removed ones). Backends that attach tools per
+	// start/load (claude-code MCP config, ACP session/new mcpServers) leave
+	// it empty and never compare it.
+	ClientToolSignature string `json:"clientToolSignature,omitempty"`
 }
 
 // ContextUsageInfo describes current context window consumption.

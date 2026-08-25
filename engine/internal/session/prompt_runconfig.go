@@ -209,10 +209,11 @@ func (m *Manager) buildRunConfig(
 
 	m.wireExternalTools(s, key, extGroup, mcpConns, runCfg)
 	runCfg.McpConnections = append([]*mcp.Connection(nil), mcpConns...)
-	// Client-declared tools (EngineConfig.ToolGate.ClientTools) join the tool
-	// list after MCP and extension tools so their router wrap sees the full
-	// prior routing chain. See wireClientTools in session/tool_gate.go.
-	m.wireClientTools(s, key, runCfg)
+	// Client-declared tools (EngineConfig.ToolGate.ClientTools) are NOT wired
+	// here: their runtime is built at the dispatch seam (buildClientToolRuntime
+	// in prompt_dispatch.go) after the run's allowed/suppressed tool lists are
+	// final, then adapted into this RunConfig by wireClientTools — after this
+	// function returns, so the router wrap sees the full prior routing chain.
 	// Pass extGroup to the spawner so it can fire agent_start / agent_end on
 	// the parent extension host. When the caller opted out of extensions
 	// (skipExtensions), pass nil so the spawner's own guard short-circuits

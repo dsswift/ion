@@ -103,9 +103,18 @@ import type { ImageAttachmentPayload } from '../shared/types'
 import { ENTER_PLAN_MODE_DESCRIPTION, PLAN_MODE_SPARSE_REMINDER } from './prompt-pipeline-prose'
 import { emitRemoteMessageAdded } from './prompt-pipeline-renderer'
 import { TURN_GROUPING_GUIDANCE } from './turn-grouping-guidance'
+import { ASK_USER_QUESTIONS_GUIDANCE } from './questions/questions-tool-decl'
+import { notifyQuestionsPromptDispatched, registerQuestionsPromptSink } from './questions/questions-wiring'
 import { benchClientWorkspaceContext } from './integration/bench-prompt-context'
 
 export { ENTER_PLAN_MODE_DESCRIPTION, PLAN_MODE_SPARSE_REMINDER } from './prompt-pipeline-prose'
+
+// Hand the guided-questions submitter its dispatch function. This direction
+// (pipeline registers INTO questions-wiring) is deliberate: the reverse — the
+// submitter importing or requiring this module — is an import cycle that a
+// lazy require() papered over in dev and then failed in the packaged app
+// ("Cannot find module '../prompt-pipeline'"), breaking every submit.
+registerQuestionsPromptSink((prompt) => processIncomingPrompt(prompt))
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -136,6 +145,13 @@ export interface IncomingPrompt {
   imageAttachments?: ImageAttachmentPayload[]
   /** Client-supplied or generated correlation id, used as the message_added id. */
   reqId: string
+  /**
+   * How this turn was authored, as an engine InjectionKind wire value.
+   * 'structured_answer' marks a Guided Questions submission: delivered to
+   * the model, but never rendered as a user bubble (the operator answered in
+   * a surface that already shows their answers). Absent for a typed turn.
+   */
+  injectionKind?: string
   /** Who produced this prompt. See PromptSource. */
   source: PromptSource
   /** True when the conversation hosts extensions (uses `${tabId}:${instanceId}` session keys). */
@@ -254,11 +270,14 @@ function handleBashShortcut(p: IncomingPrompt): boolean {
  * renderer + iOS CLI/engine, slash + non-slash, fresh + bouncing back
  * from a remote→renderer→IPC roundtrip) gets the same treatment.
  *
- * Today the only addendum is `TURN_GROUPING_GUIDANCE` (see
- * ./turn-grouping-guidance.ts for why). When future harness-level
- * coaching is added, it goes here too — never inject from the
- * renderer or from the slash re-submit path, both of which run on
- * subsets of the prompt population.
+ * Addenda are an ORDERED list, each idempotent on its own text: the
+ * previous single `.endsWith(TURN_GROUPING_GUIDANCE)` guard could only
+ * protect the LAST appended block, so a second addendum would have made
+ * the remote bounce-back duplicate the first one. `includes()` per
+ * addendum keeps every block append-once no matter how many times the
+ * helper runs on the same `p` — never inject from the renderer or the
+ * slash re-submit path, both of which run on subsets of the prompt
+ * population.
  *
  * The append target is split across two fields:
  *
@@ -273,24 +292,40 @@ function handleBashShortcut(p: IncomingPrompt): boolean {
  * Idempotency
  * ───────────
  * The iOS engine path bounces through the renderer once: the first
- * pipeline invocation (source='remote') appends the guidance to
+ * pipeline invocation (source='remote') appends the addenda to
  * `p.appendSystemPrompt`, broadcasts via REMOTE_ENGINE_PROMPT (which
  * forwards `appendSystemPrompt`), the renderer calls back into
  * `window.ion.prompt(...)`, IPC delivers it to the pipeline a
- * second time (source='desktop'), and the helper runs again. Without
- * an idempotency check, the guidance would be appended twice on
- * iOS-originated engine prompts. The `.endsWith()` guard makes the
- * helper safe to call any number of times on the same `p`.
- *
- * The iOS CLI path does not need the guard for its own bounce-back
- * (REMOTE_USER_MESSAGE drops `appendSystemPrompt`), but the guard
- * costs nothing and keeps the helper invariant uniform across paths.
+ * second time (source='desktop'), and the helper runs again. The
+ * per-addendum `includes()` guard makes the helper safe to call any
+ * number of times on the same `p`.
  */
+
+/**
+ * The harness's system-prompt addenda, in injection order. Each entry is
+ * appended exactly once (checked by exact text). Additions go at the end so
+ * existing conversations' prompt shapes stay stable.
+ */
+const SYSTEM_PROMPT_ADDENDA: readonly string[] = [
+  TURN_GROUPING_GUIDANCE,
+  ASK_USER_QUESTIONS_GUIDANCE,
+]
+
+/** Append every missing addendum, in order. Returns the updated text. */
+function appendAddenda(existing: string | undefined): { text: string; appended: number } {
+  let text = existing ?? ''
+  let appended = 0
+  for (const addendum of SYSTEM_PROMPT_ADDENDA) {
+    if (text.includes(addendum)) continue
+    text = text ? `${text}\n\n${addendum}` : addendum
+    appended++
+  }
+  return { text, appended }
+}
+
 function applyHarnessSystemPromptAddenda(p: IncomingPrompt): void {
   const before = p.appendSystemPrompt?.length ?? 0
   const beforeRun = p.runOptions?.appendSystemPrompt?.length ?? 0
-  let didAppendPrimary = false
-  let didAppendRun = false
 
   // Bench workspace context: when the prompt's project directory is inside an
   // integration bench, send structured bench facts via clientWorkspaceContext
@@ -306,26 +341,19 @@ function applyHarnessSystemPromptAddenda(p: IncomingPrompt): void {
     }
   }
 
-  if (!p.appendSystemPrompt || !p.appendSystemPrompt.endsWith(TURN_GROUPING_GUIDANCE)) {
-    p.appendSystemPrompt = p.appendSystemPrompt
-      ? `${p.appendSystemPrompt}\n\n${TURN_GROUPING_GUIDANCE}`
-      : TURN_GROUPING_GUIDANCE
-    didAppendPrimary = true
-  }
+  const primary = appendAddenda(p.appendSystemPrompt)
+  p.appendSystemPrompt = primary.text
+  let runAppended = 0
   if (p.runOptions) {
-    const existing = p.runOptions.appendSystemPrompt
-    if (!existing || !existing.endsWith(TURN_GROUPING_GUIDANCE)) {
-      p.runOptions.appendSystemPrompt = existing
-        ? `${existing}\n\n${TURN_GROUPING_GUIDANCE}`
-        : TURN_GROUPING_GUIDANCE
-      didAppendRun = true
-    }
+    const run = appendAddenda(p.runOptions.appendSystemPrompt)
+    p.runOptions.appendSystemPrompt = run.text
+    runAppended = run.appended
   }
 
   log('pipeline: applyHarnessSystemPromptAddenda', {
     tab_id: p.tabId,
-    engine_field: didAppendPrimary ? `appended (${before}→${p.appendSystemPrompt?.length ?? 0})` : 'already-present (no-op)',
-    run_options_field: p.runOptions ? (didAppendRun ? `appended (${beforeRun}→${p.runOptions.appendSystemPrompt?.length ?? 0})` : 'already-present (no-op)') : 'absent',
+    engine_field: primary.appended > 0 ? `appended ${primary.appended} (${before}→${p.appendSystemPrompt.length})` : 'already-present (no-op)',
+    run_options_field: p.runOptions ? (runAppended > 0 ? `appended ${runAppended} (${beforeRun}→${p.runOptions.appendSystemPrompt?.length ?? 0})` : 'already-present (no-op)') : 'absent',
     client_ws_ctx: didSetClientWsCtx ? p.runOptions?.clientWorkspaceContext?.kind ?? 'set' : 'none',
   })
 }
@@ -361,6 +389,11 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
         planFilePath: p.planFilePath,
         bashAllowlistAdditionsForThisPrompt: p.bashAllowlistAdditionsForThisPrompt,
         resolveSlash: p.resolveSlash || undefined,
+        // Client-stated authorship (e.g. 'structured_answer' for a Guided
+        // Questions submission). The renderer's submit uses it to skip the
+        // optimistic user bubble and forwards it to the engine so the
+        // persisted row carries the same classification.
+        injectionKind: p.injectionKind,
       })
       return
     }
@@ -387,6 +420,7 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
       attachments: attachments.length > 0 ? attachments : undefined,
       implementationPhase: p.implementationPhase,
       resolveSlash: p.resolveSlash,
+      injectionKind: p.injectionKind,
     })
     return
   }
@@ -484,6 +518,12 @@ export async function processIncomingPrompt(p: IncomingPrompt): Promise<void> {
   p.text = text
 
   log('pipeline: processIncomingPrompt', { source: p.source, tab_id: p.tabId, engine: p.hasExtensions, req_id: p.reqId, text_len: text.length })
+
+  // Guided-questions lifecycle observer: our own resume prompt completes the
+  // submitting workflow; ANY other prompt on the session supersedes its
+  // parked questions (the engine clears retained denials on a new prompt, so
+  // the workflow could never resume — identical to the AskUserQuestion card).
+  notifyQuestionsPromptDispatched(p.tabId, p.reqId)
 
   // Bash shortcut.
   if (handleBashShortcut(p)) {

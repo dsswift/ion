@@ -40,7 +40,7 @@ Start a new engine session.
 | `parentConversationId` | string | no     | Record descent from a prior conversation on a fresh file |
 | `pinned`           | boolean  | no       | Exempt this session from the orphaned-session reaper |
 | `clientWorkspaceContext` | object | no    | Client-supplied workspace context for the session. Overridden per-prompt by `send_prompt.clientWorkspaceContext`. Fields: `kind` (string), `cwd` (string), `bench` (object, structured bench facts), `data` (object, generic consumer data), `text` (string, prose for system prompt). |
-| `toolGate`         | object   | no       | Opt-in client tool gate: `{enabled, tools?, timeoutMs?, timeoutDecision?, clientTools?, clientToolTimeoutMs?}`. `clientTools` declares tools the client executes over the wire — the third tool provision path beside MCP servers and extensions. See [tool_gate_response](#tool_gate_response). |
+| `toolGate`         | object   | no       | Opt-in client tool gate: `{enabled, tools?, timeoutMs?, timeoutDecision?, clientTools?, clientToolTimeoutMs?}`. `clientTools` declares tools the client executes over the wire — the third tool provision path beside MCP servers and extensions. Each entry is `{name, description?, inputSchema?, planModeSafe?, humanWait?}`; `humanWait: true` marks the tool as an intentional HUMAN wait: on the engine-owned (API) backend the call PARKS the run — the request is retained as a `PermissionDenial` (re-published on every idle status snapshot), the run terminates, the session goes idle, and the user's answer arrives as the next `send_prompt`. Delegated-CLI backends exclude human-wait tools from their transports (the model uses the `AskUserQuestion` sentinel there). Machine tools (`humanWait` absent/false) keep the blocking wire round-trip bounded by `clientToolTimeoutMs`. On an idempotent re-`start_session` the declaration is REPLACED wholesale (nil clears); an in-flight run keeps the runtime it captured at dispatch, and the next run uses the new declaration. See [tool_gate_response](#tool_gate_response). |
 
 ```json
 {"cmd":"start_session","key":"abc-123","config":{"profileId":"default","extensions":["~/.ion/extensions/my-ext"],"workingDirectory":"/home/user/project"},"requestId":"r1"}
@@ -66,6 +66,7 @@ Send a user message to an active session.
 | `noExtensions`              | boolean  | no       | Disable extensions for this run      |
 | `requestId`                 | string   | no       | Correlates with ServerResult         |
 | `deliveryId`                | string   | no       | Stable client idempotency key. The engine accepts one prompt per session/conversation delivery ID, persists it with the user turn, and returns an already-accepted result for duplicate retries without starting another run. |
+| `injectionKind`             | string   | no       | How this turn was authored, as an `InjectionKind` wire value. Lets a client state that the turn it delivers arrived through something other than the prompt box — a questions wizard, a form, a scheduler. The engine records it on the persisted turn and publishes the derived `machineAuthored` flag; what a consumer does with either is its own policy (ADR-017). Note that a kind is not automatically machine-authored: `structured_answer` (a form submission) is USER-authored, because a person chose every value — the kind tells a consumer to *label* the turn, not to hide it. **Validated, not trusted:** an unrecognized value is dropped and the turn is treated as user-authored, so a client cannot hide content by inventing a kind. Absent (the default) means an ordinary user turn. Known values: `agent_completion`, `slash_command`, `background_task_completion`, `checkin`, `revive`, `run_recovery`, `structured_answer`, `system_steer`, `steer`. |
 | `planMode`                  | boolean  | no       | Start this run in plan mode. See [Plan Mode](../sessions/lifecycle.md#plan-mode). |
 | `planModeTools`             | string[] | no       | Override the tool allowlist for this plan-mode run. Defaults to `["Read","Grep","Glob","Agent","WebFetch","WebSearch"]`. |
 | `planFilePath`              | string   | no       | Path of the plan file for this plan-mode run. The engine enforces write-only access to this file while plan mode is active. |
@@ -485,7 +486,7 @@ Answer an `engine_tool_gate_request` event (the opt-in client tool gate — see 
 The request's `gateKind` selects which fields apply:
 
 - **`"policy"`** (or absent) — the engine asks whether a gated tool call may execute. Reply with `gateDecision` (and `gateReason` for a deny). A `gateDecision` of anything other than `"deny"` — including absent — resolves to allow: an unrecognized decision must not invent a refusal.
-- **`"tool"`** — the model called one of the session's declared `clientTools`; the client executes it and replies with the result in `gateContent` (`gateIsError` marks a failure).
+- **`"tool"`** — the model called one of the session's declared MACHINE `clientTools`; the client executes it and replies with the result in `gateContent` (`gateIsError` marks a failure). Human-wait declarations never produce a gate request: the engine parks the run instead (see `toolGate.clientTools` above). Pending machine calls are replayable via the `engine_client_tool_state` snapshot after a reconnect.
 
 The blocked call waits until this response arrives or the session's declared timeout applies its fallback (`timeoutDecision` for policy; a tool error for client tools). A late response is logged and dropped.
 
@@ -697,7 +698,7 @@ Subscribe to resource updates for a specific kind. The engine streams a snapshot
 | `cmd`            | `"resource_subscribe"`  | yes      | Command discriminator                                                        |
 | `key`            | string                  | yes      | Session key                                                                  |
 | `resourceKind`   | string                  | yes      | Resource kind to subscribe to (e.g. `"tasks"`, `"notifications"`). The sentinel `"*"` subscribes to every kind on the target broker — see [Wildcard subscription](#wildcard-subscription) below. |
-| `resourceFilter` | ResourceFilter object   | no       | Optional filter applied to the subscription                                  |
+| `resourceFilter` | ResourceFilter object   | no       | Optional filter applied to the subscription. `producer`, when set, selects one extension producer; omitted receives every producer of the kind. |
 | `resourceGlobal` | boolean                 | no       | When `true`, subscribes to the Manager-level global broker instead of the per-session broker. Default `false`. |
 | `requestId`      | string                  | no       | Correlates with ServerResult                                                 |
 
@@ -751,7 +752,8 @@ Publish a resource operation from the client. Routes to the global broker when `
 | `key`          | string                  | yes      | Session key                                                                      |
 | `resourceKind` | string                  | no       | Resource kind (informational; the kind is carried on `resourceItem`)             |
 | `resourceOp`   | string                  | yes      | Operation: one of `"create"`, `"update"`, `"delete"`, `"mark_read"`              |
-| `resourceItem` | ResourceItem object     | no       | The resource item to publish                                                     |
+| `resourceItem` | ResourceItem object     | no       | The resource item to publish. Its nested `producer` value is ignored. |
+| `resourceProducer` | string              | no       | Trusted producer selector for a client action on an existing producer-owned item. |
 | `requestId`    | string                  | no       | Correlates with ServerResult                                                     |
 
 ```json
@@ -774,7 +776,8 @@ This is the lazy-fetch counterpart to `resource_subscribe`. It allows clients to
 | `key`            | string                  | no       | Session key for per-session broker; omit or use `""` with `resourceGlobal` |
 | `resourceKind`   | string                  | yes      | Kind of the item to fetch                                                   |
 | `resourceId`     | string                  | yes      | ID of the item to fetch                                                     |
-| `resourceGlobal` | boolean                 | no       | `true` to query the global (workspace-level) broker instead of per-session  |
+| `resourceProducer` | string                | no       | Producer selector. Required when more than one producer has the same kind and ID. |
+| `resourceGlobal` | boolean                 | no       | `true` to query workspace scope through the active session brokers that own producer query handlers; otherwise query `key`'s session broker |
 | `requestId`      | string                  | no       | Correlates with ServerResult                                                |
 
 ```json

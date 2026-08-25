@@ -16,6 +16,7 @@ import { ResourceViewer } from './ResourceViewer'
 import { parseAttachmentsFromMessages, type MsgLike } from './StatusBarAttachmentsParser'
 import { activeInstance } from '../stores/conversation-instance'
 import type { ResourceItem } from '../../shared/types-engine'
+import { resourceIdentity } from '../../shared/resource-identity'
 import { surfaceRouter, contentRouter } from '../lib/file-open-router'
 import { rWarn, rError } from '../rendererLogger'
 
@@ -490,7 +491,7 @@ export function AttachmentsButton() {
                     const title = item.title || item.kind || 'Resource'
                     return (
                       <AttachmentRow
-                        key={item.id}
+                        key={resourceIdentity(item)}
                         colors={colors}
                         hoverBg={colors.surfaceHover}
                         color={colors.iconPurple}

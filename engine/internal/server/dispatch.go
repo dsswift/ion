@@ -50,6 +50,17 @@ func (s *Server) dispatchWithRecovery(
 
 func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 	utils.LogWithFields(utils.LevelDebug, "server", "dispatch", map[string]any{"status": cmd.Cmd, "session_id": cmd.Key, "run_id": cmd.RequestID})
+
+	// Test-only: see testDispatchPanicTrigger's doc comment in server.go.
+	// Zero-cost in production — the field is always empty and this is a
+	// single string comparison per dispatch call. One-shot: disarms itself
+	// so a test that issues the same command again afterward (e.g. to prove
+	// the connection still works) does not re-trigger.
+	if s.testDispatchPanicTrigger != "" && s.testDispatchPanicTrigger == cmd.Cmd {
+		s.testDispatchPanicTrigger = ""
+		panic("testDispatchPanicTrigger: forced panic for " + cmd.Cmd)
+	}
+
 	switch cmd.Cmd {
 	case "start_session":
 		if cmd.Config == nil {
@@ -94,7 +105,7 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		}()
 		var overrides *session.PromptOverrides
 		resolvedExts := cmd.ResolveExtensions()
-		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" || len(cmd.Attachments) > 0 || cmd.ImplementationPhase || cmd.ThinkingEffort != "" || cmd.EnterPlanModeDescription != "" || cmd.PlanModeSparseReminder != "" || cmd.PlanFilePath != "" || len(cmd.BashAllowlistAdditionsForThisPrompt) > 0 || len(cmd.McpAllowlistAdditionsForThisPrompt) > 0 || cmd.CompactTargetPercent > 0 || cmd.CompactMicroKeepTurns > 0 || cmd.CompactEnabled != nil || cmd.CompactSummaryEnabled != nil || cmd.CompactMemoryEnabled != nil || cmd.ResolveSlash || cmd.ClientWorkspaceContext != nil || cmd.DeliveryId != "" {
+		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" || len(cmd.Attachments) > 0 || cmd.ImplementationPhase || cmd.ThinkingEffort != "" || cmd.EnterPlanModeDescription != "" || cmd.PlanModeSparseReminder != "" || cmd.PlanFilePath != "" || len(cmd.BashAllowlistAdditionsForThisPrompt) > 0 || len(cmd.McpAllowlistAdditionsForThisPrompt) > 0 || cmd.CompactTargetPercent > 0 || cmd.CompactMicroKeepTurns > 0 || cmd.CompactEnabled != nil || cmd.CompactSummaryEnabled != nil || cmd.CompactMemoryEnabled != nil || cmd.ResolveSlash || cmd.ClientWorkspaceContext != nil || cmd.DeliveryId != "" || cmd.InjectionKind != "" {
 			overrides = &session.PromptOverrides{
 				Model:                    cmd.Model,
 				MaxTurns:                 cmd.MaxTurns,
@@ -124,6 +135,12 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 				ResolveSlash:                        cmd.ResolveSlash,
 				ClientWorkspaceContext:              cmd.ClientWorkspaceContext,
 				DeliveryId:                          cmd.DeliveryId,
+				// Client-stated authorship. Validated, never trusted: an
+				// unrecognized kind is dropped (and logged) because
+				// IsMachineToMachine treats an unknown value as
+				// user-authored, so persisting it would record a
+				// classification that changes nothing.
+				InjectionKind: resolveClientInjectionKind(cmd.Key, cmd.InjectionKind),
 			}
 		}
 		err = s.manager.SendPrompt(cmd.Key, cmd.Text, overrides)

@@ -1,5 +1,7 @@
 import { execFileSync } from 'child_process'
+import { accessSync, constants, statSync } from 'fs'
 import { log as _log, warn as _warn } from './logger'
+import { stripPrivilegeEscalation, PRIVILEGE_ESCALATION_VAR } from './launch-env'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('cli-env', msg, fields)
@@ -162,6 +164,36 @@ export function getCliEnv(extraEnv?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     PATH: getCliPath(),
   }
   delete env.CLAUDECODE
+  // Last line of defence for the spawn environment itself. Startup already
+  // clears this from process.env, so normally there is nothing to strip. It is
+  // repeated here because THIS function, not the startup path, is what every
+  // spawned shell's environment is built from: a future entry point that
+  // forgets the startup repair still cannot start a privileged shell that
+  // silently skips the operator's zsh startup files. See launch-env.ts.
+  if (stripPrivilegeEscalation(env)) {
+    warn('stripped a privileged-shell marker from a spawn environment', {
+      variable: PRIVILEGE_ESCALATION_VAR,
+      note: 'startup repair did not run or the marker was reintroduced',
+    })
+  }
+
+  // Installer launches can leave the desktop with TMPDIR inside a transient
+  // PKInstallSandbox. macOS removes that sandbox after installation, and tools
+  // such as Electron's npm installer then fail when they call mkdtemp(). Keep a
+  // valid custom path, but let libc/Node select the per-user temp directory when
+  // the inherited path is missing, is not a directory, or is not writable.
+  if (env.TMPDIR) {
+    try {
+      if (!statSync(env.TMPDIR).isDirectory()) throw new Error('not a directory')
+      accessSync(env.TMPDIR, constants.W_OK | constants.X_OK)
+    } catch (err) {
+      warn('discarding unusable TMPDIR from subprocess environment', {
+        tmpdir: env.TMPDIR,
+        error: String(err),
+      })
+      delete env.TMPDIR
+    }
+  }
   return env
 }
 

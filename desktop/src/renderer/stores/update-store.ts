@@ -5,18 +5,33 @@ interface UpdateState {
   version: string | null
   /** Whether the install dialog is currently visible. */
   dialogOpen: boolean
-  /** Called when electron-updater reports a downloaded update. Opens dialog automatically. */
+  /** The current download percentage, when a download is active. */
+  progress: number | null
+  /** A detached worker has prepared the bundle swap. */
+  staged: boolean
+  /** User-visible failure from the update mechanism. */
+  error: string | null
   setAvailable: (version: string) => void
-  /** Show the install dialog (e.g. from the InputBar icon click). */
+  setProgress: (percent: number, status: string) => void
+  setStaged: () => void
+  setError: (message: string) => void
   showDialog: () => void
-  /** Dismiss the dialog without installing. The version stays set so the icon remains. */
   hideDialog: () => void
 }
 
 export const useUpdateStore = create<UpdateState>((set) => ({
   version: null,
   dialogOpen: false,
-  setAvailable: (version) => set({ version, dialogOpen: true }),
+  progress: null,
+  staged: false,
+  error: null,
+  setAvailable: (version) => set({ version, dialogOpen: true, progress: null, staged: false, error: null }),
+  setProgress: (percent, status) => set({
+    progress: status === 'downloading' ? percent : null,
+    ...(status === 'not_available' ? { version: null, dialogOpen: false, staged: false, error: null } : {}),
+  }),
+  setStaged: () => set({ staged: true, dialogOpen: true, error: null }),
+  setError: (message) => set({ error: message, dialogOpen: true, staged: false }),
   showDialog: () => set({ dialogOpen: true }),
   hideDialog: () => set({ dialogOpen: false }),
 }))

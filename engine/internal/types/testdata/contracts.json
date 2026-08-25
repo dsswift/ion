@@ -326,6 +326,7 @@
     "clampedOriginalBytes",
     "clampedScope",
     "clearedBlocks",
+    "clientToolCalls",
     "command",
     "commandError",
     "commands",
@@ -532,6 +533,22 @@
       "taskId",
       "toolId"
     ],
+    "ClientToolCallState": [
+      "cwd",
+      "humanWait",
+      "requestId",
+      "runId",
+      "startedAt",
+      "toolInput",
+      "toolName"
+    ],
+    "ClientToolDef": [
+      "description",
+      "humanWait",
+      "inputSchema",
+      "name",
+      "planModeSafe"
+    ],
     "ClientWorkspaceContext": [
       "bench",
       "cwd",
@@ -706,6 +723,26 @@
       "userCode",
       "verificationUrl"
     ],
+    "ResourceFilter": [
+      "conversationId",
+      "id",
+      "kind",
+      "limit",
+      "producer",
+      "since"
+    ],
+    "ResourceItem": [
+      "content",
+      "conversationId",
+      "createdAt",
+      "id",
+      "kind",
+      "metadata",
+      "producer",
+      "read",
+      "title",
+      "updatedAt"
+    ],
     "ResourceLimits": [
       "maxAgentsPerSession",
       "maxSessions"
@@ -796,6 +833,14 @@
       "sessionId",
       "state",
       "team"
+    ],
+    "ToolGateConfig": [
+      "clientToolTimeoutMs",
+      "clientTools",
+      "enabled",
+      "timeoutDecision",
+      "timeoutMs",
+      "tools"
     ],
     "UsageData": [
       "cache_creation_input_tokens",

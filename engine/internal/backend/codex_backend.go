@@ -55,6 +55,18 @@ type codexRun struct {
 	model     string
 	cancel    context.CancelFunc
 
+	// clientToolRouter fulfills item/tool/call server requests for the
+	// dynamic tools this run declared at thread/start — the same
+	// session-owned router the API runloop and the MCP ToolServer use, so
+	// every transport shares one client-tool behavior (timeouts, human-wait,
+	// pending-state snapshots). Nil when the run declared no client tools.
+	clientToolRouter func(ctx context.Context, name string, input map[string]interface{}) *types.ToolResult
+
+	// runCtx is the run's cancellation context (paired with cancel). Dynamic
+	// tool calls block on it so Cancel / process teardown unwinds a pending
+	// human wait instead of leaking the server-request goroutine.
+	runCtx context.Context
+
 	// translation state
 	thinkingOpen  bool
 	lastText      string
@@ -175,11 +187,32 @@ func (b *CodexBackend) runTurn(requestID string, options types.RunOptions) {
 		}
 	}
 	if threadID == "" {
+		// Declare the run's client tools as thread/start dynamicTools. The
+		// set is FIXED for the thread's lifetime — codex has no per-turn tool
+		// declaration — which is why resolveCliContinuity invalidates a codex
+		// resume cursor whose recorded client-tool signature differs from the
+		// current run's (a resumed thread would silently lack the new tools).
+		var dynamicTools []codexrpc.DynamicToolSpec
+		for _, ct := range options.ClientTools {
+			// Human-wait tools are engine-owned-loop only: parking (run
+			// termination + retained question) cannot be expressed through
+			// codex's blocking item/tool/call, so they are not declared here.
+			// The model uses the AskUserQuestion sentinel on this backend.
+			if ct.HumanWait {
+				continue
+			}
+			dynamicTools = append(dynamicTools, codexrpc.DynamicToolSpec{
+				Name:        ct.Name,
+				Description: ct.Description,
+				InputSchema: ct.InputSchema,
+			})
+		}
 		threadID, err = b.client.ThreadStart(ctx, codexrpc.ThreadStartParams{
 			Cwd:            options.ProjectPath,
 			Model:          options.Model,
 			ApprovalPolicy: "on-request",
 			Sandbox:        "workspace-write",
+			DynamicTools:   dynamicTools,
 		})
 	}
 	if err != nil {
@@ -190,13 +223,15 @@ func (b *CodexBackend) runTurn(requestID string, options types.RunOptions) {
 	}
 
 	run := &codexRun{
-		requestID:    requestID,
-		threadID:     threadID,
-		model:        options.Model,
-		cancel:       cancel,
-		planMode:     options.PlanMode,
-		planFilePath: options.PlanFilePath,
-		planAutoExit: resolveCliPlanModeAutoExit(&options),
+		requestID:        requestID,
+		threadID:         threadID,
+		model:            options.Model,
+		cancel:           cancel,
+		runCtx:           ctx,
+		clientToolRouter: options.ClientToolRouter,
+		planMode:         options.PlanMode,
+		planFilePath:     options.PlanFilePath,
+		planAutoExit:     resolveCliPlanModeAutoExit(&options),
 	}
 	b.mu.Lock()
 	b.runs[requestID] = run
@@ -381,6 +416,39 @@ func (b *CodexBackend) onFileChangeApproval(p codexrpc.FileChangeApprovalParams)
 	return b.resolveApproval(p.ThreadID, "Edit", "apply file changes", map[string]any{"itemId": p.ItemID})
 }
 
+// onDynamicToolCall executes an item/tool/call server request through the
+// run's session-owned client-tool router. Blocks for the fulfillment — codex
+// serves server requests on their own goroutine, so a human-wait tool parks
+// this goroutine, not the notification stream. The wait is bounded by the
+// run's context (Cancel / teardown) and by the router's own timeout policy.
+func (b *CodexBackend) onDynamicToolCall(p codexrpc.DynamicToolCallParams) codexrpc.DynamicToolCallResponse {
+	b.mu.Lock()
+	requestID := b.threadToRun[p.ThreadID]
+	run := b.runs[requestID]
+	b.mu.Unlock()
+	if run == nil || run.clientToolRouter == nil {
+		utils.LogWithFields(utils.LevelWarn, "backend.codex", "dynamic tool call for unknown run or no router", map[string]any{
+			"thread_id": p.ThreadID, "tool": p.Tool,
+		})
+		return codexrpc.NewDynamicToolCallResponse("dynamic tool "+p.Tool+" has no registered handler for this run", false)
+	}
+	ctx := run.runCtx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	utils.LogWithFields(utils.LevelInfo, "backend.codex", "dynamic tool call routing to client-tool router", map[string]any{
+		"run_id": requestID, "tool": p.Tool, "call_id": p.CallID,
+	})
+	result := run.clientToolRouter(ctx, p.Tool, p.Arguments)
+	// The router contract guarantees non-nil, but a defensive check keeps a
+	// wiring regression from panicking the RPC read loop's request goroutine.
+	if result == nil {
+		utils.LogWithFields(utils.LevelError, "backend.codex", "client-tool router returned nil result", map[string]any{"run_id": requestID, "tool": p.Tool})
+		return codexrpc.NewDynamicToolCallResponse("client tool "+p.Tool+" returned no result", false)
+	}
+	return codexrpc.NewDynamicToolCallResponse(result.Content, !result.IsError)
+}
+
 // resolveApproval emits an engine_permission_request (via the session ask
 // callback) and maps the chosen option to a codex decision. Auto-declines when
 // no callback is installed or the run is unknown.
@@ -473,6 +541,7 @@ func (b *CodexBackend) ensureStarted() error {
 		OnNotification:       b.onNotification,
 		OnCommandApproval:    b.onCommandApproval,
 		OnFileChangeApproval: b.onFileChangeApproval,
+		OnDynamicToolCall:    b.onDynamicToolCall,
 		OnClosed:             b.onProcessClosed,
 	}
 	client, kill, err := b.launch(handlers)

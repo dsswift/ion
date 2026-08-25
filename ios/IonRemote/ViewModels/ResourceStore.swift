@@ -7,19 +7,32 @@ import SwiftUI
 struct ResourceItem: Identifiable, Codable, Equatable {
     let id: String
     let kind: String
+    /// Engine-assigned extension identity. Together with `id`, this is the
+    /// resource identity because different producers can use the same item ID.
+    let producer: String
     let title: String?
     var content: String
     let createdAt: String
     let conversationId: String?
     let metadata: [String: String]
+    let updatedAt: String?
+    let read: Bool
+
+    /// Stable client-local identity for all resource mutations and read state.
+    var compositeId: String { Self.compositeId(kind: kind, producer: producer, id: id) }
+
+    static func compositeId(kind: String, producer: String, id: String) -> String { "\(kind)\u{0}\(producer)\u{0}\(id)" }
 
     init(from dict: [String: AnyCodable]) {
         id = dict["id"]?.value as? String ?? UUID().uuidString
         kind = dict["kind"]?.value as? String ?? ""
+        producer = dict["producer"]?.value as? String ?? ""
         title = dict["title"]?.value as? String
         content = dict["content"]?.value as? String ?? ""
         createdAt = dict["createdAt"]?.value as? String ?? ""
         conversationId = dict["conversationId"]?.value as? String
+        updatedAt = dict["updatedAt"]?.value as? String
+        read = dict["read"]?.value as? Bool ?? false
         if let meta = dict["metadata"]?.value as? [String: AnyCodable] {
             metadata = meta.compactMapValues { $0.value as? String }
         } else {
@@ -79,7 +92,7 @@ final class ResourceStore {
     /// Resources keyed by kind. Each kind maps to its item array.
     var items: [String: [ResourceItem]] = [:]
 
-    /// IDs the user has opened. Client-local read tracking.
+    /// Producer-qualified IDs the user has opened. Client-local read tracking.
     var readIds: Set<String> = []
 
     /// IDs for which a content-fetch response has arrived (success or empty).
@@ -94,7 +107,7 @@ final class ResourceStore {
     /// attachments panel and must not inflate the global bell badge.
     var unreadCount: Int {
         items.values.flatMap { $0 }
-            .filter { ($0.conversationId == nil || $0.conversationId?.isEmpty == true) && !readIds.contains($0.id) }
+            .filter { ($0.conversationId == nil || $0.conversationId?.isEmpty == true) && !readIds.contains($0.compositeId) }
             .count
     }
 
@@ -135,25 +148,25 @@ final class ResourceStore {
         // subscription path where partial/empty snapshots can arrive from
         // flaky extension subprocesses).
         let existing = items[kind] ?? []
-        let existingById = Dictionary(existing.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
+        let existingById = Dictionary(existing.map { ($0.compositeId, $0) }, uniquingKeysWith: { _, new in new })
 
         // Preserve locally-fetched content for items that the snapshot
         // carries without content (manifest-only with metadata).
         let finalItems = parsed.map { item -> ResourceItem in
-            if item.content.isEmpty, let prev = existingById[item.id], !prev.content.isEmpty {
+            if item.content.isEmpty, let prev = existingById[item.compositeId], !prev.content.isEmpty {
                 var copy = item
                 copy.content = prev.content
                 return copy
             }
             return item
         }
-        // Normalize: deduplicate by ID so duplicate-ID items from a buggy
-        // producer or a race between snapshot and delta never stack. Last
-        // occurrence wins (consistent with desktop resource-slice).
+        // Normalize by producer-qualified identity. Multiple producers can
+        // legitimately publish the same ID under one kind. Last occurrence
+        // wins only for duplicate items from the same producer.
         var seenIds = Set<String>()
         var deduped: [ResourceItem] = []
         for item in finalItems.reversed() {
-            if seenIds.insert(item.id).inserted {
+            if seenIds.insert(item.compositeId).inserted {
                 deduped.append(item)
             }
         }
@@ -162,15 +175,18 @@ final class ResourceStore {
         // Desktop snapshot is authoritative for read state of items in this kind.
         // Remove local read IDs for items in this snapshot, then add back only
         // those the desktop says are read. Read IDs for other kinds are preserved.
-        let kindItemIds = Set(deduped.map { $0.id })
-        let finalReadById = rawItems.reduce(into: [String: Bool]()) { reads, raw in
-            guard let id = raw["id"]?.value as? String else { return }
-            reads[id] = raw["read"]?.value as? Bool ?? false
-        }
-        let snapshotReadIds = Set(deduped.compactMap { item in
-            finalReadById[item.id] == true ? item.id : nil
+        let kindItemIds = Set(deduped.map(\.compositeId))
+        let legacyReadIds = Set(deduped.compactMap { item in
+            item.producer.isEmpty || !readIds.contains(item.id) ? nil : item.id
         })
-        readIds = readIds.filter { !kindItemIds.contains($0) }.union(snapshotReadIds)
+        let finalReadById = Dictionary(
+            parsed.map { ($0.compositeId, $0.read) },
+            uniquingKeysWith: { _, new in new }
+        )
+        let snapshotReadIds = Set(deduped.compactMap { item in
+            finalReadById[item.compositeId] == true || legacyReadIds.contains(item.id) ? item.compositeId : nil
+        })
+        readIds = readIds.filter { !kindItemIds.contains($0) && !legacyReadIds.contains($0) }.union(snapshotReadIds)
         saveItems()
         saveReadIds()
     }
@@ -191,20 +207,20 @@ final class ResourceStore {
         var current = items[kind] ?? []
         switch delta.op {
         case "create":
-            if let idx = current.firstIndex(where: { $0.id == delta.item.id }) {
+            if let idx = current.firstIndex(where: { $0.compositeId == delta.item.compositeId }) {
                 current[idx] = delta.item
             } else {
                 current.append(delta.item)
             }
         case "update":
-            if let idx = current.firstIndex(where: { $0.id == delta.item.id }) {
+            if let idx = current.firstIndex(where: { $0.compositeId == delta.item.compositeId }) {
                 current[idx] = delta.item
             }
         case "delete":
-            current.removeAll { $0.id == delta.item.id }
-            readIds.remove(delta.item.id)
+            current.removeAll { $0.compositeId == delta.item.compositeId }
+            readIds.remove(delta.item.compositeId)
         case "mark_read":
-            readIds.insert(delta.item.id)
+            readIds.insert(delta.item.compositeId)
         default:
             break
         }
@@ -213,8 +229,8 @@ final class ResourceStore {
         saveReadIds()
     }
 
-    func markRead(_ id: String) {
-        readIds.insert(id)
+    func markRead(_ item: ResourceItem) {
+        readIds.insert(item.compositeId)
         saveReadIds()
     }
 
@@ -223,12 +239,12 @@ final class ResourceStore {
     /// and persists once (not once per id). Engine fan-out — the per-item
     /// mark_read command that informs the desktop and other subscribers — is
     /// the caller's responsibility; this method only owns the local read set.
-    func markAllRead(_ ids: [String]) {
-        guard !ids.isEmpty else { return }
-        readIds.formUnion(ids)
+    func markAllRead(_ items: [ResourceItem]) {
+        guard !items.isEmpty else { return }
+        readIds.formUnion(items.map(\.compositeId))
         saveReadIds()
         DiagnosticLog.log("resource store mark all read", tag: "resource.store", fields: [
-            "count": String(ids.count)
+            "count": String(items.count)
         ])
     }
 
@@ -236,11 +252,12 @@ final class ResourceStore {
     /// Called when the user deletes a notification in the iOS UI. The caller
     /// is responsible for also sending a `deleteResource` command to the
     /// desktop so the delete fans out to all subscribers via the engine.
-    func deleteItem(kind: String, resourceId: String) {
+    func deleteItem(kind: String, producer: String?, resourceId: String) {
         var current = items[kind] ?? []
-        current.removeAll { $0.id == resourceId }
+        let compositeId = ResourceItem.compositeId(kind: kind, producer: producer ?? "", id: resourceId)
+        current.removeAll { $0.compositeId == compositeId }
         items[kind] = current
-        readIds.remove(resourceId)
+        readIds.remove(compositeId)
         saveItems()
         saveReadIds()
         DiagnosticLog.log("resource store delete item", tag: "resource.store", fields: [
@@ -254,11 +271,12 @@ final class ResourceStore {
     /// `request_resource_content` command iOS sent after the user tapped
     /// a card to expand it. The snapshot carries metadata only; this
     /// write fills in the body.
-    func updateContent(kind: String, resourceId: String, content: String) {
+    func updateContent(kind: String, producer: String, resourceId: String, content: String) {
         // Always record that a response arrived so the UI can exit loading state.
-        contentResponseIds.insert(resourceId)
+        let compositeId = ResourceItem.compositeId(kind: kind, producer: producer, id: resourceId)
+        contentResponseIds.insert(compositeId)
         guard var kindItems = items[kind] else { return }
-        if let idx = kindItems.firstIndex(where: { $0.id == resourceId }) {
+        if let idx = kindItems.firstIndex(where: { $0.compositeId == compositeId }) {
             kindItems[idx].content = content
             items[kind] = kindItems
             saveItems()

@@ -1,12 +1,21 @@
 /** Studio surface tab descriptors and persistence shapes. */
 
-export const SINGLETON_ORDER = ['diff', 'plan', 'visualizer', 'status', 'files', 'gitpanel'] as const
+export const SINGLETON_ORDER = ['plan', 'diff', 'visualizer', 'status', 'files', 'gitpanel'] as const
 export type SingletonId = (typeof SINGLETON_ORDER)[number]
-export const PINNABLE_SINGLETON_IDS = ['diff', 'plan', 'visualizer'] as const
+export const PINNABLE_SINGLETON_IDS = ['plan', 'diff', 'visualizer'] as const
 export type PinnableSingletonId = (typeof PINNABLE_SINGLETON_IDS)[number]
 export const DEFAULT_PINNED_SURFACE_TABS: PinnableSingletonId[] = ['plan']
 export const NOTIFICATION_SURFACE_ID = 'notification'
 export const DISPATCH_SURFACE_ID = 'dispatch-preview'
+/**
+ * The transient guided-questions Canvas tab. Window-transient by design:
+ * its presence derives from the active conversation's open workflows (the
+ * synchronizer inserts it; no workflow removes it), so it is NEVER written
+ * into a conversation's persisted descriptor set and never parsed back —
+ * exclusion from serializeSurface/parseTab is structural, not a filter.
+ * It composes into an explicit forced group BEFORE the global pins.
+ */
+export const QUESTIONS_SURFACE_ID = 'questions'
 
 export interface SingletonTab { kind: 'singleton'; id: SingletonId }
 export interface FileTab {
@@ -29,8 +38,11 @@ export interface NotificationTab {
   id: typeof NOTIFICATION_SURFACE_ID
   resourceKind: string
   resourceId: string
+  /** Producer namespace for collision-safe resource lookup. */
+  resourceProducer?: string
 }
 export interface RuntimePanelTab { kind: 'runtime-panel'; id: string; title: string }
+export interface QuestionsTab { kind: 'questions'; id: typeof QUESTIONS_SURFACE_ID }
 export interface DispatchTab {
   kind: 'dispatch'
   id: typeof DISPATCH_SURFACE_ID
@@ -41,7 +53,7 @@ export interface DispatchTab {
 export interface BrowserTab { kind: 'browser'; id: string; instanceId: string; url: string; title: string; mode: 'preview' | 'browse' }
 export interface TerminalTab { kind: 'terminal'; id: string; instanceId: string; cwd: string; title: string }
 
-export type SurfaceTab = SingletonTab | FileTab | PreviewTab | NotificationTab | RuntimePanelTab | DispatchTab | BrowserTab | TerminalTab
+export type SurfaceTab = SingletonTab | FileTab | PreviewTab | NotificationTab | RuntimePanelTab | QuestionsTab | DispatchTab | BrowserTab | TerminalTab
 export function fileTabId(filePath: string): string { return `file:${filePath}` }
 export function previewTabId(filePath: string): string { return `preview:${filePath}` }
 export function browserTabId(instanceId: string): string { return `browser:${instanceId}` }

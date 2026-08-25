@@ -324,20 +324,28 @@ extension DiagnosticLog {
         case .reportMobileAuth(let username, _, _, let tenant, _, let clearIdentity, let status, let reason, _):
             log("CMD: reportMobileAuth has_username=\(!(username ?? "").isEmpty) has_tenant=\(!(tenant ?? "").isEmpty) clear_identity=\(clearIdentity) status=\(status ?? "unknown") reason=\(reason ?? "none")", tag: "ipc", level: .info)
 
-        case .requestResourceContent(let kind, let resourceId):
-            log("CMD: requestResourceContent kind=\(kind) resourceId=\(resourceId.prefix(12))", tag: "ipc", level: .info)
+        case .requestResourceContent(let kind, let producer, let resourceId):
+            log("CMD: requestResourceContent kind=\(kind) producer=\(producer) resourceId=\(resourceId.prefix(12))", tag: "ipc", level: .info)
 
-        case .markResourceRead(let kind, let resourceId):
-            log("CMD: markResourceRead kind=\(kind) resourceId=\(resourceId.prefix(12))", tag: "ipc", level: .info)
+        case .markResourceRead(let kind, let producer, let resourceId):
+            log("CMD: markResourceRead kind=\(kind) producer=\(producer) resourceId=\(resourceId.prefix(12))", tag: "ipc", level: .info)
 
-        case .deleteResource(let kind, let resourceId):
-            log("CMD: deleteResource kind=\(kind) resourceId=\(resourceId.prefix(12))", tag: "ipc", level: .info)
+        case .deleteResource(let kind, let producer, let resourceId):
+            log("CMD: deleteResource kind=\(kind) producer=\(producer) resourceId=\(resourceId.prefix(12))", tag: "ipc", level: .info)
 
         case .implementPlan(let tabId, let questionId, let instanceId, let clearContext):
             log("CMD: implementPlan tabId=\(tabId.prefix(8)) qId=\(questionId.prefix(12)) inst=\(instanceId?.prefix(8) ?? "nil") clearContext=\(clearContext)", tag: "ipc", level: .info)
 
         case .requestPlanContent(let tabId, let questionId, let planFilePath, let offset, let length):
             log("CMD: requestPlanContent tabId=\(tabId.prefix(8)) qId=\(questionId.prefix(12)) path=\(planFilePath.suffix(30)) offset=\(offset) len=\(length)", tag: "ipc", level: .info)
+
+        // ── Guided Questions ──
+        case .questionsPatch(let tabId, let patch):
+            log("CMD: questionsPatch tabId=\(tabId.prefix(8)) wf=\(patch.workflowId.prefix(12)) rev=\(patch.expectedRevision)", tag: "questions", level: .debug)
+        case .questionsAction(let tabId, let action):
+            log("CMD: questionsAction tabId=\(tabId.prefix(8)) wf=\(action.workflowId.prefix(12)) kind=\(action.kind)", tag: "questions", level: .info)
+        case .questionsRefresh(let tabId):
+            log("CMD: questionsRefresh tabId=\(tabId.prefix(8))", tag: "questions", level: .info)
         }
     }
 }

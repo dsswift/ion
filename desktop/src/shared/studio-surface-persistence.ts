@@ -44,7 +44,7 @@ function parseNotification(raw: unknown): NotificationTab | null {
   if (!raw || typeof raw !== 'object') return null
   const v = raw as Record<string, unknown>
   if (v.kind !== 'notification' || typeof v.resourceKind !== 'string' || !v.resourceKind || typeof v.resourceId !== 'string' || !v.resourceId) return null
-  return { kind: 'notification', id: 'notification', resourceKind: v.resourceKind, resourceId: v.resourceId }
+  return { kind: 'notification', id: 'notification', resourceKind: v.resourceKind, resourceId: v.resourceId, ...(typeof v.resourceProducer === 'string' && v.resourceProducer ? { resourceProducer: v.resourceProducer } : {}) }
 }
 
 function parseConversation(
@@ -77,7 +77,7 @@ export function parseSurfacePersisted(raw: unknown): ParsedSurface | null {
     return { version: 1, tabs, activeTabId }
   }
   if (v.version !== 2 || !Array.isArray(v.pinnedTabs) || !v.conversations || typeof v.conversations !== 'object' || Array.isArray(v.conversations)) return null
-  const pinnedTabs = [...new Set(v.pinnedTabs.filter((id): id is PinnableSingletonId => typeof id === 'string' && PINNABLES.has(id)))]
+  const pinnedTabs = normalizePinnedTabs([...new Set(v.pinnedTabs.filter((id): id is PinnableSingletonId => typeof id === 'string' && PINNABLES.has(id)))])
   const notification = parseNotification(v.notification)
   const conversations: Record<string, SurfaceConversationPersisted> = {}
   for (const [tabId, row] of Object.entries(v.conversations as Record<string, unknown>)) {
@@ -85,7 +85,7 @@ export function parseSurfacePersisted(raw: unknown): ParsedSurface | null {
     const parsed = parseConversation(row, pinnedTabs, notification)
     if (parsed) conversations[tabId] = parsed
   }
-  return { version: 2, pinnedTabs: normalizePinnedTabs(pinnedTabs), notification, conversations }
+  return { version: 2, pinnedTabs, notification, conversations }
 }
 
 export function normalizePinnedTabs(ids: readonly PinnableSingletonId[]): PinnableSingletonId[] {
@@ -108,7 +108,10 @@ export function serializeSurface(pinnedTabs: readonly PinnableSingletonId[], not
   for (const [tabId, state] of Object.entries(conversations)) {
     const tabs: SurfaceTab[] = []
     for (const tab of normalizeTabs(state.tabs)) {
-      if (tab.kind === 'notification' || tab.kind === 'runtime-panel') continue
+      // questions is window-transient (derived from live coordinator state);
+      // notification is global (serialized separately); runtime panels exist
+      // only while their producer runs. None belongs in a conversation row.
+      if (tab.kind === 'notification' || tab.kind === 'runtime-panel' || tab.kind === 'questions') continue
       if (tab.kind === 'preview') tabs.push({ kind: 'preview', id: tab.id, filePath: tab.filePath })
       else tabs.push(tab)
     }

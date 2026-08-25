@@ -16,3 +16,18 @@ describe('remoteTabStatusFromEngineFields', () => {
     expect(remoteTabStatusFromEngineFields({ state: 'running' })).toBe('running')
   })
 })
+
+describe('remoteTabStatusFromEngineFields — parked guided questions', () => {
+  it('an idle snapshot retaining an AskUserQuestions denial gets the completed (needs-you) treatment', () => {
+    expect(
+      remoteTabStatusFromEngineFields({
+        state: 'idle',
+        permissionDenials: [{ toolName: 'AskUserQuestions', toolUseId: 'tu-1' }],
+      }),
+    ).toBe('completed')
+  })
+
+  it('waiting_user is no longer a recognized state (human-wait tools park to idle)', () => {
+    expect(remoteTabStatusFromEngineFields({ state: 'waiting_user' })).toBe(null)
+  })
+})

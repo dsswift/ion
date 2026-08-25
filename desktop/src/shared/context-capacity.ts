@@ -42,15 +42,3 @@ export function contextCapacityState(capacity: ContextCapacity | null | undefine
   if (!capacity || capacity.percent < 80) return 'normal'
   return capacity.percent >= 100 ? 'full' : 'warning'
 }
-
-/** `/compact` and `/clear` reduce or replace the full context, so they remain usable at capacity. */
-export function isContextRecoveryCommand(text: string): boolean {
-  return /^\s*\/(?:compact|clear)(?:\s|$)/i.test(text)
-}
-
-export function contextCapacityBlocksPrompt(
-  capacity: ContextCapacity | null | undefined,
-  text: string,
-): boolean {
-  return contextCapacityState(capacity) === 'full' && !isContextRecoveryCommand(text)
-}

@@ -1,3 +1,16 @@
+// Repair the launch environment BEFORE any other module is imported.
+//
+// When the package installer launches Ion, this process inherits the Installer
+// script environment, including APPLE_PKGKIT_ESCALATING_ROOT. Apple's /bin/zsh
+// and /bin/bash treat that variable as an order to run PRIVILEGED, which makes
+// them skip every user startup file (~/.zshenv, ~/.zprofile, ~/.zshrc). Any
+// shell Ion starts then has no Starship, no Zoxide, and none of the operator's
+// PATH entries.
+//
+// The repair is a side-effect import, not a call, because import declarations
+// are hoisted: a call written here would run after every module below had
+// already been evaluated. Keep this import first. See launch-env-init.ts.
+import './launch-env-init'
 import './state'
 import { migrateStudioSettings } from './settings-migration-studio'
 import { wireSessionPlaneEvents, wireEngineBridgeEvents, wireRemoteSessionPlaneForwarding, wireTabFocusHandler, wireMarkResourceReadHandler, wireDeleteResourceHandler, wireResourceGetHandler } from './event-wiring'

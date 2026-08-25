@@ -13,7 +13,16 @@ import (
 type TimeoutsConfig struct {
 	ToolDefaultMs int64 `json:"toolDefaultMs,omitempty"` // default: 3600000 (60min)
 	ToolStallMs   int64 `json:"toolStallMs,omitempty"`   // default: 30000
-	BashDefaultMs int64 `json:"bashDefaultMs,omitempty"` // default: 120000
+	// CommandStallMs is the delay before the server logs a command handler that
+	// has not returned. It does not change command execution or ordering. Zero
+	// uses the compiled 10-second default.
+	CommandStallMs int64 `json:"commandStallMs,omitempty"` // default: 10000 (10s)
+	// CommandDispatchMs is the maximum time the server waits before it returns
+	// an error result for a command request. The handler stays in its command
+	// lane until it returns so later work for the same session cannot overtake
+	// a late state change. Zero uses the compiled 25-second default.
+	CommandDispatchMs int64 `json:"commandDispatchMs,omitempty"` // default: 25000 (25s)
+	BashDefaultMs     int64 `json:"bashDefaultMs,omitempty"`     // default: 120000
 	// BashMaxMs is the ceiling a per-call Bash `timeout` argument is clamped
 	// to. Without it the model's requested timeout passes through unbounded
 	// and only the far looser ToolDefault() deadline applies, so a single
@@ -142,6 +151,26 @@ func (t *TimeoutsConfig) ToolDefault() time.Duration {
 // ToolStall returns the stall detection threshold (default 30s).
 func (t *TimeoutsConfig) ToolStall() time.Duration {
 	return t.durationOr(t.field(func(c *TimeoutsConfig) int64 { return c.ToolStallMs }), 30000)
+}
+
+// CommandStall returns the command-handler stall warning threshold (default 10s).
+// Command timeouts have no disable sentinel: non-positive values use the default.
+func (t *TimeoutsConfig) CommandStall() time.Duration {
+	ms := t.field(func(c *TimeoutsConfig) int64 { return c.CommandStallMs })
+	if ms <= 0 {
+		return 10 * time.Second
+	}
+	return time.Duration(ms) * time.Millisecond
+}
+
+// CommandDispatch returns the command request deadline (default 25s).
+// Command timeouts have no disable sentinel: non-positive values use the default.
+func (t *TimeoutsConfig) CommandDispatch() time.Duration {
+	ms := t.field(func(c *TimeoutsConfig) int64 { return c.CommandDispatchMs })
+	if ms <= 0 {
+		return 25 * time.Second
+	}
+	return time.Duration(ms) * time.Millisecond
 }
 
 // BashDefault returns the default bash command timeout (default 120s).
@@ -350,6 +379,12 @@ func MergeTimeouts(dst, src *TimeoutsConfig) *TimeoutsConfig {
 	}
 	if src.ToolStallMs != 0 {
 		dst.ToolStallMs = src.ToolStallMs
+	}
+	if src.CommandStallMs != 0 {
+		dst.CommandStallMs = src.CommandStallMs
+	}
+	if src.CommandDispatchMs != 0 {
+		dst.CommandDispatchMs = src.CommandDispatchMs
 	}
 	if src.BashDefaultMs != 0 {
 		dst.BashDefaultMs = src.BashDefaultMs

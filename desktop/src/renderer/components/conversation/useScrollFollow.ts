@@ -1,4 +1,14 @@
-import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type PointerEvent,
+  type TouchEvent,
+  type WheelEvent,
+} from 'react'
+import { rDebug, rTrace } from '../../rendererLogger'
 
 /**
  * Scroll-follow hook: auto-tails a scrollable container and exposes a
@@ -16,6 +26,7 @@ export function useScrollFollow(deps: unknown[]) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const isNearBottomRef = useRef(true)
+  const touchYRef = useRef<number | null>(null)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
 
   const followTail = useCallback(() => {
@@ -24,14 +35,73 @@ export function useScrollFollow(deps: unknown[]) {
     }
   }, [])
 
+  const pauseFollowing = useCallback(() => {
+    if (isNearBottomRef.current) {
+      rDebug('conversation.scroll', 'conversation tailing paused')
+    }
+    isNearBottomRef.current = false
+    setShowScrollBtn(true)
+  }, [])
+
+  const handleWheel = useCallback((event: WheelEvent<HTMLDivElement>) => {
+    if (event.deltaY < 0) pauseFollowing()
+  }, [pauseFollowing])
+
+  const handleTouchStart = useCallback((event: TouchEvent<HTMLDivElement>) => {
+    touchYRef.current = event.touches[0]?.clientY ?? null
+  }, [])
+
+  const handleTouchMove = useCallback((event: TouchEvent<HTMLDivElement>) => {
+    const touchY = event.touches[0]?.clientY
+    const previousY = touchYRef.current
+    touchYRef.current = touchY ?? null
+    if (touchY !== undefined && previousY !== null && touchY > previousY) {
+      pauseFollowing()
+    }
+  }, [pauseFollowing])
+
+  const handlePointerMove = useCallback((event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'mouse' && event.buttons !== 0 && event.target === event.currentTarget) {
+      pauseFollowing()
+    }
+  }, [pauseFollowing])
+
+  const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'ArrowUp' || event.key === 'PageUp' || event.key === 'Home') {
+      pauseFollowing()
+    }
+  }, [pauseFollowing])
+
   const handleScroll = useCallback(() => {
     if (!scrollRef.current) return
     const el = scrollRef.current
     const threshold = 80
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold
-    isNearBottomRef.current = nearBottom
-    setShowScrollBtn(!nearBottom)
-  }, [])
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    const nearBottom = distanceFromBottom < threshold
+
+    if (nearBottom) {
+      if (!isNearBottomRef.current) {
+        rDebug('conversation.scroll', 'conversation tailing resumed', {
+          distance_from_bottom: distanceFromBottom,
+        })
+      }
+      isNearBottomRef.current = true
+      setShowScrollBtn(false)
+      return
+    }
+
+    if (!isNearBottomRef.current) {
+      setShowScrollBtn(true)
+      return
+    }
+
+    // Virtual-row measurement and browser layout correction can move the
+    // viewport during initial render. Keep following until the user acts.
+    rTrace('conversation.scroll', 'corrected automatic scroll away from tail', {
+      distance_from_bottom: distanceFromBottom,
+    })
+    followTail()
+  }, [followTail])
 
   // Layout timing puts an opened conversation at its tail before paint. It also
   // handles dependency changes that do not resize the transcript.
@@ -51,13 +121,34 @@ export function useScrollFollow(deps: unknown[]) {
     return () => observer.disconnect()
   }, [followTail])
 
+  // Search scrolls with scrollIntoView. Treat it as an explicit user navigation
+  // so tail correction does not undo the selected match.
+  useLayoutEffect(() => {
+    window.addEventListener('ion:search-scrolled', pauseFollowing)
+    return () => window.removeEventListener('ion:search-scrolled', pauseFollowing)
+  }, [pauseFollowing])
+
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
       isNearBottomRef.current = true
       setShowScrollBtn(false)
+      rTrace('conversation.scroll', 'conversation scrolled to tail')
     }
   }, [])
 
-  return { scrollRef, contentRef, isNearBottomRef, showScrollBtn, handleScroll, scrollToBottom }
+  return {
+    scrollRef,
+    contentRef,
+    isNearBottomRef,
+    showScrollBtn,
+    handleScroll,
+    handleWheel,
+    handleTouchStart,
+    handleTouchMove,
+    handlePointerMove,
+    handleKeyDown,
+    pauseFollowing,
+    scrollToBottom,
+  }
 }

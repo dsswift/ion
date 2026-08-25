@@ -562,6 +562,16 @@ Two kinds, distinguished by `gateKind`:
 | `gateToolInput` | object | Tool input parameters                                           |
 | `gateCwd`       | string | Working directory the tool call would execute in                |
 | `gateSiblingTools` | string[] | Names of the other tool calls in the same model turn (turn-mates run concurrently), so a policy can evaluate turn isolation |
+| `gateHumanWait` | boolean | Tool kind only. Historical: current engines never set it — a human-wait tool parks the run (retained `PermissionDenial` + idle session) instead of emitting a gate request. Retained so events from older engines still decode. |
+
+#### engine_client_tool_state
+
+A **complete replacement snapshot** of every client-tool call the engine is currently blocked on for this session — the replay/reconciliation surface behind `engine_tool_gate_request` (which remains the low-latency invocation signal). Same snapshot semantics as `engine_agent_state`: consumers replace their local view with the payload, and an **empty array is the authoritative "nothing pending" clear signal**. Emitted on every membership change (register, response, timeout, cancellation, run teardown) and re-emitted by `reconcile_state`, so a re-attaching consumer either re-renders the calls the engine is still waiting on (the `requestId`s stay answerable — the reply channels live engine-side) or clears stale local state.
+
+| Field             | Type                  | Description |
+|-------------------|-----------------------|-------------|
+| `type`            | `"engine_client_tool_state"` | Event type |
+| `clientToolCalls` | ClientToolCallState[] | Every pending MACHINE client-tool call (human-wait tools park the run; their retained question rides `permissionDenials` on status snapshots). Each entry carries `requestId` (the `tool_gate_response` correlator), `runId` (owning run lifecycle, for stale-entry rejection), `toolName`, `toolInput`, `cwd`, `humanWait` (always false on current engines), and `startedAt` (unix ms). Always present; `[]` clears. |
 
 #### engine_elicitation_request
 
@@ -827,7 +837,7 @@ Snapshot-replace semantics. Sent when a client first subscribes to a resource ki
 | `type`          | `"engine_resource_snapshot"` | Event type                             |
 | `resourceKind`  | string            | The subscribed resource kind                        |
 | `resourceSubId` | string            | Subscription ID (from `resource_subscribe` response)|
-| `resourceItems` | ResourceItem[]    | Complete current collection for this kind           |
+| `resourceItems` | ResourceItem[]    | Complete current collection for this kind. Each item carries its engine-assigned `producer`; its identity is `(resourceKind, producer, id)`. |
 
 #### engine_resource_delta
 
@@ -845,7 +855,7 @@ Incremental resource update. Sent after the initial snapshot whenever an item is
 | Field  | Type         | Description                                              |
 |--------|--------------|----------------------------------------------------------|
 | `op`   | string       | One of `"create"`, `"update"`, `"delete"`, `"mark_read"` |
-| `item` | ResourceItem | The affected item                                        |
+| `item` | ResourceItem | The affected item, including engine-assigned `producer` attribution |
 
 #### engine_notification
 

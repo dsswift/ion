@@ -30,8 +30,9 @@ import (
 // time anchor that survives restarts and prevents flood catch-up on
 // first sighting. LastRunUtc records the most recent successful fire.
 type lastRunMarker struct {
-	FirstSeenUtc string `json:"firstSeenUtc,omitempty"`
-	LastRunUtc   string `json:"lastRunUtc,omitempty"`
+	FirstSeenUtc          string `json:"firstSeenUtc,omitempty"`
+	LastRunUtc            string `json:"lastRunUtc,omitempty"`
+	LastReconciledSlotUtc string `json:"lastReconciledSlotUtc,omitempty"`
 }
 
 // readMarker reads the full marker struct from disk. Returns the parsed
@@ -85,8 +86,9 @@ func (s *Scheduler) recordLastRunByName(name string, job extension.ScheduleJob, 
 	// Read existing marker to preserve FirstSeenUtc.
 	existing, _ := s.readMarker(name, job)
 	m := lastRunMarker{
-		FirstSeenUtc: existing.FirstSeenUtc,
-		LastRunUtc:   firedAt.UTC().Format(time.RFC3339),
+		FirstSeenUtc:          existing.FirstSeenUtc,
+		LastRunUtc:            firedAt.UTC().Format(time.RFC3339),
+		LastReconciledSlotUtc: existing.LastReconciledSlotUtc,
 	}
 	data, err := json.Marshal(m)
 	if err != nil {
@@ -98,6 +100,37 @@ func (s *Scheduler) recordLastRunByName(name string, job extension.ScheduleJob, 
 		return
 	}
 	utils.LogWithFields(utils.LevelDebug, "scheduling", "record last run wrote", map[string]any{"model": name, "schedule_job_id": job.JobID, "path": path})
+}
+
+// recordReconciledSlotByName records a missed slot that policy deliberately
+// skipped. It is distinct from LastRunUtc: reconciliation prevents replay
+// after restart without claiming a handler ever ran.
+func (s *Scheduler) recordReconciledSlotByName(name string, job extension.ScheduleJob, slot time.Time) {
+	if s.persistDir == "" || job.Kind == extension.ScheduleOnce {
+		return
+	}
+	path := s.markerPathByName(name, job)
+	existing, _ := s.readMarker(name, job)
+	if existing.LastReconciledSlotUtc != "" {
+		if prior, err := time.Parse(time.RFC3339, existing.LastReconciledSlotUtc); err == nil && !slot.After(prior) {
+			return
+		}
+	}
+	marker := lastRunMarker{
+		FirstSeenUtc:          existing.FirstSeenUtc,
+		LastRunUtc:            existing.LastRunUtc,
+		LastReconciledSlotUtc: slot.UTC().Format(time.RFC3339),
+	}
+	payload, err := json.Marshal(marker)
+	if err != nil {
+		utils.LogWithFields(utils.LevelWarn, "scheduling", "record reconciled slot marshal failed", map[string]any{"path": path, "error": err.Error()})
+		return
+	}
+	if err := utils.AtomicWriteFile(path, payload, 0o644); err != nil {
+		utils.LogWithFields(utils.LevelWarn, "scheduling", "record reconciled slot write failed", map[string]any{"path": path, "error": err.Error()})
+		return
+	}
+	utils.LogWithFields(utils.LevelDebug, "scheduling", "record reconciled slot wrote", map[string]any{"model": name, "schedule_job_id": job.JobID, "slot": marker.LastReconciledSlotUtc})
 }
 
 // recordFirstSeenByName writes a marker with FirstSeenUtc=now only when no

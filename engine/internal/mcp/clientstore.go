@@ -148,15 +148,23 @@ func (s *ClientStore) load() {
 	utils.LogWithFields(utils.LevelInfo, "mcp.clients", "client store loaded", map[string]any{"path": s.path, "count": len(clients)})
 }
 
-// getClientStore returns the package-level singleton ClientStore. One store
-// per process avoids concurrent writes to the same file.
+// getClientStore returns the package-level ClientStore for the current home.
+// A changed HOME must select a new backing file, not reuse registrations from
+// the previous storage root.
 var (
-	globalClientStore     *ClientStore
-	globalClientStoreOnce sync.Once
+	globalClientStore   *ClientStore
+	globalClientStoreMu sync.Mutex
 )
 
 func getClientStore() *ClientStore {
-	globalClientStoreOnce.Do(func() { globalClientStore = NewClientStore() })
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home matches NewClientStore fallback
+	path := filepath.Join(home, ".ion", "mcp-clients.json")
+
+	globalClientStoreMu.Lock()
+	defer globalClientStoreMu.Unlock()
+	if globalClientStore == nil || globalClientStore.path != path {
+		globalClientStore = NewClientStore()
+	}
 	return globalClientStore
 }
 
@@ -166,9 +174,7 @@ func getClientStore() *ClientStore {
 // (or an earlier test's temp dir).
 func resetStoresForTest() {
 	globalClientStore = NewClientStore()
-	globalClientStoreOnce.Do(func() {})
 	globalOAuthStore = NewOAuthStore()
-	globalOAuthStoreOnce.Do(func() {})
 	// In-memory auth state must be cleared alongside the on-disk stores. A
 	// recorded grant failure or a held refresh lock surviving a reset leaks
 	// between tests, and the leak is not test-only: both maps are keyed by

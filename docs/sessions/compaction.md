@@ -12,7 +12,7 @@ Compaction reduces the token count of a conversation's message history. As conve
 
 Compaction fires in three modes:
 
-1. **Proactive** — before each LLM call, the engine checks whether context usage exceeds the auto-compact token limit (derived from the context window minus output headroom and summary reserve). If so, compaction runs automatically.
+1. **Proactive** — before each LLM call, the engine checks whether context usage has reached the auto-compact token limit (derived from the context window minus the active model's output headroom and the summary reserve). If so, compaction runs automatically. A resumed API-backed conversation that is already at or above this limit is admitted so this check can compact it before any provider request.
 2. **Reactive** — when the provider responds with `prompt_too_long` or `overloaded_error`, the engine runs a progressively more aggressive compaction (target budget shrinks with each retry, up to 3 attempts).
 3. **User-forced** — `/compact` compacts an idle API-backed conversation immediately. Its target is a percentage of the currently truncatable message estimate, so it produces useful reduction even when the conversation is below the model window's normal auto threshold. If the safety floor leaves nothing removable, it succeeds as a no-op without a summary call or persisted marker.
 

@@ -193,11 +193,14 @@ export const scheduleApi: ScheduleApi = {
       id: opts.id,
       kind: 'daily',
       time: opts.time,
+      ...(opts.daysOfWeek !== undefined ? { daysOfWeek: opts.daysOfWeek } : {}),
       tz: opts.tz,
       timeoutMs: opts.timeoutMs,
       enabledRefName: stashEnabled(opts.id, opts.enabled),
       ...(opts.concurrency !== undefined ? { concurrency: opts.concurrency } : {}),
       ...(opts.catchUp !== undefined ? { catchUp: opts.catchUp } : {}),
+      ...(opts.catchUpGroup !== undefined ? { catchUpGroup: opts.catchUpGroup } : {}),
+      ...(opts.catchUpScope !== undefined ? { catchUpScope: opts.catchUpScope } : {}),
     }, opts.handler)
   },
   weekly(opts) {
@@ -211,6 +214,8 @@ export const scheduleApi: ScheduleApi = {
       enabledRefName: stashEnabled(opts.id, opts.enabled),
       ...(opts.concurrency !== undefined ? { concurrency: opts.concurrency } : {}),
       ...(opts.catchUp !== undefined ? { catchUp: opts.catchUp } : {}),
+      ...(opts.catchUpGroup !== undefined ? { catchUpGroup: opts.catchUpGroup } : {}),
+      ...(opts.catchUpScope !== undefined ? { catchUpScope: opts.catchUpScope } : {}),
     }, opts.handler)
   },
   interval(opts) {

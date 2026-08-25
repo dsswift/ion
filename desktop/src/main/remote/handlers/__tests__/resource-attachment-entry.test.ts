@@ -27,6 +27,13 @@ describe('resourceToAttachmentEntry', () => {
     expect(resourceToAttachmentEntry({ id: 'abc123', kind: 'briefing' }).path).toBe('resource:abc123')
   })
 
+  it('uses producer-qualified identity when a producer is present', () => {
+    expect(resourceToAttachmentEntry({ id: 'abc123', producer: 'extension-a', kind: 'briefing' })).toMatchObject({
+      producer: 'extension-a',
+      path: 'resource:8:briefing:11:extension-a:abc123',
+    })
+  })
+
   it('falls back name → title, then kind, then "Resource"', () => {
     expect(resourceToAttachmentEntry({ id: '1', kind: 'briefing', title: 'T' }).name).toBe('T')
     expect(resourceToAttachmentEntry({ id: '2', kind: 'report' }).name).toBe('report')

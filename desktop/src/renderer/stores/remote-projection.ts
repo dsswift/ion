@@ -28,11 +28,12 @@ import type {
   ResourceManifest,
   RemoteTabStatesPayload,
 } from '../../shared/remote-projection-types'
-import type { TabState, TerminalPaneState } from '../../shared/types'
-import type { ConversationPane, ResourceItem } from '../../shared/types-engine'
+import type { TabState, TerminalPaneState, ConversationPane, ResourceItem } from '../../shared/types'
+import { resourceIdentity } from '../../shared/resource-identity'
 import { tabHasExtensions } from '../../shared/tab-predicates'
 import { settlingIsPermanent } from '../../shared/worktree-conversations'
 import { effectiveRunningChildrenCount, waitingStateOfPane } from '../components/TabStripShared'
+import { activeQuestionsCount } from './questions-store'
 import { classifyInbox, inboxUnread, wokeAt } from '../../shared/inbox-classify'
 import { liveBackgroundShellCount } from '../../shared/background-shell-counts'
 import { usePreferencesStore } from '../preferences'
@@ -68,9 +69,10 @@ export function projectResourceManifest(s: Pick<ProjectionStoreState, 'resources
     manifest[kind] = (resources[kind] || []).map((r) => ({
       id: r.id,
       kind: r.kind,
+      producer: r.producer,
       title: r.title || '',
       createdAt: r.createdAt,
-      read: readIds.has(r.id),
+      read: readIds.has(resourceIdentity(r)),
       conversationId: r.conversationId || undefined,
     }))
   }
@@ -125,7 +127,7 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
     lastActivityAt: t.lastActivityAt,
     manualUnread: t.manualUnread,
     pendingAskCount: (activeInst?.permissionQueue.length ?? 0) + (activeInst?.elicitationQueue.length ?? 0),
-    waiting: waitingStateOfPane(cPane ?? undefined) !== null,
+    waiting: waitingStateOfPane(cPane ?? undefined, t.id) !== null,
     failed: t.status === 'failed',
     hasPendingWork: activeInst?.statusFields?.hasPendingWork === true
       || (activeInst?.statusFields?.backgroundAgents ?? 0) > 0
@@ -238,8 +240,17 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
       // so iOS can show a per-sub-tab status dot in EngineInstanceBar.
       // 'question' outranks 'plan-ready' (matches desktop's getWaitingState).
       let ws: 'plan-ready' | 'question' | null = null
+      // An open Guided Questions round is a waiting state that is NOT in
+      // permissionDenied (AskUserQuestions denials are filtered out so the
+      // wizard owns that surface), so it has to be read from the questions
+      // store — same reason waitingStateOfPane consults it. Without this the
+      // phone's per-sub-tab dot reads idle while the operator owes an answer.
+      // Conversation-scoped, so it applies to every instance under the tab.
+      if (activeQuestionsCount(t.id) > 0) {
+        ws = 'question'
+      }
       const pdTools = inst.permissionDenied?.tools
-      if (pdTools && pdTools.length > 0) {
+      if (ws === null && pdTools && pdTools.length > 0) {
         let hasPlanReady = false
         for (const pd of pdTools) {
           if (pd.toolName === 'AskUserQuestion') { ws = 'question'; break }

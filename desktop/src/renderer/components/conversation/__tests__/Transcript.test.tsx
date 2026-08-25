@@ -9,7 +9,7 @@ import type { Message } from '../../../../shared/types-session'
 
 // ── Mocks ──
 
-vi.mock('../../theme', () => ({
+vi.mock('../../../theme', () => ({
   useColors: () => new Proxy({}, { get: () => '#000' }),
 }))
 
@@ -18,7 +18,7 @@ vi.mock('../../preferences', () => ({
     sel({ agentPanelDefaultOpen: false, unifiedTurnView: false }),
 }))
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('../../../stores/sessionStore', () => ({
   useSessionStore: (sel: (s: Record<string, unknown>) => unknown) =>
     sel({ dispatchActivity: {} }),
 }))

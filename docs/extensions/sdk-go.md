@@ -276,13 +276,15 @@ sdk.Schedule().Daily(context.Background(),
 
 `Daily`, `Weekly`, `Interval`, and `Once` cover the four kinds; `Once` fires a single time after `DelayMs` and deregisters itself on both sides. The `control` argument lets a handler stop its own job mid-run.
 
+A daily schedule can set `DaysOfWeek` to a unique weekday list. `CatchUp: "latest"` plus `CatchUpGroup` lets related jobs fire only their newest missed member after a restart or suspend. `CatchUpScope: "same_day"` excludes prior local calendar days. The scheduler uses the schedule timezone to evaluate that scope.
+
 ### Registration timing
 
 Registering before `Run()` queues the declaration into the init handshake. Registering after sends it as its own RPC, and the engine fires the veto-capable `webhook_registered` / `schedule_registered` hook back at your extension before answering — which a policy extension can refuse. Either way you write the same call; the SDK picks the path.
 
 ## Resources
 
-A resource is durable structured content clients subscribe to. The engine routes and fans out but **stores nothing** — when a client subscribes, the engine asks the producing extension for the snapshot, so persistence is your job.
+A resource is durable structured content clients subscribe to. The engine routes and fans out but **stores nothing** — when a client subscribes, the engine asks the producing extension for the snapshot, so persistence is your job. Multiple extensions can produce one kind. The engine assigns `ResourceItem.Producer`, and the complete item identity is `(kind, producer, id)`. Query handlers receive `ResourceFilter.Producer` or `ResourceFilter.ID` when a consumer selects one producer or item.
 
 ```go
 notes, _ := sdk.Resources().Declare(context.Background(), "briefing")

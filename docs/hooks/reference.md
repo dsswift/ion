@@ -423,8 +423,8 @@ type TaskLifecycleInfo struct {
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
-| `elicitation_request` | Structured input requested from user | `ElicitationRequestInfo{RequestID, Schema, URL, Mode}` | `map[string]interface{}` | First non-nil response is used as the user's answer. |
-| `elicitation_result` | Elicitation response received | `ElicitationResultInfo{RequestID, Response, Cancelled}` | ignored | Observe only |
+| `elicitation_request` | Structured input requested from user | `ElicitationRequestInfo{RequestID, Schema, URL, Mode, Source, Server, Message, Action}` | `map[string]interface{}` | First non-nil response is used as the user's answer. |
+| `elicitation_result` | Elicitation response received | `ElicitationResultInfo{RequestID, Response, Cancelled, Declined}` | ignored | Observe only |
 
 ### Payload Types
 
@@ -435,6 +435,10 @@ type ElicitationRequestInfo struct {
     Schema    map[string]interface{}
     URL       string
     Mode      string
+    Source    string // optional extension-provided origin metadata
+    Server    string // optional: originating MCP server name
+    Message   string // optional: extension-provided prompt text
+    Action    string // optional: extension-provided action label
 }
 ```
 
@@ -444,6 +448,7 @@ type ElicitationResultInfo struct {
     RequestID string
     Response  map[string]interface{}
     Cancelled bool
+    Declined  bool // the ternary middle: "no, but continue" vs Cancelled "no, and abort"
 }
 ```
 

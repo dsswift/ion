@@ -40,6 +40,9 @@ type ScheduleJob struct {
 	Time string `json:"time,omitempty"`
 	// DayOfWeek is "monday" through "sunday", for weekly.
 	DayOfWeek string `json:"dayOfWeek,omitempty"`
+	// DaysOfWeek optionally limits a daily job to the listed weekdays.
+	// Empty retains the every-day cadence.
+	DaysOfWeek []string `json:"daysOfWeek,omitempty"`
 	// IntervalMs is the period for interval jobs. Minimum 1000.
 	IntervalMs int64 `json:"intervalMs,omitempty"`
 	// DelayMs is the delay before a once job fires. Minimum 1000.
@@ -53,6 +56,13 @@ type ScheduleJob struct {
 	EnabledRefName string `json:"enabledRefName,omitempty"`
 	// Concurrency is "single" (default) or "all".
 	Concurrency string `json:"concurrency,omitempty"`
+	// CatchUp selects missed-slot recovery for daily and weekly jobs.
+	// "latest" fires only the newest missed job in CatchUpGroup.
+	CatchUp string `json:"catchUp,omitempty"`
+	// CatchUpGroup identifies jobs that reconcile together under CatchUp "latest".
+	CatchUpGroup string `json:"catchUpGroup,omitempty"`
+	// CatchUpScope may be "same_day" to limit latest recovery to today.
+	CatchUpScope string `json:"catchUpScope,omitempty"`
 }
 
 // ScheduleFireMeta describes one firing, letting a handler tell a live tick
@@ -111,6 +121,8 @@ type ScheduleOpts struct {
 	Time string
 	// DayOfWeek is "monday" through "sunday", for weekly.
 	DayOfWeek string
+	// DaysOfWeek optionally limits a daily job to the listed weekdays.
+	DaysOfWeek []string
 	// IntervalMs is the period for interval jobs.
 	IntervalMs int64
 	// DelayMs is the delay for once jobs.
@@ -121,6 +133,12 @@ type ScheduleOpts struct {
 	TimeoutMs int64
 	// Concurrency is "single" (default) or "all".
 	Concurrency string
+	// CatchUp selects missed-slot recovery for daily and weekly jobs.
+	CatchUp string
+	// CatchUpGroup identifies jobs that reconcile together under CatchUp "latest".
+	CatchUpGroup string
+	// CatchUpScope may be "same_day" to limit latest recovery to today.
+	CatchUpScope string
 	// Enabled is consulted before each firing. Returning false skips it
 	// without deregistering the job, so a job can be gated on config the
 	// extension reads at fire time. Nil means always enabled.
@@ -134,12 +152,16 @@ type ScheduleAPI struct{ reg *asyncRegistry }
 // Daily registers a job that fires once per day at opts.Time.
 func (s *ScheduleAPI) Daily(c context.Context, opts ScheduleOpts, handler ScheduleHandler) (ScheduleHandle, error) {
 	return s.register(c, ScheduleJob{
-		ID:          opts.ID,
-		Kind:        ScheduleKindDaily,
-		Time:        opts.Time,
-		TZ:          opts.TZ,
-		TimeoutMs:   opts.TimeoutMs,
-		Concurrency: opts.Concurrency,
+		ID:           opts.ID,
+		Kind:         ScheduleKindDaily,
+		Time:         opts.Time,
+		DaysOfWeek:   opts.DaysOfWeek,
+		TZ:           opts.TZ,
+		CatchUp:      opts.CatchUp,
+		CatchUpGroup: opts.CatchUpGroup,
+		CatchUpScope: opts.CatchUpScope,
+		TimeoutMs:    opts.TimeoutMs,
+		Concurrency:  opts.Concurrency,
 	}, opts.Enabled, handler, false)
 }
 
@@ -147,13 +169,16 @@ func (s *ScheduleAPI) Daily(c context.Context, opts ScheduleOpts, handler Schedu
 // opts.Time.
 func (s *ScheduleAPI) Weekly(c context.Context, opts ScheduleOpts, handler ScheduleHandler) (ScheduleHandle, error) {
 	return s.register(c, ScheduleJob{
-		ID:          opts.ID,
-		Kind:        ScheduleKindWeekly,
-		Time:        opts.Time,
-		DayOfWeek:   opts.DayOfWeek,
-		TZ:          opts.TZ,
-		TimeoutMs:   opts.TimeoutMs,
-		Concurrency: opts.Concurrency,
+		ID:           opts.ID,
+		Kind:         ScheduleKindWeekly,
+		Time:         opts.Time,
+		DayOfWeek:    opts.DayOfWeek,
+		TZ:           opts.TZ,
+		TimeoutMs:    opts.TimeoutMs,
+		Concurrency:  opts.Concurrency,
+		CatchUp:      opts.CatchUp,
+		CatchUpGroup: opts.CatchUpGroup,
+		CatchUpScope: opts.CatchUpScope,
 	}, opts.Enabled, handler, false)
 }
 

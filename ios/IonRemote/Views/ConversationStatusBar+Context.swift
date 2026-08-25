@@ -172,18 +172,6 @@ extension ConversationStatusBar {
         return .normal
     }
 
-    /// `/compact` and `/clear` are recovery commands. They remain available
-    /// when a normal prompt would exceed the selected model's input budget.
-    static func isContextRecoveryCommand(_ text: String) -> Bool {
-        let command = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return command == "/compact" || command.hasPrefix("/compact ") ||
-            command == "/clear" || command.hasPrefix("/clear ")
-    }
-
-    static func contextCapacityBlocksPrompt(_ capacity: ContextCapacity?, text: String) -> Bool {
-        contextCapacityState(capacity) == .full && !isContextRecoveryCommand(text)
-    }
-
     /// Context window of a named model from the catalog, falling back to the
     /// engine's reported window. Static so non-bar surfaces can resolve the
     /// same denominator.

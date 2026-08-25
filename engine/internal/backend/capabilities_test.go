@@ -23,6 +23,7 @@ func TestCapabilities_Descriptors(t *testing.T) {
 				PlanFileProjectScoped: false,
 				Steering:              true,
 				Resume:                false,
+				ClientToolTransport:   ClientToolTransportInProcess,
 			},
 		},
 		{
@@ -36,6 +37,7 @@ func TestCapabilities_Descriptors(t *testing.T) {
 				Steering:              true,
 				Resume:                true,
 				ResumeHandleKind:      ResumeHandleClaudeSessionUUID,
+				ClientToolTransport:   ClientToolTransportMcp,
 			},
 		},
 		{
@@ -49,6 +51,7 @@ func TestCapabilities_Descriptors(t *testing.T) {
 				Steering:              true,
 				Resume:                true,
 				ResumeHandleKind:      ResumeHandleCodexThreadID,
+				ClientToolTransport:   ClientToolTransportCodexDynamic,
 			},
 		},
 		{
@@ -62,6 +65,7 @@ func TestCapabilities_Descriptors(t *testing.T) {
 				Steering:              false, // ACP has no steer channel
 				Resume:                true,
 				ResumeHandleKind:      ResumeHandleAcpSessionID,
+				ClientToolTransport:   ClientToolTransportMcp,
 			},
 		},
 		{
@@ -75,6 +79,7 @@ func TestCapabilities_Descriptors(t *testing.T) {
 				Steering:              false,
 				Resume:                true,
 				ResumeHandleKind:      ResumeHandleAcpSessionID,
+				ClientToolTransport:   ClientToolTransportMcp,
 			},
 		},
 	}

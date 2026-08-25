@@ -40,7 +40,7 @@ struct NotificationsView: View {
     /// The unread subset of the global notifications, used to gate the
     /// "Clear All" button and to drive the mark-all-read action.
     private var unreadNotifications: [ResourceItem] {
-        notifications.filter { !resourceStore.readIds.contains($0.id) }
+        notifications.filter { !resourceStore.readIds.contains($0.compositeId) }
     }
 
     var body: some View {
@@ -88,9 +88,9 @@ struct NotificationsView: View {
     private func clearAll() {
         let unread = unreadNotifications
         guard !unread.isEmpty else { return }
-        resourceStore.markAllRead(unread.map(\.id))
+        resourceStore.markAllRead(unread)
         for item in unread {
-            viewModel.send(.markResourceRead(kind: item.kind, resourceId: item.id), intent: .userInitiated)
+            viewModel.send(.markResourceRead(kind: item.kind, producer: item.producer.isEmpty ? nil : item.producer, resourceId: item.id), intent: .userInitiated)
         }
     }
 
@@ -138,7 +138,7 @@ private struct ResourceRow: View {
     let viewModel: SessionViewModel
     let onSelect: (ResourceItem) -> Void
 
-    private var isRead: Bool { resourceStore.readIds.contains(item.id) }
+    private var isRead: Bool { resourceStore.readIds.contains(item.compositeId) }
     private var title: String { item.title ?? item.metadata["agentName"] ?? item.kind }
     private var formattedTime: String {
         guard let date = ISO8601DateFormatter().date(from: item.createdAt) else { return "" }
@@ -146,14 +146,14 @@ private struct ResourceRow: View {
     }
 
     private var liveItem: ResourceItem {
-        resourceStore.items[item.kind]?.first(where: { $0.id == item.id }) ?? item
+        resourceStore.items[item.kind]?.first(where: { $0.compositeId == item.compositeId }) ?? item
     }
 
     var body: some View {
         Button {
             if !isRead {
-                resourceStore.markRead(item.id)
-                viewModel.send(.markResourceRead(kind: item.kind, resourceId: item.id), intent: .userInitiated)
+                resourceStore.markRead(item)
+                viewModel.send(.markResourceRead(kind: item.kind, producer: item.producer.isEmpty ? nil : item.producer, resourceId: item.id), intent: .userInitiated)
             }
             onSelect(item)
         } label: {
@@ -181,8 +181,8 @@ private struct ResourceRow: View {
         .buttonStyle(.plain)
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
-                resourceStore.deleteItem(kind: item.kind, resourceId: item.id)
-                viewModel.send(.deleteResource(kind: item.kind, resourceId: item.id), intent: .userInitiated)
+                resourceStore.deleteItem(kind: item.kind, producer: item.producer.isEmpty ? nil : item.producer, resourceId: item.id)
+                viewModel.send(.deleteResource(kind: item.kind, producer: item.producer.isEmpty ? nil : item.producer, resourceId: item.id), intent: .userInitiated)
             } label: {
                 Label("Delete", systemImage: "trash")
             }
@@ -203,7 +203,7 @@ struct ResourceDetailView: View {
     @State private var contentFailed = false
 
     private var liveItem: ResourceItem {
-        resourceStore.items[item.kind]?.first(where: { $0.id == item.id }) ?? item
+        resourceStore.items[item.kind]?.first(where: { $0.compositeId == item.compositeId }) ?? item
     }
     private var title: String { item.title ?? item.metadata["agentName"] ?? item.kind }
     private var formattedTime: String {
@@ -230,7 +230,7 @@ struct ResourceDetailView: View {
                             Button("Retry") {
                                 contentFailed = false
                                 loadingContent = true
-                                viewModel.send(.requestResourceContent(kind: item.kind, resourceId: item.id), intent: .userInitiated)
+                                viewModel.send(.requestResourceContent(kind: item.kind, producer: item.producer.isEmpty ? nil : item.producer, resourceId: item.id), intent: .userInitiated)
                             }
                             .font(.caption)
                             .tint(theme.accent)
@@ -266,12 +266,12 @@ struct ResourceDetailView: View {
             .onAppear {
                 if liveItem.content.isEmpty && !loadingContent && !contentFailed {
                     loadingContent = true
-                    viewModel.send(.requestResourceContent(kind: item.kind, resourceId: item.id), intent: .automaticEssential)
+                    viewModel.send(.requestResourceContent(kind: item.kind, producer: item.producer.isEmpty ? nil : item.producer, resourceId: item.id), intent: .automaticEssential)
                 }
             }
             .onChange(of: resourceStore.contentResponseIds) {
                 guard loadingContent else { return }
-                guard resourceStore.contentResponseIds.contains(item.id) else { return }
+                guard resourceStore.contentResponseIds.contains(item.compositeId) else { return }
                 if !liveItem.content.isEmpty {
                     loadingContent = false
                     contentFailed = false

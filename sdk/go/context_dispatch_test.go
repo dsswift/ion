@@ -414,3 +414,27 @@ func TestListDispatchStateDecodesWaitingOn(t *testing.T) {
 		t.Errorf("ChildDispatchIDs = %v, want [dispatch-child]", got)
 	}
 }
+
+func TestDispatchAgentForwardsDetached(t *testing.T) {
+	fe := newFakeEngine(t, WithName("detached-dispatch"))
+	fe.start()
+	fe.doInit(ExtensionConfig{})
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := fe.sdk.newContext(nil).DispatchAgent(context.Background(), DispatchAgentOpts{
+			Name: "worker", Task: "run later", Detached: true,
+		})
+		done <- err
+	}()
+	frame := fe.awaitMethod("ext/dispatch_agent")
+	params := frame["params"].(map[string]any)
+	if params["detached"] != true {
+		t.Fatalf("detached = %#v, want true", params["detached"])
+	}
+	id := frame["id"].(float64)
+	fe.respond(id, map[string]any{"dispatchId": "detached-1"})
+	if err := <-done; err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+}

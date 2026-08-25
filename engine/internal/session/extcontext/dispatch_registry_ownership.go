@@ -57,6 +57,11 @@ func (r *DispatchRegistry) ownsDispatchLocked(ownerID, targetID string) (owned, 
 // dispatched agent sees only strict descendants. This is discovery authority,
 // not merely display filtering: callers receive no sibling/ancestor IDs to use
 // in a destructive request.
+//
+// Entries are built by the same snapshotEntryLocked helper Snapshot uses, so
+// this ancestry-filtered view carries every field the root view does (tool
+// count, last activity, WaitingOn, etc.) without a second field list to keep
+// in sync by hand.
 func (r *DispatchRegistry) OwnedSnapshot(ownerID string) []DispatchStateEntry {
 	now := time.Now()
 	r.mu.Lock()
@@ -68,26 +73,7 @@ func (r *DispatchRegistry) OwnedSnapshot(ownerID string) []DispatchStateEntry {
 		if !found || !owned {
 			continue
 		}
-		status := "running"
-		var pending []string
-		if dispatch.Suspended {
-			status = "suspended"
-			for childID := range dispatch.PendingChildren {
-				pending = append(pending, childID)
-			}
-		}
-		var lastActivityMs int64
-		if !dispatch.LastActivityAt.IsZero() {
-			lastActivityMs = now.Sub(dispatch.LastActivityAt).Milliseconds()
-		}
-		entries = append(entries, DispatchStateEntry{
-			DispatchID: id, Name: dispatch.Name, Status: status,
-			ParentDispatchID: dispatch.ParentID, Depth: dispatch.Depth,
-			StartedAt: dispatch.StartedAt, ElapsedMs: now.Sub(dispatch.StartedAt).Milliseconds(),
-			ToolCount: dispatch.ToolCount, LastWork: dispatch.LastWork,
-			LastActivityMs: lastActivityMs, ChildConversationID: dispatch.ChildConvID,
-			PendingChildren: pending,
-		})
+		entries = append(entries, snapshotEntryLocked(dispatch, now))
 	}
 	return entries
 }

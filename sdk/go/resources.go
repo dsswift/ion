@@ -20,10 +20,13 @@ import (
 
 // ResourceItem is one piece of durable structured content.
 type ResourceItem struct {
-	// ID is the item's identifier within its kind.
+	// ID is the item's identifier within its kind and producer.
 	ID string `json:"id"`
 	// Kind is the resource kind, matching a declaration.
 	Kind string `json:"kind"`
+	// Producer is assigned by the engine from the registering extension.
+	// Publishers must not set it.
+	Producer string `json:"producer,omitempty"`
 	// Title is a short label for client display.
 	Title string `json:"title,omitempty"`
 	// Content is the item's body.
@@ -61,16 +64,20 @@ const (
 
 // ResourceFilter scopes a query.
 type ResourceFilter struct {
-	Kind           string `json:"kind"`
+	Kind string `json:"kind"`
+	// Producer restricts a query to one extension. Empty selects all producers.
+	Producer       string `json:"producer,omitempty"`
 	ConversationID string `json:"conversationId,omitempty"`
 	// Since is an RFC3339 timestamp; only items changed after it.
 	Since string `json:"since,omitempty"`
 	// Limit caps the returned item count. Zero means no cap.
 	Limit int `json:"limit,omitempty"`
+	// ID restricts a query to one item.
+	ID string `json:"id,omitempty"`
 }
 
-// ResourceDeclaration declares a kind this extension produces. One producer
-// per kind per session.
+// ResourceDeclaration declares a kind this extension produces. Multiple
+// extensions can produce the same kind.
 type ResourceDeclaration struct {
 	Kind string `json:"kind"`
 }

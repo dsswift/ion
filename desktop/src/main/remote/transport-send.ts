@@ -75,6 +75,12 @@ export const CRITICAL_TYPES = new Set([
   // reset leaves the discarded attempt's partial text on the phone as if it
   // were real output.
   'desktop_text_delta', 'desktop_stream_reset', 'desktop_tool_start', 'desktop_tool_end',
+  // desktop_questions_state is the authoritative guided-questions wizard
+  // state; a dropped one strands iOS on a stale draft/phase. The schema
+  // limits (shared/questions-schema.ts) bound the maximum valid state far
+  // below MAX_PLAINTEXT_BYTES — pinned structurally by
+  // questions-transport-bound.test.ts — so it needs no lossy degrader.
+  'desktop_questions_state',
 ])
 
 // ─── Two-lane send prioritization ────────────────────────────────────────────

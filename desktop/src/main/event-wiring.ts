@@ -230,7 +230,7 @@ export function wireEngineBridgeEvents(): void {
       // Persist mark_read deltas to disk so the desktop's read state survives
       // restarts and stays consistent with cross-device reads from iOS.
       if (d?.op === 'mark_read' && d?.item?.id) {
-        markReadPersisted(d.item.id)
+        markReadPersisted(d.item.id, d.item.producer, d.item.kind)
       }
       const tabIdForDelta = tabIdFromKey(key)
       broadcastNormalized(tabIdForDelta, {

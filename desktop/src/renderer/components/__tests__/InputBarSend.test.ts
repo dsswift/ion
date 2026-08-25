@@ -106,18 +106,18 @@ describe('dispatchSend', () => {
     expect(d.clearInput).not.toHaveBeenCalled()
   })
 
-  it('keeps the draft and attachments when context is full', () => {
+  it('submits a normal prompt at full context so the engine can auto-compact', () => {
     const { d } = deps({
       tabs: [{ id: 'tab-aaaaaaaa', status: 'idle', contextTokens: 100, contextLimit: 100 }],
       activeTabId: 'tab-aaaaaaaa', tabsReady: true,
     })
-    expect(dispatchSend('continue', 2, d)).toEqual({ accepted: false, reason: 'context-full' })
-    expect(d.clearInput).not.toHaveBeenCalled()
-    expect(d.clearDraft).not.toHaveBeenCalled()
-    expect(d.submit).not.toHaveBeenCalled()
+    expect(dispatchSend('continue', 2, d)).toEqual({ accepted: true, tabId: 'tab-aaaaaaaa' })
+    expect(d.clearInput).toHaveBeenCalledOnce()
+    expect(d.clearDraft).toHaveBeenCalledWith('tab-aaaaaaaa')
+    expect(d.submit).toHaveBeenCalledWith('tab-aaaaaaaa', 'continue')
   })
 
-  it('sends context recovery commands at the capacity block', () => {
+  it('also sends explicit context recovery commands at full context', () => {
     const { d } = deps({
       tabs: [{ id: 'tab-aaaaaaaa', status: 'idle', contextTokens: 100, contextLimit: 100 }],
       activeTabId: 'tab-aaaaaaaa', tabsReady: true,
@@ -150,18 +150,19 @@ describe('dispatchSend', () => {
     expect(d.submit).toHaveBeenCalledWith('tab-aaaaaaaa', '')
   })
 
-  it('keeps the draft and attachments when context is full', () => {
+  it('keeps full-context sends on the same acceptance path', () => {
     const { d, calls } = deps({
       tabs: [{ id: 'tab-aaaaaaaa', status: 'idle', contextTokens: 167_000, contextLimit: 167_000 }],
       activeTabId: 'tab-aaaaaaaa',
       tabsReady: true,
     })
 
-    expect(dispatchSend('the prompt remains editable', 2, d)).toEqual({ accepted: false, reason: 'context-full' })
-    expect(d.clearInput).not.toHaveBeenCalled()
-    expect(d.clearDraft).not.toHaveBeenCalled()
-    expect(d.submit).not.toHaveBeenCalled()
-    expect(calls).toEqual(['warn:send refused, keeping operator text'])
+    expect(dispatchSend('the prompt remains editable', 2, d)).toEqual({ accepted: true, tabId: 'tab-aaaaaaaa' })
+    expect(calls).toEqual([
+      'clearInput',
+      'clearDraft:tab-aaaaaaaa',
+      'submit:tab-aaaaaaaa:the prompt remains editable',
+    ])
   })
 
   it('allows /compact and /clear when context is full', () => {

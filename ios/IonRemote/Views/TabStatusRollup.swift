@@ -102,7 +102,12 @@ enum TabStatusRollup {
         let genericPermission = tab.permissionQueue.contains { $0.toolName != "ExitPlanMode" && $0.toolName != "AskUserQuestion" }
         let planReady = tab.permissionQueue.contains { $0.toolName == "ExitPlanMode" }
         let question = tab.permissionQueue.contains { $0.toolName == "AskUserQuestion" }
+        // An open guided-questions workflow (snapshot-carried, never in
+        // permissionQueue) is a live human wait: the question treatment wins
+        // over running/waiting because the run is blocked on the operator.
+        let guidedWait = (tab.questions ?? []).contains { $0.phase != "terminal" }
         if genericPermission { return .init(priority: priorityPermission, state: .permission) }
+        if guidedWait { return .init(priority: priorityQuestion, state: .question) }
         if tab.status == .running || tab.status == .connecting { return .init(priority: priorityRunning, state: .running) }
         if tab.status == .starting { return .init(priority: priorityStarting, state: .starting) }
         if tab.status == .waiting || tab.hasPendingWork == true { return .init(priority: priorityChildren, state: .children) }

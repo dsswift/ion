@@ -602,26 +602,29 @@ extension RemoteCommand {
             try container.encodeIfPresent(accessReason, forKey: .accessReason)
             try container.encodeIfPresent(reportedAt?.ISO8601Format(), forKey: .reportedAt)
 
-        case .requestResourceContent(let kind, let resourceId):
+        case .requestResourceContent(let kind, let producer, let resourceId):
             // iOS → desktop: fetch the full content for a single resource item.
             // Desktop reads both fields, queries the renderer store, and replies
             // with a `resource_content` event carrying the body.
             try container.encode(TypeKey.requestResourceContent, forKey: .type)
             try container.encode(kind, forKey: .kind)
+            try container.encodeIfPresent(producer, forKey: .producer)
             try container.encode(resourceId, forKey: .resourceId)
 
-        case .markResourceRead(let kind, let resourceId):
+        case .markResourceRead(let kind, let producer, let resourceId):
             // iOS → desktop: propagate read state to the source of truth.
             try container.encode(TypeKey.markResourceRead, forKey: .type)
             try container.encode(kind, forKey: .kind)
+            try container.encodeIfPresent(producer, forKey: .producer)
             try container.encode(resourceId, forKey: .resourceId)
 
-        case .deleteResource(let kind, let resourceId):
+        case .deleteResource(let kind, let producer, let resourceId):
             // iOS → desktop: permanently remove a notification from the
             // global resource broker. Desktop publishes a delete delta
             // through the engine so all subscribers remove the item.
             try container.encode(TypeKey.deleteResource, forKey: .type)
             try container.encode(kind, forKey: .kind)
+            try container.encodeIfPresent(producer, forKey: .producer)
             try container.encode(resourceId, forKey: .resourceId)
 
         case .implementPlan(let tabId, let questionId, let instanceId, let clearContext):
@@ -647,6 +650,20 @@ extension RemoteCommand {
             try container.encode(planFilePath, forKey: .planFilePath)
             try container.encode(offset, forKey: .offset)
             try container.encode(length, forKey: .length)
+
+        case .questionsPatch(let tabId, let patch):
+            try container.encode(TypeKey.questionsPatch, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(patch, forKey: .patch)
+
+        case .questionsAction(let tabId, let action):
+            try container.encode(TypeKey.questionsAction, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(action, forKey: .action)
+
+        case .questionsRefresh(let tabId):
+            try container.encode(TypeKey.questionsRefresh, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
         }
     }
 }

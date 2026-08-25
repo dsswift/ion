@@ -52,8 +52,19 @@ func (m *Manager) resolveCliContinuity(s *engineSession, opts *types.RunOptions)
 	convID := s.conversationID
 	m.mu.RUnlock()
 
+	// Client-tool signature validity applies only to backends whose native
+	// session fixes the tool set at creation (codex dynamicTools). For those,
+	// a cursor created under a different tool set must not be resumed — the
+	// resumed thread would silently lack newly declared tools. An old cursor
+	// with no recorded signature is treated as "created with no client tools"
+	// and stays valid only while the current run also declares none.
+	signatureOk := true
+	if caps.ClientToolTransport == backend.ClientToolTransportCodexDynamic {
+		signatureOk = cursor.ClientToolSignature == opts.ClientToolSignature
+	}
+
 	leaf := currentConversationLeaf(convID)
-	if hasCursor && cursor.Cursor != "" && caps.Resume && cursor.HeadEntryID == leaf {
+	if hasCursor && cursor.Cursor != "" && caps.Resume && cursor.HeadEntryID == leaf && signatureOk {
 		// Valid cursor: the transcript has not advanced since this backend
 		// last saw it, so the native session still equals Ion's truth.
 		opts.CliResumeSessionID = cursor.Cursor
@@ -69,6 +80,9 @@ func (m *Manager) resolveCliContinuity(s *engineSession, opts *types.RunOptions)
 	reason := "absent"
 	if hasCursor {
 		reason = "stale"
+		if !signatureOk {
+			reason = "client_tool_signature_mismatch"
+		}
 	}
 	utils.LogWithFields(utils.LevelInfo, "session.native_session", "no valid native session, bridging from transcript", map[string]any{
 		"key": s.key, "conversation_id": convID, "kind": caps.Kind, "reason": reason,
@@ -126,17 +140,28 @@ func (m *Manager) persistCliTurn(key, convID string) {
 	}
 	userText := s.pendingCliUserTurn
 	assistantText := s.pendingCliAssistantText
+	recorder := s.cliTranscript
 	s.pendingCliUserTurn = ""
 	s.pendingCliAssistantText = ""
+	s.cliTranscript = nil
 	m.mu.Unlock()
 
 	if convID == "" || userText == "" {
 		return // engine-owned run, or nothing to persist
 	}
 
+	// Prefer the structured recording (ordered text + exact tool_use /
+	// tool_result pairs — client-tool question rounds included) so the
+	// canonical transcript carries what actually happened. An empty recording
+	// (no recorder, or a run with no recorded activity) falls back to the
+	// final-text persistence so this path never regresses below its prior
+	// behavior.
+	structuredItems := recorder.drain()
+
 	// Serialized read-modify-write: a dispatch record or label appended
 	// between this load and its save would otherwise be erased by it.
 	leaf := ""
+	wroteStructured := false
 	appendTurn := func(conv *conversation.Conversation) (bool, error) {
 		// Recovery-enabled sessions persist their canonical user turn before the
 		// delegated CLI starts. On exit only append CLI output: writing userText
@@ -144,7 +169,20 @@ func (m *Manager) persistCliTurn(key, convID string) {
 		if journal := conversation.ActiveRunRecovery(conv); journal == nil || journal.UserEntryID == "" {
 			conversation.AddUserMessage(conv, userText)
 		}
-		if assistantText != "" {
+		wroteStructured = appendStructuredCliTurn(conv, structuredItems)
+		hasRecordedText := false
+		for _, it := range structuredItems {
+			if it.kind == "text" {
+				hasRecordedText = true
+				break
+			}
+		}
+		if (!wroteStructured || !hasRecordedText) && assistantText != "" {
+			// Text-only fallback, and the completion for a structured recording
+			// whose stream carried no text chunks (some backends report the
+			// final text only on task_complete). Never runs when the recording
+			// already carries text — that would duplicate the same content.
+			//
 			// No usage annotation: the CLI reported no provider accounting for
 			// this turn, and a zero-valued LlmUsage{} would poison the occupancy
 			// backward scan (GetContextUsage) into reading ~0 tokens.
@@ -173,8 +211,8 @@ func (m *Manager) persistCliTurn(key, convID string) {
 		return
 	}
 	utils.LogWithFields(utils.LevelInfo, "session.native_session", "persisted delegated-CLI turn into Ion transcript", map[string]any{
-		"key": key, "conversation_id": convID, "new_leaf": leaf,
-		"user_bytes": len(userText), "assistant_bytes": len(assistantText),
+		"key": key, "conversation_id": convID, "new_leaf": leaf, "structured": wroteStructured,
+		"structured_items": len(structuredItems), "user_bytes": len(userText), "assistant_bytes": len(assistantText),
 	})
 }
 
@@ -193,7 +231,11 @@ func (m *Manager) persistCliTurn(key, convID string) {
 // and consistently, its key→conversationId binding is never flushed either —
 // a restart mints a fresh conversation, so a persisted cursor would be
 // unreachable anyway.
-func (m *Manager) captureNativeSessionCursor(key, convID, kind, cursor string) {
+//
+// toolSignature is the run's client-tool signature (empty when the run
+// declared no client tools); it rides the cursor so codex resume validity
+// can compare tool sets (see NativeSessionCursor.ClientToolSignature).
+func (m *Manager) captureNativeSessionCursor(key, convID, kind, cursor, toolSignature string) {
 	leaf := ""
 	persisted := false
 	if convID != "" && conversation.Exists(convID, "") {
@@ -209,7 +251,7 @@ func (m *Manager) captureNativeSessionCursor(key, convID, kind, cursor string) {
 			if conv.NativeSessions == nil {
 				conv.NativeSessions = make(map[string]conversation.NativeSessionCursor)
 			}
-			conv.NativeSessions[kind] = conversation.NativeSessionCursor{Cursor: cursor, HeadEntryID: leaf}
+			conv.NativeSessions[kind] = conversation.NativeSessionCursor{Cursor: cursor, HeadEntryID: leaf, ClientToolSignature: toolSignature}
 			if saveErr := conversation.Save(conv, ""); saveErr != nil {
 				utils.LogWithFields(utils.LevelWarn, "session.native_session", "capture: cursor persist failed, keeping cursor in-memory only", map[string]any{
 					"key": key, "conversation_id": convID, "kind": kind, "error": saveErr.Error(),
@@ -225,7 +267,7 @@ func (m *Manager) captureNativeSessionCursor(key, convID, kind, cursor string) {
 		if s.nativeSessions == nil {
 			s.nativeSessions = make(map[string]conversation.NativeSessionCursor)
 		}
-		s.nativeSessions[kind] = conversation.NativeSessionCursor{Cursor: cursor, HeadEntryID: leaf}
+		s.nativeSessions[kind] = conversation.NativeSessionCursor{Cursor: cursor, HeadEntryID: leaf, ClientToolSignature: toolSignature}
 	}
 	m.mu.Unlock()
 

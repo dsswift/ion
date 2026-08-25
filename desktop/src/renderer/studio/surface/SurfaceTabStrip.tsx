@@ -6,7 +6,7 @@
  * tabs read sessionStore.fileEditorStates — the buffer owner.
  */
 import React, { useCallback, useState } from 'react'
-import { Plus, ChartBar, FileText, FolderOpen, GitBranch, GitDiff, Globe, TerminalWindow, Image, File as FileIcon, Bell, Rectangle, ChartDonut } from '@phosphor-icons/react'
+import { Plus, ChartBar, FileText, FolderOpen, GitBranch, GitDiff, Globe, Question, TerminalWindow, Image, File as FileIcon, Bell, Rectangle, ChartDonut } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveState'
 import { transitions } from '../../theme-tokens'
@@ -35,6 +35,8 @@ function tabIcon(tab: SurfaceTab): React.JSX.Element {
       return <Image size={size} />
     case 'notification':
       return <Bell size={size} />
+    case 'questions':
+      return <Question size={size} />
     case 'runtime-panel':
     case 'dispatch':
       return <Rectangle size={size} />
@@ -59,6 +61,8 @@ function tabLabel(tab: SurfaceTab): string {
       return tab.filePath.split('/').pop() ?? tab.filePath
     case 'notification':
       return 'Notification'
+    case 'questions':
+      return 'Questions'
     case 'runtime-panel':
     case 'dispatch':
       return tab.title
@@ -136,7 +140,7 @@ function SurfaceTabPill({
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tabLabel(tab)}</span>
       {chord && <ShortcutHint chord={chord} dimmed={!active} />}
       {dirty && <span style={{ width: 6, height: 6, borderRadius: 3, background: colors.accent, flexShrink: 0 }} />}
-      {confirmingClose ? (
+      {tab.kind === 'questions' ? null : confirmingClose ? (
         <span style={{ display: 'flex', gap: 3, fontSize: 9 }} onClick={(e) => e.stopPropagation()}>
           <button
             onClick={() => setConfirmingClose(false)}
@@ -185,11 +189,13 @@ export function SurfaceTabStrip(): React.JSX.Element {
   // Canvas tabs reveal their chord on ⌘⌥. File, browser, and terminal tabs
   // own no command and therefore never show a hint.
   const revealed = useRevealedShortcuts('studio', CANVAS_TAB_COMMAND_IDS)
+  // Questions is the forced needs-you group, LEFT of the global pins.
+  const questions = tabs.filter((tab) => tab.kind === 'questions')
   const pins = tabs.filter((tab) => pinnedTabs.includes(tab.id as typeof pinnedTabs[number]))
   const notification = tabs.filter((tab) => tab.id === 'notification')
   const localSingletons = tabs.filter((tab) => !pinnedTabs.includes(tab.id as typeof pinnedTabs[number]) && tab.id !== 'notification' && isSingleton(tab))
-  const dynamics = tabs.filter((tab) => !pinnedTabs.includes(tab.id as typeof pinnedTabs[number]) && tab.id !== 'notification' && !isSingleton(tab))
-  const groups = [pins, notification, localSingletons, dynamics].filter((group) => group.length > 0)
+  const dynamics = tabs.filter((tab) => !pinnedTabs.includes(tab.id as typeof pinnedTabs[number]) && tab.id !== 'notification' && tab.kind !== 'questions' && !isSingleton(tab))
+  const groups = [questions, pins, notification, localSingletons, dynamics].filter((group) => group.length > 0)
 
   return (
     <div
@@ -218,6 +224,9 @@ export function SurfaceTabStrip(): React.JSX.Element {
               chord={command ? revealed.get(command) : undefined}
               onContextMenu={(e) => {
                 e.preventDefault()
+                // The Questions tab has no context menu: every verb it could
+                // offer is a close variant, and it refuses close.
+                if (t.kind === 'questions') return
                 setCtxMenu({ x: e.clientX, y: e.clientY, tab: t })
               }}
             />

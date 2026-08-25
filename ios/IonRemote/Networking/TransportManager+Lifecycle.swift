@@ -11,8 +11,10 @@ extension TransportManager {
             return
         }
 
-        await MainActor.run { self.bonjour.startBrowsing() }
-        startBonjourObservation()
+        // The first network-path update starts Bonjour only when a local
+        // interface exists. Do not begin discovery before that signal: doing so
+        // would briefly create the poll loop on a cellular-only device.
+        startNetworkMonitor()
 
         if let relay {
             DiagnosticLog.log("start: connecting relay", tag: "transport")
@@ -42,10 +44,6 @@ extension TransportManager {
             return
         }
         startLANStateObservation()
-        DiagnosticLog.log("start: starting network monitor", tag: "transport", fields: [
-            "relay_connected": String(relay?.isConnected ?? false)
-        ])
-        startNetworkMonitor()
     }
 
     /// Disconnect all transports and stop discovery.

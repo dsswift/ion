@@ -443,22 +443,25 @@ extension RemoteCommand {
             // iOS only sends this command (never decodes it from the wire),
             // but the Codable conformance requires the path.
             let kind = try container.decode(String.self, forKey: .kind)
+            let producer = try container.decodeIfPresent(String.self, forKey: .producer)
             let resourceId = try container.decode(String.self, forKey: .resourceId)
-            self = .requestResourceContent(kind: kind, resourceId: resourceId)
+            self = .requestResourceContent(kind: kind, producer: producer, resourceId: resourceId)
 
         case .markResourceRead:
             // iOS only sends this command (never decodes it from the wire),
             // but the Codable conformance requires the path.
             let kind = try container.decode(String.self, forKey: .kind)
+            let producer = try container.decodeIfPresent(String.self, forKey: .producer)
             let resourceId = try container.decode(String.self, forKey: .resourceId)
-            self = .markResourceRead(kind: kind, resourceId: resourceId)
+            self = .markResourceRead(kind: kind, producer: producer, resourceId: resourceId)
 
         case .deleteResource:
             // iOS only sends this command (never decodes it from the wire),
             // but the Codable conformance requires the path.
             let kind = try container.decode(String.self, forKey: .kind)
+            let producer = try container.decodeIfPresent(String.self, forKey: .producer)
             let resourceId = try container.decode(String.self, forKey: .resourceId)
-            self = .deleteResource(kind: kind, resourceId: resourceId)
+            self = .deleteResource(kind: kind, producer: producer, resourceId: resourceId)
 
         case .implementPlan:
             // iOS only sends this command (never decodes it from the wire),
@@ -478,6 +481,21 @@ extension RemoteCommand {
             let offset = try container.decode(Int.self, forKey: .offset)
             let length = try container.decode(Int.self, forKey: .length)
             self = .requestPlanContent(tabId: tabId, questionId: questionId, planFilePath: planFilePath, offset: offset, length: length)
+
+        // ── Guided Questions ──
+        // iOS only sends these commands (never decodes them from the wire),
+        // but the Codable conformance requires the paths.
+        case .questionsPatch:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let patch = try container.decode(QuestionsPatch.self, forKey: .patch)
+            self = .questionsPatch(tabId: tabId, patch: patch)
+        case .questionsAction:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let action = try container.decode(QuestionsAction.self, forKey: .action)
+            self = .questionsAction(tabId: tabId, action: action)
+        case .questionsRefresh:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            self = .questionsRefresh(tabId: tabId)
         // ── Worktree + integration bench ──
         // iOS only SENDS these; the decode paths exist because Codable
         // conformance requires them. The family is decoded in

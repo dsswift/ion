@@ -64,9 +64,20 @@ vi.mock("../DispatchStopControl", () => ({
   },
 }));
 
-// Mock Transcript to emit one drill-in button per child agent.
+// Mock Transcript to emit one drill-in button per child agent, and to render
+// the same activity/Stop overlay the real Transcript renders internally (see
+// Transcript.activityOverlay.test.tsx for that component's own coverage) so
+// this file can still pin the ID that reaches it end-to-end from the popup.
 vi.mock("../conversation/Transcript", () => ({
-  Transcript: ({ messages, pinnedPrompt, onOpenDispatch, agents }: any) =>
+  Transcript: ({
+    messages,
+    pinnedPrompt,
+    onOpenDispatch,
+    agents,
+    tabId,
+    activityDispatchId,
+    activityRunningDispatchIds,
+  }: any) =>
     React.createElement(
       "div",
       { "data-testid": "transcript" },
@@ -91,8 +102,26 @@ vi.mock("../conversation/Transcript", () => ({
           a.name,
         ),
       ),
+      tabId &&
+        activityDispatchId &&
+        React.createElement(DispatchStopControlMock, {
+          dispatchId: activityDispatchId,
+          runningDispatchIds: activityRunningDispatchIds ?? [],
+        }),
     ),
 }));
+
+function DispatchStopControlMock(props: {
+  dispatchId: string;
+  runningDispatchIds: string[];
+}) {
+  dispatchStopProps.push(props);
+  return React.createElement(
+    "button",
+    { "data-testid": `dispatch-stop-${props.dispatchId}` },
+    "Stop",
+  );
+}
 
 vi.mock("../agent-conversation-mapper", () => ({
   mapConversationMessages: (msgs: any[]) =>
@@ -349,7 +378,7 @@ describe("AgentDetailPanel nested dispatches", () => {
     unmount();
   });
 
-  it("puts the Stop corner on the drilled-into child and preserves owning tab", () => {
+  it("puts the Stop control on the drilled-into child and preserves owning tab", async () => {
     const child = makeChildPill(
       "ios-dev",
       "d1",
@@ -378,6 +407,13 @@ describe("AgentDetailPanel nested dispatches", () => {
     ) as HTMLButtonElement;
     act(() => {
       childBtn.click();
+    });
+
+    // Drilling in swaps to the child's conversation, which AgentDetailBody
+    // loads asynchronously before Transcript (and its embedded
+    // activityDispatchId-driven Stop overlay) re-renders for the new subject.
+    await vi.waitFor(() => {
+      expect(dispatchStopProps.at(-1)?.dispatchId).toBe("d2");
     });
 
     const childControl = dispatchStopProps.at(-1);

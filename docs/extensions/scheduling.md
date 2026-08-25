@@ -102,10 +102,12 @@ ion.schedule.daily({
 
 `'auto'` runs a missed slot through the engine, `'manual'` emits
 `engine_schedule_missed` and calls `schedule_missed`, and `'none'` advances
-cadence without a backfill. Omit the field for existing
-`catchUpEnabled` behavior: jobs auto-catch up unless their extension registered a
-`schedule_missed` handler, which receives the decision instead. `catchUp` applies only to daily
-and weekly jobs.
+cadence without a backfill. `'latest'` selects the most recent missed job in a
+shared `catchUpGroup`; `catchUpScope: 'same_day'` rejects slots from an earlier
+local calendar day. Empty `catchUpGroup` makes a job its own group. Omit the
+field for existing `catchUpEnabled` behavior: jobs auto-catch up unless their
+extension registered a `schedule_missed` handler, which receives the decision
+instead. `catchUp` applies only to daily and weekly jobs.
 
 ## Job shapes
 
@@ -115,7 +117,11 @@ and weekly jobs.
 ion.schedule.daily({
   id: string,                              // required, stable
   time: string,                             // "HH:MM" 24-hour
+  daysOfWeek?: Array<'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday'>,
   tz?: string,                              // IANA tz; default = engine default
+  catchUp?: 'auto' | 'manual' | 'none' | 'latest',
+  catchUpGroup?: string,                    // groups `latest` recovery
+  catchUpScope?: 'same_day',                 // rejects older local dates
   timeoutMs?: number,                       // override fire timeout
   enabled?: () => boolean | Promise<boolean>, // skip predicate; see below
   handler: (ctx, control?) => Promise<void> | void,

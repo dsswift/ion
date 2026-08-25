@@ -299,7 +299,7 @@ func TestLastRunWithinScope_Daily(t *testing.T) {
 	dir := t.TempDir()
 	s := New(Config{PersistDir: dir})
 
-	job := stubDailyJob("d") // 09:30 UTC daily
+	job := stubDailyJob("d")                             // 09:30 UTC daily
 	now := time.Date(2026, 5, 25, 11, 0, 0, 0, time.UTC) // Mon 11:00
 
 	// Ran today at 09:30 (within scope).
@@ -385,5 +385,19 @@ func TestPersistence_FirstSeenNoOpWhenExists(t *testing.T) {
 	// Should still be the first time.
 	if marker.FirstSeenUtc != firstSeen.UTC().Format(time.RFC3339) {
 		t.Errorf("FirstSeenUtc = %q, want %q (first write should stick)", marker.FirstSeenUtc, firstSeen.UTC().Format(time.RFC3339))
+	}
+}
+
+func TestPersistence_ReconciledSlotPreventsReplayWithoutClaimingRun(t *testing.T) {
+	s := New(Config{PersistDir: t.TempDir()})
+	job := extension.ScheduleJob{JobID: "brief", Kind: extension.ScheduleDaily, Time: "09:00"}
+	slot := time.Date(2026, 5, 25, 9, 0, 0, 0, time.UTC)
+	s.recordReconciledSlotByName("ext", job, slot)
+	marker, ok := s.readMarker("ext", job)
+	if !ok || marker.LastReconciledSlotUtc != slot.Format(time.RFC3339) {
+		t.Fatalf("marker = %+v, ok=%v", marker, ok)
+	}
+	if marker.LastRunUtc != "" {
+		t.Fatalf("reconciled slot must not claim a run: %+v", marker)
 	}
 }

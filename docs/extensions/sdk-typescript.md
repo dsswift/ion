@@ -982,7 +982,7 @@ interface ProcessInfo {
 
 ## Resource Subsystem
 
-Extensions can declare resource collections and publish changes via the resource API. Resources flow to subscribers over the socket as `engine_resource_snapshot` and `engine_resource_delta` events.
+Extensions can declare resource collections and publish changes via the resource API. Resources flow to subscribers over the socket as `engine_resource_snapshot` and `engine_resource_delta` events. Multiple extensions can declare one kind. The engine stamps every delivered item with its owning extension's `producer`; do not set that field when publishing. A Resource identity is `(kind, producer, id)`. Query handlers receive `ResourceFilter.producer` and `ResourceFilter.id` when a consumer selects one producer or item.
 
 **Global resources** (extension-scoped, not tied to a session):
 

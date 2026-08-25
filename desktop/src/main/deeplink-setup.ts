@@ -132,10 +132,10 @@ export function setupDeepLinks(): void {
   app.on('second-instance', (_event, argv) => {
     const url = extractIonUrl(argv)
     if (!url) {
-      // A plain second launch with no URL: the operator is trying to reach Ion,
-      // so surface the window rather than doing nothing.
-      log('second instance with no url; surfacing window')
-      showWindow('second instance')
+      // A plain second launch should reveal the one active conversation UI.
+      // Never show the hidden Overlay while Studio is active.
+      log('second instance with no url; surfacing active UI')
+      presentConfirmation()
       return
     }
     log('second-instance url received', { url_length: url.length })

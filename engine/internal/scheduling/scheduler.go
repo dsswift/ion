@@ -83,6 +83,9 @@ type Scheduler struct {
 	// missedSlots retains exact manual-backfill occurrences until the extension
 	// calls FireScheduleNow, which forwards its value to ScheduleFireMeta.
 	missedSlots map[extensionJobKey]time.Time
+	// latestCatchUp groups bootstrap candidates until each tick selects the newest
+	// eligible missed slot for a catchUp="latest" group.
+	latestCatchUp map[catchUpGroupKey]latestCatchUpCandidate
 
 	// missedHookMu serializes subprocess hook delivery. Two missed jobs can be
 	// discovered in one tick; extension SDK runtimes share one JSON-RPC event
@@ -119,6 +122,19 @@ type extensionJobKey struct {
 	id   string // job.JobID
 }
 
+// catchUpGroupKey scopes latest catch-up selection to one extension and group.
+type catchUpGroupKey struct {
+	name  string
+	group string
+}
+
+type latestCatchUpCandidate struct {
+	host      *extension.Host
+	job       extension.ScheduleJob
+	slot      time.Time
+	hadMarker bool
+}
+
 // hostJobEntry pairs a host with a job for the group-then-fire pass.
 type hostJobEntry struct {
 	host *extension.Host
@@ -147,11 +163,12 @@ type Config struct {
 // New constructs a Scheduler with the given Config.
 func New(cfg Config) *Scheduler {
 	return &Scheduler{
-		cfg:         cfg,
-		nextRun:     make(map[hostJobKey]time.Time),
-		extNextRun:  make(map[extensionJobKey]time.Time),
-		missedSlots: make(map[extensionJobKey]time.Time),
-		persistDir:  cfg.PersistDir,
+		cfg:           cfg,
+		nextRun:       make(map[hostJobKey]time.Time),
+		extNextRun:    make(map[extensionJobKey]time.Time),
+		missedSlots:   make(map[extensionJobKey]time.Time),
+		latestCatchUp: make(map[catchUpGroupKey]latestCatchUpCandidate),
+		persistDir:    cfg.PersistDir,
 	}
 }
 
@@ -411,6 +428,11 @@ func (s *Scheduler) tickOnce() {
 			}
 		}
 	}
+
+	// Select and fire the newest eligible member of each latest catch-up group
+	// after this complete host pass. This makes selection independent of map
+	// iteration order and lets several jobs register their missed slots together.
+	s.reconcileLatestCatchUp(now, resolve)
 
 	// Reclaim in-flight claims that no live fire can still release —
 	// stalled fires and claims whose (host, job) pair is gone. Runs

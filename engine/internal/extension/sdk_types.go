@@ -350,7 +350,7 @@ type Context struct {
 	// HandleResourceQuery registers a query handler for the given kind.
 	// When a client subscribes, the broker calls this handler to get the
 	// initial snapshot of items matching the subscription filter.
-	HandleResourceQuery func(kind string, handler func(types.ResourceFilter) ([]types.ResourceItem, error))
+	HandleResourceQuery func(kind, producer string, handler func(types.ResourceFilter) ([]types.ResourceItem, error))
 
 	// Notify sends a push notification through the engine's notification
 	// pipeline. The engine formats the payload and routes it through

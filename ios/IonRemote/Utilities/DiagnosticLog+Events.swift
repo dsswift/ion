@@ -335,6 +335,8 @@ extension DiagnosticLog {
             log("EVT: worktreeState projects=\(states.count)", tag: "ipc", level: .debug)
         case .worktreeOpResult(let result):
             log("EVT: worktreeOpResult op=\(result.operation.rawValue) ok=\(result.ok)", tag: "ipc", level: .info)
+        case .questionsState(let tabId, let state):
+            log("EVT: questionsState tabId=\(tabId.prefix(8)) workflows=\(state.workflows.count)", tag: "questions", level: .info)
         case .worktreePipeline(let pipeline):
             log("EVT: worktreePipeline repo=\(pipeline.repoPath.suffix(30)) phase=\(pipeline.phase?.rawValue ?? "dismissed") queue=\(pipeline.queue.count) resolved=\(pipeline.resolvedByAi)", tag: "ipc", level: .info)
 
@@ -409,8 +411,8 @@ extension DiagnosticLog {
         case .engineIntercept(let tabId, let instId, let level, let title, _, _, _):
             log("EVENT: engineIntercept tab=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") level=\(level) title=\(title.prefix(60))", tag: "session", level: .info)
 
-        case .resourceContent(let resourceId, let kind, let content):
-            log("EVENT: resourceContent resourceId=\(resourceId.prefix(12)) kind=\(kind) contentLen=\(content.count)", tag: "session", level: .info)
+        case .resourceContent(let resourceId, let kind, let producer, let content):
+            log("EVENT: resourceContent resourceId=\(resourceId.prefix(12)) kind=\(kind) producer=\(producer) contentLen=\(content.count)", tag: "session", level: .info)
 
         case .planContent(let questionId, let planFilePath, let offset, let content, let totalBytes, let hasMore):
             log("EVENT: planContent qId=\(questionId.prefix(12)) path=\(planFilePath.suffix(30)) offset=\(offset) contentLen=\(content.count) totalBytes=\(totalBytes) hasMore=\(hasMore)", tag: "session", level: .info)

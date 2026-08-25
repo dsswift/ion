@@ -25,6 +25,7 @@ const (
 // The drain goroutine always prefers the state queue so agent-state and
 // status events are never blocked behind a burst of text deltas.
 type clientWriter struct {
+	id            string
 	conn          net.Conn
 	stateQueue    chan []byte
 	streamQueue   chan []byte
@@ -188,7 +189,7 @@ func (s *Server) drainClient(cw *clientWriter) {
 		if _, err := cw.conn.Write(line); err != nil {
 			total := atomic.LoadInt64(&cw.stateDropped) + atomic.LoadInt64(&cw.streamDropped)
 			utils.LogWithFields(utils.LevelInfo, "server", "broadcast write error evicting client", map[string]any{"count": total, "error": err.Error()})
-			s.evictClient(cw.conn)
+			s.evictClient(cw.conn, "write_error")
 			return false
 		}
 		return true

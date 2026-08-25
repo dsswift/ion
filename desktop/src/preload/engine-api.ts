@@ -37,6 +37,12 @@ export type EngineIpcApi = Pick<
   | "publishResourceDelete"
   | "resourceGet"
   | "onEngineEvent"
+  | "questionsGetState"
+  | "questionsPatch"
+  | "questionsAction"
+  | "questionsPickAttachments"
+  | "questionsRehydrate"
+  | "onQuestionsState"
   | "pluginInstall"
   | "pluginList"
   | "pluginRemove"
@@ -95,13 +101,13 @@ export const engineApi: EngineIpcApi = {
       tabId,
       engineProfileId: engineProfileId ?? null,
     }),
-  markResourceRead: (kind, resourceId) =>
-    ipcRenderer.send(IPC.MARK_RESOURCE_READ, { kind, resourceId }),
+  markResourceRead: (kind, resourceId, producer) =>
+    ipcRenderer.send(IPC.MARK_RESOURCE_READ, { kind, resourceId, producer }),
   getReadResourceIds: () => ipcRenderer.invoke(IPC.GET_READ_RESOURCE_IDS),
   getPersistedResources: () =>
     ipcRenderer.invoke(IPC.GET_PERSISTED_RESOURCES),
-  publishResourceDelete: (kind, resourceId) =>
-    ipcRenderer.send(IPC.DELETE_RESOURCE, { kind, resourceId }),
+  publishResourceDelete: (kind, resourceId, producer) =>
+    ipcRenderer.send(IPC.DELETE_RESOURCE, { kind, resourceId, producer }),
   resourceGet: (kind, id, opts) =>
     ipcRenderer.invoke(IPC.RESOURCE_GET, { kind, id, ...opts }),
   onEngineEvent: (callback) => {
@@ -133,6 +139,19 @@ export const engineApi: EngineIpcApi = {
   listModelTiers: () => ipcRenderer.invoke(IPC.LIST_MODEL_TIERS),
   setModelTier: (tier) => ipcRenderer.invoke(IPC.SET_MODEL_TIER, tier),
   removeModelTier: (name) => ipcRenderer.invoke(IPC.REMOVE_MODEL_TIER, { name }),
+  questionsGetState: () => ipcRenderer.invoke(IPC.QUESTIONS_GET_STATE),
+  questionsPatch: (patch) => ipcRenderer.invoke(IPC.QUESTIONS_PATCH, patch),
+  questionsAction: (action) => ipcRenderer.invoke(IPC.QUESTIONS_ACTION, action),
+  questionsPickAttachments: () => ipcRenderer.invoke(IPC.QUESTIONS_PICK_ATTACHMENTS),
+  questionsRehydrate: (payload) => ipcRenderer.invoke(IPC.QUESTIONS_REHYDRATE, payload),
+  onQuestionsState: (callback) => {
+    const listener = (
+      _e: unknown,
+      snapshot: import("../shared/questions-state").QuestionsStateSnapshot,
+    ) => callback(snapshot);
+    ipcRenderer.on(IPC.QUESTIONS_STATE, listener);
+    return () => ipcRenderer.removeListener(IPC.QUESTIONS_STATE, listener);
+  },
   onModelTiersUpdated: (callback) => {
     ipcRenderer.on(IPC.MODEL_TIERS_UPDATED, callback);
     return () => ipcRenderer.removeListener(IPC.MODEL_TIERS_UPDATED, callback);

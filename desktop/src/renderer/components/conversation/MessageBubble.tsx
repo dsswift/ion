@@ -8,6 +8,7 @@ import { stripAttachmentMarkers } from './message-text'
 import { resolveSlashPill } from './slash-pill'
 import { UserMarkdown } from './UserMarkdown'
 import { CollapsibleUserBody } from './CollapsibleUserBody'
+import { StructuredAnswerFrame } from './StructuredAnswerFrame'
 import type { Message } from '../../../shared/types'
 
 interface MessageBubbleProps {
@@ -55,8 +56,28 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
     </div>
   )
 
-  const content = (
-    <div className="group/msg relative inline-flex flex-col items-end max-w-[85%] min-w-0">
+  // Guided Questions submission. This IS the operator's own input — they read
+  // the questions, chose the options, typed the text and attached the images —
+  // so it renders in full rather than being hidden. But they did not compose
+  // the rendered prose at the prompt, so it is wrapped in explicit chrome
+  // (StructuredAnswerFrame: labelled rules top and bottom, tinted panel
+  // grouping the answers WITH their attachments). A small corner tag was the
+  // first attempt and was not enough — at a glance the bubble still read as an
+  // ordinary message, which is the false impression the frame removes.
+  const structuredAnswer = message.injectionKind === 'structured_answer'
+
+  const inner = (
+    <div
+      className={
+        structuredAnswer
+          // Inside the frame the content sizes to itself: the panel hugs it,
+          // so stretching here would push the panel out to the full row and
+          // reproduce the empty-box look the frame is meant to avoid. The
+          // frame owns the width cap.
+          ? 'group/msg relative inline-flex flex-col items-stretch min-w-0'
+          : 'group/msg relative inline-flex flex-col items-end max-w-[85%] min-w-0'
+      }
+    >
       {steerTag}
       {hasInlineImages && <InlineMessageImages content={message.content || ''} attachments={message.attachments} />}
       {displayContent.trim() && (
@@ -67,8 +88,15 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
               fontSize: 'var(--ion-data-font-size, 13px)',
               background: colors.userBubble,
               color: colors.userBubbleText,
-              border: isBashCmd ? `2px solid ${colors.bashModeRing}` : `1px solid ${colors.userBubbleBorder}`,
-              borderRadius: '14px 14px 4px 14px',
+              // Inside the frame the bubble is a panel member, not a
+              // free-floating message: the frame owns the border and tint, so
+              // a second border here would read as a bubble sitting in a box.
+              border: isBashCmd
+                ? `2px solid ${colors.bashModeRing}`
+                : structuredAnswer
+                  ? 'none'
+                  : `1px solid ${colors.userBubbleBorder}`,
+              borderRadius: structuredAnswer ? '8px' : '14px 14px 4px 14px',
             }}
           >
             {slashPill ? (
@@ -115,19 +143,42 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
         </CollapsibleUserBody>
       )}
       {displayContent.trim() && (
-        <div className="absolute -bottom-5 right-0 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-100">
+        <div
+          className={`absolute right-0 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-100 ${
+            // Inside the frame the row is followed by the closing rule, and
+            // the default -bottom-5 lands the hover actions on top of it.
+            // Drop them clear of the rule instead of overlapping it.
+            structuredAnswer ? '-bottom-8' : '-bottom-5'
+          }`}
+        >
           {actions || defaultActions}
         </div>
       )}
     </div>
   )
 
+  // The frame spans the transcript rather than the 85% bubble column: the
+  // whole point is separation from the neighbouring turns, and a right-aligned
+  // block would still read as "a message the operator sent".
+  const content = structuredAnswer
+    ? <StructuredAnswerFrame>{inner}</StructuredAnswerFrame>
+    : inner
+
+  // A framed submission stretches across the transcript; an ordinary bubble
+  // stays right-aligned in its 85% column.
+  const rowClass = structuredAnswer
+    // Extra bottom padding reserves the band the hover actions drop into
+    // below the closing rule, so they never crowd the following turn.
+    ? 'flex items-stretch pt-2.5 pb-5'
+    : 'flex justify-end py-1.5'
+
   if (skipMotion) {
     return (
       <div
-        className="flex justify-end py-1.5"
+        className={rowClass}
         data-message-id={message.id}
         data-message-role="user"
+        data-structured-answer={structuredAnswer ? 'true' : undefined}
       >
         {content}
       </div>
@@ -139,9 +190,10 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.15 }}
-      className="flex justify-end py-1.5"
+      className={rowClass}
       data-message-id={message.id}
       data-message-role="user"
+      data-structured-answer={structuredAnswer ? 'true' : undefined}
     >
       {content}
     </motion.div>

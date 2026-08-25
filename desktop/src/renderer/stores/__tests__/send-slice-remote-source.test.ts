@@ -186,6 +186,20 @@ describe('submit() forwards source to window.ion.prompt', () => {
     )
   })
 
+  it('submitRemotePrompt sends full-context messages to the engine', () => {
+    const tab = makeTab({ hasChosenDirectory: true, contextTokens: 911_135, contextWindow: 1_000_000 })
+    const { state } = buildHarness(tab)
+
+    state.submitRemotePrompt('tab-1', 'resume from ios')
+
+    expect(mockPrompt).toHaveBeenCalledTimes(1)
+    expect(mockPrompt).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(String),
+      expect.objectContaining({ prompt: 'resume from ios', source: 'remote' }),
+    )
+  })
+
   it('preserves remote implementation provenance and sends it to the engine', () => {
     const tab = makeTab({ hasChosenDirectory: true })
     const { state } = buildHarness(tab)

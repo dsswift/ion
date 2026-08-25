@@ -114,7 +114,9 @@ export function wireRemoteSessionPlaneForwarding(): void {
             : event.toolName === 'ExitPlanMode'
               ? 'Plan ready for your review'
               : `Permission needed: ${event.toolName}`
-          state.remoteTransport.send(remoteEvent, true, { title: pushTitle, body: pushBody })
+          // tabId in the push metadata is what lets an APNs tap open the
+          // right conversation (AppDelegate navigates by tabId).
+          state.remoteTransport.send(remoteEvent, true, { title: pushTitle, body: pushBody, tabId })
         } else {
           state.remoteTransport.send(remoteEvent)
         }
@@ -300,7 +302,8 @@ export function wireRemoteSessionPlaneForwarding(): void {
       type: 'desktop_permission_request', tabId,
       questionId: data.questionId, toolName: data.toolName,
       toolInput, options: data.options,
-    }, true, { title: pushTitle, body: pushBody })
+      // tabId in the push metadata routes an APNs tap to the conversation.
+    }, true, { title: pushTitle, body: pushBody, tabId })
     if (data.toolName !== 'AskUserQuestion' && data.toolName !== 'ExitPlanMode') {
       const resolveOnTerminalTransition = (changedTabId: string, status: string, previousStatus?: string) => {
         if (changedTabId !== tabId) return

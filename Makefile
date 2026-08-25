@@ -12,8 +12,7 @@ engine: generate-dashboards
 	@cd engine && bash commands/install.command --standalone || { echo "❌ Engine build failed"; exit 1; }
 
 # Regenerate the provisioned Grafana dashboard JSON (+ queries.md) into the
-# working tree from the canonical dashboards-as-code source. Runs on every
-# `make engine` (and therefore every `make desktop`, which calls make engine).
+# working tree when `make engine` runs.
 #
 # Why regenerate on build: the local docker-compose Grafana bind-mounts
 # ./grafana/provisioning directly and its dashboards provider reloads every
@@ -34,7 +33,6 @@ generate-dashboards:
 		|| echo "⚠️  dashboards: generation failed — continuing engine build (make check-dashboards still gates drift in CI)"
 
 desktop:
-	@$(MAKE) engine
 	@cd desktop && bash commands/install-bg.command
 
 # Build the macOS installer .pkg for MDM (Intune) deployment (D-003). Chains

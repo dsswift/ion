@@ -222,3 +222,38 @@ func TestMergeTimeouts_BashCeilingAndSleepGate(t *testing.T) {
 		t.Error("negative BashBlockingSleepMs overlay did not survive the merge")
 	}
 }
+
+// TestCommandTimeouts_DefaultOverrideAndMerge pins the command dispatch
+// observability and response deadlines. Zero remains the configuration merge
+// sentinel, while nil and empty configs resolve to the compiled defaults.
+func TestCommandTimeouts_DefaultOverrideAndMerge(t *testing.T) {
+	if got := (*TimeoutsConfig)(nil).CommandStall(); got != 10*time.Second {
+		t.Errorf("nil CommandStall() = %s, want 10s", got)
+	}
+	if got := (&TimeoutsConfig{}).CommandDispatch(); got != 25*time.Second {
+		t.Errorf("empty CommandDispatch() = %s, want 25s", got)
+	}
+	configured := &TimeoutsConfig{CommandStallMs: 2000, CommandDispatchMs: 5000}
+	if got := configured.CommandStall(); got != 2*time.Second {
+		t.Errorf("configured CommandStall() = %s, want 2s", got)
+	}
+	if got := configured.CommandDispatch(); got != 5*time.Second {
+		t.Errorf("configured CommandDispatch() = %s, want 5s", got)
+	}
+	if got := (&TimeoutsConfig{CommandStallMs: -1}).CommandStall(); got != 10*time.Second {
+		t.Errorf("negative CommandStall() = %s, want 10s", got)
+	}
+	if got := (&TimeoutsConfig{CommandDispatchMs: -1}).CommandDispatch(); got != 25*time.Second {
+		t.Errorf("negative CommandDispatch() = %s, want 25s", got)
+	}
+
+	dst := &TimeoutsConfig{CommandStallMs: 1000, CommandDispatchMs: 2000}
+	MergeTimeouts(dst, &TimeoutsConfig{CommandStallMs: 3000, CommandDispatchMs: 4000})
+	if dst.CommandStallMs != 3000 || dst.CommandDispatchMs != 4000 {
+		t.Errorf("merged command timeouts = %d/%d, want 3000/4000", dst.CommandStallMs, dst.CommandDispatchMs)
+	}
+	MergeTimeouts(dst, &TimeoutsConfig{})
+	if dst.CommandStallMs != 3000 || dst.CommandDispatchMs != 4000 {
+		t.Errorf("empty merge changed command timeouts to %d/%d", dst.CommandStallMs, dst.CommandDispatchMs)
+	}
+}

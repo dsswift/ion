@@ -15,6 +15,7 @@ import type {
   StatusFields,
   SessionStatus,
 } from "./types-engine";
+import type { ClientToolCallState } from "./types-tool-gate";
 import type { EngineEventAsync } from "./types-engine-event-async";
 /**
  * One stage transition of a delegated-CLI login (codex/grok/cursor). Payload of
@@ -219,7 +220,14 @@ export type EngineEvent =
   // gated engine tool call; gateKind 'tool' asks the client to EXECUTE one of
   // its declared clientTools and answer with gateContent/gateIsError.
   // gateSiblingTools names the other tool calls in the same model turn so a
-  // policy can evaluate turn isolation.
+  // policy can evaluate turn isolation. gateHumanWait was the blocking
+  // human-wait routing flag; the engine no longer emits it (human-wait tools
+  // park the run instead) but the field survives so an older engine's events
+  // still decode.
+  // humanWait flag onto a gateKind 'tool' request: true routes to interactive
+  // UI (the wait is human-paced and may stay open indefinitely); false/absent
+  // is a machine fulfillment answered programmatically under the finite
+  // client-tool timeout.
   | {
       type: "engine_tool_gate_request";
       gateRequestId: string;
@@ -228,6 +236,19 @@ export type EngineEvent =
       gateToolInput?: Record<string, unknown>;
       gateCwd?: string;
       gateSiblingTools?: string[];
+      gateHumanWait?: boolean;
+    }
+  // engine_client_tool_state — a COMPLETE REPLACEMENT snapshot of every
+  // client-tool call the engine is currently blocked on for this session.
+  // Same semantics as engine_agent_state: replace local state with the
+  // payload; an empty array is the authoritative "nothing pending" clear.
+  // Emitted on every membership change and replayed by reconcile_state, so
+  // a reconnecting client re-renders pending human-wait cards (the
+  // requestIds stay answerable — the reply channels are engine-side) or
+  // clears stale ones.
+  | {
+      type: "engine_client_tool_state";
+      clientToolCalls: ClientToolCallState[];
     }
   | {
       type: "engine_plan_mode_changed";

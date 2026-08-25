@@ -17,11 +17,12 @@ enum SendDeadlineError: Error, LocalizedError {
     }
 }
 
-/// The default outbound send deadline shared by the relay and LAN clients.
-/// A healthy WebSocket send completes in milliseconds; 5 seconds is far past
-/// any legitimate slow path and well before commands pile up behind a wedged
-/// socket and later fail en masse with "Operation canceled".
+/// Transport deadlines shared by the WebSocket clients. A healthy send
+/// completes in milliseconds. A healthy relay connect produces its first frame
+/// within a few seconds. These bounds prevent a wedged socket from blocking all
+/// later work while still allowing normal mobile network changes to settle.
 let transportSendDeadlineSeconds: Double = 5.0
+let transportConnectDeadlineSeconds: Double = 10.0
 
 /// Race `operation` against a wall-clock deadline.
 ///

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, powerMonitor, screen } from 'electron'
+import { app, BrowserWindow, dialog, Menu, powerMonitor, screen } from 'electron'
 import { existsSync, writeFileSync } from 'fs'
 import { readFileSync } from 'fs'
 import { join } from 'path'
@@ -12,6 +12,7 @@ import { resolveSurfacePlan } from './surface-launch'
 import { restoreStudioTerminals } from './studio-terminal-persistence'
 import { requestPermissions } from './permissions-preflight'
 import { claimSingleInstance, setupDeepLinks, consumeLaunchUrl, bindDeepLinkRenderer } from './deeplink-setup'
+import { detectRunningIon } from './instance-guard'
 import { markDeepLinksReady } from './deeplink/dispatch'
 import { cleanOrphanedWorktrees } from './git-runner'
 import { focusState } from './git/focus-state'
@@ -210,15 +211,30 @@ async function flushRendererTabs(): Promise<void> {
 }
 
 export function setupAppLifecycle(): void {
-  // Single-instance lock FIRST, before any startup work at all.
-  //
-  // `open ion://…` launches Ion when it is not running, so without this a click
-  // while Ion is already running would start a second full instance: two engine
-  // bootstraps, two tab stores, two windows over the same files. Losing the lock
-  // means another Ion is live and has already been handed our URL via its
-  // `second-instance` handler, so the only correct move is to quit immediately —
-  // before the machine-identity read, before whenReady, before anything
-  // observable.
+  // Older releases predate Electron's cooperative single-instance lock. Check
+  // the durable pid and live process table first, before this process touches
+  // the engine, settings, or any window.
+  const runningIon = detectRunningIon()
+  if (runningIon) {
+    error('app_lifecycle: launch refused; another Ion is running', {
+      existing_pid: runningIon.pid,
+      current_pid: process.pid,
+      source: runningIon.source,
+    })
+    dialog.showMessageBoxSync({
+      type: 'warning',
+      buttons: ['OK'],
+      defaultId: 0,
+      title: 'Ion is already running',
+      message: 'Quit the running Ion application before opening this copy.',
+      detail: 'Ion does not start a second desktop because it could interrupt active conversations or replace a live engine.',
+    })
+    app.exit(0)
+    return
+  }
+
+  // Claim the cooperative lock after the legacy-process guard. A lock loss
+  // means a current Ion owns it and has already received this launch request.
   if (!claimSingleInstance()) {
     app.quit()
     return

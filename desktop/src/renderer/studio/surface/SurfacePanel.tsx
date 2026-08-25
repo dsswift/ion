@@ -25,6 +25,7 @@ import { BrowserSurface } from './tabs/BrowserSurface'
 import { ResourceSurface } from './tabs/ResourceSurface'
 import { StatusSurface } from './tabs/StatusSurface'
 import { DispatchSurface } from './tabs/DispatchSurface'
+import { QuestionsSurface } from './tabs/QuestionsSurface'
 import { RuntimePanelBody } from './runtime-panel-registry'
 import { FileExplorer } from '../../components/FileExplorer'
 import { GitPanel } from '../../components/GitPanel'
@@ -77,7 +78,10 @@ function bodyFor(tab: SurfaceTab, active: boolean, onAgentClick?: (tabId: string
       return <PreviewSurface key={tab.id} filePath={tab.filePath} dataUrl={tab.dataUrl} />
     case 'notification':
       if (!active) return null
-      return <ResourceSurface key={tab.id} resourceKind={tab.resourceKind} resourceId={tab.resourceId} />
+      return <ResourceSurface key={tab.id} resourceKind={tab.resourceKind} resourceId={tab.resourceId} resourceProducer={tab.resourceProducer} />
+    case 'questions':
+      if (!active) return null
+      return <QuestionsSurface key={tab.id} />
     case 'dispatch':
       if (!active) return null
       return <DispatchSurface key={tab.id} tab={tab} />

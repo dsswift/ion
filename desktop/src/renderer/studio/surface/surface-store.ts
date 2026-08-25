@@ -10,6 +10,7 @@ import {
   previewTabId,
   terminalTabId,
   NOTIFICATION_SURFACE_ID,
+  QUESTIONS_SURFACE_ID,
   type FileTab,
   type NotificationTab,
   type LegacySurfacePersisted,
@@ -52,6 +53,18 @@ export interface SurfaceState {
   visible: boolean
   hydrated: boolean
   diffReveal: { filePath: string; staged: boolean; nonce: number } | null
+  /**
+   * Conversation tab ids whose ACTIVE conversation currently has an open
+   * guided-questions workflow. The synchronizer (questions-surface-sync)
+   * writes this; composition inserts the transient Questions tab for the
+   * current conversation when its id is present. Never persisted.
+   */
+  questionsConversations: Set<string>
+  /**
+   * When Questions forced focus, the previously active Canvas tab id per
+   * conversation, restored on workflow completion when still valid.
+   */
+  questionsPriorActive: Record<string, string | null>
 
   hydrate(): Promise<void>
   selectConversation(tabId: string | null): void
@@ -76,6 +89,10 @@ export interface SurfaceState {
   updateBrowserTab(id: string, patch: Partial<{ url: string; title: string; mode: 'preview' | 'browse' }>): void
   renameTerminalTab(id: string, title: string): void
   revealDiffFile(target: { filePath: string; staged: boolean }): void
+  /** Synchronizer entry: a conversation gained an open guided workflow. */
+  showQuestionsSurface(tabId: string): void
+  /** Synchronizer entry: a conversation's guided workflows all closed. */
+  retireQuestionsSurface(tabId: string): void
 }
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null
@@ -94,17 +111,22 @@ function emptyConversation(): SurfaceConversationPersisted {
   return { tabs: [], activeTabId: null, visible: false }
 }
 
-function visibleTabs(pinnedTabs: readonly PinnableSingletonId[], notification: NotificationTab | null, conversation: SurfaceConversationPersisted): SurfaceTab[] {
-  return [...composeTabs(pinnedTabs, conversation.tabs), ...(notification ? [notification] : [])]
+function visibleTabs(pinnedTabs: readonly PinnableSingletonId[], notification: NotificationTab | null, conversation: SurfaceConversationPersisted, hasQuestions = false): SurfaceTab[] {
+  // The Questions tab is an explicit FORCED group ahead of the global pins:
+  // composeTabs puts pins first, so changing SINGLETON_ORDER alone could
+  // never place a needs-you surface leftmost. Window-transient — derived
+  // from the coordinator state, never part of conversation.tabs.
+  const forced: SurfaceTab[] = hasQuestions ? [{ kind: 'questions', id: QUESTIONS_SURFACE_ID }] : []
+  return [...forced, ...composeTabs(pinnedTabs, conversation.tabs), ...(notification ? [notification] : [])]
 }
 
 function globalTabIds(pinnedTabs: readonly PinnableSingletonId[], notification: NotificationTab | null): string[] {
   return [...pinnedTabs, ...(notification ? [notification.id] : [])]
 }
 
-function normalizeConversation(pinnedTabs: readonly PinnableSingletonId[], notification: NotificationTab | null, conversation: SurfaceConversationPersisted): SurfaceConversationPersisted {
+function normalizeConversation(pinnedTabs: readonly PinnableSingletonId[], notification: NotificationTab | null, conversation: SurfaceConversationPersisted, hasQuestions = false): SurfaceConversationPersisted {
   const tabs = normalizeTabs(conversation.tabs.filter((tab) => !(tab.kind === 'singleton' && pinnedTabs.includes(tab.id as PinnableSingletonId))))
-  const composed = visibleTabs(pinnedTabs, notification, { ...conversation, tabs })
+  const composed = visibleTabs(pinnedTabs, notification, { ...conversation, tabs }, hasQuestions)
   return {
     tabs,
     visible: conversation.visible,
@@ -114,11 +136,12 @@ function normalizeConversation(pinnedTabs: readonly PinnableSingletonId[], notif
   }
 }
 
-function project(state: Pick<SurfaceState, 'pinnedTabs' | 'notification' | 'conversations' | 'currentConversationId' | 'visible'>): Pick<SurfaceState, 'tabs' | 'activeTabId' | 'conversations' | 'visible'> {
+function project(state: Pick<SurfaceState, 'pinnedTabs' | 'notification' | 'conversations' | 'currentConversationId' | 'visible'> & { questionsConversations?: Set<string> }): Pick<SurfaceState, 'tabs' | 'activeTabId' | 'conversations' | 'visible'> {
   if (!state.currentConversationId) return { tabs: [], activeTabId: null, conversations: state.conversations, visible: state.visible }
-  const current = normalizeConversation(state.pinnedTabs, state.notification, state.conversations[state.currentConversationId] ?? emptyConversation())
+  const hasQuestions = state.questionsConversations?.has(state.currentConversationId) ?? false
+  const current = normalizeConversation(state.pinnedTabs, state.notification, state.conversations[state.currentConversationId] ?? emptyConversation(), hasQuestions)
   const conversations = { ...state.conversations, [state.currentConversationId]: current }
-  return { tabs: visibleTabs(state.pinnedTabs, state.notification, current), activeTabId: current.activeTabId, conversations, visible: state.visible }
+  return { tabs: visibleTabs(state.pinnedTabs, state.notification, current, hasQuestions), activeTabId: current.activeTabId, conversations, visible: state.visible }
 }
 
 function schedulePersist(get: () => SurfaceState): void {
@@ -199,6 +222,8 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
   visible: false,
   hydrated: false,
   diffReveal: null,
+  questionsConversations: new Set<string>(),
+  questionsPriorActive: {},
 
   hydrate: async () => {
     if (hydrationPromise) return hydrationPromise
@@ -248,18 +273,49 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
   selectConversation: (currentConversationId) => {
     const state = get()
     const saved = currentConversationId ? state.conversations[currentConversationId]?.visible ?? false : false
-    const visible = shouldRememberVisibility() ? saved : state.visible
-    set({ ...project({ ...state, currentConversationId, visible }), currentConversationId })
+    let visible = shouldRememberVisibility() ? saved : state.visible
+
+    // Entering a conversation that owes the operator an answer ALWAYS lands on
+    // the Questions tab with the pane open, whatever the saved per-conversation
+    // focus or visibility mode said. A parked question is the one surface the
+    // run cannot continue without, and restoring "whatever was focused last
+    // time" hid it behind a Diff or Explorer tab — the operator then sees an
+    // idle conversation with no indication it is waiting on them.
+    //
+    // This is a re-entry default, not a lock: once here, they may switch to
+    // any other tab freely (nothing re-forces focus while they stay), and the
+    // next re-entry defaults to Questions again while the question is still
+    // outstanding.
+    const conversations = { ...state.conversations }
+    const owesAnswer = !!currentConversationId && state.questionsConversations.has(currentConversationId)
+    if (owesAnswer && currentConversationId) {
+      const current = conversations[currentConversationId] ?? emptyConversation()
+      conversations[currentConversationId] = { ...current, activeTabId: QUESTIONS_SURFACE_ID }
+      visible = true
+    }
+
+    set({
+      ...project({ ...state, conversations, currentConversationId, visible }),
+      currentConversationId,
+    })
     rDebug('studio.surface', 'conversation selected', {
       tab_id: currentConversationId ?? '',
-      active_surface_tab: currentConversationId ? (state.conversations[currentConversationId]?.activeTabId ?? '') : '',
+      active_surface_tab: currentConversationId ? (conversations[currentConversationId]?.activeTabId ?? '') : '',
       visible,
       mode: shouldRememberVisibility() ? 'per-conversation' : 'keep',
+      forced_questions: owesAnswer,
     })
   },
 
   setVisible: (visible) => {
     const state = get()
+    // Pane close is refused while the current conversation has a live
+    // guided-questions workflow requiring input: hiding the canvas would
+    // bury the one surface the run is blocked on.
+    if (!visible && state.currentConversationId && state.questionsConversations.has(state.currentConversationId)) {
+      rDebug('studio.surface', 'canvas hide refused: questions workflow requires input', { tab_id: state.currentConversationId })
+      return
+    }
     if (shouldRememberVisibility() && state.currentConversationId) {
       updateCurrent(set, get, (current) => ({ ...current, visible }))
       set({ visible })
@@ -297,7 +353,7 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
   },
 
   openResourceTab: (item) => {
-    const notification: NotificationTab = { kind: 'notification', id: NOTIFICATION_SURFACE_ID, resourceKind: item.kind, resourceId: item.id }
+    const notification: NotificationTab = { kind: 'notification', id: NOTIFICATION_SURFACE_ID, resourceKind: item.kind, resourceId: item.id, resourceProducer: item.producer }
     const state = get()
     const currentConversationId = state.currentConversationId ?? useSessionStore.getState().activeTabId
     rDebug('studio.surface', 'opening workspace notification', {
@@ -371,6 +427,15 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
     const state = get()
     const tab = state.tabs.find((item) => item.id === id)
     if (!tab) return
+    // The Questions tab refuses close while input/review is required: an
+    // operator answer is what retires it (the synchronizer removes it when
+    // the workflow completes). This single refusal covers every close verb
+    // — middle-click, keyboard, context menu, closeOthers/closeToRight all
+    // funnel here or exclude it structurally below.
+    if (id === QUESTIONS_SURFACE_ID) {
+      rDebug('studio.surface', 'questions tab close refused: workflow requires input', {})
+      return
+    }
     if (id === NOTIFICATION_SURFACE_ID && state.notification) {
       const notification = null
       const conversations = { ...state.conversations }
@@ -406,7 +471,7 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
 
   closeOthers: (id) => {
     const state = get()
-    const targets = closeOthersTargets(state.tabs, id, globalTabIds(state.pinnedTabs, state.notification))
+    const targets = closeOthersTargets(state.tabs, id, [...globalTabIds(state.pinnedTabs, state.notification), QUESTIONS_SURFACE_ID])
     for (const tab of targets) teardown(tab)
     const ids = new Set(targets.map((tab) => tab.id))
     updateCurrent(set, get, (current) => ({ ...current, tabs: current.tabs.filter((tab) => !ids.has(tab.id)), activeTabId: current.activeTabId && ids.has(current.activeTabId) ? id : current.activeTabId }))
@@ -414,7 +479,7 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
 
   closeToRight: (id) => {
     const state = get()
-    const targets = closeToRightTargets(state.tabs, id, globalTabIds(state.pinnedTabs, state.notification))
+    const targets = closeToRightTargets(state.tabs, id, [...globalTabIds(state.pinnedTabs, state.notification), QUESTIONS_SURFACE_ID])
     for (const tab of targets) teardown(tab)
     const ids = new Set(targets.map((tab) => tab.id))
     updateCurrent(set, get, (current) => ({ ...current, tabs: current.tabs.filter((tab) => !ids.has(tab.id)), activeTabId: current.activeTabId && ids.has(current.activeTabId) ? id : current.activeTabId }))
@@ -451,5 +516,55 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
   revealDiffFile: ({ filePath, staged }) => {
     get().openSingleton('diff')
     set((state) => ({ diffReveal: { filePath, staged, nonce: (state.diffReveal?.nonce ?? 0) + 1 } }))
+  },
+
+  showQuestionsSurface: (tabId) => {
+    const state = get()
+    if (state.questionsConversations.has(tabId)) return
+    const questionsConversations = new Set(state.questionsConversations)
+    questionsConversations.add(tabId)
+    // Remember what was focused so completion can restore it (per
+    // conversation; only when Questions is about to steal focus).
+    const isCurrent = state.currentConversationId === tabId
+    const questionsPriorActive = isCurrent
+      ? { ...state.questionsPriorActive, [tabId]: state.activeTabId }
+      : state.questionsPriorActive
+    const conversations = { ...state.conversations }
+    if (isCurrent) {
+      const current = conversations[tabId] ?? emptyConversation()
+      conversations[tabId] = { ...current, activeTabId: QUESTIONS_SURFACE_ID }
+    }
+    const next = { ...state, questionsConversations, conversations }
+    set({
+      ...project(next),
+      questionsConversations,
+      questionsPriorActive,
+      // Open the pane: a guided wait hidden behind a closed canvas looks
+      // like a hang. Visibility is live-only (not persisted per the keep
+      // mode rules) — setVisible semantics preserved by direct set.
+      ...(isCurrent ? { visible: true } : {}),
+    })
+    rInfo('studio.surface', 'questions surface shown', { tab_id: tabId, focused: isCurrent })
+  },
+
+  retireQuestionsSurface: (tabId) => {
+    const state = get()
+    if (!state.questionsConversations.has(tabId)) return
+    const questionsConversations = new Set(state.questionsConversations)
+    questionsConversations.delete(tabId)
+    const prior = state.questionsPriorActive[tabId]
+    const questionsPriorActive = { ...state.questionsPriorActive }
+    delete questionsPriorActive[tabId]
+    const conversations = { ...state.conversations }
+    const current = conversations[tabId]
+    if (current && current.activeTabId === QUESTIONS_SURFACE_ID) {
+      // Restore the pre-Questions focus when still valid; otherwise the
+      // normal normalization fallback picks the first composed tab.
+      const composed = visibleTabs(state.pinnedTabs, state.notification, current, false)
+      const restored = prior && composed.some((tab) => tab.id === prior) ? prior : (composed[0]?.id ?? null)
+      conversations[tabId] = { ...current, activeTabId: restored }
+    }
+    set({ ...project({ ...state, questionsConversations, conversations }), questionsConversations, questionsPriorActive })
+    rInfo('studio.surface', 'questions surface retired', { tab_id: tabId, restored: prior ?? '' })
   },
 }))

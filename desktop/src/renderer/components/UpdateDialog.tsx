@@ -10,13 +10,13 @@ import { transitions } from '../theme-tokens'
 
 const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
 
-/**
- * Modal dialog shown when a new version is downloaded and ready to install.
- * Portalled into the PopoverLayer, following the CloseTabConfirmDialog pattern.
- */
+/** Shared update dialog for the Overlay and Studio presentations. */
 export function UpdateDialog(): React.ReactElement | null {
   const dialogOpen = useUpdateStore((s) => s.dialogOpen)
   const version = useUpdateStore((s) => s.version)
+  const progress = useUpdateStore((s) => s.progress)
+  const staged = useUpdateStore((s) => s.staged)
+  const updateError = useUpdateStore((s) => s.error)
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const laterIx = useInteractiveState()
@@ -31,7 +31,21 @@ export function UpdateDialog(): React.ReactElement | null {
     return () => document.removeEventListener('keydown', handler)
   }, [dialogOpen])
 
-  if (!popoverLayer || !dialogOpen || !version) return null
+  if (!popoverLayer || !dialogOpen) return null
+
+  const heading = updateError
+    ? 'Update failed'
+    : staged
+      ? `Ion ${version ?? ''} is ready`
+      : progress !== null
+        ? 'Downloading Ion update'
+        : `Ion ${version ?? ''} is ready`
+  const detail = updateError
+    ?? (staged
+      ? 'Restart to finish the installation. Ion will close the desktop and engine, then reopen when the update is complete.'
+      : progress !== null
+        ? `Downloading update: ${Math.round(progress)}%.`
+        : 'A new version has been downloaded. Install it when you are ready.')
 
   return createPortal(
     <AnimatePresence>
@@ -79,18 +93,20 @@ export function UpdateDialog(): React.ReactElement | null {
             gap: 12,
           }}
         >
-          <div style={{ color: colors.accent, marginBottom: 4 }}>
+          <div style={{ color: updateError ? colors.dangerFg : colors.accent, marginBottom: 4 }}>
             <ArrowCircleUp size={36} weight="fill" />
           </div>
-
           <div style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, textAlign: 'center' }}>
-            Ion {version} is ready
+            {heading}
           </div>
-
           <div style={{ fontSize: 12, color: colors.textSecondary, textAlign: 'center', lineHeight: 1.5 }}>
-            A new version has been downloaded. Restart to apply the update.
+            {detail}
           </div>
-
+          {progress !== null && (
+            <div style={{ width: '100%', height: 4, background: colors.surfacePrimary, borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{ width: `${progress}%`, height: '100%', background: colors.accent }} />
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8, width: '100%' }}>
             <button
               onClick={() => useUpdateStore.getState().hideDialog()}
@@ -104,22 +120,24 @@ export function UpdateDialog(): React.ReactElement | null {
                 transition: `background ${transitions.base}`,
               }}
             >
-              Later
+              {updateError ? 'Close' : 'Later'}
             </button>
-            <button
-              onClick={() => window.ion.installUpdate()}
-              {...installIx.handlers}
-              className="ion-focusable flex-1 py-1.5 rounded-lg text-[12px] font-medium"
-              style={{
-                color: colors.textOnAccent,
-                background: installIx.pressed ? colors.accentPressed : installIx.hover ? colors.accentHover : colors.accent,
-                border: 'none',
-                cursor: 'pointer',
-                transition: `background ${transitions.base}`,
-              }}
-            >
-              Install Now
-            </button>
+            {!updateError && progress === null && (
+              <button
+                onClick={() => staged ? window.ion.restartForUpdate() : window.ion.installUpdate()}
+                {...installIx.handlers}
+                className="ion-focusable flex-1 py-1.5 rounded-lg text-[12px] font-medium"
+                style={{
+                  color: colors.textOnAccent,
+                  background: installIx.pressed ? colors.accentPressed : installIx.hover ? colors.accentHover : colors.accent,
+                  border: 'none',
+                  cursor: 'pointer',
+                  transition: `background ${transitions.base}`,
+                }}
+              >
+                {staged ? 'Restart to finish' : 'Install update'}
+              </button>
+            )}
           </div>
         </motion.div>
       </motion.div>

@@ -2,6 +2,7 @@ package resource
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 	"sync/atomic"
 
@@ -9,8 +10,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// ProducerHost is implemented by any component that can answer resource
-// queries for a specific kind.
+// ProducerHost answers resource queries for one extension and resource kind.
 type ProducerHost interface {
 	HandleQuery(filter types.ResourceFilter) ([]types.ResourceItem, error)
 }
@@ -33,132 +33,151 @@ type Subscription struct {
 }
 
 type producerEntry struct {
-	kind string
-	host ProducerHost
-	decl types.ResourceDeclaration
+	kind     string
+	producer string
+	host     ProducerHost
+	decl     types.ResourceDeclaration
 }
 
-// Broker routes resource events between producers and subscribers.
-// One producer per kind; many subscribers per kind.
+// Broker routes resource events between producers and subscribers. A resource
+// kind can have many producers. An item's identity is (kind, producer, id);
+// producerless client-published items retain the legacy (kind, id) identity.
 type Broker struct {
 	mu          sync.RWMutex
-	producers   map[string]*producerEntry
-	subscribers map[string][]*Subscription // keyed by kind
-	subsByID    map[string]*Subscription   // keyed by sub ID
+	producers   map[string]map[string]*producerEntry // kind -> producer -> entry
+	subscribers map[string][]*Subscription           // keyed by kind
+	subsByID    map[string]*Subscription
 	nextSubID   atomic.Int64
 }
 
 // NewBroker returns a ready-to-use Broker.
 func NewBroker() *Broker {
 	return &Broker{
-		producers:   make(map[string]*producerEntry),
+		producers:   make(map[string]map[string]*producerEntry),
 		subscribers: make(map[string][]*Subscription),
 		subsByID:    make(map[string]*Subscription),
 	}
 }
 
-// RegisterProducer registers a producer for the given kind. Returns an error
-// if kind is empty or a producer for that kind is already registered.
+// RegisterProducer keeps the legacy single-producer test seam. Production
+// extension hosts use RegisterProducerFor with their trusted identity.
 func (b *Broker) RegisterProducer(kind string, host ProducerHost, decl types.ResourceDeclaration) error {
+	return b.RegisterProducerFor(kind, "legacy", host, decl)
+}
+
+// RegisterProducerFor registers one trusted extension producer for kind.
+func (b *Broker) RegisterProducerFor(kind, producer string, host ProducerHost, decl types.ResourceDeclaration) error {
 	if kind == "" {
 		return fmt.Errorf("resource broker: kind must not be empty")
 	}
+	if producer == "" {
+		return fmt.Errorf("resource broker: producer must not be empty")
+	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if _, exists := b.producers[kind]; exists {
-		return fmt.Errorf("resource broker: producer for kind %q already registered", kind)
+	entries := b.producers[kind]
+	if entries == nil {
+		entries = make(map[string]*producerEntry)
+		b.producers[kind] = entries
 	}
-	b.producers[kind] = &producerEntry{kind: kind, host: host, decl: decl}
-	utils.LogWithFields(utils.LevelInfo, "resource", "producer registered", map[string]any{"reason": kind})
+	if _, exists := entries[producer]; exists {
+		return fmt.Errorf("resource broker: producer %q for kind %q already registered", producer, kind)
+	}
+	entries[producer] = &producerEntry{kind: kind, producer: producer, host: host, decl: decl}
+	utils.LogWithFields(utils.LevelInfo, "resource", "producer registered", map[string]any{"kind": kind, "producer": producer})
 	return nil
 }
 
-// DeregisterProducer removes the producer for kind and drops all subscriptions
-// for that kind. No-op if no producer is registered.
-func (b *Broker) DeregisterProducer(kind string) {
+// DeregisterProducer keeps the legacy producer seam.
+func (b *Broker) DeregisterProducer(kind string) { b.DeregisterProducerFor(kind, "legacy") }
+
+// DeregisterProducerFor removes one producer.
+func (b *Broker) DeregisterProducerFor(kind, producer string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if _, exists := b.producers[kind]; !exists {
+	entries := b.producers[kind]
+	if entries == nil {
 		return
 	}
-	delete(b.producers, kind)
-	// Drop all subscriptions for this kind.
-	subs := b.subscribers[kind]
-	for _, s := range subs {
-		delete(b.subsByID, s.ID)
+	if _, exists := entries[producer]; !exists {
+		return
 	}
-	delete(b.subscribers, kind)
-	utils.LogWithFields(utils.LevelInfo, "resource", "producer deregistered", map[string]any{"reason": kind, "count": len(subs)})
+	delete(entries, producer)
+	if len(entries) == 0 {
+		delete(b.producers, kind)
+	}
+	utils.LogWithFields(utils.LevelInfo, "resource", "producer deregistered", map[string]any{"kind": kind, "producer": producer, "remaining_producers": len(entries)})
 }
 
-// Subscribe registers a new subscription for the given kind. It calls the
-// producer's HandleQuery with the provided filter, delivers the snapshot to
-// the caller's deliver function, then stores the subscription for future
-// deltas. Returns an error if no producer is registered for kind.
+// Subscribe registers a kind subscription and emits one complete merged
+// snapshot. The snapshot contains every matching producer's items.
 func (b *Broker) Subscribe(kind string, filter types.ResourceFilter, deliver func(ResourceMessage)) (*Subscription, error) {
 	b.mu.Lock()
-	entry, ok := b.producers[kind]
-	if !ok {
+	entries := b.entriesForKindLocked(kind, filter.Producer)
+	if len(entries) == 0 {
 		b.mu.Unlock()
 		return nil, fmt.Errorf("resource broker: no producer for kind %q", kind)
 	}
-
 	subID := fmt.Sprintf("sub-%d", b.nextSubID.Add(1))
-	sub := &Subscription{
-		ID:      subID,
-		Kind:    kind,
-		Filter:  filter,
-		deliver: deliver,
-	}
+	sub := &Subscription{ID: subID, Kind: kind, Filter: filter, deliver: deliver}
 	b.subscribers[kind] = append(b.subscribers[kind], sub)
 	b.subsByID[subID] = sub
-	host := entry.host
 	b.mu.Unlock()
 
-	// Query the producer for the initial snapshot outside the lock.
-	items, err := host.HandleQuery(filter)
-	if err != nil {
-		// Subscription is registered; snapshot failed. Log and deliver empty snapshot.
-		utils.LogWithFields(utils.LevelInfo, "resource", "handle query failed", map[string]any{"reason": kind, "subscription_id": subID, "error": err.Error()})
-		items = nil
-	}
-
-	deliver(ResourceMessage{
-		Type:  "snapshot",
-		Kind:  kind,
-		SubID: subID,
-		Items: items,
-	})
-	utils.LogWithFields(utils.LevelDebug, "resource", "subscribed", map[string]any{"reason": kind, "subscription_id": subID, "count": len(items)})
+	items := b.queryEntries(entries, kind, filter, subID, "subscribe")
+	deliver(ResourceMessage{Type: "snapshot", Kind: kind, SubID: subID, Items: items})
+	utils.LogWithFields(utils.LevelDebug, "resource", "subscribed", map[string]any{"kind": kind, "producer": filter.Producer, "subscription_id": subID, "count": len(items)})
 	return sub, nil
 }
 
-// GetItem fetches a single resource item by kind and ID by calling the
-// registered producer's query handler with an ID-scoped filter. Returns
-// (nil, nil) when the producer exists but returns no item for that ID.
-// Returns an error when no producer is registered for kind.
+// GetItem keeps the legacy unqualified lookup. It succeeds only when one
+// producer returns the requested ID.
 func (b *Broker) GetItem(kind, id string) (*types.ResourceItem, error) {
-	b.mu.RLock()
-	entry, ok := b.producers[kind]
-	b.mu.RUnlock()
-	if !ok {
-		return nil, fmt.Errorf("resource broker: no producer for kind %q", kind)
-	}
-
-	filter := types.ResourceFilter{Kind: kind, ID: id}
-	items, err := entry.host.HandleQuery(filter)
-	if err != nil {
-		return nil, fmt.Errorf("resource broker: query failed for kind %q id %q: %w", kind, id, err)
-	}
-	for i := range items {
-		if items[i].ID == id {
-			return &items[i], nil
-		}
-	}
-	return nil, nil // producer registered but item not found
+	return b.GetItemFrom(kind, "", id)
 }
 
-// Unsubscribe removes the subscription identified by subID. No-op if not found.
+// GetItemFrom gets one Resource by its full identity.
+func (b *Broker) GetItemFrom(kind, producer, id string) (*types.ResourceItem, error) {
+	return b.getItemFrom(kind, producer, id, false)
+}
+
+// GetWorkspaceItemFrom gets one workspace-scoped Resource by its full identity.
+func (b *Broker) GetWorkspaceItemFrom(kind, producer, id string) (*types.ResourceItem, error) {
+	return b.getItemFrom(kind, producer, id, true)
+}
+
+func (b *Broker) getItemFrom(kind, producer, id string, workspaceOnly bool) (*types.ResourceItem, error) {
+	b.mu.RLock()
+	entries := b.entriesForKindLocked(kind, producer)
+	b.mu.RUnlock()
+	if len(entries) == 0 {
+		return nil, fmt.Errorf("resource broker: no producer for kind %q producer %q", kind, producer)
+	}
+
+	var matches []types.ResourceItem
+	for _, entry := range entries {
+		filter := types.ResourceFilter{Kind: kind, Producer: entry.producer, ID: id}
+		items, err := entry.host.HandleQuery(filter)
+		if err != nil {
+			return nil, fmt.Errorf("resource broker: query failed for kind %q producer %q id %q: %w", kind, entry.producer, id, err)
+		}
+		for _, item := range items {
+			if item.ID == id && (!workspaceOnly || item.ConversationID == "") {
+				item.Producer = entry.producer
+				matches = append(matches, item)
+			}
+		}
+	}
+	if len(matches) == 0 {
+		return nil, nil
+	}
+	if producer == "" && len(matches) > 1 {
+		return nil, fmt.Errorf("resource broker: item %q in kind %q is ambiguous; specify producer", id, kind)
+	}
+	return &matches[0], nil
+}
+
+// Unsubscribe removes the subscription identified by subID. No-op if missing.
 func (b *Broker) Unsubscribe(subID string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -175,109 +194,67 @@ func (b *Broker) Unsubscribe(subID string) {
 		}
 	}
 	b.subscribers[sub.Kind] = updated
-	utils.LogWithFields(utils.LevelDebug, "resource", "unsubscribed", map[string]any{"subscription_id": subID, "reason": sub.Kind})
+	utils.LogWithFields(utils.LevelDebug, "resource", "unsubscribed", map[string]any{"subscription_id": subID, "kind": sub.Kind})
 }
 
-// Publish fans a delta out to all subscribers of the given kind. Returns an
-// error if no producer is registered for kind. Fan-out delivery happens
-// outside the lock.
+// Publish keeps the legacy producer seam.
 func (b *Broker) Publish(kind string, delta types.ResourceDelta) error {
-	b.mu.RLock()
-	if _, ok := b.producers[kind]; !ok {
-		b.mu.RUnlock()
-		return fmt.Errorf("resource broker: no producer for kind %q", kind)
-	}
-	// Snapshot the subscriber slice so we can release the lock before delivering.
-	// Wildcard subscribers (kind="*") receive deltas for every kind, so they
-	// are folded into the recipient set here.
-	subs := make([]*Subscription, len(b.subscribers[kind]))
-	copy(subs, b.subscribers[kind])
-	subs = append(subs, b.wildcardSubscribersLocked()...)
-	b.mu.RUnlock()
+	return b.PublishFrom(kind, "legacy", delta)
+}
 
-	utils.LogWithFields(utils.LevelDebug, "resource", "publish", map[string]any{"reason": kind, "status": delta.Op, "count": len(subs)})
-	for _, s := range subs {
-		// Filter by conversationId when the subscription has one set.
-		// Workspace subscribers (empty filter) receive everything.
-		// Conversation-scoped subscribers only receive matching items.
-		if s.Filter.ConversationID != "" && delta.Item.ConversationID != s.Filter.ConversationID {
-			continue
-		}
-		s.deliver(ResourceMessage{
-			Type:  "delta",
-			Kind:  kind,
-			SubID: s.ID,
-			Delta: &delta,
-		})
+// PublishFrom stamps a delta with its trusted producer and fans it out.
+func (b *Broker) PublishFrom(kind, producer string, delta types.ResourceDelta) error {
+	b.mu.RLock()
+	entries := b.producers[kind]
+	_, ok := entries[producer]
+	b.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("resource broker: no producer %q for kind %q", producer, kind)
 	}
+	delta.Item.Producer = producer
+	b.publishDelta(kind, delta)
 	return nil
 }
 
-// PublishDirect fans a delta out to all subscribers of the given kind
-// WITHOUT requiring a registered producer. Used by client-side publishers
-// (desktop, iOS) that publish resources via the resource_publish wire
-// command. Producers are an extension concept (query handlers); clients
-// don't need them.
+// PublishDirect fans a delta out without requiring a registered producer. It
+// preserves producer attribution already stamped by a trusted extension host.
 func (b *Broker) PublishDirect(kind string, delta types.ResourceDelta) {
-	b.mu.RLock()
-	subs := make([]*Subscription, len(b.subscribers[kind]))
-	copy(subs, b.subscribers[kind])
-	subs = append(subs, b.wildcardSubscribersLocked()...)
-	b.mu.RUnlock()
+	b.publishDelta(kind, delta)
+}
 
-	utils.LogWithFields(utils.LevelDebug, "resource", "publish direct", map[string]any{"reason": kind, "status": delta.Op, "count": len(subs)})
-	for _, s := range subs {
-		// Filter by conversationId when the subscription has one set.
-		// Workspace subscribers (empty filter) receive everything.
-		// Conversation-scoped subscribers only receive matching items.
-		if s.Filter.ConversationID != "" && delta.Item.ConversationID != s.Filter.ConversationID {
+func (b *Broker) publishDelta(kind string, delta types.ResourceDelta) {
+	b.mu.RLock()
+	subs := append(copySubscriptions(b.subscribers[kind]), b.wildcardSubscribersLocked()...)
+	b.mu.RUnlock()
+	utils.LogWithFields(utils.LevelDebug, "resource", "publish", map[string]any{"kind": kind, "producer": delta.Item.Producer, "status": delta.Op, "item_id": delta.Item.ID, "count": len(subs)})
+	for _, sub := range subs {
+		if !matchesFilter(sub.Filter, delta.Item) {
 			continue
 		}
-		s.deliver(ResourceMessage{
-			Type:  "delta",
-			Kind:  kind,
-			SubID: s.ID,
-			Delta: &delta,
-		})
+		deltaCopy := delta
+		sub.deliver(ResourceMessage{Type: "delta", Kind: kind, SubID: sub.ID, Delta: &deltaCopy})
 	}
 }
 
-// SubscribeDirect registers a subscription WITHOUT requiring a registered
-// producer. No initial snapshot is delivered (there's no producer to query).
-// Used by the global broker where clients subscribe to kinds that may not
-// have a producer yet (e.g. a client-invented kind published by the desktop
-// client, not by an extension).
+// SubscribeDirect registers a producerless direct subscription. The global
+// broker uses this for client-created resources and has no initial snapshot.
 func (b *Broker) SubscribeDirect(kind string, filter types.ResourceFilter, deliver func(ResourceMessage)) *Subscription {
 	if kind == "" {
 		utils.Warn("resource", "SubscribeDirect: empty kind, ignoring")
 		return nil
 	}
 	subID := fmt.Sprintf("sub-%d", b.nextSubID.Add(1))
-	sub := &Subscription{
-		ID:      subID,
-		Kind:    kind,
-		Filter:  filter,
-		deliver: deliver,
-	}
+	sub := &Subscription{ID: subID, Kind: kind, Filter: filter, deliver: deliver}
 	b.mu.Lock()
 	b.subscribers[kind] = append(b.subscribers[kind], sub)
 	b.subsByID[subID] = sub
 	b.mu.Unlock()
-
-	// Deliver empty snapshot so the subscriber has a consistent starting point.
-	deliver(ResourceMessage{
-		Type:  "snapshot",
-		Kind:  kind,
-		SubID: subID,
-		Items: nil,
-	})
-	utils.LogWithFields(utils.LevelDebug, "resource", "subscribe direct", map[string]any{"reason": kind, "subscription_id": subID})
+	deliver(ResourceMessage{Type: "snapshot", Kind: kind, SubID: subID})
+	utils.LogWithFields(utils.LevelDebug, "resource", "subscribe direct", map[string]any{"kind": kind, "producer": filter.Producer, "subscription_id": subID})
 	return sub
 }
 
 // FuncProducerHost wraps a query handler function as a ProducerHost.
-// DeclareResource registers this type; SetQueryHandler sets the handler
-// after the fact so extensions can declare and wire independently.
 type FuncProducerHost struct {
 	mu      sync.RWMutex
 	handler func(types.ResourceFilter) ([]types.ResourceItem, error)
@@ -293,66 +270,116 @@ func (f *FuncProducerHost) HandleQuery(filter types.ResourceFilter) ([]types.Res
 	return h(filter)
 }
 
-// SetQueryHandler updates the query handler for the given kind's producer.
-// This allows extensions to register handlers after declaring a resource kind.
-// No-op when no producer is registered for kind, or when the producer was
-// not registered via DeclareResource (i.e. is not a FuncProducerHost).
+// SetQueryHandler keeps the legacy producer seam.
 func (b *Broker) SetQueryHandler(kind string, handler func(types.ResourceFilter) ([]types.ResourceItem, error)) {
+	b.SetQueryHandlerFor(kind, "legacy", handler)
+}
+
+// SetQueryHandlerFor updates a trusted producer query handler.
+func (b *Broker) SetQueryHandlerFor(kind, producer string, handler func(types.ResourceFilter) ([]types.ResourceItem, error)) {
 	b.mu.RLock()
-	entry, ok := b.producers[kind]
+	entry := b.producers[kind][producer]
 	b.mu.RUnlock()
-	if !ok {
-		utils.LogWithFields(utils.LevelInfo, "resource", "set query handler no producer for kind", map[string]any{"reason": kind})
+	if entry == nil {
+		utils.LogWithFields(utils.LevelInfo, "resource", "set query handler no producer", map[string]any{"kind": kind, "producer": producer})
 		return
 	}
 	if fph, ok := entry.host.(*FuncProducerHost); ok {
 		fph.mu.Lock()
 		fph.handler = handler
 		fph.mu.Unlock()
-		utils.LogWithFields(utils.LevelDebug, "resource", "query handler set", map[string]any{"reason": kind})
+		utils.LogWithFields(utils.LevelDebug, "resource", "query handler set", map[string]any{"kind": kind, "producer": producer})
 	}
 }
 
-// RewireQueryHandlerAndResnapshot updates the query handler for the given
-// kind and re-delivers a fresh snapshot to every existing subscriber. Used
-// after an extension respawn: the new subprocess's query handler replaces the
-// dead one, and all subscribers that previously received an empty snapshot
-// (because the query failed during the first spawn) get a corrective snapshot
-// with the real data.
-//
-// Each subscriber is queried individually using its own filter so
-// conversation-scoped and workspace-scoped subscribers each get their correct
-// view of the data.
+// RewireQueryHandlerAndResnapshot keeps the legacy producer seam.
 func (b *Broker) RewireQueryHandlerAndResnapshot(kind string, handler func(types.ResourceFilter) ([]types.ResourceItem, error)) {
-	// Update the handler first.
-	b.SetQueryHandler(kind, handler)
+	b.RewireQueryHandlerAndResnapshotFor(kind, "legacy", handler)
+}
 
-	// Snapshot the subscriber list outside the lock so we can call the handler
-	// (which may block for extension I/O) without holding b.mu.
+// RewireQueryHandlerAndResnapshotFor rewires one trusted producer.
+func (b *Broker) RewireQueryHandlerAndResnapshotFor(kind, producer string, handler func(types.ResourceFilter) ([]types.ResourceItem, error)) {
+	b.SetQueryHandlerFor(kind, producer, handler)
 	b.mu.RLock()
-	subs := make([]*Subscription, len(b.subscribers[kind]))
-	copy(subs, b.subscribers[kind])
+	subs := copySubscriptions(b.subscribers[kind])
 	b.mu.RUnlock()
-
-	if len(subs) == 0 {
-		utils.LogWithFields(utils.LevelDebug, "resource", "rewire query handler and resnapshot no subscribers", map[string]any{"reason": kind})
-		return
-	}
-
-	utils.LogWithFields(utils.LevelInfo, "resource", "rewire query handler and resnapshot", map[string]any{"reason": kind, "count": len(subs)})
-
 	for _, sub := range subs {
-		items, err := handler(sub.Filter)
-		if err != nil {
-			utils.LogWithFields(utils.LevelInfo, "resource", "rewire handle query failed", map[string]any{"reason": kind, "subscription_id": sub.ID, "error": err.Error()})
-			items = nil
-		}
-		sub.deliver(ResourceMessage{
-			Type:  "snapshot",
-			Kind:  kind,
-			SubID: sub.ID,
-			Items: items,
-		})
-		utils.LogWithFields(utils.LevelInfo, "resource", "rewire delivered snapshot", map[string]any{"reason": kind, "subscription_id": sub.ID, "count": len(items)})
+		items := b.snapshotForSubscription(kind, sub.Filter, sub.ID, "rewire")
+		sub.deliver(ResourceMessage{Type: "snapshot", Kind: kind, SubID: sub.ID, Items: items})
 	}
+	utils.LogWithFields(utils.LevelInfo, "resource", "rewire query handler and resnapshot", map[string]any{"kind": kind, "producer": producer, "count": len(subs)})
+}
+
+func (b *Broker) snapshotForSubscription(kind string, filter types.ResourceFilter, subID, operation string) []types.ResourceItem {
+	b.mu.RLock()
+	entries := b.entriesForKindLocked(kind, filter.Producer)
+	b.mu.RUnlock()
+	return b.queryEntries(entries, kind, filter, subID, operation)
+}
+
+func (b *Broker) queryEntries(entries []*producerEntry, kind string, filter types.ResourceFilter, subID, operation string) []types.ResourceItem {
+	var merged []types.ResourceItem
+	for _, entry := range entries {
+		entryFilter := filter
+		entryFilter.Kind = kind
+		entryFilter.Producer = entry.producer
+		items, err := entry.host.HandleQuery(entryFilter)
+		if err != nil {
+			utils.LogWithFields(utils.LevelInfo, "resource", "resource query failed", map[string]any{"operation": operation, "kind": kind, "producer": entry.producer, "subscription_id": subID, "error": err.Error()})
+			continue
+		}
+		for index := range items {
+			items[index].Producer = entry.producer
+		}
+		merged = append(merged, items...)
+	}
+	return merged
+}
+
+func (b *Broker) ProducerNames(kind string) []string {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	entries := b.entriesForKindLocked(kind, "")
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.producer)
+	}
+	return names
+}
+
+func (b *Broker) entriesForKindLocked(kind, producer string) []*producerEntry {
+	entries := b.producers[kind]
+	if len(entries) == 0 {
+		return nil
+	}
+	if producer != "" {
+		if entry := entries[producer]; entry != nil {
+			return []*producerEntry{entry}
+		}
+		return nil
+	}
+	keys := make([]string, 0, len(entries))
+	for name := range entries {
+		keys = append(keys, name)
+	}
+	sort.Strings(keys)
+	out := make([]*producerEntry, 0, len(keys))
+	for _, name := range keys {
+		out = append(out, entries[name])
+	}
+	return out
+}
+
+func matchesFilter(filter types.ResourceFilter, item types.ResourceItem) bool {
+	return (filter.ConversationID == "" || filter.ConversationID == item.ConversationID) &&
+		(filter.Producer == "" || filter.Producer == item.Producer)
+}
+
+func copySubscriptions(subs []*Subscription) []*Subscription {
+	if len(subs) == 0 {
+		return nil
+	}
+	out := make([]*Subscription, len(subs))
+	copy(out, subs)
+	return out
 }

@@ -71,7 +71,8 @@ export function buildResourcesAPI(): IonContext['resources'] {
       return {
         async publish(op: ResourceDelta['op'], item: ResourceItem): Promise<void> {
           if (!rpcRequest) throw new Error('ion.resources.publish: RPC bridge not wired')
-          await rpcRequest('ext/publish_resource', { kind: decl.kind, op, item })
+          const { producer: _producer, ...unattributedItem } = item
+          await rpcRequest('ext/publish_resource', { kind: decl.kind, op, item: unattributedItem })
         },
       }
     },

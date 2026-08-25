@@ -132,21 +132,21 @@ describe('surface-store', () => {
     store.openSingleton('diff')
     store.pinTab('diff')
     store.selectConversation('tab-2')
-    expect(useSurfaceStore.getState().tabs.map((tab) => tab.id)).toEqual(['diff', 'plan'])
+    expect(useSurfaceStore.getState().tabs.map((tab) => tab.id)).toEqual(['plan', 'diff'])
   })
 
   it('does not carry the active pinned tab into another conversation', () => {
     const store = useSurfaceStore.getState()
     store.openSingleton('diff')
     store.pinTab('diff')
-    // Diff sits before Plan in strip order. The new conversation has no saved
-    // selection, so it starts at Diff without changing tab-1's saved Plan tab.
-    expect(useSurfaceStore.getState().tabs.map((tab) => tab.id)).toEqual(['diff', 'plan'])
+    // Plan sits first in strip order. The new conversation has no saved
+    // selection, so it starts at Plan without changing tab-1's saved Plan tab.
+    expect(useSurfaceStore.getState().tabs.map((tab) => tab.id)).toEqual(['plan', 'diff'])
     store.activateTab('plan')
     expect(useSurfaceStore.getState().activeTabId).toBe('plan')
 
     store.selectConversation('tab-2')
-    expect(useSurfaceStore.getState().activeTabId).toBe('diff')
+    expect(useSurfaceStore.getState().activeTabId).toBe('plan')
     store.activateTab('diff')
 
     store.selectConversation('tab-1')

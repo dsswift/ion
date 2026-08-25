@@ -49,6 +49,12 @@ export function mapPersistedMessages(
     slashModelAlias: m.slashModelAlias,
     slashModelEffective: m.slashModelEffective,
     implementationPhase: m.implementationPhase,
+    // How the turn was authored. The desktop's own content file is what a
+    // conversation is rebuilt from on restart, so a field missing HERE is
+    // missing from the transcript forever after — which is how a Guided
+    // Questions submission lost its frame on every reopen while the engine
+    // store still held the classification.
+    injectionKind: m.injectionKind,
     // Engine-produced image attachments (on-disk references) survive restart.
     attachments: m.attachments,
     // Seal restored assistant messages so incoming engine_text_delta events

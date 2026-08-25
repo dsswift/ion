@@ -35,13 +35,19 @@ func (h *Host) handleDeclareResource(id int64, raw []byte) {
 		return
 	}
 
-	decl := types.ResourceDeclaration{Kind: req.Params.Kind}
+	decl := types.ResourceDeclaration{Kind: req.Params.Kind, Producer: h.name_()}
 	if err := ctx.DeclareResource(decl); err != nil {
 		utils.LogWithFields(utils.LevelInfo, "extension", "ext/declare_resource: rejected", map[string]any{"model": h.name_(), "kind": req.Params.Kind, "error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 		return
 	}
 
+	// Runtime declarations need the same query callback as init declarations.
+	// The broker has just registered this host's FuncProducerHost through the
+	// session context, so bind it to this exact host identity.
+	ctx.HandleResourceQuery(req.Params.Kind, h.name_(), func(filter types.ResourceFilter) ([]types.ResourceItem, error) {
+		return h.CallResourceQuery(req.Params.Kind, filter)
+	})
 	utils.LogWithFields(utils.LevelInfo, "extension", "ext/declare_resource: registered", map[string]any{"model": h.name_(), "kind": req.Params.Kind})
 	resp, _ := json.Marshal(struct { //nolint:errcheck // marshal of a local anonymous struct
 		OK   bool   `json:"ok"`
@@ -82,6 +88,8 @@ func (h *Host) handlePublishResource(id int64, raw []byte) {
 		Op:   req.Params.Op,
 		Item: req.Params.Item,
 	}
+	// Producer identity belongs to the engine host, never the extension payload.
+	delta.Item.Producer = h.name_()
 	if err := publishFn(req.Params.Kind, delta); err != nil {
 		utils.LogWithFields(utils.LevelInfo, "extension", "ext/publish_resource: failed", map[string]any{"model": h.name_(), "kind": req.Params.Kind, "op": req.Params.Op, "error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
@@ -131,7 +139,7 @@ func (h *Host) CommitPendingResourceDecls(broker *resource.Broker) []error {
 	var errs []error
 	for _, decl := range decls {
 		fph := &resource.FuncProducerHost{}
-		if err := broker.RegisterProducer(decl.Kind, fph, decl); err != nil {
+		if err := broker.RegisterProducerFor(decl.Kind, h.name_(), fph, decl); err != nil {
 			utils.LogWithFields(utils.LevelInfo, "extension", "commitpendingresourcedecls: rejected", map[string]any{"model": h.name_(), "kind": decl.Kind, "error": err})
 			errs = append(errs, fmt.Errorf("resource %s: %w", decl.Kind, err))
 			continue
@@ -139,7 +147,7 @@ func (h *Host) CommitPendingResourceDecls(broker *resource.Broker) []error {
 		// Wire the query handler: when a client subscribes the broker calls
 		// this closure, which calls the extension subprocess via RPC.
 		kind := decl.Kind // capture loop variable
-		broker.SetQueryHandler(kind, func(filter types.ResourceFilter) ([]types.ResourceItem, error) {
+		broker.SetQueryHandlerFor(kind, h.name_(), func(filter types.ResourceFilter) ([]types.ResourceItem, error) {
 			return h.CallResourceQuery(kind, filter)
 		})
 		utils.LogWithFields(utils.LevelInfo, "extension", "commitpendingresourcedecls: registered with query handler", map[string]any{"model": h.name_(), "kind": decl.Kind})
@@ -168,7 +176,7 @@ func (h *Host) RewireResourceDecls(broker *resource.Broker) {
 	for _, decl := range decls {
 		kind := decl.Kind // capture for closure
 		utils.LogWithFields(utils.LevelInfo, "extension", "rewireresourcedecls: rewiring after respawn", map[string]any{"model": h.name_(), "kind": kind})
-		broker.RewireQueryHandlerAndResnapshot(kind, func(filter types.ResourceFilter) ([]types.ResourceItem, error) {
+		broker.RewireQueryHandlerAndResnapshotFor(kind, h.name_(), func(filter types.ResourceFilter) ([]types.ResourceItem, error) {
 			return h.CallResourceQuery(kind, filter)
 		})
 	}
@@ -189,13 +197,21 @@ func (h *Host) handleNotify(id int64, raw []byte) {
 	}
 
 	ctx := h.ctxStack.Current()
-	if ctx == nil || ctx.Notify == nil {
-		utils.Debug("extension", "ext/notify: no ctx or Notify not wired")
+	var notifyFn func(types.NotifyOpts) error
+	if ctx != nil && ctx.Notify != nil {
+		notifyFn = ctx.Notify
+	} else {
+		h.notifMu.RLock()
+		notifyFn = h.persistentNotify
+		h.notifMu.RUnlock()
+	}
+	if notifyFn == nil {
+		utils.Debug("extension", "ext/notify: no ctx and no persistent notification")
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32603, Message: "notification subsystem not available"})
 		return
 	}
 
-	if err := ctx.Notify(req.Params); err != nil {
+	if err := notifyFn(req.Params); err != nil {
 		utils.LogWithFields(utils.LevelInfo, "extension", "ext/notify", map[string]any{"model": h.name_(), "error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 		return

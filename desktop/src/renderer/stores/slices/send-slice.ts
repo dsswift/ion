@@ -5,8 +5,6 @@ import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId, cancelDoneGroupMove } from '../session-store-helpers'
 import { activeInstance, commitInstance, effectivePermissionMode, effectiveThinkingEffort } from '../conversation-instance'
 import { useModelStore } from '../model-store'
-import { getDynamicContextWindow } from '../model-labels'
-import { resolveContextInputs } from '../../components/context-usage'
 import { resolveEffortForModel } from '../../../shared/thinking-options'
 import { applyActiveGroupMove } from './event-slice-running-move'
 import { maybeSendTimeTitle, isPlaceholderTitle } from './event-slice-titling'
@@ -17,7 +15,7 @@ import { promptRefusal } from '../../../shared/prompt-acceptance'
 import {
   PROMPT_ACCEPTED, promptRefused, promptRefusalMessage,
 } from '../../../shared/prompt-submit-result'
-import { selectedModelContextLimit } from '../../../shared/context-capacity'
+import { suppressesInjection } from '../../../shared/injection-policy'
 import { createSendBashSlice } from './send-slice-bash'
 
 type PromptModelSelection = Pick<import('../../../shared/types-engine').ConversationInstance, 'modelOverride' | 'modelOverrideSource' | 'sessionModel'> | null | undefined
@@ -178,7 +176,14 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
      */
     submit: (tabId, text, opts = {}) => {
       const { tabs, staticInfo } = get()
-      const { projectPath, extraAttachments, appendSystemPrompt, implementationPhase, imageAttachments, remoteAttachments, source, resolveSlash, requestId: clientRequestId } = opts
+      const { projectPath, extraAttachments, appendSystemPrompt, implementationPhase, imageAttachments, remoteAttachments, source, resolveSlash, requestId: clientRequestId, injectionKind } = opts
+      // Machine-authored turns (agent callbacks, background-task results) are
+      // delivered to the model but never rendered. A Guided Questions
+      // submission is NOT one of those: the operator chose the options, typed
+      // the text and attached the images, so it renders with a label
+      // (MessageBubble reads message.injectionKind) rather than being hidden.
+      // Classified by the ONE shared policy (shared/injection-policy.ts).
+      const suppressBubble = suppressesInjection({ injectionKind })
       const tab = tabs.find((t) => t.id === tabId)
       if (!tab) {
         // A dropped operator prompt is never a debug detail: the text is gone
@@ -194,28 +199,18 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // reads are pre-mutation.
       const sendInst = activeInstance(get().conversationPanes, tabId)
 
-      // Both refusals — still connecting, and input-locked — come from the one
-      // shared predicate (shared/prompt-acceptance.ts), which is also what the
-      // InputBar consults BEFORE it clears the operator's text. When these two
-      // decisions were separate predicates the InputBar could admit a send
-      // that this guard then refused, and the text was already destroyed.
+      // Connection and input-lock refusals come from the one shared predicate
+      // (shared/prompt-acceptance.ts), which is also what the Input Bar consults
+      // BEFORE it clears the operator's text. Context capacity is deliberately
+      // absent: the engine owns admission and can auto-compact before provider
+      // dispatch.
       //
       // The guard stays here regardless of the caller's own check: this is the
       // enforcement point no remote command, queued prompt, or future caller
       // can route around.
-      const capacityInputs = resolveContextInputs(sendInst)
-      const effectiveModel = sendInst?.modelOverride ?? sendInst?.sessionModel ?? usePreferencesStore.getState().preferredModel ?? ''
-      const modelCapacity = useModelStore.getState().findModel(effectiveModel)
-      const rawWindow = getDynamicContextWindow(effectiveModel, capacityInputs.engineWindow)
-      const contextLimit = selectedModelContextLimit(rawWindow, modelCapacity?.maxOutputTokens)
       const refusal = promptRefusal({
-        tab: {
-          ...tab,
-          contextTokens: capacityInputs.tokens,
-          contextLimit,
-        },
+        tab,
         source,
-        text,
       })
       if (refusal) {
         // WARN, not DEBUG. The main-process logger's minimum level is INFO
@@ -325,16 +320,22 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           timestamp: Date.now(),
           ...(isSteer ? { steerPending: true } : {}),
           ...(implementationPhase ? { implementationPhase: true } : {}),
+          // Lets the bubble label itself as a structured submission.
+          ...(injectionKind ? { injectionKind } : {}),
         }
         steerClientMessageId = isSteer ? userMessage.id : undefined
         const conversationPanes = commitInstance(s.conversationPanes, tabId, (inst) => ({
           ...inst,
-          messages: [...inst.messages, userMessage],
+          // The bubble is omitted for a machine-authored turn; everything
+          // else about the send (status, dispatch, attachments) is unchanged.
+          messages: suppressBubble ? inst.messages : [...inst.messages, userMessage],
           // On a fresh (non-busy) send, clear the pending denial card.
           ...(isBusy ? {} : { permissionDenied: null }),
         }))
         const enginePinnedPrompt = new Map(s.enginePinnedPrompt)
-        enginePinnedPrompt.set(tabId, text)
+        // The pinned prompt is the operator's own words shown above the
+        // conversation; a machine-authored rendering is not that.
+        if (!suppressBubble) enginePinnedPrompt.set(tabId, text)
         const tabs = s.tabs.map((t) => {
           if (t.id !== tabId) return t
           const withEffectiveBase = t.hasChosenDirectory
@@ -517,6 +518,12 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         // remote origin, so it forwards as a local prompt.
         source: source === 'remote' ? 'remote' : undefined,
         deliveryId: source === 'remote' ? requestId : undefined,
+        // Client-stated authorship, forwarded to the engine so the PERSISTED
+        // row and every other consumer (iOS, history reload) carry the same
+        // classification this renderer just applied. Without this the
+        // suppression would be desktop-session-local and the turn would
+        // reappear as a user bubble on reload.
+        injectionKind,
         // Forward the engine-resolve-slash flag from REMOTE_ENGINE_PROMPT so
         // the pipeline short-circuits to submitAsPrompt instead of
         // re-dispatching the extension command (which corrupts the
@@ -537,25 +544,17 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       return PROMPT_ACCEPTED
     },
 
-    submitRemotePrompt: (tabId, prompt, imageAttachments, resolveSlash, remoteAttachments, reqId, implementationPhase) => {
+    submitRemotePrompt: (tabId, prompt, imageAttachments, resolveSlash, remoteAttachments, reqId, implementationPhase, injectionKind) => {
+      // Same rule as submit(): a machine-authored turn reaches the model but
+      // is never echoed into the transcript as a user bubble. Classified by
+      // the one shared policy (shared/injection-policy.ts).
+      const suppressRemoteBubble = suppressesInjection({ injectionKind })
       const { tabs, staticInfo } = get()
       const preferredModel = usePreferencesStore.getState().preferredModel
       const tab = tabs.find((t) => t.id === tabId)
       if (!tab) return
       const remoteInst = activeInstance(get().conversationPanes, tabId)
-      const remoteCapacity = resolveContextInputs(remoteInst)
-      const remoteEffectiveModel = remoteInst?.modelOverride ?? remoteInst?.sessionModel ?? preferredModel ?? ''
-      const remoteModelCapacity = useModelStore.getState().findModel(remoteEffectiveModel)
-      const remoteRawWindow = getDynamicContextWindow(remoteEffectiveModel, remoteCapacity.engineWindow)
-      const remoteContextLimit = selectedModelContextLimit(remoteRawWindow, remoteModelCapacity?.maxOutputTokens)
-      const refusal = promptRefusal({
-        tab: {
-          ...tab,
-          contextTokens: remoteCapacity.tokens,
-          contextLimit: remoteContextLimit,
-        },
-        text: prompt,
-      })
+      const refusal = promptRefusal({ tab })
       if (refusal) {
         rWarn('submit.remote', 'blocked prompt', {
           tab_id: tab.id.slice(0, 8), count: prompt.length, reason: refusal.reason, detail: refusal.detail,
@@ -620,11 +619,12 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           source: 'remote' as const,
           ...(isBusy && !isImplementation ? { steerPending: true } : {}),
           ...(isImplementation ? { implementationPhase: true } : {}),
+          ...(injectionKind ? { injectionKind } : {}),
         }
         steerClientMessageId = isBusy && !isImplementation ? userMessage.id : undefined
         const conversationPanes = commitInstance(s.conversationPanes, tabId, (inst) => ({
           ...inst,
-          messages: [...inst.messages, userMessage],
+          messages: suppressRemoteBubble ? inst.messages : [...inst.messages, userMessage],
           // Clear the pending denial on a fresh (non-busy) remote send.
           ...(isBusy ? {} : { permissionDenied: null }),
         }))
@@ -721,6 +721,10 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         // it to the model verbatim. Absent/false for ordinary remote prompts.
         resolveSlash: resolveSlash || undefined,
         implementationPhase: isImplementation || undefined,
+        // Forwarded to the engine so the PERSISTED row carries the same
+        // classification, keeping the turn suppressed on history reload and
+        // on every other client rather than only in this session.
+        injectionKind,
       }).catch((err: Error) => {
         get().handleError(tabId, {
           message: err.message,

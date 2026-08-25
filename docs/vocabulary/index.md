@@ -76,10 +76,13 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Extension](#term-extension)
 - [Extension SDK](#term-extension-sdk)
 - [Extension context](#term-extension-context)
+- [Guided Questions](#term-guided-questions)
 - [Harness](#term-harness)
 - [Hook](#term-hook)
 - [Inbox](#term-inbox)
+- [Injection Kind](#term-injection-kind)
 - [Input Bar](#term-input-bar)
+- [Install worker](#term-install-worker)
 - [Integration bench](#term-integration-bench)
 - [Keepalive](#term-keepalive)
 - [Menu](#term-menu)
@@ -96,10 +99,12 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Permission](#term-permission)
 - [Picker](#term-picker)
 - [Provider](#term-provider)
+- [Questions Wizard](#term-questions-wizard)
 - [Relay](#term-relay)
 - [Relay hub](#term-relay-hub)
 - [Resource](#term-resource)
 - [Schedule](#term-schedule)
+- [Schedule catch-up group](#term-schedule-catch-up-group)
 - [Server message](#term-server-message)
 - [Session](#term-session)
 - [Slash command](#term-slash-command)
@@ -413,6 +418,20 @@ A timed trigger that the engine persists and fires. The engine owns the timing. 
   - `engine` / `code` / `go`: `type Scheduler struct` in `engine/internal/scheduling/scheduler.go`
   - `sdk` / `code` / `typescript`: `export const scheduleApi` in `engine/extensions/sdk/ion-sdk/runtime-async.ts`
 
+#### Schedule catch-up group {#term-schedule-catch-up-group}
+
+A named set of daily or weekly Schedules whose latest catch-up policy selects only the newest eligible missed slot.
+
+- **ID:** `schedule-catch-up-group`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `grouped catch-up`
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type ScheduleJob` in `engine/internal/extension/sdk_schedules.go`
+  - `sdk` / `code` / `go`: `type ScheduleOpts` in `sdk/go/schedule.go`
+
 #### Telemetry {#term-telemetry}
 
 The structured trace and span record of engine work. It carries the identifiers that correlate one operation across surfaces.
@@ -515,6 +534,22 @@ A named point in the engine lifecycle where an extension can observe, change, or
   - `sdk` / `code` / `typescript`: `on(hook: string` in `engine/extensions/sdk/ion-sdk/runtime.ts`
   - `engine` / `doc` / `markdown`: `before_prompt` in `docs/hooks/reference.md`
 - **Notes:** The engine owns the mechanism. The by-name reference is the authority; never pin a hook count in prose.
+
+#### Injection Kind {#term-injection-kind}
+
+The classification of how a turn was authored: typed at the prompt, synthesized by an engine-side actor (a dispatch callback, a background-task wake, a scheduler check-in), or submitted through a client's own structured surface such as a Guided Questions page. The engine records the kind on the persisted turn and publishes the derived machine-authored flag. Machine-authored and client-delivered are different facts: a form submission is user-authored because a person chose every value, so a consumer labels it rather than hiding it. What a consumer does with either fact is its own policy.
+
+- **ID:** `injection-kind`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `injected turn kind`, `turn authorship`
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type InjectionKind string` in `engine/internal/types/injection_kind.go`
+  - `engine` / `wire` / `go`: `InjectionKind string` in `engine/internal/protocol/protocol.go`
+  - `desktop` / `code` / `typescript`: `export function suppressesInjection` in `desktop/src/shared/injection-policy.ts`
+  - `ios` / `code` / `swift`: `enum InjectionPolicy` in `ios/IonRemote/Utilities/InjectionPolicy.swift`
 
 #### Normalized event {#term-normalized-event}
 
@@ -703,6 +738,36 @@ One client application built on Electron. It owns the session store, persists co
   - `desktop` / `code` / `typescript`: `export type WindowRole` in `desktop/src/renderer/lib/window-role.ts`
   - `desktop` / `code` / `typescript`: `export interface TabState` in `desktop/src/shared/types-session.ts`
 - **Notes:** Desktop is ONE client with two presentations: the Overlay and the Studio. Never call the presentations separate clients.
+
+#### Guided Questions {#term-guided-questions}
+
+A structured question round that the model opens with the AskUserQuestions client tool. Calling the tool parks the run: the engine retains the request as a permission denial and the session goes idle while the user answers at their own pace. The desktop owns the workflow: it collects answers in the Questions Wizard, supports repeated rounds under one workflow identity, and submits the answers as a resume prompt on the same conversation.
+
+- **ID:** `guided-questions`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `questions workflow`, `question round`
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `export class QuestionsCoordinator` in `desktop/src/main/questions/questions-coordinator.ts`
+  - `desktop` / `wire` / `typescript`: `export type RemoteQuestionsEvent` in `desktop/src/main/remote/protocol-questions.ts`
+  - `engine` / `wire` / `go`: `type ClientToolCallState struct` in `engine/internal/types/tool_gate.go`
+
+#### Install worker {#term-install-worker}
+
+A detached Desktop process that waits for the explicit auto-update restart to stop Ion, replaces the application bundle, and relaunches Ion.
+
+- **ID:** `install-worker`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `update installer`
+- **Legacy names:** None
+- **Contract:** `none`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `install-worker` in `desktop/scripts/install-worker.sh`
+  - `desktop` / `code` / `typescript`: `dispatchUpdateInstall` in `desktop/src/main/install-dispatch.ts`
+- **Notes:** The worker owns the auto-update bundle swap so no running process overwrites its own executable code.
 
 #### Integration bench {#term-integration-bench}
 
@@ -921,6 +986,20 @@ A small chooser that opens from a control and returns one value, such as a model
 - **Implementations:**
   - `desktop` / `ui` / `typescript`: `ModelPickerPopover` in `desktop/src/renderer/components/ModelPickerPopover.tsx`
   - `ios` / `ui` / `swift`: `struct ModelPickerSheet` in `ios/IonRemote/Views/ModelPickerSheet.swift`
+
+#### Questions Wizard {#term-questions-wizard}
+
+The shared client surface that renders a Guided Questions page: the answer form, review screen, and waiting states. One component serves both desktop presentations; the Overlay mounts it in a modal and the Studio shell mounts it in the transient Questions canvas tab.
+
+- **ID:** `questions-wizard`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `questions card`
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `ui` / `typescript`: `export function QuestionsWizard` in `desktop/src/renderer/components/questions/QuestionsWizard.tsx`
+  - `desktop` / `ui` / `typescript`: `export function QuestionsSurface` in `desktop/src/renderer/studio/surface/tabs/QuestionsSurface.tsx`
 
 #### Status Drawer {#term-status-drawer}
 
@@ -1337,8 +1416,11 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Drawer | `StatusDrawer` | `StatusDrawer` | `StatusDrawer` | `ModalSheetBoundary` | None |
 | Engine event | `EngineEvent` | `EngineEvent` | `EngineEvent` | `engine_status` | None |
 | Engine profile | `engineProfileId` | `engineProfileId` | `engineProfileId` | `EngineProfile` | None |
+| Guided Questions | `export class QuestionsCoordinator`, `export type RemoteQuestionsEvent` | `export class QuestionsCoordinator`, `export type RemoteQuestionsEvent` | `export class QuestionsCoordinator`, `export type RemoteQuestionsEvent` | None | iOS |
 | Inbox | `export function classifyInbox`, `export function InboxPanel` | `export function classifyInbox`, `export function InboxPanel`, `InboxSidebar` | `export function classifyInbox`, `export function InboxPanel` | `InboxRowView` | None |
+| Injection Kind | `export function suppressesInjection` | `export function suppressesInjection` | `export function suppressesInjection` | `enum InjectionPolicy` | None |
 | Input Bar | `export function InputBar` | `export function InputBar`, `InputBar` | `export function InputBar` | `InputBar` | None |
+| Install worker | `install-worker`, `dispatchUpdateInstall` | `install-worker`, `dispatchUpdateInstall` | `install-worker`, `dispatchUpdateInstall` | None | iOS |
 | Integration bench | `export interface RemoteBench`, `BenchBar` | `export interface RemoteBench`, `BenchBar` | `export interface RemoteBench`, `BenchBar` | `InboxBenchGroup` | None |
 | iOS | None | None | None | `struct TabListView`, `NormalizedEvent` | Desktop, Studio, Overlay |
 | Menu | `export function TabContextMenu` | `export function TabContextMenu` | `export function TabContextMenu` | `struct TabRowContextMenu` | None |
@@ -1351,6 +1433,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Panel | `FloatingPanel` | `FloatingPanel` | `FloatingPanel` | `struct GitPaneView` | None |
 | Permission | `PermissionCard` | `PermissionCard` | `PermissionCard` | `struct PermissionCardView` | None |
 | Picker | `ModelPickerPopover` | `ModelPickerPopover` | `ModelPickerPopover` | `struct ModelPickerSheet` | None |
+| Questions Wizard | `export function QuestionsWizard`, `export function QuestionsSurface` | `export function QuestionsWizard`, `export function QuestionsSurface` | `export function QuestionsWizard`, `export function QuestionsSurface` | None | iOS |
 | Resource | `ResourceViewer` | `ResourceViewer` | `ResourceViewer` | `Resource` | None |
 | Slash command | `SlashCommandMenu` | `SlashCommandMenu` | `SlashCommandMenu` | `struct SlashCommandMenu` | None |
 | Status Drawer | `StatusDrawer` | `StatusDrawer` | `StatusDrawer` | `struct StatusDrawerView` | None |
@@ -1409,10 +1492,12 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `forwarding` → [Message forwarding](#term-forwarding)
 - Alias: `git worktree` → [Worktree](#term-worktree)
 - Alias: `glass` → [Overlay](#term-overlay)
+- Alias: `grouped catch-up` → [Schedule catch-up group](#term-schedule-catch-up-group)
 - Alias: `harness layer` → [Harness](#term-harness)
 - Alias: `hub` → [Relay hub](#term-relay-hub)
 - Alias: `iOS client` → [iOS](#term-ios-client)
 - Alias: `inbound webhook` → [Webhook](#term-webhook)
+- Alias: `injected turn kind` → [Injection Kind](#term-injection-kind)
 - Alias: `instance` → [Conversation instance](#term-conversation-instance)
 - Alias: `ion context` → [Extension context](#term-extension-context)
 - Alias: `ion serve` → [Engine server](#term-engine-server)
@@ -1433,6 +1518,9 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `profile` → [Engine profile](#term-engine-profile)
 - Alias: `push notification` → [Notification](#term-notification)
 - Alias: `push sender` → [APNs pusher](#term-apns-pusher)
+- Alias: `question round` → [Guided Questions](#term-guided-questions)
+- Alias: `questions card` → [Questions Wizard](#term-questions-wizard)
+- Alias: `questions workflow` → [Guided Questions](#term-guided-questions)
 - Alias: `relay channel` → [Channel](#term-channel)
 - Alias: `relay peer` → [Peer](#term-peer)
 - Alias: `resource item` → [Resource](#term-resource)
@@ -1456,6 +1544,8 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `thread` → [Conversation](#term-conversation)
 - Alias: `timeline minimap` → [Conversation Timeline Minimap](#term-conversation-timeline-minimap)
 - Alias: `transcript view` → [Conversation View](#term-conversation-view)
+- Alias: `turn authorship` → [Injection Kind](#term-injection-kind)
+- Alias: `update installer` → [Install worker](#term-install-worker)
 - Alias: `user turn` → [Turn](#term-turn)
 - Alias: `visualizer` → [Visualizer Canvas](#term-visualizer-canvas)
 - Alias: `wake push` → [Wake notification](#term-wake-notification)

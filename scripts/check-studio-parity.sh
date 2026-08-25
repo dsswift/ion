@@ -15,14 +15,13 @@ cd "$(dirname "$0")/.."
 #   broadcast.ts             — the router itself (owns the Studio gate)
 #   studio-window-manager.ts — Studio window plumbing (pushes TO the studio window / button indicator)
 #   window-manager.ts        — window lifecycle plumbing (show/hide/settings signals)
-#   updater.ts               — update UX is overlay chrome
 #   ipc/studio.ts            — Studio forwarding router (owner exec-action relay)
 #   ipc/conversation-backup.ts — overlay dialog plumbing
 #   ipc/models.ts            — reply plumbing to the requesting window
 #   ipc/remote-control.ts    — overlay-only remote-control UX
 #   remote/handlers/display.ts — overlay display control from iOS
 #   git/subscriptions.ts     — per-sender git subscription replies
-ALLOWLIST='broadcast\.ts|studio-window-manager\.ts|window-manager\.ts|updater\.ts|ipc/studio\.ts|ipc/conversation-backup\.ts|ipc/models\.ts|ipc/remote-control\.ts|remote/handlers/display\.ts|git/subscriptions\.ts'
+ALLOWLIST='broadcast\.ts|studio-window-manager\.ts|window-manager\.ts|ipc/studio\.ts|ipc/conversation-backup\.ts|ipc/models\.ts|ipc/remote-control\.ts|remote/handlers/display\.ts|git/subscriptions\.ts'
 
 violations=$(grep -rn "webContents\.send(" desktop/src/main --include='*.ts' \
   | grep -v '__tests__' \

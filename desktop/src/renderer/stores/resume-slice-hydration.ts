@@ -11,7 +11,7 @@ import {
   mapPersistedMessages,
   filterRestorablePersistedMessages,
 } from "./persisted-message-map";
-import { buildRestoredDenied } from "./restored-denied";
+import { buildRestoredDenied, rehydrateQuestionsFromMessages } from "./restored-denied";
 import { rInfo, rWarn, rDebug } from "../rendererLogger";
 
 /**
@@ -260,6 +260,10 @@ async function hydrate(
     if (!restoredDenied) {
       restoredDenied = buildRestoredDenied(allMessages);
     }
+    // The cold-start path: a conversation opened after a restart or reinstall
+    // rebuilds its parked question from the transcript, not from the
+    // ~/.ion/questions cache (which holds only the typed draft).
+    rehydrateQuestionsFromMessages(tabId, allMessages);
 
     rInfo("session.restore", "skeleton messages hydrated", {
       tab_id: tabId.slice(0, 8),

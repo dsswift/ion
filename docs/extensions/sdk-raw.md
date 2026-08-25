@@ -402,7 +402,7 @@ Response: `{"jsonrpc":"2.0","id":100010,"result":{"ok":true}}`
 
 ### ext/publish_resource
 
-Publish a resource operation. Routes to the global broker when `item.conversationId` is empty, session broker otherwise.
+Publish a resource operation. The session broker stamps `item.producer` from the extension identity, then fans the attributed delta to the producer-free global broker. Any producer value supplied in `item` is ignored. Multiple extensions can publish the same kind; item identity is `(kind, producer, id)`.
 
 ```json
 {"jsonrpc":"2.0","id":100011,"method":"ext/publish_resource","params":{"op":"update","item":{"id":"task-1","conversationId":"conv-1","title":"Updated"}}}
@@ -414,7 +414,7 @@ Response: `{"jsonrpc":"2.0","id":100011,"result":{"ok":true}}`
 
 ### resource/query
 
-The engine calls this method on your extension when a client subscribes to a resource kind you declared. Respond with the current full collection.
+The engine calls this method on your extension when a client subscribes to a resource kind you declared. The `filter` contains the requested `kind` and can include `producer` or `id`. Respond with the current full collection. The engine stamps the producer on every returned item.
 
 ```json
 {"jsonrpc":"2.0","id":5,"method":"resource/query","params":{"kind":"tasks"}}

@@ -29,8 +29,14 @@ vi.mock("../conversation/TranscriptRows", () => ({
 vi.mock("../conversation/useScrollFollow", () => ({
   useScrollFollow: () => ({
     scrollRef: { current: null },
+    contentRef: { current: null },
     showScrollBtn: false,
     handleScroll: vi.fn(),
+    handleWheel: vi.fn(),
+    handleTouchStart: vi.fn(),
+    handleTouchMove: vi.fn(),
+    handlePointerMove: vi.fn(),
+    handleKeyDown: vi.fn(),
     scrollToBottom: vi.fn(),
   }),
 }));

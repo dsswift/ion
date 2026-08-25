@@ -97,6 +97,10 @@
     ],
     "extraResources": [
       {
+        "from": "scripts/install-worker.sh",
+        "to": "install-worker.sh"
+      },
+      {
         "from": "resources/engine/ion",
         "to": "engine/ion"
       },
@@ -114,12 +118,6 @@
       "icon": "resources/icon.icns",
       "x64ArchFiles": "**/node_modules/{node-pty/prebuilds/darwin-*/*,@parcel/watcher-darwin-*/**/*}",
       "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "universal"
-          ]
-        },
         {
           "target": "zip",
           "arch": [
@@ -144,9 +142,6 @@
           "_ion._tcp"
         ]
       }
-    },
-    "dmg": {
-      "sign": true
     },
     "afterSign": "scripts/notarize.js",
     "publish": {

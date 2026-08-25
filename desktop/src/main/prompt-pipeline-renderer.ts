@@ -16,7 +16,7 @@
 import type { IncomingPrompt } from './prompt-pipeline'
 import { log as _log } from './logger'
 import { state } from './state'
-import { notifyStudioUserMessageEcho } from './studio-window-manager'
+import { echoUserTurn } from './user-turn-echo'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -65,18 +65,29 @@ export function emitRemoteMessageAdded(p: IncomingPrompt, content: string, role:
     // mechanism that never existed.
     return
   }
+  // Reuse the request id ONLY for the user echo so iOS replaces its
+  // optimistic bubble by id (the canonical ms timestamp shipped here is what
+  // fixes the "56 years ago" symptom). System echoes need a distinct id,
+  // otherwise iOS treats them as edits of the user's turn and overwrites the
+  // user bubble — which is what produced the regression where a slash failure
+  // visibly "deleted" the user's message and replaced it with the error text.
+  if (role === 'user') {
+    // iOS only: this path is the pipeline's own echo; the Studio mirror is
+    // served by the IPC.PROMPT funnel. Routed through echoUserTurn so the
+    // machine-authored rule is applied in exactly one place.
+    echoUserTurn(
+      { tabId: p.tabId, id: p.reqId, content, source: p.source, injectionKind: p.injectionKind },
+      { studio: false },
+    )
+    return
+  }
+  // A system echo is not a user turn: it carries no injection classification
+  // and is never suppressed by that rule.
   state.remoteTransport.send({
     type: 'desktop_message_added',
     tabId: p.tabId,
     message: {
-      // Reuse the request id ONLY for the user echo so iOS replaces its
-      // optimistic bubble by id (the canonical ms timestamp shipped here
-      // is what fixes the "56 years ago" symptom). System echoes need a
-      // distinct id, otherwise iOS treats them as edits of the user's
-      // turn and overwrites the user bubble — which is what produced the
-      // regression where a slash failure visibly "deleted" the user's
-      // message and replaced it with the error text.
-      id: role === 'system' ? `sys-${p.reqId}-${Date.now()}` : p.reqId,
+      id: `sys-${p.reqId}-${Date.now()}`,
       role,
       content,
       timestamp: Date.now(),
@@ -172,16 +183,21 @@ export async function insertRendererRemoteUserMessage(
   } catch (err) {
     log('insertRendererRemoteUserMessage error: ' + (err as Error).message)
   }
-  // Echo to Studio mirror. The IPC.PROMPT path fires notifyStudioUserMessageEcho
-  // automatically; this executeJavaScript path bypasses that channel and
-  // needs its own echo so the Studio window transcript is complete.
+  // Echo to the Studio mirror. The IPC.PROMPT path echoes automatically; this
+  // executeJavaScript path bypasses that channel and needs its own push so the
+  // Studio transcript is complete. Studio only — iOS is served by
+  // tabs-prompt's own echo for this flow.
   log('insertRendererRemoteUserMessage: echoing to studio', { tab_id: p.tabId, content_len: content.length })
-  notifyStudioUserMessageEcho(p.tabId, {
-    id: p.reqId,
-    content,
-    timestamp: Date.now(),
-    ...(implementationPhase ? { implementationPhase: true } : {}),
-  })
+  echoUserTurn(
+    {
+      tabId: p.tabId,
+      id: p.reqId,
+      content,
+      implementationPhase,
+      injectionKind: p.injectionKind,
+    },
+    { ios: false },
+  )
 }
 
 /**

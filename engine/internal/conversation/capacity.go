@@ -61,8 +61,22 @@ func (c ContextCapacity) WarningLimit() int {
 	return c.EffectiveLimit * 80 / 100
 }
 
+// AutoCompactLimit returns the proactive compaction threshold for this capacity.
+// Legacy configuration documented threshold as a 0..1 ratio, while older callers
+// also supplied 1..100 percentages. Accept both forms so existing overrides keep
+// their behavior; otherwise use the model-aware effective input limit.
+func (c ContextCapacity) AutoCompactLimit(legacyThreshold float64) int {
+	if legacyThreshold <= 0 {
+		return c.EffectiveLimit
+	}
+	if legacyThreshold <= 1 {
+		return int(float64(c.RawLimit) * legacyThreshold)
+	}
+	return int(float64(c.RawLimit) * legacyThreshold / 100.0)
+}
+
 // AutoCompactTokenLimit remains the compatibility entry point for callers that
 // only have a raw window and an explicit output limit.
 func AutoCompactTokenLimit(window, maxOutputTokens int) int {
-	return ResolveContextCapacity(window, maxOutputTokens, 0, DefaultCompactSummaryReserve).EffectiveLimit
+	return ResolveContextCapacity(window, maxOutputTokens, 0, DefaultCompactSummaryReserve).AutoCompactLimit(0)
 }

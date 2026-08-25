@@ -30,6 +30,9 @@ final class InjectionPolicyTests: XCTestCase {
         Expectation(kind: "background_task_completion", machineAuthored: true, suppressed: true),
         Expectation(kind: "checkin", machineAuthored: true, suppressed: true),
         Expectation(kind: "revive", machineAuthored: true, suppressed: true),
+        Expectation(kind: "run_recovery", machineAuthored: true, suppressed: true),
+        Expectation(kind: "structured_answer", machineAuthored: false, suppressed: false),
+        Expectation(kind: "system_steer", machineAuthored: true, suppressed: true),
         Expectation(kind: "steer", machineAuthored: false, suppressed: false),
     ]
 
@@ -85,6 +88,31 @@ final class InjectionPolicyTests: XCTestCase {
         human.injectionKind = nil
         human.machineAuthored = nil
         XCTAssertFalse(InjectionPolicy.suppresses(human))
+    }
+
+    /// A Guided Questions submission RENDERS. It is real operator input: they
+    /// read the questions, chose the options, typed the text and attached the
+    /// images. Hiding it dropped work they actually did; the transcript shows
+    /// it with a "Questions answered" label instead.
+    func testStructuredAnswerRenders() {
+        XCTAssertFalse(
+            InjectionPolicy.suppresses(machineAuthored: nil, injectionKind: "structured_answer"),
+            "a submitted answer set is the operator's own input and must stay visible"
+        )
+        XCTAssertFalse(
+            InjectionPolicy.suppresses(machineAuthored: false, injectionKind: "structured_answer"),
+            "the engine classifies structured_answer as user-authored"
+        )
+    }
+
+    /// The outbound set is empty by construction: nothing a client authors is
+    /// currently hidden. A kind may only be added here when the engine also
+    /// classifies it machine-authored.
+    func testOutboundSetStaysNarrow() {
+        XCTAssertTrue(
+            InjectionPolicy.outboundMachineKinds.isEmpty,
+            "only kinds a client authors AND the engine hides belong here"
+        )
     }
 
     /// The legacy fallback list is a migration shim, not a second policy.

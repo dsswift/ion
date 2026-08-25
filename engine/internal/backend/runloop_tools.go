@@ -117,6 +117,13 @@ func (b *ApiBackend) executeTools(
 		})
 	}
 
+	// A human-wait tool ENDS the turn: any sibling tool call in the same
+	// response is refused unexecuted. Full reasoning in
+	// runloop_human_wait_park.go.
+	if b.refuseSiblingsOfHumanWait(run, toolUseBlocks, results) {
+		return results, nil
+	}
+
 	for i, block := range toolUseBlocks {
 		i, block := i, block
 		g.Go(func() error {
@@ -313,6 +320,14 @@ func (b *ApiBackend) executeTools(
 				if interceptEnterPlanMode(run, block, results, i, hooks, b.emit) {
 					return nil
 				}
+			}
+
+			// Intercept human-wait client tools (AskUserQuestions and any
+			// other ClientToolDef.HumanWait declaration): PARK the run —
+			// retained denial + terminate, the AskUserQuestion sentinel
+			// treatment. Full reasoning in runloop_human_wait_park.go.
+			if b.parkHumanWaitClientTool(run, block, results, i) {
+				return nil
 			}
 
 			// Intercept AskUserQuestion sentinel — available in all runs, not

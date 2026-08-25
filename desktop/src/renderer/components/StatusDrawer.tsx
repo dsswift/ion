@@ -62,6 +62,7 @@ export function StatusDrawer({ embedded = false }: { embedded?: boolean }) {
       return { tab: t, activeInstance: inst }
     }),
   )
+  const tabId = tab?.id
 
   const statusFields = activeInstance?.statusFields ?? null
   const agentStates: AgentStateUpdate[] = useMemo(
@@ -290,6 +291,7 @@ export function StatusDrawer({ embedded = false }: { embedded?: boolean }) {
               dispatchTelemetry={dispatchTelemetry}
               allAgents={agentStates}
               initialStack={deepLinkData.stack}
+              tabId={tabId}
             />
           </div>
         )}

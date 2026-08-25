@@ -84,6 +84,7 @@ import { handleRequestResourceContent, handleMarkResourceRead, handleDeleteResou
 import { handleRequestPlanContent } from './handlers/plan-content'
 import { handleImplementPlan } from './handlers/implement-plan'
 import { handleWorktreeCommand } from './handlers/worktree'
+import { handleQuestionsRemoteCommand } from '../questions/questions-wiring'
 import { handleReportMobileAuth } from './handlers/mobile-auth'
 import { handleStopBackgroundTask } from './handlers/background-tasks'
 import type { RemoteCommand } from './protocol'
@@ -97,6 +98,9 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
   // Worktree + bench verbs live in their own handler (this switch is at its
   // size cap). It returns false for anything it does not own.
   if (await handleWorktreeCommand(cmd)) return
+  // Guided Questions verbs (patch/action/refresh) live in the questions
+  // wiring module; same returns-false contract as the worktree handler.
+  if (handleQuestionsRemoteCommand(cmd as { type: string; tabId?: string; patch?: unknown; action?: unknown })) return
   switch (cmd.type) {
     case 'desktop_sync': await handleSync(deviceId); break
     case 'desktop_create_tab': await handleCreateTab(cmd); break

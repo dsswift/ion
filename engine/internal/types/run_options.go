@@ -430,4 +430,29 @@ type RunOptions struct {
 	// CapabilityPrompt precedent above (in-process-only run fields). Not a
 	// contract surface; not in the cross-language manifest.
 	ParentCtx context.Context `json:"-"`
+
+	// ClientTools is the run's filtered client-declared tool set — the
+	// session-owned client-tool runtime built once per run from
+	// EngineConfig.ToolGate.ClientTools (plan-mode safety and
+	// allowed/suppressed rules already applied). Every backend kind reads
+	// the SAME slice: the API runloop copies it into RunConfig.ExternalTools,
+	// the MCP-capable CLI backends register the definitions on the parent
+	// ToolServer, and codex declares them as thread/start dynamicTools.
+	// In-process only (json:"-"), mirroring CapabilityTools: the client
+	// declared these at start_session, so re-serializing them per run would
+	// be a redundant wire copy.
+	ClientTools []ClientToolDef `json:"-"`
+	// ClientToolRouter fulfills one client-tool call: it blocks until the
+	// owning client's tool_gate_response arrives, the applicable bound
+	// (human-wait or machine timeout) elapses, or ctx is cancelled. Always
+	// returns a non-nil result. Set alongside ClientTools; nil when the
+	// session declared none. In-process only (json:"-").
+	ClientToolRouter func(ctx context.Context, name string, input map[string]interface{}) *ToolResult `json:"-"`
+	// ClientToolSignature is a stable digest of the effective ClientTools
+	// declaration (names + schemas + flags). Backends whose native session
+	// fixes the tool set at creation time (codex thread/start dynamicTools)
+	// record it on their resume cursor; a signature mismatch invalidates
+	// the cursor so a resumed native session can never silently lack a
+	// newly declared tool. In-process only (json:"-").
+	ClientToolSignature string `json:"-"`
 }

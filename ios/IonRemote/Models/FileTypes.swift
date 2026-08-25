@@ -79,4 +79,7 @@ struct TabAttachmentEntry: Codable, Sendable {
     /// declared (e.g. "briefing", "report"). Drives kind-agnostic icon and
     /// label selection. Absent for non-resource attachment types.
     let kind: String?
+    /// Extension identity for a resource attachment. Together with its
+    /// resource ID, this selects the exact item when producers share IDs.
+    let producer: String?
 }

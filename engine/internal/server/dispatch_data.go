@@ -30,10 +30,9 @@ import (
 //     indefinitely.
 //
 //   - Long-running work (LLM calls, file I/O against large
-//     conversations) runs in a goroutine with a recover() so a panic in
-//     one client's request can't bring the whole server down. The
-//     recover captures a stack trace, logs it, and surfaces a generic
-//     "internal error" to the client.
+//     conversations) stays in the process command lane. The outer dispatch
+//     recovery guard catches panics and the dispatch lifecycle owns the one
+//     result and timeout for the full request.
 //
 //   - These arms are called from server.dispatch() and have access to
 //     the same fields (s.config, s.authResolver, s.manager) via the
@@ -45,90 +44,69 @@ import (
 // the LLM call can take a couple of seconds and we don't want to block
 // the client's read loop while it's in flight.
 func (s *Server) dispatchGenerateTitle(conn net.Conn, cmd *protocol.ClientCommand) {
-	go func(c net.Conn, command *protocol.ClientCommand) {
-		defer func() {
-			if r := recover(); r != nil {
-				utils.LogWithFields(utils.LevelError, "server", "panic in generate title", map[string]any{"error": r})
-				s.sendResult(c, command, fmt.Errorf("internal error"), nil)
-			}
-		}()
-		title, err := titling.GenerateTitle(context.Background(), command.Text)
-		if err != nil {
-			s.sendResult(c, command, err, nil)
-			return
-		}
-		s.sendResult(c, command, nil, map[string]string{"title": title})
-	}(conn, cmd)
+	title, err := titling.GenerateTitle(context.Background(), cmd.Text)
+	if err != nil {
+		s.sendResult(conn, cmd, err, nil)
+		return
+	}
+	s.sendResult(conn, cmd, nil, map[string]string{"title": title})
 }
 
-// dispatchMigrateConversation converts a conversation between the Ion
-// and Claude Code on-disk formats. Runs async because the conversion
-// can touch large message lists and we want to validate the output
-// before returning. Validation is bidirectional: the helper extracts
-// canonical messages from the source, performs the conversion, then
-// re-reads the destination and compares so format-mangling bugs are
-// caught at the call site rather than discovered later when the user
-// tries to load the converted file.
+// dispatchMigrateConversation converts a conversation between the Ion and
+// Claude Code on-disk formats. It runs in the process command lane, which is
+// already asynchronous to the socket read loop. Keeping the work in that lane
+// lets the dispatch lifecycle deliver one bounded result for this request.
 func (s *Server) dispatchMigrateConversation(conn net.Conn, cmd *protocol.ClientCommand) {
-	go func(c net.Conn, command *protocol.ClientCommand) {
-		defer func() {
-			if r := recover(); r != nil {
-				utils.LogWithFields(utils.LevelError, "server", "panic in migrate conversation", map[string]any{"error": r})
-				s.sendResult(c, command, fmt.Errorf("internal error"), nil)
-			}
-		}()
+	sourceID := cmd.Key
+	targetFormat := cmd.Text
+	targetDir := cmd.Message
+	newSessionID := conversation.GenEntryID() + "-" + conversation.GenEntryID()
 
-		sourceID := command.Key
-		targetFormat := command.Text
-		targetDir := command.Message
-		newSessionID := conversation.GenEntryID() + "-" + conversation.GenEntryID()
+	var result *conversation.MigrateResult
+	var sourceMsgs []conversation.ValidationMsg
+	var err error
 
-		var result *conversation.MigrateResult
-		var sourceMsgs []conversation.ValidationMsg
-		var err error
-
-		switch targetFormat {
-		case "claude_code":
-			var conv *conversation.Conversation
-			conv, err = conversation.Load(sourceID, "")
-			if err != nil {
-				s.sendResult(c, command, fmt.Errorf("load source conversation: %w", err), nil)
-				return
-			}
-			sourceMsgs = conversation.ExtractValidationMsgs(conv)
-			result, err = conversation.ConvertIonToClaudeCode(conv, newSessionID, targetDir)
-		case "ion":
-			// For Claude Code → Ion, key is the source session ID and
-			// args contains the source directory for the Claude Code JSONL.
-			sourceDir := command.Args
-			if sourceDir == "" {
-				s.sendResult(c, command, fmt.Errorf("args (source dir) required for ion conversion"), nil)
-				return
-			}
-			sourcePath := filepath.Join(sourceDir, sourceID+".jsonl")
-			sourceMsgs, err = conversation.ExtractValidationMsgsFromClaudeCode(sourcePath)
-			if err != nil {
-				s.sendResult(c, command, fmt.Errorf("load source messages: %w", err), nil)
-				return
-			}
-			result, err = conversation.ConvertClaudeCodeToIon(sourcePath, newSessionID, targetDir)
-		default:
-			s.sendResult(c, command, fmt.Errorf("unknown target format: %s", targetFormat), nil)
-			return
-		}
-
+	switch targetFormat {
+	case "claude_code":
+		var conv *conversation.Conversation
+		conv, err = conversation.Load(sourceID, "")
 		if err != nil {
-			s.sendResult(c, command, err, nil)
+			s.sendResult(conn, cmd, fmt.Errorf("load source conversation: %w", err), nil)
 			return
 		}
-
-		if err := conversation.ValidateConversion(sourceMsgs, result.OutputPath, targetFormat); err != nil {
-			s.sendResult(c, command, fmt.Errorf("validation failed: %w", err), nil)
+		sourceMsgs = conversation.ExtractValidationMsgs(conv)
+		result, err = conversation.ConvertIonToClaudeCode(conv, newSessionID, targetDir)
+	case "ion":
+		// For Claude Code → Ion, key is the source session ID and args
+		// contains the source directory for the Claude Code JSONL.
+		sourceDir := cmd.Args
+		if sourceDir == "" {
+			s.sendResult(conn, cmd, fmt.Errorf("args (source dir) required for ion conversion"), nil)
 			return
 		}
+		sourcePath := filepath.Join(sourceDir, sourceID+".jsonl")
+		sourceMsgs, err = conversation.ExtractValidationMsgsFromClaudeCode(sourcePath)
+		if err != nil {
+			s.sendResult(conn, cmd, fmt.Errorf("load source messages: %w", err), nil)
+			return
+		}
+		result, err = conversation.ConvertClaudeCodeToIon(sourcePath, newSessionID, targetDir)
+	default:
+		s.sendResult(conn, cmd, fmt.Errorf("unknown target format: %s", targetFormat), nil)
+		return
+	}
 
-		s.sendResult(c, command, nil, result)
-	}(conn, cmd)
+	if err != nil {
+		s.sendResult(conn, cmd, err, nil)
+		return
+	}
+
+	if err := conversation.ValidateConversion(sourceMsgs, result.OutputPath, targetFormat); err != nil {
+		s.sendResult(conn, cmd, fmt.Errorf("validation failed: %w", err), nil)
+		return
+	}
+
+	s.sendResult(conn, cmd, nil, result)
 }
 
 // dispatchListModels assembles the model + provider listing consumers

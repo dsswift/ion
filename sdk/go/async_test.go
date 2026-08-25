@@ -453,3 +453,27 @@ func TestFireForUnknownIDErrors(t *testing.T) {
 		t.Errorf("expected an error for an unregistered route, got %+v", resp)
 	}
 }
+
+func TestDailyScheduleForwardsRecoveryFields(t *testing.T) {
+	fe := newFakeEngine(t, WithName("daily-recovery-fields"))
+	_, err := fe.sdk.Schedule().Daily(context.Background(),
+		ScheduleOpts{
+			ID: "weekday-brief", Time: "09:00", DaysOfWeek: []string{"monday", "wednesday"},
+			CatchUp: "latest", CatchUpGroup: "briefings", CatchUpScope: "same_day",
+		},
+		func(context.Context, *Context, ScheduleControl, ScheduleFireMeta) error { return nil })
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	fe.start()
+	result := fe.doInit(ExtensionConfig{})
+	schedules := result["schedules"].([]any)
+	job := schedules[0].(map[string]any)
+	if job["catchUp"] != "latest" || job["catchUpGroup"] != "briefings" || job["catchUpScope"] != "same_day" {
+		t.Fatalf("recovery fields = %+v", job)
+	}
+	days := job["daysOfWeek"].([]any)
+	if len(days) != 2 || days[0] != "monday" || days[1] != "wednesday" {
+		t.Fatalf("daysOfWeek = %#v", days)
+	}
+}

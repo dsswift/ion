@@ -56,6 +56,10 @@ const (
 const (
 	ReqCommandApproval    = "item/commandExecution/requestApproval"
 	ReqFileChangeApproval = "item/fileChange/requestApproval"
+	// ReqDynamicToolCall is codex's server→client request asking the client
+	// to execute one of the dynamic tools declared at thread/start. The
+	// response is a DynamicToolCallResponse.
+	ReqDynamicToolCall = "item/tool/call"
 )
 
 // Approval decision values (the "decision" field of an approval response).
@@ -169,6 +173,52 @@ type ThreadStartParams struct {
 	ServiceTier    string `json:"serviceTier,omitempty"`
 	ApprovalPolicy string `json:"approvalPolicy,omitempty"`
 	Sandbox        string `json:"sandbox,omitempty"`
+	// DynamicTools declares client-executed tools for the thread. The tool
+	// set is FIXED at thread creation: a resumed thread keeps the tools it
+	// was started with, which is why the engine records a client-tool
+	// signature on the codex resume cursor. Calls arrive as item/tool/call
+	// server requests.
+	DynamicTools []DynamicToolSpec `json:"dynamicTools,omitempty"`
+}
+
+// DynamicToolSpec declares one dynamic (client-executed) tool on
+// thread/start.
+type DynamicToolSpec struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
+	InputSchema map[string]any `json:"inputSchema,omitempty"`
+}
+
+// DynamicToolCallParams is the "item/tool/call" server-request payload: codex
+// asks the client to execute a declared dynamic tool.
+type DynamicToolCallParams struct {
+	ThreadID  string         `json:"threadId"`
+	TurnID    string         `json:"turnId,omitempty"`
+	CallID    string         `json:"callId,omitempty"`
+	Tool      string         `json:"tool"`
+	Arguments map[string]any `json:"arguments,omitempty"`
+}
+
+// DynamicToolCallOutput is one content block of a dynamic-tool response.
+// Only text output is modeled.
+type DynamicToolCallOutput struct {
+	Type string `json:"type"` // always "text"
+	Text string `json:"text"`
+}
+
+// DynamicToolCallResponse answers an item/tool/call request. Success false
+// marks the result as a tool error the model can read.
+type DynamicToolCallResponse struct {
+	Output  []DynamicToolCallOutput `json:"output"`
+	Success bool                    `json:"success"`
+}
+
+// NewDynamicToolCallResponse builds a single-text-block response.
+func NewDynamicToolCallResponse(text string, success bool) DynamicToolCallResponse {
+	return DynamicToolCallResponse{
+		Output:  []DynamicToolCallOutput{{Type: "text", Text: text}},
+		Success: success,
+	}
 }
 
 // ThreadResumeParams is the "thread/resume" request payload.

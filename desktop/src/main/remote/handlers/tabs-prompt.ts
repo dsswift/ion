@@ -2,6 +2,7 @@ import { log as _log } from "../../logger";
 import { resolveEngineModel } from "../../resolve-engine-model";
 import { state, sessionPlane, engineBridge } from "../../state";
 import { processIncomingPrompt } from "../../prompt-pipeline";
+import { echoUserTurn } from "../../user-turn-echo";
 import { encodeAttachments } from "../attachment-encoder";
 import { IS_REMOTE } from "../../engine-bridge";
 import { getVoiceSystemPrompt } from "./engine";
@@ -223,37 +224,32 @@ export async function handlePrompt(
     const slashMatch = cmd.text.match(
       /^\/([a-zA-Z][a-zA-Z0-9_:-]*)\s*([\s\S]*)$/,
     );
-    state.remoteTransport?.send({
-      type: "desktop_message_added",
+    echoUserTurn({
       tabId: cmd.tabId,
-      message: {
-        id: engineReqId,
-        role: "user",
-        content: fullText,
-        timestamp: echoTs,
-        source: "remote",
-        ...(cmd.implementationPhase ? { implementationPhase: true } : {}),
-        // Carry structured attachments on the echo so iOS id-reconciliation
-        // (handleMessageAdded) preserves them when it replaces the optimistic
-        // message. Without this the structured attachments on the optimistic
-        // bubble are cleared on reconciliation and the inline image disappears.
-        // Use a.path as the synthetic id — consumeUploadResults keys the
-        // AttachmentImageCache by path, so the cache lookup resolves correctly.
-        ...(attachments.length > 0
-          ? {
-              attachments: attachments.map((a) => ({
-                id: a.path,
-                type: a.type as "image" | "file" | "plan",
-                name: a.name,
-                path: a.path,
-                ...(a.contentHash ? { contentHash: a.contentHash } : {}),
-              })),
-            }
-          : {}),
-        ...(slashMatch
-          ? { slashCommand: `/${slashMatch[1]}`, slashArgs: slashMatch[2] }
-          : {}),
-      },
+      id: engineReqId,
+      content: fullText,
+      timestamp: echoTs,
+      source: "remote",
+      implementationPhase: cmd.implementationPhase,
+      // Carry structured attachments on the echo so iOS id-reconciliation
+      // (handleMessageAdded) preserves them when it replaces the optimistic
+      // message. Without this the structured attachments on the optimistic
+      // bubble are cleared on reconciliation and the inline image disappears.
+      // Use a.path as the synthetic id — consumeUploadResults keys the
+      // AttachmentImageCache by path, so the cache lookup resolves correctly.
+      attachments:
+        attachments.length > 0
+          ? attachments.map((a) => ({
+              id: a.path,
+              type: a.type as "image" | "file" | "plan",
+              name: a.name,
+              path: a.path,
+              ...(a.contentHash ? { contentHash: a.contentHash } : {}),
+            }))
+          : undefined,
+      ...(slashMatch
+        ? { slashCommand: `/${slashMatch[1]}`, slashArgs: slashMatch[2] }
+        : {}),
     });
 
     // Resolve project path from renderer (same query as CLI path below).
@@ -348,31 +344,26 @@ export async function handlePrompt(
   const cliSlashMatch = cmd.text.match(
     /^\/([a-zA-Z][a-zA-Z0-9_:-]*)\s*([\s\S]*)$/,
   );
-  state.remoteTransport?.send({
-    type: "desktop_message_added",
+  echoUserTurn({
     tabId: cmd.tabId,
-    message: {
-      id: reqId,
-      role: "user",
-      content: cliEchoContent,
-      timestamp: echoTs,
-      source: "remote",
-      ...(cmd.implementationPhase ? { implementationPhase: true } : {}),
-      ...(cliAttachments.length > 0
-        ? {
-            attachments: cliAttachments.map((a) => ({
-              id: a.path,
-              type: a.type as "image" | "file" | "plan",
-              name: a.name,
-              path: a.path,
-              ...(a.contentHash ? { contentHash: a.contentHash } : {}),
-            })),
-          }
-        : {}),
-      ...(cliSlashMatch
-        ? { slashCommand: `/${cliSlashMatch[1]}`, slashArgs: cliSlashMatch[2] }
-        : {}),
-    },
+    id: reqId,
+    content: cliEchoContent,
+    timestamp: echoTs,
+    source: "remote",
+    implementationPhase: cmd.implementationPhase,
+    attachments:
+      cliAttachments.length > 0
+        ? cliAttachments.map((a) => ({
+            id: a.path,
+            type: a.type as "image" | "file" | "plan",
+            name: a.name,
+            path: a.path,
+            ...(a.contentHash ? { contentHash: a.contentHash } : {}),
+          }))
+        : undefined,
+    ...(cliSlashMatch
+      ? { slashCommand: `/${cliSlashMatch[1]}`, slashArgs: cliSlashMatch[2] }
+      : {}),
   });
   // Resolve the tab's working directory from the renderer store so the
   // pipeline can find project-scoped `.md` templates (e.g.

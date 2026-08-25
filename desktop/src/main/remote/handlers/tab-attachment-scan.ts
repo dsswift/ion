@@ -46,6 +46,7 @@ export interface TabAttachmentEntry {
   name: string
   path: string
   kind?: string
+  producer?: string
 }
 
 export interface ScanInput {

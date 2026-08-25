@@ -367,9 +367,22 @@ export const IPC = {
   GET_PLAN_BASH_ALLOWLIST: "ion:get-plan-bash-allowlist",
   SET_PLAN_BASH_ALLOWLIST: "ion:set-plan-bash-allowlist",
 
+  // Guided Questions (AskUserQuestions wizard). Main owns the workflow
+  // (QuestionsCoordinator); renderers read state and send revisioned
+  // patches/actions. QUESTIONS_STATE is the broadcast channel.
+  QUESTIONS_GET_STATE: "ion:questions-get-state",
+  QUESTIONS_PATCH: "ion:questions-patch",
+  QUESTIONS_ACTION: "ion:questions-action",
+  QUESTIONS_STATE: "ion:questions-state",
+  // Native image picker for per-question answer attachments.
+  QUESTIONS_PICK_ATTACHMENTS: "ion:questions-pick-attachments",
+  // Rebuild a parked question from a restored conversation transcript. The
+  // transcript is the authority for whether a question is outstanding; the
+  // ~/.ion/questions record only caches the operator's typed draft.
+  QUESTIONS_REHYDRATE: "ion:questions-rehydrate",
+
   // Resource focus tracking
-  NOTIFY_TAB_FOCUS: "ion:notify-tab-focus",
-  MARK_RESOURCE_READ: "ion:mark-resource-read",
+  NOTIFY_TAB_FOCUS: "ion:notify-tab-focus",  MARK_RESOURCE_READ: "ion:mark-resource-read",
   GET_READ_RESOURCE_IDS: "ion:get-read-resource-ids",
   GET_PERSISTED_RESOURCES: "ion:get-persisted-resources",
   DELETE_RESOURCE: "ion:delete-resource",
@@ -416,7 +429,11 @@ export const IPC = {
 
   // Auto-update
   INSTALL_UPDATE: "ion:install-update",
+  RESTART_FOR_UPDATE: "ion:restart-for-update",
   UPDATE_DOWNLOADED: "ion:update-downloaded",
+  UPDATE_PROGRESS: "ion:update-progress",
+  UPDATE_STAGED: "ion:update-staged",
+  UPDATE_ERROR: "ion:update-error",
 
   // Legacy (kept for backward compat during migration)
   STREAM_EVENT: "ion:stream-event",

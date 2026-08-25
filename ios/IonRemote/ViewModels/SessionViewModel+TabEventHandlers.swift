@@ -25,6 +25,8 @@ extension SessionViewModel {
         activeTools.removeValue(forKey: tabId)
         conversationLoaded.remove(tabId)
         loadingConversation.remove(tabId)
+        // Guided Questions are tab-scoped; a closed tab has no wizard to show.
+        questionsStore.removeTab(tabId)
         // Drafts are local-only state — clean them up when the tab is closed
         // (don't survive tab close; do survive disconnect / restart). One
         // unified bare-tabId draft store covers plain and engine tabs.

@@ -514,6 +514,17 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
       source?: "remote" | "machine";
       resolveSlash?: boolean;
       requestId?: string;
+      /**
+       * How this turn was authored, as an engine InjectionKind wire value
+       * ('structured_answer' for a Guided Questions submission). When set to
+       * a machine-authored kind, submit SKIPS the optimistic user bubble —
+       * the operator answered in a dedicated surface that already shows
+       * their answers, so echoing the engine-facing rendering into the
+       * transcript would show it back to them twice in a shape they did not
+       * write. The suppression rule is the shared one
+       * (shared/injection-policy.ts), not a second local list.
+       */
+      injectionKind?: string;
     },
   ) => PromptSubmitResult;
   /**
@@ -530,6 +541,9 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
     remoteAttachments?: Array<{ type: string; name: string; path: string }>,
     requestId?: string,
     implementationPhase?: boolean,
+    /** Engine InjectionKind wire value; a machine-authored kind suppresses
+     *  the optimistic user bubble (see submit's injectionKind). */
+    injectionKind?: string,
   ) => void;
   /**
    * Move a tab to its planning/in-progress group on send, based on the tab's

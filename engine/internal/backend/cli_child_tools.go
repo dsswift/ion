@@ -95,15 +95,17 @@ func BuildDelegatedChildToolServer(child RunBackend, sessionID string, cfg *RunC
 
 	ts := NewToolServer(sessionID)
 
-	// Extension tools → route through the child's McpToolRouter.
+	// Extension tools → route through the child's McpToolRouter. The MCP
+	// request ctx flows into the router so session/server teardown cancels a
+	// blocked call.
 	for _, td := range cfg.ExternalTools {
 		name := td.Name
 		router := cfg.McpToolRouter
-		ts.RegisterTool(name, func(input map[string]interface{}) (*types.ToolResult, error) {
+		ts.RegisterTool(name, func(ctx context.Context, input map[string]interface{}) (*types.ToolResult, error) {
 			if router == nil {
 				return &types.ToolResult{Content: "tool router unavailable for dispatched CLI child", IsError: true}, nil
 			}
-			return router(context.Background(), name, input)
+			return router(ctx, name, input)
 		}, td.Description, td.InputSchema)
 	}
 
@@ -114,7 +116,7 @@ func BuildDelegatedChildToolServer(child RunBackend, sessionID string, cfg *RunC
 		agentDef := tools.AgentTool()
 		spawner := cfg.AgentSpawner
 		cwd := opts.ProjectPath
-		ts.RegisterTool("ion_agent", func(input map[string]interface{}) (*types.ToolResult, error) {
+		ts.RegisterTool("ion_agent", func(ctx context.Context, input map[string]interface{}) (*types.ToolResult, error) {
 			prompt, _ := input["prompt"].(string)           //nolint:errcheck // missing arg -> empty string, validated below
 			name, _ := input["name"].(string)               //nolint:errcheck // missing arg -> empty string
 			description, _ := input["description"].(string) //nolint:errcheck // missing arg -> empty string
@@ -122,7 +124,7 @@ func BuildDelegatedChildToolServer(child RunBackend, sessionID string, cfg *RunC
 			if prompt == "" {
 				return &types.ToolResult{Content: "error: prompt is required", IsError: true}, nil
 			}
-			out, err := spawner(context.Background(), name, prompt, description, cwd, model)
+			out, err := spawner(ctx, name, prompt, description, cwd, model)
 			if err != nil {
 				return &types.ToolResult{Content: fmt.Sprintf("agent dispatch failed: %s", err.Error()), IsError: true}, nil
 			}
@@ -133,9 +135,8 @@ func BuildDelegatedChildToolServer(child RunBackend, sessionID string, cfg *RunC
 	if cfg.AgentStatus != nil {
 		statusDef := tools.AgentStatusTool()
 		getter := cfg.AgentStatus
-		ts.RegisterTool("ion_agent_status", func(input map[string]interface{}) (*types.ToolResult, error) {
-			ctx := tools.WithAgentStatusGetter(context.Background(), getter)
-			return tools.ExecuteTool(ctx, tools.AgentStatusToolName, input, "")
+		ts.RegisterTool("ion_agent_status", func(ctx context.Context, input map[string]interface{}) (*types.ToolResult, error) {
+			return tools.ExecuteTool(tools.WithAgentStatusGetter(ctx, getter), tools.AgentStatusToolName, input, "")
 		}, statusDef.Description, statusDef.InputSchema)
 	}
 

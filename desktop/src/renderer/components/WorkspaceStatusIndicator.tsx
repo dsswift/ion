@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useSessionStore } from "../stores/sessionStore";
+import { useQuestionsStore } from "../stores/questions-store";
 import { useAnchoredPopover } from "../hooks/useAnchoredPopover";
 import { useColors } from "../theme";
 import { usePopoverLayer } from "./PopoverLayer";
@@ -255,6 +256,10 @@ export function WorkspaceStatusIndicator() {
     (s) => s.terminalActiveTabIds ?? new Set<string>(),
   );
   useSessionStore((s) => s.conversationPanes);
+  // Same reason: a Guided Questions round is a waiting state that lives
+  // outside permissionDenied, and computeStatusCounts reads the questions
+  // store non-reactively through getWaitingState.
+  useQuestionsStore((s) => s.workflows);
 
   const tier = globalRunningTier(tabs, terminalActiveTabIds);
 

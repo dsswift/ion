@@ -81,8 +81,9 @@ extension RemoteEvent {
             // Desktop sends "kind" (not "resourceKind") in resource_content responses.
             // "resourceKind" is the engine-side key for engine_resource_snapshot/delta.
             let kind = try container.decode(String.self, forKey: .kind)
+            let producer = try container.decode(String.self, forKey: .producer)
             let content = try container.decodeIfPresent(String.self, forKey: .content) ?? ""
-            return .resourceContent(resourceId: resourceId, kind: kind, content: content)
+            return .resourceContent(resourceId: resourceId, kind: kind, producer: producer, content: content)
 
         case .planContent:
             // Paged byte-range window of a plan file (desktop_plan_content).
@@ -157,10 +158,11 @@ extension RemoteEvent {
             try container.encodeIfPresent(notifyScope, forKey: .notifyScope)
             return true
 
-        case .resourceContent(let resourceId, let kind, let content):
+        case .resourceContent(let resourceId, let kind, let producer, let content):
             try container.encode(TypeKey.resourceContent, forKey: .type)
             try container.encode(resourceId, forKey: .resourceId)
-            try container.encode(kind, forKey: .resourceKind)
+            try container.encode(kind, forKey: .kind)
+            try container.encode(producer, forKey: .producer)
             try container.encode(content, forKey: .content)
             return true
 
