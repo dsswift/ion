@@ -40,6 +40,7 @@ describe('retireWorktree', () => {
       const res = await state.retireWorktree(REPO, WT_A, 'wt/a3f1')
 
       expect(res.ok).toBe(false)
+      expect(ion.gitWorktreeDiscard).not.toHaveBeenCalled()
       expect(ion.gitWorktreeLandAndRetire).not.toHaveBeenCalled()
       expect(state.tabs).toHaveLength(1)
     })
@@ -64,6 +65,7 @@ describe('retireWorktree', () => {
 
       const res = await state.retireWorktree(REPO, WT_A, 'wt/a3f1')
 
+      expect(ion.gitWorktreeDiscard).not.toHaveBeenCalled()
       expect(ion.gitWorktreeLandAndRetire).not.toHaveBeenCalled()
       expect(res.error).toContain('Migration sweep')
       expect(res.error).toContain('2 background agents running')
@@ -77,6 +79,7 @@ describe('retireWorktree', () => {
 
       const res = await state.retireWorktree(REPO, WT_A, 'wt/a3f1')
 
+      expect(ion.gitWorktreeDiscard).not.toHaveBeenCalled()
       expect(ion.gitWorktreeLandAndRetire).not.toHaveBeenCalled()
       expect(res.error).toContain('1 background command running')
     })
@@ -116,6 +119,7 @@ describe('retireWorktree', () => {
       const res = await state.retireWorktree(REPO, WT_A, 'wt/a3f1')
 
       expect(res.ok).toBe(false)
+      expect(ion.gitWorktreeDiscard).not.toHaveBeenCalled()
       expect(ion.gitWorktreeLandAndRetire).not.toHaveBeenCalled()
     })
 
@@ -130,7 +134,8 @@ describe('retireWorktree', () => {
       const res = await state.retireWorktree(REPO, WT_A, 'wt/a3f1')
 
       expect(res.ok).toBe(true)
-      expect(ion.gitWorktreeLandAndRetire).toHaveBeenCalled()
+      expect(ion.gitWorktreeDiscard).toHaveBeenCalled()
+      expect(ion.gitWorktreeLandAndRetire).not.toHaveBeenCalled()
       expect(state.tabs).toHaveLength(1)
     })
 
@@ -159,6 +164,7 @@ describe('retireWorktree', () => {
 
       expect(res.ok).toBe(false)
       expect(res.error).toContain('Bench work')
+      expect(ion.gitWorktreeDiscard).not.toHaveBeenCalled()
       expect(ion.gitWorktreeLandAndRetire).not.toHaveBeenCalled()
     })
 
@@ -203,6 +209,22 @@ describe('retireWorktree', () => {
   })
 
   describe('closes every occupant once the retire succeeds', () => {
+    it('uses discard rather than landing the worktree first', async () => {
+      const { state } = harness()
+
+      const result = await state.retireWorktree(REPO, WT_A, 'wt/a3f1')
+
+      expect(result.ok).toBe(true)
+      expect(ion.gitWorktreeDiscard).toHaveBeenCalledWith({
+        repoPath: REPO,
+        worktreePath: WT_A,
+        branchName: 'wt/a3f1',
+        sourceBranch: 'josh',
+      })
+      expect(ion.gitWorktreeLandAndRetire).not.toHaveBeenCalled()
+    })
+
+
     // The reported defect: `find` closed/relocated only the first.
     it('closes all conversations AND the terminal in the worktree', async () => {
       const { state } = harness({
@@ -248,7 +270,7 @@ describe('retireWorktree', () => {
 
     it('closes tabs in the benches the retire actually pruned', async () => {
       const OTHER_BENCH = '/Users/test/.ion/integration/project-other'
-      ion.gitWorktreeLandAndRetire.mockResolvedValueOnce({
+      ion.gitWorktreeDiscard.mockResolvedValueOnce({
         ok: true, workingDirectory: REPO, prunedBenchPaths: [BENCH],
       })
       const { state } = harness({
@@ -305,7 +327,7 @@ describe('retireWorktree', () => {
 
   describe('a refused retire changes nothing', () => {
     it('closes no tabs when the retire itself refuses', async () => {
-      ion.gitWorktreeLandAndRetire.mockResolvedValueOnce({ ok: false, error: 'unlanded work' })
+      ion.gitWorktreeDiscard.mockResolvedValueOnce({ ok: false, error: 'unlanded work' })
       const { state } = harness({ tabs: [{ id: 'occupant', workingDirectory: WT_A }] })
 
       const res = await state.retireWorktree(REPO, WT_A, 'wt/a3f1')
@@ -329,7 +351,7 @@ describe('retireWorktree', () => {
         tabs: [{ id: 'racer', workingDirectory: WT_A, conversationId: 'conv-1' } as any],
       })
       // Idle at pre-flight; busy by the time closeTab runs.
-      ion.gitWorktreeLandAndRetire.mockImplementationOnce(async () => {
+      ion.gitWorktreeDiscard.mockImplementationOnce(async () => {
         state.conversationPanes.set('racer', runningPane)
         return { ok: true, workingDirectory: REPO, prunedBenchPaths: [] }
       })
@@ -366,6 +388,7 @@ describe('retireWorktree', () => {
       const res = await state.retireWorktree(REPO, WT_A, 'wt/a3f1')
 
       expect(res.ok).toBe(false)
+      expect(ion.gitWorktreeDiscard).not.toHaveBeenCalled()
       expect(ion.gitWorktreeLandAndRetire).not.toHaveBeenCalled()
     })
   })

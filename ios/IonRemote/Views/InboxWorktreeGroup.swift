@@ -22,7 +22,7 @@ struct InboxWorktreeGroup<Row: View>: View {
     @State private var showRename = false
     @State private var renameTitle = ""
     @State private var confirmDiscardRecordings = false
-    @State private var confirmRetire = false
+    @State private var confirmDiscard = false
     let activeTabId: String?
     @Binding var expanded: Set<String>
     /// True only in the side-by-side layout. When false (iPhone), tapping the
@@ -56,7 +56,7 @@ struct InboxWorktreeGroup<Row: View>: View {
             onNewConversation: { viewModel.newWorktreeConversation(worktreePath: worktree.worktreePath) },
             onSelectConversation: { viewModel.navigateToTab($0) },
             verificationFailure: verificationFailure,
-            onRetire: { confirmRetire = true },
+            onRetire: { confirmDiscard = true },
             activeAutoFixTabId: InboxNavigator.activeAutoFixTab(viewModel.tabs, directory: worktree.worktreePath)?.id,
             benchAutoFixTabId: benchAutoFixTabId,
             onConflictAssist: { viewModel.worktreeConflictAssist(worktree, repoPath: repoPath) },
@@ -90,8 +90,8 @@ struct InboxWorktreeGroup<Row: View>: View {
             }
             Button("Cancel", role: .cancel) {}
         }
-        .confirmationDialog(retireSummary, isPresented: $confirmRetire, titleVisibility: .visible) {
-            Button("Retire worktree", role: .destructive) {
+        .confirmationDialog(discardSummary, isPresented: $confirmDiscard, titleVisibility: .visible) {
+            Button("Discard worktree", role: .destructive) {
                 viewModel.retireWorktree(worktree, repoPath: repoPath)
             }
             Button("Keep it", role: .cancel) {}
@@ -114,15 +114,15 @@ struct InboxWorktreeGroup<Row: View>: View {
     /// The appraisal facts the desktop's confirm dialog names, from state the
     /// phone already holds. The desktop re-appraises at execution time and can
     /// still refuse, so a stale count here is advisory, never load-bearing.
-    private var retireSummary: String {
+    private var discardSummary: String {
         var parts: [String] = []
         if worktree.isDirty { parts.append("uncommitted changes") }
         if worktree.unlandedCommitCount > 0 {
             let n = worktree.unlandedCommitCount
             parts.append("\(n) commit\(n == 1 ? "" : "s") not yet landed")
         }
-        guard !parts.isEmpty else { return "Retire this worktree? Its checkout and branch are removed." }
-        return "This worktree holds \(parts.joined(separator: " and ")). Retiring removes its checkout; the desktop preserves dirty work under a recovery ref."
+        guard !parts.isEmpty else { return "Discard this worktree? Its checkout and branch are removed. Nothing merges into its source branch." }
+        return "This worktree holds \(parts.joined(separator: " and ")). Discarding removes its checkout and branch without merging; the desktop saves work under recovery refs first."
     }
 
     private var benchAutoFixTabId: String? {

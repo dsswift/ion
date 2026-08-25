@@ -54,6 +54,8 @@ export function WorktreeRowMenu({
   const {
     requestLandAndRetire,
     doLandAndRetire,
+    requestDiscardWorktree,
+    doDiscardWorktree,
     doAddToBench,
     doRemoveFromBench,
     doDiscardRecordings,
@@ -66,8 +68,12 @@ export function WorktreeRowMenu({
     busy,
     confirmRetire,
     setConfirmRetire,
+    confirmDiscardWorktree,
+    setConfirmDiscardWorktree,
     landError,
     setLandError,
+    discardError,
+    setDiscardError,
     confirmDiscardRecordings,
     setConfirmDiscardRecordings,
     discardRecordingsOutcome,
@@ -222,6 +228,11 @@ export function WorktreeRowMenu({
           rError("worktree.menu", "land and retire preflight threw", { error: String(err) }),
         );
       },
+      onRequestDiscardWorktree: () => {
+        void requestDiscardWorktree().catch((err) =>
+          rError("worktree.menu", "discard preflight threw", { error: String(err) }),
+        );
+      },
       onReveal: () => {
         void window.ion
           .revealPath(entry.worktreePath)
@@ -280,7 +291,9 @@ export function WorktreeRowMenu({
   // withdrawn.
   const dialogUp =
     confirmRetire !== null ||
+    confirmDiscardWorktree !== null ||
     landError !== null ||
+    discardError !== null ||
     confirmDiscardRecordings !== null ||
     discardRecordingsOutcome !== null;
 
@@ -507,6 +520,8 @@ export function WorktreeRowMenu({
       <WorktreeRowMenuDialogs
         landError={landError}
         setLandError={setLandError}
+        discardError={discardError}
+        setDiscardError={setDiscardError}
         confirmDiscardRecordings={confirmDiscardRecordings}
         setConfirmDiscardRecordings={setConfirmDiscardRecordings}
         discardRecordingsOutcome={discardRecordingsOutcome}
@@ -515,6 +530,9 @@ export function WorktreeRowMenu({
         doDiscardRecordings={doDiscardRecordings}
         confirmRetire={confirmRetire}
         setConfirmRetire={setConfirmRetire}
+        confirmDiscardWorktree={confirmDiscardWorktree}
+        setConfirmDiscardWorktree={setConfirmDiscardWorktree}
+        doDiscardWorktree={doDiscardWorktree}
         doLandAndRetire={doLandAndRetire}
         hasNothingToLand={entry.unlandedCommitCount === 0}
         onClose={onClose}

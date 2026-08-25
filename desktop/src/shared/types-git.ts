@@ -193,9 +193,9 @@ export interface WorktreeMoveResult {
   /** Populated on re-attach: the freshly created worktree. */
   worktree?: WorktreeInfo
   /**
-   * Populated when a forced retire preserved uncommitted work: the full ref
-   * name in the parent repo (`refs/ion/recovery/...`) holding a snapshot commit.
-   * Absent when the worktree was clean, so there was nothing to preserve.
+   * Populated when removal preserved work before deletion. The full ref name in
+   * the parent repo points at the saved content: forced retire uses
+   * `refs/ion/recovery/...`; explicit discard uses `refs/ion/discarded/...`.
    *
    * Surfaced to the operator rather than only logged: a ref they cannot see is
    * indistinguishable from work that was silently destroyed.

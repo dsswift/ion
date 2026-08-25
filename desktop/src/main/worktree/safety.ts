@@ -3,8 +3,8 @@
  * worktree would destroy work.
  *
  * ── The defect this exists to prevent ───────────────────────────────────────
- * Closing a tab called `gitWorktreeRemove(..., force=true)` unconditionally,
- * and the remove handler then ran `git branch -D`. Together that destroyed,
+ * Closing a tab previously forced a raw worktree removal and branch deletion,
+ * which destroyed uncommitted changes and made unlanded commits unreachable
  * with no prompt and no recovery:
  *
  *   - uncommitted changes in the worktree (gone with the directory), and

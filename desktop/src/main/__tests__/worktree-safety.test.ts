@@ -27,6 +27,7 @@ import { join } from 'path'
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
 import { appraiseWorktree, preserveWorktreeWork, listPreservedWork } from '../worktree/safety'
+import { discardWorktree } from '../worktree/relocate'
 import { landWorktree } from '../worktree/integrate'
 
 function git(cwd: string, ...args: string[]): string {
@@ -205,6 +206,44 @@ describe('appraiseWorktree — fails closed', () => {
 
     expect(appraisal.safeToDiscard).toBe(false)
     expect(appraisal.appraisalFailed).toBe(true)
+  })
+})
+
+
+describe('discardWorktree — preserves before it removes without landing', () => {
+  it('keeps the source branch unchanged and anchors discarded work', async () => {
+    const a = makeWorktree('discard')
+    const sourceBefore = git(repo, 'rev-parse', 'main').trim()
+    writeFileSync(join(a.path, 'discarded.txt'), 'recoverable work\n')
+    git(a.path, 'add', '-A')
+    git(a.path, 'commit', '-m', 'discarded feature')
+
+    const result = await discardWorktree({
+      repoPath: repo,
+      worktreePath: a.path,
+      branchName: a.branch,
+      sourceBranch: 'main',
+    })
+
+    expect(result.ok).toBe(true)
+    expect(git(repo, 'rev-parse', 'main').trim()).toBe(sourceBefore)
+    expect(existsSync(a.path)).toBe(false)
+    expect(result.recoveryRef).toMatch(/^refs\/ion\/discarded\//)
+    expect(git(repo, 'show', `${result.recoveryRef}:discarded.txt`)).toBe('recoverable work\n')
+  })
+
+  it('refuses when it cannot appraise the worktree', async () => {
+    const a = makeWorktree('discard-unknown')
+
+    const result = await discardWorktree({
+      repoPath: repo,
+      worktreePath: a.path,
+      branchName: a.branch,
+      sourceBranch: 'does-not-exist',
+    })
+
+    expect(result.ok).toBe(false)
+    expect(existsSync(a.path)).toBe(true)
   })
 })
 

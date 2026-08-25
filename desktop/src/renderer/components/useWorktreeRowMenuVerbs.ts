@@ -40,6 +40,7 @@ export function useWorktreeRowMenuVerbs({
   });
   const busy = operation?.status === 'pending' || operation?.status === 'running';
   const [confirmRetire, setConfirmRetire] = useState<string | null>(null);
+  const [confirmDiscardWorktree, setConfirmDiscardWorktree] = useState<string | null>(null);
   const [confirmDiscardRecordings, setConfirmDiscardRecordings] = useState<
     string | null
   >(null);
@@ -49,6 +50,7 @@ export function useWorktreeRowMenuVerbs({
   // A land refusal (diverged branch, conflict) is actionable and must be shown,
   // not swallowed into the log while the menu closes as if it had worked.
   const [landError, setLandError] = useState<string | null>(null);
+  const [discardError, setDiscardError] = useState<string | null>(null);
   // Inline rename state. The generated title is a good default, not an
   // authority — the operator must be able to correct one that missed.
   const [renaming, setRenaming] = useState(false);
@@ -87,6 +89,74 @@ export function useWorktreeRowMenuVerbs({
     )
   }
 
+  async function requestDiscardWorktree(): Promise<void> {
+    if (!entry.sourceBranch) {
+      setDiscardError('Ion does not know what branch this worktree came from.')
+      return
+    }
+    let benchPaths: string[] = []
+    try {
+      benchPaths = (await window.ion.gitWorktreeRetirePreview(entry.worktreePath)).prunedBenchPaths ?? []
+    } catch (error) {
+      rWarn('worktree.menu', 'discard preview failed; checking the worktree only', {
+        worktree_path: entry.worktreePath,
+        error: String(error),
+      })
+    }
+    const blockers = resolveRetireBlockers(useSessionStore.getState, entry.worktreePath, benchPaths)
+    if (blockers) {
+      setDiscardError(blockers.error)
+      return
+    }
+
+    try {
+      const appraisal = await window.ion.gitWorktreeAppraise(entry.worktreePath, entry.sourceBranch)
+      if (appraisal.appraisalFailed) {
+        setDiscardError(appraisal.reason ?? 'Could not determine what this worktree contains.')
+        return
+      }
+      const risks: string[] = []
+      if (appraisal.uncommittedPaths.length > 0) {
+        risks.push(`${appraisal.uncommittedPaths.length} uncommitted file${appraisal.uncommittedPaths.length === 1 ? '' : 's'}`)
+      }
+      if (appraisal.unlandedCommitCount > 0) {
+        risks.push(`${appraisal.unlandedCommitCount} commit${appraisal.unlandedCommitCount === 1 ? '' : 's'} not yet landed in ${entry.sourceBranch}`)
+      }
+      setConfirmDiscardWorktree(
+        risks.length === 0
+          ? `This removes the worktree, its branch, and finished conversations. Nothing merges into ${entry.sourceBranch}.`
+          : `This removes the worktree, its branch, and finished conversations. Nothing merges into ${entry.sourceBranch}. Ion will first save ${risks.join(' and ')} to recovery refs.`,
+      )
+    } catch (error) {
+      rWarn('worktree.menu', 'discard appraisal failed', {
+        worktree_path: entry.worktreePath,
+        error: String(error),
+      })
+      setDiscardError('Could not determine what this worktree contains. It was not removed.')
+    }
+  }
+
+  async function doDiscardWorktree(): Promise<void> {
+    if (!entry.sourceBranch) return
+    const result = await useSessionStore.getState().retireWorktree(
+      repoPath,
+      entry.worktreePath,
+      entry.branchName,
+    )
+    if (!result.ok) {
+      setConfirmDiscardWorktree(null)
+      setDiscardError(result.error ?? 'Discard worktree failed.')
+      return
+    }
+    rInfo('worktree.menu', 'worktree discarded without landing', {
+      worktree_path: entry.worktreePath,
+      recovery_ref: result.recoveryRef ?? '',
+      pruned_benches: result.prunedBenchPaths?.length ?? 0,
+    })
+    onRefresh()
+    setConfirmDiscardWorktree(null)
+    onClose()
+  }
   async function doLandAndRetire(): Promise<void> {
     if (!entry.sourceBranch) return
     try {
@@ -299,6 +369,8 @@ export function useWorktreeRowMenuVerbs({
   return {
     requestLandAndRetire,
     doLandAndRetire,
+    requestDiscardWorktree,
+    doDiscardWorktree,
     doAddToBench,
     doRemoveFromBench,
     doDiscardRecordings,
@@ -314,12 +386,16 @@ export function useWorktreeRowMenuVerbs({
     busy,
     confirmRetire,
     setConfirmRetire,
+    confirmDiscardWorktree,
+    setConfirmDiscardWorktree,
     confirmDiscardRecordings,
     setConfirmDiscardRecordings,
     discardRecordingsOutcome,
     setDiscardRecordingsOutcome,
     landError,
     setLandError,
+    discardError,
+    setDiscardError,
     renaming,
     setRenaming,
     draftTitle,

@@ -169,8 +169,19 @@ describe('WorktreeRowMenu organization', () => {
       'Retire (nothing to land)Commit changes first',
       'Reveal in Finder',
       'Re-provision',
+      'Discard worktree…',
           ])
-    expect(document.querySelectorAll('[data-testid="worktree-menu-separator"]')).toHaveLength(4)
+    expect(document.querySelectorAll('[data-testid="worktree-menu-separator"]')).toHaveLength(5)
+  })
+
+  it('opens a confirmation before discarding a worktree', async () => {
+    render(entry({ isDirty: false, unlandedCommitCount: 1 }))
+
+    await press('Discard worktree…')
+
+    expect(document.body.textContent).toContain('Discard this worktree?')
+    expect(document.body.textContent).toContain('Nothing merges into main.')
+    expect(document.activeElement?.textContent).toBe('Keep it')
   })
 
   it('opens the conversation-type picker for the selected worktree', async () => {

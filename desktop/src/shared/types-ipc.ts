@@ -172,7 +172,9 @@ export const IPC = {
 
   // Git worktree operations
   GIT_WORKTREE_ADD: "ion:git-worktree-add",
-  GIT_WORKTREE_REMOVE: "ion:git-worktree-remove",
+  // Explicit destructive lifecycle operation. It appraises and preserves work
+  // before removing the checkout and branch without integrating into source.
+  GIT_WORKTREE_DISCARD: "ion:git-worktree-discard",
   GIT_WORKTREE_LIST: "ion:git-worktree-list",
   GIT_WORKTREE_STATUS: "ion:git-worktree-status",
   GIT_WORKTREE_MERGE: "ion:git-worktree-merge",

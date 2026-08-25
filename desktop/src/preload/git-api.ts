@@ -61,7 +61,7 @@ export type GitIpcApi = Pick<
   | "gitRecentRefs"
   | "onGitEvent"
   | "gitWorktreeAdd"
-  | "gitWorktreeRemove"
+  | "gitWorktreeDiscard"
   | "gitWorktreeList"
   | "gitWorktreeStatus"
   | "gitWorktreeMerge"
@@ -246,13 +246,8 @@ export const gitApi: GitIpcApi = {
   // ─── Git worktree operations ───
   gitWorktreeAdd: (repoPath, sourceBranch) =>
     ipcRenderer.invoke(IPC.GIT_WORKTREE_ADD, { repoPath, sourceBranch }),
-  gitWorktreeRemove: (repoPath, worktreePath, branchName, force) =>
-    ipcRenderer.invoke(IPC.GIT_WORKTREE_REMOVE, {
-      repoPath,
-      worktreePath,
-      branchName,
-      force,
-    }),
+  gitWorktreeDiscard: (args) =>
+    ipcRenderer.invoke(IPC.GIT_WORKTREE_DISCARD, args),
   gitWorktreeList: (repoPath) =>
     ipcRenderer.invoke(IPC.GIT_WORKTREE_LIST, { repoPath }),
   gitWorktreeStatus: (worktreePath, sourceBranch) =>

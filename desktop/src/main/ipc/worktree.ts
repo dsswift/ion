@@ -1,5 +1,5 @@
 import { ipcMain } from "electron";
-import { mkdirSync, readdirSync, rmSync } from "fs";
+import { mkdirSync } from "fs";
 import { randomBytes } from "crypto";
 import { homedir } from "os";
 import { basename, join } from "path";
@@ -14,13 +14,9 @@ import {
   registerWorktree,
   setWorktreeStage,
   setWorktreeTitle,
-  unregisterWorktree,
 } from "../worktree/inventory";
 import { provisionWorktree } from "../worktree/provision";
-import {
-  setProvisionState,
-  clearProvisionState,
-} from "../worktree/provision-state";
+import { setProvisionState } from "../worktree/provision-state";
 import { announceWorktreeTitle } from "../worktree/title-announce";
 import { triggerWorktreeLifecycleAutomation } from "../worktree/lifecycle-automation-trigger";
 import { log as _log, warn as _warn } from "../logger";
@@ -132,55 +128,6 @@ export function registerWorktreeIpc(): void {
           });
         }
         return { ok: true, worktree, warning: registryWarning };
-      } catch (err: any) {
-        return { ok: false, error: err.message };
-      }
-    },
-  );
-
-  ipcMain.handle(
-    IPC.GIT_WORKTREE_REMOVE,
-    async (
-      _event,
-      {
-        repoPath,
-        worktreePath,
-        branchName,
-        force,
-      }: {
-        repoPath: string;
-        worktreePath: string;
-        branchName: string;
-        force?: boolean;
-      },
-    ) => {
-      try {
-        const removeArgs = ["worktree", "remove", worktreePath];
-        if (force) removeArgs.push("--force");
-        await runGit(repoPath, removeArgs);
-        try {
-          await runGit(repoPath, ["branch", "-D", branchName]);
-        } catch {
-          /* silent-ok: best-effort branch delete; worktree already removed */
-        }
-        let registryWarning: string | undefined;
-        if (!unregisterWorktree(worktreePath)) {
-          registryWarning = "Worktree removed but registry persist failed.";
-          warn("worktree removed but registry persist failed", {
-            worktree_path: worktreePath,
-          });
-        }
-        // Drop the provisioning record too: a future worktree reusing this path
-        // must start with no state rather than inheriting a stale `failed`.
-        clearProvisionState(worktreePath);
-        try {
-          const parent = join(worktreePath, "..");
-          const entries = readdirSync(parent);
-          if (entries.length === 0) rmSync(parent, { recursive: true });
-        } catch {
-          /* silent-ok: best-effort removal of the now-empty worktree parent dir */
-        }
-        return { ok: true, warning: registryWarning };
       } catch (err: any) {
         return { ok: false, error: err.message };
       }

@@ -25,12 +25,12 @@ export interface IonWorktreesApi {
     repoPath: string,
     sourceBranch: string,
   ): Promise<{ ok: boolean; worktree?: WorktreeInfo; error?: string }>;
-  gitWorktreeRemove(
-    repoPath: string,
-    worktreePath: string,
-    branchName: string,
-    force?: boolean,
-  ): Promise<{ ok: boolean; error?: string }>;
+  gitWorktreeDiscard(args: {
+    repoPath: string;
+    worktreePath: string;
+    branchName: string;
+    sourceBranch: string;
+  }): Promise<WorktreeMoveResult>;
   gitWorktreeList(repoPath: string): Promise<{
     worktrees: Array<{ path: string; branch: string; head: string }>;
   }>;

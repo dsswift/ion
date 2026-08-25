@@ -16,6 +16,8 @@ import { rError } from "../rendererLogger";
 
 export function WorktreeRowMenuDialogs({
   landError,
+  discardError,
+  confirmDiscardWorktree,
   confirmDiscardRecordings,
   setConfirmDiscardRecordings,
   discardRecordingsOutcome,
@@ -24,13 +26,20 @@ export function WorktreeRowMenuDialogs({
   doDiscardRecordings,
   confirmRetire,
   setLandError,
+  setDiscardError,
+  setConfirmDiscardWorktree,
   setConfirmRetire,
   doLandAndRetire,
+  doDiscardWorktree,
   hasNothingToLand,
   onClose,
 }: {
   landError: string | null;
   setLandError: (value: string | null) => void;
+  discardError: string | null;
+  setDiscardError: (value: string | null) => void;
+  confirmDiscardWorktree: string | null;
+  setConfirmDiscardWorktree: (value: string | null) => void;
   confirmDiscardRecordings: string | null;
   setConfirmDiscardRecordings: (value: string | null) => void;
   discardRecordingsOutcome: string | null;
@@ -40,6 +49,7 @@ export function WorktreeRowMenuDialogs({
   confirmRetire: string | null;
   setConfirmRetire: (value: string | null) => void;
   doLandAndRetire: () => Promise<void>;
+  doDiscardWorktree: () => Promise<void>;
   /** True when the worktree has zero unlanded commits: the verb discards it
    *  rather than merging anything, so the dialog's title/button say so. */
   hasNothingToLand: boolean;
@@ -59,6 +69,44 @@ export function WorktreeRowMenuDialogs({
           onCancel={() => {
             setLandError(null);
             onClose();
+          }}
+        />
+      )}
+
+      {discardError !== null && (
+        <ConfirmDialog
+          title="Discard worktree did not complete"
+          message={discardError}
+          acknowledge
+          onConfirm={() => {
+            setDiscardError(null);
+            onClose();
+          }}
+          onCancel={() => {
+            setDiscardError(null);
+            onClose();
+          }}
+        />
+      )}
+
+      {confirmDiscardWorktree !== null && (
+        <ConfirmDialog
+          title="Discard this worktree?"
+          message={confirmDiscardWorktree}
+          confirmLabel="Discard worktree"
+          cancelLabel="Keep it"
+          initialFocus="cancel"
+          danger
+          busy={busy}
+          busyLabel="Discarding the worktree…"
+          onConfirm={() => {
+            void doDiscardWorktree().catch((err) =>
+              rError("worktree.menu", "discard worktree threw", { error: String(err) }),
+            )
+          }}
+          onCancel={() => {
+            setConfirmDiscardWorktree(null)
+            onClose()
           }}
         />
       )}

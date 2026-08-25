@@ -41,15 +41,15 @@ final class WorktreeLandAndRetireNothingToLandTests: XCTestCase {
                       "the label must say discard, not merge, when there is nothing to land")
     }
 
-    func testWorktreeRowViewNoLongerGatesOnUnlandedCommitCount() throws {
-        let source = try source("IonRemote/Views/WorktreeRowView.swift")
+    func testInboxWorktreeRowUsesConfirmedDiscardAction() throws {
+        let row = try source("IonRemote/Views/WorktreeRowView.swift")
+        let group = try source("IonRemote/Views/InboxWorktreeGroup.swift")
 
-        XCTAssertFalse(source.contains(".disabled(worktree.isDirty || worktree.unlandedCommitCount == 0 || worktree.operationState != nil)"),
-                        "the old gate must be gone")
-        XCTAssertTrue(source.contains(".disabled(worktree.isDirty || worktree.operationState != nil)"),
-                       "dirty and mid-operation must still refuse")
-        XCTAssertTrue(source.contains("worktree.unlandedCommitCount == 0 ? .destructive : nil"),
-                       "a nothing-to-land row must still read as destructive")
-        XCTAssertTrue(source.contains("\"Retire (nothing to land)\""))
+        XCTAssertTrue(row.contains("Label(\"Discard worktree\", systemImage: \"trash\")"),
+                      "the Inbox worktree menu must name the non-merge removal action")
+        XCTAssertTrue(group.contains("Button(\"Discard worktree\", role: .destructive)"),
+                      "the Inbox must require a destructive confirmation before discard")
+        XCTAssertTrue(group.contains("Nothing merges into its source branch."),
+                      "the confirmation must state that discard cannot land work")
     }
 }

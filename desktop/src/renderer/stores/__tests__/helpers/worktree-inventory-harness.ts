@@ -121,6 +121,7 @@ export const ion = {
   // test cannot pass by accidentally scanning that cache instead.
   gitWorktreeRegistration: vi.fn(),
   gitWorktreeLandAndRetire: vi.fn(),
+  gitWorktreeDiscard: vi.fn(),
   gitWorktreeRetirePreview: vi.fn(),
   relocateTabSession: vi.fn(),
   // Sealing a landed worktree stops the engine session behind each of its
@@ -138,6 +139,7 @@ export function resetIon(): void {
   })
   ion.gitWorktreeSync.mockResolvedValue({ ok: true })
   ion.gitWorktreeLandAndRetire.mockResolvedValue({ ok: true, workingDirectory: REPO, prunedBenchPaths: [] })
+  ion.gitWorktreeDiscard.mockResolvedValue({ ok: true, workingDirectory: REPO, prunedBenchPaths: [] })
   ion.gitWorktreeRetirePreview.mockResolvedValue({ prunedBenchPaths: [] })
   ion.relocateTabSession.mockResolvedValue({ ok: true, conversationId: 'conv-1' })
   ion.engineStop.mockResolvedValue(undefined)
