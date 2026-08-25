@@ -67,65 +67,28 @@ loki.process "ion_parse" {
 }
 
 // ---------------------------------------------------------------------------
-// 2. TELEMETRY JSONL PIPELINE — ~/.ion/telemetry.jsonl
+// 2. TELEMETRY PIPELINE — compact-frame forwarder → Loki Push API
 //
-// Ion telemetry event shape (schema v2, unified snake_case contract):
+// The engine writes schema-v4 compact frames. The telemetry-forwarder expands
+// v1-v4 file records into one standard telemetry event per Loki Push entry.
+// Alloy receives those entries through its Loki API endpoint. It must not tail
+// telemetry.jsonl directly: a frame can contain more than one event.
 //
-//   llm.call:    {"name":"llm.call","ts":"2025-07-06T...","schema":2,"component":"engine",
-//                  "install_id":"uuid","payload":{"model":"...","turn":2,
-//                  "stop_reason":"end_turn","duration_ms":4200,"error":""},...}
-//   tool.execute:{"name":"tool.execute","ts":"...","schema":2,"component":"engine",
-//                  "payload":{"tool":"Bash","duration_ms":320,"error":""},...}
-//   run.complete:{"name":"run.complete","ts":"...","schema":2,"component":"engine",
-//                  "payload":{"model":"...","run_cost_usd":0.125,
-//                  "aggregate_cost_usd":0.95,"dispatch_depth":0,
-//                  "duration_ms":45000,"num_turns":3,"input_tokens":1000,
-//                  "output_tokens":250,"cache_read_input_tokens":800,
-//                  "cache_creation_input_tokens":40},...}
-//
-// ALL payload field names are snake_case (schema v2). Do not use camelCase names.
-//
-// Top-level fields added in schema v2 (R1-R21):
-//   ts           — RFC3339Nano UTC string (R1: replaces old int64 timestamp).
-//   schema       — int, the telemetry schema version (R4: self-describing;
-//                  TelemetrySchemaVersion in engine/internal/telemetry/schema.go
-//                  is authoritative for the current value).
-//   component    — "engine" (R3: surface discriminator).
-//   install_id   — anonymous per-install UUID (R5: fleet counting).
-//   host         — machine hostname (R19: admin display).
-//   version      — engine build string (R21: which build emitted this).
-//   user         — reserved/omit-when-absent (R20: forward-compat for OIDC).
-//
-// "kind" (the event name) is low-cardinality — safe as a stream label.
-// All payload fields are numeric or model-name strings — structured_metadata only.
-//
-// run_cost_usd is the canonical per-run cost field. Use:
-//   sum(sum_over_time({kind="run.complete"} | json | unwrap payload_run_cost_usd [window]))
+// The forwarder preserves the dashboard label contract: service and
+// service_name are both ion-telemetry, and this processor adds kind. All other
+// fields remain structured metadata. Dashboard queries therefore stay unchanged.
 // ---------------------------------------------------------------------------
 
-local.file_match "ion_telemetry" {
-  path_targets = [
-    {
-      "__path__"    = "/ion-logs/telemetry.jsonl",
-      "service"     = "ion-telemetry",
-      "service_name" = "ion-telemetry",
-    },
-  ]
-  sync_period = "5s"
-}
-
-loki.source.file "telemetry_jsonl" {
-  targets    = local.file_match.ion_telemetry.targets
+loki.source.api "telemetry" {
+  use_incoming_timestamp = true
+  http {
+    listen_address = "0.0.0.0"
+    listen_port    = 3500
+  }
   forward_to = [loki.process.ion_telemetry.receiver]
 }
 
 loki.process "ion_telemetry" {
-  // Promote "service" and "service_name" from path_targets as stream labels.
-  // Both are set identically ("ion-telemetry") so that the local file-tail
-  // pipeline and the cluster OTLP pipeline produce the same label schema.
-  // The cluster path gets service_name from otelcol.exporter.loki's automatic
-  // promotion of the OTLP resource attribute service.name; service_name is the
-  // label dashboards must query when targeting both stacks uniformly.
   stage.labels {
     values = {
       "service"      = "",
@@ -133,30 +96,13 @@ loki.process "ion_telemetry" {
     }
   }
 
-  // stage.timestamp: parse the "ts" field (RFC3339Nano string) as the Loki log
-  // timestamp so events are indexed by event time, not ingestion time.
-  // Layout RFC3339Nano handles both sub-second precision ("2006-01-02T15:04:05.999999999Z")
-  // and second precision ("2006-01-02T15:04:05Z") — Go's time.RFC3339Nano format
-  // does not require trailing zeros.
+  // The forwarder expands each compact frame before it posts the event. Event
+  // time remains the telemetry ts field, not the forwarding time.
   stage.timestamp {
     source = "ts"
     format = "RFC3339Nano"
   }
 
-  // Parse the NDJSON line. All payload field names are snake_case (schema v2).
-  // Correlation context fields (nested under "context" in the JSON body):
-  //   context.conversation_id — the durable conversation-file ID ({millis}-{hex}).
-  //     Present on ALL telemetry events. Use context_conversation_id as the
-  //     consistent per-conversation join/filter key across event types.
-  //   context.session_id — the engine session key (promoted for sub-agent-tax
-  //     panel which joins dispatch.agent and run.complete on this key).
-  //   context.extension — the hosting extension's friendly name (omit-when-absent;
-  //     absent on non-extension runs which group as "unattributed" in dashboards).
-  //     Promoted as structured_metadata (NOT a stream label: unbounded cardinality).
-  //     First exercised additive evolution of the telemetry context (ADR-019).
-  //   context.extension_version — the hosting extension's manifest version
-  //     (omit-when-absent; absent when the manifest carries no version field).
-  //     Promoted as structured_metadata for version comparison panels.
   stage.json {
     expressions = {
       "kind"                      = "name",
@@ -177,27 +123,19 @@ loki.process "ion_telemetry" {
       "schema_version"            = "schema",
       "install_id"                = "install_id",
       "engine_version"            = "version",
-      // Correlation: conversation_id is the consistent cross-event join key.
       "context_conversation_id"   = "context.conversation_id",
-      // context_session_id for the sub-agent-tax panel (dispatch.agent ↔ run.complete join).
       "context_session_id"        = "context.session_id",
-      // Extension attribution (additive, omit-when-absent — old lines group as
-      // "unattributed" in dashboards). NOT stream labels: unbounded cardinality.
       "context_extension"         = "context.extension",
       "context_extension_version" = "context.extension_version",
     }
   }
 
-  // "kind" is low-cardinality (llm.call / tool.execute / run.complete /
-  // session.start / session.end / compaction / error) — safe as a stream label.
   stage.labels {
     values = {
       "kind" = "",
     }
   }
 
-  // All other fields are high-cardinality or numeric — structured_metadata only.
-  // Grafana panels access these via | unwrap <field> for metric queries.
   stage.structured_metadata {
     values = {
       "model"                     = "",
@@ -219,7 +157,6 @@ loki.process "ion_telemetry" {
       "engine_version"            = "",
       "context_conversation_id"   = "",
       "context_session_id"        = "",
-      // Extension attribution — omit-when-absent on old log lines.
       "context_extension"         = "",
       "context_extension_version" = "",
     }

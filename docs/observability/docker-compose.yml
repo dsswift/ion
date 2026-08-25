@@ -55,6 +55,20 @@ services:
         limits:
           memory: 32m
 
+  # Expands v1-v4 telemetry file records and posts standard events to Alloy's
+  # Loki Push API. The image owns the reader and frame-decoding mechanics.
+  telemetry-forwarder:
+    build:
+      context: ../../engine
+      dockerfile: Dockerfile.telemetry-forwarder
+    volumes:
+      - ${HOME}/.ion:/ion-logs:ro
+      - telemetry-forwarder-data:/data
+    networks:
+      - ion-obs
+    depends_on:
+      - alloy
+
   loki:
     image: grafana/loki:3.7.3
     command:
@@ -118,3 +132,4 @@ volumes:
   loki-data:
   grafana-data:
   tempo-data:
+  telemetry-forwarder-data:

@@ -62,29 +62,27 @@ removals and renames require an ADR. Parse defensively: ignore unknown keys, nev
 ### Telemetry event schema
 
 The telemetry stream (opt-in, see [`docs/enterprise/telemetry.md`](../enterprise/telemetry.md)) is a
-versioned event stream. Every line self-identifies its schema generation via the `schema` integer.
+versioned event stream. Every record self-identifies its schema generation via the `schema` integer. Schema v4 stores compact frames; a frame expands to one or more telemetry events.
 
 **Top-level envelope** (normative table:
 [`log-schema.md` § Telemetry event fields](log-schema.md#telemetry-event-fields-telemetryjsonl)):
 
 | Field | Type | Presence | Meaning |
 |---|---|---|---|
-| `name` | string | always | Event kind (`run.complete`, `llm.call`, ...) — the single source of event identity |
-| `ts` | string | always | RFC3339Nano UTC |
-| `schema` | int | always | Schema version. Current version is **3** |
-| `component` | string | always | `"engine"` |
+| `record` | string | v4 frame | `"telemetry.frame"`; identifies a compact frame |
+| `schema` | int | always | Schema version. Current file-frame version is **4** |
+| `identities` / `contexts` / `events` | arrays | v4 frame | Interned identity and correlation tables plus event records |
+| `name` / `ts` / `component` | expanded event | always after expansion | Event identity, event time, and source component |
 | `install_id` | string | always | Stable anonymous per-install UUID (minted at `~/.ion/install_id`) |
 | `host` | string | always | Machine hostname |
 | `version` | string | always | Engine build string |
-| `event_id` | string | v3+, omit on the rotation sentinel | Per-event unique ID (16 hex chars) for downstream dedup |
+| `event_id` | string | omit when absent | Per-event unique ID for downstream dedup |
 | `user` | string | omit when absent | Authenticated identity when an enterprise OIDC auth context is present; absent on default installs |
 | `payload` | object | always | Event-specific fields, all snake_case |
 | `context` | object | when in scope | Correlation: `session_id`, `conversation_id`, `run_id` |
 | `trace_id` | string | omit when no run in flight | W3C trace-context trace-id, 32 lowercase hex. Scoped to one prompt-to-completion run — see § "Correlation model" |
 
-Version history: v2 introduced the unified contract (RFC3339Nano `ts`, snake_case payloads,
-`schema`/`component`/`install_id`/`host`/`version` envelope); v3 added the additive attribution
-fields `event_id` and the populated-capable `user` carrier. v2 consumers decode v3 lines unchanged.
+Version history: v2 introduced the unified contract; v3 added `event_id` and the populated-capable `user` carrier; v4 stores compact frames with interned identity and context tables. The telemetry forwarder decodes v1-v4 file records and sends expanded events to consumers.
 
 **Core event payloads:**
 
@@ -131,12 +129,12 @@ market (`provider.ttft`, `provider.stall`, `provider.stream_summary`, `provider.
 `engine/internal/telemetry/telemetry.go`. All payloads follow the same snake_case vocabulary; see
 [`cost-model.md`](cost-model.md) for the cost fields' semantics.
 
-**Stability contract:** the telemetry envelope is **versioned**. Within a schema version, changes
-are additive only. A version bump is a conscious release event: the engine archives the live file
-to `telemetry.jsonl.v<old>.<timestamp>.bak`, starts fresh, writes a `telemetry.schema_rotated`
-sentinel as the first line of the new file, and stamps the `~/.ion/telemetry.schema.json` sidecar.
-Consumers that care about generational breaks should read the sidecar (or the per-line `schema`
-int) rather than assuming a fixed shape.
+**Stability contract:** the telemetry format is **versioned**. Within a schema version, changes
+are additive only. The engine keeps the file append-only across schema transitions and records the
+highest seen schema in `~/.ion/telemetry.schema.json`. Size rotation is independent: it renames the
+live file to `.1`, shifts older archives, and removes the oldest archive beyond `maxFiles`. Consumers
+should use the telemetry forwarder or another v1-v4 decoder instead of assuming every JSONL line is
+an expanded event.
 
 ---
 
@@ -146,20 +144,19 @@ All surfaces share one schema and one JSONL format.
 
 | Surface | File | Rotation |
 |---|---|---|
-| Engine | `~/.ion/engine.jsonl` | Truncate-in-place, config-driven size cap (default 50 MB) |
+| Engine | `~/.ion/engine.jsonl` | Rename rotation, config-driven size cap; `.1` is the newest archive |
 | Extensions | `~/.ion/engine.jsonl` (`component=extension`, `tag=<extension-name>`) | Same file as engine |
-| Desktop | `~/.ion/desktop.jsonl` | Truncate-in-place |
-| iOS | `~/.ion/ios-diagnostic-logs.jsonl` (shipped from device to the paired desktop's `~/.ion`) | Truncate-in-place |
-| Relay | `RELAY_LOG_FILE`, default `/var/log/ion/relay.jsonl` (inside the relay container) | Truncate-in-place at 50 MB |
-| Telemetry (engine) | `~/.ion/telemetry.jsonl` (when telemetry is enabled) | Checkpoint/archive on schema rotation |
+| Desktop | `~/.ion/desktop.jsonl` | Rename rotation; `.1` is the newest archive |
+| iOS | `~/.ion/ios-diagnostic-logs.jsonl` (shipped from device to the paired desktop's `~/.ion`) | Rename rotation; `.1` is the newest archive |
+| Relay | `RELAY_LOG_FILE`, default `/var/log/ion/relay.jsonl` (inside the relay container) | Rename rotation; `.1` is the newest archive |
+| Telemetry (engine) | `~/.ion/telemetry.jsonl` (when telemetry is enabled) | Rename rotation by size; schema transitions are append-only |
 
 Relay specifics: `RELAY_LOG_OUTPUT` selects `stdout` | `file` | `both` (default `stdout`);
 `RELAY_LOG_LEVEL=trace` enables TRACE. The file path is inside the container, so host-side
 collection needs a volume mount; with the default stdout target, `docker logs ion-relay` shows the
 same canonical JSONL lines.
 
-Rotation means **the local files are diagnostic buffers, not archives**. Truncate-in-place discards
-history at the cap. Any consumer that needs history beyond the cap must ship lines downstream
+Rotation means **the local files are diagnostic buffers, not archives**. The live file rotates to `.1` at the cap, then later archives expire according to the configured generation count. Any consumer that needs history beyond the cap must ship lines downstream
 (Alloy tail, the egress path below, or its own tailer) before rotation claims them.
 
 ---
@@ -168,7 +165,7 @@ history at the cap. Any consumer that needs history beyond the cap must ship lin
 
 ### Option 1 — `jq` against the local files
 
-Zero infrastructure. Every file is NDJSON, so `jq` is the native query tool.
+Zero infrastructure for operational logs. Every operational file is NDJSON, so `jq` is the native query tool. Schema-v4 telemetry frames need the telemetry forwarder or another v1-v4 decoder before event-level filtering.
 
 One conversation, across everything the engine and extensions did:
 
@@ -206,21 +203,7 @@ Count occurrences of a constant message (this works *because* `msg` is never int
 jq -r 'select(.msg=="session started") | .ts' ~/.ion/engine.jsonl | wc -l
 ```
 
-Total spend today from telemetry:
-
-```bash
-jq -s '[.[] | select(.name=="run.complete" and (.payload.dispatch_depth==0))
-        | .payload.aggregate_cost_usd] | add' ~/.ion/telemetry.jsonl
-```
-
-Structured field extraction — slowest tools by average duration:
-
-```bash
-jq -s '[.[] | select(.name=="tool.execute")]
-       | group_by(.payload.tool)
-       | map({tool: .[0].payload.tool, avg_ms: ([.[].payload.duration_ms] | add / length)})
-       | sort_by(-.avg_ms)' ~/.ion/telemetry.jsonl
-```
+Telemetry event queries require the telemetry forwarder because a v4 frame can contain multiple events. Use the local reference stack for LogQL queries, or configure the telemetry `http` or `otel` target for a collector that receives expanded events.
 
 ### Option 2 — the reference Loki/Grafana stack
 
@@ -231,9 +214,8 @@ pre-provisioned with datasources and dashboards:
 dev util observability-up
 ```
 
-See [`docs/observability/README.md`](README.md) for the full stack reference: what Alloy tails, the
-label policy, dashboard packs, schema auto-wipe behavior, and restart procedures. In short: Alloy
-tails the local JSONL files and promotes exactly three low-cardinality labels for operational logs
+See [`docs/observability/README.md`](README.md) for the full stack reference: what Alloy tails, how the telemetry forwarder posts expanded events, the
+label policy, dashboard packs, and restart procedures. In short: Alloy tails the operational JSONL files and receives telemetry through `loki.source.api`; it promotes exactly three low-cardinality labels for operational logs
 (`component`, `level`, `tag`) plus `service`/`kind` for telemetry; everything else stays in the log
 body or structured metadata.
 
@@ -442,8 +424,7 @@ jq -c --arg cid "$CID" 'select(.conversation_id==$cid)' ~/.ion/*.jsonl
 
 ## Retention and storage sizing
 
-**The consumer owns retention.** Ion bounds its local files (truncate-in-place at the size cap;
-telemetry archives per schema rotation) but makes no retention promises for anything shipped
+**The consumer owns retention.** Ion bounds its local files with rename rotation at the size cap; schema transitions do not rotate telemetry but makes no retention promises for anything shipped
 downstream. Whatever ingests the streams — Loki, a SIEM, an OTLP backend — is where history
 accumulates, and bounding it is that system's configuration, not Ion's.
 
@@ -478,8 +459,7 @@ limits_config:
 
 `retention_period` lives under `limits_config` (globally or per-tenant); the compactor block turns
 deletion on. Keep `retention_period` at or above the 720h re-ingest window (`reject_old_samples_max_age`)
-that the stack relies on for `.bak` re-ingestion after a telemetry schema rotation — a shorter
-retention would delete history the stack just deliberately re-ingested.
+that delayed forwarding can need — a shorter retention can remove data before an operator investigates it.
 
 **2. Ingestion rate limits (bounding the inflow).** Also under `limits_config`:
 `ingestion_rate_mb`, `ingestion_burst_size_mb`, and `per_stream_rate_limit` cap how fast data can

@@ -86,7 +86,7 @@ The engine retries failed HTTP sends with exponential backoff. After 3 consecuti
 
 ### File target
 
-Writes telemetry entries as newline-delimited JSON (one entry per line) to a local file.
+Writes telemetry as newline-delimited JSON to a local file. Schema v4 stores compact frames, each of which can contain more than one event.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -99,9 +99,9 @@ The file target is useful for local debugging, compliance archives, or feeding i
 
 #### Rotation and the disk bound
 
-The live file is bounded by `maxSizeMB` and rotated by rename — `telemetry.jsonl` becomes `telemetry.jsonl.1`, existing archives shift down, and the oldest beyond `maxFiles` is dropped. Total disk for the target is therefore `maxSizeMB × (maxFiles + 1)`, or **80 MB** at the defaults.
+The live file is bounded by `maxSizeMB` and rotated by rename — `telemetry.jsonl` becomes `telemetry.jsonl.1`, existing archives shift to `.2`, `.3`, and so on, and the oldest beyond `maxFiles` is dropped. Total disk for the target is therefore `maxSizeMB × (maxFiles + 1)`, or **80 MB** at the defaults.
 
-Rotating by rename rather than truncating in place is what keeps a concurrent reader correct: a shipping agent following the path detects the inode change and continues on the new file, so no line is shipped twice and none is lost. The engine logs the resolved policy at startup and every rotation at `INFO`, so the live bound is visible in `~/.ion/engine.jsonl` without reading config.
+Rotating by rename rather than truncating in place is what keeps a concurrent reader correct: a shipping agent that handles rename rotation can finish the old inode and continue at the new live path. The engine logs the resolved policy at startup and every rotation at `INFO`, so the live bound is visible in `~/.ion/engine.jsonl` without reading config.
 
 Shipping telemetry downstream does **not** bound the local file — a shipper advances a read offset, it does not truncate. Rotation is the only thing that caps local disk, and it is independent of retention at the collector, which is the collector's policy to set.
 
@@ -215,4 +215,4 @@ delivery has no transaction to trace, so it carries neither.
 
 ### Schema reference
 
-The full JSONL schema — all fields, types, required/optional status, and the Loki label policy — is documented at [`docs/observability/log-schema.md`](../observability/log-schema.md).
+Schema v4 uses compact frames in the local file. The telemetry forwarder expands v1-v4 records before it sends them to Alloy, so dashboard behavior and the expanded event contract remain stable. The full file and expanded-event schema is documented at [`docs/observability/log-schema.md`](../observability/log-schema.md).

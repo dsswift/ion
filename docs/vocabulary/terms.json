@@ -2181,7 +2181,7 @@
     {
       "id": "telemetry",
       "term": "Telemetry",
-      "definition": "The structured trace and span record of engine work. It carries the identifiers that correlate one operation across surfaces.",
+      "definition": "The versioned event stream that records engine work. Its compact file frames preserve the identity and correlation data needed to reconstruct each event.",
       "domain": "engine",
       "kind": "runtime-mechanic",
       "status": "canonical",
@@ -2194,7 +2194,7 @@
           "platform": "engine",
           "presentation": "code",
           "language": "go",
-          "symbol": "type SpanHandle struct",
+          "symbol": "type Event = telemetryformat.Event",
           "path": "engine/internal/telemetry/telemetry.go"
         }
       ]

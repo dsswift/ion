@@ -434,7 +434,7 @@ A named set of daily or weekly Schedules whose latest catch-up policy selects on
 
 #### Telemetry {#term-telemetry}
 
-The structured trace and span record of engine work. It carries the identifiers that correlate one operation across surfaces.
+The versioned event stream that records engine work. Its compact file frames preserve the identity and correlation data needed to reconstruct each event.
 
 - **ID:** `telemetry`
 - **Status:** `canonical`
@@ -443,7 +443,7 @@ The structured trace and span record of engine work. It carries the identifiers 
 - **Legacy names:** None
 - **Contract:** `internal`
 - **Implementations:**
-  - `engine` / `code` / `go`: `type SpanHandle struct` in `engine/internal/telemetry/telemetry.go`
+  - `engine` / `code` / `go`: `type Event = telemetryformat.Event` in `engine/internal/telemetry/telemetry.go`
 
 #### Webhook {#term-webhook}
 

@@ -16,7 +16,7 @@ dev run -d
 
 Open http://localhost:3000. Grafana opens with Ion data already flowing. No manual datasource setup, no dashboard import. Everything is pre-provisioned.
 
-`dev run` is the single entry point for the stack. The `observability` profile is the default, so no profile argument is needed. The telemetry schema gate has been removed (see ADR-019 § "Superseded mechanisms"): the engine's telemetry file is append-only and version-forward, so Loki data never needs auto-wiping on a schema transition. Each event line carries `schema` in `structured_metadata`, enabling schema-filtered queries without any pipeline changes.
+`dev run` is the single entry point for the stack. The `observability` profile is the default, so no profile argument is needed. The telemetry schema gate is removed: telemetry is version-forward, and the telemetry forwarder expands v1-v4 records before they reach Alloy. Each expanded event carries `schema` in `structured_metadata`, so schema-filtered queries need no dashboard change.
 
 > **Pinned versions are known-good.** Bump them only after running `docker compose pull` — not just `docker compose config`, which validates syntax but does not check whether the image tag actually exists on Docker Hub.
 
@@ -28,9 +28,11 @@ Open http://localhost:3000. Grafana opens with Ion data already flowing. No manu
 | Loki | `grafana/loki:3.7.3` | 3100 | Log storage and query backend |
 | Alloy | `grafana/alloy:v1.17.1` | 12345 | Log collection agent (HTTP UI) |
 | mount-refresher | `busybox:1.37.0` (built) | — | macOS bind-mount cache refresher (see § Tailer wedge) |
+| telemetry-forwarder | Built from `engine/Dockerfile.telemetry-forwarder` | — | Expands v1-v4 telemetry records and sends events to Alloy |
 | Tempo | `grafana/tempo:2.10.7` | 4317/4318 | Trace storage (optional, see below) |
 
-> **Version pins (2026-07-04):** Grafana 13.1.0 (11.x → 13.x bump, registry-verified push 2026-06-23, `sha256:121a7a9e...`) and Tempo 2.10.7 (`sha256:032b3acb...`) were pull-tested against the live stack before commit per the standing rule. Loki 3.7.3 and Alloy v1.17.1 were already latest and were not changed. Tempo 2.10.7 requires an explicit storage backend config (the `local` default was removed); `tempo-config.yaml` was added to the stack for this reason.
+> **Version pins:** The compose files are the source of truth. Update a pin only after the image pull succeeds.
+
 
 ## Dashboard story-packs
 
@@ -146,17 +148,13 @@ The engine flushes buffered events to disk every 5 seconds by default. To change
 
 This controls how frequently the file collector writes to disk during a live session. A lower value means the Cost dashboard reflects spend more quickly; a higher value reduces I/O. The default (5 s) provides near-real-time visibility without notable I/O overhead. Events are always flushed immediately on clean engine shutdown regardless of this setting.
 
-Then restart the engine and run:
-
-```
-docker compose restart alloy
-```
+Then restart the engine. The telemetry forwarder detects the live file and sends expanded events to Alloy.
 
 The Cost pack panels show "No data" until telemetry is enabled. This is expected — the panels are correct, the data just isn't there yet.
 
 ### What telemetry.jsonl contains
 
-One NDJSON line per event. All payload field names are **snake_case**. Three core event types:
+One NDJSON line per compact frame. The telemetry forwarder expands each frame into events. All payload field names are **snake_case**. Three core event types:
 
 | Event | When emitted | Key payload fields |
 |---|---|---|
@@ -166,14 +164,14 @@ One NDJSON line per event. All payload field names are **snake_case**. Three cor
 
 All cost and token accounting happens at `run.complete`. The other two event types track latency.
 
-**Top-level fields (all events; current schema is v3 — see `docs/observability/log-schema.md` for the normative table):**
+**Expanded event fields (all events; schema v4 frames expand to this shape — see `docs/observability/log-schema.md` for the normative table):**
 - `ts` — RFC3339Nano UTC timestamp string (e.g. `"2025-07-06T15:04:05.123456789Z"`).
 - `schema` — schema version integer. Self-describing for sinks.
 - `component` — always `"engine"`.
 - `install_id` — anonymous per-install UUID (stable across restarts, minted at `~/.ion/install_id`).
 - `host` — machine hostname.
 - `version` — engine build version string.
-- `event_id` — per-event unique ID (schema v3) for downstream dedup.
+- `event_id` — per-event unique ID for downstream dedup.
 - `user` — omit-when-absent; populated via the enterprise OIDC identity seam, absent on default installs.
 
 **`run.complete` cost fields:**
@@ -181,13 +179,19 @@ All cost and token accounting happens at `run.complete`. The other two event typ
 - `aggregate_cost_usd` — cost of this run plus all descendant sub-agent dispatches (the full conversation scope).
 - `dispatch_depth` — nesting depth of the emitting run (`0` = root/orchestrator). Filter to `dispatch_depth=0` to sum `aggregate_cost_usd` without double-counting ancestor aggregates.
 
-### Schema versioning (version-forward)
+### Schema v4 compact frames
 
-The engine writes a `~/.ion/telemetry.schema.json` sidecar alongside `telemetry.jsonl`. The sidecar's
-`highestSchemaSeen` field is a monotonic high-water mark — only raised, never lowered. On a version
-transition the engine appends a `telemetry.schema_writer_changed` event so the transition is observable
-in Loki. Files are never archived or wiped. Multi-schema files are handled by filtering on `schema_version`
-in `structured_metadata`. See `docs/observability/log-schema.md` and ADR-019 for details.
+The telemetry file stores one schema-v4 compact frame per JSONL line. Frames intern
+repeated identity and correlation values and contain one or more events. The
+`telemetry-forwarder` decodes v1-v4 records and posts the expanded events to
+Alloy's `loki.source.api` listener. The label and structured-metadata names stay
+the same, so dashboard behavior does not change.
+
+The `~/.ion/telemetry.schema.json` sidecar records the monotonic
+`highestSchemaSeen` value. A writer transition appends a
+`telemetry.schema_writer_changed` event. Schema transitions do not rotate,
+archive, or remove telemetry data. Size rotation creates `.1`, `.2`, and later
+archives according to `maxFiles`; the local stack forwards the live file only.
 
 ## After stack changes, restart
 
@@ -203,7 +207,7 @@ Alloy and Grafana both read their config at startup. After editing `alloy-config
 
 **Symptom.** One component (e.g. `engine`) stops appearing in Loki while `desktop`, `ios`, and telemetry keep advancing normally. No Alloy errors, no Loki rejections. The overview's **Ingest freshness by component** tile for the stalled component climbs into orange then red while the others stay near zero.
 
-**Cause.** On macOS, Docker Desktop serves the `~/.ion` bind mount through a virtualized filesystem whose **attribute cache goes stale under sustained host-side writes** to a high-write-rate file. `engine.jsonl` is that file — it is written far faster than `desktop.jsonl` or the iOS log, which is why the engine tailer wedges while the others keep flowing. When the cache is stale, an in-container `stat` returns an old, smaller size than the host file, which is still growing on the same inode (`O_APPEND`). Alloy polls that size, sees no growth, and parks its cursor at an offset equal to the stale size. Because the stale size is never *smaller* than the stored offset, Alloy's truncation-reset (size < offset) never fires, so it neither advances nor resets — it simply waits for growth its cached view never shows. This is not an Alloy bug and not host-side log rotation: the engine rotates in place (truncate, never unlink/rename — see `engine/internal/utils/logger.go` `rotateInPlace`), so the inode is stable and there is no fd-to-deleted-inode swap.
+**Cause.** On macOS, Docker Desktop serves the `~/.ion` bind mount through a virtualized filesystem whose **attribute cache goes stale under sustained host-side writes** to a high-write-rate file. `engine.jsonl` is that file — it is written far faster than `desktop.jsonl` or the iOS log, which is why the engine tailer wedges while the others keep flowing. When the cache is stale, an in-container `stat` returns an old, smaller size than the host file, which is still growing on the same inode (`O_APPEND`). Alloy polls that size, sees no growth, and parks its cursor at an offset equal to the stale size. Because the stale size is never *smaller* than the stored offset, Alloy's truncation-reset (size < offset) never fires, so it neither advances nor resets — it simply waits for growth its cached view never shows. This is not an Alloy bug or a rotation failure. The mount cache reports a stale live-file size while the host continues to append data.
 
 **The staleness is continuous, not one-shot.** This is the key correction to the earlier diagnosis. The stale view is not a single event that a one-time invalidation clears — it **re-forms within minutes** under the engine's continuous write rate. An Alloy restart (below) forces a fresh `open()` that clears it *once*, but the cache re-stales and the tailer wedges again shortly after. **The restart is a palliative, not a fix.**
 
@@ -221,7 +225,7 @@ stat -f %z ~/.ion/engine.jsonl
 docker exec ion-obs-alloy cat /var/lib/alloy/data/loki.source.file.ion_jsonl/positions.yml
 ```
 
-If the stored offset is far below the host size and the timeline in Loki stops at a fixed moment while other components keep arriving, the tailer is wedged. Confirm the stale view directly: `docker exec ion-obs-alloy stat -c 'size=%s' /ion-logs/engine.jsonl` will report the frozen (smaller) size, not the host size. (Positions live under `loki.source.file.ion_jsonl` for the structured-log pipeline and `loki.source.file.telemetry_jsonl` for telemetry — these directory names match the `loki.source.file` block names in `alloy-config.alloy`.)
+If the stored offset is far below the host size and the timeline in Loki stops at a fixed moment while other components keep arriving, the tailer is wedged. Confirm the stale view directly: `docker exec ion-obs-alloy stat -c 'size=%s' /ion-logs/engine.jsonl` will report the frozen (smaller) size, not the host size. (Positions for the structured-log pipeline live under `loki.source.file.ion_jsonl`. Telemetry is forwarded through Alloy's `loki.source.api` listener and has no Alloy file-tail position directory.)
 
 **Restart (palliative — no longer the fix).** If the sidecar is not running (e.g. on an older stack), restarting Alloy clears the stale view *once*:
 
@@ -252,13 +256,13 @@ Alloy runs two separate pipelines:
 
 It parses JSON and promotes three fields as Loki stream labels: `component`, `level`, `tag`. The `level` label carries the full five-level enum — `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR` (TRACE and DEBUG appear only when a surface has them enabled; the default minimum is INFO). All other fields — `session_id`, `conversation_id`, `trace_id`, `msg` — stay in the log body and are queried with `| json`.
 
-**Telemetry pipeline** (`ion_telemetry`) tails `~/.ion/telemetry.jsonl` with its own dedicated pipeline. It promotes two labels:
-- `service="ion-telemetry"` (constant, from the file match target)
+**Telemetry pipeline** (`ion_telemetry`) receives expanded events from `telemetry-forwarder`, which reads `~/.ion/telemetry.jsonl` and decodes v1-v4 records. It promotes two labels:
+- `service="ion-telemetry"` and `service_name="ion-telemetry"` (constant, set by the telemetry forwarder)
 - `kind` — the event name: `llm.call`, `tool.execute`, `run.complete`, `session.start`, `session.end`, `compaction`, `error`
 
 All numeric and high-cardinality fields go into structured metadata (not labels): `model`, `cost_usd`, `duration_ms`, `num_turns`, `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens`, `stop_reason`, `tool`.
 
-The two pipelines are separate. `telemetry.jsonl` is not processed by the `ion_parse` pipeline, which prevents field misrouting. If `telemetry.jsonl` doesn't exist, the pipeline is silent — Alloy self-heals and starts collecting when the file appears.
+The two pipelines are separate. `telemetry.jsonl` is not processed by `ion_parse`, which prevents field misrouting. If the file does not exist, the telemetry forwarder stays idle and starts forwarding when the file appears.
 
 ## Local vs. hosted enterprise
 
@@ -350,8 +354,8 @@ dev util clear-observability-data
 
 This runs `docker compose -p ion-obs down -v`, which deletes `loki-data` and `alloy-data` (Alloy's tail read-positions). On the next observability-profile deploy (e.g. via `dev run` if observability is your default profile), Alloy re-tails every target file from byte 0 and pushes the full history into a clean Loki.
 
-**What re-ingests:** the four live `~/.ion/*.jsonl` files Alloy targets — `engine.jsonl`, `desktop.jsonl`, `ios-diagnostic-logs.jsonl`, and `telemetry.jsonl`.
+**What re-ingests:** Alloy tails `engine.jsonl`, `desktop.jsonl`, and `ios-diagnostic-logs.jsonl`. The telemetry forwarder reads the live `telemetry.jsonl` and posts expanded events to Alloy.
 
-**What does not re-ingest:** `.bak` archives (telemetry schema rotation backups — outside Alloy's targets) and anything already truncated by `dev util clear-logs` (that content is gone).
+**What does not re-ingest:** rotated `.1` archives and anything already truncated by `dev util clear-logs` (that content is gone).
 
 **Event-time stamping (R18) makes re-ingest faithful to the original timeline.** Alloy uses `stage.timestamp` to index each event by its `ts` field rather than ingestion time, and Loki's `reject_old_samples` is disabled. Re-ingested events appear at their original timestamps in Grafana, not at the moment of re-ingest.

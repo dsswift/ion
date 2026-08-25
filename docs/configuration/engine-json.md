@@ -451,7 +451,7 @@ Network transport configuration.
 
 ## telemetry
 
-Telemetry collection and export.
+Telemetry collection and export. The file target writes schema-v4 compact frames. This reduces repeated identity and correlation data; the telemetry forwarder expands v1-v4 records for Alloy and other consumers.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -459,7 +459,7 @@ Telemetry collection and export.
 | `targets` | string[] | `[]` | Export targets: `"http"`, `"file"`, `"otel"`. |
 | `httpEndpoint` | string | `""` | HTTP endpoint for telemetry export. |
 | `httpHeaders` | object | `{}` | Headers sent with HTTP telemetry requests. |
-| `filePath` | string | `""` | Path for file-based telemetry output. |
+| `filePath` | string | `""` | Path for file-based telemetry output. The file uses v4 compact frames; consumers use the telemetry forwarder to expand them. |
 | `privacyLevel` | string | `""` | Controls what data is collected. |
 | `batchSize` | int | `0` | Number of events per export batch. |
 | `flushIntervalMs` | int64 | `0` | How often to flush batched events (milliseconds). |
