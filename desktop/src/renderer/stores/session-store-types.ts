@@ -256,6 +256,10 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
     tabId: string,
     opts?: { clearContext?: boolean; unpin?: boolean },
   ) => Promise<void>;
+  /** Main-owned automation asks owner store to create/send an explicit tab. */
+  runAutomationCommand: (
+    action: import("../../shared/types-automation").AutomationAction,
+  ) => Promise<string | void>;
   /**
    * Dismiss a pending AskUserQuestion / ExitPlanMode card and tell the engine
    * the question is resolved, so it releases its retention and stops
@@ -514,6 +518,8 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
       source?: "remote" | "machine";
       resolveSlash?: boolean;
       requestId?: string;
+      /** Main-owned automation causation, forwarded to the engine for provenance. */
+      automationCausation?: import("../../shared/types-automation").AutomationCausation;
       /**
        * How this turn was authored, as an engine InjectionKind wire value
        * ('structured_answer' for a Guided Questions submission). When set to

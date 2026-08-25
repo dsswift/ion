@@ -28,6 +28,7 @@ import { runGit } from '../git-runner'
 import { repositoryManager } from '../git/repositoryManager'
 import { log as _log, warn as _warn } from '../logger'
 import { registerWorktree, unregisterWorktree } from './inventory'
+import { triggerWorktreeLifecycleAutomation } from './lifecycle-automation-trigger'
 import { disenrollWorktree } from '../integration/bench-ops'
 import { writeRecoveryRef } from './recovery'
 import type { WorktreeInfo, WorktreeMoveResult } from '../../shared/types'
@@ -183,6 +184,15 @@ export async function retireWorktreeUnqueued(opts: RetireOptions): Promise<Workt
       recovery_ref: recoveryRef ?? '',
       pruned_benches: prunedBenches.length,
     })
+    if (!registryWarning) {
+      await triggerWorktreeLifecycleAutomation('worktree:retired', {
+        repoPath,
+        worktreePath,
+        branchName,
+        recoveryRef: recoveryRef ?? '',
+        prunedBenchPaths: prunedBenches,
+      })
+    }
     return {
       ok: true, workingDirectory: repoPath, recoveryRef,
       prunedBenchPaths: prunedBenches, warning: registryWarning,
@@ -249,6 +259,16 @@ export async function reattachWorktree(opts: ReattachOptions): Promise<WorktreeM
         source_branch: sourceBranch,
         title: title ?? '',
       })
+      if (!registryWarning) {
+        await triggerWorktreeLifecycleAutomation('worktree:created', {
+          repoPath,
+          worktreePath,
+          branchName,
+          sourceBranch,
+          baseSha: baseSha ?? '',
+          source: 'reattach',
+        })
+      }
       return { ok: true, workingDirectory: worktreePath, worktree, warning: registryWarning }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

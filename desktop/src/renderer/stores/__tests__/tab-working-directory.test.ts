@@ -45,7 +45,6 @@ const mockIon = {
     ok: true,
     worktree: { worktreePath: WORKTREE, branchName: 'wt/abc', sourceBranch: branch, repoPath: dir },
   })),
-  gitWorktreeRetire: vi.fn(async () => ({ ok: true, workingDirectory: REPO, prunedBenchPaths: [] })),
   gitWorktreeLandAndRetire: vi.fn(async () => ({ ok: true, workingDirectory: REPO, prunedBenchPaths: [] })),
   gitWorktreeRetirePreview: vi.fn(async () => ({ prunedBenchPaths: [] as string[] })),
   gitWorktreeInventory: vi.fn(async () => ({ worktrees: [] })),

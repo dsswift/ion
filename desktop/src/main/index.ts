@@ -16,6 +16,7 @@ import { migrateStudioSettings } from './settings-migration-studio'
 import { wireSessionPlaneEvents, wireEngineBridgeEvents, wireRemoteSessionPlaneForwarding, wireTabFocusHandler, wireMarkResourceReadHandler, wireDeleteResourceHandler, wireResourceGetHandler } from './event-wiring'
 import { registerAllIpc } from './ipc/register'
 import { setupAppLifecycle } from './app-lifecycle'
+import { wireAutomationRuntime } from './automation/runtime'
 
 // Legacy atv* → studio* settings rename. MUST run before window creation and
 // IPC registration so every consumer only ever reads the new key names.
@@ -28,6 +29,7 @@ wireTabFocusHandler()
 wireMarkResourceReadHandler()
 wireDeleteResourceHandler()
 wireResourceGetHandler()
+wireAutomationRuntime()
 registerAllIpc()
 // The auto-updater is initialized inside setupAppLifecycle after the engine
 // bridge connects: enterprise policy (disableAutoUpdate, D-012) comes from

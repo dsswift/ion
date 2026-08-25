@@ -399,6 +399,8 @@ export interface Message {
   slashModelAlias?: string;
   /** Concrete model the engine selected for this slash invocation after tier and provider resolution. */
   slashModelEffective?: string;
+  /** Complete parsed command frontmatter, including extension-defined keys. */
+  slashFrontmatter?: Record<string, unknown>;
   /** True when this user turn starts an approved plan implementation. */
   implementationPhase?: boolean;
   /**
@@ -661,6 +663,8 @@ export interface RunOptions {
    * wire only when truthy (mirrors the engine's omitempty `resolveSlash`).
    */
   resolveSlash?: boolean;
+  /** Main-owned automation causation, consumed by desktop IPC only. */
+  automationCausation?: import("./types-automation").AutomationCausation;
   /**
    * Client-supplied workspace descriptor for this prompt. When set, the
    * engine uses this instead of its own worktree-registry-derived context.
@@ -781,6 +785,8 @@ export interface SessionLoadMessage {
   slashSource?: string;
   slashModelAlias?: string;
   slashModelEffective?: string;
+  /** Complete parsed command frontmatter, including extension-defined keys. */
+  slashFrontmatter?: Record<string, unknown>;
   /** True when this persisted user turn starts an approved plan implementation. */
   implementationPhase?: boolean;
   /**
@@ -880,6 +886,7 @@ export type {
   IntegrationMember,
   IntegrationWorkspace,
   BenchAssembleResult,
+  WorktreePinAdvance,
 } from "./types-git";
 
 // ─── Worktree Types ───

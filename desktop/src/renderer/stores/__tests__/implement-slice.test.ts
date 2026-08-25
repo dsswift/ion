@@ -95,6 +95,7 @@ const mockSetPermissionMode = vi.fn()
 const mockEngineSetPlanMode = vi.fn()
 const mockSteer = vi.fn()
 const mockReadPlan = vi.fn(async () => ({ content: '# plan body' }))
+const mockTriggerPlanImplemented = vi.fn(async () => {})
 const mockResetTabSession = vi.fn()
 const mockResolvePermissionDenials = vi.fn()
 ;(globalThis as any).window = {
@@ -104,6 +105,7 @@ const mockResolvePermissionDenials = vi.fn()
     engineSetPlanMode: mockEngineSetPlanMode,
     steer: mockSteer,
     readPlan: mockReadPlan,
+    triggerPlanImplemented: mockTriggerPlanImplemented,
     resetTabSession: mockResetTabSession,
     resolvePermissionDenials: mockResolvePermissionDenials,
   },
@@ -250,6 +252,17 @@ describe('implementPlan — plan-mode flip (plain tab)', () => {
     const flips = mockSetPermissionMode.mock.calls.filter((c) => c[1] === 'auto' && c[3] === undefined)
     expect(flips.some((c) => c[0] === 'tab-1')).toBe(true)
     expect(mockSetPermissionMode.mock.calls.every((c) => c[0] !== 'tab-2')).toBe(true)
+  })
+
+  it('triggers plan implementation automation before submitting', async () => {
+    const tab = makeTab({ worktree: { worktreePath: '/repo/wt', repoPath: '/repo', branchName: 'wt/test', sourceBranch: 'main' } })
+    const { state } = buildHarness(tab, { permissionMode: 'plan', planFilePath: '/plans/test.md' })
+
+    await state.implementPlan('tab-1', { clearContext: true })
+
+    expect(mockTriggerPlanImplemented).toHaveBeenCalledWith(expect.objectContaining({
+      tabId: 'tab-1', worktreePath: '/repo/wt', planFilePath: '/plans/test.md', clearContext: true, source: 'renderer',
+    }))
   })
 
   it('submits the implement prompt with implementationPhase', async () => {

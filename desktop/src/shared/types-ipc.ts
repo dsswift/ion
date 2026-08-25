@@ -212,6 +212,18 @@ export const IPC = {
   // Set or clear the operator's workflow stage on a worktree (registry-scoped;
   // see shared/types-git.ts WorkStage).
   GIT_WORKTREE_SET_STAGE: "ion:git-worktree-set-stage",
+  // Durable main-process automations. No renderer executes automation code.
+  AUTOMATION_LIST: "ion:automation-list",
+  AUTOMATION_SAVE: "ion:automation-save",
+  AUTOMATION_HISTORY: "ion:automation-history",
+  AUTOMATION_PLAN_IMPLEMENTED: "ion:automation-plan-implemented",
+  AUTOMATION_PROJECT_IDS: "ion:automation-project-ids",
+  AUTOMATION_PROJECT_ENABLED: "ion:automation-project-enabled",
+  AUTOMATION_EVENT: "ion:automation-event",
+  // Main forwards validated declarative actions to owner renderer only.
+  AUTOMATION_COMMAND: "ion:automation-command",
+  // Owner renderer acknowledges success or failure for each command.
+  AUTOMATION_COMMAND_RESULT: "ion:automation-command-result",
   // Re-run provisioning for a worktree whose dependency state the operator
   // believes is wrong. Same code path as creation.
   GIT_WORKTREE_REPROVISION: "ion:git-worktree-reprovision",

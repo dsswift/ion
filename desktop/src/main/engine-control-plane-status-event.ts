@@ -4,7 +4,7 @@
  * seam. Keeping it here prevents the event router from exceeding its cap.
  */
 import type { EngineConfig, EngineEvent, NormalizedEvent } from '../shared/types'
-import { log as _log, debug as _debug, trace as _trace, warn as _warn } from './logger'
+import { log as _log, debug as _debug, trace as _trace, warn as _warn, error as _error } from './logger'
 import { conversationExists } from './session-meta'
 import { toolGateSessionConfig } from './tool-gate-responder'
 import { requiresUserResponse } from './engine-control-plane-user-response'
@@ -16,9 +16,12 @@ function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, ms
 function debug(msg: string, fields?: Record<string, unknown>): void { _debug(TAG, msg, fields) }
 function trace(msg: string, fields?: Record<string, unknown>): void { _trace(TAG, msg, fields) }
 function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, msg, fields) }
+function error(msg: string, fields?: Record<string, unknown>): void { _error(TAG, msg, fields) }
 
 export { handleStatusEvent }
 
+// Handles engine_status snapshots. Keeping this lifecycle-heavy handler apart
+// from the event switch keeps both control-plane modules under the file cap.
 function handleStatusEvent(
   ctx: EventEmitterContext,
   tabId: string,
@@ -30,6 +33,14 @@ function handleStatusEvent(
   // DEBUG so the default INFO level filters it before serialization. State
   // transitions of note (first-bind, divergence resume) stay at INFO/WARN below.
   debug('engine_status', { tab_id: tabId, state: event.fields.state, session_id: event.fields.sessionId ?? 'none', cost_usd: event.fields.runCostUsd ?? 0 })
+  void import('./automation/runtime')
+    .then(({ getAutomationRuntime }) => getAutomationRuntime().triggerStatus(tabId, {
+      state: event.fields.state ?? 'unknown',
+      sessionId: event.fields.sessionId ?? '',
+      completionReason: event.fields.completionReason ?? '',
+      permissionDenials: event.fields.permissionDenials ?? [],
+    }))
+    .catch((err) => error('engine_status automation trigger failed', { tab_id: tabId, error: String(err) }))
   // Forward the full StatusFields snapshot to the renderer BEFORE the
   // state-binding branches below. The renderer's `status` arm replaces
   // inst.statusFields wholesale (snapshot semantics). This is unconditional —
@@ -291,6 +302,16 @@ function handleStatusEvent(
     }
 
     const durationMs = tab.startedAt ? Date.now() - tab.startedAt : 0
+    void import('./automation/runtime')
+      .then(({ getAutomationRuntime }) => getAutomationRuntime().triggerCompletion(tabId, {
+        sessionId: tab.conversationId || event.fields.sessionId || '',
+        reason: event.fields.completionReason ?? '',
+        runCostUsd: event.fields.runCostUsd ?? 0,
+        numTurns: event.fields.numTurns ?? 1,
+        endedWithQuestion: idleNeedsUserResponse === true,
+      }, tab.automationCausation))
+      .catch((err) => error('conversation completion automation trigger failed', { tab_id: tabId, error: String(err) }))
+
     ctx.emit('event', tabId, {
       type: 'task_complete',
       result: '',
@@ -305,6 +326,7 @@ function handleStatusEvent(
     } as NormalizedEvent)
 
     tab.activeRequestId = null
+    tab.automationCausation = undefined
     // Preserve 'completed' status whenever the engine reported denials that
     // require a user response. Otherwise a subsequent engine_status state=idle
     // (e.g. a cost-only update fired ~1ms later) will fail the guard at the

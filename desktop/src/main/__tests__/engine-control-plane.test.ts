@@ -544,6 +544,16 @@ describe('EngineControlPlane', () => {
     })
   })
 
+
+  describe('request cancellation', () => {
+    it('reaps the agent subtree on a live request cancel', async () => {
+      const tabId = cp.createTab()
+      await cp.submitPrompt(tabId, 'req-live', makeRunOptions())
+      expect(cp.cancel('req-live')).toBe(true)
+      expect(mockBridge.sendAbort).toHaveBeenCalledWith(tabId)
+    })
+  })
+
   describe('deferred interrupt settlement', () => {
     it('settles a tab to completed when its deferred abort reaches the engine', async () => {
       // D2: the operator interrupts while the socket is down. The bridge

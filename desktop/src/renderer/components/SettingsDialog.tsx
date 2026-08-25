@@ -9,6 +9,7 @@ import { transitions } from '../theme-tokens'
 import { GeneralCategory } from './settings/GeneralCategory'
 import { AIModelsCategory } from './settings/AIModelsCategory'
 import { AIAssistWorkflowsCategory } from './settings/AIAssistWorkflowsCategory'
+import { AutomationCategory } from './settings/AutomationCategory'
 import { GitCategory } from './settings/GitCategory'
 import { TabsPanelsCategory } from './settings/TabsPanelsCategory'
 import { AppearanceCategory } from './settings/AppearanceCategory'
@@ -35,6 +36,7 @@ const CATEGORIES: Category[] = [
   { id: 'general', label: 'General', icon: GearSix, component: GeneralCategory },
   { id: 'ai', label: 'AI & Models', icon: Brain, component: AIModelsCategory },
   { id: 'ai-assist', label: 'AI Workflows', icon: MagicWand, component: AIAssistWorkflowsCategory },
+  { id: 'automation', label: 'Automation', icon: Lightning, component: AutomationCategory },
   { id: 'appearance', label: 'Appearance', icon: PaintBrush, component: AppearanceCategory },
   { id: 'tabs', label: 'Tabs & Panels', icon: Columns, component: TabsPanelsCategory },
   { id: 'git', label: 'Git', icon: GitBranch, component: GitCategory },

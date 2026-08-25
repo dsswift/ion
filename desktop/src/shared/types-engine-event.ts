@@ -143,6 +143,7 @@ export type EngineEvent =
       userTurnEntryId: string;
       userTurnSlashModelAlias?: string;
       userTurnSlashModelEffective?: string;
+      userTurnSlashFrontmatter?: Record<string, unknown>;
     }
   | { type: "engine_tool_start"; toolName: string; toolId: string }
   | {

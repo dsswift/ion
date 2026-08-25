@@ -264,6 +264,16 @@ export function useEngineEvents() {
     }
     window.ion.on(IPC.REMOTE_SET_PILL_ICON, remoteSetPillIconHandler)
 
+    const unsubAutomationCommand = window.ion.onAutomationCommand(({ id, action }) => {
+      void useSessionStore.getState().runAutomationCommand(action)
+        .then(() => window.ion.resolveAutomationCommand(id, { ok: true }))
+        .catch((err) => {
+          const message = String(err)
+          rWarn('automation.command', 'automation command failed', { kind: action.kind, error: message })
+          window.ion.resolveAutomationCommand(id, { ok: false, error: message })
+        })
+    })
+
     // Forwarded actions from the Studio mirror window: this renderer is the
     // session-store OWNER, so owner-durable mutations execute here (main
     // already validated the action against FORWARDED_ACTIONS). The resulting
@@ -329,6 +339,7 @@ export function useEngineEvents() {
       window.ion.off(IPC.REMOTE_ENGINE_PROMPT, remoteEnginePromptHandler)
       window.ion.off(IPC.REMOTE_SET_PILL_COLOR, remoteSetPillColorHandler)
       window.ion.off(IPC.REMOTE_SET_PILL_ICON, remoteSetPillIconHandler)
+      unsubAutomationCommand()
       unsubExecAction()
       scheduler.cancel()
       schedulerRef.current = null

@@ -263,6 +263,7 @@ export type NormalizedEvent =
       entryId: string;
       slashModelAlias?: string;
       slashModelEffective?: string;
+      slashFrontmatter?: Record<string, unknown>;
     }
   | { type: "agent_state"; agents: import("./types-engine").AgentStateUpdate[] }
   // status — desktop-internal per-session status snapshot. Emitted by the

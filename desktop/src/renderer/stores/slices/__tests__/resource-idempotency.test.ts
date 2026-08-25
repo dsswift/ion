@@ -17,6 +17,7 @@ import {
   type ResourceState,
 } from '../resource-slice'
 import type { ResourceItem, ResourceDelta } from '../../../../shared/types-engine'
+import { resourceIdentity } from '../../../../shared/resource-identity'
 
 function makeItem(id: string, content = 'body', read = false): ResourceItem {
   return { id, kind: 'briefing', content, createdAt: '2026-01-01T00:00:00Z', read }
@@ -64,6 +65,18 @@ describe('applyResourceSnapshot — ID normalization', () => {
     ])
     expect(result.resources.briefing).toEqual([makeItem('a', 'final-unread', false)])
     expect(result.readResourceIds.has('a')).toBe(false)
+  })
+
+  it('keeps read state separate when kinds share an ID', () => {
+    const state = applyResourceDelta(initialResourceState, 'briefing', {
+      op: 'mark_read', item: { ...makeItem('shared'), producer: 'alpha' },
+    })
+    const result = applyResourceSnapshot(state, 'alert', 'sub-1', [
+      { ...makeItem('shared'), kind: 'alert', producer: 'beta', read: false },
+    ])
+
+    expect(result.readResourceIds.has(resourceIdentity({ id: 'shared', producer: 'alpha', kind: 'briefing' }))).toBe(true)
+    expect(result.readResourceIds.has(resourceIdentity({ id: 'shared', producer: 'beta', kind: 'alert' }))).toBe(false)
   })
 
   it('migrates a legacy raw-ID read key to every producer sharing that ID', () => {

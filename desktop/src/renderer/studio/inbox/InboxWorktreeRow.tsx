@@ -3,6 +3,7 @@ import { CaretDown, CaretRight, GitBranch } from '@phosphor-icons/react'
 import { useSessionStore } from '../../stores/sessionStore'
 import { WorktreeRowMenu } from '../../components/WorktreeRowMenu'
 import { WorktreeStateSlot } from '../../components/WorktreeStateSlot'
+import { WorktreeStageSlot } from '../../components/WorktreeStageSlot'
 import { WorktreeEnrollmentSlot } from '../../components/WorktreeEnrollmentSlot'
 import { resolveRowState, resolveRowWords } from '../../components/worktreeRowState'
 import { findActiveAutoFix } from '../../stores/slices/conflict-assist-dedupe'
@@ -12,6 +13,7 @@ import { BenchVerificationDialog } from '../../components/git/BenchVerificationD
 import { useColors } from '../../theme'
 import { rError, rInfo } from '../../rendererLogger'
 import { operationIsPending, operationMessage, pipelineIsRunning, useBenchOperation, useWorktreeOperation, useWorktreePipeline } from './worktreeOperationSelectors'
+import type { WorkStage } from '../../../shared/types'
 import type { InboxNavigatorGroup } from './inbox-navigator'
 
 /** One enriched, collapsible worktree GROUP HEADER. Conversation rows belong below it. */
@@ -97,6 +99,15 @@ export function InboxWorktreeRow({
     }
     onUpdatePin(entry.worktreePath, workspace.sourceBranch)
   }
+  const setStage = (stage: WorkStage | null): void => {
+    void useSessionStore.getState().setWorktreeStage(repoPath, entry.worktreePath, stage)
+      .catch((error) => rError('inbox.worktree', 'stage update failed', {
+        branch: entry.branchName,
+        worktree_path: entry.worktreePath,
+        stage: stage ?? 'none',
+        error: String(error),
+      }))
+  }
 
   const toggleMembership = (): void => {
     if (workspace && membership) {
@@ -132,10 +143,13 @@ export function InboxWorktreeRow({
         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>{group.label}</span>
         <span style={{ color: colors.textTertiary, fontSize: 10 }}>{group.tabs.length}</span>
       </div>
-      <div style={{ display: 'flex', gap: 5, paddingLeft: 18, minWidth: 0, fontSize: 9, color: colors.textTertiary }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, paddingLeft: 18, minWidth: 0, fontSize: 9, color: colors.textTertiary }}>
         <span style={{ fontFamily: 'monospace', flexShrink: 0 }}>{entry.label}</span>
         <span>·</span>
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{words || entry.lastCommitSubject || 'no commits yet'}</span>
+        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{words || entry.lastCommitSubject || 'no commits yet'}</span>
+        <span data-testid={`inbox-worktree-stage-${entry.branchName}`} style={{ display: 'inline-flex', marginLeft: 'auto', flexShrink: 0 }}>
+          <WorktreeStageSlot stage={entry.stage} branchName={entry.branchName} onSetStage={setStage} />
+        </span>
       </div>
     </div>
     {menu && <WorktreeRowMenu entry={entry} repoPath={repoPath} anchor={menu} onClose={() => setMenu(null)} onRefresh={() => void useSessionStore.getState().refreshWorkspaceViews(repoPath)} />}

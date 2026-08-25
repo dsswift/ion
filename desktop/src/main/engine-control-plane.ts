@@ -342,6 +342,7 @@ export class EngineControlPlane extends EventEmitter {
     // engine-control-plane-idle-ordering.ts.
     Object.assign(tab, dispatchOrderingBaseline(tab.lastObservedRunEpoch))
     log('submit_prompt: ordering baseline', { tab_id: tabId, request_id: requestId, dispatch_run_epoch: tab.dispatchRunEpoch ?? -1 })
+    tab.automationCausation = options.automationCausation
     tab.lastActivityAt = Date.now()
     tab.startedAt = Date.now()
     tab.toolCallCount = 0

@@ -14,7 +14,7 @@
  *   `/` <name> [ <ws> <args> ]
  *
  * Where:
- *   - `<name>` is one or more of `[a-zA-Z0-9_:-]`. The character class is
+ *   - `<name>` starts with `[a-zA-Z]`, followed by zero or more `[a-zA-Z0-9_:-]`. The character class is
  *     intentionally conservative so paste-style text like `/path/to/file`
  *     does NOT match — slash commands have identifier-shaped names.
  *   - `<args>` is everything after the first whitespace, verbatim. We do
@@ -34,7 +34,7 @@ export interface ParsedSlash {
   args: string
 }
 
-const SLASH_RE = /^\/([a-zA-Z0-9_:-]+)(?:\s+([\s\S]*))?$/
+const SLASH_RE = /^\/([a-zA-Z][a-zA-Z0-9_:-]*)(?:\s+([\s\S]*))?$/
 
 /**
  * Parse free-form text as a slash command.

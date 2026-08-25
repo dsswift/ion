@@ -491,6 +491,11 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
           t.id === tabId ? { ...t, pillColor: color } : t
         ),
       }))
+      // Push a lightweight desktop_tab_meta delta so iOS sees the pill color
+      // change immediately without waiting for the 5 s snapshot poll tick.
+      // color is null when the customization is explicitly cleared — that
+      // null rides through unchanged so the delta clears it on iOS too.
+      window.ion.tabMetaChanged({ tabId, pillColor: color })
     },
 
     setTabPillIcon: (tabId, icon) => {
@@ -499,6 +504,11 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
           t.id === tabId ? { ...t, pillIcon: icon } : t
         ),
       }))
+      // Push a lightweight desktop_tab_meta delta so iOS sees the pill icon
+      // change immediately without waiting for the 5 s snapshot poll tick.
+      // icon is null when the customization is explicitly cleared — that
+      // null rides through unchanged so the delta clears it on iOS too.
+      window.ion.tabMetaChanged({ tabId, pillIcon: icon })
     },
 
     clearTab: () => {

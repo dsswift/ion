@@ -78,6 +78,10 @@ export type RemoteEvent =
       lastMessage?: string | null
       /** Message count of the active conversation instance. */
       messageCount?: number
+      /** Custom tab pill background, or null to clear it. */
+      pillColor?: string | null
+      /** Custom tab pill icon, or null to clear it. */
+      pillIcon?: string | null
     }
   | { type: 'desktop_text_chunk'; tabId: string; text: string }
   | { type: 'desktop_tool_call'; tabId: string; toolName: string; toolId: string }
@@ -140,7 +144,7 @@ export type RemoteEvent =
   // engine→wire mapper). iOS re-keys its optimistic user row to this id so a
   // run that never reaches a message_end (cancel, mid-stream failure) still
   // leaves the row canonically keyed and history reloads dedup against it.
-  | { type: 'desktop_user_turn_persisted'; tabId: string; instanceId?: string | null; userTurnEntryId: string; userTurnSlashModelAlias?: string; userTurnSlashModelEffective?: string }
+  | { type: 'desktop_user_turn_persisted'; tabId: string; instanceId?: string | null; userTurnEntryId: string; userTurnSlashModelAlias?: string; userTurnSlashModelEffective?: string; userTurnSlashFrontmatter?: Record<string, unknown> }
   // `metadata` is an opaque pass-through hint map forwarded from the engine.
   // Carried verbatim across the relay to iOS so future iOS-side handlers
   // (e.g. dedup, render-style hints) can adopt the same conventions the

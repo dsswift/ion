@@ -36,6 +36,11 @@ const SEARCH_INDEX: SearchEntry[] = [
   { categoryId: 'ai-assist', label: 'Cherry-pick Resolution', keywords: 'cherry pick conflict resolve prompt' },
   { categoryId: 'ai-assist', label: 'Bench Verification Analysis', keywords: 'bench verification rerere analysis prompt verdict' },
 
+  // Automation
+  { categoryId: 'automation', label: 'Automation', keywords: 'automation trigger event rule workflow local history activity' },
+  { categoryId: 'automation', label: 'Automation Rules', keywords: 'automation enable disable event action worktree stage conversation prompt' },
+  { categoryId: 'automation', label: 'Automation Activity', keywords: 'automation activity history executed succeeded failed skipped' },
+
   // Appearance
   { categoryId: 'appearance', label: 'Full Width', keywords: 'full width expanded ui horizontal wide layout' },
   { categoryId: 'appearance', label: 'Ultra Wide', keywords: 'ultra wide monitor external display large' },

@@ -7,11 +7,14 @@
 // './engine-control-plane-events'` sites continue to resolve unchanged.
 import type { EngineBridge } from './engine-bridge'
 import type { TabStatus } from '../shared/types'
+import type { AutomationCausation } from '../shared/types-automation'
 
 export interface TabEntry {
   tabId: string
   status: TabStatus
   activeRequestId: string | null
+  /** Causation inherited by the active automation-started run until terminal status. */
+  automationCausation?: AutomationCausation
   conversationId: string | null
   engineSessionStarted: boolean
   lastActivityAt: number

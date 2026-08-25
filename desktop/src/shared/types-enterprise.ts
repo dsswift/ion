@@ -116,6 +116,8 @@ export interface IonDesktopPolicyFields {
     themeId: string
     locked?: boolean
   }
+  /** Managed declarative desktop automations. Never persisted to user files. */
+  automation?: import('./types-automation').EnterpriseAutomationPolicy
   /**
    * Enterprise active-UI enforcement (single-UI exclusivity). `ui` names
    * the conversation UI ('overlay' | 'studio'); `locked: true` enforces it

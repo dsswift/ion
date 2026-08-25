@@ -3,9 +3,8 @@
  *
  * The stage is registry-scoped (not bench-scoped) so it exists before
  * enrollment and survives everything short of retirement. These tests pin the
- * write/clear/upsert paths and the one automatic transition (`bug` → `test` on
- * a pin advance), which `advanceWorktreeStageOnPinChange` applies from the
- * bench's update verbs.
+ * write/clear/upsert paths and rollout migration (`bug` → `test` after a pin
+ * advance when no automation runtime handles its semantic trigger).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 'fs'
@@ -24,7 +23,7 @@ vi.mock('os', async () => {
 
 import {
   registerWorktree, setWorktreeStage, lookupWorktreeStage,
-  advanceWorktreeStageOnPinChange, worktreeRegistryFile,
+  migrateWorktreeStageOnPinAdvance, worktreeRegistryFile,
 } from '../registry'
 
 const WT = '/wt/project-aaa'
@@ -109,34 +108,34 @@ describe('setWorktreeStage', () => {
   })
 })
 
-describe('advanceWorktreeStageOnPinChange', () => {
+describe('migrateWorktreeStageOnPinAdvance', () => {
   it('moves bug to test', () => {
     register()
     setWorktreeStage(WT, 'bug')
 
-    advanceWorktreeStageOnPinChange(WT)
+    migrateWorktreeStageOnPinAdvance(WT)
 
     expect(lookupWorktreeStage(WT)).toBe('test')
   })
 
   it('leaves every other stage where the operator put it', () => {
-    // Only `bug` declares an onPinAdvance in WORK_STAGES; the rest are
-    // statements the pin cannot invalidate (`verified` describes the feature).
+    // Rollout migration only preserves legacy `bug` -> `test`; all other
+    // stages remain for automation or the operator to interpret.
     for (const stage of ['plan', 'build', 'test', 'verified', 'merge', 'ready'] as const) {
       register()
       setWorktreeStage(WT, stage)
-      advanceWorktreeStageOnPinChange(WT)
+      migrateWorktreeStageOnPinAdvance(WT)
       expect(lookupWorktreeStage(WT)).toBe(stage)
     }
   })
 
   it('is a no-op on an unstaged or unregistered worktree', () => {
     register()
-    advanceWorktreeStageOnPinChange(WT)
+    migrateWorktreeStageOnPinAdvance(WT)
     expect(lookupWorktreeStage(WT)).toBeNull()
 
     // Unregistered: must not create an entry.
-    advanceWorktreeStageOnPinChange('/wt/nowhere')
+    migrateWorktreeStageOnPinAdvance('/wt/nowhere')
     expect(lookupWorktreeStage('/wt/nowhere')).toBeNull()
   })
 })

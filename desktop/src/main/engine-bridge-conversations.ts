@@ -80,15 +80,14 @@ export async function discoverSlashCommands(bridge: EngineBridge, workingDir: st
   return raw.map((c): DiscoveredCommand => {
     // The engine's source taxonomy is richer than the desktop's origin/scope
     // split. Map skills to the skill source; everything else is a command.
-    // `.claude`-family templates map to origin 'claude' (preserved as
-    // provenance for any consumer that wants to distinguish origin); all others
-    // are Ion-native ('ion'). Project-scoped templates report scope 'project'.
+    // `.claude` templates map to origin 'claude'; engine discovery does not
+    // expose a separate project source because roots share source taxonomy.
     // Note: the claudeCompat GATE is applied engine-side (the engine skips the
     // .claude roots entirely when the flag is false), so anything that arrives
     // here with origin 'claude' was already permitted.
     const source: DiscoveredCommand['source'] = c.source === 'skill' ? 'skill' : 'command'
     const origin: DiscoveredCommand['origin'] = c.source === 'claude' ? 'claude' : 'ion'
-    const scope: DiscoveredCommand['scope'] = c.source === 'project' ? 'project' : 'user'
+    const scope: DiscoveredCommand['scope'] = 'user'
     return {
       name: c.name,
       description: c.description ?? c.argumentHint ?? '',

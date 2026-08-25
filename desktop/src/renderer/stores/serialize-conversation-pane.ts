@@ -1,8 +1,17 @@
-import type { ConversationPane } from '../../shared/types-engine'
-import type { PersistedConversationPane, PersistedConversationInstance } from '../../shared/types-persistence'
-import { deriveLedger, resolveCurrentSessionId } from '../../shared/session-ledger'
-import { instanceMessageCount, isRendererOnlyRow } from './conversation-instance'
-import { rDebug } from '../rendererLogger'
+import type { ConversationPane } from "../../shared/types-engine";
+import type {
+  PersistedConversationPane,
+  PersistedConversationInstance,
+} from "../../shared/types-persistence";
+import {
+  deriveLedger,
+  resolveCurrentSessionId,
+} from "../../shared/session-ledger";
+import {
+  instanceMessageCount,
+  isRendererOnlyRow,
+} from "./conversation-instance";
+import { rDebug } from "../rendererLogger";
 
 /**
  * serialize-conversation-pane — convert an in-memory `ConversationPane` into the
@@ -58,20 +67,26 @@ import { rDebug } from '../rendererLogger'
  *
  * Exported for tests.
  */
-export function isExtensionErrorMessage(m: { role: string; content: string }): boolean {
-  if (m.role !== 'system') return false
-  const c = m.content
+export function isExtensionErrorMessage(m: {
+  role: string;
+  content: string;
+}): boolean {
+  if (m.role !== "system") return false;
+  const c = m.content;
   // extension subprocess died — hooks disabled until restart
-  if (c.startsWith('Error: extension') && c.includes('subprocess died')) return true
+  if (c.startsWith("Error: extension") && c.includes("subprocess died"))
+    return true;
   // Extension X crashed N times in 60s and will not be restarted
-  if (c.includes('crashed') && c.includes('will not be restarted')) return true
+  if (c.includes("crashed") && c.includes("will not be restarted")) return true;
   // extension hook session_start failed: jsonrpc error ...
-  if (c.startsWith('Error: extension hook') && c.includes('failed:')) return true
+  if (c.startsWith("Error: extension hook") && c.includes("failed:"))
+    return true;
   // extension load failed: ...
-  if (c.startsWith('Error: extension load failed')) return true
+  if (c.startsWith("Error: extension load failed")) return true;
   // extension X respawn failed: ...
-  if (c.startsWith('Error: extension') && c.includes('respawn failed')) return true
-  return false
+  if (c.startsWith("Error: extension") && c.includes("respawn failed"))
+    return true;
+  return false;
 }
 
 /**
@@ -90,8 +105,8 @@ export function isExtensionErrorMessage(m: { role: string; content: string }): b
 export function instanceHasRendererOnlyRows(
   messages: Array<{ role: string }> | undefined,
 ): boolean {
-  if (!messages || messages.length === 0) return false
-  return messages.some(isRendererOnlyRow)
+  if (!messages || messages.length === 0) return false;
+  return messages.some(isRendererOnlyRow);
 }
 
 /**
@@ -123,18 +138,18 @@ export function instanceHasRendererOnlyRows(
  * Exported for unit testing the preservation order at a stable seam.
  */
 export function resolvePersistedLastKnownSessionId(args: {
-  conversationId: string | null
-  lastKnownSessionId: string | null | undefined
-  historicalSessionIds: string[]
-  instanceConversationIds: string[] | undefined
+  conversationId: string | null;
+  lastKnownSessionId: string | null | undefined;
+  historicalSessionIds: string[];
+  instanceConversationIds: string[] | undefined;
 }): string | undefined {
-  if (args.lastKnownSessionId) return args.lastKnownSessionId
-  if (args.conversationId) return args.conversationId
-  const hist = args.historicalSessionIds
-  if (hist.length > 0) return hist[hist.length - 1]
-  const ids = args.instanceConversationIds
-  if (ids && ids.length > 0) return ids[ids.length - 1]
-  return undefined
+  if (args.lastKnownSessionId) return args.lastKnownSessionId;
+  if (args.conversationId) return args.conversationId;
+  const hist = args.historicalSessionIds;
+  if (hist.length > 0) return hist[hist.length - 1];
+  const ids = args.instanceConversationIds;
+  if (ids && ids.length > 0) return ids[ids.length - 1];
+  return undefined;
 }
 
 /**
@@ -147,28 +162,29 @@ export function resolvePersistedLastKnownSessionId(args: {
  */
 export function serializePersistedMessages(
   msgs: Array<{
-    role: string
-    content: string
-    toolName?: string
-    toolId?: string
-    toolInput?: string
-    toolStatus?: string
-    timestamp: number
-    dedupKey?: string
-    planFilePath?: string
-    slashCommand?: string
-    slashArgs?: string
-    slashSource?: string
-    slashModelAlias?: string
-    slashModelEffective?: string
-    implementationPhase?: boolean
-    injectionKind?: string
-    attachments?: import('../../shared/types-session').Attachment[]
+    role: string;
+    content: string;
+    toolName?: string;
+    toolId?: string;
+    toolInput?: string;
+    toolStatus?: string;
+    timestamp: number;
+    dedupKey?: string;
+    planFilePath?: string;
+    slashCommand?: string;
+    slashArgs?: string;
+    slashSource?: string;
+    slashModelAlias?: string;
+    slashModelEffective?: string;
+    implementationPhase?: boolean;
+    injectionKind?: string;
+    slashFrontmatter?: Record<string, unknown>;
+    attachments?: import("../../shared/types-session").Attachment[];
   }>,
-): NonNullable<PersistedConversationInstance['messages']> {
+): NonNullable<PersistedConversationInstance["messages"]> {
   const filtered = msgs.filter(
-    (m) => !isExtensionErrorMessage(m) && m.role !== 'thinking',
-  )
+    (m) => !isExtensionErrorMessage(m) && m.role !== "thinking",
+  );
   return filtered.map((m) => ({
     role: m.role,
     content: m.content,
@@ -179,21 +195,32 @@ export function serializePersistedMessages(
     timestamp: m.timestamp,
     ...(m.dedupKey ? { dedupKey: m.dedupKey } : {}),
     ...(m.planFilePath ? { planFilePath: m.planFilePath } : {}),
-    ...(m.slashCommand ? { slashCommand: m.slashCommand, slashArgs: m.slashArgs, slashSource: m.slashSource } : {}),
+    ...(m.slashCommand
+      ? {
+          slashCommand: m.slashCommand,
+          slashArgs: m.slashArgs,
+          slashSource: m.slashSource,
+        }
+      : {}),
     ...(m.slashModelAlias ? { slashModelAlias: m.slashModelAlias } : {}),
-    ...(m.slashModelEffective ? { slashModelEffective: m.slashModelEffective } : {}),
+    ...(m.slashModelEffective
+      ? { slashModelEffective: m.slashModelEffective }
+      : {}),
     ...(m.implementationPhase ? { implementationPhase: true } : {}),
     // How the turn was authored. The content file is what a conversation is
     // rebuilt from on restart, so dropping this here means the classification
     // is gone from every later reopen even though the engine store still has
     // it — the Guided Questions frame vanished on exactly that round trip.
     ...(m.injectionKind ? { injectionKind: m.injectionKind } : {}),
+    ...(m.slashFrontmatter ? { slashFrontmatter: m.slashFrontmatter } : {}),
     // Persist engine-produced image attachments (tool-result / provider
     // images the engine replays on historical reload via flattenEntries).
     // Attachment paths are on-disk references (never base64), so this is
     // a few bytes per image, not the image payload.
-    ...(m.attachments && m.attachments.length > 0 ? { attachments: m.attachments } : {}),
-  }))
+    ...(m.attachments && m.attachments.length > 0
+      ? { attachments: m.attachments }
+      : {}),
+  }));
 }
 
 /**
@@ -210,109 +237,135 @@ export function serializePersistedMessages(
  */
 export function collectExternalInstanceMessages(
   pane: ConversationPane | undefined,
-): { instanceId: string; messages: NonNullable<PersistedConversationInstance['messages']> } | null {
-  const inst = pane?.instances[0]
-  if (!inst) return null
-  const msgs = inst.messages ?? []
-  if (!instanceHasRendererOnlyRows(msgs)) return null
-  const serialized = serializePersistedMessages(msgs)
-  if (serialized.length === 0) return null
-  return { instanceId: inst.id, messages: serialized }
+): {
+  instanceId: string;
+  messages: NonNullable<PersistedConversationInstance["messages"]>;
+} | null {
+  const inst = pane?.instances[0];
+  if (!inst) return null;
+  const msgs = inst.messages ?? [];
+  if (!instanceHasRendererOnlyRows(msgs)) return null;
+  const serialized = serializePersistedMessages(msgs);
+  if (serialized.length === 0) return null;
+  return { instanceId: inst.id, messages: serialized };
 }
 
 export function serializeConversationPane(
   pane: ConversationPane | undefined,
   opts: { tabIdForLog: string },
 ): PersistedConversationPane | undefined {
-  if (!pane || pane.instances.length === 0) return undefined
+  if (!pane || pane.instances.length === 0) return undefined;
 
-  const instances: PersistedConversationInstance[] = pane.instances.map((inst) => {
-    const out: PersistedConversationInstance = {
-      id: inst.id,
-      label: inst.label,
-      messageCount: instanceMessageCount(inst),
-    }
+  const instances: PersistedConversationInstance[] = pane.instances.map(
+    (inst) => {
+      const out: PersistedConversationInstance = {
+        id: inst.id,
+        label: inst.label,
+        messageCount: instanceMessageCount(inst),
+      };
 
-    // Schema v4: the thin manifest NEVER carries inline messages. Instances
-    // with renderer-only rows (harness/system — not reloadable from the
-    // engine store) externalize their scrollback to a per-tab content file
-    // (written by session-store-persistence on the same debounced tick);
-    // here they get only the explicit marker the restore path keys off.
-    // Count-only instances (every row engine-reloadable) stay unmarked.
-    const msgs = (inst.messages ?? [])
-    if (instanceHasRendererOnlyRows(msgs) && serializePersistedMessages(msgs).length > 0) {
-      out.hasExternalContent = true
-    } else if (inst.externalContentStatus === 'pending') {
-      // Not-yet-loaded externalized content: the runtime messages are empty
-      // but the content file still holds the scrollback. Keep the marker so
-      // a persist cycle before first activation doesn't orphan the file.
-      out.hasExternalContent = true
-    }
-
-    if (inst.modelOverride) out.modelOverride = inst.modelOverride
-    // Preserve source on every new write. Legacy values have unknown origin,
-    // so they cannot prove an explicit per-prompt preference for a slash run.
-    if (inst.modelOverrideSource) out.modelOverrideSource = inst.modelOverrideSource
-    if (inst.sessionModel) out.sessionModel = inst.sessionModel
-    if (inst.permissionMode && inst.permissionMode !== 'auto') out.permissionMode = inst.permissionMode
-    // Thinking effort: conditional-write like permissionMode above. 'off' is
-    // the default, so omitting it keeps the manifest small and an absent field
-    // restores to 'off'.
-    if (inst.thinkingEffort && inst.thinkingEffort !== 'off') out.thinkingEffort = inst.thinkingEffort
-    if (inst.permissionDenied && inst.permissionDenied.tools.length > 0) {
-      out.permissionDenied = { tools: inst.permissionDenied.tools }
-    }
-    if (inst.draftInput && inst.draftInput.length > 0) out.draftInput = inst.draftInput
-    if (inst.conversationIds && inst.conversationIds.length > 0) {
-      // Legacy chain: still written for one release so a downgrade keeps
-      // resuming. New readers prefer the ledger / currentSessionId below.
-      out.conversationIds = inst.conversationIds
-      // First-class session ledger. Prefer the runtime reasoned ledger
-      // (inst.sessions, which carries cut reasons + parentId) when present;
-      // otherwise derive it from the raw conversationIds chain (migrating
-      // pre-ledger ids to reason `unknown`). currentSessionId pins the live id.
-      // This is what makes restart-fragmentation impossible: restore resolves
-      // currentSessionId and appends nothing.
-      const ledger = deriveLedger({ sessions: inst.sessions, conversationIds: inst.conversationIds })
-      if (ledger.length > 0) {
-        out.sessions = ledger
-        out.currentSessionId = resolveCurrentSessionId({ sessions: ledger })
+      // Schema v4: the thin manifest NEVER carries inline messages. Instances
+      // with renderer-only rows (harness/system — not reloadable from the
+      // engine store) externalize their scrollback to a per-tab content file
+      // (written by session-store-persistence on the same debounced tick);
+      // here they get only the explicit marker the restore path keys off.
+      // Count-only instances (every row engine-reloadable) stay unmarked.
+      const msgs = inst.messages ?? [];
+      if (
+        instanceHasRendererOnlyRows(msgs) &&
+        serializePersistedMessages(msgs).length > 0
+      ) {
+        out.hasExternalContent = true;
+      } else if (inst.externalContentStatus === "pending") {
+        // Not-yet-loaded externalized content: the runtime messages are empty
+        // but the content file still holds the scrollback. Keep the marker so
+        // a persist cycle before first activation doesn't orphan the file.
+        out.hasExternalContent = true;
       }
-    }
-    if (inst.agentStates && inst.agentStates.length > 0) {
-      // Persist a settled snapshot: running → done (the run is not resuming).
-      out.agentStates = inst.agentStates.map((a) => ({
-        name: a.name,
-        ...(a.id ? { id: a.id } : {}),
-        status: a.status === 'running' ? 'done' : a.status,
-        ...(a.metadata ? { metadata: a.metadata } : {}),
-      }))
-    }
-    // Persist flat dispatch telemetry alongside agentStates so telemetry-only
-    // children (dispatches that never produced an agent-state pill) survive
-    // reload. Without this, the nesting depth for restored dispatches is lost.
-    if (inst.dispatchTelemetry && inst.dispatchTelemetry.length > 0) {
-      out.dispatchTelemetry = inst.dispatchTelemetry
-    }
-    if (inst.planFilePath) out.planFilePath = inst.planFilePath
-    // Context occupancy: persisted so a cold-started tab renders the correct
-    // reading on first frame rather than blank until the first engine status
-    // arrives. Conditional-write like every other optional field above.
-    if (inst.statusFields?.contextTokens) out.contextTokens = inst.statusFields.contextTokens
-    if (inst.statusFields?.contextWindow) out.contextWindow = inst.statusFields.contextWindow
-    return out
-  })
+
+      if (inst.modelOverride) out.modelOverride = inst.modelOverride;
+      // Preserve source on every new write. Legacy values have unknown origin,
+      // so they cannot prove an explicit per-prompt preference for a slash run.
+      if (inst.modelOverrideSource)
+        out.modelOverrideSource = inst.modelOverrideSource;
+      if (inst.sessionModel) out.sessionModel = inst.sessionModel;
+      if (inst.permissionMode && inst.permissionMode !== "auto")
+        out.permissionMode = inst.permissionMode;
+      // Thinking effort: conditional-write like permissionMode above. 'off' is
+      // the default, so omitting it keeps the manifest small and an absent field
+      // restores to 'off'.
+      if (inst.thinkingEffort && inst.thinkingEffort !== "off")
+        out.thinkingEffort = inst.thinkingEffort;
+      if (inst.permissionDenied && inst.permissionDenied.tools.length > 0) {
+        out.permissionDenied = { tools: inst.permissionDenied.tools };
+      }
+      if (inst.draftInput && inst.draftInput.length > 0)
+        out.draftInput = inst.draftInput;
+      if (inst.conversationIds && inst.conversationIds.length > 0) {
+        // Legacy chain: still written for one release so a downgrade keeps
+        // resuming. New readers prefer the ledger / currentSessionId below.
+        out.conversationIds = inst.conversationIds;
+        // First-class session ledger. Prefer the runtime reasoned ledger
+        // (inst.sessions, which carries cut reasons + parentId) when present;
+        // otherwise derive it from the raw conversationIds chain (migrating
+        // pre-ledger ids to reason `unknown`). currentSessionId pins the live id.
+        // This is what makes restart-fragmentation impossible: restore resolves
+        // currentSessionId and appends nothing.
+        const ledger = deriveLedger({
+          sessions: inst.sessions,
+          conversationIds: inst.conversationIds,
+        });
+        if (ledger.length > 0) {
+          out.sessions = ledger;
+          out.currentSessionId = resolveCurrentSessionId({ sessions: ledger });
+        }
+      }
+      if (inst.agentStates && inst.agentStates.length > 0) {
+        // Persist a settled snapshot: running → done (the run is not resuming).
+        out.agentStates = inst.agentStates.map((a) => ({
+          name: a.name,
+          ...(a.id ? { id: a.id } : {}),
+          status: a.status === "running" ? "done" : a.status,
+          ...(a.metadata ? { metadata: a.metadata } : {}),
+        }));
+      }
+      // Persist flat dispatch telemetry alongside agentStates so telemetry-only
+      // children (dispatches that never produced an agent-state pill) survive
+      // reload. Without this, the nesting depth for restored dispatches is lost.
+      if (inst.dispatchTelemetry && inst.dispatchTelemetry.length > 0) {
+        out.dispatchTelemetry = inst.dispatchTelemetry;
+      }
+      if (inst.planFilePath) out.planFilePath = inst.planFilePath;
+      // Context occupancy: persisted so a cold-started tab renders the correct
+      // reading on first frame rather than blank until the first engine status
+      // arrives. Conditional-write like every other optional field above.
+      if (inst.statusFields?.contextTokens)
+        out.contextTokens = inst.statusFields.contextTokens;
+      if (inst.statusFields?.contextWindow)
+        out.contextWindow = inst.statusFields.contextWindow;
+      return out;
+    },
+  );
 
   // Diagnostic parity: warn when an instance that triggered content
   // persistence has no conversationIds (those rows survive restart but the
   // conversation cannot be continued from disk).
-  const contentInstances = instances.filter((i) => (i.messages?.length ?? 0) > 0)
-  if (contentInstances.length > 0 && !contentInstances.some((i) => (i.conversationIds?.length ?? 0) > 0)) {
-    rDebug('persist', 'content instances have no conversationIds, session cannot resume', { tab_id: opts.tabIdForLog.slice(0, 8) })
+  const contentInstances = instances.filter(
+    (i) => (i.messages?.length ?? 0) > 0,
+  );
+  if (
+    contentInstances.length > 0 &&
+    !contentInstances.some((i) => (i.conversationIds?.length ?? 0) > 0)
+  ) {
+    rDebug(
+      "persist",
+      "content instances have no conversationIds, session cannot resume",
+      { tab_id: opts.tabIdForLog.slice(0, 8) },
+    );
   }
 
   return {
     instances,
     activeInstanceId: pane.activeInstanceId ?? instances[0].id,
-  }
+  };
 }

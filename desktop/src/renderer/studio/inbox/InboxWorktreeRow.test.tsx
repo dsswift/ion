@@ -12,6 +12,7 @@ const actions = vi.hoisted(() => ({
   benchRemoveMember: vi.fn(async () => undefined),
   syncWorktree: vi.fn(async () => ({ ok: true })),
   benchUpdateMember: vi.fn(async () => ({ ok: true })),
+  setWorktreeStage: vi.fn(async () => undefined),
 }))
 const logger = vi.hoisted(() => ({ rInfo: vi.fn(), rError: vi.fn() }))
 
@@ -38,6 +39,7 @@ const state = {
   benchUpdateMember: actions.benchUpdateMember,
   benchAddMember: actions.benchAddMember,
   benchRemoveMember: actions.benchRemoveMember,
+  setWorktreeStage: actions.setWorktreeStage,
   refreshWorkspaceViews: vi.fn(),
 }
 
@@ -54,6 +56,11 @@ vi.mock('../../components/git/Tooltip', () => ({
   Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }))
 vi.mock('../../components/WorktreeRowMenu', () => ({ WorktreeRowMenu: () => null }))
+vi.mock('../../components/WorktreeStageSlot', () => ({
+  WorktreeStageSlot: ({ branchName, stage, onSetStage }: { branchName: string; stage?: string; onSetStage?(stage: 'build' | null): void }) => (
+    <button data-testid={`worktree-stage-chip-${branchName}`} data-stage={stage ?? 'none'} onClick={() => onSetStage?.('build')}>stage</button>
+  ),
+}))
 vi.mock('../../components/git/ConflictsDialog', () => ({ ConflictsDialog: () => null }))
 vi.mock('../../components/git/BenchConflictDialog', () => ({ BenchConflictDialog: () => null }))
 vi.mock('../../components/git/BenchVerificationDialog', () => ({ BenchVerificationDialog: () => null }))
@@ -265,6 +272,34 @@ describe('InboxWorktreeRow header actions', () => {
     render(member, { ...entry, needsSync: true })
     expect(syncButton()).not.toBeNull()
     expect(pinBehindButton()).toBeNull()
+  })
+
+  it('shows the workflow stage selector and saves a new stage', async () => {
+    render(undefined, { ...entry, stage: 'test' })
+    const stage = host.querySelector<HTMLButtonElement>(`[data-testid="worktree-stage-chip-${entry.branchName}"]`)
+
+    expect(stage?.dataset.stage).toBe('test')
+    expect(stage?.closest(`[data-testid="inbox-worktree-stage-${entry.branchName}"]`)).not.toBeNull()
+    await act(async () => { stage?.click() })
+
+    expect(actions.setWorktreeStage).toHaveBeenCalledWith('/repo', entry.worktreePath, 'build')
+  })
+
+  it('logs a workflow stage update failure', async () => {
+    actions.setWorktreeStage.mockRejectedValueOnce(new Error('write failed'))
+    render()
+    const stage = host.querySelector<HTMLButtonElement>(`[data-testid="worktree-stage-chip-${entry.branchName}"]`)
+
+    await act(async () => { stage?.click() })
+
+    expect(logger.rError).toHaveBeenCalledWith(
+      'inbox.worktree', 'stage update failed', expect.objectContaining({
+        branch: entry.branchName,
+        worktree_path: entry.worktreePath,
+        stage: 'build',
+        error: 'Error: write failed',
+      }),
+    )
   })
 
   /**
