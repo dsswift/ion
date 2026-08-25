@@ -2232,6 +2232,34 @@
       ]
     },
     {
+      "id": "terminal-activity",
+      "term": "Terminal Activity",
+      "definition": "A live process tree owned by one Terminal. Clients aggregate it to the owning Conversation and render it as background shell work.",
+      "domain": "clients",
+      "kind": "state",
+      "status": "canonical",
+      "aliases": [
+        "active shell"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface TerminalActivity",
+          "path": "desktop/src/shared/terminal-activity.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "TerminalInstanceBar",
+          "path": "ios/IonRemote/Views/TerminalInstanceBar.swift"
+        }
+      ]
+    },
+    {
       "id": "tool",
       "term": "Tool",
       "definition": "A named callable that an agent can invoke. The engine ships a built-in core set and an extension can register more or replace one.",
@@ -2418,6 +2446,34 @@
           "language": "markdown",
           "symbol": "APNs push",
           "path": "docs/architecture/relay.md"
+        }
+      ]
+    },
+    {
+      "id": "web-application",
+      "term": "Web Application",
+      "definition": "A local HTML service whose listening process is owned by a Terminal. The Desktop confirms it with a bounded HTTP or HTTPS probe before clients show a Globe action.",
+      "domain": "clients",
+      "kind": "state",
+      "status": "canonical",
+      "aliases": [
+        "local web app"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "discoverTerminalWebApplications",
+          "path": "desktop/src/main/terminal-application-discovery.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "InboxRowView",
+          "path": "ios/IonRemote/Views/InboxRowView.swift"
         }
       ]
     },

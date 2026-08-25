@@ -119,6 +119,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Tab Strip](#term-tab-strip)
 - [Telemetry](#term-telemetry)
 - [Terminal](#term-terminal)
+- [Terminal Activity](#term-terminal-activity)
 - [Tool](#term-tool)
 - [Transcript](#term-transcript)
 - [Transport](#term-transport)
@@ -126,6 +127,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Visualizer Canvas](#term-visualizer-canvas)
 - [Vocabulary registry](#term-vocabulary-registry)
 - [Wake notification](#term-wake-notification)
+- [Web Application](#term-web-application)
 - [Webhook](#term-webhook)
 - [Workspace](#term-workspace)
 - [Worktree](#term-worktree)
@@ -1213,6 +1215,34 @@ The client-side row that holds one conversation and its instances, terminals, gr
   - `desktop` / `code` / `typescript`: `export interface TabState` in `desktop/src/shared/types-session.ts`
   - `ios` / `ui` / `swift`: `struct TabRowView` in `ios/IonRemote/Views/TabRowView.swift`
 
+#### Terminal Activity {#term-terminal-activity}
+
+A live process tree owned by one Terminal. Clients aggregate it to the owning Conversation and render it as background shell work.
+
+- **ID:** `terminal-activity`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `active shell`
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `export interface TerminalActivity` in `desktop/src/shared/terminal-activity.ts`
+  - `ios` / `ui` / `swift`: `TerminalInstanceBar` in `ios/IonRemote/Views/TerminalInstanceBar.swift`
+
+#### Web Application {#term-web-application}
+
+A local HTML service whose listening process is owned by a Terminal. The Desktop confirms it with a bounded HTTP or HTTPS probe before clients show a Globe action.
+
+- **ID:** `web-application`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `local web app`
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `discoverTerminalWebApplications` in `desktop/src/main/terminal-application-discovery.ts`
+  - `ios` / `ui` / `swift`: `InboxRowView` in `ios/IonRemote/Views/InboxRowView.swift`
+
 ### runtime-mechanic
 
 #### Mirror store {#term-mirror-store}
@@ -1446,8 +1476,10 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Tab | `export interface TabState` | `export interface TabState` | `export interface TabState` | `struct TabRowView` | None |
 | Tab Strip | `export function TabStrip` | `export function TabStrip`, `TabStrip` | `export function TabStrip` | `struct TabListView` | None |
 | Terminal | `export function TerminalPanel` | `export function TerminalPanel` | `export function TerminalPanel` | `ConversationTerminalView` | None |
+| Terminal Activity | `export interface TerminalActivity` | `export interface TerminalActivity` | `export interface TerminalActivity` | `TerminalInstanceBar` | None |
 | Transcript | `MessageBubble` | `MessageBubble` | `MessageBubble` | `struct Transcript` | None |
 | Visualizer Canvas | None | `VisualizerRoot` | None | None | Overlay, iOS |
+| Web Application | `discoverTerminalWebApplications` | `discoverTerminalWebApplications` | `discoverTerminalWebApplications` | `InboxRowView` | None |
 | Workspace | `WorkspaceStatusIndicator` | `WorkspaceStatusIndicator` | `WorkspaceStatusIndicator` | None | iOS |
 | Worktree | `export interface RemoteWorktree`, `WorktreeRow` | `export interface RemoteWorktree`, `WorktreeRow` | `export interface RemoteWorktree`, `WorktreeRow` | `struct WorktreeRowView` | None |
 
@@ -1463,6 +1495,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `LLM provider` → [Provider](#term-provider)
 - Alias: `SDK` → [Extension SDK](#term-extension-sdk)
 - Alias: `Studio shell` → [Studio](#term-studio-shell)
+- Alias: `active shell` → [Terminal Activity](#term-terminal-activity)
 - Alias: `agent dispatch` → [Dispatch](#term-dispatch)
 - Alias: `assembled context` → [Context](#term-context)
 - Alias: `async trigger delivery` → [Async delivery](#term-async-delivery)
@@ -1504,6 +1537,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `left dock` → [Studio Left Dock](#term-studio-left-dock)
 - Alias: `left sidebar` → [Studio Left Dock](#term-studio-left-dock)
 - Alias: `lifecycle hook` → [Hook](#term-hook)
+- Alias: `local web app` → [Web Application](#term-web-application)
 - Alias: `message list` → [Transcript](#term-transcript)
 - Alias: `mirror mode` → [Mirror store](#term-mirror-store)
 - Alias: `modal` → [Dialog](#term-dialog)
