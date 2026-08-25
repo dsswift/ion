@@ -28,13 +28,16 @@ describe('decodeSharedSecret', () => {
   // the secret store handed back the prefixed ciphertext. Base64-decoding that
   // string succeeds and yields a plausible-looking Buffer, which is why this
   // has to be rejected on the prefix rather than on decode failure.
-  it('rejects a value still carrying an enc:v1: at-rest prefix', () => {
+  it('classifies preserved enc:v1 ciphertext as encrypted, not missing', () => {
     const ciphertext = 'enc:v1:' + randomBytes(48).toString('base64')
 
     const result = decodeSharedSecret(ciphertext)
 
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.reason).toBe('encrypted')
+    if (!result.ok) {
+      expect(result.reason).toBe('encrypted')
+      expect(result.reason).not.toBe('missing')
+    }
   })
 
   it('rejects enc:v2: and enc:v3: prefixed values too', () => {

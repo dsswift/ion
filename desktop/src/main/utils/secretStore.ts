@@ -267,30 +267,22 @@ export function decryptFromDisk(value: string): string {
 
   if (value.startsWith(ENC_V1_PREFIX)) {
     if (!isSafeStorageReady()) {
-      warn('found safeStorage-encrypted value but safeStorage unavailable; value cleared — re-enter in settings')
-      return ''
+      warn('found safeStorage-encrypted value but safeStorage unavailable; preserving ciphertext, pairing marked unusable — re-pair the device')
+      return value
     }
     try {
       const buf = Buffer.from(value.slice(ENC_V1_PREFIX.length), 'base64')
       return getElectron()!.safeStorage.decryptString(buf)
     } catch (err) {
-      // Returning `value` here (the prior behavior) handed the CIPHERTEXT back
-      // to the caller as though it were plaintext. Nothing downstream could
-      // detect that: `Buffer.from('enc:v1:<base64>', 'base64')` does not throw
-      // — Node's base64 decoder silently skips characters outside the
-      // alphabet — so a paired device's sharedSecret decoded to a
-      // wrong-length, wrong-value key. HMAC accepts any key length, so LAN
-      // auth failed as "invalid proof", and AES-GCM failed as "Decryption
-      // failed (wrong key, tampered, or wrong nonce)" — with the device still
-      // present and apparently valid in the registry. The Keychain grant is
-      // bound to the code signature, so a desktop reinstall is enough to make
-      // decryptString throw here.
-      //
-      // An undecryptable value is unrecoverable: return '' like the v2/v3
-      // branches below, and log it, because this branch's silence is what made
-      // the resulting pairing failure undiagnosable from the logs.
-      error('safeStorage decrypt failed; value cleared — re-pair the device or re-enter in settings', { error: String(err) })
-      return ''
+      // Preserve the ciphertext so a load-then-save round trip cannot destroy
+      // the recoverable on-disk value. decodeSharedSecret classifies any `enc:`
+      // prefix as `encrypted` and refuses it before it reaches HMAC or AES-GCM,
+      // so no wrong-length key can be used for transport authentication.
+      // Keychain grants are bound to the code signature, so a desktop reinstall
+      // can make decryptString throw here; the pairing remains unusable until
+      // it is repaired, but its ciphertext remains available for recovery.
+      error('safeStorage decrypt failed; preserving ciphertext, pairing marked unusable — re-pair the device', { error: String(err) })
+      return value
     }
   }
 
@@ -298,8 +290,8 @@ export function decryptFromDisk(value: string): string {
     try {
       return aesGcmDecrypt(loadOrCreateKeyfile(), value.slice(ENC_V3_PREFIX.length))
     } catch (err) {
-      error('keyfile decrypt failed; value cleared — re-enter in settings', { error: String(err) })
-      return ''
+      error('keyfile decrypt failed; preserving ciphertext, pairing marked unusable — re-pair the device', { error: String(err) })
+      return value
     }
   }
 
@@ -309,8 +301,8 @@ export function decryptFromDisk(value: string): string {
     } catch (err) {
       // The classic failure: the hostname changed since the value was
       // written, so the legacy machine-derived key no longer matches.
-      warn('legacy machine-derived decrypt failed (hostname changed?); value cleared — re-enter in settings', { error: String(err) })
-      return ''
+      warn('legacy machine-derived decrypt failed (hostname changed?); preserving ciphertext, pairing marked unusable — re-pair the device', { error: String(err) })
+      return value
     }
   }
 
@@ -349,13 +341,13 @@ function needsWriteUpgrade(value: string): boolean {
 /**
  * Produces the on-disk form of a sensitive value: plaintext is encrypted,
  * legacy enc:v2: is decrypted with the machine-derived key and re-encrypted
- * under the current scheme (v1 or v3). An undecryptable v2 value becomes ''
- * (decryptFromDisk logs the warning) — same terminal state it would reach
- * on read.
+ * under the current scheme (v1 or v3). An undecryptable v2 value remains
+ * ciphertext so a save cannot replace it with an empty value or re-encrypt it
+ * as plaintext under a key that cannot decrypt it.
  */
 function upgradeForDisk(value: string): string {
   const plaintext = value.startsWith(ENC_V2_PREFIX) ? decryptFromDisk(value) : value
-  return plaintext ? encryptForDisk(plaintext) : plaintext
+  return isEncrypted(plaintext) ? plaintext : encryptForDisk(plaintext)
 }
 
 // encryptSensitiveSettings returns a copy of settings with sensitive fields
@@ -364,6 +356,8 @@ export function encryptSensitiveSettings(settings: Record<string, any>): Record<
   const out: Record<string, any> = { ...settings }
   for (const key of SENSITIVE_TOP_FIELDS) {
     const v = out[key]
+    // Empty values are intentionally left unchanged. They must never replace
+    // preserved ciphertext during a load-then-save settings round trip.
     if (typeof v === 'string' && v && needsWriteUpgrade(v)) {
       out[key] = upgradeForDisk(v)
     }
@@ -374,6 +368,8 @@ export function encryptSensitiveSettings(settings: Record<string, any>): Record<
       const next = { ...device }
       for (const key of SENSITIVE_DEVICE_FIELDS) {
         const v = next[key]
+        // Empty values are intentionally left unchanged. They must never
+        // replace preserved ciphertext during a load-then-save round trip.
         if (typeof v === 'string' && v && needsWriteUpgrade(v)) {
           next[key] = upgradeForDisk(v)
         }
