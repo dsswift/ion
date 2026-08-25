@@ -90,14 +90,22 @@ final class PlanDividerCreatedUpdatedTests: XCTestCase {
         XCTAssertEqual(label.testLinkSlug, "happy-rabbit")
     }
 
+    func testPlanDividerLabelLinksImplementationSlugWhenPathPresent() {
+        var msg = Message(id: "d2", role: .system, content: "── Implementing plan at 3:42 PM · happy-rabbit ──", timestamp: 0)
+        msg.planFilePath = "/tmp/happy-rabbit.md"
+        let label = PlanDividerLabel(message: msg, onTapPlan: { _ in })
+        XCTAssertEqual(label.testLinkPath, "/tmp/happy-rabbit.md")
+        XCTAssertEqual(label.testLinkSlug, "happy-rabbit")
+    }
+
     func testPlanDividerLabelNotLinkableWithoutPath() {
-        let msg = Message(id: "d2", role: .system, content: "── Plan created at 3:42 PM · x ──", timestamp: 0)
+        let msg = Message(id: "d3", role: .system, content: "── Plan created at 3:42 PM · x ──", timestamp: 0)
         let label = PlanDividerLabel(message: msg, onTapPlan: { _ in })
         XCTAssertNil(label.testLinkPath, "no planFilePath → not linkable")
     }
 
     func testPlanDividerLabelNotLinkableForOtherDivider() {
-        var msg = Message(id: "d3", role: .system, content: "── Session started at 3:42 PM ──", timestamp: 0)
+        var msg = Message(id: "d4", role: .system, content: "── Session started at 3:42 PM ──", timestamp: 0)
         msg.planFilePath = "/tmp/x.md"
         let label = PlanDividerLabel(message: msg, onTapPlan: { _ in })
         XCTAssertNil(label.testLinkPath, "session-start divider is not a plan divider → not linkable")

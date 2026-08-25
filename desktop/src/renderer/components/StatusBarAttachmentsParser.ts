@@ -34,7 +34,7 @@
  *     standalone path so conversation tabs that track the current
  *     plan via `tab.planFilePath` still surface it.
  */
-import { isImplementDivider, planSlugFromPath } from '../../shared/clear-divider'
+import { findPlanImplementation } from '../../shared/plan-implementation'
 
 export interface ParsedAttachment {
   kind: 'image' | 'file' | 'plan'
@@ -49,6 +49,8 @@ export interface MsgLike {
   /** Populated on engine `role: 'system'` messages for the plan-mode
    *  divider. See engine-event-slice.ts case 'engine_plan_mode_changed'. */
   planFilePath?: string
+  /** Durable marker on the user turn that starts approved implementation. */
+  implementationPhase?: boolean
   /** Engine messages with `role: 'tool'` carry the tool name and the
    *  JSON-string `toolInput` accumulated from streamed updates. The
    *  parser scans these for `Write`/`Edit` calls targeting plan files. */
@@ -151,37 +153,18 @@ export function latestPlanPathFromMessages(
 
 /**
  * True when the transcript records that `planFilePath` was actually
- * implemented — i.e. an implement divider for that plan appears in the
- * conversation.
+ * implemented. Current engine history persists `implementationPhase` on the
+ * user turn that begins implementation. Older live transcripts can also carry
+ * the renderer-only implement divider. Both are precise positive evidence.
  *
- * Why this exists rather than inferring from a cleared `planFilePath`: the
- * implement flow clears `instance.planFilePath` as its last step
- * (implement-slice.ts), so "a plan path is known from history but the instance
- * field is empty" LOOKS like proof of implementation. It is not. Any other path
- * that nulls the field produces the identical shape, and the badge then claims
- * an implementation that never happened. An absence is not a record.
- *
- * `formatImplementDivider` writes a real, durable marker at the moment the user
- * approves, carrying the plan slug. That marker is the evidence, so it is what
- * we read. A plan with no matching divider is reported as not implemented, even
- * when its path has been cleared.
- *
- * Slug matching (not full path) because that is what the divider carries; an
- * unslugged divider matches nothing, which fails closed to "not implemented".
+ * The implementation turn is matched to the latest preceding plan path. This
+ * prevents an implementation of an older plan from marking a newer plan done.
  */
 export function isPlanImplementedInMessages(
   messages: MsgLike[],
   planFilePath: string | null,
 ): boolean {
-  if (!planFilePath) return false
-  const slug = planSlugFromPath(planFilePath)
-  if (!slug) return false
-  for (const msg of messages) {
-    if (msg.role !== 'system') continue
-    if (!isImplementDivider(msg.content)) continue
-    if (msg.content.includes(slug)) return true
-  }
-  return false
+  return findPlanImplementation(messages, planFilePath) !== null
 }
 
 export function parseAttachmentsFromMessages(
