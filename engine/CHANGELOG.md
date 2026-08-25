@@ -13,6 +13,22 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.76.0](https://github.com/dsswift/ion/compare/engine-v1.75.0...engine-v1.76.0) (2026-08-25)
+
+### Features
+
+* **engine:** scope aborts and add per-dispatch abort ([fda9424](https://github.com/dsswift/ion/commit/fda9424586a3255d3d5f64738bcb19ff969dfb39))
+* **engine:** add resource producer identity (#357) ([b0a7fa0](https://github.com/dsswift/ion/commit/b0a7fa01c7c235497d1c1d33b667570a00bd9d76))
+* **engine:** add guided questions runtime ([9c94d95](https://github.com/dsswift/ion/commit/9c94d955a42df9a2b19899e87ebb7d8544d0b417))
+
+### Bug Fixes
+
+* **engine:** restore automatic compaction recovery ([88b861e](https://github.com/dsswift/ion/commit/88b861e987530c75ef16a8c7b9c344cd9f421410))
+* **engine:** isolate MCP stores across home changes ([62f93b3](https://github.com/dsswift/ion/commit/62f93b384653b30743cc141a479f093102a59366))
+* **engine:** dedupe recall observer and share snapshot fields ([5d1e757](https://github.com/dsswift/ion/commit/5d1e757c6dd36e3528de2d954aad9acd9d7f4df2))
+* **engine:** restore panic-recovery test coverage ([544be66](https://github.com/dsswift/ion/commit/544be66ad24745befc7f55516cf8c9ae6125c766))
+* **engine:** bound command dispatch stalls (#336) ([5dd01d4](https://github.com/dsswift/ion/commit/5dd01d474ee3855c7f193e19075de472979b7a1d))
+
 ## [1.75.0](https://github.com/dsswift/ion/compare/engine-v1.74.0...engine-v1.75.0) (2026-08-24)
 
 ### Features

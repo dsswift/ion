@@ -10,6 +10,28 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.87.0](https://github.com/dsswift/ion/compare/desktop-v1.86.2...desktop-v1.87.0) (2026-08-25)
+
+### Features
+
+* **desktop:** add resource producer identity (#357) ([bbc7c8c](https://github.com/dsswift/ion/commit/bbc7c8ca1c5a2496725b25a4adc53161a7a3a873))
+* **desktop:** add guided questions workflow ([0ab59e1](https://github.com/dsswift/ion/commit/0ab59e1c3bbb373b89fd5e079ea2fac70f88ef78))
+
+### Bug Fixes
+
+* **desktop:** allow automatic compaction recovery ([224cf64](https://github.com/dsswift/ion/commit/224cf649ac4cbd046cf7e4c4c7413e19f42cbcb4))
+* **desktop:** move dispatch Stop control above agent panel ([01d6812](https://github.com/dsswift/ion/commit/01d681237a098649f0260efd305dd8ca1c3babc5))
+* **desktop:** prioritize plan surface tab ([84b3265](https://github.com/dsswift/ion/commit/84b32653863ab4f6d05eba7d0c866866f9dcf7e1))
+* **desktop:** keep conversations pinned to tail ([ca7ea33](https://github.com/dsswift/ion/commit/ca7ea338c1454ad462dda2d73bb3b6d27deb217a))
+* **desktop:** install desktop packages safely ([c18afd5](https://github.com/dsswift/ion/commit/c18afd5734dc5331ce18e61bd717924475bed91f))
+* **desktop:** launch Ion after package install ([e28779f](https://github.com/dsswift/ion/commit/e28779fade283cf8be5aa95547e743adb1365c18))
+* **desktop:** use account login shell for PTY ([c21eb4d](https://github.com/dsswift/ion/commit/c21eb4d707559462b8d135aa7e18e259765f3824))
+* **desktop:** start PTYs as interactive login shells ([6c1f2c3](https://github.com/dsswift/ion/commit/6c1f2c3c41710be639a4af22184a36116d3a5a6b))
+* **desktop:** stop resurrecting the retired studio open-state key ([21a1913](https://github.com/dsswift/ion/commit/21a1913e291c03b4c35433ae4f2df0d9396e2205))
+* **desktop:** repair the installer launch environment for PTYs ([86b7425](https://github.com/dsswift/ion/commit/86b742540070e67adf4d97c3a1ed162da2b4f8d4))
+* **desktop:** reject expired installer temp paths ([3814f21](https://github.com/dsswift/ion/commit/3814f21286699c551169f73631fd6453de9ef3aa))
+* **desktop:** repair linux parity test assertions ([b8d2c38](https://github.com/dsswift/ion/commit/b8d2c383fff578ac90da0393454d1c7947a4008f))
+
 ## [1.86.2](https://github.com/dsswift/ion/compare/desktop-v1.86.1...desktop-v1.86.2) (2026-08-24)
 
 ### Bug Fixes

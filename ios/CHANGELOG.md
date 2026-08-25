@@ -10,6 +10,20 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.68.0](https://github.com/dsswift/ion/compare/ios-v1.67.0...ios-v1.68.0) (2026-08-25)
+
+### Features
+
+* **ios:** add resource producer identity (#357) ([e04fe07](https://github.com/dsswift/ion/commit/e04fe0776bb9f96c9e0bc5535bd92ed70cac0344))
+* **ios:** add guided questions client ([fa1fbd8](https://github.com/dsswift/ion/commit/fa1fbd897917bfc29facf9a1ad2c88da1643c955))
+
+### Bug Fixes
+
+* **desktop:** allow automatic compaction recovery ([224cf64](https://github.com/dsswift/ion/commit/224cf649ac4cbd046cf7e4c4c7413e19f42cbcb4))
+* **ios:** bound relay connection attempts (#332) ([70705e7](https://github.com/dsswift/ion/commit/70705e72a85bb6d25bb0e055edec2de84b0a607e))
+* **ios:** suspend Bonjour polling without LAN interface (#333) ([e566f6c](https://github.com/dsswift/ion/commit/e566f6c044a50dacefb891ea3f0e35702e943ca8))
+* **ios:** use shared guided questions geometry roles ([f3095d3](https://github.com/dsswift/ion/commit/f3095d348fee052485a042d99074f1f2c7ed87c9))
+
 ## [1.67.0](https://github.com/dsswift/ion/compare/ios-v1.66.0...ios-v1.67.0) (2026-08-24)
 
 ### Features

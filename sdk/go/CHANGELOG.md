@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.7](https://github.com/dsswift/ion/compare/sdk/go-v0.1.6...sdk/go-v0.1.7) (2026-08-25)
+
+### Features
+
+* **sdk:** group latest schedule catch-up ([2ea2bd3](https://github.com/dsswift/ion/commit/2ea2bd36fcb40ab920fa132b1bb445788b61b18b))
+
 ## [0.1.6](https://github.com/dsswift/ion/compare/sdk/go-v0.1.5...sdk/go-v0.1.6) (2026-08-23)
 
 ### Features
