@@ -1,7 +1,6 @@
 package telemetry
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -45,29 +44,22 @@ func setupIsolatedTelemetry(t *testing.T) (dir, telFile string) {
 	return dir, telFile
 }
 
-// readJSONLLines parses all JSON objects from a JSONL file, returning them as
-// a slice of raw maps. Tolerates an empty or absent file (returns nil slice).
+// readJSONLLines expands physical telemetry frames into the historical map
+// shape used by the contract assertions below.
 func readJSONLLines(t *testing.T, path string) []map[string]any {
 	t.Helper()
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return nil
-	}
-	if err != nil {
-		t.Fatalf("readJSONLLines(%q): %v", path, err)
-	}
-	var out []map[string]any
-	sc := bufio.NewScanner(strings.NewReader(string(data)))
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" {
-			continue
+	events := mustReadTelemetryFile(t, path)
+	out := make([]map[string]any, 0, len(events))
+	for _, event := range events {
+		data, err := json.Marshal(event)
+		if err != nil {
+			t.Fatalf("marshal telemetry event: %v", err)
 		}
-		var m map[string]any
-		if err := json.Unmarshal([]byte(line), &m); err != nil {
-			t.Fatalf("readJSONLLines: bad JSON line %q: %v", line, err)
+		var decoded map[string]any
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			t.Fatalf("unmarshal telemetry event: %v", err)
 		}
-		out = append(out, m)
+		out = append(out, decoded)
 	}
 	return out
 }
@@ -143,7 +135,7 @@ func TestSchemaCheckpoint_Match_NoFileAction(t *testing.T) {
 	if err := writeSidecar(sidecarPath(telFile), sc); err != nil {
 		t.Fatalf("write sidecar: %v", err)
 	}
-	const origContent = "{\"name\":\"live.event\"}\n"
+	const origContent = "{\"name\":\"live.event\",\"ts\":\"2026-01-01T00:00:00Z\",\"schema\":3,\"component\":\"engine\",\"payload\":{}}\n"
 	if err := os.WriteFile(telFile, []byte(origContent), 0o644); err != nil {
 		t.Fatalf("write telFile: %v", err)
 	}
@@ -174,7 +166,7 @@ func TestSchemaCheckpoint_LegacyFile_MigratesCleanly(t *testing.T) {
 	_, telFile := setupIsolatedTelemetry(t)
 
 	// Non-empty telemetry file, no sidecar.
-	if err := os.WriteFile(telFile, []byte("{\"name\":\"old.event\"}\n"), 0o644); err != nil {
+	if err := os.WriteFile(telFile, []byte("{\"name\":\"old.event\",\"ts\":\"2026-01-01T00:00:00Z\",\"schema\":3,\"component\":\"engine\",\"payload\":{}}\n"), 0o644); err != nil {
 		t.Fatalf("write legacy telFile: %v", err)
 	}
 
@@ -210,7 +202,7 @@ func TestSchemaCheckpoint_OldKeySidecar_NoBak(t *testing.T) {
 	if err := os.WriteFile(sidecarPath(telFile), []byte(oldJSON), 0o644); err != nil {
 		t.Fatalf("write old sidecar: %v", err)
 	}
-	if err := os.WriteFile(telFile, []byte("{\"name\":\"v2.event\"}\n"), 0o644); err != nil {
+	if err := os.WriteFile(telFile, []byte("{\"name\":\"v2.event\",\"ts\":\"2026-01-01T00:00:00Z\",\"schema\":3,\"component\":\"engine\",\"payload\":{}}\n"), 0o644); err != nil {
 		t.Fatalf("write telFile: %v", err)
 	}
 
@@ -245,7 +237,7 @@ func TestSchemaCheckpoint_OncePerProcess(t *testing.T) {
 	if err := writeSidecar(sidecarPath(telFile), sc); err != nil {
 		t.Fatalf("write sidecar: %v", err)
 	}
-	if err := os.WriteFile(telFile, []byte("{\"name\":\"v2.event\"}\n"), 0o644); err != nil {
+	if err := os.WriteFile(telFile, []byte("{\"name\":\"v2.event\",\"ts\":\"2026-01-01T00:00:00Z\",\"schema\":3,\"component\":\"engine\",\"payload\":{}}\n"), 0o644); err != nil {
 		t.Fatalf("write telFile: %v", err)
 	}
 
@@ -285,7 +277,7 @@ func TestSchemaWriterChangedEvent_Written(t *testing.T) {
 	if err := writeSidecar(sidecarPath(telFile), sc); err != nil {
 		t.Fatalf("write sidecar: %v", err)
 	}
-	if err := os.WriteFile(telFile, []byte("{\"name\":\"v2.event\"}\n"), 0o644); err != nil {
+	if err := os.WriteFile(telFile, []byte("{\"name\":\"v2.event\",\"ts\":\"2026-01-01T00:00:00Z\",\"schema\":3,\"component\":\"engine\",\"payload\":{}}\n"), 0o644); err != nil {
 		t.Fatalf("write v2 telFile: %v", err)
 	}
 

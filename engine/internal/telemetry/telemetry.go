@@ -11,7 +11,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/durablefile"
 	"github.com/dsswift/ion/engine/internal/network"
+	"github.com/dsswift/ion/engine/internal/telemetryformat"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -80,51 +82,9 @@ const (
 	EnforcementExtensionBlocked = "enforcement.extension_blocked"
 )
 
-// Event is a single telemetry data point.
-//
-// Top-level fields follow the unified log contract (ADR-NNN):
-//   - Ts:            RFC3339Nano UTC string (R1 — replaces the old int64 timestamp).
-//   - SchemaVersion: contract version int (R4 — self-describing for central sinks).
-//   - Component:     "engine" (R3 — surface discriminator).
-//   - InstallID:     stable per-install anonymous UUID (R5, device ID per
-//     feature 0008 — minted once at ~/.ion/install_id, never
-//     changes, non-PII by design). Enables exact fleet counts and
-//     per-device time-series in operational dashboards.
-//   - Host:          human-readable machine name (R19 — admin display).
-//   - Version:       engine build string (R21 — which build emitted this line).
-//   - EventID:       per-event unique ID (R22 — 16-char hex, for dedup during
-//     retry storms and exactly-once delivery semantics in sinks).
-//   - User:          identity carrier (R20 — populated from enterprise OIDC
-//     auth context when present; omit-when-absent so open-source
-//     and default installs are unchanged). Seam for future auth.
-type Event struct {
-	Name          string `json:"name"`
-	Ts            string `json:"ts"`
-	SchemaVersion int    `json:"schema"`
-	Component     string `json:"component"`
-	InstallID     string `json:"install_id,omitempty"`
-	Host          string `json:"host,omitempty"`
-	Version       string `json:"version,omitempty"`
-	// EventID is a per-event unique identifier (16 hex chars = 8 random bytes)
-	// generated at emission time. Downstream sinks use it for deduplication
-	// during retry storms. Empty on the schema_writer_changed sentinel (emitted
-	// outside the normal Collector.Event path by stampSchemaCheckpoint).
-	EventID string `json:"event_id,omitempty"`
-	// User carries the authenticated user identity when an enterprise OIDC
-	// auth context is present. Omitted (empty string, omitempty) on all
-	// open-source and default installs. Set via SetUserIdentity; the seam
-	// exists now so sinks can reserve the field even before OIDC lands.
-	User    string         `json:"user,omitempty"`
-	Payload map[string]any `json:"payload"`
-	Context map[string]any `json:"context,omitempty"`
-	// TraceID, when non-empty, pins this event to an existing W3C trace-context
-	// trace. It is scoped to one prompt-to-completion run, not a whole session:
-	// Collector.Event derives it from Context["trace_id"] so callers carrying
-	// run correlation do not have to stamp the same value twice. An event with
-	// no active run leaves it empty, and the OtelBridge mints an independent
-	// trace for that standalone emission.
-	TraceID string `json:"trace_id,omitempty"`
-}
+// Event is one expanded telemetry data point. The file target compacts a flush
+// into a v4 telemetry frame; in-memory and non-file targets retain this shape.
+type Event = telemetryformat.Event
 
 // SpanHandle tracks a timed operation in progress.
 //
@@ -295,6 +255,20 @@ func NewCollector(config types.TelemetryConfig) *Collector {
 		flushDone:       make(chan struct{}),
 	}
 
+	if config.Enabled && hasOtelTarget(config.Targets) && config.Otel != nil && config.Otel.Enabled && config.Otel.Endpoint != "" {
+		bridgeConfig := OtelConfig{
+			Endpoint:           config.Otel.Endpoint,
+			Protocol:           config.Otel.Protocol,
+			Headers:            config.Otel.Headers,
+			ServiceName:        config.Otel.ServiceName,
+			ResourceAttributes: config.Otel.ResourceAttributes,
+		}
+		if config.FlushIntervalMs > 0 {
+			bridgeConfig.FlushInterval = time.Duration(config.FlushIntervalMs) * time.Millisecond
+		}
+		c.otelBridge = NewOtelBridge(bridgeConfig)
+	}
+
 	// Run the schema checkpoint exactly once per process (covers both the
 	// server.go and start_session.go call sites). The checkpoint archives any
 	// pre-existing telemetry file whose schema version predates the current
@@ -325,7 +299,7 @@ func NewCollector(config types.TelemetryConfig) *Collector {
 	// present. The loop flushes on FlushIntervalMs and performs a final drain
 	// on stopCh so no events are lost on clean shutdown. The batch-size trigger
 	// in Event() remains as belt-and-suspenders: whichever fires first wins.
-	if config.Enabled && hasFlushableTarget(config.Targets) {
+	if config.Enabled && hasFlushableTarget(config.Targets, c.otelBridge != nil) {
 		interval := time.Duration(config.FlushIntervalMs) * time.Millisecond
 		c.flushTicker = time.NewTicker(interval)
 		go c.flushLoop()
@@ -338,15 +312,26 @@ func NewCollector(config types.TelemetryConfig) *Collector {
 	return c
 }
 
-// hasFlushableTarget reports whether any of the configured targets are
-// external (file, stdout, http). These are the targets that benefit from
-// periodic flushing; a collector with no targets (or only in-memory use)
-// does not need a background goroutine.
-func hasFlushableTarget(targets []string) bool {
+func hasOtelTarget(targets []string) bool {
+	for _, target := range targets {
+		if target == "otel" {
+			return true
+		}
+	}
+	return false
+}
+
+// hasFlushableTarget reports whether any configured target needs the collector
+// flush loop. The OTLP bridge needs it only when it was configured successfully.
+func hasFlushableTarget(targets []string, otelConfigured bool) bool {
 	for _, t := range targets {
 		switch t {
 		case "file", "stdout", "http":
 			return true
+		case "otel":
+			if otelConfigured {
+				return true
+			}
 		}
 	}
 	return false
@@ -384,6 +369,14 @@ func (c *Collector) Close() {
 		}
 		close(c.stopCh)
 		<-c.flushDone
+		c.mu.Lock()
+		bridge := c.otelBridge
+		c.mu.Unlock()
+		if bridge != nil {
+			if err := bridge.Close(); err != nil {
+				c.LogFlushError(err)
+			}
+		}
 	})
 }
 
@@ -552,6 +545,15 @@ func (c *Collector) Flush() error {
 			if err := flushToStdout(events); err != nil {
 				lastErr = err
 			}
+		case "otel":
+			c.mu.Lock()
+			bridge := c.otelBridge
+			c.mu.Unlock()
+			if bridge != nil {
+				if err := bridge.Flush(); err != nil {
+					lastErr = err
+				}
+			}
 		case "http":
 			if err := flushToHTTP(events, c.config.HttpEndpoint, c.config.HttpHeaders); err != nil {
 				lastErr = err
@@ -565,30 +567,44 @@ func flushToFile(events []Event, path string, rotation rotationPolicy) error {
 	if path == "" {
 		return fmt.Errorf("telemetry file path not configured")
 	}
-	// engine.json is human-edited, so filePath routinely arrives as "~/...".
-	// Go performs no shell tilde expansion, so os.OpenFile would try to create
-	// a directory literally named "~" and fail. Expand here, at the point the
-	// path reaches the filesystem, so every caller resolves the path uniformly.
+	frameEvents := make([]telemetryformat.Event, len(events))
+	for i, event := range events {
+		if event.SchemaVersion == 0 {
+			event.SchemaVersion = TelemetrySchemaVersion
+		}
+		if event.Component == "" {
+			event.Component = "engine"
+		}
+		if event.Payload == nil {
+			event.Payload = map[string]any{}
+		}
+		frameEvents[i] = event
+	}
+	line, err := telemetryformat.EncodeCompactLine(frameEvents)
+	if err != nil {
+		return fmt.Errorf("telemetry compact frame: %w", err)
+	}
 	path = utils.ExpandHomePath(path)
-	// Bound the file before appending. Rotation is by rename, so a reader
-	// following the path (the desktop egress tailer) picks up the new inode
-	// rather than re-shipping or losing lines.
+	return durablefile.Transaction(path, 5*time.Second, func(absPath string) error {
+		return appendFrameLocked(line, absPath, rotation)
+	})
+}
+
+// appendFrameLocked appends exactly one complete v4 frame. The caller owns the
+// telemetry file transaction or schema checkpoint lock while this executes.
+func appendFrameLocked(line []byte, path string, rotation rotationPolicy) error {
 	rotateIfOversize(path, rotation)
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
 	defer func() {
-		if err := f.Close(); err != nil {
-			utils.LogWithFields(utils.LevelInfo, "telemetry", "append to file close failed", map[string]any{"path": path, "error": err.Error()})
+		if closeErr := f.Close(); closeErr != nil {
+			utils.LogWithFields(utils.LevelInfo, "telemetry", "append to file close failed", map[string]any{"path": path, "error": closeErr.Error()})
 		}
 	}()
-
-	enc := json.NewEncoder(f)
-	for _, e := range events {
-		if err := enc.Encode(e); err != nil {
-			return err
-		}
+	if _, err := f.Write(line); err != nil {
+		return err
 	}
 	return nil
 }

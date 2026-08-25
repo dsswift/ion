@@ -52,6 +52,8 @@ func main() {
 		cmdAuth(positional, flags)
 	case "mcp":
 		cmdMcp(positional, flags, listFlags)
+	case "telemetry":
+		cmdTelemetry(positional, flags)
 	case "version":
 		fmt.Printf("ion-engine %s\n", version)
 	default:
@@ -89,6 +91,8 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "  plugin install <owner/repo>  Install a plugin")
 	fmt.Fprintln(os.Stderr, "  plugin list                  List installed plugins")
 	fmt.Fprintln(os.Stderr, "  plugin remove <name>         Remove a plugin")
+	fmt.Fprintln(os.Stderr, "  telemetry expand [FILE|-] Expand telemetry frames as JSONL")
+	fmt.Fprintln(os.Stderr, "  telemetry forward          Forward telemetry to Loki")
 	fmt.Fprintln(os.Stderr, "  version                  Show version")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Options:")

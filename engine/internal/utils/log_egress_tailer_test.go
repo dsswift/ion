@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/dsswift/ion/engine/internal/filetail"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -59,7 +60,7 @@ func TestEgressTailerTelemetryBody(t *testing.T) {
 		files:      map[string]string{"telemetry": logPath},
 		cursorPath: filepath.Join(dir, "cursors.json"),
 		fwd:        fwd,
-		cursors:    map[string]int64{logPath: 0}, // start from top
+		cursors:    map[string]filetail.Cursor{logPath: {Initialized: true}}, // start from top
 		stopCh:     make(chan struct{}),
 		doneCh:     make(chan struct{}),
 	}
@@ -146,7 +147,7 @@ func TestEgressTailerNonJSONLine(t *testing.T) {
 		files:      map[string]string{"engine": logPath},
 		cursorPath: filepath.Join(dir, "cursors.json"),
 		fwd:        fwd,
-		cursors:    map[string]int64{logPath: 0},
+		cursors:    map[string]filetail.Cursor{logPath: {Initialized: true}},
 		stopCh:     make(chan struct{}),
 		doneCh:     make(chan struct{}),
 	}
@@ -167,5 +168,27 @@ func TestEgressTailerNonJSONLine(t *testing.T) {
 	}
 	if rec.Tag != "tailer_raw" {
 		t.Errorf("non-JSON record Tag = %q; want %q", rec.Tag, "tailer_raw")
+	}
+}
+
+func TestEgressTailerLoadsLegacyNumericCursors(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cursorPath := filepath.Join(dir, "cursors.json")
+	path := filepath.Join(dir, "desktop.jsonl")
+	if err := os.WriteFile(cursorPath, []byte(`{"`+path+`":42}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tailer := &EgressTailer{
+		cursorPath: cursorPath,
+		cursors:    make(map[string]filetail.Cursor),
+	}
+	tailer.loadCursors()
+	cursor, ok := tailer.cursors[path]
+	if !ok {
+		t.Fatal("legacy cursor was not loaded")
+	}
+	if cursor.Offset != 42 || !cursor.Initialized {
+		t.Fatalf("legacy cursor = %+v, want offset 42 and initialized", cursor)
 	}
 }
