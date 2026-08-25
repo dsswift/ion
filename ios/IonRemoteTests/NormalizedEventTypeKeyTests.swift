@@ -45,6 +45,21 @@ final class NormalizedEventTypeKeyTests: XCTestCase {
 
     // MARK: - Lenient decode contract
 
+    func testLANSecretUnusableIsNotWireDecodable() {
+        let json = """
+        {"type":"lan_secret_unusable"}
+        """.data(using: .utf8)!
+
+        do {
+            _ = try JSONDecoder().decode(RemoteEvent.self, from: json)
+            XCTFail("Expected lan_secret_unusable to be rejected as an unknown wire type")
+        } catch RemoteEventDecodeError.unknownType(let raw) {
+            XCTAssertEqual(raw, "lan_secret_unusable")
+        } catch {
+            XCTFail("Expected RemoteEventDecodeError.unknownType, got \(error)")
+        }
+    }
+
     /// An unrecognized type string must throw RemoteEventDecodeError.unknownType,
     /// not a generic DecodingError. This is the regression pin: the
     /// TransportManager+Receive.swift caller catches these two error types

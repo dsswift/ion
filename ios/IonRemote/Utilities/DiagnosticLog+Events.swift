@@ -31,7 +31,7 @@ extension DiagnosticLog {
         case .tabStatus(let tabId, let status, let resync):
             log("EVENT: tabStatus id=\(tabId.prefix(8)) status=\(status.rawValue) resync=\(resync)", tag: "session", level: .info)
 
-        case .tabMeta(let tabId, let title, let totalCostUsd, let groupId, let convFingerprint, _, _, let messageCount):
+        case .tabMeta(let tabId, let title, let totalCostUsd, let groupId, let convFingerprint, _, _, let messageCount, _, _):
             log("EVENT: tabMeta id=\(tabId.prefix(8)) title=\(title?.prefix(20) ?? "-") runCostUsd=\(totalCostUsd.map { String(format: "%.4f", $0) } ?? "-") group=\(groupId ?? "-") fp=\(convFingerprint?.suffix(12) ?? "-") count=\(messageCount.map(String.init) ?? "-")",
                 tag: "session", level: .debug)
 
@@ -209,7 +209,7 @@ extension DiagnosticLog {
         case .engineMessageEnd(let tabId, let instId, let inTok, _, let ctxPct, _, let entryId, _):
             log("EVENT: engineMessageEnd tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") tokens=\(inTok) ctx=\(String(format: "%.0f", ctxPct))% entryId=\(entryId?.prefix(12) ?? "nil")", tag: "session", level: .info)
 
-        case .engineUserTurnPersisted(let tabId, _, let entryId, let slashModelAlias, let slashModelEffective):
+        case .engineUserTurnPersisted(let tabId, _, let entryId, let slashModelAlias, let slashModelEffective, _):
             var fields = [
                 "tab_id": String(tabId.prefix(8)),
                 "entry_id": String(entryId.prefix(12))

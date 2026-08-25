@@ -79,8 +79,8 @@ extension SessionViewModel {
         case .tabStatus(let tabId, let status, let resync):
             handleTabStatus(tabId: tabId, status: status, resync: resync)
 
-        case .tabMeta(let tabId, let title, let totalCostUsd, let groupId, let convFingerprint, let lastActivityAt, let lastMessage, let messageCount):
-            handleTabMeta(tabId: tabId, title: title, totalCostUsd: totalCostUsd, groupId: groupId, convFingerprint: convFingerprint, lastActivityAt: lastActivityAt, lastMessage: lastMessage, messageCount: messageCount)
+        case .tabMeta(let tabId, let title, let totalCostUsd, let groupId, let convFingerprint, let lastActivityAt, let lastMessage, let messageCount, let pillColor, let pillIcon):
+            handleTabMeta(tabId: tabId, title: title, totalCostUsd: totalCostUsd, groupId: groupId, convFingerprint: convFingerprint, lastActivityAt: lastActivityAt, lastMessage: lastMessage, messageCount: messageCount, pillColor: pillColor, pillIcon: pillIcon)
 
         case .textChunk(let tabId, let text):
             // desktop_text_chunk is NOT sent by the current desktop: the desktop
@@ -365,8 +365,8 @@ extension SessionViewModel {
         case .engineMessageEnd(let tabId, let instanceId, let inputTokens, _, let contextPercent, _, let entryId, let userEntryId):
             handleEngineMessageEnd(tabId: tabId, instanceId: instanceId, inputTokens: inputTokens, contextPercent: contextPercent, entryId: entryId, userEntryId: userEntryId)
 
-        case .engineUserTurnPersisted(let tabId, let instanceId, let entryId, let slashModelAlias, let slashModelEffective):
-            handleEngineUserTurnPersisted(tabId: tabId, instanceId: instanceId, entryId: entryId, slashModelAlias: slashModelAlias, slashModelEffective: slashModelEffective)
+        case .engineUserTurnPersisted(let tabId, let instanceId, let entryId, let slashModelAlias, let slashModelEffective, let slashFrontmatter):
+            handleEngineUserTurnPersisted(tabId: tabId, instanceId: instanceId, entryId: entryId, slashModelAlias: slashModelAlias, slashModelEffective: slashModelEffective, slashFrontmatter: slashFrontmatter)
 
         case .engineHarnessMessage(let tabId, let instanceId, let message, _, _, let dedupKey, let dedupMode):
             handleEngineHarnessMessage(tabId: tabId, instanceId: instanceId, message: message, dedupKey: dedupKey, dedupMode: dedupMode)

@@ -469,7 +469,7 @@ extension SessionViewModel {
     /// keyed by canonical ids — cannot anchor on it, rendering the user
     /// turn twice (once from history, once as the stale optimistic row).
     @MainActor
-    func handleEngineUserTurnPersisted(tabId: String, instanceId: String?, entryId: String, slashModelAlias: String? = nil, slashModelEffective: String? = nil) {
+    func handleEngineUserTurnPersisted(tabId: String, instanceId: String?, entryId: String, slashModelAlias: String? = nil, slashModelEffective: String? = nil, slashFrontmatter: [String: AnyCodable]? = nil) {
         guard !entryId.isEmpty else { return }
         DiagnosticLog.log("user turn persisted", tag: "session.msg", fields: [
             "tab_id": String(tabId.prefix(8)),
@@ -485,6 +485,9 @@ extension SessionViewModel {
             }
             if let slashModelEffective {
                 inst.messages[uIdx].slashModelEffective = slashModelEffective
+            }
+            if let slashFrontmatter {
+                inst.messages[uIdx].slashFrontmatter = slashFrontmatter
             }
         }
     }

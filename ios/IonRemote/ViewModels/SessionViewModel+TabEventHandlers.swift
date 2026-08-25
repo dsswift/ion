@@ -217,17 +217,21 @@ extension SessionViewModel {
 
     /// Apply a lightweight tab-row metadata delta from `desktop_tab_meta`.
     /// All fields are optional — only non-nil values are applied. Called on
-    /// event-driven pushes (title change, cost update, group change) and on
-    /// the desktop's poll-tick volatile push (convFingerprint /
-    /// lastActivityAt / lastMessage / messageCount — B6-1) so the tab list
-    /// AND the staleness-heal signal stay current without a full snapshot
-    /// reship per streamed delta.
+    /// event-driven pushes (title change, cost update, group change, pill
+    /// color/icon change) and on the desktop's poll-tick volatile push
+    /// (convFingerprint / lastActivityAt / lastMessage / messageCount — B6-1)
+    /// so the tab list AND the staleness-heal signal stay current without a
+    /// full snapshot reship per streamed delta.
     ///
     /// totalCostUsd is the legacy parameter name preserved so call sites don't
     /// need a coordinated rename. Internally it is stored as runCostUsd (the
     /// canonical field after the Commit 2 engine wire rename).
+    ///
+    /// pillColor/pillIcon use double optionals: outer nil means omitted and
+    /// leaves current state untouched; outer non-nil carries a value or an
+    /// explicit clear (inner nil).
     @MainActor
-    func handleTabMeta(tabId: String, title: String?, totalCostUsd: Double?, groupId: String?, convFingerprint: String? = nil, lastActivityAt: Double? = nil, lastMessage: String? = nil, messageCount: Int? = nil) {
+    func handleTabMeta(tabId: String, title: String?, totalCostUsd: Double?, groupId: String?, convFingerprint: String? = nil, lastActivityAt: Double? = nil, lastMessage: String? = nil, messageCount: Int? = nil, pillColor: String?? = nil, pillIcon: String?? = nil) {
         guard let idx = tabs.firstIndex(where: { $0.id == tabId }) else {
             DiagnosticLog.log("tab meta tab not found", tag: "session", level: .debug, fields: [
                 "tab_id": String(tabId.prefix(8))
@@ -247,6 +251,14 @@ extension SessionViewModel {
         }
         if let groupId, groupId != tabs[idx].groupId {
             tabs[idx].groupId = groupId
+            changed = true
+        }
+        if let pillColor, pillColor != tabs[idx].pillColor {
+            tabs[idx].pillColor = pillColor
+            changed = true
+        }
+        if let pillIcon, pillIcon != tabs[idx].pillIcon {
+            tabs[idx].pillIcon = pillIcon
             changed = true
         }
         // Volatile conversation fields (B6-1). The snapshot no longer re-ships

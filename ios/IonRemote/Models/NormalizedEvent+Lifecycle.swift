@@ -78,7 +78,21 @@ extension RemoteEvent {
             let lastActivityAt = try container.decodeIfPresent(Double.self, forKey: .lastActivityAt)
             let lastMessage = try container.decodeIfPresent(String.self, forKey: .lastMessage)
             let messageCount = try container.decodeIfPresent(Int.self, forKey: .messageCount)
-            return .tabMeta(tabId: tabId, title: title, totalCostUsd: resolvedCost, groupId: groupId, convFingerprint: convFingerprint, lastActivityAt: lastActivityAt, lastMessage: lastMessage, messageCount: messageCount)
+            // Preserve omitted versus explicit-null fields: omitted metadata
+            // must not overwrite current customization, while JSON null clears it.
+            let pillColor: String??
+            if container.contains(.pillColor) {
+                pillColor = try container.decode(String?.self, forKey: .pillColor)
+            } else {
+                pillColor = Optional<Optional<String>>.none
+            }
+            let pillIcon: String??
+            if container.contains(.pillIcon) {
+                pillIcon = try container.decode(String?.self, forKey: .pillIcon)
+            } else {
+                pillIcon = Optional<Optional<String>>.none
+            }
+            return .tabMeta(tabId: tabId, title: title, totalCostUsd: resolvedCost, groupId: groupId, convFingerprint: convFingerprint, lastActivityAt: lastActivityAt, lastMessage: lastMessage, messageCount: messageCount, pillColor: pillColor, pillIcon: pillIcon)
 
         case .unpair:
             return .unpair
@@ -213,7 +227,7 @@ extension RemoteEvent {
             }
             return true
 
-        case .tabMeta(let tabId, let title, let totalCostUsd, let groupId, let convFingerprint, let lastActivityAt, let lastMessage, let messageCount):
+        case .tabMeta(let tabId, let title, let totalCostUsd, let groupId, let convFingerprint, let lastActivityAt, let lastMessage, let messageCount, let pillColor, let pillIcon):
             try container.encode(TypeKey.tabMeta, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(title, forKey: .title)
@@ -226,6 +240,12 @@ extension RemoteEvent {
             try container.encodeIfPresent(lastActivityAt, forKey: .lastActivityAt)
             try container.encodeIfPresent(lastMessage, forKey: .lastMessage)
             try container.encodeIfPresent(messageCount, forKey: .messageCount)
+            if let pillColor {
+                try container.encode(pillColor, forKey: .pillColor)
+            }
+            if let pillIcon {
+                try container.encode(pillIcon, forKey: .pillIcon)
+            }
             return true
 
         case .error(let tabId, let message):

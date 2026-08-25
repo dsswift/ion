@@ -19,12 +19,19 @@ enum RemoteEvent: Sendable {
     /// It is not a run lifecycle transition.
     case tabStatus(tabId: String, status: TabStatus, resync: Bool)
     /// Lightweight tab-row metadata delta. Emitted event-driven on title, cost,
-    /// conversationInstances, or groupId change, AND by the desktop's 5 s
-    /// snapshot poll tick for the hash-excluded volatile conversation fields
-    /// (convFingerprint / lastActivityAt / lastMessage / messageCount) so the
-    /// heal logic sees a fresh fingerprint without a full snapshot reship.
-    /// All fields are optional; iOS applies only the non-nil fields.
-    case tabMeta(tabId: String, title: String?, totalCostUsd: Double?, groupId: String?, convFingerprint: String?, lastActivityAt: Double?, lastMessage: String?, messageCount: Int?)
+    /// conversationInstances, groupId, pillColor, or pillIcon change, AND by
+    /// the desktop's 5 s snapshot poll tick for the hash-excluded volatile
+    /// conversation fields (convFingerprint / lastActivityAt / lastMessage /
+    /// messageCount) so the heal logic sees a fresh fingerprint without a
+    /// full snapshot reship. All fields are optional; iOS applies only the
+    /// non-nil fields. pillColor/pillIcon mirror RemoteTabState's own fields
+    /// (parity with the desktop's `desktop_set_pill_color`/`desktop_set_pill_icon`
+    /// commands, whose acks flow back here so the tab row updates without a
+    /// full snapshot reship).
+    /// `pillColor` and `pillIcon` use double optionals: outer nil means key was
+    /// omitted and state must remain untouched; outer non-nil with inner nil
+    /// means desktop explicitly sent JSON null to clear customization.
+    case tabMeta(tabId: String, title: String?, totalCostUsd: Double?, groupId: String?, convFingerprint: String?, lastActivityAt: Double?, lastMessage: String?, messageCount: Int?, pillColor: String??, pillIcon: String??)
     case textChunk(tabId: String, text: String)
     case toolCall(tabId: String, toolName: String, toolId: String)
     case toolResult(tabId: String, toolId: String, content: String, isError: Bool)
@@ -228,7 +235,7 @@ enum RemoteEvent: Sendable {
     /// never reaches a message_end (cancel, mid-stream failure) still leaves
     /// the row canonically keyed and history reloads dedup against it instead
     /// of rendering the user turn twice.
-    case engineUserTurnPersisted(tabId: String, instanceId: String?, entryId: String, slashModelAlias: String?, slashModelEffective: String?)
+    case engineUserTurnPersisted(tabId: String, instanceId: String?, entryId: String, slashModelAlias: String?, slashModelEffective: String?, slashFrontmatter: [String: AnyCodable]?)
     case engineDead(tabId: String, instanceId: String?, exitCode: Int?, signal: String?, stderrTail: [String])
     case engineInstanceAdded(tabId: String, instanceId: String, label: String)
     case engineInstanceRemoved(tabId: String, instanceId: String)
@@ -762,6 +769,11 @@ enum RemoteEvent: Sendable {
         case content, isError, result, costUsd, durationMs, reason, backgroundTaskId
         case task, taskId, requestId, notifyOnComplete, startedAt, elapsedMs, outputPath, tail
         case stoppedBackgroundTaskIds, scope, cancelledRunId, recalledDispatchIds, killedAgentProcessCount
+        // desktop_tab_meta pill customization fields: pushed by the desktop
+        // when the user sets a custom pill color/icon (desktop_set_pill_color/
+        // desktop_set_pill_icon) so the tab row updates without a full
+        // snapshot reship. Names mirror RemoteTabState.
+        case pillColor, pillIcon
         case sinceSeq  // desktop_request_diagnostic_logs incremental seq cursor
         case questionId, toolInput, options, message
         case messages, hasMore, cursor, messageId, prompts, relayUrl, relayApiKey
@@ -790,7 +802,7 @@ enum RemoteEvent: Sendable {
         case signal, stderrTail, label, profiles, elapsed, usage, model
         // desktop_user_turn_persisted — the run-opening user turn's canonical
         // persisted tree-entry id (mirrors Go EngineEvent.UserTurnEntryID).
-        case userTurnEntryId, userTurnSlashModelAlias, userTurnSlashModelEffective
+        case userTurnEntryId, userTurnSlashModelAlias, userTurnSlashModelEffective, userTurnSlashFrontmatter
         case tabGroupMode, tabGroups, preferredModel, engineDefaultModel, availableModels
         case directory, files, branch, isGitRepo, ahead, behind, stagedCount, unstagedCount
         case commits, totalCount, diff, fileName, graphLayout, hash, stats
