@@ -41,6 +41,11 @@ export function registerStudioFileRouter(revealSurface: () => void = () => {}): 
       revealSurface()
       useSurfaceStore.getState().openBrowserTab(`file://${filePath}`, 'preview')
     },
+    openWebApplication: (tabId, url) => {
+      revealSurface()
+      useSessionStore.getState().selectTab(tabId)
+      useSurfaceStore.getState().openBrowserTab(url, 'browse')
+    },
     openGitDiff: ({ repoDir, filePath, staged }) => {
       const session = useSessionStore.getState()
       const activeDirectory = session.tabs.find((tab) => tab.id === session.activeTabId)?.workingDirectory

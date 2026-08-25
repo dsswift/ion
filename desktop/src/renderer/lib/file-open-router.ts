@@ -11,6 +11,7 @@ export interface ContentRouter {
   openPlan?(dir: string, tabId: string, filePath: string): void
   openImage(filePath: string, dataUrl?: string): void
   openHtml(filePath: string): void
+  openWebApplication?(tabId: string, url: string): void
   openGitDiff(target: { repoDir: string; filePath: string; staged: boolean }): boolean
   openResource?(item: ResourceItem): void
   openStatus?(): void

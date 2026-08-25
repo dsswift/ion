@@ -19,7 +19,7 @@ import { canvasTabCommand, CANVAS_TAB_COMMAND_IDS } from './canvas-tab-commands'
 import { ShortcutHint } from '../../shortcuts/ShortcutHint'
 import { useRevealedShortcuts } from '../../shortcuts/useShortcutHints'
 
-function tabIcon(tab: SurfaceTab): React.JSX.Element {
+function tabIcon(tab: SurfaceTab, activity: import('../../../shared/terminal-activity').TerminalActivity | null, colors: ReturnType<typeof useColors>): React.JSX.Element {
   const size = 12
   switch (tab.kind) {
     case 'singleton':
@@ -43,7 +43,9 @@ function tabIcon(tab: SurfaceTab): React.JSX.Element {
     case 'browser':
       return <Globe size={size} />
     case 'terminal':
-      return <TerminalWindow size={size} />
+      return activity?.applications[0]
+        ? <Globe size={size} color={colors.statusBash} weight="fill" />
+        : <TerminalWindow size={size} color={activity?.active ? colors.statusBash : undefined} weight={activity?.active ? 'fill' : 'regular'} />
   }
 }
 
@@ -91,6 +93,10 @@ function SurfaceTabPill({
   const { hover, pressed, handlers } = useInteractiveState()
   const activateTab = useSurfaceStore((s) => s.activateTab)
   const closeTab = useSurfaceStore((s) => s.closeTab)
+  const conversationTabId = useSurfaceStore((s) => s.currentConversationId)
+  const activity = useSessionStore((s) => tab.kind === 'terminal'
+    ? s.terminalActivities.get(`${conversationTabId ?? ''}:surface:${tab.instanceId}`) ?? null
+    : null)
   const [confirmingClose, setConfirmingClose] = useState(false)
 
   // Dirty file tabs get an inline discard confirm (the FileEditorTabItem
@@ -136,7 +142,7 @@ function SurfaceTabPill({
         flexShrink: 0,
       }}
     >
-      {tabIcon(tab)}
+      {tabIcon(tab, activity, colors)}
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tabLabel(tab)}</span>
       {chord && <ShortcutHint chord={chord} dimmed={!active} />}
       {dirty && <span style={{ width: 6, height: 6, borderRadius: 3, background: colors.accent, flexShrink: 0 }} />}

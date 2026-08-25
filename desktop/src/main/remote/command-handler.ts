@@ -38,6 +38,7 @@ import {
   handleTerminalAddInstance,
   handleTerminalRemoveInstance,
   handleRequestTerminalSnapshot,
+  handleOpenTerminalApplication,
   handleTerminalSelectInstance,
   handleRenameTab,
   handleRenameTerminalInstance,
@@ -162,6 +163,7 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'desktop_terminal_add_instance': await handleTerminalAddInstance(cmd); break
     case 'desktop_terminal_remove_instance': await handleTerminalRemoveInstance(cmd); break
     case 'desktop_request_terminal_snapshot': await handleRequestTerminalSnapshot(cmd, deviceId); break
+    case 'desktop_open_terminal_application': await handleOpenTerminalApplication(cmd); break
     case 'desktop_request_agent_state': handleRequestAgentState(cmd, deviceId); break
     case 'desktop_request_context_breakdown': {
       // iOS opened the status drawer and needs an on-demand context breakdown

@@ -29,30 +29,28 @@ import { rTrace, rWarn, rDebug } from '../rendererLogger'
 export function useEngineEvents() {
   useEffect(() => {
     let live = true
-    const seenActivity = new Set<string>()
-    void window.ion.terminalActiveTabs()
-      .then((tabIds) => {
+    const receivedKeys = new Set<string>()
+    void window.ion.terminalActivitySnapshot()
+      .then((activities) => {
         if (!live) return
-        useSessionStore.setState((s) => {
-          // Activity events can arrive before this asynchronous snapshot. Keep
-          // those newer observations instead of letting an old snapshot erase
-          // live tab activity.
-          const terminalActiveTabIds = new Set(tabIds)
-          for (const tabId of seenActivity) {
-            if (s.terminalActiveTabIds.has(tabId)) terminalActiveTabIds.add(tabId)
-            else terminalActiveTabIds.delete(tabId)
+        useSessionStore.setState((state) => {
+          const terminalActivities = new Map(activities.map((activity) => [activity.key, activity]))
+          for (const key of receivedKeys) {
+            const current = state.terminalActivities.get(key)
+            if (current) terminalActivities.set(key, current)
+            else terminalActivities.delete(key)
           }
-          return { terminalActiveTabIds }
+          return { terminalActivities }
         })
       })
-      .catch((err) => rWarn('terminal', 'active terminal snapshot failed', { error: String(err) }))
-    const unsubscribe = window.ion.onTerminalActivity(({ tabId, active }) => {
-      seenActivity.add(tabId)
-      useSessionStore.setState((s) => {
-        const terminalActiveTabIds = new Set(s.terminalActiveTabIds)
-        if (active) terminalActiveTabIds.add(tabId)
-        else terminalActiveTabIds.delete(tabId)
-        return { terminalActiveTabIds }
+      .catch((err) => rWarn('terminal', 'terminal activity snapshot failed', { error: String(err) }))
+    const unsubscribe = window.ion.onTerminalActivity((activity) => {
+      receivedKeys.add(activity.key)
+      useSessionStore.setState((state) => {
+        const terminalActivities = new Map(state.terminalActivities)
+        if (activity.active) terminalActivities.set(activity.key, activity)
+        else terminalActivities.delete(activity.key)
+        return { terminalActivities }
       })
     })
     return () => {

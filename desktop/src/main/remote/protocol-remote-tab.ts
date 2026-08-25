@@ -154,6 +154,8 @@ export interface RemoteTabState {
   activeConversationInstanceId?: string | null
   terminalInstances?: TerminalInstanceInfo[]
   activeTerminalInstanceId?: string | null
+  hasRunningTerminal?: boolean
+  terminalApplications?: import('../../shared/terminal-activity').TerminalWebApplication[]
   groupId?: string | null
   /** When true, auto-group movement is suppressed for this tab. */
   groupPinned?: boolean
@@ -247,6 +249,9 @@ export interface TerminalInstanceInfo {
   kind: string    // 'user' | 'commit' | 'cli' | 'tool:*'
   readOnly: boolean
   cwd: string
+  isRunning?: boolean
+  processLabel?: string
+  applications?: import('../../shared/terminal-activity').TerminalWebApplication[]
 }
 
 // ─── Wire-friendly message types for conversation sync ───

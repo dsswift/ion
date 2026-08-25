@@ -285,6 +285,7 @@ export const IPC = {
 
   // Terminal PTY
   TERMINAL_ACTIVE_TABS: "ion:terminal-active-tabs",
+  TERMINAL_ACTIVITY_SNAPSHOT: "ion:terminal-activity-snapshot",
   TERMINAL_ACTIVITY: "ion:terminal-activity",
   TERMINAL_CREATE: "ion:terminal-create",
   TERMINAL_DATA: "ion:terminal-data",
@@ -480,6 +481,9 @@ export const IPC = {
   STUDIO_SET_SETTING: "studio:set-setting",
   STUDIO_LIST_TABS: "studio:list-tabs",
   STUDIO_FOCUS_TAB: "studio:focus-tab",
+  // Main → Studio: open a terminal-owned Web Application in the owning
+  // Conversation's Studio Surface after main validated its live ownership.
+  STUDIO_OPEN_WEB_APPLICATION: "studio:open-web-application",
   STUDIO_FOCUS_AGENT: "studio:focus-agent",
   STUDIO_LIST_THEMES: "studio:list-themes",
   STUDIO_READ_THEME_BUNDLE: "studio:read-theme-bundle",

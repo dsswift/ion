@@ -25,7 +25,7 @@ const state = {
   conversationPanes: new Map<string, ConversationPane>(),
   worktreeInventory: new Map<string, WorktreeInventoryEntry[]>(),
   benchWorkspaces: new Map(),
-  terminalActiveTabIds: new Set<string>(),
+  terminalActivities: new Map<string, import('../../../shared/terminal-activity').TerminalActivity>(),
   workspaceOperationLedger: new Map(),
   selectTab: (tabId: string): void => {
     state.activeTabId = tabId
@@ -352,7 +352,7 @@ describe('InboxNavigatorGroups bench terminal row', () => {
     state.activeTabId = 'outside'
     state.worktreeInventory = new Map()
     state.benchWorkspaces = new Map([['/repo', [workspace]]])
-    state.terminalActiveTabIds = new Set()
+    state.terminalActivities = new Map()
     container = document.createElement('div')
     document.body.appendChild(container)
   })
@@ -456,7 +456,7 @@ describe('InboxNavigatorGroups bench terminal row', () => {
       workingDirectory: workspace.benchPath, isTerminalOnly: true,
     } as TabState
     state.tabs = [terminal]
-    state.terminalActiveTabIds = new Set()
+    state.terminalActivities = new Map()
 
     const root = createRoot(container)
     await act(async () => { root.render(<Harness project={benchProject()} />) })
@@ -485,7 +485,10 @@ describe('InboxNavigatorGroups bench terminal row', () => {
       workingDirectory: workspace.benchPath, isTerminalOnly: true,
     } as TabState
     state.tabs = [terminal]
-    state.terminalActiveTabIds = new Set(['bench-terminal'])
+    state.terminalActivities = new Map([['bench-terminal:instance-1', {
+      key: 'bench-terminal:instance-1', tabId: 'bench-terminal', instanceId: 'instance-1',
+      active: true, processLabel: 'npm', processIds: [1], applications: [],
+    }]])
 
     const root = createRoot(container)
     await act(async () => { root.render(<Harness project={benchProject()} />) })

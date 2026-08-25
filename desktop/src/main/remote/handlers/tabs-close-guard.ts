@@ -65,7 +65,7 @@ export function evaluateRemoteCloseGuard(
 
   let orchestratorRunning = false
   let agentCount = 0
-  let shellCount = 0
+  let shellCount = tab.hasRunningTerminal ? 1 : 0
 
   // Tab-level status covers the plain single-instance case, where the
   // orchestrator's run state rides the tab rather than an instance entry.

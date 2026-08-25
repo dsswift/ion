@@ -27,6 +27,7 @@ import { useColors } from "../theme";
 import { usePreferencesStore } from "../preferences";
 import { rDebug, rInfo } from "../rendererLogger";
 import { contentRouter } from "../lib/file-open-router";
+import { IPC } from "../../shared/types";
 import { getDispatches, meta, mostRecentDispatch } from "../components/agent-panel-helpers";
 import { toggleActivePermissionMode } from "../shortcuts/shared-command-handlers";
 import { handleNewConversationShortcut, isEditorZoomTarget, isPreviewZoomTarget } from "../hooks/useKeyboardShortcuts"
@@ -111,6 +112,21 @@ export function StudioShell(): React.JSX.Element {
   useEffect(() => initQuestionsSurfaceSync(), []);
 
   const { layout, hydrated, patch } = useStudioLayout();
+  useEffect(() => {
+    const openWebApplication = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
+      if (!payload || typeof payload !== 'object') return
+      const { tabId, url } = payload as { tabId?: unknown; url?: unknown }
+      if (typeof tabId !== 'string' || typeof url !== 'string') return
+      const router = contentRouter()
+      if (!router?.openWebApplication) {
+        rDebug('studio', 'web application request ignored: router unavailable', { tab_id: tabId, url })
+        return
+      }
+      router.openWebApplication(tabId, url)
+    }
+    window.ion.on(IPC.STUDIO_OPEN_WEB_APPLICATION, openWebApplication)
+    return () => window.ion.off(IPC.STUDIO_OPEN_WEB_APPLICATION, openWebApplication)
+  }, [])
   const surfaceVisible = useSurfaceStore((s) => s.visible);
   const startupReady = useStudioBootstrap(hydrated);
   const closeIntent = useSessionStore((s) => s.closeIntent);

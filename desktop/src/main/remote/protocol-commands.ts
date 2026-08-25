@@ -163,6 +163,7 @@ export type RemoteCommand =
       instanceId: string;
     }
   | { type: "desktop_request_terminal_snapshot"; tabId: string }
+  | { type: "desktop_open_terminal_application"; tabId: string; url: string }
   // Ask the desktop to re-send the agent roster for one tab. Scoped
   // deliberately: desktop_sync rebuilds every tab, engine profiles, settings,
   // and terminal buffers, which is the amplification this whole change

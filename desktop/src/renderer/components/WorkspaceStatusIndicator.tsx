@@ -58,8 +58,9 @@ export function globalRunningTier(
     const terminalRunning = terminalActiveTabIds
       ? terminalActiveTabIds.has(tab.id)
       : isAnyTerminalCommandRunning(tab.id);
-    if (tab.status === "running" || terminalRunning) return "running";
+    if (tab.status === "running") return "running";
     if (
+      terminalRunning ||
       anyEngineInstanceHasRunningChildren(tab.id) ||
       anyEngineInstanceHasRunningShells(tab.id)
     ) {
@@ -164,7 +165,7 @@ export function computeStatusCounts(
       c.deadTabs.push(ref(tab));
       continue;
     }
-    if (tab.status === "running" || terminalRunning) {
+    if (tab.status === "running") {
       c.running++;
       c.runningTabs.push(ref(tab));
       continue;
@@ -181,7 +182,7 @@ export function computeStatusCounts(
     }
     // Background bash commands the session is holding for. Ranked directly
     // after agents, matching getTabStatusColor's cascade.
-    if (anyEngineInstanceHasRunningShells(tab.id)) {
+    if (terminalRunning || anyEngineInstanceHasRunningShells(tab.id)) {
       c.waitingShells++;
       c.waitingShellTabs.push(ref(tab));
       continue;
@@ -253,7 +254,7 @@ export function WorkspaceStatusIndicator() {
   // component re-renders when conversationPanes identity changes).
   const tabs = useSessionStore((s) => s.tabs);
   const terminalActiveTabIds = useSessionStore(
-    (s) => s.terminalActiveTabIds ?? new Set<string>(),
+    (s) => new Set([...(s.terminalActivities ?? new Map()).values()].filter((activity) => activity.active).map((activity) => activity.tabId)),
   );
   useSessionStore((s) => s.conversationPanes);
   // Same reason: a Guided Questions round is a waiting state that lives

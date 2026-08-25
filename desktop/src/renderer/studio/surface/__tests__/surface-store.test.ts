@@ -181,7 +181,7 @@ describe('surface-store', () => {
     expect(terminalDestroyMock).not.toHaveBeenCalled()
     useSurfaceStore.getState().selectConversation('tab-1')
     useSurfaceStore.getState().closeTab(terminal.id)
-    expect(terminalDestroyMock).toHaveBeenCalledWith(`studio:${(terminal as { instanceId: string }).instanceId}`)
+    expect(terminalDestroyMock).toHaveBeenCalledWith(`tab-1:surface:${(terminal as { instanceId: string }).instanceId}`)
   })
 
   it('keeps visibility live without changing saved conversation state in keep mode', () => {

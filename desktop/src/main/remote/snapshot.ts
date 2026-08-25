@@ -34,6 +34,7 @@ import { projectRendererTab } from './snapshot-project'
 import { pollRendererTabStates } from './snapshot-renderer-poll'
 import { getMachineIdentity } from '../machine-identity'
 import { questionsCoordinator } from '../questions/questions-wiring'
+import { terminalManager } from '../terminal-manager-instance'
 
 // Re-export so existing `import type { ResourceManifest } from './snapshot'`
 // consumers keep working; the type's home is shared/remote-projection-types.ts
@@ -179,6 +180,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
       }
     }
     const mapped = rendererTabs.map((t) => mapProjectedTab(t))
+    mergeMainTerminalActivity(mapped)
 
     // Merge main-owned guided-questions state AFTER renderer projection:
     // the QuestionsCoordinator is authoritative and its state never
@@ -196,6 +198,22 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
   }
 
   return coldStartSnapshot()
+}
+
+function mergeMainTerminalActivity(tabs: RemoteTabState[]): void {
+  const byTab = new Map<string, ReturnType<typeof terminalManager.activitySnapshot>>()
+  for (const activity of terminalManager.activitySnapshot()) {
+    if (!activity.active) continue
+    const activities = byTab.get(activity.tabId) ?? []
+    activities.push(activity)
+    byTab.set(activity.tabId, activities)
+  }
+  for (const tab of tabs) {
+    const activities = byTab.get(tab.id)
+    if (!activities?.length) continue
+    tab.hasRunningTerminal = true
+    tab.terminalApplications = activities.flatMap((activity) => activity.applications)
+  }
 }
 
 /**

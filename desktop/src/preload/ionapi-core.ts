@@ -281,13 +281,8 @@ export interface IonCoreApi {
    */
   terminalGetScrollback(key: string): Promise<string>;
   terminalActiveTabs(): Promise<string[]>;
-  onTerminalActivity(
-    callback: (activity: {
-      key: string;
-      tabId: string;
-      active: boolean;
-    }) => void,
-  ): () => void;
+  terminalActivitySnapshot(): Promise<import('../shared/terminal-activity').TerminalActivity[]>;
+  onTerminalActivity(callback: (activity: import('../shared/terminal-activity').TerminalActivity) => void): () => void;
   /**
    * An untrusted ion:// deep link is awaiting approval. The callback receives
    * everything the operator needs to decide; answer with

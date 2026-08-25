@@ -114,6 +114,7 @@ export type RemoteEvent =
   | { type: 'desktop_background_task_stop_result'; requestId: string; taskId: string; status: string; error?: string }
   | { type: 'desktop_message_updated'; tabId: string; messageId: string; content?: string; toolStatus?: 'running' | 'completed' | 'error'; toolInput?: string }
   | { type: 'desktop_queue_update'; tabId: string; prompts: string[] }
+  | { type: 'desktop_terminal_activity'; key: string; tabId: string; instanceId: string; active: boolean; processLabel: string | null; applications: import('../../shared/terminal-activity').TerminalWebApplication[] }
   | { type: 'desktop_terminal_output'; tabId: string; instanceId: string; data: string }
   | { type: 'desktop_terminal_exit'; tabId: string; instanceId: string; exitCode: number }
   | { type: 'desktop_terminal_instance_added'; tabId: string; instance: TerminalInstanceInfo }

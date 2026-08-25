@@ -108,7 +108,10 @@ export function anyEngineInstanceHasRunningChildren(tabId: string): boolean {
 }
 
 export function isAnyTerminalCommandRunning(tabId: string): boolean {
-  return useSessionStore.getState().terminalActiveTabIds.has(tabId)
+  for (const activity of useSessionStore.getState().terminalActivities.values()) {
+    if (activity.tabId === tabId && activity.active) return true
+  }
+  return false
 }
 
 /**

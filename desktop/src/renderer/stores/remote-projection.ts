@@ -48,6 +48,7 @@ import { rDebug } from '../rendererLogger'
 export interface ProjectionStoreState {
   tabs: TabState[]
   terminalPanes: Map<string, TerminalPaneState>
+  terminalActivities?: Map<string, import('../../shared/terminal-activity').TerminalActivity>
   conversationPanes: Map<string, ConversationPane>
   resources: Record<string, ResourceItem[]>
   readResourceIds: Set<string>
@@ -219,15 +220,24 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
   let terminalInstances: ProjectedRendererTab['terminalInstances']
   let activeTerminalInstanceId: string | undefined
   if (pane && pane.instances && pane.instances.length > 0) {
-    terminalInstances = pane.instances.map((inst) => ({
-      id: inst.id,
-      label: inst.label || 'Shell',
-      kind: inst.kind || 'user',
-      readOnly: !!inst.readOnly,
-      cwd: inst.cwd || t.workingDirectory,
-    }))
+    terminalInstances = pane.instances.map((inst) => {
+      const activity = s.terminalActivities?.get(`${t.id}:${inst.id}`)
+      return {
+        id: inst.id,
+        label: inst.label || 'Shell',
+        kind: inst.kind || 'user',
+        readOnly: !!inst.readOnly,
+        cwd: inst.cwd || t.workingDirectory,
+        isRunning: activity?.active || undefined,
+        processLabel: activity?.processLabel || undefined,
+        applications: activity?.applications.length ? activity.applications : undefined,
+      }
+    })
     activeTerminalInstanceId = pane.activeInstanceId || pane.instances[0].id
   }
+
+  const tabTerminalActivities = [...(s.terminalActivities ?? new Map()).values()].filter((activity) => activity.tabId === t.id && activity.active)
+  const terminalApplications = tabTerminalActivities.flatMap((activity) => activity.applications)
 
   // Reuse the active-instance resolution from above. cPane is the tab's
   // conversation pane (every tab has one); list its instances so iOS can
@@ -398,6 +408,8 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
     activeConversationInstanceId,
     terminalInstances,
     activeTerminalInstanceId,
+    hasRunningTerminal: tabTerminalActivities.length > 0 || undefined,
+    terminalApplications: terminalApplications.length > 0 ? terminalApplications : undefined,
     groupId: t.groupId || null,
     modelOverride: activeInst?.modelOverride || null,
     groupPinned: t.groupPinned || false,

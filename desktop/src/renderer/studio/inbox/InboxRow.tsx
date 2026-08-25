@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Check, ClockCounterClockwise, PushPin, PushPinSlash, WarningCircle } from '@phosphor-icons/react'
+import { Check, ClockCounterClockwise, Globe, PushPin, PushPinSlash, Terminal, WarningCircle } from '@phosphor-icons/react'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useQuestionsStore } from '../../stores/questions-store'
 import { activeInstance } from '../../stores/conversation-instance'
@@ -8,10 +8,12 @@ import { useColors } from '../../theme'
 import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveState'
 import { transitions } from '../../theme-tokens'
 import { InboxRowMenu } from './InboxRowMenu'
+import { Tooltip } from '../../components/git/Tooltip'
 import { availableSnoozePresets } from './inbox-snooze-presets'
 import { ConversationHoverCard } from './ConversationHoverCard'
 import { inboxWorktreeFor } from './inbox-grouping'
 import { latestConversationActivityAt } from '../../../shared/inbox-classify'
+import { contentRouter } from '../../lib/file-open-router'
 import type { IntegrationWorkspace, TabState, WorktreeInventoryEntry } from '../../../shared/types'
 
 export type InboxRowVariant = 'card' | 'slim'
@@ -48,6 +50,7 @@ export function InboxRow({
   // renders idle while the operator owes an answer.
   useQuestionsStore((s) => s.workflows)
   const waiting = useSessionStore((state) => getWaitingState(tab, state.conversationPanes))
+  const terminalActivity = useSessionStore((state) => [...state.terminalActivities.values()].find((activity) => activity.tabId === tab.id && activity.active) ?? null)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(tab.customTitle ?? tab.title)
@@ -126,6 +129,16 @@ export function InboxRow({
         )}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, paddingTop: compact ? 0 : 1 }}>
+        {terminalActivity && <Tooltip text={terminalActivity.applications[0] ? `${terminalActivity.processLabel ?? 'Web application'} — ${terminalActivity.applications[0].url}` : `${terminalActivity.processLabel ?? 'Terminal command'} is running`}>
+          {terminalActivity.applications[0] ? <button aria-label={`Open ${terminalActivity.applications[0].url}`} onClick={(event) => {
+            event.stopPropagation()
+            const app = terminalActivity.applications[0]
+            const router = contentRouter()
+            if (router?.openWebApplication) router.openWebApplication(tab.id, app.url)
+            else void window.ion.openExternal(app.url)
+          }} style={{ display: 'inline-flex', border: 'none', background: 'transparent', color: colors.statusBash, cursor: 'pointer', padding: 0 }}><Globe size={12} /></button>
+            : <Terminal size={12} weight="fill" color={colors.statusBash} aria-label="Running terminal command" />}
+        </Tooltip>}
         {tab.settledOverride === 'auto' && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 9, color: colors.textTertiary }}><ClockCounterClockwise size={10} />Auto</span>}
         {woke && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 9, color: colors.statusPermission }}><WarningCircle size={11} />Woke</span>}
         {status ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 9, fontWeight: 600, color: statusColor }}>

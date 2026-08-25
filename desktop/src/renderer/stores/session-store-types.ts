@@ -91,7 +91,7 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
   /** Studio inline dispatch split subject (null = closed). Scoped to its opening conversation. */
   dispatchSplit: DispatchSplitSubject | null;
   terminalOpenTabIds: Set<string>;
-  terminalActiveTabIds: Set<string>;
+  terminalActivities: Map<string, import('../../shared/terminal-activity').TerminalActivity>;
   terminalPendingCommands: Map<string, string>;
   terminalPanes: Map<string, TerminalPaneState>;
   terminalTallTabId: string | null;

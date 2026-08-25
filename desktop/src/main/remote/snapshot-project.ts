@@ -45,6 +45,8 @@ export interface RendererTabInput {
   activeConversationInstanceId?: string | null
   terminalInstances?: RemoteTabState['terminalInstances']
   activeTerminalInstanceId?: string | null
+  hasRunningTerminal?: boolean
+  terminalApplications?: RemoteTabState['terminalApplications']
   groupId?: string | null
   modelOverride?: string | null
   groupPinned?: boolean
@@ -147,6 +149,8 @@ export function projectRendererTab(
     activeConversationInstanceId: t.activeConversationInstanceId || undefined,
     terminalInstances: t.terminalInstances || undefined,
     activeTerminalInstanceId: t.activeTerminalInstanceId || undefined,
+    hasRunningTerminal: t.hasRunningTerminal || undefined,
+    terminalApplications: t.terminalApplications || undefined,
     groupId: t.groupId || null,
     modelOverride: t.modelOverride || null,
     groupPinned: t.groupPinned || false,

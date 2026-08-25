@@ -68,7 +68,7 @@ const initialState = {
   statusDrawerDispatchId: null,
   dispatchSplit: null,
   terminalOpenTabIds: new Set<string>(),
-  terminalActiveTabIds: new Set<string>(),
+  terminalActivities: new Map(),
   terminalPendingCommands: new Map<string, string>(),
   terminalPanes: new Map<string, TerminalPaneState>(),
   terminalTallTabId: null,

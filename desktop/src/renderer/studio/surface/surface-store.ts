@@ -189,7 +189,7 @@ function materializeConversation(conversation: SurfaceConversationPersisted): Su
 
 function teardown(tab: SurfaceTab): void {
   if (tab.kind === 'terminal') {
-    void window.ion.terminalDestroy?.(`studio:${tab.instanceId}`)
+    void window.ion.terminalDestroy?.(`${useSurfaceStore.getState().currentConversationId ?? 'studio'}:surface:${tab.instanceId}`)
     rDebug('studio.surface', 'terminal tab closed, pty destroyed', { instance_id: tab.instanceId })
   }
   if (tab.kind === 'runtime-panel') {
@@ -465,13 +465,21 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
       rInfo('studio.surface', 'pinned surface tab closed', { surface_tab: id, tab_id: state.currentConversationId ?? '' })
       return
     }
+    if (tab.kind === 'terminal') {
+      const key = `${state.currentConversationId ?? 'studio'}:surface:${tab.instanceId}`
+      const activity = useSessionStore.getState().terminalActivities?.get(key)
+      if (activity?.active) {
+        rWarn('studio.surface', 'terminal tab close refused: terminal activity is running', { surface_tab: id, tab_id: state.currentConversationId ?? '', terminal_key: key })
+        return
+      }
+    }
     teardown(tab)
     updateCurrent(set, get, (current) => ({ ...current, tabs: current.tabs.filter((item) => item.id !== id), activeTabId: current.activeTabId === id ? nextActiveAfterClose(state.tabs, id) : current.activeTabId }))
   },
 
   closeOthers: (id) => {
     const state = get()
-    const targets = closeOthersTargets(state.tabs, id, [...globalTabIds(state.pinnedTabs, state.notification), QUESTIONS_SURFACE_ID])
+    const targets = closeOthersTargets(state.tabs, id, [...globalTabIds(state.pinnedTabs, state.notification), QUESTIONS_SURFACE_ID]).filter((tab) => tab.kind !== 'terminal' || !useSessionStore.getState().terminalActivities?.get(`${state.currentConversationId ?? 'studio'}:surface:${tab.instanceId}`)?.active)
     for (const tab of targets) teardown(tab)
     const ids = new Set(targets.map((tab) => tab.id))
     updateCurrent(set, get, (current) => ({ ...current, tabs: current.tabs.filter((tab) => !ids.has(tab.id)), activeTabId: current.activeTabId && ids.has(current.activeTabId) ? id : current.activeTabId }))
@@ -479,7 +487,7 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
 
   closeToRight: (id) => {
     const state = get()
-    const targets = closeToRightTargets(state.tabs, id, [...globalTabIds(state.pinnedTabs, state.notification), QUESTIONS_SURFACE_ID])
+    const targets = closeToRightTargets(state.tabs, id, [...globalTabIds(state.pinnedTabs, state.notification), QUESTIONS_SURFACE_ID]).filter((tab) => tab.kind !== 'terminal' || !useSessionStore.getState().terminalActivities?.get(`${state.currentConversationId ?? 'studio'}:surface:${tab.instanceId}`)?.active)
     for (const tab of targets) teardown(tab)
     const ids = new Set(targets.map((tab) => tab.id))
     updateCurrent(set, get, (current) => ({ ...current, tabs: current.tabs.filter((tab) => !ids.has(tab.id)), activeTabId: current.activeTabId && ids.has(current.activeTabId) ? id : current.activeTabId }))

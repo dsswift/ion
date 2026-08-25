@@ -86,8 +86,9 @@ export const requestApi = {
   setActiveUi: (ui) => ipcRenderer.invoke(IPC.SET_ACTIVE_UI, ui),
   terminalGetScrollback: (key) => ipcRenderer.invoke(IPC.TERMINAL_GET_SCROLLBACK, { key }),
   terminalActiveTabs: () => ipcRenderer.invoke(IPC.TERMINAL_ACTIVE_TABS),
+  terminalActivitySnapshot: () => ipcRenderer.invoke(IPC.TERMINAL_ACTIVITY_SNAPSHOT),
   onTerminalActivity: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, activity: { key: string; tabId: string; active: boolean }) => callback(activity)
+    const handler = (_e: Electron.IpcRendererEvent, activity: import('../shared/terminal-activity').TerminalActivity) => callback(activity)
     ipcRenderer.on(IPC.TERMINAL_ACTIVITY, handler)
     return () => ipcRenderer.removeListener(IPC.TERMINAL_ACTIVITY, handler)
   },

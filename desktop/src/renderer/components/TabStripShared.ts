@@ -168,6 +168,7 @@ import {
   isAnyEngineInstanceStarting,
   anyEngineInstanceHasRunningChildren,
   anyEngineInstanceHasRunningShells,
+  isAnyTerminalCommandRunning,
   anyEngineInstanceHasPendingWork,
 } from "./TabStripActivityFolds";
 
@@ -289,7 +290,7 @@ export function getTabStatusColor(
     glow = true;
     glowColor = colors.statusWaitingChildrenGlow;
     priority = STATUS_PRIORITY_CHILDREN;
-  } else if (anyEngineInstanceHasRunningShells(tab.id)) {
+  } else if (anyEngineInstanceHasRunningShells(tab.id) || isAnyTerminalCommandRunning(tab.id)) {
     // Pink "waiting on background shells" — orchestrator idle, background
     // bash commands still running. Same treatment as the user-typed `!`
     // command below (identical color): the dot answers "a shell is executing

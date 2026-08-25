@@ -242,8 +242,12 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       if (closingTab) {
         const pane = get().conversationPanes.get(tabId)
         const guard = evaluateSessionBusyGuard(pane)
-        if (guard.blocked) {
-          rWarn('tab.close', 'close blocked by guard', { tab_id: tabId, reason: formatSessionBusyRefusal(tabId, guard, 'close the tab') })
+        const terminalRunning = [...(get().terminalActivities ?? new Map()).values()].some((activity) => activity.tabId === tabId && activity.active)
+        if (guard.blocked || terminalRunning) {
+          const reason = terminalRunning && !guard.blocked
+            ? `refused to close the tab: tabId=${tabId.slice(0, 8)} terminal activity is running`
+            : formatSessionBusyRefusal(tabId, guard, 'close the tab')
+          rWarn('tab.close', 'close blocked by guard', { tab_id: tabId, reason })
           return
         }
       }

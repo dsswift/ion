@@ -50,7 +50,7 @@ function PlaceholderBody({ label }: { label: string }): React.JSX.Element {
   )
 }
 
-function bodyFor(tab: SurfaceTab, active: boolean, onAgentClick?: (tabId: string, agentName: string) => void): React.JSX.Element | null {
+function bodyFor(tab: SurfaceTab, active: boolean, conversationTabId: string, onAgentClick?: (tabId: string, agentName: string) => void): React.JSX.Element | null {
   switch (tab.kind) {
     case 'singleton':
       if (tab.id === 'visualizer') return <VisualizerSurface key={tab.id} active={active} onAgentClick={onAgentClick} />
@@ -101,7 +101,7 @@ function bodyFor(tab: SurfaceTab, active: boolean, onAgentClick?: (tabId: string
       // attach re-fetch would flash. The pty itself is main-owned either way.
       return (
         <div key={tab.id} style={{ display: active ? 'flex' : 'none', flex: 1, minHeight: 0 }}>
-          <TerminalSurface instanceId={tab.instanceId} cwd={tab.cwd} />
+          <TerminalSurface tabId={conversationTabId} instanceId={tab.instanceId} cwd={tab.cwd} />
         </div>
       )
   }
@@ -111,6 +111,7 @@ export function SurfacePanel({ onAgentClick }: { onAgentClick?: (tabId: string, 
   const colors = useColors()
   const tabs = useSurfaceStore((s) => s.tabs)
   const activeTabId = useSurfaceStore((s) => s.activeTabId)
+  const conversationTabId = useSurfaceStore((s) => s.currentConversationId)
   const hydrated = useSurfaceStore((s) => s.hydrated)
 
   if (!hydrated) {
@@ -124,7 +125,7 @@ export function SurfacePanel({ onAgentClick }: { onAgentClick?: (tabId: string, 
         {tabs.length === 0 ? (
           <PlaceholderBody label="No surface tabs — add one with +" />
         ) : (
-          tabs.map((t) => bodyFor(t, t.id === activeTabId, onAgentClick))
+          tabs.map((t) => bodyFor(t, t.id === activeTabId, conversationTabId ?? '', onAgentClick))
         )}
       </div>
     </div>
