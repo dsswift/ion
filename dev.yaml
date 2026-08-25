@@ -15,7 +15,7 @@ vars:
 # =============================================================================
 # SERVICES
 # =============================================================================
-# Ion local observability stack — 4 containers.
+# Ion local observability stack — 5 containers.
 #
 # Default config-path mounts (empirically verified via docker inspect):
 #   alloy  CMD: run /etc/alloy/config.alloy  → mount there, default CMD works
@@ -78,6 +78,20 @@ services:
       depends_on:
         - loki
 
+  # Expands v1-v4 telemetry file records and posts standard events to Alloy's
+  # Loki Push API. The image owns the reader and frame-decoding mechanics.
+  telemetry-forwarder:
+    tier: docker
+    compose:
+      build:
+        context: ./engine
+        dockerfile: Dockerfile.telemetry-forwarder
+      volumes:
+        - ${var.ion_logs_dir}:/ion-logs:ro
+        - telemetry-forwarder-data:/data
+      depends_on:
+        - alloy
+
   loki:
     tier: docker
     compose:
@@ -125,6 +139,7 @@ services:
 # GRAPH
 # =============================================================================
 # Log-flow: engine/desktop/ios JSONL -> alloy -> loki -> grafana
+#           telemetry JSONL -> telemetry-forwarder -> alloy API
 #           tempo <- otlp (from alloy)
 
 graph:
@@ -145,6 +160,9 @@ graph:
     - from: ios-logs
       to: alloy
       label: "tail (ro)"
+    - from: telemetry-forwarder
+      to: alloy
+      label: "Loki API"
     - from: alloy
       to: mount-refresher
       label: "shares mount cache"
@@ -163,7 +181,7 @@ graph:
   groups:
     collectors:
       label: "Collectors"
-      services: [alloy, mount-refresher]
+      services: [alloy, telemetry-forwarder, mount-refresher]
     storage:
       label: "Storage"
       services: [loki, tempo]
@@ -190,6 +208,8 @@ profiles:
       alloy:
         tier: docker
       mount-refresher:
+        tier: docker
+      telemetry-forwarder:
         tier: docker
       loki:
         tier: docker
@@ -218,15 +238,14 @@ utilities:
       : > ~/.ion/desktop.jsonl && \
       : > ~/.ion/telemetry.jsonl && \
       : > ~/.ion/ios-diagnostic-logs.jsonl && \
-      rm -f ~/.ion/engine.jsonl.1 \
-             ~/.ion/engine.jsonl.old \
-             ~/.ion/engine.log.old \
-             ~/.ion/telemetry.jsonl.*.bak && \
+      rm -f ~/.ion/engine.jsonl.[1-9] \
+             ~/.ion/desktop.jsonl.[1-9] \
+             ~/.ion/ios-diagnostic-logs.jsonl.[1-9] \
+             ~/.ion/telemetry.jsonl.[1-9] && \
       echo "Log files cleared:" && \
-      echo "  Truncated (in-place):  engine.jsonl, desktop.jsonl, telemetry.jsonl, ios-diagnostic-logs.jsonl" && \
-      echo "  Removed (rotated):     engine.jsonl.1, engine.jsonl.old, engine.log.old" && \
-      echo "  Removed (archives):    telemetry.jsonl.*.bak"
-    description: "Truncate all live log files in-place, remove rotated backups, and prune telemetry archives"
+      echo "  Cleared live files:     engine.jsonl, desktop.jsonl, telemetry.jsonl, ios-diagnostic-logs.jsonl" && \
+      echo "  Removed archives:       *.jsonl.1 through *.jsonl.9"
+    description: "Clear live logs and remove .1 through .9 archives"
 
   clear-observability-data:
     command: |
@@ -239,7 +258,7 @@ utilities:
       echo "  ~/.ion/telemetry.jsonl           (telemetry events, if present)"
       echo ""
       echo "Will NOT re-ingest (outside Alloy's targets):"
-      echo "  *.bak archives  (telemetry schema rotation backups)"
+      echo "  rotated .1 archives (not re-ingested automatically)"
       echo "  anything already truncated by clear-logs (content is gone)"
       echo ""
       docker compose -p ion-obs down -v
