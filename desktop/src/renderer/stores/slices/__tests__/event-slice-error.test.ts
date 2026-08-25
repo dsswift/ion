@@ -1,19 +1,14 @@
 /**
  * event-slice-error — handleErrorAction error-dedup contract.
  *
- * Pins the dedup rule in handleErrorAction (event-slice-error.ts): a new
- * enriched-error event appends an `Error: …` system message to the active
- * instance UNLESS the instance's most recent message is already an
- * `Error: …` system message, in which case the new error is suppressed (not
- * appended a second time). This collapses a burst of consecutive engine
- * errors into a single visible error row.
+ * Pin the terminal Desktop-side enriched-error path in `handleErrorAction`
+ * (`event-slice-error.ts`). A new enriched error appends an `Error: …` system
+ * message and marks the local request failed. Engine `error` events use the
+ * normalized reducer instead: they are visible signals, not lifecycle state.
  *
- * The "window" is positional, not temporal: dedup keys off whether the LAST
- * message is an error. An intervening non-error message re-opens the window,
- * so a genuinely distinct error (after other output) is not suppressed.
- *
- * Reverting the `alreadyHasError` guard in event-slice-error.ts (so every
- * error unconditionally appends) turns the first test red.
+ * The duplicate window is positional, not temporal: it keys off whether the
+ * LAST message is an error. An intervening non-error message re-opens the
+ * window, so a genuinely distinct error (after other output) is not suppressed.
  */
 
 import { describe, it, expect, vi } from 'vitest'
@@ -24,7 +19,17 @@ vi.mock('../../session-store-helpers', () => ({
   nextMsgId: vi.fn(() => `msg-${++idCounter}`),
 }))
 
+vi.mock('../event-slice-done-move', () => ({
+  maybeScheduleDoneMove: vi.fn(),
+}))
+
+vi.mock('../../../rendererLogger', () => ({
+  rInfo: vi.fn(),
+  rWarn: vi.fn(),
+}))
+
 import { handleErrorAction } from '../event-slice-error'
+import { handleTaskEvent } from '../event-slice-task'
 import { seedMainPane, mainInstance } from '../../__tests__/helpers/conversation-test-helpers'
 import type { EnrichedError } from '../../../../shared/types'
 import type { Message } from '../../../../shared/types'
@@ -91,7 +96,7 @@ function errorRows(messages: Message[]): Message[] {
   return messages.filter((m) => m.role === 'system' && m.content.startsWith('Error:'))
 }
 
-describe('event-slice-error — handleErrorAction dedup', () => {
+describe('event-slice-error — terminal enriched-error handling', () => {
   it('suppresses a duplicate error when the last message is already an error', () => {
     // First error appends an `Error:` row. A second error arriving immediately
     // after (the last message is still that error row) must be suppressed — the
@@ -113,6 +118,42 @@ describe('event-slice-error — handleErrorAction dedup', () => {
     // Tab is marked failed and the active request cleared.
     expect(state.tabs[0].status).toBe('failed')
     expect(state.tabs[0].activeRequestId).toBeNull()
+  })
+
+  it('keeps a live run active when a normalized engine error arrives', () => {
+    const { state, set } = buildHarness()
+    const tab = state.tabs[0]
+    const inst = mainInstance(state.conversationPanes, 'tab1')!
+    const ctx: Parameters<typeof handleTaskEvent>[0] = {
+      s: state,
+      get: () => state,
+      tabId: 'tab1',
+      tab,
+      inst0: inst,
+      messages: inst.messages.slice(),
+      permissionQueue: [{ id: 'permission-1' }],
+      elicitationQueue: [{ id: 'elicitation-1' }],
+      updated: { ...tab },
+      instPatch: {},
+      instTouched: false,
+    }
+
+    expect(handleTaskEvent(ctx, { type: 'error', message: 'compaction retry failed' })).toBe(true)
+
+    set({
+      tabs: [ctx.updated],
+      conversationPanes: seedMainPane('tab1', {
+        permissionMode: 'auto',
+        messages: ctx.messages,
+      }),
+    })
+
+    expect(state.tabs[0].status).toBe('running')
+    expect(state.tabs[0].activeRequestId).toBe('req-1')
+    expect(ctx.permissionQueue).toHaveLength(1)
+    expect(ctx.elicitationQueue).toHaveLength(1)
+    expect(ctx.instTouched).toBe(false)
+    expect(mainInstance(state.conversationPanes, 'tab1')!.messages.at(-1)?.content).toContain('compaction retry failed')
   })
 
   it('does NOT suppress a distinct error when a non-error message intervenes', () => {

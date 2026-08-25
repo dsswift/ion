@@ -51,8 +51,17 @@ func CommitMicroCompaction(conv *Conversation) error {
 		if !ok {
 			return fmt.Errorf("commit micro compaction: message entry %q not found", message.EntryID)
 		}
-		if conv.Entries[idx].Type != EntryMessage {
-			return fmt.Errorf("commit micro compaction: entry %q has type %q, want message", message.EntryID, conv.Entries[idx].Type)
+		entryType := conv.Entries[idx].Type
+		if IsCompactBoundary(message) {
+			if entryType != EntryCompaction {
+				return fmt.Errorf("commit micro compaction: boundary entry %q has type %q, want compaction", message.EntryID, entryType)
+			}
+			// A hard-compaction boundary is already durable metadata. It has no
+			// MessageData to update, and micro-compaction must retain it as-is.
+			continue
+		}
+		if entryType != EntryMessage {
+			return fmt.Errorf("commit micro compaction: message entry %q has type %q, want message", message.EntryID, entryType)
 		}
 		data := asMessageData(conv.Entries[idx].Data)
 		if data == nil {

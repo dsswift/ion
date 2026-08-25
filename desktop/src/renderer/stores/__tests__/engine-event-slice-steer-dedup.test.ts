@@ -186,7 +186,7 @@ describe('steerPending lifecycle (WI-001 normalized path)', () => {
     expect(dividers).toHaveLength(1)
   })
 
-  it('error event sets steerFailed and clears steerPending', () => {
+  it('error event stays visible without failing a live steer', () => {
     const pendingBubble = {
       id: 'pending-bubble',
       role: 'user',
@@ -198,13 +198,25 @@ describe('steerPending lifecycle (WI-001 normalized path)', () => {
 
     eventSlice.handleNormalizedEvent('tab1', {
       type: 'error',
-      message: 'Engine process exited with code 1',
+      message: 'internal retry failed',
     } as any)
 
     const msgs = getMessages(state)
     const bubble = msgs.find((m: any) => m.id === 'pending-bubble')
-    expect(bubble?.steerPending).toBeUndefined()
-    expect(bubble?.steerFailed).toBe(true)
+    expect(bubble?.steerPending).toBe(true)
+    expect(bubble?.steerFailed).toBeUndefined()
+    expect(msgs.at(-1)?.content).toContain('internal retry failed')
+    expect(state.tabs[0].status).toBe('running')
+    expect(state.tabs[0].activeRequestId).toBe('req-1')
+
+    eventSlice.handleNormalizedEvent('tab1', {
+      type: 'session_dead',
+      exitCode: 1,
+    } as any)
+
+    const terminalBubble = getMessages(state).find((m: any) => m.id === 'pending-bubble')
+    expect(terminalBubble?.steerPending).toBeUndefined()
+    expect(terminalBubble?.steerFailed).toBe(true)
   })
 
   it('session_dead also fails any pending steer bubble', () => {
