@@ -104,3 +104,41 @@ Cross-reference:
 - [ADR-004](../architecture/adr/004-enter-plan-mode-prose-in-harness.md) — the policy/mechanism boundary that motivates these knobs
 - [Plan mode prose overrides](../sessions/lifecycle.md#plan-mode-prose-overrides) — the three-layer precedence (RunOptions → hook → engine default)
 - [client-commands.md#send_prompt](../protocol/client-commands.md#send_prompt) — the wire fields these settings populate
+
+## Desktop browser preview shield
+
+Ion Desktop stores `browserPreviewNetworkShield` in `~/.ion/settings.json`. It defaults to `true`.
+
+When enabled, a local document opened in the Studio Browser Surface cannot load network resources until the user allows them from that preview. This setting sets the default. It does not override an explicit per-preview decision.
+
+```json
+{
+  "browserPreviewNetworkShield": true
+}
+```
+
+See [ADR-030](../architecture/adr/030-embedded-browser-surface.md) for browser session modes and partition ownership.
+
+## Desktop browser tools
+
+Ion Desktop stores `studioPlaywrightEnabled` in `~/.ion/settings.json`. It
+defaults to `true`. A missing or malformed value reads as `true`, so a damaged
+settings file does not remove a feature.
+
+When enabled, and when Ion Studio is the active interface, agents can drive the
+Chromium tab in their conversation's Studio Surface panel. Each conversation
+exposes exactly one Agent-linked browser tab.
+
+```json
+{
+  "studioPlaywrightEnabled": true
+}
+```
+
+Turning this off withdraws the tools only. Browser tabs, sessions, logins,
+device emulation, and recorded diagnostics are left as they are, and a later
+change re-advertises the tools without restarting any conversation.
+
+Diagnostic limits (retained request count, body size, output caps) are
+implementation constants rather than settings. They exist to bound
+main-process memory, not to express an operator preference.

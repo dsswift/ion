@@ -47,6 +47,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 
 - [APNs pusher](#term-apns-pusher)
 - [Agent](#term-agent)
+- [Agent-linked Browser Tab](#term-agent-linked-browser-tab)
 - [Async delivery](#term-async-delivery)
 - [Attachment](#term-attachment)
 - [Backend](#term-backend)
@@ -110,6 +111,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Slash command](#term-slash-command)
 - [Status Drawer](#term-status-drawer)
 - [Studio](#term-studio-shell)
+- [Studio Browser Surface](#term-studio-browser-surface)
 - [Studio Center](#term-studio-center)
 - [Studio Left Dock](#term-studio-left-dock)
 - [Studio Surface](#term-studio-surface)
@@ -1017,6 +1019,20 @@ The region that opens beside a conversation to show its full status detail: the 
   - `desktop` / `ui` / `typescript`: `StatusDrawer` in `desktop/src/renderer/components/StatusDrawer.tsx`
   - `ios` / `ui` / `swift`: `struct StatusDrawerView` in `ios/IonRemote/Views/StatusDrawerView.swift`
 
+#### Studio Browser Surface {#term-studio-browser-surface}
+
+The Studio Surface tab that renders one browser document. Each descriptor belongs to one conversation and records its URL, content mode, and browser session mode. The renderer keeps every conversation's browser document mounted so its history and session stay available when the user changes conversations.
+
+- **ID:** `studio-browser-surface`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `browser surface`, `Studio browser`
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `studio` / `ui` / `typescript`: `export function BrowserSurface` in `desktop/src/renderer/studio/surface/tabs/BrowserSurface.tsx`
+  - `desktop` / `code` / `typescript`: `export interface BrowserTab` in `desktop/src/shared/studio-surface-types.ts`
+
 #### Studio Center {#term-studio-center}
 
 The Studio region that holds the Conversation View, the Input Bar, the dispatch split, and the bottom terminal tray.
@@ -1155,6 +1171,21 @@ The Studio surface that draws the agent teams as a pixel-art office. Its scene g
 - **Notes:** Exists only as a Studio surface. There is no standalone visualizer window.
 
 ### state
+
+#### Agent-linked Browser Tab {#term-agent-linked-browser-tab}
+
+The single Studio Browser Surface tab in a conversation that agent browser tools may drive. Each conversation records one browser instance as its link, or none. The first browser tab in a conversation takes the link and the user can move it to another browser tab. Closing the linked tab leaves the conversation with no link, so a page the user prepared is never adopted without an explicit choice.
+
+- **ID:** `agent-linked-browser-tab`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `agent browser link`, `linked browser tab`
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `agentBrowserInstanceId` in `desktop/src/shared/studio-surface-types.ts`
+  - `studio` / `code` / `typescript`: `export function bindAgentBrowserActions` in `desktop/src/renderer/studio/surface/surface-agent-browser.ts`
+  - `desktop` / `code` / `typescript`: `export async function resolveBrowser` in `desktop/src/main/studio-playwright/runtime.ts`
 
 #### Conversation instance {#term-conversation-instance}
 
@@ -1430,6 +1461,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Canonical name | Desktop symbol | Studio use | Overlay use | iOS symbol | Gaps |
 | --- | --- | --- | --- | --- | --- |
 | Agent | None | None | None | `AgentStatusDotStack` | Desktop, Studio, Overlay |
+| Agent-linked Browser Tab | `agentBrowserInstanceId`, `export async function resolveBrowser` | `agentBrowserInstanceId`, `export function bindAgentBrowserActions`, `export async function resolveBrowser` | `agentBrowserInstanceId`, `export async function resolveBrowser` | None | iOS |
 | Attachment | `export function AttachmentChips` | `export function AttachmentChips` | `export function AttachmentChips` | `struct AttachmentChipsView` | None |
 | Compaction | None | None | None | `CompactionRowView` | Desktop, Studio, Overlay |
 | Context | `export function ContextIndicator` | `export function ContextIndicator` | `export function ContextIndicator` | `ContextUsageRing` | None |
@@ -1467,6 +1499,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Resource | `ResourceViewer` | `ResourceViewer` | `ResourceViewer` | `Resource` | None |
 | Slash command | `SlashCommandMenu` | `SlashCommandMenu` | `SlashCommandMenu` | `struct SlashCommandMenu` | None |
 | Status Drawer | `StatusDrawer` | `StatusDrawer` | `StatusDrawer` | `struct StatusDrawerView` | None |
+| Studio Browser Surface | `export interface BrowserTab` | `export function BrowserSurface`, `export interface BrowserTab` | `export interface BrowserTab` | None | iOS |
 | Studio Center | None | `StudioCenter` | None | None | Overlay, iOS |
 | Studio Left Dock | None | `StudioLeftSidebar` | None | None | Overlay, iOS |
 | Studio | None | `StudioShell` | None | None | Overlay, iOS |
@@ -1494,12 +1527,15 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `Ion Studio` → [Studio](#term-studio-shell)
 - Alias: `LLM provider` → [Provider](#term-provider)
 - Alias: `SDK` → [Extension SDK](#term-extension-sdk)
+- Alias: `Studio browser` → [Studio Browser Surface](#term-studio-browser-surface)
 - Alias: `Studio shell` → [Studio](#term-studio-shell)
 - Alias: `active shell` → [Terminal Activity](#term-terminal-activity)
+- Alias: `agent browser link` → [Agent-linked Browser Tab](#term-agent-linked-browser-tab)
 - Alias: `agent dispatch` → [Dispatch](#term-dispatch)
 - Alias: `assembled context` → [Context](#term-context)
 - Alias: `async trigger delivery` → [Async delivery](#term-async-delivery)
 - Alias: `bench` → [Integration bench](#term-integration-bench)
+- Alias: `browser surface` → [Studio Browser Surface](#term-studio-browser-surface)
 - Alias: `canonical event` → [Normalized event](#term-normalized-event)
 - Alias: `center pane` → [Studio Center](#term-studio-center)
 - Alias: `command` → [Slash command](#term-slash-command)
@@ -1537,6 +1573,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `left dock` → [Studio Left Dock](#term-studio-left-dock)
 - Alias: `left sidebar` → [Studio Left Dock](#term-studio-left-dock)
 - Alias: `lifecycle hook` → [Hook](#term-hook)
+- Alias: `linked browser tab` → [Agent-linked Browser Tab](#term-agent-linked-browser-tab)
 - Alias: `local web app` → [Web Application](#term-web-application)
 - Alias: `message list` → [Transcript](#term-transcript)
 - Alias: `mirror mode` → [Mirror store](#term-mirror-store)

@@ -564,6 +564,7 @@ Two kinds, distinguished by `gateKind`:
 | `gateToolInput` | object | Tool input parameters                                           |
 | `gateCwd`       | string | Working directory the tool call would execute in                |
 | `gateSiblingTools` | string[] | Names of the other tool calls in the same model turn (turn-mates run concurrently), so a policy can evaluate turn isolation |
+| `gateOrigin`    | string | Who asked: `"model"` for the normal tool loop, `"extension"` for an extension's `ctx.callTool()`. Absent means `"model"`. A client that trusts harness code more than an LLM reads this — for example, to let extension code relax an isolation setting that a model may only tighten. |
 | `gateHumanWait` | boolean | Tool kind only. Historical: current engines never set it — a human-wait tool parks the run (retained `PermissionDenial` + idle session) instead of emitting a gate request. Retained so events from older engines still decode. |
 
 #### engine_client_tool_state

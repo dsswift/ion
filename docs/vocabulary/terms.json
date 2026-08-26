@@ -50,6 +50,42 @@
       "notes": "The engine emits a complete agent roster snapshot. Consumers replace local state with the payload."
     },
     {
+      "id": "agent-linked-browser-tab",
+      "term": "Agent-linked Browser Tab",
+      "definition": "The single Studio Browser Surface tab in a conversation that agent browser tools may drive. Each conversation records one browser instance as its link, or none. The first browser tab in a conversation takes the link and the user can move it to another browser tab. Closing the linked tab leaves the conversation with no link, so a page the user prepared is never adopted without an explicit choice.",
+      "domain": "clients",
+      "kind": "state",
+      "status": "canonical",
+      "aliases": [
+        "agent browser link",
+        "linked browser tab"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "agentBrowserInstanceId",
+          "path": "desktop/src/shared/studio-surface-types.ts"
+        },
+        {
+          "platform": "studio",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function createAgentBrowserActions",
+          "path": "desktop/src/renderer/studio/surface/surface-agent-browser.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export async function resolveBrowser",
+          "path": "desktop/src/main/studio-playwright/runtime.ts"
+        }
+      ]
+    },
+    {
       "id": "apns-pusher",
       "term": "APNs pusher",
       "definition": "The relay component that sends an Apple Push Notification Service request. It wakes a mobile peer that is not connected.",
@@ -1977,6 +2013,35 @@
           "language": "swift",
           "symbol": "struct StatusDrawerView",
           "path": "ios/IonRemote/Views/StatusDrawerView.swift"
+        }
+      ]
+    },
+    {
+      "id": "studio-browser-surface",
+      "term": "Studio Browser Surface",
+      "definition": "The Studio Surface tab that renders one browser document. Each descriptor belongs to one conversation and records its URL, content mode, and browser session mode. The renderer keeps every conversation's browser document mounted so its history and session stay available when the user changes conversations.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "browser surface",
+        "Studio browser"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "export function BrowserSurface",
+          "path": "desktop/src/renderer/studio/surface/tabs/BrowserSurface.tsx"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface BrowserTab",
+          "path": "desktop/src/shared/studio-surface-types.ts"
         }
       ]
     },

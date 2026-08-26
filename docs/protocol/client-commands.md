@@ -523,6 +523,7 @@ The blocked call waits until this response arrives or the session's declared tim
 | `gateReason`    | string                 | no       | Policy kind: model-facing message a deny carries into the tool result  |
 | `gateContent`   | string                 | no       | Tool kind: the executed tool's result text                             |
 | `gateIsError`   | boolean                | no       | Tool kind: marks `gateContent` as a failure result                     |
+| `gateImages`    | array                  | no       | Tool kind: images the tool produced, each `{media_type, data}` with base64 `data`. The engine saves them through its normal tool-image pipeline and attaches them to the tool result, so a client tool can answer with a screenshot instead of text alone. Additive: a text-only client stays byte-compatible. |
 
 ```json
 {"cmd":"tool_gate_response","key":"abc-123","gateRequestId":"tool-gate-1730000000000-1","gateDecision":"deny","gateReason":"Refused: this path is frozen during release week."}
@@ -530,6 +531,12 @@ The blocked call waits until this response arrives or the session's declared tim
 
 ```json
 {"cmd":"tool_gate_response","key":"abc-123","gateRequestId":"tool-gate-1730000000000-2","gateContent":"contents of src/x.go at pinned sha 89abcde","gateIsError":false}
+```
+
+An image result. `data` is base64 and is elided here:
+
+```json
+{"cmd":"tool_gate_response","key":"abc-123","gateRequestId":"tool-gate-1730000000000-3","gateContent":"Captured 24101 bytes as png.","gateIsError":false,"gateImages":[{"media_type":"image/png","data":"iVBORw0KGgo..."}]}
 ```
 
 ---
