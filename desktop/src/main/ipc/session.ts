@@ -36,7 +36,7 @@ function warn(msg: string, fields?: Record<string, unknown>): void {
  * retried prompt is a slash invocation.
  *
  * Fresh prompts route through processIncomingPrompt, which dispatches the
- * slash as an extension command and (on unknown_command) re-submits with
+ * slash through the engine-owned command resolution chain and
  * resolveSlash=true. Retried prompts skip the full pipeline because the user
  * has already made the routing decision once — but if the original prompt
  * was a slash, the engine still needs to be told to resolve + expand it
@@ -326,7 +326,7 @@ export function registerSessionIpc(): void {
           projectPath: options.projectPath,
           runOptions: options,
           // Forward the engine-resolve-slash flag from RunOptions onto the
-          // pipeline. When set (the iOS slash re-submit bounced back through the
+          // pipeline. When set (the iOS legacy direct-prompt slash path bounced back through the
           // renderer, or a retry of a slash prompt), the pipeline skips the
           // extension-command dispatch and submits the raw `/command args`
           // straight to the engine with resolveSlash=true — re-dispatching would

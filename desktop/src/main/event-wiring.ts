@@ -522,7 +522,7 @@ export function wireEngineBridgeEvents(): void {
         // The engine successfully cleared the conversation. Advance the
         // desktop's freshness checkpoint so the next slash command on this
         // tab is treated as the first prompt of a blank conversation by
-        // `isFirstPromptForTab` in slash-classify.ts. The engine
+        // the slash-command lifecycle. The engine
         // intentionally keeps `s.conversationID` set (/clear is a
         // checkpoint, not a session restart) — without this notification
         // the post-/clear slash would see `promptCountSinceCheckpoint > 0`

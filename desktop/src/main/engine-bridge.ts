@@ -17,6 +17,7 @@ import {
   shutdownAndWait as shutdownAndWaitImpl,
 } from "./engine-bridge-lifecycle";
 import { installAgentStateRecovery } from "./engine-bridge-agent-state";
+import type { SendPromptArgs } from "./engine-bridge-prompts";
 import * as abort from "./engine-bridge-abort";
 import * as core from "./engine-bridge-core";
 import * as conv from "./engine-bridge-conversations";
@@ -323,8 +324,12 @@ export class EngineBridge extends EventEmitter {
     core.sendDialogResponse(this, key, dialogId, value);
   }
 
-  async sendCommand(key: string, command: string, args: string): Promise<void> {
-    core.sendCommand(this, key, command, args);
+  async sendCommand(
+    promptArgs: SendPromptArgs,
+    command: string,
+    commandArgs: string,
+  ): Promise<void> {
+    core.sendCommand(this, promptArgs, command, commandArgs);
   }
 
   async stopSession(key: string): Promise<void> {

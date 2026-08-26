@@ -665,6 +665,8 @@ export interface RunOptions {
   resolveSlash?: boolean;
   /** Main-owned automation causation, consumed by desktop IPC only. */
   automationCausation?: import("./types-automation").AutomationCausation;
+  /** Runs one slash command with auto-mode tools while its plan workflow remains active. */
+  temporaryAutoFromPlan?: boolean;
   /**
    * Client-supplied workspace descriptor for this prompt. When set, the
    * engine uses this instead of its own worktree-registry-derived context.

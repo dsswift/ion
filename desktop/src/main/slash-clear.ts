@@ -14,7 +14,7 @@
  *   3. Advance the desktop's freshness checkpoint
  *      (`sessionPlane.notifyConversationCleared`) so the next slash
  *      command is treated as the first prompt of a blank session by the
- *      plan→auto guard in slash-classify.ts.
+ *      fresh-session tracking in the control plane.
  *   4. Render the clear divider locally on both desktop and remote.
  *
  * Extracted from prompt-pipeline.ts to keep that orchestrator file

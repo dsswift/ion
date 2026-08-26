@@ -180,7 +180,7 @@ export const enterprisePolicyCache = {
  *            stale (mid-session registration race). Dispatch anyway; the
  *            engine resolves the live table at dispatch time and emits
  *            engine_command_result with CommandError='unknown_command' if it
- *            disclaims the name. The pipeline falls through to `.md`
+ *            resolves the name through its complete command precedence chain, including `.md`
  *            expansion on that signal."
  *
  * Snapshot semantics: every event REPLACES the prior entry for the key. An

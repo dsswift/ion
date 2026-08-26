@@ -177,9 +177,8 @@ export interface IncomingPrompt {
   implementationPhase?: boolean
   /** Per-prompt extended-thinking effort. 'off'/undefined → no thinking. Forwarded to sendPrompt + REMOTE_ENGINE_PROMPT. */
   thinkingEffort?: string
-  /** When provided, used verbatim as the RunOptions for CLI submission. The
-   *  pipeline may mutate `prompt`/`appendSystemPrompt`/`resolveSlash` on this
-   *  object on the slash re-submit path (handleSlash). */
+  /** Run configuration supplied by the renderer. The command path projects the
+   *  same fields onto its first and only engine request. */
   runOptions?: RunOptions
   /**
    * Persisted plan file path from tab state. Threaded through to the engine
@@ -197,18 +196,10 @@ export interface IncomingPrompt {
    * remains for callers that want transient bash grants for a single run.
    */
   bashAllowlistAdditionsForThisPrompt?: string[]
-  /**
-   * When true, the engine OWNS slash resolution + expansion for this prompt:
-   * it treats `text` as a slash invocation, resolves + expands the template
-   * across its own command roots, feeds the expanded body to the model, and
-   * persists the RAW invocation as the displayed user turn. The desktop sets
-   * this only on the re-submit path in `handleSlash` after the engine
-   * disclaims a slash with `unknown_command` (local `.md` expansion is
-   * retired). Forwarded to `engineBridge.sendPrompt` (extension tabs) /
-   * `RunOptions.resolveSlash` (plain tabs); the wire field is attached only
-   * when truthy.
-   */
+  /** Per-prompt structured workspace context prepared before command routing. */
+  clientWorkspaceContext?: import('../shared/types-engine').ClientWorkspaceContext
   resolveSlash?: boolean
+  temporaryAutoFromPlan?: boolean
 }
 
 /**
@@ -254,8 +245,8 @@ function handleBashShortcut(p: IncomingPrompt): boolean {
 }
 
 /**
- * Submit a regular (non-slash, slash-resolve re-submit, or fall-through)
- * prompt to the engine. The renderer's send-slice / engine-slice already runs
+ * Submit a regular non-slash or backward-compatible direct-resolve prompt
+ * to the engine. The renderer's send-slice / engine-slice already runs
  * by the time we get here for desktop-source prompts (they call IPC.PROMPT
  * which invokes us); for remote-source prompts we go through the renderer
  * broadcast path so the renderer's slice does the optimistic-bubble work.
@@ -275,9 +266,8 @@ function handleBashShortcut(p: IncomingPrompt): boolean {
  * protect the LAST appended block, so a second addendum would have made
  * the remote bounce-back duplicate the first one. `includes()` per
  * addendum keeps every block append-once no matter how many times the
- * helper runs on the same `p` — never inject from the renderer or the
- * slash re-submit path, both of which run on subsets of the prompt
- * population.
+ * helper runs on the same `p`. The helper now runs before command-vs-prompt
+ * routing so every path receives the same addenda exactly once.
  *
  * The append target is split across two fields:
  *
@@ -285,9 +275,6 @@ function handleBashShortcut(p: IncomingPrompt): boolean {
  *     dispatch at `engineBridge.sendPrompt(...)`.
  *   - `p.runOptions?.appendSystemPrompt` — read by the plain conversation
  *     dispatch at `sessionPlane.submitPrompt(...)`.
- *
- * The slash re-submit path (`handleSlash`) writes both fields to keep
- * them consistent, so we mirror that here.
  *
  * Idempotency
  * ───────────
@@ -333,10 +320,19 @@ function applyHarnessSystemPromptAddenda(p: IncomingPrompt): void {
   // The desktop owns the bench, so the desktop owns this data -- the engine
   // injects only the generic worktree context from its own registry.
   let didSetClientWsCtx = false
-  if (p.projectPath && p.runOptions && !p.runOptions.clientWorkspaceContext) {
+  const existingWsCtx = p.clientWorkspaceContext ?? p.runOptions?.clientWorkspaceContext
+  if (existingWsCtx) {
+    p.clientWorkspaceContext = existingWsCtx
+    if (p.runOptions && !p.runOptions.clientWorkspaceContext) {
+      p.runOptions.clientWorkspaceContext = existingWsCtx
+    }
+  } else if (p.projectPath) {
     const wsCtx = benchClientWorkspaceContext(p.projectPath)
     if (wsCtx) {
-      p.runOptions.clientWorkspaceContext = wsCtx
+      p.clientWorkspaceContext = wsCtx
+      if (p.runOptions) {
+        p.runOptions.clientWorkspaceContext = wsCtx
+      }
       didSetClientWsCtx = true
     }
   }
@@ -354,16 +350,29 @@ function applyHarnessSystemPromptAddenda(p: IncomingPrompt): void {
     tab_id: p.tabId,
     engine_field: primary.appended > 0 ? `appended ${primary.appended} (${before}→${p.appendSystemPrompt.length})` : 'already-present (no-op)',
     run_options_field: p.runOptions ? (runAppended > 0 ? `appended ${runAppended} (${beforeRun}→${p.runOptions.appendSystemPrompt?.length ?? 0})` : 'already-present (no-op)') : 'absent',
-    client_ws_ctx: didSetClientWsCtx ? p.runOptions?.clientWorkspaceContext?.kind ?? 'set' : 'none',
+    client_ws_ctx: didSetClientWsCtx ? p.clientWorkspaceContext?.kind ?? 'set' : 'none',
   })
 }
 
+function prepareAttachmentsForDispatch(p: IncomingPrompt): void {
+  const attachments = p.attachments ?? []
+  if (attachments.length === 0) return
+  const sourceText = p.runOptions?.prompt ?? p.text
+  const { encoded, rewrittenText } = encodeAttachments(sourceText, attachments, { isRemote: IS_REMOTE })
+  p.imageAttachments = [...(p.imageAttachments ?? []), ...encoded]
+  if (p.runOptions) {
+    p.runOptions.prompt = rewrittenText
+    p.runOptions.imageAttachments = [...(p.runOptions.imageAttachments ?? []), ...encoded]
+  }
+  // The attachment payload is now encoded. Clear raw paths so the ordinary
+  // prompt branch cannot encode them again after command classification.
+  p.attachments = []
+  log('pipeline: attachments prepared before routing', { tab_id: p.tabId, raw: attachments.length, encoded: encoded.length })
+}
+
 async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
-  // Harness-owned system-prompt addenda are applied here, at the single
-  // converging dispatch point. See applyHarnessSystemPromptAddenda for the full
-  // reasoning. The single terminal dispatch below (sessionPlane.submitPrompt for
-  // every tab type) reads the updated fields.
-  applyHarnessSystemPromptAddenda(p)
+  // Addenda are applied once at processIncomingPrompt before slash-vs-prompt
+  // routing so the first command request receives the same complete context.
 
   // Remote-source prompts bounce through the renderer once so the renderer's
   // unified `submit` does the optimistic insert + status update; the IPC.PROMPT
@@ -389,6 +398,7 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
         planFilePath: p.planFilePath,
         bashAllowlistAdditionsForThisPrompt: p.bashAllowlistAdditionsForThisPrompt,
         resolveSlash: p.resolveSlash || undefined,
+        temporaryAutoFromPlan: p.temporaryAutoFromPlan || undefined,
         // Client-stated authorship (e.g. 'structured_answer' for a Guided
         // Questions submission). The renderer's submit uses it to skip the
         // optimistic user bubble and forwards it to the engine so the
@@ -420,6 +430,7 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
       attachments: attachments.length > 0 ? attachments : undefined,
       implementationPhase: p.implementationPhase,
       resolveSlash: p.resolveSlash,
+      temporaryAutoFromPlan: p.temporaryAutoFromPlan,
       injectionKind: p.injectionKind,
     })
     return
@@ -466,20 +477,13 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
   await sessionPlane.submitPrompt(p.tabId, p.reqId, p.runOptions)
 }
 
-/**
- * Out-of-band: surface a system message when the ENGINE also fails to resolve
- * the slash on the resolveSlash re-submit. The engine emits
- * engine_command_result{unknown_command} only on a resolve FAILURE (success
- * starts a run → no command result), so we act only on unknown_command;
- * timeout (the success outcome) and any other shape are ignored. The re-submit
- * does not block on this. Errors are logged, never thrown.
- */
+/** Route one parsed slash command through the engine-owned precedence chain. */
 async function handleSlash(p: IncomingPrompt, slash: ParsedSlash): Promise<void> {
   // The slash branch lives in prompt-pipeline-slash.ts (extracted to keep this
-  // orchestrator under the file-size cap). It needs two orchestrator-local
-  // helpers — engineKey + submitAsPrompt — which we inject so the seam stays
-  // one-way (slash module never imports back into this file at runtime).
-  await handleSlashBranch(p, slash, { engineKey, submitAsPrompt })
+  // orchestrator under the file-size cap). It receives only the engine session
+  // key seam; command execution and markdown/skill fallback now happen in one
+  // engine request.
+  await handleSlashBranch(p, slash, { engineKey })
 }
 
 /**
@@ -531,8 +535,13 @@ export async function processIncomingPrompt(p: IncomingPrompt): Promise<void> {
     return
   }
 
+  // Harness-owned system-prompt addenda and attachments apply before
+  // command-vs-prompt routing so one-pass commands carry complete context.
+  applyHarnessSystemPromptAddenda(p)
+  prepareAttachmentsForDispatch(p)
+
   // resolveSlash short-circuit. When the prompt arrives already flagged for
-  // engine-side slash resolution (the iOS slash re-submit bounced back through
+  // engine-side slash resolution (the iOS legacy direct-prompt slash path bounced back through
   // the renderer → IPC.PROMPT, or a retry of a slash prompt), we MUST NOT
   // re-enter the slash branch: the text is still `/command args`, so
   // re-dispatching it as an extension command would loop. Submit it straight

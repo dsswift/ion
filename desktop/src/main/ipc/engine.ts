@@ -123,7 +123,7 @@ export function registerEngineIpc(): void {
 
   ipcMain.handle(IPC.ENGINE_COMMAND, (_event, { key, command, args }: { key: string; command: string; args: string }) => {
     log('engine_command', { key, command })
-    engineBridge.sendCommand(key, command, args).catch((err) => warn('engine_command: send failed', { key, command, error: String(err) }))
+    engineBridge.sendCommand({ key, text: `/${command}${args ? ` ${args}` : ''}` }, command, args).catch((err) => warn('engine_command: send failed', { key, command, error: String(err) }))
     // Mirror /clear divider to iOS so the remote client sees the checkpoint
     // immediately, without waiting for a conversation reload. The renderer
     // has already inserted the divider into its local message store via

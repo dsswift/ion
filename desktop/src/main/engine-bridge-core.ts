@@ -1,6 +1,7 @@
 import type { EngineEvent } from "../shared/types";
 import type { EngineBridge } from "./engine-bridge";
 import {
+  buildSendCommandMessage,
   buildSendPromptLogLine,
   buildSendPromptMessage,
 } from "./engine-bridge-prompts";
@@ -216,12 +217,17 @@ export function sendDialogResponse(
 
 export function sendCommand(
   bridge: EngineBridge,
-  key: string,
+  promptArgs: SendPromptArgs,
   command: string,
-  args: string,
+  commandArgs: string,
 ): void {
-  log("send_command", { key, command });
-  bridge._send({ cmd: "command", key, command, args });
+  log("send_command", {
+    key: promptArgs.key,
+    command,
+    temporary_auto_from_plan: promptArgs.temporaryAutoFromPlan ?? false,
+    plan_file_path: promptArgs.planFilePath ?? "",
+  });
+  bridge._send(buildSendCommandMessage(promptArgs, command, commandArgs));
 }
 
 export function stopSession(bridge: EngineBridge, key: string): void {

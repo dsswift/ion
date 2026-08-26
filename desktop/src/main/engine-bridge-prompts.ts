@@ -43,6 +43,8 @@ export interface SendPromptArgs {
    * `resolveSlash` field).
    */
   resolveSlash?: boolean
+  /** Use auto-mode tools for one command without leaving the active plan workflow. */
+  temporaryAutoFromPlan?: boolean
   clientWorkspaceContext?: ClientWorkspaceContext
   /** Stable caller delivery identity for idempotent engine acceptance. */
   deliveryId?: string
@@ -55,6 +57,19 @@ export interface SendPromptArgs {
    * ordinary typed turn.
    */
   injectionKind?: string
+}
+
+export function buildSendCommandMessage(
+  args: SendPromptArgs,
+  command: string,
+  commandArgs: string,
+): Record<string, unknown> {
+  const msg = buildSendPromptMessage(args)
+  msg.cmd = 'command'
+  msg.command = command
+  msg.args = commandArgs
+  delete msg.text
+  return msg
 }
 
 /**
@@ -122,6 +137,7 @@ export function buildSendPromptMessage(args: SendPromptArgs): Record<string, unk
   // the engine's omitempty `resolveSlash` field round-trips cleanly and an
   // absent value means "plain message" (unchanged behavior).
   if (args.resolveSlash) msg.resolveSlash = true
+  if (args.temporaryAutoFromPlan) msg.temporaryAutoFromPlan = true
   if (args.clientWorkspaceContext) msg.clientWorkspaceContext = args.clientWorkspaceContext
   if (args.deliveryId) msg.deliveryId = args.deliveryId
   if (args.injectionKind) msg.injectionKind = args.injectionKind
@@ -142,5 +158,5 @@ export function buildSendPromptLogLine(args: SendPromptArgs): string {
   const descLen = args.enterPlanModeDescription?.length ?? 0
   const reminderLen = args.planModeSparseReminder?.length ?? 0
   const bashAddCount = args.bashAllowlistAdditionsForThisPrompt?.length ?? 0
-  return `sendPrompt: key=${args.key} len=${args.text.length} model=${args.model ?? 'default'} hasSysPrompt=${!!args.appendSystemPrompt} images=${attCount} implementationPhase=${args.implementationPhase ?? false} enterPlanModeDescLen=${descLen} planModeSparseReminderLen=${reminderLen} planFilePath=${args.planFilePath ?? 'none'} bashAdditions=${bashAddCount} resolveSlash=${args.resolveSlash ?? false} clientWsCtx=${args.clientWorkspaceContext?.kind ?? 'none'}`
+  return `sendPrompt: key=${args.key} len=${args.text.length} model=${args.model ?? 'default'} hasSysPrompt=${!!args.appendSystemPrompt} images=${attCount} implementationPhase=${args.implementationPhase ?? false} enterPlanModeDescLen=${descLen} planModeSparseReminderLen=${reminderLen} planFilePath=${args.planFilePath ?? 'none'} bashAdditions=${bashAddCount} resolveSlash=${args.resolveSlash ?? false} temporaryAutoFromPlan=${args.temporaryAutoFromPlan ?? false} clientWsCtx=${args.clientWorkspaceContext?.kind ?? 'none'}`
 }

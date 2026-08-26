@@ -78,6 +78,7 @@ vi.mock('../state', () => {
     },
     sessionPlane: {
       submitPrompt: (...args: any[]) => mocks.submitPromptMock(...args),
+      ensureSession: vi.fn().mockResolvedValue({ ok: true }),
       setPermissionMode: (...args: any[]) => mocks.setPermissionModeMock(...args),
       getTabStatus: (...args: any[]) => mocks.getTabStatusMock(...args),
       notifyConversationCleared: vi.fn(),
@@ -127,8 +128,8 @@ beforeEach(() => {
   mocks.getTabStatusMock.mockReset().mockReturnValue({ conversationId: null })
   mocks.bridgeListeners.clear()
   _resetAwaitersForTests()
-  mocks.sendCommandMock.mockImplementation((key: string, command: string, _args: string) => {
-    setTimeout(() => emitBridgeEvent(key, { type: 'engine_command_result', command, commandError: '', message: `command executed: ${command}` }), 0)
+  mocks.sendCommandMock.mockImplementation((promptArgs: { key: string }, command: string, _args: string) => {
+    setTimeout(() => emitBridgeEvent(promptArgs.key, { type: 'engine_command_result', command, commandError: '', message: `command executed: ${command}` }), 0)
   })
 })
 

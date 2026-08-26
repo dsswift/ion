@@ -77,7 +77,7 @@ function handleStatusEvent(
         tab.conversationId = event.fields.sessionId
         // True first-start (new tab, no persisted conversation) — a fresh mint,
         // not a resume. Leave resumedSavedConversation false (scenario C) so a
-        // first-prompt slash command stays fresh and flips plan→auto.
+        // fresh-session identity remains distinct from a resumed conversation.
         ctx.bridge.updateSessionConversationId(tabId, event.fields.sessionId)
       } else if (tab.conversationId === event.fields.sessionId) {
         // Matching id: no-op (normal heartbeat tick or stable idle).

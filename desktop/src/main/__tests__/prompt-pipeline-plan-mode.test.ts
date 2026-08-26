@@ -1,13 +1,9 @@
 /**
- * Tests for the freshness predicate `isFirstPromptForTab` (slash-classify.ts)
- * and the prompt pipeline's permission-mode behaviour on a slash re-submit.
+ * Tests for prompt-pipeline permission-mode behavior on one command request.
  *
- * The desktop NO LONGER performs the plan→auto auto-switch for slash commands
+ * The desktop does not mutate session Plan mode for slash commands
  * itself: slash resolution + expansion (and the plan-mode policy that goes
- * with it) is now owned by the engine via resolveSlash. `isFirstPromptForTab`
- * remains a pure predicate the engine-control-plane freshness model and other
- * call sites reason about, so these tests pin its contract directly, plus a
- * guard that the pipeline does not flip permission mode for slash commands.
+ * with it) is now owned by the engine via resolveSlash. These tests pin that slash commands do not mutate the stored permission mode.
  *
  * Freshness checkpoints (what resets promptCountSinceCheckpoint to 0):
  *   - tab creation / resetTabSession
@@ -83,6 +79,7 @@ vi.mock('../state', () => {
     },
     sessionPlane: {
       submitPrompt: (...args: any[]) => mocks.submitPromptMock(...args),
+      ensureSession: vi.fn().mockResolvedValue({ ok: true }),
       setPermissionMode: (...args: any[]) => mocks.setPermissionModeMock(...args),
       getTabStatus: (...args: any[]) => mocks.getTabStatusMock(...args),
       notifyConversationCleared: vi.fn(),
@@ -113,7 +110,6 @@ vi.mock('../remote/attachment-encoder', () => ({
 }))
 
 import { processIncomingPrompt } from '../prompt-pipeline'
-import { isFirstPromptForTab } from '../slash-classify'
 import { _resetAwaitersForTests } from '../command-await'
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -132,75 +128,20 @@ beforeEach(() => {
   mocks.getTabStatusMock.mockReset().mockReturnValue({ promptCount: 0, promptCountSinceCheckpoint: 0, clearedSinceLastPrompt: false, resumedSavedConversation: false, conversationId: null })
   mocks.bridgeListeners.clear()
   _resetAwaitersForTests()
-  // Default: engine returns unknown_command so the slash re-submit path runs.
-  mocks.sendCommandMock.mockImplementation((key: string, command: string) => {
-    setTimeout(() => emitBridgeEvent(key, { type: 'engine_command_result', command, commandError: 'unknown_command', message: `unknown command: ${command}` }), 0)
+  // Default: engine returns unknown_command so the single command request path runs.
+  mocks.sendCommandMock.mockImplementation((promptArgs: { key: string }, command: string) => {
+    setTimeout(() => emitBridgeEvent(promptArgs.key, { type: 'engine_command_result', command, commandError: 'unknown_command', message: `unknown command: ${command}` }), 0)
   })
 })
 
 // ───────────────────────────────────────────────────────────────────────────
 // Unit tests for the freshness predicate. The desktop no longer performs the
-// plan→auto auto-switch for slash commands itself — slash resolution +
-// expansion (and the plan-mode policy that goes with it) is now owned by the
-// engine. `isFirstPromptForTab` remains a pure predicate that several call
-// sites and the engine-control-plane freshness model reason about; these
-// tests pin its contract directly.
+// Slash commands no longer mutate the session permission mode. The engine
+// applies temporary auto permissions only to the command run.
 // ───────────────────────────────────────────────────────────────────────────
 
-describe('isFirstPromptForTab (freshness predicate)', () => {
-  it('is FRESH when the tab is not yet registered', () => {
-    mocks.getTabStatusMock.mockReturnValue(undefined)
-    expect(isFirstPromptForTab('tab-1')).toBe(true)
-  })
-
-  it('is FRESH on a registered tab with no prompts since the last checkpoint', () => {
-    mocks.getTabStatusMock.mockReturnValue({ promptCount: 0, promptCountSinceCheckpoint: 0, clearedSinceLastPrompt: false, resumedSavedConversation: false, conversationId: null })
-    expect(isFirstPromptForTab('tab-1')).toBe(true)
-  })
-
-  it('is FRESH on a brand-new eagerly-started session whose engine-minted id the renderer now sends (scenario C)', () => {
-    // The engine pre-minted a conversationId for this fresh session and the
-    // renderer sends it as runOptions.sessionId — but resumedSavedConversation
-    // is FALSE because nothing was restored. This is the /align-in-plan-mode
-    // regression: a non-null sessionId must NOT mark a fresh mint as resumed.
-    mocks.getTabStatusMock.mockReturnValue({ promptCount: 0, promptCountSinceCheckpoint: 0, clearedSinceLastPrompt: false, resumedSavedConversation: false, conversationId: 'engine-minted-id' })
-    expect(isFirstPromptForTab('tab-1')).toBe(true)
-  })
-
-  it('is NOT fresh when a prompt has been submitted since the last checkpoint', () => {
-    mocks.getTabStatusMock.mockReturnValue({ promptCount: 1, promptCountSinceCheckpoint: 1, clearedSinceLastPrompt: false, resumedSavedConversation: false, conversationId: 'conv-123' })
-    expect(isFirstPromptForTab('tab-1')).toBe(false)
-  })
-
-  it('is NOT fresh when resuming a saved conversation (resumedSavedConversation flag set)', () => {
-    mocks.getTabStatusMock.mockReturnValue({ promptCount: 0, promptCountSinceCheckpoint: 0, clearedSinceLastPrompt: false, resumedSavedConversation: true, conversationId: 'restored-conv-id' })
-    expect(isFirstPromptForTab('tab-1')).toBe(false)
-  })
-
-  it('is FRESH right after /clear even when conversationId is still set', () => {
-    mocks.getTabStatusMock.mockReturnValue({ promptCount: 5, promptCountSinceCheckpoint: 0, clearedSinceLastPrompt: true, resumedSavedConversation: false, conversationId: 'conv-after-clear' })
-    expect(isFirstPromptForTab('tab-1')).toBe(true)
-  })
-
-  it('is FRESH right after /clear even on a tab that was a resumed conversation', () => {
-    // clearedSinceLastPrompt takes precedence over resumedSavedConversation:
-    // after /clear the conversation is semantically blank again.
-    mocks.getTabStatusMock.mockReturnValue({ promptCount: 5, promptCountSinceCheckpoint: 0, clearedSinceLastPrompt: true, resumedSavedConversation: true, conversationId: 'conv-after-clear' })
-    expect(isFirstPromptForTab('tab-1')).toBe(true)
-  })
-})
-
-// ───────────────────────────────────────────────────────────────────────────
-// Pipeline behaviour: the desktop flips plan→auto for a slash command on the
-// FIRST prompt of the checkpoint (fresh tab or freshly /clear'd), because a
-// slash command means "run this task" and is incompatible with plan mode. This
-// is a DESKTOP policy — the engine does not own it; the client that toggles
-// plan mode on the session is responsible. The flip calls setPermissionMode
-// (→ sendSetPlanMode(false)) before forwarding the resolveSlash re-submit.
-// ───────────────────────────────────────────────────────────────────────────
-
-describe('processIncomingPrompt — slash re-submit flips plan→auto on first prompt', () => {
-  it('calls setPermissionMode(auto) on a fresh tab', async () => {
+describe('processIncomingPrompt — slash commands preserve the session plan mode', () => {
+  it('does not mutate permission mode on a fresh tab', async () => {
     mocks.getTabStatusMock.mockReturnValue({ promptCount: 0, promptCountSinceCheckpoint: 0, clearedSinceLastPrompt: false, conversationId: null })
     const opts: any = { prompt: '/ion--review 138' }
     await processIncomingPrompt({
@@ -211,8 +152,8 @@ describe('processIncomingPrompt — slash re-submit flips plan→auto on first p
       hasExtensions: false,
       runOptions: opts,
     })
-    expect(opts.resolveSlash).toBe(true)
-    expect(mocks.setPermissionModeMock).toHaveBeenCalledWith('tab-1', 'auto', 'slash_command')
+    expect(opts.resolveSlash).toBeUndefined()
+    expect(mocks.setPermissionModeMock).not.toHaveBeenCalled()
   })
 
   it('calls setPermissionMode(auto) right after /clear (freshly checkpointed)', async () => {
@@ -225,7 +166,7 @@ describe('processIncomingPrompt — slash re-submit flips plan→auto on first p
       hasExtensions: false,
       runOptions: { prompt: '/ion--review 138', sessionId: 'conv-after-clear' } as any,
     })
-    expect(mocks.setPermissionModeMock).toHaveBeenCalledWith('tab-1', 'auto', 'slash_command')
+    expect(mocks.setPermissionModeMock).not.toHaveBeenCalled()
   })
 
   it('does NOT call setPermissionMode mid-conversation (not the first prompt)', async () => {
@@ -241,12 +182,12 @@ describe('processIncomingPrompt — slash re-submit flips plan→auto on first p
     expect(mocks.setPermissionModeMock).not.toHaveBeenCalled()
   })
 
-  it('calls setPermissionMode(auto) on a fresh session whose engine-minted id is sent as sessionId (the /align regression, scenario C)', async () => {
+  it('does not mutate permission mode on a fresh session whose engine-minted id is sent as sessionId (the /align regression, scenario C)', async () => {
     // Brand-new eagerly-started session: count 0, resumedSavedConversation
     // FALSE (engine minted the id, nothing was restored), yet the renderer
-    // sends the minted id as runOptions.sessionId. Pre-fix, isFirstPromptForTab
+    // sends the minted id as runOptions.sessionId. The old freshness-based implementation
     // treated any non-null sessionId as resumed and SUPPRESSED the flip, so a
-    // first-prompt /align ran in plan mode. The flip must fire.
+    // first-prompt /align ran in plan mode. The session mode must remain unchanged.
     mocks.getTabStatusMock.mockReturnValue({ promptCount: 0, promptCountSinceCheckpoint: 0, clearedSinceLastPrompt: false, resumedSavedConversation: false, conversationId: 'engine-minted-id' })
     await processIncomingPrompt({
       tabId: 'tab-1',
@@ -256,7 +197,7 @@ describe('processIncomingPrompt — slash re-submit flips plan→auto on first p
       hasExtensions: false,
       runOptions: { prompt: '/align', sessionId: 'engine-minted-id' } as any,
     })
-    expect(mocks.setPermissionModeMock).toHaveBeenCalledWith('tab-1', 'auto', 'slash_command')
+    expect(mocks.setPermissionModeMock).not.toHaveBeenCalled()
   })
 
   it('does NOT flip on a genuinely resumed saved conversation (scenario B, resumedSavedConversation set)', async () => {
@@ -275,13 +216,10 @@ describe('processIncomingPrompt — slash re-submit flips plan→auto on first p
     expect(mocks.setPermissionModeMock).not.toHaveBeenCalled()
   })
 
-  // ─── Tab-type parity (Defect 0): the flip is TAB-TYPE-AGNOSTIC ─────────────
-  // The plan→auto flip is a desktop policy keyed on first-prompt freshness, not
-  // on tab type. An extension/harness tab in plan mode must flip on a
-  // first-prompt slash command exactly like a plain tab. Pre-fix a stale
-  // `!p.hasExtensions` guard suppressed the flip for every extension tab.
+  // The run-scoped temporary-auto marker is tab-type agnostic. Plain and
+  // extension-hosted conversations preserve the same session Plan mode.
 
-  it('calls setPermissionMode(auto) on a fresh EXTENSION tab (Defect 0)', async () => {
+  it('does not mutate permission mode on a fresh EXTENSION tab (Defect 0)', async () => {
     mocks.getTabStatusMock.mockReturnValue({ promptCount: 0, promptCountSinceCheckpoint: 0, clearedSinceLastPrompt: false, conversationId: null })
     await processIncomingPrompt({
       tabId: 'tab-1',
@@ -292,10 +230,10 @@ describe('processIncomingPrompt — slash re-submit flips plan→auto on first p
       instanceId: 'main',
       runOptions: { prompt: '/ion--review 138' } as any,
     })
-    expect(mocks.setPermissionModeMock).toHaveBeenCalledWith('tab-1', 'auto', 'slash_command')
+    expect(mocks.setPermissionModeMock).not.toHaveBeenCalled()
   })
 
-  it('calls setPermissionMode(auto) on an EXTENSION tab right after /clear (Defect 0)', async () => {
+  it('does not mutate permission mode on an EXTENSION tab right after /clear (Defect 0)', async () => {
     mocks.getTabStatusMock.mockReturnValue({ promptCount: 5, promptCountSinceCheckpoint: 0, clearedSinceLastPrompt: true, conversationId: 'conv-after-clear' })
     await processIncomingPrompt({
       tabId: 'tab-1',
@@ -306,7 +244,7 @@ describe('processIncomingPrompt — slash re-submit flips plan→auto on first p
       instanceId: 'main',
       runOptions: { prompt: '/ion--review 138', sessionId: 'conv-after-clear' } as any,
     })
-    expect(mocks.setPermissionModeMock).toHaveBeenCalledWith('tab-1', 'auto', 'slash_command')
+    expect(mocks.setPermissionModeMock).not.toHaveBeenCalled()
   })
 
   it('does NOT call setPermissionMode mid-conversation on an EXTENSION tab (Defect 0 guard preserved)', async () => {
@@ -325,22 +263,16 @@ describe('processIncomingPrompt — slash re-submit flips plan→auto on first p
 })
 
 // ───────────────────────────────────────────────────────────────────────────
-// B2 regression: first-prompt slash on a RESUMED extension-hosted tab
-// (resumedSavedConversation=true) must NOT flip plan→auto.
-//
-// The logic at slash-classify.ts:90 (isFirstPromptForTab returns false when
-// resumedSavedConversation) is the guard. This test pins it for the
-// extension-hosted path so the combination can't regress silently.
+// A resumed extension-hosted tab also preserves its stored permission mode.
 // ───────────────────────────────────────────────────────────────────────────
 
 describe('processIncomingPrompt — resumed extension-hosted tab preserves permission mode', () => {
-  it('does NOT flip plan→auto on the first slash prompt of a RESUMED extension tab (resumedSavedConversation=true)', async () => {
+  it('preserves mode on the first slash prompt of a RESUMED extension tab (resumedSavedConversation=true)', async () => {
     // An extension-hosted tab restored from saved state: resumedSavedConversation
     // is true even though promptCountSinceCheckpoint is 0. The user is resuming
     // an existing conversation that may intentionally be in plan mode. The
-    // plan→auto flip must NOT fire. isFirstPromptForTab returns false at
-    // slash-classify.ts:90 for this case — this test pins that the pipeline
-    // respects that answer even when hasExtensions=true.
+    // the Desktop must not mutate the session mode even when the command uses
+    // temporary auto permissions.
     mocks.getTabStatusMock.mockReturnValue({
       promptCount: 0,
       promptCountSinceCheckpoint: 0,
@@ -361,27 +293,20 @@ describe('processIncomingPrompt — resumed extension-hosted tab preserves permi
   })
 })
 //
-// A slash command that the engine's command registry resolves returns
-// commandError === '' and can START A RUN (an extension command, a built-in).
-// Before the fix the plan→auto flip lived only inside the unknown_command
-// re-submit branch, so a first-prompt slash command the engine resolved
-// directly executed under the still-active plan mode. These tests drive the
-// resolved-command branch by emitting commandError: '' and assert the flip
-// fires (and is correctly suppressed for /clear and mid-conversation).
-//
-// Each test would go RED if the flip were only on the unknown_command branch.
+// A command that resolves directly can start a run. These tests pin unchanged
+// session mode for built-in and extension command sources.
 // ───────────────────────────────────────────────────────────────────────────
 
-describe('processIncomingPrompt — engine-resolved slash command flips plan→auto (Defect 2)', () => {
+describe('processIncomingPrompt — engine-resolved slash command preserves plan mode', () => {
   /** Make the engine RESOLVE the command (commandError === '') instead of the
    *  default unknown_command. */
   function engineResolvesCommand(): void {
-    mocks.sendCommandMock.mockImplementation((key: string, command: string) => {
-      setTimeout(() => emitBridgeEvent(key, { type: 'engine_command_result', command, commandError: '' }), 0)
+    mocks.sendCommandMock.mockImplementation((promptArgs: { key: string }, command: string) => {
+      setTimeout(() => emitBridgeEvent(promptArgs.key, { type: 'engine_command_result', command, commandError: '' }), 0)
     })
   }
 
-  it('flips plan→auto on a fresh tab when the engine resolves the command', async () => {
+  it('does not mutate permission mode on a fresh tab when the engine resolves the command', async () => {
     engineResolvesCommand()
     mocks.getTabStatusMock.mockReturnValue({ promptCount: 0, promptCountSinceCheckpoint: 0, clearedSinceLastPrompt: false, conversationId: null })
     await processIncomingPrompt({
@@ -392,10 +317,10 @@ describe('processIncomingPrompt — engine-resolved slash command flips plan→a
       hasExtensions: false,
       runOptions: { prompt: '/compact' } as any,
     })
-    expect(mocks.setPermissionModeMock).toHaveBeenCalledWith('tab-1', 'auto', 'slash_command')
+    expect(mocks.setPermissionModeMock).not.toHaveBeenCalled()
   })
 
-  it('flips plan→auto on a fresh EXTENSION tab when the engine resolves the command', async () => {
+  it('does not mutate permission mode on a fresh EXTENSION tab when the engine resolves the command', async () => {
     engineResolvesCommand()
     mocks.getTabStatusMock.mockReturnValue({ promptCount: 0, promptCountSinceCheckpoint: 0, clearedSinceLastPrompt: false, conversationId: null })
     await processIncomingPrompt({
@@ -407,7 +332,7 @@ describe('processIncomingPrompt — engine-resolved slash command flips plan→a
       instanceId: 'main',
       runOptions: { prompt: '/standup' } as any,
     })
-    expect(mocks.setPermissionModeMock).toHaveBeenCalledWith('tab-1', 'auto', 'slash_command')
+    expect(mocks.setPermissionModeMock).not.toHaveBeenCalled()
   })
 
   it('does NOT flip for /clear even when the engine resolves it (checkpoint, not a task)', async () => {

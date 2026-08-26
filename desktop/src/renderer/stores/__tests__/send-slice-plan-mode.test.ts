@@ -273,29 +273,28 @@ describe('prompt_sync parity — setPermissionMode before prompt', () => {
     expect(mockSetPermissionMode).toHaveBeenCalledWith('tab-1', 'auto', 'prompt_sync', undefined)
   })
 
-  // ── slash-aware prompt_sync (the /align-in-plan-mode regression) ──────────────
+  // ── slash commands preserve session plan mode and mark the one run temporary-auto ──
   // A slash command is a "run this task" intent that the main-process pipeline
   // flips plan→auto for. The renderer's prompt_sync re-assert must NOT re-arm
   // `plan` for a slash prompt, or it fights (and beats) the flip. So a slash
   // command on a plan-mode tab must sync `auto`, not `plan`.
 
-  it('sendMessage syncs AUTO (not plan) when the prompt is a slash command', () => {
+  it('sendMessage preserves PLAN and marks a slash prompt temporary-auto', () => {
     const { state } = buildHarness(makeTab(), { permissionMode: 'plan', planFilePath: '/plans/p.md' })
 
     state.submit('tab-1', '/align')
 
-    // Must be auto — and must NOT have been called with 'plan' for this prompt.
-    expect(mockSetPermissionMode).toHaveBeenCalledWith('tab-1', 'auto', 'prompt_sync', undefined)
-    expect(mockSetPermissionMode).not.toHaveBeenCalledWith('tab-1', 'plan', 'prompt_sync', expect.anything())
+    expect(mockSetPermissionMode).toHaveBeenCalledWith('tab-1', 'plan', 'prompt_sync', '/plans/p.md')
+    expect(mockPrompt).toHaveBeenCalledWith('tab-1', expect.any(String), expect.objectContaining({ temporaryAutoFromPlan: true }))
   })
 
-  it('submitRemotePrompt syncs AUTO (not plan) when the prompt is a slash command', () => {
+  it('submitRemotePrompt preserves PLAN and marks a slash prompt temporary-auto', () => {
     const { state } = buildHarness(makeTab(), { permissionMode: 'plan', planFilePath: '/plans/p.md' })
 
     state.submitRemotePrompt('tab-1', '/align')
 
-    expect(mockSetPermissionMode).toHaveBeenCalledWith('tab-1', 'auto', 'prompt_sync', undefined)
-    expect(mockSetPermissionMode).not.toHaveBeenCalledWith('tab-1', 'plan', 'prompt_sync', expect.anything())
+    expect(mockSetPermissionMode).toHaveBeenCalledWith('tab-1', 'plan', 'prompt_sync', '/plans/p.md')
+    expect(mockPrompt).toHaveBeenCalledWith('tab-1', expect.any(String), expect.objectContaining({ temporaryAutoFromPlan: true }))
   })
 
   it('sendMessage still syncs PLAN for /clear (a checkpoint, not a task)', () => {

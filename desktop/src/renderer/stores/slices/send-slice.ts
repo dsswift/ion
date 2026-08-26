@@ -526,21 +526,16 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // the engine session before the prompt so plan/auto is consistent for
       // every tab type.
       const currentMode = effectivePermissionMode(tab, get().conversationPanes);
-      // Slash-aware prompt_sync. A slash command is a "run this task" intent,
-      // incompatible with plan mode — the main-process pipeline flips plan→auto
-      // for it (prompt-pipeline-slash.ts:maybeFlipPlanToAutoForSlash). If we
-      // re-asserted `plan` here for a slash prompt, that prompt_sync set_plan_mode
-      // would RE-ARM plan mode on the same prompt the flip is trying to disarm,
-      // and the two policies fight (the bug that ran /align in plan mode). So when
-      // the outgoing text is a slash invocation we sync `auto` instead of `plan`,
-      // removing the re-arm rather than racing it. `/clear` is excluded: it is a
-      // checkpoint, not a task, and the pipeline never flips it — re-asserting the
-      // real mode keeps clear from silently leaving plan mode.
+      // Keep the session's real mode during prompt sync. A slash command from
+      // plan mode carries a temporary auto-mode override for this run; the
+      // engine restores plan mode after the command completes. `/clear` is
+      // excluded because it is a checkpoint, not a task.
       const isSlashPrompt = (() => {
         const parsed = parseSlash(text.trim());
         return parsed !== null && parsed.command !== "clear";
       })();
-      const syncMode = isSlashPrompt ? "auto" : currentMode;
+      const syncMode = currentMode;
+      const temporaryAutoFromPlan = isSlashPrompt && currentMode === "plan";
       // Forward the instance's planFilePath on a plan-mode sync so the engine
       // restores plan-file continuity even before the prompt is dispatched (the
       // prompt below also carries it). Only meaningful when entering/asserting
@@ -621,6 +616,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           })(),
           thinkingEffort,
           planFilePath: sendInst?.planFilePath || undefined,
+          temporaryAutoFromPlan: temporaryAutoFromPlan || undefined,
           // Forward remote-source marker so the IPC.PROMPT handler skips the
           // redundant desktop_message_added echo — iOS already received the
           // canonical echo from tabs-prompt.ts and a second echo with a
@@ -812,15 +808,15 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       }
 
       const currentMode = effectivePermissionMode(tab, get().conversationPanes);
-      // Slash-aware prompt_sync — same reasoning as the local sendMessage path
-      // above: a slash command (other than /clear) must not re-arm plan mode, so
-      // we sync `auto` for it instead of re-asserting `plan`. This keeps an
-      // iOS-originated slash command on the same plan→auto path as a desktop one.
+      // Keep the session's real mode during prompt sync. A remote slash command
+      // from plan mode carries a temporary auto-mode override for this run; the
+      // engine restores plan mode after the command completes.
       const isSlashPrompt = (() => {
         const parsed = parseSlash(prompt.trim());
         return parsed !== null && parsed.command !== "clear";
       })();
-      const syncMode = isSlashPrompt ? "auto" : currentMode;
+      const syncMode = currentMode;
+      const temporaryAutoFromPlan = isSlashPrompt && currentMode === "plan";
       // Same plan-file-continuity sync as the local sendMessage path above.
       window.ion.setPermissionMode(
         tabId,
@@ -871,6 +867,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           imageAttachments,
           thinkingEffort: remoteThinkingEffort,
           planFilePath: remoteInst?.planFilePath || undefined,
+          temporaryAutoFromPlan: temporaryAutoFromPlan || undefined,
           // When the iOS slash re-submit set this, instruct the engine to
           // resolve + expand the raw `/command args` text rather than sending
           // it to the model verbatim. Absent/false for ordinary remote prompts.
