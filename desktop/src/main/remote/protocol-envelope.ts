@@ -76,10 +76,21 @@ export interface AuthResponse {
   proof: string            // HMAC-SHA256(nonce, sharedSecret), base64
 }
 
+/**
+ * The Desktop knows this device but cannot use its stored pairing secret.
+ * iOS starts codeless repair from this frame instead of waiting for close 4004,
+ * whose callback can arrive after the auth result has already been classified.
+ */
+export const LAN_AUTH_REASON_SECRET_UNUSABLE = 'pairing_secret_unusable' as const
+
+export type AuthFailureReasonCode = typeof LAN_AUTH_REASON_SECRET_UNUSABLE
+
 export interface AuthResult {
   type: 'auth_result'
   success: boolean
   reason?: string
+  /** Stable client decision code. `reason` remains human-readable detail. */
+  reasonCode?: AuthFailureReasonCode
 }
 
 export type AuthMessage = AuthChallenge | AuthResponse | AuthResult

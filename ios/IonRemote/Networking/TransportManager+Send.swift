@@ -67,9 +67,10 @@ extension TransportManager {
     /// Waits for AuthChallenge from Ion, proves we hold the shared secret,
     /// and waits for AuthResult. Races against an 8-second timeout.
     ///
-    /// Returns the STREAM outcome only: `.rejected` requires an explicit
-    /// `auth_result success=false`; the timeout and every verdict-less stream
-    /// end are `.transient`. `startLANWithAuth` combines this with the
+    /// Returns the STREAM outcome. A failed `auth_result` with the stable
+    /// unusable-secret reason selects `.secretUnusable` immediately; another
+    /// explicit `success=false` selects `.rejected`. Timeouts and verdict-less
+    /// stream ends are `.transient`. `startLANWithAuth` combines this with the
     /// socket's close code (`LANAuthOutcome.resolve`) for the final verdict.
     func performLANAuth() async -> LANAuthOutcome {
         await withTaskGroup(of: LANAuthOutcome.self) { [weak self] group in
@@ -156,8 +157,9 @@ extension TransportManager {
             } else {
                 // Phase 2: waiting for auth_result (bare or WireMessage-wrapped;
                 // parsing lives in LANAuthOutcome.verdict so tests can pin it
-                // with real frames). An explicit success=false is the ONLY
-                // stream-level definitive rejection.
+                // with real frames). A failed result can identify the
+                // repairable unusable-secret case directly, before URLSession
+                // records the following 4004 close frame.
                 if let verdict = LANAuthOutcome.verdict(fromAuthFrame: json) {
                     DiagnosticLog.log("lan auth result received", tag: "transport.auth", fields: [
                         "success": String(verdict == .success)

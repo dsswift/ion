@@ -78,6 +78,33 @@ final class LANAuthOutcomeTests: XCTestCase {
         XCTAssertEqual(LANAuthOutcome.verdict(fromAuthFrame: frame), .rejected)
     }
 
+    /// The stable reason code must identify the repairable Desktop fault from
+    /// the first frame. URLSession may not record the following 4004 close code
+    /// until after the auth loop has already returned.
+    func testBareAuthResultSecretUnusableReasonCodeStartsRepair() throws {
+        let frame = try json(
+            #"{"type":"auth_result","success":false,"reason":"pairing secret unusable","reasonCode":"pairing_secret_unusable"}"#
+        )
+        XCTAssertEqual(LANAuthOutcome.verdict(fromAuthFrame: frame), .secretUnusable)
+    }
+
+    /// Installed Desktop builds before the reason-code field still emit this
+    /// exact human-readable reason. Keep them repairable during the upgrade.
+    func testBareAuthResultLegacySecretUnusableReasonStartsRepair() throws {
+        let frame = try json(
+            #"{"type":"auth_result","success":false,"reason":"pairing secret unusable"}"#
+        )
+        XCTAssertEqual(LANAuthOutcome.verdict(fromAuthFrame: frame), .secretUnusable)
+    }
+
+    /// A different failure reason remains a terminal identity rejection.
+    func testBareAuthResultOtherFailureStaysRejected() throws {
+        let frame = try json(
+            #"{"type":"auth_result","success":false,"reason":"unknown device","reasonCode":"unknown_device"}"#
+        )
+        XCTAssertEqual(LANAuthOutcome.verdict(fromAuthFrame: frame), .rejected)
+    }
+
     /// Bare `auth_result success=true`.
     func testBareAuthResultSuccess() throws {
         let frame = try json(#"{"type":"auth_result","success":true}"#)
@@ -88,6 +115,13 @@ final class LANAuthOutcomeTests: XCTestCase {
     func testWireWrappedAuthResultFailureIsRejected() throws {
         let frame = try json(#"{"seq":0,"payload":"{\"type\":\"auth_result\",\"success\":false}"}"#)
         XCTAssertEqual(LANAuthOutcome.verdict(fromAuthFrame: frame), .rejected)
+    }
+
+    func testWireWrappedAuthResultSecretUnusableStartsRepair() throws {
+        let frame = try json(
+            #"{"seq":0,"payload":"{\"type\":\"auth_result\",\"success\":false,\"reasonCode\":\"pairing_secret_unusable\"}"}"#
+        )
+        XCTAssertEqual(LANAuthOutcome.verdict(fromAuthFrame: frame), .secretUnusable)
     }
 
     func testWireWrappedAuthResultSuccess() throws {

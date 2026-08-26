@@ -41,7 +41,11 @@ vi.mock('../crypto', () => ({
 }))
 
 import { handleLanAuthResponse, type LanAuthCtx } from '../transport-lan-auth'
-import { LAN_CLOSE_SECRET_UNUSABLE, LAN_CLOSE_UNKNOWN_DEVICE } from '../protocol'
+import {
+  LAN_AUTH_REASON_SECRET_UNUSABLE,
+  LAN_CLOSE_SECRET_UNUSABLE,
+  LAN_CLOSE_UNKNOWN_DEVICE,
+} from '../protocol'
 import type { PairedDevice } from '../protocol'
 
 const GOOD_SECRET = randomBytes(32).toString('base64')
@@ -143,6 +147,22 @@ describe('LAN auth with an unusable stored pairing secret', () => {
     // Still inside the application-close band iOS treats as definitive.
     expect(h.disconnects[0].code).toBeGreaterThanOrEqual(4000)
     expect(h.disconnects[0].code).toBeLessThanOrEqual(4999)
+  })
+
+  it('sends a machine-readable repair reason before close 4004', () => {
+    const h = makeHarness(pairedDevice(CORRUPT_SECRET))
+
+    handleLanAuthResponse(h.ctx, authResponse() as never, 'lan-1')
+
+    expect(h.sentRaw).toHaveLength(1)
+    expect(JSON.parse(h.sentRaw[0].payload)).toEqual({
+      type: 'auth_result',
+      success: false,
+      reason: 'pairing secret unusable',
+      reasonCode: LAN_AUTH_REASON_SECRET_UNUSABLE,
+    })
+    expect(h.sentRaw[0].connectionId).toBe('lan-1')
+    expect(h.disconnects[0].code).toBe(LAN_CLOSE_SECRET_UNUSABLE)
   })
 
   it('charges NO IP auth-failure penalty for a desktop-side fault', () => {

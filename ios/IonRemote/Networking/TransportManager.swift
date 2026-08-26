@@ -284,12 +284,11 @@ final class TransportManager {
     /// Connect to a LAN host with challenge-response auth handshake.
     ///
     /// Returns a classified `LANAuthOutcome` so callers can distinguish a
-    /// definitive identity rejection (explicit `auth_result success=false`,
-    /// or an application close code 4000–4999 such as 4003 "unknown device")
-    /// from a transient failure with no verdict (socket error, auth-cooldown
-    /// close 1008, timeout, stream ended silently). Only `.rejected` may be
-    /// surfaced as an auth failure; `.transient` is a normal connection
-    /// failure and must go through the reconnect machinery.
+    /// repairable Desktop secret failure (`auth_result.reasonCode`, or close
+    /// 4004), a definitive identity rejection (another explicit
+    /// `auth_result success=false`, or an application close code 4000–4999 such
+    /// as 4003 "unknown device"), and a transient failure with no verdict
+    /// (socket error, auth-cooldown close 1008, timeout, stream ended silently).
     func startLANWithAuth(host: String, port: UInt16) async -> LANAuthOutcome {
         DiagnosticLog.log("lan auth start", tag: "transport.auth", fields: [
             "host": host,
@@ -548,6 +547,7 @@ struct AuthResult: Codable {
     let type: String    // "auth_result"
     let success: Bool
     let reason: String?
+    let reasonCode: String?
 }
 
 // MARK: - Errors
