@@ -97,7 +97,8 @@ Send a user message to an active session.
 | `compactSummaryEnabled`     | boolean  | no       | Whether LLM-based summarization is used during compaction for this prompt. |
 | `compactMemoryEnabled`      | boolean  | no       | Whether the background session memory summarizer is active for this prompt. |
 | `clientWorkspaceContext`    | object   | no       | Per-prompt workspace context override. Takes precedence over the session-level `EngineConfig.clientWorkspaceContext`. Fields: `kind` (string), `cwd` (string), `bench` (object, structured bench facts), `data` (object, generic consumer data), `text` (string, prose for system prompt). The engine routes `bench` to `PromptContext.Bench` and `data` to `PromptContext.Client` for hook payloads. |
-| `resolveSlash`              | boolean  | no       | When `true`, signals that `text` is a slash-command invocation (`/name args`) the engine should resolve and expand rather than treat as plain content. The engine looks the command up across the conventional roots in precedence order — `{workingDir}/.ion/commands`, `~/.ion/commands`, `{workingDir}/.ion/skills/<name>/SKILL.md`, `~/.ion/skills/<name>/SKILL.md`, then (only when Claude compatibility is enabled) `{workingDir}/.claude/commands`, `~/.claude/commands`, `~/.claude/skills/<name>/SKILL.md` — substitutes `$ARGUMENTS`, feeds the **expanded** body to the model (SKILL.md bodies are prefixed with their base directory so relative companion files resolve), and persists the **raw** invocation as the displayed user turn. A non-empty command-frontmatter `model:` field is authoritative for that invocation: the engine resolves its tier before enterprise policy and provider availability checks, rather than using `send_prompt.model` or conversation state. Enterprise policy can reject the resolved model. A provider-unavailable model follows the typed fallback path. Default `false`; existing clients sending `/`-prefixed content as ordinary text are unaffected because they do not set this flag. |
+| `resolveSlash`              | boolean  | no       | Backward-compatible direct-prompt command resolution. New clients should use `command`, which runs the complete command precedence chain in one request. When `true`, the engine resolves `text` as `/name args`, expands the template, feeds the expanded body to the model, and persists the raw invocation. Ordinary `/`-leading content remains unchanged when this field is absent. |
+| `temporaryAutoFromPlan` | boolean | no | Runs one command with auto-mode tools while preserving the session Plan mode and plan file. A real user question pauses this workflow. A final successful completion emits the existing synthesized plan-approval proposal. Errors, cancellation, unresolved commands, and hook suppression preserve Plan mode without proposing approval. |
 
 ```json
 {"cmd":"send_prompt","key":"abc-123","text":"List all files in the current directory","requestId":"r2"}
@@ -461,7 +462,14 @@ Respond to a dialog prompt from the engine. Fire-and-forget.
 
 ### command
 
-Send a slash command to the session's extension harness. Fire-and-forget.
+Send a slash command through the engine's single resolution chain. The engine
+checks registered extension commands, built-ins, markdown commands, and skills
+in precedence order. It returns `unknown_command` only when none match.
+
+The command request also accepts the run options documented for `send_prompt`
+(such as `model`, `appendSystemPrompt`, `planFilePath`, attachments, thinking,
+and `temporaryAutoFromPlan`). These options apply when the resolved command
+starts a model run; pure built-ins ignore fields they do not use.
 
 | Field     | Type        | Required | Description                        |
 |-----------|-------------|----------|------------------------------------|
@@ -469,6 +477,8 @@ Send a slash command to the session's extension harness. Fire-and-forget.
 | `key`     | string      | yes      | Session key                        |
 | `command` | string      | yes      | The command name (without slash)   |
 | `args`    | string      | no       | Command arguments as a string      |
+| `temporaryAutoFromPlan` | boolean | no | Use auto-mode tools for this command while preserving an active Plan workflow. |
+| Other run options | see `send_prompt` | no | Forwarded unchanged if the resolved command starts a model run. |
 
 ```json
 {"cmd":"command","key":"abc-123","command":"clear","args":""}
