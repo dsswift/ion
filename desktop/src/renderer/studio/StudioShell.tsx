@@ -245,6 +245,9 @@ export function StudioShell(): React.JSX.Element {
       "tab.new": () => {
         handleNewConversationShortcut("", "Cmd+T");
       },
+      "tab.newPicker": () => {
+        handleNewConversationShortcut("", "Cmd+Opt+T", undefined, true);
+      },
       "terminal.addShell": () => {
         const state = useSessionStore.getState();
         const tab = state.tabs.find((candidate) => candidate.id === state.activeTabId);

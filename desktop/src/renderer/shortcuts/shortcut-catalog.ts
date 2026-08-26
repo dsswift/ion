@@ -38,7 +38,8 @@ export const SHORTCUT_CATALOG: readonly ShortcutEntry[] = [
   { id: 'layout.collapse', group: 'Layout', description: 'Collapse conversation', defaultBinding: 'Mod+j', views: ['overlay'] },
   { id: 'layout.tall', group: 'Layout', description: 'Toggle tall conversation', defaultBinding: 'Mod+y', views: ['overlay', 'studio'] },
 
-  { id: 'tab.new', group: 'Tabs', description: 'New tab (default directory)', defaultBinding: 'Mod+t', views: ['overlay', 'studio'] },
+  { id: 'tab.new', group: 'Tabs', description: 'New tab', defaultBinding: 'Mod+t', views: ['overlay', 'studio'] },
+  { id: 'tab.newPicker', group: 'Tabs', description: 'New tab (choose conversation type)', defaultBinding: 'Mod+Alt+t', views: ['overlay', 'studio'] },
   { id: 'tab.newHere', group: 'Tabs', description: 'New tab (current directory)', defaultBinding: 'Mod+Shift+t', views: ['overlay'] },
   { id: 'tab.recentDirs', group: 'Tabs', description: 'Open recent directories', defaultBinding: 'Mod+r', views: ['overlay', 'studio'] },
   { id: 'tab.scratch', group: 'Tabs', description: 'New scratch file', defaultBinding: 'Mod+n', views: ['overlay'] },

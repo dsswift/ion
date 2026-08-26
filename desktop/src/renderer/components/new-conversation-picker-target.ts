@@ -6,7 +6,9 @@ export interface NewConversationPickerTarget {
   initialDirectory?: string
   /** Existing worktree selected before the conversation-type picker opens. */
   initialWorktree?: WorktreeInfo
-  /** Use a new worktree for the selected conversation. */
+  /** Force the conversation-type picker and ignore the saved Project choice. */
+  forceProfilePicker?: boolean
+  /** Create a new worktree from the selected Project. */
   initialUseWorktree?: boolean
   /** Branch selected before the conversation-type picker opens. */
   initialSourceBranch?: string

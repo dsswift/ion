@@ -21,4 +21,13 @@ describe('handleNewConversationShortcut', () => {
     expect(events[0]?.type).toBe('ion:open-new-conversation-picker')
     expect((events[0] as CustomEvent).detail).toBeNull()
   })
+
+  it('marks the picker-only shortcut so it bypasses Project defaults', async () => {
+    const { handleNewConversationShortcut } = await import('../useKeyboardShortcuts')
+    const events: Event[] = []
+    handleNewConversationShortcut('', 'Cmd+Opt+T', (event) => events.push(event), true)
+
+    expect(events).toHaveLength(1)
+    expect((events[0] as CustomEvent).detail).toEqual({ forceProfilePicker: true })
+  })
 })
