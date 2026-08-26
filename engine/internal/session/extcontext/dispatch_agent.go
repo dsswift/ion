@@ -705,6 +705,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		// the parent session's ClaudeCompat so the child's nested-descent loader
 		// applies the same Ion-vs-Claude gate as the parent.
 		runOpts := buildDispatchRunOptions(&opts, model, projectPath, dispatchParentCtx, sa.ClaudeCompat(), sa)
+		wireChildClientTools(sa, &runOpts, childCfg)
 
 		key = sa.SessionKey()
 		// The child run id must be unique per dispatch INSTANCE. Derive it from

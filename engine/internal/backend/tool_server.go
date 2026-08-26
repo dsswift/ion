@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -155,8 +156,21 @@ func (ts *ToolServer) RegisterTool(name string, handler ToolHandler, description
 				"name":     name,
 				"is_error": result.IsError,
 			})
+			content := make([]mcp.Content, 0, 1+len(result.Images))
+			content = append(content, &mcp.TextContent{Text: result.Content})
+			for _, image := range result.Images {
+				if image == nil || image.Data == "" || image.MediaType == "" {
+					continue
+				}
+				data, decodeErr := base64.StdEncoding.DecodeString(image.Data)
+				if decodeErr != nil {
+					utils.LogWithFields(utils.LevelError, "backend.tool_server", "tool image decode failed; skipping image", map[string]any{"name": name, "media_type": image.MediaType, "error": decodeErr.Error()})
+					continue
+				}
+				content = append(content, &mcp.ImageContent{Data: data, MIMEType: image.MediaType})
+			}
 			return &mcp.CallToolResult{
-				Content: []mcp.Content{&mcp.TextContent{Text: result.Content}},
+				Content: content,
 				IsError: result.IsError,
 			}, nil
 		}

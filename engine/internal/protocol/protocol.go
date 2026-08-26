@@ -98,6 +98,10 @@ type ClientCommand struct {
 	GateReason    string `json:"gateReason,omitempty"`
 	GateContent   string `json:"gateContent,omitempty"`
 	GateIsError   bool   `json:"gateIsError,omitempty"`
+	// GateImages carries optional image results for a client-declared tool.
+	// It uses the same base64 attachment shape as send_prompt. The engine
+	// converts it to ToolResult.Images before the result reaches the provider.
+	GateImages []types.ImageAttachment `json:"gateImages,omitempty"`
 
 	// oidc_begin_login: which grant flow to start. "pkce" (default when
 	// empty) runs the interactive authorization-code + PKCE flow — the

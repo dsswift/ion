@@ -393,6 +393,7 @@
     "fields",
     "gateCwd",
     "gateKind",
+    "gateOrigin",
     "gateRequestId",
     "gateSiblingTools",
     "gateToolInput",

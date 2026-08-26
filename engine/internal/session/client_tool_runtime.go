@@ -102,7 +102,7 @@ func (m *Manager) buildClientToolRuntime(s *engineSession, key string, opts *typ
 			utils.LogWithFields(utils.LevelError, "session.toolgate", "client tool router called for undeclared tool", map[string]any{"key": key, "tool": name})
 			return &types.ToolResult{Content: "client tool " + name + " is not declared for this run", IsError: true}
 		}
-		return m.requestClientToolResult(ctx, key, captured, def, input, s.config.WorkingDirectory)
+		return m.requestClientToolResult(ctx, key, captured, def, input, s.config.WorkingDirectory, types.GateOriginModel)
 	}
 	// The signature covers only the MACHINE tools: human-wait tools are never
 	// declared on a native session (they park the engine-owned loop instead),

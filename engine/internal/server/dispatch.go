@@ -330,7 +330,15 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		// (tool kind). The tool loop has its own bounded timeout with a
 		// client-declared fallback, so a missing or late response is
 		// non-fatal — it is logged and dropped.
-		s.manager.HandleToolGateResponse(cmd.Key, cmd.GateRequestID, cmd.GateDecision, cmd.GateReason, cmd.GateContent, cmd.GateIsError)
+		s.manager.HandleToolGateResponse(
+			cmd.Key,
+			cmd.GateRequestID,
+			cmd.GateDecision,
+			cmd.GateReason,
+			cmd.GateContent,
+			cmd.GateIsError,
+			cmd.GateImages,
+		)
 
 	case "elicitation_response":
 		// Fire-and-forget: no response sent. Resolves a pending elicitation

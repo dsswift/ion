@@ -32,7 +32,7 @@ var toolGateSeq atomic.Uint64
 // pending request matches (the tool loop's timeout already applied the
 // declared fallback, or the response is stale), the response is dropped and
 // the drop is logged — the loop has already moved on.
-func (m *Manager) HandleToolGateResponse(key, gateRequestID, decision, reason, content string, isError bool) {
+func (m *Manager) HandleToolGateResponse(key, gateRequestID, decision, reason, content string, isError bool, images []types.ImageAttachment) {
 	m.mu.RLock()
 	s, ok := m.sessions[key]
 	m.mu.RUnlock()
@@ -40,7 +40,7 @@ func (m *Manager) HandleToolGateResponse(key, gateRequestID, decision, reason, c
 		utils.LogWithFields(utils.LevelInfo, "session.toolgate", "tool_gate_response for unknown session", map[string]any{"key": key, "gate_request_id": gateRequestID})
 		return
 	}
-	reply := pending.ToolGateReply{Decision: decision, Reason: reason, Content: content, IsError: isError}
+	reply := pending.ToolGateReply{Decision: decision, Reason: reason, Content: content, IsError: isError, Images: images}
 	if !s.pending.ResolveToolGate(gateRequestID, reply) {
 		utils.LogWithFields(utils.LevelDebug, "session.toolgate", "no pending tool gate for session (likely timed out)", map[string]any{"key": key, "gate_request_id": gateRequestID})
 	}
@@ -235,6 +235,7 @@ func (m *Manager) requestClientToolResult(
 	def types.ClientToolDef,
 	input map[string]interface{},
 	cwd string,
+	origin string,
 ) *types.ToolResult {
 	toolName := def.Name
 	m.mu.RLock()
@@ -276,6 +277,7 @@ func (m *Manager) requestClientToolResult(
 		Type:          "engine_tool_gate_request",
 		GateRequestID: gateRequestID,
 		GateKind:      types.GateKindTool,
+		GateOrigin:    origin,
 		GateToolName:  toolName,
 		GateToolInput: input,
 		GateCwd:       cwd,
@@ -288,9 +290,9 @@ func (m *Manager) requestClientToolResult(
 	case reply := <-ch:
 		utils.LogWithFields(utils.LevelInfo, "session.toolgate", "client tool fulfilled", map[string]any{
 			"key": key, "gate_request_id": gateRequestID, "tool": toolName,
-			"is_error": reply.IsError, "content_len": len(reply.Content), "latency_ms": time.Since(start).Milliseconds(),
+			"is_error": reply.IsError, "image_count": len(reply.Images), "content_len": len(reply.Content), "latency_ms": time.Since(start).Milliseconds(),
 		})
-		return &types.ToolResult{Content: reply.Content, IsError: reply.IsError}
+		return &types.ToolResult{Content: reply.Content, IsError: reply.IsError, Images: clientToolResultImages(reply.Images)}
 	case <-ctx.Done():
 		outcome = "cancelled"
 		utils.LogWithFields(utils.LevelInfo, "session.toolgate", "client tool abandoned: tool context done", map[string]any{

@@ -277,6 +277,7 @@ type EngineEvent struct {
 	// allow/deny) and "tool" (a client-declared tool call — answer with
 	// gateContent/gateIsError). Empty means "policy" for compatibility.
 	GateKind      string         `json:"gateKind,omitempty"`
+	GateOrigin    string         `json:"gateOrigin,omitempty"`
 	GateToolName  string         `json:"gateToolName,omitempty"`
 	GateToolInput map[string]any `json:"gateToolInput,omitempty"`
 	// GateCwd is the working directory the tool call would execute in — the

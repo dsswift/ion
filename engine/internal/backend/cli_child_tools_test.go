@@ -153,3 +153,36 @@ func TestBuildDelegatedChildToolServer_NoSpawnerOmitsIonAgent(t *testing.T) {
 		t.Error("extension tool should still be registered")
 	}
 }
+
+// TestBuildDelegatedChildToolServer_ClientToolPreservesImages pins that a
+// delegated child exposes inherited client tools through its MCP bridge and
+// preserves the complete ToolResult for its provider-facing transport.
+func TestBuildDelegatedChildToolServer_ClientToolPreservesImages(t *testing.T) {
+	var sp, rt bool
+	cfg := childCfgWithTools(&sp, &rt)
+	image := &types.ImageSource{Type: "base64", MediaType: "image/png", Data: "cG5nLWJ5dGVz"}
+	opts := &types.RunOptions{
+		Model: "claude-opus-4-8",
+		ClientTools: []types.ClientToolDef{{
+			Name: "BrowserScreenshot", InputSchema: map[string]interface{}{"type": "object"},
+		}},
+		ClientToolRouter: func(_ context.Context, name string, _ map[string]interface{}) *types.ToolResult {
+			if name != "BrowserScreenshot" {
+				t.Errorf("client tool = %q", name)
+			}
+			return &types.ToolResult{Content: "captured", Images: []*types.ImageSource{image}}
+		},
+	}
+	ts, err := BuildDelegatedChildToolServer(NewClaudeCodeBackend(), "child-client-tool", cfg, opts)
+	if err != nil || ts == nil {
+		t.Fatalf("build: ts=%v err=%v", ts, err)
+	}
+	defer ts.Stop()
+	if !ts.HasTool("BrowserScreenshot") {
+		t.Fatal("delegated child tool server lost inherited client tool")
+	}
+	result := callToolServerEntry(t, ts, "BrowserScreenshot", map[string]interface{}{})
+	if len(result.Images) != 1 || result.Images[0] != image {
+		t.Fatalf("client tool image lost in delegated child: %#v", result)
+	}
+}

@@ -4,6 +4,8 @@ package pending
 
 import (
 	"sync"
+
+	"github.com/dsswift/ion/engine/internal/types"
 )
 
 // ElicitReply carries a client's response to an engine_elicitation_request event.
@@ -29,13 +31,14 @@ type EarlyStopReply struct {
 // ToolGateReply carries a client's answer to an engine_tool_gate_request
 // event. For a "policy" request, Decision is "allow" or "deny" and Reason is
 // the model-facing message a deny carries into the tool result. For a "tool"
-// request (a client-declared tool call), Content carries the tool result text
-// and IsError marks it as a failure.
+// request (a client-declared tool call), Content carries the tool result text,
+// IsError marks it as a failure, and Images carries optional vision inputs.
 type ToolGateReply struct {
 	Decision string
 	Reason   string
 	Content  string
 	IsError  bool
+	Images   []types.ImageAttachment
 }
 
 // Broker manages pending permission, dialog, elicitation, early-stop, and

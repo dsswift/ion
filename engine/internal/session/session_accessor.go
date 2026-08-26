@@ -58,6 +58,19 @@ func (a *sessionAccessor) ExtensionName() string    { return a.s.extensionName }
 func (a *sessionAccessor) ExtensionVersion() string { return a.s.extensionVersion }
 func (a *sessionAccessor) WorkingDirectory() string { return a.s.config.WorkingDirectory }
 
+// CallClientTool routes an extension SDK call to a declared client tool. The
+// boolean reports whether the tool belongs to the captured client runtime.
+func (a *sessionAccessor) CallClientTool(ctx context.Context, toolName string, input map[string]interface{}) (*types.ToolResult, bool) {
+	return a.m.callClientToolFromExtension(ctx, a.key, toolName, input)
+}
+
+// BuildClientToolRuntime captures the session client-tool declaration for a
+// dispatched child. The child has its own RunOptions filtering, but results
+// still return to this session's owning client.
+func (a *sessionAccessor) BuildClientToolRuntime(opts *types.RunOptions) {
+	a.m.buildClientToolRuntime(a.s, a.key, opts)
+}
+
 // CurrentModel reports the model of the run in flight, or the conversation's
 // last model when idle; empty when the session has never run. Model locking is
 // independent from Manager.mu because context construction may already hold

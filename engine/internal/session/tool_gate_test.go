@@ -46,7 +46,7 @@ func TestRequestToolGateDecision_DeliversDeny(t *testing.T) {
 		emitMu.Unlock()
 		go func(reqID string) {
 			time.Sleep(2 * time.Millisecond)
-			mgr.HandleToolGateResponse(key, reqID, types.GateDecisionDeny, "bench edit refused", "", false)
+			mgr.HandleToolGateResponse(key, reqID, types.GateDecisionDeny, "bench edit refused", "", false, nil)
 		}(ev.GateRequestID)
 	})
 
@@ -86,7 +86,7 @@ func TestRequestToolGateDecision_UnrecognizedDecisionIsAllow(t *testing.T) {
 		if emittedKey != key || ev.Type != "engine_tool_gate_request" {
 			return
 		}
-		go mgr.HandleToolGateResponse(key, ev.GateRequestID, "defer-to-engine", "ignored", "", false)
+		go mgr.HandleToolGateResponse(key, ev.GateRequestID, "defer-to-engine", "ignored", "", false, nil)
 	})
 
 	cfg := &types.ToolGateConfig{Enabled: true, TimeoutMs: 1000}
@@ -160,12 +160,12 @@ func TestRequestToolGateDecision_UnknownSessionAllowsImmediately(t *testing.T) {
 func TestHandleToolGateResponse_UnknownSessionAndStaleRequestAreNoops(t *testing.T) {
 	key := "gate-stale"
 	mgr := gateTestManager(t, key)
-	mgr.HandleToolGateResponse("nonexistent", "req-x", types.GateDecisionDeny, "late", "", false)
+	mgr.HandleToolGateResponse("nonexistent", "req-x", types.GateDecisionDeny, "late", "", false, nil)
 
 	s := mgr.sessions[key]
 	s.pending.RegisterToolGate("stale")
 	s.pending.UnregisterToolGate("stale")
-	mgr.HandleToolGateResponse(key, "stale", types.GateDecisionDeny, "late", "", false)
+	mgr.HandleToolGateResponse(key, "stale", types.GateDecisionDeny, "late", "", false, nil)
 }
 
 // TestWireToolGate_OptInPredicate pins the wiring contract: no ToolGate (or a
@@ -235,7 +235,7 @@ func TestWireClientTools_AddsToolsAndRoutesFulfillment(t *testing.T) {
 		if ev.GateKind != types.GateKindTool {
 			t.Errorf("gateKind: want tool, got %q", ev.GateKind)
 		}
-		go mgr.HandleToolGateResponse(key, ev.GateRequestID, "", "", "file contents here", false)
+		go mgr.HandleToolGateResponse(key, ev.GateRequestID, "", "", "file contents here", false, nil)
 	})
 
 	var runCfg backend.RunConfig
@@ -341,5 +341,42 @@ func TestWireClientTools_NeverShadowsExistingTool(t *testing.T) {
 	}
 	if result.Content != "extension answered" {
 		t.Errorf("existing tool must keep its routing, got %+v", result)
+	}
+}
+
+// TestClientToolResult_PreservesImagesAndExtensionOrigin pins the generic
+// client-tool response path: a client-provided base64 image reaches ToolResult
+// and an extension SDK invocation is identified on the request event.
+func TestClientToolResult_PreservesImagesAndExtensionOrigin(t *testing.T) {
+	key := "gate-client-image"
+	mgr := gateTestManager(t, key)
+	mgr.sessions[key].config.ToolGate = &types.ToolGateConfig{
+		Enabled:             true,
+		ClientToolTimeoutMs: 1000,
+		ClientTools:         []types.ClientToolDef{{Name: "BrowserScreenshot"}},
+	}
+
+	mgr.OnEvent(func(emittedKey string, ev types.EngineEvent) {
+		if emittedKey != key || ev.Type != "engine_tool_gate_request" || ev.GateKind != types.GateKindTool {
+			return
+		}
+		if ev.GateOrigin != types.GateOriginExtension {
+			t.Errorf("gate origin = %q, want extension", ev.GateOrigin)
+		}
+		go mgr.HandleToolGateResponse(key, ev.GateRequestID, "", "", "screenshot captured", false, []types.ImageAttachment{{
+			MediaType: "image/png",
+			Data:      "cG5nLWJ5dGVz",
+		}})
+	})
+
+	result, handled := mgr.callClientToolFromExtension(context.Background(), key, "BrowserScreenshot", map[string]interface{}{"fullPage": true})
+	if !handled {
+		t.Fatal("declared client tool was not routed")
+	}
+	if result == nil || result.IsError || result.Content != "screenshot captured" {
+		t.Fatalf("result = %#v", result)
+	}
+	if len(result.Images) != 1 || result.Images[0].MediaType != "image/png" || result.Images[0].Data != "cG5nLWJ5dGVz" {
+		t.Fatalf("client image lost from result: %#v", result.Images)
 	}
 }

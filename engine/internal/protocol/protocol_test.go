@@ -70,6 +70,11 @@ func TestParseClientCommand_ValidCommands(t *testing.T) {
 			cmd:  "tool_gate_response",
 		},
 		{
+			name: "tool_gate_response with image result",
+			line: `{"cmd":"tool_gate_response","key":"s1","gateRequestId":"tool-gate-1-3","gateImages":[{"media_type":"image/png","data":"cG5nLWJ5dGVz"}]}`,
+			cmd:  "tool_gate_response",
+		},
+		{
 			name: "command",
 			line: `{"cmd":"command","key":"s1","command":"status","args":"--verbose"}`,
 			cmd:  "command",

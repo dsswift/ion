@@ -109,6 +109,23 @@ func BuildDelegatedChildToolServer(child RunBackend, sessionID string, cfg *RunC
 		}, td.Description, td.InputSchema)
 	}
 
+	// Client tools are already part of ExternalTools when an API child runs,
+	// but delegated children consume the ToolServer instead. Register their
+	// router explicitly so the child preserves the same client round trip and
+	// image result path as its parent.
+	if len(opts.ClientTools) > 0 && opts.ClientToolRouter != nil {
+		for _, clientTool := range opts.ClientTools {
+			if clientTool.HumanWait || ts.HasTool(clientTool.Name) {
+				continue
+			}
+			name := clientTool.Name
+			router := opts.ClientToolRouter
+			ts.RegisterTool(name, func(ctx context.Context, input map[string]interface{}) (*types.ToolResult, error) {
+				return router(ctx, name, input), nil
+			}, clientTool.Description, clientTool.InputSchema)
+		}
+	}
+
 	// ion_agent → route through the child's AgentSpawner so the child can
 	// dispatch grandchildren. Omitted when no spawner is wired (should not
 	// happen on the dispatch path, but keep the tool absent rather than broken).
@@ -149,7 +166,7 @@ func BuildDelegatedChildToolServer(child RunBackend, sessionID string, cfg *RunC
 	}
 
 	utils.LogWithFields(utils.LevelInfo, "backend.cli_child_tools", "wired tool server for delegated-CLI child", map[string]any{
-		"session_id": sessionID, "kind": kind, "ext_tools": len(cfg.ExternalTools), "ion_agent": cfg.AgentSpawner != nil, "ion_agent_status": cfg.AgentStatus != nil,
+		"session_id": sessionID, "kind": kind, "ext_tools": len(cfg.ExternalTools), "client_tools": len(opts.ClientTools), "ion_agent": cfg.AgentSpawner != nil, "ion_agent_status": cfg.AgentStatus != nil,
 	})
 	return ts, nil
 }

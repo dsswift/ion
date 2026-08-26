@@ -29,6 +29,18 @@ func CallToolFromExtension(ctx context.Context, sa SessionAccessor, toolName str
 		input = map[string]interface{}{}
 	}
 
+	// Client-declared tools use the same bounded wire round trip when invoked
+	// by an extension as when invoked by the model. Keep this optional on the
+	// accessor so existing SDK consumers and focused test doubles retain their
+	// established registry-only behavior.
+	if clientTools, ok := sa.(interface {
+		CallClientTool(context.Context, string, map[string]interface{}) (*types.ToolResult, bool)
+	}); ok {
+		if result, handled := clientTools.CallClientTool(ctx, toolName, input); handled {
+			return result, nil
+		}
+	}
+
 	// Permission gate.
 	decision, reason := sa.PermissionCheck(toolName, input)
 	switch decision {
