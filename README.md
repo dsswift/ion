@@ -167,6 +167,7 @@ Full technical documentation lives in [`docs/`](docs/index.md). Start here based
 |----------|-----------|
 | **Harness engineer** building extensions | [Quick Start](docs/getting-started/quickstart.md), [Extension Guide](docs/extensions/getting-started.md), [Hooks Reference](docs/hooks/reference.md) |
 | **IT admin** deploying Ion | [Configuration](docs/configuration/index.md), [Security](docs/security/index.md), [Enterprise](docs/enterprise/index.md) |
+| **Contributor** working on the desktop | [Desktop Architecture](docs/architecture/desktop.md), [Embedded Browser Surface](docs/architecture/adr/030-embedded-browser-surface.md) |
 | **Contributor** working on the engine | [Architecture](docs/architecture/engine.md), [Contributing](docs/contributing/index.md) |
 
 Key references: [Socket Protocol](docs/protocol/index.md) | [CLI Reference](docs/cli/reference.md) | [Tools Reference](docs/tools/reference.md) | [Provider Setup](docs/providers/index.md) | [MCP Integration](docs/mcp/index.md)

@@ -22,12 +22,19 @@ cd "$(dirname "$0")/.."
 #   remote/handlers/display.ts — overlay display control from iOS
 #   git/subscriptions.ts     — per-sender git subscription replies
 #   updater.ts               — update UX is overlay chrome
+#   ipc/studio-browser.ts    — Studio-only browser commands: the Playwright
+#                              runtime lives in main but Surface descriptors
+#                              live in the Studio renderer, so create/close/
+#                              emulate must land in state.studioWindow
+#                              specifically. broadcast() would also deliver to
+#                              the overlay owner, which has no Surface panel and
+#                              would answer the correlated call with a refusal.
 #   automation/renderer-command.ts — owner-only automation exec: the command
 #                              mutates owner-durable store state (create tab,
 #                              set pill, submit), so it must land in
 #                              state.mainWindow specifically, never the Studio
 #                              mirror, which cannot run the mutation itself.
-ALLOWLIST='broadcast\.ts|studio-window-manager\.ts|window-manager\.ts|updater\.ts|ipc/studio\.ts|ipc/conversation-backup\.ts|ipc/models\.ts|ipc/remote-control\.ts|remote/handlers/display\.ts|git/subscriptions\.ts|automation/renderer-command\.ts'
+ALLOWLIST='broadcast\.ts|ipc/studio-browser\.ts|studio-window-manager\.ts|window-manager\.ts|updater\.ts|ipc/studio\.ts|ipc/conversation-backup\.ts|ipc/models\.ts|ipc/remote-control\.ts|remote/handlers/display\.ts|git/subscriptions\.ts|automation/renderer-command\.ts'
 
 violations=$(grep -rn "webContents\.send(" desktop/src/main --include='*.ts' \
   | grep -v '__tests__' \
