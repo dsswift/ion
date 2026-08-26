@@ -73,7 +73,7 @@
           "platform": "studio",
           "presentation": "code",
           "language": "typescript",
-          "symbol": "export function createAgentBrowserActions",
+          "symbol": "export function bindAgentBrowserActions",
           "path": "desktop/src/renderer/studio/surface/surface-agent-browser.ts"
         },
         {

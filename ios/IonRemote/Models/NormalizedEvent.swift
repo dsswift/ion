@@ -619,6 +619,8 @@ enum RemoteEvent: Sendable {
         case peerDisconnected = "peer_disconnected"
         case transportReconnecting = "transport_reconnecting"
         case lanAuthRejected = "lan_auth_rejected"
+        // Local TransportManager signal. It is never valid on the desktop wire.
+        // Do not add it to lifecycle decode or encode handling.
         case lanSecretUnusable = "lan_secret_unusable"
         case heartbeat = "desktop_heartbeat"
         case resendUnavailable = "desktop_resend_unavailable"
