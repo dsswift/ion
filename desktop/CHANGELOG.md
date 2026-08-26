@@ -10,6 +10,13 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.87.1](https://github.com/dsswift/ion/compare/desktop-v1.87.0...desktop-v1.87.1) (2026-08-26)
+
+### Bug Fixes
+
+* **desktop:** preserve pairing ciphertext on decrypt failure ([4631be3](https://github.com/dsswift/ion/commit/4631be35e7fefc2986ddbd1c09b2714cd1db191f))
+* **ios:** repair unusable desktop pairing secret ([c63edb3](https://github.com/dsswift/ion/commit/c63edb3cca04e5ccf3e4a12b0bfb302f091aaee7))
+
 ## [1.87.0](https://github.com/dsswift/ion/compare/desktop-v1.86.2...desktop-v1.87.0) (2026-08-25)
 
 ### Features

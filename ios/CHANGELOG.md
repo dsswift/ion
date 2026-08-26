@@ -10,6 +10,13 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.68.1](https://github.com/dsswift/ion/compare/ios-v1.68.0...ios-v1.68.1) (2026-08-26)
+
+### Bug Fixes
+
+* **ios:** offer one-tap repair for rejected pairing ([a10baa9](https://github.com/dsswift/ion/commit/a10baa9972dfe8cc3e25628f5f207ba8176a50c2))
+* **ios:** repair unusable desktop pairing secret ([c63edb3](https://github.com/dsswift/ion/commit/c63edb3cca04e5ccf3e4a12b0bfb302f091aaee7))
+
 ## [1.68.0](https://github.com/dsswift/ion/compare/ios-v1.67.0...ios-v1.68.0) (2026-08-25)
 
 ### Features
