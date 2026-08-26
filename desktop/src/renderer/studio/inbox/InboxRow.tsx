@@ -50,7 +50,7 @@ export function InboxRow({
   // renders idle while the operator owes an answer.
   useQuestionsStore((s) => s.workflows)
   const waiting = useSessionStore((state) => getWaitingState(tab, state.conversationPanes))
-  const terminalActivity = useSessionStore((state) => [...state.terminalActivities.values()].find((activity) => activity.tabId === tab.id && activity.active) ?? null)
+  const terminalActivity = useSessionStore((state) => [...(state.terminalActivities?.values() ?? [])].find((activity) => activity.tabId === tab.id && activity.active) ?? null)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(tab.customTitle ?? tab.title)

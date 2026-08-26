@@ -1,7 +1,7 @@
-import { ipcMain, type WebContents } from 'electron'
+import { ipcMain, type BrowserWindow, type WebContents } from 'electron'
 import { IPC } from '../../shared/types'
 import { log as _log, warn as _warn } from '../logger'
-import { state } from '../state'
+import { setStudioBrowserTabRequestHandler } from '../studio-browser-tab-request'
 import {
   browserViewContents,
   destroyBrowserView,
@@ -21,6 +21,7 @@ import {
 const TAG = 'studio-browser-ipc'
 
 let commandSeq = 0
+let resolveStudioWindow: () => BrowserWindow | null = () => null
 
 /**
  * Studio browser IPC: guest registration inbound, browser commands outbound.
@@ -38,7 +39,12 @@ let commandSeq = 0
  * whether a Studio window exists, so a missing or wedged renderer produces a
  * resolved refusal instead of a caller hanging forever.
  */
+export function setStudioBrowserWindowResolver(resolver: () => BrowserWindow | null): void {
+  resolveStudioWindow = resolver
+}
+
 export function registerStudioBrowserIpc(): void {
+  setStudioBrowserTabRequestHandler(requestStudioBrowserTab)
   // Guest creation. The renderer no longer owns the browser body: main builds
   // a WebContentsView (a real `page` CDP target Playwright can attach to) and
   // hands back nothing but success, because the renderer has no element to
@@ -135,7 +141,7 @@ export function registerStudioBrowserIpc(): void {
  * file so the Studio-targeted send stays inside the parity allowlist.
  */
 export function requestStudioBrowserTab(url: string): void {
-  const studio = state.studioWindow
+  const studio = resolveStudioWindow()
   if (!studio || studio.isDestroyed()) {
     _log(TAG, 'browser tab request dropped, no studio window', { host: hostOf(url) })
     return
@@ -159,7 +165,7 @@ export function clearStudioBrowserCommandSender(): void {
 }
 
 async function sendBrowserCommand(command: StudioBrowserCommand, timeoutMs: number): Promise<StudioBrowserCommandResult> {
-  const studio = state.studioWindow
+  const studio = resolveStudioWindow()
   if (!studio || studio.isDestroyed()) {
     return { callId: 'none', ok: false, error: 'the Ion Studio window is not open' }
   }
@@ -207,7 +213,7 @@ async function sendBrowserCommand(command: StudioBrowserCommand, timeoutMs: numb
 }
 
 function fromStudio(event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent): boolean {
-  return event.sender === state.studioWindow?.webContents
+  return event.sender === resolveStudioWindow()?.webContents
 }
 
 function isId(value: unknown): value is string {
@@ -237,7 +243,7 @@ function watchGuestState(guest: WebContents, conversationId: string, instanceId:
   if (watched.has(guest)) return
   watched.add(guest)
   const push = (): void => {
-    const win = state.studioWindow
+    const win = resolveStudioWindow()
     if (!win || win.isDestroyed() || guest.isDestroyed()) return
     win.webContents.send(IPC.STUDIO_BROWSER_VIEW_STATE, {
       conversationId,

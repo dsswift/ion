@@ -70,6 +70,9 @@ const studioWindow = vi.hoisted(() => ({
   getBounds: () => ({ x: 100, y: 200, width: 1200, height: 800 }),
   getContentBounds: () => ({ x: 100, y: 228, width: 1200, height: 772 }),
 }))
+vi.mock('./studio-browser-window-resolver', () => ({
+  getStudioBrowserWindow: () => studioWindow,
+}))
 vi.mock('./state', () => ({ state: { studioWindow } }))
 vi.mock('./studio-playwright/host', () => ({
   registerStudioPlaywrightWebview: registerTarget,

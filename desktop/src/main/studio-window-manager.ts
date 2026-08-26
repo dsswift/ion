@@ -42,6 +42,7 @@ import {
   resetRendererCrashGuard,
 } from "./renderer-crash-guard";
 import { destroyAllBrowserViews, reapplyBrowserViewBounds } from "./studio-browser-views";
+import { setStudioBrowserWindowResolver } from "./ipc/studio-browser";
 import {
   STUDIO_TITLE_BAR_HEIGHT,
   STUDIO_TRAFFIC_LIGHT_POSITION,
@@ -50,6 +51,8 @@ import {
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log("studio", msg, fields);
 }
+
+setStudioBrowserWindowResolver(() => state.studioWindow);
 
 const STUDIO_DEFAULT_WIDTH = 960;
 const STUDIO_DEFAULT_HEIGHT = 640;

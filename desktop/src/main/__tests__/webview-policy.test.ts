@@ -13,7 +13,7 @@ vi.mock('electron', () => ({
 }))
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 const requestStudioBrowserTab = vi.hoisted(() => vi.fn())
-vi.mock('../ipc/studio-browser', () => ({ requestStudioBrowserTab }))
+vi.mock('../studio-browser-tab-request', () => ({ requestStudioBrowserTab }))
 
 import { _schemeAllowed, allowPreviewNetwork, _resetPreviewUnlocks, installGuestPolicy } from '../webview-policy'
 

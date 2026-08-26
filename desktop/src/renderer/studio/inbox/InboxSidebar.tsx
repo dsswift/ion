@@ -94,7 +94,7 @@ export function InboxSidebar(): React.JSX.Element {
   const allProjects = useMemo(() => buildInboxNavigator([...partition.pinned, ...partition.inbox, ...partition.snoozed], benches, inventory, new Map(Object.entries(selectedBench))), [partition.pinned, partition.inbox, partition.snoozed, benches, inventory, selectedBench])
   const projectOptions = useMemo(() => {
     const live = new Map(allProjects.map((node) => [node.project.key, { key: node.project.key, name: node.project.name, count: node.flatTabs.length + node.groups.reduce((sum, group) => sum + group.tabs.length, 0) }]))
-    for (const project of orderedProjects(registeredProjects)) {
+    for (const project of orderedProjects(registeredProjects ?? {})) {
       const existing = live.get(project.dir)
       live.set(project.dir, { key: project.dir, name: project.displayName, count: existing?.count ?? 0 })
     }

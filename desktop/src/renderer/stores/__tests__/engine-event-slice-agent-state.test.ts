@@ -183,7 +183,7 @@ describe('session_dead clears pending steers and flips status (WI-001)', () => {
     expect(bubble?.steerFailed).toBe(true)
   })
 
-  it('error event marks steerPending bubbles as steerFailed', () => {
+  it('error event preserves steerPending bubbles while the session can continue', async () => {
     const { state, slice } = buildHarness()
     const pane = state.conversationPanes.get('tab1')
     pane.instances[0] = {
@@ -195,7 +195,8 @@ describe('session_dead clears pending steers and flips status (WI-001)', () => {
 
     const inst = activeInstance(state.conversationPanes, 'tab1')
     const bubble = inst?.messages.find((m: any) => m.id === 'b')
-    expect(bubble?.steerFailed).toBe(true)
+    expect(bubble?.steerPending).toBe(true)
+    expect(bubble?.steerFailed).toBeUndefined()
   })
 })
 

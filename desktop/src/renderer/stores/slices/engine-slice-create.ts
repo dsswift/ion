@@ -71,7 +71,7 @@ export function createConversationTabAction(set: StoreSet, get: StoreGet) {
     const s = get()
     const homeDir = s.staticInfo?.homePath || '~'
     const prefs = usePreferencesStore.getState()
-    const defaultProjectDirectory = Object.keys(prefs.projects).find((path) => prefs.projects[path]?.isDefault) ?? ''
+    const defaultProjectDirectory = Object.keys(prefs.projects ?? {}).find((path) => prefs.projects?.[path]?.isDefault) ?? ''
     const baseWorkingDirectory = dir || defaultProjectDirectory || homeDir
     // A new worktree must be resolved before state creation or engine startup.
     // Starting first would bind the session to the source checkout while the UI

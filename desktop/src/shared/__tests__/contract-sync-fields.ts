@@ -262,6 +262,7 @@ export const TS_SHARED_TYPES: Record<string, string[]> = {
     "parentConversationId",
     "pinned",
     "profileId",
+    "projectDirectory",
     "runRecovery",
     "sessionId",
     "systemHint",

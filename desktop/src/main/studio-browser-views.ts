@@ -22,7 +22,7 @@
  */
 import { WebContentsView, type BrowserWindow, type WebContents } from 'electron'
 import { log as _log, warn as _warn } from './logger'
-import { state } from './state'
+import { getStudioBrowserWindow } from './studio-browser-window-resolver'
 import { registerStudioPlaywrightWebview, unregisterStudioPlaywrightWebview } from './studio-playwright/host'
 import { installGuestPolicy, previewPartitionFor } from './webview-policy'
 
@@ -81,7 +81,7 @@ export function ensureBrowserView(params: {
   partition: string
   url: string
 }): WebContents | null {
-  const win = state.studioWindow
+  const win = getStudioBrowserWindow()
   if (!win || win.isDestroyed()) {
     _warn(TAG, 'browser view requested with no studio window', { conversation_id: params.conversationId })
     return null
@@ -247,7 +247,7 @@ function popoverOverlaps(bounds: ViewBounds): boolean {
  * stopped the canvas flashing on every inbox hover.
  */
 function applyBounds(entry: Entry): void {
-  const win = state.studioWindow
+  const win = getStudioBrowserWindow()
   if (!win || win.isDestroyed()) return
   if (!entry.visible) {
     entry.view.setVisible(false)
@@ -286,7 +286,7 @@ export function destroyBrowserView(conversationId: string, instanceId: string): 
   const entry = entries.get(key(conversationId, instanceId))
   if (!entry) return false
   entries.delete(key(conversationId, instanceId))
-  const win = state.studioWindow
+  const win = getStudioBrowserWindow()
   if (win && !win.isDestroyed()) win.contentView.removeChildView(entry.view)
   if (!entry.view.webContents.isDestroyed()) entry.view.webContents.close()
   unregisterStudioPlaywrightWebview(conversationId, instanceId)

@@ -313,6 +313,7 @@ vi.mock('../../state', () => ({
     mainWindow: null,
   },
   modelCache: { models: [] },
+  enterprisePolicyCache: { policy: null },
   engineBridge: null,
 }))
 
