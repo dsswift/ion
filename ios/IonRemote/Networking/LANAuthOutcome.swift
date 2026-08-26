@@ -36,6 +36,15 @@ enum LANAuthOutcome: Equatable, Sendable {
     /// the auth timeout, or the stream ending without an `auth_result`.
     case transient
 
+    /// Stable `auth_result.reasonCode` for "known device, unusable stored secret".
+    /// Mirrors `LAN_AUTH_REASON_SECRET_UNUSABLE` in the Desktop's
+    /// `protocol-envelope.ts`.
+    static let reasonCodeSecretUnusable = "pairing_secret_unusable"
+
+    /// Human-readable reason emitted by Desktop builds that predate
+    /// `reasonCode`. Keep this exact fallback for compatibility.
+    static let legacyReasonSecretUnusable = "pairing secret unusable"
+
     /// Application close code for "known device, unusable stored secret".
     /// Mirrors `LAN_CLOSE_SECRET_UNUSABLE` in the desktop's
     /// `protocol-envelope.ts` — lockstep wire constant.
@@ -87,18 +96,29 @@ enum LANAuthOutcome: Equatable, Sendable {
     /// Handles both shapes the desktop emits: a bare `auth_result` object and
     /// an `auth_result` wrapped in a `WireMessage` `payload` string.
     ///
-    /// - Returns: `.success` / `.rejected` when the frame carries a verdict,
-    ///   `nil` when the frame is not an `auth_result` at all.
+    /// - Returns: `.success`, `.rejected`, or `.secretUnusable` when the frame
+    ///   carries a verdict; `nil` when the frame is not an `auth_result`.
     static func verdict(fromAuthFrame json: [String: Any]) -> LANAuthOutcome? {
         if json["type"] as? String == "auth_result" {
-            return json["success"] as? Bool == true ? .success : .rejected
+            return verdict(fromAuthResult: json)
         }
         // WireMessage wrapping an auth_result.
         if let payload = json["payload"] as? String,
            let inner = try? JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any],
            inner["type"] as? String == "auth_result" {
-            return inner["success"] as? Bool == true ? .success : .rejected
+            return verdict(fromAuthResult: inner)
         }
         return nil
+    }
+
+    private static func verdict(fromAuthResult result: [String: Any]) -> LANAuthOutcome {
+        if result["success"] as? Bool == true {
+            return .success
+        }
+        if result["reasonCode"] as? String == reasonCodeSecretUnusable
+            || result["reason"] as? String == legacyReasonSecretUnusable {
+            return .secretUnusable
+        }
+        return .rejected
     }
 }

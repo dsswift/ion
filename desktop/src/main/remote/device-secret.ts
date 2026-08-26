@@ -26,12 +26,13 @@ import { KEY_LENGTH } from './crypto-core'
 
 /** Why a stored shared secret could not be used. */
 export type SecretDecodeFailure =
-  /** Field absent or empty — the record was written without a secret. */
+  /** Field absent or empty — the record genuinely has no stored secret. */
   | 'missing'
   /**
    * Still carrying an at-rest encryption prefix (`enc:v1:` / `enc:v2:` /
-   * `enc:v3:`). The secret store handed back ciphertext instead of plaintext,
-   * which means the value could not be decrypted on this machine.
+   * `enc:v3:`). The secret store preserves ciphertext when decryption fails,
+   * which means the value could not be decrypted on this machine. This is the
+   * expected state after a Keychain grant loss until the device is re-paired.
    */
   | 'encrypted'
   /** Decoded, but not the 32 bytes an AES-256/HKDF key must be. */

@@ -42,6 +42,35 @@ final class DesktopAccessPolicyTests: XCTestCase {
         XCTAssertTrue(DesktopAccessPolicy.recoveryMessage(for: record).contains("repair"))
     }
 
+    func testCanRepairPairingForPairingRejected() {
+        let record = DesktopAccessRecord(status: .rejected, reason: .pairingRejected, changedAt: now, lastAuthorizedAt: nil)
+        XCTAssertTrue(DesktopAccessPolicy.canRepairPairing(for: record))
+    }
+
+    func testCanRepairPairingForWrongAccount() {
+        let record = DesktopAccessRecord(status: .rejected, reason: .wrongAccount, changedAt: now, lastAuthorizedAt: nil)
+        XCTAssertTrue(DesktopAccessPolicy.canRepairPairing(for: record))
+    }
+
+    func testCannotRepairPairingForSignInReasons() {
+        let reasons: [DesktopAccessRecord.Reason] = [
+            .none,
+            .noCredential,
+            .userCancelled,
+            .refreshRejected,
+            .signedOut
+        ]
+
+        for reason in reasons {
+            let record = DesktopAccessRecord(status: .authenticationRequired, reason: reason, changedAt: now, lastAuthorizedAt: nil)
+            XCTAssertFalse(DesktopAccessPolicy.canRepairPairing(for: record), "\(reason) must not offer pairing repair")
+        }
+    }
+
+    func testCannotRepairPairingWithoutRecord() {
+        XCTAssertFalse(DesktopAccessPolicy.canRepairPairing(for: nil))
+    }
+
     func testVerifyingAllowsViewingData() {
         let record = DesktopAccessRecord(status: .verifying, reason: .none, changedAt: now, lastAuthorizedAt: now)
         XCTAssertTrue(DesktopAccessPolicy.mayViewDesktopData(record))

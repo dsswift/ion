@@ -21,6 +21,7 @@ import { describe, it, expect, beforeEach, afterAll } from 'vitest'
 
 let mockIsPackaged = false
 let mockSafeStorageAvailable = false
+let mockSafeStorageDecryptError: Error | null = null
 const mockEncryptedValues = new Map<string, Buffer>()
 
 import {
@@ -49,6 +50,7 @@ _setElectronForTest({
       return buf
     },
     decryptString: (buf: Buffer) => {
+      if (mockSafeStorageDecryptError) throw mockSafeStorageDecryptError
       const str = buf.toString()
       if (!str.startsWith('safe:')) throw new Error('invalid safeStorage ciphertext')
       return str.slice(5)
@@ -77,6 +79,7 @@ afterAll(() => {
 beforeEach(() => {
   mockIsPackaged = false
   mockSafeStorageAvailable = false
+  mockSafeStorageDecryptError = null
   mockEncryptedValues.clear()
   _setHostnameForTest(undefined)
 })
@@ -179,13 +182,14 @@ describe('keyfile encryption (tier 2, enc:v3:)', () => {
     expect(decryptFromDisk(encrypted)).toBe(plaintext)
   })
 
-  it('returns empty string for corrupted v3 ciphertext', () => {
-    const longEnough = Buffer.alloc(40, 7).toString('base64')
-    expect(decryptFromDisk('enc:v3:' + longEnough)).toBe('')
+  it('preserves corrupted v3 ciphertext', () => {
+    const ciphertext = 'enc:v3:' + Buffer.alloc(40, 7).toString('base64')
+    expect(decryptFromDisk(ciphertext)).toBe(ciphertext)
   })
 
-  it('returns empty string for truncated v3 ciphertext', () => {
-    expect(decryptFromDisk('enc:v3:AAAA')).toBe('')
+  it('preserves truncated v3 ciphertext', () => {
+    const ciphertext = 'enc:v3:AAAA'
+    expect(decryptFromDisk(ciphertext)).toBe(ciphertext)
   })
 
   it('REGRESSION: v3 values survive a hostname change (the lost-API-key bug)', () => {
@@ -207,10 +211,10 @@ describe('legacy machine-derived values (enc:v2:)', () => {
     expect(decryptFromDisk(v2)).toBe('legacy-relay-key')
   })
 
-  it('clears v2 values when the hostname has changed (documented data loss path)', () => {
+  it('preserves v2 values when the hostname has changed', () => {
     const v2 = legacyV2Encrypt('sealed-under-old-host', 'old-hostname.local')
     // Current hostname differs from 'old-hostname.local' → legacy key mismatch.
-    expect(decryptFromDisk(v2)).toBe('')
+    expect(decryptFromDisk(v2)).toBe(v2)
   })
 
   it('upgrades v2 values to v3 on encryptSensitiveSettings (write path)', () => {
@@ -229,10 +233,10 @@ describe('legacy machine-derived values (enc:v2:)', () => {
     expect(decryptFromDisk(out.pairedDevices[0].sharedSecret)).toBe('device-secret')
   })
 
-  it('clears an undecryptable v2 value on write upgrade instead of keeping a dead ciphertext', () => {
+  it('preserves an undecryptable v2 value on write upgrade', () => {
     const v2 = legacyV2Encrypt('lost-forever', 'some-other-host')
     const out = encryptSensitiveSettings({ relayApiKey: v2 })
-    expect(out.relayApiKey).toBe('')
+    expect(out.relayApiKey).toBe(v2)
   })
 })
 
@@ -257,48 +261,54 @@ describe('safeStorage encryption (tier 1)', () => {
     expect(decrypted).toBe('prod-relay-key')
   })
 
-  it('clears v1 values when safeStorage becomes unavailable', () => {
+  it('preserves v1 values when safeStorage becomes unavailable', () => {
     const encrypted = encryptForDisk('ephemeral-secret')
     expect(encrypted.startsWith('enc:v1:')).toBe(true)
 
     // Simulate switching to dev build
     mockIsPackaged = false
-    expect(decryptFromDisk(encrypted)).toBe('')
+    expect(decryptFromDisk(encrypted)).toBe(encrypted)
   })
 
-  // Regression: a v1 value that safeStorage is AVAILABLE for but cannot
-  // decrypt (the Keychain grant is bound to the code signature, so a desktop
-  // reinstall invalidates it) previously fell through a bare `catch { return
-  // value }` and handed the CIPHERTEXT back as though it were plaintext.
-  //
-  // That was undetectable downstream: `Buffer.from('enc:v1:…', 'base64')` does
-  // not throw — Node's base64 decoder silently skips characters outside the
-  // alphabet — so a paired device's sharedSecret decoded to a wrong-length,
-  // wrong-value key. HMAC accepts any key length (LAN auth failed as "invalid
-  // proof") and AES-GCM rejected it ("decryption failed"), with the device
-  // still present and apparently valid in the registry.
-  it('clears a v1 value safeStorage cannot decrypt, never returns ciphertext', () => {
-    // safeStorage is available but this ciphertext is not one it wrote —
-    // exactly the post-reinstall state.
-    const foreign = 'enc:v1:' + Buffer.from('not-a-value-this-keychain-wrote').toString('base64')
+  it('preserves a v1 value when safeStorage decrypt throws', () => {
+    const ciphertext = 'enc:v1:' + Buffer.from('safe-storage-ciphertext').toString('base64')
+    mockSafeStorageDecryptError = new Error('Keychain grant unavailable')
 
-    const decrypted = decryptFromDisk(foreign)
-
-    expect(decrypted).toBe('')
-    // The specific defect: the prefixed ciphertext must never come back.
-    expect(decrypted).not.toBe(foreign)
-    expect(decrypted.startsWith('enc:')).toBe(false)
+    expect(decryptFromDisk(ciphertext)).toBe(ciphertext)
   })
 
-  it('clears an undecryptable device sharedSecret rather than leaking ciphertext', () => {
+  it('preserves ciphertext through a failed-decrypt settings round trip', () => {
+    const ciphertext = 'enc:v1:' + Buffer.from('pairing-ciphertext').toString('base64')
+    mockSafeStorageDecryptError = new Error('Keychain grant unavailable')
+    const loaded = decryptSensitiveSettings({
+      themeMode: 'dark',
+      pairedDevices: [{ id: 'device-id', sharedSecret: ciphertext }],
+    })
+    const persisted = encryptSensitiveSettings({ ...loaded, themeMode: 'light' })
+
+    expect(persisted.themeMode).toBe('light')
+    expect(persisted.pairedDevices[0].sharedSecret).toBe(ciphertext)
+  })
+
+  it('does not replace preserved ciphertext with an empty sharedSecret', () => {
+    const ciphertext = 'enc:v1:' + Buffer.from('pairing-ciphertext').toString('base64')
+    mockSafeStorageDecryptError = new Error('Keychain grant unavailable')
+    const loaded = decryptSensitiveSettings({
+      pairedDevices: [{ id: 'device-id', sharedSecret: ciphertext }],
+    })
+
+    expect(loaded.pairedDevices[0].sharedSecret).toBe(ciphertext)
+    expect(encryptSensitiveSettings(loaded).pairedDevices[0].sharedSecret).toBe(ciphertext)
+  })
+
+  it('retains an undecryptable device sharedSecret as ciphertext', () => {
     const foreign = 'enc:v1:' + Buffer.from('stale-keychain-blob').toString('base64')
 
     const out = decryptSensitiveSettings({
       pairedDevices: [{ id: 'dev-1', name: 'iPhone', sharedSecret: foreign }],
     })
 
-    // An empty secret is detectable by the decode guard; ciphertext is not.
-    expect(out.pairedDevices[0].sharedSecret).toBe('')
+    expect(out.pairedDevices[0].sharedSecret).toBe(foreign)
   })
 })
 
@@ -342,6 +352,36 @@ describe('encryptSensitiveSettings', () => {
     const first = encryptSensitiveSettings({ relayApiKey: 'test-key' })
     const second = encryptSensitiveSettings(first)
     expect(second.relayApiKey).toBe(first.relayApiKey)
+  })
+
+  it('passes enc:v1 and enc:v3 values through byte-identically', () => {
+    mockIsPackaged = true
+    mockSafeStorageAvailable = true
+    const v1 = encryptForDisk('safe-storage-value')
+    mockIsPackaged = false
+    const v3 = encryptForDisk('keyfile-value')
+
+    const persisted = encryptSensitiveSettings({
+      relayApiKey: v1,
+      pairedDevices: [{ id: 'device-id', sharedSecret: v3 }],
+    })
+
+    expect(persisted.relayApiKey).toBe(v1)
+    expect(persisted.pairedDevices[0].sharedSecret).toBe(v3)
+  })
+
+  it('persists a normal update after successful decrypt', () => {
+    mockIsPackaged = true
+    mockSafeStorageAvailable = true
+    const encrypted = encryptSensitiveSettings({
+      themeMode: 'dark',
+      pairedDevices: [{ id: 'device-id', sharedSecret: 'shared-secret-value' }],
+    })
+    const loaded = decryptSensitiveSettings(encrypted)
+    const persisted = encryptSensitiveSettings({ ...loaded, themeMode: 'light' })
+
+    expect(persisted.themeMode).toBe('light')
+    expect(decryptSensitiveSettings(persisted).pairedDevices[0].sharedSecret).toBe('shared-secret-value')
   })
 
   it('removes secret_unencrypted flag', () => {
@@ -425,7 +465,7 @@ describe('cross-tier scenarios', () => {
     expect(decrypted.relayApiKey).toBe('prod-key')
   })
 
-  it('v1 values from prod are cleared when read in dev (graceful degradation)', () => {
+  it('v1 values from prod are preserved when read in dev', () => {
     mockIsPackaged = true
     mockSafeStorageAvailable = true
     const encrypted = encryptSensitiveSettings({ relayApiKey: 'prod-only-key' })
@@ -434,7 +474,7 @@ describe('cross-tier scenarios', () => {
     mockIsPackaged = false
     mockSafeStorageAvailable = false
     const decrypted = decryptSensitiveSettings(encrypted)
-    expect(decrypted.relayApiKey).toBe('')
+    expect(decrypted.relayApiKey).toBe(encrypted.relayApiKey)
   })
 
   it('v2 written in prod-downgrade scenario upgrades to v1 when packaged', () => {

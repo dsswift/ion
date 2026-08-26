@@ -48,7 +48,7 @@ struct DesktopAccessRecoveryView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(switching || repairing)
                 .padding(.horizontal, 28) // design-geometry: recovery card inset between sectionGap and screenInset
-                if viewModel.activeDevice?.desktopAccess?.reason == .wrongAccount {
+                if DesktopAccessPolicy.canRepairPairing(for: viewModel.activeDevice?.desktopAccess) {
                     Button {
                         repairActivePairing()
                     } label: {

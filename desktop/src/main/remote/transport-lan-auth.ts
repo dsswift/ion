@@ -1,7 +1,11 @@
 import type { LANServer } from './lan-server'
 import { createAuthNonce, verifyAuthProof } from './crypto'
 import { decodeSharedSecret, describeSecretFailure } from './device-secret'
-import { LAN_CLOSE_SECRET_UNUSABLE, LAN_CLOSE_UNKNOWN_DEVICE } from './protocol'
+import {
+  LAN_AUTH_REASON_SECRET_UNUSABLE,
+  LAN_CLOSE_SECRET_UNUSABLE,
+  LAN_CLOSE_UNKNOWN_DEVICE,
+} from './protocol'
 import { log as _log, error as _error } from '../logger'
 import type { WireMessage, AuthChallenge, AuthResponse, AuthResult, PairedDevice } from './protocol'
 
@@ -110,7 +114,13 @@ export function handleLanAuthResponse(ctx: LanAuthCtx, msg: WireMessage, connect
       detail: describeSecretFailure(decoded.reason),
       decoded_bytes: decoded.byteLength,
     })
-    sendAuthResult(ctx, connectionId, false, 'pairing secret unusable')
+    sendAuthResult(
+      ctx,
+      connectionId,
+      false,
+      'pairing secret unusable',
+      LAN_AUTH_REASON_SECRET_UNUSABLE,
+    )
     ctx.lan?.disconnectClient(connectionId, LAN_CLOSE_SECRET_UNUSABLE, 'pairing secret unusable')
     return
   }
@@ -163,7 +173,13 @@ export function handleLanAuthResponse(ctx: LanAuthCtx, msg: WireMessage, connect
   ctx.onAuthenticated?.(device.id)
 }
 
-export function sendAuthResult(ctx: LanAuthCtx, connectionId: string, success: boolean, reason?: string): void {
-  const result: AuthResult = { type: 'auth_result', success, reason }
+export function sendAuthResult(
+  ctx: LanAuthCtx,
+  connectionId: string,
+  success: boolean,
+  reason?: string,
+  reasonCode?: AuthResult['reasonCode'],
+): void {
+  const result: AuthResult = { type: 'auth_result', success, reason, reasonCode }
   ctx.lan?.sendRaw(JSON.stringify(result), connectionId)
 }

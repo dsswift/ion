@@ -423,10 +423,13 @@ export type RemoteEvent =
 
 // ─── Envelope / auth / pairing types ───
 // RelayControlMessage, MAX_WIRE_FRAME_BYTES, WireMessage, AuthChallenge,
-// AuthResponse, AuthResult, AuthMessage, PairedDevice, and TransportState
-// moved to protocol-envelope.ts at the 600-line cap split; re-exported so
-// existing import paths remain valid.
-export { MAX_WIRE_FRAME_BYTES } from './protocol-envelope'
+// AuthResponse, AuthResult, AuthFailureReasonCode, AuthMessage, PairedDevice,
+// and TransportState moved to protocol-envelope.ts at the 600-line cap split;
+// re-exported so existing import paths remain valid.
+export {
+  MAX_WIRE_FRAME_BYTES,
+  LAN_AUTH_REASON_SECRET_UNUSABLE,
+} from './protocol-envelope'
 export {
   LAN_CLOSE_UNPAIR,
   LAN_CLOSE_UNKNOWN_DEVICE,
@@ -438,6 +441,7 @@ export type {
   AuthChallenge,
   AuthResponse,
   AuthResult,
+  AuthFailureReasonCode,
   AuthMessage,
   PairedDevice,
   TransportState,

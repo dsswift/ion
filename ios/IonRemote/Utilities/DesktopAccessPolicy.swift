@@ -41,6 +41,16 @@ enum DesktopAccessPolicy {
         record?.status == .verifying
     }
 
+    /// Whether this locked pairing supports codeless LAN repair.
+    static func canRepairPairing(for record: DesktopAccessRecord?) -> Bool {
+        switch (record ?? .startup()).reason {
+        case .wrongAccount, .pairingRejected:
+            return true
+        case .none, .noCredential, .userCancelled, .refreshRejected, .signedOut:
+            return false
+        }
+    }
+
     static func recoveryTitle(for record: DesktopAccessRecord?) -> String {
         switch (record ?? .startup()).reason {
         case .wrongAccount: return "Wrong account for this desktop"
