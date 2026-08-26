@@ -592,6 +592,7 @@
       "parentConversationId",
       "pinned",
       "profileId",
+      "projectDirectory",
       "runRecovery",
       "sessionId",
       "systemHint",

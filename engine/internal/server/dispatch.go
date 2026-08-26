@@ -660,6 +660,9 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "resource_get":
 		s.dispatchResourceGet(conn, cmd)
 
+	case "resolve_new_conversation_defaults":
+		s.dispatchResolveNewConversationDefaults(conn, cmd)
+
 	case "get_enterprise_policy":
 		// Full enterprise policy passthrough (D-004). The engine is the
 		// single authoritative reader of MDM/system-level config sources

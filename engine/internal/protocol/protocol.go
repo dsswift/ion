@@ -153,8 +153,12 @@ type ClientCommand struct {
 	// list_directory: absolute path to enumerate on the engine's host.
 	// Empty or "~" resolves to the engine user's home directory. ShowHidden
 	// includes dotfiles in the result.
-	Path       string `json:"path,omitempty"`
-	ShowHidden bool   `json:"showHidden,omitempty"`
+	Path string `json:"path,omitempty"`
+	// Paths is the batch form of resolve_new_conversation_defaults. It is
+	// additive: Path remains the single-directory form and older clients are
+	// unaffected.
+	Paths      []string `json:"paths,omitempty"`
+	ShowHidden bool     `json:"showHidden,omitempty"`
 
 	// send_prompt: pre-encoded attachments (images, PDF documents) to
 	// attach to the user message as native image/document content blocks.
@@ -548,6 +552,11 @@ var validCommands = map[string]bool{
 	// { newConversationDefaults } in the result data (null when no enterprise
 	// config / no section is present).
 	"get_enterprise_policy": true,
+	// resolve_new_conversation_defaults resolves portable global, project, and
+	// enterprise defaults for Path or Paths without starting a session.
+	"resolve_new_conversation_defaults": true,
+	// resolve_new_conversation_defaults accepts either one path or a batch.
+	// Both fields are optional: no path resolves only global defaults.
 	// get_context_breakdown: on-demand context breakdown outside of an active
 	// run. Reconstructs the full assembly pipeline (system prompt + tools +
 	// conversation messages) for the given session key and emits

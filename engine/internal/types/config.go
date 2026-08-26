@@ -5,9 +5,18 @@ package types
 
 // EngineProfileConfig defines an extension profile stored in settings.
 type EngineProfileConfig struct {
-	ID           string         `json:"id"`
-	Name         string         `json:"name"`
-	ExtensionDir string         `json:"extensionDir"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Extensions is the portable profile payload. A project policy refers to a
+	// profile by Name, while each host resolves that name to its local paths.
+	Extensions []string `json:"extensions,omitempty"`
+	// DefaultMode is the profile's initial permission-mode preference. It mirrors
+	// the Desktop profile record and is additive for existing settings files.
+	DefaultMode string `json:"defaultMode,omitempty"`
+	// ExtensionDir is retained for settings files written by older clients.
+	// New profiles use Extensions; a non-empty ExtensionDir is treated as its
+	// one-entry equivalent during profile resolution.
+	ExtensionDir string         `json:"extensionDir,omitempty"`
 	Model        string         `json:"model,omitempty"`
 	Options      map[string]any `json:"options,omitempty"`
 }
@@ -20,6 +29,17 @@ type HookDef struct {
 	Handler string `json:"handler"`
 }
 
+// ManagedProjectPolicy declares an enterprise-owned Project record. Directory is
+// the engine-host path; ProfileName is portable and ProfileLocked makes the
+// selected profile mandatory at start_session.
+type ManagedProjectPolicy struct {
+	Directory     string `json:"directory"`
+	Name          string `json:"name,omitempty"`
+	Default       bool   `json:"default,omitempty"`
+	ProfileName   string `json:"profileName,omitempty"`
+	ProfileLocked bool   `json:"profileLocked,omitempty"`
+}
+
 // NewConversationDefaultsPolicy specifies default working directory and engine
 // profile for new conversations. Communicated via enterprise config so
 // administrators can set organisation-wide defaults that clients honour when the
@@ -30,12 +50,22 @@ type HookDef struct {
 // and defaultEngineProfileId preferences so the wire shape is consistent.
 // Empty EngineProfileId means "plain conversation" (no extension loaded).
 type NewConversationDefaultsPolicy struct {
-	BaseDirectory   string `json:"baseDirectory,omitempty"`
+	BaseDirectory string `json:"baseDirectory,omitempty"`
+	// ProfileName is portable. Project and enterprise config can name a profile
+	// without committing a machine-local profile ID into a repository.
+	ProfileName string `json:"profileName,omitempty"`
+	// ProfileLocked makes the resolved profile an engine-enforced session
+	// constraint. It is independent from BaseDirectory so policy can lock only
+	// the profile choice.
+	ProfileLocked bool `json:"profileLocked,omitempty"`
+	// Projects are enterprise-owned Project records. They are exposed to clients
+	// so users can see and select the managed project, but client settings cannot
+	// remove or modify them.
+	Projects []ManagedProjectPolicy `json:"projects,omitempty"`
+	// EngineProfileId and Locked are retained compatibility fields for clients
+	// and managed config written before portable profile names existed.
 	EngineProfileId string `json:"engineProfileId,omitempty"`
-	// Locked, when true, prevents the user from overriding these defaults
-	// in the client's settings UI. Clients enforce this; the engine itself is
-	// stateless with respect to user preferences.
-	Locked bool `json:"locked,omitempty"`
+	Locked          bool   `json:"locked,omitempty"`
 }
 
 // EnterpriseConfig represents MDM/system-level sealed configuration.
@@ -246,19 +276,23 @@ type EngineRuntimeConfig struct {
 	// Plugins holds the user-layer plugin policy (force-installs, allow/deny
 	// lists). Enterprise policy layers on top via PluginAllowlist /
 	// PluginDenylist / PluginForceInstalled on EnterpriseConfig.
-	Plugins      *PluginsConfig        `json:"plugins,omitempty"`
-	Profiles     []EngineProfileConfig `json:"profiles,omitempty"`
-	Permissions  *PermissionPolicy     `json:"permissions,omitempty"`
-	Auth         *AuthConfig           `json:"auth,omitempty"`
-	Network      *NetworkConfig        `json:"network,omitempty"`
-	Telemetry    *TelemetryConfig      `json:"telemetry,omitempty"`
-	Compaction   *CompactionConfig     `json:"compaction,omitempty"`
-	Security     *SecurityConfig       `json:"security,omitempty"`
-	Enterprise   *EnterpriseConfig     `json:"enterprise,omitempty"`
-	FeatureFlags *FeatureFlagsConfig   `json:"featureFlags,omitempty"`
-	Relay        *RelayConfig          `json:"relay,omitempty"`
-	Timeouts     *TimeoutsConfig       `json:"timeouts,omitempty"`
-	WebSearch    *WebSearchConfig      `json:"webSearch,omitempty"`
+	Plugins  *PluginsConfig        `json:"plugins,omitempty"`
+	Profiles []EngineProfileConfig `json:"profiles,omitempty"`
+	// NewConversationDefaults supplies global or project defaults. Project
+	// engine.json overrides the global block; enterprise policy is applied by
+	// EnforceEnterprise after both layers merge.
+	NewConversationDefaults *NewConversationDefaultsPolicy `json:"newConversationDefaults,omitempty"`
+	Permissions             *PermissionPolicy              `json:"permissions,omitempty"`
+	Auth                    *AuthConfig                    `json:"auth,omitempty"`
+	Network                 *NetworkConfig                 `json:"network,omitempty"`
+	Telemetry               *TelemetryConfig               `json:"telemetry,omitempty"`
+	Compaction              *CompactionConfig              `json:"compaction,omitempty"`
+	Security                *SecurityConfig                `json:"security,omitempty"`
+	Enterprise              *EnterpriseConfig              `json:"enterprise,omitempty"`
+	FeatureFlags            *FeatureFlagsConfig            `json:"featureFlags,omitempty"`
+	Relay                   *RelayConfig                   `json:"relay,omitempty"`
+	Timeouts                *TimeoutsConfig                `json:"timeouts,omitempty"`
+	WebSearch               *WebSearchConfig               `json:"webSearch,omitempty"`
 	// Shell controls how the Bash tool selects the shell used to execute
 	// commands. Pointer so engine.json can fully omit the block and inherit
 	// the default (non-login bash -c). When Shell.UseLoginShell is true, the
@@ -314,7 +348,7 @@ type EngineRuntimeConfig struct {
 	// omit the block entirely (nil = recovery off, the historical behavior).
 	// See types.RunRecoveryConfig.
 	RunRecovery *RunRecoveryConfig `json:"runRecovery,omitempty"`
-	LogLevel        string                 `json:"logLevel,omitempty"` // "trace", "debug", "info", "warn", "error"
+	LogLevel    string             `json:"logLevel,omitempty"` // "trace", "debug", "info", "warn", "error"
 	// Logging controls structured log output format, destination, and
 	// rotation. Pointer so engine.json can omit the block and inherit the
 	// compiled defaults. See types.LoggingConfig.

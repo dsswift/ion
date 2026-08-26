@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	ionconfig "github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/permissions"
@@ -29,6 +30,12 @@ type StartSessionResult struct {
 
 // StartSession creates a new session with the given config.
 func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSessionResult, error) {
+	var err error
+	config, err = ionconfig.ApplyNewConversationDefaults(config)
+	if err != nil {
+		utils.LogWithFields(utils.LevelWarn, "session", "startsession rejected by locked profile policy", map[string]any{"key": key, "working_directory": config.WorkingDirectory, "error": err.Error()})
+		return nil, err
+	}
 	utils.LogWithFields(utils.LevelInfo, "session", "startsession", map[string]any{"key": key, "working_directory": config.WorkingDirectory, "count": len(config.Extensions)})
 	m.mu.Lock()
 

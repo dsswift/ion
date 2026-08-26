@@ -123,6 +123,12 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 	if len(src.Profiles) > 0 {
 		dst.Profiles = src.Profiles
 	}
+	// NewConversationDefaults is an atomic policy block. A more-specific layer
+	// either supplies its complete defaults or leaves the lower layer intact.
+	if src.NewConversationDefaults != nil {
+		copy := *src.NewConversationDefaults
+		dst.NewConversationDefaults = &copy
+	}
 
 	// Optional fields: override if set
 	if src.Permissions != nil {

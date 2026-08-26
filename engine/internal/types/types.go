@@ -43,6 +43,10 @@ type EngineConfig struct {
 	ProfileID        string          `json:"profileId"`
 	Extensions       []string        `json:"extensions"`
 	WorkingDirectory string          `json:"workingDirectory"`
+	// ProjectDirectory identifies the source Project that supplies project-level
+	// policy when WorkingDirectory is a worktree. Empty preserves the historical
+	// working-directory lookup.
+	ProjectDirectory string          `json:"projectDirectory,omitempty"`
 	SessionID        string          `json:"sessionId,omitempty"`
 	Model            string          `json:"model,omitempty"`
 	MaxTokens        int             `json:"maxTokens,omitempty"`
