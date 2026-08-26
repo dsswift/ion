@@ -24,7 +24,7 @@
  */
 
 import { log as _log } from './logger'
-import { sessionPlane, engineBridge } from './state'
+import { engineBridge } from './state'
 import type { SendPromptArgs } from './engine-bridge-prompts'
 import { type ParsedSlash } from './slash-parse'
 import { awaitCommandResult, type CommandResult } from './command-await'

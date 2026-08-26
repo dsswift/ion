@@ -64,7 +64,7 @@ export function NewConversationPicker({ initialDirectory, initialUseWorktree = f
   useEffect(() => {
     rInfo('new-conversation-picker', 'opened', { initial_view: view, explicit_worktree: initialUseWorktree, has_default_project: !!defaultProject(registry, managedProjects) })
     inputRef.current?.focus()
-  }, []) // First paint records the invocation context.
+  }, [initialUseWorktree, managedProjects, registry, view])
 
   useEffect(() => { setHighlighted(0) }, [view, query])
 
@@ -83,7 +83,7 @@ export function NewConversationPicker({ initialDirectory, initialUseWorktree = f
       rError('new-conversation-picker', 'project default resolution failed', { project_path: workspace.projectDirectory, error: String(error) })
     })
     return () => { active = false }
-  }, [workspace?.projectDirectory])
+  }, [workspace])
 
   useEffect(() => {
     if (view !== 'branches' || !workspace) return
