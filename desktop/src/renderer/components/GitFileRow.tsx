@@ -58,7 +58,7 @@ export function FileRow({
       onClick={(e) => {
         if (e.metaKey) {
           e.preventDefault()
-          onOpenFile(directory + '/' + file.path).catch((err) => rError('git-file-row', 'open file failed', { error: String(err) }))
+          onOpenFile(directory + '/' + file.path, e).catch((err) => rError('git-file-row', 'open file failed', { error: String(err) }))
           return
         }
         onClick(file)

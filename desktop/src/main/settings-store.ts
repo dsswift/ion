@@ -113,6 +113,9 @@ export const SETTINGS_DEFAULTS = {
   studioShortcut: "Alt+Shift+Space",
   // Footstep-heat overlay on the Studio window canvas (traffic visualization).
   studioHeat: false,
+  // Enables client-side Playwright browser tools when Studio is active. It
+  // never closes visible browser tabs or deletes their persistent session.
+  studioPlaywrightEnabled: true,
   // Studio shell geometry. Pane visibility is owned by its content: the bottom
   // terminal uses per-conversation session-store state, and surface visibility
   // is saved with each conversation in studioSurface.

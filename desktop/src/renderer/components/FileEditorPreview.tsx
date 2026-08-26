@@ -6,6 +6,7 @@ import { useColors } from '../theme'
 import { useSessionStore, FileEditorTab } from '../stores/sessionStore'
 import { EDITABLE_EXTS } from '../hooks/useNavigableLinks'
 import { REMARK_PLUGINS } from './FileEditorShared'
+import { openClickedLink } from '../lib/open-link'
 
 interface FileEditorPreviewProps {
   dir: string
@@ -91,11 +92,11 @@ export function FileEditorPreview({ dir, tabId, activeFile }: FileEditorPreviewP
         type="button"
         className="underline decoration-dotted underline-offset-2 cursor-pointer"
         style={{ color: colors.accent }}
-        onClick={() => {
+        onClick={(event) => {
           if (!href) return
           const h = String(href)
           if (h.startsWith('http://') || h.startsWith('https://')) {
-            void window.ion.openExternal(h)
+            openClickedLink(h, event, 'file-preview')
             return
           }
           const fullPath = resolveRelativePath(baseDir, h)
@@ -103,7 +104,7 @@ export function FileEditorPreview({ dir, tabId, activeFile }: FileEditorPreviewP
           if (EDITABLE_EXTS.has(ext)) {
             useSessionStore.getState().openFileInEditor(dir, tabId, fullPath, { insertAfterActive: true })
           } else {
-            void window.ion.openExternal(h)
+            openClickedLink(h, event, 'file-preview')
           }
         }}
       >

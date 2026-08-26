@@ -7,6 +7,7 @@ import remarkGfm from 'remark-gfm'
 import { darkColors } from '../../theme/palette-dark'
 import { remarkNavigableLinks } from '../../hooks/useNavigableLinks'
 import { makeMarkdownComponents, parseFenceMeta, extractCodeText } from './markdownRenderers'
+import { registerContentRouter } from '../../lib/file-open-router'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -105,7 +106,9 @@ describe('makeMarkdownComponents', () => {
     act(() => {
       chip.dispatchEvent(new MouseEvent('click', { bubbles: true, metaKey: true }))
     })
-    expect(onOpenFile).toHaveBeenCalledWith('src/foo.ts')
+    // The click now travels with the path so ⇧ (source) and ⌥ (native) reach
+    // the open-intent rules; dropping it is what made the modifiers inert.
+    expect(onOpenFile).toHaveBeenCalledWith('src/foo.ts', expect.objectContaining({ metaKey: true }))
   })
 
   // Regression guard for the dead-`text`-component bug: a `text` entry in
@@ -124,7 +127,9 @@ describe('makeMarkdownComponents', () => {
     act(() => {
       chip.dispatchEvent(new MouseEvent('click', { bubbles: true, metaKey: true }))
     })
-    expect(onOpenFile).toHaveBeenCalledWith('src/foo.ts')
+    // The click now travels with the path so ⇧ (source) and ⌥ (native) reach
+    // the open-intent rules; dropping it is what made the modifiers inert.
+    expect(onOpenFile).toHaveBeenCalledWith('src/foo.ts', expect.objectContaining({ metaKey: true }))
   })
 
   it('renders external links with a favicon when the IPC yields one, and opens via openExternal', async () => {
@@ -137,6 +142,55 @@ describe('makeMarkdownComponents', () => {
     const btn = el.querySelector('button')!
     act(() => { btn.click() })
     expect(openExternal).toHaveBeenCalledWith('https://unique-favicon-host.example')
+  })
+
+  it('routes a cmd-clicked external link into the Studio surface browser', async () => {
+    // The plain-click case above must keep reaching the OS browser; this is the
+    // other half of that rule. Registering a router stands in for Studio, so
+    // the assertion covers the real seam rather than a window-role branch.
+    const openUrl = vi.fn(() => true)
+    const release = registerContentRouter({
+      openTextFile: vi.fn(),
+      openImage: vi.fn(),
+      openHtml: vi.fn(),
+      openGitDiff: vi.fn(() => true),
+      openUrl,
+    })
+    try {
+      getFavicon.mockResolvedValue(null)
+      const el = renderMarkdown('[site](https://cmd-click-host.example)')
+      await flush()
+      const btn = el.querySelector('button')!
+      act(() => { btn.dispatchEvent(new MouseEvent('click', { bubbles: true, metaKey: true })) })
+      expect(openUrl).toHaveBeenCalledWith('https://cmd-click-host.example')
+      expect(openExternal).not.toHaveBeenCalled()
+    } finally {
+      release()
+    }
+  })
+
+  it('escapes to the default browser on a cmd-option-click', async () => {
+    // The other half of the routed case above, through a real rendered anchor:
+    // holding ⌥ must reach the OS even though Studio has a router installed.
+    const openUrl = vi.fn(() => true)
+    const release = registerContentRouter({
+      openTextFile: vi.fn(),
+      openImage: vi.fn(),
+      openHtml: vi.fn(),
+      openGitDiff: vi.fn(() => true),
+      openUrl,
+    })
+    try {
+      getFavicon.mockResolvedValue(null)
+      const el = renderMarkdown('[site](https://escape-host.example)')
+      await flush()
+      const btn = el.querySelector('button')!
+      act(() => { btn.dispatchEvent(new MouseEvent('click', { bubbles: true, metaKey: true, altKey: true })) })
+      expect(openUrl).not.toHaveBeenCalled()
+      expect(openExternal).toHaveBeenCalledWith('https://escape-host.example')
+    } finally {
+      release()
+    }
   })
 
   it('falls back to the Globe glyph when the favicon IPC returns null', async () => {

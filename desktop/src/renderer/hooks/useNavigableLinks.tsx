@@ -3,7 +3,9 @@ import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
 import { getFileIcon } from '../components/FileExplorerIcons'
 import { rDebug, rWarn } from '../rendererLogger'
+import { openClickedLink } from '../lib/open-link'
 import { surfaceRouter } from '../lib/file-open-router'
+import { fileOpenIntent, isRenderableHtml, type FileClickModifiers } from '../lib/open-file-intent'
 import { segmentText, EDITABLE_EXTS, type TextSegment } from './link-segments'
 import { readNavigableKind } from './remarkNavigableLinks'
 
@@ -50,8 +52,10 @@ export const LinkSegment = React.memo(function LinkSegment({
   asChip,
 }: {
   segment: TextSegment
-  onOpenFile: (path: string) => void
-  onOpenUrl: (url: string) => void
+  /** Receives the click so ⇧ (source) and ⌥ (native) can be honoured. */
+  onOpenFile: (path: string, event?: FileClickModifiers) => void
+  /** Receives the click so ⌥ can escape to the operator's own browser. */
+  onOpenUrl: (url: string, event?: { metaKey?: boolean; ctrlKey?: boolean; altKey?: boolean }) => void
   /** File segments render as an always-visible chip (icon + monospace pill)
    * instead of plain text that only reveals itself on CMD. URLs and plain
    * segments are unaffected. */
@@ -88,7 +92,7 @@ export const LinkSegment = React.memo(function LinkSegment({
           if (!e.metaKey) return
           e.preventDefault()
           e.stopPropagation()
-          onOpenFile(segment.value)
+          onOpenFile(segment.value, e)
         }}
       >
         <ChipIcon size={11} color={colors[iconInfo.colorKey]} aria-hidden="true" />
@@ -112,8 +116,8 @@ export const LinkSegment = React.memo(function LinkSegment({
         if (!e.metaKey) return
         e.preventDefault()
         e.stopPropagation()
-        if (isUrl) onOpenUrl(segment.value)
-        else onOpenFile(segment.value)
+        if (isUrl) onOpenUrl(segment.value, e)
+        else onOpenFile(segment.value, e)
       }}
     >
       {segment.value}
@@ -147,6 +151,21 @@ export const LinkSegment = React.memo(function LinkSegment({
 
 // ─── Hook: returns navigable text markdown component + file/url openers ───
 
+/** Hand a file to the operating system's default application for its type. */
+async function openNatively(resolved: string): Promise<void> {
+  rDebug('navigable-links', 'opening file in native application', { resolved })
+  try {
+    const result = await window.ion.fsOpenNative(resolved)
+    if (!result.ok) {
+      rWarn('navigable-links', 'native file open rejected', { resolved, error: result.error ?? 'unknown error' })
+      return
+    }
+    rDebug('navigable-links', 'native file open succeeded', { resolved })
+  } catch (err) {
+    rWarn('navigable-links', 'native file open failed', { resolved, error: String(err) })
+  }
+}
+
 export function useNavigableText() {
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const workingDir = useSessionStore((s) => {
@@ -154,7 +173,7 @@ export function useNavigableText() {
     return tab?.workingDirectory || '~'
   })
 
-  const onOpenFile = useCallback(async (path: string) => {
+  const onOpenFile = useCallback(async (path: string, event?: FileClickModifiers) => {
     const homeDir = useSessionStore.getState().staticInfo?.homePath || '/Users/' + (process.env.USER || 'user')
     const expanded = path.startsWith('~/') ? homeDir + path.slice(1) : path
     const resolved = expanded.startsWith('/') ? expanded : workingDir + '/' + expanded
@@ -173,6 +192,30 @@ export function useNavigableText() {
     }
     rDebug('navigable-links', 'file target exists', { raw_path: path, resolved })
     const ext = resolved.includes('.') ? '.' + resolved.split('.').pop()!.toLowerCase() : ''
+    const intent = fileOpenIntent(event)
+
+    // ⌥⌘ hands the file to the operating system, whatever it is. Same meaning
+    // as ⌥⌘ on a web link: "not in Ion, in my own application."
+    if (intent === 'native') {
+      await openNatively(resolved)
+      return
+    }
+
+    // ⌘ on an HTML file RENDERS it, matching what the file explorer has always
+    // done. Before this the same file opened as source here and as a page
+    // there, which is the inconsistency this resolves. ⇧⌘ still reads source.
+    if (intent === 'view' && isRenderableHtml(resolved)) {
+      const router = surfaceRouter()
+      if (router) {
+        rDebug('navigable-links', 'opening html preview in Studio surface', { resolved })
+        router.openHtml(resolved)
+        return
+      }
+      // The Overlay has no browser surface, so source is the honest fallback
+      // rather than silently doing nothing.
+      rDebug('navigable-links', 'no surface router; opening html as source', { resolved })
+    }
+
     if (EDITABLE_EXTS.has(ext) && activeTabId) {
       const router = surfaceRouter()
       if (router) {
@@ -189,21 +232,14 @@ export function useNavigableText() {
       return
     }
 
-    rDebug('navigable-links', 'opening file in native application', { resolved })
-    try {
-      const result = await window.ion.fsOpenNative(resolved)
-      if (!result.ok) {
-        rWarn('navigable-links', 'native file open rejected', { resolved, error: result.error ?? 'unknown error' })
-        return
-      }
-      rDebug('navigable-links', 'native file open succeeded', { resolved })
-    } catch (err) {
-      rWarn('navigable-links', 'native file open failed', { resolved, error: String(err) })
-    }
+    await openNatively(resolved)
   }, [activeTabId, workingDir])
 
-  const onOpenUrl = useCallback((url: string) => {
-    window.ion.openExternal(url).catch((err) => rWarn('navigable-links', 'openExternal failed', { url, error: String(err) }))
+  const onOpenUrl = useCallback((url: string, event?: { metaKey?: boolean; ctrlKey?: boolean; altKey?: boolean }) => {
+    // The real click is forwarded rather than a synthesized { metaKey: true }.
+    // Callers are already behind a ⌘ gate, but ⌥ has to stay visible here or
+    // the escape-to-the-default-browser gesture would be silently swallowed.
+    openClickedLink(url, event ?? { metaKey: true }, 'navigable-links')
   }, [])
 
   return { onOpenFile, onOpenUrl }
@@ -235,8 +271,9 @@ export const NavigableLink = React.memo(function NavigableLink({
   children?: React.ReactNode
   /** Link color for a real markdown link (per-surface accent). */
   color: string
-  onOpenFile: (path: string) => void
-  onOpenUrl: (url: string) => void
+  /** Receives the click so ⇧ (source) and ⌥ (native) can be honoured. */
+  onOpenFile: (path: string, event?: FileClickModifiers) => void
+  onOpenUrl: (url: string, event?: { metaKey?: boolean; ctrlKey?: boolean; altKey?: boolean }) => void
   /** Render a detected file path as an always-visible chip (see LinkSegment)
    * instead of plain text that only reveals itself on CMD. URLs are
    * unaffected — they keep the cmd-gated span treatment either way. */
@@ -272,8 +309,8 @@ export const NavigableLink = React.memo(function NavigableLink({
           if (!e.metaKey) return
           e.preventDefault()
           e.stopPropagation()
-          if (navigableKind === 'url') onOpenUrl(target)
-          else onOpenFile(target)
+          if (navigableKind === 'url') onOpenUrl(target, e)
+          else onOpenFile(target, e)
         }}
       >
         {children}
@@ -311,8 +348,8 @@ export const NavigableLink = React.memo(function NavigableLink({
       type="button"
       className="underline decoration-dotted underline-offset-2 cursor-pointer"
       style={{ color }}
-      onClick={() => {
-        if (href) void window.ion.openExternal(String(href)).catch((err) => rWarn('navigable-links', 'openExternal failed', { error: String(err) }))
+      onClick={(event) => {
+        if (href) openClickedLink(String(href), event, 'navigable-links')
       }}
     >
       {children}
@@ -335,8 +372,9 @@ function extractLinkText(children: React.ReactNode): string {
 export const NavigableCode = React.memo(function NavigableCode({ children, className, onOpenFile, onOpenUrl, chipFiles, ...props }: {
   children: any
   className?: string
-  onOpenFile: (path: string) => void
-  onOpenUrl: (url: string) => void
+  /** Receives the click so ⇧ (source) and ⌥ (native) can be honoured. */
+  onOpenFile: (path: string, event?: FileClickModifiers) => void
+  onOpenUrl: (url: string, event?: { metaKey?: boolean; ctrlKey?: boolean; altKey?: boolean }) => void
   /** Render detected file paths as always-visible chips (see LinkSegment). */
   chipFiles?: boolean
   [key: string]: any

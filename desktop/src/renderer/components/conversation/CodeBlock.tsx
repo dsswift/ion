@@ -1,3 +1,4 @@
+import type { FileClickModifiers } from '../../lib/open-file-intent'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowsLeftRight, TextAlignLeft } from '@phosphor-icons/react'
 import type { BundledLanguage } from 'shiki'
@@ -34,7 +35,7 @@ export interface CodeBlockProps {
   /** Filename from fence meta (```ts title=src/foo.ts). Wins over fenceLang
    * for both the badge and language resolution. */
   fileName?: string
-  onOpenFile?: (path: string) => void
+  onOpenFile?: (path: string, event?: FileClickModifiers) => void
   onOpenUrl?: (url: string) => void
 }
 
@@ -178,7 +179,7 @@ const CodeLine = React.memo(function CodeLine({
   onOpenUrl,
 }: {
   tokens: CodeToken[]
-  onOpenFile?: (path: string) => void
+  onOpenFile?: (path: string, event?: FileClickModifiers) => void
   onOpenUrl?: (url: string) => void
 }) {
   return (
@@ -198,7 +199,7 @@ function TokenSpan({
   onOpenUrl,
 }: {
   token: CodeToken
-  onOpenFile?: (path: string) => void
+  onOpenFile?: (path: string, event?: FileClickModifiers) => void
   onOpenUrl?: (url: string) => void
 }) {
   // Linkify only when openers exist and the token plausibly contains a path

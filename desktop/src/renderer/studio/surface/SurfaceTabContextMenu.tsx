@@ -1,6 +1,7 @@
 /**
  * SurfaceTabContextMenu — right-click menu for a surface tab pill:
- * Close / Close Others / Close to the Right / Copy Path (file/preview).
+ * Link agent (browser) / Close / Close Others / Close to the Right /
+ * Copy Path (file/preview).
  */
 import React, { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
@@ -88,9 +89,23 @@ export function SurfaceTabContextMenu({
   const pinnable = isPinnableSingleton(tab)
   const pinned = pinnable && store.getState().pinnedTabs.includes(tab.id)
   const filePath = tab.kind === 'file' || tab.kind === 'preview' ? tab.filePath : null
+  // The agent link is the operator's to move. Offered only on a browser tab
+  // that is not already linked, so the menu never contains a no-op — and never
+  // on a non-browser tab, which the agent's tools cannot drive at all.
+  const conversationId = store.getState().currentConversationId
+  const linkedInstanceId = conversationId
+    ? (store.getState().conversations[conversationId]?.agentBrowserInstanceId ?? null)
+    : null
+  const canLinkAgent = tab.kind === 'browser' && tab.instanceId !== linkedInstanceId
 
   type Item = { label: string; action: () => void; disabled?: boolean } | 'separator'
   const items: Item[] = [
+    ...(canLinkAgent && tab.kind === 'browser'
+      ? ([
+          { label: 'Link agent to this tab', action: () => exec(() => store.getState().linkAgentBrowser(tab.instanceId)) },
+          'separator',
+        ] as Item[])
+      : []),
     ...(pinnable ? [{ label: pinned ? 'Unpin' : 'Pin', action: () => exec(() => pinned ? store.getState().unpinTab(tab.id) : store.getState().pinTab(tab.id)) }] as Item[] : []),
     { label: 'Close', action: () => exec(() => store.getState().closeTab(tab.id)) },
     { label: 'Close Others', action: () => exec(() => store.getState().closeOthers(tab.id)) },

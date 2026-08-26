@@ -7,6 +7,9 @@ import { usePreferencesStore } from '../preferences'
 import { useSessionStore } from '../stores/sessionStore'
 import { LINK_RE, isCmdHeld, EDITABLE_EXTS } from '../hooks/useNavigableLinks'
 import { rDebug, rWarn } from '../rendererLogger'
+import { openClickedLink } from '../lib/open-link'
+import { fileOpenIntent, isRenderableHtml, type FileClickModifiers } from '../lib/open-file-intent'
+import { surfaceRouter } from '../lib/file-open-router'
 import '@xterm/xterm/css/xterm.css'
 
 interface TerminalEntry {
@@ -120,9 +123,12 @@ function registerTerminalLinks(terminal: Terminal, cwd: string, tabId: string): 
           activate(event: MouseEvent, linkText: string) {
             if (!event.metaKey) return
             if (isUrl) {
-              void window.ion.openExternal(linkText).catch((err) => rWarn('terminal', 'open external failed', { error: String(err) }))
+              // The real event is forwarded, not a synthesized one: the ⌘ gate
+              // above satisfies the surface route, and ⌥ still reaches the
+              // dispatcher as the escape to the operator's own browser.
+              openClickedLink(linkText, event, 'terminal')
             } else {
-              void openTerminalFile(linkText, cwd, tabId).catch((err) => rWarn('terminal', 'open file failed', { error: String(err) }))
+              void openTerminalFile(linkText, cwd, tabId, event).catch((err) => rWarn('terminal', 'open file failed', { error: String(err) }))
             }
           },
           hover() {
@@ -144,7 +150,7 @@ function registerTerminalLinks(terminal: Terminal, cwd: string, tabId: string): 
   return () => disposable.dispose()
 }
 
-async function openTerminalFile(path: string, cwd: string, tabId: string): Promise<void> {
+async function openTerminalFile(path: string, cwd: string, tabId: string, event?: FileClickModifiers): Promise<void> {
   const homeDir = useSessionStore.getState().staticInfo?.homePath
     || '/Users/' + (process.env.USER || 'user')
   const expanded = path.startsWith('~/') ? homeDir + path.slice(1) : path
@@ -156,8 +162,28 @@ async function openTerminalFile(path: string, cwd: string, tabId: string): Promi
   }
   rDebug('terminal.link', 'opening file', { resolved })
   const ext = resolved.includes('.') ? '.' + resolved.split('.').pop()!.toLowerCase() : ''
+  const intent = fileOpenIntent(event)
+
+  // Same three gestures as every other surface: ⌘ views, ⇧⌘ reads source,
+  // ⌥⌘ hands it to the operating system. A terminal path used to always open
+  // the editor, so an .html file behaved differently here than in the file
+  // explorer.
+  if (intent === 'native') {
+    void window.ion.fsOpenNative(resolved).catch((err) => rWarn('terminal', 'open native failed', { error: String(err) }))
+    return
+  }
+  if (intent === 'view' && isRenderableHtml(resolved)) {
+    const router = surfaceRouter()
+    if (router) {
+      router.openHtml(resolved)
+      return
+    }
+    rDebug('terminal.link', 'no surface router; opening html as source', { resolved })
+  }
   if (EDITABLE_EXTS.has(ext)) {
-    useSessionStore.getState().openFileInEditor(cwd, tabId, resolved)
+    const router = surfaceRouter()
+    if (router) router.openTextFile(cwd, tabId, resolved)
+    else useSessionStore.getState().openFileInEditor(cwd, tabId, resolved)
   } else {
     void window.ion.fsOpenNative(resolved).catch((err) => rWarn('terminal', 'open native failed', { error: String(err) }))
   }

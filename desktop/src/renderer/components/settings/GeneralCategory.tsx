@@ -28,6 +28,10 @@ export function GeneralCategory() {
   const setAiGeneratedTitles = usePreferencesStore((s) => s.setAiGeneratedTitles)
   const studioSurfaceSwitchMode = usePreferencesStore((s) => s.studioSurfaceSwitchMode)
   const setStudioSurfaceSwitchMode = usePreferencesStore((s) => s.setStudioSurfaceSwitchMode)
+  const browserPreviewNetworkShield = usePreferencesStore((s) => s.browserPreviewNetworkShield)
+  const studioPlaywrightEnabled = usePreferencesStore((s) => s.studioPlaywrightEnabled)
+  const setStudioPlaywrightEnabled = usePreferencesStore((s) => s.setStudioPlaywrightEnabled)
+  const setBrowserPreviewNetworkShield = usePreferencesStore((s) => s.setBrowserPreviewNetworkShield)
 
   return (
     <>
@@ -114,6 +118,20 @@ export function GeneralCategory() {
           ))}
         </div>
       </SettingSection>
+
+      <SettingToggle
+        label="Browser Preview Network Shield"
+        description="Block network requests from browser previews until you allow them in that preview."
+        checked={browserPreviewNetworkShield}
+        onChange={setBrowserPreviewNetworkShield}
+      />
+
+      <SettingToggle
+        label="Built-in Playwright browser tools"
+        description="Agents in Studio can operate the Chromium tabs in their conversation's Surface panel. Turning this off removes the tools without closing tabs or signing you out."
+        checked={studioPlaywrightEnabled}
+        onChange={setStudioPlaywrightEnabled}
+      />
 
       <SettingToggle
         label="Bash Command Entry"

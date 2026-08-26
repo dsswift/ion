@@ -12,13 +12,19 @@ import { resolveRegisteredWorktree } from '../worktree-registration'
 
 export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
-    resumeSession: async (sessionId, title, projectPath, customTitle, encodedDir) => {
+    resumeSession: async (sessionId, title, projectPath, customTitle, encodedDir, adoptTabId) => {
       const defaultDir = projectPath || get().staticInfo?.homePath || '~'
       // HistoryPicker and boot restoration both enter here. Resolve before either
       // success or fallback tab is written so first render has correct repo identity.
       const worktree = await resolveRegisteredWorktree(defaultDir)
       try {
-        const { tabId } = await window.ion.createTab()
+        // Boot restoration passes the persisted id and ADOPTS it; everything
+        // keyed by conversation id (the Studio Surface's browser and terminal
+        // tabs, most visibly) survives only if the id is invariant across
+        // restarts. Minting a fresh one here is what orphaned it.
+        const { tabId } = adoptTabId
+          ? await window.ion.adoptTab(adoptTabId)
+          : await window.ion.createTab()
 
         // One attempt, no retry ladder. An empty history is a VALID answer — a
         // brand-new conversation has no rows on disk — not a transient state
@@ -155,6 +161,8 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
     resumeSessionWithChain: async (sessionId, historicalSessionIds, title, projectPath, customTitle, encodedDir) => {
       const defaultDir = projectPath || get().staticInfo?.homePath || '~'
       try {
+        // No adopt here: this is reached only from the History Picker's chain
+        // path, where opening a past conversation is genuinely a new tab.
         const { tabId } = await window.ion.createTab()
 
         const allMessages: Message[] = []

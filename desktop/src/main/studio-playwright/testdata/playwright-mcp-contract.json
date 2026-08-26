@@ -1,0 +1,208 @@
+{
+  "$comment": [
+    "Playwright MCP tool-contract compatibility fixture.",
+    "",
+    "WHY THIS FILE EXISTS: Ion's built-in Studio browser tools replaced an",
+    "externally-installed @playwright/mcp server. Agents already know that",
+    "server's tool names, argument names, and argument semantics, so Ion's",
+    "tools keep the same by-name contract wherever the capability overlaps.",
+    "This fixture is the checked-in record of that contract; a test compares",
+    "Ion's declared schemas against it so a drift becomes a failing test",
+    "instead of a silently unfamiliar tool surface.",
+    "",
+    "HOW IT WAS PRODUCED: transcribed by hand from the published tool",
+    "reference of the source package named in `source` below (npm pack, then",
+    "the generated Tools section of its README). Nothing imports the MCP",
+    "package at build or test time -- it is not an Ion dependency.",
+    "",
+    "REFRESHING: bump `source.version`, re-transcribe, and update the Ion",
+    "schemas in the same change. Never edit one side alone."
+  ],
+  "source": {
+    "package": "@playwright/mcp",
+    "version": "0.0.79",
+    "retrievedFrom": "npm registry (latest stable at transcription time)"
+  },
+  "notes": {
+    "ownership": [
+      "The MCP server exposes multi-tab addressing because it owns a whole",
+      "browser. Ion exposes exactly ONE Agent-linked browser tab per",
+      "conversation, and ownership is injected by the tool-gate responder",
+      "(session key, cwd, origin) rather than accepted as model input. So Ion",
+      "deliberately has NO conversationId / instanceId / tab-selector",
+      "arguments in any schema. That is an intentional narrowing, not drift."
+    ],
+    "ionExtensions": [
+      "browser_emulate: device-registry presets plus explicit viewport,",
+      "  screen, DPR, touch, UA, locale, timezone, orientation, media,",
+      "  geolocation, offline, and javaScriptEnabled overrides, and reset.",
+      "browser_scroll: absolute and element-aligned scrolling (the MCP server",
+      "  only offers coordinate mouse tools).",
+      "browser_take_screenshot.clip: explicit viewport-relative region.",
+      "browser_network_requests.all: lifetime history (default stays the",
+      "  current navigation, matching the MCP server).",
+      "browser_tabs.set_session_mode: Ion's shared/isolated browser session",
+      "  policy, governed by call origin."
+    ],
+    "omitted": [
+      "browser_run_code_unsafe: deliberately NOT implemented. It executes",
+      "  arbitrary JavaScript in the Playwright server process and is",
+      "  RCE-equivalent; in Ion that process is the desktop main process.",
+      "  browser_evaluate covers the legitimate need inside the page sandbox."
+    ]
+  },
+  "tools": {
+    "browser_click": {
+      "readOnly": false,
+      "parameters": {
+        "element": { "type": "string", "required": false },
+        "target": { "type": "string", "required": true },
+        "doubleClick": { "type": "boolean", "required": false },
+        "button": { "type": "string", "required": false },
+        "modifiers": { "type": "array", "required": false }
+      }
+    },
+    "browser_close": { "readOnly": false, "parameters": {} },
+    "browser_console_messages": {
+      "readOnly": true,
+      "parameters": {
+        "level": { "type": "string", "required": true, "default": "info" },
+        "all": { "type": "boolean", "required": false, "default": false },
+        "filename": { "type": "string", "required": false }
+      }
+    },
+    "browser_drag": {
+      "readOnly": false,
+      "parameters": {
+        "startElement": { "type": "string", "required": false },
+        "startTarget": { "type": "string", "required": true },
+        "endElement": { "type": "string", "required": false },
+        "endTarget": { "type": "string", "required": true }
+      }
+    },
+    "browser_evaluate": {
+      "readOnly": false,
+      "parameters": {
+        "element": { "type": "string", "required": false },
+        "target": { "type": "string", "required": false },
+        "function": { "type": "string", "required": true },
+        "filename": { "type": "string", "required": false }
+      }
+    },
+    "browser_file_upload": {
+      "readOnly": false,
+      "parameters": {
+        "paths": { "type": "array", "required": false }
+      }
+    },
+    "browser_fill_form": {
+      "readOnly": false,
+      "parameters": {
+        "fields": { "type": "array", "required": true }
+      }
+    },
+    "browser_find": {
+      "readOnly": true,
+      "parameters": {
+        "text": { "type": "string", "required": false },
+        "regex": { "type": "string", "required": false }
+      }
+    },
+    "browser_handle_dialog": {
+      "readOnly": false,
+      "parameters": {
+        "accept": { "type": "boolean", "required": true },
+        "promptText": { "type": "string", "required": false }
+      }
+    },
+    "browser_hover": {
+      "readOnly": false,
+      "parameters": {
+        "element": { "type": "string", "required": false },
+        "target": { "type": "string", "required": true }
+      }
+    },
+    "browser_navigate": {
+      "readOnly": false,
+      "parameters": {
+        "url": { "type": "string", "required": true }
+      }
+    },
+    "browser_navigate_back": { "readOnly": false, "parameters": {} },
+    "browser_network_request": {
+      "readOnly": true,
+      "parameters": {
+        "index": { "type": "integer", "required": true },
+        "part": { "type": "string", "required": false },
+        "filename": { "type": "string", "required": false }
+      }
+    },
+    "browser_network_requests": {
+      "readOnly": true,
+      "parameters": {
+        "static": { "type": "boolean", "required": true, "default": false },
+        "filter": { "type": "string", "required": false },
+        "filename": { "type": "string", "required": false }
+      }
+    },
+    "browser_press_key": {
+      "readOnly": false,
+      "parameters": {
+        "key": { "type": "string", "required": true }
+      }
+    },
+    "browser_resize": {
+      "readOnly": false,
+      "parameters": {
+        "width": { "type": "number", "required": true },
+        "height": { "type": "number", "required": true }
+      }
+    },
+    "browser_select_option": {
+      "readOnly": false,
+      "parameters": {
+        "element": { "type": "string", "required": false },
+        "target": { "type": "string", "required": true },
+        "values": { "type": "array", "required": true }
+      }
+    },
+    "browser_snapshot": {
+      "readOnly": true,
+      "parameters": {
+        "target": { "type": "string", "required": false },
+        "filename": { "type": "string", "required": false },
+        "depth": { "type": "number", "required": false },
+        "boxes": { "type": "boolean", "required": false }
+      }
+    },
+    "browser_take_screenshot": {
+      "readOnly": true,
+      "parameters": {
+        "element": { "type": "string", "required": false },
+        "target": { "type": "string", "required": false },
+        "type": { "type": "string", "required": false },
+        "filename": { "type": "string", "required": false },
+        "fullPage": { "type": "boolean", "required": false },
+        "scale": { "type": "string", "required": true, "default": "css" }
+      }
+    },
+    "browser_type": {
+      "readOnly": false,
+      "parameters": {
+        "element": { "type": "string", "required": false },
+        "target": { "type": "string", "required": true },
+        "text": { "type": "string", "required": true },
+        "submit": { "type": "boolean", "required": false },
+        "slowly": { "type": "boolean", "required": false }
+      }
+    },
+    "browser_wait_for": {
+      "readOnly": false,
+      "parameters": {
+        "time": { "type": "number", "required": false },
+        "text": { "type": "string", "required": false },
+        "textGone": { "type": "string", "required": false }
+      }
+    }
+  }
+}

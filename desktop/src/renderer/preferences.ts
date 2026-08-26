@@ -42,6 +42,8 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   recentBaseDirectories: saved.recentBaseDirectories,
   directoryUsageCounts: saved.directoryUsageCounts,
   defaultPermissionMode: saved.defaultPermissionMode,
+  browserPreviewNetworkShield: saved.browserPreviewNetworkShield,
+  studioPlaywrightEnabled: saved.studioPlaywrightEnabled,
   expandOnTabSwitch: saved.expandOnTabSwitch,
   studioSurfaceSwitchMode: saved.studioSurfaceSwitchMode,
   bashCommandEntry: saved.bashCommandEntry,
@@ -194,6 +196,14 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setDefaultPermissionMode: (mode) => {
     set({ defaultPermissionMode: mode })
+    saveSettings(getAllSettings(get))
+  },
+  setBrowserPreviewNetworkShield: (enabled) => {
+    set({ browserPreviewNetworkShield: enabled })
+    saveSettings(getAllSettings(get))
+  },
+  setStudioPlaywrightEnabled: (enabled) => {
+    set({ studioPlaywrightEnabled: enabled })
     saveSettings(getAllSettings(get))
   },
   setExpandOnTabSwitch: (enabled) => {

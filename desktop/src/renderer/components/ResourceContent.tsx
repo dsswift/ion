@@ -4,14 +4,15 @@ import remarkGfm from 'remark-gfm'
 import { useColors } from '../theme'
 import { useNavigableText, NavigableLink, NavigableCode, remarkNavigableLinks } from '../hooks/useNavigableLinks'
 import { rError } from '../rendererLogger'
+import type { FileClickModifiers } from '../lib/open-file-intent'
 
 const REMARK_PLUGINS = [remarkGfm, remarkNavigableLinks]
 
 export function ResourceContent({ content }: { content: string }): React.JSX.Element {
   const colors = useColors()
   const { onOpenFile, onOpenUrl } = useNavigableText()
-  const handleOpenFile = useCallback((path: string) => {
-    void onOpenFile(path).catch((err) => rError('resource-viewer', 'open file failed', { error: String(err) }))
+  const handleOpenFile = useCallback((path: string, event?: FileClickModifiers) => {
+    void onOpenFile(path, event).catch((err) => rError('resource-viewer', 'open file failed', { error: String(err) }))
   }, [onOpenFile])
   const markdownComponents = useMemo(() => ({
     a: ({ node, href, children }: any) => <NavigableLink node={node} href={href} color={colors.accent} onOpenFile={handleOpenFile} onOpenUrl={onOpenUrl}>{children}</NavigableLink>,

@@ -20,6 +20,7 @@ import { FileExplorerTreeRow, FileExplorerInlineInput } from './FileExplorerTree
 import { FileExplorerRootHeaderMenu } from './FileExplorerRootHeaderMenu'
 import type { FsEntry } from '../../shared/types'
 import { surfaceRouter } from '../lib/file-open-router'
+import { fileOpenIntent, type FileClickModifiers } from '../lib/open-file-intent'
 import { rDebug, rInfo, rWarn, rError } from '../rendererLogger'
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp', '.tiff'])
@@ -107,11 +108,24 @@ export function FileExplorerRootSection(props: FileExplorerRootSectionProps): Re
     }
   }, [rootDir, explorerState.expandedPaths, dirCache, fetchDir, setFileExplorerExpanded, setFileExplorerSelected])
 
-  const handleFileClick = useCallback((entry: FsEntry) => {
+  const handleFileClick = useCallback((entry: FsEntry, event?: FileClickModifiers) => {
     if (!activeTabId) return
     setFileExplorerSelected(rootDir, entry.path)
     const ext = entry.name.includes('.') ? '.' + entry.name.split('.').pop()!.toLowerCase() : ''
     const router = surfaceRouter()
+    const intent = fileOpenIntent(event)
+
+    // The explorer gains the two gestures it never had, so all surfaces agree:
+    // ⌥⌘ opens in the operating system, ⇧⌘ reads source even for HTML.
+    if (intent === 'native') {
+      void window.ion.fsOpenNative(entry.path).catch((err) => rWarn('file-explorer', 'open native failed', { path: entry.path, error: String(err) }))
+      return
+    }
+    if (intent === 'source' && isTextFile(entry.name)) {
+      if (router) router.openTextFile(rootDir, activeTabId, entry.path)
+      else openFileInEditor(rootDir, activeTabId, entry.path)
+      return
+    }
     if (IMAGE_EXTS.has(ext)) {
       if (router) router.openImage(entry.path)
       else props.onOpenImage({ path: entry.path, name: entry.name })
@@ -227,7 +241,7 @@ export function FileExplorerRootSection(props: FileExplorerRootSectionProps): Re
             selected={isSelected}
             isGitIgnored={isIgnored(entry.path)}
             onToggle={() => handleToggleDir(entry)}
-            onClick={() => handleFileClick(entry)}
+            onClick={(e) => handleFileClick(entry, e)}
             onContextMenu={(e) => handleContextMenu(e, entry)}
             colors={colors}
           />,

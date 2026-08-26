@@ -2,6 +2,7 @@ import {
   DEFAULT_PINNED_SURFACE_TABS,
   PINNABLE_SINGLETON_IDS,
   SINGLETON_ORDER,
+  isBrowserTab,
   type LegacySurfacePersisted,
   type NotificationTab,
   type PinnableSingletonId,
@@ -9,6 +10,7 @@ import {
   type SurfacePersisted,
   type SurfaceTab,
 } from './studio-surface-types'
+import { parseBrowserEmulation } from './studio-browser-types'
 import { normalizeTabs } from './studio-surface-ordering'
 
 const SINGLETONS = new Set<string>(SINGLETON_ORDER)
@@ -31,7 +33,20 @@ function parseTab(raw: unknown): SurfaceTab | null {
   }
   if (v.kind === 'browser') {
     if (typeof v.instanceId !== 'string' || !v.instanceId || typeof v.url !== 'string') return null
-    return { kind: 'browser', id: `browser:${v.instanceId}`, instanceId: v.instanceId, url: v.url, title: typeof v.title === 'string' ? v.title : '', mode: v.mode === 'preview' ? 'preview' : 'browse' }
+    // A malformed emulation is DROPPED, not fatal: the tab still exists and is
+    // usable responsively. Losing a viewport override is recoverable; losing
+    // the whole tab (and its place in the pointer) is not.
+    const emulation = parseBrowserEmulation(v.emulation)
+    return {
+      kind: 'browser',
+      id: `browser:${v.instanceId}`,
+      instanceId: v.instanceId,
+      url: v.url,
+      title: typeof v.title === 'string' ? v.title : '',
+      mode: v.mode === 'preview' ? 'preview' : 'browse',
+      sessionMode: v.sessionMode === 'isolated' ? 'isolated' : 'shared',
+      ...(emulation ? { emulation } : {}),
+    }
   }
   if (v.kind === 'terminal') {
     if (typeof v.instanceId !== 'string' || !v.instanceId || typeof v.cwd !== 'string') return null
@@ -47,15 +62,41 @@ function parseNotification(raw: unknown): NotificationTab | null {
   return { kind: 'notification', id: 'notification', resourceKind: v.resourceKind, resourceId: v.resourceId, ...(typeof v.resourceProducer === 'string' && v.resourceProducer ? { resourceProducer: v.resourceProducer } : {}) }
 }
 
+/**
+ * Resolve one conversation's Agent-linked browser pointer.
+ *
+ * `backfill` is the v2→v3 migration switch and the ONLY place a pointer is
+ * invented. On a v2 record the field never existed, so the first browser tab
+ * (whatever its mode — a `preview` tab that happens to be first counts) becomes
+ * the linked one. On a v3 record `null` is a decision the operator made, so it
+ * is preserved verbatim.
+ *
+ * Whatever the source, a NON-null pointer is validated against the live tab
+ * set: a pointer to a tab that is gone falls back to the first browser tab,
+ * then to null. That repairs a record whose linked tab was removed by an
+ * external edit or a partial write without leaving a dangling pointer that
+ * would make the strip claim a link nothing renders.
+ */
+function resolveAgentBrowser(raw: unknown, tabs: readonly SurfaceTab[], backfill: boolean): string | null {
+  const browsers = tabs.filter(isBrowserTab)
+  const firstBrowser = browsers[0]?.instanceId ?? null
+  const candidate = typeof raw === 'string' && raw ? raw : (backfill ? firstBrowser : null)
+  if (!candidate) return null
+  return browsers.some((tab) => tab.instanceId === candidate) ? candidate : firstBrowser
+}
+
 function parseConversation(
   raw: unknown,
   pinnedTabs: readonly PinnableSingletonId[] = [],
   notification: NotificationTab | null = null,
+  backfillAgentBrowser = false,
 ): SurfaceConversationPersisted | null {
   if (!raw || typeof raw !== 'object') return null
   const v = raw as Record<string, unknown>
   if (!Array.isArray(v.tabs) || typeof v.visible !== 'boolean') return null
-  const tabs = normalizeTabs(v.tabs.map(parseTab).filter((tab): tab is SurfaceTab => tab !== null))
+  const parsedTabs = v.tabs.map(parseTab).filter((tab): tab is SurfaceTab => tab !== null)
+  const agentBrowserInstanceId = resolveAgentBrowser(v.agentBrowserInstanceId, parsedTabs, backfillAgentBrowser)
+  const tabs = normalizeTabs(parsedTabs, agentBrowserInstanceId)
   const selectableIds = new Set([
     ...pinnedTabs,
     ...tabs.map((tab) => tab.id),
@@ -64,10 +105,10 @@ function parseConversation(
   const activeTabId = typeof v.activeTabId === 'string' && selectableIds.has(v.activeTabId)
     ? v.activeTabId
     : (pinnedTabs[0] ?? tabs[0]?.id ?? notification?.id ?? null)
-  return { tabs, activeTabId, visible: v.visible }
+  return { tabs, activeTabId, visible: v.visible, agentBrowserInstanceId }
 }
 
-/** Reads v2 durable state and legacy v1 state for one-time renderer migration. */
+/** Reads v3 durable state, migrates v2, and reads legacy v1 for renderer migration. */
 export function parseSurfacePersisted(raw: unknown): ParsedSurface | null {
   if (!raw || typeof raw !== 'object') return null
   const v = raw as Record<string, unknown>
@@ -76,16 +117,20 @@ export function parseSurfacePersisted(raw: unknown): ParsedSurface | null {
     const activeTabId = typeof v.activeTabId === 'string' && tabs.some((tab) => tab.id === v.activeTabId) ? v.activeTabId : (tabs[0]?.id ?? null)
     return { version: 1, tabs, activeTabId }
   }
-  if (v.version !== 2 || !Array.isArray(v.pinnedTabs) || !v.conversations || typeof v.conversations !== 'object' || Array.isArray(v.conversations)) return null
+  const isV2 = v.version === 2
+  if ((v.version !== 3 && !isV2) || !Array.isArray(v.pinnedTabs) || !v.conversations || typeof v.conversations !== 'object' || Array.isArray(v.conversations)) return null
   const pinnedTabs = normalizePinnedTabs([...new Set(v.pinnedTabs.filter((id): id is PinnableSingletonId => typeof id === 'string' && PINNABLES.has(id)))])
   const notification = parseNotification(v.notification)
   const conversations: Record<string, SurfaceConversationPersisted> = {}
   for (const [tabId, row] of Object.entries(v.conversations as Record<string, unknown>)) {
     if (!tabId) continue
-    const parsed = parseConversation(row, pinnedTabs, notification)
+    // v2 records predate the pointer, so each conversation back-fills its
+    // first browser tab exactly once, on this read. The v3 write that follows
+    // makes the result durable, and a later null then stays null.
+    const parsed = parseConversation(row, pinnedTabs, notification, isV2)
     if (parsed) conversations[tabId] = parsed
   }
-  return { version: 2, pinnedTabs, notification, conversations }
+  return { version: 3, pinnedTabs, notification, conversations }
 }
 
 export function normalizePinnedTabs(ids: readonly PinnableSingletonId[]): PinnableSingletonId[] {
@@ -93,21 +138,25 @@ export function normalizePinnedTabs(ids: readonly PinnableSingletonId[]): Pinnab
 }
 
 export function emptySurfacePersisted(): SurfacePersisted {
-  return { version: 2, pinnedTabs: [...DEFAULT_PINNED_SURFACE_TABS], notification: null, conversations: {} }
+  return { version: 3, pinnedTabs: [...DEFAULT_PINNED_SURFACE_TABS], notification: null, conversations: {} }
 }
 
-export function isSurfacePersistedV2(raw: unknown): raw is SurfacePersisted {
-  return parseSurfacePersisted(raw)?.version === 2
+export function isSurfacePersistedV3(raw: unknown): raw is SurfacePersisted {
+  if (!raw || typeof raw !== 'object' || (raw as Record<string, unknown>).version !== 3) return false
+  return parseSurfacePersisted(raw)?.version === 3
 }
 
-/** Main-process write predicate. Legacy payloads only exist to migrate on read. */
-export function validateSurfacePersisted(raw: unknown): boolean { return isSurfacePersistedV2(raw) }
+/**
+ * Main-process write predicate. Only the current version is a legal write:
+ * v1 and v2 payloads exist to migrate on read, never to be written back.
+ */
+export function validateSurfacePersisted(raw: unknown): boolean { return isSurfacePersistedV3(raw) }
 
 export function serializeSurface(pinnedTabs: readonly PinnableSingletonId[], notification: NotificationTab | null, conversations: Readonly<Record<string, SurfaceConversationPersisted>>): SurfacePersisted {
   const serialized: Record<string, SurfaceConversationPersisted> = {}
   for (const [tabId, state] of Object.entries(conversations)) {
     const tabs: SurfaceTab[] = []
-    for (const tab of normalizeTabs(state.tabs)) {
+    for (const tab of normalizeTabs(state.tabs, state.agentBrowserInstanceId)) {
       // questions is window-transient (derived from live coordinator state);
       // notification is global (serialized separately); runtime panels exist
       // only while their producer runs. None belongs in a conversation row.
@@ -123,7 +172,29 @@ export function serializeSurface(pinnedTabs: readonly PinnableSingletonId[], not
     const activeTabId = state.activeTabId && composedIds.has(state.activeTabId)
       ? state.activeTabId
       : (pinnedTabs[0] ?? tabs[0]?.id ?? notification?.id ?? null)
-    serialized[tabId] = { tabs, activeTabId, visible: state.visible }
+    // The pointer is written as-is when it still names a live browser tab, and
+    // as null otherwise. It is never back-filled here: a null that reaches
+    // serialization is the operator's decision, and inventing a replacement
+    // would re-link the tab the round-trip is supposed to keep unlinked.
+    const agentBrowserInstanceId = state.agentBrowserInstanceId && tabs.some((tab) => isBrowserTab(tab) && tab.instanceId === state.agentBrowserInstanceId)
+      ? state.agentBrowserInstanceId
+      : null
+    // Skip a record that carries nothing worth restoring.
+    //
+    // A conversation gets a record the moment the operator clicks a GLOBAL
+    // pinned tab (Diff, Plan) while in it, because that writes activeTabId.
+    // Those pins are already stored once at the top level, so the row adds
+    // nothing — yet nothing ever pruned it. On this machine that produced 539
+    // empty records against 40 real ones, 82KB of settings.json rewritten on
+    // every surface change.
+    //
+    // The keep condition is "does this row say anything the top level does
+    // not": own tabs, an open panel, a linked browser, or a pointer at
+    // something other than a global pin.
+    const pointsAtOwnTab = activeTabId !== null && !pinnedTabs.includes(activeTabId as PinnableSingletonId) && activeTabId !== notification?.id
+    const worthKeeping = tabs.length > 0 || state.visible || agentBrowserInstanceId !== null || pointsAtOwnTab
+    if (!worthKeeping) continue
+    serialized[tabId] = { tabs, activeTabId, visible: state.visible, agentBrowserInstanceId }
   }
-  return { version: 2, pinnedTabs: normalizePinnedTabs(pinnedTabs), notification, conversations: serialized }
+  return { version: 3, pinnedTabs: normalizePinnedTabs(pinnedTabs), notification, conversations: serialized }
 }

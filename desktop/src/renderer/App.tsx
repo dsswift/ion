@@ -262,7 +262,7 @@ export default function App() {
         open={paletteOpen}
         onOpenChange={setPaletteOpen}
         actions={[
-          { id: 'act:studio', label: 'Open Visualizer', keywords: 'studio office agents', section: 'Actions', run: () => window.ion.studioOpen() },
+          { id: 'act:studio', label: 'Open Ion Studio', keywords: 'studio office agents', section: 'Actions', run: () => window.ion.studioOpen() },
         ]}
       />
       <div className="flex flex-col h-full overflow-hidden" style={{ background: 'transparent' }}>

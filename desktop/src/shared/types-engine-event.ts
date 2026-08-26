@@ -238,6 +238,12 @@ export type EngineEvent =
       gateCwd?: string;
       gateSiblingTools?: string[];
       gateHumanWait?: boolean;
+      // Who asked: 'model' for the normal tool loop, 'extension' for a
+      // ctx.callTool() from trusted harness code. Absent means 'model' (an
+      // older engine did not send it). A client policy that must trust
+      // extension code more than an LLM reads this — Studio's browser
+      // session-mode rule is the first such consumer.
+      gateOrigin?: "model" | "extension";
     }
   // engine_client_tool_state — a COMPLETE REPLACEMENT snapshot of every
   // client-tool call the engine is currently blocked on for this session.

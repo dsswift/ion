@@ -72,6 +72,12 @@ const closeTabRpc = vi.fn().mockResolvedValue(undefined)
     closeTab: closeTabRpc,
     gitWorktreeRemove: vi.fn().mockResolvedValue(undefined),
     terminalDestroy: vi.fn().mockResolvedValue(undefined),
+    studioBrowserViewEnsure: vi.fn().mockResolvedValue(true),
+    studioBrowserViewBounds: vi.fn(),
+    studioBrowserViewNavigate: vi.fn().mockResolvedValue(true),
+    studioBrowserViewAction: vi.fn().mockResolvedValue(true),
+    studioBrowserViewClose: vi.fn().mockResolvedValue(true),
+    onStudioBrowserViewState: vi.fn(() => () => undefined),
     notifyTabFocus: vi.fn(),
   },
 }

@@ -65,6 +65,7 @@
     "framer-motion": "^12.42.2",
     "immer": "^11.1.15",
     "node-pty": "^1.1.0",
+    "playwright-core": "1.62.1",
     "react-markdown": "^10.1.0",
     "react-syntax-highlighter": "^16.1.1",
     "remark-gfm": "^4.0.0",

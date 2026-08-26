@@ -6,12 +6,13 @@
  * tabs read sessionStore.fileEditorStates — the buffer owner.
  */
 import React, { useCallback, useState } from 'react'
-import { Plus, ChartBar, FileText, FolderOpen, GitBranch, GitDiff, Globe, Question, TerminalWindow, Image, File as FileIcon, Bell, Rectangle, ChartDonut } from '@phosphor-icons/react'
+import { Plus, ChartBar, FileText, FolderOpen, GitBranch, GitDiff, Globe, Question, Robot, TerminalWindow, Image, File as FileIcon, Bell, Rectangle, ChartDonut } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveState'
 import { transitions } from '../../theme-tokens'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useSurfaceStore } from './surface-store'
+import { Tooltip } from '../../components/git/Tooltip'
 import { isSingleton, type SurfaceTab } from '../../../shared/studio-surface-types'
 import { SurfaceAddMenu } from './SurfaceAddMenu'
 import { SurfaceTabContextMenu } from './SurfaceTabContextMenu'
@@ -79,12 +80,15 @@ function SurfaceTabPill({
   tab,
   active,
   dirty,
+  agentLinked,
   chord,
   onContextMenu,
 }: {
   tab: SurfaceTab
   active: boolean
   dirty: boolean
+  /** True for the one browser tab this conversation's agent drives. */
+  agentLinked: boolean
   /** The tab's live chord, present only while its modifiers are held. */
   chord?: string
   onContextMenu: (e: React.MouseEvent) => void
@@ -143,6 +147,11 @@ function SurfaceTabPill({
       }}
     >
       {tabIcon(tab, activity, colors)}
+      {agentLinked && (
+        <Tooltip text="The agent drives this browser tab. Right-click another browser tab to hand it over.">
+          <Robot size={11} color={colors.accent} />
+        </Tooltip>
+      )}
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tabLabel(tab)}</span>
       {chord && <ShortcutHint chord={chord} dimmed={!active} />}
       {dirty && <span style={{ width: 6, height: 6, borderRadius: 3, background: colors.accent, flexShrink: 0 }} />}
@@ -181,6 +190,12 @@ export function SurfaceTabStrip(): React.JSX.Element {
   const colors = useColors()
   const tabs = useSurfaceStore((s) => s.tabs)
   const activeTabId = useSurfaceStore((s) => s.activeTabId)
+  // The conversation's single agent-linked browser instance, or null. Read as a
+  // primitive so the strip re-renders on a link change but not on unrelated
+  // descriptor churn.
+  const agentBrowserInstanceId = useSurfaceStore((s) =>
+    s.currentConversationId ? (s.conversations[s.currentConversationId]?.agentBrowserInstanceId ?? null) : null,
+  )
   const [addMenu, setAddMenu] = useState<{ x: number; y: number } | null>(null)
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; tab: SurfaceTab } | null>(null)
   const dirtyPaths = useSessionStore((s) => {
@@ -227,6 +242,7 @@ export function SurfaceTabStrip(): React.JSX.Element {
               tab={t}
               active={t.id === activeTabId}
               dirty={t.kind === 'file' && dirtyPaths.has(t.filePath)}
+              agentLinked={t.kind === 'browser' && t.instanceId === agentBrowserInstanceId}
               chord={command ? revealed.get(command) : undefined}
               onContextMenu={(e) => {
                 e.preventDefault()

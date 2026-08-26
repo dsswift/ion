@@ -174,6 +174,15 @@ describe('surface-store', () => {
     expect(useSurfaceStore.getState().tabs.some((tab) => tab.id === 'file:/repo/a.ts')).toBe(true)
   })
 
+  it('creates browse tabs with a shared browser session by default', () => {
+    useSurfaceStore.getState().openBrowserTab('https://example.org', 'browse')
+
+    expect(useSurfaceStore.getState().tabs.find((tab) => tab.kind === 'browser')).toMatchObject({
+      mode: 'browse',
+      sessionMode: 'shared',
+    })
+  })
+
   it('destroys a terminal only when explicitly closed', () => {
     useSurfaceStore.getState().openTerminalTab('/repo')
     const terminal = useSurfaceStore.getState().tabs.find((tab) => tab.kind === 'terminal')!
@@ -184,14 +193,28 @@ describe('surface-store', () => {
     expect(terminalDestroyMock).toHaveBeenCalledWith(`tab-1:surface:${(terminal as { instanceId: string }).instanceId}`)
   })
 
-  it('keeps visibility live without changing saved conversation state in keep mode', () => {
+  it('carries live visibility across a switch in keep mode', () => {
     const store = useSurfaceStore.getState()
     store.setVisible(true)
     store.selectConversation('tab-2')
     store.setVisible(false)
     store.selectConversation('tab-1')
+    // This is what 'keep' means: the panel stays as the operator last left it
+    // rather than snapping back to each conversation's own saved state.
     expect(useSurfaceStore.getState().visible).toBe(false)
-    expect(useSurfaceStore.getState().conversations['tab-1']?.visible).toBe(false)
+  })
+
+  it('still records each conversation state in keep mode', () => {
+    const store = useSurfaceStore.getState()
+    store.setVisible(true)
+    store.selectConversation('tab-2')
+    store.setVisible(false)
+    // Recording and restoring are different questions. This test previously
+    // asserted the record stayed unwritten, which is why a 'keep' operator
+    // always reopened the app with the panel closed: there was nothing on disk
+    // to restore. The switch behaviour above is unaffected by writing it.
+    expect(useSurfaceStore.getState().conversations['tab-1']?.visible).toBe(true)
+    expect(useSurfaceStore.getState().conversations['tab-2']?.visible).toBe(false)
   })
 
   it('restores and saves each conversation visibility in per-conversation mode', () => {
@@ -207,12 +230,32 @@ describe('surface-store', () => {
     expect(useSurfaceStore.getState().conversations['tab-2']?.visible).toBe(true)
   })
 
-  it('persists v2 records through the studio settings funnel', () => {
+  it('persists an explicitly selected browser session mode', () => {
+    const store = useSurfaceStore.getState()
+    store.openBrowserTab('https://example.org', 'browse')
+    const browser = useSurfaceStore.getState().tabs.find((tab) => tab.kind === 'browser')
+    expect(browser).toMatchObject({ sessionMode: 'shared' })
+
+    if (!browser || browser.kind !== 'browser') throw new Error('browser tab missing')
+    store.updateBrowserTab(browser.id, { sessionMode: 'isolated' })
+    expect(useSurfaceStore.getState().tabs.find((tab) => tab.id === browser.id)).toMatchObject({ sessionMode: 'isolated' })
+  })
+
+  it('mounts browser descriptors for inactive conversations', () => {
+    const store = useSurfaceStore.getState()
+    store.openBrowserTab('https://example.org', 'browse')
+    store.selectConversation('tab-2')
+    store.openBrowserTab('https://example.net', 'browse', 'shared')
+    expect(useSurfaceStore.getState().conversations['tab-1']?.tabs).toMatchObject([{ kind: 'browser' }])
+    expect(useSurfaceStore.getState().conversations['tab-2']?.tabs).toMatchObject([{ kind: 'browser', sessionMode: 'shared' }])
+  })
+
+  it('persists v3 records through the studio settings funnel', () => {
     useSurfaceStore.getState().openSingleton('diff')
     vi.advanceTimersByTime(350)
     const [key, value] = setSettingMock.mock.calls[0] as [string, { version: number; pinnedTabs: string[]; conversations: Record<string, unknown> }]
     expect(key).toBe('studioSurface')
-    expect(value.version).toBe(2)
+    expect(value.version).toBe(3)
     expect(value.pinnedTabs).toEqual(['plan'])
     expect(value.conversations).toHaveProperty('tab-1')
   })

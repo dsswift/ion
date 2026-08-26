@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm'
 import { useColors } from '../../theme'
 import { TableScrollWrapper } from './markdownRenderers'
 import type { Message } from '../../../shared/types'
-import { rWarn } from '../../rendererLogger'
+import { openClickedLink } from '../../lib/open-link'
 
 // Harness messages are markdown-formatted by convention. Extensions like
 // extensions emit multi-paragraph welcome/help content with headers,
@@ -36,7 +36,7 @@ export function HarnessMessage({ message, skipMotion }: HarnessMessageProps) {
         type="button"
         className="underline decoration-dotted underline-offset-2 cursor-pointer"
         style={{ color: colors.accent }}
-        onClick={() => { if (href) void window.ion.openExternal(String(href)).catch((err) => rWarn('conversation', 'open link failed', { error: String(err) })) }}
+        onClick={(event: React.MouseEvent) => { if (href) openClickedLink(String(href), event, 'conversation') }}
       >
         {children}
       </button>

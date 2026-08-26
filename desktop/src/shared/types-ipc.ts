@@ -1,3 +1,5 @@
+import { STUDIO_BROWSER_IPC } from './types-ipc-browser'
+
 // ─── IPC Channel Names ───
 
 export const IPC = {
@@ -298,9 +300,7 @@ export const IPC = {
   // Attach protocol (D2): history snapshot + lifecycle state in one call,
   // with optional respawn-on-demand for dead terminals.
   TERMINAL_ATTACH: "ion:terminal-attach",
-  // Studio browser preview: lift the offline block for one preview
-  // partition (explicit per-tab confirm — D6).
-  STUDIO_PREVIEW_ALLOW_NETWORK: "studio:preview-allow-network",
+  ...STUDIO_BROWSER_IPC,
   BENCH_DISCARD_MEMBER_RECORDINGS: "ion:bench-discard-member-recordings",
   WORKTREE_OVERLAP_OPEN: "ion:worktree-overlap-open",
   WORKTREE_OVERLAP_CONTEXT: "ion:worktree-overlap-context",

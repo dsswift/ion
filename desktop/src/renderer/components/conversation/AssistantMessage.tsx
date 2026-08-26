@@ -9,6 +9,7 @@ import { CopyButton } from './CopyButton'
 import { InlineMessageImages, deriveMessageImages } from './InlineMessageImages'
 import type { Message } from '../../../shared/types'
 import { rWarn } from '../../rendererLogger'
+import type { FileClickModifiers } from '../../lib/open-file-intent'
 
 const REMARK_PLUGINS = [remarkGfm, remarkNavigableLinks]
 const TASK_NOTIFICATION_RE = /<task-notification>[\s\S]*?<\/task-notification>\s*(?:Read the output file to retrieve the result:[^\n]*)?\n?/g
@@ -28,7 +29,7 @@ export const AssistantMessage = React.memo(function AssistantMessage({
 }: AssistantMessageProps) {
   const colors = useColors()
   const { onOpenFile, onOpenUrl } = useNavigableText()
-  const onOpenFileVoid = useCallback((path: string) => { void onOpenFile(path).catch((err) => rWarn('conversation', 'open file failed', { error: String(err) })) }, [onOpenFile])
+  const onOpenFileVoid = useCallback((path: string, event?: FileClickModifiers) => { void onOpenFile(path, event).catch((err) => rWarn('conversation', 'open file failed', { error: String(err) })) }, [onOpenFile])
 
   const markdownComponents = useMemo(
     () => makeMarkdownComponents({ colors, onOpenFile: onOpenFileVoid, onOpenUrl, variant: 'assistant' }),

@@ -37,7 +37,9 @@ import type { ToolGateConfig } from '../shared/types-tool-gate'
 import { evaluateToolGate } from './integration/bench-tool-policy'
 import { BENCH_CLIENT_TOOLS } from './integration/bench-agent-tools'
 import { ASK_USER_QUESTIONS_TOOL } from './questions/questions-tool-decl'
+import { STUDIO_PLAYWRIGHT_TOOLS } from './studio-playwright/tools'
 import { log as _log, warn as _warn, error as _error } from './logger'
+import { readSettings } from './settings-store'
 
 const TAG = 'tool-gate'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
@@ -72,12 +74,14 @@ export const GATED_TOOLS = ['Write', 'Edit', 'NotebookEdit', 'Bash', 'ion_scaffo
  * returns allow immediately for a cwd with no bench involvement.
  */
 export function toolGateSessionConfig(): ToolGateConfig {
+  const settings = readSettings()
+  const browserTools = settings.activeUi === 'studio' && settings.studioPlaywrightEnabled !== false
+    ? STUDIO_PLAYWRIGHT_TOOLS
+    : []
   return {
     enabled: true,
     tools: GATED_TOOLS,
     timeoutMs: TOOL_GATE_TIMEOUT_MS,
-    // allow-on-timeout: matches the fail-open posture of the records the
-    // policy reads. A desktop mid-restart must not paralyze the session.
     timeoutDecision: 'allow',
     clientTools: [
       ...BENCH_CLIENT_TOOLS.map((t) => ({
@@ -86,12 +90,12 @@ export function toolGateSessionConfig(): ToolGateConfig {
         inputSchema: t.inputSchema,
         planModeSafe: t.planModeSafe,
       })),
-      // The guided-questions wizard: a HUMAN-wait tool. The engine PARKS
-      // the run when the model calls it — the request is retained as a
-      // PermissionDenial (re-published on every idle status snapshot) and
-      // the session goes idle. No tool_gate_request ever arrives for it;
-      // main's QuestionsCoordinator picks the denial off engine_status and
-      // the user's answers resume the conversation as a normal prompt.
+      ...browserTools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema,
+        planModeSafe: t.planModeSafe,
+      })),
       ASK_USER_QUESTIONS_TOOL,
     ],
     clientToolTimeoutMs: 30000,
@@ -123,12 +127,21 @@ export function wireToolGateResponder(bridge: GateBridge): void {
     const req = event as Extract<EngineEvent, { type: 'engine_tool_gate_request' }>
 
     if (req.gateKind === 'tool') {
-      respondToolCall(bridge, key, req, started)
+      void respondToolCall(bridge, key, req, started).catch((err: unknown) => {
+        error('client tool responder failed after execution', {
+          key,
+          tool: req.gateToolName,
+          error: String(err),
+        })
+      })
       return
     }
     respondPolicy(bridge, key, req, started)
   })
-  log('tool-gate responder wired', { gated_tools: GATED_TOOLS, client_tools: BENCH_CLIENT_TOOLS.map((t) => t.name).concat(ASK_USER_QUESTIONS_TOOL.name) })
+  log('tool-gate responder wired', {
+    gated_tools: GATED_TOOLS,
+    client_tools: [...BENCH_CLIENT_TOOLS, ...STUDIO_PLAYWRIGHT_TOOLS].map((t) => t.name).concat(ASK_USER_QUESTIONS_TOOL.name),
+  })
 }
 
 function respondPolicy(
@@ -175,24 +188,41 @@ function respondPolicy(
   }
 }
 
-function respondToolCall(
+async function respondToolCall(
   bridge: GateBridge,
   key: string,
   req: Extract<EngineEvent, { type: 'engine_tool_gate_request' }>,
   started: number,
-): void {
-  const tool = BENCH_CLIENT_TOOLS.find((t) => t.name === req.gateToolName)
+): Promise<void> {
+  const settings = readSettings()
+  const browserTool = settings.activeUi === 'studio' && settings.studioPlaywrightEnabled !== false
+    ? STUDIO_PLAYWRIGHT_TOOLS.find((candidate) => candidate.name === req.gateToolName)
+    : undefined
+  const benchTool = BENCH_CLIENT_TOOLS.find((candidate) => candidate.name === req.gateToolName)
   let content: string
   let isError: boolean
-  if (!tool) {
+  let images: unknown[] | undefined
+  if (!benchTool && !browserTool) {
     content = `client tool ${req.gateToolName} is not provided by this desktop`
     isError = true
     warn('client tool request for unknown tool', { key, tool: req.gateToolName })
   } else {
     try {
-      const result = tool.execute((req.gateToolInput ?? {}) as Record<string, unknown>, req.gateCwd ?? '')
+      // The two families take different execution inputs and that difference
+      // is meaningful: a bench tool needs only the cwd, while a browser tool
+      // must be told WHICH conversation is calling and whether the caller is
+      // the model or trusted extension code. Ownership and origin are supplied
+      // here, never accepted from the model's arguments.
+      const result = benchTool
+        ? await benchTool.execute((req.gateToolInput ?? {}) as Record<string, unknown>, req.gateCwd ?? '')
+        : await browserTool!.execute((req.gateToolInput ?? {}) as Record<string, unknown>, {
+          sessionKey: key,
+          cwd: req.gateCwd ?? '',
+          origin: req.gateOrigin === 'extension' ? 'extension' : 'model',
+        })
       content = result.content
       isError = result.isError
+      images = 'images' in result && Array.isArray(result.images) ? result.images : undefined
     } catch (err) {
       // Fail CLOSED for tools: the model must read the failure, not a
       // fabricated empty success.
@@ -207,6 +237,7 @@ function respondToolCall(
     gateRequestId: req.gateRequestId,
     gateContent: content,
     gateIsError: isError,
+    ...(images?.length ? { gateImages: images } : {}),
   })
   log('client tool fulfilled', {
     key, gate_request_id: req.gateRequestId, tool: req.gateToolName,

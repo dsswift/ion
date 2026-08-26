@@ -141,6 +141,10 @@ export function useTabRestoration() {
                 st.conversationId,
                 st.title,
                 st.workingDirectory,
+                undefined,
+                undefined,
+                // Adopt the persisted id rather than minting one.
+                st.id || undefined,
               )
               restoredTabIds.push({ tabId, sessionId: st.conversationId, index: i })
               // Patch extra per-tab settings that resumeSession doesn't handle.
@@ -218,12 +222,21 @@ export function useTabRestoration() {
             } else {
               // Non-active tab: create skeleton tab whose `main` instance has
               // empty messages + a persisted messageCount (lazy load)
+              // Adopt the persisted id. A restored tab is the SAME tab, and
+              // its id is the key for per-conversation state that lives
+              // elsewhere — Studio Surface descriptors above all. The fallback
+              // still reuses st.id, since a failed IPC call is no reason to
+              // change identity.
+              // A record saved before ids were persisted has none; it gets a
+              // fresh one, which is correct — there is no prior identity to
+              // preserve.
+              const persistedId = st.id || crypto.randomUUID()
               let tabId: string
               try {
-                const res = await window.ion.createTab()
+                const res = await window.ion.adoptTab(persistedId)
                 tabId = res.tabId
               } catch {
-                tabId = crypto.randomUUID()
+                tabId = persistedId
               }
               restoredTabIds.push({ tabId, sessionId: st.conversationId, index: i })
               // Read the persisted `main` instance up front: the tab literal
@@ -318,7 +331,7 @@ export function useTabRestoration() {
             await restoreConversationTab(st, restoredTabIds, i)
           } else if (st.isTerminalOnly) {
             // Terminal-only tab
-            const tabId = await useSessionStore.getState().createTerminalTab()
+            const tabId = await useSessionStore.getState().createTerminalTab(undefined, st.id || undefined)
             restoredTabIds.push({ tabId, sessionId: null, index: i })
 
             useSessionStore.setState((s) => ({

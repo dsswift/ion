@@ -24,6 +24,7 @@ import {
 } from './remarkPreserveUserWhitespace'
 import { TableScrollWrapper } from './markdownRenderers'
 import { rWarn } from '../../rendererLogger'
+import type { FileClickModifiers } from '../../lib/open-file-intent'
 
 // Order matters: gfm first (its autolink runs before link detection), then the
 // navigable-link rewrite, then the whitespace restoration, which reads node
@@ -33,8 +34,8 @@ const REMARK_PLUGINS = [remarkGfm, remarkNavigableLinks, remarkPreserveUserWhite
 export function UserMarkdown({ content }: { content: string }): React.JSX.Element | null {
   const colors = useColors()
   const { onOpenFile, onOpenUrl } = useNavigableText()
-  const onOpenFileVoid = useCallback((path: string) => {
-    void onOpenFile(path).catch((err) => rWarn('conversation', 'open file failed', { error: String(err) }))
+  const onOpenFileVoid = useCallback((path: string, event?: FileClickModifiers) => {
+    void onOpenFile(path, event).catch((err) => rWarn('conversation', 'open file failed', { error: String(err) }))
   }, [onOpenFile])
 
   const components = useMemo(() => ({

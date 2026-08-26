@@ -388,7 +388,8 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
   toggleTerminal: (tabId: string) => void;
   runInTerminal: (tabId: string, cmd: string) => void;
   consumeTerminalPendingCommand: (key: string) => string | undefined;
-  createTerminalTab: (dir?: string) => Promise<string>;
+  /** `adoptTabId` is supplied only by boot restoration; see resumeSession. */
+  createTerminalTab: (dir?: string, adoptTabId?: string) => Promise<string>;
   addTerminalInstance: (tabId: string, kind: string, cwd?: string) => string;
   removeTerminalInstance: (tabId: string, instanceId: string) => void;
   selectTerminalInstance: (tabId: string, instanceId: string) => void;
@@ -457,12 +458,22 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
   }) => void;
   forkTab: (sourceTabId: string) => Promise<string | null>;
   forkFromMessage: (tabId: string, messageId: string) => Promise<string | null>;
+  /**
+   * Open a conversation in a tab.
+   *
+   * `adoptTabId` is the persisted tab id, supplied ONLY by boot restoration.
+   * Restoring under a fresh id orphans everything keyed by the old one — the
+   * Studio Surface stores browser and terminal tabs per conversation id, so a
+   * new id every launch means the panel comes back empty. The History Picker
+   * omits it, because opening a past conversation is a genuinely new tab.
+   */
   resumeSession: (
     sessionId: string,
     title?: string,
     projectPath?: string,
     customTitle?: string | null,
     encodedDir?: string | null,
+    adoptTabId?: string,
   ) => Promise<string>;
   resumeSessionWithChain: (
     sessionId: string,
