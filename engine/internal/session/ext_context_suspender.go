@@ -28,6 +28,13 @@ func (m *Manager) newExtContext(s *engineSession, key string) *extension.Context
 	return ctx
 }
 
+func (m *Manager) newCommandExtContext(s *engineSession, key string, overrides *PromptOverrides) *extension.Context {
+	accessor := &sessionAccessor{m: m, s: s, key: key, commandOverrides: clonePromptOverrides(overrides)}
+	ctx := extcontext.NewExtContext(accessor, s.dispatchRegistry)
+	ctx.SetRunRecovery = func(config *types.RunRecoveryConfig) { accessor.SetRunRecovery(config) }
+	return ctx
+}
+
 // newExtContextWithSuspender builds a per-tool-call extension context whose
 // Elicit path can suspend the tool's finite deadline while blocked on a human.
 // suspender may be nil (non-tool callers); the accessor then behaves exactly

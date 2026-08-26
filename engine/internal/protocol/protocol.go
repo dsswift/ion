@@ -277,6 +277,11 @@ type ClientCommand struct {
 	// trivial check it already does to drive slash-command autocomplete).
 	ResolveSlash bool `json:"resolveSlash,omitempty"`
 
+	// TemporaryAutoFromPlan runs this command with auto-mode tools while preserving
+	// the session's active planning workflow and plan file. On successful terminal
+	// completion, the engine surfaces the existing plan approval proposal.
+	TemporaryAutoFromPlan bool `json:"temporaryAutoFromPlan,omitempty"`
+
 	// ClientWorkspaceContext is a per-prompt client-supplied workspace
 	// descriptor that overrides both the session-level EngineConfig value
 	// and the engine's own worktree-registry-derived context for this

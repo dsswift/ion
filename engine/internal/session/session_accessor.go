@@ -36,6 +36,9 @@ type sessionAccessor struct {
 	// accessors not created on behalf of a tool call (hooks, commands, etc.),
 	// in which case the elicit wait is governed only by session lifecycle.
 	suspender types.DeadlineSuspender
+	// commandOverrides belongs to one registered command context. Only a
+	// ctx.sendPrompt call through this accessor can consume these options.
+	commandOverrides *PromptOverrides
 }
 
 func (a *sessionAccessor) SessionKey() string     { return a.key }
@@ -106,6 +109,13 @@ func (a *sessionAccessor) SendPromptDegradedSteer(text string, model string, bas
 
 func (a *sessionAccessor) sendPromptWithKindOpts(text string, model string, bashAllowlistAdditions []string, kind string, steerDegraded bool) error {
 	overrides := buildPromptOverrides(model, bashAllowlistAdditions, kind)
+	if a.commandOverrides != nil {
+		if overrides == nil {
+			overrides = &PromptOverrides{}
+		}
+		overrides.CommandContinuation = true
+		overrides = mergeCommandPromptOverrides(a.commandOverrides, overrides)
+	}
 	if steerDegraded {
 		// buildPromptOverrides returns nil when every field is a zero value; a
 		// degraded steer with no model and no kind still needs the carrier.

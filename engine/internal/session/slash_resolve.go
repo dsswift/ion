@@ -214,6 +214,15 @@ func (m *Manager) resolveSlashIntoOpts(s *engineSession, key string, opts *types
 		res.ExpandedBody = override
 	}
 
+	applyResolvedSlashToOpts(key, opts, res)
+
+	utils.LogWithFields(utils.LevelInfo, "session.slash", "resolved into opts", map[string]any{"session_id": key, "reason": res.Command, "status": res.Source, "count": len(res.ExpandedBody)})
+	return true, ""
+}
+
+// applyResolvedSlashToOpts applies one already-resolved command to a run. Both
+// send_prompt(resolveSlash) and the unified command dispatcher use this seam.
+func applyResolvedSlashToOpts(key string, opts *types.RunOptions, res *ResolvedSlash) {
 	// Rewrite the LLM-visible prompt to the expanded body; stash the raw
 	// invocation for the runloop's display-turn persistence.
 	opts.Prompt = res.ExpandedBody
@@ -223,24 +232,16 @@ func (m *Manager) resolveSlashIntoOpts(s *engineSession, key string, opts *types
 	opts.ResolvedSlashContext = res.Context
 	opts.ResolvedSlashFrontmatter = cloneResolvedSlashFrontmatter(res.Frontmatter)
 
-	// A command-declared model is authoritative for this invocation. A client
-	// model controls ordinary conversation prompts, but cannot change command
-	// semantics after the command author selected a tier or direct model.
+	// A command-declared model is authoritative for this invocation.
 	applySlashModelHint(opts, res.Model)
 
-	// Apply frontmatter allowed-bash additions for this run (union, transient).
 	if len(res.AllowedBashCommands) > 0 {
 		opts.BashAllowlistAdditionsForThisPrompt = unionStrings(
 			opts.BashAllowlistAdditionsForThisPrompt, res.AllowedBashCommands)
 		utils.LogWithFields(utils.LevelInfo, "session.slash", "applied frontmatter bash additions", map[string]any{"count": len(res.AllowedBashCommands), "key": key})
 	}
-
-	utils.LogWithFields(utils.LevelInfo, "session.slash", "resolved into opts", map[string]any{"session_id": key, "reason": res.Command, "status": res.Source, "count": len(res.ExpandedBody)})
-	return true, ""
 }
 
-// cloneResolvedSlashFrontmatter detaches run options from hook-visible map
-// before the asynchronous backend persists command provenance.
 func cloneResolvedSlashFrontmatter(frontmatter map[string]any) map[string]any {
 	if len(frontmatter) == 0 {
 		return nil

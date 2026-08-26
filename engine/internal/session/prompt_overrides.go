@@ -89,12 +89,23 @@ type PromptOverrides struct {
 	// summarizer is active. nil means "use engine default".
 	CompactMemoryEnabled *bool
 
+	// CommandContinuation identifies the ctx.sendPrompt call made by the currently
+	// executing registered command. Internal only; never accepted from the wire.
+	CommandContinuation bool
+
+	// ResolvedSlash carries a command already resolved by the command dispatcher.
+	// It lets the command wire path fall through to markdown/skill resolution and
+	// start the run without asking the client to submit the same invocation again.
+	ResolvedSlash *ResolvedSlash
+
 	// ResolveSlash signals that the prompt Text is a slash-command invocation
 	// the engine should resolve and expand (see protocol.ClientCommand.ResolveSlash
 	// and types.RunOptions.ResolveSlash). When true, SendPrompt resolves the
 	// invocation against the conventional roots, rewrites the LLM-visible prompt
 	// to the expanded body, and persists the raw invocation as the display turn.
 	ResolveSlash bool
+	// TemporaryAutoFromPlan uses auto-mode tools for this run without mutating session plan mode.
+	TemporaryAutoFromPlan bool
 
 	// ClientWorkspaceContext is a per-prompt client-supplied workspace
 	// descriptor. When non-nil, the engine uses it instead of its own
@@ -135,6 +146,18 @@ type PromptOverrides struct {
 
 	// BackgroundWork carries engine-owned completion metadata for an injected turn.
 	BackgroundWork types.BackgroundWorkInfo
+}
+
+func clonePromptOverrides(in *PromptOverrides) *PromptOverrides {
+	if in == nil {
+		return nil
+	}
+	clone := *in
+	clone.Extensions = append([]string(nil), in.Extensions...)
+	clone.Attachments = append([]types.ImageAttachment(nil), in.Attachments...)
+	clone.BashAllowlistAdditionsForThisPrompt = append([]string(nil), in.BashAllowlistAdditionsForThisPrompt...)
+	clone.McpAllowlistAdditionsForThisPrompt = append([]string(nil), in.McpAllowlistAdditionsForThisPrompt...)
+	return &clone
 }
 
 // ReserveDeliveryID atomically reserves an idempotency key for a prompt. It

@@ -121,6 +121,8 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 	}
 	m.mu.RUnlock()
 
+	m.applyTemporaryAutoPlanCompletion(runID, key, event)
+
 	ee := translateToEngineEvent(event, contextWindow)
 	if ee.Type == "" {
 		utils.LogWithFields(utils.LevelDebug, "session", "dropping unhandled normalized event type: %t", map[string]any{"data": event.Data})
@@ -488,6 +490,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	// same runID correctly resolves to "" and is dropped.
 	m.unbindRunLocked(runID)
 	if s, ok := m.sessions[key]; ok {
+		m.clearTemporaryAutoPlanOnAbnormalExitLocked(s, key, runID, code, signal)
 		// Keep the exact session instance that owned this run. Later recovery
 		// cleanup runs outside this lock, so it must never clear a lifecycle
 		// belonging to a replacement session with the same key.

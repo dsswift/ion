@@ -5,9 +5,12 @@
 package session
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -85,12 +88,73 @@ func TestBuildCommandListings_PreservesDescription(t *testing.T) {
 	}
 }
 
+func TestSendCommand_ResolvesMarkdownWithoutClientRetry(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	writeTemplate(t, home, ".ion/commands/refresh-plan.md", "Refresh $ARGUMENTS")
+
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	ec := newEventCollector(mgr)
+	_, _ = mgr.StartSession("markdown", defaultConfig())
+	mgr.mu.Lock()
+	mgr.sessions["markdown"].planMode = true
+	mgr.sessions["markdown"].planFilePath = filepath.Join(home, "active-plan.md")
+	if err := os.WriteFile(mgr.sessions["markdown"].planFilePath, []byte("plan"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mgr.mu.Unlock()
+
+	mgr.SendCommandWithOverrides("markdown", "refresh-plan", "now", &PromptOverrides{
+		TemporaryAutoFromPlan: true,
+		AppendSystemPrompt:    "command guidance",
+		ThinkingEffort:        "low",
+	})
+
+	var opts types.RunOptions
+	var startedRunID string
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		keys := mb.startedKeys()
+		if len(keys) > 0 {
+			startedRunID = keys[0]
+			opts, _ = mb.getStarted(startedRunID)
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("markdown command did not start a run")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if opts.Prompt != "Refresh now" || opts.ResolvedSlashCommand != "/refresh-plan" {
+		t.Fatalf("resolved run = prompt %q command %q", opts.Prompt, opts.ResolvedSlashCommand)
+	}
+	if !strings.Contains(opts.AppendSystemPrompt, "command guidance") || opts.Thinking == nil || opts.Thinking.Effort != "low" {
+		t.Fatalf("command options lost: append=%q thinking=%+v", opts.AppendSystemPrompt, opts.Thinking)
+	}
+	if !opts.TemporaryAutoFromPlan || opts.PlanMode {
+		t.Fatalf("temporary workflow = %v, run plan mode = %v", opts.TemporaryAutoFromPlan, opts.PlanMode)
+	}
+	if mgr.sessions["markdown"].temporaryAutoPlan == nil {
+		t.Fatal("temporary plan workflow was not bound to the resolved command run")
+	}
+	complete := &types.TaskCompleteEvent{Reason: types.TaskCompletionReasonNormal}
+	workflowEvents := mgr.completeTemporaryAutoPlanWorkflow("markdown", startedRunID, complete)
+	if len(workflowEvents) != 2 || len(complete.PermissionDenials) != 1 || complete.PermissionDenials[0].ToolName != "ExitPlanMode" {
+		t.Fatalf("terminal plan proposal was not synthesized: events=%d denials=%+v", len(workflowEvents), complete.PermissionDenials)
+	}
+	for _, result := range ec.byType("engine_command_result") {
+		if result.event.CommandError == "unknown_command" {
+			t.Fatal("markdown command leaked an intermediate unknown_command")
+		}
+	}
+}
+
 // TestSendCommand_UnknownCommandEmitsResult is the unknown-command
 // contract test. Before this change, an unknown command was a silent no-op
 // that left in-flight conversations hanging. Now the engine must emit an
-// engine_command_result with CommandError populated so consumers can route
-// to whatever fallback they own (or surface "unknown command" to the user
-// when no fallback resolves).
+// engine_command_result with CommandError populated after every engine-owned
+// command source has missed, so consumers can surface the final failure.
 func TestSendCommand_UnknownCommandEmitsResult(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
@@ -166,7 +230,7 @@ func TestSendCommand_ClearEmitsSuccessResult(t *testing.T) {
 // The signal is intentionally the same shape as the default-arm
 // unknown-command emit (CommandError='unknown_command') so consumers can
 // use a single fallback branch — semantically the engine cannot run the
-// command and the consumer should route to whatever fallback it owns.
+// command and the consumer should surface the final failure.
 func TestSendCommand_MissingSessionEmitsUnknownCommand(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
@@ -321,7 +385,7 @@ func TestEmitCommandRegistry_MidSessionRegistrationReSnapshots(t *testing.T) {
 	// Mid-session registration. The wired observer must fire a second snapshot.
 	host.SDK().RegisterCommand("beta", extension.CommandDefinition{
 		Description: "registered mid-session",
-		Execute: func(args string, ctx *extension.Context) error { return nil },
+		Execute:     func(args string, ctx *extension.Context) error { return nil },
 	})
 
 	results := ec.byType("engine_command_registry")
@@ -348,9 +412,9 @@ func TestSDK_OnCommandsChangeFiresAfterRegister(t *testing.T) {
 	sdk := extension.NewSDK()
 
 	var (
-		fires      int
-		seenCmds   map[string]extension.CommandDefinition
-		mu         sync.Mutex
+		fires    int
+		seenCmds map[string]extension.CommandDefinition
+		mu       sync.Mutex
 	)
 	sdk.SetOnCommandsChange(func() {
 		mu.Lock()

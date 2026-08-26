@@ -338,6 +338,9 @@ type RunOptions struct {
 	// consumer classifies the invocation (the same trivial check a client
 	// already does to drive its slash-command autocomplete) and sets this flag.
 	ResolveSlash bool `json:"resolveSlash,omitempty"`
+	// TemporaryAutoFromPlan is an in-process workflow marker. The session remains
+	// in plan mode while this one command run receives auto-mode tools.
+	TemporaryAutoFromPlan bool `json:"-"`
 
 	// ResolvedSlashCommand / ResolvedSlashArgs / ResolvedSlashSource carry the
 	// raw slash invocation after the session layer has resolved+expanded it.

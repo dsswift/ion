@@ -342,27 +342,23 @@ func (m *Manager) ListSessions() []SessionInfo {
 //     group; never cached, so a command registered moments before this call
 //     is found even if the corresponding engine_command_registry snapshot is
 //     still in flight to consumers.
-//  2. Built-in cases below (`clear`, `compact`, `export`).
-//  3. Default arm: emit an engine_command_result with CommandError set so
-//     consumers can distinguish "ran fine" from "engine disclaims this name"
-//     and route to whatever fallback they own (e.g. local `.md` template
-//     expansion). Without this, consumers have no observable signal — the
-//     previous behavior was a silent no-op which leaves an in-flight
-//     conversation hanging. The default arm is the defence-in-depth backstop
-//     that makes mid-session registration races recoverable.
+//  2. Built-in cases (`clear`, `compact`, `export`).
+//  3. Markdown commands and skills across the conventional roots.
+//  4. Final `unknown_command` only after every engine-owned source misses.
 func (m *Manager) SendCommand(key, command, args string) {
+	m.SendCommandWithOverrides(key, command, args, nil)
+}
+
+// SendCommandWithOverrides carries the first command request's run options
+// through whichever engine-owned command implementation wins precedence.
+func (m *Manager) SendCommandWithOverrides(key, command, args string, overrides *PromptOverrides) {
 	m.mu.RLock()
 	s, ok := m.sessions[key]
 	m.mu.RUnlock()
 	if !ok {
-		// Session not started yet (consumers may lazily start their engine
-		// session on first prompt). A slash command that arrives before the
-		// first prompt would otherwise vanish silently. Emit an
-		// unknown-command result so consumers can route to whatever fallback
-		// they own — semantically equivalent to "engine cannot run this
-		// command, try the next routing option". Contract-wise this is
-		// identical to the default-arm signal in dispatchCommand; consumers
-		// do not need to distinguish the two.
+		// No session exists, so no command source can run. This is the final
+		// unknown-command result; clients that want lazy first-use behavior must
+		// establish the session before sending the command.
 		utils.LogWithFields(utils.LevelInfo, "session", "sendcommand: session not found, emitting unknown_command for", map[string]any{"key": key, "command": command})
 		m.emit(key, types.EngineEvent{
 			Type:         "engine_command_result",
@@ -375,7 +371,7 @@ func (m *Manager) SendCommand(key, command, args string) {
 	// Real dispatch lives in command_dispatch.go so this god-file stays at
 	// a manageable size. The session lookup is kept here because it's the
 	// gate that protects every dispatch arm from a nil session pointer.
-	m.dispatchCommand(s, key, command, args)
+	m.dispatchCommand(s, key, command, args, overrides)
 }
 
 // StopSession cancels the active run and cleans up the session.
