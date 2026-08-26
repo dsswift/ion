@@ -11,7 +11,7 @@ final class InboxSnapshotWireTests: XCTestCase {
         """.data(using: .utf8)!
 
         let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
-        guard case let .snapshot(_, _, _, _, _, _, _, _, _, _, _, states, settled) = event else {
+        guard case let .snapshot(_, _, _, _, _, _, _, _, _, _, _, _, states, settled) = event else {
             return XCTFail("Expected snapshot")
         }
         XCTAssertEqual(states?.map(\.repoPath), ["/repo"])
@@ -28,7 +28,7 @@ final class InboxSnapshotWireTests: XCTestCase {
         """.data(using: .utf8)!
 
         let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
-        guard case let .snapshot(_, _, _, _, _, _, _, _, _, _, _, _, settled) = event else {
+        guard case let .snapshot(_, _, _, _, _, _, _, _, _, _, _, _, _, settled) = event else {
             return XCTFail("Expected snapshot")
         }
         XCTAssertEqual(settled?.first?.inboxState, "settled")

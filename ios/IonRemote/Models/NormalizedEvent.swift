@@ -12,7 +12,7 @@ import Foundation
 /// Mirrors `RemoteEvent` in `src/main/remote/protocol.ts`.
 /// (RemoteTabGroup, used by the snapshot event, lives in RemoteTabGroup.swift.)
 enum RemoteEvent: Sendable {
-    case snapshot(tabs: [RemoteTabState], recentDirectories: [String], tabGroupMode: String?, tabGroups: [RemoteTabGroup]?, preferredModel: String?, engineDefaultModel: String?, availableModels: [RemoteModelEntry]?, customName: String?, customIcon: String?, remoteDisplayUpdatedAt: Date?, resources: [String: [[String: AnyCodable]]]?, worktreeStates: [RemoteWorktreeState]? = nil, settledTabs: [RemoteTabState]? = nil)
+    case snapshot(tabs: [RemoteTabState], recentDirectories: [String], tabGroupMode: String?, tabGroups: [RemoteTabGroup]?, preferredModel: String?, engineDefaultModel: String?, availableModels: [RemoteModelEntry]?, customName: String?, customIcon: String?, remoteDisplayUpdatedAt: Date?, resources: [String: [[String: AnyCodable]]]?, projects: [RemoteProject] = [], worktreeStates: [RemoteWorktreeState]? = nil, settledTabs: [RemoteTabState]? = nil)
     case tabCreated(tab: RemoteTabState, clientCmdId: String?)
     case tabClosed(tabId: String)
     /// `resync` reasserts status after client-side optimistic state diverged.
@@ -790,7 +790,7 @@ enum RemoteEvent: Sendable {
         // desktop_load_conversation this page answers. Discriminates
         // wholesale-replace (nil) from older-page prepend (non-nil).
         case before
-        case toolStatus, source, recentDirectories
+        case toolStatus, source, recentDirectories, projects
         // desktop_tool_update: incremental tool input chunk for the running
         // tool row keyed by toolId. iOS accumulates these to build toolInput.
         case partialInput

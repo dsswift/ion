@@ -19,7 +19,7 @@ extension DiagnosticLog {
         case .resendUnavailable(let fromSeq):
             log("EVENT: resendUnavailable fromSeq=\(fromSeq)", tag: "session", level: .info)
 
-        case .snapshot(let tabs, let dirs, let groupMode, _, _, _, _, _, _, _, _, _, _):
+        case .snapshot(let tabs, let dirs, let groupMode, _, _, _, _, _, _, _, _, _, _, _):
             log("EVENT: snapshot tabs=\(tabs.count) dirs=\(dirs.count) groupMode=\(groupMode ?? "nil")", tag: "session", level: .info)
 
         case .tabCreated(let tab, _):

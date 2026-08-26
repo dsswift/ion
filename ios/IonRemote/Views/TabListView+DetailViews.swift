@@ -61,9 +61,8 @@ extension TabListView {
 
     var newTabButton: some View {
         Button {
-            if allDirectories.isEmpty {
-                // No directories known yet: route immediately (will create plain).
-                requestNewConversation(directory: nil, pinToGroupId: nil)
+            if let project = defaultProject {
+                requestNewConversation(project: project, pinToGroupId: nil)
             } else {
                 showNewTab = true
             }
@@ -71,11 +70,11 @@ extension TabListView {
             Image(systemName: "plus")
         }
         .contextMenu {
-            if let defaultDir = allDirectories.first {
-                Button { requestNewConversation(directory: defaultDir.fullPath, pinToGroupId: nil) } label: {
+            if let project = defaultProject {
+                Button { requestNewConversation(project: project, pinToGroupId: nil) } label: {
                     Label("New Tab", systemImage: "plus")
                 }
-                Button { viewModel.createTerminalTab(workingDirectory: defaultDir.fullPath) } label: {
+                Button { viewModel.createTerminalTab(workingDirectory: project.directory) } label: {
                     Label("New Terminal", systemImage: "terminal")
                 }
             }

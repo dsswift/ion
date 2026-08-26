@@ -73,19 +73,6 @@ struct SettingsAppearanceView: View {
                 }
             }
 
-            // ─── New Tab ────────────────────────────────────────────
-            Section("New Tab") {
-                Picker("Default Directory", selection: Binding<String?>(
-                    get: { viewModel.defaultBaseDirectory },
-                    set: { viewModel.defaultBaseDirectory = $0 }
-                )) {
-                    Text("None (desktop default)").tag(nil as String?)
-                    ForEach(viewModel.recentDirectories, id: \.self) { dir in
-                        Text((dir as NSString).lastPathComponent).tag(dir as String?)
-                    }
-                }
-            }
-
             // ─── Tab List ───────────────────────────────────────────
             Section {
                 Toggle(isOn: Binding(

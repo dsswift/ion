@@ -216,7 +216,7 @@ extension SessionViewModel {
     }
 
     func createTab(workingDirectory: String? = nil, pinToGroupId: String? = nil, profileId: String? = nil, useWorktree: Bool? = nil, sourceBranch: String? = nil) {
-        let dir = workingDirectory ?? defaultBaseDirectory
+        let dir = workingDirectory
         // Route through the confirm-or-resend tracker rather than a fire-once
         // `send(_:intent: .userInitiated)`: a create dropped into a wedged
         // transport succeeds locally without throwing and is otherwise lost.
@@ -291,7 +291,7 @@ extension SessionViewModel {
     // MARK: - Terminal Commands
 
     func createTerminalTab(workingDirectory: String? = nil) {
-        let dir = workingDirectory ?? defaultBaseDirectory
+        let dir = workingDirectory
         // Confirm-or-resend tracked, same rationale as createTab.
         let clientCmdId = UUID().uuidString
         sendTrackedCreate(

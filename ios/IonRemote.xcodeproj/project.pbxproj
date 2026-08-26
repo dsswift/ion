@@ -11,6 +11,8 @@
 		A1B2C3D4E5F60001000001AA /* IonRemoteApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000002AA /* IonRemoteApp.swift */; };
 		A1B2C3D4E5F60001000003AA /* NormalizedEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000004AA /* NormalizedEvent.swift */; };
 		A1B2C3D4E5F60001000005AA /* RemoteTabState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000006AA /* RemoteTabState.swift */; };
+		PRJCTMODEL000000000002 /* RemoteProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = PRJCTMODEL000000000001 /* RemoteProject.swift */; };
+		PRJCTSNAPTEST000000002 /* ProjectSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PRJCTSNAPTEST000000001 /* ProjectSnapshotTests.swift */; };
 		A1B2C3D4E5F60001000007AA /* RemoteCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000008AA /* RemoteCommand.swift */; };
 		A1B2C3D4E5F60001000009AA /* PairedDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100000AAA /* PairedDevice.swift */; };
 		THEMESYNCPAY0000000002 /* SyncedThemePayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = THEMESYNCPAY0000000001 /* SyncedThemePayload.swift */; };
@@ -568,6 +570,8 @@
 		A1B2C3D4E5F60001000002AA /* IonRemoteApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IonRemoteApp.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000004AA /* NormalizedEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEvent.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000006AA /* RemoteTabState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTabState.swift; sourceTree = "<group>"; };
+		PRJCTMODEL000000000001 /* RemoteProject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteProject.swift; sourceTree = "<group>"; };
+		PRJCTSNAPTEST000000001 /* ProjectSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSnapshotTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000008AA /* RemoteCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteCommand.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100000AAA /* PairedDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairedDevice.swift; sourceTree = "<group>"; };
 		THEMESYNCPAY0000000001 /* SyncedThemePayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncedThemePayload.swift; sourceTree = "<group>"; };
@@ -1201,6 +1205,7 @@
 				A1B2C3D4E5F6000100A100AA /* NormalizedEvent+PlanModeAutoExit.swift */,
 				THINK00000000000000000002 /* NormalizedEvent+Thinking.swift */,
 				A1B2C3D4E5F60001000006AA /* RemoteTabState.swift */,
+				PRJCTMODEL000000000001 /* RemoteProject.swift */,
 				B1B2C3D4E5F60001CC000008 /* TabStatus.swift */,
 				A1B2C3D4E5F60001000008AA /* RemoteCommand.swift */,
 				A1B2C3D4E5F60001005307AA /* RemoteCommand+Encode.swift */,
@@ -1586,6 +1591,7 @@
 				A1B2C3D4E5F6ACDC0001AC04 /* AgentDispatchStopResolverTests.swift */,
 				E11C17CA0001F00013AB0001 /* ElicitationCodecTests.swift */,
 				RTSDECODE000000000002 /* RemoteTabStateDecodeTests.swift */,
+				PRJCTSNAPTEST000000001 /* ProjectSnapshotTests.swift */,
 				C0DE0000000000000000000A /* InboxNavigatorTests.swift */,
 				B3NCHTERMTST000000000001 /* InboxBenchTerminalTests.swift */,
 				IBORDER0000000000000002 /* InboxNavigatorBenchOrderTests.swift */,
@@ -1934,6 +1940,7 @@
 				A1B2C3D4E5F60001000001AA /* IonRemoteApp.swift in Sources */,
 				A1B2C3D4E5F60001000003AA /* NormalizedEvent.swift in Sources */,
 				A1B2C3D4E5F60001000005AA /* RemoteTabState.swift in Sources */,
+				PRJCTMODEL000000000002 /* RemoteProject.swift in Sources */,
 				A1B2C3D4E5F60001000007AA /* RemoteCommand.swift in Sources */,
 				A1B2C3D4E5F60001005306AA /* RemoteCommand+Encode.swift in Sources */,
 				A1B2C3D4E5F60001FF0021AA /* RemoteCommand+Decode.swift in Sources */,
@@ -2380,6 +2387,7 @@
 				A1B2C3D4E5F6ACDC0001AC03 /* AgentDispatchStopResolverTests.swift in Sources */,
 				E11C17CA0001F00012AB0001 /* ElicitationCodecTests.swift in Sources */,
 				RTSDECODE000000000001 /* RemoteTabStateDecodeTests.swift in Sources */,
+				PRJCTSNAPTEST000000002 /* ProjectSnapshotTests.swift in Sources */,
 				C0DE00000000000000000009 /* InboxNavigatorTests.swift in Sources */,
 				B3NCHTERMTST000000000002 /* InboxBenchTerminalTests.swift in Sources */,
 				IBORDER0000000000000001 /* InboxNavigatorBenchOrderTests.swift in Sources */,

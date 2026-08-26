@@ -223,3 +223,38 @@ final class RemoteTabStateDecodeTests: XCTestCase {
         XCTAssertNil(tab.worktree, "repo-root conversations carry no worktree identity")
     }
 }
+
+extension RemoteTabStateDecodeTests {
+    func testDesktopSnapshotProjectsDecodeWithAllAgreedFields() throws {
+        let json = """
+        {"type":"desktop_snapshot","tabs":[],"projects":[{
+          "directory":"/project","displayName":"Project","isDefault":true,
+          "managed":false,"profileAction":"profile","profileId":"profile-1",
+          "profileSource":"project","hasOverride":true
+        }]}
+        """.data(using: .utf8)!
+
+        let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
+        guard case let .snapshot(_, _, _, _, _, _, _, _, _, _, _, projects, _, _) = event else {
+            return XCTFail("Expected desktop snapshot")
+        }
+        let project = try XCTUnwrap(projects.first)
+        XCTAssertEqual(project.directory, "/project")
+        XCTAssertEqual(project.displayName, "Project")
+        XCTAssertTrue(project.isDefault)
+        XCTAssertFalse(project.managed)
+        XCTAssertEqual(project.profileAction, "profile")
+        XCTAssertEqual(project.profileId, "profile-1")
+        XCTAssertEqual(project.profileSource, "project")
+        XCTAssertTrue(project.hasOverride)
+    }
+
+    func testDesktopSnapshotProjectsAreOptionalForOlderDesktops() throws {
+        let json = #"{"type":"desktop_snapshot","tabs":[]}"#.data(using: .utf8)!
+        let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
+        guard case let .snapshot(_, _, _, _, _, _, _, _, _, _, _, projects, _, _) = event else {
+            return XCTFail("Expected desktop snapshot")
+        }
+        XCTAssertTrue(projects.isEmpty)
+    }
+}

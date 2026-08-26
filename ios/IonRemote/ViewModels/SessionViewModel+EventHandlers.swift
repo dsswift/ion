@@ -47,8 +47,8 @@ extension SessionViewModel {
         case .lanSecretUnusable:
             handleLANSecretUnusable()
 
-        case .snapshot(let snapshotTabs, let recentDirs, let snapshotGroupMode, let snapshotGroups, let snapshotPreferredModel, let snapshotEngineDefaultModel, let snapshotAvailableModels, let snapshotCustomName, let snapshotCustomIcon, let snapshotRemoteDisplayUpdatedAt, let snapshotResources, let snapshotWorktreeStates, let snapshotSettledTabs):
-            handleSnapshot(snapshotTabs: snapshotTabs, recentDirs: recentDirs, groupMode: snapshotGroupMode, groups: snapshotGroups, preferredModel: snapshotPreferredModel, engineDefaultModel: snapshotEngineDefaultModel, availableModels: snapshotAvailableModels, worktreeStates: snapshotWorktreeStates, settledTabs: snapshotSettledTabs)
+        case .snapshot(let snapshotTabs, let recentDirs, let snapshotGroupMode, let snapshotGroups, let snapshotPreferredModel, let snapshotEngineDefaultModel, let snapshotAvailableModels, let snapshotCustomName, let snapshotCustomIcon, let snapshotRemoteDisplayUpdatedAt, let snapshotResources, let snapshotProjects, let snapshotWorktreeStates, let snapshotSettledTabs):
+            handleSnapshot(snapshotTabs: snapshotTabs, recentDirs: recentDirs, groupMode: snapshotGroupMode, groups: snapshotGroups, preferredModel: snapshotPreferredModel, engineDefaultModel: snapshotEngineDefaultModel, availableModels: snapshotAvailableModels, projects: snapshotProjects, worktreeStates: snapshotWorktreeStates, settledTabs: snapshotSettledTabs)
             applySnapshotRemoteDisplay(customName: snapshotCustomName, customIcon: snapshotCustomIcon, updatedAt: snapshotRemoteDisplayUpdatedAt)
             if let snapshotResources {
                 for (kind, rawItems) in snapshotResources {

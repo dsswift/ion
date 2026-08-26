@@ -39,7 +39,7 @@ struct TabListView: View {
     // out, which caused the "Plain conversation" tap to appear to do nothing.
     // Internal for the same reason as pendingPinToGroupId above: the sheet
     // and its onDismiss drain live in TabListView+Presentation.swift.
-    @State var pendingNewConversationDir: String? = nil
+    @State var pendingNewConversationProject: RemoteProject? = nil
     @State var pendingNewConversationPin: String? = nil
     // Internal (not private): the DesktopPickerMenu in TabListView+Layouts'
     // toolbars binds to it.
@@ -49,7 +49,7 @@ struct TabListView: View {
     // These four are read by the TabListView+Helpers.swift extension, so they
     // are internal (not private — private is file-scoped and the extension
     // lives in another file).
-    @State var conversationPickerDirectory: String? = nil
+    @State var conversationPickerProject: RemoteProject? = nil
     @State var conversationPickerPinToGroupId: String? = nil
     @State var conversationPickerUseWorktree: Bool? = nil
     @State var conversationPickerSourceBranch: String? = nil

@@ -396,6 +396,8 @@ final class SessionViewModel {
 
     /// Recent base directories from the desktop, updated via snapshot events.
     var recentDirectories: [String] = []
+    /// Desktop-owned projects for New Conversation. Replaced by each snapshot.
+    var projects: [RemoteProject] = []
     /// Exact timestamp of the layout snapshot restored or received per pairing.
     /// Used for stale-data disclosure; never used to infer authority.
     var lastSynchronizedAt: [String: Date] = [:]
@@ -439,12 +441,6 @@ final class SessionViewModel {
     /// draft store, post-#256). Updated on every keystroke via the InputBar
     /// binding. See SessionViewModel+Drafts.swift.
     var draftInputByTab: [String: String] = [:]
-    /// Default directory for new tabs on iOS (independent of desktop setting).
-    var defaultBaseDirectory: String? {
-        get { UserDefaults.standard.string(forKey: "defaultBaseDirectory") }
-        set { UserDefaults.standard.set(newValue, forKey: "defaultBaseDirectory") }
-    }
-
     /// Whether to show the branch/ahead/behind row in the tab list (off by default).
     var showGitInfoInTabList: Bool {
         get { UserDefaults.standard.bool(forKey: "showGitInfoInTabList") }

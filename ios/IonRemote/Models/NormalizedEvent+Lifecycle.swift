@@ -35,6 +35,7 @@ extension RemoteEvent {
             let updatedAtMs = try container.decodeIfPresent(Double.self, forKey: .remoteDisplayUpdatedAt)
             let updatedAt = updatedAtMs.map { Date(timeIntervalSince1970: $0 / 1000.0) }
             let resources = try container.decodeIfPresent([String: [[String: AnyCodable]]].self, forKey: .resources)
+            let projects = try container.decodeIfPresent([RemoteProject].self, forKey: .projects) ?? []
             // Worktree/bench state and settled-tab history, additive to the
             // core tab list. worktreeStates feeds SessionViewModel's
             // per-repo worktree cache (SessionViewModel+WorktreeCommands);
@@ -46,7 +47,7 @@ extension RemoteEvent {
             // matching the primary `tabs` decode above.
             let worktreeStates = try container.decodeIfPresent([RemoteWorktreeState].self, forKey: .worktreeStates)
             let settledTabs = try container.decodeIfPresent([SafeDecodable<RemoteTabState>].self, forKey: .settledTabs)?.compactMap(\.value)
-            return .snapshot(tabs: tabs, recentDirectories: recentDirs, tabGroupMode: tabGroupMode, tabGroups: tabGroups, preferredModel: preferredModel, engineDefaultModel: engineDefaultModel, availableModels: availableModels, customName: customName, customIcon: customIcon, remoteDisplayUpdatedAt: updatedAt, resources: resources, worktreeStates: worktreeStates, settledTabs: settledTabs)
+            return .snapshot(tabs: tabs, recentDirectories: recentDirs, tabGroupMode: tabGroupMode, tabGroups: tabGroups, preferredModel: preferredModel, engineDefaultModel: engineDefaultModel, availableModels: availableModels, customName: customName, customIcon: customIcon, remoteDisplayUpdatedAt: updatedAt, resources: resources, projects: projects, worktreeStates: worktreeStates, settledTabs: settledTabs)
 
         case .tabCreated:
             let tab = try container.decode(RemoteTabState.self, forKey: .tab)
@@ -186,7 +187,7 @@ extension RemoteEvent {
     /// Encode lifecycle events. Returns `true` if the receiver was a lifecycle event.
     func encodeLifecycle(into container: inout KeyedEncodingContainer<CodingKeys>) throws -> Bool {
         switch self {
-        case .snapshot(let tabs, let recentDirectories, let tabGroupMode, let tabGroups, let preferredModel, let engineDefaultModel, let availableModels, let customName, let customIcon, let remoteDisplayUpdatedAt, let resources, let worktreeStates, let settledTabs):
+        case .snapshot(let tabs, let recentDirectories, let tabGroupMode, let tabGroups, let preferredModel, let engineDefaultModel, let availableModels, let customName, let customIcon, let remoteDisplayUpdatedAt, let resources, let projects, let worktreeStates, let settledTabs):
             try container.encode(TypeKey.snapshot, forKey: .type)
             try container.encode(tabs, forKey: .tabs)
             if !recentDirectories.isEmpty {
@@ -203,6 +204,7 @@ extension RemoteEvent {
                 try container.encode(remoteDisplayUpdatedAt.timeIntervalSince1970 * 1000.0, forKey: .remoteDisplayUpdatedAt)
             }
             try container.encodeIfPresent(resources, forKey: .resources)
+            try container.encode(projects, forKey: .projects)
             try container.encodeIfPresent(worktreeStates, forKey: .worktreeStates)
             try container.encodeIfPresent(settledTabs, forKey: .settledTabs)
             return true
