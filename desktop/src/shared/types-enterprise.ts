@@ -87,6 +87,14 @@ export interface EnterprisePolicy {
    * policy (conversations kept indefinitely).
    */
   conversationRetentionDays?: number
+  newConversationDefaults?: {
+    baseDirectory?: string
+    profileName?: string
+    profileLocked?: boolean
+    engineProfileId?: string
+    locked?: boolean
+    projects?: Array<{ directory: string; name?: string; default?: boolean; profileName?: string; profileLocked?: boolean }>
+  }
   /**
    * Opaque client-config namespace. Desktop-specific constraints live under
    * customFields['ion-desktop'] by convention; the engine passes this

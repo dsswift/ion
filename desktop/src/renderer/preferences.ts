@@ -117,6 +117,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   inboxAutoSettleDays: saved.inboxAutoSettleDays,
   inboxAutoSettleOnMerge: saved.inboxAutoSettleOnMerge,
   conversationNav: saved.conversationNav,
+  projectSettingsVersion: saved.projectSettingsVersion,
   projects: saved.projects,
   excludedResourceKinds: saved.excludedResourceKinds,
   keyboardShortcuts: saved.keyboardShortcuts,

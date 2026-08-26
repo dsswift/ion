@@ -22,6 +22,8 @@ import { resolveRegisteredWorktree } from '../worktree-registration'
  */
 export interface CreateConversationTabOpts {
   extensions?: string[]
+  /** Source Project policy root; defaults to the final working directory. */
+  projectDirectory?: string
   profileId?: string
   setActive?: boolean
   /**
@@ -69,7 +71,8 @@ export function createConversationTabAction(set: StoreSet, get: StoreGet) {
     const s = get()
     const homeDir = s.staticInfo?.homePath || '~'
     const prefs = usePreferencesStore.getState()
-    const baseWorkingDirectory = dir || prefs.defaultBaseDirectory || homeDir
+    const defaultProjectDirectory = Object.keys(prefs.projects).find((path) => prefs.projects[path]?.isDefault) ?? ''
+    const baseWorkingDirectory = dir || defaultProjectDirectory || homeDir
     // A new worktree must be resolved before state creation or engine startup.
     // Starting first would bind the session to the source checkout while the UI
     // claimed it lived in the worktree.
@@ -221,6 +224,7 @@ export function createConversationTabAction(set: StoreSet, get: StoreGet) {
         profileId: profile?.id || '',
         extensions,
         workingDirectory,
+        ...(opts.projectDirectory ? { projectDirectory: opts.projectDirectory } : {}),
       }).then((result) => {
         if (result && !result.ok) {
           rError('engine.create', 'engine start failed', { error: result.error })

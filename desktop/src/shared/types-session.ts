@@ -971,6 +971,8 @@ export interface NewConversationDefaultsPolicy {
    * opens the conversation directly with these values.
    */
   locked: boolean;
+  /** Enterprise-owned Projects visible to clients but not user-editable. */
+  projects?: Array<{ directory: string; name?: string; default?: boolean; profileName?: string; profileLocked?: boolean }>;
 }
 
 // ─── Remote Control Types ───

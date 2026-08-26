@@ -115,6 +115,7 @@ export const IPC = {
   // Enterprise policy
   GET_ENTERPRISE_POLICY: "ion:get-enterprise-policy",
   GET_ENTERPRISE_POLICY_FULL: "ion:get-enterprise-policy-full",
+  RESOLVE_NEW_CONVERSATION_DEFAULTS: "ion:resolve-new-conversation-defaults",
 
   // Theme packs (custom color themes; main scans disk, renderer registers)
   THEMES_LIST_CUSTOM: "ion:themes-list-custom",

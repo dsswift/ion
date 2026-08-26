@@ -1,5 +1,5 @@
 import { createHash } from 'crypto'
-import { state, modelCache, engineBridge } from '../state'
+import { state, modelCache, engineBridge, enterprisePolicyCache } from '../state'
 import { readSettings } from '../settings-store'
 import { getRemoteTabStates } from './snapshot'
 import { reconcileGitWatchedDirectories } from './git-watcher-bridge'
@@ -7,6 +7,7 @@ import { log as _log, debug as _debug, error as _error } from '../logger'
 import type { RemoteTabState } from './protocol'
 import { recentLocalDirectories } from '../../shared/recent-directories'
 import { settledTabsSnapshot } from './snapshot-settled'
+import { effectiveProjects } from '../../shared/project-registry'
 
 function log(msg: string, fields?: Record<string, unknown>): void { _log('snapshot-polling', msg, fields) }
 function debug(msg: string, fields?: Record<string, unknown>): void { _debug('snapshot-polling', msg, fields) }
@@ -172,9 +173,27 @@ export async function buildSnapshotEvent(): Promise<{ event: Record<string, unkn
   const recentDirectories = recentLocalDirectories(persistedRecentDirectories)
   const tabGroupMode = settings.tabGroupMode || 'off'
   const tabGroups = Array.isArray(settings.tabGroups) ? settings.tabGroups.map((g: any) => ({ id: g.id, label: g.label, isDefault: g.isDefault, order: g.order })) : []
+  const managedProjects = enterprisePolicyCache.policy?.newConversationDefaults?.projects ?? []
+  const projects = effectiveProjects(settings.projects ?? {}, managedProjects.map((managed) => ({
+    directory: managed.directory,
+    name: managed.name,
+    isDefault: managed.default,
+    profileAction: managed.profileName ? 'profile' : 'ask',
+    profileSource: managed.profileName ? 'enterprise-project' : undefined,
+  }))).map((project) => ({
+    directory: project.dir,
+    displayName: project.displayName,
+    isDefault: project.managed ? managedProjects.some((managed) => managed.directory === project.dir && managed.default === true) : project.entry.isDefault === true,
+    managed: project.managed,
+    profileAction: project.profileAction,
+    ...(project.profileId ? { profileId: project.profileId } : {}),
+    ...(project.profileSource ? { profileSource: project.profileSource } : {}),
+    hasOverride: project.entry.profileOverride !== undefined,
+  }))
   const event: Record<string, unknown> = {
     type: 'desktop_snapshot',
     tabs,
+    projects,
     worktreeStates: state.remoteWorktreeStates?.size ? [...state.remoteWorktreeStates.values()] : undefined,
     settledTabs: settledTabsSnapshot(),
     recentDirectories,

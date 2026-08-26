@@ -14,6 +14,7 @@ import type {
   EngineDirListing,
   DiscoveredCommand,
   NewConversationDefaultsPolicy,
+  ResolvedNewConversationDefaults,
 } from "../shared/types";
 import type {
   DeepLinkConfirmRequest,
@@ -91,6 +92,7 @@ export interface IonCoreApi {
   getEnterprisePolicy(): Promise<NewConversationDefaultsPolicy | null>;
   /** Fetch the full enterprise policy blob (D-004). Returns null when no enterprise config is active. */
   getEnterprisePolicyFull(): Promise<EnterprisePolicy | null>;
+  resolveNewConversationDefaults(path: string): Promise<ResolvedNewConversationDefaults | null>;
   /** Custom theme packs installed on disk (desktop components, resolved with inline asset data URLs). */
   listCustomThemes(): Promise<CustomThemeForRenderer[]>;
   openExternal(url: string): Promise<boolean>;

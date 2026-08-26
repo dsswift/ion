@@ -30,6 +30,7 @@ export const requestApi = {
   engineIsRemote: () => ipcRenderer.invoke(IPC.ENGINE_IS_REMOTE),
   getEnterprisePolicy: () => ipcRenderer.invoke(IPC.GET_ENTERPRISE_POLICY),
   getEnterprisePolicyFull: () => ipcRenderer.invoke(IPC.GET_ENTERPRISE_POLICY_FULL),
+  resolveNewConversationDefaults: (path: string) => ipcRenderer.invoke(IPC.RESOLVE_NEW_CONVERSATION_DEFAULTS, path),
   listCustomThemes: () => ipcRenderer.invoke(IPC.THEMES_LIST_CUSTOM),
   openExternal: (url) => ipcRenderer.invoke(IPC.OPEN_EXTERNAL, url),
   getFavicon: (host) => ipcRenderer.invoke(IPC.FAVICON_GET, host),

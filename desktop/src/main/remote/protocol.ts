@@ -38,10 +38,21 @@ export type { RemoteCommand } from './protocol-commands'
 
 // ─── Ion → iOS events ───
 
+export interface RemoteProject {
+  directory: string
+  displayName: string
+  isDefault: boolean
+  managed: boolean
+  profileAction: 'ask' | 'plain' | 'profile'
+  profileId?: string
+  profileSource?: string
+  hasOverride: boolean
+}
+
 export type RemoteEvent =
   | RemoteWorktreeEvent
   | RemoteQuestionsEvent
-  | { type: 'desktop_snapshot'; tabs: RemoteTabState[]; worktreeStates?: RemoteWorktreeState[]; settledTabs?: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string; availableModels?: Array<{ id: string; providerId: string; providerLabel: string; label: string; contextWindow: number; maxOutputTokens?: number; effectiveContextLimit?: number; hasAuth: boolean; thinkingMode?: string; thinkingEfforts?: string[]; modelKind?: string; isCustom?: boolean }>; customName?: string | null; customIcon?: string | null; remoteDisplayUpdatedAt?: number; resources?: Record<string, Array<{ id: string; kind: string; producer?: string; title?: string; createdAt: string; read?: boolean; conversationId?: string }>> }
+  | { type: 'desktop_snapshot'; tabs: RemoteTabState[]; projects?: RemoteProject[]; worktreeStates?: RemoteWorktreeState[]; settledTabs?: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string; availableModels?: Array<{ id: string; providerId: string; providerLabel: string; label: string; contextWindow: number; maxOutputTokens?: number; effectiveContextLimit?: number; hasAuth: boolean; thinkingMode?: string; thinkingEfforts?: string[]; modelKind?: string; isCustom?: boolean }>; customName?: string | null; customIcon?: string | null; remoteDisplayUpdatedAt?: number; resources?: Record<string, Array<{ id: string; kind: string; producer?: string; title?: string; createdAt: string; read?: boolean; conversationId?: string }>> }
   | { type: 'desktop_resource_content'; resourceId: string; kind: string; producer?: string; content: string }
   // `clientCmdId` echoes the id the iOS client attached to `desktop_create_tab`
   // / `desktop_create_terminal_tab` so the client's confirm-or-resend tracker

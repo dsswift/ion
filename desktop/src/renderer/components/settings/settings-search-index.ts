@@ -6,7 +6,6 @@ interface SearchEntry {
 
 const SEARCH_INDEX: SearchEntry[] = [
   // General
-  { categoryId: 'general', label: 'Default Directory', keywords: 'default directory workspace home folder path browse' },
   { categoryId: 'general', label: 'Default Permission Mode', keywords: 'permission mode plan auto approve' },
   { categoryId: 'general', label: 'Bash Command Entry', keywords: 'bash command entry shell terminal exclamation' },
   { categoryId: 'general', label: 'Allow Settings Edits', keywords: 'allow settings edits agent modify ion.md engine.json' },
@@ -15,6 +14,10 @@ const SEARCH_INDEX: SearchEntry[] = [
   { categoryId: 'general', label: 'Show Task List', keywords: 'task list todo checklist show hide' },
   { categoryId: 'general', label: 'AI Tab Titles', keywords: 'ai tab titles generate automatic name' },
   { categoryId: 'general', label: 'Clear Context on Implement', keywords: 'clear context implement plan mode history' },
+
+  // Projects
+  { categoryId: 'projects', label: 'Project Directories', keywords: 'project directory workspace folder path browse add remove default star name profile conversation' },
+  { categoryId: 'projects', label: 'Project Profile', keywords: 'project profile plain conversation ask override extensions default engine profile' },
 
   // MCP Servers
   { categoryId: 'mcp', label: 'MCP Servers', keywords: 'mcp model context protocol server tools resources external add remote stdio' },

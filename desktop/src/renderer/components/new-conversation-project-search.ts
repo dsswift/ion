@@ -1,4 +1,4 @@
-import type { ProjectDisplayEntry } from '../../shared/project-registry'
+import type { EffectiveProjectEntry, ProjectDisplayEntry } from '../../shared/project-registry'
 
 export interface DirectoryBrowseQuery {
   parentPath: string
@@ -47,10 +47,10 @@ export function joinDirectoryPath(parentPath: string, name: string): string {
 }
 
 /** Keep matching loaded projects in their supplied (normally recency) order. */
-export function filterProjects(
-  projects: readonly ProjectDisplayEntry[],
+export function filterProjects<T extends ProjectDisplayEntry | EffectiveProjectEntry>(
+  projects: readonly T[],
   query: string,
-): ProjectDisplayEntry[] {
+): T[] {
   const needle = query.trim().toLocaleLowerCase()
   if (!needle) return [...projects]
   return projects.filter((project) =>

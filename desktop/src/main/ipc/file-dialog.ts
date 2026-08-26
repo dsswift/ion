@@ -5,7 +5,7 @@ import { IPC } from '../../shared/types'
 import { state } from '../state'
 import { showWindow } from '../window-manager'
 import { validateExternalUrl, isValidProjectPath } from '../ipc-validation'
-import { engineIsRemote, getEngineHostInfo, listEngineDirectory, getEnterprisePolicyNewConversationDefaults, getEnterprisePolicy } from '../engine-bridge-fs'
+import { engineIsRemote, getEngineHostInfo, listEngineDirectory, getEnterprisePolicyNewConversationDefaults, getEnterprisePolicy, resolveNewConversationDefaults } from '../engine-bridge-fs'
 import { log as _log, warn as _warn } from '../logger'
 
 function warn(msg: string, fields?: Record<string, unknown>): void {
@@ -95,6 +95,7 @@ export function registerFileDialogIpc(): void {
   // and any other client-side enterprise constraint. Null when no
   // enterprise config is active.
   ipcMain.handle(IPC.GET_ENTERPRISE_POLICY_FULL, async () => getEnterprisePolicy())
+  ipcMain.handle(IPC.RESOLVE_NEW_CONVERSATION_DEFAULTS, async (_event, path: string) => resolveNewConversationDefaults(path ?? ''))
 
   // Reveal a path in the OS file manager. OPEN_EXTERNAL cannot serve this: it
   // validates for http(s) and rejects file:// by design. The path is checked

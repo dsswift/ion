@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { X, GearSix, GitBranch, Columns, PaintBrush, WifiHigh, Lightning, Brain, Faders, MagnifyingGlass, Bell, Keyboard, Buildings, Plugs, MagicWand } from '@phosphor-icons/react'
+import { X, GearSix, GitBranch, Columns, PaintBrush, WifiHigh, Lightning, Brain, Faders, MagnifyingGlass, Bell, Keyboard, Buildings, Plugs, MagicWand, Folder } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { transitions } from '../theme-tokens'
 import { GeneralCategory } from './settings/GeneralCategory'
+import { ProjectsCategory } from './settings/ProjectsCategory'
 import { AIModelsCategory } from './settings/AIModelsCategory'
 import { AIAssistWorkflowsCategory } from './settings/AIAssistWorkflowsCategory'
 import { AutomationCategory } from './settings/AutomationCategory'
@@ -34,6 +35,7 @@ interface Category {
 
 const CATEGORIES: Category[] = [
   { id: 'general', label: 'General', icon: GearSix, component: GeneralCategory },
+  { id: 'projects', label: 'Projects', icon: Folder, component: ProjectsCategory },
   { id: 'ai', label: 'AI & Models', icon: Brain, component: AIModelsCategory },
   { id: 'ai-assist', label: 'AI Workflows', icon: MagicWand, component: AIAssistWorkflowsCategory },
   { id: 'automation', label: 'Automation', icon: Lightning, component: AutomationCategory },

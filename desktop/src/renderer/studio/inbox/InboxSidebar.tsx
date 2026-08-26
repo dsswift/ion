@@ -16,6 +16,8 @@ import { loadProjectSelection, saveProjectSelection, type InboxProjectSelection 
 import { rInfo } from '../../rendererLogger'
 import { settledRecordRestorableFromInventory } from '../../stores/settled-worktree'
 import { useColors } from '../../theme'
+import { usePreferencesStore } from '../../preferences'
+import { orderedProjects } from '../../../shared/project-registry'
 import type { TabState } from '../../../shared/types'
 
 const SETTLED_INITIAL = 10
@@ -51,6 +53,7 @@ export function InboxSidebar(): React.JSX.Element {
   const partition = useInboxPartition()
   const benches = useSessionStore((state) => state.benchWorkspaces)
   const inventory = useSessionStore((state) => state.worktreeInventory)
+  const registeredProjects = usePreferencesStore((state) => state.projects)
   const settledHistory = useSessionStore((state) => state.settledHistory)
   const [query, setQuery] = useState('')
   const [projectFilter, setProjectFilter] = useState<InboxProjectSelection>(savedProjectFilter)
@@ -89,7 +92,14 @@ export function InboxSidebar(): React.JSX.Element {
   const activeNavigator = useMemo(() => buildInboxNavigator(orderInboxTabs(activeTabs, sortOrder), benches, inventory, new Map(Object.entries(selectedBench)), projectFilter), [activeTabs, benches, inventory, sortOrder, selectedBench, projectFilter])
   const snoozedNavigator = useMemo(() => buildInboxNavigator(orderInboxTabs(snoozedTabs, sortOrder), benches, inventory, new Map(Object.entries(selectedBench)), projectFilter), [snoozedTabs, benches, inventory, sortOrder, selectedBench, projectFilter])
   const allProjects = useMemo(() => buildInboxNavigator([...partition.pinned, ...partition.inbox, ...partition.snoozed], benches, inventory, new Map(Object.entries(selectedBench))), [partition.pinned, partition.inbox, partition.snoozed, benches, inventory, selectedBench])
-  const projectOptions = allProjects.map((node) => ({ key: node.project.key, name: node.project.name, count: node.flatTabs.length + node.groups.reduce((sum, group) => sum + group.tabs.length, 0) }))
+  const projectOptions = useMemo(() => {
+    const live = new Map(allProjects.map((node) => [node.project.key, { key: node.project.key, name: node.project.name, count: node.flatTabs.length + node.groups.reduce((sum, group) => sum + group.tabs.length, 0) }]))
+    for (const project of orderedProjects(registeredProjects)) {
+      const existing = live.get(project.dir)
+      live.set(project.dir, { key: project.dir, name: project.displayName, count: existing?.count ?? 0 })
+    }
+    return [...live.values()].sort((left, right) => left.name.localeCompare(right.name) || left.key.localeCompare(right.key))
+  }, [allProjects, registeredProjects])
   const searching = query.trim().length > 0
   const searchRows = searching ? orderInboxTabs([...activeTabs, ...snoozedTabs, ...recentSettled], sortOrder) : []
 

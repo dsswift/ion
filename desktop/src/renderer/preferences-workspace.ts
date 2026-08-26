@@ -9,7 +9,7 @@
 import type { PreferencesState } from './preferences-types'
 import { saveSettings, getAllSettings } from './preferences-persist'
 import { normalizeWorkspacePath } from '../shared/workspace-roots'
-import { normalizeProjectDir, registerProjectUse as registerUse } from '../shared/project-registry'
+import { isManagedWorkspacePath, normalizeProjectDir } from '../shared/project-registry'
 
 type Set = (partial: Partial<PreferencesState>) => void
 type Get = () => PreferencesState
@@ -71,19 +71,14 @@ export function createInboxPreferenceActions(set: Set, get: Get): Pick<Preferenc
   }
 }
 
-export function createProjectRegistryActions(set: Set, get: Get): Pick<PreferencesState, 'registerProjectUse' | 'addProject' | 'removeProject'> {
+export function createProjectRegistryActions(set: Set, get: Get): Pick<PreferencesState, 'addProject' | 'removeProject' | 'setDefaultProject' | 'setProjectName' | 'setProjectProfileOverride'> {
   return {
-    registerProjectUse: (dir) => {
-      const next = registerUse(get().projects, dir, Date.now())
-      if (next === get().projects) return // identity short-circuit (rate-limited bump)
-      set({ projects: next })
-      saveSettings(getAllSettings(get))
-    },
     addProject: (dir) => {
       const key = normalizeProjectDir(dir)
-      if (!key.startsWith('/')) return
+      if (!key.startsWith('/') || isManagedWorkspacePath(key)) return
       const current = get().projects
-      set({ projects: { ...current, [key]: { ...(current[key] ?? {}), addedManually: true, lastUsedAt: current[key]?.lastUsedAt ?? Date.now() } } })
+      if (current[key]) return
+      set({ projects: { ...current, [key]: { addedManually: true, lastUsedAt: 0 } } })
       saveSettings(getAllSettings(get))
     },
     removeProject: (dir) => {
@@ -92,10 +87,28 @@ export function createProjectRegistryActions(set: Set, get: Get): Pick<Preferenc
       if (!(key in current)) return
       const next = { ...current }
       delete next[key]
-      // Remove hides from pickers only: conversations are untouched, and the
-      // registerProjectUse seam re-adds the dir the next time a conversation
-      // uses it (documented semantic).
       set({ projects: next })
+      saveSettings(getAllSettings(get))
+    },
+    setDefaultProject: (dir) => {
+      const key = dir ? normalizeProjectDir(dir) : null
+      const current = get().projects
+      set({ projects: Object.fromEntries(Object.entries(current).map(([path, entry]) => [path, { ...entry, isDefault: path === key }])) })
+      saveSettings(getAllSettings(get))
+    },
+    setProjectName: (dir, name) => {
+      const key = normalizeProjectDir(dir)
+      const entry = get().projects[key]
+      if (!entry) return
+      const normalized = name?.trim()
+      set({ projects: { ...get().projects, [key]: { ...entry, ...(normalized ? { name: normalized } : { name: undefined }) } } })
+      saveSettings(getAllSettings(get))
+    },
+    setProjectProfileOverride: (dir, profileOverride) => {
+      const key = normalizeProjectDir(dir)
+      const entry = get().projects[key]
+      if (!entry) return
+      set({ projects: { ...get().projects, [key]: { ...entry, ...(profileOverride ? { profileOverride } : { profileOverride: undefined }) } } })
       saveSettings(getAllSettings(get))
     },
   }
