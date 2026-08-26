@@ -41,12 +41,26 @@ Start a new engine session.
 | `pinned`           | boolean  | no       | Exempt this session from the orphaned-session reaper |
 | `clientWorkspaceContext` | object | no    | Client-supplied workspace context for the session. Overridden per-prompt by `send_prompt.clientWorkspaceContext`. Fields: `kind` (string), `cwd` (string), `bench` (object, structured bench facts), `data` (object, generic consumer data), `text` (string, prose for system prompt). |
 | `toolGate`         | object   | no       | Opt-in client tool gate: `{enabled, tools?, timeoutMs?, timeoutDecision?, clientTools?, clientToolTimeoutMs?}`. `clientTools` declares tools the client executes over the wire — the third tool provision path beside MCP servers and extensions. Each entry is `{name, description?, inputSchema?, planModeSafe?, humanWait?}`; `humanWait: true` marks the tool as an intentional HUMAN wait: on the engine-owned (API) backend the call PARKS the run — the request is retained as a `PermissionDenial` (re-published on every idle status snapshot), the run terminates, the session goes idle, and the user's answer arrives as the next `send_prompt`. Delegated-CLI backends exclude human-wait tools from their transports (the model uses the `AskUserQuestion` sentinel there). Machine tools (`humanWait` absent/false) keep the blocking wire round-trip bounded by `clientToolTimeoutMs`. On an idempotent re-`start_session` the declaration is REPLACED wholesale (nil clears); an in-flight run keeps the runtime it captured at dispatch, and the next run uses the new declaration. See [tool_gate_response](#tool_gate_response). |
+| `profileId` / `extensions` | string / string[] | no | When the resolved `newConversationDefaults.profileLocked` policy is true, the engine ignores these supplied profile values and applies the locked profile. A configured locked profile that is unavailable on the host refuses the start. |
 
 ```json
 {"cmd":"start_session","key":"abc-123","config":{"profileId":"default","extensions":["~/.ion/extensions/my-ext"],"workingDirectory":"/home/user/project"},"requestId":"r1"}
 ```
 
 **Response:** `ServerResult` with `ok: true` on success.
+
+---
+
+### resolve_new_conversation_defaults
+
+Resolve global, project, and enterprise new-conversation defaults without creating a session. Send `path` for one directory or `paths` for an ordered batch. An empty request resolves only global defaults. See [engine.json](../configuration/engine-json.md#newconversationdefaults).
+
+```json
+{"cmd":"resolve_new_conversation_defaults","path":"/work/repository","requestId":"r-defaults"}
+{"cmd":"resolve_new_conversation_defaults","paths":["/work/one","/work/two"],"requestId":"r-defaults-batch"}
+```
+
+The single result data is one resolved record. The batch result data is `{ "defaults": [...] }` in request order.
 
 ---
 

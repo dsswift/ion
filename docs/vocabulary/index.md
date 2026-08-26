@@ -170,7 +170,7 @@ One continuous thread of user prompts and agent responses, held in a tree that s
 
 #### Engine profile {#term-engine-profile}
 
-A named set of extensions and defaults that a conversation loads at start. An empty profile means a conversation with no extensions.
+A named set of extensions and defaults that a conversation loads at start. A profile name is portable across machines; its profile ID is local to one machine. An empty profile means a conversation with no extensions.
 
 - **ID:** `engine-profile`
 - **Status:** `canonical`
@@ -935,7 +935,7 @@ A short list of actions that opens from a control or from a long press. It close
 
 #### New Conversation Picker {#term-new-conversation-picker}
 
-The single entry point that starts a conversation. It selects the project, the directory or branch, the workspace, and the engine profile.
+The single entry point that starts a conversation. Normal creation selects a Project and an Engine profile. Explicit worktree creation also selects a source branch.
 
 - **ID:** `new-conversation-picker`
 - **Status:** `canonical`

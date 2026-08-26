@@ -771,3 +771,37 @@ A multi-provider configuration mixing a local Ollama model with a hosted OpenAI 
 
 * [models.json Reference](models.md) for registering custom models and tier aliases.
 * [Provider Setup](../providers/index.md) for the catalog of supported providers and their environment variables.
+
+## newConversationDefaults
+
+`newConversationDefaults` supplies defaults when a client creates a new Conversation. The engine resolves the block from global `~/.ion/engine.json`, then the project `.ion/engine.json` for the selected working directory. A project block replaces the global block. An enterprise block replaces both.
+
+Use `profileName` for a portable profile reference. The project file contains a stable name. Each host maps that name to its local profile ID and extension paths from `~/.ion/settings.json`. `engineProfileId` remains supported for older managed config, but new project config should not use it.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `baseDirectory` | string | Default working directory. Empty leaves directory selection to the client. |
+| `profileName` | string | Portable local-profile name. Empty selects a plain Conversation when locked. |
+| `profileLocked` | boolean | When true, `start_session` replaces the caller profile and extension list with the resolved profile. A missing named profile refuses the session. |
+| `engineProfileId` | string | Compatibility profile reference for existing config. |
+| `locked` | boolean | Compatibility lock field for existing enterprise config. |
+
+```json
+{
+  "newConversationDefaults": {
+    "profileName": "review",
+    "profileLocked": true
+  }
+}
+```
+
+### Resolver command
+
+`resolve_new_conversation_defaults` lets clients resolve the same policy before they create a session. Use `path` for one directory. Use `paths` for a batch. The batch response preserves request order.
+
+```json
+{"cmd":"resolve_new_conversation_defaults","path":"/work/repository","requestId":"one"}
+{"cmd":"resolve_new_conversation_defaults","paths":["/work/one","/work/two"],"requestId":"batch"}
+```
+
+The single response data is one resolved record. The batch response data is `{ "defaults": [...] }`. Each resolved record contains `path`, `baseDirectory`, `profileName`, `profileId`, `extensions`, and `profileLocked` when set. Resolution does not create a session. `start_session` repeats lock enforcement as the authority boundary.

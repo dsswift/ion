@@ -801,7 +801,7 @@
     {
       "id": "engine-profile",
       "term": "Engine profile",
-      "definition": "A named set of extensions and defaults that a conversation loads at start. An empty profile means a conversation with no extensions.",
+      "definition": "A named set of extensions and defaults that a conversation loads at start. A profile name is portable across machines; its profile ID is local to one machine. An empty profile means a conversation with no extensions.",
       "domain": "engine",
       "kind": "product-concept",
       "status": "canonical",
@@ -1397,7 +1397,7 @@
     {
       "id": "new-conversation-picker",
       "term": "New Conversation Picker",
-      "definition": "The single entry point that starts a conversation. It selects the project, the directory or branch, the workspace, and the engine profile.",
+      "definition": "The single entry point that starts a conversation. Normal creation selects a Project and an Engine profile. Explicit worktree creation also selects a source branch.",
       "domain": "clients",
       "kind": "ui-component",
       "status": "canonical",
