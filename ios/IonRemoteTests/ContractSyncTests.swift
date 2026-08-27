@@ -140,6 +140,18 @@ final class ContractSyncTests: XCTestCase {
       "model_fallback":
         "Projected onto RemoteTabState.conversationInstances[i].modelFallback "
         + "rather than decoded live, so the indicator survives reconnect.",
+      "poll_started":
+        "Engine-socket lifecycle signal. The desktop projects authoritative poll "
+        + "state through RemoteTabState.activePolls and pollsWaiting; the "
+        + "desktop<->iOS wire has no desktop_poll_started member.",
+      "poll_progress":
+        "Engine-socket lifecycle signal. The desktop projects authoritative poll "
+        + "state through RemoteTabState.activePolls and pollsWaiting; the "
+        + "desktop<->iOS wire has no desktop_poll_progress member.",
+      "poll_terminal":
+        "Engine-socket lifecycle signal. The desktop projects authoritative poll "
+        + "state through RemoteTabState.activePolls and pollsWaiting; the "
+        + "desktop<->iOS wire has no desktop_poll_terminal member.",
       "events_dropped":
         "Engine-internal backpressure signal for a socket consumer; the "
         + "snapshot is authoritative for iOS, which re-syncs wholesale.",
