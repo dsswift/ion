@@ -8,7 +8,7 @@ require github.com/bmatcuk/doublestar/v4 v4.10.0
 
 require (
 	golang.org/x/sync v0.22.0
-	golang.org/x/text v0.40.0
+	golang.org/x/text v0.41.0
 )
 
 require (
@@ -26,8 +26,8 @@ require (
 	go.opentelemetry.io/proto/otlp v1.11.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sys v0.47.0
-	google.golang.org/grpc v1.83.0
-	google.golang.org/protobuf v1.36.11
+	google.golang.org/grpc v1.83.1
+	google.golang.org/protobuf v1.36.12
 )
 
 require (
