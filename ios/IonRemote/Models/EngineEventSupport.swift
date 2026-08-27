@@ -361,6 +361,10 @@ struct StatusFields: Codable, Sendable {
     /// Complete inventory of every running session-owned background Bash task.
     /// Unlike backgroundShells, this includes tasks that do not notify on completion.
     var activeBackgroundTasks: [BackgroundTaskState]? = nil
+    /// Complete snapshot of every active inference-driven Poll.
+    var activePolls: [PollState]? = nil
+    /// Number of Polls holding the session open.
+    var pollsWaiting: Int? = nil
     /// Exact engine verdict that the session has accepted work remaining even
     /// while the foreground orchestrator is idle.
     let hasPendingWork: Bool?

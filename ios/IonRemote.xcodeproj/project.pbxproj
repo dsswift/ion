@@ -112,6 +112,7 @@
 		A1B2C3D4E5F60001000090AA /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000091AA /* Message.swift */; };
 		BGWORKMETA0000000000001 /* BackgroundWorkMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = BGWORKMETA0000000000002 /* BackgroundWorkMetadata.swift */; };
 		BGTASKSTATE000000000001 /* BackgroundTaskState.swift in Sources */ = {isa = PBXBuildFile; fileRef = BGTASKSTATE000000000002 /* BackgroundTaskState.swift */; };
+		POLLSTATE00000000000001 /* PollState.swift in Sources */ = {isa = PBXBuildFile; fileRef = POLLSTATE00000000000002 /* PollState.swift */; };
 		BGTASKLIFE0000000000001 /* SessionViewModel+BackgroundTaskLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = BGTASKLIFE0000000000002 /* SessionViewModel+BackgroundTaskLifecycle.swift */; };
 		ACTIVEBGSUMM000000000001 /* ActiveBackgroundSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACTIVEBGSUMM000000000002 /* ActiveBackgroundSummary.swift */; };
 
@@ -675,6 +676,7 @@
 		A1B2C3D4E5F60001000091AA /* Message.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Message.swift; sourceTree = "<group>"; };
 		BGWORKMETA0000000000002 /* BackgroundWorkMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundWorkMetadata.swift; sourceTree = "<group>"; };
 		BGTASKSTATE000000000002 /* BackgroundTaskState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundTaskState.swift; sourceTree = "<group>"; };
+		POLLSTATE00000000000002 /* PollState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PollState.swift; sourceTree = "<group>"; };
 		BGTASKLIFE0000000000002 /* SessionViewModel+BackgroundTaskLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+BackgroundTaskLifecycle.swift"; sourceTree = "<group>"; };
 		ACTIVEBGSUMM000000000002 /* ActiveBackgroundSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveBackgroundSummary.swift; sourceTree = "<group>"; };
 
@@ -1220,6 +1222,7 @@
 				A1B2C3D4E5F60001000091AA /* Message.swift */,
 				BGWORKMETA0000000000002 /* BackgroundWorkMetadata.swift */,
 				BGTASKSTATE000000000002 /* BackgroundTaskState.swift */,
+				POLLSTATE00000000000002 /* PollState.swift */,
 				PENDINGCARD0000000000002 /* PendingCard.swift */,
 				PLANCARDGATE000000000002 /* PlanCardGate.swift */,
 				A1B2C3D4E5F60001000093AA /* MessageAttachment.swift */,
@@ -1952,6 +1955,7 @@
 				A1B2C3D4E5F60001000090AA /* Message.swift in Sources */,
 				BGWORKMETA0000000000001 /* BackgroundWorkMetadata.swift in Sources */,
 				BGTASKSTATE000000000001 /* BackgroundTaskState.swift in Sources */,
+				POLLSTATE00000000000001 /* PollState.swift in Sources */,
 				PENDINGCARD0000000000001 /* PendingCard.swift in Sources */,
 
 				PLANCARDGATE000000000001 /* PlanCardGate.swift in Sources */,
