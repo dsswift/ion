@@ -9,8 +9,8 @@
  *   - stale cache (>= max age) → legacy poll invoked
  *   - legacy poll returning empty does NOT poison the cache and falls through
  *     to the cold-start path
- *   - the shared cached manifest object is never mutated by the main-process
- *     read-state overlay (copy-on-write)
+ *   - main-process catalog read state is projected without mutating the legacy
+ *     renderer cache manifest
  *
  * The legacy poll is injected via _setPollRendererTabStatesForTest so no
  * BrowserWindow / executeJavaScript is involved.
@@ -47,6 +47,7 @@ vi.mock('../../event-wiring-resources', () => ({
 }))
 
 import { getRemoteTabStates, refreshRendererSnapshotCache, RENDERER_CACHE_MAX_AGE_MS, _setPollRendererTabStatesForTest } from '../snapshot'
+import { resourceCatalog } from '../../resource-catalog'
 import { state } from '../../state'
 import type { RemoteTabStatesPayload, ProjectedRendererTab } from '../../../shared/remote-projection-types'
 
@@ -91,6 +92,7 @@ describe('getRemoteTabStates — renderer-push cache + legacy-poll fallback', ()
     pollMock = vi.fn(async (): Promise<RemoteTabStatesPayload> => ({ tabs: [], resourceManifest: {} }))
     _setPollRendererTabStatesForTest(pollMock)
     state.rendererSnapshotCache = null
+    resourceCatalog.clear()
     mockIsResourceRead.mockReturnValue(false)
     mockGetHealth.mockReturnValue({ tabs: [] })
   })
@@ -167,22 +169,31 @@ describe('getRemoteTabStates — renderer-push cache + legacy-poll fallback', ()
     expect(tabs[1].lastActivityAt).toBe(500)
   })
 
-  it('overlays main-process persisted read state WITHOUT mutating the cached manifest (copy-on-write)', async () => {
+  it('projects main-process catalog read state without mutating the legacy cached manifest', async () => {
     const cachedManifest = {
-      briefing: [{ id: 'r1', kind: 'briefing', title: 'B', createdAt: '2025-01-01', read: false }],
+      briefing: [{ id: 'cached-r1', kind: 'briefing', title: 'Cached', createdAt: '2025-01-01', read: false }],
     }
     state.rendererSnapshotCache = {
       tabs: [projectedTab('t1')],
       resourceManifest: cachedManifest,
       receivedAt: Date.now(),
     }
+    resourceCatalog.applyFullItem('briefing', {
+      id: 'r1',
+      kind: 'briefing',
+      title: 'B',
+      content: 'body',
+      createdAt: '2025-01-01',
+      read: false,
+    })
     mockIsResourceRead.mockImplementation((resourceId: string) => resourceId === 'r1')
+
     const { resourceManifest } = await getRemoteTabStates()
-    // Served manifest carries the persisted read state…
-    expect(resourceManifest.briefing[0].read).toBe(true)
-    // …but the cached object is untouched (a mutated cache would leak
-    // main-only read state into renderer-push fingerprint comparisons).
-    expect(cachedManifest.briefing[0].read).toBe(false)
+
+    // The main catalog owns the manifest and carries persisted read state.
+    expect(resourceManifest.briefing[0]).toMatchObject({ id: 'r1', read: true })
+    // The old renderer payload stays untouched and cannot replace catalog truth.
+    expect(cachedManifest.briefing[0]).toMatchObject({ id: 'cached-r1', read: false })
   })
 })
 
