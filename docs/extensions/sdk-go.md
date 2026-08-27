@@ -357,6 +357,35 @@ Every RPC-backed method takes a `context.Context` first. This is not decoration:
 
 `DispatchAgent` is asynchronous by default: it returns a stub with `DispatchID`, and the engine routes terminal results to the owner. Set `WaitForCompletion: true` only when explicit blocking terminal output is required.
 
+`DispatchAgentResult.ToolCount` reports how many tool calls the child made across its whole run — every LLM turn, including suspend/revive iterations. It is always populated, whether or not an expectation was declared: it is an observed fact about the run, not a verdict on it. A `0` on an `ExitCode: 0` dispatch is the signature of a child that answered its task instead of performing it. Read this rather than reconstructing a count from your own `OnToolStart` bookkeeping; the engine counts the same calls it executes.
+
+`DispatchAgentOpts.RequireToolUse` declares whether a dispatch is expected to produce work. It is a `*bool` because the three states differ: `nil` declares nothing (the engine reports `ToolCount` and judges nothing — the default, so existing callers are unchanged), `&true` means a zero-tool completion is not success, and `&false` is an explicit exemption for analysis and advisory dispatches. Under `&true` the engine gives the child **one** continuation naming the expectation; if the retry also calls no tools the dispatch returns `ExitCode: 3` with delivered status `declined`, distinct from both success and failure — a consumer that retries failures must not retry it. The child's own final text is preserved in `Output` after the verdict. The engine never infers the expectation from task text; only the caller knows which kind of dispatch it issued.
+
+On an asynchronous dispatch a declined outcome arrives through `OnError` rather than `OnComplete`, because its exit code is non-zero; read `DispatchError.ExitCode` to tell `3` from a genuine failure.
+
+```go
+requireWork := true
+result, err := ctx.DispatchAgent(c, ion.DispatchAgentOpts{
+    Name:              "implementer",
+    Task:              "Apply the approved plan",
+    RequireToolUse:    &requireWork,
+    WaitForCompletion: true,
+})
+if err == nil && result.ExitCode == 3 {
+    // The child described the work twice and never started it.
+}
+```
+
+`ContextPolicy.MaxContextBytes` caps the total context-file bytes injected into one dispatch. Zero or negative means no cap, which is the default. Files are admitted **whole**, nearest-first (the child's cwd, then ancestors, then home roots), until the budget is spent; the rest are skipped entirely and each is logged by name. A file is never cut mid-content — half an instruction file is worse than none, because the agent cannot tell which rules it did not receive. Context injection repeats full file content on every dispatch, so this is the control for a fan-out whose children only need their own repo's guidance.
+
+```go
+_, err := ctx.DispatchAgent(c, ion.DispatchAgentOpts{
+    Name:          "reviewer",
+    Task:          "Review the diff",
+    ContextPolicy: &ion.ContextPolicy{MaxContextBytes: 120_000},
+})
+```
+
 `ListDispatchState` entries expose `WaitingOn` for suspended dispatches. `TaskIDs` names notifying background Bash commands; `ChildDispatchIDs` names dispatched children. Both are exact current sets. `WaitingOn == nil` means no tracked asynchronous work is holding that dispatch parked.
 
 `AckDispatchLost` confirms durable handling of a `dispatch_lost` hook notice. The engine re-emits an unacknowledged loss after every later restart; call it only after your handler has durably recorded, delivered, or intentionally ignored the loss. Repeated acknowledgements are safe.

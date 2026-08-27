@@ -111,6 +111,8 @@ Launch a new agent to handle complex, multi-step tasks autonomously.
 
 Spawns a child session via the session-scoped `AgentSpawner`. Every call creates a new dispatch. Default dispatch is asynchronous: parent may continue working or end its turn, and engine injects classified child completion when it finishes. Use `AgentStatus` to inspect an existing dispatch. Use `wait_for_completion: true` only when current turn needs terminal output.
 
+**This tool declares required tool use.** The engine expects a child dispatched through `Agent` to *perform* its task, not describe it, so a completion with zero tool calls is not treated as success: the child receives one continuation naming the expectation, and if it still calls no tools the dispatch reports exit code 3 (`declined`) with the child's own final text preserved after the verdict. The declaration is made by the tool because no harness exists on this path — the model called `Agent` directly. Extension dispatches through `ctx.dispatchAgent` are unaffected; they declare their own expectation, or none. See [`DispatchAgentOpts.requireToolUse`](../extensions/sdk-typescript.md#requiretooluse--declaring-that-a-dispatch-must-produce-work).
+
 ### AgentStatus
 
 Inspect active agent dispatches without creating, steering, stopping, or waiting for an agent.

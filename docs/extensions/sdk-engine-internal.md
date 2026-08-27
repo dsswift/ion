@@ -488,29 +488,55 @@ type ToolResult struct {
 
 ### DispatchAgentOpts / DispatchAgentResult
 
+Abridged to the serialised fields most callers set and read; see
+`engine/internal/extension/sdk_types_dispatch.go` for the full structs,
+including the lifecycle callback fields (all `json:"-"`).
+
 ```go
 type DispatchAgentOpts struct {
-    Name          string   `json:"name"`
-    Task          string   `json:"task"`
-    Model         string   `json:"model,omitempty"`
-    ExtensionDir  string   `json:"extensionDir,omitempty"`
-    SystemPrompt  string   `json:"systemPrompt,omitempty"`
-    ProjectPath   string   `json:"projectPath,omitempty"`
-    SessionID     string   `json:"sessionId,omitempty"`
-    MaxTurns      int      `json:"maxTurns,omitempty"`      // cap child loop turns; <=0 means unlimited
-    PlanMode      bool     `json:"planMode,omitempty"`      // start child in plan mode
-    PlanFilePath  string   `json:"planFilePath,omitempty"`  // override plan file path
-    PlanModeTools []string `json:"planModeTools,omitempty"` // override allowed tools during plan mode
+    Name             string         `json:"name"`
+    Task             string         `json:"task"`
+    Model            string         `json:"model,omitempty"`
+    ExtensionDir     string         `json:"extensionDir,omitempty"`
+    SystemPrompt     string         `json:"systemPrompt,omitempty"`
+    ProjectPath      string         `json:"projectPath,omitempty"`
+    SessionID        string         `json:"sessionId,omitempty"`
+    MaxTurns         int            `json:"maxTurns,omitempty"`         // cap child loop turns; <=0 means unlimited
+    MaxDispatchDepth int            `json:"maxDispatchDepth,omitempty"` // override the depth cap for this tree
+    PlanMode         bool           `json:"planMode,omitempty"`         // start child in plan mode
+    PlanFilePath     string         `json:"planFilePath,omitempty"`     // override plan file path
+    PlanModeTools    []string       `json:"planModeTools,omitempty"`    // override allowed tools during plan mode
+    RequireToolUse   *bool          `json:"requireToolUse,omitempty"`   // tri-state work expectation (see below)
+    ContextPolicy    *ContextPolicy `json:"contextPolicy,omitempty"`    // per-dispatch context-layer override
 }
 
 type DispatchAgentResult struct {
+    Name         string  `json:"name"`
     Output       string  `json:"output"`
-    ExitCode     int     `json:"exitCode"`
+    ExitCode     int     `json:"exitCode"` // 0 success, 2 recalled, 3 declined
     Elapsed      float64 `json:"elapsed"`
+    Cost         float64 `json:"cost"`
+    InputTokens  int     `json:"inputTokens"`
+    OutputTokens int     `json:"outputTokens"`
+    ToolCount    int     `json:"toolCount"`              // no omitempty: zero is the value that matters
     PlanFilePath string  `json:"planFilePath,omitempty"` // plan file written by child
     PlanExited   bool    `json:"planExited,omitempty"`   // true when child called ExitPlanMode
 }
 ```
+
+**`RequireToolUse` is the work gate.** `nil` declares no expectation, so the
+engine reports `ToolCount` and judges nothing — the zero value, which keeps
+every existing caller unchanged. `&true` means a zero-tool completion is not
+success: the engine gives the child one continuation naming the expectation,
+and if the retry also calls no tools the dispatch reports `ExitCodeDeclined`
+(3) with delivered status `declined`. `&false` is an explicit exemption for
+analysis and advisory dispatches. The engine never infers the expectation from
+task text — a summarization dispatch and an edit dispatch are
+indistinguishable to it, and only the caller knows which it issued.
+
+**`ToolCount` carries no `omitempty`.** A zero is the single most important
+value the field reports (the signature of a child that answered instead of
+working), so it must survive serialization rather than vanishing.
 
 ## Capability
 

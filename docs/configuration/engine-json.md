@@ -153,6 +153,7 @@ Three resolution layers, lowest priority first:
 | `thresholdPct` | int | `90` | Completion threshold (percent of `budget`). The engine stops calling the hook once cumulative output tokens reach this percent of the budget. |
 | `maxContinuations` | int | `3` | Cap on the number of continuation nudges per run. Prevents pathological loops with very chatty models. |
 | `diminishingDelta` | int | `500` | Per-continuation token delta below which the engine declares diminishing returns and stops nudging early (after at least 3 continuations). |
+| `subagentEnabled` | bool (nullable) | `null` (off) | Whether the feature applies to **dispatched sub-agent runs** as well as root runs. Null preserves the historic behavior exactly: sub-agents are skipped unless a harness forces them on per dispatch. See "Sub-agents" below. |
 
 ```json
 {
@@ -186,7 +187,25 @@ The Ion desktop client ships a reference `before_early_stop_decision` handler in
 
 Harness engineers running the engine outside the Ion desktop are encouraged to copy or adapt this implementation. The engine deliberately ships no prompt text so the harness owns the wording (and the user-facing toggle, if any) end-to-end.
 
-**Sub-agents are off by default.** Runs dispatched through the Agent tool have `IsSubagent=true` and the engine skips the feature for them automatically — sub-agents are summoned with a tight remit and should not be poked to keep working. Harness extensions can still force-on per dispatch via `RunOptions.EarlyStopEnabled = &true`.
+**Sub-agents are off by default.** Runs dispatched through the Agent tool have `IsSubagent=true` and the engine skips the feature for them — sub-agents are summoned with a tight remit and should not be poked to keep working. Harness extensions can force-on per dispatch via `RunOptions.EarlyStopEnabled = &true`.
+
+Set `subagentEnabled: true` to opt the whole machine's dispatched agents into the feature instead of threading a per-run override through every dispatch site:
+
+```json
+{
+  "earlyStopContinue": {
+    "enabled": true,
+    "subagentEnabled": true
+  }
+}
+```
+
+Two properties of this key matter:
+
+- **It is a scope selector, not a second kill switch.** It decides whether the sub-agent *tier* participates; `enabled` still decides whether the feature runs at all. `subagentEnabled: true` with `enabled: false` nudges nothing.
+- **Omitting it preserves today's behavior exactly**, which is what every `engine.json` already on disk does. A per-run `RunOptions.EarlyStopEnabled` still wins over both — a harness that forces on for one dispatch is never second-guessed by machine config.
+
+This key is unrelated to the dispatch work gate (`DispatchAgentOpts.RequireToolUse`). Early-stop continuation is an engine-initiative nudge that still ships no continuation text of its own; the work gate acts only on an explicit per-dispatch declaration and supplies its own text. See [`docs/extensions/sdk-typescript.md`](../extensions/sdk-typescript.md#requiretooluse--declaring-that-a-dispatch-must-produce-work).
 
 ## thinking
 

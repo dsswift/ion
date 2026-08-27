@@ -802,6 +802,9 @@ interface DispatchAgentOpts {
   projectPath?: string      // working directory for the agent
   sessionId?: string        // resume an existing child session
   maxTurns?: number         // cap child agent loop turns (omit or <=0 = unlimited)
+  maxDispatchDepth?: number // override the depth cap for this dispatch tree
+  requireToolUse?: boolean  // declare whether this dispatch must produce work (see below)
+  contextPolicy?: ContextPolicy // per-dispatch context-layer override
   planMode?: boolean        // start child in plan mode
   planFilePath?: string     // override plan file path (default: engine allocates one)
   planModeTools?: string[]  // override allowed tools during plan mode
@@ -819,25 +822,78 @@ interface DispatchAgentOpts {
 }
 ```
 
+### requireToolUse — declaring that a dispatch must produce work
+
+A dispatched child can answer its task instead of performing it: describe the work, call no tools, end its turn, and report `exitCode: 0`. A dispatcher that believes that report re-dispatches the same task. `requireToolUse` is how a caller tells the engine that this particular dispatch is expected to *do* something.
+
+It is tri-state, and the three states are genuinely different:
+
+| Value | Engine behavior |
+|---|---|
+| omitted (`undefined`) | No expectation declared. The engine reports `toolCount` and passes no judgement. This is the default, so existing callers are unchanged. |
+| `true` | A completion with zero tool calls is not success. The engine gives the child **one** continuation naming the expectation; if that second attempt also calls no tools the dispatch reports `exitCode: 3` and its delivered status is `declined`. |
+| `false` | Explicitly exempt. Analysis, summarization, and advisory dispatches legitimately produce text and call nothing. |
+
+The engine never infers the expectation from the task text — a "summarize this" dispatch and an "edit these files" dispatch are indistinguishable to it, and only the caller knows which it issued. Declare it on execution dispatches (implement, edit, fix, refactor); leave it unset on planning, review, and summarization dispatches.
+
+`exitCode: 3` (`declined`) is deliberately distinct from both `0` and `1`. A declined dispatch is a run that worked correctly and produced nothing, which is not a failure — a consumer that retries failures should not retry it. The child's own final text is preserved in `output` after the engine's verdict, so the dispatcher can see what was promised and decide whether to re-dispatch with a sharper task or do the work itself.
+
+On an **asynchronous** dispatch a declined outcome arrives through `onError` rather than `onComplete`, because its exit code is non-zero. Read `err.exitCode` to tell `3` from a genuine failure.
+
+```typescript
+const result = await ctx.dispatchAgent({
+  name: 'implementer',
+  task: 'Apply the approved plan',
+  requireToolUse: true,          // this dispatch must actually edit files
+  waitForCompletion: true,
+})
+if (result.exitCode === 3) {
+  // The child described the work twice and never started it.
+  log.warn('dispatch declined', { output: result.output })
+}
+```
+
+### contextPolicy.maxContextBytes — bounding injected context
+
+Context injection repeats the **full** content of every discovered context file on every dispatch, ahead of the task text, whether or not the child goes on to do any work. `maxContextBytes` caps that per dispatch. Omit it (or pass `<= 0`) for no cap, which is the default and the historic behavior.
+
+Files are admitted **whole**, nearest-first (the child's cwd, then ancestors, then home roots), until the budget is spent; every file that does not fit is skipped entirely and logged by name. A file is never cut mid-content: half an instruction file is worse than none, because the agent cannot tell which rules it did not receive and proceeds on confident partial knowledge.
+
+```typescript
+await ctx.dispatchAgent({
+  name: 'reviewer',
+  task: 'Review the diff',
+  contextPolicy: { maxContextBytes: 120_000 }, // keep the nearest guidance, shed the rest
+})
+```
+
 ## DispatchAgentResult
 
 ```typescript
 interface DispatchAgentResult {
   name: string        // agent name; populated on terminal results
   output: string      // terminal output; empty on an asynchronous stub
-  exitCode: number    // terminal 0 = success; stub is zero-valued
+  exitCode: number    // 0 = success, 2 = recalled, 3 = declined; stub is zero-valued
   elapsed: number     // terminal wall time in seconds
   cost: number        // terminal USD cost
   inputTokens: number
   outputTokens: number
+  toolCount: number   // tool calls the child made across its whole run
+  thinkingTokens?: number           // estimated reasoning tokens (subset of outputTokens)
+  cacheReadInputTokens?: number     // tokens served from the prompt cache
+  cacheCreationInputTokens?: number // tokens written into the prompt cache
   depthCapExceeded?: boolean // true when engine refused child at depth cap
   remainingDepthBudget?: number // child levels still available from caller
   dispatchId?: string // immediate asynchronous-stub identifier; steer/recall target
   sessionId?: string  // child session ID (for resume)
+  depth?: number      // this agent's depth in the dispatch tree
+  parentDispatchId?: string // the dispatch that spawned this one; empty at top level
   planFilePath?: string // plan file written by child (when planMode was true)
   planExited?: boolean  // true when child called ExitPlanMode
 }
 ```
+
+**`toolCount` is always reported**, whether or not `requireToolUse` was declared: it is an observed fact about the run, not a verdict on it. A `0` on an `exitCode: 0` dispatch is the signature of a child that answered instead of working. Prefer it over reconstructing a count from your own `onToolStart` bookkeeping — this is the engine's own count, and it covers every LLM turn including suspend/revive iterations and any work-gate continuation.
 
 **Depth-cap result.** A refused dispatch resolves normally rather than throwing, with `depthCapExceeded: true` and `remainingDepthBudget: 0`. Inspect these fields before treating a zero-valued result as a launched child. Other results may include `remainingDepthBudget` to expose how many child levels remain under the effective engine cap.
 

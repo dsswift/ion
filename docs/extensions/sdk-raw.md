@@ -306,8 +306,8 @@ When an asynchronous dispatch is active (default for `ext/dispatch_agent`; `wait
 
 | Method | When | Payload |
 |--------|------|---------|
-| `dispatch_complete` | Agent finished successfully | `{callbackId, dispatchId, name, output, exitCode, elapsed, cost, inputTokens, outputTokens, sessionId}` |
-| `dispatch_error` | Agent failed | `{callbackId, dispatchId, name, message, exitCode, elapsed}` |
+| `dispatch_complete` | Agent finished successfully (`exitCode` 0) | `{callbackId, dispatchId, name, output, exitCode, elapsed, cost, inputTokens, outputTokens, toolCount, sessionId}` |
+| `dispatch_error` | Agent failed, or was declined (`exitCode` 3) | `{callbackId, dispatchId, name, message, exitCode, elapsed}` |
 | `dispatch_recall` | Agent was recalled | `{callbackId, dispatchId, name, reason, elapsed, toolCount}` |
 | `dispatch_tool_start` | Tool invocation began in child | `{callbackId, dispatchId, name, toolName, toolId}` |
 | `dispatch_tool_end` | Tool completed in child | `{callbackId, dispatchId, name, toolName, toolId, content}` |
@@ -317,6 +317,28 @@ When an asynchronous dispatch is active (default for `ext/dispatch_agent`; `wait
 | `dispatch_plan_proposal` | Child agent proposed a plan (called ExitPlanMode) | `{callbackId, dispatchId, name, agentId, planFilePath, planSlug, planRequested}` |
 
 Every lifecycle payload carries `dispatchId` and, when supplied on the request, `callbackId`. Use `callbackId` from request start, then `dispatchId` after stub response, to correlate simultaneous same-name dispatches without a pre-response race.
+
+`toolCount` on `dispatch_complete` is the number of tool calls the child made across its whole run. It is always present, whether or not `requireToolUse` was declared: it is an observed fact about the run, not a verdict. A `0` alongside `"exitCode":0` is the signature of a child that described the work instead of doing it.
+
+### Declaring that a dispatch must produce work
+
+`ext/dispatch_agent` accepts two additional optional params that govern the child's work expectation and its injected context:
+
+```json
+{"jsonrpc":"2.0","id":100006,"method":"ext/dispatch_agent","params":{"name":"implementer","task":"Apply the approved plan","requireToolUse":true,"contextPolicy":{"maxContextBytes":120000}}}
+```
+
+`requireToolUse` is tri-state on the wire — **omit it** to declare nothing, which is the default and leaves an existing client's behavior unchanged:
+
+| Value | Effect |
+|---|---|
+| `true` | A completion with zero tool calls is not success. The engine gives the child one continuation naming the expectation; if the retry also calls no tools the dispatch reports `"exitCode":3` and its delivered status is `declined`. |
+| `false` | Explicit exemption for analysis, summarization, and advisory dispatches. |
+| *(omitted)* | No expectation. The engine reports `toolCount` and passes no judgement. |
+
+The engine never infers the expectation from the task text; only the caller knows which kind of dispatch it issued. Exit code `3` is distinct from `1`: a declined dispatch ran correctly and produced nothing, so a client that retries failures must not retry it. Because the code is non-zero, an asynchronous declined dispatch arrives as `dispatch_error`, with the engine's verdict and the child's own final text in `message`.
+
+`contextPolicy.maxContextBytes` caps the total context-file bytes injected into this dispatch. Omit it or pass `<= 0` for no cap. Files are admitted whole, nearest-first, until the budget is spent; the rest are skipped entirely and logged by name. A file is never truncated mid-content, because half an instruction file leaves the agent unable to tell which rules it did not receive.
 
 Example incoming notification:
 
