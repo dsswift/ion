@@ -8,7 +8,7 @@
 // ─── Relay control frames (injected by relay, not by Ion) ───
 
 export interface RelayControlMessage {
-  type: 'relay:peer-disconnected' | 'relay:peer-reconnected' | 'relay:paired' | 'relay:ping' | 'relay:pong' | 'relay:push-failed'
+  type: 'relay:connected' | 'relay:peer-disconnected' | 'relay:peer-reconnected' | 'relay:paired' | 'relay:ping' | 'relay:pong' | 'relay:push-failed'
   /** Failure reason (queue_full | invalid_token | transient | token | marshal | request | transport). Present when type === 'relay:push-failed'. */
   reason?: string
   /** Resource ID from the originating push message. Present when type === 'relay:push-failed'. */
