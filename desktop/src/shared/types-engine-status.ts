@@ -13,6 +13,15 @@
 
 import type { BackgroundTaskState } from './types-engine'
 
+export interface PollState {
+  pollId: string
+  intent: string
+  attempt: number
+  deadlineAt: number
+  activeDispatchId?: string
+  latestEvidence?: string
+}
+
 export interface StatusFields {
   label: string
   state: string
@@ -68,6 +77,10 @@ export interface StatusFields {
   backgroundShells?: number
   /** Complete snapshot of every live session-owned background Bash process. */
   activeBackgroundTasks?: BackgroundTaskState[]
+  /** Complete snapshot of every active inference-driven Poll. */
+  activePolls?: PollState[]
+  /** Number of Polls holding the session open. */
+  pollsWaiting?: number
   /** True when the engine has accepted work that still prevents a terminal
    * completion. This includes dispatches, notifying shells, queued prompts,
    * durable completion deliveries, and parked runs. */

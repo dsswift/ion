@@ -144,6 +144,8 @@ export interface RemoteTabState {
      *  runningAgentCount; drives the iOS pink shell dot. */
     backgroundShellCount?: number
     activeBackgroundTasks?: import('../../shared/types-engine').BackgroundTaskState[]
+    activePolls?: import('../../shared/types-engine').PollState[]
+    pollsWaiting?: number
     /** Exact engine status verdict for accepted work with no foreground run. */
     hasPendingWork?: boolean
     modelFallback?: { requestedModel: string; fallbackModel: string }

@@ -314,6 +314,10 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
         activeBackgroundTasks: inst.statusFields?.activeBackgroundTasks?.length
           ? inst.statusFields.activeBackgroundTasks
           : undefined,
+        activePolls: inst.statusFields?.activePolls?.length
+          ? inst.statusFields.activePolls
+          : undefined,
+        pollsWaiting: inst.statusFields?.pollsWaiting || undefined,
         hasPendingWork: inst.statusFields?.hasPendingWork || undefined,
         modelFallback: mfOut,
         conversationIds: inst.conversationIds && inst.conversationIds.length > 0 ? inst.conversationIds : undefined,
