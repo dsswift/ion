@@ -687,10 +687,11 @@ type EngineEvent struct {
 	//
 	// engine_resource_snapshot and engine_resource_delta carry ResourceSubID
 	// for subscription correlation. All three carry ResourceKind.
-	ResourceKind  string         `json:"resourceKind,omitempty"`
-	ResourceSubID string         `json:"resourceSubId,omitempty"`
-	ResourceItems []ResourceItem `json:"resourceItems,omitempty"`
-	ResourceDelta *ResourceDelta `json:"resourceDelta,omitempty"`
+	ResourceKind      string         `json:"resourceKind,omitempty"`
+	ResourceSubID     string         `json:"resourceSubId,omitempty"`
+	ResourceItems     []ResourceItem `json:"resourceItems,omitempty"`
+	ResourceProducers []string       `json:"resourceProducers,omitempty"`
+	ResourceDelta     *ResourceDelta `json:"resourceDelta,omitempty"`
 	// ResourceItem carries the single item returned by engine_resource_item.
 	ResourceItem *ResourceItem `json:"resourceItem,omitempty"`
 

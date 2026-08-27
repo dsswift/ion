@@ -17,19 +17,65 @@ type ProducerHost interface {
 
 // ResourceMessage is the delivery envelope sent to each subscriber.
 type ResourceMessage struct {
-	Type  string               `json:"type"`
-	Kind  string               `json:"kind"`
-	SubID string               `json:"subscriptionId"`
-	Items []types.ResourceItem `json:"items,omitempty"`
-	Delta *types.ResourceDelta `json:"delta,omitempty"`
+	Type      string               `json:"type"`
+	Kind      string               `json:"kind"`
+	SubID     string               `json:"subscriptionId"`
+	Items     []types.ResourceItem `json:"items,omitempty"`
+	Delta     *types.ResourceDelta `json:"delta,omitempty"`
+	Producers []string             `json:"producers,omitempty"`
 }
 
 // Subscription represents a single active subscriber.
 type Subscription struct {
-	ID      string
-	Kind    string
-	Filter  types.ResourceFilter
-	deliver func(msg ResourceMessage)
+	ID         string
+	Kind       string
+	Filter     types.ResourceFilter
+	deliver    func(msg ResourceMessage)
+	mu         sync.Mutex
+	pending    bool
+	delivering bool
+	queued     []ResourceMessage
+}
+
+func (s *Subscription) deliverMessage(msg ResourceMessage) {
+	s.mu.Lock()
+	s.queued = append(s.queued, msg)
+	if s.pending || s.delivering {
+		s.mu.Unlock()
+		return
+	}
+	s.delivering = true
+	s.mu.Unlock()
+	s.drainMessages()
+}
+
+func (s *Subscription) finishInitialSnapshot(messages []ResourceMessage) {
+	s.mu.Lock()
+	queued := append(messages, s.queued...)
+	s.queued = queued
+	s.pending = false
+	if s.delivering {
+		s.mu.Unlock()
+		return
+	}
+	s.delivering = true
+	s.mu.Unlock()
+	s.drainMessages()
+}
+
+func (s *Subscription) drainMessages() {
+	for {
+		s.mu.Lock()
+		if len(s.queued) == 0 {
+			s.delivering = false
+			s.mu.Unlock()
+			return
+		}
+		msg := s.queued[0]
+		s.queued = s.queued[1:]
+		s.mu.Unlock()
+		s.deliver(msg)
+	}
 }
 
 type producerEntry struct {
@@ -124,8 +170,8 @@ func (b *Broker) Subscribe(kind string, filter types.ResourceFilter, deliver fun
 	b.subsByID[subID] = sub
 	b.mu.Unlock()
 
-	items := b.queryEntries(entries, kind, filter, subID, "subscribe")
-	deliver(ResourceMessage{Type: "snapshot", Kind: kind, SubID: subID, Items: items})
+	items, producers := b.queryEntries(entries, kind, filter, subID, "subscribe")
+	deliver(ResourceMessage{Type: "snapshot", Kind: kind, SubID: subID, Items: items, Producers: producers})
 	utils.LogWithFields(utils.LevelDebug, "resource", "subscribed", map[string]any{"kind": kind, "producer": filter.Producer, "subscription_id": subID, "count": len(items)})
 	return sub, nil
 }
@@ -232,25 +278,45 @@ func (b *Broker) publishDelta(kind string, delta types.ResourceDelta) {
 			continue
 		}
 		deltaCopy := delta
-		sub.deliver(ResourceMessage{Type: "delta", Kind: kind, SubID: sub.ID, Delta: &deltaCopy})
+		sub.deliverMessage(ResourceMessage{Type: "delta", Kind: kind, SubID: sub.ID, Delta: &deltaCopy})
 	}
 }
 
 // SubscribeDirect registers a producerless direct subscription. The global
-// broker uses this for client-created resources and has no initial snapshot.
+// broker uses this for client-created resources that have no producer query.
 func (b *Broker) SubscribeDirect(kind string, filter types.ResourceFilter, deliver func(ResourceMessage)) *Subscription {
+	return b.SubscribeDirectWithSnapshot(kind, filter, deliver, func(subID string) []ResourceMessage {
+		return []ResourceMessage{{Type: "snapshot", Kind: kind, SubID: subID}}
+	})
+}
+
+// SubscribeDirectWithSnapshot registers a direct subscription before building
+// its initial snapshot. Matching deltas queue until the snapshot is delivered.
+func (b *Broker) SubscribeDirectWithSnapshot(
+	kind string,
+	filter types.ResourceFilter,
+	deliver func(ResourceMessage),
+	buildSnapshot func(subscriptionID string) []ResourceMessage,
+) *Subscription {
 	if kind == "" {
-		utils.Warn("resource", "SubscribeDirect: empty kind, ignoring")
+		utils.Warn("resource", "SubscribeDirectWithSnapshot: empty kind, ignoring")
 		return nil
 	}
 	subID := fmt.Sprintf("sub-%d", b.nextSubID.Add(1))
-	sub := &Subscription{ID: subID, Kind: kind, Filter: filter, deliver: deliver}
+	sub := &Subscription{
+		ID: subID, Kind: kind, Filter: filter, deliver: deliver,
+		pending: buildSnapshot != nil,
+	}
 	b.mu.Lock()
 	b.subscribers[kind] = append(b.subscribers[kind], sub)
 	b.subsByID[subID] = sub
 	b.mu.Unlock()
-	deliver(ResourceMessage{Type: "snapshot", Kind: kind, SubID: subID})
-	utils.LogWithFields(utils.LevelDebug, "resource", "subscribe direct", map[string]any{"kind": kind, "producer": filter.Producer, "subscription_id": subID})
+	if buildSnapshot != nil {
+		sub.finishInitialSnapshot(buildSnapshot(subID))
+	}
+	utils.LogWithFields(utils.LevelDebug, "resource", "subscribe direct", map[string]any{
+		"kind": kind, "producer": filter.Producer, "subscription_id": subID, "snapshot": buildSnapshot != nil,
+	})
 	return sub
 }
 
@@ -304,21 +370,22 @@ func (b *Broker) RewireQueryHandlerAndResnapshotFor(kind, producer string, handl
 	subs := copySubscriptions(b.subscribers[kind])
 	b.mu.RUnlock()
 	for _, sub := range subs {
-		items := b.snapshotForSubscription(kind, sub.Filter, sub.ID, "rewire")
-		sub.deliver(ResourceMessage{Type: "snapshot", Kind: kind, SubID: sub.ID, Items: items})
+		items, producers := b.snapshotForSubscription(kind, sub.Filter, sub.ID, "rewire")
+		sub.deliverMessage(ResourceMessage{Type: "snapshot", Kind: kind, SubID: sub.ID, Items: items, Producers: producers})
 	}
 	utils.LogWithFields(utils.LevelInfo, "resource", "rewire query handler and resnapshot", map[string]any{"kind": kind, "producer": producer, "count": len(subs)})
 }
 
-func (b *Broker) snapshotForSubscription(kind string, filter types.ResourceFilter, subID, operation string) []types.ResourceItem {
+func (b *Broker) snapshotForSubscription(kind string, filter types.ResourceFilter, subID, operation string) ([]types.ResourceItem, []string) {
 	b.mu.RLock()
 	entries := b.entriesForKindLocked(kind, filter.Producer)
 	b.mu.RUnlock()
 	return b.queryEntries(entries, kind, filter, subID, operation)
 }
 
-func (b *Broker) queryEntries(entries []*producerEntry, kind string, filter types.ResourceFilter, subID, operation string) []types.ResourceItem {
+func (b *Broker) queryEntries(entries []*producerEntry, kind string, filter types.ResourceFilter, subID, operation string) ([]types.ResourceItem, []string) {
 	var merged []types.ResourceItem
+	var producers []string
 	for _, entry := range entries {
 		entryFilter := filter
 		entryFilter.Kind = kind
@@ -328,12 +395,13 @@ func (b *Broker) queryEntries(entries []*producerEntry, kind string, filter type
 			utils.LogWithFields(utils.LevelInfo, "resource", "resource query failed", map[string]any{"operation": operation, "kind": kind, "producer": entry.producer, "subscription_id": subID, "error": err.Error()})
 			continue
 		}
+		producers = append(producers, entry.producer)
 		for index := range items {
 			items[index].Producer = entry.producer
 		}
 		merged = append(merged, items...)
 	}
-	return merged
+	return merged, producers
 }
 
 func (b *Broker) ProducerNames(kind string) []string {
@@ -345,6 +413,39 @@ func (b *Broker) ProducerNames(kind string) []string {
 		names = append(names, entry.producer)
 	}
 	return names
+}
+
+// Kinds returns every declared resource kind in stable order.
+func (b *Broker) Kinds() []string {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	kinds := make([]string, 0, len(b.producers))
+	for kind := range b.producers {
+		kinds = append(kinds, kind)
+	}
+	sort.Strings(kinds)
+	return kinds
+}
+
+// QueryProducer obtains one producer's current items and stamps the trusted
+// producer identity onto every returned item.
+func (b *Broker) QueryProducer(kind, producer string, filter types.ResourceFilter) ([]types.ResourceItem, error) {
+	b.mu.RLock()
+	entries := b.entriesForKindLocked(kind, producer)
+	b.mu.RUnlock()
+	if len(entries) == 0 {
+		return nil, fmt.Errorf("resource broker: no producer for kind %q producer %q", kind, producer)
+	}
+	filter.Kind = kind
+	filter.Producer = producer
+	items, err := entries[0].host.HandleQuery(filter)
+	if err != nil {
+		return nil, err
+	}
+	for index := range items {
+		items[index].Producer = producer
+	}
+	return items, nil
 }
 
 func (b *Broker) entriesForKindLocked(kind, producer string) []*producerEntry {

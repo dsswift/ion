@@ -181,7 +181,7 @@ func TestBroker_SubscribeDirectWildcard_NoSnapshotStreamsDeltas(t *testing.T) {
 	b := NewBroker()
 
 	var received []ResourceMessage
-	b.SubscribeDirectWildcard(types.ResourceFilter{}, collectDeliver(&received))
+	b.SubscribeDirectWildcard(types.ResourceFilter{}, collectDeliver(&received), nil)
 	if len(received) != 0 {
 		t.Fatalf("SubscribeDirectWildcard must not deliver an initial snapshot, got %d", len(received))
 	}
@@ -199,6 +199,35 @@ func TestBroker_SubscribeDirectWildcard_NoSnapshotStreamsDeltas(t *testing.T) {
 	}
 	if !kinds["desktop.focus"] || !kinds["client.state"] {
 		t.Errorf("expected both direct kinds, got %v", kinds)
+	}
+}
+
+func TestBroker_SubscribeDirectWildcard_BuffersDeltasUntilSnapshot(t *testing.T) {
+	b := NewBroker()
+	var received []ResourceMessage
+
+	b.SubscribeDirectWildcard(types.ResourceFilter{}, collectDeliver(&received), func(subID string) []ResourceMessage {
+		b.PublishDirect("briefing", types.ResourceDelta{
+			Op: "update", Item: types.ResourceItem{ID: "new", Kind: "briefing", Producer: "extension-a"},
+		})
+		if len(received) != 0 {
+			t.Fatalf("delta escaped before initial snapshot: %+v", received)
+		}
+		return []ResourceMessage{{
+			Type: "snapshot", Kind: "briefing", SubID: subID,
+			Items:     []types.ResourceItem{{ID: "old", Kind: "briefing", Producer: "extension-a"}},
+			Producers: []string{"extension-a"},
+		}}
+	})
+
+	if len(received) != 2 {
+		t.Fatalf("received %d messages, want snapshot and delta: %+v", len(received), received)
+	}
+	if received[0].Type != "snapshot" || received[0].Items[0].ID != "old" {
+		t.Fatalf("first message = %+v, want initial snapshot", received[0])
+	}
+	if received[1].Type != "delta" || received[1].Delta == nil || received[1].Delta.Item.ID != "new" {
+		t.Fatalf("second message = %+v, want buffered delta", received[1])
 	}
 }
 
@@ -238,7 +267,7 @@ func TestIsWildcard(t *testing.T) {
 func TestBroker_PublishDirectPreservesProducerAndFilters(t *testing.T) {
 	b := NewBroker()
 	var messages []ResourceMessage
-	b.SubscribeDirectWildcard(types.ResourceFilter{Producer: "extension-b"}, collectDeliver(&messages))
+	b.SubscribeDirectWildcard(types.ResourceFilter{Producer: "extension-b"}, collectDeliver(&messages), nil)
 	b.PublishDirect("note", types.ResourceDelta{Op: "create", Item: types.ResourceItem{ID: "same", Kind: "note", Producer: "extension-a"}})
 	b.PublishDirect("note", types.ResourceDelta{Op: "create", Item: types.ResourceItem{ID: "same", Kind: "note", Producer: "extension-b"}})
 	if len(messages) != 1 {

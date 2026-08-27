@@ -52,16 +52,36 @@ func (s *Server) dispatchResourceSubscribe(conn net.Conn, cmd *protocol.ClientCo
 		}
 		var sub *resource.Subscription
 		if wildcard {
-			// Global wildcard: producer-less direct subscription across all
-			// kinds. The global broker hosts client-published workspace
-			// resources that may have no producer, so no snapshot query.
+			// Register before querying producer-owned storage. The broker buffers
+			// concurrent deltas until these snapshots have been delivered, so a
+			// stale query result can never overwrite a newer live update.
 			sub = broker.SubscribeDirectWildcard(filter, func(msg resource.ResourceMessage) {
 				s.deliverResourceEvent(conn, cmd.Key, msg)
+			}, func(subscriptionID string) []resource.ResourceMessage {
+				snapshots := s.manager.WorkspaceResourceSnapshots(filter)
+				messages := make([]resource.ResourceMessage, 0, len(snapshots))
+				for _, snapshot := range snapshots {
+					messages = append(messages, resource.ResourceMessage{
+						Type: "snapshot", Kind: snapshot.Kind, SubID: subscriptionID,
+						Items: snapshot.Items, Producers: snapshot.Producers,
+					})
+				}
+				return messages
 			})
 			utils.LogWithFields(utils.LevelInfo, "server", "resource subscribe global wildcard", map[string]any{"run_id": sub.ID})
 		} else {
-			sub = broker.SubscribeDirect(cmd.ResourceKind, filter, func(msg resource.ResourceMessage) {
+			sub = broker.SubscribeDirectWithSnapshot(cmd.ResourceKind, filter, func(msg resource.ResourceMessage) {
 				s.deliverResourceEvent(conn, cmd.Key, msg)
+			}, func(subscriptionID string) []resource.ResourceMessage {
+				snapshots := s.manager.WorkspaceResourceSnapshots(filter)
+				if len(snapshots) == 0 {
+					return []resource.ResourceMessage{{Type: "snapshot", Kind: cmd.ResourceKind, SubID: subscriptionID}}
+				}
+				snapshot := snapshots[0]
+				return []resource.ResourceMessage{{
+					Type: "snapshot", Kind: snapshot.Kind, SubID: subscriptionID,
+					Items: snapshot.Items, Producers: snapshot.Producers,
+				}}
 			})
 			utils.LogWithFields(utils.LevelInfo, "server", "resource subscribe global kind", map[string]any{"reason": cmd.ResourceKind, "run_id": sub.ID})
 		}
@@ -167,10 +187,11 @@ func (s *Server) deliverResourceEvent(conn net.Conn, key string, msg resource.Re
 	var ev types.EngineEvent
 	if msg.Type == "snapshot" {
 		ev = types.EngineEvent{
-			Type:          "engine_resource_snapshot",
-			ResourceKind:  msg.Kind,
-			ResourceSubID: msg.SubID,
-			ResourceItems: msg.Items,
+			Type:              "engine_resource_snapshot",
+			ResourceKind:      msg.Kind,
+			ResourceSubID:     msg.SubID,
+			ResourceItems:     msg.Items,
+			ResourceProducers: msg.Producers,
 		}
 	} else {
 		ev = types.EngineEvent{

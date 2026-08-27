@@ -31,7 +31,7 @@ func (b *Broker) SubscribeWildcard(filter types.ResourceFilter, deliver func(Res
 	sort.Strings(kinds)
 
 	for _, kind := range kinds {
-		items := b.snapshotForSubscription(kind, filter, subID, "subscribe_wildcard")
+		items, producers := b.snapshotForSubscription(kind, filter, subID, "subscribe_wildcard")
 		// A producer filter that matches no producer has no kind snapshot.
 		b.mu.RLock()
 		hasProducer := len(b.entriesForKindLocked(kind, filter.Producer)) > 0
@@ -39,23 +39,36 @@ func (b *Broker) SubscribeWildcard(filter types.ResourceFilter, deliver func(Res
 		if !hasProducer {
 			continue
 		}
-		deliver(ResourceMessage{Type: "snapshot", Kind: kind, SubID: subID, Items: items})
+		deliver(ResourceMessage{Type: "snapshot", Kind: kind, SubID: subID, Items: items, Producers: producers})
 		utils.LogWithFields(utils.LevelDebug, "resource", "subscribe wildcard snapshot", map[string]any{"kind": kind, "producer": filter.Producer, "subscription_id": subID, "count": len(items)})
 	}
 	utils.LogWithFields(utils.LevelInfo, "resource", "subscribe wildcard", map[string]any{"subscription_id": subID, "producer": filter.Producer, "kind_count": len(kinds)})
 	return sub
 }
 
-// SubscribeDirectWildcard registers a producerless global wildcard. It has no
-// snapshot because global broker delivery does not own producer query handlers.
-func (b *Broker) SubscribeDirectWildcard(filter types.ResourceFilter, deliver func(ResourceMessage)) *Subscription {
+// SubscribeDirectWildcard registers a producerless global wildcard. Deltas are
+// buffered while buildSnapshot queries the producers that own durable workspace
+// state, then delivered after the initial snapshots in one ordered stream.
+func (b *Broker) SubscribeDirectWildcard(
+	filter types.ResourceFilter,
+	deliver func(ResourceMessage),
+	buildSnapshot func(subscriptionID string) []ResourceMessage,
+) *Subscription {
 	subID := fmt.Sprintf("sub-%d", b.nextSubID.Add(1))
-	sub := &Subscription{ID: subID, Kind: WildcardKind, Filter: filter, deliver: deliver}
+	sub := &Subscription{
+		ID: subID, Kind: WildcardKind, Filter: filter, deliver: deliver,
+		pending: buildSnapshot != nil,
+	}
 	b.mu.Lock()
 	b.subscribers[WildcardKind] = append(b.subscribers[WildcardKind], sub)
 	b.subsByID[subID] = sub
 	b.mu.Unlock()
-	utils.LogWithFields(utils.LevelInfo, "resource", "subscribe direct wildcard", map[string]any{"subscription_id": subID, "producer": filter.Producer})
+	if buildSnapshot != nil {
+		sub.finishInitialSnapshot(buildSnapshot(subID))
+	}
+	utils.LogWithFields(utils.LevelInfo, "resource", "subscribe direct wildcard", map[string]any{
+		"subscription_id": subID, "producer": filter.Producer, "snapshot": buildSnapshot != nil,
+	})
 	return sub
 }
 
