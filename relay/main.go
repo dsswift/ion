@@ -167,9 +167,9 @@ func main() {
 	})
 
 	mux.HandleFunc("GET /v1/channel/{channelId}", func(w http.ResponseWriter, r *http.Request) {
-		identity, ok := auth.Validate(r)
-		if !ok {
-			logAuthFailure(r, "invalid credential")
+		identity, reason := auth.ValidateDetailed(r)
+		if reason != "" {
+			logAuthFailure(r, reason)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -204,9 +204,9 @@ func main() {
 	})
 
 	mux.HandleFunc("GET /v1/channel/{channelId}/status", func(w http.ResponseWriter, r *http.Request) {
-		identity, ok := auth.Validate(r)
-		if !ok {
-			logAuthFailure(r, "invalid credential")
+		identity, reason := auth.ValidateDetailed(r)
+		if reason != "" {
+			logAuthFailure(r, reason)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -309,7 +309,7 @@ func logAuthSuccess(identity *UserIdentity, method string) {
 }
 
 // logAuthFailure emits a structured auth.failure audit log entry.
-func logAuthFailure(r *http.Request, reason string) {
+func logAuthFailure(r *http.Request, reason AuthFailureReason) {
 	logger.Warn("auth.failure",
 		"tag", "relay.auth.failure",
 		"reason", reason,
