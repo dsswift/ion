@@ -51,6 +51,9 @@ func TestBroker_FuncProducerHost_Lifecycle(t *testing.T) {
 	if len(snap.Items) != 1 {
 		t.Fatalf("expected 1 item in snapshot, got %d", len(snap.Items))
 	}
+	if len(snap.Producers) != 1 || snap.Producers[0] != "legacy" {
+		t.Fatalf("snapshot producer coverage: want [legacy], got %v", snap.Producers)
+	}
 	if snap.Items[0].Title != "Morning Brief" {
 		t.Errorf("snapshot item title: want %q, got %q", "Morning Brief", snap.Items[0].Title)
 	}

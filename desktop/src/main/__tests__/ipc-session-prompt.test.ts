@@ -157,6 +157,34 @@ describe("IPC.PROMPT handler", () => {
     expect(mocks.remoteSend).not.toHaveBeenCalled();
   });
 
+  it("echoes a main-owned structured answer to iOS with display text and provenance", async () => {
+    const handler = handlers.get("ion:prompt");
+    await handler!(null, {
+      tabId: "tab-questions",
+      requestId: "req-questions",
+      options: {
+        prompt: "provider prompt with control text",
+        displayText: "**Question?**\n- Answer",
+        source: "remote",
+        echoToIos: true,
+        injectionKind: "structured_answer",
+      },
+    });
+
+    expect(mocks.processIncomingPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        displayText: "**Question?**\n- Answer",
+        echoToIos: true,
+      }),
+    );
+    expect(mocks.remoteSend).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.objectContaining({
+        content: "**Question?**\n- Answer",
+        injectionKind: "structured_answer",
+      }),
+    }));
+  });
+
   it("marks implementation prompts on the Studio and iOS echoes", async () => {
     const handler = handlers.get("ion:prompt");
     await handler!(null, {

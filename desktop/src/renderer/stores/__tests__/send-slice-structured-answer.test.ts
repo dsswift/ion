@@ -1,28 +1,9 @@
 /**
- * Machine-authored turn suppression — a Guided Questions submission reaches
- * the model but is never echoed into the transcript as a user bubble.
+ * Guided Questions transcript behavior.
  *
- * The operator answers in the Questions Wizard, which already displays every
- * answer they chose. The prompt the desktop sends is the ENGINE-FACING
- * rendering of that submission — question prompts echoed, option labels
- * resolved, skips spelled out, attachment markers inserted. Rendering it back
- * into the conversation showed the operator their own answers a second time,
- * in a shape they never wrote.
- *
- * The fix classifies the turn `structured_answer`, which the engine derives
- * to machineAuthored — the same treatment agent callbacks and background-task
- * results already get. Two halves must hold together, and each is one token
- * from breaking:
- *
- *   1. The renderer must SKIP the optimistic bubble for a machine-authored
- *      kind. Miss this and the bubble appears immediately on send regardless
- *      of what the engine records.
- *   2. The kind must be FORWARDED to the engine on the prompt. Miss this and
- *      the suppression is session-local: the persisted row classifies as
- *      user-authored, so the turn reappears on history reload and on iOS.
- *
- * Suppression is read from the ONE shared policy (shared/injection-policy.ts),
- * so a kind added to the engine is handled with no edit here.
+ * A submitted answer set is real operator input, so it stays visible and is
+ * tagged `structured_answer`. Its displayText contains only questions and
+ * answers. The separate provider prompt can still carry control instructions.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
@@ -214,6 +195,26 @@ describe("submit() with injectionKind: 'structured_answer'", () => {
     })
 
     expect(promptOptions().injectionKind).toBe('structured_answer')
+  })
+  it('renders only displayText but sends the full provider prompt', () => {
+    const { state } = buildHarness(makeTab())
+    const providerPrompt = 'My answers to "Scope": ...\n\nCall AskUserQuestions again.'
+    const displayText = '**Storage backend?**\n- Postgres'
+
+    state.submit('tab-1', providerPrompt, {
+      source: 'remote',
+      requestId: 'questions-1',
+      injectionKind: 'structured_answer',
+      displayText,
+    })
+
+    const msgs = messages(state) as Array<{ content: string }>
+    expect(msgs[0].content).toBe(displayText)
+    expect(msgs[0].content).not.toContain('Call AskUserQuestions again')
+    expect(promptOptions().prompt).toBe(providerPrompt)
+    expect(promptOptions().displayText).toBe(displayText)
+    expect(promptOptions().echoToIos).toBeUndefined()
+    expect(state.enginePinnedPrompt.get('tab-1')).toBe(displayText)
   })
 
 

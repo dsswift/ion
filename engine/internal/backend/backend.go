@@ -369,6 +369,10 @@ type RunConfig struct {
 	// change is an internal refactor.
 	McpConnections []*mcp.Connection
 	McpToolRouter  func(ctx context.Context, name string, input map[string]interface{}) (*types.ToolResult, error)
+	// ClientToolInputValidators validates every client-declared tool call before
+	// machine routing or human-wait parking. A missing entry means the tool was
+	// not declared by the client. Validators are compiled once per run.
+	ClientToolInputValidators map[string]func(map[string]interface{}) error
 	// HumanWaitClientTools names the client-declared tools (ClientToolDef.
 	// HumanWait) whose invocation PARKS the run instead of blocking a tool
 	// call: the loop records a PermissionDenial carrying the tool's full
@@ -411,12 +415,19 @@ type RunConfig struct {
 	// work (the pre-existing behavior).
 	OutstandingBackgroundTasks func() []string
 
+	// OutstandingPolls reports session-owned Poll IDs that still hold work open.
+	OutstandingPolls func() []string
+
 	// RegisterOutstandingBackgroundTask adds a task to the session's
 	// outstanding set. Stamped onto tool contexts so the Bash tool can
 	// register a notify_on_complete task with the owning session. Nil means
 	// notify_on_complete tasks still run and still emit their completion
 	// event, but nothing holds the session for them.
 	RegisterOutstandingBackgroundTask func(taskID, command string)
+
+	// PollStarter starts a session-owned inference-driven poll for the Poll tool.
+	// Nil keeps Poll unavailable in runs without session orchestration.
+	PollStarter tools.PollStarter
 
 	// OutstandingChildDispatches reports the run's live child dispatches
 	// (background agents this run dispatched that are still running) at the

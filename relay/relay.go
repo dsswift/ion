@@ -263,6 +263,15 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 
 	ch.mu.Unlock()
 
+	// Mobile URLSession considers the socket usable only after its first inbound
+	// frame. When LAN is preferred, desktop application traffic stays on LAN and
+	// a new mobile relay socket would otherwise remain silent until its deadline.
+	// Do not send this to the ion role: existing desktop clients treat control
+	// frames as peer-state signals and do not need an upgrade confirmation.
+	if role == "mobile" {
+		sendControl(conn, "relay:connected", h.WriteTimeout, connLog)
+	}
+
 	connLog.Info("client connected", "tag", "relay.connect")
 
 	// Start keepalive pings. Essential for public internet deployments where

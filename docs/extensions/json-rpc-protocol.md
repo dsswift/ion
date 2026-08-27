@@ -438,6 +438,24 @@ Dispatch an engine-native agent. Creates a child session with optional extension
 
 Only `name` and `task` are required. All other fields are optional.
 
+**Declaring that a dispatch must produce work:**
+
+| Field | Effect |
+|-------|--------|
+| `"requireToolUse": true` | A completion with zero tool calls is not success. The engine gives the child **one** continuation naming the expectation; if the retry also calls no tools the dispatch reports `"exitCode": 3` and its delivered status is `declined`. |
+| `"requireToolUse": false` | Explicit exemption. Analysis, summarization, and advisory dispatches legitimately produce text and call nothing. |
+| *(omitted)* | No expectation declared. The engine reports `toolCount` and passes no judgement. This is the default, so a client that never sends the field is unchanged. |
+
+The field is tri-state on the wire: omit it to declare nothing. The engine never infers the expectation from the task text — a summarization dispatch and an edit dispatch are indistinguishable to it, and only the caller knows which it issued.
+
+**Capping injected context:**
+
+```json
+{"contextPolicy": {"maxContextBytes": 120000}}
+```
+
+`contextPolicy.maxContextBytes` caps the total context-file bytes injected into this dispatch. Omit it or pass `<= 0` for no cap (the default). Files are admitted whole, nearest-first, until the budget is spent; the rest are skipped entirely and logged by name. A file is never truncated mid-content.
+
 **Execution mode:**
 
 | Field | Effect |
@@ -476,10 +494,15 @@ The stub carries `dispatchId` for correlating subsequent lifecycle notifications
     "cost": 0.012,
     "inputTokens": 5000,
     "outputTokens": 2000,
+    "toolCount": 7,
     "sessionId": "ses-xyz"
   }
 }
 ```
+
+`toolCount` is always present, whether or not `requireToolUse` was declared: it is an observed fact about the run, not a verdict. A `0` alongside `"exitCode": 0` is the signature of a child that described the work instead of doing it.
+
+**Terminal exit codes.** `0` is success and `1` is a failed run. `2` is a recalled dispatch. `3` is `declined`: the caller declared `requireToolUse: true`, the run ended cleanly, and the child still called no tools after its one continuation. A declined dispatch ran correctly and produced nothing, which is a different fact from a run that broke — a client that retries failures should not retry it. The child's own final text is preserved in `output` after the engine's verdict.
 
 When `planMode` is true, the child runs in plan mode with a restricted tool set; `planFilePath` and `planModeTools` override the defaults. The result then includes `planFilePath` and `planExited`.
 
@@ -487,9 +510,11 @@ When `planMode` is true, the child runs in plan mode with a restricted tool set;
 
 | Method | When | Key payload fields |
 |--------|------|--------------------|
-| `dispatch_complete` | Child finished successfully | `callbackId`, `dispatchId`, `name`, `output`, `exitCode`, `elapsed`, `cost`, `inputTokens`, `outputTokens`, `sessionId` |
-| `dispatch_error` | Child failed | `callbackId`, `dispatchId`, `name`, `message`, `exitCode`, `elapsed` |
+| `dispatch_complete` | Child finished successfully (`exitCode: 0`) | `callbackId`, `dispatchId`, `name`, `output`, `exitCode`, `elapsed`, `cost`, `inputTokens`, `outputTokens`, `toolCount`, `sessionId` |
+| `dispatch_error` | Child failed, or was declined (`exitCode: 3`) | `callbackId`, `dispatchId`, `name`, `message`, `exitCode`, `elapsed` |
 | `dispatch_recall` | Child was recalled | `callbackId`, `dispatchId`, `name`, `reason`, `elapsed`, `toolCount` |
+
+An asynchronous declined dispatch arrives as `dispatch_error` because its exit code is non-zero; read `exitCode` to tell `3` (declined — ran correctly, produced nothing) from `1` (the run broke). `message` carries the engine's verdict followed by the child's own final text.
 
 See [SDK Raw > Dispatch lifecycle notifications](sdk-raw.md#dispatch-lifecycle-notifications) for the full notification set including observational lifecycle events (`dispatch_tool_start`, `dispatch_usage`, etc.).
 

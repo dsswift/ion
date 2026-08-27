@@ -58,6 +58,19 @@ type childStubBackend struct {
 	// tests can assert the spawner emits engine_dispatch_activity deltas for
 	// the live transcript while the child is still running.
 	emitActivity bool
+	// noToolUse suppresses the single synthetic tool-call pair the stub
+	// otherwise emits before completing.
+	//
+	// The built-in Agent tool declares DispatchAgentOpts.RequireToolUse, so a
+	// child that completes having called NO tools is reported as declined
+	// (ExitCodeDeclined) rather than as a success — that is the entire point of
+	// the work gate. A stub standing in for a SUCCESSFUL dispatch therefore has
+	// to call at least one tool, the same as a real agent doing real work.
+	// Before the gate existed the stubs could emit bare text and still read as
+	// success, which is exactly the production defect the gate closes.
+	//
+	// Set this only in tests that deliberately exercise the zero-tool path.
+	noToolUse bool
 	// childErr, when non-nil, is delivered via onError after StartRun
 	// returns control.
 	childErr error
@@ -88,6 +101,7 @@ func (c *childStubBackend) StartRun(requestID string, opts types.RunOptions) {
 	usage := c.resultUsage
 	emitFallback := c.emitModelFallback
 	emitActivity := c.emitActivity
+	noToolUse := c.noToolUse
 	errToEmit := c.childErr
 	c.mu.Unlock()
 
@@ -105,6 +119,15 @@ func (c *childStubBackend) StartRun(requestID string, opts types.RunOptions) {
 			onNorm(requestID, types.NormalizedEvent{Data: &types.ToolCallEvent{ToolName: "Read", ToolID: "tool-1"}})
 			onNorm(requestID, types.NormalizedEvent{Data: &types.ToolResultEvent{ToolID: "tool-1", IsError: false}})
 			onNorm(requestID, types.NormalizedEvent{Data: &types.TextChunkEvent{Text: "looking at the file"}})
+		} else if !noToolUse && onNorm != nil {
+			// Minimum evidence of real work: one tool call. The Agent tool
+			// declares RequireToolUse, so a child that calls nothing is
+			// declined by the work gate — a stub representing success must
+			// therefore do what a working agent does. emitActivity already
+			// emits its own richer tool sequence above, so this is the
+			// else-branch rather than an unconditional addition.
+			onNorm(requestID, types.NormalizedEvent{Data: &types.ToolCallEvent{ToolName: "Read", ToolID: "stub-tool-1"}})
+			onNorm(requestID, types.NormalizedEvent{Data: &types.ToolResultEvent{ToolID: "stub-tool-1", IsError: false}})
 		}
 		// Emit a synthetic ModelFallbackEvent before the task-complete so
 		// lifecycle tests can verify it doesn't perturb the parent's

@@ -60,6 +60,9 @@ const (
 	// relaying something a user said.
 	InjectionKindBackgroundTaskCompletion InjectionKind = "background_task_completion"
 
+	// InjectionKindPollResult is the terminal result of an engine-owned Poll.
+	InjectionKindPollResult InjectionKind = "poll_result"
+
 	// InjectionKindCheckIn is a scheduled heartbeat delivered to a session that
 	// went idle with work still running — a harness asking its own orchestrator
 	// to look at outstanding dispatches. Fires with no user present, by
@@ -137,6 +140,7 @@ func (k InjectionKind) IsMachineToMachine() bool {
 	case InjectionKindAgentCompletion,
 		InjectionKindSlashCommand,
 		InjectionKindBackgroundTaskCompletion,
+		InjectionKindPollResult,
 		InjectionKindCheckIn,
 		InjectionKindRevive,
 		InjectionKindRunRecovery,
@@ -183,6 +187,7 @@ var AllInjectionKinds = []InjectionKind{
 	InjectionKindAgentCompletion,
 	InjectionKindSlashCommand,
 	InjectionKindBackgroundTaskCompletion,
+	InjectionKindPollResult,
 	InjectionKindCheckIn,
 	InjectionKindRevive,
 	InjectionKindRunRecovery,

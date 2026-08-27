@@ -387,6 +387,13 @@ func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provid
 		mcpAllowlist := effectiveMcpAllowlist(opts)
 		var filtered []types.LlmToolDef
 		for _, td := range toolDefs {
+			// Poll is auto-mode orchestration. It starts a permissive evidence
+			// collector and may run Bash under normal permissions, so it is never
+			// exposed in plan mode — even when a custom plan tool list names it or
+			// a future edit accidentally marks it PlanModeSafe.
+			if td.Name == "Poll" {
+				continue
+			}
 			if allowed[td.Name] || td.PlanModeSafe || (strings.HasPrefix(td.Name, "mcp__") && mcpToolAllowed(td.Name, mcpAllowlist)) {
 				filtered = append(filtered, td)
 			}

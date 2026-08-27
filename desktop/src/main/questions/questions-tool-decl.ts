@@ -12,7 +12,6 @@
  * its primary habitat.
  */
 import type { ClientToolDef } from '../../shared/types-tool-gate'
-import { QUESTIONS_LIMITS } from '../../shared/questions-schema'
 
 /**
  * Reusable harness guidance: when the model should reach for the wizard vs
@@ -35,26 +34,29 @@ const INPUT_SCHEMA: Record<string, unknown> = {
   properties: {
     title: {
       type: 'string',
-      description: `Short page title shown as the wizard heading (max ${QUESTIONS_LIMITS.maxTitleChars} chars).`,
+      minLength: 1,
+      description: 'Short page title shown as the wizard heading.',
     },
     description: {
       type: 'string',
-      description: `Optional context for the page — e.g. the evidence summary motivating this round (max ${QUESTIONS_LIMITS.maxDescriptionChars} chars).`,
+      description: 'Optional context for the page, such as the evidence summary motivating this round.',
     },
     workflowId: {
       type: 'string',
+      minLength: 1,
       description:
         'Continuation id. Omit on the first call. When a previous result carried requestMore: true, call again with the workflowId from that result to continue the same round; answers accumulate under it.',
     },
     questions: {
       type: 'array',
-      description: `The page's questions, ordered (max ${QUESTIONS_LIMITS.maxQuestionsPerPage}).`,
+      minItems: 1,
+      description: "The page's questions, ordered.",
       items: {
         type: 'object',
         required: ['id', 'prompt', 'mode'],
         properties: {
-          id: { type: 'string', description: 'Stable id, unique within the request.' },
-          prompt: { type: 'string', description: `The question (max ${QUESTIONS_LIMITS.maxPromptChars} chars).` },
+          id: { type: 'string', minLength: 1, description: 'Stable id, unique within the request.' },
+          prompt: { type: 'string', minLength: 1, description: 'The question.' },
           guidance: { type: 'string', description: 'Optional longer guidance rendered under the prompt.' },
           mode: {
             type: 'string',
@@ -70,13 +72,14 @@ const INPUT_SCHEMA: Record<string, unknown> = {
           },
           options: {
             type: 'array',
-            description: `Labeled options for single/multiple modes (max ${QUESTIONS_LIMITS.maxOptionsPerQuestion}). Do NOT add an 'Other' option — the client always renders a free-text 'Other' alongside the options.`,
+            minItems: 1,
+            description: "Labeled options for single/multiple modes. Do NOT add an 'Other' option — the client always renders a free-text 'Other' alongside the options.",
             items: {
               type: 'object',
               required: ['id', 'label'],
               properties: {
-                id: { type: 'string' },
-                label: { type: 'string' },
+                id: { type: 'string', minLength: 1 },
+                label: { type: 'string', minLength: 1 },
                 description: { type: 'string', description: 'Optional per-option trade-off/explanation.' },
               },
             },

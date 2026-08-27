@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 @testable import IonRemote
 
@@ -95,6 +96,55 @@ final class QuestionsWireTests: XCTestCase {
         let tab = try JSONDecoder().decode(RemoteTabState.self, from: json)
         XCTAssertEqual(tab.questions?.count, 1)
         XCTAssertEqual(tab.questions?.first?.workflowId, "wf-1")
+    }
+
+    // MARK: - Large fragmented event
+
+    func testLargeQuestionsPayloadReassemblesWithoutContentOrOrderLoss() throws {
+        let descriptions = (0..<80).map { index in
+            "detail-\(index)-" + String(repeating: "content-\(index)-", count: 100)
+        }
+        let questions = descriptions.enumerated().map { index, description -> [String: Any] in
+            [
+                "id": "q\(index)",
+                "prompt": "Question \(index)",
+                "mode": "single",
+                "options": [["id": "o\(index)", "label": "Option \(index)", "description": description]]
+            ]
+        }
+        let workflow: [String: Any] = [
+            "workflowId": "wf-large", "requestId": "req-large", "sessionKey": "tab-1",
+            "phase": "collecting", "request": ["title": "Large", "questions": questions],
+            "draft": [], "history": [], "revision": 1, "startedAt": 1
+        ]
+        let event: [String: Any] = [
+            "type": "desktop_questions_state", "tabId": "tab-1",
+            "state": ["workflows": [workflow]]
+        ]
+        let payload = try JSONSerialization.data(withJSONObject: event)
+        XCTAssertGreaterThan(payload.count, 64 * 1024)
+        let digest = SHA256.hash(data: payload).map { String(format: "%02x", $0) }.joined()
+        let assembler = PayloadChunkAssembler()
+        let size = 8 * 1024
+        let count = Int(ceil(Double(payload.count) / Double(size)))
+        var result = PayloadChunkAssembler.Result.held
+        for index in 0..<count {
+            let start = index * size
+            let end = min(start + size, payload.count)
+            let envelope: [String: Any] = [
+                "type": PayloadChunk.type, "transferId": "large-questions", "index": index,
+                "count": count, "originalType": "desktop_questions_state",
+                "totalBytes": payload.count, "sha256": digest,
+                "data": payload.subdata(in: start..<end).base64EncodedString()
+            ]
+            result = assembler.accept(try JSONSerialization.data(withJSONObject: envelope))
+        }
+        guard case .assembled(let ready) = result else { return XCTFail("expected assembled payload") }
+        let decoded = try JSONDecoder().decode(RemoteEvent.self, from: try XCTUnwrap(ready.first))
+        guard case .questionsState(_, let state) = decoded else { return XCTFail("expected questions state") }
+        let decodedQuestions = try XCTUnwrap(state.workflows.first?.request.questions)
+        XCTAssertEqual(decodedQuestions.map(\.id), questions.indices.map { "q\($0)" })
+        XCTAssertEqual(decodedQuestions.last?.options?.first?.description, descriptions.last)
     }
 
     // MARK: - Command encode

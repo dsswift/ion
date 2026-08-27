@@ -405,7 +405,8 @@ enum RemoteEvent: Sendable {
         instanceId: String?,
         resourceKind: String,
         resourceSubId: String,
-        resourceItems: [[String: AnyCodable]]
+        resourceItems: [[String: AnyCodable]],
+        resourceProducers: [String]?
     )
     /// Resource delta: emitted when a producer publishes a change.
     /// iOS observes this event but does not act on it in Phase 1.
@@ -937,7 +938,7 @@ enum RemoteEvent: Sendable {
         // — resource subsystem events (D-007). iOS observes but does not act on
         // snapshot/delta in Phase 1. resource_item is used for lazy-load on tap.
         // Field names mirror the Go-side json tags.
-        case resourceKind, resourceSubId, resourceItems, resourceDelta, resourceItem
+        case resourceKind, resourceSubId, resourceItems, resourceProducers, resourceDelta, resourceItem
         // engine_notification — notification pipeline event (D-009).
         // The relay handles APNs push; iOS decodes for diagnostic visibility.
         case notifyKind, notifyTitle, notifyBody, notifySound, notifyScope

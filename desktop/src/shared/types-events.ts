@@ -373,6 +373,7 @@ export type NormalizedEvent =
       resourceKind: string;
       resourceSubId?: string;
       resourceItems: import("./types-engine").ResourceItem[];
+      resourceProducers?: string[];
     }
   | {
       type: "resource_delta";

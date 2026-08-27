@@ -140,6 +140,18 @@ final class ContractSyncTests: XCTestCase {
       "model_fallback":
         "Projected onto RemoteTabState.conversationInstances[i].modelFallback "
         + "rather than decoded live, so the indicator survives reconnect.",
+      "poll_started":
+        "Engine-socket lifecycle signal. The desktop projects authoritative poll "
+        + "state through RemoteTabState.activePolls and pollsWaiting; the "
+        + "desktop<->iOS wire has no desktop_poll_started member.",
+      "poll_progress":
+        "Engine-socket lifecycle signal. The desktop projects authoritative poll "
+        + "state through RemoteTabState.activePolls and pollsWaiting; the "
+        + "desktop<->iOS wire has no desktop_poll_progress member.",
+      "poll_terminal":
+        "Engine-socket lifecycle signal. The desktop projects authoritative poll "
+        + "state through RemoteTabState.activePolls and pollsWaiting; the "
+        + "desktop<->iOS wire has no desktop_poll_terminal member.",
       "events_dropped":
         "Engine-internal backpressure signal for a socket consumer; the "
         + "snapshot is authoritative for iOS, which re-syncs wholesale.",
@@ -242,7 +254,7 @@ final class ContractSyncTests: XCTestCase {
 
     // Verify we know about all Go fields (document any intentional gaps)
     let swiftHandled: Set<String> = [
-      "backgroundAgents", "backgroundShells", "activeBackgroundTasks", "label", "state", "sessionId", "team", "model",
+      "backgroundAgents", "backgroundShells", "activeBackgroundTasks", "activePolls", "pollsWaiting", "label", "state", "sessionId", "team", "model",
       "contextPercent", "contextWindow", "contextTokens", "contextEffectiveLimit", "hasPendingWork", "runEpoch", "runCostUsd", "completionReason",
       "conversationCostUsd",
       "permissionDenials", "extensionName", "numTurns", "conversationTurns",
@@ -1143,6 +1155,14 @@ final class ContractSyncTests: XCTestCase {
     XCTAssert(
       untracked.isEmpty,
       "Swift test tracks ResourceLimits fields absent from Go manifest: \(untracked.sorted())")
+  }
+
+  func testEngineResourceSnapshotCoverageFieldInManifest() throws {
+    let manifest = try loadManifest()
+    XCTAssert(
+      Set(manifest.engineEvent).contains("resourceProducers"),
+      "EngineEvent manifest is missing resourceProducers"
+    )
   }
 
   // MARK: - EngineEvent dispatch field coverage

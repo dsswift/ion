@@ -29,6 +29,13 @@ func childResultStatus(exitCode int) string {
 		return "completed"
 	case ExitCodeRecalled:
 		return "recalled"
+	case ExitCodeDeclined:
+		// A dispatch that declared required tool use and performed none. Named
+		// distinctly from "failed" so an orchestrator can tell "this ran
+		// correctly and did nothing" from "this broke" — the two call for
+		// different responses, and collapsing them is what let a promising
+		// child read as a working one.
+		return "declined"
 	default:
 		return "failed"
 	}

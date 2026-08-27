@@ -45,6 +45,28 @@ final class PayloadCompressionTests: XCTestCase {
         XCTAssertEqual(result, original, "decompressed output must match the original byte-for-byte")
     }
 
+    func testPrepareOutboundPrefixesRawDeflatePayload() throws {
+        let original = Data(repeating: 0x61, count: 512)
+
+        let prepared = try PayloadCompression.prepareOutbound(original)
+
+        XCTAssertEqual(prepared.first, 0x01, "compressed payloads must carry the DEFLATE version byte")
+        XCTAssertEqual(
+            try PayloadCompression.inflateRaw(prepared.dropFirst()),
+            original,
+            "the raw-DEFLATE payload after the version byte must round-trip"
+        )
+    }
+
+    func testPrepareOutboundLeavesPayloadBelowCompressionFloorUnchanged() throws {
+        let original = Data("{\"type\":\"desktop_heartbeat\"}".utf8)
+
+        let prepared = try PayloadCompression.prepareOutbound(original)
+
+        XCTAssertEqual(prepared, original, "small payloads must retain the legacy uncompressed form")
+        XCTAssertNotEqual(prepared.first, 0x01, "raw JSON must not be mistaken for compressed data")
+    }
+
     /// Compress with raw DEFLATE via `compression_encode_buffer` (COMPRESSION_ZLIB),
     /// matching the algorithm the desktop uses (`zlib.deflateRawSync`).
     private static func deflateRaw(_ data: Data) throws -> Data {
@@ -68,7 +90,7 @@ final class PayloadCompressionTests: XCTestCase {
         }
 
         guard written > 0 else {
-            throw PayloadCompression.CompressionError.decompressionFailed
+            throw PayloadCompression.CompressionError.compressionFailed
         }
         return Data(bytes: dest, count: written)
     }

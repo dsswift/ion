@@ -172,7 +172,7 @@ func TestBashRunInBackground_TaskStopKills(t *testing.T) {
 	clearBashTasks(t) // Task tools are registered by TestMain
 
 	result, err := ExecuteTool(context.Background(), "Bash", map[string]any{
-		"command":           "sleep 60",
+		"command":           `sh -c "sleep 60"`,
 		"run_in_background": true,
 	}, t.TempDir())
 	if err != nil {
@@ -227,11 +227,11 @@ func TestBashRunInBackground_OwnerCleanup(t *testing.T) {
 	ownedCtx := WithBackgroundTaskOwner(context.Background(), "sess-A")
 	otherCtx := WithBackgroundTaskOwner(context.Background(), "sess-B")
 
-	resA, err := ExecuteTool(ownedCtx, "Bash", map[string]any{"command": "sleep 60", "run_in_background": true}, t.TempDir())
+	resA, err := ExecuteTool(ownedCtx, "Bash", map[string]any{"command": `sh -c "sleep 60"`, "run_in_background": true}, t.TempDir())
 	if err != nil {
 		t.Fatalf("ExecuteTool A: %v", err)
 	}
-	resB, err := ExecuteTool(otherCtx, "Bash", map[string]any{"command": "sleep 60", "run_in_background": true}, t.TempDir())
+	resB, err := ExecuteTool(otherCtx, "Bash", map[string]any{"command": `sh -c "sleep 60"`, "run_in_background": true}, t.TempDir())
 	if err != nil {
 		t.Fatalf("ExecuteTool B: %v", err)
 	}

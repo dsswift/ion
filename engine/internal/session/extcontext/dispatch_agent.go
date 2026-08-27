@@ -755,6 +755,12 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		// runChild encapsulates the child backend start + wait + result
 		// building logic. It is called directly for foreground dispatches
 		// and in a goroutine for background dispatches.
+		//
+		// workGate enforces the dispatcher's RequireToolUse declaration across
+		// the loop's iterations (see dispatch_work_gate.go). Declared outside
+		// the loop so its single retry is tracked for the whole dispatch, not
+		// per iteration.
+		workGate := newWorkGateState(opts.RequireToolUse, agentName, agentID, key)
 		runChild := func() *extension.DispatchAgentResult {
 			for {
 				// Reset per-iteration signals so a previous run's suspend or
@@ -927,6 +933,42 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 					}
 				}
 
+				// Work gate: a dispatch that declared RequireToolUse and ended
+				// its turn without calling a tool gets exactly ONE
+				// continuation naming the expectation, then runs again. This
+				// sits inside the loop (rather than after it) because the
+				// retry is a full child run and must reuse the same
+				// start/wait machinery the suspend/revive path uses.
+				//
+				// Read the tool count under lifecycleMu: the child's
+				// OnNormalized callback runs concurrently across the parallel
+				// tool errgroup, so an unsynchronized read here races with the
+				// increment in fireLifecycleCallbacks.
+				lifecycleMu.Lock()
+				gateToolCount := toolCount
+				lifecycleMu.Unlock()
+				gateExitCode := 0
+				if childErr != nil || childExitCancelled.Load() || childExitCode.Load() != 0 {
+					gateExitCode = 1
+				}
+				if workGate.evaluate(gateToolCount, gateExitCode, recalled, agentName, agentID, key) == workGateRetry {
+					workGate.armContinuation(&runOpts, childSessionID, agentName, agentID, key)
+					// Re-arm childDone AND the release guard before looping,
+					// in that order — the WaitGroup must be armed before the
+					// guard flips to 1, or a stray late exit could release a
+					// zero-count WaitGroup. Mirrors the revive path above.
+					childDone.Add(1)
+					childDoneArmed.Store(1)
+					sa.UpdateAgentStateByID(agentID, func(state *types.AgentStateUpdate) {
+						state.Status = "running"
+						if state.Metadata != nil {
+							state.Metadata["lastWork"] = "continued: no tool calls yet"
+						}
+					})
+					sa.EmitAgentSnapshot("dispatch_work_gate_continue")
+					continue
+				}
+
 				// Normal exit (done, error, or recalled): break the loop.
 				break
 			}
@@ -983,6 +1025,22 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				output = childErr.Error()
 			}
 
+			// Work-gate verdict. Reached only when the dispatcher declared
+			// RequireToolUse, the run ended cleanly, and the child still
+			// called no tools after its one continuation. Deliberately
+			// evaluated AFTER the recall/error mapping above so a genuine
+			// failure or cancellation keeps its own outcome — a declined
+			// dispatch is a run that worked correctly and produced nothing,
+			// which is a different fact from a run that broke.
+			lifecycleMu.Lock()
+			finalToolCount := toolCount
+			lifecycleMu.Unlock()
+			if exitCode == 0 && !recalled &&
+				workGate.evaluate(finalToolCount, exitCode, recalled, agentName, agentID, key) == workGateDeclined {
+				exitCode = ExitCodeDeclined
+				output = declinedOutput(agentName, resultText)
+			}
+
 			result := &extension.DispatchAgentResult{
 				Name:                     opts.Name,
 				DispatchID:               agentID,
@@ -992,6 +1050,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				Cost:                     totalCost,
 				InputTokens:              totalInputTokens,
 				OutputTokens:             totalOutputTokens,
+				ToolCount:                finalToolCount,
 				ThinkingTokens:           totalThinkingTokens,
 				CacheReadInputTokens:     totalCacheReadTokens,
 				CacheCreationInputTokens: totalCacheCreationTokens,

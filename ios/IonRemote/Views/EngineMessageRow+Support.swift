@@ -40,6 +40,26 @@ private let contentAttachedPattern: NSRegularExpression = {
     return try! NSRegularExpression(pattern: #"\[Attachment: [^\]]+ \(content attached\)\]"#)
 }()
 
+func structuredAnswerDisplayText(_ raw: String) -> String {
+    var lines = raw.components(separatedBy: "\n")
+    if let first = lines.first, first.hasPrefix("My answers to \""), first.hasSuffix("\":") {
+        lines.removeFirst()
+        if lines.first == "" { lines.removeFirst() }
+    }
+    if let continuation = lines.firstIndex(where: {
+        $0.hasPrefix("I want more questions on this topic. Call AskUserQuestions again with workflowId ")
+    }) {
+        lines.removeSubrange(continuation...)
+    }
+    return lines
+        .joined(separator: "\n")
+        .replacingOccurrences(
+            of: "- Agent decides (explicitly delegated to you)",
+            with: "- Agent decides"
+        )
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
 func parseAttachmentSegments(_ raw: String) -> AttachmentSegments {
     let ns = raw as NSString
     let range = NSRange(location: 0, length: ns.length)

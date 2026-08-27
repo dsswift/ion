@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  QUESTIONS_LIMITS,
   resolveQuestionDisplay,
   validateQuestionsRequest,
 } from '../questions-schema'
@@ -73,13 +72,25 @@ describe('validateQuestionsRequest', () => {
     expect(validateQuestionsRequest({ questions: [] })).toMatch(/title/)
   })
 
-  it('rejects empty and oversized question sets', () => {
-    expect(validateQuestionsRequest({ title: 't', questions: [] })).toMatch(/non-empty/)
+  it('accepts unbounded valid request content and collection sizes', () => {
     const req = valid()
-    req.questions = Array.from({ length: QUESTIONS_LIMITS.maxQuestionsPerPage + 1 }, (_, i) => ({
-      id: `q${i}`, prompt: 'p', mode: 'text',
+    const description = 'evidence '.repeat(10_000)
+    req.questions = Array.from({ length: 40 }, (_, i) => ({
+      id: `question-${i}-${'x'.repeat(100)}`,
+      prompt: `Prompt ${i} ${'p'.repeat(2_000)}`,
+      guidance: 'g'.repeat(4_000),
+      mode: 'multiple' as const,
+      options: Array.from({ length: 30 }, (_, j) => ({
+        id: `option-${i}-${j}-${'o'.repeat(100)}`,
+        label: `Option ${j} ${'l'.repeat(500)}`,
+        description: 'd'.repeat(1_000),
+      })),
     })) as never
-    expect(validateQuestionsRequest(req)).toMatch(/exceed/)
+    expect(validateQuestionsRequest({ ...req, title: 't'.repeat(1_000), description })).toBeNull()
+  })
+
+  it('rejects an empty question set', () => {
+    expect(validateQuestionsRequest({ title: 't', questions: [] })).toMatch(/non-empty/)
   })
 
   it('rejects duplicate question and option ids', () => {

@@ -8,7 +8,7 @@
 // ─── Relay control frames (injected by relay, not by Ion) ───
 
 export interface RelayControlMessage {
-  type: 'relay:peer-disconnected' | 'relay:peer-reconnected' | 'relay:paired' | 'relay:ping' | 'relay:pong' | 'relay:push-failed'
+  type: 'relay:connected' | 'relay:peer-disconnected' | 'relay:peer-reconnected' | 'relay:paired' | 'relay:ping' | 'relay:pong' | 'relay:push-failed'
   /** Failure reason (queue_full | invalid_token | transient | token | marshal | request | transport). Present when type === 'relay:push-failed'. */
   reason?: string
   /** Resource ID from the originating push message. Present when type === 'relay:push-failed'. */
@@ -61,6 +61,18 @@ export interface WireMessage {
   nonce?: string           // base64 12-byte nonce (present when encrypted)
   ciphertext?: string      // base64 encrypted payload (replaces `payload` when encrypted)
   deviceId?: string        // identifies the sending device (set by transport)
+}
+
+export interface PayloadChunkEnvelope {
+  type: 'desktop_payload_chunk'
+  transferId: string
+  index: number
+  count: number
+  originalType: string
+  totalBytes: number
+  sha256: string
+  /** Base64-encoded window of the original UTF-8 JSON bytes. */
+  data: string
 }
 
 // ─── Auth handshake (exchanged before any data flows) ───

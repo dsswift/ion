@@ -454,6 +454,7 @@ export {
 export type {
   RelayControlMessage,
   WireMessage,
+  PayloadChunkEnvelope,
   AuthChallenge,
   AuthResponse,
   AuthResult,

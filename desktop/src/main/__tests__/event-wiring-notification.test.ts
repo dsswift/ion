@@ -65,7 +65,6 @@ vi.mock('../event-wiring-resources', () => ({
   resubscribeSessionResourceKinds: vi.fn(() => Promise.resolve()),
 }))
 vi.mock('../event-wiring-intercept', () => ({ handleInterceptEvent: vi.fn() }))
-vi.mock('../event-wiring-disk-seed', () => ({ injectDiskResourcesIfEmpty: vi.fn() }))
 vi.mock('../event-wiring-text-delta-batcher', () => ({
   accumulateTextDelta: vi.fn(),
   flushKeyDeltas: vi.fn(),

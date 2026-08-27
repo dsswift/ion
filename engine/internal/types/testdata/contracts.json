@@ -170,6 +170,16 @@
       "planFilePath",
       "planSlug"
     ],
+    "poll_progress": [
+      "evidence",
+      "poll"
+    ],
+    "poll_started": [
+      "poll"
+    ],
+    "poll_terminal": [
+      "result"
+    ],
     "prompt_injected": [
       "kind",
       "machineAuthored",
@@ -238,6 +248,7 @@
     ],
     "task_suspend": [
       "awaitingDispatchIds",
+      "awaitingPollIds",
       "awaitingTaskIds"
     ],
     "task_update": [
@@ -466,6 +477,9 @@
     "planProposalKind",
     "planSlug",
     "planWriteOperation",
+    "pollProgress",
+    "pollStarted",
+    "pollTerminal",
     "providerLogin",
     "push",
     "pushBody",
@@ -476,6 +490,7 @@
     "resourceItem",
     "resourceItems",
     "resourceKind",
+    "resourceProducers",
     "resourceSubId",
     "response",
     "result",
@@ -818,6 +833,7 @@
     ],
     "StatusFields": [
       "activeBackgroundTasks",
+      "activePolls",
       "backgroundAgents",
       "backgroundShells",
       "completionReason",
@@ -833,6 +849,7 @@
       "model",
       "numTurns",
       "permissionDenials",
+      "pollsWaiting",
       "runCostUsd",
       "runEpoch",
       "sessionId",

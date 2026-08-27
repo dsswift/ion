@@ -56,6 +56,7 @@ export function bridgeSendAdapter(bridge: EngineBridge) {
       resolveSlash: opts.resolveSlash,
       clientWorkspaceContext: opts.clientWorkspaceContext,
       deliveryId: opts.deliveryId,
+      displayText: opts.displayText,
       injectionKind: opts.injectionKind,
     })
 }

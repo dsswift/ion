@@ -197,5 +197,62 @@
     "workspace_file_changed",
     "write_tool_call",
     "write_tool_result"
-  ]
+  ],
+  "dispatchTypes": {
+    "ContextPolicy": [
+      "claudeCompat",
+      "includeGlobalContext",
+      "includeProjectContext",
+      "maxContextBytes"
+    ],
+    "DispatchAgentOpts": [
+      "allowedSubAgents",
+      "allowedTools",
+      "background",
+      "callbackId",
+      "contextPolicy",
+      "detached",
+      "displayName",
+      "extensionDir",
+      "fallbackChain",
+      "implementationPhase",
+      "maxDispatchDepth",
+      "maxTurns",
+      "model",
+      "name",
+      "planFilePath",
+      "planMode",
+      "planModeTools",
+      "projectPath",
+      "requireToolUse",
+      "sessionId",
+      "subAgentPolicy",
+      "suppressTools",
+      "systemPrompt",
+      "task",
+      "waitForCompletion"
+    ],
+    "DispatchAgentResult": [
+      "cacheCreationInputTokens",
+      "cacheReadInputTokens",
+      "callbackId",
+      "cost",
+      "depth",
+      "depthCapExceeded",
+      "dispatchId",
+      "elapsed",
+      "exitCode",
+      "inputTokens",
+      "name",
+      "output",
+      "outputTokens",
+      "parentDispatchId",
+      "planExited",
+      "planFilePath",
+      "remainingDepthBudget",
+      "sessionId",
+      "thinkingTokens",
+      "toolCount"
+    ]
+  }
 }

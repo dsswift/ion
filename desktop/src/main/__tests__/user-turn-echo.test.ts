@@ -161,6 +161,20 @@ describe('echoUserTurn — payload fidelity', () => {
     })
   })
 
+  it('forwards structured-answer provenance to iOS', () => {
+    echoUserTurn({
+      tabId: 'tab-1',
+      id: 'req-questions',
+      content: '**Question?**\n- Answer',
+      injectionKind: 'structured_answer',
+    })
+
+    expect(iosMessage()).toMatchObject({
+      content: '**Question?**\n- Answer',
+      injectionKind: 'structured_answer',
+    })
+  })
+
   it('uses the caller timestamp when supplied so both surfaces agree', () => {
     echoUserTurn({ tabId: 'tab-1', id: 'req-1', content: 'x', timestamp: 1234 })
 

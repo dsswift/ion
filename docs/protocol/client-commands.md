@@ -80,6 +80,7 @@ Send a user message to an active session.
 | `noExtensions`              | boolean  | no       | Disable extensions for this run      |
 | `requestId`                 | string   | no       | Correlates with ServerResult         |
 | `deliveryId`                | string   | no       | Stable client idempotency key. The engine accepts one prompt per session/conversation delivery ID, persists it with the user turn, and returns an already-accepted result for duplicate retries without starting another run. |
+| `displayText`               | string   | no       | Optional user-facing transcript text when it differs from `text`. The model receives `text`; history consumers receive `displayText`. The engine persists both so later context reconstruction still uses the full model prompt. Empty or absent means both views use `text`. |
 | `injectionKind`             | string   | no       | How this turn was authored, as an `InjectionKind` wire value. Lets a client state that the turn it delivers arrived through something other than the prompt box — a questions wizard, a form, a scheduler. The engine records it on the persisted turn and publishes the derived `machineAuthored` flag; what a consumer does with either is its own policy (ADR-017). Note that a kind is not automatically machine-authored: `structured_answer` (a form submission) is USER-authored, because a person chose every value — the kind tells a consumer to *label* the turn, not to hide it. **Validated, not trusted:** an unrecognized value is dropped and the turn is treated as user-authored, so a client cannot hide content by inventing a kind. Absent (the default) means an ordinary user turn. Known values: `agent_completion`, `slash_command`, `background_task_completion`, `checkin`, `revive`, `run_recovery`, `structured_answer`, `system_steer`, `steer`. |
 | `planMode`                  | boolean  | no       | Start this run in plan mode. See [Plan Mode](../sessions/lifecycle.md#plan-mode). |
 | `planModeTools`             | string[] | no       | Override the tool allowlist for this plan-mode run. Defaults to `["Read","Grep","Glob","Agent","WebFetch","WebSearch"]`. |
@@ -1022,10 +1023,17 @@ Mint a short-lived access token for the requested scope and return it in the res
 | `cmd` | `"oidc_token"` | yes | Command discriminator |
 | `oidcScope` | string | no | Downstream resource scope for the minted token (e.g. `api://<app-id>/Telemetry.Write`). Empty uses the operator grant's base scope. |
 | `oidcAudience` | string | no | Explicit audience/resource for the minted token, for IdPs that bind grants to one (Auth0, RFC 8707) instead of encoding the resource in the scope string. Empty uses the provider's configured default audience. |
+| `oidcForceRefresh` | boolean | no | When `true`, bypasses the engine token cache and performs one serialized refresh-token grant for this request. Use after the downstream resource rejects a token before its advertised expiry. |
 | `requestId` | string | no | Correlates with ServerResult |
 
 ```json
 {"cmd":"oidc_token","oidcScope":"api://app-id/Telemetry.Write","requestId":"r43"}
+```
+
+After an issuer-side revocation, request one cache-bypassing refresh:
+
+```json
+{"cmd":"oidc_token","oidcScope":"api://app-id/Telemetry.Write","oidcForceRefresh":true,"requestId":"r44"}
 ```
 
 **Response:** `ServerResult` with `data: { accessToken: string, expiresAt?: number }`. `expiresAt`, when supplied by the token provider, is Unix milliseconds. The token is bounded (30 s mint deadline) and returned only to the requesting connection.

@@ -19,9 +19,7 @@
  *      all), with the resource manifest cold-loaded from disk.
  */
 
-import { existsSync, readFileSync, readdirSync } from 'fs'
-import { join } from 'path'
-import { homedir } from 'os'
+import { existsSync, readFileSync } from 'fs'
 import { state, sessionPlane, lastMessagePreview } from '../state'
 import { TABS_FILE, readSettings } from '../settings-store'
 import { isResourceRead } from '../event-wiring-resources'
@@ -34,6 +32,7 @@ import { projectRendererTab } from './snapshot-project'
 import { pollRendererTabStates } from './snapshot-renderer-poll'
 import { getMachineIdentity } from '../machine-identity'
 import { questionsCoordinator } from '../questions/questions-wiring'
+import { resourceCatalog } from '../resource-catalog'
 import { terminalManager } from '../terminal-manager-instance'
 
 // Re-export so existing `import type { ResourceManifest } from './snapshot'`
@@ -128,47 +127,8 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
   }
 
   const rendererTabs = rendererResult.tabs
-  let resourceManifest: ResourceManifest = rendererResult.resourceManifest || {}
+  const resourceManifest: ResourceManifest = applyPersistedReadState(resourceCatalog.manifest(isResourceRead))
 
-  // Fallback: if the renderer store is empty (desktop just restarted,
-  // subscription hasn't resolved yet), read resource metadata from disk.
-  // The extension persists resources to ~/.ion/resources/global/*.json.
-  if (Object.keys(resourceManifest).length === 0) {
-    try {
-      const globalDir = join(homedir(), '.ion', 'resources', 'global')
-      if (existsSync(globalDir)) {
-        const files = readdirSync(globalDir).filter(f => f.endsWith('.json'))
-        if (files.length > 0) {
-          const items: Array<{ id: string; kind: string; producer?: string; title?: string; createdAt: string; read?: boolean }> = []
-          for (const f of files) {
-            try {
-              const data = JSON.parse(readFileSync(join(globalDir, f), 'utf-8'))
-              if (data.id && data.kind) {
-                items.push({ id: data.id, kind: data.kind, producer: data.producer, title: data.title, createdAt: data.createdAt || '', read: isResourceRead(data.id, data.producer, data.kind) })
-              }
-            } catch (err) { debug('desktop_snapshot', 'skipping corrupt resource file', { file: f, error: String(err) }) }
-          }
-          if (items.length > 0) {
-            const byKind: ResourceManifest = {}
-            for (const item of items) {
-              if (!byKind[item.kind]) byKind[item.kind] = []
-              byKind[item.kind].push(item)
-            }
-            resourceManifest = byKind
-            log('desktop_snapshot', 'resource manifest cold-loaded from disk', { items: items.length })
-          }
-        }
-      }
-    } catch (err) { debug('desktop_snapshot', 'resource manifest cold-load disk read failed', { error: String(err) }) }
-  }
-
-  // Apply persisted read state from the main process. The renderer's
-  // readResourceIds may be stale or empty after restart. The main-process
-  // persistence file (~/.ion/resource-read-state.json) is the source of truth.
-  // Copy-on-write: the manifest may be the cached object shared across calls,
-  // so never mutate it in place — a mutated cache entry would leak main-only
-  // read state back into payloads compared against future renderer pushes.
-  resourceManifest = applyPersistedReadState(resourceManifest)
 
   if (rendererTabs.length > 0) {
     // Log any tabs carrying a non-empty permissionQueue so we can confirm

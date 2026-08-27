@@ -15,13 +15,13 @@ import (
 func BashTool() *types.ToolDef {
 	return &types.ToolDef{
 		Name:        "Bash",
-		Description: "Execute a bash command and return its output. A command that begins with a `sleep` at or above the engine's configured threshold is rejected when run in the foreground; use run_in_background to wait for long-running work.",
+		Description: "Execute a bash command and return its output. Bare sleep commands at or above the configured threshold are refused in foreground and background modes. For a real command, use run_in_background with notify_on_complete; use Poll for inference-driven wait-and-recheck work.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"command":            map[string]any{"type": "string", "description": "The bash command to execute"},
 				"timeout":            map[string]any{"type": "number", "description": "Timeout in milliseconds (default: 120000). Values above the engine's configured maximum are clamped. Ignored when run_in_background is true."},
-				"run_in_background":  map[string]any{"type": "boolean", "description": "Run the command in the background and return immediately with a task ID and an output file path. Poll with TaskGet (or Read the output file); terminate with TaskStop. Use for long-lived processes (watchers, dev servers) that would otherwise hit the foreground timeout."},
+				"run_in_background":  map[string]any{"type": "boolean", "description": "Run the command in the background and return immediately with a task ID and output file path. Read the output file for progress; TaskGet and TaskStop are available only when the harness registered the Task tools. Use for real long-lived commands, not bare sleep."},
 				"notify_on_complete": map[string]any{"type": "boolean", "description": "Only meaningful with run_in_background. Deliver this command's result back to the session when it finishes, instead of requiring polling. You may start further work or start more background commands. When this task is the only remaining work, end your turn; the engine parks the session and resumes it when the command completes."},
 			},
 			"required": []string{"command"},
@@ -36,36 +36,27 @@ func executeBash(ctx context.Context, input map[string]any, cwd string) (*types.
 		return &types.ToolResult{Content: "Error: command is required", IsError: true}, nil
 	}
 
+	// Refuse bare long sleeps in every execution mode. A background shell does
+	// not block this tool call, but it produces no useful work; a notifying one
+	// additionally holds the session and injects a wake turn. Poll owns real
+	// wait-and-recheck loops without creating shell noise.
+	timeouts := types.TimeoutsFrom(ctx)
+	if threshold, gateOn := timeouts.BashBlockingSleep(); gateOn {
+		if secs, blocked := detectBlockingSleep(command, threshold); blocked {
+			utils.LogWithFields(utils.LevelInfo, "tools.bash", "bare sleep refused", map[string]any{
+				"sleep_seconds": secs, "threshold_ms": threshold.Milliseconds(), "background": input["run_in_background"] == true, "count": len(command), "cwd": cwd,
+			})
+			return &types.ToolResult{Content: blockingSleepMessage(secs, threshold, input["run_in_background"] == true, GetTool("TaskGet") != nil), IsError: true}, nil
+		}
+	}
+
 	if background, _ := input["run_in_background"].(bool); background { //nolint:errcheck // absent/non-bool means foreground
 		notify, _ := input["notify_on_complete"].(bool) //nolint:errcheck // absent/non-bool means no notification
 		return executeBashBackground(ctx, command, cwd, notify)
 	}
 
-	// Foreground only past this point. A detached sleep blocks nothing, so
-	// the gate deliberately sits after the background branch.
-	timeouts := types.TimeoutsFrom(ctx)
-	if threshold, gateOn := timeouts.BashBlockingSleep(); gateOn {
-		if secs, blocked := detectBlockingSleep(command, threshold); blocked {
-			utils.LogWithFields(utils.LevelInfo, "tools.bash", "blocking foreground sleep refused", map[string]any{
-				"sleep_seconds": secs,
-				"threshold_ms":  threshold.Milliseconds(),
-				"count":         len(command),
-				"cwd":           cwd,
-			})
-			return &types.ToolResult{
-				Content: blockingSleepMessage(secs, threshold, GetTool("TaskGet") != nil),
-				IsError: true,
-			}, nil
-		}
-		utils.LogWithFields(utils.LevelDebug, "tools.bash", "blocking-sleep gate passed", map[string]any{
-			"threshold_ms": threshold.Milliseconds(),
-			"count":        len(command),
-		})
-	} else {
-		utils.LogWithFields(utils.LevelDebug, "tools.bash", "blocking-sleep gate disabled by configuration", map[string]any{
-			"count": len(command),
-		})
-	}
+	// Foreground only past this point. The leading-sleep gate above has already
+	// handled every execution mode.
 
 	defaultMs := int64(120000)
 	if timeouts != nil && timeouts.BashDefaultMs != 0 {

@@ -11,10 +11,7 @@ package ion
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"sync"
-	"sync/atomic"
 )
 
 // ContextPolicy controls which context files a dispatched child inherits.
@@ -24,6 +21,16 @@ type ContextPolicy struct {
 	IncludeGlobalContext  *bool `json:"includeGlobalContext,omitempty"`
 	IncludeProjectContext *bool `json:"includeProjectContext,omitempty"`
 	ClaudeCompat          *bool `json:"claudeCompat,omitempty"`
+	// MaxContextBytes caps total injected context-file bytes for this dispatch.
+	// Zero or negative means no cap. Files are included whole, nearest-first,
+	// until the budget is spent; the rest are skipped and logged by name. A
+	// file is never truncated mid-content.
+	//
+	// Context injection repeats full file content on every dispatch, so a large
+	// global instruction file is a recurring per-dispatch cost paid before the
+	// task text. Set this on fan-out dispatches whose children only need their
+	// own repo's guidance.
+	MaxContextBytes int `json:"maxContextBytes,omitempty"`
 }
 
 // DispatchAgentOpts configures a dispatch.
@@ -51,6 +58,13 @@ type DispatchAgentOpts struct {
 	MaxTurns int `json:"maxTurns,omitempty"`
 	// MaxDispatchDepth caps how deep the child may itself dispatch.
 	MaxDispatchDepth int `json:"maxDispatchDepth,omitempty"`
+	// CallbackID is an opaque token the engine echoes on every lifecycle and
+	// terminal notification for this dispatch. This SDK routes notifications by
+	// agent name and then by dispatch id (see context_dispatch_routing.go), so
+	// it does not need one; the field exists so a caller that consumes the raw
+	// notification stream itself can correlate the pre-stub window, and so the
+	// serialised request shape matches the other SDKs.
+	CallbackID string `json:"callbackId,omitempty"`
 	// PlanMode starts the child in plan mode.
 	PlanMode bool `json:"planMode,omitempty"`
 	// PlanFilePath is where the child writes its plan.
@@ -71,6 +85,24 @@ type DispatchAgentOpts struct {
 	SubAgentPolicy string `json:"subAgentPolicy,omitempty"`
 	// ImplementationPhase marks the child as executing an approved plan.
 	ImplementationPhase bool `json:"implementationPhase,omitempty"`
+	// RequireToolUse declares whether this dispatch must produce work — that
+	// is, call at least one tool. Tri-state:
+	//
+	//   nil   — no expectation declared. The engine reports ToolCount on the
+	//           result and passes no judgement. The zero value, so existing
+	//           callers keep today's behavior exactly.
+	//   true  — a completion with zero tool calls is not success. The engine
+	//           gives the child ONE continuation naming the expectation; if the
+	//           retry also calls nothing the dispatch reports exit code 3 with
+	//           delivered status "declined".
+	//   false — explicitly exempt. Analysis and advisory dispatches
+	//           legitimately produce text and call nothing.
+	//
+	// Declare it on execution dispatches and leave it unset on planning,
+	// review, and summarization dispatches. The engine never infers the
+	// expectation from task text: only the caller knows which kind of dispatch
+	// it issued.
+	RequireToolUse *bool `json:"requireToolUse,omitempty"`
 	// SuppressTools removes tools from the child's set.
 	SuppressTools []string `json:"suppressTools,omitempty"`
 	// ContextPolicy overrides which context files the child inherits.
@@ -131,6 +163,27 @@ type DispatchAgentResult struct {
 	Cost         float64 `json:"cost"`
 	InputTokens  int     `json:"inputTokens"`
 	OutputTokens int     `json:"outputTokens"`
+	// ToolCount is how many tool calls the child made across its whole run.
+	// Reported unconditionally, whether or not RequireToolUse was declared: it
+	// is an observed fact about the run, not a verdict about it.
+	//
+	// A zero here on an ExitCode:0 dispatch is the signature of a child that
+	// answered instead of working — it read the task, described the work, and
+	// ended its turn. Prefer this over reconstructing a count from your own
+	// lifecycle-callback bookkeeping; this is the engine's own count.
+	ToolCount int `json:"toolCount"`
+	// CallbackID is echoed from the request. Empty unless the caller supplied
+	// one; this SDK's own routing does not use it.
+	CallbackID string `json:"callbackId,omitempty"`
+	// DepthCapExceeded is true when the engine refused to launch the child
+	// because it would meet or exceed the dispatch-depth cap. The refusal
+	// resolves normally rather than erroring, so check this before treating a
+	// zero-valued result as a launched child.
+	DepthCapExceeded bool `json:"depthCapExceeded,omitempty"`
+	// RemainingDepthBudget is the number of child levels still available from
+	// the caller under the effective depth cap. Zero means this agent may run
+	// but cannot create another child.
+	RemainingDepthBudget int `json:"remainingDepthBudget"`
 	// DispatchID identifies this dispatch instance. Use it to steer or recall
 	// when several dispatches share an agent name.
 	DispatchID               string `json:"dispatchId,omitempty"`
@@ -535,261 +588,4 @@ func (c *Context) Suspend(ctx context.Context) error {
 func (c *Context) SuspendUntilAll(ctx context.Context, dispatchIDs []string) error {
 	return c.sdk.call(ctx, "ext/task_suspend",
 		map[string]any{"awaitingDispatchIds": dispatchIDs}, nil)
-}
-
-// --- Notification routing ---
-
-// terminalBinding keeps a dispatch's terminal callbacks live under the agent
-// name before the stub response reveals its collision-safe dispatch ID. A fast
-// child can therefore complete during the response race without being dropped.
-type terminalBinding struct {
-	router     *notificationRouter
-	agentName  string
-	opts       DispatchAgentOpts
-	unbindName func()
-
-	mu         sync.Mutex
-	unbindID   func()
-	dispatchID string
-	finished   atomic.Bool
-}
-
-func newTerminalBinding(r *notificationRouter, agentName string, opts DispatchAgentOpts, unbindName func()) *terminalBinding {
-	binding := &terminalBinding{
-		router:     r,
-		agentName:  agentName,
-		opts:       opts,
-		unbindName: unbindName,
-	}
-	binding.bindTerminalKey(agentName)
-	return binding
-}
-
-// bindDispatchID adds collision-safe routing after the stub arrives. A terminal
-// notification that won the name-key race sets finished first, preventing this
-// late re-key from resurrecting callbacks the notification already consumed.
-func (b *terminalBinding) bindDispatchID(dispatchID string) {
-	if dispatchID == "" || dispatchID == b.agentName {
-		return
-	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.finished.Load() {
-		return
-	}
-	b.dispatchID = dispatchID
-	b.unbindID = b.router.bindLifecycle(dispatchID, b.opts)
-	b.bindTerminalKey(dispatchID)
-}
-
-func (b *terminalBinding) bindTerminalKey(key string) {
-	complete := decodeIntoOptional(b.router.sdk, b.opts.OnComplete)
-	failed := decodeIntoOptional(b.router.sdk, b.opts.OnError)
-	recalled := decodeIntoOptional(b.router.sdk, b.opts.OnRecall)
-
-	b.router.mu.Lock()
-	b.router.handlers["dispatch_complete:"+key] = func(params json.RawMessage) {
-		b.handleTerminal(params, complete)
-	}
-	b.router.handlers["dispatch_error:"+key] = func(params json.RawMessage) {
-		b.handleTerminal(params, failed)
-	}
-	b.router.handlers["dispatch_recall:"+key] = func(params json.RawMessage) {
-		b.handleTerminal(params, recalled)
-	}
-	b.router.mu.Unlock()
-}
-
-func (b *terminalBinding) handleTerminal(params json.RawMessage, fire func(json.RawMessage)) {
-	if !b.finished.CompareAndSwap(false, true) {
-		return
-	}
-	b.cleanup()
-	if fire != nil {
-		fire(params)
-	}
-}
-
-func (b *terminalBinding) cleanup() {
-	b.finished.Store(true)
-	b.mu.Lock()
-	unbindID := b.unbindID
-	dispatchID := b.dispatchID
-	b.unbindID = nil
-	b.dispatchID = ""
-	b.mu.Unlock()
-
-	b.router.mu.Lock()
-	for _, key := range []string{b.agentName, dispatchID} {
-		if key == "" {
-			continue
-		}
-		for _, method := range []string{"dispatch_complete", "dispatch_error", "dispatch_recall"} {
-			delete(b.router.handlers, method+":"+key)
-		}
-	}
-	b.router.mu.Unlock()
-
-	b.unbindName()
-	if unbindID != nil {
-		unbindID()
-	}
-}
-
-// notificationRouter routes engine notifications to dispatch callbacks, keyed
-// by dispatch id or agent name.
-type notificationRouter struct {
-	sdk *SDK
-
-	mu       sync.RWMutex
-	handlers map[string]func(json.RawMessage)
-}
-
-// notifications returns the SDK's notification router, creating it on first
-// use.
-func (s *SDK) notifications() *notificationRouter {
-	s.notifOnce.Do(func() {
-		s.notifRouter = &notificationRouter{sdk: s, handlers: make(map[string]func(json.RawMessage))}
-	})
-	return s.notifRouter
-}
-
-// bindLifecycle registers the streaming callbacks under key and returns an
-// unbind function.
-func (r *notificationRouter) bindLifecycle(key string, opts DispatchAgentOpts) func() {
-	bindings := map[string]func(json.RawMessage){}
-
-	bind := func(method string, fn func(json.RawMessage)) {
-		if fn != nil {
-			bindings[method+":"+key] = fn
-		}
-	}
-
-	if opts.OnEvent != nil {
-		bind("dispatch_event", decodeInto(r.sdk, opts.OnEvent))
-	}
-	if opts.OnToolStart != nil {
-		bind("dispatch_tool_start", decodeInto(r.sdk, opts.OnToolStart))
-	}
-	if opts.OnToolEnd != nil {
-		bind("dispatch_tool_end", decodeInto(r.sdk, opts.OnToolEnd))
-	}
-	if opts.OnToolError != nil {
-		bind("dispatch_tool_error", decodeInto(r.sdk, opts.OnToolError))
-	}
-	if opts.OnUsage != nil {
-		bind("dispatch_usage", decodeInto(r.sdk, opts.OnUsage))
-	}
-	if opts.OnTextDelta != nil {
-		bind("dispatch_text_delta", decodeInto(r.sdk, opts.OnTextDelta))
-	}
-	if opts.OnPlanProposal != nil {
-		bind("dispatch_plan_proposal", decodeInto(r.sdk, opts.OnPlanProposal))
-	}
-	if opts.OnChildQuestion != nil {
-		bind("dispatch_child_question", r.childQuestionHandler(opts.OnChildQuestion))
-	}
-
-	r.mu.Lock()
-	for k, fn := range bindings {
-		r.handlers[k] = fn
-	}
-	r.mu.Unlock()
-
-	return func() {
-		r.mu.Lock()
-		for k := range bindings {
-			delete(r.handlers, k)
-		}
-		r.mu.Unlock()
-	}
-}
-
-// childQuestionHandler answers a child's question by invoking the caller's
-// callback and sending the result back, which unblocks the child's run.
-func (r *notificationRouter) childQuestionHandler(
-	fn func(DispatchChildQuestionInfo) (string, bool, error),
-) func(json.RawMessage) {
-	return func(params json.RawMessage) {
-		var info DispatchChildQuestionInfo
-		if err := json.Unmarshal(params, &info); err != nil {
-			r.sdk.logger.Error("child question did not decode; the child stays blocked",
-				map[string]any{"error": err.Error()})
-			return
-		}
-		answer, cancelled, err := fn(info)
-		if err != nil {
-			// The child is blocked on an answer, so a handler error must
-			// still produce a reply — send a cancellation rather than
-			// leaving the run hung.
-			r.sdk.logger.Error("child question handler failed; cancelling the question",
-				map[string]any{"dispatchId": info.DispatchID, "error": err.Error()})
-			answer, cancelled = "", true
-		}
-		if err := r.sdk.call(context.Background(), "ext/answer_dispatch_question", map[string]any{
-			"dispatchId": info.DispatchID,
-			"requestId":  info.RequestID,
-			"answer":     answer,
-			"cancelled":  cancelled,
-		}, nil); err != nil {
-			r.sdk.logger.Error("could not deliver child question answer",
-				map[string]any{"dispatchId": info.DispatchID, "error": err.Error()})
-		}
-	}
-}
-
-// decodeInto adapts a typed callback to the router's raw signature.
-func decodeInto[T any](s *SDK, fn func(T)) func(json.RawMessage) {
-	return func(params json.RawMessage) {
-		var v T
-		if err := json.Unmarshal(params, &v); err != nil {
-			s.logger.Warn("dispatch notification did not decode", map[string]any{"error": err.Error()})
-			return
-		}
-		fn(v)
-	}
-}
-
-// decodeIntoOptional is decodeInto for a callback that may be nil.
-func decodeIntoOptional[T any](s *SDK, fn func(T)) func(json.RawMessage) {
-	if fn == nil {
-		return nil
-	}
-	return decodeInto(s, fn)
-}
-
-// route delivers a notification to the best-matching handler. Dispatch id wins
-// over agent name, which wins over an unkeyed handler, so parallel dispatches
-// of one agent stay separated.
-func (r *notificationRouter) route(method string, params json.RawMessage) bool {
-	var envelope struct {
-		DispatchID string `json:"dispatchId"`
-		Name       string `json:"name"`
-	}
-	// A decode failure just means no routing keys; fall through to the
-	// unkeyed handler.
-	_ = json.Unmarshal(params, &envelope) //nolint:errcheck // keys are optional
-
-	r.mu.RLock()
-	var handler func(json.RawMessage)
-	for _, key := range []string{
-		method + ":" + envelope.DispatchID,
-		method + ":" + envelope.Name,
-		method,
-	} {
-		if envelope.DispatchID == "" && key == method+":" {
-			continue
-		}
-		if h, ok := r.handlers[key]; ok && h != nil {
-			handler = h
-			break
-		}
-	}
-	r.mu.RUnlock()
-
-	if handler == nil {
-		return false
-	}
-	handler(params)
-	return true
 }

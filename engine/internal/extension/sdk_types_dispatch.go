@@ -111,6 +111,27 @@ type DispatchAgentOpts struct {
 	// the park (the corrected default).
 	Detached bool `json:"detached,omitempty"`
 
+	// RequireToolUse declares whether this dispatch is expected to produce
+	// work — that is, to call at least one tool. It is a tri-state:
+	//
+	//   nil   — no expectation declared. The engine reports ToolCount on the
+	//           result and never judges it. This is the zero value, so every
+	//           existing caller keeps today's behavior exactly.
+	//   true  — a completion with zero tool calls is not success. The engine
+	//           gives the child ONE continuation naming the expectation; if
+	//           the second attempt also ends with zero tool calls the dispatch
+	//           reports ExitCodeDeclined.
+	//   false — explicitly exempt. Analysis, summarization, and advisory
+	//           dispatches legitimately produce text and call nothing.
+	//
+	// The engine never infers the expectation from the task text: zero tool
+	// calls is a FACT the engine always reports, and a verdict only where the
+	// dispatcher declared one. This is what separates a real mechanism from a
+	// heuristic — a "summarize this" dispatch and an "edit these files"
+	// dispatch are indistinguishable to the engine, and only the caller knows
+	// which it issued.
+	RequireToolUse *bool `json:"requireToolUse,omitempty"`
+
 	// ImplementationPhase marks this dispatch as the "implement" half of a
 	// plan-then-implement flow: the plan is already approved and the child
 	// must execute it directly. When true, the engine skips injecting the
@@ -254,6 +275,21 @@ type DispatchAgentResult struct {
 	InputTokens  int     `json:"inputTokens"`
 	OutputTokens int     `json:"outputTokens"`
 
+	// ToolCount is the number of tool calls the dispatched child made across
+	// its whole run (every LLM turn, including any suspend/revive iterations
+	// and the work-gate continuation). Reported unconditionally, whether or
+	// not the caller declared RequireToolUse: it is an observed fact about the
+	// run, not a verdict about it.
+	//
+	// A zero here on an ExitCode:0 dispatch is the signature of a child that
+	// answered instead of working — it read the task, wrote a plan, promised
+	// to start, and ended its turn. The engine counted those calls all along
+	// (dispatch_agent.go's toolCount) and discarded the number, so consumers
+	// could not tell "did the work" from "promised to do the work" and were
+	// left scraping their own local state to guess. RecallInfo.ToolCount is
+	// the established precedent for this field on this wire.
+	ToolCount int `json:"toolCount"`
+
 	// CallbackID is echoed from the dispatch request so the SDK can route
 	// this notification before the DispatchID-keyed handlers are registered.
 	CallbackID string `json:"callbackId,omitempty"`
@@ -351,6 +387,11 @@ type ContextPolicy struct {
 	// ClaudeCompat overrides the engine's ClaudeCompat setting for this walk.
 	// Nil means inherit from engine config.
 	ClaudeCompat *bool `json:"claudeCompat,omitempty"`
+	// MaxContextBytes caps total injected context-file bytes for this dispatch.
+	// Zero or negative means no cap. Files are included whole, nearest-first,
+	// until the budget is spent; the rest are skipped and logged by name.
+	// See types.DispatchContextConfig.MaxContextBytes for the full rationale.
+	MaxContextBytes int `json:"maxContextBytes,omitempty"`
 }
 
 // SteerDispatchResult is the typed outcome of a SteerDispatch call.

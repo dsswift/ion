@@ -56,6 +56,14 @@ type ExpiringTokenProvider interface {
 	GetTokenWithAudienceExpiry(ctx context.Context, scope, audience string) (token string, expiresAt time.Time, err error)
 }
 
+// RefreshableTokenProvider is the optional explicit-refresh extension of
+// TokenProvider. It bypasses fresh cached and base-grant access tokens while
+// retaining the provider's serialized refresh-token transaction. Consumers
+// use it only when a downstream resource rejects a still-valid bearer token.
+type RefreshableTokenProvider interface {
+	ForceRefreshTokenWithAudienceExpiry(ctx context.Context, scope, audience string) (token string, expiresAt time.Time, err error)
+}
+
 // OperatorIdentity carries the identity claims of the signed-in operator,
 // extracted from the OIDC id_token.
 type OperatorIdentity struct {
@@ -521,6 +529,17 @@ func (m *IdentityManager) GetTokenWithAudience(ctx context.Context, scope, audie
 // GetTokenWithAudienceExpiry returns the token and exact provider expiry for
 // consumers that need to rotate a connection before relay enforcement closes it.
 func (m *IdentityManager) GetTokenWithAudienceExpiry(ctx context.Context, scope, audience string) (string, time.Time, error) {
+	return m.getTokenWithAudienceExpiry(ctx, scope, audience, false)
+}
+
+// ForceRefreshTokenWithAudienceExpiry implements RefreshableTokenProvider. It
+// bypasses fresh cached and base-grant access tokens, but uses refreshMu so
+// concurrent calls still serialize refresh-token rotation and persistence.
+func (m *IdentityManager) ForceRefreshTokenWithAudienceExpiry(ctx context.Context, scope, audience string) (string, time.Time, error) {
+	return m.getTokenWithAudienceExpiry(ctx, scope, audience, true)
+}
+
+func (m *IdentityManager) getTokenWithAudienceExpiry(ctx context.Context, scope, audience string, forceRefresh bool) (string, time.Time, error) {
 	if err := ctx.Err(); err != nil {
 		return "", time.Time{}, err
 	}
@@ -532,7 +551,7 @@ func (m *IdentityManager) GetTokenWithAudienceExpiry(ctx context.Context, scope,
 	m.mu.Lock()
 	cached, ok := m.scopeCache[key]
 	m.mu.Unlock()
-	if ok && m.tokenFresh(cached) {
+	if !forceRefresh && ok && m.tokenFresh(cached) {
 		return cached.AccessToken, cached.ExpiresAt, nil
 	}
 
@@ -544,7 +563,7 @@ func (m *IdentityManager) GetTokenWithAudienceExpiry(ctx context.Context, scope,
 	m.mu.Lock()
 	cached, ok = m.scopeCache[key]
 	m.mu.Unlock()
-	if ok && m.tokenFresh(cached) {
+	if !forceRefresh && ok && m.tokenFresh(cached) {
 		return cached.AccessToken, cached.ExpiresAt, nil
 	}
 
@@ -556,7 +575,7 @@ func (m *IdentityManager) GetTokenWithAudienceExpiry(ctx context.Context, scope,
 	// The base grant's own access token satisfies a request for the base
 	// scope (empty scope, or an exact match) under the default audience
 	// while it is still fresh.
-	if (scope == "" || scope == stored.Scope) && audience == m.cfg.Audience && m.tokenFresh(*stored) {
+	if !forceRefresh && (scope == "" || scope == stored.Scope) && audience == m.cfg.Audience && m.tokenFresh(*stored) {
 		return stored.AccessToken, stored.ExpiresAt, nil
 	}
 
@@ -596,6 +615,7 @@ func (m *IdentityManager) GetTokenWithAudienceExpiry(ctx context.Context, scope,
 		"audience":        audience,
 		"granted_scope":   newTok.Scope,
 		"expires_at":      newTok.ExpiresAt,
+		"force_refresh":   forceRefresh,
 	})
 	return newTok.AccessToken, newTok.ExpiresAt, nil
 }

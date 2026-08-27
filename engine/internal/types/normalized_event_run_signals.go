@@ -211,6 +211,8 @@ type TaskSuspendEvent struct {
 	// the rest still run). If the session ends its next turn with tasks still
 	// outstanding, it parks again.
 	AwaitingTaskIDs []string `json:"awaitingTaskIds,omitempty"`
+	// AwaitingPollIDs lists inference-driven Polls holding this root session open.
+	AwaitingPollIDs []string `json:"awaitingPollIds,omitempty"`
 }
 
 func (TaskSuspendEvent) eventType() string { return EventTaskSuspend }

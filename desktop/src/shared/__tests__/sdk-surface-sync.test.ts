@@ -50,6 +50,7 @@ interface GoSurface {
   sdk: string[];
   namespaces: Record<string, string[]>;
   hooks: string[];
+  dispatchTypes: Record<string, string[]>;
 }
 
 const engineContractPath = resolve(
@@ -213,6 +214,61 @@ const extracted = extractInterfaces(
 );
 const hookPayloadFields = extractHookPayloadFields(tsTypesPath);
 
+/**
+ * Extract an interface's *serialised* members — the ones that actually cross
+ * the JSON-RPC wire.
+ *
+ * Callback members are excluded because they are local function values, never
+ * wire fields; the Go SDK marks its equivalents `json:"-"` for the same
+ * reason. Including them would report a permanent, meaningless divergence and
+ * train the reader to ignore this comparison.
+ */
+function extractWireFields(filePath: string, wanted: Set<string>): Record<string, string[]> {
+  const source = ts.createSourceFile(
+    filePath,
+    readFileSync(filePath, "utf-8"),
+    ts.ScriptTarget.Latest,
+    /* setParentNodes */ true,
+  );
+
+  const out: Record<string, string[]> = {};
+  const visit = (node: ts.Node): void => {
+    if (ts.isInterfaceDeclaration(node) && wanted.has(node.name.text)) {
+      const fields: string[] = [];
+      for (const member of node.members) {
+        if (!ts.isPropertySignature(member) || !member.name) continue;
+        if (!ts.isIdentifier(member.name) && !ts.isStringLiteral(member.name))
+          continue;
+        const type = member.type;
+        const isCallback =
+          type !== undefined &&
+          (ts.isFunctionTypeNode(type) ||
+            // A callback declared as an optional union with undefined, or
+            // wrapped in parentheses, still is not a wire field.
+            (ts.isParenthesizedTypeNode(type) &&
+              ts.isFunctionTypeNode(type.type)));
+        if (isCallback) continue;
+        fields.push(member.name.text);
+      }
+      out[node.name.text] = [...new Set(fields)].sort();
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return out;
+}
+
+const DISPATCH_WIRE_TYPES = [
+  "DispatchAgentOpts",
+  "DispatchAgentResult",
+  "ContextPolicy",
+] as const;
+
+const tsDispatchFields = extractWireFields(
+  tsTypesPath,
+  new Set(DISPATCH_WIRE_TYPES),
+);
+
 // The extraction is the foundation for every assertion below, so a silent
 // failure of it would turn this whole file into a no-op that always passes.
 describe("TypeScript surface extraction", () => {
@@ -305,6 +361,67 @@ describe("the two SDKs model the same hooks", () => {
       "Hooks TypeScript types but the Go SDK does not model. Add a " +
         "descriptor to sdk/go/hook_descriptors.go.",
     ).toEqual([]);
+  });
+});
+
+// ─── Dispatch wire-shape parity ───
+
+/**
+ * Hook and method parity is not enough for dispatch. Both SDKs expose
+ * `dispatchAgent`, so the method check passes while one side silently lacks a
+ * field the other sends — and a missing dispatch field fails OPEN: the child
+ * runs without the declared behavior and nothing errors anywhere.
+ *
+ * `requireToolUse` is exactly that shape. Its absence means "no expectation
+ * declared", so an SDK that dropped it would keep compiling, keep dispatching,
+ * and simply stop gating the dispatches the caller asked it to gate — first
+ * observed as an agent that answers a task instead of doing it.
+ */
+describe("the two SDKs put the same fields on the dispatch wire", () => {
+  it.each(DISPATCH_WIRE_TYPES)("%s matches the Go SDK field set", (name) => {
+    const want = [...(goSurface.dispatchTypes[name] ?? [])].sort();
+    const got = tsDispatchFields[name];
+
+    expect(
+      got,
+      `${name} was not found in ${tsTypesPath}. The extraction is broken, ` +
+        "not the surface.",
+    ).toBeDefined();
+    expect(
+      want.length,
+      `${name} is absent from sdk/go/testdata/sdk_surface.json. Regenerate ` +
+        "it: cd sdk/go && go test -run TestGoSDKSurfaceManifest -update",
+    ).toBeGreaterThan(0);
+
+    const missing = want.filter((field) => !got!.includes(field));
+    const extra = got!.filter((field) => !want.includes(field));
+    expect(
+      { missing, extra },
+      `${name} differs between the SDKs. "missing" are fields the Go SDK ` +
+        "serialises and TypeScript does not declare; \"extra\" are the " +
+        "reverse. Mirror the field in " +
+        "engine/extensions/sdk/ion-sdk/types.ts or sdk/go/context_dispatch.go — " +
+        "a dispatch field present on one side only is silently dropped for " +
+        "every consumer of the other.",
+    ).toEqual({ missing: [], extra: [] });
+  });
+
+  // The three fields the work-gate and context-budget contract rests on. The
+  // set comparison above already covers them, but it compares one SDK against
+  // the other: if a field were deleted from BOTH, that comparison stays green
+  // while the published contract is gone. These name them outright.
+  it.each([
+    ["DispatchAgentOpts", "requireToolUse"],
+    ["DispatchAgentResult", "toolCount"],
+    ["ContextPolicy", "maxContextBytes"],
+  ])("%s declares %s", (typeName, field) => {
+    expect(
+      tsDispatchFields[typeName],
+      `${typeName}.${field} is published in docs/extensions/sdk-typescript.md. ` +
+        "Its absence is indistinguishable from its default, so removing it " +
+        "changes dispatch behavior with no error for the consumer.",
+    ).toContain(field);
+    expect(goSurface.dispatchTypes[typeName]).toContain(field);
   });
 });
 

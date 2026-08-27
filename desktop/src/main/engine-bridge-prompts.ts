@@ -48,13 +48,14 @@ export interface SendPromptArgs {
   clientWorkspaceContext?: ClientWorkspaceContext
   /** Stable caller delivery identity for idempotent engine acceptance. */
   deliveryId?: string
+  /** Optional transcript text; `text` remains the provider-visible prompt. */
+  displayText?: string
   /**
    * How this turn was authored, as an engine InjectionKind wire value.
    * 'structured_answer' marks a Guided Questions submission: the operator
-   * chose the values in the wizard, and this prompt is its engine-facing
-   * rendering, so the engine classifies it machine-authored and the
-   * transcript does not show it back as a user bubble. Absent for an
-   * ordinary typed turn.
+   * chose the values in the wizard. The kind preserves that provenance while
+   * displayText keeps model-facing control text out of the transcript card.
+   * Absent for an ordinary typed turn.
    */
   injectionKind?: string
 }
@@ -140,6 +141,7 @@ export function buildSendPromptMessage(args: SendPromptArgs): Record<string, unk
   if (args.temporaryAutoFromPlan) msg.temporaryAutoFromPlan = true
   if (args.clientWorkspaceContext) msg.clientWorkspaceContext = args.clientWorkspaceContext
   if (args.deliveryId) msg.deliveryId = args.deliveryId
+  if (args.displayText) msg.displayText = args.displayText
   if (args.injectionKind) msg.injectionKind = args.injectionKind
   return msg
 }
@@ -158,5 +160,5 @@ export function buildSendPromptLogLine(args: SendPromptArgs): string {
   const descLen = args.enterPlanModeDescription?.length ?? 0
   const reminderLen = args.planModeSparseReminder?.length ?? 0
   const bashAddCount = args.bashAllowlistAdditionsForThisPrompt?.length ?? 0
-  return `sendPrompt: key=${args.key} len=${args.text.length} model=${args.model ?? 'default'} hasSysPrompt=${!!args.appendSystemPrompt} images=${attCount} implementationPhase=${args.implementationPhase ?? false} enterPlanModeDescLen=${descLen} planModeSparseReminderLen=${reminderLen} planFilePath=${args.planFilePath ?? 'none'} bashAdditions=${bashAddCount} resolveSlash=${args.resolveSlash ?? false} temporaryAutoFromPlan=${args.temporaryAutoFromPlan ?? false} clientWsCtx=${args.clientWorkspaceContext?.kind ?? 'none'}`
+  return `sendPrompt: key=${args.key} len=${args.text.length} displayLen=${args.displayText?.length ?? 0} model=${args.model ?? 'default'} hasSysPrompt=${!!args.appendSystemPrompt} images=${attCount} implementationPhase=${args.implementationPhase ?? false} enterPlanModeDescLen=${descLen} planModeSparseReminderLen=${reminderLen} planFilePath=${args.planFilePath ?? 'none'} bashAdditions=${bashAddCount} resolveSlash=${args.resolveSlash ?? false} temporaryAutoFromPlan=${args.temporaryAutoFromPlan ?? false} clientWsCtx=${args.clientWorkspaceContext?.kind ?? 'none'}`
 }

@@ -319,16 +319,19 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// session id as a native-session cursor (see native_session.go).
 	// Written under m.mu alongside requestID.
 	s.runCaps = caps
-	// For a native-session (delegated-CLI) backend, stash the ORIGINAL user
-	// prompt (before resolveCliContinuity bridges prior history into
-	// opts.Prompt) so handleRunExit can persist this turn into Ion's
-	// conversation store. Engine-owned backends persist their own turns via
-	// the runloop, so they leave this empty. Reset both halves at dispatch so
-	// a prior turn's text can never leak into this one.
+	// For a native-session (delegated-CLI) backend, stash the ORIGINAL provider
+	// prompt and its optional display/provenance fields before
+	// resolveCliContinuity bridges prior history into opts.Prompt, so
+	// handleRunExit can persist this turn into Ion's conversation store.
+	// Engine-owned backends persist their own turns via the runloop, so they
+	// leave these fields empty. Reset all pending fields at dispatch so a prior
+	// turn can never leak into this one.
 	s.pendingCliAssistantText = ""
 	s.cliRunFailedTerminal = false
 	if caps.ContextModel == backend.ContextModelNativeSession {
 		s.pendingCliUserTurn = text
+		s.pendingCliDisplayText = opts.DisplayPrompt
+		s.pendingCliInjectionKind = opts.InjectionKind
 		// Structured turn recording for the delegated root run: tool
 		// exchanges (client-tool question rounds included) land in Ion's
 		// transcript verbatim, not just the final text. See
@@ -336,6 +339,8 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		s.cliTranscript = newCliTranscriptRecorder()
 	} else {
 		s.pendingCliUserTurn = ""
+		s.pendingCliDisplayText = ""
+		s.pendingCliInjectionKind = ""
 		s.cliTranscript = nil
 	}
 

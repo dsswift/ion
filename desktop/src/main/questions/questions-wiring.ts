@@ -152,6 +152,9 @@ type QuestionsPromptSink = (prompt: {
   hasExtensions: boolean
   instanceId?: string | null
   attachments?: Array<{ type: 'image' | 'file'; name: string; path: string }>
+  displayText?: string
+  /** Main-originated submissions must also be published to the paired iOS client. */
+  echoToIos?: boolean
   injectionKind?: string
 }) => Promise<void>
 
@@ -194,16 +197,16 @@ function submit(workflow: QuestionsWorkflowState, requestMore: boolean): boolean
   void sink({
     tabId,
     text: built.text,
+    displayText: built.displayText,
+    echoToIos: true,
     reqId,
     source: 'remote',
     hasExtensions: instanceId !== undefined,
     instanceId,
     attachments: built.attachments.length > 0 ? built.attachments : undefined,
-    // The operator answered in the wizard, which already shows their
-    // answers. This prompt is the engine-facing rendering of that
-    // submission, so it is classified machine-authored and never echoed
-    // into the transcript as a user bubble — the same treatment agent and
-    // background-task callbacks get.
+    // The operator answered in the wizard. Keep the structured provenance so
+    // every transcript renders the persisted display text as a specialized
+    // answer card rather than as prose typed into the prompt box.
     injectionKind: 'structured_answer',
   }).catch((err: unknown) => {
     warn('questions resume prompt pipeline error', { workflow_id: workflow.workflowId, error: String(err) })
@@ -211,6 +214,7 @@ function submit(workflow: QuestionsWorkflowState, requestMore: boolean): boolean
   log('questions resume prompt dispatched', {
     workflow_id: workflow.workflowId, tab_id: tabId.slice(0, 8),
     request_more: requestMore, attachment_count: built.attachments.length,
+    model_text_len: built.text.length, display_text_len: built.displayText.length,
   })
   return true
 }

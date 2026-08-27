@@ -4,7 +4,7 @@ import { Brain } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { CopyButton } from './CopyButton'
 import { InlineMessageImages, deriveMessageImages } from './InlineMessageImages'
-import { stripAttachmentMarkers } from './message-text'
+import { stripAttachmentMarkers, structuredAnswerDisplayText } from './message-text'
 import { resolveSlashPill } from './slash-pill'
 import { UserMarkdown } from './UserMarkdown'
 import { CollapsibleUserBody } from './CollapsibleUserBody'
@@ -21,7 +21,10 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
   const colors = useColors()
   const isBashCmd = !!message.userExecuted
 
-  const displayContent = stripAttachmentMarkers(message.content || '').trim()
+  const structuredAnswer = message.injectionKind === 'structured_answer'
+  const displayContent = structuredAnswer
+    ? structuredAnswerDisplayText(stripAttachmentMarkers(message.content || ''))
+    : stripAttachmentMarkers(message.content || '').trim()
   const slashPill = useMemo(() => resolveSlashPill(message, displayContent), [message, displayContent])
 
   const inlineImages = deriveMessageImages(message.content || '', message.attachments)
@@ -64,7 +67,6 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
   // grouping the answers WITH their attachments). A small corner tag was the
   // first attempt and was not enough — at a glance the bubble still read as an
   // ordinary message, which is the false impression the frame removes.
-  const structuredAnswer = message.injectionKind === 'structured_answer'
 
   const inner = (
     <div

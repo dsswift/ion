@@ -290,6 +290,7 @@ export type EngineEventAsync =
       resourceKind: string;
       resourceSubId: string;
       resourceItems: ResourceItem[];
+      resourceProducers?: string[];
     }
   | {
       type: "engine_resource_delta";

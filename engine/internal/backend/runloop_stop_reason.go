@@ -190,8 +190,8 @@ func (b *ApiBackend) dispatchStopReason(
 		// An empty outstanding set falls through to the normal completion path
 		// below, so a session that never used notify_on_complete behaves
 		// exactly as it did before this existed.
-		if outstanding := b.outstandingBackgroundTaskIDs(run); len(outstanding) > 0 {
-			b.parkForBackgroundTasks(run, conv, outstanding)
+		if tasks, polls := b.outstandingBackgroundTaskIDs(run), b.outstandingPollIDs(run); len(tasks) > 0 || len(polls) > 0 {
+			b.parkForBackgroundTasks(run, conv, tasks, polls)
 			return true
 		}
 

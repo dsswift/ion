@@ -114,26 +114,24 @@ describe('resource_snapshot', () => {
     expect(state.resources['briefing'].map((i: ResourceItem) => i.id)).toEqual(['new-1', 'new-2'])
   })
 
-  it('merges when partial snapshot has fewer items than existing (protects disk-seeded items)', () => {
+  it('replaces the covered producer while retaining other producers', () => {
     const { state, set } = makeResourceState()
     state.resources['briefing'] = [
-      makeItem({ id: 'old-1' }),
-      makeItem({ id: 'old-2' }),
-      makeItem({ id: 'old-3' }),
+      makeItem({ id: 'old-1', producer: 'one' }),
+      makeItem({ id: 'old-2', producer: 'one' }),
+      makeItem({ id: 'other', producer: 'two' }),
     ]
 
     handleCrossNormalizedEvent(set, () => state, '', {
       type: 'resource_snapshot',
       resourceKind: 'briefing',
       resourceSubId: 'sub-partial',
-      resourceItems: [makeItem({ id: 'old-2', content: 'updated content' })],
+      resourceItems: [makeItem({ id: 'old-2', producer: 'one', content: 'updated content' })],
+      resourceProducers: ['one'],
     } as NormalizedEvent)
 
-    expect(state.resources['briefing']).toHaveLength(3)
-    const ids = state.resources['briefing'].map((i: ResourceItem) => i.id)
-    expect(ids).toContain('old-1')
-    expect(ids).toContain('old-2')
-    expect(ids).toContain('old-3')
+    expect(state.resources['briefing'].map((i: ResourceItem) => `${i.producer}:${i.id}`).sort())
+      .toEqual(['one:old-2', 'two:other'])
     const updated = state.resources['briefing'].find((i: ResourceItem) => i.id === 'old-2')
     expect(updated?.content).toBe('updated content')
   })
@@ -313,7 +311,7 @@ describe('notification panel visibility — global items survive mixed snapshot'
     expect(panelItems[0].id).toBe('global-1')
   })
 
-  it('an empty snapshot does NOT wipe existing items (disk-seed guard)', () => {
+  it('an ambiguous legacy empty snapshot does not wipe existing items', () => {
     const { state, set } = makeResourceState()
 
     state.resources['briefing'] = [

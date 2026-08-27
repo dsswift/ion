@@ -23,11 +23,26 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"sort"
 
+	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
+
+const clientToolValidationDiagnosticLimit = 200
+
+func boundedClientToolValidationDiagnostic(err error) string {
+	if err == nil {
+		return ""
+	}
+	diagnostic := err.Error()
+	if len(diagnostic) > clientToolValidationDiagnosticLimit {
+		return diagnostic[:clientToolValidationDiagnosticLimit]
+	}
+	return diagnostic
+}
 
 // buildClientToolRuntime filters the session's client-tool declaration for
 // the current run and installs the definitions, router, and signature on
@@ -89,8 +104,10 @@ func (m *Manager) buildClientToolRuntime(s *engineSession, key string, opts *typ
 	// config even if a later start_session replaces s.config.ToolGate.
 	captured := gateCfg
 	defsByName := make(map[string]types.ClientToolDef, len(filtered))
+	validatorsByName := make(map[string]func(map[string]interface{}) error, len(filtered))
 	for _, ct := range filtered {
 		defsByName[ct.Name] = ct
+		validatorsByName[ct.Name] = backend.CompileClientToolInputValidator(ct.InputSchema)
 	}
 
 	opts.ClientTools = filtered
@@ -101,6 +118,13 @@ func (m *Manager) buildClientToolRuntime(s *engineSession, key string, opts *typ
 			// is a wiring bug worth a loud log, not a silent hang.
 			utils.LogWithFields(utils.LevelError, "session.toolgate", "client tool router called for undeclared tool", map[string]any{"key": key, "tool": name})
 			return &types.ToolResult{Content: "client tool " + name + " is not declared for this run", IsError: true}
+		}
+		if err := validatorsByName[name](input); err != nil {
+			diagnostic := boundedClientToolValidationDiagnostic(err)
+			utils.LogWithFields(utils.LevelWarn, "session.toolgate", "client tool input validation failed before routing", map[string]any{
+				"key": key, "tool": name, "error": diagnostic,
+			})
+			return &types.ToolResult{Content: fmt.Sprintf("Invalid input for client tool %q: %s", name, diagnostic), IsError: true}
 		}
 		return m.requestClientToolResult(ctx, key, captured, def, input, s.config.WorkingDirectory, types.GateOriginModel)
 	}

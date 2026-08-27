@@ -84,7 +84,7 @@ make test-linux-desktop
 
 When **both** engine and desktop are touched, dispatch **both** in the same turn — two separate `run_in_background + notify_on_complete` calls — rather than the combined `make test-linux` target, so the two gates run concurrently in independent containers instead of serializing inside one long-running call.
 
-After dispatching, **end the turn**. Do not poll `TaskGet` in a loop and do not run a blocking `sleep`/wait. The engine parks the run at the turn boundary (`engine_task_suspended`) while the command is outstanding and automatically wakes it with the result when the container exits — see `docs/tools/task-tools.md` § "Background bash completion" and ADR-023. This is the mechanism to rely on; it requires no cooperation from the command being run.
+After dispatching, end the turn. Do not poll `TaskGet` in a loop and do not run a blocking `sleep`/wait. Use `Poll` when verification needs repeated inferential checks; it parks the parent and returns one terminal verdict with evidence. For a real background command started with `notify_on_complete`, the engine parks the run at the turn boundary (`engine_task_suspended`) while the command is outstanding and automatically wakes it with the result when the container exits — see `docs/tools/task-tools.md` § "Background bash completion" and ADR-023. This mechanism requires no cooperation from the command being run.
 
 **Fallback — background execution not supported:** if a `Bash` call reports that background execution isn't available (non-local backend), fall back to the original synchronous invocation (plain `Bash` with no `run_in_background`) and note this in the Step 10 report so the user knows which path ran.
 

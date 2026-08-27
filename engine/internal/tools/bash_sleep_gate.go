@@ -41,8 +41,9 @@ import (
 //   - `while true; do sleep 5; done`, `bash -c "sleep 30"` — a sleep inside a
 //     loop, subshell, or nested shell invocation is never inspected.
 //
-// The gate never applies to `run_in_background: true`: a detached sleep blocks
-// nothing, so refusing it would be pure friction.
+// The gate applies to both foreground and background calls. A detached bare
+// sleep produces no useful work; a notifying one also holds the session and
+// injects a wake turn. Poll owns real inference-driven wait-and-recheck loops.
 
 // blockingSleepPattern matches a bare `sleep <integer>` — the exact shape of a
 // blocking wait. Fractional durations are excluded by requiring digits only.
@@ -103,17 +104,21 @@ func detectBlockingSleep(command string, threshold time.Duration) (seconds int, 
 // taskToolsRegistered reports whether TaskGet is in the tool registry; when it
 // is not (the Task tools are harness opt-in, see optional.go), the progress
 // path is reading the task's output file directly.
-func blockingSleepMessage(seconds int, threshold time.Duration, taskToolsRegistered bool) string {
+func blockingSleepMessage(seconds int, threshold time.Duration, background, taskToolsRegistered bool) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Blocked: this command begins with `sleep %d`, which blocks the foreground shell for %d seconds. ", seconds, seconds)
-	fmt.Fprintf(&b, "A leading sleep of %s or longer is refused; the command was not executed.\n\n", threshold)
-	b.WriteString("To wait for a long-running command, start it with `run_in_background: true` and `notify_on_complete: true`. ")
-	b.WriteString("Its result is delivered to this session when it finishes — you do not poll and you do not sleep. ")
-	b.WriteString("Continue with other useful work, or end your turn when the task is the only remaining work; the engine parks the session and resumes it on completion.\n")
+	mode := "foreground"
+	if background {
+		mode = "background"
+	}
+	fmt.Fprintf(&b, "Blocked: this %s command is a bare `sleep %d`, which produces no useful work. ", mode, seconds)
+	fmt.Fprintf(&b, "A bare sleep of %s or longer is refused; the command was not executed.\n\n", threshold)
+	b.WriteString("To wait for a real command, start that command with `run_in_background: true` and `notify_on_complete: true`. ")
+	b.WriteString("Its result is delivered to this session when it finishes — you do not poll and you do not sleep.\n")
+	b.WriteString("For wait-and-recheck work, use `Poll`: it checks evidence in the background and delivers one terminal verdict.\n")
 	if taskToolsRegistered {
-		b.WriteString("To check progress before then, call TaskGet with the task ID.\n")
+		b.WriteString("TaskGet is available for an explicit one-time status read, not a polling loop.\n")
 	} else {
-		b.WriteString("To check progress before then, read the task's output file.\n")
+		b.WriteString("Read a real task's output file for an explicit one-time progress inspection.\n")
 	}
 	fmt.Fprintf(&b, "A short delay for pacing (under %s) is still allowed.", threshold)
 	return b.String()

@@ -61,33 +61,23 @@ export function applyResourceSnapshot(
   kind: string,
   subId: string,
   items: ResourceItem[],
+  resourceProducers?: string[],
 ): ResourceState {
-  // Guard: protect disk-seeded items from being lost to partial or empty snapshots.
-  //
-  // Multiple sessions fire engine_resource_snapshot on connect. If the extension's
-  // HandleQuery fails (subprocess died mid-query) or the subscription races with
-  // extension init, the snapshot arrives with 0 items. After extension respawn,
-  // RewireQueryHandlerAndResnapshot fires but the fresh subprocess may only return
-  // items from its current session (e.g. 2 items when disk has 13). Without this
-  // guard, both cases wipe the disk-seeded collection.
-  //
-  // Strategy:
-  //   - Empty snapshot (items=0): keep existing. Extension wasn't ready.
-  //   - Full snapshot (items >= existing): use incoming. It's authoritative.
-  //   - Partial snapshot (items < existing): merge. Union existing + incoming,
-  //     deduplicating by ID so incoming items win on conflict (they're freshest).
   const existing = state.resources[kind] ?? []
-  let merged: ResourceItem[]
-  if (items.length === 0) {
-    merged = existing
-  } else if (items.length >= existing.length) {
-    merged = items
+  let covered: Set<string> | null
+  if (resourceProducers !== undefined) {
+    covered = new Set(resourceProducers)
+  } else if (items.some((item) => !!item.producer)) {
+    covered = new Set(items.map((item) => item.producer).filter(Boolean) as string[])
+  } else if (items.length > 0) {
+    covered = null
   } else {
-    // Partial snapshot: take the union so no disk-seeded items are lost.
-    const incomingByIdentity = new Map(items.map((item) => [resourceIdentity(item), item]))
-    const survivingExisting = existing.filter((item) => !incomingByIdentity.has(resourceIdentity(item)))
-    merged = [...survivingExisting, ...items]
+    covered = new Set()
   }
+  const retained = covered === null
+    ? []
+    : existing.filter((item) => !item.producer || !covered.has(item.producer))
+  let merged = [...retained, ...items]
 
   // Normalize: deduplicate by producer + ID so same-kind producers can use
   // the same item ID without overwriting one another. Producerless items retain
@@ -104,20 +94,22 @@ export function applyResourceSnapshot(
   normalized.reverse()
   merged = normalized
 
-  // Snapshot read state is authoritative for every retained item in this kind.
-  // Remove prior flags before applying final normalized values, otherwise an
-  // earlier duplicate marked read survives a final unread occurrence.
+  // Snapshot read state is authoritative only for the producers this snapshot
+  // covers. Preserve read state owned by retained producers.
   const readResourceIds = new Set(state.readResourceIds)
+  const affected = covered === null
+    ? merged
+    : merged.filter((item) => !!item.producer && covered.has(item.producer))
   const legacyReadIds = new Set(
-    merged
+    affected
       .filter((item) => resourceIdentity(item) !== item.id && state.readResourceIds.has(item.id))
       .map((item) => item.id),
   )
-  for (const item of merged) {
+  for (const item of affected) {
     readResourceIds.delete(resourceIdentity(item))
     if (legacyReadIds.has(item.id)) readResourceIds.delete(item.id)
   }
-  for (const item of merged) {
+  for (const item of affected) {
     if (item.read || legacyReadIds.has(item.id)) readResourceIds.add(resourceIdentity(item))
   }
 

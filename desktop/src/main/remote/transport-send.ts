@@ -16,7 +16,8 @@ import { mark, Activity } from '../watchdog'
 import { MAX_WIRE_FRAME_BYTES } from './protocol'
 import { degradeOversizedEvent, canDegrade } from './transport-degrade'
 import { scheduleAgentStateSelfHeal, noteAgentStateDeliveryFailure } from './handlers/agent-state'
-import type { RemoteEvent, WireMessage } from './protocol'
+import type { RemoteEvent, WireMessage, PayloadChunkEnvelope } from './protocol'
+import { fragmentPayload, shouldFragmentPayload } from './transport-fragmentation'
 import type { RetransmitBuffer } from './retransmit-buffer'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -76,11 +77,11 @@ export const CRITICAL_TYPES = new Set([
   // were real output.
   'desktop_text_delta', 'desktop_stream_reset', 'desktop_tool_start', 'desktop_tool_end',
   // desktop_questions_state is the authoritative guided-questions wizard
-  // state; a dropped one strands iOS on a stale draft/phase. The schema
-  // limits (shared/questions-schema.ts) bound the maximum valid state far
-  // below MAX_PLAINTEXT_BYTES — pinned structurally by
-  // questions-transport-bound.test.ts — so it needs no lossy degrader.
+  // state. It and desktop_snapshot fragment losslessly before the plaintext
+  // gate, so request content and array order are never sacrificed to fit one
+  // physical frame.
   'desktop_questions_state',
+  'desktop_payload_chunk',
 ])
 
 // ─── Two-lane send prioritization ────────────────────────────────────────────
@@ -140,6 +141,7 @@ const BULK_TYPES = new Set([
   'desktop_resource_content',
   'desktop_fs_file_content',
   'desktop_fs_image_content',
+  'desktop_payload_chunk',
 ])
 
 /** Classify an outbound event type into its send lane. */
@@ -149,7 +151,7 @@ export function laneForEventType(type: string): Lane {
 
 /** One queued outbound event plus its push metadata, lane, and enqueue timestamp. */
 export interface SendQueueItem {
-  event: RemoteEvent
+  event: RemoteEvent | PayloadChunkEnvelope
   push: boolean
   pushTitle?: string
   pushBody?: string
@@ -237,8 +239,37 @@ export function enqueueSend(
   push: boolean,
   pushMeta?: { title?: string; body?: string; tabId?: string },
 ): void {
-  if (!applyBackpressure(ctx, event.type)) return
-  ctx.sendQueue.push({ event, push, pushTitle: pushMeta?.title, pushBody: pushMeta?.body, pushTabId: pushMeta?.tabId, enqueuedAt: Date.now(), lane: laneForEventType(event.type) })
+  const plaintext = JSON.stringify(event)
+  const parts: Array<RemoteEvent | PayloadChunkEnvelope> = shouldFragmentPayload(
+    event.type, Buffer.byteLength(plaintext, 'utf8'), MAX_PLAINTEXT_BYTES,
+  ) ? fragmentPayload(event.type, plaintext).chunks : [event]
+  if (parts.length > 1) {
+    log('transport: fragmenting oversized event', { event_type: event.type, chunks: parts.length })
+  }
+  enqueuePreparedBatch(ctx, parts, push, pushMeta)
+}
+
+function enqueuePreparedBatch(
+  ctx: SendCtx,
+  parts: Array<RemoteEvent | PayloadChunkEnvelope>,
+  push: boolean,
+  pushMeta?: { title?: string; body?: string; tabId?: string },
+  targetDeviceId?: string,
+): void {
+  const enqueuedAt = Date.now()
+  for (const [index, event] of parts.entries()) {
+    if (!applyBackpressure(ctx, event.type)) return
+    ctx.sendQueue.push({
+      event,
+      push: push && index === 0,
+      pushTitle: index === 0 ? pushMeta?.title : undefined,
+      pushBody: index === 0 ? pushMeta?.body : undefined,
+      pushTabId: index === 0 ? pushMeta?.tabId : undefined,
+      enqueuedAt,
+      lane: event.type === 'desktop_payload_chunk' ? 'bulk' : laneForEventType(event.type),
+      targetDeviceId,
+    })
+  }
   drainSendQueue(ctx)
 }
 
@@ -260,9 +291,14 @@ export function enqueueSendToDevice(
   push: boolean,
   pushMeta?: { title?: string; body?: string; tabId?: string },
 ): void {
-  if (!applyBackpressure(ctx, event.type)) return
-  ctx.sendQueue.push({ event, push, pushTitle: pushMeta?.title, pushBody: pushMeta?.body, pushTabId: pushMeta?.tabId, enqueuedAt: Date.now(), lane: laneForEventType(event.type), targetDeviceId: deviceId })
-  drainSendQueue(ctx)
+  const plaintext = JSON.stringify(event)
+  const parts: Array<RemoteEvent | PayloadChunkEnvelope> = shouldFragmentPayload(
+    event.type, Buffer.byteLength(plaintext, 'utf8'), MAX_PLAINTEXT_BYTES,
+  ) ? fragmentPayload(event.type, plaintext).chunks : [event]
+  if (parts.length > 1) {
+    log('transport: fragmenting oversized targeted event', { event_type: event.type, device_id: deviceId, chunks: parts.length })
+  }
+  enqueuePreparedBatch(ctx, parts, push, pushMeta, deviceId)
 }
 
 /**
@@ -369,7 +405,7 @@ export function frameWithinWireCap(msg: WireMessage, eventType: string, deviceId
 export function sendDirect(
   deviceId: string,
   secret: Buffer,
-  event: RemoteEvent,
+  event: RemoteEvent | PayloadChunkEnvelope,
   push: boolean,
   nextSeq: (deviceId: string) => number,
   epoch: number | undefined,
@@ -377,11 +413,22 @@ export function sendDirect(
   deliverFrame: (deviceId: string, frame: WireMessage) => boolean,
 ): void {
   let plaintext = JSON.stringify(event)
+  if (event.type !== 'desktop_payload_chunk' && shouldFragmentPayload(event.type, Buffer.byteLength(plaintext, 'utf8'), MAX_PLAINTEXT_BYTES)) {
+    const fragmented = fragmentPayload(event.type, plaintext)
+    log('transport: fragmenting oversized direct event', {
+      event_type: event.type, device_id: deviceId, transfer_id: fragmented.chunks[0].transferId,
+      bytes: fragmented.originalBytes, chunks: fragmented.chunks.length,
+    })
+    for (const chunk of fragmented.chunks) {
+      sendDirect(deviceId, secret, chunk, push && chunk.index === 0, nextSeq, epoch, retransmit, deliverFrame)
+    }
+    return
+  }
   if (plaintext.length > MAX_PLAINTEXT_BYTES) {
-    const degraded = degradeOversizedEvent(event, MAX_PLAINTEXT_BYTES)
+    const degraded = degradeOversizedEvent(event as RemoteEvent, MAX_PLAINTEXT_BYTES)
     if (degraded) {
       log('transport: degraded oversized event instead of dropping (direct)', { event_type: event.type, chars: plaintext.length, degraded_chars: degraded.plaintext.length, cap: MAX_PLAINTEXT_BYTES })
-      event = degraded.event
+      event = degraded.event as RemoteEvent | PayloadChunkEnvelope
       plaintext = degraded.plaintext
     } else {
       _error('RemoteTransport', 'transport: dropping oversized event before sendToDevice', { event_type: event.type, chars: plaintext.length, cap: MAX_PLAINTEXT_BYTES, critical: CRITICAL_TYPES.has(event.type), degradable: canDegrade(event.type) })
@@ -418,7 +465,7 @@ function scheduleSelfHealIfAgentState(event: RemoteEvent): void {
 
 export function sendToAll(
   ctx: SendCtx,
-  event: RemoteEvent,
+  event: RemoteEvent | PayloadChunkEnvelope,
   push: boolean,
   pushTitle?: string,
   pushBody?: string,
@@ -440,15 +487,15 @@ export function sendToAll(
     // Degrade before dropping. A CRITICAL_TYPES event that vanishes leaves the
     // consumer rendering stale state with no recovery path, because the
     // periodic resync that would heal it is itself subject to this gate.
-    const degraded = degradeOversizedEvent(event, MAX_PLAINTEXT_BYTES)
+    const degraded = degradeOversizedEvent(event as RemoteEvent, MAX_PLAINTEXT_BYTES)
     if (degraded) {
       log('transport: degraded oversized event instead of dropping', { event_type: eventType, chars: plaintext.length, degraded_chars: degraded.plaintext.length, cap: MAX_PLAINTEXT_BYTES })
-      eventToSend = degraded.event
+      eventToSend = degraded.event as RemoteEvent | PayloadChunkEnvelope
       plaintextToSend = degraded.plaintext
-      scheduleSelfHealIfAgentState(event)
+      scheduleSelfHealIfAgentState(event as RemoteEvent)
     } else {
       _error('RemoteTransport', 'transport: dropping oversized event before send', { event_type: eventType, chars: plaintext.length, cap: MAX_PLAINTEXT_BYTES, critical: CRITICAL_TYPES.has(eventType), degradable: canDegrade(eventType) })
-      scheduleSelfHealIfAgentState(event)
+      scheduleSelfHealIfAgentState(event as RemoteEvent)
       return false
     }
   }

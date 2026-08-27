@@ -47,6 +47,21 @@ describe('buildSendPromptMessage — thinking effort wire states', () => {
   })
 })
 
+describe('buildSendPromptMessage — display text', () => {
+  const base = { key: 'tab-1', text: 'model prompt with control text' }
+
+  it('forwards separate transcript text without changing the model prompt', () => {
+    const msg = buildSendPromptMessage({ ...base, displayText: '**Question?**\n- Answer' })
+    expect(msg.text).toBe(base.text)
+    expect(msg.displayText).toBe('**Question?**\n- Answer')
+  })
+
+  it('omits displayText for ordinary prompts', () => {
+    const msg = buildSendPromptMessage(base)
+    expect('displayText' in msg).toBe(false)
+  })
+})
+
 describe('buildSendCommandMessage — one-pass command options', () => {
   it('carries run options on the first command request and omits duplicate text', () => {
     const msg = buildSendCommandMessage({

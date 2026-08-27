@@ -51,6 +51,10 @@
 		LANREJVMT00000000000001 /* SessionViewModelLanAuthRejectedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANREJVMT00000000000002 /* SessionViewModelLanAuthRejectedTests.swift */; };
 		LANAUTHTST0000000000001 /* LANAuthOutcomeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANAUTHTST0000000000002 /* LANAuthOutcomeTests.swift */; };
 		LANTRANSVM0000000000001 /* SessionViewModelLanAuthTransientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANTRANSVM0000000000002 /* SessionViewModelLanAuthTransientTests.swift */; };
+		WIREMSG0000000000000001 /* WireMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = WIREMSG0000000000000002 /* WireMessage.swift */; };
+		PAYCHUNK000000000000001 /* PayloadChunkAssembler.swift in Sources */ = {isa = PBXBuildFile; fileRef = PAYCHUNK000000000000002 /* PayloadChunkAssembler.swift */; };
+		PAYRECV0000000000000001 /* TransportManager+PayloadReceive.swift in Sources */ = {isa = PBXBuildFile; fileRef = PAYRECV0000000000000002 /* TransportManager+PayloadReceive.swift */; };
+		PAYCHUNKTST000000000001 /* PayloadChunkAssemblerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PAYCHUNKTST000000000002 /* PayloadChunkAssemblerTests.swift */; };
 		A1B2C3D4E5F6000100000FAA /* TransportManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000010AA /* TransportManager.swift */; };
 		A1B2C3D4E5F60001000011AA /* BonjourBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000012AA /* BonjourBrowser.swift */; };
 		A1B2C3D4E5F60001000013AA /* E2ECrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000014AA /* E2ECrypto.swift */; };
@@ -112,6 +116,7 @@
 		A1B2C3D4E5F60001000090AA /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000091AA /* Message.swift */; };
 		BGWORKMETA0000000000001 /* BackgroundWorkMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = BGWORKMETA0000000000002 /* BackgroundWorkMetadata.swift */; };
 		BGTASKSTATE000000000001 /* BackgroundTaskState.swift in Sources */ = {isa = PBXBuildFile; fileRef = BGTASKSTATE000000000002 /* BackgroundTaskState.swift */; };
+		POLLSTATE00000000000001 /* PollState.swift in Sources */ = {isa = PBXBuildFile; fileRef = POLLSTATE00000000000002 /* PollState.swift */; };
 		BGTASKLIFE0000000000001 /* SessionViewModel+BackgroundTaskLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = BGTASKLIFE0000000000002 /* SessionViewModel+BackgroundTaskLifecycle.swift */; };
 		ACTIVEBGSUMM000000000001 /* ActiveBackgroundSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACTIVEBGSUMM000000000002 /* ActiveBackgroundSummary.swift */; };
 
@@ -610,6 +615,10 @@
 		LANREJVMT00000000000002 /* SessionViewModelLanAuthRejectedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionViewModelLanAuthRejectedTests.swift; sourceTree = "<group>"; };
 		LANAUTHTST0000000000002 /* LANAuthOutcomeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANAuthOutcomeTests.swift; sourceTree = "<group>"; };
 		LANTRANSVM0000000000002 /* SessionViewModelLanAuthTransientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionViewModelLanAuthTransientTests.swift; sourceTree = "<group>"; };
+		WIREMSG0000000000000002 /* WireMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WireMessage.swift; sourceTree = "<group>"; };
+		PAYCHUNK000000000000002 /* PayloadChunkAssembler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PayloadChunkAssembler.swift; sourceTree = "<group>"; };
+		PAYRECV0000000000000002 /* TransportManager+PayloadReceive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TransportManager+PayloadReceive.swift"; sourceTree = "<group>"; };
+		PAYCHUNKTST000000000002 /* PayloadChunkAssemblerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PayloadChunkAssemblerTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000010AA /* TransportManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManager.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000012AA /* BonjourBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BonjourBrowser.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000014AA /* E2ECrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2ECrypto.swift; sourceTree = "<group>"; };
@@ -675,6 +684,7 @@
 		A1B2C3D4E5F60001000091AA /* Message.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Message.swift; sourceTree = "<group>"; };
 		BGWORKMETA0000000000002 /* BackgroundWorkMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundWorkMetadata.swift; sourceTree = "<group>"; };
 		BGTASKSTATE000000000002 /* BackgroundTaskState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundTaskState.swift; sourceTree = "<group>"; };
+		POLLSTATE00000000000002 /* PollState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PollState.swift; sourceTree = "<group>"; };
 		BGTASKLIFE0000000000002 /* SessionViewModel+BackgroundTaskLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+BackgroundTaskLifecycle.swift"; sourceTree = "<group>"; };
 		ACTIVEBGSUMM000000000002 /* ActiveBackgroundSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveBackgroundSummary.swift; sourceTree = "<group>"; };
 
@@ -1220,6 +1230,7 @@
 				A1B2C3D4E5F60001000091AA /* Message.swift */,
 				BGWORKMETA0000000000002 /* BackgroundWorkMetadata.swift */,
 				BGTASKSTATE000000000002 /* BackgroundTaskState.swift */,
+				POLLSTATE00000000000002 /* PollState.swift */,
 				PENDINGCARD0000000000002 /* PendingCard.swift */,
 				PLANCARDGATE000000000002 /* PlanCardGate.swift */,
 				A1B2C3D4E5F60001000093AA /* MessageAttachment.swift */,
@@ -1253,6 +1264,9 @@
 				RELAYREJECT00000000002 /* RelayRejection.swift */,
 				LANBACKOFF0000000000002 /* LANReconnectBackoff.swift */,
 				A1B2C3D4E5F60001000010AA /* TransportManager.swift */,
+				WIREMSG0000000000000002 /* WireMessage.swift */,
+				PAYCHUNK000000000000002 /* PayloadChunkAssembler.swift */,
+				PAYRECV0000000000000002 /* TransportManager+PayloadReceive.swift */,
 				TMBONJRC000000000000002 /* TransportManager+BonjourReconnect.swift */,
 				A1B2C3D4E5F60001000221AA /* TransportManager+Send.swift */,
 				A1B2C3D4E5F60001000223AA /* TransportManager+Receive.swift */,
@@ -1696,6 +1710,7 @@
 			isa = PBXGroup;
 			children = (
 				PAYCMPTEST00000000000008 /* PayloadCompressionTests.swift */,
+				PAYCHUNKTST000000000002 /* PayloadChunkAssemblerTests.swift */,
 				DECODEREC00000000000008 /* TransportManagerDecodeRecoveryTests.swift */,
 				INBSERTST0000000000002 /* TransportInboundSerializationTests.swift */,
 				RSNDCOTST0000000000002 /* TransportResendCoalesceTests.swift */,
@@ -1952,6 +1967,7 @@
 				A1B2C3D4E5F60001000090AA /* Message.swift in Sources */,
 				BGWORKMETA0000000000001 /* BackgroundWorkMetadata.swift in Sources */,
 				BGTASKSTATE000000000001 /* BackgroundTaskState.swift in Sources */,
+				POLLSTATE00000000000001 /* PollState.swift in Sources */,
 				PENDINGCARD0000000000001 /* PendingCard.swift in Sources */,
 
 				PLANCARDGATE000000000001 /* PlanCardGate.swift in Sources */,
@@ -1974,6 +1990,9 @@
 				RELAYCAPAB000000000001 /* RelayCapabilities.swift in Sources */,
 				RELAYREJECT00000000001 /* RelayRejection.swift in Sources */,
 				LANBACKOFF0000000000001 /* LANReconnectBackoff.swift in Sources */,
+				WIREMSG0000000000000001 /* WireMessage.swift in Sources */,
+				PAYCHUNK000000000000001 /* PayloadChunkAssembler.swift in Sources */,
+				PAYRECV0000000000000001 /* TransportManager+PayloadReceive.swift in Sources */,
 				A1B2C3D4E5F6000100000FAA /* TransportManager.swift in Sources */,
 				TMBONJRC000000000000001 /* TransportManager+BonjourReconnect.swift in Sources */,
 				A1B2C3D4E5F60001000011AA /* BonjourBrowser.swift in Sources */,
@@ -2295,6 +2314,7 @@
 				DIAGPAIRTST000000000001 /* DiagnosticLogPairingTests.swift in Sources */,
 				CRASHBCTST0000000000001 /* CrashReporterBreadcrumbTests.swift in Sources */,
 				PAYCMPTEST00000000000007 /* PayloadCompressionTests.swift in Sources */,
+				PAYCHUNKTST000000000001 /* PayloadChunkAssemblerTests.swift in Sources */,
 				DECODEREC00000000000007 /* TransportManagerDecodeRecoveryTests.swift in Sources */,
 				INBSERTST0000000000001 /* TransportInboundSerializationTests.swift in Sources */,
 				RSNDCOTST0000000000001 /* TransportResendCoalesceTests.swift in Sources */,

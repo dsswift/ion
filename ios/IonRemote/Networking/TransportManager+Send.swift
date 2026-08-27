@@ -185,7 +185,8 @@ extension TransportManager {
             return state
         }
 
-        let (nonce, ciphertext) = try E2ECrypto.encrypt(plaintext: payload, key: sharedKey)
+        let preparedPayload = try PayloadCompression.prepareOutbound(payload)
+        let (nonce, ciphertext) = try E2ECrypto.encrypt(plaintext: preparedPayload, key: sharedKey)
         // Every outbound frame carries this instance's generation id. The
         // desktop keys its inbound dedup to it: a newer epoch (new
         // TransportManager after app restart / re-pair) resets its dedup; a

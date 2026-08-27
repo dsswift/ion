@@ -99,6 +99,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Peer role](#term-peer-role)
 - [Permission](#term-permission)
 - [Picker](#term-picker)
+- [Poll](#term-poll)
 - [Provider](#term-provider)
 - [Questions Wizard](#term-questions-wizard)
 - [Relay](#term-relay)
@@ -393,6 +394,20 @@ The decision about whether a tool call may run. The engine classifies the call a
   - `engine` / `wire` / `go`: `type PermissionRequestEvent struct` in `engine/internal/types/normalized_event.go`
   - `desktop` / `ui` / `typescript`: `PermissionCard` in `desktop/src/renderer/components/PermissionCard.tsx`
   - `ios` / `ui` / `swift`: `struct PermissionCardView` in `ios/IonRemote/Views/PermissionCardView.swift`
+
+#### Poll {#term-poll}
+
+A bounded engine-owned inference loop. It dispatches check agents, re-arms only while work is advancing, and delivers one terminal verdict with evidence to the parent session.
+
+- **ID:** `poll`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `intelligent poll`
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func PollTool` in `engine/internal/tools/poll.go`
+  - `engine` / `code` / `go`: `func (m *Manager) startPoll` in `engine/internal/session/poll_driver.go`
 
 #### Provider {#term-provider}
 
@@ -1568,6 +1583,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `inbound webhook` → [Webhook](#term-webhook)
 - Alias: `injected turn kind` → [Injection Kind](#term-injection-kind)
 - Alias: `instance` → [Conversation instance](#term-conversation-instance)
+- Alias: `intelligent poll` → [Poll](#term-poll)
 - Alias: `ion context` → [Extension context](#term-extension-context)
 - Alias: `ion serve` → [Engine server](#term-engine-server)
 - Alias: `left dock` → [Studio Left Dock](#term-studio-left-dock)

@@ -29,6 +29,30 @@ final class TransportManagerDecodeRecoveryTests: XCTestCase {
     }
 
     @MainActor
+    func testRejectedChunkRequestsResyncAndClearsAssembly() async throws {
+        let sharedKey = SymmetricKey(size: .bits256)
+        let manager = TransportManager(sharedKey: sharedKey, deviceId: "dev-1")
+        let invalidChunk = Data("""
+        {"type":"desktop_payload_chunk","transferId":"t1","index":0,"count":1,
+         "originalType":"desktop_questions_state","totalBytes":4,
+         "sha256":"0000000000000000000000000000000000000000000000000000000000000000",
+         "data":"e30="}
+        """.utf8)
+        let (nonce, ciphertext) = try E2ECrypto.encrypt(plaintext: invalidChunk, key: sharedKey)
+        let wire = WireMessage(seq: 1, ts: nil, payload: nil,
+                               nonce: nonce.base64EncodedString(),
+                               ciphertext: ciphertext.base64EncodedString())
+
+        manager.handleIncomingData(try JSONEncoder().encode(wire), isRelay: false)
+
+        for _ in 0..<50 where outboundSeq(manager) == 0 {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertGreaterThan(outboundSeq(manager), 0)
+        XCTAssertFalse(manager.payloadChunkAssembler.hasPendingTransfer)
+    }
+
+    @MainActor
     func testDecodeFailureRequestsResync() async throws {
         let sharedKey = SymmetricKey(size: .bits256)
         // LAN-only init (no relay); there is no connected socket, so the

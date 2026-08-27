@@ -12,6 +12,7 @@
 import type {
   AgentStateUpdate,
   BackgroundTaskState,
+  PollState,
   StatusFields,
   SessionStatus,
 } from "./types-engine";
@@ -468,6 +469,18 @@ export type EngineEvent =
         outputPath?: string;
         tail?: string;
       };
+    }
+  | {
+      type: "engine_poll_started";
+      pollStarted?: PollState;
+    }
+  | {
+      type: "engine_poll_progress";
+      pollProgress?: { poll: PollState; evidence: string };
+    }
+  | {
+      type: "engine_poll_terminal";
+      pollTerminal?: PollState & { verdict: "satisfied" | "failed" | "stuck" | "exhausted" | string; evidence: string; reason?: string };
     }
   | {
       type: "engine_session_work_stopped";

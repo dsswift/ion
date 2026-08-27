@@ -223,6 +223,10 @@ export interface StoreActions extends EngineSubmitActions {
     text: string,
     opts?: {
       projectPath?: string;
+      /** User-facing transcript text when it differs from the provider prompt. */
+      displayText?: string;
+      /** Main-originated turn must be sent to iOS after renderer acceptance. */
+      echoToIos?: boolean;
       extraAttachments?: Attachment[];
       appendSystemPrompt?: string;
       implementationPhase?: boolean;
@@ -244,6 +248,9 @@ export interface StoreActions extends EngineSubmitActions {
     remoteAttachments?: Array<{ type: string; name: string; path: string }>,
     requestId?: string,
     implementationPhase?: boolean,
+    injectionKind?: string,
+    displayText?: string,
+    echoToIos?: boolean,
   ) => void;
   /**
    * Move a tab to its planning/in-progress group on send, based on the tab's

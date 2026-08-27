@@ -241,16 +241,17 @@ export function registerSessionIpc(): void {
         {
           tabId,
           id: requestId,
-          content: options.prompt,
+          content: options.displayText ?? options.prompt,
           source: options.source === "remote" ? "remote" : "desktop",
           implementationPhase: options.implementationPhase,
           injectionKind: options.injectionKind,
         },
-        // A remote-source prompt already has its canonical iOS echo from
-        // tabs-prompt.ts (with the id the phone reconciles against); a second
-        // frame from here would duplicate the bubble. The Studio mirror still
+        // A remote-source prompt normally has its canonical iOS echo from
+        // tabs-prompt.ts. Main-owned Guided Questions submissions are the
+        // exception: no phone authored that turn, so echoToIos publishes the
+        // answer card after the renderer accepts it. The Studio mirror still
         // needs the push either way.
-        { ios: options.source !== "remote" },
+        { ios: options.echoToIos === true || options.source !== "remote" },
       );
 
       if (DEBUG_MODE) {
@@ -312,6 +313,8 @@ export function registerSessionIpc(): void {
         await processIncomingPrompt({
           tabId,
           text: options.prompt,
+          displayText: options.displayText,
+          echoToIos: options.echoToIos,
           reqId: requestId,
           source: "desktop",
           // Raw composer attachments -- encoded by the pipeline's desktop

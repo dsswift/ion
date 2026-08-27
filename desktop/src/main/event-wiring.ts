@@ -8,7 +8,7 @@ import { formatClearDivider } from '../shared/clear-divider'
 import { tabIdFromKey } from '../shared/session-key'
 import { subscribeToResourceKinds, subscribeToGlobalResourceKinds, clearResourceSubscriptions, markReadPersisted, resubscribeSessionResourceKinds, handleResourceItemEvent } from './event-wiring-resources'
 import { handleInterceptEvent } from './event-wiring-intercept'
-import { injectDiskResourcesIfEmpty } from './event-wiring-disk-seed'
+import { resourceCatalog } from './resource-catalog'
 import { accumulateTextDelta, flushKeyDeltas, dropKeyDeltas } from './event-wiring-text-delta-batcher'
 import { projectEngineEventToWire } from './event-wiring-wire-projection'
 import { notifyStudioPermissionResolved } from './studio-window-manager'
@@ -81,6 +81,7 @@ export function wireEngineBridgeEvents(): void {
   // resource subscriptions are never re-established after a desktop restart.
   const subscribeGlobalResources = () => {
     clearResourceSubscriptions()
+    resourceCatalog.clear()
     log('engineBridge: subscribing to global resources')
     subscribeToGlobalResourceKinds().catch((err) => {
       log('resource_subscribe_global: error on connect', { error: String(err) })
@@ -212,21 +213,19 @@ export function wireEngineBridgeEvents(): void {
       // Resource snapshot observability
       const items = event.resourceItems ?? []
       log('resource_snapshot', { key, kind: event.resourceKind, sub_id: event.resourceSubId, items: items.length })
-      // Cold-start disk seed: inject persisted items when the engine delivers
-      // an empty snapshot (e.g. extension died during HandleQuery).
-      if (items.length === 0 && state.mainWindow) {
-        injectDiskResourcesIfEmpty(event.resourceKind, event.resourceSubId, key)
-      }
+      resourceCatalog.applySnapshot(key, event.resourceKind, items, event.resourceProducers)
       const tabIdForRes = tabIdFromKey(key)
       broadcastNormalized(tabIdForRes, {
         type: 'resource_snapshot',
         resourceKind: event.resourceKind,
         resourceSubId: event.resourceSubId,
         resourceItems: items,
+        resourceProducers: event.resourceProducers,
       })
     } else if (event.type === 'engine_resource_delta') {
       const d = event.resourceDelta
       log('resource_delta', { key, kind: event.resourceKind, op: d?.op, id: d?.item?.id?.slice(-8), conv_id: d?.item?.conversationId ?? 'global' })
+      if (d) resourceCatalog.applyDelta(event.resourceKind, d)
       // Persist mark_read deltas to disk so the desktop's read state survives
       // restarts and stays consistent with cross-device reads from iOS.
       if (d?.op === 'mark_read' && d?.item?.id) {
@@ -240,6 +239,7 @@ export function wireEngineBridgeEvents(): void {
       })
     } else if (event.type === 'engine_resource_item') {
       log('resource_item', { key, kind: event.resourceKind, id: event.resourceItem?.id?.slice(-8) })
+      if (event.resourceItem) resourceCatalog.applyFullItem(event.resourceKind, event.resourceItem)
       handleResourceItemEvent(tabIdFromKey(key), event.resourceKind, event.resourceItem)
     } else if (event.type === 'engine_notification') {
       // Map engine EngineEvent fields (notifyTitle/notifyBody/notifyKind) to

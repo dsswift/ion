@@ -39,6 +39,7 @@ func (b *ApiBackend) executeTools(
 	var agentStatusFn tools.AgentStatusGetter
 	var bgOwner string
 	var bgRegistrar func(taskID, command string)
+	var pollStarter tools.PollStarter
 	if run.cfg != nil {
 		hooks = run.cfg.Hooks
 		permEng = run.cfg.PermEngine
@@ -50,6 +51,7 @@ func (b *ApiBackend) executeTools(
 		agentStatusFn = run.cfg.AgentStatus
 		bgOwner = run.cfg.BackgroundTaskOwner
 		bgRegistrar = run.cfg.RegisterOutstandingBackgroundTask
+		pollStarter = run.cfg.PollStarter
 	}
 	hookFn := hooks.OnToolCall
 	perToolHook := hooks.OnPerToolHook
@@ -77,6 +79,9 @@ func (b *ApiBackend) executeTools(
 	// is what makes the session hold for it at the turn boundary.
 	if bgRegistrar != nil {
 		gCtx = tools.WithOutstandingRegistrar(gCtx, bgRegistrar)
+	}
+	if pollStarter != nil {
+		gCtx = tools.WithPollStarter(gCtx, pollStarter)
 	}
 
 	// Stamp the session key so the Skill tool resolves against this session's
@@ -136,6 +141,12 @@ func (b *ApiBackend) executeTools(
 			// distinct goroutine IDs and no ambient entry, so their log lines
 			// emit without correlation.
 			defer installAmbientLogging(gCtx)()
+
+			// Validate client-declared tool input before any engine policy,
+			// hook, parking, or client routing can act on the call.
+			if b.validateClientToolCall(run, block, results, i) {
+				return nil
+			}
 
 			// Permission check (Step 3)
 			if permEng != nil {

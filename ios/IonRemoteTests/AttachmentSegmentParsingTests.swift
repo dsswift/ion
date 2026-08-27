@@ -73,6 +73,23 @@ final class AttachmentSegmentParsingTests: XCTestCase {
         XCTAssertEqual(result.text, "some text")
     }
 
+    func testStructuredAnswerDisplayRemovesLegacyControlText() {
+        let raw = """
+        My answers to "Architecture choices":
+
+        **Which store?**
+        - Postgres
+
+        I want more questions on this topic. Call AskUserQuestions again with workflowId "workflow-1" and a deeper page on the same theme. Do not move on until I submit a page without asking for more.
+        """
+        XCTAssertEqual(structuredAnswerDisplayText(raw), "**Which store?**\n- Postgres")
+    }
+
+    func testStructuredAnswerDisplayShortensLegacySkipText() {
+        let raw = "**Who decides?**\n- Agent decides (explicitly delegated to you)"
+        XCTAssertEqual(structuredAnswerDisplayText(raw), "**Who decides?**\n- Agent decides")
+    }
+
     // MARK: - No markers
 
     func testNoMarkersPassesThrough() {

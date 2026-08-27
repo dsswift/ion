@@ -26,6 +26,23 @@ npm run doctor      # bash scripts/doctor.sh
 
 Don't kill the user's running dev server. If a restart is needed, tell the user.
 
+## Ion Desktop is not a web application
+
+Ion Desktop is a packaged Electron application. `npm run dev` starts Electron through
+`electron-vite`; it does not expose a supported standalone Ion page at
+`http://localhost:5173` or any other browser URL. Never use `browser_navigate`,
+Playwright against a guessed localhost address, or a normal web browser as proof that the
+Ion Desktop UI works.
+
+For visible Desktop verification, use the real Electron window. A packaged build requires
+operator visual confirmation when no Electron-control tool is available. Use logs,
+snapshots, socket queries, and tests only as additional mechanical evidence — never as a
+replacement for the required look at a visible feature.
+
+The Studio Browser is content embedded *inside* Ion Studio. Its browser tools inspect the
+page loaded in that embedded surface; they do not inspect or control the Ion Desktop
+application UI.
+
 **Never run `make desktop`.** It builds a local `.pkg`, asks the running desktop to drain active work, and opens macOS Installer. Installing and relaunching the new desktop can replace the bundled engine and restart the daemon, which ends the engine process hosting this conversation after its work drains. The user runs `make desktop` manually when ready. If a packaged build is needed, tell the user to run it.
 
 ## Layout

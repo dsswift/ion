@@ -175,6 +175,31 @@ describe('planFilePath convergence', () => {
   })
 })
 
+describe('structured display text convergence', () => {
+  it('remote prompt forwards displayText through the renderer bounce', async () => {
+    await processIncomingPrompt({
+      tabId: 'tab-1',
+      text: 'provider prompt with control text',
+      displayText: '**Question?**\n- Answer',
+      echoToIos: true,
+      reqId: 'req-display-1',
+      source: 'remote',
+      hasExtensions: true,
+      instanceId: 'inst1',
+      injectionKind: 'structured_answer',
+    })
+    expect(mocks.broadcastMock).toHaveBeenCalledWith(
+      expect.stringMatching(/remote-engine-prompt/i),
+      expect.objectContaining({
+        text: 'provider prompt with control text',
+        displayText: '**Question?**\n- Answer',
+        echoToIos: true,
+        injectionKind: 'structured_answer',
+      }),
+    )
+  })
+})
+
 describe('implementationPhase convergence', () => {
   it('desktop engine prompt forwards implementationPhase through submitPrompt RunOptions', async () => {
     // Post-unification: every desktop-source prompt — engine or plain — routes

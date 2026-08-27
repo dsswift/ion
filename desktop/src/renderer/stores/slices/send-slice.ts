@@ -222,6 +222,8 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const { tabs, staticInfo } = get();
       const {
         projectPath,
+        displayText,
+        echoToIos,
         extraAttachments,
         appendSystemPrompt,
         implementationPhase,
@@ -383,7 +385,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
               ? clientRequestId
               : nextMsgId(),
           role: "user" as const,
-          content: text,
+          content: displayText ?? text,
           attachments:
             msgAttachments.length > 0
               ? msgAttachments
@@ -420,7 +422,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         const enginePinnedPrompt = new Map(s.enginePinnedPrompt);
         // The pinned prompt is the operator's own words shown above the
         // conversation; a machine-authored rendering is not that.
-        if (!suppressBubble) enginePinnedPrompt.set(tabId, text);
+        if (!suppressBubble) enginePinnedPrompt.set(tabId, displayText ?? text);
         const tabs = s.tabs.map((t) => {
           if (t.id !== tabId) return t;
           const withEffectiveBase = t.hasChosenDirectory
@@ -624,13 +626,13 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           // renderer-local marker (the auto-fix lock passage) and is NOT a
           // remote origin, so it forwards as a local prompt.
           source: source === "remote" ? "remote" : undefined,
+          echoToIos,
           deliveryId: source === "remote" ? requestId : undefined,
-          // Client-stated authorship, forwarded to the engine so the PERSISTED
-          // row and every other consumer (iOS, history reload) carry the same
-          // classification this renderer just applied. Without this the
-          // suppression would be desktop-session-local and the turn would
-          // reappear as a user bubble on reload.
+          // Client-stated authorship and optional transcript rendering. The
+          // engine persists both so every client and every reload shows the same
+          // answer card while the provider receives the full prompt.
           injectionKind,
+          displayText,
           // Forward the engine-resolve-slash flag from REMOTE_ENGINE_PROMPT so
           // the pipeline short-circuits to submitAsPrompt instead of
           // re-dispatching the extension command (which corrupts the
@@ -661,6 +663,8 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       reqId,
       implementationPhase,
       injectionKind,
+      displayText,
+      echoToIos,
     ) => {
       // Same rule as submit(): a machine-authored turn reaches the model but
       // is never echoed into the transcript as a user bubble. Classified by
@@ -733,7 +737,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         const userMessage = {
           id: isBusy ? requestId : nextMsgId(),
           role: "user" as const,
-          content: prompt,
+          content: displayText ?? prompt,
           attachments:
             (remoteAttachments || []).length > 0
               ? (remoteAttachments || []).map((a) => ({
@@ -862,7 +866,9 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           addDirs:
             tab.additionalDirs.length > 0 ? tab.additionalDirs : undefined,
           source: "remote",
+          echoToIos,
           deliveryId: requestId,
+          displayText,
           extensions: remoteExtensions,
           imageAttachments,
           thinkingEffort: remoteThinkingEffort,
@@ -873,9 +879,8 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           // it to the model verbatim. Absent/false for ordinary remote prompts.
           resolveSlash: resolveSlash || undefined,
           implementationPhase: isImplementation || undefined,
-          // Forwarded to the engine so the PERSISTED row carries the same
-          // classification, keeping the turn suppressed on history reload and
-          // on every other client rather than only in this session.
+          // Forward the structured provenance and optional display rendering so
+          // persisted history matches the live card on every client.
           injectionKind,
         })
         .catch((err: Error) => {

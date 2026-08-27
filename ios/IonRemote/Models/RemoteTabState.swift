@@ -327,6 +327,10 @@ struct ConversationInstanceInfo: Codable, Identifiable, Sendable {
     /// Complete active background Bash inventory projected by the desktop.
     /// Snapshot values replace this list so reconnect removes stale tasks.
     var activeBackgroundTasks: [BackgroundTaskState]? = nil
+    /// Complete active Poll inventory projected by the desktop.
+    var activePolls: [PollState]? = nil
+    /// Number of Polls holding this instance open.
+    var pollsWaiting: Int? = nil
     /// Exact engine status verdict for work accepted but not yet visible as a
     /// foreground run, child row, or shell row.
     var hasPendingWork: Bool? = nil
@@ -404,6 +408,8 @@ struct ConversationInstanceInfo: Codable, Identifiable, Sendable {
         case runningAgentCount
         case backgroundShellCount
         case activeBackgroundTasks
+        case activePolls
+        case pollsWaiting
         case hasPendingWork
         case modelFallback
         case conversationIds
@@ -435,6 +441,8 @@ extension ConversationInstanceInfo {
         runningAgentCount = try container.decodeIfPresent(Int.self, forKey: .runningAgentCount)
         backgroundShellCount = try container.decodeIfPresent(Int.self, forKey: .backgroundShellCount)
         activeBackgroundTasks = try container.decodeIfPresent([BackgroundTaskState].self, forKey: .activeBackgroundTasks)
+        activePolls = try container.decodeIfPresent([PollState].self, forKey: .activePolls)
+        pollsWaiting = try container.decodeIfPresent(Int.self, forKey: .pollsWaiting)
         hasPendingWork = try container.decodeIfPresent(Bool.self, forKey: .hasPendingWork)
         modelFallback = try container.decodeIfPresent(EngineInstanceModelFallback.self, forKey: .modelFallback)
         conversationIds = try container.decodeIfPresent([String].self, forKey: .conversationIds)
@@ -453,6 +461,8 @@ extension ConversationInstanceInfo {
         try container.encodeIfPresent(runningAgentCount, forKey: .runningAgentCount)
         try container.encodeIfPresent(backgroundShellCount, forKey: .backgroundShellCount)
         try container.encodeIfPresent(activeBackgroundTasks, forKey: .activeBackgroundTasks)
+        try container.encodeIfPresent(activePolls, forKey: .activePolls)
+        try container.encodeIfPresent(pollsWaiting, forKey: .pollsWaiting)
         try container.encodeIfPresent(hasPendingWork, forKey: .hasPendingWork)
         try container.encodeIfPresent(modelFallback, forKey: .modelFallback)
         try container.encodeIfPresent(conversationIds, forKey: .conversationIds)

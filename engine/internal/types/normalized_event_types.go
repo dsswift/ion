@@ -79,6 +79,9 @@ const (
 	// session-owned Bash task, including non-notifying tasks.
 	EventBackgroundTaskStarted  = "background_task_started"
 	EventBackgroundTaskTerminal = "background_task_terminal"
+	EventPollStarted            = "poll_started"
+	EventPollProgress           = "poll_progress"
+	EventPollTerminal           = "poll_terminal"
 	EventSessionWorkStopped     = "session_work_stopped"
 	// EventBackgroundWorkDelivered fires when a background bash completion is
 	// successfully delivered into a session -- steered into an active run or

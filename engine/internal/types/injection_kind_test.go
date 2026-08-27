@@ -27,6 +27,7 @@ func TestIsMachineToMachineIsExhaustive(t *testing.T) {
 		InjectionKindAgentCompletion:          true,
 		InjectionKindSlashCommand:             true,
 		InjectionKindBackgroundTaskCompletion: true,
+		InjectionKindPollResult:               true,
 		InjectionKindCheckIn:                  true,
 		InjectionKindRevive:                   true,
 		InjectionKindRunRecovery:              true,

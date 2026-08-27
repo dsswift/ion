@@ -13,6 +13,7 @@ import (
 const (
 	BackgroundWorkSourceBash  = "bash"
 	BackgroundWorkSourceAgent = "agent"
+	BackgroundWorkSourcePoll  = "poll"
 )
 
 // BackgroundWorkItem is one completed unit delivered to an orchestrator.

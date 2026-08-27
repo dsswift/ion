@@ -77,12 +77,12 @@ describe('sendToAll — compress once + breadcrumbs', () => {
     expect(markCalls.filter((c) => c === Activity.RelayCompress)).toHaveLength(1)
   })
 
-  it('drops an oversized event before compress/encrypt (safety valve)', () => {
+  it('fragments an oversized authoritative event before compressing frames', () => {
     const ctx = ctxWithDevices(2)
-    // A payload whose serialized form exceeds the cap must never reach the
-    // synchronous compress/encrypt pipeline — that is the relay-wedge path.
     const huge = 'x'.repeat(MAX_PLAINTEXT_BYTES + 100)
-    const sent = sendToAll(ctx, { type: 'desktop_status', fields: { blob: huge } } as any, false)
+    const sent = sendToAll(ctx, { type: 'desktop_questions_state', tabId: 't', state: { workflows: [], pad: huge } } as any, false)
+    // sendToAll is the prepared-frame seam. Public enqueue paths fragment first;
+    // this direct safety-backstop call still refuses the oversized source event.
     expect(sent).toBe(false)
     expect(compressSpy).not.toHaveBeenCalled()
     expect(buildSpy).not.toHaveBeenCalled()

@@ -42,6 +42,10 @@ class MockWebSocket extends EventEmitter {
   fireError(msg: string): void {
     this.emit('error', new Error(msg))
   }
+
+  fireUnexpectedResponse(statusCode: number): void {
+    this.emit('unexpected-response', { destroy: vi.fn() }, { statusCode, resume: vi.fn() })
+  }
 }
 
 // Track all created instances for test assertions.
@@ -270,6 +274,61 @@ describe('disconnect() bumps generation', () => {
     client.disconnect()
     const genAfterDisconnect = (client as any).generation
     expect(genAfterDisconnect).toBeGreaterThan(genAfterConnect)
+  })
+})
+
+describe('upgrade credential rejections', () => {
+  it('requests a forced refresh after an HTTP 401 upgrade rejection', () => {
+    const onCredentialRejected = vi.fn()
+    const client = new RelayClient({
+      relayUrl: 'ws://relay.test', apiKey: 'key', channelId: 'ch1', onCredentialRejected,
+    })
+
+    client.connect()
+    const ws = mockInstances[0]
+    ws.fireUnexpectedResponse(401)
+    ws.fireClose(1006, 'abnormal')
+
+    expect(onCredentialRejected).toHaveBeenCalledOnce()
+    client.disconnect()
+  })
+
+  it('latches an identity mismatch after an HTTP 403 upgrade rejection', () => {
+    const client = new RelayClient({ relayUrl: 'ws://relay.test', apiKey: 'key', channelId: 'ch1' })
+    const failed = vi.fn()
+    client.on('failed', failed)
+
+    client.connect()
+    const ws = mockInstances[0]
+    ws.fireUnexpectedResponse(403)
+    ws.fireClose(1006, 'abnormal')
+
+    expect(failed).toHaveBeenCalledWith(expect.objectContaining({ reason: 'identity_mismatch' }))
+    client.disconnect()
+  })
+
+  it('backs off after a transient HTTP upgrade rejection', async () => {
+    const client = new RelayClient({ relayUrl: 'ws://relay.test', apiKey: 'key', channelId: 'ch1' })
+
+    client.connect()
+    mockInstances[0].fireUnexpectedResponse(404)
+
+    expect(client.connected).toBe(false)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(mockInstances.length).toBeGreaterThan(1)
+    client.disconnect()
+  })
+  it('keeps a bare 1006 transient without requesting a credential refresh', () => {
+    const onCredentialRejected = vi.fn()
+    const client = new RelayClient({
+      relayUrl: 'ws://relay.test', apiKey: 'key', channelId: 'ch1', onCredentialRejected,
+    })
+
+    client.connect()
+    mockInstances[0].fireClose(1006, 'abnormal')
+
+    expect(onCredentialRejected).not.toHaveBeenCalled()
+    client.disconnect()
   })
 })
 

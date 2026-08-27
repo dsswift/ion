@@ -158,6 +158,12 @@ Note that `task_created` / `task_completed` are **turn** lifecycle hooks (`TaskI
 
 `detached: true` on extension dispatch opts out of automatic parent delivery for genuine fire-and-forget work such as schedule-owned jobs.
 
+## Poll
+
+`Poll({ intent, check_command? })` owns an inference-driven wait-and-recheck loop. The engine runs `check_command` before each attempt and gives its raw output to a detached check agent. The agent requires raw evidence with every verdict, and wakes the parent once with `satisfied`, `failed`, `stuck`, or `exhausted`. Only `advancing` re-arms the next check. `stuck` means the poll cannot decide and returns control to the parent; it does not claim the watched work is wedged.
+
+Use `Poll` for work that needs judgment, such as a deployment rollout, pull-request checks, or another agent's edits. Do not use a bare `sleep` as a timer. `interval_ms`, `deadline_ms`, and `max_attempts` can narrow work but are capped by the engine `poll` configuration.
+
 ## Background bash completion
 
 `Bash({ run_in_background: true, notify_on_complete: true })` starts a shell command the session will be told about when it finishes, rather than one the model has to poll with `TaskGet`.

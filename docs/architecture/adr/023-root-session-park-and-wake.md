@@ -99,6 +99,15 @@ slow command still notifies when it eventually finishes.
 
 ## Consequences
 
+### Polls
+
+`Poll` uses the same park/wake mechanism without pretending that elapsed time is an
+answer. It dispatches a bounded check agent that returns evidenced `satisfied`, `failed`,
+`advancing`, or `stuck`; only `advancing` re-arms. The root receives one terminal result.
+A plain wait tool was rejected because it would wake the root after an interval and force
+it to repeat the same check-and-wait loop that this ADR exists to remove.
+
+
 ### On "the engine never blocks for user input"
 
 It still doesn't. That rule is about the **socket** (see

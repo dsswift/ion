@@ -12,10 +12,11 @@ import (
 // mockProducer returns its fixed item slice for any query.
 type mockProducer struct {
 	items []types.ResourceItem
+	err   error
 }
 
 func (m *mockProducer) HandleQuery(filter types.ResourceFilter) ([]types.ResourceItem, error) {
-	return m.items, nil
+	return m.items, m.err
 }
 
 // --- helpers ---
@@ -50,6 +51,26 @@ func TestBroker_RegisterProducer(t *testing.T) {
 	b2 := NewBroker()
 	if err := b2.RegisterProducer("", mp, types.ResourceDeclaration{}); err == nil {
 		t.Fatal("expected error for empty kind, got nil")
+	}
+}
+
+func TestBroker_Subscribe_ReportsOnlySuccessfulProducerCoverage(t *testing.T) {
+	b := NewBroker()
+	if err := b.RegisterProducerFor("note", "alpha", &mockProducer{}, types.ResourceDeclaration{Kind: "note"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.RegisterProducerFor("note", "beta", &mockProducer{err: fmt.Errorf("offline")}, types.ResourceDeclaration{Kind: "note"}); err != nil {
+		t.Fatal(err)
+	}
+	var received []ResourceMessage
+	if _, err := b.Subscribe("note", types.ResourceFilter{Kind: "note"}, collectDeliver(&received)); err != nil {
+		t.Fatal(err)
+	}
+	if len(received) != 1 || len(received[0].Items) != 0 {
+		t.Fatalf("snapshot = %+v", received)
+	}
+	if got := received[0].Producers; len(got) != 1 || got[0] != "alpha" {
+		t.Fatalf("producer coverage = %v, want [alpha]", got)
 	}
 }
 

@@ -126,6 +126,46 @@ final class ResourceStoreDeltaTests: XCTestCase {
         XCTAssertEqual(store.items["briefing"]?.count, 3)
     }
 
+    func testEngineSnapshotReplacesCoveredProducerAndRetainsOthers() {
+        let store = makeStore()
+        store.applySnapshot(kind: "briefing", rawItems: [
+            makeRawItem(id: "old", producer: "producer-a"),
+            makeRawItem(id: "keep", producer: "producer-b"),
+        ])
+        store.applySnapshot(
+            kind: "briefing",
+            rawItems: [makeRawItem(id: "new", producer: "producer-a")],
+            producers: ["producer-a"],
+            complete: false
+        )
+        let identities = Set((store.items["briefing"] ?? []).map(\.compositeId))
+        XCTAssertEqual(identities, [
+            ResourceItem.compositeId(kind: "briefing", producer: "producer-a", id: "new"),
+            ResourceItem.compositeId(kind: "briefing", producer: "producer-b", id: "keep"),
+        ])
+    }
+
+    func testEngineSnapshotClearsSuccessfullyCoveredProducer() {
+        let store = makeStore()
+        store.applySnapshot(kind: "briefing", rawItems: [makeRawItem(id: "old", producer: "producer-a")])
+        store.applySnapshot(kind: "briefing", rawItems: [], producers: ["producer-a"], complete: false)
+        XCTAssertEqual(store.items["briefing"], [])
+    }
+
+    func testLegacyAmbiguousEmptySnapshotRetainsItems() {
+        let store = makeStore()
+        store.applySnapshot(kind: "briefing", rawItems: [makeRawItem(id: "old", producer: "producer-a")])
+        store.applySnapshot(kind: "briefing", rawItems: [], producers: nil, complete: false)
+        XCTAssertEqual(store.items["briefing"]?.map(\.id), ["old"])
+    }
+
+    func testCompleteEmptyManifestClearsPersistedKinds() {
+        let store = makeStore()
+        store.applySnapshot(kind: "briefing", rawItems: [makeRawItem(id: "stale", producer: "producer-a")])
+        store.applyCompleteManifest([:])
+        XCTAssertEqual(store.items["briefing"], [])
+    }
+
     // MARK: - Create upsert
 
     func testCreateAppendsWhenNoExistingId() {

@@ -384,7 +384,7 @@ export interface AgentHandle {
 // references StatusFields in this file, and a bare `export type { ... } from`
 // re-exports a name without binding it locally.
 import type { StatusFields } from './types-engine-status'
-export type { StatusFields, SessionStatus } from './types-engine-status'
+export type { StatusFields, SessionStatus, PollState } from './types-engine-status'
 
 /**
  * Slash-command listing carried inside engine_command_registry snapshots.

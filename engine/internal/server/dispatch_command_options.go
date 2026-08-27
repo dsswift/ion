@@ -35,6 +35,7 @@ func promptOverridesFromCommand(cmd *protocol.ClientCommand) *session.PromptOver
 		CompactMemoryEnabled:                cmd.CompactMemoryEnabled,
 		ClientWorkspaceContext:              cmd.ClientWorkspaceContext,
 		DeliveryId:                          cmd.DeliveryId,
+		DisplayText:                         cmd.DisplayText,
 		TemporaryAutoFromPlan:               cmd.TemporaryAutoFromPlan,
 		InjectionKind:                       resolveClientInjectionKind(cmd.Key, cmd.InjectionKind),
 	}

@@ -112,9 +112,9 @@ func currentConversationLeaf(convID string) string {
 	return *conv.LeafID
 }
 
-// persistCliTurn appends a completed delegated-CLI turn (the user prompt and
-// the assistant's final text) to Ion's conversation store, advancing the
-// conversation leaf. This is what makes Ion's transcript the true single
+// persistCliTurn appends a completed delegated-CLI turn (the provider prompt,
+// its optional display text, and the assistant's final text) to Ion's
+// conversation store, advancing the conversation leaf. This is what makes
 // source of truth for CLI-served turns: without it, delegated-CLI turns are
 // invisible to Ion and a later cross-provider turn's transcript bridge misses
 // them entirely (the continuity-loss bug — a claude turn a subsequent gpt turn
@@ -139,15 +139,22 @@ func (m *Manager) persistCliTurn(key, convID string) {
 		return
 	}
 	userText := s.pendingCliUserTurn
+	displayText := s.pendingCliDisplayText
+	injectionKind := s.pendingCliInjectionKind
 	assistantText := s.pendingCliAssistantText
 	recorder := s.cliTranscript
 	s.pendingCliUserTurn = ""
+	s.pendingCliDisplayText = ""
+	s.pendingCliInjectionKind = ""
 	s.pendingCliAssistantText = ""
 	s.cliTranscript = nil
 	m.mu.Unlock()
 
 	if convID == "" || userText == "" {
-		return // engine-owned run, or nothing to persist
+		utils.LogWithFields(utils.LevelDebug, "session.native_session", "persistCliTurn: no delegated turn to persist", map[string]any{
+			"key": key, "conversation_id": convID, "has_user_text": userText != "",
+		})
+		return
 	}
 
 	// Prefer the structured recording (ordered text + exact tool_use /
@@ -167,7 +174,13 @@ func (m *Manager) persistCliTurn(key, convID string) {
 		// delegated CLI starts. On exit only append CLI output: writing userText
 		// again would duplicate the exact turn recovery relies on.
 		if journal := conversation.ActiveRunRecovery(conv); journal == nil || journal.UserEntryID == "" {
-			conversation.AddUserMessage(conv, userText)
+			var userEntry *conversation.SessionEntry
+			if displayText != "" {
+				userEntry = conversation.AddUserMessageWithDisplay(conv, userText, displayText)
+			} else {
+				userEntry = conversation.AddUserMessage(conv, userText)
+			}
+			conversation.ClassifyEntry(userEntry, injectionKind)
 		}
 		wroteStructured = appendStructuredCliTurn(conv, structuredItems)
 		hasRecordedText := false
@@ -212,7 +225,7 @@ func (m *Manager) persistCliTurn(key, convID string) {
 	}
 	utils.LogWithFields(utils.LevelInfo, "session.native_session", "persisted delegated-CLI turn into Ion transcript", map[string]any{
 		"key": key, "conversation_id": convID, "new_leaf": leaf, "structured": wroteStructured,
-		"structured_items": len(structuredItems), "user_bytes": len(userText), "assistant_bytes": len(assistantText),
+		"structured_items": len(structuredItems), "user_bytes": len(userText), "display_bytes": len(displayText), "assistant_bytes": len(assistantText),
 	})
 }
 

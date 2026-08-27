@@ -104,6 +104,25 @@ describe('QuestionsCoordinator (park/resume)', () => {
     expect(notified).toHaveLength(1)
   })
 
+  it('opens and preserves an unbounded valid request across heartbeat replay', () => {
+    const description = 'evidence '.repeat(10_000)
+    const questions = Array.from({ length: 30 }, (_, index) => ({
+      id: `q-${index}-${'x'.repeat(100)}`,
+      prompt: `Question ${index} ${'p'.repeat(2_000)}`,
+      guidance: 'g'.repeat(3_000),
+      mode: 'text' as const,
+    }))
+    const input = validInput({ title: 'T'.repeat(1_000), description, questions })
+    coordinator.handleParkedQuestion('tab-1', 'tu-large', input)
+    coordinator.handleParkedQuestion('tab-1', 'tu-large', input)
+    const workflows = coordinator.snapshot().workflows
+    expect(workflows).toHaveLength(1)
+    expect(workflows[0].request.description).toBe(description)
+    expect(workflows[0].request.questions).toEqual(questions)
+    expect(fanouts).toHaveLength(1)
+    expect(notified).toHaveLength(1)
+  })
+
   it('rejects malformed input without opening a workflow', () => {
     coordinator.handleParkedQuestion('tab-1', 'tu-bad', { title: 'x' }) // no questions
     expect(coordinator.snapshot().workflows).toHaveLength(0)

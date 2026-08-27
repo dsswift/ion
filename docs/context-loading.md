@@ -38,6 +38,27 @@ All fields are tri-state (undefined/nil = inherit from the level above):
 | `includeProjectContext` | true | Suppress cwd + ancestor walk |
 | `claudeCompat` | inherit from engine | Override CLAUDE.md discovery |
 
+`maxContextBytes` is a byte budget rather than a switch, so it resolves
+slightly differently: it is an `int`, and only a **positive** value overrides.
+Zero and negative both mean "no cap", which keeps a level that never mentions a
+budget from silently erasing one set below it.
+
+| Field | Default | Effect when positive |
+|-------|---------|----------------------|
+| `maxContextBytes` | 0 (no cap) | Cap the total injected context-file bytes for the dispatch |
+
+### How the budget spends
+
+Files are admitted **whole**, in walk order — nearest-first: the child's cwd,
+then its ancestors, then the home roots. Each file that still fits is included;
+each file that does not is skipped **entirely** and logged by name, and the
+walk continues, so one large outer file does not starve a smaller one behind
+it.
+
+A file is never cut mid-content. Half an AGENTS.md is worse than no AGENTS.md:
+the agent cannot tell which rules it did not receive, so it proceeds with
+confident partial knowledge. Dropping the file whole is the honest failure.
+
 ## Child project layer
 
 The project walk is rooted at the **child's** `projectPath`, not the parent's.
@@ -68,10 +89,15 @@ on the dispatch to prevent engine injection so you have full control.
 
 ## Token cost note
 
-Dispatches carry the full context tree by default. Extensions that fan out
-heavily should use `setDispatchContextDefaults` or per-dispatch `contextPolicy`
-to trim context layers when the grounding content is redundant for a specific
-dispatch category.
+Dispatches carry the full context tree by default, and injection repeats the
+full file content on **every** dispatch, ahead of the task text, whether or not
+the child goes on to do any work. A large global instruction file is therefore a
+recurring per-dispatch cost, multiplied across a fan-out.
+
+Extensions that fan out heavily have two controls. Use `setDispatchContextDefaults`
+or a per-dispatch `contextPolicy` to switch off a whole layer when its grounding
+is redundant for a dispatch category, and set `maxContextBytes` to bound what the
+remaining layers may spend when the layers themselves are still wanted.
 
 ## engine.json example
 
@@ -79,7 +105,8 @@ dispatch category.
 {
   "dispatchContext": {
     "includeGlobalContext": true,
-    "includeProjectContext": true
+    "includeProjectContext": true,
+    "maxContextBytes": 120000
   }
 }
 ```

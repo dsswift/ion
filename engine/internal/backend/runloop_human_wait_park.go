@@ -92,7 +92,7 @@ func (b *ApiBackend) refuseSiblingsOfHumanWait(
 	parkIdx := -1
 	if run.cfg != nil && len(run.cfg.HumanWaitClientTools) > 0 {
 		for i, block := range toolUseBlocks {
-			if run.cfg.HumanWaitClientTools[block.Name] {
+			if run.cfg.HumanWaitClientTools[block.Name] && clientToolCallIsValid(run, block) {
 				parkIdx = i
 				break
 			}
@@ -102,6 +102,12 @@ func (b *ApiBackend) refuseSiblingsOfHumanWait(
 		siblings := make([]string, 0, len(toolUseBlocks)-1)
 		for i, block := range toolUseBlocks {
 			if i == parkIdx {
+				continue
+			}
+			// An invalid client-tool call keeps its own error result. It is not
+			// converted into a sibling refusal merely because another valid
+			// human-wait call parks this turn.
+			if b.validateClientToolCall(run, block, results, i) {
 				continue
 			}
 			siblings = append(siblings, block.Name)

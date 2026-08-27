@@ -122,6 +122,11 @@ type ClientCommand struct {
 	// provider's configured default audience.
 	OidcAudience string `json:"oidcAudience,omitempty"`
 
+	// oidc_token: bypass a fresh cached or base-grant access token and use
+	// the provider refresh grant. Providers without the optional refresh
+	// capability retain their normal token behavior.
+	OidcForceRefresh bool `json:"oidcForceRefresh,omitempty"`
+
 	// mcp_add / mcp_remove / mcp_login / mcp_logout: which configured MCP
 	// server the command applies to. Matches the key under engine.json's
 	// mcpServers map.
@@ -307,6 +312,15 @@ type ClientCommand struct {
 	// absent (the default) the engine's legacy fire-and-forget semantics apply.
 	// Additive optional field -- non-breaking.
 	DeliveryId string `json:"deliveryId,omitempty"`
+
+	// send_prompt: optional user-facing text for a structured client surface.
+	// Text remains the provider-visible prompt. When DisplayText is non-empty,
+	// the engine persists it as the transcript content and keeps Text in
+	// MessageData.LlmContent for context reconstruction. This is the generic
+	// display-vs-model split already used by resolved slash commands, exposed to
+	// clients that render forms or other structured input. Empty preserves the
+	// historical byte-for-byte behavior.
+	DisplayText string `json:"displayText,omitempty"`
 
 	// send_prompt: how this turn was authored, as a types.InjectionKind wire
 	// value ("structured_answer", "agent_completion", "revive", ...).

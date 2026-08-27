@@ -465,9 +465,9 @@ extension RemoteEvent {
             try container.encodeIfPresent(exportFormat, forKey: .exportFormat)
             return true
 
-        case .engineResourceSnapshot(let tabId, let instanceId, let resourceKind, let resourceSubId, let resourceItems):
+        case .engineResourceSnapshot(let tabId, let instanceId, let resourceKind, let resourceSubId, let resourceItems, let resourceProducers):
             // Handled by NormalizedEvent+Resource.swift.
-            _ = tabId; _ = instanceId; _ = resourceKind; _ = resourceSubId; _ = resourceItems
+            _ = tabId; _ = instanceId; _ = resourceKind; _ = resourceSubId; _ = resourceItems; _ = resourceProducers
             return false
 
         case .engineResourceDelta(let tabId, let instanceId, let resourceKind, let resourceSubId, let resourceDelta):

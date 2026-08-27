@@ -32,8 +32,9 @@ type effectiveEarlyStopConfig struct {
 //  1. Built-in defaults from types.EarlyStopDefaults()
 //  2. engine.json values (RunConfig.EarlyStopContinue)
 //  3. RunOptions fields (per-run overrides)
-//  4. Sub-agent gate: if opts.IsSubagent and EarlyStopEnabled is nil/false,
-//     force disabled. The harness can still force-on via &true.
+//  4. Sub-agent gate: if opts.IsSubagent, the gate applies unless
+//     engine.json opted sub-agents in via EarlyStopContinue.SubagentEnabled.
+//     The harness can still force-on per run via EarlyStopEnabled.
 //
 // The function never mutates its inputs; it returns a fresh snapshot.
 // Logging happens at the call site (runLoop) so this stays a pure helper.
@@ -100,11 +101,28 @@ func mergeEarlyStopConfig(opts types.RunOptions, cfg *RunConfig) effectiveEarlyS
 		out.source = "runOptions"
 	}
 
-	// Sub-agent gate: default off unless the harness explicitly forced on.
+	// Sub-agent gate: default off unless the harness explicitly forced on
+	// per-run, or engine.json opted sub-agents in via SubagentEnabled.
+	//
+	// subagentOptIn is read from the engine.json layer rather than the merged
+	// snapshot because it is a scope selector ("does this tier of run
+	// participate at all"), not a tunable like budget or threshold.
 	if opts.IsSubagent && (opts.EarlyStopEnabled == nil || !*opts.EarlyStopEnabled) {
-		out.enabled = false
-		if opts.EarlyStopEnabled == nil {
-			out.source = "subagentDefault"
+		subagentOptIn := false
+		if cfg != nil && cfg.EarlyStopContinue != nil && cfg.EarlyStopContinue.SubagentEnabled != nil {
+			subagentOptIn = *cfg.EarlyStopContinue.SubagentEnabled
+		}
+		if !subagentOptIn {
+			out.enabled = false
+			if opts.EarlyStopEnabled == nil {
+				out.source = "subagentDefault"
+			}
+		} else if opts.EarlyStopEnabled == nil {
+			// Sub-agents were opted in by config. The enabled value already
+			// carries whatever the defaults/engine.json layers resolved to;
+			// record that the sub-agent scope decision came from config so the
+			// log distinguishes it from the historic hard block.
+			out.source = "subagentConfig"
 		}
 	}
 

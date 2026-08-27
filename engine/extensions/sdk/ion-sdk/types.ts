@@ -48,6 +48,35 @@ export interface DispatchAgentOpts {
    * dispatched agent budgets per-call without touching global engine config.
    */
   maxTurns?: number
+  /**
+   * Overrides the engine-config dispatch-depth cap for this dispatch tree.
+   * When > 0, the child and its descendants use this cap instead of the
+   * global config value; omit or pass <= 0 to use the engine default. Lets a
+   * caller grant one dispatch tree more (or fewer) nesting levels without
+   * changing the engine-wide cap.
+   */
+  maxDispatchDepth?: number
+  /**
+   * Declares whether this dispatch is expected to produce work — that is, to
+   * call at least one tool. Tri-state:
+   *
+   * - `undefined` — no expectation declared. The engine reports
+   *   {@link DispatchAgentResult.toolCount} and never judges it. This is the
+   *   default, so existing callers keep today's behavior exactly.
+   * - `true` — a completion with zero tool calls is not success. The engine
+   *   gives the child ONE continuation naming the expectation; if the second
+   *   attempt also calls no tools the dispatch reports exit code 3 (declined)
+   *   and its delivered status is `declined`, distinct from both `completed`
+   *   and `failed`.
+   * - `false` — explicitly exempt. Analysis, summarization, and advisory
+   *   dispatches legitimately produce text and call nothing.
+   *
+   * Declare this on execution dispatches (implement, edit, fix, refactor) and
+   * leave it unset on planning, review, and summarization dispatches. The
+   * engine never infers the expectation from task text: only the caller knows
+   * which kind of dispatch it issued.
+   */
+  requireToolUse?: boolean
   onEvent?: (event: EngineEvent) => void
 
   // --- Async dispatch ---
@@ -269,6 +298,18 @@ export interface ContextPolicy {
   includeProjectContext?: boolean
   /** Override ClaudeCompat for this walk. Default: inherit from engine. */
   claudeCompat?: boolean
+  /**
+   * Cap total injected context-file bytes for this dispatch. Omit or pass <= 0
+   * for no cap. Files are included WHOLE, nearest-first (cwd, then ancestors,
+   * then home roots), until the budget is spent; the remainder are skipped and
+   * each is logged by name. A file is never truncated mid-content.
+   *
+   * Context injection repeats full file content on every dispatch, so a large
+   * global instruction file is a recurring per-dispatch cost paid before the
+   * task text. Set this on fan-out dispatches where the child only needs its
+   * own repo's guidance.
+   */
+  maxContextBytes?: number
 }
 
 /** A single context file discovered during a walk. */
@@ -295,6 +336,29 @@ export interface DispatchAgentResult {
   cost: number
   inputTokens: number
   outputTokens: number
+  /**
+   * Number of tool calls the child made across its whole run (every LLM turn,
+   * including suspend/revive iterations and any work-gate continuation).
+   * Always reported, whether or not {@link DispatchAgentOpts.requireToolUse}
+   * was declared: it is an observed fact about the run, not a verdict.
+   *
+   * A `0` here on an `exitCode: 0` dispatch is the signature of a child that
+   * answered instead of working — it read the task, described the work, and
+   * ended its turn. Prefer this over reconstructing a count from local
+   * lifecycle-callback state: this is the engine's own count.
+   */
+  toolCount: number
+  /**
+   * Estimated reasoning-token count for the dispatch — a subset of
+   * `outputTokens` that providers fold into the output usage. Zero when the
+   * model produced no extended thinking. Lets cost and audit consumers
+   * separate reasoning spend from user-facing output.
+   */
+  thinkingTokens?: number
+  /** Tokens served from the provider's prompt cache across the child's run. */
+  cacheReadInputTokens?: number
+  /** Tokens written into the provider's prompt cache across the child's run. */
+  cacheCreationInputTokens?: number
   /** SDK-generated identifier for routing pre-stub callbacks. Internal to extension-host RPC. */
   callbackId?: string
   /** True when engine refused to launch child at dispatch-depth cap. */
@@ -304,6 +368,18 @@ export interface DispatchAgentResult {
   /** Engine-assigned unique identifier for this dispatch instance. Collision-safe. */
   dispatchId?: string
   sessionId?: string
+  /**
+   * Dispatch depth of this agent in the dispatch tree. The orchestrator runs
+   * at depth 0, its direct dispatches at depth 1, their dispatches at depth 2.
+   * Set by the engine, never by the caller.
+   */
+  depth?: number
+  /**
+   * The dispatchId of the parent dispatch that spawned this agent. Empty for
+   * a top-level dispatch, whose parent is the orchestrator at depth 0.
+   * Consumers reconstruct the dispatch tree from this.
+   */
+  parentDispatchId?: string
   /**
    * The absolute path of the plan file written by the child session. Non-empty
    * only when the child was in plan mode and wrote a plan (regardless of whether

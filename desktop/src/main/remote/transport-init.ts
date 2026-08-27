@@ -25,6 +25,7 @@ import {
   scheduleTokenRefresh as scheduleTokenRefreshImpl,
   type TokenRefreshDeps,
 } from './token-refresh'
+import { RelayCredentialSource } from './relay-credential-source'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -46,6 +47,8 @@ function error(msg: string, fields?: Record<string, unknown>): void {
  * The scheduler itself lives in token-refresh.ts, which documents the spin-loop
  * defect it bounds. This module supplies the real world it acts on.
  */
+let activeCredentialSource: RelayCredentialSource | null = null
+
 const tokenRefreshDeps: TokenRefreshDeps = {
   requestToken: (oidcScope) =>
     engineBridge.request<{ accessToken?: string; expiresAt?: number }>('oidc_token', { oidcScope }),
@@ -73,18 +76,31 @@ function scheduleTokenRefresh(oidcScope: string, expiresAtMs: number): void {
  * Also schedules a proactive token refresh so iOS receives fresh credentials
  * before expiry.
  */
+function buildCredentialSource(oidcScope: string): RelayCredentialSource {
+  if (activeCredentialSource !== null) return activeCredentialSource
+
+  activeCredentialSource = new RelayCredentialSource(
+    oidcScope,
+    (scope, forceRefresh) => engineBridge.request<{ accessToken?: string; expiresAt?: number }>(
+      'oidc_token',
+      { oidcScope: scope, oidcForceRefresh: forceRefresh || undefined },
+    ),
+    (expiresAt) => {
+      if (expiresAt === undefined) {
+        warn('remote_transport: OIDC token returned without expiry; refresh not armed', { scope: oidcScope })
+        return
+      }
+      scheduleTokenRefresh(oidcScope, expiresAt)
+    },
+    warn,
+  )
+  return activeCredentialSource
+}
+
+/** Build an OIDC credential factory backed by a shared relay credential source. */
 function buildGetCredential(oidcScope: string): () => Promise<string> {
-  return async () => {
-    const result = await engineBridge.request<{ accessToken?: string; expiresAt?: number }>('oidc_token', { oidcScope })
-    if (!result.ok || !result.data?.accessToken) {
-      throw new Error(result.error ?? 'oidc_token: no token returned')
-    }
-    const expiresAt = result.data.expiresAt ?? (Date.now() + 60 * 60 * 1000)
-    // Schedule proactive refresh each time we mint a credential (idempotent:
-    // rescheduling replaces the previous timer so it never double-fires).
-    scheduleTokenRefresh(oidcScope, expiresAt)
-    return result.data.accessToken
-  }
+  const source = buildCredentialSource(oidcScope)
+  return () => source.getCredential()
 }
 
 // ---------------------------------------------------------------------------
@@ -96,6 +112,7 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
 
   if (state.remoteTransport) {
     clearTokenRefreshTimer()
+    activeCredentialSource = null
     clearResolvedRelayAuth()
     stopTabSnapshotPolling()
     stopGitWatcherBridge()
@@ -148,10 +165,12 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
 
   // Build credential factory when in OIDC mode.
   let getCredential: (() => Promise<string>) | undefined
+  let credentialSource: RelayCredentialSource | undefined
   if (authMode === 'oidc' && oidcAudience && oidcRequiredScope) {
     const scope = composeOidcScope(oidcAudience, oidcRequiredScope)
     log('remote_transport: using OIDC credential provider', { scope })
-    getCredential = buildGetCredential(scope)
+    credentialSource = buildCredentialSource(scope)
+    getCredential = () => credentialSource!.getCredential()
     // Record what the transport actually resolved so the iOS push doesn't
     // depend on settings.json still holding these keys when it fires.
     setResolvedRelayAuth({
@@ -166,6 +185,7 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
     relayUrl,
     relayApiKey,
     getCredential,
+    requestCredentialRefresh: () => credentialSource?.requestForcedRefresh(),
     lanPort: (settings.lanServerPort as number) || 19837,
     getPairedDevice: (deviceId: string) => {
       try {
@@ -201,7 +221,8 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
       if (probed?.oidc && state.remoteTransport) {
         const scope = composeOidcScope(probed.audience, probed.requiredScope)
         log('remote_transport: relay requires OIDC, upgrading credential provider in-place', { issuer: probed.issuer, audience: probed.audience, scope })
-        const credential = buildGetCredential(scope)
+        credentialSource = buildCredentialSource(scope)
+        const credential = () => credentialSource!.getCredential()
         // Record the probe's resolution before the hot-swap: peer-connect can
         // fire at any moment after this and must see OIDC, not the stale
         // stored mode.
@@ -290,7 +311,7 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
           preferredModel: peerSettings.preferredModel || undefined,
           engineDefaultModel: peerSettings.engineDefaultModel || undefined,
           availableModels: modelCache.models.length > 0 ? modelCache.models : undefined,
-          resources: Object.keys(resourceManifest).length > 0 ? resourceManifest : undefined,
+          resources: resourceManifest,
         })
         // Relay config for iOS. The single push path resolves the auth mode
         // from the transport's own resolution (falling back to settings),

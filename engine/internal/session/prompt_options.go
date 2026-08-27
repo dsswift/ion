@@ -291,6 +291,9 @@ func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) 
 		if overrides.CompactMemoryEnabled != nil {
 			opts.CompactMemoryEnabled = overrides.CompactMemoryEnabled
 		}
+		if overrides.DisplayText != "" {
+			opts.DisplayPrompt = overrides.DisplayText
+		}
 		// Thread the injection kind onto RunOptions so appendInboundUserMessage
 		// can stamp it on the persisted conversation entry, enabling consumers
 		// to classify the turn on historical reload.

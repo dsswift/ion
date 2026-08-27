@@ -215,7 +215,7 @@ func (m *Manager) dispatchRecoveredRun(source *engineSession, key, conversationI
 			overrides = &PromptOverrides{}
 		}
 	}
-	overrides.InjectionKind, overrides.ResolveSlash = string(types.InjectionKindRunRecovery), false
+	overrides.InjectionKind, overrides.ResolveSlash, overrides.DisplayText = string(types.InjectionKindRunRecovery), false, ""
 	if err := m.SendPrompt(key, instruction, overrides); err != nil {
 		if m.clearRecoveredRun(source, key, conversationID, journal.RecoveryID, "continuation_dispatch_failed") {
 			m.emitRunRecovery(key, journal.RecoveryID, "failed", journal.AttemptCount, maxAttempts, err.Error())

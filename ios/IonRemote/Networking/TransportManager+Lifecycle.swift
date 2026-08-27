@@ -76,6 +76,7 @@ extension TransportManager {
         disconnectGraceTask = nil
         resendCoalesceTask?.cancel()
         resendCoalesceTask = nil
+        payloadChunkAssembler.reset()
         stopLANHeartbeatWatchdog()
 
         relay?.disconnect()
@@ -86,5 +87,20 @@ extension TransportManager {
         currentLANHost = nil
         setState(.disconnected)
         DiagnosticLog.log("transport stop completed", tag: "transport", fields: [:])
+    }
+
+    /// Drop incomplete payload state and ask the desktop for an authoritative
+    /// snapshot after corruption or an unavailable resend range.
+    func requestFullSyncAfterPayloadFailure() {
+        payloadChunkAssembler.reset()
+        Task { [weak self] in
+            do {
+                try await self?.send(.sync)
+            } catch {
+                DiagnosticLog.log("self-heal resync send failed", tag: "transport.receive", level: .warn, fields: [
+                    "error": String(describing: error),
+                ])
+            }
+        }
     }
 }

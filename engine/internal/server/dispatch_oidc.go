@@ -227,7 +227,14 @@ func (s *Server) dispatchOidcToken(conn net.Conn, cmd *protocol.ClientCommand) {
 	var token string
 	var expiresAt time.Time
 	var err error
-	if expiring, ok := provider.(auth.ExpiringTokenProvider); ok {
+	if cmd.OidcForceRefresh {
+		refreshable, ok := provider.(auth.RefreshableTokenProvider)
+		if !ok {
+			err = fmt.Errorf("identity token provider does not support forced refresh")
+		} else {
+			token, expiresAt, err = refreshable.ForceRefreshTokenWithAudienceExpiry(ctx, cmd.OidcScope, cmd.OidcAudience)
+		}
+	} else if expiring, ok := provider.(auth.ExpiringTokenProvider); ok {
 		token, expiresAt, err = expiring.GetTokenWithAudienceExpiry(ctx, cmd.OidcScope, cmd.OidcAudience)
 	} else {
 		token, err = provider.GetTokenWithAudience(ctx, cmd.OidcScope, cmd.OidcAudience)

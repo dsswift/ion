@@ -141,6 +141,18 @@ describe('scheduleTokenRefresh', () => {
     expect(rotateSockets).not.toHaveBeenCalled()
   })
 
+  it('does not schedule again when the engine omits token expiry', async () => {
+    const { deps, requestToken, rotateSockets } = makeDeps({
+      requestToken: vi.fn().mockResolvedValue({ ok: true, data: { accessToken: 't' } }),
+    })
+    scheduleTokenRefresh('scope', NOW + 5_000, deps)
+
+    await vi.advanceTimersByTimeAsync(TOKEN_REFRESH_MIN_DELAY_MS * 3)
+
+    expect(requestToken).toHaveBeenCalledOnce()
+    expect(rotateSockets).not.toHaveBeenCalled()
+  })
+
   it('replaces the previous timer rather than stacking a second one', async () => {
     const { deps, requestToken } = makeDeps()
     scheduleTokenRefresh('scope', NOW + 5_000, deps)

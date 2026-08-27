@@ -202,7 +202,7 @@ export async function buildSnapshotEvent(): Promise<{ event: Record<string, unkn
     preferredModel: settings.preferredModel || undefined,
     engineDefaultModel: settings.engineDefaultModel || undefined,
     availableModels: modelCache.models.length > 0 ? modelCache.models : undefined,
-    resources: Object.keys(resourceManifest).length > 0 ? resourceManifest : undefined,
+    resources: resourceManifest,
   }
   return { event, tabs }
 }

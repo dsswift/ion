@@ -98,4 +98,7 @@ func TestAgentToolDescriptionSeparatesCreateFromStatus(t *testing.T) {
 	if !strings.Contains(description, "Every call creates a new dispatch") || !strings.Contains(description, AgentStatusToolName) {
 		t.Fatalf("Agent description does not direct status checks away from dispatch: %q", description)
 	}
+	if !strings.Contains(description, "Never use Poll") || !strings.Contains(AgentStatusTool().Description, "Never use Poll") {
+		t.Fatalf("Agent tools do not forbid Poll as a dispatch wait primitive: Agent=%q AgentStatus=%q", description, AgentStatusTool().Description)
+	}
 }

@@ -22,7 +22,7 @@ func (m *Manager) enqueueIfBusy(s *engineSession, key, text string, overrides *P
 	}
 	pp := pendingPrompt{text: text}
 	if overrides != nil {
-		// Value-copy all 19 PromptOverrides fields so every per-prompt flag
+		// Value-copy all PromptOverrides fields so every per-prompt flag
 		// (ResolveSlash, BashAllowlistAdditionsForThisPrompt, PlanFilePath,
 		// CompactEnabled, harness prose, etc.) survives the queue round-trip
 		// intact. The caller may free or reuse its pointer after this returns;

@@ -80,6 +80,7 @@ func registerBuiltinTools() {
 	RegisterTool(WriteTool())
 	RegisterTool(EditTool())
 	RegisterTool(BashTool())
+	RegisterTool(PollTool())
 	RegisterTool(GrepTool())
 	RegisterTool(GlobTool())
 	RegisterTool(AgentTool())

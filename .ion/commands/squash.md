@@ -143,8 +143,13 @@ BRANCH=$(git branch --show-current)
 [ "$BRANCH" != "$BASE" ]
 [ -z "$(git status --porcelain)" ]
 COUNT=$(git rev-list --count "$BASE"..HEAD)
-[ "$COUNT" -gt 1 ]
+[ "$COUNT" -gt 0 ]
 ```
+
+A single source commit is valid input. It can contain multiple resolved scopes or
+carry a tag that does not match its paths, so rebuilding it can still require
+multiple result commits. Only a branch with no commits above the base is a
+no-op.
 
 Otherwise stop with exact reason. Do not alter history.
 
