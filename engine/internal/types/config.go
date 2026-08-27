@@ -343,6 +343,8 @@ type EngineRuntimeConfig struct {
 	// engine.json can omit the block and inherit the compiled defaults. See
 	// types.BackgroundTasksDefaults().
 	BackgroundTasks *BackgroundTasksConfig `json:"backgroundTasks,omitempty"`
+	// Poll configures bounded, inference-driven polling. See types.PollDefaults.
+	Poll *PollConfig `json:"poll,omitempty"`
 	// RunRecovery configures the active-run journal that lets the engine
 	// detect and recover from mid-run crashes. Pointer so engine.json can
 	// omit the block entirely (nil = recovery off, the historical behavior).

@@ -704,6 +704,9 @@ type EngineEvent struct {
 	BackgroundTaskComplete *BackgroundTaskCompletePayload `json:"backgroundTaskComplete,omitempty"`
 	BackgroundTaskStarted  *BackgroundTaskState           `json:"backgroundTaskStarted,omitempty"`
 	BackgroundTaskTerminal *BackgroundTaskTerminalPayload `json:"backgroundTaskTerminal,omitempty"`
+	PollStarted            *PollState                     `json:"pollStarted,omitempty"`
+	PollProgress           *PollProgressPayload           `json:"pollProgress,omitempty"`
+	PollTerminal           *PollTerminalPayload           `json:"pollTerminal,omitempty"`
 	SessionWorkStopped     *SessionWorkStoppedEvent       `json:"sessionWorkStopped,omitempty"`
 
 	// engine_background_work_delivered -- a background completion was durably

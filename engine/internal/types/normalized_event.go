@@ -111,6 +111,12 @@ func (e *NormalizedEvent) UnmarshalJSON(data []byte) error {
 		target = &BackgroundTaskStartedEvent{}
 	case EventBackgroundTaskTerminal:
 		target = &BackgroundTaskTerminalEvent{}
+	case EventPollStarted:
+		target = &PollStartedEvent{}
+	case EventPollProgress:
+		target = &PollProgressEvent{}
+	case EventPollTerminal:
+		target = &PollTerminalEvent{}
 	case EventSessionWorkStopped:
 		target = &SessionWorkStoppedEvent{}
 	case EventBackgroundWorkDelivered:

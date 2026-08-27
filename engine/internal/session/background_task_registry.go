@@ -153,18 +153,25 @@ func (m *Manager) clearOutstandingBackgroundTasks(key string) {
 		return
 	}
 	count := len(s.outstandingBackgroundTasks)
+	pollCount := len(s.activePolls)
 	wasParked := s.parked != nil
 	if s.parked != nil && s.parked.TimeoutTimer != nil {
 		s.parked.TimeoutTimer.Stop()
 	}
 	s.outstandingBackgroundTasks = nil
+	for _, poll := range s.activePolls {
+		if poll.timer != nil {
+			poll.timer.Stop()
+		}
+	}
+	s.activePolls = nil
 	s.parked = nil
 	s.pendingBackgroundCompletions = nil
 	m.mu.Unlock()
 
-	if count > 0 || wasParked {
-		utils.LogWithFields(utils.LevelInfo, "session.bgtask", "outstanding background tasks cleared at session stop", map[string]any{
-			"session_id": key, "count": count, "was_parked": wasParked,
+	if count > 0 || pollCount > 0 || wasParked {
+		utils.LogWithFields(utils.LevelInfo, "session.bgtask", "outstanding background work cleared at session stop", map[string]any{
+			"session_id": key, "shell_count": count, "poll_count": pollCount, "was_parked": wasParked,
 		})
 	} else {
 		utils.LogWithFields(utils.LevelDebug, "session.bgtask", "no outstanding background tasks to clear at session stop", map[string]any{

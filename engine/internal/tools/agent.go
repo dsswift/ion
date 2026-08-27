@@ -80,7 +80,7 @@ func AgentSpawnerFromContext(ctx context.Context) AgentSpawner {
 func AgentTool() *types.ToolDef {
 	return &types.ToolDef{
 		Name:        AgentToolName,
-		Description: "Dispatch a new child agent asynchronously. Every call creates a new dispatch; use AgentStatus to inspect dispatches that already exist. The call returns its dispatch ID immediately, and the engine delivers the terminal result back to this conversation. Set wait_for_completion only when this turn must block for the final output.",
+		Description: "Dispatch a new child agent asynchronously. Every call creates a new dispatch; use AgentStatus to inspect dispatches that already exist. The call returns its dispatch ID immediately, and the engine delivers the terminal result back to this conversation. Never use Poll to wait for an agent or dispatch. Set wait_for_completion only when this turn must block for the final output.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

@@ -251,6 +251,7 @@ func startBackgroundBashTask(ctx context.Context, ops BackgroundBashOperations, 
 			notifyTaskCompletion(completion)
 		}
 		notifyBackgroundTaskLifecycle(completion, true)
+		pruneFinishedBackgroundTasks(owner)
 	}()
 
 	return info, nil

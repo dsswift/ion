@@ -383,13 +383,15 @@ func TestMergeConfigs_OptionalPointerBlocksSurvive(t *testing.T) {
 	base := DefaultConfig()
 	enabled := true
 	overlay := &types.EngineRuntimeConfig{
-		Security:       &types.SecurityConfig{RedactSecrets: true},
-		FeatureFlags:   &types.FeatureFlagsConfig{Source: "static"},
-		Relay:          &types.RelayConfig{URL: "wss://relay.example", ChannelID: "abc"},
-		WebSearch:      &types.WebSearchConfig{Mode: "server"},
-		Webhooks:       &types.WebhooksConfig{Enabled: &enabled},
-		Scheduling:     &types.SchedulingConfig{DefaultTz: "America/Chicago"},
-		ThinkingPolicy: &types.ThinkingPolicyConfig{Disabled: true},
+		Security:        &types.SecurityConfig{RedactSecrets: true},
+		FeatureFlags:    &types.FeatureFlagsConfig{Source: "static"},
+		Relay:           &types.RelayConfig{URL: "wss://relay.example", ChannelID: "abc"},
+		WebSearch:       &types.WebSearchConfig{Mode: "server"},
+		Webhooks:        &types.WebhooksConfig{Enabled: &enabled},
+		Scheduling:      &types.SchedulingConfig{DefaultTz: "America/Chicago"},
+		BackgroundTasks: &types.BackgroundTasksConfig{MaxOutstandingPerSession: 9},
+		Poll:            &types.PollConfig{MaxAttempts: 2},
+		ThinkingPolicy:  &types.ThinkingPolicyConfig{Disabled: true},
 	}
 	result := MergeConfigs(nil, base, overlay)
 
@@ -410,6 +412,12 @@ func TestMergeConfigs_OptionalPointerBlocksSurvive(t *testing.T) {
 	}
 	if result.Scheduling == nil || result.Scheduling.DefaultTz != "America/Chicago" {
 		t.Error("Scheduling block dropped by merge")
+	}
+	if result.BackgroundTasks == nil || result.BackgroundTasks.MaxOutstandingPerSession != 9 {
+		t.Error("BackgroundTasks block dropped by merge")
+	}
+	if result.Poll == nil || result.Poll.MaxAttempts != 2 {
+		t.Error("Poll block dropped by merge")
 	}
 	if result.ThinkingPolicy == nil || !result.ThinkingPolicy.Disabled {
 		t.Error("ThinkingPolicy block dropped by merge")
@@ -435,6 +443,9 @@ func TestMergeConfigs_WebhooksScheduling_FromRawJSON(t *testing.T) {
 		"scheduling": map[string]any{
 			"defaultTz": "America/Chicago",
 		},
+		"poll": map[string]any{
+			"maxAttempts": 2,
+		},
 	})
 	if global == nil {
 		t.Fatal("fromMap returned nil for a non-empty engine.json map")
@@ -456,6 +467,9 @@ func TestMergeConfigs_WebhooksScheduling_FromRawJSON(t *testing.T) {
 	}
 	if merged.Scheduling.DefaultTz != "America/Chicago" {
 		t.Errorf("Scheduling.DefaultTz = %q, want \"America/Chicago\"", merged.Scheduling.DefaultTz)
+	}
+	if merged.Poll == nil || merged.Poll.MaxAttempts != 2 {
+		t.Errorf("Poll.MaxAttempts = %#v, want 2", merged.Poll)
 	}
 }
 

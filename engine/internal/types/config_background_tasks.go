@@ -48,6 +48,11 @@ type BackgroundTasksConfig struct {
 	// exit still notifies normally. Zero or negative means the compiled
 	// default.
 	ParkTimeoutMs int `json:"parkTimeoutMs,omitempty"`
+
+	// MaxRetainedFinishedTasksPerSession limits terminal Bash task records and
+	// their output files. The newest records survive so a delivered completion
+	// can still name an output path for a later explicit read.
+	MaxRetainedFinishedTasksPerSession int `json:"maxRetainedFinishedTasksPerSession,omitempty"`
 }
 
 // Background-task delivery modes. Values for BackgroundTasksConfig.Delivery.
@@ -68,17 +73,19 @@ const (
 // it, short enough that a wedged command does not strand a session for a whole
 // working day.
 const (
-	defaultMaxOutstandingPerSession = 32
-	defaultParkTimeoutMs            = 30 * 60 * 1000
+	defaultMaxOutstandingPerSession           = 32
+	defaultParkTimeoutMs                      = 30 * 60 * 1000
+	defaultMaxRetainedFinishedTasksPerSession = 32
 )
 
 // BackgroundTasksDefaults returns the compiled default configuration, used
 // when engine.json omits the backgroundTasks block entirely.
 func BackgroundTasksDefaults() BackgroundTasksConfig {
 	return BackgroundTasksConfig{
-		Delivery:                 BackgroundDeliveryWake,
-		MaxOutstandingPerSession: defaultMaxOutstandingPerSession,
-		ParkTimeoutMs:            defaultParkTimeoutMs,
+		Delivery:                           BackgroundDeliveryWake,
+		MaxOutstandingPerSession:           defaultMaxOutstandingPerSession,
+		ParkTimeoutMs:                      defaultParkTimeoutMs,
+		MaxRetainedFinishedTasksPerSession: defaultMaxRetainedFinishedTasksPerSession,
 	}
 }
 
@@ -99,6 +106,9 @@ func (c *BackgroundTasksConfig) Resolved() BackgroundTasksConfig {
 	}
 	if c.ParkTimeoutMs > 0 {
 		out.ParkTimeoutMs = c.ParkTimeoutMs
+	}
+	if c.MaxRetainedFinishedTasksPerSession > 0 {
+		out.MaxRetainedFinishedTasksPerSession = c.MaxRetainedFinishedTasksPerSession
 	}
 	return out
 }

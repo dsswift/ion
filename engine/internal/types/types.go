@@ -307,6 +307,10 @@ type StatusFields struct {
 	// tasks that do not notify on completion, so clients can render and stop
 	// every active process and reconcile after reconnect.
 	ActiveBackgroundTasks []BackgroundTaskState `json:"activeBackgroundTasks,omitempty"`
+	// ActivePolls is the complete snapshot of every session-owned Poll.
+	ActivePolls []PollState `json:"activePolls,omitempty"`
+	// PollsWaiting is the count of polls holding the session open.
+	PollsWaiting int `json:"pollsWaiting,omitempty"`
 	// HasPendingWork is true when the engine has accepted work that prevents a
 	// session from being terminal, even if the foreground orchestrator is idle.
 	// It includes live dispatches, notifying shells, queued prompts, durable

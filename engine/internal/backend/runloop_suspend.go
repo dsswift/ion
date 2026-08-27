@@ -17,6 +17,8 @@ type suspendSignal struct {
 	// the extension RPC. Carried on the same signal type because both express
 	// "this run ended without completing, and something will revive it."
 	AwaitingTaskIDs []string
+	// AwaitingPollIDs lists inference-driven polls holding a root session open.
+	AwaitingPollIDs []string
 }
 
 // drainSuspend performs a non-blocking check of the run's suspendCh. When a
@@ -54,10 +56,12 @@ func (b *ApiBackend) drainSuspend(run *activeRun, conv *conversation.Conversatio
 			"run_id":                run.requestID,
 			"awaiting_dispatch_ids": sig.AwaitingDispatchIDs,
 			"awaiting_task_ids":     sig.AwaitingTaskIDs,
+			"awaiting_poll_ids":     sig.AwaitingPollIDs,
 		})
 		b.emit(run, types.NormalizedEvent{Data: &types.TaskSuspendEvent{
 			AwaitingDispatchIDs: sig.AwaitingDispatchIDs,
 			AwaitingTaskIDs:     sig.AwaitingTaskIDs,
+			AwaitingPollIDs:     sig.AwaitingPollIDs,
 		}})
 		b.emitExit(run.requestID, intPtr(0), strPtr("suspended"), conv.ID)
 		return true, sig
@@ -94,7 +98,7 @@ func (b *ApiBackend) drainSuspend(run *activeRun, conv *conversation.Conversatio
 // reason — a dispatched child's runChild goroutine waits on the child
 // backend's OnExit, and a root ParkSelfMainLoop park needs handleRunExit —
 // while the signal string lets exit consumers tell a park from a completion.
-func (b *ApiBackend) parkForBackgroundTasks(run *activeRun, conv *conversation.Conversation, taskIDs []string) {
+func (b *ApiBackend) parkForBackgroundTasks(run *activeRun, conv *conversation.Conversation, taskIDs, pollIDs []string) {
 	// Persist first: the woken run reloads the conversation from disk, so an
 	// unsaved final turn would be lost across the park.
 	if err := conversation.Save(conv, ""); err != nil {
@@ -105,11 +109,13 @@ func (b *ApiBackend) parkForBackgroundTasks(run *activeRun, conv *conversation.C
 	}
 	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "parking run: background commands still outstanding", map[string]any{
 		"run_id":   run.requestID,
-		"count":    len(taskIDs),
+		"count":    len(taskIDs) + len(pollIDs),
 		"task_ids": taskIDs,
+		"poll_ids": pollIDs,
 	})
 	b.emit(run, types.NormalizedEvent{Data: &types.TaskSuspendEvent{
 		AwaitingTaskIDs: taskIDs,
+		AwaitingPollIDs: pollIDs,
 	}})
 	// Terminal bookkeeping, ordered AFTER the suspend event so the session
 	// records the park before it processes the exit.
@@ -125,6 +131,13 @@ func (b *ApiBackend) outstandingBackgroundTaskIDs(run *activeRun) []string {
 		return nil
 	}
 	return run.cfg.OutstandingBackgroundTasks()
+}
+
+func (b *ApiBackend) outstandingPollIDs(run *activeRun) []string {
+	if run.cfg == nil || run.cfg.OutstandingPolls == nil {
+		return nil
+	}
+	return run.cfg.OutstandingPolls()
 }
 
 // outstandingChildDispatchIDs reads the run's live outstanding child

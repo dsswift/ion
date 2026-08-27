@@ -411,12 +411,19 @@ type RunConfig struct {
 	// work (the pre-existing behavior).
 	OutstandingBackgroundTasks func() []string
 
+	// OutstandingPolls reports session-owned Poll IDs that still hold work open.
+	OutstandingPolls func() []string
+
 	// RegisterOutstandingBackgroundTask adds a task to the session's
 	// outstanding set. Stamped onto tool contexts so the Bash tool can
 	// register a notify_on_complete task with the owning session. Nil means
 	// notify_on_complete tasks still run and still emit their completion
 	// event, but nothing holds the session for them.
 	RegisterOutstandingBackgroundTask func(taskID, command string)
+
+	// PollStarter starts a session-owned inference-driven poll for the Poll tool.
+	// Nil keeps Poll unavailable in runs without session orchestration.
+	PollStarter tools.PollStarter
 
 	// OutstandingChildDispatches reports the run's live child dispatches
 	// (background agents this run dispatched that are still running) at the

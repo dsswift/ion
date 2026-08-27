@@ -161,7 +161,7 @@ func TestBackgroundNotifier_StoppedViaTaskStop(t *testing.T) {
 	clearBashTasks(t)
 	rec := installRecorder(t)
 
-	taskID := startNotifyingTask(t, "sleep 30")
+	taskID := startNotifyingTask(t, `sh -c "sleep 30"`)
 
 	res, err := executeTaskStop(context.Background(), map[string]any{"taskId": taskID}, "")
 	if err != nil {
@@ -186,7 +186,7 @@ func TestBackgroundNotifier_StoppedViaOwnerCleanup(t *testing.T) {
 	clearBashTasks(t)
 	rec := installRecorder(t)
 
-	taskID := startNotifyingTask(t, "sleep 30")
+	taskID := startNotifyingTask(t, `sh -c "sleep 30"`)
 	StopBackgroundTasksForOwner("sess-notify")
 
 	c := rec.waitFor(t, 1, 5*time.Second)[0]
@@ -205,7 +205,7 @@ func TestBackgroundNotifier_StopNotifiesExactlyOnce(t *testing.T) {
 	clearBashTasks(t)
 	rec := installRecorder(t)
 
-	taskID := startNotifyingTask(t, "sleep 30")
+	taskID := startNotifyingTask(t, `sh -c "sleep 30"`)
 	StopBackgroundTasksForOwner("sess-notify")
 	rec.waitFor(t, 1, 5*time.Second)
 

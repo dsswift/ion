@@ -44,7 +44,7 @@ func startDetachedCommand(t *testing.T, key string) string {
 		t.Fatal("Bash tool is not registered")
 	}
 	result, err := bash.Execute(ctx, map[string]any{
-		"command":           "sleep 30",
+		"command":           `sh -c "sleep 30"`,
 		"run_in_background": true,
 	}, t.TempDir())
 	if err != nil {

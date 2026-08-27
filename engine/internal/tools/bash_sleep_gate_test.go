@@ -166,7 +166,7 @@ func TestBashSleepGate_BlockedCommandNeverExecutes(t *testing.T) {
 	if ops.callCount() != 0 {
 		t.Fatalf("backend was invoked %d times for a blocked command; want 0", ops.callCount())
 	}
-	for _, want := range []string{"run_in_background", "notify_on_complete", "sleep 600", "only remaining work", "end your turn"} {
+	for _, want := range []string{"run_in_background", "notify_on_complete", "sleep 600", "Poll"} {
 		if !strings.Contains(result.Content, want) {
 			t.Errorf("refusal message missing %q; got %q", want, result.Content)
 		}
@@ -233,9 +233,9 @@ func TestBashSleepGate_ConfiguredThresholdHonored(t *testing.T) {
 	}
 }
 
-// TestBashSleepGate_SkippedForBackground pins that a detached sleep is never
-// gated — it blocks nothing, so refusing it would be pure friction.
-func TestBashSleepGate_SkippedForBackground(t *testing.T) {
+// TestBashSleepGate_RefusesBareBackgroundSleep pins that a bare background
+// sleep cannot become a self-addressed wake loop.
+func TestBashSleepGate_RefusesBareBackgroundSleep(t *testing.T) {
 	clearBashTasks(t)
 
 	result, err := ExecuteTool(context.Background(), "Bash", map[string]any{
@@ -245,11 +245,11 @@ func TestBashSleepGate_SkippedForBackground(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExecuteTool: %v", err)
 	}
-	if result.IsError {
-		t.Fatalf("background sleep was refused: %q", result.Content)
+	if !result.IsError {
+		t.Fatalf("bare background sleep was allowed: %q", result.Content)
 	}
-	if !strings.Contains(result.Content, "Background task started:") {
-		t.Errorf("expected a background task result; got %q", result.Content)
+	if !strings.Contains(result.Content, "Poll") {
+		t.Errorf("background refusal does not name Poll: %q", result.Content)
 	}
 }
 
@@ -257,11 +257,11 @@ func TestBashSleepGate_SkippedForBackground(t *testing.T) {
 // points at TaskGet only when the Task tools are actually registered (they are
 // harness opt-in — see optional.go).
 func TestBlockingSleepMessage_NamesReachableProgressPath(t *testing.T) {
-	withTasks := blockingSleepMessage(600, 2*time.Second, true)
+	withTasks := blockingSleepMessage(600, 2*time.Second, false, true)
 	if !strings.Contains(withTasks, "TaskGet") {
 		t.Errorf("message with Task tools registered omits TaskGet: %q", withTasks)
 	}
-	withoutTasks := blockingSleepMessage(600, 2*time.Second, false)
+	withoutTasks := blockingSleepMessage(600, 2*time.Second, false, false)
 	if strings.Contains(withoutTasks, "TaskGet") {
 		t.Errorf("message names TaskGet when the tool is not registered: %q", withoutTasks)
 	}

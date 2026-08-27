@@ -59,7 +59,7 @@ func AgentStatusTool() *types.ToolDef {
 	return &types.ToolDef{
 		Name: AgentStatusToolName,
 		Description: "Inspect agent dispatches that already exist. This read-only call never creates, steers, stops, or waits for an agent. " +
-			"Omit dispatch_id to list all active dispatches; provide an exact dispatch ID to inspect one. Completed agents are delivered automatically and no longer appear here.",
+			"Omit dispatch_id to list all active dispatches; provide an exact dispatch ID to inspect one. Completed agents are delivered automatically and no longer appear here. Never use Poll to wait for Agent or dispatch completion.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

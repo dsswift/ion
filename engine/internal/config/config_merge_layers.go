@@ -180,6 +180,17 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 	if src.Scheduling != nil {
 		dst.Scheduling = src.Scheduling
 	}
+	// Background task and Poll policy blocks are engine-owned operational
+	// configuration. A more-specific layer replaces the complete policy block,
+	// matching other bounded runtime mechanisms above. Without this carry,
+	// project and managed defaults decode successfully then silently disappear
+	// before the session builds its RunConfig.
+	if src.BackgroundTasks != nil {
+		dst.BackgroundTasks = src.BackgroundTasks
+	}
+	if src.Poll != nil {
+		dst.Poll = src.Poll
+	}
 
 	// LogLevel: project-level overrides global
 	if src.LogLevel != "" {

@@ -495,6 +495,11 @@ type engineSession struct {
 	// background_task_wake.go for the park/wake cycle that consumes it.
 	outstandingBackgroundTasks map[string]outstandingBackgroundTask
 
+	// activePolls tracks bounded inference-driven polls. A poll owns its retry
+	// timer and detached check-agent; it remains session work until one terminal
+	// verdict is delivered to the root orchestrator.
+	activePolls map[string]*activePoll
+
 	// settled is true when the session has been paused via SettleSession.
 	// A settled session stays in the Manager's map (StartSession for the
 	// same key is idempotent) but rejects prompts and has its async hosts

@@ -80,15 +80,15 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 		// TaskSuspendEvent signals that a run ended without completing. Two
 		// producers: a dispatched agent parked on child completions or a
 		// revive message (AwaitingDispatchIDs), or a session parked at a turn
-		// boundary because it still has background bash commands running
-		// (AwaitingTaskIDs). Either way the run is not finished —
+		// boundary because it still has background bash commands or Polls running.
+		// Either way the run is not finished —
 		// TaskCompleteEvent (and the normal idle engine_status) fires only
 		// when it truly completes after revival. Clients may show a
 		// parked/idle indicator meanwhile.
 		return types.EngineEvent{
 			Type:                         "engine_task_suspended",
 			TaskSuspendAwaitingCount:     len(e.AwaitingDispatchIDs),
-			TaskSuspendAwaitingTaskCount: len(e.AwaitingTaskIDs),
+			TaskSuspendAwaitingTaskCount: len(e.AwaitingTaskIDs) + len(e.AwaitingPollIDs),
 		}
 
 	case *types.BackgroundTaskCompleteEvent:
@@ -114,6 +114,13 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 
 	case *types.BackgroundTaskTerminalEvent:
 		return types.EngineEvent{Type: "engine_background_task_terminal", BackgroundTaskTerminal: &types.BackgroundTaskTerminalPayload{TaskID: e.TaskID, Status: e.Status, ExitCode: e.ExitCode, ElapsedMs: e.ElapsedMs, Command: e.Command, OutputPath: e.OutputPath, Tail: e.Tail}}
+
+	case *types.PollStartedEvent:
+		return types.EngineEvent{Type: "engine_poll_started", PollStarted: &e.Poll}
+	case *types.PollProgressEvent:
+		return types.EngineEvent{Type: "engine_poll_progress", PollProgress: &types.PollProgressPayload{Poll: e.Poll, Evidence: e.Evidence}}
+	case *types.PollTerminalEvent:
+		return types.EngineEvent{Type: "engine_poll_terminal", PollTerminal: &e.Result}
 
 	case *types.SessionWorkStoppedEvent:
 		return types.EngineEvent{Type: "engine_session_work_stopped", SessionWorkStopped: e}

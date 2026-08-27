@@ -105,9 +105,11 @@ func (m *Manager) onBackgroundTaskComplete(c tools.TaskCompletion) {
 	}
 
 	// Drain the task from the outstanding set and decide, under a single lock
-	// hold, whether THIS completion owns the wake. Two commands finishing at
-	// the same instant must not start two runs: the first claims the park, the
-	// second sees it already claimed and routes to the mid-turn steer path.
+	// hold, whether THIS completion owns the parked-run transition. Two commands
+	// finishing together must not start two runs: the first clears the park; the
+	// second observes an active run once delivery reaches SendPrompt and queues
+	// behind it through enqueueIfBusy. claimedPark is therefore observability for
+	// the transition, not a separate routing decision.
 	m.mu.Lock()
 	s, ok := m.sessions[key]
 	if !ok {

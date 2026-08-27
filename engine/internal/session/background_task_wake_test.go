@@ -84,7 +84,7 @@ func TestBackgroundTaskLifecycle_PreservesNonNotifyingStart(t *testing.T) {
 	ctx := tools.WithBackgroundTaskOwner(context.Background(), key)
 
 	if _, err := tools.ExecuteTool(ctx, "Bash", map[string]any{
-		"command":            "sleep 60",
+		"command":            `sh -c "sleep 60"`,
 		"run_in_background":  true,
 		"notify_on_complete": false,
 	}, t.TempDir()); err != nil {

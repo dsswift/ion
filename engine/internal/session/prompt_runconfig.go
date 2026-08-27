@@ -16,6 +16,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/plugins"
 	"github.com/dsswift/ion/engine/internal/session/extcontext"
 	"github.com/dsswift/ion/engine/internal/telemetry"
+	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -52,6 +53,18 @@ func (m *Manager) buildRunConfig(
 	runCfg.OutstandingBackgroundTasks = func() []string {
 		return m.OutstandingBackgroundTaskIDs(key)
 	}
+	runCfg.OutstandingPolls = func() []string {
+		m.mu.RLock()
+		defer m.mu.RUnlock()
+		if current := m.sessions[key]; current != nil {
+			ids := make([]string, 0, len(current.activePolls))
+			for id := range current.activePolls {
+				ids = append(ids, id)
+			}
+			return ids
+		}
+		return nil
+	}
 
 	// Thread the engine's default model so the run loop can fall back
 	// when a requested model doesn't resolve (e.g. unrecognized tier alias).
@@ -64,6 +77,7 @@ func (m *Manager) buildRunConfig(
 	if m.config != nil && m.config.Timeouts != nil {
 		runCfg.Timeouts = m.config.Timeouts
 	}
+	tools.SetFinishedBackgroundTaskRetentionLimit(m.backgroundTasksConfig().MaxRetainedFinishedTasksPerSession)
 
 	// Thread shell config so the Bash tool can run commands through the user's
 	// login shell when EngineRuntimeConfig.Shell.UseLoginShell is set. Nil
@@ -223,6 +237,9 @@ func (m *Manager) buildRunConfig(
 		spawnerExtGroup = nil
 	}
 	m.wireAgentSpawner(s, key, currentModel, spawnerExtGroup, runCfg)
+	runCfg.PollStarter = func(ctx context.Context, request tools.PollRequest, cwd string) (string, error) {
+		return m.startPoll(s, key, currentModel, request, cwd)
+	}
 	runCfg.AgentStatus = extcontext.AgentStatusGetter(s.dispatchRegistry)
 
 	// Wire session memory getter so compaction can use the pre-built
