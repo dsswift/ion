@@ -1686,6 +1686,34 @@
       ]
     },
     {
+      "id": "poll",
+      "term": "Poll",
+      "definition": "A bounded engine-owned inference loop. It dispatches check agents, re-arms only while work is advancing, and delivers one terminal verdict with evidence to the parent session.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "intelligent poll"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func PollTool",
+          "path": "engine/internal/tools/poll.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (m *Manager) startPoll",
+          "path": "engine/internal/session/poll_driver.go"
+        }
+      ]
+    },
+    {
       "id": "provider",
       "term": "Provider",
       "definition": "The LLM vendor integration that streams a model response. The engine calls each provider over raw HTTP.",
