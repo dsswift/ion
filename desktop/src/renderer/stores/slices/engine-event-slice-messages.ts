@@ -88,6 +88,7 @@ export function handleCrossNormalizedEvent(
         event.resourceKind,
         event.resourceSubId ?? '',
         items,
+        event.resourceProducers,
       ),
     )
     return true

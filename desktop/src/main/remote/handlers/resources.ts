@@ -1,7 +1,5 @@
-import { existsSync, readFileSync, readdirSync } from 'fs'
-import { join } from 'path'
-import { homedir } from 'os'
 import { log as _log, debug as _debug } from '../../logger'
+import { resourceCatalog } from '../../resource-catalog'
 import { state } from '../../state'
 import { markReadPersisted, publishResourceMarkRead, publishResourceDelete } from '../../event-wiring-resources'
 import type { RemoteCommand } from '../protocol'
@@ -17,83 +15,26 @@ function debug(msg: string, fields?: Record<string, unknown>): void {
 /**
  * Handles request_resource_content from iOS.
  *
- * Reads the full content of a single resource item from the renderer's
- * resource store via executeJavaScript and sends it back as a
- * resource_content event. iOS sends this when the user taps a resource
- * card to expand it — the snapshot carries only metadata, so the full
- * content is fetched on demand.
+ * Reads the full content from the main-process resource catalog and sends it
+ * back as a resource_content event. iOS sends this when the user taps a
+ * resource card to expand it; the catalog is hydrated by snapshots, deltas,
+ * and resource_get item responses.
  */
 export async function handleRequestResourceContent(
   cmd: Extract<RemoteCommand, { type: 'desktop_request_resource_content' }>,
   deviceId: string,
 ): Promise<void> {
   const { kind, resourceId, producer } = cmd
-  log('request_resource_content', { kind, resource_id: resourceId.slice(0, 12), producer: producer ?? '' })
+  log('resource content requested', { kind, resource_id: resourceId.slice(0, 12), producer: producer ?? '' })
 
-  let content = ''
-  try {
-    // JSON.stringify the identifiers to prevent injection. The IIFE runs
-    // inside the renderer process (untrusted boundary).
-    const safeKind = JSON.stringify(kind)
-    const safeId = JSON.stringify(resourceId)
-    const safeProducer = JSON.stringify(producer)
-    const result = await state.mainWindow?.webContents.executeJavaScript(`
-      (function() {
-        try {
-          var store = window.__Ion_SESSION_STORE__;
-          if (!store) return '';
-          var s = store.getState();
-          var items = (s.resources && s.resources[${safeKind}]) || [];
-          var item = items.find(function(r) { return r.id === ${safeId} && r.producer === ${safeProducer}; });
-          return item ? (item.content || '') : '';
-        } catch(e) { return ''; }
-      })()
-    `)
-    content = typeof result === 'string' ? result : ''
-  } catch (err) {
-    // Renderer probe failed; fall through to the disk fallback below, but log
-    // so the miss reason is not silent.
-    debug('request_resource_content: renderer probe failed', { error: String(err) })
-    content = ''
-  }
-
-  if (content.length > 0) {
-    log('request_resource_content: renderer hit', { kind, resource_id: resourceId.slice(0, 12), content_len: content.length })
-  } else {
-    // Renderer store is empty — desktop just restarted and the resource
-    // subscription hasn't resolved yet. Fall back to reading the JSON file
-    // from disk. The extension persists resources to
-    // ~/.ion/resources/global/{resourceId}.json with a `content` field.
-    log('request_resource_content: renderer miss, falling back to disk', { kind, resource_id: resourceId.slice(0, 12) })
-    try {
-      const globalDir = join(homedir(), '.ion', 'resources', 'global')
-      if (existsSync(globalDir)) {
-        const resourceFile = readdirSync(globalDir)
-          .filter((file) => file.endsWith('.json'))
-          .map((file) => join(globalDir, file))
-          .find((filePath) => {
-            try {
-              const item = JSON.parse(readFileSync(filePath, 'utf-8')) as { id?: unknown; producer?: unknown }
-              return item.id === resourceId && item.producer === producer
-            } catch (err) {
-              debug('request_resource_content: skipped unreadable disk item', { file: filePath, error: String(err) })
-              return false
-            }
-          })
-        if (resourceFile) {
-          const data = JSON.parse(readFileSync(resourceFile, 'utf-8'))
-          content = typeof data.content === 'string' ? data.content : ''
-          log('request_resource_content: disk fallback hit', { kind, resource_id: resourceId.slice(0, 12), producer: producer ?? '', content_len: content.length })
-        } else {
-          log('request_resource_content: disk miss, file not found', { kind, resource_id: resourceId.slice(0, 12), producer: producer ?? '' })
-        }
-      } else {
-        log('request_resource_content: disk miss, resource directory not found', { kind, resource_id: resourceId.slice(0, 12), producer: producer ?? '' })
-      }
-    } catch {
-      log('request_resource_content: disk fallback failed', { kind, resource_id: resourceId.slice(0, 12) })
-    }
-  }
+  const item = resourceCatalog.getItem(kind, resourceId, producer)
+  const content = item?.content ?? ''
+  log(content.length > 0 ? 'resource content catalog hit' : 'resource content catalog miss', {
+    kind,
+    resource_id: resourceId.slice(0, 12),
+    producer: producer ?? '',
+    content_len: content.length,
+  })
   state.remoteTransport?.sendToDevice(deviceId, {
     type: 'desktop_resource_content',
     resourceId,

@@ -311,7 +311,7 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
           preferredModel: peerSettings.preferredModel || undefined,
           engineDefaultModel: peerSettings.engineDefaultModel || undefined,
           availableModels: modelCache.models.length > 0 ? modelCache.models : undefined,
-          resources: Object.keys(resourceManifest).length > 0 ? resourceManifest : undefined,
+          resources: resourceManifest,
         })
         // Relay config for iOS. The single push path resolves the auth mode
         // from the transport's own resolution (falling back to settings),

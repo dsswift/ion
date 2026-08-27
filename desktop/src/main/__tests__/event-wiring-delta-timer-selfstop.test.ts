@@ -57,7 +57,6 @@ vi.mock('../event-wiring-resources', () => ({
   wireDeleteResourceHandler: vi.fn(),
 }))
 vi.mock('../event-wiring-intercept', () => ({ handleInterceptEvent: vi.fn(() => Promise.resolve()) }))
-vi.mock('../event-wiring-disk-seed', () => ({ injectDiskResourcesIfEmpty: vi.fn() }))
 
 import { wireEngineBridgeEvents } from '../event-wiring'
 

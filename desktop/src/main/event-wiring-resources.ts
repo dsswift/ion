@@ -7,7 +7,7 @@
 //   - Tab focus publishing (desktop.focus resource on tab switch)
 //   - Read-state persistence to disk (~/.ion/resource-read-state.json)
 
-import { existsSync, readFileSync, mkdirSync, readdirSync } from 'fs'
+import { existsSync, readFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import { ipcMain } from 'electron'
@@ -17,6 +17,7 @@ import { log as _log } from './logger'
 import { engineBridge, state } from './state'
 import { atomicWriteFileSync } from './utils/atomicWrite'
 import { broadcast } from './broadcast'
+import { resourceCatalog } from './resource-catalog'
 import { notifyStudioActiveTab } from './studio-window-manager'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -252,47 +253,9 @@ export function wireMarkResourceReadHandler(): void {
     return [...persistedReadIds]
   })
   ipcMain.handle(IPC.GET_PERSISTED_RESOURCES, () => {
-    // Cold-load ALL resources from disk (global + conversation-scoped)
-    // so the renderer has data immediately, even if engine subscriptions
-    // fail or return empty.
-    const resourcesRoot = join(homedir(), '.ion', 'resources')
-    type PersistedItem = { id: string; kind: string; producer?: string; title?: string; content: string; createdAt: string; conversationId?: string; metadata?: Record<string, unknown>; read?: boolean }
-    const items: PersistedItem[] = []
-    try {
-      if (!existsSync(resourcesRoot)) {
-        log('resource: cold-load: resources dir does not exist')
-        return items
-      }
-      const subdirs = readdirSync(resourcesRoot, { withFileTypes: true })
-        .filter(d => d.isDirectory())
-      for (const subdir of subdirs) {
-        const dirPath = join(resourcesRoot, subdir.name)
-        try {
-          const files = readdirSync(dirPath).filter(f => f.endsWith('.json'))
-          for (const f of files) {
-            try {
-              const data = JSON.parse(readFileSync(join(dirPath, f), 'utf-8'))
-              if (data.id && data.kind) {
-                items.push({
-                  id: data.id,
-                  kind: data.kind,
-                  producer: data.producer,
-                  title: data.title,
-                  content: data.content ?? '',
-                  createdAt: data.createdAt ?? '',
-                  conversationId: data.conversationId,
-                  metadata: data.metadata,
-                  read: isResourceRead(data.id, data.producer, data.kind),
-                })
-              }
-            } catch { /* skip corrupt files */ }
-          }
-        } catch { /* skip unreadable directories */ }
-      }
-    } catch { /* non-fatal */ }
-    const globalCount = items.filter(i => !i.conversationId).length
-    const scopedCount = items.filter(i => !!i.conversationId).length
-    log('resource_cold_load', { total: items.length, global: globalCount, scoped: scopedCount })
+    const items = resourceCatalog.bootstrapItems(isResourceRead)
+    const globalCount = items.filter((item) => !item.conversationId).length
+    log('resource_catalog_bootstrap', { total: items.length, global: globalCount, scoped: items.length - globalCount })
     return items
   })
 }
