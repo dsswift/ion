@@ -43,6 +43,16 @@ describe('command file structural invariants', () => {
   })
 })
 
+describe('squash.md lifecycle invariants', () => {
+  const content = readCommand('squash.md')
+
+  it('accepts one source commit for scope correction', () => {
+    expect(content).toContain('[ "$COUNT" -gt 0 ]')
+    expect(content).not.toContain('[ "$COUNT" -gt 1 ]')
+    expect(content).toContain('A single source commit is valid input.')
+  })
+})
+
 describe('align.md lifecycle invariants', () => {
   const content = readCommand('align.md')
   const fm = parseFrontmatter(content)
