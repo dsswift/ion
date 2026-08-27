@@ -141,6 +141,7 @@ export function echoUserTurn(echo: UserTurnEcho, targets: EchoTargets = {}): boo
         ...(echo.implementationPhase ? { implementationPhase: true } : {}),
         ...(echo.attachments && echo.attachments.length > 0 ? { attachments: echo.attachments } : {}),
         ...(echo.slashCommand ? { slashCommand: echo.slashCommand, slashArgs: echo.slashArgs ?? '' } : {}),
+        ...(echo.injectionKind ? { injectionKind: echo.injectionKind } : {}),
       },
     })
   }

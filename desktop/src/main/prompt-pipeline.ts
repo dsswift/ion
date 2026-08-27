@@ -139,6 +139,10 @@ export interface IncomingPrompt {
   tabId: string
   /** Raw user text, INCLUDING any leading slash or bang prefix. Never expanded. */
   text: string
+  /** Optional transcript text when the provider prompt contains hidden control text. */
+  displayText?: string
+  /** Publish this main-originated user turn to iOS after the renderer accepts it. */
+  echoToIos?: boolean
   /** File / image attachments. Empty array if none. */
   attachments?: PipelineAttachment[]
   /** Image attachments already base64-encoded (from the renderer path) — pass-through. */
@@ -147,9 +151,9 @@ export interface IncomingPrompt {
   reqId: string
   /**
    * How this turn was authored, as an engine InjectionKind wire value.
-   * 'structured_answer' marks a Guided Questions submission: delivered to
-   * the model, but never rendered as a user bubble (the operator answered in
-   * a surface that already shows their answers). Absent for a typed turn.
+   * 'structured_answer' marks a Guided Questions submission. The transcript
+   * renders its displayText as a specialized answer card while the model gets
+   * the complete prompt. Absent for a typed turn.
    */
   injectionKind?: string
   /** Who produced this prompt. See PromptSource. */
@@ -385,6 +389,8 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
       broadcast(IPC.REMOTE_ENGINE_PROMPT, {
         tabId: p.tabId,
         text: p.text,
+        displayText: p.displayText,
+        echoToIos: p.echoToIos,
         reqId: p.reqId,
         appendSystemPrompt: p.appendSystemPrompt,
         imageAttachments: p.imageAttachments,
@@ -399,10 +405,9 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
         bashAllowlistAdditionsForThisPrompt: p.bashAllowlistAdditionsForThisPrompt,
         resolveSlash: p.resolveSlash || undefined,
         temporaryAutoFromPlan: p.temporaryAutoFromPlan || undefined,
-        // Client-stated authorship (e.g. 'structured_answer' for a Guided
-        // Questions submission). The renderer's submit uses it to skip the
-        // optimistic user bubble and forwards it to the engine so the
-        // persisted row carries the same classification.
+        // Structured submissions carry separate model and display text. The
+        // renderer uses displayText for its optimistic card and forwards both so
+        // persisted history keeps the same split.
         injectionKind: p.injectionKind,
       })
       return
@@ -419,6 +424,8 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
       tabId: p.tabId,
       requestId: p.reqId,
       prompt: rewrittenText,
+      displayText: p.displayText,
+      echoToIos: p.echoToIos,
       timestamp: Date.now(),
       imageAttachments: encoded.length > 0 ? encoded : undefined,
       // Forward raw attachments so the renderer's submitRemotePrompt can
@@ -472,6 +479,9 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
   }
   if (p.resolveSlash) {
     p.runOptions.resolveSlash = true
+  }
+  if (p.displayText) {
+    p.runOptions.displayText = p.displayText
   }
   log('pipeline: submit prompt', { tab_id: p.tabId, req_id: p.reqId, engine: p.hasExtensions, prompt_len: p.runOptions.prompt.length, resolve_slash: p.resolveSlash ?? false })
   await sessionPlane.submitPrompt(p.tabId, p.reqId, p.runOptions)

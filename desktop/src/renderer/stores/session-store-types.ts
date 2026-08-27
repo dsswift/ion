@@ -512,6 +512,10 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
     text: string,
     opts?: {
       projectPath?: string;
+      /** User-facing transcript text when it differs from the provider prompt. */
+      displayText?: string;
+      /** Main-originated turn must be sent to iOS after renderer acceptance. */
+      echoToIos?: boolean;
       extraAttachments?: Attachment[];
       appendSystemPrompt?: string;
       implementationPhase?: boolean;
@@ -533,13 +537,9 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
       automationCausation?: import("../../shared/types-automation").AutomationCausation;
       /**
        * How this turn was authored, as an engine InjectionKind wire value
-       * ('structured_answer' for a Guided Questions submission). When set to
-       * a machine-authored kind, submit SKIPS the optimistic user bubble —
-       * the operator answered in a dedicated surface that already shows
-       * their answers, so echoing the engine-facing rendering into the
-       * transcript would show it back to them twice in a shape they did not
-       * write. The suppression rule is the shared one
-       * (shared/injection-policy.ts), not a second local list.
+       * ('structured_answer' for a Guided Questions submission). Machine-authored
+       * kinds suppress the optimistic bubble. A structured answer is user-authored
+       * and uses displayText for its specialized transcript card.
        */
       injectionKind?: string;
     },
@@ -561,6 +561,10 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
     /** Engine InjectionKind wire value; a machine-authored kind suppresses
      *  the optimistic user bubble (see submit's injectionKind). */
     injectionKind?: string,
+    /** User-facing transcript text when it differs from the provider prompt. */
+    displayText?: string,
+    /** Main-originated turn must be sent to iOS after renderer acceptance. */
+    echoToIos?: boolean,
   ) => void;
   /**
    * Move a tab to its planning/in-progress group on send, based on the tab's

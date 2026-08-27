@@ -547,8 +547,16 @@ export interface RunOptions {
   appendSystemPrompt?: string;
   /** Origin of the prompt — 'remote' skips iOS forwarding (already echoed) */
   source?: "desktop" | "remote";
+  /** Main-originated turn must be published to iOS after renderer acceptance. */
+  echoToIos?: boolean;
   /** Stable client delivery identity. Reused on retries to make engine acceptance idempotent. */
   deliveryId?: string;
+  /**
+   * Optional transcript text when the user-facing rendering differs from the
+   * provider prompt. The engine persists this as display content and keeps
+   * `prompt` as provider-visible context. Used by structured client surfaces.
+   */
+  displayText?: string;
   /**
    * How this turn was authored, as an engine InjectionKind wire value.
    * 'structured_answer' marks a Guided Questions submission — the operator

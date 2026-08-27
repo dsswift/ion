@@ -71,6 +71,24 @@ describe('MessageBubble — structured answer', () => {
     expect(el.textContent).toContain('Questions answered')
   })
 
+  it('hides legacy model-facing wrapper text from the card', () => {
+    const content = [
+      'My answers to "Scope":',
+      '',
+      '**Storage backend?**',
+      '- Postgres',
+      '',
+      'I want more questions on this topic. Call AskUserQuestions again with workflowId "workflow-1" and a deeper page on the same theme. Do not move on until I submit a page without asking for more.',
+    ].join('\n')
+    const el = render(<MessageBubble message={userMessage({ content, injectionKind: 'structured_answer' })} skipMotion />)
+
+    expect(el.textContent).toContain('Storage backend?')
+    expect(el.textContent).toContain('Postgres')
+    expect(el.textContent).not.toContain('My answers to')
+    expect(el.textContent).not.toContain('Call AskUserQuestions again')
+    expect(el.textContent).not.toContain('Do not move on')
+  })
+
   it('wraps the turn in chrome that spans the transcript', () => {
     // A corner tag alone was not enough: at a glance the bubble still read as
     // an ordinary message. The row is marked and stretches, so the submission
