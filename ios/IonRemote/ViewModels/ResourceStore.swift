@@ -131,7 +131,7 @@ final class ResourceStore {
     /// Items are replaced entirely; read state for items in this kind is
     /// replaced from the snapshot's `read` flags. Read IDs for other kinds
     /// are preserved so cross-kind state isn't lost.
-    func applySnapshot(kind: String, rawItems: [[String: AnyCodable]]) {
+    func applySnapshot(kind: String, rawItems: [[String: AnyCodable]], producers: [String]? = nil, complete: Bool = true) {
         let parsed = rawItems.map { ResourceItem(from: $0) }
         let globalCount = parsed.filter { $0.conversationId == nil || $0.conversationId?.isEmpty == true }.count
         let scopedCount = parsed.filter { $0.conversationId != nil && $0.conversationId?.isEmpty == false }.count
@@ -142,12 +142,28 @@ final class ResourceStore {
             "scoped": String(scopedCount)
         ])
 
-        // The desktop snapshot is authoritative. Always replace.
-        // iOS is a thin client — it shows exactly what the desktop sends.
-        // No merge guards needed here (those are for the desktop's engine
-        // subscription path where partial/empty snapshots can arrive from
-        // flaky extension subprocesses).
         let existing = items[kind] ?? []
+        let covered: Set<String>?
+        let mode: String
+        if complete {
+            covered = nil
+            mode = "complete"
+        } else if let producers {
+            covered = Set(producers)
+            mode = "explicit"
+        } else if parsed.contains(where: { !$0.producer.isEmpty }) {
+            covered = Set(parsed.map(\.producer).filter { !$0.isEmpty })
+            mode = "inferred"
+        } else if !parsed.isEmpty {
+            covered = nil
+            mode = "legacy-full"
+        } else {
+            covered = Set()
+            mode = "ambiguous-empty-retain"
+        }
+        let retained = covered.map { coveredSet in
+            existing.filter { $0.producer.isEmpty || !coveredSet.contains($0.producer) }
+        } ?? []
         let existingById = Dictionary(existing.map { ($0.compositeId, $0) }, uniquingKeysWith: { _, new in new })
 
         // Preserve locally-fetched content for items that the snapshot
@@ -165,30 +181,48 @@ final class ResourceStore {
         // wins only for duplicate items from the same producer.
         var seenIds = Set<String>()
         var deduped: [ResourceItem] = []
-        for item in finalItems.reversed() {
+        for item in (retained + finalItems).reversed() {
             if seenIds.insert(item.compositeId).inserted {
                 deduped.append(item)
             }
         }
         deduped.reverse()
         items[kind] = deduped
-        // Desktop snapshot is authoritative for read state of items in this kind.
-        // Remove local read IDs for items in this snapshot, then add back only
-        // those the desktop says are read. Read IDs for other kinds are preserved.
-        let kindItemIds = Set(deduped.map(\.compositeId))
-        let legacyReadIds = Set(deduped.compactMap { item in
+        DiagnosticLog.log("resource store snapshot applied", tag: "resource.store", fields: [
+            "kind": kind,
+            "mode": mode,
+            "replaced": String(existing.count - retained.count),
+            "retained": String(retained.count),
+            "final": String(deduped.count)
+        ])
+        // Snapshot read state is authoritative only for producers covered by
+        // this snapshot. Preserve read state owned by retained producers.
+        let affectedItems = covered.map { coveredSet in
+            deduped.filter { !$0.producer.isEmpty && coveredSet.contains($0.producer) }
+        } ?? deduped
+        let kindItemIds = Set(affectedItems.map(\.compositeId))
+        let legacyReadIds = Set(affectedItems.compactMap { item in
             item.producer.isEmpty || !readIds.contains(item.id) ? nil : item.id
         })
         let finalReadById = Dictionary(
             parsed.map { ($0.compositeId, $0.read) },
             uniquingKeysWith: { _, new in new }
         )
-        let snapshotReadIds = Set(deduped.compactMap { item in
+        let snapshotReadIds = Set(affectedItems.compactMap { item in
             finalReadById[item.compositeId] == true || legacyReadIds.contains(item.id) ? item.compositeId : nil
         })
         readIds = readIds.filter { !kindItemIds.contains($0) && !legacyReadIds.contains($0) }.union(snapshotReadIds)
         saveItems()
         saveReadIds()
+    }
+
+    /// Apply the desktop's complete resource catalog. Kinds absent from the
+    /// manifest are authoritatively empty.
+    func applyCompleteManifest(_ manifest: [String: [[String: AnyCodable]]]) {
+        let allKinds = Set(items.keys).union(manifest.keys)
+        for kind in allKinds {
+            applySnapshot(kind: kind, rawItems: manifest[kind] ?? [], complete: true)
+        }
     }
 
     /// Apply an incremental delta (create/update/delete/mark_read).

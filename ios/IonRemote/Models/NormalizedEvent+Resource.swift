@@ -24,12 +24,14 @@ extension RemoteEvent {
             let resourceKind = try container.decodeIfPresent(String.self, forKey: .resourceKind) ?? ""
             let resourceSubId = try container.decodeIfPresent(String.self, forKey: .resourceSubId) ?? ""
             let resourceItems = try container.decodeIfPresent([[String: AnyCodable]].self, forKey: .resourceItems) ?? []
+            let resourceProducers = try container.decodeIfPresent([String].self, forKey: .resourceProducers)
             return .engineResourceSnapshot(
                 tabId: tabId,
                 instanceId: instanceId,
                 resourceKind: resourceKind,
                 resourceSubId: resourceSubId,
-                resourceItems: resourceItems
+                resourceItems: resourceItems,
+                resourceProducers: resourceProducers
             )
 
         case .engineResourceDelta:
@@ -129,13 +131,14 @@ extension RemoteEvent {
 
     func encodeResource(into container: inout KeyedEncodingContainer<CodingKeys>) throws -> Bool {
         switch self {
-        case .engineResourceSnapshot(let tabId, let instanceId, let resourceKind, let resourceSubId, let resourceItems):
+        case .engineResourceSnapshot(let tabId, let instanceId, let resourceKind, let resourceSubId, let resourceItems, let resourceProducers):
             try container.encode(TypeKey.engineResourceSnapshot, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
             try container.encode(resourceKind, forKey: .resourceKind)
             try container.encode(resourceSubId, forKey: .resourceSubId)
             try container.encode(resourceItems, forKey: .resourceItems)
+            try container.encodeIfPresent(resourceProducers, forKey: .resourceProducers)
             return true
 
         case .engineResourceDelta(let tabId, let instanceId, let resourceKind, let resourceSubId, let resourceDelta):

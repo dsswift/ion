@@ -1145,6 +1145,14 @@ final class ContractSyncTests: XCTestCase {
       "Swift test tracks ResourceLimits fields absent from Go manifest: \(untracked.sorted())")
   }
 
+  func testEngineResourceSnapshotCoverageFieldInManifest() throws {
+    let manifest = try loadManifest()
+    XCTAssert(
+      Set(manifest.engineEvent).contains("resourceProducers"),
+      "EngineEvent manifest is missing resourceProducers"
+    )
+  }
+
   // MARK: - EngineEvent dispatch field coverage
 
   /// Pins that dispatchId and dispatchConversationId are present in the Go

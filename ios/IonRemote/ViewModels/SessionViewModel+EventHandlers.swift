@@ -51,9 +51,7 @@ extension SessionViewModel {
             handleSnapshot(snapshotTabs: snapshotTabs, recentDirs: recentDirs, groupMode: snapshotGroupMode, groups: snapshotGroups, preferredModel: snapshotPreferredModel, engineDefaultModel: snapshotEngineDefaultModel, availableModels: snapshotAvailableModels, projects: snapshotProjects, worktreeStates: snapshotWorktreeStates, settledTabs: snapshotSettledTabs)
             applySnapshotRemoteDisplay(customName: snapshotCustomName, customIcon: snapshotCustomIcon, updatedAt: snapshotRemoteDisplayUpdatedAt)
             if let snapshotResources {
-                for (kind, rawItems) in snapshotResources {
-                    resourceStore.applySnapshot(kind: kind, rawItems: rawItems)
-                }
+                resourceStore.applyCompleteManifest(snapshotResources)
             }
 
         case .remoteDisplay(let customName, let customIcon, let updatedAt):
@@ -558,8 +556,8 @@ extension SessionViewModel {
             handleRequestDiagnosticLogs(sinceSeq: sinceSeq)
 
         // Resource events (D-007)
-        case .engineResourceSnapshot(_, _, let kind, _, let rawItems):
-            resourceStore.applySnapshot(kind: kind, rawItems: rawItems)
+        case .engineResourceSnapshot(_, _, let kind, _, let rawItems, let producers):
+            resourceStore.applySnapshot(kind: kind, rawItems: rawItems, producers: producers, complete: false)
         case .engineResourceDelta(_, _, let kind, _, let rawDelta):
             resourceStore.applyDelta(kind: kind, rawDelta: rawDelta)
         case .engineResourceItem(_, _, let kind, let rawItem):
