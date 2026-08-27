@@ -336,6 +336,29 @@ export interface DispatchAgentResult {
   cost: number
   inputTokens: number
   outputTokens: number
+  /**
+   * Number of tool calls the child made across its whole run (every LLM turn,
+   * including suspend/revive iterations and any work-gate continuation).
+   * Always reported, whether or not {@link DispatchAgentOpts.requireToolUse}
+   * was declared: it is an observed fact about the run, not a verdict.
+   *
+   * A `0` here on an `exitCode: 0` dispatch is the signature of a child that
+   * answered instead of working — it read the task, described the work, and
+   * ended its turn. Prefer this over reconstructing a count from local
+   * lifecycle-callback state: this is the engine's own count.
+   */
+  toolCount: number
+  /**
+   * Estimated reasoning-token count for the dispatch — a subset of
+   * `outputTokens` that providers fold into the output usage. Zero when the
+   * model produced no extended thinking. Lets cost and audit consumers
+   * separate reasoning spend from user-facing output.
+   */
+  thinkingTokens?: number
+  /** Tokens served from the provider's prompt cache across the child's run. */
+  cacheReadInputTokens?: number
+  /** Tokens written into the provider's prompt cache across the child's run. */
+  cacheCreationInputTokens?: number
   /** SDK-generated identifier for routing pre-stub callbacks. Internal to extension-host RPC. */
   callbackId?: string
   /** True when engine refused to launch child at dispatch-depth cap. */
