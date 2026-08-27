@@ -10,6 +10,34 @@ import Foundation
 /// `COMPRESSION_ZLIB` in Apple's Compression framework handles raw DEFLATE (RFC 1951),
 /// which is exactly what Node.js `deflateRawSync` produces.
 enum PayloadCompression {
+    /// The desktop sends smaller JSON payloads without compression. This avoids
+    /// DEFLATE overhead on frequent text deltas while preserving the legacy form.
+    private static let compressionFloorBytes = 512
+    private static let compressedPrefix: UInt8 = 0x01
+
+    /// Prepare an outbound JSON payload for encryption.
+    ///
+    /// Payloads at or above the shared compression floor are encoded as a 0x01
+    /// version byte followed by raw DEFLATE. Smaller payloads stay unchanged;
+    /// their JSON first byte cannot conflict with the version byte.
+    static func prepareOutbound(_ data: Data) throws -> Data {
+        guard data.count >= compressionFloorBytes else {
+            return data
+        }
+
+        var prepared = Data([compressedPrefix])
+        prepared.append(try deflateRaw(data))
+        DiagnosticLog.trace("payload compressed", tag: "payload.compression", fields: [
+            "input_bytes": String(data.count),
+            "output_bytes": String(prepared.count)
+        ])
+        return prepared
+    }
+
+    /// Compress raw DEFLATE data (no gzip/zlib header).
+    private static func deflateRaw(_ data: Data) throws -> Data {
+        try processRawDeflate(data, operation: COMPRESSION_STREAM_ENCODE)
+    }
 
     /// Decompress raw DEFLATE data. Throws on failure.
     ///
@@ -19,6 +47,26 @@ enum PayloadCompression {
     /// chunks until the decompressor drains the entire input. A payload that compresses
     /// 100:1 decodes just as completely as one that compresses 2:1.
     static func inflateRaw(_ data: Data) throws -> Data {
+        let output = try processRawDeflate(data, operation: COMPRESSION_STREAM_DECODE)
+
+        // Surface size anomalies in ios-diagnostic-logs.jsonl. A wildly off ratio here
+        // (or a size that lands on a suspicious power-of-two multiple) is the fingerprint
+        // of a decode problem — logging every success makes it observable.
+        DiagnosticLog.trace("payload decompressed", tag: "payload.compression", fields: [
+            "input_bytes": String(data.count),
+            "output_bytes": String(output.count)
+        ])
+
+        return output
+    }
+
+    /// Stream raw DEFLATE through Apple's Compression framework without a fixed
+    /// output limit. `COMPRESSION_ZLIB` maps to RFC 1951 raw DEFLATE, matching
+    /// Node.js `zlib.deflateRawSync()` on the desktop transport.
+    private static func processRawDeflate(
+        _ data: Data,
+        operation: compression_stream_operation
+    ) throws -> Data {
         let inputCount = data.count
         guard inputCount > 0 else {
             throw CompressionError.emptyInput
@@ -30,9 +78,9 @@ enum PayloadCompression {
         defer { streamPointer.deallocate() }
         var stream = streamPointer.pointee
 
-        guard compression_stream_init(&stream, COMPRESSION_STREAM_DECODE, COMPRESSION_ZLIB)
+        guard compression_stream_init(&stream, operation, COMPRESSION_ZLIB)
             == COMPRESSION_STATUS_OK else {
-            throw CompressionError.decompressionFailed
+            throw CompressionError.compressionFailed
         }
         defer { compression_stream_destroy(&stream) }
 
@@ -78,18 +126,10 @@ enum PayloadCompression {
                     }
                     return
                 default:
-                    throw CompressionError.decompressionFailed
+                    throw CompressionError.compressionFailed
                 }
             }
         }
-
-        // Surface size anomalies in ios-diagnostic-logs.jsonl. A wildly off ratio here
-        // (or a size that lands on a suspicious power-of-two multiple) is the fingerprint
-        // of a decode problem — logging every success makes it observable.
-        DiagnosticLog.trace("payload decompressed", tag: "payload.compression", fields: [
-            "input_bytes": String(inputCount),
-            "output_bytes": String(output.count)
-        ])
 
         return output
     }
@@ -97,13 +137,13 @@ enum PayloadCompression {
     enum CompressionError: Error, CustomStringConvertible {
         case emptyInput
         case bufferAllocationFailed
-        case decompressionFailed
+        case compressionFailed
 
         var description: String {
             switch self {
             case .emptyInput: return "PayloadCompression: empty input data"
             case .bufferAllocationFailed: return "PayloadCompression: failed to allocate output buffer"
-            case .decompressionFailed: return "PayloadCompression: COMPRESSION_ZLIB decompression returned 0"
+            case .compressionFailed: return "PayloadCompression: COMPRESSION_ZLIB stream processing failed"
             }
         }
     }
