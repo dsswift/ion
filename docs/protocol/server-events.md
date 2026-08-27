@@ -833,14 +833,15 @@ Observation-only advisory events emitted by the webhook server, scheduler, and a
 
 #### engine_resource_snapshot
 
-Snapshot-replace semantics. Sent when a client first subscribes to a resource kind and whenever a full refresh is needed. Consumers must replace their local collection for this kind with the snapshot contents.
+Producer-scoped snapshot semantics. `resourceProducers` names the producers whose query completed successfully. Consumers replace only those producers' local items and retain items owned by all other producers. A producer appears even when its successful query returns no items, which authoritatively clears that producer. A failed query omits the producer, so the last valid items remain available. The list uses stable producer-name order. Workspace subscriptions query the producer-owned session brokers because the global broker is a live delta fan-out bus. The engine delivers these initial snapshots before any live deltas buffered during the query.
 
 | Field           | Type              | Description                                         |
 |-----------------|-------------------|-----------------------------------------------------|
 | `type`          | `"engine_resource_snapshot"` | Event type                             |
 | `resourceKind`  | string            | The subscribed resource kind                        |
 | `resourceSubId` | string            | Subscription ID (from `resource_subscribe` response)|
-| `resourceItems` | ResourceItem[]    | Complete current collection for this kind. Each item carries its engine-assigned `producer`; its identity is `(resourceKind, producer, id)`. |
+| `resourceItems` | ResourceItem[]    | Current items returned by the successfully queried producers. Each item carries its engine-assigned `producer`; its identity is `(resourceKind, producer, id)`. |
+| `resourceProducers` | string[] | Optional stable list of producers covered by this snapshot. Successful empty queries are included; failed queries are omitted. |
 
 #### engine_resource_delta
 
