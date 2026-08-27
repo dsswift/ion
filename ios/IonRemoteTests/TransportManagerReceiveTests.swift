@@ -71,7 +71,19 @@ final class TransportManagerReceiveTests: XCTestCase {
         XCTAssertEqual(m.lastReceivedSeq, 0)
     }
 
-    /// A peer-reconnected frame (the existing relay: handling path) should
+    /// A relay:connected frame is the relay's first-frame confirmation. It
+    /// must be consumed without changing desktop sequence state, because the
+    /// phone can maintain a relay socket while LAN carries application frames.
+    func testRelayConnectedFrameIsConsumedWithoutChangingSequenceState() throws {
+        let m = makeManager()
+        m.lastReceivedSeq = 42
+
+        m.handleIncomingData(Data(#"{"type":"relay:connected"}"#.utf8), isRelay: true)
+
+        XCTAssertEqual(m.lastReceivedSeq, 42)
+    }
+
+
     /// still be consumed as a control frame alongside the push-failed branch,
     /// confirming the else-if chain is additive and non-regressive. It must
     /// NOT reset the dedup: the desktop's outbound seq is continuous across

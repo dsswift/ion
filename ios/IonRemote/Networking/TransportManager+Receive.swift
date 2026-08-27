@@ -134,7 +134,13 @@ extension TransportManager {
         if isRelay,
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let type = json["type"] as? String, type.hasPrefix("relay:") {
-            if type == "relay:peer-disconnected" {
+            if type == "relay:connected" {
+                // A relay-owned first frame proves URLSession completed the
+                // upgrade even when all desktop application traffic prefers LAN.
+                DiagnosticLog.log("RELAY-CTRL: connected")
+                cancelDisconnectGracePeriod()
+                updateState()
+            } else if type == "relay:peer-disconnected" {
                 DiagnosticLog.log("RELAY-CTRL: peer-disconnected")
                 // The relay told us the desktop disconnected. Start grace
                 // period with force=true because the relay WebSocket itself
