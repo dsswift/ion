@@ -94,6 +94,54 @@ func TestAppendInboundUserMessage_KindSurvivesEveryAppendShape(t *testing.T) {
 	}
 }
 
+func TestAppendInboundUserMessage_DisplayPromptKeepsProviderInstructionsOutOfTranscript(t *testing.T) {
+	conv := conversation.CreateConversation("test-display-prompt", "sys", "model")
+	opts := types.RunOptions{
+		Prompt:        "answers plus provider-only continuation instruction",
+		DisplayPrompt: "**Which store?**\n- Postgres",
+		InjectionKind: string(types.InjectionKindStructuredAnswer),
+		Attachments: []types.ImageAttachment{{
+			MediaType: "image/png",
+			Data:      "aGVsbG8=",
+		}},
+	}
+
+	entry := AppendInboundUserMessage(conv, &opts)
+	if entry == nil {
+		t.Fatal("expected a persisted tree entry")
+	}
+	md, ok := entry.Data.(conversation.MessageData)
+	if !ok {
+		t.Fatalf("entry data is %T, want conversation.MessageData", entry.Data)
+	}
+	display := contentBlockText(t, md.Content)
+	provider := contentBlockText(t, md.LlmContent)
+	if display != "**Which store?**\n- Postgres" {
+		t.Fatalf("display content = %q", display)
+	}
+	if provider != "answers plus provider-only continuation instruction" {
+		t.Fatalf("provider content = %q", provider)
+	}
+	if len(conv.Messages) != 1 || contentBlockText(t, conv.Messages[0].Content) != provider {
+		t.Fatal("live provider message did not use provider content")
+	}
+	if md.InjectionKind != string(types.InjectionKindStructuredAnswer) || md.MachineAuthored {
+		t.Fatalf("structured answer classification = kind %q machine=%v", md.InjectionKind, md.MachineAuthored)
+	}
+	if blocks, ok := md.Content.([]types.LlmContentBlock); !ok || len(blocks) != 2 || blocks[1].Type != "image" {
+		t.Fatalf("display content did not retain the prompt attachment: %#v", md.Content)
+	}
+}
+
+func contentBlockText(t *testing.T, content any) string {
+	t.Helper()
+	blocks, ok := content.([]types.LlmContentBlock)
+	if !ok || len(blocks) == 0 {
+		t.Fatalf("content is %T, want non-empty []types.LlmContentBlock", content)
+	}
+	return blocks[0].Text
+}
+
 // TestAppendInboundUserMessage_BackgroundWorkKeepsItsOwnKind pins that the
 // background-work arm is unaffected by the fix. That arm stamps the kind from
 // the BackgroundWorkInfo payload, which is the authoritative source for a

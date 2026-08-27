@@ -10,9 +10,9 @@ import (
 // boolPtr is a test helper for *bool fields on PromptOverrides.
 func boolPtr(v bool) *bool { return &v }
 
-// allFieldsOverrides constructs a PromptOverrides with every one of the 19
-// fields set to a non-zero / non-nil value. Used to assert that no field
-// is silently dropped during the enqueue → dequeue round-trip.
+// allFieldsOverrides constructs a PromptOverrides with every supported field
+// set to a non-zero / non-nil value. Used to assert that no field is silently
+// dropped during the enqueue → dequeue round-trip.
 func allFieldsOverrides() *PromptOverrides {
 	enabled := true
 	return &PromptOverrides{
@@ -35,13 +35,16 @@ func allFieldsOverrides() *PromptOverrides {
 		CompactSummaryEnabled:               boolPtr(true),
 		CompactMemoryEnabled:                boolPtr(false),
 		ResolveSlash:                        true,
+		DisplayText:                         "visible prompt",
+		InjectionKind:                       "structured_answer",
 	}
 }
 
-// TestQueuedPromptPreservesFullOverrides asserts that all 19 PromptOverrides
+// TestQueuedPromptPreservesFullOverrides asserts that all PromptOverrides
 // fields survive the enqueueIfBusy → dispatchQueuedPrompt round-trip.
-// The old implementation stored only 8 fields in pendingPrompt and silently
-// dropped the other 11 (including ResolveSlash, BashAllowlistAdditions, etc.).
+// The old implementation stored only part of PromptOverrides in pendingPrompt
+// and silently dropped the rest (including ResolveSlash and per-prompt
+// allowlist additions).
 func TestQueuedPromptPreservesFullOverrides(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
@@ -72,7 +75,7 @@ func TestQueuedPromptPreservesFullOverrides(t *testing.T) {
 		t.Fatal("pendingPrompt.overrides is nil; all fields were dropped")
 	}
 
-	// Verify all 19 fields match the original.
+	// Verify every field matches the original.
 	if got.Model != original.Model {
 		t.Errorf("Model: got %q, want %q", got.Model, original.Model)
 	}
@@ -129,6 +132,9 @@ func TestQueuedPromptPreservesFullOverrides(t *testing.T) {
 	}
 	if !got.ResolveSlash {
 		t.Error("ResolveSlash: got false, want true")
+	}
+	if got.DisplayText != original.DisplayText || got.InjectionKind != original.InjectionKind {
+		t.Errorf("display/classification fields were lost: display=%q kind=%q", got.DisplayText, got.InjectionKind)
 	}
 }
 

@@ -113,6 +113,11 @@ type PromptOverrides struct {
 	// session-level EngineConfig value. See types.ClientWorkspaceContext.
 	ClientWorkspaceContext *types.ClientWorkspaceContext
 
+	// DisplayText is optional user-facing transcript content for a client-owned
+	// structured surface. The model still receives the prompt text. Empty keeps
+	// the ordinary display-equals-model behavior.
+	DisplayText string
+
 	// InjectionKind classifies an injected prompt so the persisted
 	// conversation entry carries the semantic type. "agent_completion" marks a
 	// machine-to-machine dispatch callback (a child agent's result routed to

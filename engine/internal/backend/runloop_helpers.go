@@ -260,7 +260,7 @@ func buildUserContentBlocks(prompt string, attachments []types.ImageAttachment) 
 }
 
 // AppendInboundUserMessage appends the inbound user turn to the conversation,
-// handling the three shapes the prompt can take:
+// handling the four shapes the prompt can take:
 //
 //   - Resolved slash command (opts.ResolvedSlashCommand set): opts.Prompt is the
 //     EXPANDED template body — the LLM sees that — but the persisted/displayed
@@ -268,6 +268,9 @@ func buildUserContentBlocks(prompt string, attachments []types.ImageAttachment) 
 //     the command pill and the invocation survives reload.
 //     AddUserMessageWithInvocation writes the expansion to conv.Messages and the
 //     raw invocation to the tree entry.
+//   - Client display text (opts.DisplayPrompt set): opts.Prompt remains what the
+//     model sees, while the persisted entry contains only the client-owned
+//     rendering. This keeps instructions for the model out of structured cards.
 //   - Image attachments (opts.Attachments non-empty): build a structured content
 //     block list so the provider sends them as native multimodal content
 //     (Anthropic image blocks, OpenAI image_url, Gemini inlineData, Bedrock image
@@ -344,6 +347,14 @@ func appendInboundUserEntry(conv *conversation.Conversation, opts *types.RunOpti
 			ModelEffective: opts.ResolvedSlashModelEffective,
 			Frontmatter:    opts.ResolvedSlashFrontmatter,
 		})
+	case opts.DisplayPrompt != "":
+		llmContent := any(opts.Prompt)
+		displayContent := any(opts.DisplayPrompt)
+		if len(opts.Attachments) > 0 {
+			llmContent = buildUserContentBlocks(opts.Prompt, opts.Attachments)
+			displayContent = buildUserContentBlocks(opts.DisplayPrompt, opts.Attachments)
+		}
+		entry = conversation.AddUserMessageWithDisplay(conv, llmContent, displayContent)
 	case len(opts.Attachments) > 0:
 		entry = conversation.AddUserMessage(conv, buildUserContentBlocks(opts.Prompt, opts.Attachments))
 	case opts.BackgroundWork != nil:
@@ -410,6 +421,9 @@ func appendDegradedSteerMarker(conv *conversation.Conversation, opts *types.RunO
 // resolved, prompt text otherwise), because that is what the tree persists.
 func inboundDuplicatesLeaf(conv *conversation.Conversation, opts *types.RunOptions) bool {
 	display := opts.Prompt
+	if opts.DisplayPrompt != "" {
+		display = opts.DisplayPrompt
+	}
 	if opts.ResolvedSlashCommand != "" {
 		display = opts.ResolvedSlashCommand
 		if opts.ResolvedSlashArgs != "" {

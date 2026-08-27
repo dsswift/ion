@@ -1,6 +1,7 @@
 package session
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -30,10 +31,10 @@ func TestPersistCliTurn_AppendsToIonTranscript(t *testing.T) {
 
 	// Pending fields cleared so a later exit cannot double-append.
 	mgr.mu.RLock()
-	u, a := s.pendingCliUserTurn, s.pendingCliAssistantText
+	u, d, k, a := s.pendingCliUserTurn, s.pendingCliDisplayText, s.pendingCliInjectionKind, s.pendingCliAssistantText
 	mgr.mu.RUnlock()
-	if u != "" || a != "" {
-		t.Fatalf("pending turn not cleared: user=%q assistant=%q", u, a)
+	if u != "" || d != "" || k != "" || a != "" {
+		t.Fatalf("pending turn not cleared: user=%q display=%q kind=%q assistant=%q", u, d, k, a)
 	}
 
 	// The Ion transcript now contains the turn.
@@ -52,6 +53,50 @@ func TestPersistCliTurn_AppendsToIonTranscript(t *testing.T) {
 	}
 	if !haveUser || !haveAssistant {
 		t.Fatalf("persisted turn missing from Ion transcript: user=%v assistant=%v (%d msgs)", haveUser, haveAssistant, len(msgs))
+	}
+}
+
+func TestPersistCliTurn_UsesDisplayTextAndPreservesModelContext(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	mgr := NewManager(backend.NewClaudeCodeBackend())
+	_, _ = mgr.StartSession("structured-cli-turn", defaultConfig())
+
+	const convID = "1784000000000-eeeeeeeeeeee"
+	mgr.mu.Lock()
+	s := mgr.sessions["structured-cli-turn"]
+	s.conversationID = convID
+	s.pendingCliUserTurn = "answers plus provider-only continuation instruction"
+	s.pendingCliDisplayText = "**Which store?**\n- Postgres"
+	s.pendingCliInjectionKind = string(types.InjectionKindStructuredAnswer)
+	s.pendingCliAssistantText = "I will continue."
+	mgr.mu.Unlock()
+
+	mgr.persistCliTurn("structured-cli-turn", convID)
+
+	conv, err := conversation.Load(convID, "")
+	if err != nil {
+		t.Fatalf("load conversation: %v", err)
+	}
+	if len(conv.Entries) < 1 {
+		t.Fatal("expected persisted user entry")
+	}
+	md, ok := conv.Entries[0].Data.(conversation.MessageData)
+	if !ok {
+		t.Fatalf("entry data is %T", conv.Entries[0].Data)
+	}
+	if md.InjectionKind != string(types.InjectionKindStructuredAnswer) || md.MachineAuthored {
+		t.Fatalf("classification = kind %q machine=%v", md.InjectionKind, md.MachineAuthored)
+	}
+	contextMessages := conversation.BuildContextPath(conv)
+	if len(contextMessages) < 1 || !strings.Contains(fmt.Sprint(contextMessages[0].Content), "provider-only continuation instruction") {
+		t.Fatalf("provider context lost hidden instruction: %#v", contextMessages)
+	}
+	messages, err := conversation.LoadMessages(convID, "")
+	if err != nil {
+		t.Fatalf("load messages: %v", err)
+	}
+	if len(messages) < 1 || !strings.Contains(messages[0].Content, "**Which store?**\n- Postgres") || strings.Contains(messages[0].Content, "provider-only") {
+		t.Fatalf("display content = %#v", messages)
 	}
 }
 

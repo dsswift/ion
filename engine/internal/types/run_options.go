@@ -378,6 +378,13 @@ type RunOptions struct {
 	// Internal-only: it never crosses the wire.
 	PrePersistedUserEntryID string `json:"-"`
 
+	// DisplayPrompt is the user-facing transcript content when it differs from
+	// Prompt. Prompt remains the provider-visible input. Empty means both are
+	// identical, preserving the ordinary prompt path. This is in-process only;
+	// clients supply it as send_prompt.displayText and the persisted MessageData
+	// carries the split through Content and LlmContent.
+	DisplayPrompt string `json:"-"`
+
 	// InjectionKind classifies an engine-side injected user turn so the
 	// backend can stamp it on the persisted conversation entry. "agent_completion"
 	// marks a machine-to-machine dispatch callback rather than a user-authored

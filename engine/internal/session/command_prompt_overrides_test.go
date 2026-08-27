@@ -9,6 +9,7 @@ func TestMergeCommandPromptOverridesPreservesClientContext(t *testing.T) {
 		PlanFilePath:          "/plans/active.md",
 		TemporaryAutoFromPlan: true,
 		ThinkingEffort:        "low",
+		DisplayText:           "visible answers",
 	}
 	extension := &PromptOverrides{
 		Model:               "fast",
@@ -20,7 +21,7 @@ func TestMergeCommandPromptOverridesPreservesClientContext(t *testing.T) {
 	if got.Model != "fast" || got.AppendSystemPrompt != "desktop guidance" {
 		t.Fatalf("merged options = %+v", got)
 	}
-	if !got.TemporaryAutoFromPlan || got.PlanFilePath != "/plans/active.md" || got.ThinkingEffort != "low" {
+	if !got.TemporaryAutoFromPlan || got.PlanFilePath != "/plans/active.md" || got.ThinkingEffort != "low" || got.DisplayText != "visible answers" {
 		t.Fatalf("plan/run options were lost: %+v", got)
 	}
 	if !got.CommandContinuation || got.InjectionKind != "slash_command" {

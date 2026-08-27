@@ -15,6 +15,7 @@ func TestPromptOverridesFromCommandPreservesRunOptions(t *testing.T) {
 		ThinkingEffort:        "low",
 		PlanFilePath:          "/plans/active.md",
 		TemporaryAutoFromPlan: true,
+		DisplayText:           "visible answers",
 		Attachments: []types.ImageAttachment{{
 			MediaType: "application/pdf",
 			Data:      "encoded",
@@ -25,7 +26,7 @@ func TestPromptOverridesFromCommandPreservesRunOptions(t *testing.T) {
 	if got.Model != cmd.Model || got.AppendSystemPrompt != cmd.AppendSystemPrompt || got.ThinkingEffort != cmd.ThinkingEffort {
 		t.Fatalf("ordinary run options were not preserved: %+v", got)
 	}
-	if got.PlanFilePath != cmd.PlanFilePath || !got.TemporaryAutoFromPlan {
+	if got.PlanFilePath != cmd.PlanFilePath || !got.TemporaryAutoFromPlan || got.DisplayText != cmd.DisplayText {
 		t.Fatalf("plan workflow options were not preserved: %+v", got)
 	}
 	if len(got.Attachments) != 1 || got.Attachments[0].MediaType != "application/pdf" {

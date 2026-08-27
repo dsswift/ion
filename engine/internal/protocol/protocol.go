@@ -313,6 +313,15 @@ type ClientCommand struct {
 	// Additive optional field -- non-breaking.
 	DeliveryId string `json:"deliveryId,omitempty"`
 
+	// send_prompt: optional user-facing text for a structured client surface.
+	// Text remains the provider-visible prompt. When DisplayText is non-empty,
+	// the engine persists it as the transcript content and keeps Text in
+	// MessageData.LlmContent for context reconstruction. This is the generic
+	// display-vs-model split already used by resolved slash commands, exposed to
+	// clients that render forms or other structured input. Empty preserves the
+	// historical byte-for-byte behavior.
+	DisplayText string `json:"displayText,omitempty"`
+
 	// send_prompt: how this turn was authored, as a types.InjectionKind wire
 	// value ("structured_answer", "agent_completion", "revive", ...).
 	//

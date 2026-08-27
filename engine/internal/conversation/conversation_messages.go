@@ -191,6 +191,29 @@ func HasDeliveryID(conv *Conversation, id string) bool {
 	return false
 }
 
+// AddUserMessageWithDisplay appends a user turn whose provider-visible content
+// differs from its persisted display content. Both values are durable:
+// BuildContextPath reconstructs the provider history from LlmContent, while
+// clients receive Content when they load the transcript.
+func AddUserMessageWithDisplay(conv *Conversation, llmContent, displayContent any) *SessionEntry {
+	llmBlocks := toContentBlocks(llmContent)
+	displayBlocks := toContentBlocks(displayContent)
+
+	conv.lock()
+	defer conv.unlock()
+	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: llmBlocks})
+	if conv.Entries != nil {
+		entry := appendEntryLocked(conv, EntryMessage, MessageData{
+			Role:       "user",
+			Content:    displayBlocks,
+			LlmContent: llmBlocks,
+		}, "")
+		conv.Messages[len(conv.Messages)-1].EntryID = entry.ID
+		return entry
+	}
+	return nil
+}
+
 // AddUserMessageWithKind is the kind-aware variant of AddUserMessage. It
 // stamps InjectionKind on the persisted entry, plus the MachineAuthored flag
 // derived from it, so consumers can classify the injection on historical

@@ -385,6 +385,16 @@ func TestParseClientCommand_InvalidInput(t *testing.T) {
 	}
 }
 
+func TestParseClientCommand_DisplayText(t *testing.T) {
+	result := ParseClientCommand(`{"cmd":"send_prompt","key":"session","text":"model prompt","displayText":"visible answers"}`)
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if result.Text != "model prompt" || result.DisplayText != "visible answers" {
+		t.Fatalf("prompt fields = text %q display %q", result.Text, result.DisplayText)
+	}
+}
+
 func TestParseClientCommand_FieldValues(t *testing.T) {
 	line := `{"cmd":"start_session","key":"my-session","config":{"profileId":"default","extensionDir":"/ext","workingDirectory":"/home/user"},"requestId":"req-1"}`
 	result := ParseClientCommand(line)

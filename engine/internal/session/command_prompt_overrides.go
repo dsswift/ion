@@ -17,6 +17,9 @@ func mergeCommandPromptOverrides(command, extension *PromptOverrides) *PromptOve
 	if extension.InjectionKind != "" {
 		merged.InjectionKind = extension.InjectionKind
 	}
+	if extension.DisplayText != "" {
+		merged.DisplayText = extension.DisplayText
+	}
 	merged.CommandContinuation = extension.CommandContinuation
 	if len(extension.BashAllowlistAdditionsForThisPrompt) > 0 {
 		merged.BashAllowlistAdditionsForThisPrompt = unionStrings(

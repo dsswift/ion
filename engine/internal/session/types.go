@@ -26,7 +26,7 @@ type toolMeta struct {
 
 // pendingPrompt holds a queued prompt waiting for the active run to finish.
 // overrides is a value-copied snapshot of the caller's *PromptOverrides so
-// all 19 fields survive the enqueue → dequeue round-trip intact. A nil
+// every field survives the enqueue → dequeue round-trip intact. A nil
 // overrides is stored as-is and forwarded as nil to SendPrompt.
 type pendingPrompt struct {
 	text      string
@@ -250,6 +250,13 @@ type engineSession struct {
 	// continuity-loss bug). Empty for engine-owned backends, which persist
 	// their own turns via the runloop. Guarded by m.mu.
 	pendingCliUserTurn string
+	// pendingCliDisplayText is the optional transcript rendering paired with the
+	// provider-facing pendingCliUserTurn. It preserves structured client cards
+	// when a delegated-CLI backend owns the run.
+	pendingCliDisplayText string
+	// pendingCliInjectionKind preserves the turn provenance for delegated-CLI
+	// persistence, matching the API backend's classified entry path.
+	pendingCliInjectionKind string
 	// pendingCliAssistantText holds the current run's final assistant text
 	// (TaskCompleteEvent.LastText, else Result), captured as the event flows
 	// through handleNormalizedEvent, for the same CLI-turn persistence.
