@@ -33,6 +33,8 @@ export interface RelayWiringCtx {
    * connect attempt to mint a fresh bearer token instead of using relayApiKey.
    */
   getCredential?: () => Promise<string>
+  /** Marks the next OIDC request as cache-bypassing after a relay HTTP 401. */
+  requestCredentialRefresh: () => void
   relays: Map<string, RelayClient>
   setDeviceSecret: (deviceId: string, secret: Buffer) => void
   handleIncoming: (msg: WireMessage, deviceId: string) => void
@@ -71,6 +73,7 @@ export function connectRelayForDevice(ctx: RelayWiringCtx, device: PairedDevice)
     apiKey: ctx.relayApiKey,
     channelId: device.channelId,
     getCredential: ctx.getCredential,
+    onCredentialRejected: ctx.requestCredentialRefresh,
   })
 
   relay.on('connected', () => {
@@ -180,4 +183,9 @@ export function reconcileRelayConnections(ctx: RelayReconcileCtx): void {
       }
     }
   }
+}
+
+/** Renew existing relay sockets after host wake without touching LAN state. */
+export function renewRelayConnections(ctx: RelayReconcileCtx): void {
+  reconcileRelayConnections(ctx)
 }

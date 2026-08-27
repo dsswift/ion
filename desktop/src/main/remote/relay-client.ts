@@ -21,6 +21,7 @@ import {
   UNKNOWN_FAILURE_ESCALATE_AFTER,
   type RelayFailure,
 } from './relay-failure'
+import { classifyRelayRejection } from './relay-rejection'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('RelayClient', msg, fields)
@@ -51,6 +52,8 @@ export interface RelayClientOptions {
    * static apiKey is used.
    */
   getCredential?: () => Promise<string>
+  /** A rejected bearer needs one cache-bypassing credential refresh. */
+  onCredentialRejected?: () => void
 }
 
 /**
@@ -117,6 +120,7 @@ export class RelayClient extends EventEmitter {
     }
 
     const { relayUrl, apiKey, channelId, getCredential } = this.options
+    let upgradeStatus: number | undefined
 
     // Resolve bearer token: OIDC credential factory or static PSK.
     let bearer: string
@@ -158,6 +162,44 @@ export class RelayClient extends EventEmitter {
     })
     this.ws = ws
 
+    // HTTP auth failures happen before the WebSocket upgrade. The following
+    // close event reports 1006, so capture the structured status here instead
+    // of guessing from ws's error text.
+    ws.on('unexpected-response', (request, response) => {
+      if (gen !== this.generation) {
+        response.resume()
+        return
+      }
+      upgradeStatus = response.statusCode
+      log('relay_client: upgrade rejected', { http_status: upgradeStatus, generation: gen })
+
+      // Registering this listener transfers cleanup responsibility from ws to
+      // us. Without it a rollout's temporary 404 leaves the client in a
+      // half-open CONNECTING state: no close callback runs, no backoff is
+      // scheduled, and iOS finds no desktop peer through relay. Drain and
+      // destroy the rejected HTTP exchange, then invalidate any late socket
+      // callbacks before routing this failure through the normal policy.
+      response.resume()
+      request.destroy()
+      this.generation++
+      this.ws = null
+      this._connected = false
+      this.emit('disconnected')
+
+      const rejection = classifyRelayRejection(1006, upgradeStatus)
+      if (rejection.kind === 'identity_mismatch') {
+        this._handleFailure(rejection.failure, 'close')
+      } else {
+        if (rejection.kind === 'expired') this.options.onCredentialRejected?.()
+        this._handleFailure(
+          rejection.kind === 'expired'
+            ? { class: 'transient', reason: 'credential_rejected' }
+            : { class: 'transient', reason: 'upgrade_rejected', detail: `Relay upgrade returned HTTP ${upgradeStatus}` },
+          'close',
+        )
+      }
+    })
+
     ws.on('open', () => {
       if (gen !== this.generation) {
         log('relay_client: stale open callback ignored', { stale_gen: gen, current_gen: this.generation })
@@ -197,6 +239,20 @@ export class RelayClient extends EventEmitter {
       this._connected = false
       this.ws = null
       this.emit('disconnected')
+
+      const rejection = classifyRelayRejection(code, upgradeStatus)
+      if (rejection.kind === 'identity_mismatch') {
+        this._handleFailure(rejection.failure, 'close')
+        return
+      }
+      if (rejection.kind === 'expired') {
+        this.options.onCredentialRejected?.()
+        log('relay_client: credential rejected, requesting forced refresh', {
+          close_code: code,
+          http_status: upgradeStatus ?? 'none',
+          generation: gen,
+        })
+      }
 
       if (code === CLOSE_CODE_TOKEN_EXPIRED) {
         this.tokenExpiredCount++

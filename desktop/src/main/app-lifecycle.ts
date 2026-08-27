@@ -38,6 +38,7 @@ import { getAccessToken, getOperatorIdentityState, getSignedInIdentity, ensureEn
 import { getEnterprisePolicy, getEnterprisePolicyNewConversationDefaults } from './engine-bridge-fs'
 import { initAutoUpdater } from './updater'
 import { startWatchdog, setWatchdogSuspended } from './watchdog'
+import { renewRelaysAfterWake } from './remote/transport-wake'
 import { createStartupWindow } from './startup-window'
 import { installQuitHandlers } from './app-lifecycle-quit'
 import { failStartup, isStartupRevealed, reportStartup, requireStartupAuthentication, startStartup } from './startup-coordinator'
@@ -274,6 +275,7 @@ export function setupAppLifecycle(): void {
     powerMonitor.on('resume', () => {
       setWatchdogSuspended(false)
       log('watchdog: resumed after system wake')
+      renewRelaysAfterWake({ transport: state.remoteTransport, log })
     })
 
     await requestPermissions()

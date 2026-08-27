@@ -30,7 +30,8 @@ import { InboundEpochTracker } from './transport-inbound-epoch'
 import { decodeInboundPayload } from './transport-inbound-payload'
 import { enqueueSend, enqueueSendToDevice, drainSendQueue, sendDirect, type SendCtx, type SendQueueItem } from './transport-send'
 import { TransportCryptoHost } from './transport-send-worker-host'
-import { connectRelayForDevice, reconcileRelayConnections } from './transport-relay-wiring'
+import { createRelayReconcileCtx } from './transport-relay-context'
+import { connectRelayForDevice, reconcileRelayConnections, renewRelayConnections } from './transport-relay-wiring'
 import { startHeartbeat, stopHeartbeat, sendHeartbeatTo, type HeartbeatCtx } from './transport-heartbeat'
 import type {
   TransportState,
@@ -53,6 +54,8 @@ export interface RemoteTransportConfig {
    * Set by transport-init when the relay advertises OIDC auth mode.
    */
   getCredential?: () => Promise<string>
+  /** Marks the next OIDC acquisition as cache-bypassing after relay rejection. */
+  requestCredentialRefresh?: () => void
   lanPort: number
   /** Callback to look up a paired device by ID. */
   getPairedDevice?: (deviceId: string) => PairedDevice | null
@@ -280,6 +283,7 @@ export class RemoteTransport extends EventEmitter {
       relayUrl: this.config.relayUrl,
       relayApiKey: this.config.relayApiKey,
       getCredential: this.config.getCredential,
+      requestCredentialRefresh: () => this.config.requestCredentialRefresh?.(),
       relays: this.relays,
       setDeviceSecret: (deviceId, secret) => {
         this.deviceSecrets.set(deviceId, secret)
@@ -327,6 +331,19 @@ export class RemoteTransport extends EventEmitter {
     this._setState('disconnected')
   }
 
+  /** Reconnect relay sockets without disturbing LAN or transport sequence state. */
+  reconnectRelays(): void {
+    renewRelayConnections(this._relayReconcileCtx())
+  }
+
+  private _relayReconcileCtx() {
+    return createRelayReconcileCtx(
+      this.config,
+      this.relays,
+      (device) => this._connectRelayForDevice(device),
+    )
+  }
+
   /** Update relay URL/API key/credential provider. Reconciles all relay
    *  clients: updates existing, drops unpaired, creates missing (see
    *  reconcileRelayConnections for why the create step is load-bearing). */
@@ -335,15 +352,7 @@ export class RemoteTransport extends EventEmitter {
     Object.assign(this.config, config)
 
     if (relayChanged) {
-      reconcileRelayConnections({
-        relayUrl: this.config.relayUrl,
-        relayApiKey: this.config.relayApiKey,
-        getCredential: this.config.getCredential,
-        relays: this.relays,
-        getPairedDevice: (id) => this.config.getPairedDevice?.(id) || null,
-        getAllPairedDevices: () => this.config.getAllPairedDevices?.() || [],
-        connectRelayForDevice: (device) => this._connectRelayForDevice(device),
-      })
+      reconcileRelayConnections(this._relayReconcileCtx())
     }
   }
 
