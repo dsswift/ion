@@ -10,6 +10,20 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.69.0](https://github.com/dsswift/ion/compare/ios-v1.68.1...ios-v1.69.0) (2026-08-27)
+
+### Features
+
+* **ios:** sync events and resource reads ([e6dcabe](https://github.com/dsswift/ion/commit/e6dcabe096ff9a62a96ecbddd03f6069cc351ebb))
+* **desktop:** add confirmed worktree discard ([40f6f60](https://github.com/dsswift/ion/commit/40f6f607d23bb78ca0ecedfbc62317f3234f114d))
+* **ios:** add terminal activity parity ([fb671e6](https://github.com/dsswift/ion/commit/fb671e6284cf0281d52612e0082db01174474fa0))
+* **ios:** add controlled project defaults ([d58e448](https://github.com/dsswift/ion/commit/d58e448bcc85cdb6e273a7a7c521af74884ff8e1))
+
+### Bug Fixes
+
+* **desktop:** restore plan implementation state ([374c8ab](https://github.com/dsswift/ion/commit/374c8abef581c6f4cfcecb6d216419104d6fe6a6))
+* **ios:** preserve unknown event decoding ([5bf435b](https://github.com/dsswift/ion/commit/5bf435bf383b424362c13beb4b9ed8acf2c4ff0a))
+
 ## [1.68.1](https://github.com/dsswift/ion/compare/ios-v1.68.0...ios-v1.68.1) (2026-08-26)
 
 ### Bug Fixes

@@ -10,6 +10,26 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.88.0](https://github.com/dsswift/ion/compare/desktop-v1.87.1...desktop-v1.88.0) (2026-08-27)
+
+### Features
+
+* **desktop:** expand telemetry frames (#360) ([ffbdebb](https://github.com/dsswift/ion/commit/ffbdebb5e3278a0a7e483e15ff5ced72cb14e1c8))
+* **desktop:** add automation workflows and client sync ([cc99295](https://github.com/dsswift/ion/commit/cc992955302d06a65c6e10b966c5406df04dfca4))
+* **desktop:** add confirmed worktree discard ([40f6f60](https://github.com/dsswift/ion/commit/40f6f607d23bb78ca0ecedfbc62317f3234f114d))
+* **desktop:** add terminal activity discovery ([5e3422e](https://github.com/dsswift/ion/commit/5e3422e175da19bc152afd014857f778177b062f))
+* **desktop:** add controlled project defaults ([7642ec5](https://github.com/dsswift/ion/commit/7642ec5d9f3dbc179b7eaa0c9b06d2d0f0bb215a))
+* **desktop:** add conversation type shortcut ([89d8aab](https://github.com/dsswift/ion/commit/89d8aab33c45afa340bb24851593d346dcb0800f))
+* **desktop:** embed playwright browser in studio ([9ae5159](https://github.com/dsswift/ion/commit/9ae5159e9ccbf7c3c4c271ba9d50fa9fd8d1a588))
+
+### Bug Fixes
+
+* **engine:** preserve compaction boundaries ([0849f46](https://github.com/dsswift/ion/commit/0849f4639ad36937efd5d5fcce7f6f2815948e0e))
+* **desktop:** restore plan implementation state ([374c8ab](https://github.com/dsswift/ion/commit/374c8abef581c6f4cfcecb6d216419104d6fe6a6))
+* **desktop:** resolve plan command execution ([f8d2d27](https://github.com/dsswift/ion/commit/f8d2d2766e7452cfa7c38bc5718453aa85c3362f))
+* **desktop:** satisfy lint rules ([7507fed](https://github.com/dsswift/ion/commit/7507fed29714612ad67af6507edb62e17077d311))
+* **desktop:** restore linux parity ([c6b3b22](https://github.com/dsswift/ion/commit/c6b3b22042aa8df99c3816312d5f7f28018fd066))
+
 ## [1.87.1](https://github.com/dsswift/ion/compare/desktop-v1.87.0...desktop-v1.87.1) (2026-08-26)
 
 ### Bug Fixes

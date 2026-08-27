@@ -13,6 +13,20 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.77.0](https://github.com/dsswift/ion/compare/engine-v1.76.0...engine-v1.77.0) (2026-08-27)
+
+### Features
+
+* **engine:** compact telemetry frames (#360) ([65a6548](https://github.com/dsswift/ion/commit/65a6548b6ee18b3d38f096c04570429716475e7f))
+* **engine:** persist slash command provenance ([327b5e9](https://github.com/dsswift/ion/commit/327b5e96bae26fd7aab3aecd768b8722ec82654b))
+* **engine:** resolve managed project defaults ([fe96da1](https://github.com/dsswift/ion/commit/fe96da11022eed952a8df814e50c454ca8fa305b))
+* **engine:** add client tool image results ([2582d22](https://github.com/dsswift/ion/commit/2582d2217ac077def0867daeb2a026f325ceba82))
+
+### Bug Fixes
+
+* **engine:** preserve compaction boundaries ([0849f46](https://github.com/dsswift/ion/commit/0849f4639ad36937efd5d5fcce7f6f2815948e0e))
+* **engine:** resolve plan command execution ([33e3f3d](https://github.com/dsswift/ion/commit/33e3f3d2e3104d44b2f4f01aaed58373936236d8))
+
 ## [1.76.0](https://github.com/dsswift/ion/compare/engine-v1.75.0...engine-v1.76.0) (2026-08-25)
 
 ### Features
