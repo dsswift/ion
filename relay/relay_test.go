@@ -98,6 +98,12 @@ func dialWS(t *testing.T, server *httptest.Server, channelID, role, apiKey strin
 		t.Fatalf("dial failed: %v", err)
 	}
 	t.Cleanup(func() { conn.CloseNow() })
+	if role == "mobile" {
+		ready := readExpected(t, conn, "mobile-ready")
+		if !strings.Contains(string(ready), "relay:connected") {
+			t.Fatalf("expected relay:connected, got: %s", ready)
+		}
+	}
 	return conn
 }
 
