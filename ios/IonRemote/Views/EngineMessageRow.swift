@@ -167,7 +167,10 @@ struct EngineMessageRow: View {
                     MessageAttachmentImages(attachments: attachments, alignment: .trailing, onPreview: previewAttachment)
                 }
 
-                let segments = parseAttachmentSegments(message.content)
+                let rawDisplayText = message.injectionKind == "structured_answer"
+                    ? structuredAnswerDisplayText(message.content)
+                    : message.content
+                let segments = parseAttachmentSegments(rawDisplayText)
                 let attachmentPaths = Set((message.attachments ?? []).filter { $0.type == .image }.map { $0.path })
                 let extraImagePaths = segments.images.filter { !attachmentPaths.contains($0) }
                 ForEach(Array(extraImagePaths.enumerated()), id: \.offset) { _, path in
@@ -214,10 +217,13 @@ struct EngineMessageRow: View {
             .padding(.vertical, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
         }
         .contextMenu {
-            Button { UIPasteboard.general.string = message.content } label: {
+            let shareText = message.injectionKind == "structured_answer"
+                ? structuredAnswerDisplayText(message.content)
+                : message.content
+            Button { UIPasteboard.general.string = shareText } label: {
                 Label("Copy", systemImage: "doc.on.doc")
             }
-            ShareLink(item: message.content) {
+            ShareLink(item: shareText) {
                 Label("Share", systemImage: "square.and.arrow.up")
             }
             if onRewind != nil || onFork != nil {
@@ -253,7 +259,10 @@ struct EngineMessageRow: View {
         HStack {
             Spacer(minLength: 24)
             VStack(alignment: .trailing, spacing: 4) {
-                let segments = parseAttachmentSegments(message.content)
+                let rawDisplayText = message.injectionKind == "structured_answer"
+                    ? structuredAnswerDisplayText(message.content)
+                    : message.content
+                let segments = parseAttachmentSegments(rawDisplayText)
                 ForEach(Array(segments.images.enumerated()), id: \.offset) { _, path in
                     InlineAttachmentImage(path: path) { img in
                         previewName = (path as NSString).lastPathComponent
