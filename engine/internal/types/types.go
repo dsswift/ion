@@ -527,6 +527,30 @@ type EarlyStopContinueConfig struct {
 	// DiminishingDelta is the per-continuation token delta below which the
 	// engine declares diminishing returns. Zero means "use default" (500).
 	DiminishingDelta int `json:"diminishingDelta,omitempty"`
+
+	// SubagentEnabled controls whether the early-stop continuation gate
+	// applies to dispatched sub-agent runs (RunOptions.IsSubagent).
+	//
+	// Sub-agents are gated separately from root runs because a dispatched
+	// agent has a tight remit and should not be poked to keep working after
+	// it stops. That default is unchanged: nil preserves the historic
+	// behavior exactly, which is "off for sub-agents unless the harness
+	// forces it on per-run via RunOptions.EarlyStopEnabled".
+	//
+	// It exists because the sub-agent gate was previously HARDCODED — no
+	// config field, no engine.json key, nothing an operator could set. That
+	// made one engine-chosen behavior mandatory in a place where consumers
+	// reasonably differ, which AGENTS.md § "Opinionless mechanics" names as
+	// a defect rather than a constraint. A harness that wants its dispatched
+	// agents nudged the same way its root runs are can now say so once in
+	// engine.json instead of threading a per-run override through every
+	// dispatch site.
+	//
+	// Note this is the ENGINE-INITIATIVE nudge, which still ships no
+	// continuation text of its own (see EarlyStopDefaults). It is unrelated to
+	// the dispatch work gate (DispatchAgentOpts.RequireToolUse), which acts
+	// only on an explicit per-dispatch declaration.
+	SubagentEnabled *bool `json:"subagentEnabled,omitempty"`
 }
 
 // EarlyStopDefaults returns the built-in defaults for the early-stop

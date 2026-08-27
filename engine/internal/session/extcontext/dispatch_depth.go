@@ -9,6 +9,21 @@ package extcontext
 // consumers can distinguish recall from a rejected dispatch.
 const ExitCodeRecalled = 2
 
+// ExitCodeDeclined is the exit code for a dispatch that declared
+// RequireToolUse and finished — after the work gate's one continuation — still
+// having called no tools. The child answered instead of working: it read the
+// task, described what it would do, and ended its turn.
+//
+// It is deliberately NOT 0: an orchestrator that reads 0 believes the work is
+// done and moves on (or re-dispatches the same task, which is the waste this
+// exit code exists to stop). It is deliberately NOT 1 either: 1 means the run
+// failed — a crashed child, a non-zero backend exit, a depth-cap rejection —
+// and a consumer that retries failures should not retry a child that ran
+// correctly and simply produced no work. It is 3 rather than 2 because 2 is
+// ExitCodeRecalled above; a declined dispatch and a cancelled one are
+// different outcomes and must not share a code.
+const ExitCodeDeclined = 3
+
 // DefaultMaxDispatchDepth is the built-in cap when neither the per-dispatch
 // override (DispatchAgentOpts.MaxDispatchDepth) nor the engine config
 // (EngineRuntimeConfig.MaxDispatchDepth) sets a value. Allows depths

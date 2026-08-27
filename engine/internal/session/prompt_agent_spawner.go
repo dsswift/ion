@@ -15,6 +15,12 @@ import (
 	"github.com/dsswift/ion/engine/internal/workspaces"
 )
 
+// requireToolUseDefault is the addressable `true` the built-in Agent tool
+// passes as DispatchAgentOpts.RequireToolUse. A package-level var rather than a
+// per-call local because the field is a *bool and taking the address of a
+// literal is not possible; it is never written after init.
+var requireToolUseDefault = true
+
 // wireAgentSpawner installs the AgentSpawner closure on runCfg for the
 // orchestrator's (depth-0) run. When the orchestrator's LLM invokes the Agent
 // tool, this closure resolves the requested specialist (firing
@@ -195,6 +201,22 @@ func (m *Manager) buildRootAgentSpawner(s *engineSession, key string, parentMode
 			ParentCtx:         ctx,
 			WaitForCompletion: waitForCompletion,
 			Background:        !waitForCompletion,
+			// The built-in Agent tool declares required tool use on the
+			// dispatcher's behalf, because there is no harness on this path to
+			// declare it: the LLM called Agent directly, and the tool's own
+			// description tells the model to "Dispatch a new child agent" to
+			// "perform" a task. A child that answers the task instead of
+			// performing it has not done what this tool exists to do.
+			//
+			// This is the path that produced the observed waste with no
+			// extension loaded at all (system_prompt_len 0), so leaving it
+			// undeclared would leave the reported case unfixed.
+			//
+			// Extension dispatches via ctx.dispatchAgent are untouched: they
+			// pass their own RequireToolUse (or nil to opt out entirely),
+			// because a harness knows which of its dispatches are analysis and
+			// which are execution. Only this engine-owned tool defaults on.
+			RequireToolUse: &requireToolUseDefault,
 		}
 		if specMatched {
 			if spec.SystemPrompt != "" {

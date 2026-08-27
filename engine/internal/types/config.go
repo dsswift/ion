@@ -458,6 +458,24 @@ type DispatchContextConfig struct {
 	// ClaudeCompat overrides the engine's ClaudeCompat setting for dispatch walks.
 	// Nil = inherit from the engine's session-level ClaudeCompat flag.
 	ClaudeCompat *bool `json:"claudeCompat,omitempty"`
+
+	// MaxContextBytes caps the total bytes of context-file content injected
+	// into a single dispatch's system prompt. Zero or negative means no cap
+	// (the historic behavior, preserved for every existing config).
+	//
+	// The cap exists because context injection is per-dispatch and repeats the
+	// full file content every time. In production a single global AGENTS.md of
+	// ~33 KB was prepended to every dispatch in a fan-out of four agents, and
+	// a worktree case reached ~128 KB across two files — paid on each dispatch,
+	// before the task text, whether or not the child went on to do any work.
+	//
+	// Enforcement includes WHOLE FILES in walk order until the budget is spent
+	// and skips the rest, logging each skipped file by name. It never truncates
+	// a file mid-content: half an AGENTS.md is worse than none, because the
+	// agent cannot tell which rules it did not receive and will act with
+	// confident partial knowledge. Walk order is nearest-first, so the files
+	// most specific to the child's working directory are the ones kept.
+	MaxContextBytes int `json:"maxContextBytes,omitempty"`
 }
 
 // LoggingConfig controls structured log output format, destination, and rotation.

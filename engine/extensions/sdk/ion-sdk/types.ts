@@ -48,6 +48,35 @@ export interface DispatchAgentOpts {
    * dispatched agent budgets per-call without touching global engine config.
    */
   maxTurns?: number
+  /**
+   * Overrides the engine-config dispatch-depth cap for this dispatch tree.
+   * When > 0, the child and its descendants use this cap instead of the
+   * global config value; omit or pass <= 0 to use the engine default. Lets a
+   * caller grant one dispatch tree more (or fewer) nesting levels without
+   * changing the engine-wide cap.
+   */
+  maxDispatchDepth?: number
+  /**
+   * Declares whether this dispatch is expected to produce work — that is, to
+   * call at least one tool. Tri-state:
+   *
+   * - `undefined` — no expectation declared. The engine reports
+   *   {@link DispatchAgentResult.toolCount} and never judges it. This is the
+   *   default, so existing callers keep today's behavior exactly.
+   * - `true` — a completion with zero tool calls is not success. The engine
+   *   gives the child ONE continuation naming the expectation; if the second
+   *   attempt also calls no tools the dispatch reports exit code 3 (declined)
+   *   and its delivered status is `declined`, distinct from both `completed`
+   *   and `failed`.
+   * - `false` — explicitly exempt. Analysis, summarization, and advisory
+   *   dispatches legitimately produce text and call nothing.
+   *
+   * Declare this on execution dispatches (implement, edit, fix, refactor) and
+   * leave it unset on planning, review, and summarization dispatches. The
+   * engine never infers the expectation from task text: only the caller knows
+   * which kind of dispatch it issued.
+   */
+  requireToolUse?: boolean
   onEvent?: (event: EngineEvent) => void
 
   // --- Async dispatch ---
@@ -269,6 +298,18 @@ export interface ContextPolicy {
   includeProjectContext?: boolean
   /** Override ClaudeCompat for this walk. Default: inherit from engine. */
   claudeCompat?: boolean
+  /**
+   * Cap total injected context-file bytes for this dispatch. Omit or pass <= 0
+   * for no cap. Files are included WHOLE, nearest-first (cwd, then ancestors,
+   * then home roots), until the budget is spent; the remainder are skipped and
+   * each is logged by name. A file is never truncated mid-content.
+   *
+   * Context injection repeats full file content on every dispatch, so a large
+   * global instruction file is a recurring per-dispatch cost paid before the
+   * task text. Set this on fan-out dispatches where the child only needs its
+   * own repo's guidance.
+   */
+  maxContextBytes?: number
 }
 
 /** A single context file discovered during a walk. */

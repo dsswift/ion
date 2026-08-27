@@ -18,6 +18,7 @@ func toDispatchContextConfig(p *extension.ContextPolicy) *types.DispatchContextC
 		IncludeGlobalContext:  p.IncludeGlobalContext,
 		IncludeProjectContext: p.IncludeProjectContext,
 		ClaudeCompat:          p.ClaudeCompat,
+		MaxContextBytes:       p.MaxContextBytes,
 	}
 }
 
@@ -61,7 +62,7 @@ func injectDispatchContext(
 	// Resolve the effective policy across all four levels.
 	policy := ioncontext.ResolvePolicy(perDispatchCfg, sessionDefaultCfg, engineDispatchCfg, engineCompatDefault)
 
-	utils.LogWithFields(utils.LevelInfo, "server", "dispatch context policy resolved", map[string]any{"agent_name": agentName, "session_key": sa.SessionKey(), "include_global_context": policy.IncludeGlobalContext, "include_project_context": policy.IncludeProjectContext, "claude_compat": policy.ClaudeCompat, "project_path": projectPath})
+	utils.LogWithFields(utils.LevelInfo, "server", "dispatch context policy resolved", map[string]any{"agent_name": agentName, "session_key": sa.SessionKey(), "include_global_context": policy.IncludeGlobalContext, "include_project_context": policy.IncludeProjectContext, "claude_compat": policy.ClaudeCompat, "max_context_bytes": policy.MaxContextBytes, "project_path": projectPath})
 
 	if !policy.IncludeGlobalContext && !policy.IncludeProjectContext {
 		utils.LogWithFields(utils.LevelInfo, "server", "dispatch context injection suppressed: both layers disabled", map[string]any{"agent_name": agentName, "session_key": sa.SessionKey()})
@@ -74,13 +75,30 @@ func injectDispatchContext(
 		return
 	}
 
+	// Attribute the injected bytes per layer, not just as one total. Context
+	// injection repeats the full file content on EVERY dispatch, so it is a
+	// recurring per-dispatch cost; an operator asking "why is each dispatch
+	// 50 KB before the task text" needs to know which layer is responsible
+	// (a 33 KB global AGENTS.md behaves very differently from 33 KB of
+	// project-local files) and cannot get that from a single total.
 	totalBytes := 0
+	globalBytes := 0
+	projectBytes := 0
 	paths := make([]string, 0, len(files))
 	for _, f := range files {
 		totalBytes += len(f.Content)
+		if f.Source == "global" {
+			globalBytes += len(f.Content)
+		} else {
+			projectBytes += len(f.Content)
+		}
 		paths = append(paths, f.Path)
 	}
-	utils.LogWithFields(utils.LevelInfo, "server", "dispatch context injected", map[string]any{"agent_name": agentName, "session_key": sa.SessionKey(), "count": len(files), "total_bytes": totalBytes, "paths": paths})
+	utils.LogWithFields(utils.LevelInfo, "server", "dispatch context injected", map[string]any{
+		"agent_name": agentName, "session_key": sa.SessionKey(), "count": len(files),
+		"total_bytes": totalBytes, "global_bytes": globalBytes, "project_bytes": projectBytes,
+		"max_context_bytes": policy.MaxContextBytes, "paths": paths,
+	})
 
 	// Prepend context AHEAD of the agent persona (opts.SystemPrompt). Order:
 	// context grounding -> agent persona. This mirrors how injectContextFiles
