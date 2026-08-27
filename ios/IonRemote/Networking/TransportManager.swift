@@ -215,6 +215,9 @@ final class TransportManager {
     /// The WI-6 trailing coalesced-resend task also enters this queue so its
     /// `pendingResendSeqs` reads/writes are serialized with frame processing.
     let inboundQueue = SerialAsyncQueue()
+    /// Holds transport-only fragments until one exact event payload is complete.
+    /// Access is serialized by `inboundQueue`.
+    let payloadChunkAssembler = PayloadChunkAssembler()
 
     /// One-way clock-skew estimate in milliseconds (positive = iOS clock is ahead
     /// of the desktop). Updated from `desktop_heartbeat` frames by comparing iOS
@@ -490,43 +493,6 @@ final class TransportManager {
         }
 
         monitor.start(queue: .main)
-    }
-}
-
-// MARK: - WireMessage
-
-/// Wire envelope for messages between Ion and the iOS app.
-/// Matches the `WireMessage` type in `src/main/remote/protocol.ts`.
-struct WireMessage: Codable {
-    let seq: UInt64
-    /// Unix ms timestamp.
-    let ts: Double?
-    /// Outbound-seq epoch (generation id), carried in BOTH directions.
-    /// Inbound (desktop→iOS): changes when the desktop's outbound seq space
-    /// restarts (process restart / stop()+recreate); iOS resets its receive
-    /// dedup on a NEWER epoch and drops frames carrying an OLDER one.
-    /// Outbound (iOS→desktop): every frame carries this TransportManager
-    /// instance's `outboundEpoch` so the desktop can apply the same monotonic
-    /// logic to its inbound dedup. Optional: a peer predating the field omits
-    /// it, and the receiver skips the epoch logic (legacy behavior).
-    let epoch: Double?
-    /// JSON-encoded payload (nil when encrypted).
-    let payload: String?
-    /// Base64-encoded nonce (present when encrypted).
-    let nonce: String?
-    /// Base64-encoded ciphertext (present when encrypted, replaces payload).
-    let ciphertext: String?
-    /// Identifies the sending device.
-    let deviceId: String?
-
-    init(seq: UInt64, ts: Double?, payload: String?, nonce: String? = nil, ciphertext: String? = nil, deviceId: String? = nil, epoch: Double? = nil) {
-        self.seq = seq
-        self.ts = ts
-        self.epoch = epoch
-        self.payload = payload
-        self.nonce = nonce
-        self.ciphertext = ciphertext
-        self.deviceId = deviceId
     }
 }
 
