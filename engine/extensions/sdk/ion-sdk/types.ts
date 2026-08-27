@@ -369,6 +369,18 @@ export interface DispatchAgentResult {
   dispatchId?: string
   sessionId?: string
   /**
+   * Dispatch depth of this agent in the dispatch tree. The orchestrator runs
+   * at depth 0, its direct dispatches at depth 1, their dispatches at depth 2.
+   * Set by the engine, never by the caller.
+   */
+  depth?: number
+  /**
+   * The dispatchId of the parent dispatch that spawned this agent. Empty for
+   * a top-level dispatch, whose parent is the orchestrator at depth 0.
+   * Consumers reconstruct the dispatch tree from this.
+   */
+  parentDispatchId?: string
+  /**
    * The absolute path of the plan file written by the child session. Non-empty
    * only when the child was in plan mode and wrote a plan (regardless of whether
    * it called ExitPlanMode).
