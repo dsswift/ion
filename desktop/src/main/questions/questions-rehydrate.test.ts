@@ -44,6 +44,25 @@ describe('rehydrateFromTranscript — recovering a parked question', () => {
     expect(outcome.question.request.questions).toHaveLength(2)
   })
 
+  it('preserves a large valid request exactly', () => {
+    const large = {
+      title: 'T'.repeat(1_000),
+      description: 'evidence '.repeat(10_000),
+      questions: Array.from({ length: 30 }, (_, index) => ({
+        id: `q-${index}-${'x'.repeat(100)}`,
+        prompt: `Question ${index} ${'p'.repeat(2_000)}`,
+        guidance: 'g'.repeat(3_000),
+        mode: 'text',
+      })),
+    }
+    const outcome = rehydrateFromTranscript([
+      questionRow({ toolInput: JSON.stringify(large) }),
+    ])
+    expect(outcome.kind).toBe('found')
+    if (outcome.kind !== 'found') return
+    expect(outcome.question.request).toEqual(large)
+  })
+
   it('accepts a toolInput already parsed into an object', () => {
     // Different history sources hand the input over in different shapes; a
     // question must not vanish because of which one a caller used.

@@ -103,25 +103,14 @@ export interface QuestionsResult {
   requestMore: boolean
 }
 
-// ── Validation limits ────────────────────────────────────────────────────────
-// Bounded so the canonical state always fits desktop↔iOS transport caps
-// (the structural transport test pins the maximum). Malformed model input
-// returns a tool error naming the violated bound.
+// ── Outbound answer limit ───────────────────────────────────────────────────
+// Request content comes FROM the agent and is accepted without receiver-side
+// size limits. User-authored free text flows back TO the agent, so that one
+// downstream boundary stays bounded.
 
 export const QUESTIONS_LIMITS = {
-  maxQuestionsPerPage: 12,
-  maxOptionsPerQuestion: 12,
-  maxTitleChars: 200,
-  maxDescriptionChars: 2000,
-  maxPromptChars: 500,
-  maxGuidanceChars: 1000,
-  maxOptionLabelChars: 120,
-  maxOptionDescriptionChars: 400,
-  maxIdChars: 64,
   /** Custom text / page comment cap (user input, enforced by the UI too). */
   maxFreeTextChars: 4000,
-  /** Total serialized request bound (defense in depth over the per-field caps). */
-  maxRequestBytes: 64 * 1024,
 } as const
 
 /**
@@ -168,30 +157,26 @@ export function validateQuestionsRequest(input: unknown): string | null {
 
   const title = req.title
   if (typeof title !== 'string' || title.length === 0) return 'title is required'
-  if (title.length > QUESTIONS_LIMITS.maxTitleChars) return `title exceeds ${QUESTIONS_LIMITS.maxTitleChars} chars`
-  if (req.description !== undefined) {
-    if (typeof req.description !== 'string') return 'description must be a string'
-    if (req.description.length > QUESTIONS_LIMITS.maxDescriptionChars) return `description exceeds ${QUESTIONS_LIMITS.maxDescriptionChars} chars`
+  if (req.description !== undefined && typeof req.description !== 'string') {
+    return 'description must be a string'
   }
-  if (req.workflowId !== undefined) {
-    if (typeof req.workflowId !== 'string' || req.workflowId.length > QUESTIONS_LIMITS.maxIdChars) return 'workflowId must be a string of bounded length'
+  if (req.workflowId !== undefined && (typeof req.workflowId !== 'string' || req.workflowId.length === 0)) {
+    return 'workflowId must be a non-empty string'
   }
 
   const questions = req.questions
   if (!Array.isArray(questions) || questions.length === 0) return 'questions must be a non-empty array'
-  if (questions.length > QUESTIONS_LIMITS.maxQuestionsPerPage) return `questions exceed ${QUESTIONS_LIMITS.maxQuestionsPerPage} per page`
 
   const seenIds = new Set<string>()
   for (const [i, raw] of questions.entries()) {
     if (typeof raw !== 'object' || raw === null) return `question ${i} must be an object`
     const q = raw as Record<string, unknown>
-    if (typeof q.id !== 'string' || q.id.length === 0 || q.id.length > QUESTIONS_LIMITS.maxIdChars) return `question ${i}: id is required (bounded)`
+    if (typeof q.id !== 'string' || q.id.length === 0) return `question ${i}: id is required`
     if (seenIds.has(q.id)) return `question ${i}: duplicate id ${q.id}`
     seenIds.add(q.id)
     if (typeof q.prompt !== 'string' || q.prompt.length === 0) return `question ${q.id}: prompt is required`
-    if (q.prompt.length > QUESTIONS_LIMITS.maxPromptChars) return `question ${q.id}: prompt exceeds ${QUESTIONS_LIMITS.maxPromptChars} chars`
-    if (q.guidance !== undefined) {
-      if (typeof q.guidance !== 'string' || q.guidance.length > QUESTIONS_LIMITS.maxGuidanceChars) return `question ${q.id}: guidance invalid`
+    if (q.guidance !== undefined && typeof q.guidance !== 'string') {
+      return `question ${q.id}: guidance must be a string`
     }
     if (q.mode !== 'single' && q.mode !== 'multiple' && q.mode !== 'text') return `question ${q.id}: mode must be single, multiple, or text`
 
@@ -202,17 +187,16 @@ export function validateQuestionsRequest(input: unknown): string | null {
 
     const options = q.options
     if (!Array.isArray(options) || options.length === 0) return `question ${q.id}: options are required for ${String(q.mode)} mode`
-    if (options.length > QUESTIONS_LIMITS.maxOptionsPerQuestion) return `question ${q.id}: options exceed ${QUESTIONS_LIMITS.maxOptionsPerQuestion}`
     const seenOptionIds = new Set<string>()
     for (const [j, rawOpt] of options.entries()) {
       if (typeof rawOpt !== 'object' || rawOpt === null) return `question ${q.id}: option ${j} must be an object`
       const o = rawOpt as Record<string, unknown>
-      if (typeof o.id !== 'string' || o.id.length === 0 || o.id.length > QUESTIONS_LIMITS.maxIdChars) return `question ${q.id}: option ${j} id is required (bounded)`
+      if (typeof o.id !== 'string' || o.id.length === 0) return `question ${q.id}: option ${j} id is required`
       if (seenOptionIds.has(o.id)) return `question ${q.id}: duplicate option id ${o.id}`
       seenOptionIds.add(o.id)
-      if (typeof o.label !== 'string' || o.label.length === 0 || o.label.length > QUESTIONS_LIMITS.maxOptionLabelChars) return `question ${q.id}: option ${o.id} label invalid`
-      if (o.description !== undefined) {
-        if (typeof o.description !== 'string' || o.description.length > QUESTIONS_LIMITS.maxOptionDescriptionChars) return `question ${q.id}: option ${o.id} description invalid`
+      if (typeof o.label !== 'string' || o.label.length === 0) return `question ${q.id}: option ${o.id} label is required`
+      if (o.description !== undefined && typeof o.description !== 'string') {
+        return `question ${q.id}: option ${o.id} description must be a string`
       }
     }
     if (q.display !== undefined) {
@@ -221,7 +205,5 @@ export function validateQuestionsRequest(input: unknown): string | null {
     }
   }
 
-  const serialized = JSON.stringify(input)
-  if (serialized.length > QUESTIONS_LIMITS.maxRequestBytes) return `request exceeds ${QUESTIONS_LIMITS.maxRequestBytes} bytes`
   return null
 }

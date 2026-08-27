@@ -70,6 +70,7 @@ describe('laneForEventType — classifier', () => {
     expect(laneForEventType('desktop_resource_content')).toBe('bulk')
     expect(laneForEventType('desktop_fs_file_content')).toBe('bulk')
     expect(laneForEventType('desktop_fs_image_content')).toBe('bulk')
+    expect(laneForEventType('desktop_payload_chunk')).toBe('bulk')
   })
 
   it('routes live interactive traffic to the interactive lane', () => {

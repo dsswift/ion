@@ -63,6 +63,18 @@ export interface WireMessage {
   deviceId?: string        // identifies the sending device (set by transport)
 }
 
+export interface PayloadChunkEnvelope {
+  type: 'desktop_payload_chunk'
+  transferId: string
+  index: number
+  count: number
+  originalType: string
+  totalBytes: number
+  sha256: string
+  /** Base64-encoded window of the original UTF-8 JSON bytes. */
+  data: string
+}
+
 // ─── Auth handshake (exchanged before any data flows) ───
 
 export interface AuthChallenge {
